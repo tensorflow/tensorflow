@@ -25,10 +25,14 @@ StatusOr<poplar::program::Program> CreateSliceUpdateOp(
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
 
+  poplar::program::Sequence seq;
+
   poplar::Tensor input;
-  TF_ASSIGN_OR_RETURN(input, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(input,
+                      FindInstructionInput(tensor_map, res, inst, 0, seq));
   poplar::Tensor update;
-  TF_ASSIGN_OR_RETURN(update, FindInstructionInput(tensor_map, inst, 1));
+  TF_ASSIGN_OR_RETURN(update,
+                      FindInstructionInput(tensor_map, res, inst, 1, seq));
 
   const HloInstruction* root = inst->to_apply()->root_instruction();
 
@@ -46,7 +50,6 @@ StatusOr<poplar::program::Program> CreateSliceUpdateOp(
     return xla::FailedPrecondition("Invalid update slice start");
   }
 
-  poplar::program::Sequence seq;
   poplar::Tensor copy;
 
   if (!input.isParallelWriteable()) {
@@ -82,8 +85,11 @@ StatusOr<poplar::program::Program> CreateSliceOp(CompilerResources& res,
                                                  TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
 
+  poplar::program::Sequence seq;
+
   poplar::Tensor input;
-  TF_ASSIGN_OR_RETURN(input, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(input,
+                      FindInstructionInput(tensor_map, res, inst, 0, seq));
 
   const HloInstruction* root = inst->to_apply()->root_instruction();
 
@@ -111,7 +117,6 @@ StatusOr<poplar::program::Program> CreateSliceOp(CompilerResources& res,
   poplar::Tensor slice = input.slice(s_begin, s_end);
   poplar::Tensor out = graph.clone(slice, GetDebugName(inst));
 
-  poplar::program::Sequence seq;
   seq.add(poplar::program::Copy(slice, out));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
@@ -132,10 +137,12 @@ StatusOr<poplar::program::Program> CreateDynamicSliceUpdateOp(
   poplar::Tensor input = inputs[0];
 
   poplar::Tensor update;
-  TF_ASSIGN_OR_RETURN(update, FindInstructionInput(tensor_map, inst, 1));
+  TF_ASSIGN_OR_RETURN(update,
+                      FindInstructionInput(tensor_map, res, inst, 1, seq));
 
   poplar::Tensor indices;
-  TF_ASSIGN_OR_RETURN(indices, FindInstructionInput(tensor_map, inst, 2));
+  TF_ASSIGN_OR_RETURN(indices,
+                      FindInstructionInput(tensor_map, res, inst, 2, seq));
 
   auto type = indices.elementType();
   if (type == poplar::INT) {
@@ -179,11 +186,15 @@ StatusOr<poplar::program::Program> CreateDynamicSliceOp(
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
 
+  poplar::program::Sequence seq;
+
   poplar::Tensor input;
-  TF_ASSIGN_OR_RETURN(input, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(input,
+                      FindInstructionInput(tensor_map, res, inst, 0, seq));
 
   poplar::Tensor indices;
-  TF_ASSIGN_OR_RETURN(indices, FindInstructionInput(tensor_map, inst, 1));
+  TF_ASSIGN_OR_RETURN(indices,
+                      FindInstructionInput(tensor_map, res, inst, 1, seq));
 
   auto type = indices.elementType();
   if (type == poplar::INT) {
@@ -209,9 +220,6 @@ StatusOr<poplar::program::Program> CreateDynamicSliceOp(
       slice_sizes.push_back(inst->shape().dimensions(d));
     }
   }
-
-  // The program to execute the dynamic slice.
-  poplar::program::Sequence seq;
 
   // Add the dynamic slice operations to `seq`. This automatically
   // creates the required compute set.
@@ -259,7 +267,7 @@ StatusOr<poplar::program::Program> CreateZeroPadOp(CompilerResources& res,
   const HloInstruction* root = inst->to_apply()->root_instruction();
   const PaddingConfig& cfg(root->padding_config());
   poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, res, inst, 0, seq));
 
   std::vector<std::ptrdiff_t> paddingLower;
   std::vector<std::ptrdiff_t> paddingUpper;

@@ -23,16 +23,18 @@ StatusOr<poplar::program::Program> CreateBatchNormInf(
 
   poplar::Graph& graph = GetGraph(res, inst);
 
+  poplar::program::Sequence seq;
+
   TF_ASSIGN_OR_RETURN(poplar::Tensor operand,
-                      FindInstructionInput(tensor_map, inst, 0));
+                      FindInstructionInput(tensor_map, res, inst, 0, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor scale,
-                      FindInstructionInput(tensor_map, inst, 1));
+                      FindInstructionInput(tensor_map, res, inst, 1, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor offset,
-                      FindInstructionInput(tensor_map, inst, 2));
+                      FindInstructionInput(tensor_map, res, inst, 2, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor mean,
-                      FindInstructionInput(tensor_map, inst, 3));
+                      FindInstructionInput(tensor_map, res, inst, 3, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor variance,
-                      FindInstructionInput(tensor_map, inst, 4));
+                      FindInstructionInput(tensor_map, res, inst, 4, seq));
 
   unsigned dimension = batch_inf_inst->feature_index();
   unsigned final_dim = operand.rank() - 1;
@@ -51,7 +53,6 @@ StatusOr<poplar::program::Program> CreateBatchNormInf(
     operand_view = operand_view.reshapePartial(0, final_dim, {count});
   }
 
-  poplar::program::Sequence seq;
   auto name = GetDebugName(inst);
 
   auto var_expression = pe::Divide(
@@ -83,12 +84,14 @@ StatusOr<poplar::program::Program> CreateBatchNormTraining(
 
   poplar::Graph& graph = GetGraph(res, inst);
 
+  poplar::program::Sequence seq;
+
   TF_ASSIGN_OR_RETURN(poplar::Tensor operand,
-                      FindInstructionInput(tensor_map, inst, 0));
+                      FindInstructionInput(tensor_map, res, inst, 0, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor scale,
-                      FindInstructionInput(tensor_map, inst, 1));
+                      FindInstructionInput(tensor_map, res, inst, 1, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor offset,
-                      FindInstructionInput(tensor_map, inst, 2));
+                      FindInstructionInput(tensor_map, res, inst, 2, seq));
 
   unsigned dimension = batch_train_inst->feature_index();
   unsigned final_dim = operand.rank() - 1;
@@ -107,7 +110,6 @@ StatusOr<poplar::program::Program> CreateBatchNormTraining(
     operand_view = operand_view.reshapePartial(0, final_dim, {count});
   }
 
-  poplar::program::Sequence seq;
   auto name = GetDebugName(inst);
 
   auto est = popnn::bn::batchNormEstimates(graph, operand_view,

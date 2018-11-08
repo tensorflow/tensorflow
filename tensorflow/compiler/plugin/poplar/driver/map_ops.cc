@@ -147,21 +147,25 @@ StatusOr<poplar::program::Program> CreateParallelMap(CompilerResources& res,
   int64 op_count(inst->operand_count());
   ArgVector inputs;
 
+  poplar::program::Sequence seq;
+
   for (int64 i = 0; i < op_count; i++) {
     poplar::Tensor t;
-    TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i));
+    TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, res, inst, i, seq));
     inputs.push_back(t);
   }
 
   MapVisitor visitor(res, inputs, output);
   TF_RETURN_IF_ERROR(inst->to_apply()->Accept(&visitor));
 
+  seq.add(visitor.sequence);
+
   auto outputs = visitor.outputs();
   for (size_t i = 0; i < outputs.size(); i++) {
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, outputs[i]));
   }
 
-  return visitor.sequence;
+  return seq;
 }
 
 StatusOr<poplar::program::Program> CreateCallOp(CompilerResources& res,
@@ -176,7 +180,7 @@ StatusOr<poplar::program::Program> CreateCallOp(CompilerResources& res,
 
   ArgVectors args;
   for (int64 i = 0; i < op_count; i++) {
-    ArgVector t = FindInstructionInputs(tensor_map, inst, i);
+    ArgVector t = FindInstructionInputs(tensor_map, res, inst, i, seq);
     args.push_back(t);
   }
 
@@ -257,7 +261,7 @@ StatusOr<poplar::program::Program> CreateFusionOp(CompilerResources& res,
   ArgVectors inputs;
 
   for (int64 i = 0; i < op_count; i++) {
-    ArgVector t = FindInstructionInputs(tensor_map, inst, i);
+    ArgVector t = FindInstructionInputs(tensor_map, res, inst, i, seq);
     inputs.push_back(t);
   }
 
@@ -280,8 +284,10 @@ StatusOr<poplar::program::Program> CreateWhileOp(CompilerResources& res,
                                                  TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
 
+  poplar::program::Sequence main_seq;
+
   ArgVectors inputs;
-  inputs.push_back(FindInstructionInputs(tensor_map, inst, 0));
+  inputs.push_back(FindInstructionInputs(tensor_map, res, inst, 0, main_seq));
 
   ComputationMap::iterator body;
   TF_ASSIGN_OR_RETURN(
@@ -311,7 +317,6 @@ StatusOr<poplar::program::Program> CreateWhileOp(CompilerResources& res,
     return xla::FailedPrecondition("Invalid number of condition outputs");
   }
 
-  poplar::program::Sequence main_seq;
   for (unsigned int i = 0; i < param_count; i++) {
     if (body_outputs[i].isParallelWriteable()) {
       main_seq.add(poplar::program::Copy(inputs[0][i], body_outputs[i]));
@@ -354,6 +359,8 @@ StatusOr<poplar::program::Program> CreateRepeatOp(CompilerResources& res,
                                                   TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
 
+  poplar::program::Sequence main_seq;
+
   uint64 repeat_count;
   auto it = res.annotations.while_loop_num_iterations.find(inst);
   if (it != res.annotations.while_loop_num_iterations.end()) {
@@ -363,7 +370,7 @@ StatusOr<poplar::program::Program> CreateRepeatOp(CompilerResources& res,
   }
 
   ArgVectors inputs;
-  inputs.push_back(FindInstructionInputs(tensor_map, inst, 0));
+  inputs.push_back(FindInstructionInputs(tensor_map, res, inst, 0, main_seq));
 
   ComputationMap::iterator body;
   TF_ASSIGN_OR_RETURN(
@@ -381,7 +388,6 @@ StatusOr<poplar::program::Program> CreateRepeatOp(CompilerResources& res,
     return xla::FailedPrecondition("Invalid number of body outputs");
   }
 
-  poplar::program::Sequence main_seq;
   for (unsigned int i = 0; i < param_count; i++) {
     if (body_outputs[i].isParallelWriteable()) {
       main_seq.add(poplar::program::Copy(inputs[0][i], body_outputs[i]));
@@ -413,14 +419,17 @@ StatusOr<poplar::program::Program> CreateIfOp(CompilerResources& res,
                                               TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
 
+  poplar::program::Sequence seq;
+
   poplar::Tensor pred;
-  TF_ASSIGN_OR_RETURN(pred, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(pred,
+                      FindInstructionInput(tensor_map, res, inst, 0, seq));
 
   ArgVectors true_inputs;
-  true_inputs.push_back(FindInstructionInputs(tensor_map, inst, 1));
+  true_inputs.push_back(FindInstructionInputs(tensor_map, res, inst, 1, seq));
 
   ArgVectors false_inputs;
-  false_inputs.push_back(FindInstructionInputs(tensor_map, inst, 2));
+  false_inputs.push_back(FindInstructionInputs(tensor_map, res, inst, 2, seq));
 
   ComputationMap::iterator true_body;
   TF_ASSIGN_OR_RETURN(
@@ -432,7 +441,6 @@ StatusOr<poplar::program::Program> CreateIfOp(CompilerResources& res,
       false_body,
       GetOrCompileSubComputation(res, false_inputs, inst->false_computation()));
 
-  poplar::program::Sequence seq;
   poplar::Tensor scalar_pred =
       popops::allTrue(graph, pred, seq, GetDebugName(inst));
 

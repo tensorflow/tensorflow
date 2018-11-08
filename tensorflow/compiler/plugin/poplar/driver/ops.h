@@ -124,14 +124,17 @@ ArgVector FindTupleInInstructionInput(const TensorMap& map,
  * input to the instruction
  */
 StatusOr<poplar::Tensor> FindInstructionInput(const TensorMap& map,
+                                              CompilerResources& res,
                                               const HloInstruction* inst,
-                                              int64 input);
+                                              int64 input,
+                                              poplar::program::Sequence& seq);
 
 /* This returns a vector of all poplar tensors which are part of the tuple
  * or non-tuple on the input to the instruction
  */
-ArgVector FindInstructionInputs(const TensorMap& map,
-                                const HloInstruction* inst, int64 input);
+ArgVector FindInstructionInputs(const TensorMap& map, CompilerResources& res,
+                                const HloInstruction* inst, int64 input,
+                                poplar::program::Sequence& seq);
 
 /* This returns a vector of poplar tensors which are all of the outputs from
  * the given instruction

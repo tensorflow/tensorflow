@@ -169,15 +169,15 @@ StatusOr<poplar::program::Program> CreateLstmLayerFwdOp(
   popnn::lstm::LstmWeights weights;
 
   TF_ASSIGN_OR_RETURN(poplar::Tensor input,
-                      FindInstructionInput(tensor_map, inst, 0));
+                      FindInstructionInput(tensor_map, res, inst, 0, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor input_h_state,
-                      FindInstructionInput(tensor_map, inst, 1));
+                      FindInstructionInput(tensor_map, res, inst, 1, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor input_c_state,
-                      FindInstructionInput(tensor_map, inst, 2));
+                      FindInstructionInput(tensor_map, res, inst, 2, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor kernel,
-                      FindInstructionInput(tensor_map, inst, 3));
+                      FindInstructionInput(tensor_map, res, inst, 3, seq));
   TF_ASSIGN_OR_RETURN(weights.biases,
-                      FindInstructionInput(tensor_map, inst, 4));
+                      FindInstructionInput(tensor_map, res, inst, 4, seq));
 
   TF_ASSIGN_OR_RETURN(popnn::lstm::LstmParams lstm_params,
                       GetLstmParameters(inst, attribute_map));
@@ -221,29 +221,29 @@ StatusOr<poplar::program::Program> CreateLstmLayerBwdOp(
   popnn::lstm::LstmWeights weights;
 
   TF_ASSIGN_OR_RETURN(poplar::Tensor input,
-                      FindInstructionInput(tensor_map, inst, 0));
+                      FindInstructionInput(tensor_map, res, inst, 0, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor input_h_state,
-                      FindInstructionInput(tensor_map, inst, 1));
+                      FindInstructionInput(tensor_map, res, inst, 1, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor input_c_state,
-                      FindInstructionInput(tensor_map, inst, 2));
+                      FindInstructionInput(tensor_map, res, inst, 2, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor kernel,
-                      FindInstructionInput(tensor_map, inst, 3));
+                      FindInstructionInput(tensor_map, res, inst, 3, seq));
   TF_ASSIGN_OR_RETURN(weights.biases,
-                      FindInstructionInput(tensor_map, inst, 4));
+                      FindInstructionInput(tensor_map, res, inst, 4, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor output,
-                      FindInstructionInput(tensor_map, inst, 5));
+                      FindInstructionInput(tensor_map, res, inst, 5, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor output_h_state,
-                      FindInstructionInput(tensor_map, inst, 6));
+                      FindInstructionInput(tensor_map, res, inst, 6, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor output_c_state,
-                      FindInstructionInput(tensor_map, inst, 7));
+                      FindInstructionInput(tensor_map, res, inst, 7, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor intermediates,
-                      FindInstructionInput(tensor_map, inst, 8));
+                      FindInstructionInput(tensor_map, res, inst, 8, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor output_backprop,
-                      FindInstructionInput(tensor_map, inst, 9));
+                      FindInstructionInput(tensor_map, res, inst, 9, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor output_h_state_backprop,
-                      FindInstructionInput(tensor_map, inst, 10));
+                      FindInstructionInput(tensor_map, res, inst, 10, seq));
   TF_ASSIGN_OR_RETURN(poplar::Tensor output_c_state_backprop,
-                      FindInstructionInput(tensor_map, inst, 11));
+                      FindInstructionInput(tensor_map, res, inst, 11, seq));
 
   TF_ASSIGN_OR_RETURN(popnn::lstm::LstmParams lstm_params,
                       GetLstmParameters(inst, attribute_map));

@@ -260,20 +260,21 @@ StatusOr<poplar::program::Program> CreateConv2D(CompilerResources& res,
                                                 TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
 
+  poplar::program::Sequence prog;
+
   const HloInstruction* conv = FindConvolutionOp(inst, res.annotations);
 
   // Find the input tensor
   poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, res, inst, 0, prog));
 
   // Find the kernel tensor
   poplar::Tensor kernel;
-  TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
+  TF_ASSIGN_OR_RETURN(kernel,
+                      FindInstructionInput(tensor_map, res, inst, 1, prog));
 
   poplin::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv, 0, 1));
-
-  poplar::program::Sequence prog;
 
   in = ShuffleConvolutionInputToPoplar(conv, in);
 
@@ -299,20 +300,21 @@ StatusOr<poplar::program::Program> Create2DConvWithReverse(
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
 
+  poplar::program::Sequence prog;
+
   const HloInstruction* conv = FindConvolutionOp(inst, res.annotations);
 
   // Find the input tensor
   poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, res, inst, 0, prog));
 
   // Find the kernel tensor
   poplar::Tensor kernel;
-  TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
+  TF_ASSIGN_OR_RETURN(kernel,
+                      FindInstructionInput(tensor_map, res, inst, 1, prog));
 
   poplin::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv, 0, 1));
-
-  poplar::program::Sequence prog;
 
   in = ShuffleConvolutionInputToPoplar(conv, in);
 
@@ -338,20 +340,21 @@ StatusOr<poplar::program::Program> CreateDepthwiseBackpropFilter(
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
 
+  poplar::program::Sequence prog;
+
   const HloInstruction* conv = FindConvolutionOp(inst, res.annotations);
 
   // Find the input tensor
   poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, res, inst, 0, prog));
 
   // Find the kernel tensor
   poplar::Tensor kernel;
-  TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1));
+  TF_ASSIGN_OR_RETURN(kernel,
+                      FindInstructionInput(tensor_map, res, inst, 1, prog));
 
   poplin::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv, 0, 1));
-
-  poplar::program::Sequence prog;
 
   in = ShuffleConvolutionInputToPoplar(conv, in);
 
@@ -402,11 +405,12 @@ StatusOr<poplar::program::Program> CreateConvScaledInplace(
 
   // Find the input tensor
   poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 1));
+  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, res, inst, 1, prog));
 
   // Find the deltas tensor
   poplar::Tensor deltas;
-  TF_ASSIGN_OR_RETURN(deltas, FindInstructionInput(tensor_map, inst, 2));
+  TF_ASSIGN_OR_RETURN(deltas,
+                      FindInstructionInput(tensor_map, res, inst, 2, prog));
 
   poplin::ConvParams params;
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, conv, 1, 2));
@@ -424,17 +428,19 @@ StatusOr<poplar::program::Program> CreateBiasAddOp(
     const xla::Shape& output_shape, TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
 
+  poplar::program::Sequence prog;
+
   poplar::Tensor in;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, res, inst, 0, prog));
 
   poplar::Tensor bias;
-  TF_ASSIGN_OR_RETURN(bias, FindInstructionInput(tensor_map, inst, 1));
+  TF_ASSIGN_OR_RETURN(bias,
+                      FindInstructionInput(tensor_map, res, inst, 1, prog));
 
   const auto* conv_op = FindConvolutionOp(inst->operand(0), res.annotations);
 
   poplar::Tensor shuffled_in = ShuffleConvolutionOutputToPoplar(conv_op, in);
 
-  poplar::program::Sequence prog;
   poplin::addBias(graph, shuffled_in, bias, prog, GetDebugName(inst));
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, in));
@@ -447,15 +453,19 @@ StatusOr<poplar::program::Program> ConvBiasApply(CompilerResources& res,
                                                  TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
 
+  poplar::program::Sequence prog;
+
   const HloInstruction* root = inst->to_apply()->root_instruction();
 
   // Find the biases
   poplar::Tensor biases;
-  TF_ASSIGN_OR_RETURN(biases, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(biases,
+                      FindInstructionInput(tensor_map, res, inst, 0, prog));
 
   // Find the deltas
   poplar::Tensor deltas;
-  TF_ASSIGN_OR_RETURN(deltas, FindInstructionInput(tensor_map, inst, 1));
+  TF_ASSIGN_OR_RETURN(deltas,
+                      FindInstructionInput(tensor_map, res, inst, 1, prog));
 
   // Find the learning rate constant
   const auto& literal = root->operand(1)->operand(1)->operand(0)->literal();
@@ -472,7 +482,6 @@ StatusOr<poplar::program::Program> ConvBiasApply(CompilerResources& res,
     reduction_dims.push_back(d);
   }
 
-  poplar::program::Sequence prog;
   popops::reduceWithOutput(graph, deltas, biases, reduction_dims,
                            {popops::Operation::ADD, -learning_rate, true}, prog,
                            GetDebugName(inst));

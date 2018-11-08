@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <limits>
 
+#include <poputil/TileMapping.hpp>
+
 using ::absl::StrCat;
 
 namespace xla {
@@ -21,7 +23,40 @@ std::string GetDebugName(const HloInstruction* inst) {
 }
 
 poplar::Graph& GetGraph(CompilerResources& res, const HloInstruction* inst) {
+  if (inst->has_sharding()) {
+    const auto& sharding = inst->sharding();
+    if (sharding.HasUniqueDevice()) {
+      uint64 device_id = sharding.GetUniqueDevice();
+      if (device_id < res.shard_graphs.size()) {
+        return res.shard_graphs[device_id];
+      }
+    }
+  }
+
   return res.main_graph;
+}
+
+static bool BothInstructionsSharded(const HloInstruction* a,
+                                    const HloInstruction* b) {
+  if (a->has_sharding() && b->has_sharding()) {
+    const auto& a_sharding = a->sharding();
+    const auto& b_sharding = a->sharding();
+    if (a_sharding.HasUniqueDevice() && b_sharding.HasUniqueDevice()) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+static uint64 GetShard(const HloInstruction* inst) {
+  if (inst->has_sharding()) {
+    const auto& sharding = inst->sharding();
+    if (sharding.HasUniqueDevice()) {
+      return sharding.GetUniqueDevice();
+    }
+  }
+  return 0;
 }
 
 std::pair<int64, int64> FindTupleInputIndices(const HloInstruction* tuple,
@@ -50,21 +85,36 @@ ArgVector FindTupleInInstructionInput(const TensorMap& map,
 }
 
 StatusOr<poplar::Tensor> FindInstructionInput(const TensorMap& map,
+                                              CompilerResources& res,
                                               const HloInstruction* inst,
-                                              int64 input) {
+                                              int64 input,
+                                              poplar::program::Sequence& seq) {
   const HloInstruction* operand = inst->operand(input);
   OutVector outputs = FindInstructionOutputs(map, operand);
   if (outputs.size() == 0) {
     return tensorflow::errors::Unknown(
         StrCat("[Poplar] Couldn't find input ", input, " for ", inst->name()));
   }
-  return outputs[0];
+
+  poplar::Tensor out = outputs[0];
+  if (BothInstructionsSharded(inst, operand)) {
+    out = poputil::copyToIpu(res.main_graph, out, seq, GetShard(inst));
+  }
+
+  return out;
 }
 
-ArgVector FindInstructionInputs(const TensorMap& map,
-                                const HloInstruction* inst, int64 input) {
+ArgVector FindInstructionInputs(const TensorMap& map, CompilerResources& res,
+                                const HloInstruction* inst, int64 input,
+                                poplar::program::Sequence& seq) {
   const HloInstruction* operand = inst->operand(input);
   OutVector inputs = FindInstructionOutputs(map, operand);
+  if (BothInstructionsSharded(inst, operand)) {
+    for (unsigned int i = 0; i < inputs.size(); i++) {
+      inputs[i] =
+          poputil::copyToIpu(res.main_graph, inputs[i], seq, GetShard(inst));
+    }
+  }
   return inputs;
 }
 
@@ -101,7 +151,8 @@ StatusOr<ArgVector> GetInplaceOutputTensors(poplar::Graph& graph,
           inst_description.get());
   ArgVector outs;
   for (auto inplace_idx : inplace_description.GetInplaceOperandIndexes()) {
-    ArgVector inputs = FindInstructionInputs(tensor_map, inst, inplace_idx);
+    ArgVector inputs =
+        FindInstructionInputs(tensor_map, res, inst, inplace_idx, seq);
     for (auto input : inputs) {
       poplar::Tensor out = input;
       // We need to add a copy before an inplace op if:

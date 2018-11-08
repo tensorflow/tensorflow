@@ -182,18 +182,19 @@ def set_report_options(opts, report_options=None):
 
   return opts
 
-def set_ipu_model_options(opts, compile_ipu_code=True):
+def set_ipu_model_options(opts, compile_ipu_code=True, num_ipus=1):
   """Set the IPU Model options.
 
   Args:
     :param compile_ipu_code: Whether or not to actually compile real IPU code
                              for modelling.
-
+    :param num_ipus: Number of simulated IPUs.
   Returns:
 
     :return: The IPUOptions configuration protobuf, with IPU model options
              set.
   """
+  opts.ipu_model_config.num_ipus = num_ipus
   opts.ipu_model_config.compile_ipu_code = compile_ipu_code
 
   return opts
@@ -255,6 +256,7 @@ def auto_select_ipus(opts, num_ipus, sharded=False):
   if isinstance(num_ipus, int):
     dev = opts.device_config.add()
     dev.auto_count = num_ipus
+    dev.shard_config = sharded
   else:
     for n in num_ipus:
       dev = opts.device_config.add()
@@ -445,7 +447,7 @@ def select_ipus(opts, indices, sharded=False):
   for i in indices:
     dev = opts.device_config.add()
     dev.cfg_index = i
-    dev.shard_config = True
+    dev.shard_config = sharded
 
   return opts
 

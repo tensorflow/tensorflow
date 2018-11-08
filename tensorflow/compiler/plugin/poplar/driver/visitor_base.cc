@@ -121,7 +121,8 @@ Status BaseVisitor::HandleCopy(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::Tensor in;
   poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(
+      in, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
 
   out = GetGraph(resources_, inst).clone(in);
   sequence.add(poplar::program::Copy(in, out));
@@ -164,7 +165,8 @@ Status BaseVisitor::HandleConcatenate(HloInstruction* inst) {
 Status BaseVisitor::HandleBitcastConvert(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(
+      out, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
   poplar::Type type;
   TF_ASSIGN_OR_RETURN(type, PoplarDataType(inst->shape()));
   out = out.reinterpret(type);
@@ -332,7 +334,8 @@ Status BaseVisitor::HandleTuple(HloInstruction* inst) {
   uint64 operand_count(inst->operand_count());
   int64 n = 0;
   for (uint64 i = 0; i < operand_count; i++) {
-    ArgVector inputs = FindInstructionInputs(tensor_map, inst, i);
+    ArgVector inputs =
+        FindInstructionInputs(tensor_map, resources_, inst, i, sequence);
     for (poplar::Tensor t : inputs) {
       TF_CHECK_OK(AddOutputTensor(tensor_map, inst, n, t));
       n++;
@@ -381,7 +384,8 @@ Status BaseVisitor::HandleReal(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::Tensor in;
   poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(
+      in, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
 
   out = GetGraph(resources_, inst).clone(in);
   sequence.add(poplar::program::Copy(in, out));

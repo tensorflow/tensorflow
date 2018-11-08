@@ -61,10 +61,12 @@ Status FullVisitor::HandleConcatenate(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   int64 dimension(inst->concatenate_dimension());
   poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(
+      out, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
   for (int i = 1; i < inst->operand_count(); i++) {
     poplar::Tensor t;
-    TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i));
+    TF_ASSIGN_OR_RETURN(
+        t, FindInstructionInput(tensor_map, resources_, inst, i, sequence));
     out = poplar::concat(out, t, dimension);
   }
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
@@ -93,7 +95,8 @@ Status FullVisitor::HandleConvolution(HloInstruction* inst) {
 Status FullVisitor::HandleReverse(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::Tensor t;
-  TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(
+      t, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
   TF_ASSIGN_OR_RETURN(t, ReverseTensor(t, inst->dimensions()));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, t));
   return Status::OK();
@@ -125,7 +128,8 @@ Status FullVisitor::HandleBitcast(HloInstruction* inst) {
 Status FullVisitor::HandleBroadcast(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(
+      out, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
   TF_ASSIGN_OR_RETURN(
       out, BroadcastTensor(out, GetOutputShape(inst), inst->dimensions()));
   std::vector<size_t> dims(PoplarShapeFromXlaShape(GetOutputShape(inst)));
@@ -137,7 +141,8 @@ Status FullVisitor::HandleBroadcast(HloInstruction* inst) {
 Status FullVisitor::HandleReshape(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(
+      out, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
   std::vector<size_t> dims(PoplarShapeFromXlaShape(GetOutputShape(inst)));
   out = out.reshape(dims);
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
@@ -147,7 +152,8 @@ Status FullVisitor::HandleReshape(HloInstruction* inst) {
 Status FullVisitor::HandleTranspose(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(
+      out, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
   std::vector<unsigned> permutation(
       convert_array<std::vector<unsigned>>(inst->dimensions()));
   out = out.dimShuffle(permutation);
@@ -158,7 +164,8 @@ Status FullVisitor::HandleTranspose(HloInstruction* inst) {
 Status FullVisitor::HandleSlice(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
+  TF_ASSIGN_OR_RETURN(
+      out, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
   std::vector<std::size_t> begin(
       convert_array<std::vector<std::size_t>>(inst->slice_starts()));
   std::vector<std::size_t> end(
@@ -261,8 +268,10 @@ Status FullVisitor::HandlePad(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::Tensor out;
   poplar::Tensor pad;
-  TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0));
-  TF_ASSIGN_OR_RETURN(pad, FindInstructionInput(tensor_map, inst, 1));
+  TF_ASSIGN_OR_RETURN(
+      out, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
+  TF_ASSIGN_OR_RETURN(
+      pad, FindInstructionInput(tensor_map, resources_, inst, 1, sequence));
   TF_ASSIGN_OR_RETURN(out, PadTensor(inst->padding_config(), out, pad));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   return Status::OK();
