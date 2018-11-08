@@ -201,7 +201,7 @@ def converted_call(f, owner, options, *args, **kwargs):
     arg_map_target = f
     f_class = inspect_utils.getmethodclass(f)
 
-    # TODO(mdan): This may be more elegantly handled using __get__?
+    # TODO(b/119246461): This may be more elegantly handled using __get__?
     if f_class is not None:
       # If this is a method call, it may or may not include self.
       #
@@ -214,10 +214,13 @@ def converted_call(f, owner, options, *args, **kwargs):
       if owner is not None and (not args or args[0] is not owner):
         effective_args = (owner,) + args
       else:
-        # Always override the self arg, because it might be different from
-        # what the method was bound to - see inspect_utils.getmethodclass.
-        assert args, 'Bound function call without self argument?'
-        effective_args = (f_class,) + args[1:]
+        # When the owner is not specified, use the result of
+        # inspect_utils.getmethodclass.
+        # TODO(b/119246461): Make sure an owner is always specified.
+        if not args or args[0] is not f_class:
+          effective_args = (f_class,) + args
+        else:
+          effective_args = (f_class,) + args[1:]
       partial_types = (f_class,)
     else:
       effective_args = args

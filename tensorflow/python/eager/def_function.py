@@ -247,15 +247,14 @@ class PolymorphicFunction(object):
   def _defun_with_scope(self, scope):
     """Creates a defun wrapped inside a variable creator scope."""
 
-    fn = self._python_function
-
     def wrapped_fn(*args, **kwds):
       with variable_scope.variable_creator_scope(scope):
-        return fn(*args, **kwds)
+        # __wrapped__ allows AutoGraph to swap in a converted function.
+        return wrapped_fn.__wrapped__(*args, **kwds)
 
     # TODO(mdan): Pipe self._experimental_autograph_options through.
     return function_lib.defun(
-        tf_decorator.make_decorator(fn, wrapped_fn),
+        tf_decorator.make_decorator(self._python_function, wrapped_fn),
         input_signature=self._input_signature,
         experimental_autograph=self._autograph)
 
