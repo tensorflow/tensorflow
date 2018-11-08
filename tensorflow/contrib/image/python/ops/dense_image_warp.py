@@ -80,7 +80,7 @@ def _interpolate_bilinear(grid,
         check_ops.assert_greater_equal(height, 2, message=
                                        'Grid height must be at least 2'),
         check_ops.assert_greater_equal(width, 2, message=
-                                       'Grid width must be at least2')]):
+                                       'Grid width must be at least 2')]):
       alphas = []
       floors = []
       ceils = []
