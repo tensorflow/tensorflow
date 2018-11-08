@@ -29,6 +29,7 @@
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -151,8 +152,14 @@ class BoostedTreesMakeQuantileSummariesOp : public OpKernel {
     const Tensor* example_weights_t;
     OP_REQUIRES_OK(context,
                    context->input(kExampleWeightsName, &example_weights_t));
+    DCHECK(float_features_list.size() > 0) << "Got empty feature list";
     auto example_weights = example_weights_t->flat<float>();
-    const int64 batch_size = example_weights.size();
+    const int64 weight_size = example_weights.size();
+    const int64 batch_size = float_features_list[0].flat<float>().size();
+    OP_REQUIRES(
+        context, weight_size == 1 || weight_size == batch_size,
+        errors::InvalidArgument(strings::Printf(
+            "Weights should be a single value or same size as features.")));
     const Tensor* epsilon_t;
     OP_REQUIRES_OK(context, context->input(kEpsilonName, &epsilon_t));
     float epsilon = epsilon_t->scalar<float>()();
@@ -168,7 +175,9 @@ class BoostedTreesMakeQuantileSummariesOp : public OpKernel {
         QuantileStream stream(epsilon, batch_size + 1);
         // Run quantile summary generation.
         for (int64 j = 0; j < batch_size; j++) {
-          stream.PushEntry(feature_values(j), example_weights(j));
+          stream.PushEntry(feature_values(j), (weight_size > 1)
+                                                  ? example_weights(j)
+                                                  : example_weights(0));
         }
         stream.Finalize();
         const auto summary_entry_list = stream.GetFinalSummary().GetEntryList();
@@ -262,6 +271,57 @@ class BoostedTreesQuantileStreamResourceAddSummariesOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(
     Name("BoostedTreesQuantileStreamResourceAddSummaries").Device(DEVICE_CPU),
     BoostedTreesQuantileStreamResourceAddSummariesOp);
+
+class BoostedTreesQuantileStreamResourceDeserializeOp : public OpKernel {
+ public:
+  explicit BoostedTreesQuantileStreamResourceDeserializeOp(
+      OpKernelConstruction* const context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr(kNumStreamsName, &num_features_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    QuantileStreamResource* streams_resource;
+    // Create a reference to the underlying resource using the handle.
+    OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
+                                           &streams_resource));
+    // Remove the reference at the end of this scope.
+    mutex_lock l(*streams_resource->mutex());
+    core::ScopedUnref unref_me(streams_resource);
+
+    OpInputList bucket_boundaries_list;
+    OP_REQUIRES_OK(context, context->input_list(kBucketBoundariesName,
+                                                &bucket_boundaries_list));
+
+    auto do_quantile_deserialize = [&](const int64 begin, const int64 end) {
+      // Iterating over all streams.
+      for (int64 stream_idx = begin; stream_idx < end; stream_idx++) {
+        const Tensor& bucket_boundaries_t = bucket_boundaries_list[stream_idx];
+        const auto& bucket_boundaries = bucket_boundaries_t.vec<float>();
+        std::vector<float> result;
+        result.reserve(bucket_boundaries.size());
+        for (size_t i = 0; i < bucket_boundaries.size(); ++i) {
+          result.push_back(bucket_boundaries(i));
+        }
+        streams_resource->set_boundaries(result, stream_idx);
+      }
+    };
+
+    // TODO(tanzheny): comment on the magic number.
+    const int64 kCostPerUnit = 500 * num_features_;
+    const DeviceBase::CpuWorkerThreads& worker_threads =
+        *context->device()->tensorflow_cpu_worker_threads();
+    Shard(worker_threads.num_threads, worker_threads.workers, num_features_,
+          kCostPerUnit, do_quantile_deserialize);
+  }
+
+ private:
+  int64 num_features_;
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("BoostedTreesQuantileStreamResourceDeserialize").Device(DEVICE_CPU),
+    BoostedTreesQuantileStreamResourceDeserializeOp);
 
 class BoostedTreesQuantileStreamResourceFlushOp : public OpKernel {
  public:
@@ -409,28 +469,29 @@ class BoostedTreesBucketizeOp : public OpKernel {
         const int64 num_values = values_tensor.dim_size(0);
 
         Tensor* output_t = nullptr;
-        OP_REQUIRES_OK(
-            context, buckets_list.allocate(
-                         feature_idx, TensorShape({num_values, 1}), &output_t));
-        auto output = output_t->matrix<int32>();
+        OP_REQUIRES_OK(context,
+                       buckets_list.allocate(
+                           feature_idx, TensorShape({num_values}), &output_t));
+        auto output = output_t->flat<int32>();
 
         const std::vector<float>& bucket_boundaries_vector =
             GetBuckets(feature_idx, bucket_boundaries_list);
-        CHECK(!bucket_boundaries_vector.empty())
-            << "Got empty buckets for feature " << feature_idx;
         auto flat_values = values_tensor.flat<float>();
+        const auto& iter_begin = bucket_boundaries_vector.begin();
+        const auto& iter_end = bucket_boundaries_vector.end();
         for (int64 instance = 0; instance < num_values; instance++) {
+          if (iter_begin == iter_end) {
+            output(instance) = 0;
+            continue;
+          }
           const float value = flat_values(instance);
-          auto bucket_iter =
-              std::lower_bound(bucket_boundaries_vector.begin(),
-                               bucket_boundaries_vector.end(), value);
-          if (bucket_iter == bucket_boundaries_vector.end()) {
+          auto bucket_iter = std::lower_bound(iter_begin, iter_end, value);
+          if (bucket_iter == iter_end) {
             --bucket_iter;
           }
-          const int32 bucket = static_cast<int32>(
-              bucket_iter - bucket_boundaries_vector.begin());
+          const int32 bucket = static_cast<int32>(bucket_iter - iter_begin);
           // Bucket id.
-          output(instance, 0) = bucket;
+          output(instance) = bucket;
         }
       }
     };
