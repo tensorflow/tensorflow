@@ -521,10 +521,12 @@ class Mean(Metric):
       values = math_ops.multiply(values, sample_weight)
     values = math_ops.reduce_sum(values)
 
-    # Update state variables
+    # Update state variables. Count should be updated only when total is
+    # updated.
     update_total_op = state_ops.assign_add(self.total, values)
-    update_count_op = state_ops.assign_add(self.count, num_values)
-    return control_flow_ops.group(update_total_op, update_count_op)
+    with ops.control_dependencies([update_total_op]):
+      update_count_op = state_ops.assign_add(self.count, num_values)
+      return ops.convert_to_tensor(update_count_op)
 
   def result(self):
     return safe_div(self.total, self.count)
