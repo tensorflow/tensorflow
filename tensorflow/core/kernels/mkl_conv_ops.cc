@@ -248,25 +248,33 @@ class MklConvFwdPrimitive : public MklPrimitive {
     if (!post_op_params.empty()) {
       for (auto const& post_op_param : post_op_params) {
         if (post_op_param.name == "relu") {
-          CHECK_EQ(post_op_param.param.size(), 3);
+          if(post_op_param.param.size() != 3) {
+            TF_RETURN_IF_ERROR(::tensorflow::errors::InvalidArgument(
+                "Relu post op requires exactly three parameters."));
+          }
           float op_scale = post_op_param.param[0];
           float op_alpha = post_op_param.param[1];
           float op_beta = post_op_param.param[2];
           post_ops.append_eltwise(op_scale, mkldnn::eltwise_relu, op_alpha,
                                   op_beta);
         } else if (post_op_param.name == "sum") {
-          CHECK_EQ(post_op_param.param.size(), 1);
+          if(post_op_param.param.size() != 1) {
+            TF_RETURN_IF_ERROR(::tensorflow::errors::InvalidArgument(
+                "Sum post op requires exaclty one parameter."));
+          }
           float op_scale = post_op_param.param[0];
           post_ops.append_sum(op_scale);
         } else if (post_op_param.name == "output_scale") {
-          CHECK_EQ(post_op_param.param.size(), 1);
+          if(post_op_param.param.size() != 1) {
+            TF_RETURN_IF_ERROR(::tensorflow::errors::InvalidArgument(
+                "Output scale requires exaclty one parameter."));
+          }
           std::vector<float> scales;
           scales.push_back(post_op_param.param[0]);
           post_ops_attr.set_output_scales(0, scales);
         } else {
-          TF_CHECK_OK(
-              Status(error::Code::UNIMPLEMENTED,
-                     "For now, only Relu and Sum are supported for fusion."));
+          TF_RETURN_IF_ERROR(::tensorflow::errors::Unimplemented(
+              "For now, only Relu and Sum are supported for fusion."));
         }
       }
       post_ops_attr.set_post_ops(post_ops);
@@ -373,23 +381,31 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     // Generate keys for post-ops
     for (auto const& post_op_param : convFwdDims.post_op_params) {
       if (post_op_param.name == "relu") {
-        CHECK_EQ(post_op_param.param.size(), 3);
+        if(post_op_param.param.size() != 3) {
+          TF_RETURN_IF_ERROR(::tensorflow::errors::InvalidArgument(
+              "Relu post op requires exactly three parameters."));
+        }
         key_creator.AddAsKey(post_op_param.name);
         key_creator.AddAsKey(post_op_param.param[0]);
         key_creator.AddAsKey(post_op_param.param[1]);
         key_creator.AddAsKey(post_op_param.param[2]);
       } else if (post_op_param.name == "sum") {
-        CHECK_EQ(post_op_param.param.size(), 1);
+        if(post_op_param.param.size() != 1) {
+          TF_RETURN_IF_ERROR(::tensorflow::errors::InvalidArgument(
+              "Sum post op requires exaclty one parameter."));
+        }
         key_creator.AddAsKey(post_op_param.name);
         key_creator.AddAsKey(post_op_param.param[0]);
       } else if (post_op_param.name == "output_scale") {
-        CHECK_EQ(post_op_param.param.size(), 1);
+        if(post_op_param.param.size() != 1) {
+          TF_RETURN_IF_ERROR(::tensorflow::errors::InvalidArgument(
+              "Output scale requires exaclty one parameter."));
+        }
         key_creator.AddAsKey(post_op_param.name);
         key_creator.AddAsKey(post_op_param.param[0]);
       } else {
-        TF_CHECK_OK(
-            Status(error::Code::UNIMPLEMENTED,
-                   "For now, only Relu and Sum are supported for fusion."));
+        TF_RETURN_IF_ERROR(::tensorflow::errors::Unimplemented(
+            "For now, only Relu and Sum are supported for fusion."));
       }
     }
 
@@ -1207,12 +1223,18 @@ class MklConvOp : public OpKernel {
     // Create convolution primitive and add it to net.
     std::vector<primitive> net;
     if (bias) {
-      CHECK_EQ(biasEnabled, true);
+      if (!biasEnabled) {
+        TF_RETURN_IF_ERROR(::tensorflow::errors::InvalidArgument(
+            "Bias tensor is an input, but is not fused to this kernel."));
+      }
       net.push_back(convolution_forward(conv_prim_desc, src->GetOpMem(),
                                         filter->GetOpMem(), bias->GetOpMem(),
                                         output->GetOpMem()));
     } else {
-      CHECK_EQ(biasEnabled, false);
+      if (biasEnabled) {
+        TF_RETURN_IF_ERROR(::tensorflow::errors::InvalidArgument(
+            "Bias tensor is absent, but is fused to this kernel."));
+      }
       net.push_back(convolution_forward(conv_prim_desc, src->GetOpMem(),
                                         filter->GetOpMem(),
                                         output->GetOpMem()));
