@@ -2487,7 +2487,7 @@ REGISTER_OP("_ROCmFusedBatchNormActivationInference")
     Computes a fused kernel which implements: 
       FusedBatchNorm / FusedBatchNormV2 (inference only), followed by
       any activation op (None, Sigmoid, Relu, Relu6, Tanh)
-    Supports only tensors of type float.
+    Supports only tensors of type float, half.
 )doc");
 
 REGISTER_OP("_ROCmFusedBatchNormActivationForward")
@@ -2545,22 +2545,22 @@ REGISTER_OP("_ROCmFusedBatchNormActivationForward")
     })
     .Doc(R"doc(
     Computes a fused kernel which implements: 
-      FusedBatchNorm / FusedBatchNormV2 (training only), followed by
+      FusedBatchNorm / FusedBatchNormV2 (training-fwd only), followed by
       any activation op (None, Sigmoid, Relu, Relu6, Tanh)
-    Supports only tensors of type float.
+    Supports only tensors of type float, half.
 )doc");
 
 REGISTER_OP("_ROCmFusedBatchNormActivationBackward")
 
-    .Input("gradients: T")
-    .Input("features: T")
-    .Input("x: T")
+    .Input("y_act_backprop: T")
+    .Input("y_act: T")
+    .Input("x_bn: T")
     .Input("scale: U")
     .Input("offset: U")
     .Input("saved_mean: U")
     .Input("saved_variance: U")
 
-    .Output("x_backprop: T")
+    .Output("x_bn_backprop: T")
     .Output("scale_backprop: U")
     .Output("offset_backprop: U")
 
@@ -2574,15 +2574,44 @@ REGISTER_OP("_ROCmFusedBatchNormActivationBackward")
       using shape_inference::ShapeHandle;
       using shape_inference::DimensionHandle;
 
-      // todo
+      ShapeHandle y_act_backprop;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &y_act_backprop));
+
+      string data_format_str;
+      TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
+      TensorFormat data_format;
+      FormatFromString(data_format_str, &data_format);
+
+      int channel_dim_index = GetTensorFeatureDimIndex(4, data_format);
+      DimensionHandle channel_dim = c->Dim(y_act_backprop, channel_dim_index);
+
+      // covers y_act, x_bn
+      for (int i = 1; i < 3; i++) {
+        TF_RETURN_IF_ERROR(
+            c->Merge(c->input(i), y_act_backprop, &y_act_backprop));
+      }
+
+      // covers scale, offset, savd_mean, saved_variance
+      int number_inputs = 7;
+      for (int i = 3; i < number_inputs; ++i) {
+        ShapeHandle vec;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &vec));
+        TF_RETURN_IF_ERROR(c->Merge(channel_dim, c->Dim(vec, 0), &channel_dim));
+      }
+
+      c->set_output(0, y_act_backprop);
+
+      ShapeHandle vector_shape = c->Vector(channel_dim);
+      c->set_output(1, vector_shape);
+      c->set_output(2, vector_shape);
 
       return Status::OK();
     })
     .Doc(R"doc(
     Computes a fused kernel which implements: 
-      FusedBatchNorm / FusedBatchNormV2 (training only), followed by
+      FusedBatchNorm / FusedBatchNormV2 (training-bwd only), followed by
       any activation op (None, Sigmoid, Relu, Relu6, Tanh)
-    Supports only tensors of type float.
+    Supports only tensors of type float, half.
 )doc");
 
 REGISTER_OP("_ROCmFusedAddRelu")

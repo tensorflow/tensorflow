@@ -150,6 +150,7 @@ class ROCmFusionKernelBatchNormActivationInference : public OpKernel {
 
       auto x_data = AsDeviceMemory(fusion_input.template flat<T>().data(),
                                    fusion_input.template flat<T>().size());
+
       auto scale_data = AsDeviceMemory(scale.template flat<U>().data(),
                                        scale.template flat<U>().size());
 
@@ -202,12 +203,14 @@ class ROCmFusionKernelBatchNormActivationInference : public OpKernel {
 REGISTER_KERNEL_BUILDER(
     Name("_ROCmFusedBatchNormActivationInference")
         .Device(DEVICE_GPU)
-        .TypeConstraint<float>("T"),
+        .TypeConstraint<float>("T")
+        .TypeConstraint<float>("U"),
     ROCmFusionKernelBatchNormActivationInference<GPUDevice, float, float>);
 
 REGISTER_KERNEL_BUILDER(Name("_ROCmFusedBatchNormActivationInference")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<Eigen::half>("T"),
+                            .TypeConstraint<Eigen::half>("T")
+                            .TypeConstraint<float>("U"),
                         ROCmFusionKernelBatchNormActivationInference<
                             GPUDevice, Eigen::half, float>);
 
@@ -384,13 +387,15 @@ class ROCmFusionKernelBatchNormActivationForward : public OpKernel {
 REGISTER_KERNEL_BUILDER(
     Name("_ROCmFusedBatchNormActivationForward")
         .Device(DEVICE_GPU)
-        .TypeConstraint<float>("T"),
+        .TypeConstraint<float>("T")
+        .TypeConstraint<float>("U"),
     ROCmFusionKernelBatchNormActivationForward<GPUDevice, float, float>);
 
 REGISTER_KERNEL_BUILDER(
     Name("_ROCmFusedBatchNormActivationForward")
         .Device(DEVICE_GPU)
-        .TypeConstraint<Eigen::half>("T"),
+        .TypeConstraint<Eigen::half>("T")
+        .TypeConstraint<float>("U"),
     ROCmFusionKernelBatchNormActivationForward<GPUDevice, Eigen::half, float>);
 
 //---------------------------------------------------------------------------
@@ -422,8 +427,8 @@ class ROCmFusionKernelBatchNormActivationBackward : public OpKernel {
     const Tensor& x_bn = ctx->input(2);
     const Tensor& scale = ctx->input(3);
     const Tensor& offset = ctx->input(4);
-    const Tensor& mean = ctx->input(5);
-    const Tensor& variance = ctx->input(6);
+    const Tensor& saved_mean = ctx->input(5);
+    const Tensor& saved_variance = ctx->input(6);
 
     OP_REQUIRES(ctx, y_act_backprop.dims() == 4,
                 errors::InvalidArgument("y_act_backprop must be 4-dimensional",
@@ -440,12 +445,12 @@ class ROCmFusionKernelBatchNormActivationBackward : public OpKernel {
     OP_REQUIRES(ctx, offset.dims() == 1,
                 errors::InvalidArgument("offset must be 1-dimensional",
                                         offset.shape().DebugString()));
-    OP_REQUIRES(ctx, mean.dims() == 1,
+    OP_REQUIRES(ctx, saved_mean.dims() == 1,
                 errors::InvalidArgument("mean must be 1-dimensional",
-                                        mean.shape().DebugString()));
-    OP_REQUIRES(ctx, variance.dims() == 1,
+                                        saved_mean.shape().DebugString()));
+    OP_REQUIRES(ctx, saved_variance.dims() == 1,
                 errors::InvalidArgument("variance must be 1-dimensional",
-                                        variance.shape().DebugString()));
+                                        saved_variance.shape().DebugString()));
 
     Tensor* x_bn_backprop = nullptr;
     OP_REQUIRES_OK(
@@ -530,11 +535,13 @@ class ROCmFusionKernelBatchNormActivationBackward : public OpKernel {
       auto offset_data = AsDeviceMemory(offset.template flat<U>().data(),
                                         offset.template flat<U>().size());
 
-      auto mean_data = AsDeviceMemory(mean.template flat<U>().data(),
-                                      mean.template flat<U>().size());
+      auto saved_mean_data =
+          AsDeviceMemory(saved_mean.template flat<U>().data(),
+                         saved_mean.template flat<U>().size());
 
-      auto variance_data = AsDeviceMemory(variance.template flat<U>().data(),
-                                          variance.template flat<U>().size());
+      auto saved_variance_data =
+          AsDeviceMemory(saved_variance.template flat<U>().data(),
+                         saved_variance.template flat<U>().size());
 
       auto dnn_activation_mode = GetDnnActivationMode(activation_mode_);
 
@@ -558,7 +565,7 @@ class ROCmFusionKernelBatchNormActivationBackward : public OpKernel {
                   y_act_backprop_desc, y_act_backprop_data, y_act_data,
                   dnn_activation_mode, x_bn_data,
                   scale_offset_mean_variance_desc, scale_data, offset_data,
-                  mean_data, variance_data, &x_bn_backprop_data,
+                  saved_mean_data, saved_variance_data, &x_bn_backprop_data,
                   &scale_backprop_data, &offset_backprop_data)
               .ok();
 
@@ -587,13 +594,15 @@ class ROCmFusionKernelBatchNormActivationBackward : public OpKernel {
 REGISTER_KERNEL_BUILDER(
     Name("_ROCmFusedBatchNormActivationBackward")
         .Device(DEVICE_GPU)
-        .TypeConstraint<float>("T"),
+        .TypeConstraint<float>("T")
+        .TypeConstraint<float>("U"),
     ROCmFusionKernelBatchNormActivationBackward<GPUDevice, float, float>);
 
 REGISTER_KERNEL_BUILDER(
     Name("_ROCmFusedBatchNormActivationBackward")
         .Device(DEVICE_GPU)
-        .TypeConstraint<Eigen::half>("T"),
+        .TypeConstraint<Eigen::half>("T")
+        .TypeConstraint<float>("U"),
     ROCmFusionKernelBatchNormActivationBackward<GPUDevice, Eigen::half, float>);
 
 //---------------------------------------------------------------------------
