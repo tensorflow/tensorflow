@@ -81,10 +81,14 @@ def _interpolate_bilinear(grid,
       num_queries = array_ops.shape(query_points)[1]
 
     with ops.control_dependencies([
-        check_ops.assert_greater_equal(height, 2, message=
-                                       'Grid height must be at least 2.'),
-        check_ops.assert_greater_equal(width, 2, message=
-                                       'Grid width must be at least 2.')]):
+        check_ops.assert_greater_equal(
+            height,
+            2,
+            message='Grid height must be at least 2.'),
+        check_ops.assert_greater_equal(
+            width,
+            2,
+            message='Grid width must be at least 2.')]):
       alphas = []
       floors = []
       ceils = []
