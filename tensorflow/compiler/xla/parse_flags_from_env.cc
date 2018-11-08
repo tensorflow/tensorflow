@@ -22,7 +22,7 @@ limitations under the License.
 #include <string.h>
 #include <vector>
 
-#include "tensorflow/compiler/xla/legacy_flags/parse_flags_from_env.h"
+#include "tensorflow/compiler/xla/parse_flags_from_env.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/util/command_line_flags.h"
 
 namespace xla {
-namespace legacy_flags {
 
 static const char kEnvVar[] = "TF_XLA_FLAGS";  // environment variable queried
 static const char kWS[] = " \t\r\n";           // whitespace
@@ -202,5 +201,4 @@ void ResetFlagsFromEnvForTesting(int** pargc, std::vector<char*>** pargv) {
   *pargv = &env_argv->argv;
 }
 
-}  // namespace legacy_flags
 }  // namespace xla

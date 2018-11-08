@@ -1337,7 +1337,7 @@ void BM_ReducePrecisely(int num_iters) {
   tensorflow::testing::StopTiming();
   HloComputation::Builder b("BM_ReducePrecisely");
   HloModuleConfig config;
-  config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+  config.set_debug_options(GetDebugOptionsFromFlags());
   HloModule module("BM_ReducePrecisely", config);
 
   constexpr int kNumElements = 1 << 25;  // float += 1 saturates at 1<<24

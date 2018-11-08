@@ -15,7 +15,7 @@ limitations under the License.
 
 // Test for parse_flags_from_env.cc
 
-#include "tensorflow/compiler/xla/legacy_flags/parse_flags_from_env.h"
+#include "tensorflow/compiler/xla/parse_flags_from_env.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/util/command_line_flags.h"
 
 namespace xla {
-namespace legacy_flags {
 
 // Test that XLA flags can be set from the environment.
 // Failure messages are accompanied by the text in msg[].
@@ -159,12 +158,11 @@ TEST(ParseFlagsFromEnv, EnvAndFlag) {
   }
 }
 
-}  // namespace legacy_flags
 }  // namespace xla
 
 int main(int argc, char* argv[]) {
   // Save name of binary so that it may invoke itself.
-  xla::legacy_flags::binary_name = argv[0];
+  xla::binary_name = argv[0];
   bool recursing = false;
   xla::int32 int_flag = 1;
   const std::vector<tensorflow::Flag> flag_list = {
@@ -173,7 +171,7 @@ int main(int argc, char* argv[]) {
       tensorflow::Flag("int_flag", &int_flag, "An integer flag to test with"),
   };
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  bool parse_ok = xla::legacy_flags::ParseFlagsFromEnv(flag_list);
+  bool parse_ok = xla::ParseFlagsFromEnv(flag_list);
   if (!parse_ok) {
     LOG(QFATAL) << "can't parse from environment\n" << usage;
   }

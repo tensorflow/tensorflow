@@ -16,7 +16,7 @@ limitations under the License.
 #include <mutex>  // NOLINT
 
 #include "tensorflow/compiler/jit/legacy_flags/build_xla_ops_pass_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/parse_flags_from_env.h"
+#include "tensorflow/compiler/xla/parse_flags_from_env.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
@@ -34,7 +34,7 @@ void AllocateAndParseFlags() {
       Flag("tf_xla_enable_lazy_compilation",
            &flags->tf_xla_enable_lazy_compilation, ""),
   });
-  xla::legacy_flags::ParseFlagsFromEnv(*flag_list);
+  xla::ParseFlagsFromEnv(*flag_list);
 }
 
 }  // namespace

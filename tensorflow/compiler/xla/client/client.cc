@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -465,8 +465,7 @@ StatusOr<string> Client::ExecutionStatsAsString(
     const XlaComputation& computation, const ExecutionProfile& profile) {
   TF_ASSIGN_OR_RETURN(
       auto computation_stats,
-      GetComputationStats(computation,
-                          legacy_flags::GetDebugOptionsFromFlags()));
+      GetComputationStats(computation, GetDebugOptionsFromFlags()));
   int64 total_flops =
       computation_stats.flop_count() + computation_stats.transcendental_count();
   if (profile.compute_time_ns() > 0) {

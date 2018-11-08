@@ -17,7 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/jit/legacy_flags/xla_ops_common_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/parse_flags_from_env.h"
+#include "tensorflow/compiler/xla/parse_flags_from_env.h"
 
 #include "tensorflow/core/util/command_line_flags.h"
 
@@ -35,7 +35,7 @@ void AllocateAndParseFlags() {
       Flag("tf_xla_always_defer_compilation",
            &flags->tf_xla_always_defer_compilation, ""),
   });
-  xla::legacy_flags::ParseFlagsFromEnv(*flag_list);
+  xla::ParseFlagsFromEnv(*flag_list);
 }
 
 const XlaOpsCommonFlags& GetXlaOpsCommonFlags() {

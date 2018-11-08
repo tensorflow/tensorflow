@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
@@ -135,7 +135,7 @@ PrecisionConfig HloTestBase::DefaultPrecisionConfig(int operands) {
 }
 
 DebugOptions HloTestBase::GetDebugOptionsForTest() {
-  auto debug_options = legacy_flags::GetDebugOptionsFromFlags();
+  auto debug_options = GetDebugOptionsFromFlags();
   // TODO(b/38354253): Change tests to use Parameters instead of Constants.
   debug_options.add_xla_disable_hlo_passes("constant_folding");
   debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
