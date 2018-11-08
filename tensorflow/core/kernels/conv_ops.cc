@@ -786,6 +786,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       device_id,         // device_id
   };
   AlgorithmConfig algorithm_config;
+  ProfileResult best_result;
+  ProfileResult best_result_no_scratch;
   if (cudnn_use_autotune &&
       !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
@@ -799,8 +801,6 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         errors::Unknown("Failed to get convolution algorithm. This is probably "
                         "because cuDNN failed to initialize, so try looking to "
                         "see if a warning log message was printed above."));
-    ProfileResult best_result;
-    ProfileResult best_result_no_scratch;
     for (auto profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
@@ -840,24 +840,22 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
           best_result_no_scratch.algorithm());
     }
 #elif TENSORFLOW_USE_ROCM
-    ProfileResult profile_result;
     // MIOpen has its own Find and autotuner so use it here, passing
     // default AlgorithmConfig to force a search
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
     bool miopen_find_status =
-      stream
-          ->ThenConvolveWithAlgorithm(
-              input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-              output_desc, &output_ptr, &scratch_allocator,
-              AlgorithmConfig(), &profile_result)
-          .ok();
+        stream
+            ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
+                                        filter_ptr, conv_desc, output_desc,
+                                        &output_ptr, &scratch_allocator,
+                                        AlgorithmConfig(), &best_result)
+            .ok();
 
-    OP_REQUIRES(ctx, miopen_find_status && profile_result.is_valid(),
+    OP_REQUIRES(ctx, miopen_find_status && best_result.is_valid(),
                 errors::NotFound("Failed to find conv algorithm!"));
 
-    algorithm_config.set_algorithm(profile_result.algorithm());
-    // TODO - Add support for no-scratch algorithm
-    algorithm_config.set_algorithm_no_scratch(AlgorithmDesc());
+    algorithm_config.set_algorithm(best_result.algorithm());
+    algorithm_config.set_scratch_size(best_result.scratch_size());
 #endif
     AutoTuneConv::GetInstance()->Insert(conv_parameters, algorithm_config);
   }
@@ -870,7 +868,6 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                       &output_ptr, &scratch_allocator,
                                       algorithm_config, nullptr)
           .ok();
-
   if (!cudnn_launch_status) {
     ctx->SetStatus(errors::Internal(
         "cuDNN launch failure : input shape(", input.shape().DebugString(),
