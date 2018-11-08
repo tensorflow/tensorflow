@@ -207,7 +207,8 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
           dtype=dtype,
           validate_shape=False)
       saveable = _CreateParamsSavable(params, model)
-      weights, biases = saveable._OpaqueParamsToCanonical()
+      weights, biases = saveable.format_converter._opaque_to_cu_canonical(
+          saveable._variables)
       reset_params = state_ops.assign(
           params,
           array_ops.zeros([params_size_t], dtype=dtype),
@@ -256,8 +257,10 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
       saveables = []
       for name, params in zip(names, param_vars):
         saveables.append(_CreateParamsSavable(params, model, name, name))
-      weights1, biases1 = saveables[0]._OpaqueParamsToCanonical()
-      weights2, biases2 = saveables[1]._OpaqueParamsToCanonical()
+      weights1, biases1 = saveables[0].format_converter._opaque_to_cu_canonical(
+          saveables[0]._variables)
+      weights2, biases2 = saveables[1].format_converter._opaque_to_cu_canonical(
+          saveables[1]._variables)
       reset_params = [
           state_ops.assign(
               params,
@@ -422,21 +425,21 @@ class CudnnRNNTestParamsSize(TensorFlowTestCase):
           cudnn_rnn_ops.CUDNN_LSTM,
           constant_op.constant([4]), 200, 200,
           direction=cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
-      params_size = model.params_size()
+      _ = model.params_size()
     with self.assertRaisesRegexp(
         ValueError, "Shape must be rank 0 but is rank 1"):
       model = _CreateModel(
           cudnn_rnn_ops.CUDNN_LSTM,
           4, constant_op.constant([200]), 200,
           direction=cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
-      params_size = model.params_size()
+      _ = model.params_size()
     with self.assertRaisesRegexp(
         ValueError, "Shape must be rank 0 but is rank 1"):
       model = _CreateModel(
           cudnn_rnn_ops.CUDNN_LSTM,
           4, 200, constant_op.constant([200]),
           direction=cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
-      params_size = model.params_size()
+      _ = model.params_size()
 
 
 class CudnnRNNTestInference(TensorFlowTestCase):
@@ -639,7 +642,8 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
-  def testSimpleTraining(self):
+  def DISABLED_testSimpleTraining(self):
+    # TODO(jamesqin): fix b/117989214
     test_configs = [
         {
             "rnn_mode": cudnn_rnn_ops.CUDNN_LSTM,
