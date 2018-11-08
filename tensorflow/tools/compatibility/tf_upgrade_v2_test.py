@@ -64,6 +64,14 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, "tf.math.rsqrt(tf.math.log_sigmoid(3.8))\n")
 
+  def testRenameConstant(self):
+    text = "tf.MONOLITHIC_BUILD\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, "tf.sysconfig.MONOLITHIC_BUILD\n")
+    text = "some_call(tf.MONOLITHIC_BUILD)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, "some_call(tf.sysconfig.MONOLITHIC_BUILD)\n")
+
   def testLearningRateDecay(self):
     for decay in ["tf.train.exponential_decay", "tf.train.piecewise_constant",
                   "tf.train.polynomial_decay", "tf.train.natural_exp_decay",
