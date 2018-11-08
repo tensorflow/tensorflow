@@ -81,6 +81,10 @@ public:
   void emitDiagnostic(Location location, const Twine &message,
                       DiagnosticKind kind) const;
 
+  /// Emits an error message using the registered issue handle if present, or to
+  /// the standard error stream otherwise.
+  void emitError(Location location, const Twine &message) const;
+
   // This is effectively private given that only MLIRContext.cpp can see the
   // MLIRContextImpl type.
   MLIRContextImpl &getImpl() const { return *impl.get(); }

@@ -441,6 +441,11 @@ void MLIRContext::emitDiagnostic(Location location, const llvm::Twine &message,
   os.flush();
 }
 
+void MLIRContext::emitError(Location location,
+                            const llvm::Twine &message) const {
+  emitDiagnostic(location, message, DiagnosticKind::Error);
+}
+
 //===----------------------------------------------------------------------===//
 // Dialect and Operation Registration
 //===----------------------------------------------------------------------===//
@@ -657,16 +662,33 @@ FunctionType FunctionType::get(ArrayRef<Type> inputs, ArrayRef<Type> results,
   return *existing.first = result;
 }
 
-VectorType VectorType::get(ArrayRef<int> shape, Type elementType) {
-  assert(!shape.empty() && "vector types must have at least one dimension");
-  assert((elementType.isa<FloatType>() || elementType.isa<IntegerType>() ||
-          elementType.isa<IndexType>()) &&
-         "vectors elements must be primitives");
-  assert(!std::any_of(shape.begin(), shape.end(), [](int i) {
-    return i < 0;
-  }) && "vector types must have static shape");
-
+/// Get or create a new VectorType defined by the arguments.  If the resulting
+/// type would be ill-formed, return nullptr.  If the location is provided,
+/// i.e. is not nullptr, emit detailed error messages.  To emit errors when
+/// the location is unknown, pass in an instance of UnknownLoc.
+static VectorType getVectorType(ArrayRef<int> shape, Type elementType,
+                                Optional<Location> location) {
   auto *context = elementType.getContext();
+
+  if (shape.empty()) {
+    if (location)
+      context->emitError(*location,
+                         "vector types must have at least one dimension");
+    return {};
+  }
+
+  if (!VectorType::isValidElementType(elementType)) {
+    if (location)
+      context->emitError(*location, "vector elements must be primitives");
+    return {};
+  }
+
+  if (std::any_of(shape.begin(), shape.end(), [](int i) { return i < 0; })) {
+    if (location)
+      context->emitError(*location, "vector types must have static shape");
+    return {};
+  }
+
   auto &impl = context->getImpl();
 
   // Look to see if we already have this vector type.
@@ -685,12 +707,25 @@ VectorType VectorType::get(ArrayRef<int> shape, Type elementType) {
 
   // Initialize the memory using placement new.
   new (result) VectorTypeStorage{
-      {{Kind::Vector, context, static_cast<unsigned int>(shape.size())},
+      {{Type::Kind::Vector, context, static_cast<unsigned int>(shape.size())},
        elementType},
       shape.data()};
 
   // Cache and return it.
   return *existing.first = result;
+}
+
+// Try constructing a VectorType, report errors and return a nullptr on failure.
+VectorType VectorType::getChecked(ArrayRef<int> shape, Type elementType,
+                                  Location location) {
+  return getVectorType(shape, elementType, location);
+}
+
+// Try constructing a VectorType, supressing error messages, abort on failure.
+VectorType VectorType::get(ArrayRef<int> shape, Type elementType) {
+  auto type = getVectorType(shape, elementType, None);
+  assert(type && "failed to construct a VectorType");
+  return type;
 }
 
 RankedTensorType RankedTensorType::get(ArrayRef<int> shape, Type elementType) {

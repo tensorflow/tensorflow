@@ -410,11 +410,8 @@ VectorType Parser::parseVectorType() {
   if (!elementType || parseToken(Token::greater, "expected '>' in vector type"))
     return nullptr;
 
-  if (!elementType.isa<FloatType>() && !elementType.isa<IntegerType>() &&
-      !elementType.isa<IndexType>())
-    return (emitError(typeLoc, "invalid vector element type"), nullptr);
-
-  return VectorType::get(dimensions, elementType);
+  return VectorType::getChecked(dimensions, elementType,
+                                getEncodedSourceLocation(typeLoc));
 }
 
 /// Parse an 'x' token in a dimension list, handling the case where the x is

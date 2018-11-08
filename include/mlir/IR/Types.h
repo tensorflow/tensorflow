@@ -367,7 +367,22 @@ public:
   VectorType() = default;
   /* implicit */ VectorType(Type::ImplType *ptr);
 
+  /// Get or create a new VectorType of the provided shape and element type.
+  /// Assumes the arguments define a well-formed VectorType.
   static VectorType get(ArrayRef<int> shape, Type elementType);
+
+  /// Get or create a new VectorType of the provided shape and element type
+  /// declared at the given, potentially unknown, location.  If the VectorType
+  /// defined by the arguments would be ill-formed, emit errors and return
+  /// nullptr-wrapping type.
+  static VectorType getChecked(ArrayRef<int> shape, Type elementType,
+                               Location location);
+
+  /// Returns true of the given type can be used as an element of a vector type.
+  /// In particular, vectors can consist of integer or float primitives.
+  static bool isValidElementType(Type t) {
+    return t.isa<IntegerType>() || t.isa<FloatType>() || t.isa<IndexType>();
+  }
 
   ArrayRef<int> getShape() const;
 

@@ -373,7 +373,7 @@ bb1(%x: i17):
 
 // Test no nested vector.
 extfunc @vectors(vector<1 x vector<1xi32>>, vector<2x4xf32>)
-// expected-error@-1 {{invalid vector element type}}
+// expected-error@-1 {{vector elements must be primitives}}
 
 // -----
 
