@@ -29,6 +29,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -1400,7 +1401,38 @@ class BackendGraphTests(test.TestCase):
     x = keras.backend.variable(1)
     self.assertEqual(keras.backend.is_placeholder(x), False)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_function_basics(self):
+    x1 = keras.backend.placeholder(shape=(), dtype='float32')
+    x2 = keras.backend.placeholder(shape=(), dtype='int32')
+    v = keras.backend.variable(10.)
+    with keras.backend.get_graph().as_default():
+      y1 = x1 + keras.backend.cast(x2, 'float32') + v
+      y2 = x1 * keras.backend.cast(x2, 'float32')
+      with ops.control_dependencies([y1]):
+        u = keras.backend.update(v, 5.)
+    f = keras.backend.function([x1, x2], [y1, y2], updates=[u])
+    output_values = f([2, 3])
+    self.assertEqual(output_values, [15., 6.])
+    self.assertEqual(keras.backend.eval(v), 5.)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_function_placeholder_with_default(self):
+    with keras.backend.get_graph().as_default():
+      x1 = array_ops.placeholder_with_default(
+          np.array(2., dtype='float32'), shape=())
+      x2 = array_ops.placeholder_with_default(
+          np.array(3, dtype='int32'), shape=())
+    y1 = x1 + keras.backend.cast(x2, 'float32')
+    y2 = x1 * keras.backend.cast(x2, 'float32')
+    f = keras.backend.function([x1, x2], [y1, y2])
+    output_values = f([4, 5])
+    self.assertEqual(output_values, [9., 20.])
+    output_values = f([None, None])
+    self.assertEqual(output_values, [5., 6.])
+
   def test_function_tf_feed_symbols(self):
+    # Test Keras backend functions with TF tensor inputs.
     with self.cached_session():
       # Test feeding a resource variable to `function`.
       x1 = keras.backend.placeholder(shape=())
