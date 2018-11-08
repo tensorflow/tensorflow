@@ -47,7 +47,6 @@ bool IsFusible(const HloInstruction& hlo) {
          hlo.opcode() == HloOpcode::kReduce ||
          hlo.opcode() == HloOpcode::kReduceWindow ||
          hlo.opcode() == HloOpcode::kReshape ||
-         hlo.opcode() == HloOpcode::kReverse ||
          hlo.opcode() == HloOpcode::kScatter ||
          hlo.opcode() == HloOpcode::kSlice ||
          hlo.opcode() == HloOpcode::kTranspose;
