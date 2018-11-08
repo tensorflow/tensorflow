@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import os
 
 from tensorflow.contrib.distribute.python import mirrored_strategy
@@ -463,7 +462,7 @@ class PerDeviceDatasetTest(test.TestCase):
 
 class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
 
-  def _test_iterator(self, iterator, devices, expected_values):
+  def _test_iterator(self, sess, iterator, devices, expected_values):
     next_element = iterator.get_next()
     for device in devices:
       v = values.select_device(device, next_element)
@@ -472,73 +471,80 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
         self.assertTrue(element.device in device)
 
     for expected_value in expected_values:
-      actual = self.evaluate(
+      actual = sess.run(
           [values.select_device(d, next_element) for d in devices])
       self.assertEqual(expected_value, actual)
 
     with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate([values.select_device(d, next_element) for d in devices])
+      sess.run([values.select_device(d, next_element) for d in devices])
 
-  def _test_dataset(self, dataset_fn, worker_device_map, devices,
-                    expected_values):
+  def _test_dataset(self, dataset_fn, worker_devices, devices,
+                    expected_values, auto_shard=True):
     multi_worker_dataset = values.MultiWorkerDataset(
-        dataset_fn, worker_device_map, prefetch_on_device=False)
-    multi_worker_iterator = multi_worker_dataset.make_one_shot_iterator()
-    self._test_iterator(multi_worker_iterator, devices, expected_values)
+        dataset_fn, worker_devices, auto_shard=auto_shard,
+        prefetch_on_device=False)
+    multi_worker_iterator = multi_worker_dataset.make_initializable_iterator()
+    with self.cached_session() as sess:
+      sess.run(multi_worker_iterator.initializer)
+      self._test_iterator(sess, multi_worker_iterator, devices, expected_values)
 
   def _cpu_devices(self):
-    worker_device_map = collections.OrderedDict(
-        [("/job:worker/replica:0/task:0",
-          ["/job:worker/replica:0/task:0/device:CPU:0"]),
-         ("/job:worker/replica:0/task:1",
-          ["/job:worker/replica:0/task:1/device:CPU:0"])])
+    worker_devices = [
+        ("/job:worker/replica:0/task:0",
+         ["/job:worker/replica:0/task:0/device:CPU:0"]),
+        ("/job:worker/replica:0/task:1",
+         ["/job:worker/replica:0/task:1/device:CPU:0"])]
     devices = [
         "/job:worker/replica:0/task:0/device:CPU:0",
         "/job:worker/replica:0/task:1/device:CPU:0"
     ]
-    return worker_device_map, devices
+    return worker_devices, devices
 
   def _cpu_and_one_gpu_devices(self):
-    # The worker_device_map doesn't have to be a OrderDict object, this is just
-    # to simplify the testing so that we can pass expected values as a list
-    # instead of a dict.
-    worker_device_map = collections.OrderedDict(
-        [("/job:worker/replica:0/task:0", [
+    worker_devices = [
+        ("/job:worker/replica:0/task:0", [
             "/job:worker/replica:0/task:0/device:GPU:0",
             "/job:worker/replica:0/task:0/device:CPU:0"
-        ]), ("/job:worker/replica:0/task:1", [
+        ]),
+        ("/job:worker/replica:0/task:1", [
             "/job:worker/replica:0/task:1/device:GPU:0",
             "/job:worker/replica:0/task:1/device:CPU:0"
-        ])])
+        ])
+    ]
     devices = [
         "/job:worker/replica:0/task:0/device:GPU:0",
         "/job:worker/replica:0/task:0/device:CPU:0",
         "/job:worker/replica:0/task:1/device:GPU:0",
         "/job:worker/replica:0/task:1/device:CPU:0"
     ]
-    return worker_device_map, devices
+    return worker_devices, devices
 
   def testDataDistributionOneDevicePerWorker(self):
-    self.skipTest("Temporarily disabled.")
-    worker_device_map, devices = self._cpu_devices()
+    worker_devices, devices = self._cpu_devices()
     with context.graph_mode():
       dataset_fn = lambda: dataset_ops.Dataset.range(8)
-      self._test_dataset(dataset_fn, worker_device_map, devices,
+      self._test_dataset(dataset_fn, worker_devices, devices,
                          [[0, 1], [2, 3], [4, 5], [6, 7]])
 
+  def testDataDistributionNoAutoShard(self):
+    worker_devices, devices = self._cpu_devices()
+    with context.graph_mode():
+      dataset_fn = lambda: dataset_ops.Dataset.range(4)
+      self._test_dataset(dataset_fn, worker_devices, devices,
+                         [[0, 0], [1, 1], [2, 2], [3, 3]],
+                         auto_shard=False)
+
   def testDataDistributionTwoDevicePerWorker(self):
-    self.skipTest("Temporarily disabled.")
     if context.num_gpus() < 1:
       self.skipTest("A GPU is not available for this test.")
-    worker_device_map, devices = self._cpu_and_one_gpu_devices()
+    worker_devices, devices = self._cpu_and_one_gpu_devices()
     with context.graph_mode():
       dataset_fn = lambda: dataset_ops.Dataset.range(8)
-      self._test_dataset(dataset_fn, worker_device_map, devices,
+      self._test_dataset(dataset_fn, worker_devices, devices,
                          [[0, 2, 1, 3], [4, 6, 5, 7]])
 
   def testTupleDataset(self):
-    self.skipTest("Temporarily disabled.")
-    worker_device_map, devices = self._cpu_devices()
+    worker_devices, devices = self._cpu_devices()
 
     with context.graph_mode():
 
@@ -550,41 +556,38 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
       expected_values = [
           [(i, i**2), (i + 1, (i + 1)**2)] for i in range(0, 8, 2)
       ]
-      self._test_dataset(dataset_fn, worker_device_map, devices,
+      self._test_dataset(dataset_fn, worker_devices, devices,
                          expected_values)
 
   def testInitializableIterator(self):
-    self.skipTest("Temporarily disabled.")
-    worker_device_map, devices = self._cpu_devices()
-    with context.graph_mode():
+    worker_devices, devices = self._cpu_devices()
+    with context.graph_mode(), self.cached_session() as sess:
       dataset_fn = lambda: dataset_ops.Dataset.range(8)
       multi_worker_dataset = values.MultiWorkerDataset(
-          dataset_fn, worker_device_map, prefetch_on_device=False)
+          dataset_fn, worker_devices, auto_shard=True, prefetch_on_device=False)
       multi_worker_iterator = multi_worker_dataset.make_initializable_iterator()
 
-      self.evaluate(multi_worker_iterator.initializer)
-      self._test_iterator(multi_worker_iterator, devices,
+      sess.run(multi_worker_iterator.initializer)
+      self._test_iterator(sess, multi_worker_iterator, devices,
                           [[0, 1], [2, 3], [4, 5], [6, 7]])
 
       # After re-initializing the iterator, should be able to iterate again.
-      self.evaluate(multi_worker_iterator.initializer)
-      self._test_iterator(multi_worker_iterator, devices,
+      sess.run(multi_worker_iterator.initializer)
+      self._test_iterator(sess, multi_worker_iterator, devices,
                           [[0, 1], [2, 3], [4, 5], [6, 7]])
 
   def testValueErrorForIterator(self):
-    self.skipTest("Temporarily disabled.")
     # Incompatiable arguments.
     with self.assertRaises(ValueError):
       values.MultiWorkerDataIterator({"w1": None}, {"w1": "d1", "w2": "d2"})
 
     # Test duplicated devices under same worker.
-    worker_device_map, _ = self._cpu_devices()
-    worker_device_map["/job:worker/replica:0/task:0"].append(
-        "/job:worker/replica:0/task:0/device:CPU:0")
+    worker_devices, _ = self._cpu_devices()
+    worker_devices[0][1].append("/job:worker/replica:0/task:0/device:CPU:0")
     with context.graph_mode():
       dataset_fn = lambda: dataset_ops.Dataset.range(8)
       multi_worker_dataset = values.MultiWorkerDataset(
-          dataset_fn, worker_device_map, prefetch_on_device=False)
+          dataset_fn, worker_devices, auto_shard=True, prefetch_on_device=False)
       multi_worker_iterator = multi_worker_dataset.make_initializable_iterator()
       with self.assertRaises(ValueError):
         multi_worker_iterator.get_next()

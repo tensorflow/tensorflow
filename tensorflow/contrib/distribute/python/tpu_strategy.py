@@ -215,12 +215,12 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     return enqueue_op_per_host
 
   def distribute_dataset(self, dataset_fn):
-    worker_map = {
-        self.get_host(hid): [self.get_host_cpu_device(hid)]
+    worker_devices = [
+        (self.get_host(hid), [self.get_host_cpu_device(hid)])
         for hid in range(self.num_hosts)
-    }
+    ]
     return values.MultiWorkerDataset(
-        functools.partial(self._call_dataset_fn, dataset_fn), worker_map)
+        functools.partial(self._call_dataset_fn, dataset_fn), worker_devices)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   # TODO(sourabhbajaj): Remove the initial_loop_values parameter when we have
