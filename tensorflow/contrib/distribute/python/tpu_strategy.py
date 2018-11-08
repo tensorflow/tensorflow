@@ -21,8 +21,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_ops_lib
-from tensorflow.contrib.distribute.python import one_device_strategy
 from tensorflow.contrib.distribute.python import values
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu
@@ -75,13 +76,13 @@ def _create_tpu_mirrored_variable(devices, real_mirrored_creator, *args,
   # synchronization settings?
 
   # Get aggregation value
-  # TODO(jhseu): Support aggregation in a tower context.
+  # TODO(jhseu): Support aggregation in a replica context.
   aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
   if aggregation not in [
       vs.VariableAggregation.NONE,
       vs.VariableAggregation.SUM,
       vs.VariableAggregation.MEAN,
-      vs.VariableAggregation.ONLY_FIRST_TOWER,
+      vs.VariableAggregation.ONLY_FIRST_REPLICA,
   ]:
     raise ValueError("Invalid variable aggregation mode: {} for variable: {}"
                      .format(aggregation, kwargs["name"]))
@@ -112,9 +113,8 @@ def _create_tpu_mirrored_variable(devices, real_mirrored_creator, *args,
   return result
 
 
-# TODO(jhseu): Stop inheriting from OneDeviceStrategy.
-class TPUStrategy(one_device_strategy.OneDeviceStrategy):
-  """Experimental TPU distribution strategy implementation."""
+class TPUStrategy(distribute_lib.DistributionStrategy):
+  """TPU distribution strategy implementation."""
 
   def __init__(self, tpu_cluster_resolver, steps_per_run, num_cores=None):
     """Initializes the TPUStrategy object.
@@ -130,9 +130,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
       num_cores: Number of cores to use on the TPU. If None specified, then
           auto-detect the cores and topology of the TPU system.
     """
-    # TODO(sourabhbajaj): OneDeviceStrategy should be initialized with the
-    # master node fetched from the cluster resolver.
-    super(TPUStrategy, self).__init__("/device:CPU:0")
+    super(TPUStrategy, self).__init__()
 
     self._tpu_cluster_resolver = tpu_cluster_resolver
     self._tpu_metadata = get_tpu_system_metadata(self._tpu_cluster_resolver)
@@ -144,9 +142,10 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     device_map = {d.name: i for i, d in enumerate(self._tpu_metadata.devices)
                   if "device:TPU:" in d.name}
     self._device_index = values.PerDevice(device_map)
+    self._host_device = self.get_host_cpu_device(0)
     self._tpu_devices = sorted(device_map.keys())
-    # Only create variables for the number of towers we're running.
-    self._tpu_devices = self._tpu_devices[:self.num_towers]
+    # Only create variables for the number of replicas we're running.
+    self._tpu_devices = self._tpu_devices[:self.num_replicas]
 
     # TODO(sourabhbajaj): Remove this once performance of running one step
     # at a time is comparable to multiple steps.
@@ -154,8 +153,8 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
 
     self._require_static_shapes = True
 
-  def _get_enqueue_op_per_host(self, host_id, iterator, input_shapes,
-                               iterations):
+  def _get_enqueue_op_per_host(self, host_id, multi_worker_iterator,
+                               input_shapes, iterations):
     """Create an enqueue op for a single host identified using host_id.
 
     The while_loop op returned will run `iterations` times and in each run
@@ -163,7 +162,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
 
     Args:
       host_id: integer, id of the host to run the enqueue ops on.
-      iterator: `tf.data` iterator to read the input data.
+      multi_worker_iterator: MultiWorkerDataIterator to read the input data.
       input_shapes: shape of inputs to be enqueue on the queue. This is same as
         the value of `nest.flatten(iterator.output_shapes)`.
       iterations: integer, number of iterations to be run; determines the
@@ -174,6 +173,10 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
       on the infeed queue from the host with id `host_id` for each device shard.
     """
     host = self.get_host_cpu_device(host_id)
+    # TODO(sourabhbajaj): Possibly make changes to MultiWorkerDataset
+    # to work with TPU Prefetch so clean up this code.
+    iterator = (
+        multi_worker_iterator.get_iterator(self.get_host(host_id))._iterator)  # pylint: disable=protected-access
 
     def _infeed_enqueue_ops_fn():
       """Enqueue ops for one iteration."""
@@ -182,7 +185,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
       enqueue_ops = []
 
       with ops.device(host):
-        for _ in range(self.num_towers_per_host):
+        for _ in range(self.num_replicas_per_host):
           # Use control dependencies to ensure a deterministic ordering.
           with ops.control_dependencies(control_deps):
             inputs = nest.flatten(iterator.get_next())
@@ -212,30 +215,36 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     return enqueue_op_per_host
 
   def distribute_dataset(self, dataset_fn):
-    # TODO(priyag): Perhaps distribute across cores here.
-    return self._call_dataset_fn(dataset_fn)
+    worker_map = {
+        self.get_host(hid): [self.get_host_cpu_device(hid)]
+        for hid in range(self.num_hosts)
+    }
+    return values.MultiWorkerDataset(
+        functools.partial(self._call_dataset_fn, dataset_fn), worker_map)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   # TODO(sourabhbajaj): Remove the initial_loop_values parameter when we have
   # a mechanism to infer the outputs of `fn`. Pending b/110550782.
-  def _run_steps_on_dataset(self, fn, iterator, iterations,
+  def _run_steps_on_dataset(self, fn, multi_worker_iterator, iterations,
                             initial_loop_values=None):
 
-    shapes = nest.flatten(iterator.output_shapes)
+    output_shapes = multi_worker_iterator.output_shapes
+    shapes = nest.flatten(output_shapes)
     if any([not s.is_fully_defined() for s in shapes]):
       raise ValueError(
-          'TPU currently requires fully defined shapes. Either use '
-          'set_shape() on the input tensors or use '
-          'dataset.batch(..., drop_remainder=True).')
-    types = nest.flatten(iterator.output_types)
+          "TPU currently requires fully defined shapes. Either use "
+          "set_shape() on the input tensors or use "
+          "dataset.batch(..., drop_remainder=True).")
+    types = nest.flatten(multi_worker_iterator.output_types)
 
     enqueue_ops = [
-        self._get_enqueue_op_per_host(host_id, iterator, shapes, iterations)
+        self._get_enqueue_op_per_host(host_id, multi_worker_iterator, shapes,
+                                      iterations)
         for host_id in range(self.num_hosts)]
 
     def dequeue_fn():
       dequeued = tpu_ops.infeed_dequeue_tuple(dtypes=types, shapes=shapes)
-      return nest.pack_sequence_as(iterator.output_shapes, dequeued)
+      return nest.pack_sequence_as(output_shapes, dequeued)
 
     # Wrap `fn` for repeat.
     if initial_loop_values is None:
@@ -270,7 +279,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     self._outer_control_flow_context = (
         ops.get_default_graph()._get_control_flow_context())  # pylint: disable=protected-access
 
-    replicate_inputs = [[]] * self.num_towers
+    replicate_inputs = [[]] * self.num_replicas
     replicate_outputs = tpu.replicate(iterate_on_tpu, replicate_inputs)
     del self._outer_control_flow_context
     ctx.run_op = control_flow_ops.group(replicate_outputs, enqueue_ops)
@@ -307,17 +316,17 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
 
     return ctx
 
-  def _call_for_each_tower(self, fn, *args, **kwargs):
-    # TODO(jhseu): Consider making it so call_for_each_tower implies that we're
-    # in a tpu.rewrite(), and update TPUMirroredVariable accordingly.
-    kwargs.pop('run_concurrently', None)
-    with one_device_strategy._OneDeviceTowerContext(self):  # pylint: disable=protected-access
+  def _call_for_each_replica(self, fn, *args, **kwargs):
+    # TODO(jhseu): Consider making it so call_for_each_replica implies that
+    # we're in a tpu.rewrite(), and update TPUMirroredVariable accordingly.
+    kwargs.pop("run_concurrently", None)
+    with _TPUReplicaContext(self):
       return fn(*args, **kwargs)
 
   def initialize(self):
     if context.executing_eagerly():
       # TODO(priyag): Add appopriate call here when eager is supported for TPUs.
-      raise NotImplementedError('Eager mode not supported in TPUStrategy.')
+      raise NotImplementedError("Eager mode not supported in TPUStrategy.")
     else:
       # TODO(jhseu): We need this hack because DistributionStrategies must be
       # pickleable for copy.deepcopy(). Remove when initialize_system goes away.
@@ -332,7 +341,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
   def finalize(self):
     if context.executing_eagerly():
       # TODO(priyag): Add appopriate call here when eager is supported for TPUs.
-      raise NotImplementedError('Eager mode not supported in TPUStrategy.')
+      raise NotImplementedError("Eager mode not supported in TPUStrategy.")
     else:
       return [tpu.shutdown_system()]
 
@@ -352,7 +361,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
           if i > 0:
             # Give replicas meaningful distinct names:
             var0name = index[devices[0]].name.split(":")[0]
-            # We append a / to variable names created on towers with id > 0 to
+            # We append a / to variable names created on replicas with id > 0 to
             # ensure that we ignore the name scope and instead use the given
             # name as the absolute name of the variable.
             kwargs["name"] = "%s/replica_%d/" % (var0name, i)
@@ -378,7 +387,7 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
       if aggregation == vs.VariableAggregation.MEAN:
         # TODO(jhseu):  Revisit once we support model-parallelism.
-        value *= (1. / self.num_towers)
+        value *= (1. / self.num_replicas)
       elif aggregation != vs.VariableAggregation.SUM:
         raise NotImplementedError(
             "Currently only support sum & mean in TPUStrategy.")
@@ -390,11 +399,11 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     devices = cross_tower_ops_lib.get_devices_from(destinations)
     if len(devices) == 1:
       assert device_util.canonicalize(devices[0]) == device_util.canonicalize(
-          self.get_host_cpu_device(0))
+          self._host_device)
     else:
-      raise ValueError('Multiple devices are not supported for TPUStrategy')
+      raise ValueError("Multiple devices are not supported for TPUStrategy")
 
-    if aggregation == vs.VariableAggregation.ONLY_FIRST_TOWER:
+    if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
       return value[0]
     output = math_ops.add_n(value)
     if aggregation == vs.VariableAggregation.MEAN:
@@ -441,9 +450,15 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
       return val
     return [val]
 
+  def value_container(self, value):
+    return value
+
+  def _broadcast(self, tensor, destinations):
+    del destinations
+    return tensor
 
   @property
-  def num_towers(self):
+  def num_replicas(self):
     return self._num_cores_override or self._tpu_metadata.num_cores
 
   @property
@@ -451,8 +466,12 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
     return self._tpu_metadata.num_hosts
 
   @property
-  def num_towers_per_host(self):
+  def num_replicas_per_host(self):
     return self._tpu_metadata.num_of_cores_per_host
+
+  @property
+  def num_replicas_in_sync(self):
+    return self.num_replicas
 
   @property
   def between_graph(self):
@@ -478,11 +497,29 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
   def parameter_devices(self):
     return self._tpu_devices
 
+  def non_slot_devices(self, var_list):
+    return self._host_device
+
+  def _update_non_slot(self, colocate_with, options, fn, *args, **kwargs):
+    del colocate_with
+    should_group = options.pop("grouped")
+    assert not options  # Validate that we are processing all of the options.
+    with ops.device(self._host_device), distribute_lib.UpdateContext(
+        self._host_device):
+      result = fn(*args, **kwargs)
+      if should_group:
+        return result
+      else:
+        return nest.map_structure(self._unwrap, result)
+
+  def get_host(self, host_id):
+    if self._tpu_cluster_resolver.get_master() in ("", "local"):
+      return "/replica:0/task:0"
+    job_name = self._tpu_cluster_resolver.get_job_name() or "tpu_worker"
+    return "/job:%s/task:%d" % (job_name, host_id)
+
   def get_host_cpu_device(self, host_id):
-    if self._tpu_cluster_resolver.get_master() in ('', 'local'):
-      return '/replica:0/task:0/device:CPU:0'
-    job_name = self._tpu_cluster_resolver.get_job_name() or 'tpu_worker'
-    return '/job:%s/task:%d/device:CPU:0' % (job_name, host_id)
+    return self.get_host(host_id) + "/device:CPU:0"
 
   def configure(self,
                 session_config=None,
@@ -495,3 +532,17 @@ class TPUStrategy(one_device_strategy.OneDeviceStrategy):
       cluster_spec = self._tpu_cluster_resolver.cluster_spec()
       if cluster_spec:
         session_config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
+
+
+class _TPUReplicaContext(distribute_lib.ReplicaContext):
+  """Replication Context class for TPU Strategy."""
+
+  # TODO(sourabhbajaj): Call for each tower should be updating this.
+  def __init__(self, distribution_strategy):
+    distribute_lib.ReplicaContext.__init__(
+        self, distribution_strategy, replica_id=0)
+
+  @property
+  def device(self):
+    distribute_lib.require_replica_context(self)
+    return self._distribution_strategy.worker_devices[self._replica_id]

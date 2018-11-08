@@ -29,6 +29,8 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@RandomDataset
 @@Reducer
 @@SqlDataset
+@@StatsAggregator
+@@StatsOptions
 @@TFRecordWriter
 
 @@bucket_by_sequence_length
@@ -52,11 +54,11 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@rejection_resample
 @@sample_from_datasets
 @@scan
-@@set_stats_aggregator
 @@shuffle_and_repeat
-@@StatsAggregator
 @@unbatch
 @@unique
+
+@@AUTOTUNE
 """
 
 from __future__ import absolute_import
@@ -96,9 +98,9 @@ from tensorflow.python.data.experimental.ops.readers import SqlDataset
 from tensorflow.python.data.experimental.ops.resampling import rejection_resample
 from tensorflow.python.data.experimental.ops.scan_ops import scan
 from tensorflow.python.data.experimental.ops.shuffle_ops import shuffle_and_repeat
+from tensorflow.python.data.experimental.ops.stats_aggregator import StatsAggregator
 from tensorflow.python.data.experimental.ops.stats_ops import latency_stats
-from tensorflow.python.data.experimental.ops.stats_ops import set_stats_aggregator
-from tensorflow.python.data.experimental.ops.stats_ops import StatsAggregator
+from tensorflow.python.data.experimental.ops.stats_options import StatsOptions
 from tensorflow.python.data.experimental.ops.unique import unique
 from tensorflow.python.data.experimental.ops.writers import TFRecordWriter
 from tensorflow.python.data.ops.iterator_ops import get_next_as_optional

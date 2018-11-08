@@ -40,17 +40,15 @@ class HloDomainIsolator : public HloModulePass {
   // Returns nullptr in case no domain separation is necessary.
   using DomainCreator = std::function<HloInstruction*(
       HloInstruction*, HloInstruction*, HloInstruction*)>;
-
-  explicit HloDomainIsolator(DomainCreator creator);
+  using DomainCreatorFactory = std::function<DomainCreator()>;
+  explicit HloDomainIsolator(DomainCreatorFactory creator_factory_);
 
   absl::string_view name() const override { return "domain_isolator"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  class RunContext;
-
-  DomainCreator creator_;
+  DomainCreatorFactory creator_factory_;
 };
 
 }  // namespace xla

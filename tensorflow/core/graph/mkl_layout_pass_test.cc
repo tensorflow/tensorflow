@@ -914,6 +914,52 @@ TEST_F(MklLayoutPassTest, NodeRewrite_ReluReluGrad_Positive) {
             "DMT/_1->C:2");
 }
 
+TEST_F(MklLayoutPassTest, NodeRewrite_Relu6_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Relu6'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['A'] }"
+      "node { name: 'C' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'B'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(_MklRelu6);C(Zeta);DMT/_0(Const)|A->B;A->C;"
+            "A:control->DMT/_0:control;B->C:1;DMT/_0->B:1");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_Relu6Grad_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Relu6Grad'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['A', 'B'] }"
+      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'C'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(_MklRelu6Grad);D(Zeta);DMT/_0(Const);"
+            "DMT/_1(Const)|A->C;A->D;A:control->DMT/_0:control;"
+            "A:control->DMT/_1:control;B->C:1;C->D:1;DMT/_0->C:2;DMT/_1->C:3");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_Relu6Relu6Grad_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Relu6'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['A'] }"
+      "node { name: 'C' op: 'Relu6Grad'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['A', 'B'] }"
+      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'C'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(_MklRelu6);C(_MklRelu6Grad);D(Zeta);DMT/_0(Const);"
+            "DMT/_1(Const)|A->B;A->C;A->D;A:control->DMT/_0:control;"
+            "A:control->DMT/_1:control;B->C:1;B:1->C:3;C->D:1;DMT/_0->B:1;"
+            "DMT/_1->C:2");
+}
+
 TEST_F(MklLayoutPassTest, NodeRewrite_AvgPool_Positive) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
@@ -1513,6 +1559,33 @@ TEST_F(MklLayoutPassTest, NodeRewrite_ReluGrad_DeviceTest) {
       kGPUDevice);
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);B(Input);C(ReluGrad);D(Zeta)|A->C;A->D;B->C:1;C->D:1");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_Relu6_DeviceTest) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Relu6'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['A'] }"
+      "node { name: 'C' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'B'] }",
+      kGPUDevice);
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Relu6);C(Zeta)|A->B;A->C;B->C:1");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_Relu6Grad_DeviceTest) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Relu6Grad'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['A', 'B'] }"
+      "node { name: 'D' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'C'] }",
+      kGPUDevice);
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(Relu6Grad);D(Zeta)|A->C;A->D;B->C:1;C->D:1");
 }
 
 TEST_F(MklLayoutPassTest, NodeRewrite_MaxPool_DeviceTest) {

@@ -276,11 +276,11 @@ class RNNCell(base_layer.Layer):
               batch_size, partial=True)
         else:
           static_batch_size = batch_size
-        if inputs.shape[0].value != static_batch_size:
+        if inputs.shape.dims[0].value != static_batch_size:
           raise ValueError(
               "batch size from input tensor is different from the "
               "input param. Input tensor batch: {}, batch_size: {}".format(
-                  inputs.shape[0].value, batch_size))
+                  inputs.shape.dims[0].value, batch_size))
 
       if dtype is not None and inputs.dtype != dtype:
         raise ValueError(
@@ -288,7 +288,7 @@ class RNNCell(base_layer.Layer):
             "input param. Input tensor dtype: {}, dtype: {}".format(
                 inputs.dtype, dtype))
 
-      batch_size = inputs.shape[0].value or array_ops.shape(inputs)[0]
+      batch_size = inputs.shape.dims[0].value or array_ops.shape(inputs)[0]
       dtype = inputs.dtype
     if None in [batch_size, dtype]:
       raise ValueError(
@@ -986,8 +986,8 @@ class LSTMCell(LayerRNNCell):
       c_prev = array_ops.slice(state, [0, 0], [-1, self._num_units])
       m_prev = array_ops.slice(state, [0, self._num_units], [-1, num_proj])
 
-    input_size = inputs.get_shape().with_rank(2)[1]
-    if input_size.value is None:
+    input_size = inputs.get_shape().with_rank(2).dims[1].value
+    if input_size is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
 
     # i = input_gate, j = new_input, f = forget_gate, o = output_gate
@@ -1465,6 +1465,30 @@ class MultiRNNCell(RNNCell):
         # We know here that state_size of each cell is not a tuple and
         # presumably does not contain TensorArrays or anything else fancy
         return super(MultiRNNCell, self).zero_state(batch_size, dtype)
+
+  @property
+  def trainable_weights(self):
+    if not self.trainable:
+      return []
+    weights = []
+    for cell in self._cells:
+      if isinstance(cell, base_layer.Layer):
+        weights += cell.trainable_weights
+    return weights
+
+  @property
+  def non_trainable_weights(self):
+    weights = []
+    for cell in self._cells:
+      if isinstance(cell, base_layer.Layer):
+        weights += cell.non_trainable_weights
+    if not self.trainable:
+      trainable_weights = []
+      for cell in self._cells:
+        if isinstance(cell, base_layer.Layer):
+          trainable_weights += cell.trainable_weights
+      return trainable_weights + weights
+    return weights
 
   def call(self, inputs, state):
     """Run this multi-layer cell on inputs, starting from state."""

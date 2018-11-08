@@ -51,3 +51,15 @@ cc_library(
             "//tensorflow/core:lib",
         ],
 )
+
+cc_library(
+    name = "xla_ops_common_flags",
+    srcs = ["xla_ops_common_flags.cc"],
+    hdrs = ["xla_ops_common_flags.h"],
+    deps =
+        [
+            "//tensorflow/compiler/xla/legacy_flags:parse_flags_from_env",
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+        ],
+)

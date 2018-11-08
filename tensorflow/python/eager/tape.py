@@ -62,7 +62,7 @@ def watch(tape, tensor):
 def watch_variable(tape, variable):
   """Marks this variable to be watched by the given tape."""
   strategy = distribution_strategy_context.get_distribution_strategy()
-  if distribution_strategy_context.get_tower_context():
+  if distribution_strategy_context.get_replica_context():
     variables = [strategy.value_container(variable)]
   else:
     variables = strategy.unwrap(variable)
@@ -77,7 +77,7 @@ def variable_accessed(variable):
     variable: variable to be watched.
   """
   strategy = distribution_strategy_context.get_distribution_strategy()
-  if distribution_strategy_context.get_tower_context():
+  if distribution_strategy_context.get_replica_context():
     variables = [strategy.value_container(variable)]
   else:
     variables = strategy.unwrap(variable)

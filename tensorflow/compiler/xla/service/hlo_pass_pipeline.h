@@ -105,8 +105,6 @@ class HloPassPipeline : public HloPassInterface {
   std::vector<std::unique_ptr<HloPassInterface>> passes_;
   std::vector<std::unique_ptr<HloPassInterface>> invariant_checkers_;
   bool run_called_ = false;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(HloPassPipeline);
 };
 
 }  // namespace xla

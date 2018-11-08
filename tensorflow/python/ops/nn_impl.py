@@ -26,6 +26,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gen_array_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gen_nn_ops
@@ -360,6 +361,27 @@ def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
     return math_ops.multiply(x, x_inv_norm, name=name)
 
 
+def _count_nonzero(input_tensor, dtype=dtypes.int64):
+  """Same as math_ops.count_nonzero.
+
+  The reduction is done in dtype, which can be faster for 32-bit dtypes.
+
+  Args:
+      input_tensor: numeric tensor
+      dtype: reduction dtype
+
+  Returns:
+      number of nonzero values with type dtype
+  """
+  with ops.name_scope("count_nonzero", [input_tensor]):
+    zero = array_ops.zeros([], dtype=input_tensor.dtype)
+    nonzero_count = math_ops.reduce_sum(
+        math_ops.cast(
+            math_ops.not_equal(input_tensor, zero),
+            dtype=dtype), name="nonzero_count")
+    return nonzero_count
+
+
 @tf_export("math.zero_fraction", "nn.zero_fraction")
 def zero_fraction(value, name=None):
   """Returns the fraction of zeros in `value`.
@@ -382,9 +404,23 @@ def zero_fraction(value, name=None):
   """
   with ops.name_scope(name, "zero_fraction", [value]):
     value = ops.convert_to_tensor(value, name="value")
-    zero = constant_op.constant(0, dtype=value.dtype, name="zero")
-    return math_ops.reduce_mean(
-        math_ops.cast(math_ops.equal(value, zero), dtypes.float32))
+    size = array_ops.size(value, out_type=dtypes.int64)
+    # If the count is small, we can save memory/CPU with an int32 reduction.
+    num_nonzero = control_flow_ops.cond(
+        size <= dtypes.int32.max,
+        # pylint: disable=g-long-lambda
+        true_fn=lambda: math_ops.cast(
+            _count_nonzero(value, dtype=dtypes.int32),
+            dtype=dtypes.int64),
+        false_fn=lambda: _count_nonzero(value, dtype=dtypes.int64))
+
+    with ops.name_scope("counts_to_fraction"):
+      num_zero = size - num_nonzero
+      num_zero_float32 = math_ops.cast(num_zero, dtype=dtypes.float32)
+      size_float32 = math_ops.cast(size, dtype=dtypes.float32)
+      zero_fraction_float32 = num_zero_float32 / size_float32
+
+    return array_ops.identity(zero_fraction_float32, "fraction")
 
 
 # pylint: disable=redefined-builtin
@@ -528,8 +564,8 @@ def separable_conv2d(input,
         pointwise_filter, name="pointwise_filter")
 
     pointwise_filter_shape = pointwise_filter.get_shape().with_rank(4)
-    pointwise_filter_shape[0].assert_is_compatible_with(1)
-    pointwise_filter_shape[1].assert_is_compatible_with(1)
+    pointwise_filter_shape.dims[0].assert_is_compatible_with(1)
+    pointwise_filter_shape.dims[1].assert_is_compatible_with(1)
 
     if rate is None:
       rate = [1, 1]
@@ -595,10 +631,10 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
   with ops.name_scope(name, "sufficient_statistics", [x, shift]):
     x = ops.convert_to_tensor(x, name="x")
     x_shape = x.get_shape()
-    if all(x_shape[d].value is not None for d in axes):
+    if all(x_shape.dims[d].value is not None for d in axes):
       counts = 1
       for d in axes:
-        counts *= x_shape[d].value
+        counts *= x_shape.dims[d].value
       counts = constant_op.constant(counts, dtype=x.dtype)
     else:  # shape needs to be inferred at runtime.
       x_dims = array_ops.gather(

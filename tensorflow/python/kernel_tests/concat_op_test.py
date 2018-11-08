@@ -35,7 +35,7 @@ from tensorflow.python.platform import test
 class ConcatOpTest(test.TestCase):
 
   def testHStack(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       p1 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
       p2 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
       c = array_ops.concat([p1, p2], 0)
@@ -50,7 +50,7 @@ class ConcatOpTest(test.TestCase):
     self.assertAllEqual(result[4:, :], params[p2])
 
   def testVStack(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       p1 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
       p2 = array_ops.placeholder(dtypes.float32, shape=[4, 4])
       c = array_ops.concat([p1, p2], 1)
@@ -65,7 +65,7 @@ class ConcatOpTest(test.TestCase):
     self.assertAllEqual(result[:, 4:], params[p2])
 
   def testInt32GPU(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       p1 = np.random.rand(2, 3).astype("i")
       p2 = np.random.rand(2, 3).astype("i")
       x1 = constant_op.constant(p1)
@@ -76,7 +76,7 @@ class ConcatOpTest(test.TestCase):
     self.assertAllEqual(result[2:, :], p2)
 
   def testRefType(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       p1 = np.random.rand(4, 4).astype("f")
       p2 = np.random.rand(4, 4).astype("f")
       v1 = variables.Variable(p1)
@@ -101,7 +101,7 @@ class ConcatOpTest(test.TestCase):
       dtype_feed = dtypes.float32
     else:
       dtype_feed = dtype
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       p = []
       for i in np.arange(num_tensors):
         input_shape = shape
@@ -172,7 +172,7 @@ class ConcatOpTest(test.TestCase):
     # Test both positive and negative concat axis.
     # -2 and 1 correspond to the same axis for 3-dimensional tensors.
     for axis in [-2, 1]:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         inp = []
         inp_tensors = []
         for x in [1, 2, 6]:
@@ -203,7 +203,7 @@ class ConcatOpTest(test.TestCase):
     self._testGradientsSimple(dtypes.complex64)
 
   def testGradientsFirstDim(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       inp = []
       inp_tensors = []
       for x in [1, 2, 6]:
@@ -230,7 +230,7 @@ class ConcatOpTest(test.TestCase):
     # Test both positive and negative concat axis.
     # -1 and 2 correspond to the same axis for 3-dimensional tensors.
     for axis in [-1, 2]:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         inp = []
         inp_tensors = []
         for x in [1, 2, 6]:
@@ -261,7 +261,7 @@ class ConcatOpTest(test.TestCase):
     # Random dim to concat on
     concat_dim = np.random.randint(5)
     concat_dim_sizes = np.random.randint(1, 5, size=num_tensors)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       inp = []
       inp_tensors = []
       for x in concat_dim_sizes:
@@ -288,7 +288,7 @@ class ConcatOpTest(test.TestCase):
       self._RunAndVerifyGradientsRandom()
 
   def testGradientWithUnknownInputDim(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       x = array_ops.placeholder(dtypes.float32)
       y = array_ops.placeholder(dtypes.float32)
       c = array_ops.concat([x, y], 2)
@@ -358,7 +358,7 @@ class ConcatOpTest(test.TestCase):
   def testZeroSize(self):
     # Verify that concat doesn't crash and burn for zero size inputs
     np.random.seed(7)
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       for shape0 in (), (2,):
         axis = len(shape0)
         for shape1 in (), (3,):
@@ -489,7 +489,7 @@ class ConcatOpTest(test.TestCase):
   # important as gpu implementation could fail if
   # shared memory is not large for all the inputs
   def testConcatLargeNumberOfTensors(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       for concat_dim in range(2):
         params = {}
         p = []
@@ -523,7 +523,7 @@ class ConcatOpTest(test.TestCase):
           self.assertAllEqual(result[index], params[p[i]])
 
   def testConcatEmpty(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       t1 = []
       t2 = []
       output = gen_array_ops.concat_v2([t1, t2], 0).eval()
@@ -531,13 +531,13 @@ class ConcatOpTest(test.TestCase):
 
   def testConcatInvalidAxis(self):
     with self.assertRaises(ValueError):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         t1 = [1]
         t2 = [2]
         gen_array_ops.concat_v2([t1, t2], 1).eval()
 
   def testConcatNegativeAxis(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       t1 = [[1, 2, 3], [4, 5, 6]]
       t2 = [[7, 8, 9], [10, 11, 12]]
 
@@ -608,7 +608,7 @@ class ConcatOpTest(test.TestCase):
 
   def testConcatAxisType(self):
     for dtype in [dtypes.int32, dtypes.int64]:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         t1 = [[1, 2, 3], [4, 5, 6]]
         t2 = [[7, 8, 9], [10, 11, 12]]
 
@@ -621,7 +621,7 @@ class ConcatOpTest(test.TestCase):
 class ConcatOffsetTest(test.TestCase):
 
   def testBasic(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       cdim = constant_op.constant(1, dtypes.int32)
       s0 = constant_op.constant([2, 3, 5], dtypes.int32)
       s1 = constant_op.constant([2, 7, 5], dtypes.int32)
@@ -673,7 +673,7 @@ class ConcatOffsetTest(test.TestCase):
         sess.run(off)
 
   def testNegativeDim(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       cdim = constant_op.constant(-2, dtypes.int32)
       s0 = constant_op.constant([2, 3, 5], dtypes.int32)
       s1 = constant_op.constant([2, 7, 5], dtypes.int32)

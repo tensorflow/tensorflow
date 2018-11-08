@@ -111,14 +111,6 @@ class XlaOpKernelContext {
   Status ConstantInput(int index, xla::Literal* constant_literal);
   Status ConstantInput(absl::string_view name, xla::Literal* constant_literal);
 
-  // Evaluates input `index`, reshapes it to `new_shape` if new_shape !=
-  // InputShape(index), and stores it in `*constant_literal`. If the input
-  // cannot be evaluated, e.g., because it depends on unbound parameters,
-  // returns a non-Ok status. If InputShape(index).num_elements() !=
-  // new_shape.num_elements(), returns an error status.
-  Status ConstantInputReshaped(int index, absl::Span<const int64> new_dims,
-                               xla::Literal* constant_literal);
-
   // Converts a constant scalar int32 or int64 tensor into an int64.
   Status ConstantInputAsIntScalar(int index, int64* out);
   Status ConstantInputAsIntScalar(absl::string_view name, int64* out);
@@ -134,6 +126,8 @@ class XlaOpKernelContext {
   // Reshapes and converts a constant int32 or int64 tensor into a vector of
   // int64s.
   Status ConstantInputReshapedToIntVector(int index, std::vector<int64>* out);
+  Status ConstantInputReshapedToIntVector(absl::string_view name,
+                                          std::vector<int64>* out);
 
   // Converts a constant int32 or int64 Tensor into an xla int64 Literal.
   Status ConstantInputAsInt64Literal(int index, xla::Literal* out);
@@ -259,6 +253,14 @@ class XlaOpKernelContext {
   // behavior for DT_VARIANT: a variant is treated as DT_UINT8 scalar as the
   // type to allow mapping for variant to more generic types.
   Status allocate_output(int index, const xla::Shape& shape, Tensor** output);
+
+  // Evaluates input `index`, reshapes it to `new_shape` if new_shape !=
+  // InputShape(index), and stores it in `*constant_literal`. If the input
+  // cannot be evaluated, e.g., because it depends on unbound parameters,
+  // returns a non-Ok status. If InputShape(index).num_elements() !=
+  // new_shape.num_elements(), returns an error status.
+  Status ConstantInputReshaped(int index, absl::Span<const int64> new_dims,
+                               xla::Literal* constant_literal);
 
   OpKernelContext* const context_;
 };

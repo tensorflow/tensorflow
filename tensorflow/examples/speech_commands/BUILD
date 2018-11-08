@@ -102,6 +102,31 @@ tf_py_test(
 )
 
 py_binary(
+    name = "wav_to_features",
+    srcs = [
+        "wav_to_features.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":input_data",
+        ":models",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+tf_py_test(
+    name = "wav_to_features_test",
+    size = "small",
+    srcs = ["wav_to_features_test.py"],
+    additional_deps = [
+        ":wav_to_features",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_binary(
     name = "generate_streaming_test_wav",
     srcs = [
         "generate_streaming_test_wav.py",

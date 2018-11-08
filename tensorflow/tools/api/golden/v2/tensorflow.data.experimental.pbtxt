@@ -1,12 +1,16 @@
 path: "tensorflow.data.experimental"
 tf_module {
   member {
+    name: "AUTOTUNE"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "CheckpointInputPipelineHook"
     mtype: "<type \'type\'>"
   }
   member {
     name: "CsvDataset"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "Optional"
@@ -14,7 +18,7 @@ tf_module {
   }
   member {
     name: "RandomDataset"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "Reducer"
@@ -22,10 +26,14 @@ tf_module {
   }
   member {
     name: "SqlDataset"
-    mtype: "<class \'abc.ABCMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "StatsAggregator"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "StatsOptions"
     mtype: "<type \'type\'>"
   }
   member {
@@ -119,10 +127,6 @@ tf_module {
   member_method {
     name: "scan"
     argspec: "args=[\'initial_state\', \'scan_func\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "set_stats_aggregator"
-    argspec: "args=[\'stats_aggregator\', \'tag\', \'counter_prefix\'], varargs=None, keywords=None, defaults=[\'\', \'\'], "
   }
   member_method {
     name: "shuffle_and_repeat"

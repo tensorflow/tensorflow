@@ -26,6 +26,7 @@ from tensorflow.contrib.tensorrt.python.ops import trt_engine_op
 # pylint: enable=unused-import
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
@@ -49,6 +50,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
   def testTensorrtRewriterConfig(self):
     """Test case for trt_convert.tensorrt_rewriter_config()."""
     rewriter_cfg = trt_convert.tensorrt_rewriter_config(
+        rewriter_config=None,
         max_batch_size=128,
         max_workspace_size_bytes=1234,
         precision_mode="INT8",
@@ -56,6 +58,10 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         is_dynamic_op=True,
         maximum_cached_engines=2,
         cached_engine_batch_sizes=[1, 128])
+    self.assertEqual(["constfold", "layout", "constfold"],
+                     rewriter_cfg.optimizers)
+    self.assertEqual(rewriter_config_pb2.RewriterConfig.ONE,
+                     rewriter_cfg.meta_optimizer_iterations)
     trt_optimizer = None
     for optimizer in rewriter_cfg.custom_optimizers:
       if optimizer.name == "TensorRTOptimizer":

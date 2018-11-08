@@ -311,7 +311,10 @@ py_test(
     size = "medium",
     srcs = ["numa_map_and_batch_dataset_serialization_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notap",
+    ],
     deps = [
         ":dataset_serialization_test_base",
         "//tensorflow/python:client_testlib",
@@ -342,6 +345,19 @@ py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "matching_files_dataset_serialization_test",
+    size = "small",
+    srcs = ["matching_files_dataset_serialization_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dataset_serialization_test_base",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
@@ -635,6 +651,7 @@ py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python/data/experimental/ops:stats_aggregator",
         "//tensorflow/python/data/experimental/ops:stats_ops",
         "//tensorflow/python/data/ops:dataset_ops",
     ],

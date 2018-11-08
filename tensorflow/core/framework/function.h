@@ -294,7 +294,7 @@ class FunctionCallFrame : public CallFrameInterface {
 class FunctionLibraryDefinition : public OpRegistryInterface {
  public:
   // Note: This constructor grabs `lib_def`'s lock in shared mode.
-  explicit FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
+  FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
   FunctionLibraryDefinition(const OpRegistryInterface* default_registry,
                             const FunctionDefLibrary& lib_def);
   ~FunctionLibraryDefinition() override;
@@ -380,6 +380,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // created for return values bear the name given by `kRetOp`.
   static constexpr const char* const kArgOp = "_Arg";
   static constexpr const char* const kRetOp = "_Retval";
+  static constexpr const char* const kDeviceRetOp = "_DeviceRetval";
 
   static constexpr const char* const kGradientOp = "SymbolicGradient";
   static constexpr const char* const kFuncAttr = "f";

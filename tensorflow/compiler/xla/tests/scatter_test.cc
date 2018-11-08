@@ -129,6 +129,37 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
+XLA_TEST_F(ScatterTest, SimpleR4) {
+  const char* hlo_text = R"(
+HloModule SimpleR4
+
+add_f32 (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(f32[] lhs, f32[] rhs)
+}
+
+ENTRY main {
+  operand = f32[1,2,2,1] parameter(0)
+  indices = s32[1,3] parameter(1)
+  updates = f32[1,2,2,1] parameter(2)
+  ROOT scatter = f32[1,2,2,1] scatter(operand, indices, updates),
+      to_apply=add_f32,
+      update_window_dims={1,2,3},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0, 2, 1},
+      index_vector_dim=1
+}
+)";
+
+  Literal operand =
+      LiteralUtil::CreateR4<float>({{{{0.f}, {0.f}}, {{0.f}, {0.f}}}});
+  Literal updates =
+      LiteralUtil::CreateR4<float>({{{{0.12}, {0.28}}, {{0.018}, {0.42}}}});
+  Literal scatter_indices = LiteralUtil::CreateR2<int32>({{0, 0, 0}});
+  RunTest(hlo_text, &operand, &scatter_indices, &updates);
+}
+
 XLA_TEST_F(ScatterTest, TensorFlowScatter_Add) {
   const string hlo_text = R"(
 HloModule TensorFlowScatter_Add

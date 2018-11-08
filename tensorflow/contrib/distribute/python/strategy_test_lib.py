@@ -36,44 +36,45 @@ class _TestException(Exception):
   pass
 
 
-# May be the argument to either distribution.call_for_each_tower() or
-# get_tower_context().merge_call()
+# May be the argument to either distribution.call_for_each_replica() or
+# get_replica_context().merge_call()
 def _raise_exception_fn(_=None):
   raise _TestException()
 
 
-# Must be the argument to a distribution.call_for_each_tower() call, calls a
-# get_tower_context().merge_call() that raises an exception.
+# Must be the argument to a distribution.call_for_each_replica() call, calls a
+# get_replica_context().merge_call() that raises an exception.
 def _merge_raises_fn():
-  distribution_strategy_context.get_tower_context().merge_call(
+  distribution_strategy_context.get_replica_context().merge_call(
       _raise_exception_fn)
 
 
-# Must be the argument to a get_tower_context().merge_call() call, calls
-# dist.call_for_each_tower() with a function that raises an exception.
+# Must be the argument to a get_replica_context().merge_call() call, calls
+# dist.call_for_each_replica() with a function that raises an exception.
 def _call_raises_fn(dist):
-  dist.call_for_each_tower(_raise_exception_fn)
+  dist.call_for_each_replica(_raise_exception_fn)
 
 
-# Must be the argument to a distribution.call_for_each_tower() call,
-# calls a get_tower_context().merge_call() that calls a
-# call_for_each_tower() that raises an exception.
+# Must be the argument to a distribution.call_for_each_replica() call,
+# calls a get_replica_context().merge_call() that calls a
+# call_for_each_replica() that raises an exception.
 def _merge_call_raises_fn():
-  distribution_strategy_context.get_tower_context().merge_call(_call_raises_fn)
+  distribution_strategy_context.get_replica_context().merge_call(
+      _call_raises_fn)
 
 
-# Must be the argument to a get_tower_context().merge_call() call, calls
-# dist.call_for_each_tower() with a function that calls a
-# get_tower_context().merge_call() that raises an exception.
+# Must be the argument to a get_replica_context().merge_call() call, calls
+# dist.call_for_each_replica() with a function that calls a
+# get_replica_context().merge_call() that raises an exception.
 def _call_merge_raises_fn(dist):
-  dist.call_for_each_tower(_merge_raises_fn)
+  dist.call_for_each_replica(_merge_raises_fn)
 
 
-# Must be the argument to a distribution.call_for_each_tower() call, calls a
-# get_tower_context().merge_call() that calls a call_for_each_tower() that
-# calls a get_tower_context().merge_call() that raises an exception.
+# Must be the argument to a distribution.call_for_each_replica() call, calls a
+# get_replica_context().merge_call() that calls a call_for_each_replica() that
+# calls a get_replica_context().merge_call() that raises an exception.
 def _merge_call_merge_raises_fn():
-  distribution_strategy_context.get_tower_context().merge_call(
+  distribution_strategy_context.get_replica_context().merge_call(
       _call_merge_raises_fn)
 
 
@@ -103,7 +104,7 @@ class DistributionTestBase(test.TestCase):
       def step():
         """Perform one optimization step."""
         # Run forward & backward to get gradients, variables list.
-        g_v = d.call_for_each_tower(grad_fn, one, run_concurrently=l.built)
+        g_v = d.call_for_each_replica(grad_fn, one, run_concurrently=l.built)
 
         # Update the variables using the gradients and the update() function.
         before_list = []
@@ -138,7 +139,7 @@ class DistributionTestBase(test.TestCase):
     config.gpu_options.per_process_gpu_memory_fraction = 0.3
     with context.graph_mode(), \
          ops.Graph().as_default(), \
-         self.test_session(config=config) as sess, \
+         self.cached_session(config=config) as sess, \
          d.scope():
       l = core.Dense(1, use_bias=False)
 
@@ -159,7 +160,7 @@ class DistributionTestBase(test.TestCase):
       def step():
         """Perform one optimization step."""
         # Run forward & backward to get gradients, variables list.
-        g_v = d.call_for_each_tower(grad_fn, one)
+        g_v = d.call_for_each_replica(grad_fn, one)
 
         # Update the variables using the gradients and the update() function.
         before_list = []
@@ -206,29 +207,30 @@ class DistributionTestBase(test.TestCase):
         self.assertFalse(expected_devices[device_id])
         expected_devices[device_id] = True
 
-      d.call_for_each_tower(mark_devices_fn, d.worker_device_index)
+      d.call_for_each_replica(mark_devices_fn, d.worker_device_index)
       self.assertAllEqual(expected_devices, [True] * len(d.worker_devices))
 
-  def _test_tower_id(self, d):
+  def _test_replica_id(self, d):
     with d.scope():
       expected_devices = [False] * len(d.worker_devices)
 
       def mark_devices_fn():
-        tower_id = distribution_strategy_context.get_tower_context().tower_id
-        self.assertLess(tower_id, len(d.worker_devices))
-        self.assertFalse(expected_devices[tower_id])
-        expected_devices[tower_id] = True
+        replica_id = (
+            distribution_strategy_context.get_replica_context().replica_id)
+        self.assertLess(replica_id, len(d.worker_devices))
+        self.assertFalse(expected_devices[replica_id])
+        expected_devices[replica_id] = True
 
-      d.call_for_each_tower(mark_devices_fn)
+      d.call_for_each_replica(mark_devices_fn)
       self.assertAllEqual(expected_devices, [True] * len(d.worker_devices))
 
   def _test_call_and_merge_exceptions(self, dist):
     with dist.scope():
       with self.assertRaises(_TestException):
-        dist.call_for_each_tower(_raise_exception_fn)
+        dist.call_for_each_replica(_raise_exception_fn)
       with self.assertRaises(_TestException):
-        dist.call_for_each_tower(_merge_raises_fn)
+        dist.call_for_each_replica(_merge_raises_fn)
       with self.assertRaises(_TestException):
-        dist.call_for_each_tower(_merge_call_raises_fn)
+        dist.call_for_each_replica(_merge_call_raises_fn)
       with self.assertRaises(_TestException):
-        dist.call_for_each_tower(_merge_call_merge_raises_fn)
+        dist.call_for_each_replica(_merge_call_merge_raises_fn)

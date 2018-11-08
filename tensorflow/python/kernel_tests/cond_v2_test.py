@@ -124,6 +124,7 @@ class CondV2Test(test.TestCase):
       self.assertEqual(sess.run(out, {pred: False}), (2.0,))
 
   def _createCond(self, name):
+    """Helper function for testDefaultName."""
     pred = constant_op.constant(True, name="pred")
     x = constant_op.constant(1.0, name="x")
 
@@ -133,26 +134,35 @@ class CondV2Test(test.TestCase):
     def false_fn():
       return x + 1
 
-    return cond_v2.cond_v2(pred, true_fn, false_fn, name=name).op
+    output = cond_v2.cond_v2(pred, true_fn, false_fn, name=name)
+    cond_op = output.op.inputs[0].op
+    self.assertEqual(cond_op.type, "If")
+    return cond_op
 
   def testDefaultName(self):
     with ops.Graph().as_default():
-      cond = self._createCond(None)
-      self.assertEqual(cond.name, "cond")
-      self.assertIn("cond_true", ops.get_default_graph()._functions)
-      self.assertIn("cond_false", ops.get_default_graph()._functions)
+      cond_op = self._createCond(None)
+      self.assertEqual(cond_op.name, "cond")
+      self.assertRegexpMatches(
+          cond_op.get_attr("then_branch").name, r"cond_true_\d*")
+      self.assertRegexpMatches(
+          cond_op.get_attr("else_branch").name, r"cond_false_\d*")
 
     with ops.Graph().as_default():
       with ops.name_scope("foo"):
-        cond = self._createCond("")
-        self.assertEqual(cond.name, "foo/cond")
-        self.assertIn("foo_cond_true", ops.get_default_graph()._functions)
-        self.assertIn("foo_cond_false", ops.get_default_graph()._functions)
+        cond1_op = self._createCond("")
+        self.assertEqual(cond1_op.name, "foo/cond")
+        self.assertRegexpMatches(
+            cond1_op.get_attr("then_branch").name, r"foo_cond_true_\d*")
+        self.assertRegexpMatches(
+            cond1_op.get_attr("else_branch").name, r"foo_cond_false_\d*")
 
-        cond2 = self._createCond(None)
-        self.assertEqual(cond2.name, "foo/cond_1")
-        self.assertIn("foo_cond_1_true", ops.get_default_graph()._functions)
-        self.assertIn("foo_cond_1_false", ops.get_default_graph()._functions)
+        cond2_op = self._createCond(None)
+        self.assertEqual(cond2_op.name, "foo/cond_1")
+        self.assertRegexpMatches(
+            cond2_op.get_attr("then_branch").name, r"foo_cond_1_true_\d*")
+        self.assertRegexpMatches(
+            cond2_op.get_attr("else_branch").name, r"foo_cond_1_false_\d*")
 
   def testDefunInCond(self):
     self.skipTest("b/117293122")
@@ -849,7 +859,7 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
 
   def testColocateWithInCondGraphPartitioning(self):
     with ops.Graph().as_default() as g:
-      with self.test_session(
+      with self.session(
           graph=g,
           config=config_pb2.ConfigProto(device_count={"CPU": 2})
       ) as sess:
@@ -904,7 +914,7 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
 
   def testDeviceInAndOutOfCond(self):
     with ops.Graph().as_default() as g:
-      with self.test_session(
+      with self.session(
           graph=g, config=config_pb2.ConfigProto(device_count={"CPU": 2})):
 
         def fn2():
@@ -922,7 +932,7 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
 
   def testDeviceInCondGraphPartitioning(self):
     with ops.Graph().as_default() as g:
-      with self.test_session(
+      with self.session(
           graph=g,
           config=config_pb2.ConfigProto(device_count={"CPU": 2})
       ) as sess:

@@ -18,8 +18,18 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
+
+namespace {
+
+int64 get_uid() {
+  uint64 unsigned_rand = random::New64() & INT64_MAX;
+  return static_cast<int64>(unsigned_rand);
+}
+
+}  // namespace
 
 const char* kXRTCompilationCacheResourceName = "xrt_compilation_cache";
 
@@ -153,7 +163,7 @@ XRTCompilationCache::CompiledSubgraph* XRTCompilationCache::InitializeEntry(
   CompiledSubgraph* entry = new CompiledSubgraph();
   entry->parent = this;
   entry->key = key;
-  entry->uid = next_uid_++;
+  entry->uid = get_uid();
   // Add the entry to the cache. Once the computation has been compiled,
   // UpdateEntryAfterCompilation will be called to potentially mark old entries
   // that don't fit any more for eviction.

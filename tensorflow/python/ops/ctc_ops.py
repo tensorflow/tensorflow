@@ -212,14 +212,19 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
 
   Returns:
     A tuple `(decoded, neg_sum_logits)` where
+
     decoded: A single-element list. `decoded[0]`
       is an `SparseTensor` containing the decoded outputs s.t.:
+
       `decoded.indices`: Indices matrix `(total_decoded_outputs, 2)`.
         The rows store: `[batch, time]`.
+
       `decoded.values`: Values vector, size `(total_decoded_outputs)`.
         The vector stores the decoded classes.
+
       `decoded.dense_shape`: Shape vector, size `(2)`.
         The shape values are: `[batch_size, max_decoded_length]`
+
     neg_sum_logits: A `float` matrix `(batch_size x 1)` containing, for the
         sequence found, the negative of the sum of the greatest logit at each
         timeframe.
@@ -259,14 +264,19 @@ def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
 
   Returns:
     A tuple `(decoded, log_probabilities)` where
+
     decoded: A list of length top_paths, where `decoded[j]`
       is a `SparseTensor` containing the decoded outputs:
+
       `decoded[j].indices`: Indices matrix `(total_decoded_outputs[j] x 2)`
         The rows store: [batch, time].
+
       `decoded[j].values`: Values vector, size `(total_decoded_outputs[j])`.
         The vector stores the decoded classes for beam j.
+
       `decoded[j].dense_shape`: Shape vector, size `(2)`.
         The shape values are: `[batch_size, max_decoded_length[j]]`.
+
     log_probability: A `float` matrix `(batch_size x top_paths)` containing
         sequence log-probabilities.
   """
@@ -301,14 +311,19 @@ def ctc_beam_search_decoder_v2(inputs, sequence_length, beam_width=100,
 
   Returns:
     A tuple `(decoded, log_probabilities)` where
+
     decoded: A list of length top_paths, where `decoded[j]`
       is a `SparseTensor` containing the decoded outputs:
+
       `decoded[j].indices`: Indices matrix `[total_decoded_outputs[j], 2]`;
         The rows store: `[batch, time]`.
+
       `decoded[j].values`: Values vector, size `[total_decoded_outputs[j]]`.
         The vector stores the decoded classes for beam `j`.
+
       `decoded[j].dense_shape`: Shape vector, size `(2)`.
         The shape values are: `[batch_size, max_decoded_length[j]]`.
+
     log_probability: A `float` matrix `[batch_size, top_paths]` containing
         sequence log-probabilities.
   """

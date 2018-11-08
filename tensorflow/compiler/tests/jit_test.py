@@ -276,7 +276,7 @@ class XlaCompilationTest(test.TestCase):
   def testReshape(self):
     """Tests an operator with compile-time constant and non-constant inputs."""
 
-    with self.test_session(config=NoRewriteSessionConfig()) as sess:
+    with self.session(config=NoRewriteSessionConfig()) as sess:
       x = array_ops.placeholder(dtypes.float32)
       y = array_ops.placeholder(dtypes.int32)
       with jit_scope():
@@ -303,7 +303,7 @@ class XlaCompilationTest(test.TestCase):
   def testIgnoredArguments(self):
     """Tests that JIT computations can ignore formal parameters."""
 
-    with self.test_session(config=NoRewriteSessionConfig()) as sess:
+    with self.session(config=NoRewriteSessionConfig()) as sess:
       x = array_ops.placeholder(dtypes.int32)
       y = array_ops.placeholder(dtypes.int32)
       with jit_scope():
@@ -331,7 +331,7 @@ class XlaCompilationTest(test.TestCase):
   def testLoops(self):
     """Tests that compilation accepts computations containing loops."""
 
-    with self.test_session(config=NoRewriteSessionConfig()) as session:
+    with self.session(config=NoRewriteSessionConfig()) as session:
       x = array_ops.placeholder(dtypes.float32)
       with jit_scope():
         c = lambda i, _: math_ops.less(i, 5)
@@ -349,7 +349,7 @@ class XlaCompilationTest(test.TestCase):
   def testCond(self):
     """Tests that compilation handles switch operators."""
 
-    with self.test_session(config=NoRewriteSessionConfig()) as session:
+    with self.session(config=NoRewriteSessionConfig()) as session:
       x = array_ops.placeholder(dtypes.float32)
       y = array_ops.placeholder(dtypes.float32)
       c = array_ops.placeholder(dtypes.bool)
@@ -394,7 +394,7 @@ class XlaCompilationTest(test.TestCase):
       inp = array_ops.placeholder(dtypes.float32)
       out = Entry(inp)
 
-    with self.test_session(
+    with self.session(
         config=NoRewriteSessionConfig(), graph=g, use_gpu=True) as sess:
       run_metadata = config_pb2.RunMetadata()
       val = sess.run(out,
@@ -407,7 +407,7 @@ class XlaCompilationTest(test.TestCase):
   def testLoopDeadlock(self):
     """Regression test for bug that caused deadlocks in graphs with loops."""
 
-    with self.test_session(config=NoRewriteSessionConfig()) as session:
+    with self.session(config=NoRewriteSessionConfig()) as session:
       x = array_ops.placeholder(dtypes.float32)
       with jit_scope():
         y = x + 1.0
@@ -539,6 +539,20 @@ class LazyCompilationTest(test.TestCase):
       x = array_ops.placeholder(dtypes.float32)
       y = CompiledFunction(x)
 
+      # The very first run of the cluster is always compiled (non-lazily).
+      run_metadata_for_first_run = config_pb2.RunMetadata()
+      sess.run(
+          y,
+          feed_dict={x: [2., 10., 19., 77., 100.]},
+          run_metadata=run_metadata_for_first_run,
+          options=config_pb2.RunOptions(
+              trace_level=config_pb2.RunOptions.FULL_TRACE))
+      self.assertTrue(
+          InLabels(
+              RunMetadataLabels(run_metadata_for_first_run), "_XlaCompile"))
+      self.assertTrue(
+          InLabels(RunMetadataLabels(run_metadata_for_first_run), "_XlaRun"))
+
       run_metadata_before_warmup = config_pb2.RunMetadata()
       sess.run(
           y,
@@ -578,6 +592,67 @@ class LazyCompilationTest(test.TestCase):
               RunMetadataLabels(run_metadata_for_new_shape), "_XlaCompile"))
       self.assertFalse(
           InLabels(RunMetadataLabels(run_metadata_for_new_shape), "_XlaRun"))
+
+  def testIsMegamorphic(self):
+
+    @function.Defun(compiled=True)
+    def CompiledFunction(x):
+      return math_ops.log(x)
+
+    with session_lib.Session(config=NoRewriteSessionConfig()) as sess:
+      x = array_ops.placeholder(dtypes.float32)
+      y = CompiledFunction(x)
+
+      # Make the cluster go megamorphic by running it with lots of shape
+      # signatures where the cluster is executed with each signature only a few
+      # times.  Then check that we don't compile the cluster ever again.
+
+      for shape in range(10, 50):
+        for _ in range(0, 49):
+          sess.run(y, feed_dict={x: [0.] * shape})
+
+      for _ in range(0, 50):
+        run_metadata = config_pb2.RunMetadata()
+        sess.run(
+            y,
+            feed_dict={x: [0.] * 60},
+            run_metadata=run_metadata,
+            options=config_pb2.RunOptions(
+                trace_level=config_pb2.RunOptions.FULL_TRACE))
+        self.assertTrue(
+            InLabels(RunMetadataLabels(run_metadata), "_XlaCompile"))
+        self.assertFalse(InLabels(RunMetadataLabels(run_metadata), "_XlaRun"))
+
+  def testIsNotMegamorphic(self):
+
+    @function.Defun(compiled=True)
+    def CompiledFunction(x):
+      return math_ops.log(x)
+
+    with session_lib.Session(config=NoRewriteSessionConfig()) as sess:
+      x = array_ops.placeholder(dtypes.float32)
+      y = CompiledFunction(x)
+
+      # Run the cluster with lots of shape signatures, but in a way that it
+      # isn't megamorphic (i.e. each shape signature sees a lot of executions).
+      # Then check that the cluster has not been marked as megamorphic.
+
+      for shape in range(10, 50):
+        for _ in range(0, 1000):
+          sess.run(y, feed_dict={x: [0.] * shape})
+
+      for _ in range(0, 10):
+        sess.run(y, feed_dict={x: [0.] * 60})
+
+      run_metadata = config_pb2.RunMetadata()
+      sess.run(
+          y,
+          feed_dict={x: [0.] * 60},
+          run_metadata=run_metadata,
+          options=config_pb2.RunOptions(
+              trace_level=config_pb2.RunOptions.FULL_TRACE))
+      self.assertTrue(InLabels(RunMetadataLabels(run_metadata), "_XlaCompile"))
+      self.assertTrue(InLabels(RunMetadataLabels(run_metadata), "_XlaRun"))
 
 
 if __name__ == "__main__":

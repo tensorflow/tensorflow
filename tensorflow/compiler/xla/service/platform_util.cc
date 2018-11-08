@@ -59,20 +59,15 @@ string CanonicalPlatformName(const string& name) {
 
 /* static */ StatusOr<std::vector<se::Platform*>>
 PlatformUtil::GetSupportedPlatforms() {
-  se::MultiPlatformManager::PlatformMap platform_map;
-  se::port::Status platforms_status = se::MultiPlatformManager::WithPlatforms(
-      [&platform_map](se::MultiPlatformManager::PlatformMap* map) {
-        platform_map = *map;
-        return se::port::Status::OK();
-      });
-  if (platform_map.empty()) {
+  std::vector<se::Platform*> all_platforms =
+      se::MultiPlatformManager::AllPlatforms();
+  if (all_platforms.empty()) {
     LOG(WARNING) << "no executor platforms available: platform map is empty";
   }
 
   // Gather all platforms which have an XLA compiler.
   std::vector<se::Platform*> platforms;
-  for (auto& platform_pair : platform_map) {
-    auto* platform = platform_pair.second;
+  for (se::Platform* platform : all_platforms) {
     auto compiler_status = Compiler::GetForPlatform(platform);
     if (compiler_status.ok()) {
       platforms.push_back(platform);

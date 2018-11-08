@@ -27,8 +27,13 @@ from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import while_v2
 from tensorflow.python.ops.control_flow_ops import while_loop as while_loop_v1
 from tensorflow.python.ops.while_v2 import while_loop as while_loop_v2
@@ -93,7 +98,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
   def testMultipleWhileLoops(self):
     x = constant_op.constant(2.)
     ret1 = while_loop_v2(lambda v: v < 4., lambda v: v * v, [x])  # x**2
-    ret2 = while_loop_v2(lambda v: v < 16., lambda v: v * v, ret1)  # x**4
+    ret2 = while_loop_v2(lambda v: v < 16., lambda v: v * v, [ret1])  # x**4
     grad = gradients_impl.gradients(ret2, [x])  # 4x**3
     grad_grad = gradients_impl.gradients(grad, [x])  # 12x**2
     with self.cached_session() as sess:
@@ -221,7 +226,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       ("PartiallyDefinedShape", [None, 2]),
       ("FullyDefinedShape", [1, 2]),
   )
-  def testTensorListOutputElementShape(self, shape):
+  def testAccumulatorElementShape(self, shape):
 
     def MatchShape(actual_tensor_shape):
       # Compare the shapes, treating None dimensions as equal. We do not
@@ -246,7 +251,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
     # Forward pass.
     ret = while_loop_v2(lambda v, u: v < 8., lambda v, u: (v * v, u), [x, y])
-    while_op = ret[0].op
+    while_op = ret[0].op.inputs[0].op
     # Get the TensorList output of While op containing the accumulated values
     # of y.
     # while_op.inputs: [counter_arg, x_arg, y_arg, *accumulators]
@@ -262,10 +267,115 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     # values of grad_y.
     # grad_while_op.inputs:
     # [counter_arg, total_iters_arg, grad_x_arg, grad_y_arg, *other_args]
-    grad_output = GetAccumulatorForInputAtIndex(grad_while_op, 4)
+    grad_output = GetAccumulatorForInputAtIndex(grad_while_op, 3)
     _, val = list_ops.tensor_list_pop_back(grad_output,
                                            element_dtype=dtypes.float32)
     MatchShape(val.shape)
+
+  def _createWhile(self, name):
+    """Helper function testDefaultName."""
+    output = while_v2.while_loop(lambda i: i < 3, lambda i: i + 1,
+                                 [constant_op.constant(0)])
+    while_op = output.op.inputs[0].op
+    self.assertEqual(while_op.type, "While")
+    return while_op
+
+  def testDefaultName(self):
+    with ops.Graph().as_default():
+      while_op = self._createWhile(None)
+      self.assertEqual(while_op.name, "while")
+      self.assertRegexpMatches(
+          while_op.get_attr("cond").name, r"while_cond_\d*")
+      self.assertRegexpMatches(
+          while_op.get_attr("body").name, r"while_body_\d*")
+
+    with ops.Graph().as_default():
+      with ops.name_scope("foo"):
+        while1_op = self._createWhile("")
+        self.assertEqual(while1_op.name, "foo/while")
+        self.assertRegexpMatches(
+            while1_op.get_attr("cond").name, r"foo_while_cond_\d*")
+        self.assertRegexpMatches(
+            while1_op.get_attr("body").name, r"foo_while_body_\d*")
+
+        while2_op = self._createWhile(None)
+        self.assertEqual(while2_op.name, "foo/while_1")
+        self.assertRegexpMatches(
+            while2_op.get_attr("cond").name, r"foo_while_1_cond_\d*")
+        self.assertRegexpMatches(
+            while2_op.get_attr("body").name, r"foo_while_1_body_\d*")
+
+  def testWhileAndTensorArray(self):
+    old_enable_while_v2 = control_flow_ops.ENABLE_WHILE_V2
+    control_flow_ops.ENABLE_WHILE_V2 = True
+    with self.cached_session() as sess:
+      param = constant_op.constant(2.0)
+      y0 = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="elems")
+      # map_fn uses TensorArray internally.
+      r = functional_ops.map_fn(lambda x: math_ops.multiply(x, param), y0)
+      self.assertAllClose([2.0, 4.0, 6.0, 8.0, 10.0, 12.0], sess.run(r))
+      r = gradients_impl.gradients(r, param)[0]
+      self.assertAllClose(21.0, sess.run(r))
+    control_flow_ops.ENABLE_WHILE_V2 = old_enable_while_v2
+
+  def testNestedWhile(self):
+    # Compute sum of geometric progression: n^0 + n^1 + ... + n^m
+    # We compute the pow using a while loop.
+    n = constant_op.constant(3.)
+    m = constant_op.constant(5.)
+    sum_of_powers = constant_op.constant(0.)
+
+    def Body(i, previous_sum):
+      prod = constant_op.constant(1.)
+      return i - 1., previous_sum + while_loop_v2(
+          lambda c, _: c > 0, lambda c, v: (c - 1., v * n), [i, prod])[1]
+
+    result = while_loop_v2(lambda i, _: i >= 0, Body, [m, sum_of_powers])[1]
+    grad = gradients_impl.gradients(result, [n])
+    with self.cached_session() as sess:
+      self.assertEqual(sess.run(result), 364.)
+      self.assertSequenceEqual(sess.run(grad), [547.])
+
+  def testIdentityNodeInBody(self):
+
+    def Body(v):
+      v = array_ops.identity(v)
+      v = array_ops.identity(v)
+      return v * v
+
+    x = constant_op.constant(2.)
+    ret = while_loop_v2(lambda v: v < 8., Body, [x])
+    grad = gradients_impl.gradients(ret, [x])
+    with self.cached_session() as sess:
+      self.assertEqual(sess.run(ret), 16.)
+      self.assertSequenceEqual(sess.run(grad), [32.])
+
+  def testNestedWhileAndTensorArray(self):
+    n = constant_op.constant(3.0)
+
+    def Body(row, ta, n):
+
+      def InnerBody(row, col, ta, n):
+        # Note: row and col are 1-based.
+        ta = ta.write(
+            math_ops.cast(n * (row - 1.) + col - 1., dtypes.int32), row * col)
+        return row, col + 1., ta, n
+
+      # TODO(b/118457764): Remove n from loop_vars from both loops once fixed.
+      ta = while_loop_v2(lambda _, col, _1, n: col <= n, InnerBody,
+                         [row, constant_op.constant(1.), ta, n])[2]
+      return row + 1., ta, n
+
+    ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=9)
+    ta = while_loop_v2(lambda row, _, _1: row <= n, Body,
+                       [constant_op.constant(1.), ta, n])[1]
+
+    output = array_ops.reshape(ta.stack(), [3, 3])
+    self.assertAllEqual(
+        self.evaluate(output), [[1., 2., 3.], [2., 4., 6.], [3., 6., 9.]])
+    # TODO(b/117675481): This does not work with current TA. Enable with new TA.
+    # grad = gradients_impl.gradients(output, [n])
+    # self.assertEqual(self.evaluate(grad), 3.5)
 
 
 def ScalarShape():

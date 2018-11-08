@@ -21,9 +21,12 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
+from tensorflow.python.util.tf_export import tf_export
+
 
 # A constant that can be used to enable auto-tuning.
 AUTOTUNE = -1
+tf_export("data.experimental.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
 
 
 # TODO(jsimsa): Support RE matching for both individual transformation (e.g. to
@@ -58,6 +61,21 @@ def model():
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
     return dataset_ops._ModelDataset(dataset)  # pylint: disable=protected-access
+
+  return _apply_fn
+
+
+def non_serializable():
+  """A non-serializable identity transformation.
+
+  Returns:
+    A `Dataset` transformation function, which can be passed to
+    `tf.data.Dataset.apply`.
+  """
+
+  def _apply_fn(dataset):
+    """Function from `Dataset` to `Dataset` that applies the transformation."""
+    return _NonSerializableDataset(dataset)
 
   return _apply_fn
 
@@ -112,3 +130,28 @@ class _AssertNextDataset(dataset_ops.UnaryDataset):
   def output_types(self):
     return self._input_dataset.output_types
 
+
+class _NonSerializableDataset(dataset_ops.UnaryDataset):
+  """A `Dataset` that performs non-serializable identity transformation."""
+
+  def __init__(self, input_dataset):
+    """See `non_serializable()` for details."""
+    super(_NonSerializableDataset, self).__init__(input_dataset)
+    self._input_dataset = input_dataset
+
+  def _as_variant_tensor(self):
+    return gen_experimental_dataset_ops.experimental_non_serializable_dataset(
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+        **dataset_ops.flat_structure(self))
+
+  @property
+  def output_classes(self):
+    return self._input_dataset.output_classes
+
+  @property
+  def output_shapes(self):
+    return self._input_dataset.output_shapes
+
+  @property
+  def output_types(self):
+    return self._input_dataset.output_types

@@ -1035,8 +1035,11 @@ class BatchJoinTest(test_lib.TestCase):
         self.assertAllEqual([99] * len(which_b),
                             [results[0][i] for i in which_b])
 
-      # Some minimum level of mixing of the results of both threads.
-      self.assertGreater(saw_both, 1)
+      # We'd like to see some minimum level of mixing of the results of both
+      # threads, but we can't rely on fair thread scheduling, so we just log.
+      # self.assertGreater(saw_both, 1)
+      tf_logging.info("testTwoThreads%s saw both count: %s",
+                      "Dict" if use_dict else "", saw_both)
 
       # Verify the order of results from "a" were preserved.
       self.assertAllEqual(all_a, np.arange(num_a))
@@ -1048,10 +1051,10 @@ class BatchJoinTest(test_lib.TestCase):
       for thread in threads:
         thread.join()
 
-  def DISABLED_testTwoThreads(self):
+  def testTwoThreads(self):
     self._testTwoThreadsHelper(use_dict=False)
 
-  def DISABLED_testTwoThreadsDict(self):
+  def testTwoThreadsDict(self):
     self._testTwoThreadsHelper(use_dict=True)
 
   def testMismatchedDictKeys(self):
@@ -1068,7 +1071,7 @@ class BatchJoinTest(test_lib.TestCase):
           }],
           batch_size=8)
 
-  def DISABLED_testTwoThreadsDynamicPad(self):
+  def testTwoThreadsDynamicPad(self):
     with self.cached_session() as sess:
       # Two threads, the first generates (0..69, ["a"] * 1..70).
       num_a = 70
@@ -1128,8 +1131,10 @@ class BatchJoinTest(test_lib.TestCase):
         self.assertAllEqual([99] * len(which_b),
                             [results[0][i] for i in which_b])
 
-      # Some minimum level of mixing of the results of both threads.
-      self.assertGreater(saw_both, 1)
+      # We'd like to see some minimum level of mixing of the results of both
+      # threads, but we can't rely on fair thread scheduling, so we just log.
+      # self.assertGreater(saw_both, 1)
+      tf_logging.info("testTwoThreadsDynamicPad saw both count: %s", saw_both)
 
       # Verify the order of results from "a" were preserved.
       self.assertAllEqual(  # tiled "a" with counter + 1
@@ -1143,7 +1148,7 @@ class BatchJoinTest(test_lib.TestCase):
       for thread in threads:
         thread.join()
 
-  def DISABLED_testTwoThreadsSmallerBatch(self):
+  def testTwoThreadsSmallerBatch(self):
     with self.cached_session() as sess:
       extra_elements = 2
       # Two threads, the first generates (0..69, "a").
@@ -1229,8 +1234,10 @@ class BatchJoinTest(test_lib.TestCase):
       all_a.extend([results[0][i] for i in which_a])
       seen_b += len(which_b)
 
-      # Some minimum level of mixing of the results of both threads.
-      self.assertGreater(saw_both, 1)
+      # We'd like to see some minimum level of mixing of the results of both
+      # threads, but we can't rely on fair thread scheduling, so we just log.
+      # self.assertGreater(saw_both, 1)
+      tf_logging.info("testTwoThreadsSmallerBatch saw both count: %s", saw_both)
 
       # Verify the order of results from "a" were preserved.
       self.assertAllEqual(all_a, np.arange(num_a))
@@ -1242,7 +1249,7 @@ class BatchJoinTest(test_lib.TestCase):
       for thread in threads:
         thread.join()
 
-  def DISABLED_testTwoThreadsDynamicPadSmallerBatch(self):
+  def testTwoThreadsDynamicPadSmallerBatch(self):
     with self.cached_session() as sess:
       extra_elements = 2
       # Two threads, the first generates (0..69, ["a"] * 1..70).
@@ -1322,8 +1329,11 @@ class BatchJoinTest(test_lib.TestCase):
       all_a.extend([results[0][i] for i in which_a])
       seen_b += len(which_b)
 
-      # Some minimum level of mixing of the results of both threads.
-      self.assertGreater(saw_both, 1)
+      # We'd like to see some minimum level of mixing of the results of both
+      # threads, but we can't rely on fair thread scheduling, so we just log.
+      # self.assertGreater(saw_both, 1)
+      tf_logging.info("testTwoThreadsDynamicPadSmallerBatch saw both count: %s",
+                      saw_both)
 
       # Verify the order of results from "a" were preserved.
       self.assertAllEqual(  # tiled "a" with counter + 1

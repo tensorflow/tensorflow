@@ -68,7 +68,7 @@ class DenseLayerTest(test.TestCase):
     config.graph_options.optimizer_options.global_jit_level = (
         config_pb2.OptimizerOptions.ON_1)
 
-    with self.test_session(config=config) as sess:
+    with self.session(config=config) as sess:
       x = array_ops.placeholder(shape=[None, None, 3], dtype=np.float32)
       y = layers.dense(x, 3)
 

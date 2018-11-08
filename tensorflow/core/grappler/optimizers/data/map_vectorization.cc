@@ -147,7 +147,7 @@ NodeDef MakeNewBatchNode(const NodeDef& old_batch_node,
                          MutableGraphView* graph) {
   NodeDef batch_node;
   batch_node.set_op(old_batch_node.op());
-  graph_utils::SetUniqueGraphNodeName(batch_node.op(), graph->GetGraph(),
+  graph_utils::SetUniqueGraphNodeName(batch_node.op(), graph->graph(),
                                       &batch_node);
 
   // Set the `input_dataset` input argument
@@ -187,8 +187,7 @@ NodeDef MakeNewMapNode(const NodeDef& old_map_node,
                        MutableGraphView* graph) {
   NodeDef map_node;
   map_node.set_op(old_map_node.op());
-  graph_utils::SetUniqueGraphNodeName(map_node.op(), graph->GetGraph(),
-                                      &map_node);
+  graph_utils::SetUniqueGraphNodeName(map_node.op(), graph->graph(), &map_node);
 
   // Set the `input_dataset` input argument
   map_node.add_input(new_batch_node.name());
@@ -265,7 +264,7 @@ Status MapVectorization::Optimize(Cluster* cluster, const GrapplerItem& item,
 
     auto* new_map_node = graph.AddNode(MakeNewMapNode(
         *map_node, batch_node, *new_batch_node, *vectorized_func, &graph));
-    graph.ReplaceInput(batch_node, *new_map_node);
+    graph.UpdateFanouts(batch_node.name(), new_map_node->name());
 
     // Mark the `Map` and `Batch` nodes for removal.
     nodes_to_delete.insert(map_node->name());

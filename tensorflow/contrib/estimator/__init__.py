@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,33 +12,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Experimental utilities re:tf.estimator.*."""
+"""estimator python module.
+
+Importing from tensorflow.python.estimator
+is unsupported and will soon break!
+"""
+
+# pylint: disable=unused-import,g-bad-import-order,g-import-not-at-top,wildcard-import
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,line-too-long,wildcard-import
-from tensorflow.contrib.estimator.python.estimator.baseline import *
-from tensorflow.contrib.estimator.python.estimator.boosted_trees import *
-from tensorflow.contrib.estimator.python.estimator.dnn import *
-from tensorflow.contrib.estimator.python.estimator.dnn_with_layer_annotations import *
-from tensorflow.contrib.estimator.python.estimator.dnn_linear_combined import *
-from tensorflow.contrib.estimator.python.estimator.early_stopping import *
-from tensorflow.contrib.estimator.python.estimator.export import *
-from tensorflow.contrib.estimator.python.estimator.extenders import *
-from tensorflow.contrib.estimator.python.estimator.head import *
-from tensorflow.contrib.estimator.python.estimator.hooks import *
-from tensorflow.contrib.estimator.python.estimator.linear import *
-from tensorflow.contrib.estimator.python.estimator.logit_fns import *
-from tensorflow.contrib.estimator.python.estimator.multi_head import *
-from tensorflow.contrib.estimator.python.estimator.replicate_model_fn import *
-from tensorflow.contrib.estimator.python.estimator.rnn import *
-from tensorflow.contrib.estimator.python.estimator.saved_model_estimator import *
-from tensorflow.python.estimator.export.export import *
+# Importing from tensorflow.python.estimator
+# is unsupported and will soon break!
 
+from tensorflow_estimator.contrib import estimator
+
+# Fixes remove_undocumented not working as intended.
+#
+# Problem is that when the below import happens (for first time,
+# Python only imports things once), Python sets attribute named
+# 'python' to this package. If this first import happens
+# after the call to remove_undocumented, then the 'python'
+# attribute won't be removed.
+import tensorflow.contrib.estimator.python
+
+# Include attrs that start with single underscore.
+_HAS_DYNAMIC_ATTRIBUTES = True
+estimator.__all__ = [s for s in dir(estimator) if not s.startswith('__')]
+
+from tensorflow_estimator.contrib.estimator import *
 from tensorflow.python.util.all_util import remove_undocumented
-# pylint: enable=unused-import,line-too-long,wildcard-import
 
 _allowed_symbols = [
     'add_metrics',
@@ -53,9 +58,7 @@ _allowed_symbols = [
     'multi_label_head',
     'poisson_regression_head',
     'regression_head',
-    'BaselineEstimator',
     'DNNEstimator',
-    'DNNLinearCombinedEstimator',
     'LinearEstimator',
     'boosted_trees_classifier_train_in_memory',
     'boosted_trees_regressor_train_in_memory',

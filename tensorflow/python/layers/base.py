@@ -27,13 +27,129 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
 
 InputSpec = base_layer.InputSpec  # pylint: disable=invalid-name
 
 
-@tf_export('layers.Layer')
+_KERAS_STYLE_SCOPE = False
+
+
+@tf_export(v1=['layers.experimental.keras_style_scope'])
+@tf_contextlib.contextmanager
+def keras_style_scope():
+  """Use Keras-style variable management.
+
+  All tf.layers and tf RNN cells created in this scope use Keras-style
+  variable management.  Creating such layers with a scope= argument is
+  disallowed, and reuse=True is disallowed.
+
+  The purpose of this scope is to allow users of existing layers to
+  slowly transition to a Keras layers API without breaking existing
+  functionality.
+
+  One example of this is when using TensorFlow's RNN classes with Keras
+  Models or Networks.  Because Keras models do not properly set variable
+  scopes, users of RNNs may either accidentally share scopes between two
+  different models, or get errors about variables that already exist.
+
+  Example:
+
+  ```python
+  class RNNModel(tf.keras.Model):
+
+    def __init__(self, name):
+      super(RNNModel, self.).__init__(name=name)
+      self.rnn = tf.nn.rnn_cell.MultiRNNCell(
+        [tf.nn.rnn_cell.LSTMCell(64) for _ in range(2)])
+
+    def call(self, input, state):
+      return self.rnn(input, state)
+
+  model_1 = RNNModel("model_1")
+  model_2 = RNNModel("model_2")
+
+  # OK
+  output_1, next_state_1 = model_1(input, state)
+  # Raises an error about trying to create an already existing variable.
+  output_2, next_state_2 = model_2(input, state)
+  ```
+
+  The solution is to wrap the model construction and execution in a keras-style
+  scope:
+
+  ```python
+  with keras_style_scope():
+    model_1 = RNNModel("model_1")
+    model_2 = RNNModel("model_2")
+
+    # model_1 and model_2 are guaranteed to create their own variables.
+    output_1, next_state_1 = model_1(input, state)
+    output_2, next_state_2 = model_2(input, state)
+
+    assert len(model_1.weights) > 0
+    assert len(model_2.weights) > 0
+    assert(model_1.weights != model_2.weights)
+  ```
+
+  Yields:
+    A keras layer style scope.
+  """
+  global _KERAS_STYLE_SCOPE
+  stack = _KERAS_STYLE_SCOPE
+  _KERAS_STYLE_SCOPE = True
+  try:
+    yield
+  finally:
+    _KERAS_STYLE_SCOPE = stack
+
+
+@tf_export(v1=['layers.experimental.set_keras_style'])
+def set_keras_style():
+  """Use Keras-style variable management.
+
+  All tf.layers and tf RNN cells created after keras style ha been enabled
+  use Keras-style variable management.  Creating such layers with a
+  scope= argument is disallowed, and reuse=True is disallowed.
+
+  The purpose of this function is to allow users of existing layers to
+  slowly transition to Keras layers API without breaking existing
+  functionality.
+
+  For more details, see the documentation for `keras_style_scope`.
+
+  Note, once keras style has been set, it is set globally for the entire
+  program and cannot be unset.
+
+  Example:
+
+  ```python
+  set_keras_style()
+
+  model_1 = RNNModel(name="model_1")
+  model_2 = RNNModel(name="model_2")
+
+  # model_1 and model_2 are guaranteed to create their own variables.
+  output_1, next_state_1 = model_1(input, state)
+  output_2, next_state_2 = model_2(input, state)
+
+  assert len(model_1.weights) > 0
+  assert len(model_2.weights) > 0
+  assert(model_1.weights != model_2.weights)
+  ```
+  """
+  global _KERAS_STYLE_SCOPE
+  _KERAS_STYLE_SCOPE = True
+
+
+def _is_in_keras_style_scope():
+  global _KERAS_STYLE_SCOPE
+  return _KERAS_STYLE_SCOPE
+
+
+@tf_export(v1=['layers.Layer'])
 class Layer(base_layer.Layer):
   """Base layer class.
 
@@ -83,6 +199,19 @@ class Layer(base_layer.Layer):
     super(Layer, self).__init__(trainable=trainable, name=name, dtype=dtype,
                                 **kwargs)
 
+    if _is_in_keras_style_scope():
+      if scope is not None:
+        raise ValueError(
+            'scope argument not allowed when keras style layers are enabled, '
+            'but saw: {}'.format(scope))
+      if self._reuse is not None:
+        raise ValueError(
+            'reuse argument not allowed when keras style layers are enabled, '
+            'but saw: {}'.format(self._reuse))
+      self._keras_style = True
+    else:
+      self._keras_style = False
+
     self._graph = None
     self._call_has_scope_arg = 'scope' in self._call_fn_args
     if scope:
@@ -102,6 +231,7 @@ class Layer(base_layer.Layer):
     # Determine layer name (non-unique).
     if isinstance(name, vs.VariableScope):
       base_name = name.name
+      self._name, _ = self._make_unique_name()
     else:
       base_name = name
       self._name = name
@@ -148,6 +278,8 @@ class Layer(base_layer.Layer):
 
   def _name_scope(self):
     """Determines op naming for the Layer."""
+    if self._keras_style:
+      return super(Layer, self)._name_scope()
     return self._current_scope.original_name_scope
 
   def _set_scope(self, scope=None):
@@ -220,6 +352,20 @@ class Layer(base_layer.Layer):
       ValueError: When trainable has been set to True with synchronization
         set as `ON_READ`.
     """
+    if self._keras_style:
+      return super(Layer, self).add_weight(
+          name=name,
+          shape=shape,
+          dtype=dtype,
+          initializer=initializer,
+          regularizer=regularizer,
+          trainable=trainable,
+          constraint=constraint,
+          use_resource=use_resource,
+          synchronization=vs.VariableSynchronization.AUTO,
+          aggregation=vs.VariableAggregation.NONE,
+          partitioner=partitioner)
+
     if synchronization == vs.VariableSynchronization.ON_READ:
       if trainable:
         raise ValueError(
@@ -332,7 +478,16 @@ class Layer(base_layer.Layer):
     Raises:
       ValueError: if the layer's `call` method returns None (an invalid value).
     """
-    self._set_scope(kwargs.pop('scope', None))
+    scope = kwargs.pop('scope', None)
+
+    if self._keras_style:
+      if scope is not None:
+        raise ValueError(
+            'scope argument not allowed when keras style layers are enabled, '
+            'but saw: {}'.format(scope))
+      return super(Layer, self).__call__(inputs, *args, **kwargs)
+
+    self._set_scope(scope)
 
     if not context.executing_eagerly():
       try:

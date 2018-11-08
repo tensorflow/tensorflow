@@ -145,6 +145,7 @@ class BatchNormalization(Layer):
                **kwargs):
     super(BatchNormalization, self).__init__(
         name=name, trainable=trainable, **kwargs)
+    self._can_use_graph_functions = True
     if isinstance(axis, list):
       self.axis = axis[:]
     else:
@@ -251,7 +252,7 @@ class BatchNormalization(Layer):
     else:
       param_dtype = self.dtype or dtypes.float32
 
-    axis_to_dim = {x: input_shape[x].value for x in self.axis}
+    axis_to_dim = {x: input_shape.dims[x].value for x in self.axis}
     for x in axis_to_dim:
       if axis_to_dim[x] is None:
         raise ValueError('Input has undefined `axis` dimension. Input shape: ',
@@ -530,7 +531,7 @@ class BatchNormalization(Layer):
     # Broadcasting only necessary for single-axis batch norm where the axis is
     # not the last dimension
     broadcast_shape = [1] * ndims
-    broadcast_shape[self.axis[0]] = input_shape[self.axis[0]].value
+    broadcast_shape[self.axis[0]] = input_shape.dims[self.axis[0]].value
     def _broadcast(v):
       if (v is not None and
           len(v.get_shape()) != ndims and

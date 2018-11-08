@@ -216,7 +216,7 @@ class XlaBuilder {
   // compile-time constant (see `IsConstant`), returns an error.
   //
   // This will copy the needed ops/computations to the subgraph.
-  StatusOr<XlaComputation> BuildConstantSubGraph(const XlaOp& root_op) const;
+  StatusOr<XlaComputation> BuildConstantSubGraph(const XlaOp& root_op);
 
   // Returns the first error that was encountered while building the
   // computation. When an error is encountered, by default we return a vacuous
@@ -339,23 +339,6 @@ class XlaBuilder {
   XlaOp Broadcast(const XlaOp& operand,
                   absl::Span<const int64> broadcast_sizes);
 
-  // Performs in-dimension-style broadcast.
-  //
-  // Operand specifies the input to be broadcast. "shape" is expected output
-  // shape. "broadcast_dimensions" are the dimensions to be broadcasting into.
-  // Dimension numbers in broadcast_dimensions map to individual dimensions
-  // of the operand, and specify what dimension of the output shape they
-  // should be broadcast.
-  // e.g.
-  // Say operand = [1, 2], i.e., a 1D tensor with 2 elements.
-  // and dimension of shape is [2,2].
-  // Specifying {1} as brodcast_dimension will generate output
-  // [1 , 2]
-  // [1 , 2]
-  // On the other hand, specifying {0} as broadcast_dimension
-  // will generate output
-  // [1 , 1]
-  // [2 , 2]
   XlaOp BroadcastInDim(const XlaOp& operand, const Shape& shape,
                        const absl::Span<const int64> broadcast_dimensions);
 
@@ -1016,7 +999,13 @@ class XlaBuilder {
                               absl::Span<const int64> lhs_dilation,
                               absl::Span<const int64> rhs_dilation) const;
 
+  int64 GetNextId() { return ++next_id_; }
+
   string name_;  // Name to use for the built computation.
+
+  // The next sequential ID for every instruction/computation contained within
+  // this computation.
+  int64 next_id_ = 0;
 
   // The first error encountered while building the computation.
   // This is OK until the first error is encountered.
@@ -1480,23 +1469,21 @@ XlaOp ConstantR1(XlaBuilder* builder, int64 length, NativeT value);
 //   output[i0, ..., iN, j0, ..., jM] = operand[j0, ..., jM]
 XlaOp Broadcast(const XlaOp& operand, absl::Span<const int64> broadcast_sizes);
 
-// Performs in-dimension-style broadcast.
+// This op broadcasts the `operand` to an output with the given `shape`.
+// `broadcast_dimensions` are the dimensions to be broadcasting into, i.e., the
+// i'th dimension of the operand is mapped to the broadcast_dimensions[i]'th
+// dimension of the output. This also requires that the i'th input dimension is
+// either 1 or is the same as the output dimension it's broadcasting into.
 //
-// Operand specifies the input to be broadcast. "shape" is expected output
-// shape. "broadcast_dimensions" are the dimensions to be broadcasting into.
-// Dimension numbers in broadcast_dimensions map to individual dimensions
-// of the operand, and specify what dimension of the output shape they
-// should be broadcast.
-// e.g.
-// Say operand = [1, 2], i.e., a 1D tensor with 2 elements.
-// and dimension of shape is [2,2].
-// Specifying {1} as brodcast_dimension will generate output
-// [1 , 2]
-// [1 , 2]
-// On the other hand, specifying {0} as broadcast_dimension
-// will generate output
-// [1 , 1]
-// [2 , 2]
+// For example, say operand = {1, 2}, i.e., a 1D tensor in shape s32[2]; the
+// output shape is s32[2,2]:
+// - Specifying {1} as brodcast_dimension will generate output
+//   {{1, 2},
+//    {1, 2}}
+// - On the other hand, specifying {0} as broadcast_dimension
+//   will generate output
+//   {{1 , 1},
+//    {2 , 2}}
 XlaOp BroadcastInDim(const XlaOp& operand, const Shape& shape,
                      const absl::Span<const int64> broadcast_dimensions);
 

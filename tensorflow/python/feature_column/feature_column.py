@@ -1908,6 +1908,7 @@ class _EmbeddingColumnLayer(base.Layer):
     return self._embedding_weight_var
 
 
+@six.add_metaclass(abc.ABCMeta)
 class _FeatureColumn(object):
   """Represents a feature column abstraction.
 
@@ -1923,7 +1924,6 @@ class _FeatureColumn(object):
 
   This class is an abstract class. User should not create instances of this.
   """
-  __metaclass__ = abc.ABCMeta
 
   @abc.abstractproperty
   def name(self):
@@ -1999,8 +1999,6 @@ class _DenseColumn(_FeatureColumn):
   Some examples of this type are: numeric_column, embedding_column,
   indicator_column.
   """
-
-  __metaclass__ = abc.ABCMeta
 
   @abc.abstractproperty
   def _variable_shape(self):
@@ -2094,7 +2092,6 @@ class _CategoricalColumn(_FeatureColumn):
 
   A categorical feature typically handled with a `tf.SparseTensor` of IDs.
   """
-  __metaclass__ = abc.ABCMeta
 
   IdWeightPair = collections.namedtuple(  # pylint: disable=invalid-name
       'IdWeightPair', ['id_tensor', 'weight_tensor'])
@@ -2198,8 +2195,6 @@ def _create_categorical_column_weighted_sum(column,
 
 class _SequenceDenseColumn(_FeatureColumn):
   """Represents dense sequence data."""
-
-  __metaclass__ = abc.ABCMeta
 
   TensorSequenceLengthPair = collections.namedtuple(  # pylint: disable=invalid-name
       'TensorSequenceLengthPair', ['dense_tensor', 'sequence_length'])
@@ -3401,16 +3396,16 @@ def _verify_static_batch_size_equality(tensors, columns):
   # bath_size is a tf.Dimension object.
   expected_batch_size = None
   for i in range(0, len(tensors)):
-    if tensors[i].shape[0].value is not None:
+    if tensors[i].shape.dims[0].value is not None:
       if expected_batch_size is None:
         bath_size_column_index = i
-        expected_batch_size = tensors[i].shape[0]
-      elif not expected_batch_size.is_compatible_with(tensors[i].shape[0]):
+        expected_batch_size = tensors[i].shape.dims[0]
+      elif not expected_batch_size.is_compatible_with(tensors[i].shape.dims[0]):
         raise ValueError(
             'Batch size (first dimension) of each feature must be same. '
             'Batch size of columns ({}, {}): ({}, {})'.format(
                 columns[bath_size_column_index].name, columns[i].name,
-                expected_batch_size, tensors[i].shape[0]))
+                expected_batch_size, tensors[i].shape.dims[0]))
 
 
 def _sequence_length_from_sparse_tensor(sp_tensor, num_elements=1):

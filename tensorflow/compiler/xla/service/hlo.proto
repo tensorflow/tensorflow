@@ -261,8 +261,8 @@ message HloModuleProto {
   // callees appear before their callers.
   repeated HloComputationProto computations = 3;
 
-  // The program shape (with layout) of the entry computation.
-  xla.ProgramShape program_shape = 4;
+  // The host program shape (with layout) of the entry computation.
+  xla.ProgramShape host_program_shape = 4;
 
   // The id of this module.
   int64 id = 5;

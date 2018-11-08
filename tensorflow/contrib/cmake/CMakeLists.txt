@@ -99,10 +99,12 @@ if (NOT WIN32)
 
   # Options for linking other libraries
   option(systemlib_ZLIB "Use the system installed library as shared objects instead of downloading ZLIB and statically linking to it: ZLIB" OFF)
+  option(systemlib_ABSEIL_CPP "Use the system installed library as shared objects instead of downloading ABSEIL_CPP and statically linking to it: ABSEIL_CPP" OFF)
 
   option(systemlib_ALL "Turn on every possible systemlib_* options" OFF)
   if (systemlib_ALL)
     set (systemlib_ZLIB ON)
+    set (systemlib_ABSEIL_CPP ON)
   endif (systemlib_ALL)
 endif()
 
@@ -124,7 +126,7 @@ function(SHOW_VARIABLES)
 endfunction()
 
 # External dependencies
-set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external)
+set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/external ${PROJECT_SOURCE_DIR}/modules)
 
 # Location where external projects will be downloaded
 set (DOWNLOAD_LOCATION "${CMAKE_CURRENT_BINARY_DIR}/downloads"
@@ -245,6 +247,7 @@ include(re2)
 include(cub)
 include(sqlite)
 include(double_conversion)
+include(abseil_cpp)
 if (tensorflow_BUILD_CC_TESTS)
   include(googletest)
 endif()
@@ -253,6 +256,7 @@ add_definitions(${ADD_CFLAGS})
 link_directories(${ADD_LINK_DIRECTORY})
 
 set(tensorflow_EXTERNAL_LIBRARIES
+    ${tensorflow_EXTERNAL_LIBRARIES}
     ${gif_STATIC_LIBRARIES}
     ${png_STATIC_LIBRARIES}
     ${jpeg_STATIC_LIBRARIES}

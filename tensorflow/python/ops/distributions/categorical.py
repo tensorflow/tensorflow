@@ -59,7 +59,7 @@ def _broadcast_cat_event_and_params(event, params, base_dtype):
   return event, params
 
 
-@tf_export("distributions.Categorical")
+@tf_export(v1=["distributions.Categorical"])
 class Categorical(distribution.Distribution):
   """Categorical distribution.
 
@@ -214,9 +214,9 @@ class Categorical(distribution.Distribution):
           self._batch_rank = array_ops.rank(self._logits) - 1
 
       logits_shape = array_ops.shape(self._logits, name="logits_shape")
-      if logits_shape_static[-1].value is not None:
+      if tensor_shape.dimension_value(logits_shape_static[-1]) is not None:
         self._event_size = ops.convert_to_tensor(
-            logits_shape_static[-1].value,
+            logits_shape_static.dims[-1].value,
             dtype=dtypes.int32,
             name="event_size")
       else:

@@ -30,7 +30,9 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 
 
-class ShardedMutableDenseHashTable(lookup.LookupInterface):
+# TODO(rohanj): This should subclass Checkpointable and implement
+# _gather_saveables_for_checkpoint.
+class ShardedMutableDenseHashTable(object):
   """A sharded version of MutableDenseHashTable.
 
   It is designed to be interface compatible with LookupInterface and
@@ -52,9 +54,10 @@ class ShardedMutableDenseHashTable(lookup.LookupInterface):
                num_shards=1,
                checkpoint=True,
                name='ShardedMutableHashTable'):
+    self._key_dtype = key_dtype
+    self._value_dtype = value_dtype
     with ops.name_scope(name, 'sharded_mutable_hash_table') as scope:
-      super(ShardedMutableDenseHashTable, self).__init__(key_dtype,
-                                                         value_dtype, scope)
+      self._table_name = scope
       table_shards = []
       for i in range(num_shards):
         table_shards.append(
@@ -71,6 +74,10 @@ class ShardedMutableDenseHashTable(lookup.LookupInterface):
       # pylint: disable=protected-access
       self._value_shape = self._table_shards[0]._value_shape
       # pylint: enable=protected-access
+
+  @property
+  def name(self):
+    return self._table_name
 
   @property
   def _num_shards(self):
@@ -92,7 +99,7 @@ class ShardedMutableDenseHashTable(lookup.LookupInterface):
     if key_shape.ndims > 1:
       # If keys are a matrix (i.e. a single key is a vector), we use the first
       # element of each key vector to determine the shard.
-      keys = array_ops.slice(keys, [0, 0], [key_shape[0].value, 1])
+      keys = array_ops.slice(keys, [0, 0], [key_shape.dims[0].value, 1])
       keys = array_ops.reshape(keys, [-1])
     indices = math_ops.mod(math_ops.abs(keys), self._num_shards)
     return math_ops.cast(indices, dtypes.int32)
@@ -106,6 +113,7 @@ class ShardedMutableDenseHashTable(lookup.LookupInterface):
                        keys.get_shape())
 
   def lookup(self, keys, name=None):
+    """Looks up `keys` in a table, outputs the corresponding values."""
     if keys.dtype.base_dtype != self._key_dtype:
       raise TypeError('Signature mismatch. Keys must be dtype %s, got %s.' %
                       (self._key_dtype, keys.dtype))
@@ -134,6 +142,7 @@ class ShardedMutableDenseHashTable(lookup.LookupInterface):
     return result
 
   def insert(self, keys, values, name=None):
+    """Inserts `keys` in a table."""
     self._check_keys(keys)
     num_shards = self._num_shards
     if num_shards == 1:

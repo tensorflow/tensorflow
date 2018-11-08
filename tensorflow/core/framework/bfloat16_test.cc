@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/bfloat16.h"
 
+#include "absl/base/casts.h"
 #include "tensorflow/core/framework/numeric_types.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -45,8 +45,8 @@ TEST(Bfloat16Test, Simple) {
 
 float BinaryToFloat(uint32_t sign, uint32_t exponent, uint32_t high_mantissa,
                     uint32_t low_mantissa) {
-  return bit_cast<float>((sign << 31) + (exponent << 23) +
-                         (high_mantissa << 16) + low_mantissa);
+  return absl::bit_cast<float>((sign << 31) + (exponent << 23) +
+                               (high_mantissa << 16) + low_mantissa);
 }
 
 struct Bfloat16TestParam {

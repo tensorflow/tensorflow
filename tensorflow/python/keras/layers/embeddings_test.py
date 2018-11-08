@@ -69,16 +69,16 @@ class EmbeddingTest(test.TestCase):
         input_dtype='int32',
         expected_output_dtype='float32')
 
+  @tf_test_util.run_in_graph_and_eager_modes()
   def test_embedding_correctness(self):
-    with self.cached_session():
-      layer = keras.layers.Embedding(output_dim=2, input_dim=2)
-      layer.build((None, 2))
-      matrix = np.array([[1, 1], [2, 2]])
-      layer.set_weights([matrix])
+    layer = keras.layers.Embedding(output_dim=2, input_dim=2)
+    layer.build((None, 2))
+    matrix = np.array([[1, 1], [2, 2]])
+    layer.set_weights([matrix])
 
-      inputs = keras.backend.constant([[0, 1, 0]], dtype='int32')
-      outputs = keras.backend.eval(layer(inputs))
-      self.assertAllClose(outputs, [[[1, 1], [2, 2], [1, 1]]])
+    inputs = keras.backend.constant([[0, 1, 0]], dtype='int32')
+    outputs = keras.backend.eval(layer(inputs))
+    self.assertAllClose(outputs, [[[1, 1], [2, 2], [1, 1]]])
 
   @tf_test_util.run_in_graph_and_eager_modes()
   def test_eager_gpu_cpu(self):

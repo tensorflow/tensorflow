@@ -402,8 +402,8 @@ class OneShotTests(parameterized.TestCase):
     self.assertIn("average_loss", result)
     self.assertNotIn(feature_keys.State.STATE_TUPLE, result)
     input_receiver_fn = estimator.build_raw_serving_input_receiver_fn()
-    export_location = estimator.export_savedmodel(_new_temp_dir(),
-                                                  input_receiver_fn)
+    export_location = estimator.export_saved_model(_new_temp_dir(),
+                                                   input_receiver_fn)
     graph = ops.Graph()
     with graph.as_default():
       with session_lib.Session() as session:
@@ -438,7 +438,7 @@ class OneShotTests(parameterized.TestCase):
         output = session.run(fetches, feed_dict=feeds)
         self.assertEqual((2, 15, 5), output["mean"].shape)
     # Build a parsing input function, then make a tf.Example for it to parse.
-    export_location = estimator.export_savedmodel(
+    export_location = estimator.export_saved_model(
         _new_temp_dir(),
         estimator.build_one_shot_parsing_serving_input_receiver_fn(
             filtering_length=20, prediction_length=15))

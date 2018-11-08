@@ -228,12 +228,12 @@ Status BiasAddShape(shape_inference::InferenceContext* c) {
   if (s.ok() && data_format == "NCHW") {
     // Merge the length of bias_shape into the third to last dimension
     ShapeHandle first;
-    TF_RETURN_IF_ERROR(c->Subshape(input_shape, 0, -3, &first));
+    TF_RETURN_IF_ERROR(c->Subshape(input_shape, 0, 1, &first));
 
     ShapeHandle last;
-    TF_RETURN_IF_ERROR(c->Subshape(input_shape, -2, &last));
+    TF_RETURN_IF_ERROR(c->Subshape(input_shape, 2, &last));
 
-    DimensionHandle input_bias_dim = c->Dim(input_shape, -3);
+    DimensionHandle input_bias_dim = c->Dim(input_shape, 1);
     DimensionHandle merged_bias_dim;
     TF_RETURN_IF_ERROR(c->Merge(input_bias_dim, bias_dim, &merged_bias_dim));
     ShapeHandle merged_bias = c->Vector(merged_bias_dim);
@@ -266,7 +266,7 @@ Status BiasAddGradShape(shape_inference::InferenceContext* c) {
 
   if (s.ok() && data_format == "NCHW") {
     TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 3, &input_shape));
-    c->set_output(0, c->Vector(c->Dim(input_shape, -3)));
+    c->set_output(0, c->Vector(c->Dim(input_shape, 1)));
   } else {
     TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input_shape));
     c->set_output(0, c->Vector(c->Dim(input_shape, -1)));
@@ -1457,7 +1457,11 @@ Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
 Status ScatterNdUpdateShape(InferenceContext* c) {
   ShapeHandle input_shape = c->input(0);
   if (c->input_handle_shapes_and_types(0) != nullptr) {
-    input_shape = (*c->input_handle_shapes_and_types(0))[0].shape;
+    // This is called for tf.scatter_nd_update; input is a Variable handle.
+    const auto& shape_and_type = *(c->input_handle_shapes_and_types(0));
+    if (shape_and_type.size() == 1) {
+      input_shape = shape_and_type[0].shape;
+    }
   }
   ShapeHandle indices_shape;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &indices_shape));
@@ -1514,7 +1518,8 @@ Status ScatterNdUpdateShape(InferenceContext* c) {
     }
   }
 
-  if (c->input_handle_shapes_and_types(0) == nullptr) {
+  if (c->input_handle_shapes_and_types(0) == nullptr && c->num_outputs() > 0) {
+    // This is called for tf.scatter_nd; output is a tensor with this shape.
     c->set_output(0, input_shape);
   }
   return Status::OK();

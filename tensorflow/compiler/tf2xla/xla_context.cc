@@ -66,7 +66,7 @@ XlaContext::XlaContext(
     XlaCompiler* compiler, xla::XlaBuilder* builder,
     bool allow_cpu_custom_calls, bool resolve_compile_time_constants,
     bool is_entry_computation,
-    const std::function<xla::StatusOr<TensorShape>(
+    const std::function<xla::StatusOr<xla::Shape>(
         const TensorShape&, DataType)>* shape_representation_fn)
     : compiler_(compiler),
       builder_(builder),
@@ -119,17 +119,6 @@ Status XlaContext::AddResourceRetval(int retval_index, XlaResource* resource) {
   return Status::OK();
 }
 
-Status XlaContext::AppendTokenRetval(const xla::XlaOp& token) {
-  VLOG(1) << "Adding retval index " << retvals_.size()
-          << " with token to XLA computation";
-  XlaExpression e;
-  e.set_handle(token);
-  // We use DT_INVALID because there is no TF DataType which corresponds to XLA
-  // token. XlaCompiler handles this case separately, so putting it here is OK.
-  retvals_.push_back(Retval{DT_INVALID, TensorShape(), e});
-  return Status::OK();
-}
-
 xla::XlaBuilder* XlaContext::builder() { return builder_; }
 
 Status XlaContext::CreateResource(
@@ -144,7 +133,7 @@ Status XlaContext::CreateResource(
   return Status::OK();
 }
 
-xla::StatusOr<TensorShape> XlaContext::RepresentationShape(
+xla::StatusOr<xla::Shape> XlaContext::RepresentationShape(
     const TensorShape& shape, DataType type) const {
   return (*shape_representation_fn_)(shape, type);
 }

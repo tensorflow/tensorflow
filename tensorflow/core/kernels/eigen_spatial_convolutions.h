@@ -726,9 +726,11 @@ class TensorContractionSubMapper<
   }
 
  private:
-  const ParentMapper& m_base_mapper;  // that was a reference before
-  Index m_depth_offset;               // First row in the input matrix
-  Index m_col_offset;                 // First col in the input matrix
+  const ParentMapper m_base_mapper;  // Keeping a copy instead of a reference
+                                     // performs better in benchmarks.
+
+  Index m_depth_offset;  // First row in the input matrix
+  Index m_col_offset;    // First col in the input matrix
 
   // Knowing that: col_offset == patchIndex * OTHERS, we keep precomputed base
   // indices for the first element in a patch specified by col_offset

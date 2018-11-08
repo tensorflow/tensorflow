@@ -469,17 +469,28 @@ class ContextTest(test_util.TensorFlowTestCase):
     self._testWhileContextHelper(maximum_iterations=10)
 
   def testControlContextImportScope(self):
+    class NoABCControlFlowContext(control_flow_ops.ControlFlowContext):
+      """A noop wrapper around `ControlFlowContext`.
+
+      `ControlFlowContext` is an ABC and therefore cannot be instantiated.
+      """
+      # pylint: disable=useless-super-delegation
+
+      def to_control_flow_context_def(self, context_def, export_scope=None):
+        super(NoABCControlFlowContext, self).to_control_flow_context_def(
+            context_def, export_scope)
+
     with self.cached_session():
       constant_op.constant(0, name="a")
       constant_op.constant(2, name="test_scope/a")
       b1 = constant_op.constant(1, name="b")
       b2 = constant_op.constant(3, name="test_scope/b")
 
-      c = control_flow_ops.ControlFlowContext()
+      c = NoABCControlFlowContext()
       c._values = ["a", "b"]
       c._external_values = {"a": b1}
 
-      c_with_scope = control_flow_ops.ControlFlowContext(
+      c_with_scope = NoABCControlFlowContext(
           values_def=c._to_values_def(), import_scope="test_scope")
 
       # _values and _external_values should be have scope prepended.
@@ -519,7 +530,7 @@ def _raw_nested_shape(nested_shape):
 
   def _raw_shape(shape):
     if isinstance(shape, tensor_shape.TensorShape) and shape.ndims is not None:
-      return [x.value for x in shape]
+      return [x.value for x in shape.dims]
     else:
       return None
 
@@ -979,6 +990,19 @@ class WhileLoopTestCase(test_util.TensorFlowTestCase):
     # Should only return the original structure.
     r = control_flow_ops.while_loop(c, b, [i, []], return_same_structure=True)
     self.assertEqual(self.evaluate(r), [10, []])
+
+
+class AssertTest(test_util.TensorFlowTestCase):
+
+  def testAssert(self):
+    i = constant_op.constant(0)
+    c = control_flow_ops.Assert(i < 10, [i, [10], [i + 1]])
+    self.evaluate(c)
+
+    i = constant_op.constant(10)
+    c = control_flow_ops.Assert(i < 10, [i, [10], [i + 1]])
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(c)
 
 
 if __name__ == "__main__":

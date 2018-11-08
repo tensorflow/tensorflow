@@ -209,12 +209,40 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# Features that are default ON are handled differently below.
+#
 config_setting(
-    name = "with_ignite_support",
-    define_values = {"with_ignite_support": "true"},
+    name = "no_aws_support",
+    define_values = {"no_aws_support": "false"},
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "no_gcp_support",
+    define_values = {"no_gcp_support": "false"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "no_hdfs_support",
+    define_values = {"no_hdfs_support": "false"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "no_ignite_support",
+    define_values = {"no_ignite_support": "false"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "no_kafka_support",
+    define_values = {"no_kafka_support": "false"},
+    visibility = ["//visibility:public"],
+)
+
+# Crosses between platforms and file system libraries not supported on those
+# platforms due to limitations in nested select() statements.
 config_setting(
     name = "with_cuda_support_windows_override",
     define_values = {"using_cuda_nvcc": "true"},
@@ -324,6 +352,7 @@ package_group(
         "//tensorflow/...",
         "//tensorflow_estimator/...",
         "//tensorflow_fold/llgtm/...",
+        "//tensorflow_text/...",
         "//third_party/py/tensor2tensor/...",
     ],
 )
@@ -532,19 +561,23 @@ genrule(
 
 gen_api_init_files(
     name = "tf_python_api_gen_v1",
-    srcs = ["api_template.__init__.py"],
+    srcs = ["api_template_v1.__init__.py"],
     api_version = 1,
     output_dir = "_api/v1/",
     output_files = TENSORFLOW_API_INIT_FILES_V1,
     output_package = "tensorflow._api.v1",
-    root_init_template = "api_template.__init__.py",
+    root_init_template = "api_template_v1.__init__.py",
 )
 
 gen_api_init_files(
     name = "tf_python_api_gen_v2",
-    srcs = ["api_template.__init__.py"],
+    srcs = [
+        "api_template.__init__.py",
+        "compat_template_v1.__init__.py",
+    ],
     api_version = 2,
     compat_api_versions = [1],
+    compat_init_templates = ["compat_template_v1.__init__.py"],
     output_dir = "_api/v2/",
     output_files = TENSORFLOW_API_INIT_FILES_V2,
     output_package = "tensorflow._api.v2",
@@ -553,7 +586,6 @@ gen_api_init_files(
 
 py_library(
     name = "tensorflow_py",
-    srcs = ["//tensorflow/python/estimator/api:estimator_python_api_gen"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [

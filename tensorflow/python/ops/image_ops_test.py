@@ -1491,6 +1491,16 @@ class PerImageWhiteningTest(test_util.TensorFlowTestCase):
       whiten_np = whiten.eval()
       self.assertFalse(np.any(np.isnan(whiten_np)))
 
+  def testBatchWhitening(self):
+    imgs_np = np.random.uniform(0., 255., [4, 24, 24, 3])
+    whiten_np = [self._NumpyPerImageWhitening(img) for img in imgs_np]
+    with self.test_session(use_gpu=True):
+      imgs = constant_op.constant(imgs_np)
+      whiten = image_ops.per_image_standardization(imgs)
+      whiten_tf = whiten.eval()
+      for w_tf, w_np in zip(whiten_tf, whiten_np):
+        self.assertAllClose(w_tf, w_np, atol=1e-4)
+
 
 class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
 
@@ -3760,6 +3770,30 @@ class NonMaxSuppressionPaddedTest(test_util.TensorFlowTestCase):
     with self.cached_session():
       self.assertAllClose(selected_indices.eval(), [0, 2, 4])
       self.assertEqual(num_valid.eval(), 3)
+
+
+class NonMaxSuppressionWithOverlapsTest(test_util.TensorFlowTestCase):
+
+  def testSelectOneFromThree(self):
+    overlaps_np = [
+        [1.0, 0.7, 0.2],
+        [0.7, 1.0, 0.0],
+        [0.2, 0.0, 1.0],
+    ]
+    scores_np = [0.7, 0.9, 0.1]
+    max_ouput_size_np = 3
+
+    overlaps = constant_op.constant(overlaps_np)
+    scores = constant_op.constant(scores_np)
+    max_output_size = constant_op.constant(max_ouput_size_np)
+    overlap_threshold = 0.6
+    score_threshold = 0.4
+
+    selected_indices = image_ops.non_max_suppression_with_overlaps(
+        overlaps, scores, max_output_size, overlap_threshold, score_threshold)
+
+    with self.cached_session():
+      self.assertAllClose(selected_indices.eval(), [1])
 
 
 class VerifyCompatibleImageShapesTest(test_util.TensorFlowTestCase):

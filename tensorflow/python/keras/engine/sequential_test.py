@@ -23,6 +23,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import testing_utils
@@ -269,9 +270,8 @@ class TestSequential(test.TestCase, parameterized.TestCase):
     self.assertIn('build_input_shape', config)
 
     new_model = keras.models.Sequential.from_config(config)
-    self.assertTrue(new_model.built)
-    self.assertEqual(len(model.layers), 2)
-    self.assertEqual(len(model.weights), 4)
+    self.assertEqual(len(new_model.layers), 2)
+    self.assertEqual(len(new_model.weights), 4)
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_sequential_shape_inference_deferred(self):
@@ -318,6 +318,15 @@ class TestSequential(test.TestCase, parameterized.TestCase):
          'sequential/dense_1/kernel:0', 'sequential/dense_1/bias:0'],
         [v.name for v in model.variables])
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_input_assumptions_propagation(self):
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(1))
+    if context.executing_eagerly():
+      with self.assertRaisesRegexp(ValueError,
+                                   'expected min_ndim=2, found ndim=0'):
+        model(1.0)
+
 
 class TestSequentialEagerIntegration(test.TestCase):
 
@@ -352,6 +361,29 @@ class TestSequentialEagerIntegration(test.TestCase):
     x = np.random.random((2, 6))
     y = np.random.random((2, 5))
     model.fit(x, y, epochs=1)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_sequential_can_use_graph_functions(self):
+    model = testing_utils.get_small_sequential_mlp(4, 3)
+    self.assertTrue(model._can_use_graph_functions)
+    inner_model = testing_utils.get_small_sequential_mlp(4, 5)
+    model.add(inner_model)
+
+    self.assertTrue(model._can_use_graph_functions)
+
+    inner_model_two = testing_utils.get_small_sequential_mlp(5, 7)
+    self.assertTrue(inner_model_two._can_use_graph_functions)
+
+    layer = keras.layers.Lambda(lambda x: x)
+    layer._can_use_graph_functions = False
+    inner_model_two.add(layer)
+    self.assertFalse(inner_model_two._can_use_graph_functions)
+
+    model.add(inner_model_two)
+    self.assertFalse(model._can_use_graph_functions)
+
+    model.pop()
+    self.assertTrue(model._can_use_graph_functions)
 
 
 if __name__ == '__main__':

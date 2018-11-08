@@ -96,8 +96,8 @@ def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
     log_mel_spectrograms = ops.convert_to_tensor(log_mel_spectrograms,
                                                  dtype=dtypes.float32)
     if (log_mel_spectrograms.shape.ndims and
-        log_mel_spectrograms.shape[-1].value is not None):
-      num_mel_bins = log_mel_spectrograms.shape[-1].value
+        log_mel_spectrograms.shape.dims[-1].value is not None):
+      num_mel_bins = log_mel_spectrograms.shape.dims[-1].value
       if num_mel_bins == 0:
         raise ValueError('num_mel_bins must be positive. Got: %s' %
                          log_mel_spectrograms)

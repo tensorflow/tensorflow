@@ -34,6 +34,7 @@ from tensorflow.python.client import session as session_module
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_module
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
@@ -57,6 +58,7 @@ from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-im
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_module
 
+from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
@@ -65,6 +67,10 @@ py_all = all
 py_sum = sum
 
 # INTERNAL UTILS
+
+# The internal graph maintained by Keras and used by the symbolic Keras APIs
+# while executing eagerly (such as the functional API for model-building).
+_GRAPH = None
 
 # This is the default internal TF session used by Keras.
 # It can be set manually via `set_session(sess)`.
@@ -300,7 +306,7 @@ def get_uid(prefix=''):
     2
   ```
   """
-  graph = ops.get_default_graph()
+  graph = get_graph()
   if graph not in PER_GRAPH_LAYER_NAME_UIDS:
     PER_GRAPH_LAYER_NAME_UIDS[graph] = collections.defaultdict(int)
   layer_name_uids = PER_GRAPH_LAYER_NAME_UIDS[graph]
@@ -331,12 +337,14 @@ def clear_session():
   ops.reset_default_graph()
   reset_uids()
   _SESSION = None
-  phase = array_ops.placeholder_with_default(
-      False, shape=(), name='keras_learning_phase')
-  _GRAPH_LEARNING_PHASES = {}
-  _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = phase
-  _GRAPH_VARIABLES.pop(ops.get_default_graph(), None)
-  _GRAPH_TF_OPTIMIZERS.pop(ops.get_default_graph(), None)
+  graph = get_graph()
+  with graph.as_default():
+    phase = array_ops.placeholder_with_default(
+        False, shape=(), name='keras_learning_phase')
+    _GRAPH_LEARNING_PHASES = {}
+    _GRAPH_LEARNING_PHASES[graph] = phase
+    _GRAPH_VARIABLES.pop(graph, None)
+    _GRAPH_TF_OPTIMIZERS.pop(graph, None)
 
 
 @tf_export('keras.backend.manual_variable_initialization')
@@ -381,12 +389,13 @@ def learning_phase():
         return 0
       return _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
 
-    graph = ops.get_default_graph()
-    if graph not in _GRAPH_LEARNING_PHASES:
-      phase = array_ops.placeholder_with_default(
-          False, shape=(), name='keras_learning_phase')
-      _GRAPH_LEARNING_PHASES[graph] = phase
-    return _GRAPH_LEARNING_PHASES[graph]
+    graph = get_graph()
+    with graph.as_default():
+      if graph not in _GRAPH_LEARNING_PHASES:
+        phase = array_ops.placeholder_with_default(
+            False, shape=(), name='keras_learning_phase')
+        _GRAPH_LEARNING_PHASES[graph] = phase
+      return _GRAPH_LEARNING_PHASES[graph]
 
 
 @tf_export('keras.backend.set_learning_phase')
@@ -406,7 +415,7 @@ def set_learning_phase(value):
     if context.executing_eagerly():
       _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = value
     else:
-      _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = value
+      _GRAPH_LEARNING_PHASES[get_graph()] = value
 
 
 @tf_contextlib.contextmanager
@@ -436,10 +445,10 @@ def learning_phase_scope(value):
       if context.executing_eagerly():
         _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH] = previous_value
       else:
-        _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = previous_value
+        _GRAPH_LEARNING_PHASES[get_graph()] = previous_value
 
 
-@tf_export('keras.backend.get_session')
+@tf_export(v1=['keras.backend.get_session'])
 def get_session():
   """Returns the TF session to be used by the backend.
 
@@ -468,6 +477,16 @@ def get_session():
     with session.graph.as_default():
       _initialize_variables(session)
   return session
+
+
+def get_graph():
+  if context.executing_eagerly():
+    global _GRAPH
+    if _GRAPH is None:
+      _GRAPH = func_graph.FuncGraph('keras_graph')
+    return _GRAPH
+  else:
+    return ops.get_default_graph()
 
 
 @tf_export('keras.backend.set_session')
@@ -513,9 +532,9 @@ def _get_current_tf_device():
       the device (`CPU` or `GPU`). If the scope is not explicitly set, it will
       return `None`.
   """
-  g = ops.get_default_graph()
+  graph = get_graph()
   op = _TfDeviceCaptureOp()
-  g._apply_device_functions(op)
+  graph._apply_device_functions(op)
   return op.device
 
 
@@ -695,15 +714,16 @@ def track_tf_optimizer(tf_optimizer):
   """Tracks the given TF optimizer for initialization of its variables."""
   if context.executing_eagerly():
     return
-  graph = ops.get_default_graph()
+  graph = get_graph()
   optimizers = _GRAPH_TF_OPTIMIZERS.setdefault(graph, weakref.WeakSet())
   optimizers.add(tf_optimizer)
+
 
 def track_variable(v):
   """Tracks the given variable for initialization."""
   if context.executing_eagerly():
     return
-  graph = v.graph if hasattr(v, 'graph') else ops.get_default_graph()
+  graph = v.graph if hasattr(v, 'graph') else get_graph()
   if graph not in _GRAPH_VARIABLES:
     _GRAPH_VARIABLES[graph] = weakref.WeakSet()
   _GRAPH_VARIABLES[graph].add(v)
@@ -720,7 +740,7 @@ def _get_variables(graph=None):
 
 def _initialize_variables(session):
   """Utility to initialize uninitialized variables on the fly."""
-  variables = _get_variables(ops.get_default_graph())
+  variables = _get_variables(get_graph())
   candidate_vars = []
   for v in variables:
     if not getattr(v, '_keras_initialized', False):
@@ -802,10 +822,9 @@ def is_keras_tensor(x):
       True
   ```
   """
-  if (not isinstance(x, (ops.Tensor,
-                         variables_module.Variable,
-                         sparse_tensor.SparseTensor)) and
-      x.__class__.__name__ != 'DeferredTensor'):
+  if not isinstance(x, (ops.Tensor,
+                        variables_module.Variable,
+                        sparse_tensor.SparseTensor)):
     raise ValueError('Unexpectedly found an instance of type `' + str(type(x)) +
                      '`. Expected a symbolic tensor instance.')
   return hasattr(x, '_keras_history')
@@ -825,6 +844,9 @@ def placeholder(shape=None, ndim=None, dtype=None, sparse=False, name=None):
       sparse: Boolean, whether the placeholder should have a sparse type.
       name: Optional name string for the placeholder.
 
+  Raises:
+      ValueError: If called with eager execution.
+
   Returns:
       Tensor instance (with Keras metadata included).
 
@@ -841,10 +863,11 @@ def placeholder(shape=None, ndim=None, dtype=None, sparse=False, name=None):
   if not shape:
     if ndim:
       shape = tuple([None for _ in range(ndim)])
-  if sparse:
-    x = array_ops.sparse_placeholder(dtype, shape=shape, name=name)
-  else:
-    x = array_ops.placeholder(dtype, shape=shape, name=name)
+  with get_graph().as_default():
+    if sparse:
+      x = array_ops.sparse_placeholder(dtype, shape=shape, name=name)
+    else:
+      x = array_ops.placeholder(dtype, shape=shape, name=name)
   x._uses_learning_phase = False
   return x
 
@@ -1006,7 +1029,7 @@ def eval(x):
              [ 3.,  4.]], dtype=float32)
   ```
   """
-  return to_dense(x).eval(session=get_session())
+  return get_value(to_dense(x))
 
 
 @tf_export('keras.backend.zeros')
@@ -2760,9 +2783,14 @@ def get_value(x):
 
   Returns:
       A Numpy array.
+
+  Raises:
+      RuntimeError: If this method is called inside defun.
   """
   if context.executing_eagerly():
     return x.numpy()
+  elif ops.inside_function():
+    raise RuntimeError('Cannot get value inside Tensorflow graph function.')
   return x.eval(session=get_session())
 
 
@@ -2775,9 +2803,14 @@ def batch_get_value(tensors):
 
   Returns:
       A list of Numpy arrays.
+
+  Raises:
+      RuntimeError: If this method is called inside defun.
   """
   if context.executing_eagerly():
     return [x.numpy() for x in tensors]
+  elif ops.inside_function():  # pylint: disable=protected-access
+    raise RuntimeError('Cannot get value inside Tensorflow graph function.')
   if tensors:
     return get_session().run(tensors)
   else:
@@ -2794,19 +2827,20 @@ def set_value(x, value):
           (of the same shape).
   """
   value = np.asarray(value, dtype=dtype(x))
-  if context.executing_eagerly():
+  if ops.executing_eagerly_outside_functions():
     x.assign(value)
   else:
-    tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
-    if hasattr(x, '_assign_placeholder'):
-      assign_placeholder = x._assign_placeholder
-      assign_op = x._assign_op
-    else:
-      assign_placeholder = array_ops.placeholder(tf_dtype, shape=value.shape)
-      assign_op = x.assign(assign_placeholder)
-      x._assign_placeholder = assign_placeholder
-      x._assign_op = assign_op
-    get_session().run(assign_op, feed_dict={assign_placeholder: value})
+    with get_graph().as_default():
+      tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
+      if hasattr(x, '_assign_placeholder'):
+        assign_placeholder = x._assign_placeholder
+        assign_op = x._assign_op
+      else:
+        assign_placeholder = array_ops.placeholder(tf_dtype, shape=value.shape)
+        assign_op = x.assign(assign_placeholder)
+        x._assign_placeholder = assign_placeholder
+        x._assign_op = assign_op
+      get_session().run(assign_op, feed_dict={assign_placeholder: value})
 
 
 @tf_export('keras.backend.batch_set_value')
@@ -2817,28 +2851,29 @@ def batch_set_value(tuples):
       tuples: a list of tuples `(tensor, value)`.
           `value` should be a Numpy array.
   """
-  if context.executing_eagerly():
+  if ops.executing_eagerly_outside_functions():
     for x, value in tuples:
       x.assign(np.asarray(value, dtype=dtype(x)))
   else:
-    if tuples:
-      assign_ops = []
-      feed_dict = {}
-      for x, value in tuples:
-        value = np.asarray(value, dtype=dtype(x))
-        tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
-        if hasattr(x, '_assign_placeholder'):
-          assign_placeholder = x._assign_placeholder
-          assign_op = x._assign_op
-        else:
-          assign_placeholder = array_ops.placeholder(tf_dtype,
-                                                     shape=value.shape)
-          assign_op = x.assign(assign_placeholder)
-          x._assign_placeholder = assign_placeholder
-          x._assign_op = assign_op
-        assign_ops.append(assign_op)
-        feed_dict[assign_placeholder] = value
-      get_session().run(assign_ops, feed_dict=feed_dict)
+    with get_graph().as_default():
+      if tuples:
+        assign_ops = []
+        feed_dict = {}
+        for x, value in tuples:
+          value = np.asarray(value, dtype=dtype(x))
+          tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
+          if hasattr(x, '_assign_placeholder'):
+            assign_placeholder = x._assign_placeholder
+            assign_op = x._assign_op
+          else:
+            assign_placeholder = array_ops.placeholder(tf_dtype,
+                                                       shape=value.shape)
+            assign_op = x.assign(assign_placeholder)
+            x._assign_placeholder = assign_placeholder
+            x._assign_op = assign_op
+          assign_ops.append(assign_op)
+          feed_dict[assign_placeholder] = value
+        get_session().run(assign_ops, feed_dict=feed_dict)
 
 
 @tf_export('keras.backend.print_tensor')
@@ -2934,7 +2969,7 @@ class Function(object):
 
     if session_kwargs:
       raise ValueError('Some keys in session_kwargs are not supported at this '
-                       'time: %s', (session_kwargs.keys(),))
+                       'time: %s' % (session_kwargs.keys(),))
 
     self._callable_fn = None
     self._feed_arrays = None
@@ -3059,8 +3094,11 @@ def function(inputs, outputs, updates=None, **kwargs):
       Output values as Numpy arrays.
 
   Raises:
-      ValueError: if invalid kwargs are passed in.
+      ValueError: if invalid kwargs are passed in or if in eager execution.
   """
+  if context.executing_eagerly():
+    raise ValueError(
+        '`keras.backend.function` is not supported with eager execution.')
   if kwargs:
     for key in kwargs:
       if (key not in tf_inspect.getfullargspec(session_module.Session.run)[0]
@@ -3133,11 +3171,13 @@ def rnn(step_function,
                   as 'states'. The first state in the list must be the
                   output tensor at the previous timestep.
       inputs: Tensor of temporal data of shape `(samples, time, ...)`
-          (at least 3D).
-      initial_states: Tensor with shape `(samples, output_dim)`
-          (no time dimension),
-          containing the initial values for the states used in
-          the step function.
+          (at least 3D), or nested tensors, and each of which has shape
+          `(samples, time, ...)`.
+      initial_states: Tensor with shape `(samples, state_size)`
+          (no time dimension), containing the initial values for the states used
+          in the step function. In the case that state_size is in a nested
+          shape, the shape of initial_states will also follow the nested
+          structure.
       go_backwards: Boolean. If True, do the iteration over the time
           dimension in reverse order and return the reversed sequence.
       mask: Binary tensor with shape `(samples, time, 1)`,
@@ -3169,21 +3209,31 @@ def rnn(step_function,
       ValueError: if `mask` is provided (not `None`) but states is not provided
           (`len(states)` == 0).
   """
-  ndim = len(inputs.shape)
-  if ndim < 3:
-    raise ValueError('Input should be at least 3D.')
-  inputs_shape = inputs.shape
+
+  def swap_batch_timestep(input_t):
+    # Swap the batch and timestep dim for the incoming tensor.
+    axes = list(range(len(input_t.shape)))
+    axes[0], axes[1] = 1, 0
+    return array_ops.transpose(input_t, axes)
+
   if not time_major:
-    axes = [1, 0] + list(range(2, ndim))
-    inputs = array_ops.transpose(inputs, axes)
+    inputs = nest.map_structure(swap_batch_timestep, inputs)
+
+  flatted_inputs = nest.flatten(inputs)
+  time_steps = flatted_inputs[0].shape[0]
+  batch = flatted_inputs[0].shape[1]
+  time_steps_t = array_ops.shape(flatted_inputs[0])[0]
+
+  for input_ in flatted_inputs:
+    input_.get_shape().with_rank_at_least(3)
 
   if mask is not None:
     if mask.dtype != dtypes_module.bool:
       mask = math_ops.cast(mask, dtypes_module.bool)
-    if len(mask.shape) == ndim - 1:
+    if len(mask.shape) == 2:
       mask = expand_dims(mask)
     if not time_major:
-      mask = array_ops.transpose(mask, axes)
+      mask = swap_batch_timestep(mask)
 
   if constants is None:
     constants = []
@@ -3191,40 +3241,61 @@ def rnn(step_function,
   global uses_learning_phase  # pylint: disable=global-variable-undefined
   uses_learning_phase = False
 
+  # tf.where needs its condition tensor to be the same shape as its two
+  # result tensors, but in our case the condition (mask) tensor is
+  # (nsamples, 1), and inputs are (nsamples, ndimensions) or even more.
+  # So we need to broadcast the mask to match the shape of inputs.
+  # That's what the tile call does, it just repeats the mask along its
+  # second dimension n times.
+  def _expand_mask(mask_t, input_t):
+    assert not nest.is_sequence(mask_t)
+    assert not nest.is_sequence(input_t)
+    rank_diff = len(input_t.shape) - len(mask_t.shape)
+    for _ in range(rank_diff):
+      mask_t = array_ops.expand_dims(mask_t)
+    expand_dims = [1] + input_t.shape.as_list()[1:]
+    return array_ops.tile(mask_t, expand_dims)
+
   if unroll:
-    if not inputs.shape[0]:
+    if not time_steps:
       raise ValueError('Unrolling requires a fixed number of timesteps.')
     states = initial_states
     successive_states = []
     successive_outputs = []
 
-    input_list = array_ops.unstack(inputs)
-    if go_backwards:
-      input_list.reverse()
+    # Process the input tensors. The input tensor need to be split on the
+    # time_step dim, and reverse if go_backwards is True. In the case of nested
+    # input, the input is flattened and then transformed individually.
+    # The result of this will be a tuple of lists, each of the item in tuple is
+    # list of the tensor with shape (batch, feature)
+    def _process_single_input_t(input_t):
+      input_t = array_ops.unstack(input_t)  # unstack for time_step dim
+      if go_backwards:
+        input_t.reverse()
+      return input_t
+
+    if nest.is_sequence(inputs):
+      processed_input = nest.map_structure(_process_single_input_t, inputs)
+    else:
+      processed_input = (_process_single_input_t(inputs),)
+
+    def _get_input_tensor(time):
+      inp = [t_[time] for t_ in processed_input]
+      return nest.pack_sequence_as(inputs, inp)
 
     if mask is not None:
       mask_list = array_ops.unstack(mask)
       if go_backwards:
         mask_list.reverse()
 
-      for inp, mask_t in zip(input_list, mask_list):
+      for i in range(time_steps):
+        inp = _get_input_tensor(i)
+        mask_t = mask_list[i]
         output, new_states = step_function(inp, states + constants)
         if getattr(output, '_uses_learning_phase', False):
           uses_learning_phase = True
 
-        # tf.where needs its condition tensor
-        # to be the same shape as its two
-        # result tensors, but in our case
-        # the condition (mask) tensor is
-        # (nsamples, 1), and A and B are (nsamples, ndimensions).
-        # So we need to
-        # broadcast the mask to match the shape of A and B.
-        # That's what the tile call does,
-        # it just repeats the mask along its second dimension
-        # n times.
-        tiled_mask_t = array_ops.tile(mask_t,
-                                      array_ops.stack(
-                                          [1, array_ops.shape(output)[1]]))
+        tiled_mask_t = _expand_mask(mask_t, output)
 
         if not successive_outputs:
           prev_output = zeros_like(output)
@@ -3236,10 +3307,7 @@ def rnn(step_function,
         return_states = []
         for state, new_state in zip(states, new_states):
           # (see earlier comment for tile explanation)
-          tiled_mask_t = array_ops.tile(mask_t,
-                                        array_ops.stack(
-                                            [1,
-                                             array_ops.shape(new_state)[1]]))
+          tiled_mask_t = _expand_mask(mask_t, new_state)
           return_states.append(array_ops.where(tiled_mask_t, new_state, state))
         states = return_states
         successive_outputs.append(output)
@@ -3248,7 +3316,8 @@ def rnn(step_function,
       new_states = successive_states[-1]
       outputs = array_ops.stack(successive_outputs)
     else:
-      for inp in input_list:
+      for i in range(time_steps):
+        inp = _get_input_tensor(i)
         output, states = step_function(inp, states + constants)
         if getattr(output, '_uses_learning_phase', False):
           uses_learning_phase = True
@@ -3259,18 +3328,38 @@ def rnn(step_function,
       outputs = array_ops.stack(successive_outputs)
 
   else:
-    if go_backwards:
-      inputs = reverse(inputs, 0)
-
     states = tuple(initial_states)
 
-    time_steps = array_ops.shape(inputs)[0]
-    outputs, _ = step_function(inputs[0], initial_states + constants)
-    output_ta = tensor_array_ops.TensorArray(
-        dtype=outputs.dtype, size=time_steps, tensor_array_name='output_ta')
-    input_ta = tensor_array_ops.TensorArray(
-        dtype=inputs.dtype, size=time_steps, tensor_array_name='input_ta')
-    input_ta = input_ta.unstack(inputs)
+    # Create input tensor array, if the inputs is nested tensors, then it will
+    # be flattened first, and tensor array will be created one per flattened
+    # tensor.
+    input_ta = tuple(
+        tensor_array_ops.TensorArray(
+            dtype=inp.dtype,
+            size=time_steps_t,
+            tensor_array_name='input_ta_%s' % i)
+        for i, inp in enumerate(flatted_inputs))
+    input_ta = tuple(
+        ta.unstack(input_) if not go_backwards else ta
+        .unstack(reverse(input_, 0))
+        for ta, input_ in zip(input_ta, flatted_inputs))
+
+    # Get the time(0) input and compute the output for that, the output will be
+    # used to determine the dtype of output tensor array. Don't read from
+    # input_ta due to TensorArray clear_after_read default to True.
+    input_time_zero = nest.pack_sequence_as(inputs,
+                                            [inp[0] for inp in flatted_inputs])
+    # output_time_zero is used to determine the cell output shape and its dtype.
+    # the value is discarded.
+    output_time_zero, _ = step_function(input_time_zero,
+                                        initial_states + constants)
+    output_ta = tuple(
+        tensor_array_ops.TensorArray(
+            dtype=out.dtype,
+            size=time_steps_t,
+            tensor_array_name='output_ta_%s' % i)
+        for i, out in enumerate(nest.flatten(output_time_zero)))
+
     time = constant_op.constant(0, dtype='int32', name='time')
 
     if mask is not None:
@@ -3286,7 +3375,7 @@ def rnn(step_function,
 
       mask_ta = tensor_array_ops.TensorArray(
           dtype=dtypes_module.bool,
-          size=time_steps,
+          size=time_steps_t,
           tensor_array_name='mask_ta')
       mask_ta = mask_ta.unstack(mask)
 
@@ -3301,30 +3390,38 @@ def rnn(step_function,
         Returns:
             Tuple: `(time + 1,output_ta_t) + tuple(new_states)`
         """
-        current_input = input_ta.read(time)
+        current_input = tuple(ta.read(time) for ta in input_ta)
+        # maybe set shape.
+        current_input = nest.pack_sequence_as(inputs, current_input)
         mask_t = mask_ta.read(time)
         output, new_states = step_function(current_input,
                                            tuple(states) + tuple(constants))
         if getattr(output, '_uses_learning_phase', False):
           global uses_learning_phase  # pylint: disable=global-variable-undefined
           uses_learning_phase = True
-        for state, new_state in zip(states, new_states):
+
+        flat_output = nest.flatten(output)
+        # This assume the state[0] is same shape as the output
+        flat_previous_output = nest.flatten(states[0])
+        tiled_mask_t = tuple(_expand_mask(mask_t, o) for o in flat_output)
+        flat_new_output = tuple(
+            array_ops.where(m, o, po) for m, o, po in zip(
+                tiled_mask_t, flat_output, flat_previous_output))
+
+        # mask states
+        flat_state = nest.flatten(states)
+        flat_new_state = nest.flatten(new_states)
+        for state, new_state in zip(flat_state, flat_new_state):
           new_state.set_shape(state.shape)
-        tiled_mask_t = array_ops.tile(mask_t,
-                                      array_ops.stack(
-                                          [1, array_ops.shape(output)[1]]))
-        output = array_ops.where(tiled_mask_t, output, states[0])
+        tiled_mask_t = tuple(_expand_mask(mask_t, s) for s in flat_state)
+        flat_final_state = tuple(
+            array_ops.where(m, o, po)
+            for m, o, po in zip(tiled_mask_t, flat_new_state, flat_state))
+        new_states = nest.pack_sequence_as(new_states, flat_final_state)
 
-        masked_states = []
-        for i in range(len(states)):
-          states_dim = array_ops.shape(new_states[i])[1]
-          stacked_states_dim = array_ops.stack([1, states_dim])
-          tiled_mask = array_ops.tile(mask_t, stacked_states_dim)
-          masked_state = array_ops.where(tiled_mask, new_states[i], states[i])
-          masked_states.append(masked_state)
-        new_states = masked_states
-
-        output_ta_t = output_ta_t.write(time, output)
+        output_ta_t = tuple(
+            ta.write(time, out)
+            for ta, out in zip(output_ta_t, flat_new_output))
         return (time + 1, output_ta_t) + tuple(new_states)
     else:
 
@@ -3339,19 +3436,26 @@ def rnn(step_function,
         Returns:
             Tuple: `(time + 1,output_ta_t) + tuple(new_states)`
         """
-        current_input = input_ta.read(time)
+        current_input = tuple(ta.read(time) for ta in input_ta)
+        current_input = nest.pack_sequence_as(inputs, current_input)
         output, new_states = step_function(current_input,
                                            tuple(states) + tuple(constants))
         if getattr(output, '_uses_learning_phase', False):
           global uses_learning_phase  # pylint: disable=global-variable-undefined
           uses_learning_phase = True
-        for state, new_state in zip(states, new_states):
+
+        flat_state = nest.flatten(states)
+        flat_new_state = nest.flatten(new_states)
+        for state, new_state in zip(flat_state, flat_new_state):
           new_state.set_shape(state.shape)
-        output_ta_t = output_ta_t.write(time, output)
+
+        flat_output = nest.flatten(output)
+        output_ta_t = tuple(
+            ta.write(time, out) for ta, out in zip(output_ta_t, flat_output))
         return (time + 1, output_ta_t) + tuple(new_states)
 
     final_outputs = control_flow_ops.while_loop(
-        cond=lambda time, *_: time < time_steps,
+        cond=lambda time, *_: time < time_steps_t,
         body=_step,
         loop_vars=(time, output_ta) + states,
         maximum_iterations=input_length,
@@ -3361,21 +3465,27 @@ def rnn(step_function,
     output_ta = final_outputs[1]
     new_states = final_outputs[2:]
 
-    outputs = output_ta.stack()
-    last_output = output_ta.read(last_time - 1)
+    outputs = tuple(o.stack() for o in output_ta)
+    outputs = nest.pack_sequence_as(output_time_zero, outputs)
+    last_output = tuple(o.read(last_time - 1) for o in output_ta)
+    if not context.executing_eagerly():
+      for o in last_output:
+        o._uses_learning_phase = uses_learning_phase
+    last_output = nest.pack_sequence_as(output_time_zero, last_output)
+
+  # static shape inference
+  def set_shape(output_):
+    shape = output_.shape.as_list()
+    shape[0] = time_steps
+    shape[1] = batch
+    output_.set_shape(shape)
+    return output_
+
+  outputs = nest.map_structure(set_shape, outputs)
 
   if not time_major:
-    axes = [1, 0] + list(range(2, len(outputs.shape)))
-    outputs = array_ops.transpose(outputs, axes)
+    outputs = nest.map_structure(swap_batch_timestep, outputs)
 
-  # Static shape inference: (samples, time, ...) or (time, sample, ...)
-  outputs_shape = outputs.shape.as_list()
-  outputs_shape[0] = inputs_shape[0]
-  outputs_shape[1] = inputs_shape[1]
-  outputs.set_shape(outputs_shape)
-
-  if not context.executing_eagerly():
-    last_output._uses_learning_phase = uses_learning_phase
   return last_output, outputs, new_states
 
 
@@ -4183,6 +4293,8 @@ def separable_conv2d(x,
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
     raise ValueError('Unknown data_format: ' + str(data_format))
+  if len(strides) != 2:
+    raise ValueError('`strides` must be a tuple of 2 integers.')
 
   x, tf_data_format = _preprocess_conv2d_input(x, data_format)
   padding = _preprocess_padding(padding)
@@ -4389,6 +4501,10 @@ def pool2d(x,
     data_format = image_data_format()
   if data_format not in {'channels_first', 'channels_last'}:
     raise ValueError('Unknown data_format: ' + str(data_format))
+  if len(pool_size) != 2:
+    raise ValueError('`pool_size` must be a tuple of 2 integers.')
+  if len(strides) != 2:
+    raise ValueError('`strides` must be a tuple of 2 integers.')
 
   x, tf_data_format = _preprocess_conv2d_input(x, data_format)
   padding = _preprocess_padding(padding)
@@ -4969,7 +5085,6 @@ def foldr(fn, elems, initializer=None, name=None):
       Same type and shape as initializer
   """
   return functional_ops.foldr(fn, elems, initializer=initializer, name=name)
-
 
 # Load Keras default configuration from config file if present.
 # Set Keras base dir path given KERAS_HOME env variable, if applicable.

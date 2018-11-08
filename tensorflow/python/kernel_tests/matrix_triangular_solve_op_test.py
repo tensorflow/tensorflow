@@ -74,7 +74,7 @@ class MatrixTriangularSolveOpTest(test.TestCase):
         a_np = np.tile(a_np, batch_dims + [1, 1])
         b = np.tile(b, batch_dims + [1, 1])
 
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         if use_placeholder:
           a_tf = array_ops.placeholder(a.dtype)
           b_tf = array_ops.placeholder(b.dtype)

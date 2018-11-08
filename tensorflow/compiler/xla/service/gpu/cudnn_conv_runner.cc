@@ -126,9 +126,9 @@ Status RunCudnnConvImpl(CudnnConvParams params,
   int64 feature_group_count = params.feature_group_count;
   AlgorithmConfig algorithm = params.algorithm;
 
-  VLOG(3) << "Convolution Algorithm: " << algorithm.algorithm().algo_id();
+  VLOG(3) << "Convolution Algorithm: " << algorithm.algorithm()->algo_id();
   VLOG(3) << "tensor_ops_enabled: "
-          << algorithm.algorithm().tensor_ops_enabled();
+          << algorithm.algorithm()->tensor_ops_enabled();
   VLOG(3) << "Convolution kind: " << CudnnConvKindToString(kind);
   VLOG(3) << "input shape: " << ShapeUtil::HumanStringWithLayout(input_shape);
   VLOG(3) << "filter shape: " << ShapeUtil::HumanStringWithLayout(filter_shape);
@@ -153,6 +153,12 @@ Status RunCudnnConvImpl(CudnnConvParams params,
   CHECK_EQ(num_dimensions, dnums.output_spatial_dimensions_size());
   for (const WindowDimension& dim : window.dimensions()) {
     CHECK_EQ(dim.padding_low(), dim.padding_high());
+    CHECK_EQ(dim.base_dilation(), 1)
+        << "cudnn does not support base dilation; it "
+           "must be made explicit with a kPad";
+    CHECK_EQ(dim.window_dilation(), 1)
+        << "XLA does not support window dilation (although cudnn does); it "
+           "must be made explicit with a kPad";
   }
 
   // cuDNN's convolution APIs support the BDYX layout for activations/output and
@@ -296,8 +302,8 @@ Status RunCudnnConvImpl(CudnnConvParams params,
   if (!stream->ok()) {
     return InternalError(
         "Unable to launch convolution with type %s and algorithm (%d, %d)",
-        CudnnConvKindToString(kind), algorithm.algorithm().algo_id(),
-        algorithm.algorithm_no_scratch().algo_id());
+        CudnnConvKindToString(kind), algorithm.algorithm()->algo_id(),
+        algorithm.algorithm_no_scratch()->algo_id());
   }
   return Status::OK();
 }

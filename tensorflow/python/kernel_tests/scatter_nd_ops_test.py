@@ -36,6 +36,9 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
+GRADIENT_TESTS_DTYPES = (dtypes.float16, dtypes.float32, dtypes.float64)
+
+
 def _AsType(v, vtype):
   return v.astype(vtype) if isinstance(v, np.ndarray) else vtype(v)
 
@@ -102,7 +105,7 @@ class StatefulScatterNdTest(test.TestCase):
     np.random.seed(8)
     ref_shapes = [(3, 6), (3, 6), (3, 6, 9), (3, 6, 9), (3, 6, 9), (3, 6, 9)]
     indices_shapes = [(2,), (2, 2), (2,), (2, 2), (2, 3), (2, 3, 3)]
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       for ref_shape, indices_shape in zip(ref_shapes, indices_shapes):
         num_updates = indices_shape[0]
         ixdim = indices_shape[-1]
@@ -144,9 +147,8 @@ class StatefulScatterNdTest(test.TestCase):
         self.assertAllClose(new, ref_var.eval())
 
   def _VariableRankTests(self, np_scatter, tf_scatter):
-    for vtype in (np.int32,
-                  np.float32, np.float64,
-                  np.complex64, np.complex128):
+    for vtype in (np.int32, np.float16, np.float32, np.float64, np.complex64,
+                  np.complex128):
       for itype in (np.int32, np.int64):
         self._VariableRankTest(np_scatter, tf_scatter, vtype, itype)
 
@@ -158,7 +160,7 @@ class StatefulScatterNdTest(test.TestCase):
     scatter = state_ops.scatter_nd_update(ref, indices, updates)
     init = variables.global_variables_initializer()
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       sess.run(init)
       result = sess.run(scatter)
       self.assertAllClose(result, expected)
@@ -172,7 +174,7 @@ class StatefulScatterNdTest(test.TestCase):
     scatter = state_ops.scatter_nd_update(ref, indices, updates)
     init = variables.global_variables_initializer()
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       sess.run(init)
       sess.run(scatter)
       self.assertAllClose(ref.eval(), expected)
@@ -186,7 +188,7 @@ class StatefulScatterNdTest(test.TestCase):
     scatter = state_ops.scatter_nd_update(ref, indices, updates)
     init = variables.global_variables_initializer()
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       sess.run(init)
       result = sess.run(scatter)
       self.assertAllClose(result, expected)
@@ -200,7 +202,7 @@ class StatefulScatterNdTest(test.TestCase):
     scatter = state_ops.scatter_nd_update(ref, indices, updates)
     init = variables.global_variables_initializer()
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       sess.run(init)
       result = sess.run(scatter)
       self.assertAllClose(result, expected)
@@ -223,7 +225,7 @@ class StatefulScatterNdTest(test.TestCase):
   #   self._VariableRankTests(_NumpyDiv, state_ops.scatter_nd_div)
 
   def _ScatterRepeatIndicesTest(self, np_scatter, tf_scatter):
-    for vtype in (np.int32, np.float32, np.float64):
+    for vtype in (np.int32, np.float16, np.float32, np.float64):
       for itype in (np.int32, np.int64):
         self._VariableRankTest(
             np_scatter, tf_scatter, vtype, itype, repeat_indices=True)
@@ -239,7 +241,7 @@ class StatefulScatterNdTest(test.TestCase):
   # TODO(simister): Re-enable once binary size increase due to
   # extra templating is back under control and this op is re-enabled
   # def testBooleanScatterUpdate(self):
-  #   with self.test_session(use_gpu=False) as session:
+  #   with self.session(use_gpu=False) as session:
   #     var = tf.Variable([True, False])
   #     update0 = tf.scatter_nd_update(var, [[1]], [True])
   #     update1 = tf.scatter_nd_update(
@@ -257,7 +259,7 @@ class StatefulScatterNdTest(test.TestCase):
                state_ops.scatter_nd_update):
       params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)
       updates = np.array([-3, -4, -5]).astype(np.float32)
-      with self.test_session(use_gpu=False):
+      with self.cached_session(use_gpu=False):
         ref = variables.VariableV1(params)
         ref.initializer.run()
 
@@ -284,6 +286,15 @@ class StatefulScatterNdTest(test.TestCase):
     self.assertAllEqual(
         state_ops.scatter_nd_update(ref, indices,
                                     updates).get_shape().as_list(), shape)
+
+  def testResVarInvalidOutputShape(self):
+    res = variables.Variable(
+        initial_value=lambda: array_ops.zeros(shape=[], dtype=dtypes.float32),
+        dtype=dtypes.float32)
+    with self.cached_session():
+      res.initializer.run()
+      with self.assertRaisesOpError("Output must be at least 1-D"):
+        state_ops.scatter_nd_update(res, [[0]], [0.22]).eval()
 
   def testExtraIndicesDimensions(self):
     indices = array_ops.zeros([1, 1, 2], dtypes.int32)
@@ -347,7 +358,7 @@ class StatefulScatterNdTest(test.TestCase):
       updates = np.array([-3, -4, -5]).astype(np.float32)
       # With GPU, the code ignores indices that are out of range.
       # We don't test the implementation; just test there's no failures.
-      with self.test_session(force_gpu=True):
+      with self.cached_session(force_gpu=True):
         ref = variables.Variable(params)
         ref.initializer.run()
 
@@ -520,97 +531,93 @@ class ScatterNdTest(test.TestCase):
       self.scatter_nd(indices, updates, shape)
 
   def testGradientsRank2ElementUpdate(self):
-    indices = constant_op.constant([[0, 0], [1, 1]], dtype=dtypes.int32)
-    updates = constant_op.constant([1, 4], dtype=dtypes.float64)
-    shape = constant_op.constant([2, 2], dtype=dtypes.int32)
-    input_ = array_ops.zeros(shape, dtype=dtypes.float64)
-    outputs = self.scatter_nd(indices, updates, shape, input_)
+    for dtype in GRADIENT_TESTS_DTYPES:
+      indices = constant_op.constant([[0, 0], [1, 1]], dtype=dtypes.int32)
+      updates = constant_op.constant([1, 4], dtype=dtype)
+      shape = constant_op.constant([2, 2], dtype=dtypes.int32)
+      input_ = array_ops.zeros(shape, dtype=dtype)
+      outputs = self.scatter_nd(indices, updates, shape, input_)
 
-    grad_vals = constant_op.constant([[1, 2], [3, 4]], dtype=dtypes.float64)
-    updates_grad, input_grad = gradients_impl.gradients(
-        [outputs], [updates, input_], [grad_vals])
-    expected_updates_grad = np.array([1, 4], dtype=np.float64)
-    expected_input_grad = np.array([[1, 2], [3, 4]], dtype=np.float64)
-    with self.cached_session():
-      self.assertAllEqual(expected_updates_grad, updates_grad.eval())
-      if self.non_aliasing_add_test:
-        self.assertAllEqual(expected_input_grad, input_grad.eval())
+      grad_vals = constant_op.constant([[1, 2], [3, 4]], dtype=dtype)
+      updates_grad, input_grad = gradients_impl.gradients(
+          [outputs], [updates, input_], [grad_vals])
+      expected_updates_grad = np.array([1, 4], dtype=dtype.as_numpy_dtype())
+      expected_input_grad = np.array([[1, 2], [3, 4]],
+                                     dtype=dtype.as_numpy_dtype())
+      with self.cached_session():
+        self.assertAllEqual(expected_updates_grad, updates_grad.eval())
+        if self.non_aliasing_add_test:
+          self.assertAllEqual(expected_input_grad, input_grad.eval())
 
   def testGradientsRank2SliceUpdate(self):
-    indices = constant_op.constant([[1], [0]], dtype=dtypes.int32)
-    updates = constant_op.constant([[3, 4], [1, 2]], dtype=dtypes.float64)
-    shape = constant_op.constant([2, 2], dtype=dtypes.int32)
-    input_ = array_ops.zeros(shape, dtype=dtypes.float64)
-    outputs = self.scatter_nd(indices, updates, shape, input_)
+    for dtype in GRADIENT_TESTS_DTYPES:
+      indices = constant_op.constant([[1], [0]], dtype=dtypes.int32)
+      updates = constant_op.constant([[3, 4], [1, 2]], dtype=dtype)
+      shape = constant_op.constant([2, 2], dtype=dtypes.int32)
+      input_ = array_ops.zeros(shape, dtype=dtype)
+      outputs = self.scatter_nd(indices, updates, shape, input_)
 
-    grad_vals = constant_op.constant([[3, 4], [1, 2]], dtype=dtypes.float64)
-    updates_grad, input_grad = gradients_impl.gradients(
-        [outputs], [updates, input_], [grad_vals])
-    expected_updates_grad = np.array([[1, 2], [3, 4]], dtype=np.float64)
-    expected_input_grad = np.array([[3, 4], [1, 2]], dtype=np.float64)
-    with self.cached_session():
-      self.assertAllEqual(expected_updates_grad, updates_grad.eval())
-      if self.non_aliasing_add_test:
-        self.assertAllEqual(expected_input_grad, input_grad.eval())
+      grad_vals = constant_op.constant([[3, 4], [1, 2]], dtype=dtype)
+      updates_grad, input_grad = gradients_impl.gradients(
+          [outputs], [updates, input_], [grad_vals])
+      expected_updates_grad = np.array([[1, 2], [3, 4]],
+                                       dtype=dtype.as_numpy_dtype())
+      expected_input_grad = np.array([[3, 4], [1, 2]],
+                                     dtype=dtype.as_numpy_dtype())
+      with self.cached_session():
+        self.assertAllEqual(expected_updates_grad, updates_grad.eval())
+        if self.non_aliasing_add_test:
+          self.assertAllEqual(expected_input_grad, input_grad.eval())
 
   def testGradientsRank3SliceUpdate(self):
-    indices = constant_op.constant(
-        [[[0, 1], [1, 0]], [[0, 0], [1, 1]]], dtype=dtypes.int32)
-    updates = constant_op.constant(
-        [[[5, 7], [2, 4]], [[1, 3], [6, 8]]], dtype=dtypes.float64)
-    shape = constant_op.constant([2, 2, 2], dtype=dtypes.int32)
-    input_ = array_ops.zeros(shape, dtype=dtypes.float64)
-    outputs = self.scatter_nd(indices, updates, shape, input_)
+    for dtype in GRADIENT_TESTS_DTYPES:
+      indices = constant_op.constant([[[0, 1], [1, 0]], [[0, 0], [1, 1]]],
+                                     dtype=dtypes.int32)
+      updates = constant_op.constant([[[5, 7], [2, 4]], [[1, 3], [6, 8]]],
+                                     dtype=dtype)
+      shape = constant_op.constant([2, 2, 2], dtype=dtypes.int32)
+      input_ = array_ops.zeros(shape, dtype=dtype)
+      outputs = self.scatter_nd(indices, updates, shape, input_)
 
-    grad_vals = constant_op.constant(
-        [[[1, 2], [3, 4]], [[5, 6], [7, 8]]], dtype=dtypes.float64)
-    updates_grad, input_grad = gradients_impl.gradients(
-        [outputs], [updates, input_], [grad_vals])
-    expected_updates_grad = np.array(
-        [[[3, 4], [5, 6]], [[1, 2], [7, 8]]], dtype=np.float64)
-    expected_input_grad = np.array(
-        [[[1, 2], [3, 4]], [[5, 6], [7, 8]]], dtype=np.float64)
-    with self.cached_session():
-      self.assertAllEqual(expected_updates_grad, updates_grad.eval())
-      if self.non_aliasing_add_test:
-        self.assertAllEqual(expected_input_grad, input_grad.eval())
+      grad_vals = constant_op.constant([[[1, 2], [3, 4]], [[5, 6], [7, 8]]],
+                                       dtype=dtype)
+      updates_grad, input_grad = gradients_impl.gradients(
+          [outputs], [updates, input_], [grad_vals])
+      expected_updates_grad = np.array([[[3, 4], [5, 6]], [[1, 2], [7, 8]]],
+                                       dtype=dtype.as_numpy_dtype())
+      expected_input_grad = np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]],
+                                     dtype=dtype.as_numpy_dtype())
+      with self.cached_session():
+        self.assertAllEqual(expected_updates_grad, updates_grad.eval())
+        if self.non_aliasing_add_test:
+          self.assertAllEqual(expected_input_grad, input_grad.eval())
 
   def testGradientsRank7SliceUpdate(self):
-    indices = constant_op.constant(
-        [[[
-            [[[[0, 0, 0, 0, 0, 1], [0, 0, 1, 0, 0, 0]]]],
-            [[[[0, 0, 0, 0, 0, 0], [0, 0, 1, 0, 0, 1]]]]
-        ]]], dtype=dtypes.int32)
-    updates = constant_op.constant(
-        [[[
-            [[[[5, 6], [2, 4]]]],
-            [[[[1, 3], [6, 8]]]]
-        ]]], dtype=dtypes.float64)
-    shape = constant_op.constant([1, 1, 2, 1, 1, 2, 2], dtype=dtypes.int32)
-    input_ = array_ops.zeros(shape, dtype=dtypes.float64)
-    outputs = self.scatter_nd(indices, updates, shape, input_)
+    for dtype in GRADIENT_TESTS_DTYPES:
+      indices = constant_op.constant(
+          [[[[[[[0, 0, 0, 0, 0, 1], [0, 0, 1, 0, 0, 0]]]],
+             [[[[0, 0, 0, 0, 0, 0], [0, 0, 1, 0, 0, 1]]]]]]],
+          dtype=dtypes.int32)
+      updates = constant_op.constant(
+          [[[[[[[5, 6], [2, 4]]]], [[[[1, 3], [6, 8]]]]]]], dtype=dtype)
+      shape = constant_op.constant([1, 1, 2, 1, 1, 2, 2], dtype=dtypes.int32)
+      input_ = array_ops.zeros(shape, dtype=dtype)
+      outputs = self.scatter_nd(indices, updates, shape, input_)
 
-    grad_vals = constant_op.constant(
-        [[[
-            [[[[1, 2], [3, 4]]]],
-            [[[[5, 6], [7, 8]]]]
-        ]]], dtype=dtypes.float64)
-    updates_grad, input_grad = gradients_impl.gradients(
-        [outputs], [updates, input_], [grad_vals])
-    expected_updates_grad = np.array(
-        [[[
-            [[[[3, 4], [5, 6]]]],
-            [[[[1, 2], [7, 8]]]]
-        ]]], dtype=np.float64)
-    expected_input_grad = np.array(
-        [[[
-            [[[[1, 2], [3, 4]]]],
-            [[[[5, 6], [7, 8]]]]
-        ]]], dtype=np.float64)
-    with self.cached_session():
-      self.assertAllEqual(expected_updates_grad, updates_grad.eval())
-      if self.non_aliasing_add_test:
-        self.assertAllEqual(expected_input_grad, input_grad.eval())
+      grad_vals = constant_op.constant(
+          [[[[[[[1, 2], [3, 4]]]], [[[[5, 6], [7, 8]]]]]]], dtype=dtype)
+      updates_grad, input_grad = gradients_impl.gradients(
+          [outputs], [updates, input_], [grad_vals])
+      expected_updates_grad = np.array(
+          [[[[[[[3, 4], [5, 6]]]], [[[[1, 2], [7, 8]]]]]]],
+          dtype=dtype.as_numpy_dtype())
+      expected_input_grad = np.array(
+          [[[[[[[1, 2], [3, 4]]]], [[[[5, 6], [7, 8]]]]]]],
+          dtype=dtype.as_numpy_dtype())
+      with self.cached_session():
+        self.assertAllEqual(expected_updates_grad, updates_grad.eval())
+        if self.non_aliasing_add_test:
+          self.assertAllEqual(expected_input_grad, input_grad.eval())
 
   def testScatterNdRepatedIndicesAdd(self):
     indices = array_ops.zeros([100000, 1], dtypes.int32)

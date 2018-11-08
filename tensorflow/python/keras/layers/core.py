@@ -81,6 +81,7 @@ class Masking(Layer):
     super(Masking, self).__init__(**kwargs)
     self.supports_masking = True
     self.mask_value = mask_value
+    self._can_use_graph_functions = True
 
   def compute_mask(self, inputs, mask=None):
     return K.any(math_ops.not_equal(inputs, self.mask_value), axis=-1)
@@ -124,6 +125,7 @@ class Dropout(Layer):
     self.noise_shape = noise_shape
     self.seed = seed
     self.supports_masking = True
+    self._can_use_graph_functions = True
 
   def _get_noise_shape(self, inputs):
     # Subclasses of `Dropout` may implement `_get_noise_shape(self, inputs)`,
@@ -328,6 +330,7 @@ class Activation(Layer):
     super(Activation, self).__init__(**kwargs)
     self.supports_masking = True
     self.activation = activations.get(activation)
+    self._can_use_graph_functions = True
 
   def call(self, inputs):
     return self.activation(inputs)
@@ -380,6 +383,7 @@ class Reshape(Layer):
   def __init__(self, target_shape, **kwargs):
     super(Reshape, self).__init__(**kwargs)
     self.target_shape = tuple(target_shape)
+    self._can_use_graph_functions = True
 
   def _fix_unknown_dimension(self, input_shape, output_shape):
     """Find and replace a missing dimension in an output shape.
@@ -488,6 +492,7 @@ class Permute(Layer):
           'The set of indices in `dims` must be consecutive and start from 1.' %
           (dims,))
     self.input_spec = InputSpec(ndim=len(self.dims) + 1)
+    self._can_use_graph_functions = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -539,6 +544,7 @@ class Flatten(Layer):
     super(Flatten, self).__init__(**kwargs)
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.input_spec = InputSpec(min_ndim=2)
+    self._can_use_graph_functions = True
 
   def call(self, inputs):
     if self.data_format == 'channels_first':
@@ -598,6 +604,7 @@ class RepeatVector(Layer):
     super(RepeatVector, self).__init__(**kwargs)
     self.n = n
     self.input_spec = InputSpec(ndim=2)
+    self._can_use_graph_functions = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -926,17 +933,19 @@ class Dense(Layer):
 
     self.supports_masking = True
     self.input_spec = InputSpec(min_ndim=2)
+    self._can_use_graph_functions = True
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
-    if input_shape[-1].value is None:
+    if tensor_shape.dimension_value(input_shape[-1]) is None:
       raise ValueError('The last dimension of the inputs to `Dense` '
                        'should be defined. Found `None`.')
+    last_dim = tensor_shape.dimension_value(input_shape[-1])
     self.input_spec = InputSpec(min_ndim=2,
-                                axes={-1: input_shape[-1].value})
+                                axes={-1: last_dim})
     self.kernel = self.add_weight(
         'kernel',
-        shape=[input_shape[-1].value, self.units],
+        shape=[last_dim, self.units],
         initializer=self.kernel_initializer,
         regularizer=self.kernel_regularizer,
         constraint=self.kernel_constraint,
@@ -956,7 +965,7 @@ class Dense(Layer):
     self.built = True
 
   def call(self, inputs):
-    inputs = ops.convert_to_tensor(inputs, dtype=self.dtype)
+    inputs = ops.convert_to_tensor(inputs)
     rank = common_shapes.rank(inputs)
     if rank > 2:
       # Broadcasting is required for the inputs.
@@ -977,7 +986,7 @@ class Dense(Layer):
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     input_shape = input_shape.with_rank_at_least(2)
-    if input_shape[-1].value is None:
+    if tensor_shape.dimension_value(input_shape[-1]) is None:
       raise ValueError(
           'The innermost dimension of input_shape must be defined, but saw: %s'
           % input_shape)
@@ -1024,6 +1033,7 @@ class ActivityRegularization(Layer):
     self.supports_masking = True
     self.l1 = l1
     self.l2 = l2
+    self._can_use_graph_functions = True
 
   def compute_output_shape(self, input_shape):
     return input_shape

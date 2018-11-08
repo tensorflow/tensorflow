@@ -85,24 +85,6 @@ class CallTreesTest(converter_testing.TestCase):
       tc = TestClass()
       self.assertEquals(3, result.test_fn_2(tc, 1))
 
-  def test_py_func_no_retval(self):
-
-    def test_fn(a):
-      setattr(a, 'foo', 'bar')
-
-    with self.converted(test_fn, call_trees, {'setattr': setattr}) as result:
-      with self.cached_session() as sess:
-
-        class Dummy(object):
-          pass
-
-        a = Dummy()
-        result.test_fn(a)
-        py_func_op, = sess.graph.get_operations()
-        self.assertFalse(hasattr(a, 'foo'))
-        sess.run(py_func_op)
-        self.assertEquals('bar', a.foo)
-
   def test_py_func_known_function(self):
 
     def test_fn():
@@ -133,29 +115,19 @@ class CallTreesTest(converter_testing.TestCase):
         result_tensor = result.test_fn(constant_op.constant(1))
         self.assertEquals(sess.run(result_tensor), 3)
 
-  def test_decorated_callee(self):
+  def test_call_to_decorated_function(self):
 
-    # Using this trick to prevent the Python loader from automatically expanding
-    # the decorator. This simulates the situation found when converting a
-    # function from within an actual decorator.
+    def decorator(f):
+      return f
 
-    def wrapper_fn():
+    @decorator
+    def called_fn(a):
+      return a
 
-      def dec(f):
-        return f
+    def test_fn(a):
+      return called_fn(a)
 
-      @dec
-      def called_fn(a):
-        return a
-
-      @dec
-      def test_fn(a):
-        return called_fn(a)
-
-      return test_fn
-
-    node, ctx = self.prepare(wrapper_fn, {})
-    node = node.body[2]
+    node, ctx = self.prepare(test_fn, {'called_fn': called_fn})
     node = call_trees.transform(node, ctx)
 
 

@@ -27,6 +27,7 @@ limitations under the License.
 #include "mkldnn.hpp"
 
 using mkldnn::algorithm;
+using mkldnn::eltwise_bounded_relu;
 using mkldnn::eltwise_elu;
 using mkldnn::eltwise_relu;
 using mkldnn::eltwise_tanh;
@@ -35,7 +36,6 @@ using mkldnn::prop_kind;
 using mkldnn::relu_backward;
 using mkldnn::relu_forward;
 using mkldnn::stream;
-using mkldnn::memory;
 #else
 #include "mkl_dnn.h"
 #include "mkl_dnn_types.h"
@@ -785,7 +785,8 @@ class MklReluOpBase : public OpKernel {
  public:
   ~MklReluOpBase() {}
 
-  explicit MklReluOpBase(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit MklReluOpBase(OpKernelConstruction* context, float alpha, float beta)
+      : OpKernel(context), alpha_(alpha), beta_(beta) {}
   virtual void Compute_Scalar(OpKernelContext* context) = 0;
 
   void Compute(OpKernelContext* context) override {
@@ -815,10 +816,9 @@ class MklReluOpBase : public OpKernel {
         src_md = MklDnnData<T>::CreateBlockedMemDesc(src_dims, src_strides);
       }
 
-      T alpha = 0, beta = 0;
-
       // get a eltwise fwd from primitive pool
-      MklEltwiseFwdParams<T> fwdParams(src_dims, src_md, alg_kind, alpha, beta);
+      MklEltwiseFwdParams<T> fwdParams(src_dims, src_md, alg_kind, alpha_,
+                                       beta_);
       MklEltwiseFwdPrimitive<T>* eltwise_fwd =
           MklEltwiseFwdPrimitiveFactory<T>::Get(fwdParams);
 
@@ -879,6 +879,8 @@ class MklReluOpBase : public OpKernel {
  private:
   engine cpu_engine = engine(engine::cpu, 0);
   std::shared_ptr<relu_forward::primitive_desc> relu_fwd_pd;
+  float alpha_;
+  float beta_;
 };
 
 template <typename Device, typename T, algorithm alg_kind>
@@ -886,9 +888,9 @@ class MklReluGradOpBase : public OpKernel {
  public:
   ~MklReluGradOpBase() {}
 
-  explicit MklReluGradOpBase(OpKernelConstruction* context)
-      : OpKernel(context) {
-  }
+  explicit MklReluGradOpBase(OpKernelConstruction* context, float alpha,
+                             float beta)
+      : OpKernel(context), alpha_(alpha), beta_(beta) {}
 
   virtual void Compute_Scalar(OpKernelContext* context) = 0;
 
@@ -958,8 +960,6 @@ class MklReluGradOpBase : public OpKernel {
         src_dims = dnn_shape_src.GetSizesAsMklDnnDims();
       }
 
-      T alpha = 0, beta = 0;
-
       // As per comment above, we tell MKLDNN that both the inputs are in same
       // format. So we set common memory descriptor in MKL format, if any of the
       // inputs are in MKL format. Let's get memory descriptor that we will use
@@ -973,8 +973,8 @@ class MklReluGradOpBase : public OpKernel {
         common_md = src_md;
       }
 
-      MklEltwiseBwdParams<T> bwdParams(src_dims, common_md, alg_kind, alpha,
-                                       beta);
+      MklEltwiseBwdParams<T> bwdParams(src_dims, common_md, alg_kind, alpha_,
+                                       beta_);
       MklEltwiseBwdPrimitive<T>* eltwise_bwd =
           MklEltwiseBwdPrimitiveFactory<T>::Get(bwdParams);
       auto eltwise_bwd_pd = eltwise_bwd->GetEltwiseBwdPd();
@@ -1023,7 +1023,8 @@ class MklReluGradOpBase : public OpKernel {
       }
 
       OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                                  {diff_dst_index}, diff_src_index,
+                                  {static_cast<const int>(diff_dst_index)},
+                                  static_cast<const int>(diff_src_index),
                                   tf_shape_diff_src, &diff_src_tensor));
       AllocateOutputSetMklShape(context, diff_src_index, dnn_shape_diff_src);
 
@@ -1044,6 +1045,8 @@ class MklReluGradOpBase : public OpKernel {
  private:
   engine cpu_engine = engine(engine::cpu, 0);
   std::shared_ptr<relu_forward::primitive_desc> relu_fwd_pd;
+  float alpha_;
+  float beta_;
 };
 
 template <typename Device, typename T>
@@ -1052,7 +1055,7 @@ class MklReluOp : public MklReluOpBase<Device, T, eltwise_relu> {
   ~MklReluOp() {}
 
   explicit MklReluOp(OpKernelConstruction* context)
-      : MklReluOpBase<Device, T, eltwise_relu>(context) {}
+      : MklReluOpBase<Device, T, eltwise_relu>(context, 0.0f, 0.0f) {}
 
   virtual void Compute_Scalar(OpKernelContext* context) {
     const size_t src_index = 0;  // index of src input tensor
@@ -1081,7 +1084,7 @@ class MklReluGradOp : public MklReluGradOpBase<Device, T, eltwise_relu> {
   ~MklReluGradOp() {}
 
   explicit MklReluGradOp(OpKernelConstruction* context)
-      : MklReluGradOpBase<Device, T, eltwise_relu>(context) {}
+      : MklReluGradOpBase<Device, T, eltwise_relu>(context, 0.0f, 0.0f) {}
 
   virtual void Compute_Scalar(OpKernelContext* context) {
     const size_t diff_dst_index = 0;  // index of diff_dst input tensor
@@ -1115,7 +1118,7 @@ class MklEluOp : public MklReluOpBase<Device, T, eltwise_elu> {
   ~MklEluOp() {}
 
   explicit MklEluOp(OpKernelConstruction* context)
-      : MklReluOpBase<Device, T, eltwise_elu>(context) {}
+      : MklReluOpBase<Device, T, eltwise_elu>(context, 0.0f, 0.0f) {}
 
   virtual void Compute_Scalar(OpKernelContext* context) {
     const size_t src_index = 0;  // index of src input tensor
@@ -1148,7 +1151,7 @@ class MklEluGradOp : public MklReluGradOpBase<Device, T, eltwise_elu> {
   ~MklEluGradOp() {}
 
   explicit MklEluGradOp(OpKernelConstruction* context)
-      : MklReluGradOpBase<Device, T, eltwise_elu>(context) {}
+      : MklReluGradOpBase<Device, T, eltwise_elu>(context, 0.0f, 0.0f) {}
 
   virtual void Compute_Scalar(OpKernelContext* context) {
     const size_t diff_dst_index = 0;  // index of diff_dst input tensor
@@ -1187,7 +1190,7 @@ class MklTanhOp : public MklReluOpBase<Device, T, eltwise_tanh> {
   ~MklTanhOp() {}
 
   explicit MklTanhOp(OpKernelConstruction* context)
-      : MklReluOpBase<Device, T, eltwise_tanh>(context) {}
+      : MklReluOpBase<Device, T, eltwise_tanh>(context, 0.0f, 0.0f) {}
 
   virtual void Compute_Scalar(OpKernelContext* context) {
     const size_t src_index = 0;  // index of src input tensor
@@ -1219,7 +1222,7 @@ class MklTanhGradOp : public MklReluGradOpBase<Device, T, eltwise_tanh> {
   ~MklTanhGradOp() {}
 
   explicit MklTanhGradOp(OpKernelConstruction* context)
-      : MklReluGradOpBase<Device, T, eltwise_tanh>(context) {}
+      : MklReluGradOpBase<Device, T, eltwise_tanh>(context, 0.0f, 0.0f) {}
 
   virtual void Compute_Scalar(OpKernelContext* context) {
     const size_t diff_dst_index = 0;  // index of diff_dst input tensor
@@ -1248,6 +1251,70 @@ class MklTanhGradOp : public MklReluGradOpBase<Device, T, eltwise_tanh> {
         static_cast<void*>(const_cast<T*>(diff_dst_tensor.flat<T>().data()));
     (static_cast<T*>(out_o))[0] =
         (static_cast<T*>(user_g))[0] * (1 - tanh * tanh);
+  }
+};
+
+#define RELU6_UPPER_BOUND 6.0f
+template <typename Device, typename T>
+class MklRelu6Op : public MklReluOpBase<Device, T, eltwise_bounded_relu> {
+ public:
+  ~MklRelu6Op() {}
+
+  explicit MklRelu6Op(OpKernelConstruction* context)
+      : MklReluOpBase<Device, T, eltwise_bounded_relu>(
+            context, RELU6_UPPER_BOUND, 0.0f) {}
+
+  virtual void Compute_Scalar(OpKernelContext* context) {
+    const size_t src_index = 0;  // index of src input tensor
+    const size_t dst_index = 0;  // index of dst output tensor
+    const Tensor& src_tensor = MklGetInput(context, src_index);
+    MklDnnShape dnn_shape_src;
+    GetMklShape(context, src_index, &dnn_shape_src);
+
+    Tensor* dst_tensor = nullptr;
+    T* user_i = const_cast<T*>(src_tensor.flat<T>().data());
+    MklDnnShape dnn_shape_dst;
+    dnn_shape_dst.SetMklTensor(false);
+    AllocateOutputSetMklShape(context, dst_index, &dst_tensor,
+                              src_tensor.shape(), dnn_shape_dst);
+    T* out_o = dst_tensor->flat<T>().data();
+    out_o[0] = std::min(std::max(user_i[0], static_cast<T>(0)),
+                        static_cast<T>(RELU6_UPPER_BOUND));
+    return;
+  }
+};
+
+template <typename Device, typename T>
+class MklRelu6GradOp
+    : public MklReluGradOpBase<Device, T, eltwise_bounded_relu> {
+ public:
+  ~MklRelu6GradOp() {}
+
+  explicit MklRelu6GradOp(OpKernelConstruction* context)
+      : MklReluGradOpBase<Device, T, eltwise_bounded_relu>(
+            context, RELU6_UPPER_BOUND, 0.0f) {}
+
+  virtual void Compute_Scalar(OpKernelContext* context) {
+    const size_t diff_dst_index = 0;  // index of diff_dst input tensor
+    const size_t src_index = 1;       // index of src input tensor
+    const size_t diff_src_index = 0;  // index of diff_src output tensor
+    const Tensor& src_tensor = MklGetInput(context, src_index);
+    const Tensor& diff_dst_tensor = MklGetInput(context, diff_dst_index);
+    Tensor* diff_src_tensor = nullptr;
+
+    MklDnnShape dnn_shape_diff_dst;
+    GetMklShape(context, diff_dst_index, &dnn_shape_diff_dst);
+
+    MklDnnShape dnn_shape_diff_src;
+    dnn_shape_diff_src.SetMklTensor(false);
+    AllocateOutputSetMklShape(context, diff_src_index, &diff_src_tensor,
+                              diff_dst_tensor.shape(), dnn_shape_diff_src);
+    T* out_o = diff_src_tensor->flat<T>().data();
+    T* user_i = const_cast<T*>(src_tensor.flat<T>().data());
+    T* user_g = const_cast<T*>(diff_dst_tensor.flat<T>().data());
+    out_o[0] = user_g[0] * user_i[0] > 0 &&
+               (user_i[0] < static_cast<T>(RELU6_UPPER_BOUND));
+    return;
   }
 };
 
@@ -1295,6 +1362,19 @@ TF_CALL_float(REGISTER_ELU_MKL_SUPPORTED_KERNELS_TYPES);
                               .Label(mkl_op_registry::kMklOpLabel), \
                           MklTanhGradOp<CPUDevice, type>);
 TF_CALL_float(REGISTER_TANH_MKL_SUPPORTED_KERNELS_TYPES);
+
+#define REGISTER_RELU6_MKL_SUPPORTED_KERNELS_TYPES(type)            \
+  REGISTER_KERNEL_BUILDER(Name("_MklRelu6")                         \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklRelu6Op<CPUDevice, type>);             \
+  REGISTER_KERNEL_BUILDER(Name("_MklRelu6Grad")                     \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<type>("T")            \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklRelu6GradOp<CPUDevice, type>);
+TF_CALL_float(REGISTER_RELU6_MKL_SUPPORTED_KERNELS_TYPES);
 
 #endif
 

@@ -626,7 +626,12 @@ class BaseSaverBuilder(object):
         op, variables.Variable):
       # pylint: disable=protected-access
       for attr, factory in op._gather_saveables_for_checkpoint().items():
-        op = (factory(name + "_" + attr) if callable(factory) else factory)
+        if attr == checkpointable.VARIABLE_VALUE_KEY:
+          # Keep original name for classes masquerading as variables.
+          full_name = name
+        else:
+          full_name = name + "_" + attr
+        op = (factory(full_name) if callable(factory) else factory)
         for op in BaseSaverBuilder.SaveableObjectsForOp(op, op.name):
           yield op
       # pylint: enable=protected-access
@@ -889,7 +894,7 @@ def _get_saver_or_default():
   return saver
 
 
-@tf_export("train.Saver")
+@tf_export(v1=["train.Saver"])
 class Saver(object):
   """Saves and restores variables.
 
@@ -1594,7 +1599,7 @@ class Saver(object):
                                   export_scope=export_scope)
 
 
-@tf_export("train.import_meta_graph")
+@tf_export(v1=["train.import_meta_graph"])
 def import_meta_graph(meta_graph_or_file, clear_devices=False,
                       import_scope=None, **kwargs):
   """Recreates a Graph saved in a `MetaGraphDef` proto.
@@ -1724,7 +1729,7 @@ def _create_saver_from_imported_meta_graph(
       return None
 
 
-@tf_export("train.export_meta_graph")
+@tf_export(v1=["train.export_meta_graph"])
 def export_meta_graph(filename=None,
                       meta_info_def=None,
                       graph_def=None,

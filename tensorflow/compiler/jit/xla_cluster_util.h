@@ -32,6 +32,15 @@ extern const char* const kXlaClusterAttr;
 // compilation by the encapsulate subgraphs pass.
 extern const char* const kXlaOutsideCompilationAttr;
 
+// The attribute that marks certain inputs to a Node as required to be a
+// constant at compile time.  If this attribute is present then the
+// CompileTimeConstantInput information in the corresponding XlaOpKernel is
+// ignored.
+//
+// The value for this attribute, if present, has to be a list of strings naming
+// the inputs to the node that must be constant.
+extern const char* const kXlaCompileTimeConstantInputsAttr;
+
 using OrderedNodeSet = std::set<Node*, NodeComparatorID>;
 
 // Returns the DeviceType corresponding to 'device'.

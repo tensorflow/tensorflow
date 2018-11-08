@@ -21,19 +21,31 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.training import rmsprop
 from tensorflow.python.training.checkpointable import util as checkpointable_util
+from tensorflow.python.util import nest
+
+# Used for nested input/output/state RNN test.
+NestedInput = collections.namedtuple('NestedInput', ['t1', 't2'])
+NestedState = collections.namedtuple('NestedState', ['s1', 's2'])
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -822,6 +834,216 @@ class RNNTest(test.TestCase):
       self.assertEqual(initial_state.shape.as_list(), [batch, 5])
       self.assertEqual(initial_state.dtype, inputs.dtype)
 
+  def test_nested_input_output(self):
+    batch = 10
+    t = 5
+    i1, i2, i3 = 3, 4, 5
+    o1, o2, o3 = 2, 3, 4
+
+    cell = NestedCell(o1, o2, o3)
+    rnn = keras.layers.RNN(cell)
+
+    input_1 = keras.Input((t, i1))
+    input_2 = keras.Input((t, i2, i3))
+
+    outputs = rnn((input_1, input_2))
+
+    self.assertEqual(len(outputs), 2)
+    self.assertEqual(outputs[0].shape.as_list(), [None, o1])
+    self.assertEqual(outputs[1].shape.as_list(), [None, o2, o3])
+
+    model = keras.models.Model((input_1, input_2), outputs)
+    model.compile(optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.001),
+                  loss='mse')
+    model.train_on_batch(
+        [np.zeros((batch, t, i1)), np.zeros((batch, t, i2, i3))],
+        [np.zeros((batch, o1)), np.zeros((batch, o2, o3))])
+    self.assertEqual(model.output_shape, [(None, o1), (None, o2, o3)])
+
+    cell = NestedCell(o1, o2, o3, use_tuple=True)
+
+    rnn = keras.layers.RNN(cell)
+
+    input_1 = keras.Input((t, i1))
+    input_2 = keras.Input((t, i2, i3))
+
+    outputs = rnn(NestedInput(t1=input_1, t2=input_2))
+
+    self.assertEqual(len(outputs), 2)
+    self.assertEqual(outputs[0].shape.as_list(), [None, o1])
+    self.assertEqual(outputs[1].shape.as_list(), [None, o2, o3])
+
+    model = keras.models.Model([input_1, input_2], outputs)
+    model.compile(optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.001),
+                  loss='mse')
+    model.train_on_batch(
+        [np.zeros((batch, t, i1)),
+         np.zeros((batch, t, i2, i3))],
+        [np.zeros((batch, o1)), np.zeros((batch, o2, o3))])
+    self.assertEqual(model.output_shape, [(None, o1), (None, o2, o3)])
+
+  def test_nested_input_output_with_state(self):
+    batch = 10
+    t = 5
+    i1, i2, i3 = 3, 4, 5
+    o1, o2, o3 = 2, 3, 4
+
+    cell = NestedCell(o1, o2, o3)
+    rnn = keras.layers.RNN(cell, return_sequences=True, return_state=True)
+
+    input_1 = keras.Input((t, i1))
+    input_2 = keras.Input((t, i2, i3))
+
+    output1, output2, s1, s2 = rnn((input_1, input_2))
+
+    self.assertEqual(output1.shape.as_list(), [None, t, o1])
+    self.assertEqual(output2.shape.as_list(), [None, t, o2, o3])
+    self.assertEqual(s1.shape.as_list(), [None, o1])
+    self.assertEqual(s2.shape.as_list(), [None, o2, o3])
+
+    model = keras.models.Model([input_1, input_2], [output1, output2])
+    model.compile(optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.001),
+                  loss='mse')
+    model.train_on_batch(
+        [np.zeros((batch, t, i1)),
+         np.zeros((batch, t, i2, i3))],
+        [np.zeros((batch, t, o1)),
+         np.zeros((batch, t, o2, o3))])
+    self.assertEqual(model.output_shape, [(None, t, o1), (None, t, o2, o3)])
+
+    cell = NestedCell(o1, o2, o3, use_tuple=True)
+
+    rnn = keras.layers.RNN(cell, return_sequences=True, return_state=True)
+
+    input_1 = keras.Input((t, i1))
+    input_2 = keras.Input((t, i2, i3))
+
+    output1, output2, s1, s2 = rnn(NestedInput(t1=input_1, t2=input_2))
+
+    self.assertEqual(output1.shape.as_list(), [None, t, o1])
+    self.assertEqual(output2.shape.as_list(), [None, t, o2, o3])
+    self.assertEqual(s1.shape.as_list(), [None, o1])
+    self.assertEqual(s2.shape.as_list(), [None, o2, o3])
+
+    model = keras.models.Model([input_1, input_2], [output1, output2])
+    model.compile(optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.001),
+                  loss='mse')
+    model.train_on_batch(
+        [np.zeros((batch, t, i1)),
+         np.zeros((batch, t, i2, i3))],
+        [np.zeros((batch, t, o1)),
+         np.zeros((batch, t, o2, o3))])
+    self.assertEqual(model.output_shape, [(None, t, o1), (None, t, o2, o3)])
+
+  def test_nest_input_output_with_init_state(self):
+    batch = 10
+    t = 5
+    i1, i2, i3 = 3, 4, 5
+    o1, o2, o3 = 2, 3, 4
+
+    cell = NestedCell(o1, o2, o3)
+    rnn = keras.layers.RNN(cell, return_sequences=True, return_state=True)
+
+    input_1 = keras.Input((t, i1))
+    input_2 = keras.Input((t, i2, i3))
+    init_s1 = keras.Input((o1,))
+    init_s2 = keras.Input((o2, o3))
+
+    output1, output2, s1, s2 = rnn((input_1, input_2),
+                                   initial_state=(init_s1, init_s2))
+
+    self.assertEqual(output1.shape.as_list(), [None, t, o1])
+    self.assertEqual(output2.shape.as_list(), [None, t, o2, o3])
+    self.assertEqual(s1.shape.as_list(), [None, o1])
+    self.assertEqual(s2.shape.as_list(), [None, o2, o3])
+
+    model = keras.models.Model([input_1, input_2, init_s1, init_s2],
+                               [output1, output2])
+    model.compile(optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.001),
+                  loss='mse')
+    model.train_on_batch(
+        [np.zeros((batch, t, i1)),
+         np.zeros((batch, t, i2, i3)),
+         np.zeros((batch, o1)),
+         np.zeros((batch, o2, o3))],
+        [np.zeros((batch, t, o1)),
+         np.zeros((batch, t, o2, o3))])
+    self.assertEqual(model.output_shape, [(None, t, o1), (None, t, o2, o3)])
+
+    cell = NestedCell(o1, o2, o3, use_tuple=True)
+
+    rnn = keras.layers.RNN(cell, return_sequences=True, return_state=True)
+
+    input_1 = keras.Input((t, i1))
+    input_2 = keras.Input((t, i2, i3))
+    init_s1 = keras.Input((o1,))
+    init_s2 = keras.Input((o2, o3))
+    init_state = NestedState(s1=init_s1, s2=init_s2)
+
+    output1, output2, s1, s2 = rnn(NestedInput(t1=input_1, t2=input_2),
+                                   initial_state=init_state)
+
+    self.assertEqual(output1.shape.as_list(), [None, t, o1])
+    self.assertEqual(output2.shape.as_list(), [None, t, o2, o3])
+    self.assertEqual(s1.shape.as_list(), [None, o1])
+    self.assertEqual(s2.shape.as_list(), [None, o2, o3])
+
+    model = keras.models.Model([input_1, input_2, init_s1, init_s2],
+                               [output1, output2])
+    model.compile(optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.001),
+                  loss='mse')
+    model.train_on_batch(
+        [np.zeros((batch, t, i1)),
+         np.zeros((batch, t, i2, i3)),
+         np.zeros((batch, o1)),
+         np.zeros((batch, o2, o3))],
+        [np.zeros((batch, t, o1)),
+         np.zeros((batch, t, o2, o3))])
+    self.assertEqual(model.output_shape, [(None, t, o1), (None, t, o2, o3)])
+
+  def test_peephole_lstm_cell(self):
+
+    def _run_cell(cell_fn, **kwargs):
+      with self.cached_session() as sess:
+        inputs = array_ops.one_hot([1, 2, 3, 4], 4)
+        cell = cell_fn(5, **kwargs)
+        cell.build(inputs.shape)
+        initial_state = cell.get_initial_state(
+            inputs=inputs, batch_size=4, dtype=dtypes.float32)
+        inputs, _ = cell(inputs, initial_state)
+        output = inputs
+        if not context.executing_eagerly():
+          sess.run(variables_lib.global_variables_initializer())
+          output = sess.run(output)
+        return output
+
+    random_seed.set_random_seed(12345)
+    # `recurrent_activation` kwarg is set to sigmoid as that is hardcoded into
+    # rnn_cell.LSTMCell.
+    no_peephole_output = _run_cell(
+        keras.layers.LSTMCell,
+        kernel_initializer='ones',
+        recurrent_activation='sigmoid',
+        implementation=1)
+    first_implementation_output = _run_cell(
+        keras.layers.PeepholeLSTMCell,
+        kernel_initializer='ones',
+        recurrent_activation='sigmoid',
+        implementation=1)
+    second_implementation_output = _run_cell(
+        keras.layers.PeepholeLSTMCell,
+        kernel_initializer='ones',
+        recurrent_activation='sigmoid',
+        implementation=2)
+    tf_lstm_cell_output = _run_cell(
+        rnn_cell.LSTMCell,
+        use_peepholes=True,
+        initializer=init_ops.ones_initializer)
+    self.assertNotAllClose(first_implementation_output, no_peephole_output)
+    self.assertAllClose(first_implementation_output,
+                        second_implementation_output)
+    self.assertAllClose(first_implementation_output, tf_lstm_cell_output)
+
 
 class Minimal2DRNNCell(keras.layers.Layer):
   """The minimal 2D RNN cell is a simple combination of 2 1-D RNN cell.
@@ -875,6 +1097,56 @@ class PlusOneRNNCell(keras.layers.Layer):
 
   def call(self, inputs, states):
     return inputs + 1, [states[0] + 1]
+
+
+class NestedCell(keras.layers.Layer):
+
+  def __init__(self, unit_1, unit_2, unit_3, use_tuple=False, **kwargs):
+    self.unit_1 = unit_1
+    self.unit_2 = unit_2
+    self.unit_3 = unit_3
+    self.use_tuple = use_tuple
+    super(NestedCell, self).__init__(**kwargs)
+    # A nested state.
+    if use_tuple:
+      self.state_size = NestedState(
+          s1=unit_1, s2=tensor_shape.TensorShape([unit_2, unit_3]))
+    else:
+      self.state_size = (unit_1, tensor_shape.TensorShape([unit_2, unit_3]))
+    self.output_size = (unit_1, tensor_shape.TensorShape([unit_2, unit_3]))
+
+  def build(self, inputs_shape):
+    # expect input_shape to contain 2 items, [(batch, i1), (batch, i2, i3)]
+    if self.use_tuple:
+      input_1 = inputs_shape.t1[1]
+      input_2, input_3 = inputs_shape.t2[1:]
+    else:
+      input_1 = inputs_shape[0][1]
+      input_2, input_3 = inputs_shape[1][1:]
+
+    self.kernel_1 = self.add_weight(
+        shape=(input_1, self.unit_1), initializer='uniform', name='kernel_1')
+    self.kernel_2_3 = self.add_weight(
+        shape=(input_2, input_3, self.unit_2, self.unit_3),
+        initializer='uniform',
+        name='kernel_2_3')
+
+  def call(self, inputs, states):
+    # inputs should be in [(batch, input_1), (batch, input_2, input_3)]
+    # state should be in shape [(batch, unit_1), (batch, unit_2, unit_3)]
+    flatten_inputs = nest.flatten(inputs)
+    s1, s2 = states
+
+    output_1 = math_ops.matmul(flatten_inputs[0], self.kernel_1)
+    output_2_3 = special_math_ops.einsum('bij,ijkl->bkl', flatten_inputs[1],
+                                         self.kernel_2_3)
+    state_1 = s1 + output_1
+    state_2_3 = s2 + output_2_3
+
+    output = [output_1, output_2_3]
+    new_states = NestedState(s1=state_1, s2=state_2_3)
+
+    return output, new_states
 
 
 if __name__ == '__main__':
