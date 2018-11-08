@@ -65,7 +65,7 @@ class HloOrdering {
 
   // Returns the sequential instruction order for the given computation, or
   // nullptr if the computation does not have a sequential ordering.
-  virtual const std::vector<const HloInstruction*>* SequentialOrder(
+  virtual const HloInstructionSequence* SequentialOrder(
       const HloComputation& computation) const = 0;
 
   // Return the call graph of the module used to compute ordering.
@@ -97,7 +97,7 @@ class PredecessorHloOrdering : public HloOrdering {
 
   // Returns nullptr indicating the computation does not have a sequential
   // ordering.
-  const std::vector<const HloInstruction*>* SequentialOrder(
+  const HloInstructionSequence* SequentialOrder(
       const HloComputation& computation) const override {
     return nullptr;
   }
@@ -186,7 +186,7 @@ class SequentialHloOrdering : public HloOrdering {
   ~SequentialHloOrdering() override = default;
 
   // Returns the sequential instruction order for the given computation.
-  const std::vector<const HloInstruction*>* SequentialOrder(
+  const HloInstructionSequence* SequentialOrder(
       const HloComputation& computation) const override;
 
   string ToString() const override;

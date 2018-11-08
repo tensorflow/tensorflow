@@ -374,11 +374,10 @@ bool SequentialHloOrdering::ExecutesBeforeInSameComputation(
   return order_position_.at(a) < order_position_.at(b);
 }
 
-const std::vector<const HloInstruction*>*
-SequentialHloOrdering::SequentialOrder(
+const HloInstructionSequence* SequentialHloOrdering::SequentialOrder(
     const HloComputation& computation) const {
   return schedule_.is_computation_scheduled(&computation)
-             ? &schedule_.sequence(&computation).instructions()
+             ? &schedule_.sequence(&computation)
              : nullptr;
 }
 
