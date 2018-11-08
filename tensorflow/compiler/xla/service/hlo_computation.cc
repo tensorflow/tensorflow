@@ -322,7 +322,7 @@ void HloComputation::ComputeInstructionPostOrder(
 
     // Add the operands to the stack in reverse order so the first operand is
     // processed first. This will produce a more natural ordering and a nicer
-    // result for thigns like HLO stringification.
+    // result for things like HLO stringification.
     const auto& operands = current->operands();
     for (int64 i = operands.size() - 1; i >= 0; --i) {
       dfs_stack.emplace_back(operands[i]);
