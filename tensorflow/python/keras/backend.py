@@ -1720,10 +1720,7 @@ def var(x, axis=None, keepdims=False):
   """
   if x.dtype.base_dtype == dtypes_module.bool:
     x = math_ops.cast(x, floatx())
-  m = math_ops.reduce_mean(x, axis, True)
-  devs_squared = math_ops.square(x - m)
-  return math_ops.reduce_mean(
-      devs_squared, axis, keepdims)
+  return math_ops.reduce_variance(x, axis=axis, keepdims=keepdims)
 
 
 @tf_export('keras.backend.std')
@@ -1741,7 +1738,9 @@ def std(x, axis=None, keepdims=False):
   Returns:
       A tensor with the standard deviation of elements of `x`.
   """
-  return math_ops.sqrt(var(x, axis=axis, keepdims=keepdims))
+  if x.dtype.base_dtype == dtypes_module.bool:
+    x = math_ops.cast(x, floatx())
+  return math_ops.reduce_std(x, axis=axis, keepdims=keepdims)
 
 
 @tf_export('keras.backend.mean')
