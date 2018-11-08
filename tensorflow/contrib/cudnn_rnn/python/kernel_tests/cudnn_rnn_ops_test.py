@@ -202,7 +202,7 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
           dtype=dtype)
       random_seed.set_random_seed(1234)
       params_size_t = model.params_size()
-      params = variables.Variable(
+      params = variables.VariableV1(
           random_ops.random_uniform([params_size_t], dtype=dtype),
           dtype=dtype,
           validate_shape=False)
@@ -248,7 +248,7 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
       params_size_t = model.params_size()
       names = ["rnn_1", "rnn_2"]
       param_vars = [
-          variables.Variable(
+          variables.VariableV1(
               random_ops.random_uniform([params_size_t], dtype=dtype),
               dtype=dtype,
               validate_shape=False) for name in names
@@ -304,7 +304,7 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
           direction=direction,
           dtype=dtype)
       params_size_t = model.params_size()
-      params = variables.Variable(
+      params = variables.VariableV1(
           array_ops.ones([params_size_t], dtype=dtype),
           validate_shape=False,
           dtype=dtype)
@@ -458,7 +458,7 @@ class CudnnRNNTestInference(TensorFlowTestCase):
     params_size_t = model.params_size()
     input_data = array_ops.ones([seq_length, batch_size, input_size])
     input_h = array_ops.ones([num_layers * dir_count, batch_size, num_units])
-    params = variables.Variable(
+    params = variables.VariableV1(
         array_ops.ones([params_size_t]), validate_shape=False)
     if has_input_c:
       input_c = array_ops.ones([num_layers * dir_count, batch_size, num_units])
@@ -584,20 +584,20 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
         dtype=dtype,
         dropout=dropout)
     params_size_t = model.params_size()
-    input_data = variables.Variable(
+    input_data = variables.VariableV1(
         random_ops.random_uniform(
             [seq_length, batch_size, input_size], dtype=dtype),
         dtype=dtype)
-    input_h = variables.Variable(
+    input_h = variables.VariableV1(
         random_ops.random_uniform(
             [num_layers * dir_count, batch_size, num_units], dtype=dtype),
         dtype=dtype)
-    params = variables.Variable(
+    params = variables.VariableV1(
         random_ops.random_uniform([params_size_t], dtype=dtype),
         validate_shape=False,
         dtype=dtype)
     if has_input_c:
-      input_c = variables.Variable(
+      input_c = variables.VariableV1(
           random_ops.random_uniform(
               [num_layers * dir_count, batch_size, num_units], dtype=dtype),
           dtype=dtype)
