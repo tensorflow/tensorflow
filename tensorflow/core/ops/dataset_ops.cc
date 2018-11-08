@@ -867,11 +867,6 @@ REGISTER_OP("DatasetToGraph")
     .Output("graph: string")
     .SetShapeFn(shape_inference::ScalarShape);
 
-REGISTER_OP("SinkDataset")
-    .Input("input_dataset: variant")
-    .Output("handle: variant")
-    .SetShapeFn(shape_inference::ScalarShape);
-
 REGISTER_OP("OptimizeDataset")
     .Input("input_dataset: variant")
     .Input("optimizations: string")
