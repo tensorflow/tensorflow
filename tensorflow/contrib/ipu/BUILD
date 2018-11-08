@@ -14,10 +14,12 @@ py_library(
       "__init__.py",
       "python/ops.py",
       "python/utils.py",
+      "python/popnn_rnn.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/compiler/plugin/poplar:ipu_ops_py",
+        "//tensorflow/compiler/plugin/poplar:popnn_ops_py",
         "//tensorflow/contrib/compiler:compiler_py",
     ],
 )
@@ -98,6 +100,30 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "lstm_size_test",
+    size = "large",
+    srcs = ["size_speed_tests/lstm_size_test.py"],
+    additional_deps = [
+        ":ipu",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:layers",
+    ],
+)
+
+tf_py_test(
+    name = "lstm_training_test",
+    size = "large",
+    srcs = ["training_tests/lstm_training_test.py"],
+    additional_deps = [
+        ":ipu",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:layers",
+    ],
+)
+
+tf_py_test(
     name = "while_loop_test",
     size = "medium",
     srcs = ["python/tests/while_loop_test.py"],
@@ -145,14 +171,19 @@ test_suite(
     name = "size_speed_tests",
     tests = [
         "resnet18_nobn_test",
+        "lstm_size_test",
     ],
 )
 
-test_suite(
-    name = "training_tests",
-    tests = [
-    ],
-)
+#TODO uncomment this once training is finished - also worth noting that an empty
+# tests field runs all the tests defined in the BUILD file, rather than none of
+# them.
+#test_suite(
+#    name = "training_tests",
+#    tests = [
+#        "lstm_training_test",
+#    ],
+#)
 
 test_suite(
     name = "poplar_test_suite",
