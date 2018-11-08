@@ -40,6 +40,31 @@ class Client {
   explicit Client(ServiceInterface* stub);
   virtual ~Client();
 
+  // Compile the computation with the given argument shapes and returns the
+  // handle to the compiled executable. The compiled executable is cached on the
+  // service, and the returned handle can be used for exection without
+  // re-compile.
+  // * The shape and layout of the arguments being executed with will affect how
+  //   the computation is compiled. If argument_shapes is empty, the parameters'
+  //   shape and layout will be used in the compilation.
+  // * If execution_options is not nullptr, these options are passed to the
+  //   service to affect how it compiles our computation.  (The pointer does not
+  //   need to live beyond this call.)
+  // * If execution_options.device_handles should be empty. If you need
+  //   non-empty device handles, call 'Execute' instead.
+  StatusOr<ExecutionHandle> Compile(
+      const XlaComputation& computation,
+      absl::Span<const Shape> argument_shapes,
+      const ExecutionOptions* execution_options = nullptr);
+
+  // Executes the compiled executable for the given handle with the given
+  // arguments and returns the global data that was produced from the execution.
+  // * If execution_profile is not nullptr then the pointed-to ExecutionProfile
+  //   will be filled with profile data from the execution.
+  StatusOr<std::unique_ptr<GlobalData>> Execute(
+      const ExecutionHandle& handle, absl::Span<GlobalData* const> arguments,
+      ExecutionProfile* execution_profile = nullptr);
+
   // Executes the computation with the given arguments and returns the global
   // data that was produced from the execution.
   // * If execution_options is not nullptr, these options are passed to the
