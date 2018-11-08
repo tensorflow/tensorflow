@@ -108,7 +108,7 @@ class HloParser {
   bool ParseInstructionList(HloComputation** computation,
                             const string& computation_name);
   bool ParseInstruction(HloComputation::Builder* builder, string* root_name);
-  bool ParseInstruciontRhs(HloComputation::Builder* builder, const string& name,
+  bool ParseInstructionRhs(HloComputation::Builder* builder, const string& name,
                            LocTy name_loc);
   bool ParseControlPredecessors(HloInstruction* instruction);
   bool ParseLiteral(Literal* literal, const Shape& shape);
@@ -608,10 +608,10 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
     *root_name = name;
   }
 
-  return ParseInstruciontRhs(builder, name, name_loc);
+  return ParseInstructionRhs(builder, name, name_loc);
 }
 
-bool HloParser::ParseInstruciontRhs(HloComputation::Builder* builder,
+bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
                                     const string& name, LocTy name_loc) {
   Shape shape;
   HloOpcode opcode;
@@ -3389,7 +3389,7 @@ bool HloParser::ParseSingleInstruction(HloModule* module) {
     // e.g.
     //
     //  f32[10] fusion(...), calls={...}
-    if (!ParseInstruciontRhs(&builder, module->name(), lexer_.GetLoc())) {
+    if (!ParseInstructionRhs(&builder, module->name(), lexer_.GetLoc())) {
       return false;
     }
   } else {
