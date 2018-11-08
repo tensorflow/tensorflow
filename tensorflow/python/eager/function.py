@@ -1097,7 +1097,7 @@ class PolymorphicFunction(object):
                 args,
                 kwargs,
                 self._input_signature,
-                experimental_autograph=self._autograph,
+                autograph=self._autograph,
                 arg_names=arg_names),
             self._function_attributes)
         self._function_cache[cache_key] = graph_function
@@ -1137,7 +1137,7 @@ def validate_signature(signature):
                     "a possibly nested sequence of TensorSpec objects.")
 
 
-def defun(func=None, input_signature=None, experimental_autograph=False):
+def defun(func=None, input_signature=None, autograph=False):
   """Compiles a Python function into a callable TensorFlow graph.
 
   `defun` (short for "define function") trace-compiles a Python function
@@ -1446,7 +1446,7 @@ def defun(func=None, input_signature=None, experimental_autograph=False):
       function is instantiated for each inferred input signature.  If a
       signature is specified, every input to `func` must be a `Tensor`, and
       `func` cannot accept `**kwargs`.
-    experimental_autograph: Whether `func` should be compiled before
+    autograph: Whether `func` should be compiled before
       constructing the graph. See https://www.tensorflow.org/guide/autograph
       for more information.
 
@@ -1464,13 +1464,13 @@ def defun(func=None, input_signature=None, experimental_autograph=False):
   return defun_with_attributes(
       func=func,
       input_signature=input_signature,
-      experimental_autograph=experimental_autograph)
+      autograph=autograph)
 
 
 def defun_with_attributes(func=None,
                           input_signature=None,
                           attributes=None,
-                          experimental_autograph=False):
+                          autograph=False):
   """Compiles a Python function into a callable TensorFlow graph.
 
   This function supports adding extra function attributes. See detailed
@@ -1487,7 +1487,7 @@ def defun_with_attributes(func=None,
       unsupported value will result into ValueError. `func_name` is also one of
       the whitelisted argument which is a python string, and sets the name for
       this `Function` in the graph.
-    experimental_autograph: same as defun()'s experimental_autograph.
+    autograph: same as defun()'s autograph.
 
   Returns:
     Same as the return value of defun, with attributes added to the function in
@@ -1512,7 +1512,7 @@ def defun_with_attributes(func=None,
             name,
             input_signature=input_signature,
             attributes=attributes,
-            autograph=experimental_autograph))
+            autograph=autograph))
 
   # This code path is for the `foo = tfe.defun(foo, ...)` use case
   if func is not None:
