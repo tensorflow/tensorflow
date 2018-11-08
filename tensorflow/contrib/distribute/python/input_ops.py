@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import ops
@@ -75,6 +76,8 @@ def auto_shard_dataset(dataset, num_shards, index):
         # instead of updating in-place.
         return dataset._clone(
             filenames=dataset._filenames.shard(num_shards, index))
+      elif isinstance(dataset, dataset_ops.RangeDataset):
+        return dataset.shard(num_shards, index)
       elif hasattr(dataset, "_map_func"):
         # TODO(priyag): Make this check more robust by enforcing some common
         # property on all map/flatmap/interleave datasets.
