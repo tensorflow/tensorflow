@@ -656,7 +656,8 @@ FunctionType FunctionType::get(ArrayRef<Type> inputs, ArrayRef<Type> results,
 
 VectorType VectorType::get(ArrayRef<int> shape, Type elementType) {
   assert(!shape.empty() && "vector types must have at least one dimension");
-  assert((elementType.isa<FloatType>() || elementType.isa<IntegerType>()) &&
+  assert((elementType.isa<FloatType>() || elementType.isa<IntegerType>() ||
+          elementType.isa<IndexType>()) &&
          "vectors elements must be primitives");
   assert(!std::any_of(shape.begin(), shape.end(), [](int i) {
     return i < 0;

@@ -615,7 +615,7 @@ Function types are also used to indicate the arguments and results of
 
 ``` {.ebnf}
 vector-type ::= `vector` `<` const-dimension-list vector-element-type `>`
-vector-element-type ::= float-type | integer-type
+vector-element-type ::= float-type | integer-type | index-type
 
 const-dimension-list ::= (integer-literal `x`)+
 ```
@@ -631,7 +631,7 @@ Syntax:
 
 ``` {.ebnf}
 tensor-type ::= `tensor` `<` dimension-list vector-element-type `>`
-tensor-memref-element-type ::= vector-element-type | vector-type | index-type
+tensor-memref-element-type ::= vector-element-type | vector-type
 
 // memref requires a known rank, but tensor does not.
 dimension-list ::= dimension-list-ranked | `*` `x`

@@ -377,11 +377,6 @@ extfunc @vectors(vector<1 x vector<1xi32>>, vector<2x4xf32>)
 
 // -----
 
-// index is not allowed in a vector.
-extfunc @vectors(vector<1 x index>) // expected-error {{invalid vector element type}}
-
-// -----
-
 cfgfunc @condbr_notbool() {
 bb0:
   %a = "foo"() : () -> i32 // expected-error {{prior use here}}

@@ -97,6 +97,9 @@ bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32, %idx : index):
   // CHECK: %cst_4 = constant splat<tensor<42xindex>, 0> : tensor<42xindex>
   %tidx = constant splat<tensor<42 x index>, 0> : tensor<42 x index>
 
+  // CHECK: %cst_5 = constant splat<vector<42xindex>, 0> : vector<42xindex>
+  %cidx = constant splat<vector<42 x index>, 0> : vector<42 x index>
+
   // CHECK: %{{[0-9]+}} = cmpi "eq", %{{[0-9]+}}, %{{[0-9]+}} : i32
   %14 = cmpi "eq", %i3, %i4 : i32
 
@@ -115,6 +118,9 @@ bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32, %idx : index):
 
   // CHECK: %{{[0-9]+}} = cmpi "eq", %cst_4, %cst_4 : tensor<42xindex>
   %19 = cmpi "eq", %tidx, %tidx : tensor<42 x index>
+
+  // CHECK: %{{[0-9]+}} = cmpi "eq", %cst_5, %cst_5 : vector<42xindex>
+  %20 = cmpi "eq", %cidx, %cidx : vector<42 x index>
 
   return
 }
