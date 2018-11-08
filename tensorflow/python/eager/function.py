@@ -724,7 +724,7 @@ class PolymorphicFunction(object):
                name,
                input_signature=None,
                attributes=None,
-               experimental_autograph=False):
+               autograph=False):
     """Initializes a polymorphic function.
 
     Args:
@@ -735,7 +735,7 @@ class PolymorphicFunction(object):
         function is instantiated for each inferred input signature.
       attributes: dict, extra keyword arguments that will be added as attribute
         of the function.
-      experimental_autograph: whether to use autograph to compile
+      autograph: whether to use autograph to compile
         `python_function`. See https://www.tensorflow.org/guide/autograph for
         more information.
 
@@ -753,7 +753,7 @@ class PolymorphicFunction(object):
       self._args_to_prepend = tuple()
       self._kwargs_to_include = {}
     self._name = name
-    self._experimental_autograph = experimental_autograph
+    self._autograph = autograph
     self._function_cache = collections.OrderedDict()
     self._function_attributes = attributes or {}
 
@@ -1097,7 +1097,7 @@ class PolymorphicFunction(object):
                 args,
                 kwargs,
                 self._input_signature,
-                experimental_autograph=self._experimental_autograph,
+                experimental_autograph=self._autograph,
                 arg_names=arg_names),
             self._function_attributes)
         self._function_cache[cache_key] = graph_function
@@ -1512,7 +1512,7 @@ def defun_with_attributes(func=None,
             name,
             input_signature=input_signature,
             attributes=attributes,
-            experimental_autograph=experimental_autograph))
+            autograph=experimental_autograph))
 
   # This code path is for the `foo = tfe.defun(foo, ...)` use case
   if func is not None:
@@ -1531,7 +1531,7 @@ def defun_with_attributes(func=None,
 # When a method is bound to objects of this type, it allows AutoGraph to
 # recover a weak reference the original method's self pointer. This uses the
 # mechanism from pyct.inspect_utils.getmethodclass.
-# TODO(mdan): This is not pretty. Use a callable wrapper with __get__ instead.
+# TODO(b/119246461): This is not pretty. Use a descriptor instead?
 class _WeakrefSelf(object):
 
   def __init__(self, target):
@@ -1540,8 +1540,6 @@ class _WeakrefSelf(object):
 
 def class_method_to_instance_method(original_function, instance):
   """Constructs a new PolymorphicFunction with `self` bound."""
-  def make_partial_py_func(py_func, weak_instance):
-    return lambda *args, **kwargs: py_func(weak_instance(), *args, **kwargs)
   weak_instance = weakref.ref(instance)
 
   # Note: while we could bind to a weakref proxy instead, that causes the
@@ -1549,16 +1547,30 @@ def class_method_to_instance_method(original_function, instance):
   bound_method = types_lib.MethodType(original_function.python_function,
                                       _WeakrefSelf(weak_instance))
 
+  # original_function is expected to be of one of the two PolymorphicFunction
+  # types (defined either in function.py or def_function.py).
+  assert hasattr(original_function, "_name")
+  assert hasattr(original_function, "_autograph")
+  assert hasattr(original_function, "_input_signature")
+  assert hasattr(original_function, "python_function")
+
+  def bound_method_wrapper(*args, **kwargs):
+    # __wrapped__ allows AutoGraph to swap in a converted function.
+    wrapped_fn = bound_method_wrapper.__wrapped__
+    # If __wrapped__ was not replaced, then call original_function.
+    # TODO(b/119246461): This needs to be simplified.
+    if tf_inspect.ismethod(wrapped_fn):
+      wrapped_fn = original_function.python_function
+    return wrapped_fn(weak_instance(), *args, **kwargs)
+
   # pylint: disable=protected-access
   # We make a dummy MethodType object to generate the correct bound method
   # signature. The actual call is to a function with a weak reference to
   # `instance`.
   instance_func = type(original_function)(
-      tf_decorator.make_decorator(
-          bound_method,
-          make_partial_py_func(original_function.python_function,
-                               weak_instance)),
+      tf_decorator.make_decorator(bound_method, bound_method_wrapper),
       name=original_function._name,
+      autograph=original_function._autograph,
       input_signature=original_function._input_signature)
   # pylint: enable=protected-access
 
