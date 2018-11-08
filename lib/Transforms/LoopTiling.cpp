@@ -98,24 +98,29 @@ static bool setTiledIndexSetHyperRect(ArrayRef<ForStmt *> origLoops,
     // TODO(bondhugula): Keep it simple for now - constant upper bound.
     if (!origLoops[i]->hasConstantUpperBound())
       return false;
+
     int64_t largestDiv = getLargestDivisorOfTripCount(*origLoops[i]);
     auto mayBeConstantCount = getConstantTripCount(*origLoops[i]);
     AffineMap lbMap, ubMap;
     auto dim = b.getAffineDimExpr(0);
     lbMap = b.getAffineMap(1, 0, dim, {});
     newLoops[width + i]->setLowerBound(newLoops[i], lbMap);
+
+    // Set the upper bound.
     if (mayBeConstantCount.hasValue() &&
         mayBeConstantCount.getValue() < tileSizes[i]) {
-      ubMap = b.getConstantAffineMap(mayBeConstantCount.getValue() - 1);
+      // Trip count is less than tile size; upper bound is the trip count.
+      ubMap = b.getConstantAffineMap(mayBeConstantCount.getValue());
       newLoops[width + i]->setUpperBoundMap(ubMap);
-    } else if (largestDiv % tileSizes[i] == 0) {
-      // No need of min.
-      ubMap = b.getAffineMap(1, 0, dim + tileSizes[i] - 1, {});
-      newLoops[width + i]->setUpperBound(newLoops[i], ubMap);
-    } else {
+    } else if (largestDiv % tileSizes[i] != 0) {
+      // Intra-tile loop ii goes from i to min(i + tileSize, ub_i).
       auto ubMax =
           b.getAffineConstantExpr(origLoops[i]->getConstantUpperBound());
-      ubMap = b.getAffineMap(1, 0, {dim + tileSizes[i] - 1, ubMax}, {});
+      ubMap = b.getAffineMap(1, 0, {dim + tileSizes[i], ubMax}, {});
+      newLoops[width + i]->setUpperBound(newLoops[i], ubMap);
+    } else {
+      // No need of the min expression.
+      ubMap = b.getAffineMap(1, 0, dim + tileSizes[i], {});
       newLoops[width + i]->setUpperBound(newLoops[i], ubMap);
     }
   }
