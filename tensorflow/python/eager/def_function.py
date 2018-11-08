@@ -256,7 +256,7 @@ class PolymorphicFunction(object):
     return function_lib.defun(
         tf_decorator.make_decorator(self._python_function, wrapped_fn),
         input_signature=self._input_signature,
-        experimental_autograph=self._autograph)
+        autograph=self._autograph)
 
   def _initialize(self, args, kwds, add_initializers_to=None):
     """Initializes, on the first call."""

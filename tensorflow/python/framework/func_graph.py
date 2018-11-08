@@ -295,7 +295,7 @@ def func_graph_from_py_func(name,
                             kwargs,
                             signature=None,
                             func_graph=None,
-                            experimental_autograph=False,
+                            autograph=False,
                             add_control_dependencies=True,
                             arg_names=None,
                             op_return_value=None):
@@ -315,7 +315,7 @@ def func_graph_from_py_func(name,
       inputs.
     func_graph: Optional. An instance of FuncGraph. If provided, we will use
       this graph else a new one is built and returned.
-    experimental_autograph: whether to use autograph to compile `python_func`.
+    autograph: whether to use autograph to compile `python_func`.
       See https://www.tensorflow.org/guide/autograph for more information.
     add_control_dependencies: If True, automatically adds control dependencies
       to ensure program order matches execution order and stateful ops always
@@ -387,7 +387,7 @@ def func_graph_from_py_func(name,
 
     this_tape = tape.push_new_tape()
     try:
-      if experimental_autograph:
+      if autograph:
         from tensorflow.python import autograph  # pylint: disable=g-import-not-at-top
         _, original_func = tf_decorator.unwrap(python_func)
 
