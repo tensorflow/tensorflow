@@ -78,11 +78,9 @@ def _interpolate_bilinear(grid,
 
     with ops.control_dependencies([
         check_ops.assert_greater_equal(height, 2, message=
-                                       'Grid must be at least batch_size'
-                                       'x 2 x 2 in size.'),
+                                       'Grid height must be at least 2'),
         check_ops.assert_greater_equal(width, 2, message=
-                                       'Grid must be at least batch_size'
-                                       'x 2 x 2 in size.')]):
+                                       'Grid width must be at least2')]):
       alphas = []
       floors = []
       ceils = []
