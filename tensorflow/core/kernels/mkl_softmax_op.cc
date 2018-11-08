@@ -62,7 +62,7 @@ class MklSoftmaxOp : public OpKernel {
       const int input_dims = src_tf_shape.dims();
       auto src_dims = TFShapeToMklDnnDims(src_tf_shape);
       memory::dims output_dims;
-      if(src_mkl_shape.IsMklTensor()) {
+      if (src_mkl_shape.IsMklTensor()) {
         output_dims = src_mkl_shape.GetSizesAsMklDnnDims();
       }
       else {
@@ -75,6 +75,7 @@ class MklSoftmaxOp : public OpKernel {
       // Each of the simbols has the following meaning:
       // n = batch, c = channels, t = sequence lenght, h = height,
       // w = width, d = depth 
+      
       switch (input_dims) {
         case 1:
           layout_type = memory::format::x;
@@ -86,10 +87,20 @@ class MklSoftmaxOp : public OpKernel {
           layout_type = memory::format::tnc;
           break;
         case 4:
-          layout_type = memory::format::nhwc;
+          if (src_mkl_shape.IsMklTensor()) {
+            layout_type = memory::format::nhwc;
+          }
+          else {
+            layout_type = memory::format::nchw;
+          }
           break;
         case 5:
-          layout_type = memory::format::ndhwc;
+          if (src_mkl_shape.IsMklTensor()) {
+            layout_type = memory::format::ndhwc;
+          }
+          else {
+            layout_type = memory::format::ncdhw;
+          }
           break;
         default:
           OP_REQUIRES_OK(context, errors::Aborted("Input dims must be <= 5 and >=1"));
