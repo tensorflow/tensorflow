@@ -429,7 +429,7 @@ bool CallIndirectOp::verify() const {
 // Return the type of the same shape (scalar, vector or tensor) containing i1.
 static Type getI1SameShape(Builder *build, Type type) {
   auto i1Type = build->getIntegerType(1);
-  if (type.isa<IntegerType>() || type.isa<FloatType>())
+  if (type.isa<IntegerType>() || type.isa<FloatType>() || type.isa<IndexType>())
     return i1Type;
   if (auto tensorType = type.dyn_cast<RankedTensorType>())
     return build->getTensorType(tensorType.getShape(), i1Type);
@@ -458,7 +458,8 @@ static inline bool implCheckI1SameShape(Ty pattern, Type type) {
 // Checks if "type" has the same shape (scalar, vector or tensor) as "pattern"
 // and contains i1.
 static bool checkI1SameShape(Type pattern, Type type) {
-  if (pattern.isa<IntegerType>() || pattern.isa<FloatType>())
+  if (pattern.isa<IntegerType>() || pattern.isa<FloatType>() ||
+      pattern.isa<IndexType>())
     return !isI1(type);
   if (auto patternTensorType = pattern.dyn_cast<TensorType>())
     return implCheckI1SameShape(patternTensorType, type);

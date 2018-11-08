@@ -362,10 +362,17 @@ static Type getTensorOrVectorElementType(Type type) {
   return type;
 }
 
+// Checks if the given type is an integer or an index type.  Following LLVM's
+// convention, returns true if the check fails and false otherwise.
+static inline bool checkIntegerLikeType(Type type) {
+  return !(type.isa<IntegerType>() || type.isa<IndexType>());
+}
+
 bool OpTrait::impl::verifyOperandsAreIntegerLike(const Operation *op) {
   for (auto *operand : op->getOperands()) {
-    if (!getTensorOrVectorElementType(operand->getType()).isa<IntegerType>())
-      return op->emitOpError("requires an integer type");
+    auto type = getTensorOrVectorElementType(operand->getType());
+    if (checkIntegerLikeType(type))
+      return op->emitOpError("requires an integer or index type");
   }
   return false;
 }
@@ -436,8 +443,9 @@ bool OpTrait::impl::verifyResultsAreFloatLike(const Operation *op) {
 
 bool OpTrait::impl::verifyResultsAreIntegerLike(const Operation *op) {
   for (auto *result : op->getResults()) {
-    if (!getTensorOrVectorElementType(result->getType()).isa<IntegerType>())
-      return op->emitOpError("requires an integer type");
+    auto type = getTensorOrVectorElementType(result->getType());
+    if (checkIntegerLikeType(type))
+      return op->emitOpError("requires an integer or index type");
   }
   return false;
 }

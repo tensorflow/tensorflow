@@ -24,44 +24,50 @@ bb0(%a : f32):
   return
 }
 
-// CHECK-LABEL: cfgfunc @standard_instrs(tensor<4x4x?xf32>, f32, i32) {
-cfgfunc @standard_instrs(tensor<4x4x?xf32>, f32, i32) {
-// CHECK: bb0(%arg0: tensor<4x4x?xf32>, %arg1: f32, %arg2: i32):
-bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32):
+// CHECK-LABEL: cfgfunc @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
+cfgfunc @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
+// CHECK: bb0(%arg0: tensor<4x4x?xf32>, %arg1: f32, %arg2: i32, %arg3: index):
+bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32, %idx : index):
   // CHECK: %0 = dim %arg0, 2 : tensor<4x4x?xf32>
   %a = "dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> index
 
   // CHECK: %1 = dim %arg0, 2 : tensor<4x4x?xf32>
   %a2 = dim %t, 2 : tensor<4x4x?xf32>
-  
+
   // CHECK: %2 = addf %arg1, %arg1 : f32
   %f2 = "addf"(%f, %f) : (f32,f32) -> f32
 
   // CHECK: %3 = addf %2, %2 : f32
   %f3 = addf %f2, %f2 : f32
-   
+
   // CHECK: %4 = addi %arg2, %arg2 : i32
   %i2 = "addi"(%i, %i) : (i32,i32) -> i32
 
   // CHECK: %5 = addi %4, %4 : i32
   %i3 = addi %i2, %i2 : i32
-  
-  // CHECK: %6 = subf %arg1, %arg1 : f32
+
+  // CHECK: %{{[0-9]+}} = addi %arg3, %arg3 : index
+  %idx1 = addi %idx, %idx : index
+
+  // CHECK: %{{[0-9]+}} = addi %arg3, %{{[0-9]+}} : index
+  %idx2 = "addi"(%idx, %idx1) : (index, index) -> index
+
+  // CHECK: %8 = subf %arg1, %arg1 : f32
   %f4 = "subf"(%f, %f) : (f32,f32) -> f32
 
-  // CHECK: %7 = subf %6, %6 : f32
+  // CHECK: %9 = subf %8, %8 : f32
   %f5 = subf %f4, %f4 : f32
- 
-  // CHECK: %8 = subi %arg2, %arg2 : i32
+
+  // CHECK: %10 = subi %arg2, %arg2 : i32
   %i4 = "subi"(%i, %i) : (i32,i32) -> i32
 
-  // CHECK: %9 = subi %8, %8 : i32
+  // CHECK: %11 = subi %10, %10 : i32
   %i5 = subi %i4, %i4 : i32
- 
-  // CHECK: %10 = mulf %2, %2 : f32
+
+  // CHECK: %12 = mulf %2, %2 : f32
   %f6 = mulf %f2, %f2 : f32
-  
-  // CHECK: %11 = muli %4, %4 : i32
+
+  // CHECK: %13 = muli %4, %4 : i32
   %i6 = muli %i2, %i2 : i32
 
   // CHECK: %c42_i32 = constant 42 : i32
@@ -88,6 +94,9 @@ bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32):
   // CHECK: %cst_3 = constant splat<vector<4xi32>, 0> : vector<4xi32>
   %13 = constant splat<vector<4 x i32>, 0> : vector<4 x i32>
 
+  // CHECK: %cst_4 = constant splat<tensor<42xindex>, 0> : tensor<42xindex>
+  %tidx = constant splat<tensor<42 x index>, 0> : tensor<42 x index>
+
   // CHECK: %{{[0-9]+}} = cmpi "eq", %{{[0-9]+}}, %{{[0-9]+}} : i32
   %14 = cmpi "eq", %i3, %i4 : i32
 
@@ -100,6 +109,12 @@ bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32):
 
   // CHECK: %{{[0-9]+}} = cmpi "ne", %cst_3, %cst_3 : vector<4xi32>
   %17 = "cmpi"(%13, %13) {predicate: 1} : (vector<4 x i32>, vector<4 x i32>) -> vector<4 x i1>
+
+  // CHECK: %{{[0-9]+}} = cmpi "slt", %arg3, %arg3 : index
+  %18 = cmpi "slt", %idx, %idx : index
+
+  // CHECK: %{{[0-9]+}} = cmpi "eq", %cst_4, %cst_4 : tensor<42xindex>
+  %19 = cmpi "eq", %tidx, %tidx : tensor<42 x index>
 
   return
 }

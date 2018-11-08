@@ -218,9 +218,8 @@ core concepts that are used throughout the document.
 ### Dimensions and Symbols {#dimensions-and-symbols}
 
 Dimensions and symbols are the two kinds of identifiers that can appear in the
-polyhedral structures, and are always of '[index](#other-types)' type.
-Dimensions are declared in parentheses and symbols are declared in square
-brackets.
+polyhedral structures, and are always of '[index](#index-type)' type. Dimensions
+are declared in parentheses and symbols are declared in square brackets.
 
 Examples:
 
@@ -303,7 +302,7 @@ less than or equal to that result. `mod` is the modulo operation: since its
 second argument is always positive, its results are always positive in our
 usage. The `integer-literal` operand for ceildiv, floordiv, and mod is always
 expected to be positive. `bare-id` is an identifier which must have type
-[index](#other-types). The precedence of operations in an affine expression are
+[index](#index-type). The precedence of operations in an affine expression are
 ordered from highest to lowest in the order: (1) parenthesization, (2) negation,
 (3) modulo, multiplication, floordiv, and ceildiv, and (4) addition and
 subtraction. All of these operators associate from left to right.
@@ -513,6 +512,7 @@ arrays, or dictionaries.
 
 ``` {.ebnf}
 type ::= integer-type
+       | index-type
        | float-type
        | other-type
        | vector-type
@@ -553,6 +553,22 @@ bit one).
 TODO: Need to decide on a representation for quantized integers
 [[initial thoughts](Rationale.md#quantized-integer-operations)].
 
+### Index Type {#index-type}
+
+The `index` type is a signless integer whose size is equal to the natural
+machine word of the target ([rationale](Rationale.md#signless-types)) and is
+used by the affine constructs in MLIR.
+
+Syntax:
+
+``` {.ebnf}
+// Target word-sized integer.
+index-type ::= `index`
+```
+
+**Rationale:** integers of platform-specific bit widths are practical to express
+sizes, dimensionalities and subscripts.
+
 ### Floating Point Types {#floating-point-types}
 
 Syntax:
@@ -571,17 +587,10 @@ In addition to the primary integer and floating point types, and derived types,
 MLIR supports some special purpose types:
 
 ``` {.ebnf}
-// Target word-sized integer.
-other-type ::= `index`
-
 // TensorFlow specific types (TODO: the rest ref data types)
 other-type ::= `tf_control` | `tf_resource` | `tf_variant` | `tf_string`
                `tf_complex64` | `tf_complex128` | `tf_f32ref`
 ```
-
-The `index` type is a signless integer whose size is equal to the natural
-machine word of the target [[rationale](Rationale.md#signless-types)] and is
-used by the affine constructs in MLIR.
 
 `tf_control` is used in TensorFlow graphs to represent
 [control dependence edges](https://docs.google.com/document/d/1Iey7MfrAlBWd0nrHNdnVKvIKRoo8XHsWG5g5pi1iDV4/edit?ts=5b5a0a9f#heading=h.1dv5wuya469j).
@@ -622,7 +631,7 @@ Syntax:
 
 ``` {.ebnf}
 tensor-type ::= `tensor` `<` dimension-list vector-element-type `>`
-tensor-memref-element-type ::= vector-element-type | vector-type
+tensor-memref-element-type ::= vector-element-type | vector-type | index-type
 
 // memref requires a known rank, but tensor does not.
 dimension-list ::= dimension-list-ranked | `*` `x`
@@ -1101,7 +1110,7 @@ shorthand-bound ::= ssa-id | `-`? integer-literal
 
 The `for` statement in an ML Function represents an affine loop nest, defining
 an SSA value for its induction variable. This SSA value always has type
-[`index`](#other-types), which is the size of the machine word.
+[`index`](#index-type), which is the size of the machine word.
 
 The `for` statement executes its body a number of times iterating from a lower
 bound to an upper bound by a stride. The stride, represented by `step`, is a
@@ -1324,7 +1333,7 @@ operation ::= ssa-id `=` `dim` ssa-id `,` integer-literal `:` type
 ```
 
 The `dim` operation takes a memref or tensor operand and a dimension index, and
-returns an ['index'](#other-types) that is the size of that dimension.
+returns an ['index'](#index-type) that is the size of that dimension.
 
 The `dim` operation is represented with a single integer attribute named
 `index`, and the type specifies the type of the memref or tensor operand.

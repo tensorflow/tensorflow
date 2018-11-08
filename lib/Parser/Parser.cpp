@@ -289,6 +289,7 @@ ParseResult Parser::parseCommaSeparatedListUntil(
 /// Parse an arbitrary type.
 ///
 ///   type ::= integer-type
+///          | index-type
 ///          | float-type
 ///          | other-type
 ///          | vector-type
@@ -296,8 +297,9 @@ ParseResult Parser::parseCommaSeparatedListUntil(
 ///          | memref-type
 ///          | function-type
 ///
+///   index-type ::= `index`
 ///   float-type ::= `f16` | `bf16` | `f32` | `f64`
-///   other-type ::= `index` | `tf_control`
+///   other-type ::= `tf_control`
 ///
 Type Parser::parseType() {
   switch (getToken().getKind()) {
@@ -338,10 +340,12 @@ Type Parser::parseType() {
     consumeToken(Token::kw_f64);
     return builder.getF64Type();
 
-  // other-type
+  // index-type
   case Token::kw_index:
     consumeToken(Token::kw_index);
     return builder.getIndexType();
+
+  // other-type
   case Token::kw_tf_control:
     consumeToken(Token::kw_tf_control);
     return builder.getTFControlType();

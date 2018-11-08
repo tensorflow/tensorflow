@@ -195,7 +195,7 @@ bb0(%a : i32, %b : i32):
 // Integer comparisons are not recognized for float types.
 cfgfunc @cfgfunc_with_ops(f32, f32) {
 bb0(%a : f32, %b : f32):
-  %r = cmpi "eq", %a, %b : f32 // expected-error {{op requires an integer type}}
+  %r = cmpi "eq", %a, %b : f32 // expected-error {{op requires an integer or index type}}
 }
 
 // -----

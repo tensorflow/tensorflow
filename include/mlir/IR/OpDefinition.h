@@ -617,8 +617,8 @@ public:
   }
 };
 
-/// This class verifies that any results of the specified op have an integer
-/// type, a vector thereof, or a tensor thereof.
+/// This class verifies that any results of the specified op have an integer or
+/// index type, a vector thereof, or a tensor thereof.
 template <typename ConcreteType>
 class ResultsAreIntegerLike
     : public TraitBase<ConcreteType, ResultsAreIntegerLike> {
@@ -648,8 +648,8 @@ public:
   }
 };
 
-/// This class verifies that all operands of the specified op have an integer
-/// type, a vector thereof, or a tensor thereof.
+/// This class verifies that all operands of the specified op have an integer or
+/// index type, a vector thereof, or a tensor thereof.
 template <typename ConcreteType>
 class OperandsAreIntegerLike
     : public TraitBase<ConcreteType, OperandsAreIntegerLike> {

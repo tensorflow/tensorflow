@@ -500,7 +500,8 @@ template <typename U> U Type::cast() const {
 /// Return true if the specified element type is ok in a tensor.
 static bool isValidTensorElementType(Type type) {
   return type.isa<FloatType>() || type.isa<VectorType>() ||
-         type.isa<IntegerType>() || type.isa<OtherType>();
+         type.isa<IntegerType>() || type.isa<OtherType>() ||
+         type.isa<IndexType>();
 }
 
 } // end namespace mlir

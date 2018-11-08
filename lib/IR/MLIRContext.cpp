@@ -749,7 +749,7 @@ static MemRefType getMemRefType(ArrayRef<int> shape, Type elementType,
 
   // Check that memref is formed from allowed types.
   if (!elementType.isa<IntegerType>() && !elementType.isa<FloatType>() &&
-      !elementType.isa<VectorType>()) {
+      !elementType.isa<VectorType>() && !elementType.isa<IntegerType>()) {
     if (location)
       context->emitDiagnostic(location, "invalid memref element type",
                               MLIRContext::DiagnosticKind::Error);
