@@ -1084,10 +1084,9 @@ void FlatAffineConstraints::setIdToConstant(unsigned pos, int64_t val) {
 void FlatAffineConstraints::removeEquality(unsigned pos) {
   unsigned numEqualities = getNumEqualities();
   assert(pos < numEqualities);
-  unsigned numCols = getNumCols();
   unsigned outputIndex = pos * numReservedCols;
   unsigned inputIndex = (pos + 1) * numReservedCols;
-  unsigned numElemsToCopy = (numEqualities - pos - 1) * numCols;
+  unsigned numElemsToCopy = (numEqualities - pos - 1) * numReservedCols;
   std::copy(equalities.begin() + inputIndex,
             equalities.begin() + inputIndex + numElemsToCopy,
             equalities.begin() + outputIndex);
@@ -1136,7 +1135,7 @@ Optional<int64_t> FlatAffineConstraints::getConstantLowerBound(unsigned pos) {
     if (c < getNumCols() - 1)
       return None;
     auto mayLb = mlir::ceilDiv(-atIneq(r, getNumCols() - 1), atIneq(r, pos));
-    if (!lb.hasValue() || mayLb < lb.getValue())
+    if (!lb.hasValue() || mayLb > lb.getValue())
       lb = mayLb;
   }
   // TODO(andydavis,bondhugula): consider equalities (and an equality
@@ -1160,7 +1159,7 @@ Optional<int64_t> FlatAffineConstraints::getConstantUpperBound(unsigned pos) {
     if (c < getNumCols() - 1)
       return None;
     auto mayUb = mlir::floorDiv(atIneq(r, getNumCols() - 1), -atIneq(r, pos));
-    if (!ub.hasValue() || mayUb > ub.getValue())
+    if (!ub.hasValue() || mayUb < ub.getValue())
       ub = mayUb;
   }
   // TODO(andydavis,bondhugula): consider equalities (and an equality
