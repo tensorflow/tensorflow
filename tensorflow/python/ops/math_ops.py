@@ -2145,17 +2145,14 @@ def matvec(a,
     ValueError: If transpose_a and adjoint_a are both set to True.
   """
   with ops.name_scope(name, "MatVec", [a, b]) as name:
-    # matvec is achieved by reshaping b into a matrix (appending a singleton),
-    # then squeezing out the trailing dim of the result.  There are other ways
-    # to do this, e.g. using tf.expand_dims and tf.squeeze.  What we have here
-    # has been found to be most memory efficient on TPU.
-    return matmul(
+    output = matmul(
         a,
-        b[..., array_ops.newaxis],
+        array_ops.expand_dims(b, axis=-1),
         transpose_a=transpose_a,
         adjoint_a=adjoint_a,
         a_is_sparse=a_is_sparse,
-        b_is_sparse=b_is_sparse)[..., 0]
+        b_is_sparse=b_is_sparse)
+    return array_ops.squeeze(output, axis=-1)
 
 
 _OverrideBinaryOperatorHelper(matmul, "matmul")
