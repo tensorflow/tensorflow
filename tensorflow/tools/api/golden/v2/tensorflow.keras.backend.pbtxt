@@ -182,7 +182,7 @@ tf_module {
   }
   member_method {
     name: "function"
-    argspec: "args=[\'inputs\', \'outputs\', \'updates\'], varargs=None, keywords=kwargs, defaults=[\'None\'], "
+    argspec: "args=[\'inputs\', \'outputs\', \'updates\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "gather"

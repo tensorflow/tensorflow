@@ -32,6 +32,7 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_module
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import func_graph
@@ -2903,7 +2904,7 @@ def print_tensor(x, message=''):
 # GRAPH MANIPULATION
 
 
-class Function(object):
+class GraphExecutionFunction(object):
   """Runs a computation graph.
 
   It's possible to pass arguments to `tf.Session.run()` via `session_kwargs`.
@@ -2927,13 +2928,13 @@ class Function(object):
                **session_kwargs):
     updates = updates or []
     if not isinstance(inputs, (list, tuple)):
-      raise TypeError('`inputs` to a TensorFlow backend function '
+      raise TypeError('`inputs` to a Keras backend function '
                       'should be a list or tuple.')
     if not isinstance(outputs, (list, tuple)):
-      raise TypeError('`outputs` of a TensorFlow backend function '
+      raise TypeError('`outputs` of a Keras backend function '
                       'should be a list or tuple.')
     if not isinstance(updates, (list, tuple)):
-      raise TypeError('`updates` in a TensorFlow backend function '
+      raise TypeError('`updates` in a Keras backend function '
                       'should be a list or tuple.')
     self.inputs = list(inputs)
     self.outputs = list(outputs)
@@ -3080,14 +3081,102 @@ class Function(object):
     return fetched[:len(self.outputs)]
 
 
+class EagerExecutionFunction(object):
+  """Helper class for constructing a TF graph function from the Keras graph.
+
+  Arguments:
+    inputs: Feed placeholders to the computation graph.
+    outputs: Output tensors to fetch.
+    updates: Additional update ops to be run at function call.
+    name: A name to help users identify what this function does.
+    session_kwargs: Unsupported.
+  """
+
+  def __init__(self, inputs, outputs, updates=None, name=None):
+    updates = updates or []
+    if not isinstance(inputs, (list, tuple)):
+      raise TypeError('`inputs` to a Keras backend function '
+                      'should be a list or tuple.')
+    if not isinstance(outputs, (list, tuple)):
+      raise TypeError('`outputs` of a Keras backend function '
+                      'should be a list or tuple.')
+    if not isinstance(updates, (list, tuple)):
+      raise TypeError('`updates` in a Keras backend function '
+                      'should be a list or tuple.')
+    self.inputs = list(inputs)
+    self.outputs = list(outputs)
+    self.name = name
+
+    graph = get_graph()
+    # Consolidate updates
+    with graph.as_default():
+      with ops.control_dependencies(self.outputs):
+        # In general, updates should be run after the outputs have been
+        # computed. However, we can only ensure this when we create
+        # the updates here (i.e. when updates are passed as tuples).
+        # We cannot modify the control dependencies of preexisting update ops.
+        updates_ops = []
+        for update in updates:
+          # For legacy reasons it is allowed to pass an update as a tuple
+          # `(variable, new_value)` (this maps to an assign op).
+          if isinstance(update, tuple):
+            p, new_p = update
+            updates_ops.append(state_ops.assign(p, new_p))
+          else:
+            # Assumed already an op -- we cannot control its execution order.
+            updates_ops.append(update)
+
+      # We set the update ops to run at the end by conditioning it on output[0]
+      if updates and not outputs:
+        # Edge case; never happens in practice
+        raise ValueError('Cannot create a Keras backend function with updates'
+                         ' but no outputs during eager execution.')
+      with ops.control_dependencies(updates_ops):
+        outputs[0] = array_ops.identity(outputs[0])
+
+    # Prepare graph function
+    # TODO(fchollet): can we restrict `captures` to variables actually used in
+    # the relevant subgraph?
+    graph.inputs = inputs + list(graph.captures.values())
+    graph.outputs = outputs
+    graph_fn = eager_function.Function(graph)
+    graph_fn._num_positional_args = len(inputs)
+    graph_fn._arg_keywords = []
+    self._graph_fn = graph_fn
+
+    # Handle placeholders with default
+    # (treated as required placeholder by graph functions)
+    self._placeholder_default_values = {}
+    with graph.as_default():
+      for x in self.inputs:
+        if x.op.type == 'PlaceholderWithDefault':
+          self._placeholder_default_values[x] = tensor_util.constant_value(
+              x.op.inputs[0])
+
+  def __call__(self, inputs):
+    converted_inputs = []
+    for tensor, value in zip(self.inputs, inputs):
+      if value is None:
+        # Assume `value` is a placeholder with default
+        value = self._placeholder_default_values.get(tensor, None)
+        if value is None:
+          raise ValueError(
+              'You must feed a value for placeholder %s' % (tensor,))
+      converted_inputs.append(
+          ops.convert_to_tensor(value, dtype=tensor.dtype))
+    outputs = self._graph_fn(*converted_inputs)
+    return [x.numpy() for x in outputs]
+
+
 @tf_export('keras.backend.function')
-def function(inputs, outputs, updates=None, **kwargs):
+def function(inputs, outputs, updates=None, name=None, **kwargs):
   """Instantiates a Keras function.
 
   Arguments:
       inputs: List of placeholder tensors.
       outputs: List of output tensors.
       updates: List of update ops.
+      name: String, name of function.
       **kwargs: Passed to `tf.Session.run`.
 
   Returns:
@@ -3097,16 +3186,19 @@ def function(inputs, outputs, updates=None, **kwargs):
       ValueError: if invalid kwargs are passed in or if in eager execution.
   """
   if context.executing_eagerly():
-    raise ValueError(
-        '`keras.backend.function` is not supported with eager execution.')
+    if kwargs:
+      raise ValueError('Session keyword arguments are not support during '
+                       'eager execution. You passed: %s' % (kwargs,))
+    return EagerExecutionFunction(inputs, outputs, updates=updates, name=name)
+
   if kwargs:
     for key in kwargs:
       if (key not in tf_inspect.getfullargspec(session_module.Session.run)[0]
-          and key not in tf_inspect.getfullargspec(Function.__init__)[0]):
+          and key not in ['inputs', 'outputs', 'updates', 'name']):
         msg = ('Invalid argument "%s" passed to K.function with TensorFlow '
                'backend') % key
         raise ValueError(msg)
-  return Function(inputs, outputs, updates=updates, **kwargs)
+  return GraphExecutionFunction(inputs, outputs, updates=updates, **kwargs)
 
 
 @tf_export('keras.backend.gradients')

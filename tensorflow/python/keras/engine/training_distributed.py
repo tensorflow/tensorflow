@@ -122,7 +122,7 @@ def fit_loop(
         current_strategy, targets)
 
     # Create a train function that is composed of all the parameters above.
-    distributed_fit_function = K.Function(
+    distributed_fit_function = K.function(
         all_inputs,
         all_outputs,
         updates=all_updates,
@@ -279,7 +279,7 @@ def _experimental_fit_loop(
      all_session_args) = distributed_training_utils.unwrap_values(
          current_strategy, grouped_inputs, grouped_outputs,
          grouped_updates, grouped_session_args)
-    combined_fn = K.Function(
+    combined_fn = K.function(
         all_inputs,
         all_outputs,
         updates=all_updates,
@@ -459,7 +459,7 @@ def test_loop(model, iterator, verbose=0, steps=None):
     dataset_targets = distributed_training_utils.flatten_perdevice_values(
         current_strategy, targets)
 
-    distributed_test_function = K.Function(
+    distributed_test_function = K.function(
         all_inputs, all_outputs,
         updates=all_updates,
         name='distributed_test_function',
@@ -563,7 +563,7 @@ def _experimental_test_loop(model, iterator, verbose=0, steps=None,
          current_strategy, grouped_inputs, grouped_outputs, grouped_updates,
          grouped_session_args)
 
-    combined_fn = K.Function(
+    combined_fn = K.function(
         all_inputs, all_outputs,
         updates=all_updates,
         name='distributed_test_function',
@@ -671,7 +671,7 @@ def predict_loop(model, iterator, verbose=0, steps=None):
     dataset_inputs = distributed_training_utils.flatten_perdevice_values(
         current_strategy, inputs)
 
-    distributed_predict_function = K.Function(
+    distributed_predict_function = K.function(
         all_inputs, all_outputs,
         updates=all_updates,
         name='distributed_predict_function',
@@ -772,7 +772,7 @@ def _experimental_predict_loop(model, iterator, verbose=0, steps=None):
          current_strategy, grouped_inputs, grouped_outputs, grouped_updates,
          grouped_session_args)
 
-    combined_fn = K.Function(
+    combined_fn = K.function(
         all_inputs, all_outputs,
         updates=all_updates,
         name='distributed_predict_function',
