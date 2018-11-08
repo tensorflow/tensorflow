@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_LEGACY_FLAGS_PARSE_FLAGS_FROM_ENV_H_
-#define TENSORFLOW_COMPILER_XLA_LEGACY_FLAGS_PARSE_FLAGS_FROM_ENV_H_
+#ifndef TENSORFLOW_COMPILER_XLA_PARSE_FLAGS_FROM_ENV_H_
+#define TENSORFLOW_COMPILER_XLA_PARSE_FLAGS_FROM_ENV_H_
 
 // This module exports ParseFlagsFromEnv(), which allows other modules to parse
 // flags from the environtment variable TF_XLA_FLAGS, or (if the first
@@ -50,7 +50,6 @@ limitations under the License.
 #include "tensorflow/core/util/command_line_flags.h"
 
 namespace xla {
-namespace legacy_flags {
 
 // Call tensorflow::Flags::Parse(argc, argv, flag_list) against any as yet
 // unrecognized flags passed in from the environment, and return its
@@ -60,7 +59,6 @@ bool ParseFlagsFromEnv(const std::vector<tensorflow::Flag>& flag_list);
 // Used only for testing.  Not to be used by clients.
 void ResetFlagsFromEnvForTesting(int** pargc, std::vector<char*>** pargv);
 
-}  // namespace legacy_flags
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_LEGACY_FLAGS_PARSE_FLAGS_FROM_ENV_H_
+#endif  // TENSORFLOW_COMPILER_XLA_PARSE_FLAGS_FROM_ENV_H_

@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <set>
 
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -1896,7 +1896,7 @@ void BM_SequentialWhiles(int num_iters, int num_whiles) {
   tensorflow::testing::StopTiming();
   for (int i = 0; i < num_iters; ++i) {
     HloModuleConfig config;
-    config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+    config.set_debug_options(GetDebugOptionsFromFlags());
     HloModule module("BM_SequentialWhiles", config);
 
     auto builder = HloComputation::Builder("BM_SequentialWhiles");
@@ -1936,7 +1936,7 @@ void BM_ParallelWhiles(int num_iters, int num_whiles) {
   tensorflow::testing::StopTiming();
   for (int i = 0; i < num_iters; ++i) {
     HloModuleConfig config;
-    config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+    config.set_debug_options(GetDebugOptionsFromFlags());
     HloModule module("BM_SequentialWhiles", config);
 
     auto builder = HloComputation::Builder("BM_ParallelWhiles");
@@ -2003,7 +2003,7 @@ std::unique_ptr<HloComputation> MakeBenchmarkWhileBody(
 void BM_ManyElementTuple(int num_iters, const int num_tuple_inputs) {
   tensorflow::testing::StopTiming();
   HloModuleConfig config;
-  config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+  config.set_debug_options(GetDebugOptionsFromFlags());
   CopyInsertion copy_insertion;
   const Shape element_shape = ShapeUtil::MakeShape(F32, {});
   std::vector<HloInstruction*> tuple_params(num_tuple_inputs);

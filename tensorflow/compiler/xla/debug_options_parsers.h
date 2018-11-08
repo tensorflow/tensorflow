@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_LEGACY_FLAGS_DEBUG_OPTIONS_PARSERS_H_
-#define TENSORFLOW_COMPILER_XLA_LEGACY_FLAGS_DEBUG_OPTIONS_PARSERS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_DEBUG_OPTIONS_PARSERS_H_
+#define TENSORFLOW_COMPILER_XLA_DEBUG_OPTIONS_PARSERS_H_
 
 #include <vector>
 #include "absl/strings/numbers.h"
@@ -23,8 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
-namespace legacy_flags {
-namespace impl {
 
 template <typename T>
 void parse_xla_backend_extra_options(T* extra_options_map,
@@ -140,8 +138,6 @@ inline bool parse_xla_reduce_precision_option(
   return true;
 }
 
-}  // namespace impl
-}  // namespace legacy_flags
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_LEGACY_FLAGS_DEBUG_OPTIONS_PARSERS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_DEBUG_OPTIONS_PARSERS_H_

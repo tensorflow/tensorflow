@@ -126,7 +126,7 @@ class LLVMCompilerTest : public ::testing::Test {
 
   static std::unique_ptr<HloModule> CreateNewModule() {
     HloModuleConfig config;
-    config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+    config.set_debug_options(GetDebugOptionsFromFlags());
     return absl::make_unique<HloModule>(TestName(), config);
   }
 };

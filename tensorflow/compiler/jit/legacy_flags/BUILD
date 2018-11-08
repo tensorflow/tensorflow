@@ -22,7 +22,7 @@ cc_library(
     hdrs = ["mark_for_compilation_pass_flags.h"],
     deps =
         [
-            "//tensorflow/compiler/xla/legacy_flags:parse_flags_from_env",
+            "//tensorflow/compiler/xla:parse_flags_from_env",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
         ],
@@ -34,7 +34,7 @@ cc_library(
     hdrs = ["xla_device_flags.h"],
     deps =
         [
-            "//tensorflow/compiler/xla/legacy_flags:parse_flags_from_env",
+            "//tensorflow/compiler/xla:parse_flags_from_env",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
         ],
@@ -46,7 +46,7 @@ cc_library(
     hdrs = ["build_xla_ops_pass_flags.h"],
     deps =
         [
-            "//tensorflow/compiler/xla/legacy_flags:parse_flags_from_env",
+            "//tensorflow/compiler/xla:parse_flags_from_env",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
         ],
@@ -58,7 +58,7 @@ cc_library(
     hdrs = ["xla_ops_common_flags.h"],
     deps =
         [
-            "//tensorflow/compiler/xla/legacy_flags:parse_flags_from_env",
+            "//tensorflow/compiler/xla:parse_flags_from_env",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
         ],
