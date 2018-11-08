@@ -67,6 +67,26 @@ class ZeroFractionTest(test_lib.TestCase):
       y = nn_impl.zero_fraction(x).eval()
       self.assertTrue(np.isnan(y))
 
+  def testZeroFraction2_27Zeros(self):
+    sparsity = nn_impl.zero_fraction(
+        array_ops.zeros([int(2**27 * 1.01)], dtype=dtypes.int8))
+    with self.cached_session():
+      self.assertAllClose(1.0, sparsity.eval())
+
+  def testZeroFraction2_27Ones(self):
+    sparsity = nn_impl.zero_fraction(
+        array_ops.ones([int(2**27 * 1.01)], dtype=dtypes.int8))
+    with self.cached_session():
+      self.assertAllClose(0.0, sparsity.eval())
+
+  def testUnknownSize(self):
+    value = array_ops.placeholder(dtype=dtypes.float32)
+    sparsity = nn_impl.zero_fraction(value)
+    with self.cached_session() as sess:
+      self.assertAllClose(
+          0.25,
+          sess.run(sparsity, {value: [[0., 1.], [0.3, 2.]]}))
+
 
 class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
 
@@ -95,7 +115,7 @@ class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     arr = np.linspace(0., 1, 12).reshape(3, 4)
     x_neg_axis = nn_ops.softmax(arr, axis=-2)
     y_pos_axis = nn_ops.softmax(arr, axis=0)
-    z_gt_axis = nn_ops.softmax(arr, axis=4)
+    z_gt_axis = nn_ops.softmax(arr, axis=0)
     x_neg_axis_tf = self.evaluate(x_neg_axis)
     y_pos_axis_tf = self.evaluate(y_pos_axis)
     z_gt_axis_tf = self.evaluate(z_gt_axis)
@@ -180,7 +200,7 @@ class LogSoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     arr = np.linspace(0., 1, 12).reshape(3, 4)
     x_neg_axis = nn_ops.log_softmax(arr, axis=-2)
     y_pos_axis = nn_ops.log_softmax(arr, axis=0)
-    z_gt_axis = nn_ops.log_softmax(arr, axis=4)
+    z_gt_axis = nn_ops.log_softmax(arr, axis=0)
     x_neg_axis_tf = self.evaluate(x_neg_axis)
     y_pos_axis_tf = self.evaluate(y_pos_axis)
     z_gt_axis_tf = self.evaluate(z_gt_axis)

@@ -982,9 +982,10 @@ class OpKernelContext {
     return params_->output_attr_array[index];
   }
 
-  gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators() const {
+  gtl::InlinedVector<WrappedAllocator, 4> ConsumeWrappedAllocators() {
     mutex_lock lock(mu_);
-    gtl::InlinedVector<WrappedAllocator, 4> retrieved = wrapped_allocators_;
+    gtl::InlinedVector<WrappedAllocator, 4> retrieved;
+    retrieved.swap(wrapped_allocators_);
     return retrieved;
   }
 

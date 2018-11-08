@@ -90,7 +90,6 @@ java_test(
     size = "small",
     srcs = ["src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java"],
     javacopts = JAVACOPTS,
-    tags = ["no_oss"],
     test_class = "org.tensorflow.lite.TensorFlowLiteTest",
     deps = [
         ":tensorflowlitelib",
@@ -104,7 +103,6 @@ java_test(
     size = "small",
     srcs = ["src/test/java/org/tensorflow/lite/DataTypeTest.java"],
     javacopts = JAVACOPTS,
-    tags = ["no_oss"],
     test_class = "org.tensorflow.lite.DataTypeTest",
     deps = [
         ":tensorflowlitelib",
@@ -122,11 +120,11 @@ java_test(
         "src/testdata/int32.bin",
         "src/testdata/int64.bin",
         "src/testdata/invalid_model.bin",
+        "src/testdata/quantized.bin",
         "src/testdata/uint8.bin",
         "src/testdata/with_custom_op.lite",
     ],
     javacopts = JAVACOPTS,
-    tags = ["no_oss"],
     test_class = "org.tensorflow.lite.NativeInterpreterWrapperTest",
     deps = [
         ":tensorflowlitelib",
@@ -142,11 +140,9 @@ java_test(
     srcs = ["src/test/java/org/tensorflow/lite/InterpreterTest.java"],
     data = [
         "src/testdata/add.bin",
-        "src/testdata/mobilenet.tflite.bin",
         "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
     javacopts = JAVACOPTS,
-    tags = ["no_oss"],
     test_class = "org.tensorflow.lite.InterpreterTest",
     visibility = ["//visibility:private"],
     deps = [
@@ -165,7 +161,6 @@ java_test(
         "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
     javacopts = JAVACOPTS,
-    tags = ["no_oss"],
     test_class = "org.tensorflow.lite.InterpreterFlexTest",
     visibility = ["//visibility:private"],
     deps = [
@@ -183,7 +178,6 @@ java_test(
         "src/testdata/add.bin",
     ],
     javacopts = JAVACOPTS,
-    tags = ["no_oss"],
     test_class = "org.tensorflow.lite.TensorTest",
     deps = [
         ":tensorflowlitelib",

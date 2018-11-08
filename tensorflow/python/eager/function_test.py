@@ -105,7 +105,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # The default config allows everything.
     rewrites = rewriter_config_pb2.RewriterConfig()
 
-    with context.rewriter_config(rewrites):
+    with context.function_rewriter_config(rewrites):
       t = constant_op.constant(1.0)
       self.assertAllEqual(add(t, t).numpy(), 2.0)
 
@@ -190,7 +190,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testBasicGraphFunction(self):
     matmul = def_function.function(math_ops.matmul)
 
-    @function.defun
+    @def_function.function
     def sq(a):
       return matmul(a, a)
 
@@ -204,7 +204,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testInputSpecGraphFunction(self):
     matmul = def_function.function(math_ops.matmul)
 
-    @function.defun
+    @def_function.function
     def sq(a):
       return matmul(a, a)
 
@@ -223,7 +223,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testNestedInputSpecGraphFunction(self):
     matmul = def_function.function(math_ops.matmul)
 
-    @function.defun
+    @def_function.function
     def sq(mats):
       ((a, b),) = mats
       return matmul(a, b)
@@ -347,7 +347,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     pair = collections.namedtuple('pair', ['a', 'b'])
 
-    @function.defun
+    @def_function.function
     def a_times_b(inputs):
       return matmul(inputs.a['a'], inputs.b['b'])
 
@@ -362,7 +362,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testNestedOutputGraphFunction(self):
     matmul = def_function.function(math_ops.matmul)
 
-    @function.defun
+    @def_function.function
     def sq(a):
       return (matmul(a, a), {'b': constant_op.constant(1.0)})
 
@@ -381,7 +381,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testGraphFunctionWithGradients(self):
     v = resource_variable_ops.ResourceVariable(1.0, name='v')
 
-    @function.defun
+    @def_function.function
     def step():
       def inner():
         return v * v
@@ -394,7 +394,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(step_op(), 2.0)
 
   def testGraphFunctionNoneOutput(self):
-    @function.defun
+    @def_function.function
     def fn(unused_a, unused_b):
       return None
 
@@ -968,7 +968,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       v_gpu = resource_variable_ops.ResourceVariable(
           [0.0, 1.0, 2.0], name='gpu')
 
-    @function.defun
+    @def_function.function
     def resource_apply_adam():
       training_ops.resource_apply_adam(
           v_cpu.handle,
@@ -1040,11 +1040,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testNestedDifferentiableFunction(self):
-    @function.defun
+    @def_function.function
     def inner_fn(a, b):
       return a * math_ops.add(a, b)
 
-    @function.defun
+    @def_function.function
     def outer_fn(x):
       return inner_fn(x, 1.0)
 
@@ -1058,19 +1058,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testDeeplyNestedDifferentiableFunction(self):
-    @function.defun
+    @def_function.function
     def inner_inner_fn(a, b):
       return math_ops.add(a, b)
 
-    @function.defun
+    @def_function.function
     def inner_fn(a, b):
       return inner_inner_fn(a, b)
 
-    @function.defun
+    @def_function.function
     def middle_fn(a, b):
       return a * inner_fn(a, b)
 
-    @function.defun
+    @def_function.function
     def outer_fn(x):
       return middle_fn(x, 1.0)
 
@@ -1084,15 +1084,15 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testDeeplyNestedDifferentiableFunctionWithMultipleGradCalls(self):
-    @function.defun
+    @def_function.function
     def inner_fn(a, b):
       return math_ops.add(a, b)
 
-    @function.defun
+    @def_function.function
     def middle_fn(a, b):
       return math_ops.mul(a, inner_fn(a, b))
 
-    @function.defun
+    @def_function.function
     def outer_fn(x):
       return middle_fn(x, 3.0)
 
@@ -1132,19 +1132,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testDeeplyNestedDifferentiableFunctionGradientTapeInDefun(self):
-    @function.defun
+    @def_function.function
     def inner_inner_fn(a, b):
       return math_ops.add(a, b)
 
-    @function.defun
+    @def_function.function
     def inner_fn(a, b):
       return inner_inner_fn(a, b)
 
-    @function.defun
+    @def_function.function
     def middle_fn(a, b):
       return a * inner_fn(a, b)
 
-    @function.defun
+    @def_function.function
     def outer_fn(x):
       with backprop.GradientTape() as tp:
         tp.watch(x)
@@ -1158,19 +1158,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testDeeplyNestedDifferentiableFunctionGradientTapeInNestedDefun(self):
-    @function.defun
+    @def_function.function
     def inner_inner_fn(a, b):
       return math_ops.add(a, b)
 
-    @function.defun
+    @def_function.function
     def inner_fn(a, b):
       return inner_inner_fn(a, b)
 
-    @function.defun
+    @def_function.function
     def middle_fn(a, b):
       return a * inner_fn(a, b)
 
-    @function.defun
+    @def_function.function
     def almost_outer_fn(x):
       with backprop.GradientTape() as tp:
         tp.watch(x)
@@ -1178,7 +1178,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       grad = tp.gradient(result, x)
       return grad
 
-    @function.defun
+    @def_function.function
     def outer_fn(x):
       return almost_outer_fn(x)
 
@@ -1188,19 +1188,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testDeeplyNestedDifferentiableFunctionGradientTapeInMultNestedDefun(self):
-    @function.defun
+    @def_function.function
     def inner_inner_fn(a, b):
       return math_ops.add(a, b)
 
-    @function.defun
+    @def_function.function
     def inner_fn(a, b):
       return inner_inner_fn(a, b)
 
-    @function.defun
+    @def_function.function
     def middle_fn(a, b):
       return a * inner_fn(a, b)
 
-    @function.defun
+    @def_function.function
     def almost_outer_fn(x):
       with backprop.GradientTape() as tp:
         tp.watch(x)
@@ -1208,11 +1208,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       grad = tp.gradient(result, x)
       return grad
 
-    @function.defun
+    @def_function.function
     def outer_fn(x):
       return almost_outer_fn(x)
 
-    @function.defun
+    @def_function.function
     def outer_outer_fn(x):
       return outer_fn(x)
 
@@ -1222,19 +1222,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testDeeplyNestedDifferentiableFunctionTFGradientInDefun(self):
-    @function.defun
+    @def_function.function
     def inner_inner_fn(a, b):
       return math_ops.add(a, b)
 
-    @function.defun
+    @def_function.function
     def inner_fn(a, b):
       return inner_inner_fn(a, b)
 
-    @function.defun
+    @def_function.function
     def middle_fn(a, b):
       return a * inner_fn(a, b)
 
-    @function.defun
+    @def_function.function
     def outer_fn(x):
       result = middle_fn(x, 1.0)
       return gradients_impl.gradients(result, [x])[0]
@@ -1245,24 +1245,24 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testDeeplyNestedDifferentiableFunctionTFGradientInNestedDefun(self):
-    @function.defun
+    @def_function.function
     def inner_inner_fn(a, b):
       return math_ops.add(a, b)
 
-    @function.defun
+    @def_function.function
     def inner_fn(a, b):
       return inner_inner_fn(a, b)
 
-    @function.defun
+    @def_function.function
     def middle_fn(a, b):
       return a * inner_fn(a, b)
 
-    @function.defun
+    @def_function.function
     def almost_outer_fn(x):
       result = middle_fn(x, 1.0)
       return gradients_impl.gradients(result, [x])[0]
 
-    @function.defun
+    @def_function.function
     def outer_fn(x):
       return almost_outer_fn(x)
 
@@ -1272,28 +1272,28 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testDeeplyNestedDifferentiableFunctionTFGradientInMultNestedDefun(self):
-    @function.defun
+    @def_function.function
     def inner_inner_fn(a, b):
       return math_ops.add(a, b)
 
-    @function.defun
+    @def_function.function
     def inner_fn(a, b):
       return inner_inner_fn(a, b)
 
-    @function.defun
+    @def_function.function
     def middle_fn(a, b):
       return a * inner_fn(a, b)
 
-    @function.defun
+    @def_function.function
     def almost_outer_fn(x):
       result = middle_fn(x, 1.0)
       return gradients_impl.gradients(result, [x])[0]
 
-    @function.defun
+    @def_function.function
     def outer_fn(x):
       return almost_outer_fn(x)
 
-    @function.defun
+    @def_function.function
     def outer_outer_fn(x):
       return outer_fn(x)
 
@@ -1461,7 +1461,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def add(a, b):
       return math_ops.add(a, b)
 
-    @function.defun
+    @def_function.function
     def add_one(x):
       return add(x, 1)
 
@@ -1570,7 +1570,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     if not context.executing_eagerly():
       self.evaluate(variables.global_variables_initializer())
 
-    self.assertAllEqual([[[[4.0]]]], self.evaluate(y))
+    self.assertAllClose([[[[4.0]]]], self.evaluate(y))
 
     # Remove reference cycles in model
     test_util.dismantle_polymorphic_function(model)
@@ -1675,7 +1675,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with ops.device('gpu:0'):
       y = constant_op.constant(1.0)
 
-    @function.defun
+    @def_function.function
     def foo():
       return test_ops.device_placement_op()
 
@@ -2702,6 +2702,26 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(2, len(weak_variables))
     del m
     self.assertEqual([], list(weak_variables))
+
+  def testExecutorType(self):
+    @function.defun
+    def add_five(x):
+      return x + 5
+
+    self.assertEqual(
+        5,
+        add_five(constant_op.constant(0, dtype=dtypes.int32)).numpy())
+
+    with self.assertRaisesRegexp(errors.NotFoundError, 'NON_EXISTENT_EXECUTOR'):
+      with context.function_executor_type('NON_EXISTENT_EXECUTOR'):
+        add_five(constant_op.constant(0, dtype=dtypes.int32))
+
+    for executor_type in ('', 'DEFAULT', None):
+      with context.function_executor_type(executor_type):
+        self.assertAllEqual(
+            5,
+            add_five(constant_op.constant(0, dtype=dtypes.int32)).numpy())
+
 
 
 @parameterized.named_parameters(

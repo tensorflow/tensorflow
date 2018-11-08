@@ -18,7 +18,7 @@ cc_library(
         "pywrap_tfe.h",
     ],
     visibility = [
-        "//learning/deepmind/courier:__pkg__",
+        "//learning/deepmind/courier:__subpackages__",
         "//tensorflow:internal",
     ],
     deps = [
@@ -408,6 +408,7 @@ py_library(
     deps = [
         ":context",
         ":function",
+        ":lift_to_graph",
         "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
@@ -415,6 +416,17 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python/training/checkpointable:base",
+    ],
+)
+
+py_library(
+    name = "lift_to_graph",
+    srcs = ["lift_to_graph.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        "//tensorflow/python:framework_ops",
     ],
 )
 
@@ -438,6 +450,7 @@ py_library(
     deps = [
         ":context",
         ":function",
+        ":lift_to_graph",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:template",
         "//tensorflow/python:variable_scope",

@@ -27,13 +27,17 @@ TEST(CommandLineFlagsTest, BasicUsage) {
   bool some_switch = false;
   std::string some_name = "something_a";
   float some_float = -23.23f;
+  bool some_bool = false;
+  bool some_numeric_bool = true;
   const char* argv_strings[] = {"program_name",
                                 "--some_int32=20",
                                 "--some_int64=214748364700",
                                 "--some_switch=true",
                                 "--some_name=somethingelse",
-                                "--some_float=42.0"};
-  int argc = 6;
+                                "--some_float=42.0",
+                                "--some_bool=true",
+                                "--some_numeric_bool=0"};
+  int argc = 8;
   bool parsed_ok = Flags::Parse(
       &argc, reinterpret_cast<const char**>(argv_strings),
       {
@@ -42,6 +46,9 @@ TEST(CommandLineFlagsTest, BasicUsage) {
           Flag::CreateFlag("some_switch", &some_switch, "some switch"),
           Flag::CreateFlag("some_name", &some_name, "some name"),
           Flag::CreateFlag("some_float", &some_float, "some float"),
+          Flag::CreateFlag("some_bool", &some_bool, "some bool"),
+          Flag::CreateFlag("some_numeric_bool", &some_numeric_bool,
+                           "some numeric bool"),
       });
 
   EXPECT_EQ(true, parsed_ok);
@@ -50,6 +57,8 @@ TEST(CommandLineFlagsTest, BasicUsage) {
   EXPECT_EQ(true, some_switch);
   EXPECT_EQ("somethingelse", some_name);
   EXPECT_NEAR(42.0f, some_float, 1e-5f);
+  EXPECT_TRUE(some_bool);
+  EXPECT_FALSE(some_numeric_bool);
   EXPECT_EQ(argc, 1);
 }
 

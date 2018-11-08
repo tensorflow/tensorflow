@@ -281,6 +281,18 @@ void FuseMulOrDivParamsIntoPrecedingAffine(Model* model, Operator* preceding_op,
   const auto& bias_name = preceding_op->inputs[2];
   const auto& weights = model->GetArray(weights_name);
   const auto& bias = model->GetArray(bias_name);
+
+  if (weights.data_type != ArrayDataType::kFloat ||
+      bias.data_type != ArrayDataType::kFloat) {
+    AddMessageF(
+        "Not fusing %s into preceding %s because one of weights or bias array "
+        "is not float (types are %s and %s)",
+        LogName(*binary_op), LogName(*preceding_op),
+        ArrayDataTypeName(weights.data_type),
+        ArrayDataTypeName(bias.data_type));
+    return ::tensorflow::Status::OK();
+  }
+
   const int count_ops_consuming_bias = CountOpsWithInput(*model, bias_name);
   const int count_ops_consuming_weights =
       CountOpsWithInput(*model, weights_name);

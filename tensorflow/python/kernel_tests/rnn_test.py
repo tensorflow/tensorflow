@@ -664,24 +664,25 @@ class RNNTest(test.TestCase):
       kn1 = KerasNetworkTFRNNs(name="kn1")
       kn2 = KerasNetworkKerasRNNs(name="kn2")
 
-      z = array_ops.zeros((2, 3))
+    z = array_ops.zeros((2, 3))
 
-      kn1(z)
-      kn2(z)
+    kn1(z)
+    kn2(z)
 
-      # pylint: disable=protected-access
-      self.assertTrue(all("kn1" in v.name for v in kn1._cell.variables))
-      self.assertTrue(all("kn2" in v.name for v in kn2._cell.variables))
+    # pylint: disable=protected-access
+    self.assertTrue(all("kn1" in v.name for v in kn1._cell.variables))
+    self.assertTrue(all("kn2" in v.name for v in kn2._cell.variables))
 
+    with base_layers.keras_style_scope():
       kn1_new = KerasNetworkTFRNNs(name="kn1_new")
       kn2_new = KerasNetworkKerasRNNs(name="kn2_new")
 
-      kn2_new(z)
-      # Most importantly, this doesn't fail due to variable scope reuse issues.
-      kn1_new(z)
+    kn2_new(z)
+    # Most importantly, this doesn't fail due to variable scope reuse issues.
+    kn1_new(z)
 
-      self.assertTrue(all("kn1_new" in v.name for v in kn1_new._cell.variables))
-      self.assertTrue(all("kn2_new" in v.name for v in kn2_new._cell.variables))
+    self.assertTrue(all("kn1_new" in v.name for v in kn1_new._cell.variables))
+    self.assertTrue(all("kn2_new" in v.name for v in kn2_new._cell.variables))
 
 
 ######### Benchmarking RNN code

@@ -47,7 +47,7 @@ _beta_sample_note = """Note: `x` must have dtype `self.dtype` and be in
 `[0, 1].` It must have a shape compatible with `self.batch_shape()`."""
 
 
-@tf_export("distributions.Beta")
+@tf_export(v1=["distributions.Beta"])
 class Beta(distribution.Distribution):
   """Beta distribution.
 

@@ -176,6 +176,11 @@ class ScopedShapedBuffer : public ShapedBuffer {
   // It's the caller's job to ensure that the memory contained therein is freed.
   TF_MUST_USE_RESULT ShapedBuffer release();
 
+  // Extracts the sub-tree rooted at 'index' and returns a ScopedShapedBuffer
+  // that holds ownership of the subtree. Sets the buffers corresponding to the
+  // subtree to null in 'this'.
+  ScopedShapedBuffer TakeSubTree(ShapeIndexView index);
+
  protected:
   void Deallocate();
 

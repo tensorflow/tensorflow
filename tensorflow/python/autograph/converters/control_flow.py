@@ -160,6 +160,10 @@ class ControlFlowTransformer(converter.Base):
     node_body = ast_util.rename_symbols(node.body, alias_body_map)
     node_orelse = ast_util.rename_symbols(node.orelse, alias_orelse_map)
 
+    cond_var_name = self.ctx.namer.new_symbol('cond', body_scope.referenced)
+    body_name = self.ctx.namer.new_symbol('if_true', body_scope.referenced)
+    orelse_name = self.ctx.namer.new_symbol('if_false', orelse_scope.referenced)
+
     returned_from_cond = tuple(returned_from_cond)
     if returned_from_cond:
       if len(returned_from_cond) == 1:
@@ -181,13 +185,14 @@ class ControlFlowTransformer(converter.Base):
       # actually has some return value as well.
       cond_results = None
       # TODO(mdan): This doesn't belong here; it's specific to the operator.
-      returned_from_body = (templates.replace_as_expression('tf.constant(1)'),)
-      returned_from_orelse = (
-          templates.replace_as_expression('tf.constant(1)'),)
+      returned_from_body = (templates.replace_as_expression(
+          'ag__.match_staging_level(1, cond_var_name)',
+          cond_var_name=cond_var_name),)
+      returned_from_orelse = (templates.replace_as_expression(
+          'ag__.match_staging_level(1, cond_var_name)',
+          cond_var_name=cond_var_name),)
 
-    body_name = self.ctx.namer.new_symbol('if_true', body_scope.referenced)
-    orelse_name = self.ctx.namer.new_symbol('if_false', orelse_scope.referenced)
-
+    cond_assign = self.create_assignment(cond_var_name, node.test)
     body_def = self._create_cond_branch(
         body_name,
         aliased_orig_names=aliased_body_orig_names,
@@ -200,10 +205,10 @@ class ControlFlowTransformer(converter.Base):
         aliased_new_names=aliased_orelse_new_names,
         body=node_orelse,
         returns=returned_from_orelse)
-    cond_expr = self._create_cond_expr(cond_results, node.test, body_name,
+    cond_expr = self._create_cond_expr(cond_results, cond_var_name, body_name,
                                        orelse_name)
 
-    return body_def + orelse_def + cond_expr
+    return cond_assign + body_def + orelse_def + cond_expr
 
   def _get_loop_state(self, node):
     body_scope = anno.getanno(node, annos.NodeAnno.BODY_SCOPE)

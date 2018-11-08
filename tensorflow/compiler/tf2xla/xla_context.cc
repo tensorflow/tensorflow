@@ -66,7 +66,7 @@ XlaContext::XlaContext(
     XlaCompiler* compiler, xla::XlaBuilder* builder,
     bool allow_cpu_custom_calls, bool resolve_compile_time_constants,
     bool is_entry_computation,
-    const std::function<xla::StatusOr<TensorShape>(
+    const std::function<xla::StatusOr<xla::Shape>(
         const TensorShape&, DataType)>* shape_representation_fn)
     : compiler_(compiler),
       builder_(builder),
@@ -133,7 +133,7 @@ Status XlaContext::CreateResource(
   return Status::OK();
 }
 
-xla::StatusOr<TensorShape> XlaContext::RepresentationShape(
+xla::StatusOr<xla::Shape> XlaContext::RepresentationShape(
     const TensorShape& shape, DataType type) const {
   return (*shape_representation_fn_)(shape, type);
 }

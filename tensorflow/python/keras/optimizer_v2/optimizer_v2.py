@@ -21,6 +21,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+
 import six
 
 from tensorflow.python.eager import backprop
@@ -40,6 +41,7 @@ from tensorflow.python.training import optimizer as optimizer_v1
 from tensorflow.python.util import nest
 
 
+@six.add_metaclass(abc.ABCMeta)
 class OptimizerV2(optimizer_v1.Optimizer):
   """Updated base class for optimizers.
 

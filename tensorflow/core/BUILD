@@ -383,6 +383,7 @@ cc_library(
         ":lib_platform",
         ":platform_base",
         "//tensorflow/core/platform/default/build_config:port",
+        "@com_google_absl//absl/base",
         "@snappy",
     ],
 )
@@ -2168,6 +2169,7 @@ cc_library(
             "lib/**/*.cc",
             "platform/*.cc",
             "platform/profile_utils/**/*.cc",
+        ] + [
             "framework/resource_handle.cc",
             "util/env_var.cc",
         ],
@@ -2811,7 +2813,6 @@ tf_cuda_library(
         ":functional_ops_op_lib",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/kernels:required",
-        ":core_cpu_impl",
     ]),
     alwayslink = 1,
 )
@@ -3048,7 +3049,9 @@ tf_cuda_library(
     ],
     copts = tf_copts(),
     cuda_deps = if_cuda_is_configured(tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps()),
-    visibility = ["//visibility:private"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
     deps = [
         ":core_cpu_internal",
         ":lib",

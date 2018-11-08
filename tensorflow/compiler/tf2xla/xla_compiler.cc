@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -48,7 +49,7 @@ namespace {
 
 // Checks that arguments `args` match types `types`.
 Status CheckSignature(const DataTypeVector& types,
-                      const std::vector<XlaCompiler::Argument>& args) {
+                      absl::Span<const XlaCompiler::Argument> args) {
   if (args.size() != types.size()) {
     return errors::Internal("Compilation arguments have ", args.size(),
                             " elements while function has ", types.size());
@@ -83,6 +84,39 @@ bool XlaCompiler::Argument::operator==(
   return constant_value.tensor_data() == other.constant_value.tensor_data();
 }
 
+string XlaCompiler::Argument::HumanString() const {
+  string common;
+  if (!name.empty()) {
+    common = absl::StrCat(" name=", name);
+  }
+  absl::StrAppend(&common, " type=", DataTypeString(type),
+                  " shape=", shape.DebugString());
+  switch (kind) {
+    case kInvalid:
+      return "invalid";
+    case kConstant:
+      return absl::StrCat("kind=constant", common,
+                          " value=", constant_value.DebugString());
+    case kResource: {
+      string output = absl::StrCat("kind=resource", common, " resource_kind=",
+                                   XlaResource::KindToString(resource_kind),
+                                   " initialized=", initialized);
+      if (tensor_array_size >= 0) {
+        absl::StrAppend(&output, " tensor_array_size=", tensor_array_size);
+      }
+      if (!tensor_array_gradients.empty()) {
+        absl::StrAppend(&output, " tensor_array_gradients=",
+                        absl::StrJoin(tensor_array_gradients, ","));
+      }
+      return output;
+    }
+    case kParameter:
+      return absl::StrCat("kind=parameter", common);
+    case kToken:
+      return absl::StrCat("token", common);
+  }
+}
+
 XlaCompiler::XlaCompiler(XlaCompiler::Options options)
     : options_(options),
       initialization_status_(Status::OK()),
@@ -110,8 +144,13 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
 
   // The default shape representation function is the identity.
   if (!options_.shape_representation_fn) {
-    options_.shape_representation_fn = [](const TensorShape& shape,
-                                          DataType type) { return shape; };
+    options_.shape_representation_fn =
+        [](const TensorShape& shape,
+           DataType dtype) -> xla::StatusOr<xla::Shape> {
+      xla::Shape xla_shape;
+      TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &xla_shape));
+      return xla_shape;
+    };
   }
 }
 
@@ -171,15 +210,16 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   return graph;
 }
 
-Status XlaCompiler::CompileFunction(const XlaCompiler::CompileOptions& options,
-                                    const NameAttrList& function,
-                                    std::vector<XlaCompiler::Argument> args,
-                                    XlaCompiler::CompilationResult* result) {
+Status XlaCompiler::CompileFunction(
+    const XlaCompiler::CompileOptions& options, const NameAttrList& function,
+    absl::Span<const XlaCompiler::Argument> args,
+    XlaCompiler::CompilationResult* result) {
   const string function_id =
       Canonicalize(function.name(), AttrSlice(&function.attr()));
   VLOG(1) << "XlaCompiler::CompileFunction " << function_id;
 
-  auto it = cache_.find({function_id, args});
+  const std::vector<XlaCompiler::Argument> arg_vector(args.begin(), args.end());
+  auto it = cache_.find({function_id, arg_vector});
   if (it != cache_.end()) {
     *result = it->second;
     return Status::OK();
@@ -235,7 +275,7 @@ Status XlaCompiler::CompileFunction(const XlaCompiler::CompileOptions& options,
       CompileGraph(options, function_id, std::move(graph), args, result));
   VLOG(1) << "====================================================";
 
-  cache_[{function_id, args}] = *result;
+  cache_[{function_id, arg_vector}] = *result;
   return Status::OK();
 }
 
@@ -247,25 +287,24 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
     case XlaCompiler::Argument::kConstant:
       LOG(FATAL) << "Unreachable case";
     case XlaCompiler::Argument::kParameter: {
-      TensorShape shape;
       if (is_entry_computation) {
         TF_ASSIGN_OR_RETURN(
-            shape, options_.shape_representation_fn(arg.shape, arg.type));
+            *xla_shape, options_.shape_representation_fn(arg.shape, arg.type));
       } else {
-        shape = arg.shape;
+        TF_RETURN_IF_ERROR(
+            TensorShapeToXLAShape(arg.type, arg.shape, xla_shape));
       }
-      return TensorShapeToXLAShape(arg.type, shape, xla_shape);
+      return Status::OK();
     }
     case XlaCompiler::Argument::kResource: {
       TF_RET_CHECK(arg.initialized);
 
       switch (arg.resource_kind) {
         case XlaResource::kVariable: {
-          TF_ASSIGN_OR_RETURN(
-              TensorShape representation_shape,
-              options_.shape_representation_fn(arg.shape, arg.type));
-          return TensorShapeToXLAShape(arg.type, representation_shape,
-                                       xla_shape);
+          TF_ASSIGN_OR_RETURN(*xla_shape, options_.shape_representation_fn(
+                                              arg.shape, arg.type));
+
+          return Status::OK();
         }
         case XlaResource::kTensorArray: {
           if (arg.tensor_array_size < 0) {
@@ -653,46 +692,48 @@ Status XlaCompiler::BuildArguments(
 }
 
 Status XlaCompiler::CompileSingleOp(
-    const XlaCompiler::CompileOptions& options, string const& name,
-    OpKernelContext* ctx, const std::vector<XlaCompiler::Argument>& args,
-    CompilationResult* result) {
+    const XlaCompiler::CompileOptions& options, const NodeDef& node_def,
+    absl::Span<const XlaCompiler::Argument> args,
+    absl::Span<const DataType> result_types, CompilationResult* result) {
   // TODO(b/74182462): We implement this by creating a new dummy Graph including
   // _Arg nodes, and let CompileGraph walk it. This could be optimized.
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
 
   Status status;
   // First create the actual node we care about computing.
-  Node* main_node = graph->AddNode(ctx->op_kernel().def(), &status);
+  Node* main_node = graph->AddNode(node_def, &status);
   TF_RETURN_IF_ERROR(status);
 
   // Create dummy _Arg nodes. Link these to `node` and also via a control
   // dependency edge to the _SOURCE node.
-  for (int64 i = 0; i < ctx->num_inputs(); ++i) {
+  for (int64 i = 0; i < args.size(); ++i) {
     Node* node;
-    string name = absl::StrCat(ctx->op_kernel().name(), "_", i, "_arg");
-    Status status = NodeBuilder(name, "_Arg")
-                        .ControlInput(graph->source_node())
-                        .Attr("T", ctx->input_dtype(i))
-                        .Attr("index", i)
-                        .Finalize(graph.get(), &node);
+    string arg_name = absl::StrCat("_arg", i);
+    Status status =
+        NodeBuilder(arg_name, "_Arg")
+            .ControlInput(graph->source_node())
+            .Attr("T", args[i].kind == Argument::kResource ? DT_RESOURCE
+                                                           : args[i].type)
+            .Attr("index", i)
+            .Finalize(graph.get(), &node);
     TF_RETURN_IF_ERROR(status);
     graph->AddEdge(node, 0, main_node, i);
   }
 
   // Similarly with return values, create dummy _Retval nodes fed by `node`.
-  for (int64 i = 0; i < ctx->num_outputs(); ++i) {
+  for (int64 i = 0; i < result_types.size(); ++i) {
     Node* node;
-    string name = absl::StrCat(ctx->op_kernel().name(), "_", i, "_retval");
-    Status status = NodeBuilder(name, "_Retval")
+    string retval_name = absl::StrCat("_retval", i);
+    Status status = NodeBuilder(retval_name, "_Retval")
                         .Input(main_node, i)
-                        .Attr("T", ctx->expected_output_dtype(i))
+                        .Attr("T", result_types[i])
                         .Attr("index", i)
                         .Finalize(graph.get(), &node);
     TF_RETURN_IF_ERROR(status);
   }
   FixupSourceAndSinkEdges(graph.get());
 
-  return CompileGraph(options, name, std::move(graph), args, result);
+  return CompileGraph(options, node_def.name(), std::move(graph), args, result);
 }
 
 namespace {
@@ -752,7 +793,7 @@ Status ValidateGraph(const Graph* graph,
 Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
                                  string const& name,
                                  std::unique_ptr<Graph> graph,
-                                 const std::vector<XlaCompiler::Argument>& args,
+                                 absl::Span<const XlaCompiler::Argument> args,
                                  CompilationResult* result) {
   VLOG(1) << "Executing graph symbolically to populate XlaBuilder.";
 
@@ -780,7 +821,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
       &options_.shape_representation_fn);
   core::ScopedUnref context_unref(context);
 
-  std::vector<XlaCompiler::Argument> real_args(args);
+  std::vector<XlaCompiler::Argument> real_args(args.begin(), args.end());
   int token_input_index = -1;
   std::unique_ptr<xla::XlaOp> token_output;
   if (options.add_token_input_output) {

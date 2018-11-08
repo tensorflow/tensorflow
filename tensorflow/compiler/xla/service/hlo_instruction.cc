@@ -1109,7 +1109,11 @@ void HloInstruction::set_single_sharding(const HloSharding& sharding) {
 
 void HloInstruction::SetupDerivedInstruction(
     HloInstruction* derived_instruction) const {
-  if (sharding_ != nullptr) {
+  if (sharding_ != nullptr && ShapeUtil::CompatibleIgnoringElementType(
+                                  shape_, derived_instruction->shape())) {
+    // Only copy sharding if the shape of the two instruction is compatible
+    // because copying it between differently shaped instructions can produce
+    // invalid shardings.
     derived_instruction->set_sharding(*sharding_);
   } else {
     derived_instruction->clear_sharding();
@@ -2639,49 +2643,7 @@ Status HloInstruction::Accept(
   return this->Accept(&visitor);
 }
 
-Status HloInstruction::AcceptOrdered(
-    DfsHloVisitor* visitor, const std::vector<const HloInstruction*>& order) {
-  VLOG(2) << "HloInstruction::AcceptOrdered(%" << name() << ")";
-  TF_RET_CHECK(OrderIsTopologicalSort(order));
-
-  // Compute the predecessors of this instruction.
-  std::unordered_set<const HloInstruction*> predecessors;
-  TF_RETURN_IF_ERROR(this->Accept([&predecessors](HloInstruction* instruction) {
-    predecessors.insert(instruction);
-    return Status::OK();
-  }));
-
-  for (auto* const_instruction : order) {
-    if (!ContainsKey(predecessors, const_instruction)) {
-      // Instruction is not a predecessors of 'this'.
-      continue;
-    }
-
-    // The visitor can mark instructions as visited to skip particular
-    // instructions.
-    if (visitor->DidVisit(*const_instruction)) {
-      VLOG(3) << "Not visiting HLO %" << const_instruction->name()
-              << " as it was already visited.";
-      continue;
-    }
-
-    // TODO(b/78350259): Eliminate const laundering.
-    HloInstruction* instruction =
-        const_cast<HloInstruction*>(const_instruction);
-
-    TF_RETURN_IF_ERROR(visitor->Preprocess(instruction));
-    VLOG(2) << "Visiting HLO %" << instruction->name();
-    TF_RETURN_IF_ERROR(instruction->Visit(visitor));
-    visitor->SetVisited(*instruction);
-    TF_RETURN_IF_ERROR(visitor->Postprocess(instruction));
-  }
-
-  return visitor->FinishVisit(this);
-}
-
-const Shape& HloInstruction::shape() const {
-  return shape_;
-}
+const Shape& HloInstruction::shape() const { return shape_; }
 
 std::vector<int64> HloInstruction::OperandIndices(
     const HloInstruction* operand) const {

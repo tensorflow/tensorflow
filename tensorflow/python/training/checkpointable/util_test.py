@@ -1313,6 +1313,24 @@ class CheckpointingTests(test.TestCase):
       train_fn()
       self.assertEqual(42., self.evaluate(optimizer.variables()[0]))
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_restore_after_adding_empty_checkpointable_data_structure(self):
+    model = NonLayerCheckpointable()
+    checkpoint = checkpointable_utils.Checkpoint(model=model)
+    checkpoint.restore(None).initialize_or_restore()
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    save_path = checkpoint.save(checkpoint_prefix)
+
+    del model, checkpoint
+
+    model = NonLayerCheckpointable()
+    model.dict = {"a": 1}
+    model.list = {"b": 1}
+    checkpoint = checkpointable_utils.Checkpoint(model=model)
+    load_status = checkpoint.restore(save_path)
+    load_status.assert_existing_objects_matched().run_restore_ops()
+
 
 class _ManualScope(tracking.Checkpointable):
 

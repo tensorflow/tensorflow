@@ -194,6 +194,16 @@ def Input(  # pylint: disable=invalid-name
       model = Model(x, y)
       ```
 
+      Note that even if eager execution is enabled,
+      `Input` produces a symbolic tensor (i.e. a placeholder).
+      This symbolic tensor can be used with other
+      TensorFlow ops, as such:
+
+      ```python
+      x = Input(shape=(32,))
+      y = tf.square(x)
+      ```
+
   Raises:
     ValueError: in case of invalid arguments.
   """

@@ -41,18 +41,6 @@ HloModule::HloModule(const string& name, const HloModuleConfig& config)
       config_(config),
       unique_id_(next_unique_module_id_++) {}
 
-StatusOr<HloInstruction*> HloModule::LaunderConstInstructionFromModule(
-    const HloInstruction* hlo) {
-  if (hlo == nullptr) {
-    return nullptr;
-  }
-
-  TF_RET_CHECK(hlo->GetModule() == this);
-
-  // TODO(b/78350259): Eliminate const laundering.
-  return const_cast<HloInstruction*>(hlo);
-}
-
 Status HloModule::set_schedule(HloSchedule schedule) {
   TF_RET_CHECK(schedule.module() == this);
   TF_RETURN_IF_ERROR(schedule.Verify());
@@ -571,11 +559,28 @@ std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
 std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
                                             const string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
-  auto module = absl::make_unique<HloModule>(name_ + "-" + suffix, config);
+  auto module = absl::make_unique<HloModule>(
+      absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config);
 
   HloCloneContext context(module.get(), suffix);
   auto cloned_computation = entry_computation_->Clone(suffix, &context);
   module->AddEntryComputation(std::move(cloned_computation));
+
+  if (has_schedule() && schedule().Verify().ok()) {
+    HloSchedule clone_schedule(module.get());
+    for (HloComputation* computation : computations()) {
+      if (schedule().is_computation_scheduled(computation)) {
+        HloInstructionSequence& clone_sequence =
+            clone_schedule.GetOrCreateSequence(
+                context.GetComputation(computation));
+        for (const HloInstruction* instruction :
+             schedule().sequence(computation).instructions()) {
+          clone_sequence.push_back(context.GetInstruction(instruction));
+        }
+      }
+    }
+    TF_CHECK_OK(module->set_schedule(std::move(clone_schedule)));
+  }
   return module;
 }
 

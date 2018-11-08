@@ -752,6 +752,13 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
 Tensor::Tensor(DataType type, const TensorShape& shape)
     : Tensor(cpu_allocator(), type, shape) {}
 
+void Tensor::HostScalarTensorBufferBase::FillAllocationDescription(
+    AllocationDescription* proto) const {
+  proto->set_requested_bytes(size());
+  proto->set_allocator_name("HostScalarTensorBuffer");
+  proto->set_ptr(reinterpret_cast<uintptr_t>(data()));
+}
+
 template <typename T>
 class SubBuffer : public TensorBuffer {
  public:

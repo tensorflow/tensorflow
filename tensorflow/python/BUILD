@@ -20,6 +20,8 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+exports_files(["platform/base.i"])
+
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
@@ -3001,18 +3003,6 @@ py_library(
 )
 
 py_library(
-    name = "summary_ops",
-    srcs = ["ops/summary_ops.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":framework",
-        ":framework_for_generated_wrappers",
-        ":logging_ops_gen",
-        ":summary_op_util",
-    ],
-)
-
-py_library(
     name = "summary_ops_v2",
     srcs = ["ops/summary_ops_v2.py"],
     srcs_version = "PY2AND3",
@@ -5012,7 +5002,6 @@ py_library(
     deps = [
         ":client",
         ":constant_op",
-        ":errors",
         ":framework",
         ":framework_for_generated_wrappers",
         ":lib",
@@ -5021,12 +5010,10 @@ py_library(
         ":protos_all_py",
         ":pywrap_tensorflow",
         ":summary_op_util",
-        ":summary_ops",
         ":summary_ops_gen",
         ":summary_ops_v2",
         ":util",
         "//tensorflow/python/eager:context",
-        "//third_party/py/numpy",
         "@six_archive//:six",
     ],
 )
@@ -5037,7 +5024,6 @@ py_tests(
     srcs = [
         "summary/plugin_asset_test.py",
         "summary/summary_test.py",
-        "summary/text_summary_test.py",
         "summary/writer/writer_test.py",
     ],
     additional_deps = [

@@ -79,10 +79,6 @@ struct TFE_TensorHandle {
                    tensorflow::Device* op_device)
       : handle(new tensorflow::TensorHandle(t, d, op_device, nullptr)) {}
 
-  TFE_TensorHandle(tensorflow::uint64 node_id, tensorflow::DataType dtype,
-                   tensorflow::EagerContext* ctx)
-      : handle(new tensorflow::TensorHandle(node_id, dtype, ctx)) {}
-
   TFE_TensorHandle(tensorflow::TensorHandle* handle) : handle(handle) {}
 
   tensorflow::TensorHandle* handle;

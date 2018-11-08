@@ -38,6 +38,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
+from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.util.tf_export import tf_export
 
@@ -760,6 +761,7 @@ def make_batched_features_dataset(file_pattern,
     Each `dict` maps feature keys to `Tensor` or `SparseTensor` objects.
 
   Raises:
+    TypeError: If `reader` is a `tf.ReaderBase` subclass.
     ValueError: If `label_key` is not one of the `features` keys.
   """
   # Create dataset of all matching filenames
@@ -767,6 +769,12 @@ def make_batched_features_dataset(file_pattern,
   dataset = dataset_ops.Dataset.from_tensor_slices(filenames)
   if shuffle:
     dataset = dataset.shuffle(len(filenames), shuffle_seed)
+
+  if isinstance(reader, type) and issubclass(reader, io_ops.ReaderBase):
+    raise TypeError("The `reader` argument must return a `Dataset` object. "
+                    "`tf.ReaderBase` subclasses are not supported. For "
+                    "example, pass `tf.data.TFRecordDataset` instead of "
+                    "`tf.TFRecordReader`.")
 
   # Read `Example` records from files as tensor objects.
   if reader_args is None:

@@ -11766,6 +11766,25 @@ op {
   is_stateful: true
 }
 op {
+  name: "BoostedTreesQuantileStreamResourceDeserialize"
+  input_arg {
+    name: "quantile_stream_resource_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "bucket_boundaries"
+    type: DT_FLOAT
+    number_attr: "num_streams"
+  }
+  attr {
+    name: "num_streams"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "BoostedTreesQuantileStreamResourceFlush"
   input_arg {
     name: "quantile_stream_resource_handle"
@@ -20924,6 +20943,10 @@ op {
     name: "element_shape"
     type_attr: "shape_type"
   }
+  input_arg {
+    name: "max_num_elements"
+    type: DT_INT32
+  }
   output_arg {
     name: "handle"
     type: DT_VARIANT
@@ -21902,6 +21925,29 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "ExperimentalNonSerializableDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "ExperimentalNumaMapAndBatchDataset"
@@ -29133,6 +29179,39 @@ op {
   }
 }
 op {
+  name: "LeakyRelu"
+  input_arg {
+    name: "features"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "activations"
+    type_attr: "T"
+  }
+  attr {
+    name: "alpha"
+    type: "float"
+    default_value {
+      f: 0.2
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_BFLOAT16
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
   name: "LeakyReluGrad"
   input_arg {
     name: "gradients"
@@ -29162,6 +29241,43 @@ op {
     allowed_values {
       list {
         type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+}
+op {
+  name: "LeakyReluGrad"
+  input_arg {
+    name: "gradients"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "features"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "backprops"
+    type_attr: "T"
+  }
+  attr {
+    name: "alpha"
+    type: "float"
+    default_value {
+      f: 0.2
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_HALF
+        type: DT_BFLOAT16
         type: DT_FLOAT
         type: DT_DOUBLE
       }

@@ -18,7 +18,8 @@ limitations under the License.
 #include <list>
 #include <memory>
 #include <string>
-#include <thread>  // (b/114492873): move this include into core/platform
+// TODO(b/114492873): Move this include into core/platform.
+#include <thread>  // NOLINT
 #include <utility>
 #include <vector>
 
@@ -108,8 +109,8 @@ class Node {
 
   using Factory = std::function<std::shared_ptr<Node>(Args)>;
 
-  Node(Args args)
-      : id_(args.id), name_(args.name), output_(std::move(args.output)) {}
+  explicit Node(Args args)
+      : id_(args.id), name_(args.name), output_(args.output.get()) {}
 
   // Adds an input.
   void add_input(std::shared_ptr<Node> node) LOCKS_EXCLUDED(mu_) {
@@ -142,7 +143,7 @@ class Node {
   }
 
   // Returns the node output.
-  std::shared_ptr<Node> output() const LOCKS_EXCLUDED(mu_) {
+  Node* output() const LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return output_;
   }
@@ -169,10 +170,10 @@ class Node {
   void record_stop() LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     std::thread::id tid = std::this_thread::get_id();
-    auto start_time = gtl::FindOrNull(work_start_, tid);
-    if (start_time) {
-      processing_time_ += Env::Default()->NowNanos() - *start_time;
-      work_start_.erase(tid);
+    auto iter = work_start_.find(tid);
+    if (iter != work_start_.end()) {
+      processing_time_ += Env::Default()->NowNanos() - iter->second;
+      work_start_.erase(iter);
     } else {
       LOG(WARNING)
           << "Encountered a stop event that was not preceded by a start event.";
@@ -183,12 +184,6 @@ class Node {
   void remove_input(std::shared_ptr<Node> input) LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     inputs_.remove(input);
-  }
-
-  // Set the node output.
-  void set_output(std::shared_ptr<Node> output) LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
-    output_ = output;
   }
 
   // Collects tunable parameters in the subtree rooted in this node.
@@ -287,7 +282,10 @@ class Node {
   std::map<std::thread::id, int64> work_start_ GUARDED_BY(mu_);
   std::map<string, std::shared_ptr<Parameter>> parameters_ GUARDED_BY(mu_);
   std::list<std::shared_ptr<Node>> inputs_ GUARDED_BY(mu_);
-  std::shared_ptr<Node> output_ GUARDED_BY(mu_);
+
+  // The reference to the output node is not owned so that that deletion of a
+  // node results in recursive deletion of the subtree rooted in the node.
+  Node* output_ GUARDED_BY(mu_);
 };
 
 // InterleaveMany is used to model datasets whose inputs are used to create

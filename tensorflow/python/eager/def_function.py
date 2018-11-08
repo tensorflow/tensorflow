@@ -19,12 +19,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import functools
 import weakref
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
+from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -32,65 +32,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import tf_decorator
-
-
-def _graph_inputs(op):
-  return [x.op for x in op.inputs] + list(op.control_inputs)
-
-
-def _lift_to_graph(init_tensor, graph):
-  """Copies the tensor and all its inputs recursively to the outer graph."""
-  # Check that the initializer does not depend on any placeholders.
-  visited_ops = set([])
-  ops_to_visit = [init_tensor.op]
-  op_outputs = collections.defaultdict(set)
-  while ops_to_visit:
-    op = ops_to_visit.pop()
-    if op in visited_ops:
-      continue
-    visited_ops.add(op)
-    # TODO(apassos) distinguish arg placeholders, capture placeholders,
-    # and placeholders the user might directly use to initialize
-    # variables.
-    if op.type == "Placeholder":
-      raise ValueError(
-          "Unable to lift tensor", init_tensor,
-          "because it depends transitively on placeholder ", op)
-    for inp in _graph_inputs(op):
-      op_outputs[inp].add(op)
-      if inp not in visited_ops:
-        ops_to_visit.append(inp)
-  # Topologically sort the nodes we've extracted. Now we know how many of their
-  # outputs are part of this subgraph.
-  ops_to_copy = []
-  marked_ops = set([])
-  ops_to_visit = [init_tensor.op]
-  while ops_to_visit:
-    op = ops_to_visit.pop()
-    if op in marked_ops:
-      continue
-    marked_ops.add(op)
-    ops_to_copy.append(op)
-    for inp in _graph_inputs(op):
-      if all(x in marked_ops for x in op_outputs[inp]):
-        ops_to_visit.append(inp)
-  assert len(ops_to_copy) == len(visited_ops)
-  # ops_to_copy now holds a reverse topologically sorted list of ops which
-  # ends in the initializer. We copy those to the outermost graph and
-  # build the initialization op there.
-  with graph.as_default():
-    op_map = {}
-    for op in reversed(ops_to_copy):
-      copied_inputs = [op_map[x] for x in op.inputs]
-      copied_control_inputs = [op_map[x] for x in op.control_inputs]
-      with ops.control_dependencies(copied_control_inputs):
-        copied_op = graph.create_op(
-            op.type, copied_inputs, [x.dtype for x in op.outputs],
-            attrs=op.node_def.attr)
-      op_map[op] = copied_op
-      for i, o in enumerate(op.outputs):
-        op_map[o] = copied_op.outputs[i]
-    return op_map[init_tensor]
 
 
 class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
@@ -110,6 +51,7 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
                name=None,
                dtype=None,
                constraint=None,
+               add_initializers_to=None,
                **unused_kwargs):
     """Creates a variable.
 
@@ -140,6 +82,9 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
         variable and return the Tensor for the projected value
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
+      add_initializers_to: if not None and not in legacy graph mode, the
+        initializer tensor will be added to this map instead of adding the
+        assignment to the function.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
@@ -206,7 +151,8 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
       if self._in_graph_mode:
         with ops.init_scope():
           outer_graph = ops.get_default_graph()
-        lifted_initializer = _lift_to_graph(initial_value, outer_graph)
+        lifted_initializer = lift_to_graph.lift_to_graph(
+            initial_value, outer_graph)[initial_value]
         with ops.init_scope():
           self._initial_value = lifted_initializer
           with ops.name_scope("IsInitialized"):
@@ -224,21 +170,24 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
             self._graph_element = value
           ops.add_to_collection(ops.GraphKeys.GLOBAL_VARIABLES, self)
       else:
-        def assign_fn():
-          with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
-            resource_variable_ops.assign_variable_op(
-                self._handle,
-                initial_value,
-                name=n)
-            # Returning values to keep tf.cond happy.
-          return ops.convert_to_tensor(1)
-        def not_assign_fn():
-          return ops.convert_to_tensor(0)
-        # Note: this cond is always guaranteed to run because we're inside a
-        # defun which will insert automatic control dependencies.
-        control_flow_ops.cond(
-            resource_variable_ops.var_is_initialized_op(self._handle),
-            not_assign_fn, assign_fn)
+        if add_initializers_to is not None:
+          add_initializers_to[self] = initial_value
+        else:
+          def assign_fn():
+            with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
+              resource_variable_ops.assign_variable_op(
+                  self._handle,
+                  initial_value,
+                  name=n)
+              # Returning values to keep tf.cond happy.
+            return ops.convert_to_tensor(1)
+          def not_assign_fn():
+            return ops.convert_to_tensor(0)
+          # Note: this cond is always guaranteed to run because we're inside a
+          # defun which will insert automatic control dependencies.
+          control_flow_ops.cond(
+              resource_variable_ops.var_is_initialized_op(self._handle),
+              not_assign_fn, assign_fn)
 
     # After the handle has been created, set up a way to clean it up when
     # executing eagerly. We'll hold the only reference to the deleter, so that
@@ -310,14 +259,15 @@ class PolymorphicFunction(object):
         input_signature=self._input_signature,
         experimental_autograph=self._autograph)
 
-  def _initialize(self, args, kwds):
+  def _initialize(self, args, kwds, add_initializers_to=None):
     """Initializes, on the first call."""
 
     self._created_variables = []
 
     def variable_capturing_scope(unused_next_creator, **kwds):
       """Creates UnliftedInitializerVariables and saves references to them."""
-      v = UnliftedInitializerVariable(**kwds)
+      v = UnliftedInitializerVariable(
+          add_initializers_to=add_initializers_to, **kwds)
       self._created_variables.append(weakref.ref(v))
       return v
 
@@ -463,14 +413,22 @@ class PolymorphicFunction(object):
     Raises:
       ValueError: if this object has not yet been called on concrete values.
     """
-    # TODO(apassos) figure out how to handle this case (what should we return
-    # here?)
+    assert context.executing_eagerly()
     if self._stateful_fn is None:
-      raise ValueError(
-          "Call this function with concrete values before asking for a"
-          " concrete function. Calling the function will ensure that, in"
-          " case this function creates variables, that those are properly"
-          " initialized.")
+      # Here we trace the function, collect the initializers, and attempt to
+      # extract them and run them eagerly. Fail only if we cannot do so.
+      initializer_map = {}
+      self._initialize(args, kwargs, add_initializers_to=initializer_map)
+      if not self._created_variables:
+
+        @function
+        def initialize_variables():
+          for v, init in initializer_map.items():
+            v.assign(lift_to_graph.lift_to_graph(
+                init, ops.get_default_graph())[init])
+
+        initialize_variables()
+
     if self._created_variables:
       # In this case we have created variables on the first call, so we run the
       # defunned version which is guaranteed to never create variables.

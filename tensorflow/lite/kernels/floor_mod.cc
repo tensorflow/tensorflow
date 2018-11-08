@@ -81,9 +81,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_TYPES_EQ(context, input1->type, input2->type);
 
   const TfLiteType type = input1->type;
-  if (type != kTfLiteInt32 && type != kTfLiteFloat32) {
-    context->ReportError(context,
-                         "Currently floor_mod only supports int32 and float.");
+  if (type != kTfLiteInt32 && type != kTfLiteFloat32 && type != kTfLiteInt64) {
+    context->ReportError(context, "Type '%s' is not supported by floor_mod.",
+                         TfLiteTypeGetName(type));
     return kTfLiteError;
   }
   output->type = type;
@@ -107,7 +107,7 @@ TfLiteStatus EvalImpl(TfLiteContext* context, bool requires_broadcast,
                       TfLiteTensor* output) {
   const T* denominator_data = GetTensorData<T>(input2);
 
-  if (input2->type == kTfLiteInt32) {
+  if (input2->type == kTfLiteInt32 || input2->type == kTfLiteInt64) {
     // Validate the denominator only for integer.
     const int num_elements = NumElements(input2);
     for (int i = 0; i < num_elements; ++i) {
@@ -144,13 +144,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return EvalImpl<int32_t>(context, data->requires_broadcast, input1,
                                input2, output);
     }
+    case kTfLiteInt64: {
+      return EvalImpl<int64_t>(context, data->requires_broadcast, input1,
+                               input2, output);
+    }
     case kTfLiteFloat32: {
       return EvalImpl<float>(context, data->requires_broadcast, input1, input2,
                              output);
     }
     default: {
-      context->ReportError(
-          context, "Currently floor_mod only supports int32 and float.");
+      context->ReportError(context, "Type '%s' is not supported by floor_mod.",
+                           TfLiteTypeGetName(input1->type));
       return kTfLiteError;
     }
   }

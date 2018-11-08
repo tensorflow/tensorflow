@@ -53,6 +53,7 @@ class KernelTest : public testing::FlexModelTest {
   template <typename T>
   void ConfigureDelegate(T prepare_function) {
     delegate_.data_ = delegate_data_.get();
+    delegate_.flags = kTfLiteDelegateFlagsAllowDynamicTensors;
     delegate_.FreeBufferHandle = nullptr;
     delegate_.Prepare = prepare_function;
     delegate_.CopyFromBufferHandle = [](TfLiteContext* context,
@@ -66,8 +67,7 @@ class KernelTest : public testing::FlexModelTest {
       memcpy(data, values.data(), values.size());
       return kTfLiteOk;
     };
-    CHECK(interpreter_->ModifyGraphWithDelegate(
-              &delegate_, /*allow_dynamic_tensors=*/true) == kTfLiteOk);
+    CHECK(interpreter_->ModifyGraphWithDelegate(&delegate_) == kTfLiteOk);
   }
 
  private:
@@ -100,6 +100,17 @@ TEST_F(KernelTest, FullGraph) {
 
   ASSERT_THAT(GetShape(8), ElementsAre(2, 1));
   ASSERT_THAT(GetValues(8), ElementsAre(14.52f, 38.72f));
+
+  // Try again with different inputs
+  SetShape(0, {2, 3, 1});
+  SetValues(0, {2.0f, 2.0f, 3.0f, 3.0f, 4.0f, 4.0f});
+  SetShape(3, {2, 3, 1});
+  SetValues(3, {2.0f, 2.0f, 3.0f, 3.0f, 4.0f, 4.0f});
+
+  ASSERT_TRUE(Invoke());
+
+  ASSERT_THAT(GetShape(8), ElementsAre(3, 1));
+  ASSERT_THAT(GetValues(8), ElementsAre(24.0f, 32.0f, 48.0f));
 }
 
 TEST_F(KernelTest, BadTensorFlowOp) {
@@ -194,29 +205,69 @@ TEST_F(KernelTest, MixedGraph) {
   ASSERT_THAT(GetValues(8), ElementsAre(14.52f, 38.72f));
 }
 
+// We will build a complex graph where most of the ops are TF ops, but one
+// of them, right in the middle is handle natively by TF Lite. This results
+// in two flex subgraphs to handle the TF ops, and some of the tensors
+// connect those two subgraphs directly.
 TEST_F(KernelTest, SplitGraph) {
-  AddTensors(10, {0}, {9}, kTfLiteFloat32, {3});
+  std::vector<float> a = {3.0f, 1.0f, 0.5f, -1.0f, 4.0f, -1.0f, -2.0f, 5.0f};
+  std::vector<float> b = {0.0f, 1.0f, 1.5f, 3.0f};
 
-  AddTfOp(testing::kUnpack, {0}, {1, 2});
-  AddTfOp(testing::kAdd, {1, 2}, {3});
-  AddTfOp(testing::kUnpack, {3}, {4, 5});
+  AddTensors(18, {0, 1}, {17}, kTfLiteFloat32, {3});
 
-  AddTfLiteMulOp({4, 5}, {6});
+  // Split the first input. Each branch below uses one half of it.
+  AddTfOp(testing::kUnpack, {0}, {2, 10});
 
-  AddTfOp(testing::kUnpack, {6}, {7, 8});
-  AddTfOp(testing::kAdd, {7, 8}, {9});
+  // The left branch: l = (a0 + b0) * (a2 + b2) + (a1 + b1) * (a3 + b3) = 10
+  AddTfOp(testing::kAdd, {1, 2}, {3});     // => 3, 2, 2, 2
+  AddTfOp(testing::kUnpack, {3}, {4, 5});  // => 3, 2 --- 2, 2
+  AddTfLiteMulOp({4, 5}, {6});             // => 6, 4
+  AddTfOp(testing::kUnpack, {6}, {7, 8});  // => 6 -- 4
+  AddTfOp(testing::kAdd, {7, 8}, {9});     // => 10
+
+  // The right branch: r = (a4 + a6) + (a5 + a7) = 6
+  AddTfOp(testing::kUnpack, {10}, {11, 12});  // => 4, -1 --- -2, 5
+  AddTfOp(testing::kAdd, {11, 12}, {13});     // => 2, 4
+  AddTfOp(testing::kUnpack, {13}, {14, 15});  // => 2 --- 4
+  AddTfOp(testing::kAdd, {14, 15}, {16});     // => 6
+
+  // The two branches added together:
+  AddTfOp(testing::kAdd, {9, 16}, {17});  // => 16
 
   ConfigureDelegate([](TfLiteContext* context, TfLiteDelegate* delegate) {
-    return GenericPrepare(context, delegate, {0, 1, 2, 4, 5});
+    // All ops by #3 are TF ops, handled by the delegate. However, because #4
+    // depends on the non-TF op, two subgraphs are necessary:
+    //    TF subgraph 1: 0, 1, 2, 6, 7, 8, 9
+    //    TF Lite Op: 3
+    //    TF subgraph 2: 4, 5, 10
+    return GenericPrepare(context, delegate, {0, 1, 2, 4, 5, 6, 7, 8, 9, 10});
   });
 
   SetShape(0, {2, 2, 2, 1});
-  SetValues(0, {3.0f, 1.0f, 0.5f, -1.0f, 0.0f, 1.0f, 1.5f, 3.0f});
+  SetValues(0, a);
+  SetShape(1, {2, 2, 1});
+  SetValues(1, b);
 
   ASSERT_TRUE(Invoke());
 
-  ASSERT_THAT(GetShape(9), ElementsAre(1));
-  ASSERT_THAT(GetValues(9), ElementsAre(10.0f));
+  ASSERT_THAT(GetShape(17), ElementsAre(1));
+  ASSERT_THAT(GetValues(17), ElementsAre(16.0f));
+
+  // Same as above but with slightly different output.
+  // We still expect the result to be l + r where
+  //     l = (a0 + b0) * (a2 + b2) + (a1 + b1) * (a3 + b3)
+  //     r = (a4 + a6) + (a5 + a7)
+  SetShape(0, {2, 2, 2, 1});
+  SetValues(0, {4.0f, 1.0f, 1.5f, -2.0f, 2.0f, 0.0f, -2.0f, 3.0f});
+  SetShape(1, {2, 2, 1});
+  SetValues(1, {0.0f, 2.0f, 1.5f, 3.0f});
+  // So l = (4 + 0) * (1.5 + 1.5) + (1 + 2) * (-2 + 3) =  12 + 3 = 15
+  //    r = (2 - 2) + (0 + 3) = 3
+
+  ASSERT_TRUE(Invoke());
+
+  ASSERT_THAT(GetShape(17), ElementsAre(1));
+  ASSERT_THAT(GetValues(17), ElementsAre(18.0f));
 }
 
 }  // namespace

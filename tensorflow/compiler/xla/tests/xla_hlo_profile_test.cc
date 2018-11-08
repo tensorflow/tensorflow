@@ -91,8 +91,8 @@ Status ParseOneProfileOutputLine(
   string match_usecs = "([0-9.]+) usec";
   string match_flops = "([^ ]*)";
   string match_trops = "([^ ]*)";
-  string match_bytes_per_sec = "([0-9.TGMKi]+)B/s";
-  string match_bytes_per_cycle = "([0-9.TGMKi]+)B/cycle";
+  string match_bytes_per_sec = "([0-9.TGMKi]*)(?:B/s)?";
+  string match_bytes_per_cycle = "([0-9.TGMKi]*)(?:B/cycle)?";
 
   // The underlined part is what we're trying to match with match_opcode:
   //
@@ -307,6 +307,7 @@ XLA_TEST_F(HloProfileTest, ProfileWhileComputation) {
   string profile_output;
   ExecuteAndFetchProfile(&profile_output, client, computation, matrix_shape,
                          matrix_shape);
+  SCOPED_TRACE(profile_output);
 
   std::vector<string> profile_output_lines =
       absl::StrSplit(profile_output, '\n');
@@ -318,14 +319,13 @@ XLA_TEST_F(HloProfileTest, ProfileWhileComputation) {
 
   ASSERT_NE(while_body_profile_start, profile_output_lines.cend());
 
-  auto while_body_profile_end = std::find_if(
-      while_body_profile_start, profile_output_lines.end(),
-      [](absl::string_view s) {
-        return absl::StartsWith(s, "********** microseconds report **********");
-      });
+  auto while_body_profile_end =
+      std::find_if(while_body_profile_start, profile_output_lines.end(),
+                   [](absl::string_view s) {
+                     return absl::StartsWith(s, "********** microseconds ");
+                   });
 
-  // We emit a blank line before the "********** microseconds report **********"
-  // line.
+  // We emit a blank line before the "microseconds report" line.
   while_body_profile_end--;
 
   ASSERT_NE(while_body_profile_end, profile_output_lines.end());

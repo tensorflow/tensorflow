@@ -948,7 +948,9 @@ class TensorContractionSubMapper<
   }
 
  private:
-  const ParentMapper& m_base_mapper;
+  const ParentMapper m_base_mapper;  // Keeping a copy instead of a reference
+                                     // performs better in benchmarks.
+
   Index m_depth_offset;  // First row in the input matrix
   Index m_col_offset;    // First col in the input matrix
 

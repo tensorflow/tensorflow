@@ -1388,8 +1388,6 @@ TEST_F(ArithmeticOptimizerTest, ReorderS2DCast_ProducerIsCast) {
   ArithmeticOptimizer optimizer;
   OptimizeAndPrune(&optimizer, &item, &output);
 
-  LOG(INFO) << output.DebugString();
-
   const NodeDef* s2d_node = nullptr;
   for (const NodeDef& node : output.node()) {
     if (node.op() == "SpaceToDepth") {
@@ -1862,7 +1860,7 @@ TEST_F(ArithmeticOptimizerTest, OptimizeCastMulTransposeConv) {
   //   Conv2D(Transpose(Cast(I)), W*S)
   //     =>
   //   Conv2D(Cast(Transpose(I)), W*S)
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/gpu:0");
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/cpu:0");
 
   Output inputs =
       ops::Placeholder(s, DT_UINT8, ops::Placeholder::Shape({8, 28, 28, 3}));
@@ -1883,7 +1881,6 @@ TEST_F(ArithmeticOptimizerTest, OptimizeCastMulTransposeConv) {
   GraphDef output;
   ArithmeticOptimizer optimizer;  // all optimization stages are on
   OptimizeTwiceAndPrune(&optimizer, &item, &output, /*const_folding=*/true);
-  LOG(INFO) << output.DebugString();
   NodeMap node_map(&output);
 
   // Expected names for reordered cast and transpose.
@@ -1918,7 +1915,7 @@ TEST_F(ArithmeticOptimizerTest, OptimizeCastMulTransposeConv) {
 TEST_F(ArithmeticOptimizerTest, OptimizeMultipleMulTransposeConv) {
   // This unit test exercises optimization of folding mul into conv for
   // multiple nodes in the graph.
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/gpu:0");
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice("/cpu:0");
 
   GrapplerItem item;
   Output conv[2];

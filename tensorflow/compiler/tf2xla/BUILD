@@ -194,6 +194,7 @@ cc_library(
         ":side_effect_util",
         ":tf2xla_util",
         "//tensorflow/compiler/jit:xla_cluster_util",
+        "//tensorflow/compiler/jit/legacy_flags:mark_for_compilation_pass_flags",
         "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -217,6 +218,7 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = 1,
@@ -364,6 +366,7 @@ tf_cc_test(
     name = "xla_compiler_test",
     srcs = ["xla_compiler_test.cc"],
     deps = [
+        ":common",
         ":side_effect_util",
         ":xla_compiler",
         "//tensorflow/cc:cc_ops",

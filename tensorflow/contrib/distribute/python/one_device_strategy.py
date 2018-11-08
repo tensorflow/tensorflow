@@ -172,6 +172,10 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     return 1
 
   @property
+  def num_replicas_in_sync(self):
+    return 1
+
+  @property
   def worker_devices(self):
     return [self._device]
 

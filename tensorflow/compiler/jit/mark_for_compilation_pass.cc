@@ -61,6 +61,10 @@ struct OperationFilter {
   // seeding behavior as TensorFlow's RNG (b/34749654).  So we avoid
   // auto-clustering stateful RNG ops.
   bool allow_stateful_rng_ops;
+
+  // TODO(b/118970344): Whether ControlTrigger ops are allowed.  It is unsound
+  // to cluster ControlTrigger because of how we use deadness analysis.
+  bool allow_control_trigger;
 };
 
 bool IsStatefulRandomOp(absl::string_view op_name) {
@@ -223,6 +227,9 @@ bool IsCompilableCall(const NodeDef& call_def,
     }
     if (!op_filter.allow_stateful_rng_ops &&
         IsStatefulRandomOp(node->type_string())) {
+      return false;
+    }
+    if (!op_filter.allow_control_trigger && node->IsControlTrigger()) {
       return false;
     }
     if (!HasXLAKernel(*node, jit_device_type) &&
@@ -452,7 +459,12 @@ Status FindCompilationCandidates(
 
     OperationFilter op_filter;
     op_filter.allow_resource_ops = registration->compile_resource_ops;
-    op_filter.allow_stateful_rng_ops = registration->requires_compilation;
+    op_filter.allow_stateful_rng_ops =
+        (registration->autoclustering_policy ==
+         XlaOpRegistry::AutoclusteringPolicy::kAlways);
+    op_filter.allow_control_trigger =
+        (registration->autoclustering_policy ==
+         XlaOpRegistry::AutoclusteringPolicy::kAlways);
 
     if (!HasXLAKernel(*node, jit_device_type) &&
         !IsCompilableCall(node->def(), jit_device_type, op_filter, 0,
@@ -465,6 +477,10 @@ Status FindCompilationCandidates(
     if (!op_filter.allow_stateful_rng_ops &&
         IsStatefulRandomOp(node->type_string())) {
       VLOG(2) << "Rejecting " << node->name() << ": stateful random operation";
+      continue;
+    }
+    if (!op_filter.allow_control_trigger && node->IsControlTrigger()) {
+      VLOG(2) << "Rejecting " << node->name() << ": is a control trigger op";
       continue;
     }
 
@@ -602,6 +618,7 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
   OperationFilter op_filter;
   op_filter.allow_resource_ops = true;
   op_filter.allow_stateful_rng_ops = true;
+  op_filter.allow_control_trigger = true;
   return IsCompilableCall(ndef, jit_device_type, op_filter, 0, flr);
 }
 
@@ -613,10 +630,8 @@ Status MarkForCompilationPass::Run(
       GetGlobalJitLevel(options);
   legacy_flags::MarkForCompilationPassFlags* flags =
       legacy_flags::GetMarkForCompilationPassFlags();
-  bool cpu_global_jit = flags->tf_xla_cpu_global_jit;
   bool fusion_only = flags->tf_xla_fusion_only;
 
-  VLOG(1) << "flags->tf_xla_cpu_global_jit = " << flags->tf_xla_cpu_global_jit;
   VLOG(1) << "flags->tf_xla_fusion_only = " << flags->tf_xla_fusion_only;
   VLOG(1) << "flags->tf_xla_auto_jit = " << flags->tf_xla_auto_jit;
   const FunctionLibraryDefinition* fld = options.flib_def;
@@ -634,9 +649,6 @@ Status MarkForCompilationPass::Run(
       VLOG(2) << "Rejecting " << node->name() << ": could not find JIT device.";
       return false;
     }
-
-    // If this device requires a JIT, we must say yes.
-    if (registration->requires_compilation) return true;
 
     // If there is a _XlaCompile annotation, use its value.
     bool compile = false;
@@ -674,18 +686,21 @@ Status MarkForCompilationPass::Run(
       return false;
     }
 
-    // Otherwise use the value of global_jit_level.
-    // Ignore enable_jit_by_default if global jit compilation for CPU
-    // is explicitly requested via tf_xla_cpu_global_jit flag
-    bool ignore_registration = cpu_global_jit && device_type == DEVICE_CPU;
+    // Otherwise use the value of global_jit_level and the device's
+    // autoclustering policy.
     bool should_compile =
-        (ignore_registration || registration->enable_jit_by_default) &&
-        global_jit_level != OptimizerOptions::OFF;
+        registration->autoclustering_policy ==
+            XlaOpRegistry::AutoclusteringPolicy::kAlways ||
+        (registration->autoclustering_policy ==
+             XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally &&
+         global_jit_level != OptimizerOptions::OFF);
     if (!should_compile) {
       if (global_jit_level == OptimizerOptions::OFF) {
         VLOG(2) << "Rejecting " << node->name() << ": global jit disabled.";
       } else {
-        VLOG(2) << "Rejecting " << node->name() << ": JIT for device disabled.";
+        VLOG(2)
+            << "Rejecting " << node->name()
+            << ": autoclustering for device only when requested explicitly.";
       }
     }
     return should_compile;
@@ -1073,12 +1088,10 @@ Status MarkForCompilationPass::RunImpl(
     XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration);
 
     // Compile if this is a cluster of >= min_cluster_size compilable operators.
-    // Also, always compile if the operator is placed on a device that requires
-    // compilation, or if it contains at least one op that is marked for
+    // Also, always compile if it contains at least one op that is marked for
     // compilation that is not an Identity op.
     if (effective_cluster_sizes[cluster] >= min_cluster_size ||
-        (effective_cluster_sizes[cluster] > 0 && marked_for_compilation) ||
-        registration->requires_compilation) {
+        (effective_cluster_sizes[cluster] > 0 && marked_for_compilation)) {
       string& name = cluster_names[cluster];
 
       if (name.empty()) {

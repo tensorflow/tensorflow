@@ -133,7 +133,7 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
 
 TEST_F(LiteralUtilTest, LiteralVectorToString) {
   auto pred_vec = LiteralUtil::CreateR1<bool>({true, false, true});
-  EXPECT_EQ("{101}", pred_vec.ToString());
+  EXPECT_EQ("{1, 0, 1}", pred_vec.ToString());
 }
 
 TEST_F(LiteralUtilTest, R2ToString) {

@@ -484,7 +484,7 @@ TEST_F(CudnnConvRewriterTest, BackwardInputConvolveLowPaddingTooLarge) {
       op::GetTupleElement(op::CustomCall(kCudnnConvForwardCallTarget), 0));
 }
 
-// Extracted from //learning/brain/google/xla/benchmarks/resnet.py
+// Extracted from Resnet-50.
 //
 // For simplicity, we focus on the column dimension and ignore other dimensions.
 // We use [?] to represent the shape instead of the content.

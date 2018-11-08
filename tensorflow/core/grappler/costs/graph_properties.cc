@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
@@ -290,9 +291,9 @@ bool HasAnyUnknownDimensions(const TensorShapeProto& proto) {
 // This really should be done in an external debugging tool
 void VerboseLogUnknownDimensionSources(
     const GraphDef& graph,
-    const std::map<string, std::vector<OpInfo::TensorProperties>>&
+    const std::unordered_map<string, std::vector<OpInfo::TensorProperties>>&
         input_properties_map,
-    const std::map<string, std::vector<OpInfo::TensorProperties>>&
+    const std::unordered_map<string, std::vector<OpInfo::TensorProperties>>&
         output_properties_map) {
   if (!VLOG_IS_ON(2)) {
     return;
@@ -524,27 +525,26 @@ class SymbolicShapeRefiner {
             "supported.");
       }
       NodeDef* fun_node = gv.GetNode(fun_input.input_name);
-      const string& input = function_node->input(i);
-      const string& node_name = NodeName(input);
+      const TensorId input_tensor = ParseTensorName(function_node->input(i));
 
-      if (IsControlInput(input)) {
+      if (IsControlInput(input_tensor)) {
         return errors::FailedPrecondition(
             "Function inputs should not contain control nodes.");
       }
 
-      const NodeDef* input_node = graph_.GetNode(node_name);
+      const NodeDef* input_node = graph_.GetNode(input_tensor.node());
       if (input_node == nullptr) {
-        return errors::FailedPrecondition(node_name,
+        return errors::FailedPrecondition(input_tensor.node(),
                                           " was not found in the graph.");
       }
 
       InferenceContext* input_inference_context = GetContext(input_node);
       if (input_inference_context == nullptr) {
         return errors::FailedPrecondition(
-            "Inference context has not been created for ", node_name);
+            "Inference context has not been created for ", input_tensor.node());
       }
 
-      int output_port_num = NodePosition(input);
+      int output_port_num = input_tensor.index();
       AttrValue attr_output_shape;
       TensorShapeProto proto;
       const auto& handle = input_inference_context->output(output_port_num);
@@ -609,24 +609,22 @@ class SymbolicShapeRefiner {
 
       // It is guaranteed that output_tensors does not contain any control
       // inputs, so port_id >= 0.
-      string out_tensor = out_arg.output_tensors[0];
-      int port_id;
-      string node_name = ParseNodeName(out_tensor, &port_id);
+      TensorId out_tensor = ParseTensorName(out_arg.output_tensors[0]);
 
-      const NodeDef* retnode = gv.GetNode(node_name);
+      const NodeDef* retnode = gv.GetNode(out_tensor.node());
       if (retnode == nullptr) {
         return errors::FailedPrecondition(
-            "Unable to find return function_node ", node_name, " for ",
+            "Unable to find return function_node ", out_tensor.node(), " for ",
             function_node->name());
       }
 
       auto output_properties = gp.GetOutputProperties(retnode->name());
-      if (port_id >= output_properties.size()) {
+      if (out_tensor.index() >= output_properties.size()) {
         return errors::InvalidArgument(
-            out_tensor, " has invalid position ", port_id,
+            out_tensor.ToString(), " has invalid position ", out_tensor.index(),
             " (output_properties.size() = ", output_properties.size(), ").");
       }
-      auto const& outprop = output_properties[port_id];
+      auto const& outprop = output_properties[out_tensor.index()];
       const TensorShapeProto& shape = outprop.shape();
       ShapeHandle out;
       TF_RETURN_IF_ERROR(ic->MakeShapeFromShapeProto(shape, &out));
@@ -1653,9 +1651,8 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds) {
   std::unordered_map<string, std::unordered_set<int>> fed_ports;
   if (!assume_valid_feeds) {
     for (const auto& feed : item_.feed) {
-      int port_index = 0;
-      string node_name = ParseNodeName(feed.first, &port_index);
-      fed_ports[node_name].insert(port_index);
+      SafeTensorId tensor_id = ParseTensorName(feed.first);
+      fed_ports[tensor_id.node()].insert(tensor_id.index());
     }
   }
 
@@ -1923,12 +1920,12 @@ Status GraphProperties::InferFromCostGraph(const CostGraphDef& cost_graph) {
   return Status::OK();
 }
 
-bool GraphProperties::HasInputProperties(const string& name) const {
-  return input_properties_.find(name) != input_properties_.end();
+bool GraphProperties::HasInputProperties(const string& node_name) const {
+  return input_properties_.find(node_name) != input_properties_.end();
 }
 
-bool GraphProperties::HasOutputProperties(const string& name) const {
-  return output_properties_.find(name) != output_properties_.end();
+bool GraphProperties::HasOutputProperties(const string& node_name) const {
+  return output_properties_.find(node_name) != output_properties_.end();
 }
 
 const std::vector<OpInfo::TensorProperties>&

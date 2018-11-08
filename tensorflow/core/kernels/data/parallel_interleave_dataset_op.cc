@@ -1163,14 +1163,10 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      if (sloppy_) {
-        return MakeUnique<SloppyParallelInterleave>(
-            ParallelInterleaveIteratorBase::Params{
-                this, strings::StrCat(prefix, "::ParallelInterleaveV2")});
-      }
-      return MakeUnique<DeterministicParallelInterleave>(
-          ParallelInterleaveIteratorBase::Params{
-              this, strings::StrCat(prefix, "::ParallelInterleaveV2")});
+      return MakeUnique<ParallelInterleaveIterator>(
+          ParallelInterleaveIterator::Params{
+              this, strings::StrCat(prefix, "::ParallelInterleaveV2")},
+          sloppy_);
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -1231,14 +1227,15 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
     }
 
    private:
-    class ParallelInterleaveIteratorBase : public DatasetIterator<Dataset> {
+    class ParallelInterleaveIterator : public DatasetIterator<Dataset> {
      public:
-      explicit ParallelInterleaveIteratorBase(const Params& params)
+      explicit ParallelInterleaveIterator(const Params& params, bool sloppy)
           : DatasetIterator<Dataset>(params),
             mu_(std::make_shared<mutex>()),
             cond_var_(std::make_shared<condition_variable>()),
             num_parallel_calls_(std::make_shared<model::SharedState>(
                 params.dataset->num_parallel_calls_, mu_, cond_var_)),
+            sloppy_(sloppy),
             args_list_(params.dataset->cycle_length_),
             current_elements_(params.dataset->cycle_length_),
             element_in_use_(params.dataset->cycle_length_, false),
@@ -1252,7 +1249,7 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
         prefix_end_ = components.back();
       }
 
-      ~ParallelInterleaveIteratorBase() override {
+      ~ParallelInterleaveIterator() override {
         mutex_lock l(*mu_);
         // Cancel the runner thread.
         cancelled_ = true;
@@ -1306,13 +1303,6 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
       }
 
      protected:
-      struct InvocationResult {
-        Notification notification;  // used for coordination with the consumer
-        Status status;              // the invocation status
-        std::vector<Tensor> return_values;  // the invocation result values
-        bool skip;  // if set the result should be skipped
-      };
-
       std::shared_ptr<model::Node> CreateNode(
           IteratorContext* ctx, model::Node::Args args) const override {
         return model::MakeAsyncInterleaveManyNode(
@@ -1320,11 +1310,6 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
             {model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
                                   /*max=*/dataset()->cycle_length_)});
       }
-
-      // Used by the consumer to determine whether it needs to wait. Upon
-      // returning false, `result` will either be NULL if end of input has been
-      // reached or point to a result to consume.
-      virtual bool ShouldWait(std::shared_ptr<InvocationResult>* result) = 0;
 
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(*mu_);
@@ -1411,6 +1396,14 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
         TF_RETURN_IF_ERROR(ReadCurrentElements(ctx, reader));
         return Status::OK();
       }
+
+     private:
+      struct InvocationResult {
+        Notification notification;  // used for coordination with the consumer
+        Status status;              // the invocation status
+        std::vector<Tensor> return_values;  // the invocation result values
+        bool skip;  // if set the result should be skipped
+      };
 
       void EnsureRunnerThreadStarted(IteratorContext* ctx)
           EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
@@ -1543,7 +1536,7 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
               num_calls_++;
               element_in_use_[cycle_index_] = true;
               thread_pool_->Schedule(
-                  std::bind(&ParallelInterleaveIteratorBase::FetchOutputs, this,
+                  std::bind(&ParallelInterleaveIterator::FetchOutputs, this,
                             ctx, cycle_index_, std::move(results)));
             }
             cycle_index_ = (cycle_index_ + 1) % dataset()->cycle_length_;
@@ -1560,6 +1553,34 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
                 static_cast<float>(num_parallel_calls_->value));
           }
           cond_var_->notify_all();
+        }
+      }
+
+      // Determines whether the caller needs to wait for a result. Upon
+      // returning false, `result` will either be NULL if end of input has been
+      // reached or point to the result.
+      bool ShouldWait(std::shared_ptr<InvocationResult>* result)
+          EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+        if (sloppy_) {
+          for (auto it = invocation_results_.begin();
+               it != invocation_results_.end(); ++it) {
+            if ((*it)->notification.HasBeenNotified()) {
+              std::swap(*result, *it);
+              invocation_results_.erase(it);
+              cond_var_->notify_all();
+              return false;
+            }
+          }
+          return !invocation_results_.empty() ||
+                 (!end_of_input_ || num_open_ > 0);
+        } else {
+          if (!invocation_results_.empty()) {
+            std::swap(*result, invocation_results_.front());
+            invocation_results_.pop_front();
+            cond_var_->notify_all();
+            return false;
+          }
+          return (!end_of_input_ || num_open_ > 0);
         }
       }
 
@@ -1663,6 +1684,9 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
       // Identifies the maximum number of parallel calls.
       const std::shared_ptr<model::SharedState> num_parallel_calls_;
 
+      // Determines whether outputs can be produced in non-deterministic order.
+      const bool sloppy_;
+
       // Iterator for input elements.
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(*mu_);
 
@@ -1698,45 +1722,6 @@ class ParallelInterleaveDatasetV2Op : public UnaryDatasetOpKernel {
       // Identifies whether background activity should be cancelled.
       bool cancelled_ GUARDED_BY(*mu_) = false;
       string prefix_end_;
-    };
-
-    class DeterministicParallelInterleave
-        : public ParallelInterleaveIteratorBase {
-     public:
-      using ParallelInterleaveIteratorBase::ParallelInterleaveIteratorBase;
-
-     protected:
-      bool ShouldWait(std::shared_ptr<InvocationResult>* result) override
-          EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
-        if (!invocation_results_.empty()) {
-          std::swap(*result, invocation_results_.front());
-          invocation_results_.pop_front();
-          cond_var_->notify_all();
-          return false;
-        }
-        return (!end_of_input_ || num_open_ > 0);
-      }
-    };
-
-    class SloppyParallelInterleave : public ParallelInterleaveIteratorBase {
-     public:
-      using ParallelInterleaveIteratorBase::ParallelInterleaveIteratorBase;
-
-     protected:
-      bool ShouldWait(std::shared_ptr<InvocationResult>* result) override
-          EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
-        for (auto it = invocation_results_.begin();
-             it != invocation_results_.end(); ++it) {
-          if ((*it)->notification.HasBeenNotified()) {
-            std::swap(*result, *it);
-            invocation_results_.erase(it);
-            cond_var_->notify_all();
-            return false;
-          }
-        }
-        return !invocation_results_.empty() ||
-               (!end_of_input_ || num_open_ > 0);
-      }
     };
 
     const DatasetBase* const input_;

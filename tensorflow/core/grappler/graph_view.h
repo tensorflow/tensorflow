@@ -134,7 +134,7 @@ class GraphViewInternal {
   // of an output (resp. input) port.
   const absl::flat_hash_set<InputPort>& GetFanout(
       const OutputPort& port) const {
-    return gtl::FindWithDefault(fanouts_, port, empty_set_);
+    return gtl::FindWithDefault(fanouts_, port, fanout_not_found_value_);
   }
 
   absl::flat_hash_set<OutputPort> GetFanin(const InputPort& port) const {
@@ -173,7 +173,7 @@ class GraphViewInternal {
     port.node = const_cast<NodeDefT*>(&node);
     const int first_port_id = include_controlled_nodes ? -1 : 0;
     const int last_port_id =
-        gtl::FindWithDefault(num_regular_outputs_, port.node, -1);
+        gtl::FindWithDefault(max_regular_output_port_, port.node, -1);
 
     for (int i = first_port_id; i <= last_port_id; ++i) {
       port.port_id = i;
@@ -220,7 +220,7 @@ class GraphViewInternal {
     port.node = const_cast<NodeDefT*>(&node);
     const int first_port_id = include_controlling_nodes ? -1 : 0;
     const int last_port_id =
-        gtl::FindWithDefault(num_regular_outputs_, port.node, -1);
+        gtl::FindWithDefault(max_regular_output_port_, port.node, -1);
 
     for (int i = first_port_id; i <= last_port_id; ++i) {
       port.port_id = i;
@@ -241,7 +241,7 @@ class GraphViewInternal {
     port.node = const_cast<NodeDefT*>(&node);
     const int first_port_id = include_controlled_edges ? -1 : 0;
     const int last_port_id =
-        gtl::FindWithDefault(num_regular_outputs_, &node, -1);
+        gtl::FindWithDefault(max_regular_output_port_, &node, -1);
 
     for (int i = first_port_id; i <= last_port_id; ++i) {
       port.port_id = i;
@@ -290,29 +290,42 @@ class GraphViewInternal {
       if (output.port_id < 0) {
         fanouts_[output].emplace(node, -1);
       } else {
-        num_regular_outputs_[output.node] =
-            std::max(num_regular_outputs_[output.node], output.port_id);
+        max_regular_output_port_[output.node] =
+            std::max(max_regular_output_port_[output.node], output.port_id);
         fanouts_[output].emplace(node, i);
       }
     }
   }
 
   // Access to the mutable internal state for MutableGraphView.
-  absl::flat_hash_map<absl::string_view, NodeDefT*>* mutable_nodes() {
-    return &nodes_;
+  absl::flat_hash_map<absl::string_view, NodeDefT*>& nodes() { return nodes_; }
+
+  absl::flat_hash_map<OutputPort, absl::flat_hash_set<InputPort>>& fanouts() {
+    return fanouts_;
   }
 
-  absl::flat_hash_map<OutputPort, absl::flat_hash_set<InputPort>>*
-  mutable_fanouts() {
-    return &fanouts_;
+  absl::flat_hash_map<const NodeDef*, int>& max_regular_output_port() {
+    return max_regular_output_port_;
   }
 
  private:
   GraphDefT* graph_;  // must outlive the graph view
+
+  // A mapping from the node name to the node itself.
   absl::flat_hash_map<absl::string_view, NodeDefT*> nodes_;
-  absl::flat_hash_set<InputPort> empty_set_;
+
+  // A mapping from the output port to all inputs that read from it.
   absl::flat_hash_map<OutputPort, absl::flat_hash_set<InputPort>> fanouts_;
-  std::unordered_map<NodeDefT*, int> num_regular_outputs_;
+
+  // Keep a maximum index of tensor fetched from the node. It doesn't guarantee
+  // that all tensors in the [0, max_regular_output_port] range are actually
+  // fetched by other nodes.
+  absl::flat_hash_map<const NodeDef*, int> max_regular_output_port_;
+
+  // If the node has no fanouts at given output port (output tensor consumers)
+  // we return a reference to this set from `GetFanout` (we can't construct new
+  // empty set every time, because we need a non-dangling reference).
+  absl::flat_hash_set<InputPort> fanout_not_found_value_;
 };
 
 }  // namespace internal

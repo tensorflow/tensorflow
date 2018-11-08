@@ -39,9 +39,13 @@ class GRPCService : public grpc::XlaService::Service {
                                   const DeconstructTupleRequest* arg,
                                   DeconstructTupleResponse* result) override;
 
-  ::grpc::Status ExecuteGraph(::grpc::ServerContext* context,
-                              const ExecuteGraphRequest* arg,
-                              ExecuteResponse* result) override;
+  ::grpc::Status Compile(::grpc::ServerContext* context,
+                         const CompileRequest* arg,
+                         CompileResponse* result) override;
+
+  ::grpc::Status Execute(::grpc::ServerContext* context,
+                         const ExecuteRequest* arg,
+                         ExecuteResponse* result) override;
 
   ::grpc::Status WaitForExecution(::grpc::ServerContext* context,
                                   const WaitForExecutionRequest* arg,

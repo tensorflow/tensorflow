@@ -66,19 +66,26 @@ class XlaOpRegistry {
  public:
   typedef OpKernel* (*Factory)(OpKernelConstruction*);
 
+  enum class AutoclusteringPolicy {
+    // Enable autoclustering if the user requests it, e.g., via
+    // experimental_jit_scope. Does not autocluster if the JIT is enabled
+    // globally (e.g., via the OptimizerOptions in the TF session
+    // configuration.)
+    kIfExplicitlyRequested,
+    // Enable autoclustering if explicitly requested, or if the JIT is enabled
+    // globally in the session options, or via TF_XLA_FLAGS=--tf_xla_auto_jit=N.
+    kIfEnabledGlobally,
+    // Always try to autocluster ops placed on this device.
+    kAlways,
+  };
+
   // Describes how to compile operators assigned to a device.
   struct DeviceRegistration {
     // The name of the an XLA compilation device to use to compile code.
     string compilation_device_name;
 
-    // Do operators assigned to this device require compilation?
-    bool requires_compilation;
-
-    // If !requires_compilation, should we try to JIT operators on this device
-    // when XLA JIT compilation is enabled globally via the SessionOptions?
-    // (It is still possible to explicitly mark operators to JIT compile, even
-    // if enable_jit_by_default is false.)
-    bool enable_jit_by_default;
+    // When should we autocluster operators assigned to this device?
+    AutoclusteringPolicy autoclustering_policy;
 
     // Enable compilation of operators that use DT_RESOURCE types?
     bool compile_resource_ops = false;

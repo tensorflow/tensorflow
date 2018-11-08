@@ -109,7 +109,11 @@ def tensorrt_rewriter_config(rewriter_config=None,
 
   if rewriter_config is None:
     rewriter_config = rewriter_config_pb2.RewriterConfig()
-    rewriter_config.optimizers.extend(["constfold", "layout"])
+    # Layout optimizer may add Const nodes followed by Reshape nodes, thus we
+    # need to run constant folding again.
+    rewriter_config.optimizers.extend(["constfold", "layout", "constfold"])
+    rewriter_config.meta_optimizer_iterations = (
+        rewriter_config_pb2.RewriterConfig.ONE)
 
   if precision_mode.upper() not in TrtPrecisionMode.supported_precision_modes():
     raise ValueError(("precision mode '{}' is not supported."

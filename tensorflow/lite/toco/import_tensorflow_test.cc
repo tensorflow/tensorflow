@@ -332,13 +332,44 @@ TEST(ImportTest, UnsupportedOpWithWildcardOutputShapes) {
 }
 
 TEST(ImportTest, UnsupportedOpWithMultipleOutputs) {
-  NodeDef node = BuildNode("Unpack", {});
+  // This test needs an existing TensorFlow op to run correctly, because it
+  // read the OpDef from the global registry. The complex output setup of
+  // ParseExample allows us to test all nuances here, but we will need to add
+  // attributes to match the specification in the OpDef.
+  NodeDef node = BuildNode("ParseExample", {});
 
-  // Unpack's OpDef has a single output which gets multiplied based on the
-  // "num" attribute of the NodeDef.
-  AttrValue value_attr;
-  SetAttrValue(3, &value_attr);  // 3 outputs.
-  (*node.mutable_attr())["num"] = value_attr;
+  // Nsparse defines how many sparse indices and shapes there are. Here we set
+  // Nsparse to 2, meaning there will be 2 INT64 tensors for 'sparse_indices'
+  // and 2 INT64 tensors for 'sparse_shapes. The type of those tensors is
+  // defined in the OpDef.
+  {
+    AttrValue value_attr;
+    SetAttrValue(2, &value_attr);
+    (*node.mutable_attr())["Nsparse"] = value_attr;
+  }
+
+  // The there will be a number of 'sparse_values' tensors, defined by the
+  // attribute 'sparse_types', which is a list of types.
+  {
+    AttrValue value_attr;
+    std::vector<tensorflow::DataType> types;
+    types.push_back(tensorflow::DT_FLOAT);
+    types.push_back(tensorflow::DT_STRING);
+    SetAttrValue(types, &value_attr);
+    (*node.mutable_attr())["sparse_types"] = value_attr;
+  }
+
+  // And finally there will be 'dense_values' tensors, which are controlled by
+  // the 'Tdense' attribute.
+  {
+    AttrValue value_attr;
+    std::vector<tensorflow::DataType> types;
+    types.push_back(tensorflow::DT_STRING);
+    types.push_back(tensorflow::DT_FLOAT);
+    types.push_back(tensorflow::DT_INT64);
+    SetAttrValue(types, &value_attr);
+    (*node.mutable_attr())["Tdense"] = value_attr;
+  }
 
   Model model;
   EXPECT_TRUE(ImportFlexNode(node, &model).ok());
@@ -349,10 +380,34 @@ TEST(ImportTest, UnsupportedOpWithMultipleOutputs) {
       static_cast<const TensorFlowUnsupportedOperator*>(
           model.operators[0].get());
 
-  ASSERT_EQ(op->outputs.size(), 3);
+  ASSERT_EQ(op->outputs.size(), 9);
+  ASSERT_EQ(op->output_data_types.size(), 9);
+
+  // The 'sparse_indices' output tensors.
   ASSERT_EQ(op->outputs[0], "Node1");
   ASSERT_EQ(op->outputs[1], "Node1:1");
+  ASSERT_EQ(op->output_data_types[0], ArrayDataType::kInt64);
+  ASSERT_EQ(op->output_data_types[1], ArrayDataType::kInt64);
+
+  // The 'sparse_values' output tensors.
   ASSERT_EQ(op->outputs[2], "Node1:2");
+  ASSERT_EQ(op->outputs[3], "Node1:3");
+  ASSERT_EQ(op->output_data_types[2], ArrayDataType::kFloat);
+  ASSERT_EQ(op->output_data_types[3], ArrayDataType::kString);
+
+  // The 'sparse_shapes' output tensors.
+  ASSERT_EQ(op->outputs[4], "Node1:4");
+  ASSERT_EQ(op->outputs[5], "Node1:5");
+  ASSERT_EQ(op->output_data_types[4], ArrayDataType::kInt64);
+  ASSERT_EQ(op->output_data_types[5], ArrayDataType::kInt64);
+
+  // The 'dense_shapes' output tensors.
+  ASSERT_EQ(op->outputs[6], "Node1:6");
+  ASSERT_EQ(op->outputs[7], "Node1:7");
+  ASSERT_EQ(op->outputs[8], "Node1:8");
+  ASSERT_EQ(op->output_data_types[6], ArrayDataType::kString);
+  ASSERT_EQ(op->output_data_types[7], ArrayDataType::kFloat);
+  ASSERT_EQ(op->output_data_types[8], ArrayDataType::kInt64);
 }
 
 }  // namespace

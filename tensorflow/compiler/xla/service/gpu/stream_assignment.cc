@@ -122,7 +122,7 @@ std::unique_ptr<StreamAssignment> AssignStreams(const HloModule& module) {
   auto stream_assignment = absl::make_unique<StreamAssignment>();
   const HloComputation& computation = *module.entry_computation();
   std::unique_ptr<HloReachabilityMap> reachability =
-      computation.ComputeReachability();
+      HloReachabilityMap::Build(&computation);
   std::vector<const HloInstruction*> seen_gemms;
   // The execution of different RNG Hlo instructions in the same module updates
   // a common global variable. To avoid a race condition, we simply assign all

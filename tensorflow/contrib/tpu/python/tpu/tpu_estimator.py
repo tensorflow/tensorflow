@@ -31,6 +31,7 @@ import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.contrib.tpu.python.tpu import tensor_tracer
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import error_handling
 from tensorflow.contrib.tpu.python.tpu import session_support
@@ -1317,9 +1318,15 @@ class _ModelFnWrapper(object):
 
       captured_training_hooks.capture(estimator_spec.training_hooks)
 
+      tracing_ops = []
+      if tensor_tracer.TensorTracer.is_enabled():
+        tt = tensor_tracer.TensorTracer()
+        loss, tracing_ops = tt.trace_tpu(ops.get_default_graph(), loss,
+                                         self._ctx.num_replicas)
+
       # We must run train_op to update the variables prior to running the
       # outfeed.
-      with ops.control_dependencies([train_op]):
+      with ops.control_dependencies([train_op]+tracing_ops):
         host_call_outfeed_ops = []
         if (isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)  # pylint: disable=protected-access
             and estimator_spec.host_call is not None):
@@ -2997,6 +3004,12 @@ class _CapturingContext(control_flow_ops.ControlFlowContext):
   def __init__(self, message):
     control_flow_ops.ControlFlowContext.__init__(self)
     self._message = message
+
+  def to_control_flow_context_def(self, context_def, export_scope=None):
+    # pylint: disable=useless-super-delegation
+    # NOTE(slebedev): the method is required by `ControlFlowContext`.
+    super(_CapturingContext, self).to_control_flow_context_def(
+        context_def, export_scope)
 
   def AddOp(self, op):  # pylint: disable=invalid-name
     for c in op.inputs:

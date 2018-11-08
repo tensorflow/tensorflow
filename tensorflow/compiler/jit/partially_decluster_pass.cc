@@ -210,7 +210,8 @@ bool IsIntraClusterEdge(const Edge& edge) {
 bool IsMustCompileDevice(const DeviceType& device_type) {
   const XlaOpRegistry::DeviceRegistration* registration;
   if (XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration)) {
-    return registration->requires_compilation;
+    return registration->autoclustering_policy ==
+           XlaOpRegistry::AutoclusteringPolicy::kAlways;
   }
 
   return false;
