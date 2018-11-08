@@ -1083,7 +1083,7 @@ TEST(XlaCompilationTest, ClusterStatefulRandomOpOnXlaDevice) {
   EXPECT_NE(clusters["test/c"], "");
 }
 
-TEST(XlaCompilationTest, DontAutoclusterStatefulRandomOp) {
+TEST(XlaCompilationTest, DontAutoClusterStatefulRandomOp) {
   Scope root = Scope::NewRootScope().ExitOnError();
   Output shape = ops::Const(root.WithOpName("test/shape_shape"), {200, 200});
   Output a = ops::RandomUniform(root.WithOpName("test/a"), shape, DT_FLOAT);
@@ -1099,5 +1099,53 @@ TEST(XlaCompilationTest, DontAutoclusterStatefulRandomOp) {
   EXPECT_EQ(clusters["test/a"], "");
   EXPECT_EQ(clusters["test/b"], "");
 }
+
+TEST(XlaCompilationTest, ClusterDummyOpsOnXlaDevice) {
+  absl::string_view xla_cpu_device =
+      "/job:worker/replica:0/task:0/device:XLA_CPU:0";
+
+  Scope root = Scope::NewRootScope().ExitOnError();
+  Output a = ops::Placeholder(root.WithOpName("test/a"), DT_FLOAT);
+  Output b = ops::Placeholder(root.WithOpName("test/b"), DT_FLOAT);
+  Output check =
+      ops::CheckNumerics(root.WithOpName("test/check"), a, "test/check");
+  Output ge = ops::GreaterEqual(root.WithOpName("test/greaterequal"), check, b);
+  Operation assert = ops::Assert(root.WithOpName("test/assert"), ge, {a, b});
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  for (Node* n : graph->nodes()) {
+    if (absl::StartsWith(n->name(), /*prefix=*/"test/")) {
+      n->set_assigned_device_name(string(xla_cpu_device));
+    }
+  }
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
+
+  std::unordered_map<string, string> clusters = GetClusters(*graph);
+  EXPECT_NE(clusters["test/check"], "");
+  EXPECT_NE(clusters["test/greaterequal"], "");
+  EXPECT_NE(clusters["test/assert"], "");
+}
+
+TEST(XlaCompilationTest, DontAutoClusterDummyOps) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  Output a = ops::Placeholder(root.WithOpName("test/a"), DT_FLOAT);
+  Output b = ops::Placeholder(root.WithOpName("test/b"), DT_FLOAT);
+  Output check =
+      ops::CheckNumerics(root.WithOpName("test/check"), a, "test/check");
+  Output ge = ops::GreaterEqual(root.WithOpName("test/greaterequal"), check, b);
+  Operation assert = ops::Assert(root.WithOpName("test/assert"), ge, {a, b});
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
+
+  std::unordered_map<string, string> clusters = GetClusters(*graph);
+  EXPECT_EQ(clusters["test/assert"], "");
+  EXPECT_EQ(clusters["test/check"], "");
+}
+
 }  // namespace
 }  // namespace tensorflow
