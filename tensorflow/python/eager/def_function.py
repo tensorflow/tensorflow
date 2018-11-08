@@ -336,6 +336,42 @@ class PolymorphicFunction(object):
     """The python function wrapped in this tf.function."""
     return self._python_function
 
+  def get_initialization_function(self, *args, **kwargs):
+    """Returns a `Function` object which initializes this function's variables.
+
+    Requires that this function hasn't been accessed yet through either calling
+    it or calling get_concrete_function. Fails if we cannot build an initializer
+    function which does not depend on the concrete values of the inputs to this
+    function.
+
+    Args:
+      *args: arguments to the underlying python callable.
+      **kwargs: keyword arguments to the python callable.
+
+    Returns:
+      A `Function` object which initializes the variables of this function.
+
+    Raises:
+      RuntimeError: if called after the variables have been initialized.
+    """
+    if self._stateful_fn is not None:
+      raise RuntimeError(
+          "get_initialization_function cannot be called after the function "
+          "has been used")
+    # Here we trace the function, collect the initializers, and attempt to
+    # extract them and run them eagerly. Fail only if we cannot do so.
+    initializer_map = {}
+    self._initialize(args, kwargs, add_initializers_to=initializer_map)
+
+    # Note: using defun here avoids an infinite recursion.
+    @function_lib.defun
+    def initialize_variables():
+      for v, init in initializer_map.items():
+        v.assign(lift_to_graph.lift_to_graph(
+            init, ops.get_default_graph())[init])
+
+    return initialize_variables.get_concrete_function()
+
   def get_concrete_function(self, *args, **kwargs):
     """Returns a `Function` object specialized to inputs and execution context.
 
@@ -414,19 +450,7 @@ class PolymorphicFunction(object):
     """
     assert context.executing_eagerly()
     if self._stateful_fn is None:
-      # Here we trace the function, collect the initializers, and attempt to
-      # extract them and run them eagerly. Fail only if we cannot do so.
-      initializer_map = {}
-      self._initialize(args, kwargs, add_initializers_to=initializer_map)
-      if not self._created_variables:
-
-        @function
-        def initialize_variables():
-          for v, init in initializer_map.items():
-            v.assign(lift_to_graph.lift_to_graph(
-                init, ops.get_default_graph())[init])
-
-        initialize_variables()
+      self.get_initialization_function(*args, **kwargs)()
 
     if self._created_variables:
       # In this case we have created variables on the first call, so we run the
