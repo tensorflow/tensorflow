@@ -104,6 +104,23 @@ class OptimizeDatasetTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  def testOptimizationNonSerializable(self):
+    dataset = dataset_ops.Dataset.from_tensors(0)
+    dataset = dataset.apply(optimization.assert_next(["FiniteSkip"]))
+    dataset = dataset.skip(0)  # Should not be removed by noop elimination
+    dataset = dataset.apply(optimization.non_serializable())
+    dataset = dataset.apply(optimization.assert_next(["MemoryCacheImpl"]))
+    dataset = dataset.skip(0)  # Should be removed by noop elimination
+    dataset = dataset.cache()
+    dataset = dataset_ops._OptimizeDataset(dataset, ["noop_elimination"])
+    iterator = dataset.make_one_shot_iterator()
+    get_next = iterator.get_next()
+
+    with self.cached_session() as sess:
+      self.assertEquals(0, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
 
 if __name__ == "__main__":
   test.main()

@@ -75,6 +75,18 @@ ENTRY %constant_pred () -> pred[] {
 
 )"
 },
+// pred array constant
+{
+"ConstantPredArray",
+R"(HloModule module
+
+ENTRY %constant_pred_array () -> pred[2,3] {
+  ROOT %constant = pred[2,3]{1,0} constant(pred[2,3] { { 0, 1, 0 }, { 1, 0, 1 } })
+}
+
+)"
+},
+
 // s32 constant
 {
 "ConstantS32",
@@ -1140,6 +1152,25 @@ ENTRY CrossReplicaSumWithSubgroups {
 
 )"
 },
+// cross-replica-sum with all-reduce-id
+{
+"CrossReplicaSumAllReduce",
+R"(HloModule CRS
+
+add {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY CRS {
+  input = f32[8]{0} parameter(0)
+  crs.1 = f32[8]{0} cross-replica-sum(input), replica_groups={{0}}, all_reduce_id=1, to_apply=add
+  ROOT crs.0 = f32[8]{0} cross-replica-sum(input), replica_groups={{0}}, all_reduce_id=1, to_apply=add
+}
+
+)"
+},
 // all-to-all
 {
 "AllToAll",
@@ -2159,6 +2190,22 @@ ENTRY entry {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseHloString(text));
+}
+
+TEST_F(HloParserTest, ShapeMismatchInOperand) {
+  const string text = R"(
+HloModule foobar
+
+ENTRY %entrycomp (p: f32[2,2]) -> f32[2,2] {
+  %p = f32[2,2] parameter(0)
+  %constant.1 = f32[2,2] constant(f32[2,2] {{1, 2}, {3, 4}})
+  ROOT %add.1 = f32[2,2] add(f32[2,2] %p, f32[2,5] %constant.1)
+}
+)";
+
+  ExpectHasSubstr(ParseHloString(text).status().error_message(),
+                  "The declared operand shape f32[2,5]{1,0} is not compatible"
+                  " with the shape of the operand instruction f32[2,2]{1,0}.");
 }
 
 // custom call incompatible shape.

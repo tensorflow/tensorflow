@@ -345,20 +345,25 @@ class ParameterServerStrategyTestBase(
       self._finish_condition.release()
 
       x_val, y_val, z_val = sess.run([x, y, z])
-      self.assertEqual(x_val, 10.0 + 1.0 * num_workers * d.num_replicas)
-      self.assertEqual(y_val, 20.0 + 1.0 * num_workers * d.num_replicas)
+      self.assertEqual(x_val, 10.0 + 1.0 * num_workers * d.num_replicas_in_sync)
+      self.assertEqual(y_val, 20.0 + 1.0 * num_workers * d.num_replicas_in_sync)
       self.assertEqual(z_val, 30.0 + 1.0 * num_workers)
-      return (x_val == 10.0 + 1.0 * num_workers * d.num_replicas and
-              y_val == 20.0 + 1.0 * num_workers * d.num_replicas and
+      return (x_val == 10.0 + 1.0 * num_workers * d.num_replicas_in_sync and
+              y_val == 20.0 + 1.0 * num_workers * d.num_replicas_in_sync and
               z_val == 30.0 + 1.0 * num_workers)
 
   def _test_minimize_loss_graph(self, task_type, task_id, num_gpus):
     d, master_target, sess_config = self._get_test_objects(
         task_type, task_id, num_gpus)
-    assert hasattr(d, '_cluster_spec') and d._cluster_spec
-    num_workers = len(d._cluster_spec.as_dict().get(WORKER))
-    if CHIEF in d._cluster_spec.as_dict():
-      num_workers += 1
+    if task_type:
+      # Multi-worker
+      assert hasattr(d, '_cluster_spec') and d._cluster_spec
+      num_workers = len(d._cluster_spec.as_dict().get(WORKER))
+      if CHIEF in d._cluster_spec.as_dict():
+        num_workers += 1
+    else:
+      # local
+      num_workers = 1
 
     with ops.Graph().as_default(), \
          self.cached_session(target=master_target,
@@ -410,7 +415,8 @@ class ParameterServerStrategyTestBase(
       if context.num_gpus() < d._num_gpus_per_worker:
         return True
 
-      if multi_worker_util.is_chief(d._cluster_spec, task_type, task_id):
+      if (not task_type or
+          multi_worker_util.is_chief(d._cluster_spec, task_type, task_id)):
         variables.global_variables_initializer().run()
 
       # Workers waiting for chief worker's initializing variables.
@@ -484,9 +490,14 @@ class ParameterServerStrategyTest(ParameterServerStrategyTestBase,
 
   @combinations.generate(
       combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
-  def testMinimizeLossGraph(self, num_gpus):
+  def testMinimizeLossGraphDistributed(self, num_gpus):
     self._run_between_graph_clients(self._test_minimize_loss_graph,
                                     self._cluster_spec, num_gpus)
+
+  @combinations.generate(
+      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
+  def testMinimizeLossGraphLocal(self, num_gpus):
+    self._test_minimize_loss_graph(None, None, num_gpus)
 
 
 class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,

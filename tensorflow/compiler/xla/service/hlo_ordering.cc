@@ -334,7 +334,7 @@ DependencyHloOrdering::DependencyHloOrdering(const HloModule* module)
   // ordering based on dependencies. ExecutesBefore will return true iff there
   // exists a path in the HLO computation graph from 'a' to 'b'.
   for (auto* computation : module->MakeNonfusionComputations()) {
-    predecessors_.emplace(computation, computation->ComputeReachability());
+    predecessors_.emplace(computation, HloReachabilityMap::Build(computation));
   }
 }
 

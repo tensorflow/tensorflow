@@ -89,6 +89,7 @@ py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python/data/experimental/kernel_tests:stats_dataset_test_base",
         "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/experimental/ops:stats_aggregator",
         "//tensorflow/python/data/experimental/ops:stats_ops",
         "//tensorflow/python/data/ops:dataset_ops",
     ],

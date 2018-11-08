@@ -1122,28 +1122,137 @@ tensorflow::Status ConvertConcatOperator(
   return tensorflow::Status::OK();
 }
 
+static constexpr int kAnyNumInputs = -1;
+
+enum FlexSupport { kFlexOk, kFlexNotOk };
+
 // This method supports simple operators without additional attributes.
-template <typename Op>
-tensorflow::Status ConvertSimpleOperator(
+// Converts a simple operator that takes no attributes. The list of inputs is
+// taken from the given NodeDef, and its number must match NumInputs, unless
+// kAnyNumInputs is passed in. If kFlexOk is passed in the resulting operator
+// will be eligible for being exported as a flex op.
+template <typename Op, int NumInputs, FlexSupport flex>
+tensorflow::Status ConvertSimpleOperatorGeneric(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
+  if (NumInputs != kAnyNumInputs) {
+    TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, NumInputs));
+  }
   auto* op = new Op;
   const int num_inputs = GetInputsCount(node, tf_import_flags);
   for (int i = 0; i < num_inputs; ++i) {
     op->inputs.push_back(node.input(i));
   }
   op->outputs.push_back(node.name());
+
+  if (flex == kFlexOk) {
+    RetainTensorFlowNodeDef(node, op);
+  }
+
   model->operators.emplace_back(op);
   return tensorflow::Status::OK();
 }
 
-// This method supports simple operators without additional attributes.
-template <typename Op, unsigned int NumInputs>
+// Convert a simple operator which is not valid as a flex op.
+template <typename Op, int NumInputs = kAnyNumInputs>
 tensorflow::Status ConvertSimpleOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
-  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, NumInputs));
-  return ConvertSimpleOperator<Op>(node, tf_import_flags, model);
+  return ConvertSimpleOperatorGeneric<Op, NumInputs, kFlexNotOk>(
+      node, tf_import_flags, model);
+}
+
+// Convert a simple operator which is valid as a flex op.
+template <typename Op, int NumInputs = kAnyNumInputs>
+tensorflow::Status ConvertSimpleOperatorFlexOk(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  return ConvertSimpleOperatorGeneric<Op, NumInputs, kFlexOk>(
+      node, tf_import_flags, model);
+}
+
+void GetOutputNamesFromNodeDef(const NodeDef& node,
+                               const tensorflow::OpDef& op_def,
+                               TensorFlowUnsupportedOperator* op) {
+  int next_output = 0;
+  auto add_output = [&node, &next_output, op]() {
+    if (next_output == 0) {
+      op->outputs.push_back(node.name());  // Implicit :0.
+    } else {
+      op->outputs.push_back(absl::StrCat(node.name(), ":", next_output));
+    }
+    ++next_output;
+  };
+  for (int i = 0; i < op_def.output_arg_size(); ++i) {
+    string multiples = op_def.output_arg(i).number_attr();
+    if (!multiples.empty()) {
+      CHECK(HasAttr(node, multiples)) << "No attr named " << multiples;
+      int num_outputs = GetIntAttr(node, multiples);
+      for (int j = 0; j < num_outputs; ++j) {
+        add_output();
+      }
+    } else {
+      string list = op_def.output_arg(i).type_list_attr();
+      if (!list.empty()) {
+        CHECK(HasAttr(node, list)) << "No attr named " << list;
+        const AttrValue::ListValue& list_value = GetListAttr(node, list);
+        for (int j = 0; j < list_value.type_size(); ++j) {
+          add_output();
+        }
+      } else {
+        add_output();
+      }
+    }
+  }
+}
+
+void GetOutputTypesFromNodeDef(const NodeDef& node,
+                               const tensorflow::OpDef& op_def,
+                               TensorFlowUnsupportedOperator* op) {
+  // The the given type to the op, or clear the types if invalid.
+  auto add_type = [&node, op](tensorflow::DataType type) {
+    if (type == tensorflow::DT_INVALID) {
+      LOG(WARNING) << "Op node missing output type attribute: " << node.name();
+      op->output_data_types.clear();
+    } else {
+      op->output_data_types.push_back(ConvertDataType(type));
+    }
+  };
+
+  // Retrieve the data type according to the OpDef definition: either the
+  // "type" or "type_attr" field will be set.
+  auto get_type = [&node](const tensorflow::OpDef::ArgDef& a) {
+    if (a.type() != tensorflow::DT_INVALID) {
+      return a.type();
+    } else if (HasAttr(node, a.type_attr())) {
+      return GetDataTypeAttr(node, a.type_attr());
+    } else {
+      return tensorflow::DT_INVALID;
+    }
+  };
+
+  for (int i = 0; i < op_def.output_arg_size(); ++i) {
+    string multiples = op_def.output_arg(i).number_attr();
+    if (!multiples.empty()) {
+      CHECK(HasAttr(node, multiples)) << "No attr named " << multiples;
+      int num_outputs = GetIntAttr(node, multiples);
+      auto type = get_type(op_def.output_arg(i));
+      for (int j = 0; j < num_outputs; ++j) {
+        add_type(type);
+      }
+    } else {
+      string list = op_def.output_arg(i).type_list_attr();
+      if (!list.empty()) {
+        CHECK(HasAttr(node, list)) << "No attr named " << list;
+        const AttrValue::ListValue& list_value = GetListAttr(node, list);
+        for (int j = 0; j < list_value.type_size(); ++j) {
+          add_type(list_value.type(j));
+        }
+      } else {
+        add_type(get_type(op_def.output_arg(i)));
+      }
+    }
+  }
 }
 
 tensorflow::Status ConvertUnsupportedOperator(
@@ -1176,19 +1285,7 @@ tensorflow::Status ConvertUnsupportedOperator(
   // Note that some outputs are to be multipled by a named attribute.
   const tensorflow::OpDef* op_def = nullptr;
   if (tensorflow::OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok()) {
-    int next_output = 0;
-    for (int i = 0; i < op_def->output_arg_size(); ++i) {
-      string multiples = op_def->output_arg(i).number_attr();
-      int num_outputs = multiples.empty() ? 1 : GetIntAttr(node, multiples);
-      for (int j = 0; j < num_outputs; ++j) {
-        if (next_output == 0) {
-          op->outputs.push_back(node.name());  // Implicit :0.
-        } else {
-          op->outputs.push_back(absl::StrCat(node.name(), ":", next_output));
-        }
-        ++next_output;
-      }
-    }
+    GetOutputNamesFromNodeDef(node, *op_def, op);
   } else {
     op->outputs.push_back(node.name());  // Implicit :0.
   }
@@ -1213,19 +1310,7 @@ tensorflow::Status ConvertUnsupportedOperator(
     const auto& output_type = GetDataTypeAttr(node, "Tout");
     op->output_data_types.push_back(ConvertDataType(output_type));
   } else if (op_def != nullptr) {
-    for (const auto& output_arg : op_def->output_arg()) {
-      if (output_arg.type() != tensorflow::DT_INVALID) {
-        op->output_data_types.push_back(ConvertDataType(output_arg.type()));
-      } else if (HasAttr(node, output_arg.type_attr())) {
-        op->output_data_types.push_back(
-            ConvertDataType(GetDataTypeAttr(node, output_arg.type_attr())));
-      } else {
-        LOG(WARNING) << "Op node missing output type attribute: "
-                     << node.name();
-        op->output_data_types.clear();
-        break;
-      }
-    }
+    GetOutputTypesFromNodeDef(node, *op_def, op);
   } else {
     // TODO(b/113613439): Figure out how to propagate types for custom ops
     // that have no OpDef.
@@ -2143,7 +2228,7 @@ ConverterMapType GetTensorFlowNodeConverterMapForFlex() {
 ConverterMapType GetTensorFlowNodeConverterMap() {
   return std::unordered_map<std::string, ConverterType>({
       {"Add", ConvertSimpleOperator<AddOperator, 2>},
-      {"AddN", ConvertSimpleOperator<AddNOperator>},
+      {"AddN", ConvertSimpleOperatorFlexOk<AddNOperator>},
       {"All", ConvertSimpleOperator<TensorFlowAllOperator>},
       {"Any", ConvertReduceOperator<TensorFlowAnyOperator>},
       {"ArgMax", ConvertArgMaxOperator},

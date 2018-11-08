@@ -62,6 +62,37 @@ class DatasetTestBase(test.TestCase):
       nxt = it.get_next()
       return lambda: nxt
 
+  def _compare_output_to_expected(self, result_values, expected_values):
+    for i in range(len(result_values)):
+      if sparse_tensor.is_sparse(result_values[i]):
+        self.assertSparseValuesEqual(result_values[i], expected_values[i])
+      else:
+        self.assertAllEqual(result_values[i], expected_values[i])
+
+  def assertDatasetProduces(self,
+                            input_dataset,
+                            expected_output=None,
+                            expected_err=None,
+                            create_iterator_twice=True):
+
+    if expected_err:
+      with self.assertRaisesWithPredicateMatch(expected_err[0],
+                                               expected_err[1]):
+        get_next = self.getNext(input_dataset)
+        self.evaluate(get_next())
+      return
+    repeated = 2 if create_iterator_twice else 1
+    for _ in range(repeated):
+      get_next = self.getNext(input_dataset)
+      result = []
+      for _ in range(len(expected_output)):
+        result.append(self.evaluate(get_next()))
+      self._compare_output_to_expected(result, expected_output)
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(get_next())
+      with self.assertRaises(errors.OutOfRangeError):
+        self.evaluate(get_next())
+
   def assertDatasetsEqual(self, dataset1, dataset2):
     """Checks that datasets are equal. Supports both graph and eager mode."""
     self.assertEqual(dataset1.output_types, dataset2.output_types)
@@ -83,9 +114,7 @@ class DatasetTestBase(test.TestCase):
       op2 = nest.flatten(op2)
       assert len(op1) == len(op2)
       for i in range(len(op1)):
-        if isinstance(
-            op1[i],
-            (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
+        if sparse_tensor.is_sparse(op1[i]):
           self.assertSparseValuesEqual(op1[i], op2[i])
         elif flattened_types[i] == dtypes.string:
           self.assertAllEqual(op1[i], op2[i])

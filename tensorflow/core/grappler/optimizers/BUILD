@@ -212,6 +212,8 @@ cc_library(
     hdrs = ["graph_optimizer_stage.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",

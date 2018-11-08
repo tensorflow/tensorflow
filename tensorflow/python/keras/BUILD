@@ -55,17 +55,24 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = select({
-        ":empty_condition": [],
-        "//conditions:default": [],
-    }) + [
+    deps = [
         ":backend",
         ":engine",
         ":layers",
-        "//tensorflow/python/keras/optimizer_v2:optimizer_v2",
-        "//tensorflow/python/saved_model",
+        ":pil_for_keras",
         "//tensorflow/python:training",
+        "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/saved_model",
+        "@keras_applications_archive//:keras_applications",
     ],
+)
+
+py_library(
+    name = "pil_for_keras",
+    deps = select({
+        ":empty_condition": [],
+        "//conditions:default": [],
+    }),
 )
 
 py_library(
@@ -361,7 +368,7 @@ cuda_py_test(
 
 py_test(
     name = "pooling_test",
-    size = "small",
+    size = "medium",
     srcs = ["layers/pooling_test.py"],
     srcs_version = "PY2AND3",
     deps = [

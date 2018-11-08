@@ -1816,6 +1816,8 @@ class LinearModelTest(test.TestCase):
           'sparse_feature': [['a'], ['x']],
       }
       model(features)
+      for var in model.variables:
+        self.assertTrue(isinstance(var, variables_lib.RefVariable))
       variable_names = [var.name for var in model.variables]
       self.assertItemsEqual([
           'linear_model/dense_feature_bucketized/weights:0',
@@ -5592,6 +5594,7 @@ class _TestStateManager(fc.StateManager):
                       shape,
                       dtype=None,
                       trainable=True,
+                      use_resource=True,
                       initializer=None):
     if feature_column not in self._all_variables:
       self._all_variables[feature_column] = {}
@@ -5604,6 +5607,7 @@ class _TestStateManager(fc.StateManager):
           shape=shape,
           dtype=dtype,
           trainable=self._trainable and trainable,
+          use_resource=use_resource,
           initializer=initializer)
       var_dict[name] = var
       return var
@@ -6182,6 +6186,8 @@ class EmbeddingColumnTest(test.TestCase):
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
     self.assertItemsEqual(('feature_layer/aaa_embedding/embedding_weights:0',),
                           tuple([v.name for v in global_vars]))
+    for v in global_vars:
+      self.assertTrue(isinstance(v, variables_lib.RefVariable))
     trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
     self.assertItemsEqual(('feature_layer/aaa_embedding/embedding_weights:0',),
                           tuple([v.name for v in trainable_vars]))
@@ -6964,6 +6970,8 @@ class SharedEmbeddingColumnTest(test.TestCase):
     self.assertItemsEqual(
         ['aaa_bbb_shared_embedding:0', 'ccc_ddd_shared_embedding:0'],
         tuple([v.name for v in global_vars]))
+    for v in global_vars:
+      self.assertTrue(isinstance(v, variables_lib.RefVariable))
     trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
     if trainable:
       self.assertItemsEqual(

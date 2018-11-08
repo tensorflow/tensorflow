@@ -1068,7 +1068,8 @@ def internal_convert_to_tensor(value,
                                name=None,
                                as_ref=False,
                                preferred_dtype=None,
-                               ctx=None):
+                               ctx=None,
+                               accept_symbolic_tensors=True):
   """Converts the given `value` to an `Tensor`.
 
   This function converts Python objects of various types to `Tensor`
@@ -1092,6 +1093,10 @@ def internal_convert_to_tensor(value,
       can be used as a soft preference.  If the conversion to
       `preferred_dtype` is not possible, this argument has no effect.
     ctx: Optional: The value of context.context().
+    accept_symbolic_tensors: Whether Keras graph tensors should be accepted as
+      a valid tensor type during eager execution.
+      If False, this function will raise an exception if it is passed such
+      a tensor during eager eager execution.
 
   Returns:
     A `Tensor` based on `value`.
@@ -1115,6 +1120,19 @@ def internal_convert_to_tensor(value,
         raise RuntimeError("Attempting to capture an EagerTensor without "
                            "building a function.")
       return graph.capture(value, name=name)
+  elif ((not accept_symbolic_tensors) and
+        isinstance(value, Tensor) and
+        ctx.executing_eagerly()):
+    # Found a symbolic tensor in an eager context.
+    # This happens when we use the Keras functional API (i.e. calling layers
+    # on the output of `keras.Input()`, which is symbolic) while eager
+    # execution is enabled.
+    if _is_keras_symbolic_tensor(value):
+      # If the graph of the tensor isn't the Keras graph, we should still
+      # fail, for the time being. TODO(fchollet): consider allowing
+      # all symbolic tensors to raise this exception in this case.
+      raise core._SymbolicException(  # pylint: disable=protected-access
+          "Using the symbolic output of a Keras layer during eager execution.")
 
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
@@ -6000,6 +6018,13 @@ class name_scope(object):  # pylint: disable=invalid-name
     self._values = values
     self._ctx = context.context()
     self._in_eager_mode = self._ctx.executing_eagerly()
+    self._has_symbolic_input_in_eager = False
+    if self._values and self._in_eager_mode:
+      # The presence of a graph tensor in `self._values` overrides the context.
+      for value in self._values:
+        if hasattr(value, "graph"):
+          self._has_symbolic_input_in_eager = True
+          self._name_scope = value.graph.name_scope(self._name)
 
   def __enter__(self):
     """Start the scope block.
@@ -6011,6 +6036,9 @@ class name_scope(object):  # pylint: disable=invalid-name
       ValueError: if neither `name` nor `default_name` is provided
         but `values` are.
     """
+    if self._has_symbolic_input_in_eager:
+      return self._name_scope.__enter__()
+
     if self._in_eager_mode:
       self._old_name = self._ctx.scope_name
       if not self._name:
@@ -6053,7 +6081,9 @@ class name_scope(object):  # pylint: disable=invalid-name
         raise
 
   def __exit__(self, type_arg, value_arg, traceback_arg):
-    if self._in_eager_mode:
+    if self._has_symbolic_input_in_eager:
+      self._name_scope.__exit__(type_arg, value_arg, traceback_arg)
+    elif self._in_eager_mode:
       self._ctx.scope_name = self._old_name
     else:
       self._name_scope.__exit__(type_arg, value_arg, traceback_arg)
@@ -6211,6 +6241,10 @@ def _op_to_colocate_with(v):
       v.handle.op, Operation):
     return v.handle.op
   return internal_convert_to_tensor_or_indexed_slices(v, as_ref=True).op
+
+
+def _is_keras_symbolic_tensor(x):
+  return hasattr(x, "graph") and getattr(x.graph, "name", None) == "keras_graph"
 
 
 register_tensor_conversion_function(Operation, _operation_conversion_error)

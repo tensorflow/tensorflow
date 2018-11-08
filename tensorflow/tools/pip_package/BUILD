@@ -153,6 +153,7 @@ filegroup(
         "@highwayhash//:LICENSE",
         "@icu//:icu4c/LICENSE",
         "@jpeg//:LICENSE.md",
+        "@keras_applications_archive//:LICENSE",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nasm//:LICENSE",

@@ -40,9 +40,6 @@ public final class InterpreterTest {
   private static final File MODEL_FILE =
       new File("tensorflow/lite/java/src/testdata/add.bin");
 
-  private static final File MOBILENET_MODEL_FILE =
-      new File("tensorflow/lite/java/src/testdata/mobilenet.tflite.bin");
-
   private static final File FLEX_MODEL_FILE =
       new File("tensorflow/lite/testdata/multi_add_flex.bin");
 
@@ -215,32 +212,6 @@ public final class InterpreterTest {
   }
 
   @Test
-  public void testMobilenetRun() {
-    // Create a gray image.
-    float[][][][] img = new float[1][224][224][3];
-    for (int i = 0; i < 224; ++i) {
-      for (int j = 0; j < 224; ++j) {
-        img[0][i][j][0] = 0.5f;
-        img[0][i][j][1] = 0.5f;
-        img[0][i][j][2] = 0.5f;
-      }
-    }
-
-    // Allocate memory to receive the output values.
-    float[][] labels = new float[1][1001];
-
-    Interpreter interpreter = new Interpreter(MOBILENET_MODEL_FILE);
-    interpreter.run(img, labels);
-    assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(new int[] {1, 224, 224, 3});
-    assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(new int[] {1, 1001});
-    interpreter.close();
-
-    assertThat(labels[0])
-        .usingExactEquality()
-        .containsNoneOf(new float[] {Float.NaN, Float.NEGATIVE_INFINITY, Float.POSITIVE_INFINITY});
-  }
-
-  @Test
   public void testRunWithWrongInputType() {
     Interpreter interpreter = new Interpreter(MODEL_FILE);
     int[] oneD = {4, 3, 9};
@@ -286,7 +257,7 @@ public final class InterpreterTest {
 
   @Test
   public void testGetInputIndex() {
-    Interpreter interpreter = new Interpreter(MOBILENET_MODEL_FILE);
+    Interpreter interpreter = new Interpreter(MODEL_FILE);
     try {
       interpreter.getInputIndex("WrongInputName");
       fail();
@@ -303,7 +274,7 @@ public final class InterpreterTest {
 
   @Test
   public void testGetOutputIndex() {
-    Interpreter interpreter = new Interpreter(MOBILENET_MODEL_FILE);
+    Interpreter interpreter = new Interpreter(MODEL_FILE);
     try {
       interpreter.getOutputIndex("WrongOutputName");
       fail();
@@ -312,9 +283,9 @@ public final class InterpreterTest {
           .hasMessageThat()
           .contains(
               "'WrongOutputName' is not a valid name for any output. Names of outputs and their"
-                  + " indexes are {MobilenetV1/Predictions/Softmax=0}");
+                  + " indexes are {output=0}");
     }
-    int index = interpreter.getOutputIndex("MobilenetV1/Predictions/Softmax");
+    int index = interpreter.getOutputIndex("output");
     assertThat(index).isEqualTo(0);
   }
 

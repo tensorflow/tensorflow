@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -72,9 +73,9 @@ class RetvalOp : public XlaOpKernel {
       } else {
         TensorShape shape = ctx->InputShape(0);
         ctx->SetStatus(is_constant.status());
-        TensorShape representation_shape;
+        xla::Shape representation_shape;
         if (tc.is_entry_computation()) {
-          xla::StatusOr<TensorShape> shape_or_status =
+          xla::StatusOr<xla::Shape> shape_or_status =
               tc.RepresentationShape(shape, ctx->input_type(0));
           if (!shape_or_status.ok()) {
             ctx->SetStatus(shape_or_status.status());
@@ -83,12 +84,14 @@ class RetvalOp : public XlaOpKernel {
             representation_shape = shape_or_status.ValueOrDie();
           }
         } else {
-          representation_shape = shape;
+          OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(ctx->input_type(0), shape,
+                                                    &representation_shape));
         }
 
         xla::XlaOp output = input;
         if (tc.is_entry_computation()) {
-          output = xla::Reshape(input, representation_shape.dim_sizes());
+          output = xla::Reshape(
+              input, xla::AsInt64Slice(representation_shape.dimensions()));
         } else {
           // The core from which a return value is returned depends on the
           // device assignment of the input to the retval. Since we can't change

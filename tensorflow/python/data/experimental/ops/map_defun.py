@@ -52,7 +52,7 @@ def map_defun(fn, elems, output_dtypes, output_shapes):
     raise ValueError("`output_shapes` must be a list of `tf.TensorShape` "
                      "objects.")
 
-  concrete_fn = fn.get_concrete_function()
+  concrete_fn = fn._get_concrete_function_internal()  # pylint: disable=protected-access
   # TODO(shivaniagrawal/rachelim): what about functions created without
   # input_signature.
   elems = [ops.convert_to_tensor(e) for e in elems]

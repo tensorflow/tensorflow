@@ -2415,13 +2415,7 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
       *failure_reason = "operand has mismatching layouts";
       return false;
     }
-    if (LayoutUtil::IsPadded(op->shape())) {
-      *failure_reason = "operand has padded layout";
-      return false;
-    }
   }
-
-  CHECK(!LayoutUtil::IsPadded(concatenate->shape()));
 
   // We split the dimensions into three categories: the dimension over which we
   // are concatenating (concat_dim), the dimensions that are minor to it

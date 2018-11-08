@@ -817,14 +817,10 @@ TEST(XlaCompilationTest, ClusterControlTrigger) {
 
   std::unordered_map<string, string> clusters = GetClusters(*graph);
 
-  ASSERT_FALSE(clusters.empty());
-  string cluster_name = clusters.begin()->second;
-
-  // ctrl_trigger_a has inputs with mismatching deadness so it won't be
-  // clustered.  ctrl_trigger_b is okay to cluster.
-  std::unordered_map<string, string> expected_clusters(
-      {{"const_a", cluster_name}, {"ctrl_trigger_b", cluster_name}});
-  EXPECT_EQ(clusters, expected_clusters);
+  // TODO(b/118970344): ctrl_trigger_a has inputs with mismatching deadness so
+  // it won't be clustered.  ctrl_trigger_b is okay to cluster but we don't
+  // cluster it because of b/118970344.
+  EXPECT_TRUE(clusters.empty());
 }
 
 TEST(XlaCompilationTest, RandomShape) {
@@ -923,9 +919,8 @@ TEST(XlaCompilationTest, RandomShapeOnXlaDevice) {
   TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
 
   std::unordered_map<string, string> clusters = GetClusters(*graph);
-  EXPECT_NE(clusters["test/shape_rng"], "");
-  EXPECT_NE(clusters["test/reshape"], "");
-  EXPECT_NE(clusters["test/shape_rng"], clusters["test/reshape"]);
+  EXPECT_EQ(clusters["test/shape_rng"], "");
+  EXPECT_EQ(clusters["test/reshape"], "");
 }
 
 TEST(XlaCompilationTest, TensorArrayShapeOnXlaDevice) {

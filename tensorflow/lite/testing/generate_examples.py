@@ -780,33 +780,45 @@ def make_constant_tests(zip_path):
 def make_binary_op_tests(zip_path, binary_operator):
   """Make a set of tests to do binary ops with and without broadcast."""
 
-  # These parameters are split because we don't support broadcasting.
-  test_parameters = [{
-      "dtype": [tf.float32, tf.int32],
-      "input_shape_1": [[1, 3, 4, 3]],
-      "input_shape_2": [[1, 3, 4, 3]],
-      "activation": [True]
-  }, {
-      "dtype": [tf.float32],
-      "input_shape_1": [[5]],
-      "input_shape_2": [[5]],
-      "activation": [False, True]
-  }, {
-      "dtype": [tf.float32, tf.int32],
-      "input_shape_1": [[1, 3, 4, 3]],
-      "input_shape_2": [[3]],
-      "activation": [True, False]
-  }, {
-      "dtype": [tf.float32, tf.int32],
-      "input_shape_1": [[3]],
-      "input_shape_2": [[1, 3, 4, 3]],
-      "activation": [True, False]
-  }, {
-      "dtype": [tf.float32],
-      "input_shape_1": [[]],
-      "input_shape_2": [[]],
-      "activation": [False]
-  }]
+  test_parameters = [
+      # Avoid creating all combinations to keep the test size small.
+      {
+          "dtype": [tf.float32, tf.int32],
+          "input_shape_1": [[1, 3, 4, 3]],
+          "input_shape_2": [[1, 3, 4, 3]],
+          "activation": [True],
+      },
+      {
+          "dtype": [tf.float32],
+          "input_shape_1": [[5]],
+          "input_shape_2": [[5]],
+          "activation": [False, True],
+      },
+      {
+          "dtype": [tf.float32, tf.int32, tf.int64],
+          "input_shape_1": [[1, 3, 4, 3]],
+          "input_shape_2": [[3]],
+          "activation": [True, False],
+      },
+      {
+          "dtype": [tf.float32, tf.int32],
+          "input_shape_1": [[3]],
+          "input_shape_2": [[1, 3, 4, 3]],
+          "activation": [True, False],
+      },
+      {
+          "dtype": [tf.float32],
+          "input_shape_1": [[]],
+          "input_shape_2": [[]],
+          "activation": [False],
+      },
+      {
+          "dtype": [tf.float32],
+          "input_shape_1": [[0]],
+          "input_shape_2": [[1]],
+          "activation": [False],
+      }
+  ]
 
   def build_graph(parameters):
     """Builds the graph given the current parameters."""
@@ -3237,12 +3249,30 @@ def make_sparse_to_dense_tests(zip_path):
 def make_pack_tests(zip_path):
   """Make a set of tests to do stack."""
 
-  test_parameters = [{
-      "base_shape": [[3, 4, 3], [3, 4], [5]],
-      "num_tensors": [1, 2, 3, 4, 5, 6],
-      "axis": [0, 1, 2, 3],
-      "additional_shape": [1, 2, 3],
-  }]
+  test_parameters = [
+      # Avoid creating all combinations to keep the test size small.
+      {
+          "dtype": [tf.float32],
+          "base_shape": [[3, 4, 3], [3, 4], [5]],
+          "num_tensors": [1, 2, 3, 4, 5, 6],
+          "axis": [0, 1, 2, 3],
+          "additional_shape": [1, 2, 3],
+      },
+      {
+          "dtype": [tf.int32],
+          "base_shape": [[3, 4, 3], [3, 4], [5]],
+          "num_tensors": [6],
+          "axis": [0, 1, 2, 3],
+          "additional_shape": [1, 2, 3],
+      },
+      {
+          "dtype": [tf.int64],
+          "base_shape": [[3, 4, 3], [3, 4], [5]],
+          "num_tensors": [5],
+          "axis": [0, 1, 2, 3],
+          "additional_shape": [1, 2, 3],
+      }
+  ]
 
   def get_shape(parameters):
     """Return a tweaked version of 'base_shape'."""
@@ -3256,7 +3286,9 @@ def make_pack_tests(zip_path):
     all_tensors = []
     for n in range(0, parameters["num_tensors"]):
       input_tensor = tf.placeholder(
-          dtype=tf.float32, name=("input%d" % n), shape=get_shape(parameters))
+          dtype=parameters["dtype"],
+          name=("input%d" % n),
+          shape=get_shape(parameters))
       all_tensors.append(input_tensor)
     out = tf.stack(all_tensors, parameters["axis"])
     return all_tensors, [out]

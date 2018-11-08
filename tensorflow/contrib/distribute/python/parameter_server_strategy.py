@@ -234,7 +234,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   # TODO(yuefengz): not all ops in device_setter.STANDARD_PS_OPS will go through
   # this creator, such as "MutableHashTable".
   def _create_variable(self, next_creator, *args, **kwargs):
-    if self.num_replicas > 1:
+    if self.num_replicas_in_sync > 1:
       aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
       if aggregation not in (
           vs.VariableAggregation.NONE,
@@ -293,6 +293,8 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     return mirrored_strategy._call_for_each_replica(self, fn, *args, **kwargs)
 
   def _verify_destinations_not_different_worker(self, destinations):
+    if not self._cluster_spec:
+      return
     if destinations is None:
       return
     for d in cross_tower_ops_lib.get_devices_from(destinations):

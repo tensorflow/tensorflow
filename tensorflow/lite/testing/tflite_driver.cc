@@ -173,9 +173,7 @@ void TfLiteDriver::LoadModel(const string& bin_file_path) {
   interpreter_->UseNNAPI(use_nnapi_);
 
   if (delegate_) {
-    if (interpreter_->ModifyGraphWithDelegate(delegate_.get(),
-                                              /*allow_dynamic_tensors=*/true) !=
-        kTfLiteOk) {
+    if (interpreter_->ModifyGraphWithDelegate(delegate_.get()) != kTfLiteOk) {
       Invalidate("Unable to the build graph using the delegate");
       return;
     }

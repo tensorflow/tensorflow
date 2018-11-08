@@ -105,10 +105,6 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "QUANTIZED_DTYPES"
-    mtype: "<type \'frozenset\'>"
-  }
-  member {
     name: "RegisterGradient"
     mtype: "<type \'type\'>"
   }
@@ -221,10 +217,6 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
-    name: "distributions"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "double"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
@@ -238,6 +230,10 @@ tf_module {
   }
   member {
     name: "estimator"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "experimental"
     mtype: "<type \'module\'>"
   }
   member {

@@ -13,10 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Operations for working with string Tensors.
-
-See the [Strings](https://tensorflow.org/api_guides/python/string_ops) guide.
-"""
+"""Operations for working with string Tensors."""
 
 from __future__ import absolute_import
 from __future__ import division

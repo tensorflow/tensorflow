@@ -157,4 +157,23 @@ void ScopedShapedBuffer::Deallocate() {
   }
 }
 
+ScopedShapedBuffer ScopedShapedBuffer::TakeSubTree(ShapeIndexView index) {
+  const xla::Shape& sub_on_host_shape =
+      xla::ShapeUtil::GetSubshape(on_host_shape(), {index});
+  const xla::Shape& sub_on_device_shape =
+      xla::ShapeUtil::GetSubshape(on_device_shape(), {index});
+
+  ScopedShapedBuffer output(sub_on_host_shape, sub_on_device_shape,
+                            memory_allocator(), device_ordinal());
+  auto src_it = buffers().find(index);
+  auto dst_it = output.buffers().begin();
+  while (dst_it != output.buffers().end()) {
+    dst_it->second = src_it->second;
+    src_it->second = tensorflow::se::DeviceMemoryBase(nullptr, 0);
+    ++src_it;
+    ++dst_it;
+  }
+  return output;
+}
+
 }  // namespace xla

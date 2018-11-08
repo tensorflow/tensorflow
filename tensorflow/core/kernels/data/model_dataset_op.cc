@@ -86,9 +86,10 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
       }
 
       Status Initialize(IteratorContext* ctx) override {
-        IteratorContext ctx_with_model(CreateParams(ctx));
-        return dataset()->input_->MakeIterator(&ctx_with_model, prefix(),
-                                               &input_impl_);
+        IteratorContext::Params params(ctx);
+        params.model = model_;
+        return dataset()->input_->MakeIterator(
+            IteratorContext(std::move(params)), prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -96,9 +97,10 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(EnsureOptimizeThreadStarted(ctx));
-        IteratorContext ctx_with_model(CreateParams(ctx));
-        return input_impl_->GetNext(&ctx_with_model, out_tensors,
-                                    end_of_sequence);
+        IteratorContext::Params params(ctx);
+        params.model = model_;
+        return input_impl_->GetNext(IteratorContext(std::move(params)),
+                                    out_tensors, end_of_sequence);
       }
 
      protected:
@@ -119,12 +121,6 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         return Status::OK();
-      }
-
-      IteratorContext::Params CreateParams(IteratorContext* ctx) {
-        IteratorContext::Params params = ctx->params();
-        params.model = model_;
-        return params;
       }
 
      private:

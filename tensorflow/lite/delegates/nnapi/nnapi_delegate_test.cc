@@ -31,7 +31,7 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
   SingleOpModelWithNNAPI() {
     this->SetApplyDelegate([](Interpreter* interpreter) {
-      interpreter->ModifyGraphWithDelegate(NnApiDelegate(), false);
+      interpreter->ModifyGraphWithDelegate(NnApiDelegate());
     });
   }
 };

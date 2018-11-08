@@ -12,6 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Tests for the API surface of the V1 tf.summary ops.
+
+These tests don't check the actual serialized proto summary value for the
+more complex summaries (e.g. audio, image).  Those test live separately in
+tensorflow/python/kernel_tests/summary_v1_*.py.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,6 +27,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -29,7 +36,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.summary import summary as summary_lib
 
 
-class ScalarSummaryTest(test.TestCase):
+class SummaryTest(test.TestCase):
 
   def testScalarSummary(self):
     with self.cached_session() as s:
@@ -135,6 +142,12 @@ class ScalarSummaryTest(test.TestCase):
     self.assertEqual(len(summary.value), 1)
     self.assertEqual(summary.value[0].tag, 'family/outer/family/inner')
 
+  def testHistogramSummaryTypes(self):
+    for dtype in (dtypes.int8, dtypes.uint8, dtypes.int16, dtypes.int32,
+                  dtypes.float32, dtypes.float64):
+      const = constant_op.constant(10, dtype=dtype)
+      summary_lib.histogram('h', const)
+
   def testAudioSummary(self):
     with self.cached_session() as s:
       i = array_ops.ones((5, 3, 4))
@@ -164,6 +177,21 @@ class ScalarSummaryTest(test.TestCase):
     expected = sorted('family/outer/family/inner/audio/{}'.format(i)
                       for i in xrange(3))
     self.assertEqual(tags, expected)
+
+  def testTextSummary(self):
+    with self.cached_session():
+      with self.assertRaises(ValueError):
+        num = array_ops.constant(1)
+        summary_lib.text('foo', num)
+
+      # The API accepts vectors.
+      arr = array_ops.constant(['one', 'two', 'three'])
+      summ = summary_lib.text('foo', arr)
+      self.assertEqual(summ.op.type, 'TensorSummaryV2')
+
+      # the API accepts scalars
+      summ = summary_lib.text('foo', array_ops.constant('one'))
+      self.assertEqual(summ.op.type, 'TensorSummaryV2')
 
   def testSummaryNameConversion(self):
     c = constant_op.constant(3)

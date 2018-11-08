@@ -45,6 +45,7 @@ from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import errors
 from tensorflow.python.autograph.core import function_wrapping
+from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import inspect_utils
@@ -108,7 +109,7 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
   Raises:
     ValueError: if the entity type is not supported.
   """
-  if program_ctx.options.verbose:
+  if program_ctx.options.verbose == converter.Verbosity.VERBOSE:
     logging.info('Converting {}'.format(o))
 
   if tf_inspect.isclass(o):
@@ -151,7 +152,7 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
 
   program_ctx.add_to_cache(o, node)
 
-  if program_ctx.options.verbose:
+  if program_ctx.options.verbose == converter.Verbosity.VERBOSE:
     logging.info('Compiled output of {}:\n\n{}\n'.format(
         o, compiler.ast_to_source(node)))
 
@@ -192,8 +193,7 @@ def class_to_graph(c, program_ctx):
         program_ctx=program_ctx,
         arg_values={},
         arg_types={'self': (c.__name__, c)},
-        owner_type=c,
-        rewrite_errors=False)
+        owner_type=c)
     if class_namespace is None:
       class_namespace = namespace
     else:
@@ -273,6 +273,7 @@ def _add_self_references(namespace, autograph_module):
     # TODO(mdan): Add safeguards against name clashes.
     # We don't want to create a submodule because we want the operators to be
     # accessible as ag__.<operator>
+    ag_internal.__dict__.update(special_functions.__dict__)
     ag_internal.__dict__.update(operators.__dict__)
 
   _add_reserved_symbol(namespace, 'ag__', ag_internal)
@@ -282,8 +283,7 @@ def function_to_graph(f,
                       program_ctx,
                       arg_values,
                       arg_types,
-                      owner_type=None,
-                      rewrite_errors=True):
+                      owner_type=None):
   """Specialization of `entity_to_graph` for callable functions."""
 
   node, source = parser.parse_entity(f)
@@ -302,7 +302,7 @@ def function_to_graph(f,
       arg_types=arg_types,
       owner_type=owner_type)
   context = converter.EntityContext(namer, entity_info, program_ctx)
-  node = node_to_graph(node, context, rewrite_errors=rewrite_errors)
+  node = node_to_graph(node, context)
 
   # TODO(mdan): This somewhat duplicates the call rename logic in call_trees.py
   new_name, did_rename = namer.compiled_function_name(f.__name__, f, owner_type)
@@ -318,13 +318,12 @@ def function_to_graph(f,
   return [node], new_name, namespace
 
 
-def node_to_graph(node, context, rewrite_errors=True):
+def node_to_graph(node, context):
   """Convert Python code to equivalent TF graph mode code.
 
   Args:
     node: AST, the code to convert.
     context: converter.EntityContext
-    rewrite_errors: Boolean, whether or not to rewrite the error traceback.
 
   Returns:
     A tuple (node, deps):
@@ -361,7 +360,9 @@ def node_to_graph(node, context, rewrite_errors=True):
   node = converter.apply_(node, context, logical_expressions)
   if context.program.options.uses(converter.Feature.AUTO_CONTROL_DEPS):
     node = converter.apply_(node, context, side_effect_guards)
-  node = converter.apply_(node, context, function_scopes)
-  if rewrite_errors:
+  # TODO(mdan): If function scopes ever does more, the toggle will need moving.
+  if context.program.options.uses(converter.Feature.NAME_SCOPES):
+    node = converter.apply_(node, context, function_scopes)
+  if context.program.options.uses(converter.Feature.ERROR_REWRITING):
     node = converter.apply_(node, context, error_handlers)
   return node

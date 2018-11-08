@@ -548,10 +548,6 @@ class ConvolutionDescriptor {
     SetDim(&dilation_rates_, dim, value);
     return *this;
   }
-  ConvolutionDescriptor& set_pad_alignment(PadAlignment pad_alignment) {
-    pad_alignment_ = pad_alignment;
-    return *this;
-  }
   ConvolutionDescriptor& set_group_count(int group_count) {
     group_count_ = group_count;
     return *this;
@@ -578,7 +574,9 @@ class ConvolutionDescriptor {
   int zero_padding(DimIndex dim) const { return GetDim(zero_padding_, dim); }
   int filter_stride(DimIndex dim) const { return GetDim(filter_strides_, dim); }
   int dilation_rate(DimIndex dim) const { return GetDim(dilation_rates_, dim); }
-  PadAlignment pad_alignment() const { return pad_alignment_; }
+  // TODO(timshen): remove this function. No users of this class is setting a
+  // non-default pad alignment.
+  PadAlignment pad_alignment() const { return PadAlignment::kDefault; }
   int group_count() const { return group_count_; }
   int ndims() const { return ndims_; }
 
@@ -591,7 +589,6 @@ class ConvolutionDescriptor {
   std::vector<int64> zero_padding_;
   std::vector<int64> filter_strides_;
   std::vector<int64> dilation_rates_;
-  PadAlignment pad_alignment_;
   int group_count_;
   int ndims_;
   // TODO(leary) cudnn provides these fields, but need to characterize what
@@ -921,6 +918,23 @@ class VersionInfo {
 // Suite of operations typically used for implementing Deep/Convolutional Neural
 // Nets. Note: A false return value of an operation indicates the
 // implementation is not available.
+//
+// TODO(b/118763918): this class (or rather dispatch table) has several
+// problems:
+// * Some overloads are missing. Ideally we want to have template virtual
+//   functions while the template arguments is a closed set. However, we don't
+//   get that from the language.
+// * The API is a union of cuDNN and another private backend. Only 10% of the
+//   functions are actually implemented by both backends, the rest are
+//   actually backend-specific. The massive interface creates extra mental
+//   burden.
+// * Poor error handling: the API should return Status objects.
+//
+// Things worth trying:
+// * Move functions that are not actually common back to the backends. Then,
+//   callers may use dynamic_cast to access specific backends. This may not be
+//   that hard, as many of the callers are Stream::ThenXxx functions.
+// * Change all the returned bools to Status.
 class DnnSupport {
  public:
   DnnSupport() {}

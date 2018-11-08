@@ -81,6 +81,7 @@ tf_py_wrap_cc(
     srcs = ["xla.i"],
     swig_includes = [
         "local_computation_builder.i",
+        "//tensorflow/python:platform/base.i",
     ],
     deps = [
         ":local_computation_builder",

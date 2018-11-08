@@ -40,8 +40,7 @@ class DelegateTest : public testing::FlexModelTest {
   }
 
   void ConfigureDelegate() {
-    ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(
-                  delegate_.get(), /*allow_dynamic_tensors=*/true),
+    ASSERT_EQ(interpreter_->ModifyGraphWithDelegate(delegate_.get()),
               kTfLiteOk);
   }
 
