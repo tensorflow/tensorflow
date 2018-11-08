@@ -154,7 +154,7 @@ Interpreter::~Interpreter() {
     node.builtin_data = nullptr;
   }
 
-  for (int i = 0; i < context_.tensors_size; i++) {
+  for (size_t i = 0; i < context_.tensors_size; i++) {
     TfLiteTensor* tensor = &context_.tensors[i];
     if (tensor->buffer_handle != kTfLiteNullBufferHandle &&
         tensor->delegate->FreeBufferHandle != nullptr) {
@@ -729,10 +729,10 @@ void Interpreter::ReportError(TfLiteContext* context, const char* format, ...) {
 
 TfLiteStatus Interpreter::AddTensors(int tensors_to_add,
                                      int* first_new_tensor_index) {
-  int base_index = tensors_.size();
+  const size_t base_index = tensors_.size();
   if (first_new_tensor_index) *first_new_tensor_index = base_index;
   tensors_.resize(tensors_.size() + tensors_to_add);
-  for (int i = base_index; i < tensors_.size(); i++) {
+  for (size_t i = base_index; i < tensors_.size(); i++) {
     memset(&tensors_[i], 0, sizeof(tensors_[i]));
     tensors_[i].buffer_handle = kTfLiteNullBufferHandle;
   }
@@ -752,7 +752,8 @@ TfLiteStatus Interpreter::AddTensors(TfLiteContext* context, int tensors_to_add,
 
 TfLiteStatus Interpreter::GetNodeAndRegistration(
     int node_index, TfLiteNode** node, TfLiteRegistration** registration) {
-  TF_LITE_ENSURE(&context_, node_index < nodes_size() && node_index >= 0);
+  TF_LITE_ENSURE(&context_, node_index >= 0);
+  TF_LITE_ENSURE(&context_, static_cast<size_t>(node_index) < nodes_size());
   TF_LITE_ENSURE(&context_, node != nullptr && registration != nullptr);
   *node = &nodes_and_registration_[node_index].first;
   *registration = &nodes_and_registration_[node_index].second;
