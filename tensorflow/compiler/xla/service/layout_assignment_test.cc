@@ -91,7 +91,7 @@ class LayoutAssignmentTest : public HloVerifiedTestBase {
 TEST_F(LayoutAssignmentTest, ComputationLayout) {
   // Verify the layouts of the root and parameter instructions of a computation
   // match the ComputationLayout for two different layouts.
-  std::vector<std::initializer_list<int64>> minor_to_majors = {{0, 1}, {1, 0}};
+  std::vector<std::vector<int64>> minor_to_majors = {{0, 1}, {1, 0}};
   for (auto& minor_to_major : minor_to_majors) {
     auto builder = HloComputation::Builder(TestName());
     Shape ashape = ShapeUtil::MakeShape(F32, {42, 12});
@@ -160,7 +160,7 @@ TEST_F(LayoutAssignmentTest, FusionInstruction) {
   // Verify that the layout of the fused parameters in a fusion instruction
   // match that of the fusion operands. Other fused instructions should have no
   // layout.
-  std::vector<std::initializer_list<int64>> minor_to_majors = {{0, 1}, {1, 0}};
+  std::vector<std::vector<int64>> minor_to_majors = {{0, 1}, {1, 0}};
   for (auto& minor_to_major : minor_to_majors) {
     auto builder = HloComputation::Builder(TestName());
     auto constant_literal1 = LiteralUtil::CreateR2WithLayout<float>(
