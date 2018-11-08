@@ -181,6 +181,69 @@ protected:
   explicit CallIndirectOp(const Operation *state) : Op(state) {}
 };
 
+/// The predicate indicates the type of the comparison to perform:
+/// (in)equality; (un)signed less/greater than (or equal to).
+enum class CmpIPredicate {
+  FirstValidValue,
+  // (In)equality comparisons.
+  EQ = FirstValidValue,
+  NE,
+  // Signed comparisons.
+  SLT,
+  SLE,
+  SGT,
+  SGE,
+  // Unsigned comparisons.
+  ULT,
+  ULE,
+  UGT,
+  UGE,
+  // Number of predicates.
+  NumPredicates
+};
+
+/// The "cmpi" operation compares its two operands according to the integer
+/// comparison rules and the predicate specified by the respective attribute.
+/// The predicate defines the type of comparison: (in)equality, (un)signed
+/// less/greater than (or equal to).  The operands must have the same type, and
+/// this type must be an integer type, a vector or a tensor thereof.  The result
+/// is an i1, or a vector/tensor thereof having the same shape as the inputs.
+/// Since integers are signless, the predicate also explicitly indicates
+/// whether to interpret the operands as signed or unsigned integers for
+/// less/greater than comparisons.  For the sake of readability by humans,
+/// short-hand syntax for the instruction uses a string-typed attribute for the
+/// predicate.  The value of this attribute corresponds to lower-cased name of
+/// the predicate constant, e.g., "slt" means "signed less than".  The string
+/// representation of the attribute is merely a syntactic sugar and is converted
+/// to an integer attribute by the parser.
+///
+///   %r1 = cmpi "eq" %0, %1 : i32
+///   %r2 = cmpi "slt" %0, %1 : tensor<42x42xi64>
+///   %r3 = "cmpi"(%0, %1){predicate: 0} : (i8, i8) -> i1
+class CmpIOp : public Op<CmpIOp, OpTrait::OperandsAreIntegerLike,
+                         OpTrait::SameTypeOperands, OpTrait::NOperands<2>::Impl,
+                         OpTrait::OneResult, OpTrait::HasNoSideEffect> {
+public:
+  CmpIPredicate getPredicate() const {
+    return (CmpIPredicate)getAttrOfType<IntegerAttr>(getPredicateAttrName())
+        .getValue();
+  }
+
+  static StringRef getOperationName() { return "cmpi"; }
+  static StringRef getPredicateAttrName() { return "predicate"; }
+  static CmpIPredicate getPredicateByName(StringRef name);
+
+  static void build(Builder *builder, OperationState *result, CmpIPredicate,
+                    SSAValue *lhs, SSAValue *rhs);
+  static bool parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p) const;
+  bool verify() const;
+
+private:
+  friend class Operation;
+  explicit CmpIOp(const Operation *state) : Op(state) {}
+};
+
 /// The "dealloc" operation frees the region of memory referenced by a memref
 /// which was originally created by the "alloc" operation.
 /// The "dealloc" operation should not be called on memrefs which alias an

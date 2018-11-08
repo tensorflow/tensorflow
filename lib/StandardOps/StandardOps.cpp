@@ -27,6 +27,8 @@
 #include "mlir/IR/Types.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
+#include "third_party/llvm/llvm/include/llvm/ADT/StringSwitch.h"
+#include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace mlir;
 
@@ -36,9 +38,9 @@ using namespace mlir;
 
 StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
     : Dialect(/*opPrefix=*/"", context) {
-  addOperations<AddFOp, AddIOp, AllocOp, CallOp, CallIndirectOp, DeallocOp,
-                DimOp, DmaStartOp, DmaWaitOp, ExtractElementOp, LoadOp,
-                MemRefCastOp, MulFOp, MulIOp, StoreOp, SubFOp, SubIOp,
+  addOperations<AddFOp, AddIOp, AllocOp, CallOp, CallIndirectOp, CmpIOp,
+                DeallocOp, DimOp, DmaStartOp, DmaWaitOp, ExtractElementOp,
+                LoadOp, MemRefCastOp, MulFOp, MulIOp, StoreOp, SubFOp, SubIOp,
                 TensorCastOp>();
 }
 
@@ -420,6 +422,157 @@ bool CallIndirectOp::verify() const {
     if (getResult(i)->getType() != fnType.getResult(i))
       return emitOpError("result type mismatch");
   }
+
+  return false;
+}
+
+// Return the type of the same shape (scalar, vector or tensor) containing i1.
+static Type getI1SameShape(Builder *build, Type type) {
+  auto i1Type = build->getIntegerType(1);
+  if (type.isa<IntegerType>() || type.isa<FloatType>())
+    return i1Type;
+  if (auto tensorType = type.dyn_cast<RankedTensorType>())
+    return build->getTensorType(tensorType.getShape(), i1Type);
+  if (auto tensorType = type.dyn_cast<UnrankedTensorType>())
+    return build->getTensorType(i1Type);
+  if (auto vectorType = type.dyn_cast<VectorType>())
+    return build->getVectorType(vectorType.getShape(), i1Type);
+
+  llvm_unreachable("unsupported type");
+}
+
+static inline bool isI1(Type type) {
+  return type.isa<IntegerType>() && type.cast<IntegerType>().getWidth() == 1;
+}
+
+template <typename Ty>
+static inline bool implCheckI1SameShape(Ty pattern, Type type) {
+  auto specificType = type.dyn_cast<Ty>();
+  if (!specificType)
+    return true;
+  if (specificType.getShape() != pattern.getShape())
+    return true;
+  return !isI1(specificType.getElementType());
+}
+
+// Checks if "type" has the same shape (scalar, vector or tensor) as "pattern"
+// and contains i1.
+static bool checkI1SameShape(Type pattern, Type type) {
+  if (pattern.isa<IntegerType>() || pattern.isa<FloatType>())
+    return !isI1(type);
+  if (auto patternTensorType = pattern.dyn_cast<TensorType>())
+    return implCheckI1SameShape(patternTensorType, type);
+  if (auto patternVectorType = pattern.dyn_cast<VectorType>())
+    return implCheckI1SameShape(patternVectorType, type);
+
+  llvm_unreachable("unsupported type");
+}
+
+// Returns an array of mnemonics for CmpIPredicates, indexed by values thereof.
+static inline const char *const *getPredicateNames() {
+  static const char *predicateNames[(int)CmpIPredicate::NumPredicates]{
+      /*EQ*/ "eq",
+      /*NE*/ "ne",
+      /*SLT*/ "slt",
+      /*SLE*/ "sle",
+      /*SGT*/ "sgt",
+      /*SGE*/ "sge",
+      /*ULT*/ "ult",
+      /*ULE*/ "ule",
+      /*UGT*/ "ugt",
+      /*UGE*/ "uge"};
+  return predicateNames;
+};
+
+// Returns a value of the predicate corresponding to the given mnemonic.
+// Returns NumPredicates (one-past-end) if there is no such mnemonic.
+CmpIPredicate CmpIOp::getPredicateByName(StringRef name) {
+  return llvm::StringSwitch<CmpIPredicate>(name)
+      .Case("eq", CmpIPredicate::EQ)
+      .Case("ne", CmpIPredicate::NE)
+      .Case("slt", CmpIPredicate::SLT)
+      .Case("sle", CmpIPredicate::SLE)
+      .Case("sgt", CmpIPredicate::SGT)
+      .Case("sge", CmpIPredicate::SGE)
+      .Case("ult", CmpIPredicate::ULT)
+      .Case("ule", CmpIPredicate::ULE)
+      .Case("ugt", CmpIPredicate::UGT)
+      .Case("uge", CmpIPredicate::UGE)
+      .Default(CmpIPredicate::NumPredicates);
+}
+
+void CmpIOp::build(Builder *build, OperationState *result,
+                   CmpIPredicate predicate, SSAValue *lhs, SSAValue *rhs) {
+  result->addOperands({lhs, rhs});
+  result->types.push_back(getI1SameShape(build, lhs->getType()));
+  result->addAttribute(getPredicateAttrName(),
+                       build->getIntegerAttr(static_cast<int64_t>(predicate)));
+}
+
+bool CmpIOp::parse(OpAsmParser *parser, OperationState *result) {
+  SmallVector<OpAsmParser::OperandType, 2> ops;
+  SmallVector<NamedAttribute, 4> attrs;
+  StringAttr predicateName;
+  Type type;
+  if (parser->parseAttribute(predicateName, getPredicateAttrName().data(),
+                             attrs) ||
+      parser->parseComma() || parser->parseOperandList(ops, 2) ||
+      parser->parseOptionalAttributeDict(attrs) ||
+      parser->parseColonType(type) ||
+      parser->resolveOperands(ops, type, result->operands))
+    return true;
+
+  // Rewrite string attribute to an enum value.
+  auto predicate = getPredicateByName(predicateName.getValue());
+  if (predicate == CmpIPredicate::NumPredicates)
+    return parser->emitError(parser->getNameLoc(),
+                             "unknown comparison predicate \"" +
+                                 Twine(predicateName.getValue()) + "\"");
+  attrs[0].second =
+      parser->getBuilder().getIntegerAttr(static_cast<int64_t>(predicate));
+  result->attributes = attrs;
+
+  // The result of comparison is formed from i1s in the same shape as type.
+  result->addTypes({getI1SameShape(&parser->getBuilder(), type)});
+  return false;
+}
+
+void CmpIOp::print(OpAsmPrinter *p) const {
+  *p << getOperationName() << " ";
+
+  int predicateValue =
+      getAttrOfType<IntegerAttr>(getPredicateAttrName()).getValue();
+  assert(predicateValue >= static_cast<int>(CmpIPredicate::FirstValidValue) &&
+         predicateValue < static_cast<int>(CmpIPredicate::NumPredicates) &&
+         "unknown predicate index");
+  Builder b(getOperation()->getContext());
+  auto predicateStringAttr =
+      b.getStringAttr(getPredicateNames()[predicateValue]);
+  p->printAttribute(predicateStringAttr);
+
+  *p << ", ";
+  p->printOperand(getOperand(0));
+  *p << ", ";
+  p->printOperand(getOperand(1));
+  p->printOptionalAttrDict(getAttrs(),
+                           /*elidedAttrs=*/{getPredicateAttrName().data()});
+  *p << " : " << getOperand(0)->getType();
+}
+
+bool CmpIOp::verify() const {
+  auto predicateAttr = getAttrOfType<IntegerAttr>(getPredicateAttrName());
+  if (!predicateAttr)
+    return emitOpError("requires an integer attribute named 'predicate'");
+  auto predicate = predicateAttr.getValue();
+  if (predicate < (int64_t)CmpIPredicate::FirstValidValue ||
+      predicate >= (int64_t)CmpIPredicate::NumPredicates)
+    return emitOpError("'predicate' attribute value out of range");
+
+  if (getOperand(0)->getType() != getOperand(1)->getType())
+    return emitOpError("requires operands to have the same type");
+
+  if (checkI1SameShape(getOperand(0)->getType(), getResult()->getType()))
+    return emitOpError("result must have the same shape as inputs");
 
   return false;
 }

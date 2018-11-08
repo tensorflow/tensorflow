@@ -165,3 +165,53 @@ cfgfunc @cfgfunc_with_ops(i32) {
 bb0(%a : i32):
   %sf = addf %a, %a : i32  // expected-error {{'addf' op requires a floating point type}}
 }
+
+// -----
+
+cfgfunc @cfgfunc_with_ops(i32) {
+bb0(%a : i32):
+  // expected-error@+1 {{'predicate' attribute value out of range}}
+  %r = "cmpi"(%a, %b) {predicate: 42} : (i32, i32) -> i1
+}
+
+// -----
+
+// Comparison are defined for arguments of the same type.
+cfgfunc @cfgfunc_with_ops(i32, i64) {
+bb0(%a : i32, %b : i64): // expected-error {{prior use here}}
+  %r = cmpi "eq", %a, %b : i32 // expected-error {{use of value '%b' expects different type than prior uses}}
+}
+
+// -----
+
+// Comparisons must have the "predicate" attribute.
+cfgfunc @cfgfunc_with_ops(i32, i32) {
+bb0(%a : i32, %b : i32):
+  %r = cmpi %a, %b : i32 // expected-error {{expected type}}
+}
+
+// -----
+
+// Integer comparisons are not recognized for float types.
+cfgfunc @cfgfunc_with_ops(f32, f32) {
+bb0(%a : f32, %b : f32):
+  %r = cmpi "eq", %a, %b : f32 // expected-error {{op requires an integer type}}
+}
+
+// -----
+
+cfgfunc @cfgfunc_with_ops(i32, i32) {
+bb0(%a : i32, %b : i32):
+  // expected-error@+1 {{requires an integer attribute named 'predicate'}}
+  %r = "cmpi"(%a, %b) {foo: 1} : (i32, i32) -> i1
+}
+
+// -----
+
+cfgfunc @cfgfunc_with_ops() {
+bb0:
+  %c = constant splat<vector<42 x i32>, 0> : vector<42 x i32>
+  // expected-error@+1 {{op result must have the same shape as inputs}}
+  %r = "cmpi"(%c, %c) {predicate: 0} : (vector<42 x i32>, vector<42 x i32>) -> vector<42 x i32>
+}
+

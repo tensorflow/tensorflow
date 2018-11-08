@@ -263,6 +263,44 @@ We are a long way from this sort of thing being a priority to care about in
 MLIR, but since we have experience and know the right way to do this, we'd
 rather design it in from the beginning.
 
+### Specifying sign in integer comparison operations {#sign-in-cmpi}
+
+Since integers are [signless](#signless-types), it is necessary to define the
+sign for integer comparison operations. This sign indicates how to treat the
+foremost bit of the integer: as sign bit or as most significant bit. For
+example, comparing two `i4` values `0b1000` and `0b0010` yields different
+results for unsigned (`8 > 3`) and signed (`-8 < 3`) interpretations. This
+difference is only significant for _order_ comparisons, but not for _equality_
+comparisons. Indeed, for the latter all bits must have the same value
+independently of the sign. Since both arguments have exactly the same bit width
+and cannot be padded by this operation, it is impossible to compare two values
+whose bit representations would differ while the values are interpreted as
+equal.
+
+### Specifying comparison kind as attribute {#cmpi-predicate}
+
+Unlike arithmetic, comparison operators share several common properties, e.g.
+they cannot be considered associative. In practice, comparisons are sometimes
+implemented by the same instruction or its variants so it makes sense to group
+them together at the IR level.
+
+An alternative would be introducing ten distinct operators for all currently
+supported kinds of integer comparisons. These operators would have increased the
+number of "reserved" names used by standard operations as well as the size of
+the C++ API while their implementations would have been mostly identical.
+
+The comparison kind is internally an integer attribute. However, for the sake of
+readability by humans, short-hand notation accepts string literals that are
+mapped to the underlying integer values: `cmpi "eq", %lhs, %rhs` better implies
+integer equality comparison than `cmpi 0, %lhs, %rhs` where it is unclear what
+gets compared to what else. This syntactic sugar is possible thanks to parser
+logic redifinitions for short-hand notation of non-builtin operations.
+Supporting it in the full notation would have required changing how the main
+parsing algorithm works and may have unexpected repercussions. While it had been
+possible to store the predicate as string attribute, it would have rendered
+impossible to implement switching logic based on the comparison kind and made
+attribute validity checks (one out of ten possibile kinds) more complex.
+
 ### Quantized integer operations {#quantized-integer-operations}
 
 We haven't designed integer quantized operations in MLIR, but experience from
@@ -329,12 +367,12 @@ bb0(%A: memref<?x?xi32>, %S: memref<?xi32>, %key: i32)
   br bb1(0)
 
 bb1(%j: i32)
-  %p1 = cmpi-lt %j, %nj : i32
+  %p1 = cmpi "lt", %j, %nj : i32
   br_cond %p1, bb2, bb5
 
 bb2:
   %v = load %A[%i, %j] : memref<?x?xi32>
-  %p2 = cmpi-eq %v, %key : i32
+  %p2 = cmpi "eq", %v, %key : i32
   br_cond %p2, bb3(%j), bb4
 
 bb3(%j: i32)

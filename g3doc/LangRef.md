@@ -1739,27 +1739,66 @@ TODO: In the distant future, this will accept
 optional attributes for fast math, contraction, rounding mode, and other
 controls.
 
-#### 'cmpi-slt' operation {#'cmpi-slt'-operation}
+#### 'cmpi' operation {#'cmpi'-operation}
 
 Examples:
 
 ``` {.mlir}
-// Scalar compare.
-%x = "cmpi-slt"(%lhs, %rhs) : (i32, i32) -> i1
+// Scalar "signed less than" comparison.
+%x = cmpi "slt", %lhs, %rhs : i32
 
-// Vector compare.
-%x = "cmpi-slt"(%lhs, %rhs)
-     : (vector<4xi32>, vector<4xi32>) -> vector<4xi1>
+// Long-hand notation of the same operation.
+%x = "cmpi"(%lhs, %rhs){predicate: 2} : (i32, i32) -> i1
+
+// Vector equality comparison.
+%x = cmpi "eq", %lhs, %rhs : vector<4xi64>
+
+// Long-hand notation of the same operation.
+%x = "cmpi"(%lhs, %rhs){predicate: 0}
+    : (vector<4xi64>, vector<4xi64> -> vector<4xi1>
 ```
 
-The `cmpi-slt` operation takes two integer operands and returns an i1 if the
-first operand is less than the second operand when interpreted as signed
-integers. "cmpi-slt" also allows tensor and vector operands of integer types, in
-which case it returns a matching shape tensor or vector of 'i1' values.
+The `cmpi` operation is a generic comparison for integer-like types. Its two
+arguments can be integers, vectors or tensors thereof as long as their types
+match. The operation produces an i1 for the former case, a vector or a tensor of
+i1 with the same shape as inputs in the other cases.
 
-TODO: This is just an example of a comparison. We will probably end up having a
-cmpi/cmpf split, and have each of them take a condition as an attribute
-[[rationale](Rationale.md#splitting-floating-point-vs-integer-operations)].
+Its first argument is an attribute that defines which type of comparison is
+performed. The following comparisons are supported:
+
+-   equal (mnemonic: `"eq"`; integer value: `0`)
+-   not equal (mnemonic: `"ne"`; integer value: `1`)
+-   signed less than (mnemonic: `"slt"`; integer value: `2`)
+-   signed less than or equal (mnemonic: `"slt"`; integer value: `3`)
+-   signed greater than (mnemonic: `"sgt"`; integer value: `4`)
+-   signed greater than or equal (mnemonic: `"sge"`; integer value: `5`)
+-   unsigned less than (mnemonic: `"ult"`; integer value: `6`)
+-   unsigned less than or equal (mnemonic: `"ult"`; integer value: `7`)
+-   unsigned greater than (mnemonic: `"ugt"`; integer value: `8`)
+-   unsigned greater than or equal (mnemonic: `"uge"`; integer value: `9`)
+
+The result is `1` if the comparison is true and `0` otherwise. For vector or
+tensor operands, the comparison is performed elementwise and the element of the
+result indicates whether the comparison is true for the operand elements with
+the same indices as those of the result.
+
+Note: while the short-hand notation uses strings, the actual underlying
+attribute has integer type (or rather enum class in C++ code) as seen from the
+long-hand notation. String literals are used to improve readability of the IR by
+humans.
+
+This operation only applies to integer-like operands, but not floats. The main
+reason being that comparison operations have diverging sets of attributes:
+integers require sign specification while floats require various floating
+point-related particularities, e.g., `-ffast-math` behavior, IEEE754 compliance,
+etc ([rationale](Rationale.md#splitting-floating-point-vs-integer-operations)).
+The type of comparison is specified as attribute to avoid introducing ten
+similar operations, taking into account that they are often implemented using
+the same operation downstream ([rationale](Rationale.md#cmpi-predicate)). The
+separation between signed and unsigned order comparisons is necessary because of
+integers being signless. The comparison operation must know how to interpret
+values with the foremost bit being set: negatives in two's complement or large
+positives ([rationale](Rationale.md#sign-in-cmpi)).
 
 #### 'constant' operation {#'constant'-operation}
 

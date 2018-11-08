@@ -88,6 +88,19 @@ bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32):
   // CHECK: %cst_3 = constant splat<vector<4xi32>, 0> : vector<4xi32>
   %13 = constant splat<vector<4 x i32>, 0> : vector<4 x i32>
 
+  // CHECK: %{{[0-9]+}} = cmpi "eq", %{{[0-9]+}}, %{{[0-9]+}} : i32
+  %14 = cmpi "eq", %i3, %i4 : i32
+
+  // Predicate 1 means inequality comparison.
+  // CHECK: %{{[0-9]+}} = cmpi "ne", %{{[0-9]+}}, %{{[0-9]+}} : i32
+  %15 = "cmpi"(%i3, %i4) {predicate: 1} : (i32, i32) -> i1
+
+  // CHECK: %{{[0-9]+}} = cmpi "slt", %cst_3, %cst_3 : vector<4xi32>
+  %16 = cmpi "slt", %13, %13 : vector<4 x i32>
+
+  // CHECK: %{{[0-9]+}} = cmpi "ne", %cst_3, %cst_3 : vector<4xi32>
+  %17 = "cmpi"(%13, %13) {predicate: 1} : (vector<4 x i32>, vector<4 x i32>) -> vector<4 x i1>
+
   return
 }
 
