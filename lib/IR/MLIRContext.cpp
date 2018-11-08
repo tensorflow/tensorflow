@@ -728,7 +728,29 @@ VectorType VectorType::get(ArrayRef<int> shape, Type elementType) {
   return type;
 }
 
-RankedTensorType RankedTensorType::get(ArrayRef<int> shape, Type elementType) {
+// Check if "elementType" can be an element type of a tensor. Emit errors if
+// location is not nullptr.  Returns true of check failed.
+static inline bool checkTensorElementType(Type elementType,
+                                          Optional<Location> location) {
+  auto *context = elementType.getContext();
+  if (!TensorType::isValidElementType(elementType)) {
+    if (location)
+      context->emitError(*location, "invalid tensor element type");
+    return true;
+  }
+  return false;
+}
+
+/// Get or create a new RankedTensorType defined by the arguments.  If the
+/// resulting type would be ill-formed, return nullptr.  If the location is
+/// provided, i.e. is not nullptr, emit detailed error messages.  To emit errors
+/// when the location is unknown, pass in an instance of UnknownLoc.
+static RankedTensorType getRankedTensorType(ArrayRef<int> shape,
+                                            Type elementType,
+                                            Optional<Location> location) {
+  if (checkTensorElementType(elementType, location))
+    return nullptr;
+
   auto *context = elementType.getContext();
   auto &impl = context->getImpl();
 
@@ -747,16 +769,37 @@ RankedTensorType RankedTensorType::get(ArrayRef<int> shape, Type elementType) {
   shape = impl.copyInto(shape);
 
   // Initialize the memory using placement new.
-  new (result) RankedTensorTypeStorage{
-      {{{Kind::RankedTensor, context, static_cast<unsigned int>(shape.size())},
-        elementType}},
-      shape.data()};
+  new (result)
+      RankedTensorTypeStorage{{{{Type::Kind::RankedTensor, context,
+                                 static_cast<unsigned int>(shape.size())},
+                                elementType}},
+                              shape.data()};
 
   // Cache and return it.
   return *existing.first = result;
 }
 
-UnrankedTensorType UnrankedTensorType::get(Type elementType) {
+RankedTensorType RankedTensorType::get(ArrayRef<int> shape, Type elementType) {
+  auto type = getRankedTensorType(shape, elementType, None);
+  assert(type && "failed to construct RankedTensorType");
+  return type;
+}
+
+RankedTensorType RankedTensorType::getChecked(ArrayRef<int> shape,
+                                              Type elementType,
+                                              Location location) {
+  return getRankedTensorType(shape, elementType, location);
+}
+
+/// Get or create a new UnrankedTensorType defined by the arguments.  If the
+/// resulting type would be ill-formed, return nullptr.  If the location is
+/// provided, i.e. is not nullptr, emit detailed error messages.  To emit errors
+/// when the location is unknown, pass in an instance of UnknownLoc.
+static UnrankedTensorType getUnrankedTensorType(Type elementType,
+                                                Optional<Location> location) {
+  if (checkTensorElementType(elementType, location))
+    return nullptr;
+
   auto *context = elementType.getContext();
   auto &impl = context->getImpl();
 
@@ -772,8 +815,19 @@ UnrankedTensorType UnrankedTensorType::get(Type elementType) {
 
   // Initialize the memory using placement new.
   new (result) UnrankedTensorTypeStorage{
-      {{{Kind::UnrankedTensor, context}, elementType}}};
+      {{{Type::Kind::UnrankedTensor, context}, elementType}}};
   return result;
+}
+
+UnrankedTensorType UnrankedTensorType::get(Type elementType) {
+  auto type = getUnrankedTensorType(elementType, None);
+  assert(type && "failed to construct UnrankedTensorType");
+  return type;
+}
+
+UnrankedTensorType UnrankedTensorType::getChecked(Type elementType,
+                                                  Location location) {
+  return getUnrankedTensorType(elementType, location);
 }
 
 /// Get or create a new MemRefType defined by the arguments.  If the resulting
@@ -1199,7 +1253,7 @@ DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
 
 OpaqueElementsAttr OpaqueElementsAttr::get(VectorOrTensorType type,
                                            StringRef bytes) {
-  assert(isValidTensorElementType(type.getElementType()) &&
+  assert(TensorType::isValidElementType(type.getElementType()) &&
          "Input element type should be a valid tensor element type");
 
   auto &impl = type.getContext()->getImpl();

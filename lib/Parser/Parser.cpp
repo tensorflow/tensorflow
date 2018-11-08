@@ -486,17 +486,14 @@ Type Parser::parseTensorType() {
   }
 
   // Parse the element type.
-  auto typeLoc = getToken().getLoc();
+  auto typeLocation = getEncodedSourceLocation(getToken().getLoc());
   auto elementType = parseType();
   if (!elementType || parseToken(Token::greater, "expected '>' in tensor type"))
     return nullptr;
 
-  if (!isValidTensorElementType(elementType))
-    return (emitError(typeLoc, "invalid tensor element type"), nullptr);
-
   if (isUnranked)
-    return builder.getTensorType(elementType);
-  return builder.getTensorType(dimensions, elementType);
+    return UnrankedTensorType::getChecked(elementType, typeLocation);
+  return RankedTensorType::getChecked(dimensions, elementType, typeLocation);
 }
 
 /// Parse a memref type.

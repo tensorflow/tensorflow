@@ -398,6 +398,13 @@ public:
   TensorType() = default;
   /* implicit */ TensorType(Type::ImplType *ptr);
 
+  /// Return true if the specified element type is ok in a tensor.
+  static bool isValidElementType(Type type) {
+    return type.isa<FloatType>() || type.isa<VectorType>() ||
+           type.isa<IntegerType>() || type.isa<OtherType>() ||
+           type.isa<IndexType>();
+  }
+
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(Kind kind) {
     return kind == Kind::RankedTensor || kind == Kind::UnrankedTensor;
@@ -413,7 +420,16 @@ public:
   RankedTensorType() = default;
   /* implicit */ RankedTensorType(Type::ImplType *ptr);
 
+  /// Get or create a new RankedTensorType of the provided shape and element
+  /// type. Assumes the arguments define a well-formed type.
   static RankedTensorType get(ArrayRef<int> shape, Type elementType);
+
+  /// Get or create a new RankedTensorType of the provided shape and element
+  /// type declared at the given, potentially unknown, location.  If the
+  /// RankedTensorType defined by the arguments would be ill-formed, emit errors
+  /// and return a nullptr-wrapping type.
+  static RankedTensorType getChecked(ArrayRef<int> shape, Type elementType,
+                                     Location location);
 
   ArrayRef<int> getShape() const;
 
@@ -428,7 +444,15 @@ public:
   UnrankedTensorType() = default;
   /* implicit */ UnrankedTensorType(Type::ImplType *ptr);
 
+  /// Get or create a new UnrankedTensorType of the provided shape and element
+  /// type. Assumes the arguments define a well-formed type.
   static UnrankedTensorType get(Type elementType);
+
+  /// Get or create a new UnrankedTensorType of the provided shape and element
+  /// type declared at the given, potentially unknown, location.  If the
+  /// UnrankedTensorType defined by the arguments would be ill-formed, emit
+  /// errors and return a nullptr-wrapping type.
+  static UnrankedTensorType getChecked(Type elementType, Location location);
 
   ArrayRef<int> getShape() const { return ArrayRef<int>(); }
 
@@ -510,13 +534,6 @@ template <typename U> U Type::dyn_cast_or_null() const {
 template <typename U> U Type::cast() const {
   assert(isa<U>());
   return U(type);
-}
-
-/// Return true if the specified element type is ok in a tensor.
-static bool isValidTensorElementType(Type type) {
-  return type.isa<FloatType>() || type.isa<VectorType>() ||
-         type.isa<IntegerType>() || type.isa<OtherType>() ||
-         type.isa<IndexType>();
 }
 
 } // end namespace mlir
