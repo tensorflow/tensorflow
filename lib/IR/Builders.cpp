@@ -37,14 +37,14 @@ Module *Builder::createModule() { return new Module(context); }
 // Locations.
 //===----------------------------------------------------------------------===//
 
-UnknownLoc *Builder::getUnknownLoc() { return UnknownLoc::get(context); }
+UnknownLoc Builder::getUnknownLoc() { return UnknownLoc::get(context); }
 
 UniquedFilename Builder::getUniquedFilename(StringRef filename) {
   return UniquedFilename::get(filename, context);
 }
 
-FileLineColLoc *Builder::getFileLineColLoc(UniquedFilename filename,
-                                           unsigned line, unsigned column) {
+FileLineColLoc Builder::getFileLineColLoc(UniquedFilename filename,
+                                          unsigned line, unsigned column) {
   return FileLineColLoc::get(filename, line, column, context);
 }
 
@@ -292,7 +292,7 @@ OperationStmt *MLFuncBuilder::createOperation(const OperationState &state) {
 }
 
 /// Create an operation given the fields.
-OperationStmt *MLFuncBuilder::createOperation(Location *location,
+OperationStmt *MLFuncBuilder::createOperation(Location location,
                                               OperationName name,
                                               ArrayRef<MLValue *> operands,
                                               ArrayRef<Type> types,
@@ -303,7 +303,7 @@ OperationStmt *MLFuncBuilder::createOperation(Location *location,
   return op;
 }
 
-ForStmt *MLFuncBuilder::createFor(Location *location,
+ForStmt *MLFuncBuilder::createFor(Location location,
                                   ArrayRef<MLValue *> lbOperands,
                                   AffineMap lbMap,
                                   ArrayRef<MLValue *> ubOperands,
@@ -314,15 +314,15 @@ ForStmt *MLFuncBuilder::createFor(Location *location,
   return stmt;
 }
 
-ForStmt *MLFuncBuilder::createFor(Location *location, int64_t lb, int64_t ub,
+ForStmt *MLFuncBuilder::createFor(Location location, int64_t lb, int64_t ub,
                                   int64_t step) {
   auto lbMap = AffineMap::getConstantMap(lb, context);
   auto ubMap = AffineMap::getConstantMap(ub, context);
   return createFor(location, {}, lbMap, {}, ubMap, step);
 }
 
-IfStmt *MLFuncBuilder::createIf(Location *location,
-                                ArrayRef<MLValue *> operands, IntegerSet set) {
+IfStmt *MLFuncBuilder::createIf(Location location, ArrayRef<MLValue *> operands,
+                                IntegerSet set) {
   auto *stmt = IfStmt::create(location, operands, set);
   block->getStatements().insert(insertPoint, stmt);
   return stmt;

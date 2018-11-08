@@ -314,7 +314,7 @@ static MemRefType getVectorizedMemRefType(MemRefType tmpl,
 ///
 /// TODO(andydavis,bondhugula,ntv):
 ///   1. generalize to support padding semantics and offsets within vector type.
-static void createUnalignedLoad(MLFuncBuilder *b, Location *loc,
+static void createUnalignedLoad(MLFuncBuilder *b, Location loc,
                                 SSAValue *srcMemRef,
                                 ArrayRef<SSAValue *> srcIndices,
                                 SSAValue *dstMemRef,
@@ -366,7 +366,7 @@ static void createUnalignedLoad(MLFuncBuilder *b, Location *loc,
 ///   3. support input map for counterpart of broadcast (point 1 above);
 ///   4. support dstMap for writing back in non-contiguous memory regions
 ///   (point 4 above).
-static void createUnalignedStore(MLFuncBuilder *b, Location *loc,
+static void createUnalignedStore(MLFuncBuilder *b, Location loc,
                                  SSAValue *srcMemRef,
                                  ArrayRef<SSAValue *> srcIndices,
                                  SSAValue *dstMemRef,
@@ -457,7 +457,7 @@ struct VectorizationState {
 } // end anonymous namespace
 
 /// Terminal template function for creating a LoadOp.
-static OpPointer<LoadOp> createLoad(MLFuncBuilder *b, Location *loc,
+static OpPointer<LoadOp> createLoad(MLFuncBuilder *b, Location loc,
                                     MLValue *memRef) {
   return b->create<LoadOp>(
       loc, memRef,
@@ -465,7 +465,7 @@ static OpPointer<LoadOp> createLoad(MLFuncBuilder *b, Location *loc,
 }
 
 /// Terminal template function for creating a StoreOp.
-static OpPointer<StoreOp> createStore(MLFuncBuilder *b, Location *loc,
+static OpPointer<StoreOp> createStore(MLFuncBuilder *b, Location loc,
                                       MLValue *memRef,
                                       OpPointer<StoreOp> store) {
   return b->create<StoreOp>(

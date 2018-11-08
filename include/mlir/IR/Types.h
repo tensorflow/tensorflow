@@ -446,7 +446,7 @@ public:
   /// the error stream) and returns nullptr.
   static MemRefType getChecked(ArrayRef<int> shape, Type elementType,
                                ArrayRef<AffineMap> affineMapComposition,
-                               unsigned memorySpace, Location *location);
+                               unsigned memorySpace, Location location);
 
   unsigned getRank() const { return getShape().size(); }
 
@@ -474,7 +474,7 @@ public:
 private:
   static MemRefType getSafe(ArrayRef<int> shape, Type elementType,
                             ArrayRef<AffineMap> affineMapComposition,
-                            unsigned memorySpace, Location *location);
+                            unsigned memorySpace, Optional<Location> location);
 };
 
 // Make Type hashable.

@@ -39,7 +39,7 @@ public:
 
   /// Encode the specified source location information into a Location object
   /// for attachment to the IR or error reporting.
-  Location *getEncodedSourceLocation(llvm::SMLoc loc);
+  Location getEncodedSourceLocation(llvm::SMLoc loc);
 
   /// Change the position of the lexer cursor.  The next token we lex will start
   /// at the designated point in the input.

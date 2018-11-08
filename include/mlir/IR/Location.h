@@ -24,13 +24,22 @@
 #define MLIR_IR_LOCATION_H
 
 #include "mlir/Support/LLVM.h"
-#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/DenseMapInfo.h"
 
 namespace mlir {
+
 class MLIRContext;
 
+namespace detail {
+
+class LocationStorage;
+class UnknownLocationStorage;
+class FileLineColLocationStorage;
+
+} // namespace detail
+
 /// Location objects represent source locations information in MLIR.
-class alignas(8) Location {
+class Location {
 public:
   enum class Kind {
     /// This represents an unknown location.
@@ -52,23 +61,46 @@ public:
     // TODO: FusedLocation,
   };
 
+  using ImplType = detail::LocationStorage;
+
+  /* implicit */ Location(const ImplType *loc)
+      : loc(const_cast<ImplType *>(loc)) {
+    assert(loc && "location should never be null.");
+  }
+
+  Location() = delete;
+  Location(const Location &other) : loc(other.loc) {}
+  Location &operator=(Location other) {
+    loc = other.loc;
+    return *this;
+  }
+
+  bool operator==(Location other) const { return loc == other.loc; }
+  bool operator!=(Location other) const { return !(*this == other); }
+
+  template <typename U> bool isa() const;
+  template <typename U> Optional<U> dyn_cast() const;
+  template <typename U> U cast() const;
+
   /// Return the classification for this location.
-  Kind getKind() const { return kind; }
+  Kind getKind() const;
 
   /// Print the location.
   void print(raw_ostream &os) const;
   void dump() const;
 
+  friend ::llvm::hash_code hash_value(Location arg);
+
+  /// Methods for supporting PointerLikeTypeTraits.
+  const void *getAsOpaquePointer() const {
+    return static_cast<const void *>(loc);
+  }
+  static Location getFromOpaquePointer(const void *pointer) {
+    return Location((ImplType *)(pointer));
+  }
+
 protected:
-  explicit Location(Kind kind) : kind(kind) {}
-  ~Location() {}
-
-private:
-  /// Classification of the subclass, used for type checking.
-  Kind kind : 8;
-
-  Location(const Location &) = delete;
-  void operator=(const Location &) = delete;
+  ImplType *loc;
 };
 
 inline raw_ostream &operator<<(raw_ostream &os, const Location &loc) {
@@ -80,10 +112,13 @@ inline raw_ostream &operator<<(raw_ostream &os, const Location &loc) {
 /// MLIRContext.
 class UnknownLoc : public Location {
 public:
-  static UnknownLoc *get(MLIRContext *context);
+  using ImplType = detail::UnknownLocationStorage;
+  /* implicit */ UnknownLoc(Location::ImplType *ptr);
 
-private:
-  explicit UnknownLoc() : Location(Kind::Unknown) {}
+  static UnknownLoc get(MLIRContext *context);
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(Location::Kind kind) { return kind == Kind::Unknown; }
 };
 
 /// This class is used to represent a uniqued filename in an MLIRContext.  It is
@@ -108,30 +143,72 @@ private:
 /// information.
 class FileLineColLoc : public Location {
 public:
+  using ImplType = detail::FileLineColLocationStorage;
+  /* implicit */ FileLineColLoc(Location::ImplType *ptr);
+
   /// Return a uniqued FileLineCol location object.
-  static FileLineColLoc *get(UniquedFilename filename, unsigned line,
-                             unsigned column, MLIRContext *context);
+  static FileLineColLoc get(UniquedFilename filename, unsigned line,
+                            unsigned column, MLIRContext *context);
 
-  StringRef getFilename() const { return filename.getRef(); }
+  StringRef getFilename() const;
 
-  unsigned getLine() const { return line; }
-  unsigned getColumn() const { return column; }
+  unsigned getLine() const;
+  unsigned getColumn() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Location *loc) {
-    return loc->getKind() == Kind::FileLineCol;
-  }
-
-private:
-  FileLineColLoc(UniquedFilename filename, unsigned line, unsigned column)
-      : Location(Kind::FileLineCol), filename(filename), line(line),
-        column(column) {}
-  ~FileLineColLoc() = delete;
-
-  const UniquedFilename filename;
-  const unsigned line, column;
+  static bool kindof(Location::Kind kind) { return kind == Kind::FileLineCol; }
 };
 
+// Make Location hashable.
+inline ::llvm::hash_code hash_value(Location arg) {
+  return ::llvm::hash_value(arg.loc);
+}
+
+template <typename U> bool Location::isa() const {
+  return U::kindof(getKind());
+}
+template <typename U> Optional<U> Location::dyn_cast() const {
+  return isa<U>() ? U(loc) : Optional<U>();
+}
+template <typename U> U Location::cast() const {
+  assert(isa<U>());
+  return U(loc);
+}
+
 } // end namespace mlir
+
+namespace llvm {
+
+// Type hash just like pointers.
+template <> struct DenseMapInfo<mlir::Location> {
+  static mlir::Location getEmptyKey() {
+    auto pointer = llvm::DenseMapInfo<void *>::getEmptyKey();
+    return mlir::Location(static_cast<mlir::Location::ImplType *>(pointer));
+  }
+  static mlir::Location getTombstoneKey() {
+    auto pointer = llvm::DenseMapInfo<void *>::getTombstoneKey();
+    return mlir::Location(static_cast<mlir::Location::ImplType *>(pointer));
+  }
+  static unsigned getHashValue(mlir::Location val) {
+    return mlir::hash_value(val);
+  }
+  static bool isEqual(mlir::Location LHS, mlir::Location RHS) {
+    return LHS == RHS;
+  }
+};
+
+/// We align LocationStorage by 8, so allow LLVM to steal the low bits.
+template <> struct PointerLikeTypeTraits<mlir::Location> {
+public:
+  static inline void *getAsVoidPointer(mlir::Location I) {
+    return const_cast<void *>(I.getAsOpaquePointer());
+  }
+  static inline mlir::Location getFromVoidPointer(void *P) {
+    return mlir::Location::getFromOpaquePointer(P);
+  }
+  enum { NumLowBitsAvailable = 3 };
+};
+
+} // namespace llvm
 
 #endif

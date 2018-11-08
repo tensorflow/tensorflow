@@ -58,7 +58,7 @@ bool replaceAllMemRefUsesWith(const MLValue *oldMemRef, MLValue *newMemRef,
 /// The final results of the composed AffineApplyOp are returned in output
 /// parameter 'results'. Returns the affine apply op created.
 OperationStmt *
-createComposedAffineApplyOp(FuncBuilder *builder, Location *loc,
+createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
                             ArrayRef<MLValue *> operands,
                             ArrayRef<OperationStmt *> affineApplyOps,
                             SmallVectorImpl<SSAValue *> &results);

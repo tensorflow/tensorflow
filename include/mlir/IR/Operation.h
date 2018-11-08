@@ -43,7 +43,7 @@ public:
   MLIRContext *getContext() const;
 
   /// The source location the operation was defined or derived from.
-  Location *getLoc() const;
+  Location getLoc() const;
 
   /// Return the function this operation is defined in.  This has a verbose
   /// name to avoid name lookup ambiguities.

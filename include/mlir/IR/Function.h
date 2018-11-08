@@ -26,6 +26,7 @@
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Identifier.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ilist.h"
@@ -33,7 +34,6 @@
 namespace mlir {
 class AttributeListStorage;
 class FunctionType;
-class Location;
 class MLIRContext;
 class Module;
 
@@ -50,7 +50,7 @@ public:
   Kind getKind() const { return (Kind)nameAndKind.getInt(); }
 
   /// The source location the operation was defined or derived from.
-  Location *getLoc() const { return location; }
+  Location getLoc() const { return location; }
 
   /// Return the name of this function, without the @.
   Identifier getName() const { return nameAndKind.getPointer(); }
@@ -94,7 +94,7 @@ public:
   void emitNote(const Twine &message) const;
 
 protected:
-  Function(Kind kind, Location *location, StringRef name, FunctionType type,
+  Function(Kind kind, Location location, StringRef name, FunctionType type,
            ArrayRef<NamedAttribute> attrs = {});
   ~Function();
 
@@ -106,7 +106,7 @@ private:
   Module *module = nullptr;
 
   /// The source location the function was defined or derived from.
-  Location *location;
+  Location location;
 
   /// The type of the function.
   FunctionType type;
@@ -122,7 +122,7 @@ private:
 /// defined in some other module.
 class ExtFunction : public Function {
 public:
-  ExtFunction(Location *location, StringRef name, FunctionType type,
+  ExtFunction(Location location, StringRef name, FunctionType type,
               ArrayRef<NamedAttribute> attrs = {});
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.

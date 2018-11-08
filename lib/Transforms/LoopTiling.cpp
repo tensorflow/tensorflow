@@ -143,7 +143,7 @@ UtilResult mlir::tileCodeGen(ArrayRef<ForStmt *> band,
   auto origLoops = band;
 
   ForStmt *rootForStmt = origLoops[0];
-  auto *loc = rootForStmt->getLoc();
+  auto loc = rootForStmt->getLoc();
   // Note that width is at least one since band isn't empty.
   unsigned width = band.size();
 

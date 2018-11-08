@@ -92,21 +92,19 @@ public:
   Kind getKind() const { return locationAndKind.getInt(); }
 
   /// The source location the operation was defined or derived from.
-  Location *getLoc() const { return locationAndKind.getPointer(); }
+  Location getLoc() const { return locationAndKind.getPointer(); }
 
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const;
 
 protected:
-  IROperandOwner(Kind kind, Location *location)
-      : locationAndKind(location, kind) {
-    assert(getLoc() && "location should never be null");
-  }
+  IROperandOwner(Kind kind, Location location)
+      : locationAndKind(location, kind) {}
 
 private:
   /// This holds information about the source location the operation was defined
   /// or derived from, along with the kind of subclass this is.
-  llvm::PointerIntPair<Location *, 3, Kind> locationAndKind;
+  llvm::PointerIntPair<Location, 3, Kind> locationAndKind;
 };
 
 /// A reference to a value, suitable for use as an operand of an instruction,

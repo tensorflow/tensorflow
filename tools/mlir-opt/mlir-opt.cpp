@@ -186,10 +186,10 @@ static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
   if (!verifyDiagnostics) {
 
     // Register a simple diagnostic handler that prints out info with context.
-    context.registerDiagnosticHandler([&](Location *location, StringRef message,
+    context.registerDiagnosticHandler([&](Location location, StringRef message,
                                           MLIRContext::DiagnosticKind kind) {
       unsigned line = 1, column = 1;
-      if (auto fileLoc = dyn_cast<FileLineColLoc>(location)) {
+      if (auto fileLoc = location.dyn_cast<FileLineColLoc>()) {
         line = fileLoc->getLine();
         column = fileLoc->getColumn();
       }
@@ -218,10 +218,10 @@ static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
   SmallVector<ExpectedDiag, 2> expectedDiags;
 
   // Error checker that verifies reported error was expected.
-  auto checker = [&](Location *location, StringRef message,
+  auto checker = [&](Location location, StringRef message,
                      MLIRContext::DiagnosticKind kind) {
     unsigned line = 1, column = 1;
-    if (auto *fileLoc = dyn_cast<FileLineColLoc>(location)) {
+    if (auto fileLoc = location.dyn_cast<FileLineColLoc>()) {
       line = fileLoc->getLine();
       column = fileLoc->getColumn();
     }

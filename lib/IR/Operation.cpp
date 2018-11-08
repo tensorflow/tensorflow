@@ -79,7 +79,7 @@ MLIRContext *Operation::getContext() const {
 
 /// The source location the operation was defined or derived from.  Note that
 /// it is possible for this pointer to be null.
-Location *Operation::getLoc() const {
+Location Operation::getLoc() const {
   if (auto *inst = llvm::dyn_cast<OperationInst>(this))
     return inst->getLoc();
   return llvm::cast<OperationStmt>(this)->getLoc();

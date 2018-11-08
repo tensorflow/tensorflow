@@ -27,7 +27,7 @@
 #include "llvm/ADT/StringRef.h"
 using namespace mlir;
 
-Function::Function(Kind kind, Location *location, StringRef name,
+Function::Function(Kind kind, Location location, StringRef name,
                    FunctionType type, ArrayRef<NamedAttribute> attrs)
     : nameAndKind(Identifier::get(name, type.getContext()), kind),
       location(location), type(type) {
@@ -159,7 +159,7 @@ void Function::emitError(const Twine &message) const {
 // ExtFunction implementation.
 //===----------------------------------------------------------------------===//
 
-ExtFunction::ExtFunction(Location *location, StringRef name, FunctionType type,
+ExtFunction::ExtFunction(Location location, StringRef name, FunctionType type,
                          ArrayRef<NamedAttribute> attrs)
     : Function(Kind::ExtFunc, location, name, type, attrs) {}
 
@@ -167,7 +167,7 @@ ExtFunction::ExtFunction(Location *location, StringRef name, FunctionType type,
 // CFGFunction implementation.
 //===----------------------------------------------------------------------===//
 
-CFGFunction::CFGFunction(Location *location, StringRef name, FunctionType type,
+CFGFunction::CFGFunction(Location location, StringRef name, FunctionType type,
                          ArrayRef<NamedAttribute> attrs)
     : Function(Kind::CFGFunc, location, name, type, attrs) {}
 
@@ -187,7 +187,7 @@ CFGFunction::~CFGFunction() {
 //===----------------------------------------------------------------------===//
 
 /// Create a new MLFunction with the specific fields.
-MLFunction *MLFunction::create(Location *location, StringRef name,
+MLFunction *MLFunction::create(Location location, StringRef name,
                                FunctionType type,
                                ArrayRef<NamedAttribute> attrs) {
   const auto &argTypes = type.getInputs();
@@ -204,7 +204,7 @@ MLFunction *MLFunction::create(Location *location, StringRef name,
   return function;
 }
 
-MLFunction::MLFunction(Location *location, StringRef name, FunctionType type,
+MLFunction::MLFunction(Location location, StringRef name, FunctionType type,
                        ArrayRef<NamedAttribute> attrs)
     : Function(Kind::MLFunc, location, name, type, attrs),
       StmtBlock(StmtBlockKind::MLFunc) {}

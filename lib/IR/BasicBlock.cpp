@@ -159,7 +159,7 @@ BasicBlock *BasicBlock::splitBasicBlock(iterator splitBefore) {
 
   // Create an unconditional branch to the new block, and move our terminator
   // to the new block.
-  auto *branchLoc =
+  auto branchLoc =
       splitBefore == end() ? getTerminator()->getLoc() : splitBefore->getLoc();
   auto oldTerm = getTerminator();
   setTerminator(BranchInst::create(branchLoc, newBB));

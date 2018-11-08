@@ -170,7 +170,7 @@ public:
   }
 
 protected:
-  Instruction(Kind kind, Location *location)
+  Instruction(Kind kind, Location location)
       : IROperandOwner((IROperandOwner::Kind)kind, location) {}
 
   // Instructions are deleted through the destroy() member because this class
@@ -200,7 +200,7 @@ class OperationInst final
       private llvm::TrailingObjects<OperationInst, InstOperand, InstResult> {
 public:
   /// Create a new OperationInst with the specified fields.
-  static OperationInst *create(Location *location, OperationName name,
+  static OperationInst *create(Location location, OperationName name,
                                ArrayRef<CFGValue *> operands,
                                ArrayRef<Type> resultTypes,
                                ArrayRef<NamedAttribute> attributes,
@@ -353,7 +353,7 @@ public:
 private:
   const unsigned numOperands, numResults;
 
-  OperationInst(Location *location, OperationName name, unsigned numOperands,
+  OperationInst(Location location, OperationName name, unsigned numOperands,
                 unsigned numResults, ArrayRef<NamedAttribute> attributes,
                 MLIRContext *context);
   ~OperationInst();
@@ -399,7 +399,7 @@ public:
   }
 
 protected:
-  TerminatorInst(Kind kind, Location *location) : Instruction(kind, location) {}
+  TerminatorInst(Kind kind, Location location) : Instruction(kind, location) {}
   ~TerminatorInst() {}
 };
 
@@ -407,7 +407,7 @@ protected:
 /// and may pass basic block arguments to the successor.
 class BranchInst : public TerminatorInst {
 public:
-  static BranchInst *create(Location *location, BasicBlock *dest,
+  static BranchInst *create(Location location, BasicBlock *dest,
                             ArrayRef<CFGValue *> operands = {}) {
     return new BranchInst(location, dest, operands);
   }
@@ -440,7 +440,7 @@ public:
   }
 
 private:
-  explicit BranchInst(Location *location, BasicBlock *dest,
+  explicit BranchInst(Location location, BasicBlock *dest,
                       ArrayRef<CFGValue *> operands);
   BasicBlockOperand dest;
   std::vector<InstOperand> operands;
@@ -454,7 +454,7 @@ class CondBranchInst : public TerminatorInst {
   enum { trueIndex = 0, falseIndex = 1 };
 
 public:
-  static CondBranchInst *create(Location *location, CFGValue *condition,
+  static CondBranchInst *create(Location location, CFGValue *condition,
                                 BasicBlock *trueDest, BasicBlock *falseDest) {
     return new CondBranchInst(location, condition, trueDest, falseDest);
   }
@@ -593,7 +593,7 @@ public:
   }
 
 private:
-  CondBranchInst(Location *location, CFGValue *condition, BasicBlock *trueDest,
+  CondBranchInst(Location location, CFGValue *condition, BasicBlock *trueDest,
                  BasicBlock *falseDest);
 
   CFGValue *condition;
@@ -613,7 +613,7 @@ class ReturnInst final
       private llvm::TrailingObjects<ReturnInst, InstOperand> {
 public:
   /// Create a new ReturnInst with the specific fields.
-  static ReturnInst *create(Location *location, ArrayRef<CFGValue *> operands);
+  static ReturnInst *create(Location location, ArrayRef<CFGValue *> operands);
 
   unsigned getNumOperands() const { return numOperands; }
 
@@ -638,7 +638,7 @@ private:
     return numOperands;
   }
 
-  ReturnInst(Location *location, unsigned numOperands);
+  ReturnInst(Location location, unsigned numOperands);
   ~ReturnInst();
 
   unsigned numOperands;

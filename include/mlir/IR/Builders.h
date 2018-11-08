@@ -62,10 +62,10 @@ public:
   Module *createModule();
 
   // Locations.
-  UnknownLoc *getUnknownLoc();
+  UnknownLoc getUnknownLoc();
   UniquedFilename getUniquedFilename(StringRef filename);
-  FileLineColLoc *getFileLineColLoc(UniquedFilename filename, unsigned line,
-                                    unsigned column);
+  FileLineColLoc getFileLineColLoc(UniquedFilename filename, unsigned line,
+                                   unsigned column);
 
   // Types.
   FloatType getBF16Type();
@@ -220,7 +220,7 @@ public:
   /// Create operation of specific op type at the current insertion point
   /// without verifying to see if it is valid.
   template <typename OpTy, typename... Args>
-  OpPointer<OpTy> create(Location *location, Args... args) {
+  OpPointer<OpTy> create(Location location, Args... args) {
     OperationState state(getContext(), location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
     auto *inst = createOperation(state);
@@ -233,7 +233,7 @@ public:
   /// If the result is an invalid op (the verifier hook fails), emit an error
   /// and return null.
   template <typename OpTy, typename... Args>
-  OpPointer<OpTy> createChecked(Location *location, Args... args) {
+  OpPointer<OpTy> createChecked(Location location, Args... args) {
     OperationState state(getContext(), location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
     auto *inst = createOperation(state);
@@ -259,16 +259,16 @@ public:
 
   // Terminators.
 
-  ReturnInst *createReturn(Location *location, ArrayRef<CFGValue *> operands) {
+  ReturnInst *createReturn(Location location, ArrayRef<CFGValue *> operands) {
     return insertTerminator(ReturnInst::create(location, operands));
   }
 
-  BranchInst *createBranch(Location *location, BasicBlock *dest,
+  BranchInst *createBranch(Location location, BasicBlock *dest,
                            ArrayRef<CFGValue *> operands = {}) {
     return insertTerminator(BranchInst::create(location, dest, operands));
   }
 
-  CondBranchInst *createCondBranch(Location *location, CFGValue *condition,
+  CondBranchInst *createCondBranch(Location location, CFGValue *condition,
                                    BasicBlock *trueDest,
                                    BasicBlock *falseDest) {
     return insertTerminator(
@@ -364,14 +364,14 @@ public:
   OperationStmt *createOperation(const OperationState &state);
 
   /// Creates an operation given the fields.
-  OperationStmt *createOperation(Location *location, OperationName name,
+  OperationStmt *createOperation(Location location, OperationName name,
                                  ArrayRef<MLValue *> operands,
                                  ArrayRef<Type> types,
                                  ArrayRef<NamedAttribute> attrs);
 
   /// Create operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
-  OpPointer<OpTy> create(Location *location, Args... args) {
+  OpPointer<OpTy> create(Location location, Args... args) {
     OperationState state(getContext(), location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
     auto *stmt = createOperation(state);
@@ -384,7 +384,7 @@ public:
   /// If the result is an invalid op (the verifier hook fails), emit an error
   /// and return null.
   template <typename OpTy, typename... Args>
-  OpPointer<OpTy> createChecked(Location *location, Args... args) {
+  OpPointer<OpTy> createChecked(Location location, Args... args) {
     OperationState state(getContext(), location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
     auto *stmt = createOperation(state);
@@ -415,16 +415,16 @@ public:
   }
 
   // Creates a for statement. When step is not specified, it is set to 1.
-  ForStmt *createFor(Location *location, ArrayRef<MLValue *> lbOperands,
+  ForStmt *createFor(Location location, ArrayRef<MLValue *> lbOperands,
                      AffineMap lbMap, ArrayRef<MLValue *> ubOperands,
                      AffineMap ubMap, int64_t step = 1);
 
   // Creates a for statement with known (constant) lower and upper bounds.
   // Default step is 1.
-  ForStmt *createFor(Location *loc, int64_t lb, int64_t ub, int64_t step = 1);
+  ForStmt *createFor(Location loc, int64_t lb, int64_t ub, int64_t step = 1);
 
   /// Creates if statement.
-  IfStmt *createIf(Location *location, ArrayRef<MLValue *> operands,
+  IfStmt *createIf(Location location, ArrayRef<MLValue *> operands,
                    IntegerSet set);
 
 private:
@@ -464,7 +464,7 @@ public:
   /// Creates operation of specific op type at the current insertion point
   /// without verifying to see if it is valid.
   template <typename OpTy, typename... Args>
-  OpPointer<OpTy> create(Location *location, Args... args) {
+  OpPointer<OpTy> create(Location location, Args... args) {
     if (kind == Function::Kind::CFGFunc)
       return builder.cfg.create<OpTy, Args...>(location, args...);
     return builder.ml.create<OpTy, Args...>(location, args...);
@@ -474,7 +474,7 @@ public:
   /// If the result is an invalid op (the verifier hook fails), emit an error
   /// and return null.
   template <typename OpTy, typename... Args>
-  OpPointer<OpTy> createChecked(Location *location, Args... args) {
+  OpPointer<OpTy> createChecked(Location location, Args... args) {
     if (kind == Function::Kind::CFGFunc)
       return builder.cfg.createChecked<OpTy, Args...>(location, args...);
     return builder.ml.createChecked<OpTy, Args...>(location, args...);

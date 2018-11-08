@@ -127,7 +127,7 @@ public:
 
   /// Encode the specified source location information into an attribute for
   /// attachment to the IR.
-  Location *getEncodedSourceLocation(llvm::SMLoc loc) {
+  Location getEncodedSourceLocation(llvm::SMLoc loc) {
     return state.lex.getEncodedSourceLocation(loc);
   }
 
@@ -2169,7 +2169,7 @@ Operation *FunctionParser::parseVerboseOperation(
     const CreateOperationFunction &createOpFunc) {
 
   // Get location information for the operation.
-  auto *srcLocation = getEncodedSourceLocation(getToken().getLoc());
+  auto srcLocation = getEncodedSourceLocation(getToken().getLoc());
 
   auto name = getToken().getStringValue();
   if (name.empty())
@@ -2452,7 +2452,7 @@ Operation *FunctionParser::parseCustomOperation(
                                    opNameStr.c_str());
 
   // Get location information for the operation.
-  auto *srcLocation = getEncodedSourceLocation(opLoc);
+  auto srcLocation = getEncodedSourceLocation(opLoc);
 
   // Have the op implementation take a crack and parsing this.
   OperationState opState(builder.getContext(), srcLocation, opName);

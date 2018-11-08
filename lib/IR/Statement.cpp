@@ -237,7 +237,7 @@ void Statement::moveBefore(StmtBlock *block,
 //===----------------------------------------------------------------------===//
 
 /// Create a new OperationStmt with the specific fields.
-OperationStmt *OperationStmt::create(Location *location, OperationName name,
+OperationStmt *OperationStmt::create(Location location, OperationName name,
                                      ArrayRef<MLValue *> operands,
                                      ArrayRef<Type> resultTypes,
                                      ArrayRef<NamedAttribute> attributes,
@@ -261,7 +261,7 @@ OperationStmt *OperationStmt::create(Location *location, OperationName name,
   return stmt;
 }
 
-OperationStmt::OperationStmt(Location *location, OperationName name,
+OperationStmt::OperationStmt(Location location, OperationName name,
                              unsigned numOperands, unsigned numResults,
                              ArrayRef<NamedAttribute> attributes,
                              MLIRContext *context)
@@ -303,7 +303,7 @@ bool OperationStmt::isReturn() const { return isa<ReturnOp>(); }
 // ForStmt
 //===----------------------------------------------------------------------===//
 
-ForStmt *ForStmt::create(Location *location, ArrayRef<MLValue *> lbOperands,
+ForStmt *ForStmt::create(Location location, ArrayRef<MLValue *> lbOperands,
                          AffineMap lbMap, ArrayRef<MLValue *> ubOperands,
                          AffineMap ubMap, int64_t step) {
   assert(lbOperands.size() == lbMap.getNumInputs() &&
@@ -325,7 +325,7 @@ ForStmt *ForStmt::create(Location *location, ArrayRef<MLValue *> lbOperands,
   return stmt;
 }
 
-ForStmt::ForStmt(Location *location, unsigned numOperands, AffineMap lbMap,
+ForStmt::ForStmt(Location location, unsigned numOperands, AffineMap lbMap,
                  AffineMap ubMap, int64_t step)
     : Statement(Kind::For, location),
       MLValue(MLValueKind::ForStmt,
@@ -436,7 +436,7 @@ bool ForStmt::matchingBoundOperandList() const {
 // IfStmt
 //===----------------------------------------------------------------------===//
 
-IfStmt::IfStmt(Location *location, unsigned numOperands, IntegerSet set)
+IfStmt::IfStmt(Location location, unsigned numOperands, IntegerSet set)
     : Statement(Kind::If, location), thenClause(this), elseClause(nullptr),
       set(set) {
   operands.reserve(numOperands);
@@ -450,7 +450,7 @@ IfStmt::~IfStmt() {
   // allocated through MLIRContext's bump pointer allocator.
 }
 
-IfStmt *IfStmt::create(Location *location, ArrayRef<MLValue *> operands,
+IfStmt *IfStmt::create(Location location, ArrayRef<MLValue *> operands,
                        IntegerSet set) {
   unsigned numOperands = operands.size();
   assert(numOperands == set.getNumOperands() &&

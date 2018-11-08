@@ -42,7 +42,7 @@ Lexer::Lexer(const llvm::SourceMgr &sourceMgr, MLIRContext *context)
 
 /// Encode the specified source location information into an attribute for
 /// attachment to the IR.
-Location *Lexer::getEncodedSourceLocation(llvm::SMLoc loc) {
+Location Lexer::getEncodedSourceLocation(llvm::SMLoc loc) {
   auto &sourceMgr = getSourceMgr();
   unsigned mainFileID = sourceMgr.getMainFileID();
   auto lineAndColumn = sourceMgr.getLineAndColumn(loc, mainFileID);

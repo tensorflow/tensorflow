@@ -141,7 +141,7 @@ void Instruction::emitError(const Twine &message) const {
 //===----------------------------------------------------------------------===//
 
 /// Create a new OperationInst with the specified fields.
-OperationInst *OperationInst::create(Location *location, OperationName name,
+OperationInst *OperationInst::create(Location location, OperationName name,
                                      ArrayRef<CFGValue *> operands,
                                      ArrayRef<Type> resultTypes,
                                      ArrayRef<NamedAttribute> attributes,
@@ -180,7 +180,7 @@ OperationInst *OperationInst::clone() const {
                 getContext());
 }
 
-OperationInst::OperationInst(Location *location, OperationName name,
+OperationInst::OperationInst(Location location, OperationName name,
                              unsigned numOperands, unsigned numResults,
                              ArrayRef<NamedAttribute> attributes,
                              MLIRContext *context)
@@ -296,7 +296,7 @@ MutableArrayRef<BasicBlockOperand> TerminatorInst::getBasicBlockOperands() {
 //===----------------------------------------------------------------------===//
 
 /// Create a new OperationInst with the specific fields.
-ReturnInst *ReturnInst::create(Location *location,
+ReturnInst *ReturnInst::create(Location location,
                                ArrayRef<CFGValue *> operands) {
   auto byteSize = totalSizeToAlloc<InstOperand>(operands.size());
   void *rawMem = malloc(byteSize);
@@ -311,7 +311,7 @@ ReturnInst *ReturnInst::create(Location *location,
   return inst;
 }
 
-ReturnInst::ReturnInst(Location *location, unsigned numOperands)
+ReturnInst::ReturnInst(Location location, unsigned numOperands)
     : TerminatorInst(Kind::Return, location), numOperands(numOperands) {}
 
 void ReturnInst::destroy() {
@@ -329,7 +329,7 @@ ReturnInst::~ReturnInst() {
 // BranchInst
 //===----------------------------------------------------------------------===//
 
-BranchInst::BranchInst(Location *location, BasicBlock *dest,
+BranchInst::BranchInst(Location location, BasicBlock *dest,
                        ArrayRef<CFGValue *> operands)
     : TerminatorInst(Kind::Branch, location), dest(this, dest) {
   addOperands(operands);
@@ -353,7 +353,7 @@ void BranchInst::addOperands(ArrayRef<CFGValue *> values) {
 // CondBranchInst
 //===----------------------------------------------------------------------===//
 
-CondBranchInst::CondBranchInst(Location *location, CFGValue *condition,
+CondBranchInst::CondBranchInst(Location location, CFGValue *condition,
                                BasicBlock *trueDest, BasicBlock *falseDest)
     : TerminatorInst(Kind::CondBranch, location),
       condition(condition), dests{{this}, {this}}, numTrueOperands(0) {

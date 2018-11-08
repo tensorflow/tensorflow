@@ -65,7 +65,7 @@ public:
   // notes will be dropped and errors will terminate the process with exit(1).
 
   using DiagnosticHandlerTy = std::function<void(
-      Location *location, StringRef message, DiagnosticKind kind)>;
+      Location location, StringRef message, DiagnosticKind kind)>;
 
   /// Register a diagnostic handler with this LLVM context.  The handler is
   /// passed location information if present (nullptr if not) along with a
@@ -78,7 +78,7 @@ public:
   /// This emits an diagnostic using the registered issue handle if present, or
   /// with the default behavior if not.  The MLIR compiler should not generally
   /// interact with this, it should use methods on Operation instead.
-  void emitDiagnostic(Location *location, const Twine &message,
+  void emitDiagnostic(Location location, const Twine &message,
                       DiagnosticKind kind) const;
 
   // This is effectively private given that only MLIRContext.cpp can see the

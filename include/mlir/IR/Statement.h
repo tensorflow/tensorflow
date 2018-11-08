@@ -188,7 +188,7 @@ public:
   }
 
 protected:
-  Statement(Kind kind, Location *location)
+  Statement(Kind kind, Location location)
       : IROperandOwner((IROperandOwner::Kind)kind, location) {}
 
   // Statements are deleted through the destroy() member because this class

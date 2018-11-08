@@ -173,7 +173,7 @@ public:
   /// Create operation of specific op type at the current insertion point
   /// without verifying to see if it is valid.
   template <typename OpTy, typename... Args>
-  OpPointer<OpTy> create(Location *location, Args... args) {
+  OpPointer<OpTy> create(Location location, Args... args) {
     OperationState state(getContext(), location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
     auto *op = createOperation(state);
@@ -186,7 +186,7 @@ public:
   /// If the result is an invalid op (the verifier hook fails), emit an error
   /// and return null.
   template <typename OpTy, typename... Args>
-  OpPointer<OpTy> createChecked(Location *location, Args... args) {
+  OpPointer<OpTy> createChecked(Location location, Args... args) {
     OperationState state(context, location, OpTy::getOperationName());
     auto result = this->create(location, args...);
 

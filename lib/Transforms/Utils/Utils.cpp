@@ -167,7 +167,7 @@ bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
 // to a collapse into a single affine apply op. The final results of the
 // composed AffineApplyOp are returned in output parameter 'results'.
 OperationStmt *
-mlir::createComposedAffineApplyOp(FuncBuilder *builder, Location *loc,
+mlir::createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
                                   ArrayRef<MLValue *> operands,
                                   ArrayRef<OperationStmt *> affineApplyOps,
                                   SmallVectorImpl<SSAValue *> &results) {

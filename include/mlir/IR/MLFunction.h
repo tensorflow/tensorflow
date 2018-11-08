@@ -40,7 +40,7 @@ class MLFunction final
       private llvm::TrailingObjects<MLFunction, MLFuncArgument> {
 public:
   /// Creates a new MLFunction with the specific type.
-  static MLFunction *create(Location *location, StringRef name,
+  static MLFunction *create(Location location, StringRef name,
                             FunctionType type,
                             ArrayRef<NamedAttribute> attrs = {});
 
@@ -103,7 +103,7 @@ public:
   }
 
 private:
-  MLFunction(Location *location, StringRef name, FunctionType type,
+  MLFunction(Location location, StringRef name, FunctionType type,
              ArrayRef<NamedAttribute> attrs = {});
 
   // This stuff is used by the TrailingObjects template.

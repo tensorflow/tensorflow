@@ -25,13 +25,13 @@
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Identifier.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/Types.h"
 #include "llvm/ADT/PointerUnion.h"
 #include <memory>
 
 namespace mlir {
 class Dialect;
-class Location;
 class Operation;
 class OperationState;
 class OpAsmParser;
@@ -188,7 +188,7 @@ inline bool operator!=(OperationName lhs, OperationName rhs) {
 /// this in a collection.
 struct OperationState {
   MLIRContext *const context;
-  Location *location;
+  Location location;
   OperationName name;
   SmallVector<SSAValue *, 4> operands;
   /// Types of the results of this operation.
@@ -196,13 +196,13 @@ struct OperationState {
   SmallVector<NamedAttribute, 4> attributes;
 
 public:
-  OperationState(MLIRContext *context, Location *location, StringRef name)
+  OperationState(MLIRContext *context, Location location, StringRef name)
       : context(context), location(location), name(name, context) {}
 
-  OperationState(MLIRContext *context, Location *location, OperationName name)
+  OperationState(MLIRContext *context, Location location, OperationName name)
       : context(context), location(location), name(name) {}
 
-  OperationState(MLIRContext *context, Location *location, StringRef name,
+  OperationState(MLIRContext *context, Location location, StringRef name,
                  ArrayRef<SSAValue *> operands, ArrayRef<Type> types,
                  ArrayRef<NamedAttribute> attributes = {})
       : context(context), location(location), name(name, context),

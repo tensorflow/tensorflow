@@ -21,6 +21,7 @@
 #include "AttributeDetail.h"
 #include "AttributeListStorage.h"
 #include "IntegerSetDetail.h"
+#include "LocationDetail.h"
 #include "TypeDetail.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
@@ -266,13 +267,14 @@ public:
   llvm::BumpPtrAllocator locationAllocator;
 
   /// The singleton for UnknownLoc.
-  UnknownLoc *theUnknownLoc = nullptr;
+  UnknownLocationStorage *theUnknownLoc = nullptr;
 
   /// These are filename locations uniqued into this MLIRContext.
   llvm::StringMap<char, llvm::BumpPtrAllocator &> filenames;
 
   /// FileLineColLoc uniquing.
-  DenseMap<std::tuple<const char *, unsigned, unsigned>, FileLineColLoc *>
+  DenseMap<std::tuple<const char *, unsigned, unsigned>,
+           FileLineColLocationStorage *>
       fileLineColLocs;
 
   /// We put immortal objects into this allocator.
@@ -415,11 +417,11 @@ auto MLIRContext::getDiagnosticHandler() const -> DiagnosticHandlerTy {
 /// This emits a diagnostic using the registered issue handle if present, or
 /// with the default behavior if not.  The MLIR compiler should not generally
 /// interact with this, it should use methods on Operation instead.
-void MLIRContext::emitDiagnostic(Location *location, const llvm::Twine &message,
+void MLIRContext::emitDiagnostic(Location location, const llvm::Twine &message,
                                  DiagnosticKind kind) const {
   // If we had a handler registered, emit the diagnostic using it.
   auto handler = getImpl().diagnosticHandler;
-  if (handler && location)
+  if (handler)
     return handler(location, message.str(), kind);
 
   // The default behavior for notes and warnings is to ignore them.
@@ -428,7 +430,7 @@ void MLIRContext::emitDiagnostic(Location *location, const llvm::Twine &message,
 
   auto &os = llvm::errs();
 
-  if (auto fileLoc = dyn_cast<FileLineColLoc>(location))
+  if (auto fileLoc = location.dyn_cast<FileLineColLoc>())
     os << fileLoc->getFilename() << ':' << fileLoc->getLine() << ':'
        << fileLoc->getColumn() << ": ";
 
@@ -524,13 +526,13 @@ Identifier Identifier::get(StringRef str, const MLIRContext *context) {
 // Location uniquing
 //===----------------------------------------------------------------------===//
 
-UnknownLoc *UnknownLoc::get(MLIRContext *context) {
+UnknownLoc UnknownLoc::get(MLIRContext *context) {
   auto &impl = context->getImpl();
   if (auto *result = impl.theUnknownLoc)
     return result;
 
-  impl.theUnknownLoc = impl.allocator.Allocate<UnknownLoc>();
-  new (impl.theUnknownLoc) UnknownLoc();
+  impl.theUnknownLoc = impl.allocator.Allocate<UnknownLocationStorage>();
+  new (impl.theUnknownLoc) UnknownLocationStorage{Location::Kind::Unknown};
   return impl.theUnknownLoc;
 }
 
@@ -540,14 +542,15 @@ UniquedFilename UniquedFilename::get(StringRef filename, MLIRContext *context) {
   return UniquedFilename(it->getKeyData());
 }
 
-FileLineColLoc *FileLineColLoc::get(UniquedFilename filename, unsigned line,
-                                    unsigned column, MLIRContext *context) {
+FileLineColLoc FileLineColLoc::get(UniquedFilename filename, unsigned line,
+                                   unsigned column, MLIRContext *context) {
   auto &impl = context->getImpl();
   auto &entry =
       impl.fileLineColLocs[std::make_tuple(filename.data(), line, column)];
   if (!entry) {
-    entry = impl.allocator.Allocate<FileLineColLoc>();
-    new (entry) FileLineColLoc(filename, line, column);
+    entry = impl.allocator.Allocate<FileLineColLocationStorage>();
+    new (entry) FileLineColLocationStorage{
+        {Location::Kind::FileLineCol}, filename, line, column};
   }
 
   return entry;
@@ -740,19 +743,20 @@ UnrankedTensorType UnrankedTensorType::get(Type elementType) {
 
 /// Get or create a new MemRefType defined by the arguments.  If the resulting
 /// type would be ill-formed, return nullptr.  If the location is provided,
-/// i.e. is not nullptr, emit detailed error messages.  To emit errors when
-/// the location is unknown, pass in an instance of UnknownLoc.
+/// emit detailed error messages.  To emit errors when the location is unknown,
+/// pass in an instance of UnknownLoc.
 static MemRefType getMemRefType(ArrayRef<int> shape, Type elementType,
                                 ArrayRef<AffineMap> affineMapComposition,
-                                unsigned memorySpace, Location *location) {
+                                unsigned memorySpace,
+                                Optional<Location> location) {
   auto *context = elementType.getContext();
   auto &impl = context->getImpl();
 
   // Check that memref is formed from allowed types.
   if (!elementType.isa<IntegerType>() && !elementType.isa<FloatType>() &&
       !elementType.isa<VectorType>() && !elementType.isa<IntegerType>()) {
-    if (location)
-      context->emitDiagnostic(location, "invalid memref element type",
+    if (location.hasValue())
+      context->emitDiagnostic(*location, "invalid memref element type",
                               MLIRContext::DiagnosticKind::Error);
     return nullptr;
   }
@@ -764,9 +768,9 @@ static MemRefType getMemRefType(ArrayRef<int> shape, Type elementType,
   unsigned i = 0;
   for (const auto &affineMap : affineMapComposition) {
     if (affineMap.getNumDims() != dim) {
-      if (location)
+      if (location.hasValue())
         context->emitDiagnostic(
-            location,
+            *location,
             "memref affine map dimension mismatch between " +
                 (i == 0 ? Twine("memref rank") : "affine map " + Twine(i)) +
                 " and affine map" + Twine(i + 1) + ": " + Twine(dim) +
@@ -824,9 +828,7 @@ static MemRefType getMemRefType(ArrayRef<int> shape, Type elementType,
 // Try constructing a MemRefType, report errors and return a nullptr on failure.
 MemRefType MemRefType::getChecked(ArrayRef<int> shape, Type elementType,
                                   ArrayRef<AffineMap> affineMapComposition,
-                                  unsigned memorySpace, Location *location) {
-  assert(location &&
-         "location cannot be null, use UnknownLoc if it is unknown");
+                                  unsigned memorySpace, Location location) {
   return getMemRefType(shape, elementType, affineMapComposition, memorySpace,
                        location);
 }
@@ -835,8 +837,8 @@ MemRefType MemRefType::getChecked(ArrayRef<int> shape, Type elementType,
 MemRefType MemRefType::get(ArrayRef<int> shape, Type elementType,
                            ArrayRef<AffineMap> affineMapComposition,
                            unsigned memorySpace) {
-  auto type = getMemRefType(shape, elementType, affineMapComposition,
-                            memorySpace, nullptr);
+  auto type =
+      getMemRefType(shape, elementType, affineMapComposition, memorySpace, {});
   assert(type && "failed to construct a MemRef type");
   return type;
 }
