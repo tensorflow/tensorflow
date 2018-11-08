@@ -319,6 +319,9 @@ class Tensor(_TensorLike):
     self._value_index = value_index
     self._dtype = dtypes.as_dtype(dtype)
 
+    # This will be set by self._as_tf_output().
+    self._tf_output = None
+
     # This will be set by self.shape().
     self._shape_val = None
 
@@ -601,7 +604,13 @@ class Tensor(_TensorLike):
 
   def _as_tf_output(self):
     # pylint: disable=protected-access
-    return c_api_util.tf_output(self.op._c_op, self.value_index)
+    # NOTE: Beyond preventing unnecessary (re-)allocation, the cached object
+    # also guarantees that a dictionary of tf_output objects will retain a
+    # deterministic (yet unsorted) order which prevents memory blowup in the
+    # cache of executor(s) stored for every session.
+    if self._tf_output is None:
+      self._tf_output = c_api_util.tf_output(self.op._c_op, self.value_index)
+    return self._tf_output
     # pylint: enable=protected-access
 
   def __str__(self):
@@ -1059,7 +1068,8 @@ def internal_convert_to_tensor(value,
                                name=None,
                                as_ref=False,
                                preferred_dtype=None,
-                               ctx=None):
+                               ctx=None,
+                               accept_symbolic_tensors=True):
   """Converts the given `value` to an `Tensor`.
 
   This function converts Python objects of various types to `Tensor`
@@ -1083,6 +1093,10 @@ def internal_convert_to_tensor(value,
       can be used as a soft preference.  If the conversion to
       `preferred_dtype` is not possible, this argument has no effect.
     ctx: Optional: The value of context.context().
+    accept_symbolic_tensors: Whether Keras graph tensors should be accepted as
+      a valid tensor type during eager execution.
+      If False, this function will raise an exception if it is passed such
+      a tensor during eager eager execution.
 
   Returns:
     A `Tensor` based on `value`.
@@ -1106,6 +1120,19 @@ def internal_convert_to_tensor(value,
         raise RuntimeError("Attempting to capture an EagerTensor without "
                            "building a function.")
       return graph.capture(value, name=name)
+  elif ((not accept_symbolic_tensors) and
+        isinstance(value, Tensor) and
+        ctx.executing_eagerly()):
+    # Found a symbolic tensor in an eager context.
+    # This happens when we use the Keras functional API (i.e. calling layers
+    # on the output of `keras.Input()`, which is symbolic) while eager
+    # execution is enabled.
+    if _is_keras_symbolic_tensor(value):
+      # If the graph of the tensor isn't the Keras graph, we should still
+      # fail, for the time being. TODO(fchollet): consider allowing
+      # all symbolic tensors to raise this exception in this case.
+      raise core._SymbolicException(  # pylint: disable=protected-access
+          "Using the symbolic output of a Keras layer during eager execution.")
 
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
@@ -4951,6 +4978,8 @@ def container(container_name):
 def _colocate_with_for_gradient(op, gradient_uid, ignore_existing=False):
   if context.executing_eagerly():
     if op is not None:
+      if not hasattr(op, "device"):
+        op = internal_convert_to_tensor_or_indexed_slices(op)
       return device(op.device)
     else:
       return NullContextmanager()
@@ -4966,7 +4995,10 @@ def _colocate_with_for_gradient(op, gradient_uid, ignore_existing=False):
         op, gradient_uid=gradient_uid, ignore_existing=ignore_existing)
 
 
-@tf_export("colocate_with")
+@deprecation.deprecated(
+    date=None,
+    instructions="Colocations handled automatically by placer.")
+@tf_export(v1=["colocate_with"])
 def colocate_with(op, ignore_existing=False):
   return _colocate_with_for_gradient(op, None, ignore_existing=ignore_existing)
 
@@ -5349,6 +5381,16 @@ def init_scope():
       # try-block (just above).
       if outer_graph is not None:
         outer_graph._device_function_stack = outer_device_stack  # pylint: disable=protected-access
+
+
+def executing_eagerly_outside_functions():
+  """Returns True if executing eagerly, even if inside a graph function."""
+  with init_scope():
+    return context.executing_eagerly()
+
+
+def inside_function():
+  return get_default_graph().building_function
 
 
 @tf_export("enable_eager_execution")
@@ -5976,6 +6018,13 @@ class name_scope(object):  # pylint: disable=invalid-name
     self._values = values
     self._ctx = context.context()
     self._in_eager_mode = self._ctx.executing_eagerly()
+    self._has_symbolic_input_in_eager = False
+    if self._values and self._in_eager_mode:
+      # The presence of a graph tensor in `self._values` overrides the context.
+      for value in self._values:
+        if hasattr(value, "graph"):
+          self._has_symbolic_input_in_eager = True
+          self._name_scope = value.graph.name_scope(self._name)
 
   def __enter__(self):
     """Start the scope block.
@@ -5987,6 +6036,9 @@ class name_scope(object):  # pylint: disable=invalid-name
       ValueError: if neither `name` nor `default_name` is provided
         but `values` are.
     """
+    if self._has_symbolic_input_in_eager:
+      return self._name_scope.__enter__()
+
     if self._in_eager_mode:
       self._old_name = self._ctx.scope_name
       if not self._name:
@@ -6029,7 +6081,9 @@ class name_scope(object):  # pylint: disable=invalid-name
         raise
 
   def __exit__(self, type_arg, value_arg, traceback_arg):
-    if self._in_eager_mode:
+    if self._has_symbolic_input_in_eager:
+      self._name_scope.__exit__(type_arg, value_arg, traceback_arg)
+    elif self._in_eager_mode:
       self._ctx.scope_name = self._old_name
     else:
       self._name_scope.__exit__(type_arg, value_arg, traceback_arg)
@@ -6187,6 +6241,10 @@ def _op_to_colocate_with(v):
       v.handle.op, Operation):
     return v.handle.op
   return internal_convert_to_tensor_or_indexed_slices(v, as_ref=True).op
+
+
+def _is_keras_symbolic_tensor(x):
+  return hasattr(x, "graph") and getattr(x.graph, "name", None) == "keras_graph"
 
 
 register_tensor_conversion_function(Operation, _operation_conversion_error)

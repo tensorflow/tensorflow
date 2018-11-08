@@ -49,6 +49,29 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+// Aggregates information about what kinds of ops are allowed.
+struct OperationFilter {
+  // Whether resource variable ops are allowed.  We do not allow resource
+  // variable ops in called functions (either as direct TF calls or as higher
+  // order control flow ops) because we do not yet model their memory effects in
+  // jit/resource_variable_safety_analysis.
+  bool allow_resource_ops;
+
+  // Whether stateful RNG ops are allowed.  XLA's RNG does not have the same
+  // seeding behavior as TensorFlow's RNG (b/34749654).  So we avoid
+  // auto-clustering stateful RNG ops.
+  bool allow_stateful_rng_ops;
+
+  // TODO(b/118970344): Whether ControlTrigger ops are allowed.  It is unsound
+  // to cluster ControlTrigger because of how we use deadness analysis.
+  bool allow_control_trigger;
+};
+
+bool IsStatefulRandomOp(absl::string_view op_name) {
+  return op_name == "RandomUniform" || op_name == "RandomShuffle" ||
+         op_name == "RandomUniformInt" || op_name == "RandomStandardNormal" ||
+         op_name == "TruncatedNormal";
+}
 
 bool HasXLAKernel(const Node& node, const DeviceType& jit_device_type) {
   // There is a SymbolicGradient kernel on the XLA_JIT device, but the gradient
@@ -101,7 +124,7 @@ const int kMaxRecursionDepth = 10;
 
 bool IsCompilableCall(const NodeDef& call_def,
                       const DeviceType& jit_device_type,
-                      bool allow_resource_ops, int depth,
+                      const OperationFilter& op_filter, int depth,
                       FunctionLibraryRuntime* lib_runtime);
 
 // Tests whether 'while_node' is a completely compilable loop.
@@ -109,7 +132,7 @@ bool IsCompilableCall(const NodeDef& call_def,
 // while loop to be compilable.
 bool IsCompilableWhile(const Node& while_node,
                        const DeviceType& jit_device_type,
-                       bool allow_resource_ops, int depth,
+                       const OperationFilter& op_filter, int depth,
                        FunctionLibraryRuntime* lib_runtime) {
   const NameAttrList* name_attr;
   NodeDef call;
@@ -124,7 +147,7 @@ bool IsCompilableWhile(const Node& while_node,
   call.set_name("while_cond");
   call.set_op(cond_func);
   *call.mutable_attr() = name_attr->attr();
-  if (!IsCompilableCall(call, jit_device_type, allow_resource_ops, depth + 1,
+  if (!IsCompilableCall(call, jit_device_type, op_filter, depth + 1,
                         lib_runtime)) {
     VLOG(2) << "Rejecting While " << while_node.name()
             << ": can't compile loop condition: " << cond_func;
@@ -140,7 +163,7 @@ bool IsCompilableWhile(const Node& while_node,
   call.set_name("while_body");
   call.set_op(body_func);
   *call.mutable_attr() = name_attr->attr();
-  if (!IsCompilableCall(call, jit_device_type, allow_resource_ops, depth + 1,
+  if (!IsCompilableCall(call, jit_device_type, op_filter, depth + 1,
                         lib_runtime)) {
     VLOG(2) << "Rejecting While " << while_node.name()
             << ": can't compile loop body: " << body_func;
@@ -154,7 +177,7 @@ bool IsCompilableWhile(const Node& while_node,
 // compilable.
 bool IsCompilableCall(const NodeDef& call_def,
                       const DeviceType& jit_device_type,
-                      bool allow_resource_ops, int depth,
+                      const OperationFilter& op_filter, int depth,
                       FunctionLibraryRuntime* lib_runtime) {
   if (depth > kMaxRecursionDepth) {
     VLOG(2) << "Rejecting " << call_def.op()
@@ -195,16 +218,23 @@ bool IsCompilableCall(const NodeDef& call_def,
       continue;
     if (node->type_string() == "While") {
       // Handle functional While loop.
-      return IsCompilableWhile(*node, jit_device_type, allow_resource_ops,
-                               depth + 1, lib_runtime);
+      return IsCompilableWhile(*node, jit_device_type, op_filter, depth + 1,
+                               lib_runtime);
     }
-    if (!allow_resource_ops &&
+    if (!op_filter.allow_resource_ops &&
         (HasResourceInput(*node) || HasResourceOutput(*node))) {
       return false;
     }
+    if (!op_filter.allow_stateful_rng_ops &&
+        IsStatefulRandomOp(node->type_string())) {
+      return false;
+    }
+    if (!op_filter.allow_control_trigger && node->IsControlTrigger()) {
+      return false;
+    }
     if (!HasXLAKernel(*node, jit_device_type) &&
-        !IsCompilableCall(node->def(), jit_device_type, allow_resource_ops,
-                          depth + 1, lib_runtime)) {
+        !IsCompilableCall(node->def(), jit_device_type, op_filter, depth + 1,
+                          lib_runtime)) {
       VLOG(2) << "Rejecting " << call_def.op() << ": unsupported op "
               << node->name() << ": " << node->def().ShortDebugString();
       return false;
@@ -426,14 +456,35 @@ Status FindCompilationCandidates(
     CHECK(
         XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration));
     DeviceType jit_device_type(registration->compilation_device_name);
+
+    OperationFilter op_filter;
+    op_filter.allow_resource_ops = registration->compile_resource_ops;
+    op_filter.allow_stateful_rng_ops =
+        (registration->autoclustering_policy ==
+         XlaOpRegistry::AutoclusteringPolicy::kAlways);
+    op_filter.allow_control_trigger =
+        (registration->autoclustering_policy ==
+         XlaOpRegistry::AutoclusteringPolicy::kAlways);
+
     if (!HasXLAKernel(*node, jit_device_type) &&
-        !IsCompilableCall(node->def(), jit_device_type,
-                          registration->compile_resource_ops, 0, lib_runtime)) {
+        !IsCompilableCall(node->def(), jit_device_type, op_filter, 0,
+                          lib_runtime)) {
       VLOG(2) << "Rejecting " << node->name() << ": unsupported op "
               << node->type_string();
       continue;
     }
-    if (!registration->compile_resource_ops &&
+
+    if (!op_filter.allow_stateful_rng_ops &&
+        IsStatefulRandomOp(node->type_string())) {
+      VLOG(2) << "Rejecting " << node->name() << ": stateful random operation";
+      continue;
+    }
+    if (!op_filter.allow_control_trigger && node->IsControlTrigger()) {
+      VLOG(2) << "Rejecting " << node->name() << ": is a control trigger op";
+      continue;
+    }
+
+    if (!op_filter.allow_resource_ops &&
         (HasResourceOutput(*node) || IsNonResourceVarResourceOp(*node))) {
       // We don't have a way of returning values of type DT_RESOURCE from XLA
       // computations so we avoid auto-clustering nodes producing DT_RESOURCE.
@@ -444,6 +495,7 @@ Status FindCompilationCandidates(
               << node->type_string();
       continue;
     }
+
     if (compile_time_const_nodes[node->id()]) {
       const OpDef* op_def;
       TF_RETURN_IF_ERROR(
@@ -501,9 +553,7 @@ Status FindCompilationCandidates(
     // registration->compile_resource_ops is true for XLA_CPU/XLA_GPU but not
     // for CPU/GPU.
     if (node->type_string() == "While" &&
-        !IsCompilableWhile(*node, jit_device_type,
-                           registration->compile_resource_ops, 0,
-                           lib_runtime)) {
+        !IsCompilableWhile(*node, jit_device_type, op_filter, 0, lib_runtime)) {
       continue;
     }
     // _Arg nodes in a top-level function represent feeds.
@@ -563,10 +613,13 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
                                             &registration));
   DeviceType jit_device_type(registration->compilation_device_name);
 
-  // We can always *compile* resource operations, even if we are sometimes
-  // unable to auto-cluster them.
-  const bool compile_resource_ops = true;
-  return IsCompilableCall(ndef, jit_device_type, compile_resource_ops, 0, flr);
+  // We can always *compile* resource operations and stateful RNGs, even if we
+  // are sometimes unable to auto-cluster them.
+  OperationFilter op_filter;
+  op_filter.allow_resource_ops = true;
+  op_filter.allow_stateful_rng_ops = true;
+  op_filter.allow_control_trigger = true;
+  return IsCompilableCall(ndef, jit_device_type, op_filter, 0, flr);
 }
 
 Status MarkForCompilationPass::Run(
@@ -577,10 +630,8 @@ Status MarkForCompilationPass::Run(
       GetGlobalJitLevel(options);
   legacy_flags::MarkForCompilationPassFlags* flags =
       legacy_flags::GetMarkForCompilationPassFlags();
-  bool cpu_global_jit = flags->tf_xla_cpu_global_jit;
   bool fusion_only = flags->tf_xla_fusion_only;
 
-  VLOG(1) << "flags->tf_xla_cpu_global_jit = " << flags->tf_xla_cpu_global_jit;
   VLOG(1) << "flags->tf_xla_fusion_only = " << flags->tf_xla_fusion_only;
   VLOG(1) << "flags->tf_xla_auto_jit = " << flags->tf_xla_auto_jit;
   const FunctionLibraryDefinition* fld = options.flib_def;
@@ -598,9 +649,6 @@ Status MarkForCompilationPass::Run(
       VLOG(2) << "Rejecting " << node->name() << ": could not find JIT device.";
       return false;
     }
-
-    // If this device requires a JIT, we must say yes.
-    if (registration->requires_compilation) return true;
 
     // If there is a _XlaCompile annotation, use its value.
     bool compile = false;
@@ -638,18 +686,21 @@ Status MarkForCompilationPass::Run(
       return false;
     }
 
-    // Otherwise use the value of global_jit_level.
-    // Ignore enable_jit_by_default if global jit compilation for CPU
-    // is explicitly requested via tf_xla_cpu_global_jit flag
-    bool ignore_registration = cpu_global_jit && device_type == DEVICE_CPU;
+    // Otherwise use the value of global_jit_level and the device's
+    // autoclustering policy.
     bool should_compile =
-        (ignore_registration || registration->enable_jit_by_default) &&
-        global_jit_level != OptimizerOptions::OFF;
+        registration->autoclustering_policy ==
+            XlaOpRegistry::AutoclusteringPolicy::kAlways ||
+        (registration->autoclustering_policy ==
+             XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally &&
+         global_jit_level != OptimizerOptions::OFF);
     if (!should_compile) {
       if (global_jit_level == OptimizerOptions::OFF) {
         VLOG(2) << "Rejecting " << node->name() << ": global jit disabled.";
       } else {
-        VLOG(2) << "Rejecting " << node->name() << ": JIT for device disabled.";
+        VLOG(2)
+            << "Rejecting " << node->name()
+            << ": autoclustering for device only when requested explicitly.";
       }
     }
     return should_compile;
@@ -952,6 +1003,28 @@ Status MarkForCompilationPass::RunImpl(
         continue;
       }
 
+      // If any of the consumer's producers are on a different device, do not
+      // cluster these nodes. This prevents other work on this device from being
+      // delayed by work on other devices. We consider predecessors of the
+      // entire cluster rather than just the inputs to the node to prevent the
+      // cluster still being combined in cases where the 'to' cluster has
+      // multiple dependencies on the 'from' cluster and another dependency
+      // leads to a merging of the clusters.
+      //
+      // TODO(b/117085735): We probably want to handle the reciprocal of this
+      // case where a cluster is producing data for multiple devices.
+      bool found_split = false;
+      for (const auto& in_id : cycles.Predecessors(to)) {
+        if (in_id >= graph->num_node_ids()) continue;
+
+        Node* in = graph->FindNodeId(in_id);
+        if (compilation_candidates.find(in) != compilation_candidates.cend() &&
+            in->assigned_device_name() != node_to->assigned_device_name()) {
+          found_split = true;
+        }
+      }
+      if (found_split) continue;
+
       // If contracting the edge would create a cycle, bail out.
       // However, just because we can't merge the clusters now does not mean
       // we won't be able to merge them in the future.
@@ -1015,12 +1088,10 @@ Status MarkForCompilationPass::RunImpl(
     XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration);
 
     // Compile if this is a cluster of >= min_cluster_size compilable operators.
-    // Also, always compile if the operator is placed on a device that requires
-    // compilation, or if it contains at least one op that is marked for
+    // Also, always compile if it contains at least one op that is marked for
     // compilation that is not an Identity op.
     if (effective_cluster_sizes[cluster] >= min_cluster_size ||
-        (effective_cluster_sizes[cluster] > 0 && marked_for_compilation) ||
-        registration->requires_compilation) {
+        (effective_cluster_sizes[cluster] > 0 && marked_for_compilation)) {
       string& name = cluster_names[cluster];
 
       if (name.empty()) {

@@ -115,6 +115,57 @@ Status PreprocessForEncapsulation(Graph* g,
                                   const string& xla_computation_attr_name,
                                   const string& outside_compilation_attr_name);
 
+// Information for XLA computation.
+struct XlaClusterInfo {
+  // Add an explicitly-defined default constructor for this class.
+  //
+  // The compiler may delete the default constructor here because
+  // host_compute_core is a const member whose type (std::map) doesn't
+  // necessarily have a user provided constructor -- while libc++ and
+  // libstdc++ 4.8 provide a user defined default constructor, libstdc++ at
+  // least >= 7.3 does not. See also c++11 [class.ctor] p5.
+  //
+  // TODO(klimek): In c++17 we'll be able to initialize host_compute_core
+  // without losing aggregate initialization, which allows us to get rid of
+  // the constructor definitions again.
+  XlaClusterInfo() {}
+  XlaClusterInfo(const string& cluster_name,
+                 const NameAttrList& func_name_attrs, Node* node,
+                 const std::map<string, int>& host_compute_core)
+      : cluster_name(cluster_name),
+        func_name_attrs(func_name_attrs),
+        node(node),
+        host_compute_core(host_compute_core) {}
+  // XLA cluster name. It might be different from `func_name`.
+  const string cluster_name;
+  // Name and attributes of XLA computation function.
+  const NameAttrList func_name_attrs;
+  // The XLA computation node in the graph.
+  Node* node;
+  // A mapping from outside compilation cluster name to its device assignment.
+  const std::map<string, int> host_compute_core;
+};
+
+// Postprocesses the graph for encapsulation. This function reverts what
+// `PreprocessForEncapsulation` did. It will perform the following operations in
+// order:
+//
+// 1. Remove Placeholder nodes between outside compilation and host computation
+//     (created in `PreprocessForEncapsulation` step 3).
+// 2. Remove Identity nodes created in `PreprocessForEncapsulation` step 2.
+// 3a. Reconnect control edges between different outside compilations (marked by
+//     `PreprocessForEncapsulation` step 1c) and control edges between outside
+//     compilation and host computation (marked by `PreprocessForEncapsulation`
+//     step 1d).
+// 3b. Reconnect control edges between outside compilation and another XLA
+//     computation (marked by `PreprocessForEncapsulation` step 1b).
+// Notice that control edges marked by `PreprocessForEncapsulation` step 1a are
+// not handled here. They are handled in `RewriteOutsideCompilationSubgraphFn`.
+Status PostprocessForEncapsulation(
+    Graph* g, const string& xla_computation_attr_name,
+    const string& outside_compilation_attr_name,
+    const std::unordered_map<string, XlaClusterInfo>& clusters);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_ENCAPSULATE_UTIL_H_

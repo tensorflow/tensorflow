@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -1609,6 +1610,8 @@ def leaky_relu(features, alpha=0.2, name=None):
     if features.dtype.is_integer:
       features = math_ops.to_float(features)
     if compat.forward_compatible(2018, 11, 1):
+      if isinstance(alpha, np.ndarray):
+        alpha = np.asscalar(alpha)
       return gen_nn_ops.leaky_relu(features, alpha=alpha, name=name)
     alpha = ops.convert_to_tensor(alpha, dtype=features.dtype, name="alpha")
     return math_ops.maximum(alpha * features, features, name=name)
@@ -1681,6 +1684,16 @@ def _softmax(logits, compute_op, dim=-1, name=None):
 
   if is_last_dim:
     return compute_op(logits, name=name)
+
+  dim_val = dim
+  if isinstance(dim, ops.Tensor):
+    dim_val = tensor_util.constant_value(dim)
+  if dim_val is not None and (dim_val < -shape.ndims or dim_val >= shape.ndims):
+    raise errors_impl.InvalidArgumentError(
+        None, None,
+        "Dimension (%d) must be in the range [%d, %d) where %d is the number of"
+        " dimensions in the input." % (dim_val, -shape.ndims, shape.ndims,
+                                       shape.ndims))
 
   # If dim is not the last dimension, we have to do a transpose so that we can
   # still perform softmax on its last dimension.
@@ -1771,13 +1784,9 @@ def _ensure_xent_args(name, sentinel, labels, logits):
     raise ValueError("Both labels and logits must be provided.")
 
 
-@tf_export("nn.softmax_cross_entropy_with_logits_v2")
-def softmax_cross_entropy_with_logits_v2(
-    _sentinel=None,  # pylint: disable=invalid-name
-    labels=None,
-    logits=None,
-    dim=-1,
-    name=None):
+@tf_export("nn.softmax_cross_entropy_with_logits",
+           v1=["nn.softmax_cross_entropy_with_logits_v2"])
+def softmax_cross_entropy_with_logits_v2(labels, logits, dim=-1, name=None):
   """Computes softmax cross entropy between `logits` and `labels`.
 
   Measures the probability error in discrete classification tasks in which the
@@ -1812,7 +1821,6 @@ def softmax_cross_entropy_with_logits_v2(
   this function.**
 
   Args:
-    _sentinel: Used to prevent positional parameters. Internal, do not use.
     labels: Each vector along the class dimension should hold a valid
       probability distribution e.g. for the case in which labels are of shape
       `[batch_size, num_classes]`, each row of `labels[i]` must be a valid
@@ -1826,9 +1834,6 @@ def softmax_cross_entropy_with_logits_v2(
     same as `logits` and its shape is the same as `labels` except that it does
     not have the last dimension of `labels`.
   """
-  _ensure_xent_args("softmax_cross_entropy_with_logits", _sentinel, labels,
-                    logits)
-
   # TODO(pcmurray) Raise an error when the labels do not sum to 1. Note: This
   # could break users who call this with bad labels, but disregard the bad
   # results.
@@ -1900,7 +1905,7 @@ See `tf.nn.softmax_cross_entropy_with_logits_v2`.
 """
 
 
-@tf_export("nn.softmax_cross_entropy_with_logits")
+@tf_export(v1=["nn.softmax_cross_entropy_with_logits"])
 @deprecation.deprecated(date=None, instructions=_XENT_DEPRECATION)
 def softmax_cross_entropy_with_logits(
     _sentinel=None,  # pylint: disable=invalid-name

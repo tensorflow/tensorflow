@@ -38,6 +38,7 @@ if [[ "$ubuntu_version" == "14" ]]; then
   apt-get dist-upgrade -y
 fi
 
+## TODO(yifeif) remove ffmpeg once ffmpeg is removed from contrib
 apt-get install -y --no-install-recommends \
     autoconf \
     automake \
@@ -60,9 +61,9 @@ apt-get install -y --no-install-recommends \
     python3-setuptools \
     rsync \
     sudo \
-    subversion \
     swig \
     unzip \
+    vim \
     wget \
     zip \
     zlib1g-dev

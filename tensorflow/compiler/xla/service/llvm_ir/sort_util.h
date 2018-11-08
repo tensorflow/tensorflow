@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
@@ -33,9 +34,10 @@ namespace llvm_ir {
 // the inner compare loop will not be parallelized.
 Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
                        const std::vector<IrArray>& values_arrays,
-                       absl::string_view name, llvm::Value* xor_mask,
-                       llvm::IRBuilder<>* b,
-                       const gpu::LaunchDimensions* launch_dimensions);
+                       absl::string_view name,
+                       absl::Span<const int64> xor_masks, llvm::IRBuilder<>* b,
+                       const gpu::LaunchDimensions& launch_dimensions,
+                       int64 tile_size);
 }  // namespace llvm_ir
 }  // namespace xla
 

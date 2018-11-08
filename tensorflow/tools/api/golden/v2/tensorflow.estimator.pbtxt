@@ -29,7 +29,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "DNNEstimator"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "DNNLinearCombinedClassifier"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "DNNLinearCombinedEstimator"
     mtype: "<type \'type\'>"
   }
   member {
@@ -69,6 +77,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LinearEstimator"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LinearRegressor"
     mtype: "<type \'type\'>"
   }
@@ -103,6 +115,10 @@ tf_module {
   member {
     name: "inputs"
     mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "add_metrics"
+    argspec: "args=[\'estimator\', \'metric_fn\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "classifier_parse_example_spec"

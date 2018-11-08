@@ -58,6 +58,21 @@ def _make_getter(captured_getter, captured_previous):
   return getter
 
 
+def _has_cycle(op, path):
+  """Detect cycles in the dependencies of `initial_value`."""
+  if op.name in path:
+    return True
+  path.add(op.name)
+  for op_input in op.inputs:
+    if _has_cycle(op_input.op, path):
+      return True
+  for op_control_input in op.control_inputs:
+    if _has_cycle(op_control_input, path):
+      return True
+  path.remove(op.name)
+  return False
+
+
 @tf_export("VariableSynchronization")
 class VariableSynchronization(enum.Enum):
   """Indicates when a distributed variable will be synced.
@@ -2172,20 +2187,7 @@ class RefVariable(VariableV1):
       raise TypeError("initial_value needs to be a Tensor: %s" % initial_value)
 
     # Don't modify initial_value if it contains any cyclic dependencies.
-    def has_cycle(op, path):
-      """Detect cycles in the dependencies of `initial_value`."""
-      if op.name in path:
-        return True
-      path.add(op.name)
-      for op_input in op.inputs:
-        if has_cycle(op_input.op, path):
-          return True
-      for op_control_input in op.control_inputs:
-        if has_cycle(op_control_input, path):
-          return True
-      path.remove(op.name)
-      return False
-    if has_cycle(initial_value.op, path=set()):
+    if _has_cycle(initial_value.op, path=set()):
       return initial_value
 
     return self._safe_initial_value_from_tensor(initial_value, op_cache={})
@@ -2655,33 +2657,33 @@ class PartitionedVariable(object):
       value_list = array_ops.split(value, size_splits_list, axis=partition_ix)
 
     op_list = [
-        assign_fn(var, value_list[idx], idx)
+        assign_fn(var, value_list[idx])
         for idx, var in enumerate(self._variable_list)
     ]
     return op_list
 
   def assign(self, value, use_locking=False, name=None, read_value=True):
-    assign_fn = lambda var, r_value, idx: var.assign(
+    assign_fn = lambda var, r_value: var.assign(
         r_value, use_locking=use_locking,
-        name="%s_%d" % (name, idx), read_value=read_value)
+        name=name, read_value=read_value)
     assign_list = self._apply_assign_fn(assign_fn, value)
     if read_value:
       return assign_list
     return [assign.op for assign in assign_list]
 
   def assign_add(self, value, use_locking=False, name=None, read_value=True):
-    assign_fn = lambda var, r_value, idx: var.assign_add(
+    assign_fn = lambda var, r_value: var.assign_add(
         r_value, use_locking=use_locking,
-        name="%s_%d" % (name, idx), read_value=read_value)
+        name=name, read_value=read_value)
     assign_list = self._apply_assign_fn(assign_fn, value)
     if read_value:
       return assign_list
     return [assign.op for assign in assign_list]
 
   def assign_sub(self, value, use_locking=False, name=None, read_value=True):
-    assign_fn = lambda var, r_value, idx: var.assign_sub(
+    assign_fn = lambda var, r_value: var.assign_sub(
         r_value, use_locking=use_locking,
-        name="%s_%d" % (name, idx), read_value=read_value)
+        name=name, read_value=read_value)
     assign_list = self._apply_assign_fn(assign_fn, value)
     if read_value:
       return assign_list

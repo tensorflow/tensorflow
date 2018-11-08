@@ -45,6 +45,7 @@ limitations under the License.
 #include <random>
 #include <unordered_map>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -2465,20 +2466,21 @@ TEST_F(OpTest, Pack) {
   });
 }
 
-// TODO(b/31741898): crashes on GPU.
 TEST_F(OpTest, Pad) {
   Repeatedly([this]() {
     auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64> t_dims = RandomDims();
 
-    // TODO(b/31741996): re-enable DT_INT64 when bug is fixed.
-    // DataType tpaddings = Choose<DataType>({DT_INT32, DT_INT64});
-    DataType tpaddings = DT_INT32;
+    DataType tpaddings = Choose<DataType>({DT_INT32, DT_INT64});
     std::vector<int64> paddings_vec;
-    std::uniform_int_distribution<int> distribution(0, 7);
     for (int i = 0; i < t_dims.size(); ++i) {
-      paddings_vec.push_back(distribution(generator()));
-      paddings_vec.push_back(distribution(generator()));
+      std::uniform_int_distribution<int> pad_distribution(0, t_dims[i]);
+      int pad_size = pad_distribution(generator());
+      std::uniform_int_distribution<int> lower_distribution(0, pad_size);
+      int low_pad_size = lower_distribution(generator());
+      paddings_vec.push_back(low_pad_size);
+      paddings_vec.push_back(pad_size - low_pad_size);
+      t_dims[i] -= pad_size;
     }
     Tensor paddings;
     CHECK(
@@ -2684,6 +2686,37 @@ TEST_F(OpTest, Reverse) {
                                              .RandomInput(type, dims)
                                              .RandomInput(DT_BOOL, {rank})
                                              .Attr("T", type));
+  });
+}
+
+TEST_F(OpTest, ReverseSequence) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims(/*min_rank=*/2);
+    auto type = Choose<DataType>(kAllXlaTypes);
+    int64 rank = dims.size();
+
+    // Choose random batch and sequence dimensions.
+    std::vector<int> shuffled_dim_ids(rank);
+    absl::c_iota(shuffled_dim_ids, 0);
+    absl::c_shuffle(shuffled_dim_ids, generator());
+    shuffled_dim_ids.resize(2);
+    int batch_dim = shuffled_dim_ids[0];
+    int seq_dim = shuffled_dim_ids[1];
+
+    int batch_size = dims[batch_dim];
+    int max_seq_len = dims[seq_dim];
+    std::vector<int32> seq_lens(batch_size);
+    std::uniform_int_distribution<int32> d(0, max_seq_len);
+    absl::c_generate(seq_lens, [&]() { return d(generator()); });
+
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("ReverseSequence")
+            .RandomInput(type, dims)
+            .Input(test::AsTensor<int32>(seq_lens))
+            .Attr("seq_dim", seq_dim)
+            .Attr("batch_dim", batch_dim)
+            .Attr("T", type)
+            .Attr("Tlen", DT_INT32));
   });
 }
 

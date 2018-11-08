@@ -136,6 +136,40 @@ TEST_F(BFloat16PropagationTest, PropagateThroughSelectButNotAdd) {
   EXPECT_FALSE(OutputsBF16(c));
 }
 
+// Tests that side-effecting all-reduce should not be changed.
+TEST_F(BFloat16PropagationTest, DoNotChangeAllReduce) {
+  auto module = CreateNewVerifiedModule();
+
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 4});
+  HloInstruction* a =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "a"));
+  HloInstruction* b =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "b"));
+  auto rb = HloComputation::Builder(TestName());
+  rb.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd,
+      rb.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0")),
+      rb.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"))));
+  auto reduction = module->AddEmbeddedComputation(rb.Build());
+  HloInstruction* all_reduce =
+      builder.AddInstruction(HloInstruction::CreateCrossReplicaSum(
+          ShapeUtil::MakeTupleShape({shape, shape}), {a, b}, reduction,
+          /*replica_groups=*/{}, /*barrier=*/"", /*all_reduce_id=*/1));
+  HloInstruction* gte0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, all_reduce, 0));
+  HloInstruction* gte1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, all_reduce, 1));
+  HloInstruction* dot = builder.AddInstruction(CreateDot(shape, gte0, gte1));
+  HloInstruction* root = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, dot, dot));
+
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_FALSE(PropagatePrecision(module.get()));
+  EXPECT_EQ(computation->root_instruction(), root);
+}
+
 // Tests that if a constant is converted to BF16 then its literal must also be
 // converted.
 TEST_F(BFloat16PropagationTest, ConvertConstantLiteral) {

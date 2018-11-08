@@ -151,15 +151,10 @@ Status BFloat16ConversionFoldingVisitor::TryFoldBF16Conversions(
 
 Status BFloat16ConversionFoldingVisitor::DefaultAction(HloInstruction* hlo) {
   // Do not fold BF16 conversions for instructions related to tuples, entry and
-  // exit of a computation, fusion, convert, and control flow.
+  // exit of a computation, fusion, convert, side-effecting instructions and
+  // control flow.
   if (hlo->opcode() == HloOpcode::kTuple ||            //
       hlo->opcode() == HloOpcode::kGetTupleElement ||  //
-      hlo->opcode() == HloOpcode::kInfeed ||           //
-      hlo->opcode() == HloOpcode::kOutfeed ||          //
-      hlo->opcode() == HloOpcode::kSend ||             //
-      hlo->opcode() == HloOpcode::kSendDone ||         //
-      hlo->opcode() == HloOpcode::kRecv ||             //
-      hlo->opcode() == HloOpcode::kRecvDone ||         //
       hlo->opcode() == HloOpcode::kConstant ||         //
       hlo->opcode() == HloOpcode::kParameter ||        //
       hlo->opcode() == HloOpcode::kFusion ||           //
@@ -167,7 +162,8 @@ Status BFloat16ConversionFoldingVisitor::DefaultAction(HloInstruction* hlo) {
       hlo->opcode() == HloOpcode::kCall ||             //
       hlo->opcode() == HloOpcode::kCustomCall ||       //
       hlo->opcode() == HloOpcode::kWhile ||            //
-      hlo->opcode() == HloOpcode::kConditional) {
+      hlo->opcode() == HloOpcode::kConditional ||      //
+      hlo->HasSideEffectNoRecurse()) {
     return Status::OK();
   }
   if (hlo == computation_->root_instruction() &&
@@ -182,6 +178,10 @@ Status BFloat16ConversionFoldingVisitor::DefaultAction(HloInstruction* hlo) {
 
 Status BFloat16ConversionFoldingVisitor::HandleCrossReplicaSum(
     HloInstruction* crs) {
+  if (crs->IsCrossModuleAllReduce()) {
+    // Cross-module all-reduce has side effect.
+    return Status::OK();
+  }
   // First use DefaultAction() to handle the operands. It can't handle
   // tuple-shaped output.
   TF_RETURN_IF_ERROR(DefaultAction(crs));

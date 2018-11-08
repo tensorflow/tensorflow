@@ -87,12 +87,16 @@ Status ProcessControlEdges(Graph* g, const string& xla_computation_attr_name,
     } else if (src_xla_computation && !dst_xla_computation) {
       if (src_outside_compilation) {
         // Case 1d: outside compilation to host computation control edge.
+        edges_to_remove.push_back(e);
+
         TF_RETURN_IF_ERROR(AppendToListAttr<string>(
             e->dst(), kXlaControlDependenciesAttrName, e->src()->name()));
       }
     } else if (!src_xla_computation && dst_xla_computation) {
       if (dst_outside_compilation) {
         // Case 1d: host computation control to outside compilation edge.
+        edges_to_remove.push_back(e);
+
         TF_RETURN_IF_ERROR(AppendToListAttr<string>(
             e->dst(), kXlaControlDependenciesAttrName, e->src()->name()));
       }
@@ -311,7 +315,6 @@ Status ProcessDataEdgeBetweenOutsideCompilationAndHostComputation(
       placeholder_node = iter->second;
     }
     g->AddEdge(placeholder_node, 0, dst, dst_input);
-    g->RemoveEdge(e);
 
     // Replace `e->dst()` because its input node changed.
     NodeDef new_def = dst->def();
@@ -327,6 +330,267 @@ Status ProcessDataEdgeBetweenOutsideCompilationAndHostComputation(
       }
     }
   }
+  return Status::OK();
+}
+
+// Step 1 for `PostprocessForEncapsulation`. See comments of
+// `PostprocessForEncapsulation` for details.
+Status RemovePlaceholderBetweenOutsideCompilationAndHostComputation(Graph* g) {
+  // Gather all outside compilation to host computation nodes.
+  struct PlaceHolderNodeInfo {
+    Node* n;
+    bool is_host_to_oc;
+  };
+  std::vector<PlaceHolderNodeInfo> placeholder_nodes;
+  for (Node* n : g->nodes()) {
+    if (n->type_string() == "Placeholder") {
+      if (HasNodeAttr(n->def(),
+                      kOutsideCompilationToHostOriginalNodeAttrName)) {
+        placeholder_nodes.push_back({n, false});
+      } else if (HasNodeAttr(n->def(),
+                             kHostToOutsideCompilationOriginalNodeAttrName)) {
+        placeholder_nodes.push_back({n, true});
+      }
+    }
+  }
+
+  // Remove the placeholder nodes, and reconnect original edge.
+  auto node_name_index = g->BuildNodeNameIndex();
+  for (auto placeholder_iter : placeholder_nodes) {
+    Node* n = placeholder_iter.n;
+
+    string node_name;
+    int node_src_output;
+    if (placeholder_iter.is_host_to_oc) {
+      TF_RETURN_IF_ERROR(
+          GetNodeAttr(n->attrs(), kHostToOutsideCompilationOriginalNodeAttrName,
+                      &node_name));
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(),
+                                     kHostToOutsideCompilationSrcOutputAttrName,
+                                     &node_src_output));
+    } else {
+      TF_RETURN_IF_ERROR(
+          GetNodeAttr(n->attrs(), kOutsideCompilationToHostOriginalNodeAttrName,
+                      &node_name));
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(),
+                                     kOutsideCompilationToHostSrcOutputAttrName,
+                                     &node_src_output));
+    }
+    auto iter = node_name_index.find(node_name);
+    if (iter == node_name_index.end()) {
+      return errors::Internal(
+          "Cannot find original node for oc -> host placeholder node ",
+          node_name);
+    }
+
+    // Change all usage node to use the original node instead.
+    Node* original_node = iter->second;
+    std::vector<const Edge*> control_edges;
+    std::vector<OutEdgeInfo> data_edges;
+    for (auto e : n->out_edges()) {
+      if (e->IsControlEdge()) {
+        control_edges.push_back(e);
+      } else {
+        data_edges.push_back({e->dst(), e->src_output(), e->dst_input()});
+      }
+    }
+    for (const Edge* e : control_edges) {
+      g->AddControlEdge(original_node, e->dst());
+      g->RemoveEdge(e);
+    }
+    for (int i = 0; i < data_edges.size(); i++) {
+      Node* dst = data_edges[i].dst;
+      NodeDef new_def = dst->def();
+      int dst_input = data_edges[i].dst_input;
+      *new_def.mutable_input(dst_input) =
+          absl::StrCat(original_node->name(), ":", node_src_output);
+      TF_ASSIGN_OR_RETURN(Node * replace_node, ReplaceNode(g, dst, new_def));
+
+      const Edge* edge_to_replace = nullptr;
+      TF_RETURN_IF_ERROR(replace_node->input_edge(dst_input, &edge_to_replace));
+      g->RemoveEdge(edge_to_replace);
+      g->AddEdge(original_node, node_src_output, replace_node, dst_input);
+
+      // Other edges might have `dst` as dst node. Update those edges with
+      // `replace_node`.
+      for (int j = i + 1; j < data_edges.size(); j++) {
+        if (data_edges[j].dst == dst) {
+          data_edges[j].dst = replace_node;
+        }
+      }
+
+      // Other placeholder node might have `dst` as original node. Update
+      // `node_name_index` with `replace_node`.
+      node_name_index[replace_node->name()] = replace_node;
+    }
+
+    // Remove placeholder node.
+    g->RemoveNode(n);
+  }
+  return Status::OK();
+}
+
+// Step 2 for `PostprocessForEncapsulation`. See comments of
+// `PostprocessForEncapsulation` for details.
+Status RemoveIdentityBetweenDifferentXlaComputation(Graph* g) {
+  // Gather Identity nodes to remove.
+  std::vector<Node*> bridge_nodes;
+  for (Node* n : g->nodes()) {
+    if (n->type_string() == "Identity" &&
+        HasNodeAttr(n->def(), kBridgeSourceNodeAttrName)) {
+      bridge_nodes.push_back(n);
+    }
+  }
+
+  // Remove the identity nodes, and reconnect the original edge.
+  for (int i = 0; i < bridge_nodes.size(); i++) {
+    Node* n = bridge_nodes[i];
+    const Edge* src_edge = nullptr;
+    TF_RETURN_IF_ERROR(n->input_edge(0, &src_edge));
+
+    // Change all usage node to use the original node instead.
+    std::vector<const Edge*> control_edges;
+    std::vector<OutEdgeInfo> data_edges;
+    for (auto e : n->out_edges()) {
+      if (e->IsControlEdge()) {
+        control_edges.push_back(e);
+      } else {
+        data_edges.push_back({e->dst(), e->src_output(), e->dst_input()});
+      }
+    }
+    for (const Edge* e : control_edges) {
+      g->AddControlEdge(src_edge->src(), e->dst());
+      g->RemoveEdge(e);
+    }
+    for (int j = 0; j < data_edges.size(); j++) {
+      Node* dst = data_edges[j].dst;
+      NodeDef new_def = dst->def();
+      int dst_input = data_edges[j].dst_input;
+      *new_def.mutable_input(dst_input) =
+          absl::StrCat(src_edge->src()->name(), ":", src_edge->src_output());
+      TF_ASSIGN_OR_RETURN(Node * replace_node, ReplaceNode(g, dst, new_def));
+
+      const Edge* edge_to_replace = nullptr;
+      TF_RETURN_IF_ERROR(replace_node->input_edge(dst_input, &edge_to_replace));
+      g->RemoveEdge(edge_to_replace);
+      g->AddEdge(src_edge->src(), src_edge->src_output(), replace_node,
+                 dst_input);
+
+      // Other edges might have `dst` as dst node. Update those edges with
+      // `replace_node`.
+      for (int k = j + 1; k < data_edges.size(); k++) {
+        if (data_edges[k].dst == dst) {
+          data_edges[k].dst = replace_node;
+        }
+      }
+
+      // The node we replaced might be in `bridge_nodes`. If so, update
+      // `bridge_nodes` to use the replaced node.
+      for (int k = i + 1; k < bridge_nodes.size(); k++) {
+        if (bridge_nodes[k] == dst) {
+          bridge_nodes[k] = replace_node;
+        }
+      }
+    }
+
+    // Remove Identity node.
+    g->RemoveNode(n);
+  }
+  return Status::OK();
+}
+
+// Step 3 for `PostprocessForEncapsulation`. See comments of
+// `PostprocessForEncapsulation` for details.
+// We do not need to worry about removed nodes in step 1 and 2;
+// `PreprocessForEncapsulation` will not record control dependencies for those
+// remvoed nodes in the first place.
+Status AddControlDependencies(
+    Graph* g, const std::unordered_map<string, string>& cluster_node_names) {
+  auto node_name_index = g->BuildNodeNameIndex();
+
+  // Reconnect outside compilation to outside compilation control edge.
+  for (Node* n : g->nodes()) {
+    std::vector<string> control_deps;
+    Status s =
+        GetNodeAttr(n->attrs(), kXlaControlDependenciesAttrName, &control_deps);
+    if (!s.ok()) {
+      if (s.code() != error::NOT_FOUND) {
+        return s;
+      } else {
+        continue;
+      }
+    } else {
+      n->ClearAttr(kXlaControlDependenciesAttrName);
+      for (const string& control_input : control_deps) {
+        auto iter = node_name_index.find(control_input);
+        if (iter == node_name_index.end()) {
+          return errors::Internal("Cannot find original node for ",
+                                  control_input);
+        }
+        g->AddControlEdge(iter->second, n);
+      }
+    }
+  }
+
+  // Reconnect outside compilation to XLA computation control edge.
+  for (Node* n : g->nodes()) {
+    std::vector<string> control_deps;
+    Status s = GetNodeAttr(
+        n->attrs(), kXlaConnectedToOtherXlaComputationAttrName, &control_deps);
+    if (!s.ok()) {
+      if (s.code() != error::NOT_FOUND) {
+        return s;
+      } else {
+        continue;
+      }
+    } else {
+      n->ClearAttr(kXlaConnectedToOtherXlaComputationAttrName);
+      for (const string& control_input : control_deps) {
+        auto iter = cluster_node_names.find(control_input);
+        if (iter == cluster_node_names.end()) {
+          return errors::Internal("Cannot find cluster node for ",
+                                  control_input);
+        }
+        auto iter2 = node_name_index.find(iter->second);
+        if (iter2 == node_name_index.end()) {
+          return errors::Internal("Cannot find cluster node for ",
+                                  iter->second);
+        }
+        g->AddControlEdge(n, iter2->second);
+      }
+    }
+  }
+
+  // Reconnect XLA computation to outside compilation control edge.
+  for (Node* n : g->nodes()) {
+    std::vector<string> control_deps;
+    Status s =
+        GetNodeAttr(n->attrs(), kXlaConnectedFromOtherXlaComputationAttrName,
+                    &control_deps);
+    if (!s.ok()) {
+      if (s.code() != error::NOT_FOUND) {
+        return s;
+      } else {
+        continue;
+      }
+    } else {
+      n->ClearAttr(kXlaConnectedFromOtherXlaComputationAttrName);
+      for (const string& control_input : control_deps) {
+        auto iter = cluster_node_names.find(control_input);
+        if (iter == cluster_node_names.end()) {
+          return errors::Internal("Cannot find cluster node for ",
+                                  control_input);
+        }
+        auto iter2 = node_name_index.find(iter->second);
+        if (iter2 == node_name_index.end()) {
+          return errors::Internal("Cannot find cluster node for ",
+                                  iter->second);
+        }
+        g->AddControlEdge(iter2->second, n);
+      }
+    }
+  }
+
   return Status::OK();
 }
 
@@ -413,6 +677,25 @@ Status PreprocessForEncapsulation(Graph* g,
                                               outside_compilation_attr_name));
   TF_RETURN_IF_ERROR(ProcessDataEdgeBetweenOutsideCompilationAndHostComputation(
       g, xla_computation_attr_name, outside_compilation_attr_name));
+  return Status::OK();
+}
+
+Status PostprocessForEncapsulation(
+    Graph* g, const string& xla_computation_attr_name,
+    const string& outside_compilation_attr_name,
+    const std::unordered_map<string, XlaClusterInfo>& clusters) {
+  // The `node` pointer in `XlaClusterInfo` might be invalidated in step 1/2,
+  // but the node name won't change. Record cluster node name for
+  // `AddControlDependencies`.
+  std::unordered_map<string, string> cluster_node_names;
+  for (const auto& iter : clusters) {
+    cluster_node_names[iter.first] = iter.second.node->name();
+  }
+
+  TF_RETURN_IF_ERROR(
+      RemovePlaceholderBetweenOutsideCompilationAndHostComputation(g));
+  TF_RETURN_IF_ERROR(RemoveIdentityBetweenDifferentXlaComputation(g));
+  TF_RETURN_IF_ERROR(AddControlDependencies(g, cluster_node_names));
   return Status::OK();
 }
 

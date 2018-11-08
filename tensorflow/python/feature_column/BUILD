@@ -125,6 +125,7 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
+        "//third_party/py/numpy",
     ],
 )
 

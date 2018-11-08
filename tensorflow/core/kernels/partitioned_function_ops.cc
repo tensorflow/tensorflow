@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
@@ -55,6 +56,7 @@ class PartitionedCallOp : public AsyncOpKernel {
         ctx, rewriter_config_.ParseFromString(rewriter_config_serialized),
         errors::InvalidArgument("Unable to parse rewriter_config string as "
                                 "tensorflow::RewriterConfig proto."));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("executor_type", &executor_type_));
   }
 
   ~PartitionedCallOp() override {}
@@ -129,8 +131,11 @@ class PartitionedCallOp : public AsyncOpKernel {
                              "find cached function partitions; "
                              "this indicates a bug."),
             done);
-        FunctionLibraryDefinition* overlay_lib =
-            new FunctionLibraryDefinition(*lib->GetFunctionLibraryDefinition());
+        // We do not need a full function library in the overlay, we just keep a
+        // subset that is reachable from the instantiated function.
+        FunctionLibraryDefinition* overlay_lib = new FunctionLibraryDefinition(
+            grappler::ReachableFunctionLibraryDefinition(
+                *lib->GetFunctionLibraryDefinition(), fbody->fdef));
         overlay_libs_.emplace(lib, overlay_lib);
 
         GraphOptimizationPassOptions optimization_options;
@@ -213,6 +218,7 @@ class PartitionedCallOp : public AsyncOpKernel {
               ctx, GraphToFunctionDef(*subgraph, unique_name, &shard), done);
           OP_REQUIRES_OK_ASYNC(ctx, overlay_lib->AddFunctionDef(shard), done);
           FunctionLibraryRuntime::InstantiateOptions opts;
+          opts.executor_type = executor_type_;
           opts.target = target;
           opts.overlay_lib = overlay_lib;
           FHandle handle;
@@ -557,6 +563,7 @@ class PartitionedCallOp : public AsyncOpKernel {
 
   NameAttrList func_;
   RewriterConfig rewriter_config_;
+  string executor_type_;
   // Contains maps from device names to handles of function partitions, keyed by
   // FunctionLibraryRuntime pointers. (Because this kernel may be instantiated
   // for a stateful op, different invocations of it may use different

@@ -1640,8 +1640,8 @@ class CollectionTest(test_util.TensorFlowTestCase):
 
         self.assertEqual(ops.get_collection("int"), [1])
         three = inner_defun()
-        self.assertEqual(ops.get_collection("int"), [1, 2])
-        self.assertEqual(ops.get_collection("foo"), ["bar"])
+        self.assertEqual(ops.get_collection("int"), [1])
+        self.assertEqual(ops.get_collection("foo"), [])
         return three
 
       three = defun()
@@ -2291,6 +2291,19 @@ class InitScopeTest(test_util.TensorFlowTestCase):
       foo_compiled = eager_function.defun(foo)
       foo_compiled()
       self.assertEqual(ops.get_name_scope(), "")
+
+  def testExecutingEagerlyOutsideFunctions(self):
+
+    @eager_function.defun
+    def f():
+      return ops.executing_eagerly_outside_functions()
+
+    with context.eager_mode():
+      self.assertTrue(ops.executing_eagerly_outside_functions())
+      self.assertTrue(f())
+      g = ops.Graph()
+      with g.as_default():
+        self.assertFalse(ops.executing_eagerly_outside_functions())
 
 
 class GraphTest(test_util.TensorFlowTestCase):

@@ -22,7 +22,6 @@ import collections
 import weakref
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.python import autograph
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
@@ -35,12 +34,25 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.lazy_loader import LazyLoader
 
 # This is to avoid a circular dependency:
 # function -> func_graph
 function = LazyLoader("function", globals(),
                       "tensorflow.python.eager.function")
+def_function = LazyLoader(
+    "def_function", globals(),
+    "tensorflow.python.eager.def_function")
+
+WHITELIST_COLLECTIONS = [
+    ops.GraphKeys.GLOBAL_VARIABLES,
+    ops.GraphKeys.LOCAL_VARIABLES,
+    ops.GraphKeys.TRAINABLE_VARIABLES,
+    variable_scope._VARSTORE_KEY,  # pylint: disable=protected-access
+    variable_scope._VARSCOPESTORE_KEY  # pylint: disable=protected-access
+]
 
 
 class FuncGraph(ops.Graph):
@@ -65,7 +77,7 @@ class FuncGraph(ops.Graph):
     seed: The graph-level random seed.
   """
 
-  def __init__(self, name):
+  def __init__(self, name, read_only_collections=True):
     """Construct a new FuncGraph.
 
     The graph will inherit its graph key, collections, seed, and distribution
@@ -73,6 +85,8 @@ class FuncGraph(ops.Graph):
 
     Args:
       name: the name of the function.
+      read_only_collections: whether to not write function graph collections
+        back to default graph. Defaults to True.
     """
     super(FuncGraph, self).__init__()
 
@@ -80,6 +94,7 @@ class FuncGraph(ops.Graph):
     self.inputs = []
     self.outputs = []
     self.structured_outputs = None
+    self._read_only_collections = read_only_collections
     self._weak_variables = []
     self.outer_graph = ops.get_default_graph()
     self.captures = collections.OrderedDict()
@@ -120,11 +135,17 @@ class FuncGraph(ops.Graph):
           or device_stack_has_callable(graph._device_function_stack)):
         # Hard-code devices from device functions in the function body
         self._device_function_stack = graph._device_function_stack.copy()
-    # TODO(b/112165328, b/112906995): summaries depend on inheriting collections
-    # from the default graph even in eager mode. It'd be nice to not have a
-    # default graph with eager execution, so hopefully this will go away when we
-    # remove collections.
-    self._collections = graph._collections
+    if not self._read_only_collections:
+      self._collections = graph._collections
+    else:
+      for collection_name in graph.get_all_collection_keys():
+        if collection_name not in WHITELIST_COLLECTIONS:
+          self._collections[collection_name] = graph.get_collection(
+              collection_name)
+      for collection_name in WHITELIST_COLLECTIONS:
+        self._collections[collection_name] = graph.get_collection_ref(
+            collection_name)
+
     self._variable_creator_stack = graph._variable_creator_stack
     # Inherit the graph key, since this is used for matching variables in
     # optimizers.
@@ -331,6 +352,7 @@ def func_graph_from_py_func(name,
       args = signature
       kwargs = {}
 
+    # Creates and names placeholders for all arguments.
     func_args = _get_defun_inputs_from_args(args, arg_names)
     func_kwargs = _get_defun_inputs_from_kwargs(kwargs)
 
@@ -367,14 +389,26 @@ def func_graph_from_py_func(name,
     this_tape = tape.push_new_tape()
     try:
       if experimental_autograph:
+        from tensorflow.python import autograph  # pylint: disable=g-import-not-at-top
+        _, original_func = tf_decorator.unwrap(python_func)
+
+        # AutoGraph does not yet rebind the returned method, and must receive
+        # `self` explicitly.
+        # TODO(mdan): Have the result automatically bind it instead.
+        if (tf_inspect.ismethod(original_func) and
+            hasattr(original_func, "__self__")):
+          effective_func_args = (original_func.__self__,) + func_args
+        else:
+          effective_func_args = func_args
+
         func_outputs = autograph.converted_call(
-            python_func, None,
+            original_func, None,
             autograph.ConversionOptions(
                 verbose=True,
                 recursive=True,
-                strip_decorators=(function.defun,),
+                strip_decorators=(function.defun, def_function.function),
                 optional_features=(),
-            ), *func_args, **func_kwargs)
+            ), *effective_func_args, **func_kwargs)
       else:
         func_outputs = python_func(*func_args, **func_kwargs)
       # invariant: `func_outputs` contains only Tensors and `None`s.
@@ -393,15 +427,11 @@ def func_graph_from_py_func(name,
     inputs = []
     for arg in nest.flatten(func_args) + nest.flatten(func_kwargs):
       if isinstance(arg, resource_variable_ops.ResourceVariable):
-        try:
-          resource_placeholder = func_graph.captures.pop(arg.handle)
-          arg_variables.add(arg)
-        except KeyError:
-          # This case occurs if a Variable among the inputs is not actually
-          # used by the function; we still add an explicit input for it
-          # because the user should presumably pass the Variable as an input
-          # to the corresponding graph function.
-          resource_placeholder = _create_substitute_placeholder(arg.handle)
+        # Even if an argument variable was not used in the function, we've
+        # already manually captured the resource Tensor when creating argument
+        # placeholders.
+        resource_placeholder = func_graph.captures.pop(arg.handle)
+        arg_variables.add(arg)
         inputs.append(resource_placeholder)
       elif isinstance(arg, ops.Tensor):
         inputs.append(arg)
@@ -425,6 +455,24 @@ def func_graph_from_py_func(name,
         context.add_function(f._c_func.func)  # pylint: disable=protected-access
 
   return func_graph
+
+
+def maybe_captured(tensor):
+  """If t is a captured value placeholder, returns the original captured value.
+
+  Args:
+    tensor: Tensor.
+
+  Returns:
+    A tensor, potentially from a different Graph/FuncGraph.
+  """
+  if (not isinstance(tensor, ops.EagerTensor) and
+      tensor.op.graph.building_function and tensor.op.type == "Placeholder"):
+    for input_t, placeholder_t in tensor.op.graph.captures.items():
+      if tensor == placeholder_t:
+        return maybe_captured(input_t)
+  # pylint: enable=protected-access
+  return tensor
 
 
 def device_stack_has_callable(device_stack):
@@ -493,6 +541,7 @@ def _get_defun_inputs(flat_args, names, structure):
   Returns:
     Placeholders with the same structure as `structure`.
   """
+  func_graph = ops.get_default_graph()
   function_inputs = []
   if names is None:
     names = [None] * len(flat_args)
@@ -513,6 +562,16 @@ def _get_defun_inputs(flat_args, names, structure):
               "_user_specified_name",
               attr_value_pb2.AttrValue(s=compat.as_bytes(requested_name)))
         function_inputs.append(placeholder)
+      elif isinstance(arg, resource_variable_ops.ResourceVariable):
+        # Capture arg variables to create placeholders for them. These will be
+        # removed as captures after the function is traced (since otherwise we'd
+        # just add it back with a new placeholder when the variable was
+        # referenced).
+        placeholder = func_graph.capture(arg.handle, name=name)
+        placeholder.op._set_attr(  # pylint: disable=protected-access
+            "_user_specified_name",
+            attr_value_pb2.AttrValue(s=compat.as_bytes(name)))
+        function_inputs.append(arg)
       else:
         function_inputs.append(arg)
   return nest.pack_sequence_as(structure, function_inputs)

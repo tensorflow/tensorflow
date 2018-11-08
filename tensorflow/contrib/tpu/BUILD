@@ -18,6 +18,7 @@ package(
         "//learning/deepmind:__subpackages__",
         "//medical/pathology:__subpackages__",
         "//tensorflow:__subpackages__",
+        "//vr/perception:__subpackages__",
     ],
 )
 
@@ -208,7 +209,9 @@ py_library(
         "//cloud/vmm/testing/tests/tpu:__subpackages__",
         "//learning/brain:__subpackages__",
         "//tensorflow:__subpackages__",
-        "//third_party/cloud_tpu/models/keras:__subpackages__",
+        "//third_party/cloud_tpu/models/keras_colab:__subpackages__",
+        "//third_party/cloud_tpu/models/mnist_keras:__subpackages__",
+        "//third_party/cloud_tpu/models/resnet50_keras:__subpackages__",
     ],
     deps = [
         ":tpu_lib",
@@ -243,6 +246,7 @@ py_library(
         "python/tpu/bfloat16.py",
         "python/tpu/device_assignment.py",
         "python/tpu/session_support.py",
+        "python/tpu/tensor_tracer.py",
         "python/tpu/topology.py",
         "python/tpu/tpu.py",
         "python/tpu/tpu_feed.py",

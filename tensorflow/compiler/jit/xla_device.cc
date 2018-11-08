@@ -201,12 +201,18 @@ XlaDevice::XlaDevice(const SessionOptions& session_options,
       jit_device_name_(options.compilation_device_name),
       platform_(options.platform),
       use_multiple_streams_(options.use_multiple_streams),
-      transfer_as_literal_(options.transfer_as_literal),
       shape_representation_fn_(options.shape_representation_fn) {
   VLOG(1) << "Created XLA device " << options.compilation_device_name << " "
           << this;
   thread_pool_.reset(new thread::ThreadPool(session_options.env, "xla_device",
                                             /*num_threads=*/1));
+
+  // We have multiple device to device streams to allow for some concurrency
+  // between transfers. The particular value of '4' is chosen fairly
+  // arbitrarily. It may be necessary to make this tunable via
+  // XlaDevice::Options.
+  static constexpr int kNumDeviceToDeviceStreams = 4;
+  device_to_device_streams_.resize(kNumDeviceToDeviceStreams);
 }
 
 XlaDevice::~XlaDevice() {
@@ -274,8 +280,9 @@ xla::StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextLocked() {
   TF_RETURN_IF_ERROR(EnsureStreamOkLocked(backend, "stream", &stream_,
                                           &need_new_device_context));
 
-  std::shared_ptr<se::Stream> host_to_device_stream = stream_;
-  std::shared_ptr<se::Stream> device_to_host_stream = stream_;
+  std::shared_ptr<se::Stream> host_to_device_stream;
+  std::shared_ptr<se::Stream> device_to_host_stream;
+  std::vector<std::shared_ptr<se::Stream>> device_to_device_streams;
   if (use_multiple_streams_) {
     TF_RETURN_IF_ERROR(EnsureStreamOkLocked(backend, "host_to_device_stream",
                                             &host_to_device_stream_,
@@ -283,8 +290,18 @@ xla::StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextLocked() {
     TF_RETURN_IF_ERROR(EnsureStreamOkLocked(backend, "device_to_host_stream",
                                             &device_to_host_stream_,
                                             &need_new_device_context));
+    for (std::shared_ptr<se::Stream>& stream : device_to_device_streams_) {
+      TF_RETURN_IF_ERROR(
+          EnsureStreamOkLocked(backend, "device_to_device_stream", &stream,
+                               &need_new_device_context));
+    }
     host_to_device_stream = host_to_device_stream_;
     device_to_host_stream = device_to_host_stream_;
+    device_to_device_streams = device_to_device_streams_;
+  } else {
+    host_to_device_stream = stream_;
+    device_to_host_stream = stream_;
+    device_to_device_streams = {stream_};
   }
 
   if (!need_new_device_context) {
@@ -302,8 +319,9 @@ xla::StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextLocked() {
   // ensures that the streams remain live for the duration of a run, even if
   // an error is encountered and the streams are replaced with new ones.
   device_context_ = new XlaDeviceContext(
-      stream_, host_to_device_stream, device_to_host_stream, client(),
-      transfer_as_literal_, shape_representation_fn_, thread_pool_.get());
+      stream_, std::move(host_to_device_stream),
+      std::move(device_to_host_stream), std::move(device_to_device_streams),
+      client(), shape_representation_fn_, thread_pool_.get());
   VLOG(1) << "XlaDevice " << this << " new XlaDeviceContext "
           << device_context_;
 

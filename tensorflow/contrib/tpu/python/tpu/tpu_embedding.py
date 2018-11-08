@@ -284,6 +284,8 @@ class TPUEmbedding(object):
   # could have a field to indicate that the feature should not be used to
   # update embedding table (cr/204852758, cr/204940540). Also, this can support
   # different combiners for different features within the same table.
+  # TODO(shizhiw, b/118512626): Remove `batch_size` from `__init__` and move it
+  # to `FeatureConfig`?
 
   # TODO(shizhiw): will it be cleaner to make `table_to_config_dict` and
   # `feature_to_table_dict` lists of `TableSpec` and `FeatureSpec` respectively?
@@ -317,7 +319,7 @@ class TPUEmbedding(object):
       mode: `TRAINING` or `INFERENCE`.
       optimization_parameters: `AdagradParameters`, `AdamParameters`,
         `Stochasticgradientdescentparameters`. Must be set in training and must
-        not be `None` in inference.
+        be `None` in inference.
       tpu_embedding_test: A `bool`. Only used for testing.
 
     Raises:

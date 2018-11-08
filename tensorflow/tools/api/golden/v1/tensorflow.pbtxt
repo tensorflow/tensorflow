@@ -313,10 +313,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "contrib"
-    mtype: "<class \'tensorflow.python.util.lazy_loader.LazyLoader\'>"
-  }
-  member {
     name: "data"
     mtype: "<type \'module\'>"
   }
@@ -342,6 +338,10 @@ tf_module {
   }
   member {
     name: "estimator"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "experimental"
     mtype: "<type \'module\'>"
   }
   member {
@@ -422,6 +422,10 @@ tf_module {
   }
   member {
     name: "linalg"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "lite"
     mtype: "<type \'module\'>"
   }
   member {
@@ -1503,6 +1507,10 @@ tf_module {
   member_method {
     name: "matrix_solve_ls"
     argspec: "args=[\'matrix\', \'rhs\', \'l2_regularizer\', \'fast\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'True\', \'None\'], "
+  }
+  member_method {
+    name: "matrix_square_root"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "matrix_transpose"

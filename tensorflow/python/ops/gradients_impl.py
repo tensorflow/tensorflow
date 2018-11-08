@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import collections
 import contextlib
-import enum  # pylint: disable=g-bad-import-order
 import warnings
 
 import numpy as np
@@ -54,9 +53,11 @@ from tensorflow.python.ops import random_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import spectral_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
+
 
 # This is to avoid a circular dependency (eager.function depends on
 # gradients_impl). This is set in eager/function.py.
@@ -263,6 +264,12 @@ def _DefaultGradYs(grad_ys,
               "Gradient type %s generated for variant "
               "tensor %s with type %s must be variant" % (dtypes.as_dtype(
                   grad_y.dtype).name, y, dtypes.as_dtype(y.dtype).name))
+      elif y.dtype == dtypes.resource:
+        # We assume y is the handle of a ResourceVariable. The gradient of a
+        # ResourceVariable should be a numeric value, not another resource.
+        if grad_y.dtype == dtypes.resource:
+          raise TypeError("Input gradient %s for resource tensor %s should not "
+                          "be a resource" % (grad_y, y))
       else:
         raise TypeError(
             "Tensor %s with type %s must be numeric "
@@ -290,18 +297,18 @@ def _DefaultGradYs(grad_ys,
   return new_grad_ys
 
 
-def _IsTrainable(tensor):
+def IsTrainable(tensor):
   dtype = dtypes.as_dtype(tensor.dtype)
   return dtype.base_dtype in (dtypes.float16, dtypes.float32, dtypes.float64,
                               dtypes.complex64, dtypes.complex128,
-                              dtypes.resource)
+                              dtypes.resource, dtypes.variant)
 
 
 def _IsBackpropagatable(tensor):
-  if _IsTrainable(tensor):
+  if IsTrainable(tensor):
     return True
   dtype = dtypes.as_dtype(tensor.dtype)
-  return dtype.base_dtype in (dtypes.bfloat16, dtypes.variant)
+  return dtype.base_dtype == dtypes.bfloat16
 
 
 def _VerifyGeneratedGradients(grads, op):
@@ -533,26 +540,6 @@ def _Consumers(t, func_graphs):
   return consumers
 
 
-@tf_export("UnconnectedGradients")
-class UnconnectedGradients(enum.Enum):
-  """Controls how gradient computation behaves when y does not depend on x.
-
-  The gradient of y with respect to x can be zero in two different ways: there
-  could be no differentiable path in the graph connecting x to y (and so we can
-  statically prove that the gradient is zero) or it could be that runtime values
-  of tensors in a particular execution lead to a gradient of zero (say, if a
-  relu unit happens to not be activated). To allow you to distinguish between
-  these two cases you can choose what value gets returned for the gradient when
-  there is no path in the graph from x to y:
-
-  * `NONE`: Indicates that [None] will be returned if there is no path from x
-    to y
-  * `ZERO`: Indicates that a zero tensor will be returned in the shape of x.
-  """
-  NONE = "none"
-  ZERO = "zero"
-
-
 @tf_export("gradients")
 def gradients(ys,
               xs,
@@ -770,7 +757,7 @@ def _GradientsHelper(ys,
     if loop_state:
       loop_exits = loop_state.ProcessUnusedLoopExits(pending_count, to_ops_set)
       for y in loop_exits:
-        if _IsTrainable(y):
+        if IsTrainable(y):
           _SetGrad(grads, y, loop_state.ZerosLikeForExit(y))
           queue.append(y.op)
 
@@ -836,7 +823,7 @@ def _GradientsHelper(ys,
           # therefore dC/doutput[i] is 0.
           for i, out_grad in enumerate(out_grads):
             if (not isinstance(out_grad, ops.Tensor) and not out_grad) and (
-                (not grad_fn and is_func_call) or _IsTrainable(op.outputs[i])):
+                (not grad_fn and is_func_call) or IsTrainable(op.outputs[i])):
               # Only trainable outputs or outputs for a function call that
               # will use SymbolicGradient get a zero gradient. Gradient
               # functions should ignore the gradient for other outputs.
@@ -941,7 +928,7 @@ def _UpdatePendingAndEnqueueReady(grads, op, queue, pending_count, loop_state,
             # For an unused exit, if it has trainable outputs, backprop
             # a zero gradient. Otherwise, just ignore it.
             for y in grad_state.unused_exits:
-              if _IsTrainable(y):
+              if IsTrainable(y):
                 _SetGrad(grads, y, loop_state.ZerosLikeForExit(y))
               queue.append(y.op)
           else:

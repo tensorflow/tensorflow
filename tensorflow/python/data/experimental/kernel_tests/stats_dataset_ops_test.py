@@ -17,11 +17,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.kernel_tests import stats_dataset_test_base
+from tensorflow.python.data.experimental.ops import batching
+from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.experimental.ops import stats_ops
+from tensorflow.python.data.experimental.ops import stats_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -30,17 +35,43 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
+def function_set_stats_aggregator(dataset,
+                                  aggregator,
+                                  prefix="",
+                                  counter_prefix=""):
+  return dataset.apply(
+      stats_ops.set_stats_aggregator(aggregator, prefix, counter_prefix))
+
+
+def function_apply_options(dataset, aggregator, prefix="", counter_prefix=""):
+  options = dataset_ops.Options()
+  options.experimental_stats = stats_options.StatsOptions(aggregator)
+  options.experimental_stats.latency_all_edges = False
+  if prefix:
+    options.experimental_stats.prefix = prefix
+  if counter_prefix:
+    options.experimental_stats.counter_prefix = counter_prefix
+  return dataset.with_options(options)
+
+
+@parameterized.named_parameters(
+    dict(
+        testcase_name="SetStatsAggregator",
+        dataset_transformation=function_set_stats_aggregator),
+    dict(
+        testcase_name="StatsOptions",
+        dataset_transformation=function_apply_options))
 class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
 
-  def testBytesProduced(self):
-    stats_aggregator = stats_ops.StatsAggregator()
+  def testBytesProduced(self, dataset_transformation):
+    aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).map(
         lambda x: array_ops.tile([x], ops.convert_to_tensor([x]))).apply(
-            stats_ops.bytes_produced_stats("bytes_produced")).apply(
-                stats_ops.set_stats_aggregator(stats_aggregator))
+            stats_ops.bytes_produced_stats("bytes_produced"))
+    dataset = dataset_transformation(dataset, aggregator)
     iterator = dataset.make_initializable_iterator()
     next_element = iterator.get_next()
-    summary_t = stats_aggregator.get_summary()
+    summary_t = aggregator.get_summary()
 
     with self.cached_session() as sess:
       sess.run(iterator.initializer)
@@ -58,14 +89,14 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       self._assertSummaryHasCount(summary_str, "bytes_produced", 100.0)
       self._assertSummaryHasSum(summary_str, "bytes_produced", expected_sum)
 
-  def testLatencyStats(self):
-    stats_aggregator = stats_ops.StatsAggregator()
+  def testLatencyStats(self, dataset_transformation):
+    aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).apply(
-        stats_ops.latency_stats("record_latency")).apply(
-            stats_ops.set_stats_aggregator(stats_aggregator))
+        stats_ops.latency_stats("record_latency"))
+    dataset = dataset_transformation(dataset, aggregator)
     iterator = dataset.make_initializable_iterator()
     next_element = iterator.get_next()
-    summary_t = stats_aggregator.get_summary()
+    summary_t = aggregator.get_summary()
 
     with self.cached_session() as sess:
       sess.run(iterator.initializer)
@@ -77,14 +108,14 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
         sess.run(next_element)
       self._assertSummaryHasCount(sess.run(summary_t), "record_latency", 100.0)
 
-  def testPrefetchBufferUtilization(self):
-    stats_aggregator = stats_ops.StatsAggregator()
+  def testPrefetchBufferUtilization(self, dataset_transformation):
+    aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).map(
-        lambda x: array_ops.tile([x], ops.convert_to_tensor([x]))).prefetch(
-            -1).apply(stats_ops.set_stats_aggregator(stats_aggregator))
+        lambda x: array_ops.tile([x], ops.convert_to_tensor([x]))).prefetch(-1)
+    dataset = dataset_transformation(dataset, aggregator)
     iterator = dataset.make_initializable_iterator()
     next_element = iterator.get_next()
-    summary_t = stats_aggregator.get_summary()
+    summary_t = aggregator.get_summary()
 
     with self.cached_session() as sess:
       sess.run(iterator.initializer)
@@ -104,14 +135,14 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       self._assertSummaryHasCount(summary_str, "Prefetch::buffer_utilization",
                                   100)
 
-  def testPrefetchBufferScalars(self):
-    stats_aggregator = stats_ops.StatsAggregator()
+  def testPrefetchBufferScalars(self, dataset_transformation):
+    aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(10).map(
-        lambda x: array_ops.tile([x], ops.convert_to_tensor([x]))).prefetch(
-            0).apply(stats_ops.set_stats_aggregator(stats_aggregator))
+        lambda x: array_ops.tile([x], ops.convert_to_tensor([x]))).prefetch(0)
+    dataset = dataset_transformation(dataset, aggregator)
     iterator = dataset.make_initializable_iterator()
     next_element = iterator.get_next()
-    summary_t = stats_aggregator.get_summary()
+    summary_t = aggregator.get_summary()
 
     with self.cached_session() as sess:
       sess.run(iterator.initializer)
@@ -126,14 +157,14 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
-  def testFilteredElementsStats(self):
-    stats_aggregator = stats_ops.StatsAggregator()
+  def testFilteredElementsStats(self, dataset_transformation):
+    aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(101).filter(
-        lambda x: math_ops.equal(math_ops.mod(x, 3), 0)).apply(
-            stats_ops.set_stats_aggregator(stats_aggregator))
+        lambda x: math_ops.equal(math_ops.mod(x, 3), 0))
+    dataset = dataset_transformation(dataset, aggregator)
     iterator = dataset.make_initializable_iterator()
     next_element = iterator.get_next()
-    summary_t = stats_aggregator.get_summary()
+    summary_t = aggregator.get_summary()
 
     with self.test_session() as sess:
       sess.run(iterator.initializer)
@@ -151,14 +182,82 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       self._assertSummaryHasScalarValue(
           sess.run(summary_t), "Filter::filtered_elements", 34.0)
 
-  def testReinitialize(self):
-    stats_aggregator = stats_ops.StatsAggregator()
+  def testMapBufferUtilization(self, dataset_transformation):
+
+    def dataset_fn():
+      return dataset_ops.Dataset.range(10).map(
+          lambda x: array_ops.tile([x], ops.convert_to_tensor([x])),
+          num_parallel_calls=4)
+
+    self._testParallelCallsStats(
+        dataset_fn,
+        "ParallelMap",
+        10,
+        dataset_transformation,
+        function_processing_time=True)
+
+  def testMapAutoTuneBufferUtilization(self, dataset_transformation):
+
+    def dataset_fn():
+      dataset = dataset_ops.Dataset.range(10).map(
+          lambda x: array_ops.tile([x], ops.convert_to_tensor([x])),
+          num_parallel_calls=optimization.AUTOTUNE)
+      options = dataset_ops.Options()
+      options.experimental_autotune = True
+      return dataset.with_options(options)
+
+    self._testParallelCallsStats(
+        dataset_fn,
+        "ParallelMap",
+        10,
+        dataset_transformation,
+        function_processing_time=True)
+
+  def testInterleaveAutoTuneBufferUtilization(self, dataset_transformation):
+
+    def dataset_fn():
+      dataset = dataset_ops.Dataset.range(10).map(
+          lambda x: array_ops.tile([x], ops.convert_to_tensor([x])))
+      dataset = dataset_ops.Dataset.range(1).interleave(
+          lambda _: dataset,
+          cycle_length=1,
+          num_parallel_calls=optimization.AUTOTUNE)
+      options = dataset_ops.Options()
+      options.experimental_autotune = True
+      return dataset.with_options(options)
+
+    self._testParallelCallsStats(dataset_fn, "ParallelInterleaveV2", 10,
+                                 dataset_transformation)
+
+  def testMapAndBatchAutoTuneBufferUtilization(self, dataset_transformation):
+
+    def dataset_fn():
+      dataset = dataset_ops.Dataset.range(100).apply(
+          batching.map_and_batch(
+              lambda x: array_ops.tile([x], ops.convert_to_tensor([2])),
+              num_parallel_calls=optimization.AUTOTUNE,
+              batch_size=16))
+      options = dataset_ops.Options()
+      options.experimental_autotune = True
+      return dataset.with_options(options)
+
+    num_output = 100 // 16 + 1
+    self._testParallelCallsStats(
+        dataset_fn,
+        "MapAndBatch",
+        num_output,
+        dataset_transformation,
+        check_elements=False,
+        function_processing_time=True)
+
+  def testReinitialize(self, dataset_transformation):
+    aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).apply(
-        stats_ops.latency_stats("record_latency")).apply(
-            stats_ops.set_stats_aggregator(stats_aggregator))
+        stats_ops.latency_stats("record_latency"))
+    dataset = dataset_transformation(dataset, aggregator)
     iterator = dataset.make_initializable_iterator()
     next_element = iterator.get_next()
-    summary_t = stats_aggregator.get_summary()
+    summary_t = aggregator.get_summary()
 
     with self.cached_session() as sess:
       for j in range(5):
@@ -172,7 +271,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
         self._assertSummaryHasCount(
             sess.run(summary_t), "record_latency", (j + 1) * 100.0)
 
-  def testNoAggregatorRegistered(self):
+  def testNoAggregatorRegistered(self, dataset_transformation):
     dataset = dataset_ops.Dataset.range(100).apply(
         stats_ops.latency_stats("record_latency"))
     iterator = dataset.make_initializable_iterator()
@@ -185,15 +284,15 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
-  def testMultipleTags(self):
-    stats_aggregator = stats_ops.StatsAggregator()
+  def testMultipleTags(self, dataset_transformation):
+    aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).apply(
         stats_ops.latency_stats("record_latency")).apply(
-            stats_ops.latency_stats("record_latency_2")).apply(
-                stats_ops.set_stats_aggregator(stats_aggregator))
+            stats_ops.latency_stats("record_latency_2"))
+    dataset = dataset_transformation(dataset, aggregator)
     iterator = dataset.make_initializable_iterator()
     next_element = iterator.get_next()
-    summary_t = stats_aggregator.get_summary()
+    summary_t = aggregator.get_summary()
 
     with self.cached_session() as sess:
       sess.run(iterator.initializer)
@@ -209,15 +308,15 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       self._assertSummaryHasCount(
           sess.run(summary_t), "record_latency_2", 100.0)
 
-  def testRepeatedTags(self):
-    stats_aggregator = stats_ops.StatsAggregator()
+  def testRepeatedTags(self, dataset_transformation):
+    aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).apply(
         stats_ops.latency_stats("record_latency")).apply(
-            stats_ops.latency_stats("record_latency")).apply(
-                stats_ops.set_stats_aggregator(stats_aggregator))
+            stats_ops.latency_stats("record_latency"))
+    dataset = dataset_transformation(dataset, aggregator)
     iterator = dataset.make_initializable_iterator()
     next_element = iterator.get_next()
-    summary_t = stats_aggregator.get_summary()
+    summary_t = aggregator.get_summary()
 
     with self.cached_session() as sess:
       sess.run(iterator.initializer)
@@ -229,15 +328,15 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
         sess.run(next_element)
       self._assertSummaryHasCount(sess.run(summary_t), "record_latency", 200.0)
 
-  def testMultipleIteratorsSameAggregator(self):
-    stats_aggregator = stats_ops.StatsAggregator()
+  def testMultipleIteratorsSameAggregator(self, dataset_transformation):
+    aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).apply(
-        stats_ops.latency_stats("record_latency")).apply(
-            stats_ops.set_stats_aggregator(stats_aggregator))
+        stats_ops.latency_stats("record_latency"))
+    dataset = dataset_transformation(dataset, aggregator)
     iterator_0 = dataset.make_initializable_iterator()
     iterator_1 = dataset.make_initializable_iterator()
     next_element = iterator_0.get_next() + iterator_1.get_next()
-    summary_t = stats_aggregator.get_summary()
+    summary_t = aggregator.get_summary()
 
     with self.cached_session() as sess:
       sess.run([iterator_0.initializer, iterator_1.initializer])
@@ -249,18 +348,18 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
         sess.run(next_element)
       self._assertSummaryHasCount(sess.run(summary_t), "record_latency", 200.0)
 
-  def testMultipleDatasetWithTags(self):
-    stats_aggregator = stats_ops.StatsAggregator()
+  def testMultipleDatasetWithPrefixes(self, dataset_transformation):
+    aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.range(100).apply(
-        stats_ops.latency_stats("record_latency")).apply(
-            stats_ops.set_stats_aggregator(stats_aggregator, "dataset1"))
+        stats_ops.latency_stats("record_latency"))
+    dataset = dataset_transformation(dataset, aggregator, prefix="dataset1")
     dataset2 = dataset_ops.Dataset.range(100).apply(
-        stats_ops.latency_stats("record_latency")).apply(
-            stats_ops.set_stats_aggregator(stats_aggregator, "dataset2"))
+        stats_ops.latency_stats("record_latency"))
+    dataset2 = dataset_transformation(dataset2, aggregator, prefix="dataset2")
     iterator_0 = dataset.make_initializable_iterator()
     iterator_1 = dataset2.make_initializable_iterator()
     next_element = iterator_0.get_next() + iterator_1.get_next()
-    summary_t = stats_aggregator.get_summary()
+    summary_t = aggregator.get_summary()
 
     with self.test_session() as sess:
       sess.run([iterator_0.initializer, iterator_1.initializer])
@@ -278,31 +377,52 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
           sess.run(summary_t), "dataset2_record_latency", 100.0)
 
 
+@parameterized.named_parameters(
+    dict(
+        testcase_name="SetStatsAggregator",
+        dataset_transformation=function_set_stats_aggregator),
+    dict(
+        testcase_name="StatsOptions",
+        dataset_transformation=function_apply_options))
 class FeatureStatsDatasetTest(
     stats_dataset_test_base.StatsDatasetTestBase,
     reader_dataset_ops_test_base.MakeBatchedFeaturesDatasetTestBase):
 
-  def testFeaturesStats(self):
+  def testFeaturesStats(self, dataset_transformation):
     num_epochs = 5
     total_records = num_epochs * self._num_records
     batch_size = 2
-    stats_aggregator = stats_ops.StatsAggregator()
-    dataset = self.make_batch_feature(
-        filenames=self.test_filenames[0],
-        num_epochs=num_epochs,
-        batch_size=batch_size,
-        shuffle=True,
-        shuffle_seed=5,
-        drop_final_batch=False).apply(
-            stats_ops.set_stats_aggregator(stats_aggregator, "record_stats"))
+    aggregator = stats_aggregator.StatsAggregator()
+
+    def dataset_fn():
+      return self.make_batch_feature(
+          filenames=self.test_filenames[0],
+          num_epochs=num_epochs,
+          batch_size=batch_size,
+          shuffle=True,
+          shuffle_seed=5,
+          drop_final_batch=False)
+
+    num_output = total_records // batch_size
+    if total_records % batch_size:
+      num_output = total_records // batch_size + 1
+
+    self._testParallelCallsStats(
+        dataset_fn,
+        "ParseExample",
+        num_output,
+        dataset_transformation,
+        check_elements=False)
+
+    dataset = dataset_transformation(
+        dataset_fn(), aggregator, prefix="record_stats")
     iterator = dataset.make_initializable_iterator()
     next_element = iterator.get_next()
-    summary_t = stats_aggregator.get_summary()
+    summary_t = aggregator.get_summary()
 
     with self.test_session() as sess:
       sess.run(iterator.initializer)
-      for _ in range(total_records // batch_size + 1 if total_records %
-                     batch_size else total_records // batch_size):
+      for _ in range(num_output):
         sess.run(next_element)
 
       with self.assertRaises(errors.OutOfRangeError):

@@ -92,8 +92,8 @@ class VariableScopeTest(test.TestCase):
     v1 = vs.get_variable("v", [1], use_resource=True)
     self.assertTrue(isinstance(v1, resource_variable_ops.ResourceVariable))
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
-  # AttributeError: Tensor.op is meaningless when eager execution is enabled.
+  @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
   def testNameExists(self):
     vs = variable_scope._get_default_variable_store()
     # No check by default, so we can both create and get existing names.
@@ -121,8 +121,8 @@ class VariableScopeTest(test.TestCase):
         set(expected_names), set([v.name for v in vs._vars.values()]))
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
-  # ValueError: Operation name: "tower0/foo/v/Assign" ... is not an element of
-  # this graph.
+  # TypeError: Expected tf.group() expected Tensor arguments not 'None' with
+  # type '<type 'NoneType'>'
   @test_util.run_in_graph_and_eager_modes
   def testVarScopeInitializer(self):
     init = init_ops.constant_initializer(0.3)
@@ -266,7 +266,8 @@ class VariableScopeTest(test.TestCase):
       self.assertFalse(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
-  # ValueError: Operation name: "v4/Assign" ... is not an element of this graph.
+  # TypeError: Expected tf.group() expected Tensor arguments not 'None' with
+  # type '<type 'NoneType'>'.
   @test_util.run_in_graph_and_eager_modes
   def testInitFromNonTensorValue(self):
     v = variable_scope.get_variable("v4", initializer=4, dtype=dtypes.int32)
@@ -284,7 +285,8 @@ class VariableScopeTest(test.TestCase):
       variable_scope.get_variable("x4", initializer={})
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
-  # ValueError: Operation name: "xx0/Assign" ...is not an element of this graph.
+  # InvalidArgumentError=: You must feed a value for placeholder tensor
+  # 'ReadVariableOp/resource' with dtype resource
   @test_util.run_in_graph_and_eager_modes
   def testInitFromNonInitializer(self):
     # Test various dtypes with zeros initializer as following:
@@ -343,7 +345,7 @@ class VariableScopeTest(test.TestCase):
         self.assertFalse(v_tower.value().device.startswith(caching_device))
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
-  # ValueError: Operation name: ".../Assign"... is not an element of this graph.
+  # AttributeError: Tensor.name is meaningless when eager execution is enabled.
   @test_util.run_in_graph_and_eager_modes
   def testVarScopeRegularizer(self):
     init = init_ops.constant_initializer(0.3)
@@ -503,7 +505,8 @@ class VariableScopeTest(test.TestCase):
       sess.run(add)
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
-  # ValueError: Operation name: ".../Assign"... is not an element of this graph.
+  # TypeError: Expected tf.group() expected Tensor arguments not 'None' with
+  # type '<type 'NoneType'>'.
   @test_util.run_in_graph_and_eager_modes
   def testGetVariableScope(self):
     # Test the get_variable_scope() function and setting properties of result.
@@ -652,8 +655,8 @@ class VariableScopeTest(test.TestCase):
       test_value(13.)  # Variable is reused hereafter.
       test_value(17.)
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
-  # AttributeError: Tensor.op is meaningless when eager execution is enabled.
+  @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
   def testVarOpScope(self):
     with self.cached_session():
       with ops.name_scope("testVarOpScope1"):
@@ -753,8 +756,8 @@ class VariableScopeTest(test.TestCase):
           with ops.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "outer_1/default/scope2/")
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
-  # AttributeError: Tensor.op is meaningless when eager execution is enabled.
+  @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
   def testVarScopeGetVar(self):
     with self.cached_session():
       with variable_scope.variable_scope("root"):
@@ -885,9 +888,8 @@ class VariableScopeTest(test.TestCase):
           with ops.name_scope("scope2") as sc2:
             self.assertEqual(sc2, "outer_1/default/scope2/")
 
-  # TODO(mihaimaruseac): Not converted to use wrap_function because of
-  # AttributeError: 'variable_scope' object has no attribute
-  # '_graph_context_manager'
+  @test_util.run_in_graph_and_eager_modes
+  @run_inside_wrap_function_in_eager_mode
   def testVarOpScopeReuseError(self):
     with self.cached_session():
       with self.assertRaises(ValueError):

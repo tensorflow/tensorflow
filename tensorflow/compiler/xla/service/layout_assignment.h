@@ -315,6 +315,10 @@ class LayoutAssignment : public HloModulePass {
   // rank as the output to have the same layout as the output.
   static bool InstructionCanChangeLayout(const HloInstruction* instruction);
 
+  // In case of an array shape returns true iff it is at most rank 1. In case of
+  // a tuple shape returns true iff all leaf shapes are at most rank 1.
+  static bool IsAtMostRank1(const Shape& shape);
+
  protected:
   // These methods, invoked by PropagateConstraints, propagate a layout
   // constraint to its neighbors (i.e. operands and users) in order to minimize
@@ -362,7 +366,7 @@ class LayoutAssignment : public HloModulePass {
   // `user` that minimizes its cost on that operand.  Returns null if it can't
   // decide the best layout.
   // Precondition: `user` and the operand are array-shaped.
-  std::unique_ptr<Layout> ChooseOutputLayoutFromOperandLayout(
+  virtual std::unique_ptr<Layout> ChooseOutputLayoutFromOperandLayout(
       const Layout& operand_layout, const HloInstruction* user,
       int64 operand_no);
 
@@ -407,6 +411,10 @@ class LayoutAssignment : public HloModulePass {
   // minimize the local cost of the computation. This propagation is *not*
   // required for correctness.
   Status PropagateConstraints(LayoutConstraints* constraints);
+
+  Status PropagateBufferConstraintToOperands(
+      const BufferLayoutConstraint& buffer_constraint,
+      LayoutConstraints* constraints);
 
   // Check that all layouts in the module have been set and satisfy all
   // necessary conditions.

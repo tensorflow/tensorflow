@@ -104,6 +104,11 @@ NodeBuilder& NodeBuilder::AssignedDevice(StringPiece device) {
   return *this;
 }
 
+NodeBuilder& NodeBuilder::XlaCluster(StringPiece xla_cluster) {
+  def_builder_.Attr("_XlaCluster", xla_cluster);
+  return *this;
+}
+
 Status NodeBuilder::Finalize(Graph* graph, Node** created_node) const {
   // In case of error, set *created_node to nullptr.
   if (created_node != nullptr) *created_node = nullptr;

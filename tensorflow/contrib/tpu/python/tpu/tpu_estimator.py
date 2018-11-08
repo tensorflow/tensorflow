@@ -31,6 +31,7 @@ import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.contrib.tpu.python.tpu import tensor_tracer
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import error_handling
 from tensorflow.contrib.tpu.python.tpu import session_support
@@ -48,7 +49,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest as data_nest
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
-from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.estimator.export import export_output as export_output_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1229,7 +1229,7 @@ class _InputPipeline(object):
     # first one.
     self._infeed_queue = infeed_queues[0]
     return enqueue_ops, [
-        estimator_util.MultiHostDatasetInitializerHook(all_dataset_initializers)
+        util_lib.MultiHostDatasetInitializerHook(all_dataset_initializers)
     ], run_infeed_loop_on_coordinator
 
   def _validate_input_pipeline(self):
@@ -1318,9 +1318,15 @@ class _ModelFnWrapper(object):
 
       captured_training_hooks.capture(estimator_spec.training_hooks)
 
+      tracing_ops = []
+      if tensor_tracer.TensorTracer.is_enabled():
+        tt = tensor_tracer.TensorTracer()
+        loss, tracing_ops = tt.trace_tpu(ops.get_default_graph(), loss,
+                                         self._ctx.num_replicas)
+
       # We must run train_op to update the variables prior to running the
       # outfeed.
-      with ops.control_dependencies([train_op]):
+      with ops.control_dependencies([train_op]+tracing_ops):
         host_call_outfeed_ops = []
         if (isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)  # pylint: disable=protected-access
             and estimator_spec.host_call is not None):
@@ -2998,6 +3004,12 @@ class _CapturingContext(control_flow_ops.ControlFlowContext):
   def __init__(self, message):
     control_flow_ops.ControlFlowContext.__init__(self)
     self._message = message
+
+  def to_control_flow_context_def(self, context_def, export_scope=None):
+    # pylint: disable=useless-super-delegation
+    # NOTE(slebedev): the method is required by `ControlFlowContext`.
+    super(_CapturingContext, self).to_control_flow_context_def(
+        context_def, export_scope)
 
   def AddOp(self, op):  # pylint: disable=invalid-name
     for c in op.inputs:

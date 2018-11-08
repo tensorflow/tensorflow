@@ -323,6 +323,12 @@ REGISTER_OP("MatrixSolveLs")
       return MatrixSolveShapeFn(c, false /* square */);
     });
 
+REGISTER_OP("MatrixSquareRoot")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: {double, float, complex64, complex128}")
+    .SetShapeFn(BatchUnchangedSquareShapeFn);
+
 REGISTER_OP("Qr")
     .Input("input: T")
     .Output("q: T")

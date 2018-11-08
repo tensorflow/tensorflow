@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -35,6 +36,7 @@ class XlaResource {
     kTensorArray,
     kStack,
   };
+  static absl::string_view KindToString(Kind kind);
 
   XlaResource(Kind kind, int arg_num, string name, DataType type,
               TensorShape shape, const xla::XlaOp& initial_value,

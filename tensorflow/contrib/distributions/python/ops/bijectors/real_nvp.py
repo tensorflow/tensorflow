@@ -97,16 +97,18 @@ class RealNVP(bijector.Bijector):
 
   # A common choice for a normalizing flow is to use a Gaussian for the base
   # distribution. (However, any continuous distribution would work.) E.g.,
+  num_dims = 3
+  num_samples = 1
   nvp = tfd.TransformedDistribution(
-      distribution=tfd.MultivariateNormalDiag(loc=[0., 0., 0.])),
+      distribution=tfd.MultivariateNormalDiag(loc=np.zeros(num_dims)),
       bijector=tfb.RealNVP(
           num_masked=2,
           shift_and_log_scale_fn=tfb.real_nvp_default_template(
               hidden_layers=[512, 512])))
 
-  x = nvp.sample()
+  x = nvp.sample(num_samples)
   nvp.log_prob(x)
-  nvp.log_prob(0.)
+  nvp.log_prob(np.zeros([num_samples, num_dims]))
   ```
 
   For more examples, see [Jang (2018)][3].

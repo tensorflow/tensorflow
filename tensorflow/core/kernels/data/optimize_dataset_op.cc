@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/grappler_item_builder.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
@@ -94,9 +94,9 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       Node* input_node = nullptr;
       SerializationContext::Params params;
       std::vector<std::pair<string, Tensor>> input_list;
-      params.allow_stateful_functions = true;
       params.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
       params.input_list = &input_list;
+      params.optimization_only = true;
       SerializationContext serialization_ctx(params);
       TF_RETURN_IF_ERROR(
           db.AddInputDataset(&serialization_ctx, input_, &input_node));
@@ -164,22 +164,28 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        IteratorContext::Params params = ctx->params();
+        IteratorContext::Params params(ctx);
         params.lib = dataset()->lib_;
         return dataset()->optimized_input_->MakeIterator(
-            IteratorContext(params), prefix(), &input_impl_);
+            IteratorContext(std::move(params)), prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
-        IteratorContext::Params params = ctx->params();
+        IteratorContext::Params params(ctx);
         params.lib = dataset()->lib_;
-        return input_impl_->GetNext(IteratorContext(params), out_tensors,
-                                    end_of_sequence);
+        return input_impl_->GetNext(IteratorContext(std::move(params)),
+                                    out_tensors, end_of_sequence);
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         return Status::OK();
@@ -224,6 +230,17 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
       // moment (e.g. because we have no cost model for dataset ops).
       if (optimizations_.empty()) {
         rewriter_config.add_optimizers("non-existent");
+      } else {
+        // If we apply custom dataset optimizers, explicitly trigger a subset of
+        // standard grappler optimizations to further optimize modified dataset
+        // graphs (e.g. performing constant folding on merged functions,
+        // removing unused graph nodes)
+        // TODO(b/118175421): This should be part of the tf.data optimization
+        // pass manager.
+        for (const auto& optimizer : {"pruning", "function", "constfold",
+                                      "shape", "arithmetic", "dependency"}) {
+          rewriter_config.add_optimizers(optimizer);
+        }
       }
       tensorflow::grappler::ItemConfig item_config;
       item_config.apply_optimizations = true;

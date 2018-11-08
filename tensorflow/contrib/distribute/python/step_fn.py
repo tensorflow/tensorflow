@@ -100,7 +100,7 @@ class StandardSingleLossStep(StandardInputStep):
         gradients_fn = backprop.implicit_grad(self._loss_fn)
         gradients_fn = optimizer_lib.get_filtered_grad_fn(gradients_fn)
 
-        grads_and_vars = self.distribution.call_for_each_tower(
+        grads_and_vars = self.distribution.call_for_each_replica(
             gradients_fn,
             ctx, *inputs,
             run_concurrently=self._is_run_concurrently)

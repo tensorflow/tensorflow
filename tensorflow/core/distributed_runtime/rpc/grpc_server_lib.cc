@@ -194,8 +194,8 @@ Status GrpcServer::Init(
   MaybeMutateBuilder(&builder);
   master_impl_ = CreateMaster(&master_env_);
   master_service_ = NewGrpcMasterService(master_impl_.get(), config, &builder);
-  worker_impl_ =
-      worker_func ? worker_func(&worker_env_) : NewGrpcWorker(&worker_env_);
+  worker_impl_ = worker_func ? worker_func(&worker_env_)
+                             : NewGrpcWorker(&worker_env_, config);
   worker_service_ =
       NewGrpcWorkerService(worker_impl_.get(), &builder).release();
   eager_service_ = new eager::GrpcEagerServiceImpl(&worker_env_, &builder);

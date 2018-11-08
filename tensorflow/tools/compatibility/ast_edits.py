@@ -184,6 +184,17 @@ class _ASTCallVisitor(ast.NodeVisitor):
     except KeyError:
       pass
 
+  def _print_warning_for_function(self, node, full_name):
+    function_warnings = self._api_change_spec.function_warnings
+    try:
+      warning_message = function_warnings[full_name]
+      warning_message = warning_message.replace("<function name>", full_name)
+      self._file_edit.add(warning_message,
+                          node.lineno, node.col_offset, full_name, full_name,
+                          error="%s requires manual check." % full_name)
+    except KeyError:
+      pass
+
   def _get_attribute_full_path(self, node):
     """Traverse an attribute to generate a full name e.g. tf.foo.bar.
 
@@ -350,6 +361,7 @@ class _ASTCallVisitor(ast.NodeVisitor):
     full_name = self._get_attribute_full_path(node)
     if full_name:
       self._rename_functions(node, full_name)
+      self._print_warning_for_function(node, full_name)
     if full_name in self._api_change_spec.change_to_function:
       if not hasattr(node, "is_function_for_call"):
         new_text = full_name + "()"

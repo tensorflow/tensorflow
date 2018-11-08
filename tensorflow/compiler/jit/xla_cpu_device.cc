@@ -42,8 +42,10 @@ Status XlaCpuDeviceFactory::CreateDevices(const SessionOptions& session_options,
 
   XlaOpRegistry::DeviceRegistration registration;
   registration.compilation_device_name = DEVICE_CPU_XLA_JIT;
-  registration.requires_compilation = !compile_on_demand;
-  registration.enable_jit_by_default = false;
+  registration.autoclustering_policy =
+      compile_on_demand
+          ? XlaOpRegistry::AutoclusteringPolicy::kIfExplicitlyRequested
+          : XlaOpRegistry::AutoclusteringPolicy::kAlways;
   registration.compile_resource_ops = true;
   XlaOpRegistry::RegisterCompilationDevice(DEVICE_XLA_CPU, registration);
 
@@ -60,7 +62,6 @@ Status XlaCpuDeviceFactory::CreateDevices(const SessionOptions& session_options,
   options.device_name = DEVICE_XLA_CPU;
   options.device_ordinal = 0;
   options.compilation_device_name = DEVICE_CPU_XLA_JIT;
-  options.transfer_as_literal = false;
   options.use_multiple_streams = false;
   auto device = absl::make_unique<XlaDevice>(session_options, options);
   devices->push_back(device.release());

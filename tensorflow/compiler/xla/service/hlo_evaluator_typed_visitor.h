@@ -19,6 +19,7 @@ limitations under the License.
 #include <cmath>
 
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/types/optional.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
-#include "tensorflow/core/lib/core/casts.h"
 
 namespace xla {
 
@@ -2442,7 +2442,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         parent_->evaluated_[reduce_precision],
         ElementWiseUnaryOp(reduce_precision, [reduce_precision](
                                                  ElementwiseT elem) {
-          uint32_t value_as_int = tensorflow::bit_cast<uint32_t>(elem);
+          uint32_t value_as_int = absl::bit_cast<uint32_t>(elem);
           const uint32_t mantissa_bits = reduce_precision->mantissa_bits();
           const uint32_t exponent_bits = reduce_precision->exponent_bits();
 
@@ -2515,7 +2515,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             value_as_int = x_underflows ? x_signed_zero : value_as_int;
           }
 
-          float reduced_result = tensorflow::bit_cast<float>(value_as_int);
+          float reduced_result = absl::bit_cast<float>(value_as_int);
           if (std::isnan(elem)) {
             reduced_result = mantissa_bits > 0
                                  ? elem

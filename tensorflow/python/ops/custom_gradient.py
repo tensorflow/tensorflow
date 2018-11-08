@@ -202,8 +202,7 @@ def _graph_mode_decorator(f, *args, **kwargs):
   flat_result = nest.flatten(result)
   all_tensors = flat_result + args + variables
 
-  @ops.RegisterGradient(name)
-  def internal_grad_fn(unused_op, *result_grads):  # pylint: disable=unused-variable
+  def tape_grad_fn(*result_grads):
     """Custom grad fn wrapper."""
     result_grads = result_grads[:len(flat_result)]
     if variables:
@@ -221,9 +220,16 @@ def _graph_mode_decorator(f, *args, **kwargs):
     input_grads = nest.flatten(input_grads)
     return ([None] * len(flat_result)) + input_grads + variable_grads
 
+  @ops.RegisterGradient(name)
+  def internal_grad_fn(unused_op, *result_grads):  # pylint: disable=unused-variable
+    """Custom grad fn wrapper."""
+    return tape_grad_fn(*result_grads)
+
   original_tensors = all_tensors
   with ops.get_default_graph().gradient_override_map({"IdentityN": name}):
     all_tensors = array_ops.identity_n(all_tensors)
+  tape_lib.record_operation(
+      f.__name__, all_tensors, original_tensors, tape_grad_fn)
   for ot, t in zip(original_tensors, all_tensors):
     copy_handle_data(ot, t)
   return nest.pack_sequence_as(

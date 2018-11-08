@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops import threadpool
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
@@ -76,6 +77,41 @@ class OptimizeDatasetTest(test_base.DatasetTestBase):
 
     dataset = dataset_ops.Dataset.range(1)
     dataset = dataset.flat_map(flat_map_fn)
+    dataset = dataset_ops._OptimizeDataset(dataset, ["noop_elimination"])
+    iterator = dataset.make_one_shot_iterator()
+    get_next = iterator.get_next()
+
+    with self.cached_session() as sess:
+      self.assertEquals(0, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testOptimizationThreadPoolDataset(self):
+    dataset = dataset_ops.Dataset.range(10).batch(10)
+
+    dataset = threadpool.override_threadpool(
+        dataset,
+        threadpool.PrivateThreadPool(
+            2, display_name="private_thread_pool_%d" % 2))
+
+    dataset = dataset_ops._OptimizeDataset(dataset, [])
+    iterator = dataset.make_initializable_iterator()
+    get_next = iterator.get_next()
+
+    with self.cached_session() as sess:
+      sess.run(iterator.initializer)
+      self.assertAllEqual(list(range(10)), sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testOptimizationNonSerializable(self):
+    dataset = dataset_ops.Dataset.from_tensors(0)
+    dataset = dataset.apply(optimization.assert_next(["FiniteSkip"]))
+    dataset = dataset.skip(0)  # Should not be removed by noop elimination
+    dataset = dataset.apply(optimization.non_serializable())
+    dataset = dataset.apply(optimization.assert_next(["MemoryCacheImpl"]))
+    dataset = dataset.skip(0)  # Should be removed by noop elimination
+    dataset = dataset.cache()
     dataset = dataset_ops._OptimizeDataset(dataset, ["noop_elimination"])
     iterator = dataset.make_one_shot_iterator()
     get_next = iterator.get_next()

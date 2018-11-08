@@ -89,6 +89,7 @@ py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python/data/experimental/kernel_tests:stats_dataset_test_base",
         "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/experimental/ops:stats_aggregator",
         "//tensorflow/python/data/experimental/ops:stats_ops",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
@@ -199,7 +200,7 @@ py_test(
 
 py_test(
     name = "map_vectorization_test",
-    size = "small",
+    size = "medium",
     srcs = ["map_vectorization_test.py"],
     srcs_version = "PY2AND3",
     tags = [
@@ -210,13 +211,17 @@ py_test(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:bitwise_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:clip_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_tensor",

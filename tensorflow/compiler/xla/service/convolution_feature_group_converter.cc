@@ -51,7 +51,8 @@ class ConvolutionVisitor : public DfsHloVisitorWithDefault {
   Status HandleConvolution(HloInstruction* convolution) override;
 
   // Runs the visitor on a computation.
-  static bool Run(HloComputation* computation);
+  static bool Run(HloComputation* computation,
+                  bool canonicalize_depthwise_filter);
 
   // Returns whether any convolution ops were rewritten.
   const bool changed() const { return changed_; }
@@ -59,18 +60,24 @@ class ConvolutionVisitor : public DfsHloVisitorWithDefault {
   ~ConvolutionVisitor() override = default;
 
  private:
-  explicit ConvolutionVisitor(HloComputation* computation)
-      : computation_(computation) {}
+  explicit ConvolutionVisitor(HloComputation* computation,
+                              bool canonicalize_depthwise_filter = false)
+      : computation_(computation),
+        filter_expansion_(!canonicalize_depthwise_filter) {}
 
   // Current HloComputation instance the ConvolutionVisitor is traversing.
   HloComputation* computation_;
 
   // Whether rewrite has occurred.
   bool changed_ = false;
+
+  // Whether filter expansion is required.
+  bool filter_expansion_;
 };
 
-bool ConvolutionVisitor::Run(HloComputation* computation) {
-  ConvolutionVisitor visitor(computation);
+bool ConvolutionVisitor::Run(HloComputation* computation,
+                             bool canonicalize_depthwise_filter) {
+  ConvolutionVisitor visitor(computation, canonicalize_depthwise_filter);
   TF_CHECK_OK(computation->Accept(&visitor));
   return visitor.changed_;
 }
@@ -190,9 +197,49 @@ Status ConvolutionVisitor::HandleConvolution(HloInstruction* convolution) {
   HloInstruction* filter_mask = GetExpandedFilterMask(
       filter->shape(), input_feature_dim, output_feature_dim, group_count, add);
   HloInstruction* expanded_filter;
-  // We want to repeat 'filter' in the 'input_feature_dim' dimension
-  // 'group_count' times.
+
   if (group_size == 1) {
+    bool depthwise_separable =
+        (group_count == filter->shape().dimensions(output_feature_dim));
+    // If the code generator handles depthwise separable convolutions
+    // inherently, then no filter expansion is needed.
+    if (!filter_expansion_ && depthwise_separable) {
+      const int64 old_kernel_input_feature_dimension =
+          dim_numbers.kernel_input_feature_dimension();
+      const int64 old_kernel_output_feature_dimension =
+          dim_numbers.kernel_output_feature_dimension();
+
+      // For depthwise convolutions, we want the kernel input feature dimension
+      // to be smaller than the output feature dimension. If that's not the
+      // case, we swap the dimensions.
+      if (old_kernel_input_feature_dimension >
+          old_kernel_output_feature_dimension) {
+        Shape reshaped_filter_shape = filter->shape();
+        auto& dimensions = *reshaped_filter_shape.mutable_dimensions();
+        std::swap(dimensions[old_kernel_input_feature_dimension],
+                  dimensions[old_kernel_output_feature_dimension]);
+
+        auto reshaped_filter =
+            add(HloInstruction::CreateReshape(reshaped_filter_shape, filter));
+
+        dim_numbers.set_kernel_input_feature_dimension(
+            old_kernel_output_feature_dimension);
+
+        dim_numbers.set_kernel_output_feature_dimension(
+            old_kernel_input_feature_dimension);
+
+        auto new_convolution = HloInstruction::CreateConvolve(
+            convolution->shape(), convolution->mutable_operand(0),
+            reshaped_filter, group_count, convolution->window(), dim_numbers,
+            convolution->precision_config());
+
+        TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
+            convolution, std::move(new_convolution)));
+      }
+      return Status::OK();
+    }
+    // We want to repeat 'filter' in the 'input_feature_dim' dimension
+    // 'group_count' times.
     Shape reshaped_filter_shape =
         ShapeUtil::DeleteDimension(input_feature_dim, filter->shape());
     auto reshaped_filter =
@@ -237,7 +284,7 @@ StatusOr<bool> ConvolutionFeatureGroupConverter::Run(HloModule* module) {
                         module->ToString());
   bool changed = false;
   for (auto* comp : module->MakeNonfusionComputations()) {
-    if (ConvolutionVisitor::Run(comp)) {
+    if (ConvolutionVisitor::Run(comp, filter_expansion_)) {
       changed = true;
     }
   }

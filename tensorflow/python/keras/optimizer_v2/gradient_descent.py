@@ -72,9 +72,10 @@ class SGD(optimizer_v2.OptimizerV2):
         grad,
         use_locking=self._use_locking)
 
-  def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
+  def _resource_apply_sparse_duplicate_indices(self, grad, var, indices):
     return resource_variable_ops.resource_scatter_add(
-        handle.handle, indices, -grad * self._get_hyper("learning_rate"))
+        var.handle, indices, -grad * math_ops.cast(
+            self._get_hyper("learning_rate"), var.dtype.base_dtype))
 
   def _apply_sparse_duplicate_indices(self, grad, var):
     delta = ops.IndexedSlices(

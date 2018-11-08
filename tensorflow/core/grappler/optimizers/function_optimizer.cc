@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/strings/str_replace.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -29,8 +31,8 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
-#include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/functions.h"
@@ -103,27 +105,6 @@ AttrSlice FunctionInstantiationAttributes(const FunctionDef& func,
                  << SummarizeNodeDef(func_node);
     return AttrSlice();
   }
-}
-
-// Find unique name for the specialized function. Collision can happen if
-// specialized function is instantiated for the nodes with the same name (e.g.
-// inside function body of two different functions).
-string UniqueSpecializedFunctionName(const FunctionDef& func,
-                                     const NodeDef& func_node,
-                                     const FunctionLibraryDefinition& flib) {
-  using str_util::StringReplace;
-  using strings::StrCat;
-
-  string specialized_name = StrCat(func.signature().name(), "_specialized_for_",
-                                   StringReplace(func_node.name(), "/", "_",
-                                                 /*replace_all*/ true));
-  string unique_name = specialized_name;
-
-  int idx = 0;
-  while (flib.Find(unique_name)) {
-    unique_name = strings::StrCat(specialized_name, "_", ++idx);
-  }
-  return unique_name;
 }
 
 // Specialized function instantiation type parameters, body parameters, and
@@ -235,10 +216,10 @@ class FunctionOptimizerContext {
  public:
   explicit FunctionOptimizerContext(RewriterConfig::Toggle opt_level,
                                     const GrapplerItem& item)
-      : graph_version_(item.graph.versions().producer()),
+      : grappler_item_id_(item.id),
+        graph_version_(item.graph.versions().producer()),
         function_library_(OpRegistry::Global(), item.graph.library()),
-        // GraphView doesn't not modify the graph or the nodes.
-        graph_view_(const_cast<GraphDef*>(&item.graph)) {
+        graph_view_(&item.graph) {
     InitializeTrulyConstNodes(item);
     InitializeInlinedFunctions(opt_level, item);
     InitializeFetchNodes(item);
@@ -263,6 +244,8 @@ class FunctionOptimizerContext {
   }
 
   const GraphView& graph_view() const { return graph_view_; }
+
+  const string& grappler_item_id() const { return grappler_item_id_; }
 
   const gtl::FlatSet<string>& fetch_tensors() const { return fetch_tensors_; }
 
@@ -371,6 +354,7 @@ class FunctionOptimizerContext {
     }
   }
 
+  const string grappler_item_id_;
   const int graph_version_;
   FunctionLibraryDefinition function_library_;
 
@@ -445,85 +429,20 @@ bool HasUnusedOutputs(const NodeDef& func_node, const FunctionDef& func,
   return active_outputs.size() != num_outputs;
 }
 
-// Return trimmed FunctionDefLibrary with functions that are reachable from
+// Return pruned FunctionDefLibrary with functions that are reachable from
 // the optimized graph.
-FunctionDefLibrary TrimFunctionLibrary(const FunctionLibraryDefinition& flib,
-                                       const GraphDef& optimized_graph) {
-  // Functions that are reachable from the optimized graph.
-  gtl::FlatSet<string> keep_funcs;
+FunctionDefLibrary PruneFunctionLibrary(const FunctionLibraryDefinition& flib,
+                                        const GraphDef& optimized_graph) {
+  FunctionLibraryDefinition pruned_flib =
+      ReachableFunctionLibraryDefinition(flib, optimized_graph);
 
-  std::vector<const FunctionDef*> func_queue;
-  func_queue.reserve(flib.num_functions());
+  int pruned_functions = static_cast<int>(pruned_flib.num_functions()) -
+                         static_cast<int>(flib.num_functions());
 
-  // Add registered and not already processed functions to the queue by name.
-  const auto add_to_func_queue = [&](const string& func_name) {
-    const FunctionDef* func = flib.Find(func_name);
-    if (func && keep_funcs.find(func_name) == keep_funcs.end()) {
-      func_queue.push_back(func);
-    }
-  };
+  VLOG(3) << "Pruned function library: " << pruned_flib.num_functions()
+          << " functions (" << pruned_functions << ")";
 
-  // Find all the functions that are reachable from the given node.
-  const auto add_node_to_func_queue = [&](const NodeDef& node) {
-    // Node itself can be a call to the function.
-    add_to_func_queue(node.op());
-
-    // Or node can have an attribute referencing a function.
-    for (const auto& attr : node.attr()) {
-      const auto& attr_value = attr.second;
-
-      // 1. AttrValue.func
-      if (attr_value.has_func()) {
-        add_to_func_queue(attr_value.func().name());
-      }
-
-      // 2. AttrValue.ListValue.func
-      if (attr_value.has_list()) {
-        for (const auto& func : attr_value.list().func()) {
-          add_to_func_queue(func.name());
-        }
-      }
-    }
-  };
-
-  // Add all functions that are directly called from the optimized graph.
-  const auto& graph_nodes = optimized_graph.node();
-  std::for_each(graph_nodes.begin(), graph_nodes.end(), add_node_to_func_queue);
-
-  // Process all reachable functions.
-  while (!func_queue.empty()) {
-    const FunctionDef* func = func_queue.back();
-    func_queue.pop_back();
-
-    const string& func_name = func->signature().name();
-    keep_funcs.insert(func_name);
-
-    // Find all the functions called from the function body.
-    const auto& func_body = func->node_def();
-    std::for_each(func_body.begin(), func_body.end(), add_node_to_func_queue);
-
-    // Check if the function has a registered gradient.
-    const string grad_func_name = flib.FindGradient(func_name);
-    if (!grad_func_name.empty()) add_to_func_queue(grad_func_name);
-  }
-
-  FunctionDefLibrary lib;
-  for (const string& func_name : keep_funcs) {
-    const FunctionDef* func = CHECK_NOTNULL(flib.Find(func_name));
-    *lib.add_function() = *func;
-
-    const string grad_func_name = flib.FindGradient(func_name);
-    if (!grad_func_name.empty()) {
-      GradientDef* gd = lib.add_gradient();
-      gd->set_function_name(func_name);
-      gd->set_gradient_func(grad_func_name);
-    }
-  }
-
-  VLOG(3) << "Trimmed function library: " << keep_funcs.size() << " functions ("
-          << static_cast<int>(keep_funcs.size() - flib.num_functions()) << ")";
-
-  return lib;
+  return pruned_flib.ToProto();
 }
 
 // Push all constant inputs of an instantiating node into the function body.
@@ -731,6 +650,20 @@ Status InitializeFunctionSpecializationSignature(
   return Status::OK();
 }
 
+// Create a name for the function specialization. The name of the function, name
+// of the node instantiating it, and a Grappler item id should generate unique
+// function name. Meta optimizer might create multiple Grappler items for the
+// same graph when optimizing functions, but it's guaranteed that they all will
+// have unique ids.
+string SpecializedFunctionName(const FunctionOptimizerContext& ctx,
+                               const FunctionDef& func,
+                               const NodeDef& func_node) {
+  return absl::Substitute("$0_specialized_for_$1_at_$2",
+                          func.signature().name(),
+                          absl::StrReplaceAll(func_node.name(), {{"/", "_"}}),
+                          ctx.grappler_item_id());
+}
+
 Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
                           const int graph_def_version,
                           FunctionOptimizerContext* ctx,
@@ -795,7 +728,12 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
 
   // Find a name for specialized function.
   const string specialized_func_name =
-      UniqueSpecializedFunctionName(func, func_node, flib);
+      SpecializedFunctionName(*ctx, func, func_node);
+  if (flib.Contains(specialized_func_name)) {
+    // NOTE(ezhulenev): This should never happen. If it happens, it's a sign of
+    // a serious internal error, that must be investigated.
+    return errors::Internal("Created duplicate function specialization");
+  }
 
   specialized_func.mutable_signature()->set_name(specialized_func_name);
   auto* specialized_attr = specialized_func.mutable_attr();
@@ -1061,11 +999,8 @@ Status InlineSymbolicGradient(const NodeDef& node,
 
 Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                    GraphDef* optimized_graph) {
-  VLOG(1) << "Optimize Grappler item: id=" << item.id;
-
   // Nothing to do here.
   if (item.graph.library().function_size() == 0) {
-    VLOG(3) << "Skip Grappler item with empty function library";
     *optimized_graph = item.graph;
     return Status::OK();
   }
@@ -1197,7 +1132,7 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   // Function specialization might change the number of function outputs, so we
   // have to process the final optimized graph and update all the node mapping.
   if (ctx.RequiresOutputMapping()) {
-    GraphView optimized_graph_view(optimized_graph);
+    MutableGraphView optimized_graph_view(optimized_graph);
     for (const auto& output_mapping : ctx.output_mappings()) {
       const auto& node_name = output_mapping.first;
       const auto& mappings = output_mapping.second;
@@ -1207,11 +1142,11 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
         int to = mapping.second;
 
         // Get the output port corresponding to the old output position.
-        GraphView::OutputPort from_port =
+        MutableGraphView::OutputPort from_port =
             optimized_graph_view.GetOutputPort(node_name, from);
 
         // Update all input ports that read from old output port.
-        for (GraphView::InputPort to_port :
+        for (MutableGraphView::InputPort to_port :
              optimized_graph_view.GetFanout(from_port)) {
           *to_port.node->mutable_input(to_port.port_id) =
               strings::StrCat(node_name, ":", to);
@@ -1223,7 +1158,7 @@ Status FunctionOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   *optimized_graph->mutable_versions() = item.graph.versions();
   *optimized_graph->mutable_library() =
       options_.enable_trim_function_library
-          ? TrimFunctionLibrary(ctx.function_library(), *optimized_graph)
+          ? PruneFunctionLibrary(ctx.function_library(), *optimized_graph)
           : ctx.function_library().ToProto();
 
   return Status::OK();

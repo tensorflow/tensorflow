@@ -720,7 +720,7 @@ class DistributionStrategy(object):
       Merged return value of `fn` across all replicas.
     """
     _require_cross_replica_context(self)
-    return self._call_for_each_tower(fn, *args, **kwargs)
+    return self._call_for_each_replica(fn, *args, **kwargs)
 
   def call_for_each_tower(self, fn, *args, **kwargs):
     """Run `fn` once per replica. DEPRECATED.
@@ -771,9 +771,9 @@ class DistributionStrategy(object):
       Merged return value of `fn` across all replicas.
     """
     _require_cross_replica_context(self)
-    return self._call_for_each_tower(fn, *args, **kwargs)
+    return self._call_for_each_replica(fn, *args, **kwargs)
 
-  def _call_for_each_tower(self, fn, *args, **kwargs):
+  def _call_for_each_replica(self, fn, *args, **kwargs):
     raise NotImplementedError("must be implemented in descendants")
 
   def reduce(self, aggregation, value, destinations):
@@ -942,29 +942,16 @@ class DistributionStrategy(object):
     return v
 
   @property
-  def is_single_replica(self):
-    """Returns whether there is a single replica or multiple.
-
-    Returns:
-      A boolean. If `True`, `call_for_each_replica(fn)` will only call
-      `fn` once.  If `False`, `call_for_each_replica(fn)` may call
-      `fn` multiple times.
-    """
-    return self.is_single_tower
-
-  @property
-  def is_single_tower(self):
-    """DEPRECATED: Use `is_single_replica` instead."""
-    raise NotImplementedError("must be implemented in descendants")
-
-  @property
   def require_static_shapes(self):
     return self._require_static_shapes
 
   @property
   def num_replicas(self):
-    """Returns number of replicas, for purposes of averaging across replicas."""
-    return self.num_towers
+    """Returns number of replicas, for purposes of averaging across replicas.
+
+    DEPRECATED: use `num_replicas_in_sync` instead.
+    """
+    raise NotImplementedError("must be implemented in descendants")
 
   @property
   def num_towers(self):
@@ -972,7 +959,7 @@ class DistributionStrategy(object):
 
     DEPRECATED: use `num_replicas` instead.
     """
-    raise NotImplementedError("must be implemented in descendants")
+    return self.num_replicas
 
   @property
   def num_replicas_in_sync(self):
@@ -1165,6 +1152,11 @@ class ReplicaContext(object):
     return self._distribution_strategy.num_replicas
 
   @property
+  def num_replicas_in_sync(self):
+    """Returns number of replicas over which gradients are aggregated."""
+    return self._distribution_strategy.num_replicas_in_sync
+
+  @property
   def replica_id(self):
     """Which replica is being defined, a number from 0 to `num_replicas - 1`."""
     require_replica_context(self)
@@ -1229,7 +1221,7 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     else:
       raise NotImplementedError("TODO")
 
-  def _call_for_each_tower(self, fn, *args, **kwargs):
+  def _call_for_each_replica(self, fn, *args, **kwargs):
     # We don't run `fn` in multiple threads in _DefaultDistributionStrategy.
     kwargs.pop("run_concurrently", None)
     with ReplicaContext(self, replica_id=0):
@@ -1267,11 +1259,11 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     return value
 
   @property
-  def is_single_tower(self):
-    return True
+  def num_replicas(self):
+    return 1
 
   @property
-  def num_towers(self):
+  def num_replicas_in_sync(self):
     return 1
 
   @property
@@ -1317,10 +1309,3 @@ resource_variable_ops._from_proto_fn = _from_proto_fn
 _push_per_thread_mode = distribution_strategy_context._push_per_thread_mode  # pylint: disable=protected-access
 _get_per_thread_mode = distribution_strategy_context._get_per_thread_mode  # pylint: disable=protected-access
 _pop_per_thread_mode = distribution_strategy_context._pop_per_thread_mode  # pylint: disable=protected-access
-
-
-#-------------------------------------------------------------------------------
-# For compatibility during the tower -> replica transistion.
-_require_cross_tower_context = _require_cross_replica_context
-require_tower_context = require_replica_context
-TowerContext = ReplicaContext

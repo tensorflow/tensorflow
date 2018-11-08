@@ -137,6 +137,12 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_STRING
       }
+      field {
+        name: "recv_buf_max_chunk"
+        number: 4
+        label: LABEL_OPTIONAL
+        type: TYPE_INT32
+      }
       reserved_range {
         start: 2
         end: 3

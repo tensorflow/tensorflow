@@ -56,10 +56,10 @@ Status GdrServer::Init() {
     return std::unique_ptr<GdrWorker>(
         new GdrWorker(env, remote_memory_manager_.get()));
   };
-  TF_RETURN_IF_ERROR(
-      GrpcServer::Init(nullptr, rendezvous_mgr_func, nullptr, worker_func));
 
-  return remote_memory_manager_->Init();
+  TF_RETURN_IF_ERROR(remote_memory_manager_->Init());
+
+  return GrpcServer::Init(nullptr, rendezvous_mgr_func, nullptr, worker_func);
 }
 
 Status GdrServer::Start() {

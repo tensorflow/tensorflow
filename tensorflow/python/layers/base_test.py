@@ -76,11 +76,11 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(variable.name, 'my_layer/my_var:0')
 
     with base_layers.keras_style_scope():
-      with ops.name_scope('bar'):
-        layer = base_layers.Layer(name='my_layer')
-        # Test basic variable creation.
-        variable = layer.add_variable(
-            'my_var', [2, 2], initializer=init_ops.zeros_initializer())
+      layer = base_layers.Layer(name='my_layer')
+    # Test basic variable creation.
+    with ops.name_scope('bar'):
+      variable = layer.add_variable(
+          'my_var', [2, 2], initializer=init_ops.zeros_initializer())
     self.assertEqual(variable.name, 'bar/my_var:0')
 
   @test_util.run_in_graph_and_eager_modes
@@ -156,11 +156,6 @@ class BaseLayerTest(test.TestCase):
             regularizer=regularizer)
     self.assertEqual(
         len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 3)
-
-  def testNoEagerActivityRegularizer(self):
-    with context.eager_mode():
-      with self.assertRaisesRegexp(ValueError, 'activity_regularizer'):
-        core_layers.Dense(1, activity_regularizer=lambda *args, **kwargs: 0.)
 
   @test_util.run_in_graph_and_eager_modes
   def testCall(self):

@@ -91,23 +91,21 @@ def fit_loop(
         steps_per_epoch, val_iterator, validation_steps)
 
   if not model._grouped_model:
-    clone_model_on_towers(model, current_strategy, make_callback_model=True)
+    clone_model_on_replicas(model, current_strategy, make_callback_model=True)
 
-  def _per_device_train_function(model):
-    model._make_train_function()
-    return (model.train_function.inputs,
-            model.train_function.outputs,
-            model.train_function.updates_op,
-            model.train_function.session_kwargs)
+  def _per_device_fit_function(model):
+    model._make_fit_function()
+    return (model._fit_function.inputs, model._fit_function.outputs,
+            model._fit_function.updates_op, model._fit_function.session_kwargs)
 
-  inputs, targets = _get_input_from_iterator(iterator, model)
+  inputs, targets, sample_weights = _get_input_from_iterator(iterator, model)
   with current_strategy.scope():
     # Create train ops on each of the devices when we call
-    # `_per_device_train_function`.
+    # `_per_device_fit_function`.
     (grouped_inputs, grouped_outputs, grouped_updates,
-     grouped_session_args) = current_strategy.call_for_each_tower(
-         _per_device_train_function, model._grouped_model)
-    # Unwrap all the per device values returned from `call_for_each_tower`.
+     grouped_session_args) = current_strategy.call_for_each_replica(
+         _per_device_fit_function, model._grouped_model)
+    # Unwrap all the per device values returned from `call_for_each_replica`.
     # Unwrapping per device values gives you a list of values that can be
     # used to construct a new train function that is composed of update ops on
     # all the devices over which the model is distributed.
@@ -124,16 +122,17 @@ def fit_loop(
         current_strategy, targets)
 
     # Create a train function that is composed of all the parameters above.
-    distributed_train_function = K.Function(
-        all_inputs, all_outputs,
+    distributed_fit_function = K.Function(
+        all_inputs,
+        all_outputs,
         updates=all_updates,
-        name='distributed_train_function',
+        name='distributed_fit_function',
         **all_session_args)
 
     # We need to set sample_weights to None since there are sample weight
     # placeholders that are created with default values.
-    sample_weights = [None for _ in range(len(model.outputs) *
-                                          current_strategy.num_towers)]
+    sample_weights = [None for _ in range(
+        len(model.outputs) * current_strategy.num_replicas_in_sync)]
     if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
       ins = dataset_inputs + dataset_targets + sample_weights + [1]
     else:
@@ -173,7 +172,7 @@ def fit_loop(
         batch_logs = {'batch': step_index, 'size': 1}
         callbacks.on_batch_begin(step_index, batch_logs)
         try:
-          outs = distributed_train_function(ins)
+          outs = distributed_fit_function(ins)
         except errors.OutOfRangeError:
           logging.warning('Your dataset iterator ran out of data; '
                           'interrupting training. Make sure that your dataset '
@@ -184,11 +183,6 @@ def fit_loop(
 
         if not isinstance(outs, list):
           outs = [outs]
-
-        outs = _aggregate_metrics_across_towers(current_strategy.num_towers,
-                                                out_labels,
-                                                model.stateful_metric_names,
-                                                outs)
         for l, o in zip(out_labels, outs):
           batch_logs[l] = o
         callbacks.on_batch_end(step_index, batch_logs)
@@ -256,23 +250,21 @@ def _experimental_fit_loop(
 
   K.get_session().run(current_strategy.initialize())
 
-  def _per_device_train_function(model):
-    model._make_train_function()
-    return (model.train_function.inputs,
-            model.train_function.outputs,
-            model.train_function.updates_op,
-            model.train_function.session_kwargs)
+  def _per_device_fit_function(model):
+    model._make_fit_function()
+    return (model._fit_function.inputs, model._fit_function.outputs,
+            model._fit_function.updates_op, model._fit_function.session_kwargs)
 
   # TODO(priyag, sourabhbajaj): This should likely not be hardcoded here.
   K.set_learning_phase(1)
   out_labels = model.metrics_names or []
 
   def step_fn(ctx, inputs, targets):
-    """Clones the model and calls make_train_function."""
+    """Clones the model and calls make_fit_function."""
     # TODO(priyag, sourabhbajaj): The model gets cloned every time
     # fit/test/predict is called. We should look into caching this keyed on
     # input shapes.
-    clone_model_on_towers(
+    clone_model_on_replicas(
         model,
         current_strategy,
         make_callback_model=True,
@@ -281,16 +273,17 @@ def _experimental_fit_loop(
         mode=_Mode.TRAIN)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
-     grouped_session_args) = current_strategy.call_for_each_tower(
-         _per_device_train_function, model._grouped_model_train)
+     grouped_session_args) = current_strategy.call_for_each_replica(
+         _per_device_fit_function, model._grouped_model_train)
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
          current_strategy, grouped_inputs, grouped_outputs,
          grouped_updates, grouped_session_args)
     combined_fn = K.Function(
-        all_inputs, all_outputs,
+        all_inputs,
+        all_outputs,
         updates=all_updates,
-        name='distributed_train_function',
+        name='distributed_fit_function',
         **all_session_args)
 
     for label, output in zip(out_labels, combined_fn.outputs):
@@ -442,20 +435,19 @@ def test_loop(model, iterator, verbose=0, steps=None):
     return _experimental_test_loop(model, iterator, verbose, steps)
 
   if not model._grouped_model:
-    clone_model_on_towers(model, current_strategy)
+    clone_model_on_replicas(model, current_strategy)
 
-  def _per_device_test_function(model):
-    model._make_test_function()
-    return (model.test_function.inputs,
-            model.test_function.outputs,
-            model.test_function.updates_op,
-            model.test_function.session_kwargs)
+  def _per_device_eval_function(model):
+    model._make_eval_function()
+    return (model._eval_function.inputs, model._eval_function.outputs,
+            model._eval_function.updates_op,
+            model._eval_function.session_kwargs)
 
-  inputs, targets = _get_input_from_iterator(iterator, model)
+  inputs, targets, sample_weights = _get_input_from_iterator(iterator, model)
   with current_strategy.scope():
     (grouped_inputs, grouped_outputs, grouped_updates,
-     grouped_session_args) = current_strategy.call_for_each_tower(
-         _per_device_test_function, model._grouped_model)
+     grouped_session_args) = current_strategy.call_for_each_replica(
+         _per_device_eval_function, model._grouped_model)
 
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
@@ -475,8 +467,8 @@ def test_loop(model, iterator, verbose=0, steps=None):
 
     # We need to set sample_weights to None since there are sample weight
     # placeholders that are created with default values.
-    sample_weights = [None for _ in range(len(model.outputs) *
-                                          current_strategy.num_towers)]
+    sample_weights = [None for _ in range(
+        len(model.outputs) * current_strategy.num_replicas_in_sync)]
     if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
       ins = dataset_inputs + dataset_targets + sample_weights + [0]
     else:
@@ -484,10 +476,6 @@ def test_loop(model, iterator, verbose=0, steps=None):
 
     for m in model.stateful_metric_functions:
       m.reset_states()
-    stateful_metric_indices = [
-        i for i, name in enumerate(model.metrics_names)
-        if str(name) in model.stateful_metric_names
-    ]
 
     outs = []
     if verbose == 1:
@@ -502,26 +490,18 @@ def test_loop(model, iterator, verbose=0, steps=None):
     assert steps is not None
     for step in range(steps):
       batch_outs = distributed_test_function(ins)
-      batch_outs = _aggregate_metrics_across_towers(
-          current_strategy.num_towers, model.metrics_names,
-          model.stateful_metric_names, batch_outs)
       if isinstance(batch_outs, list):
         if step == 0:
           outs = [0.] * len(batch_outs)
-        for i, batch_out in enumerate(batch_outs):
-          if i in stateful_metric_indices:
-            outs[i] = batch_out
-          else:
-            outs[i] += batch_out
+        outs[0] += batch_outs[0]  # index 0 = 'loss'
+        outs[1:] = batch_outs[1:]
       else:
         if step == 0:
           outs.append(0.)
-        outs[0] += batch_outs
+        outs[0] += batch_outs  # index 0 = 'loss'
       if verbose >= 1:
         progbar.update(step + 1)
-    for i in range(len(outs)):
-      if i not in stateful_metric_indices:
-        outs[i] /= steps
+    outs[0] /= steps  # index 0 = 'loss'
 
     if len(outs) == 1:
       return outs[0]
@@ -552,22 +532,21 @@ def _experimental_test_loop(model, iterator, verbose=0, steps=None,
   if initialize_finalize_strategy:
     K.get_session().run(current_strategy.initialize())
 
-  def _per_device_test_function(model):
-    model._make_test_function()
-    return (model.test_function.inputs,
-            model.test_function.outputs,
-            model.test_function.updates_op,
-            model.test_function.session_kwargs)
+  def _per_device_eval_function(model):
+    model._make_eval_function()
+    return (model._eval_function.inputs, model._eval_function.outputs,
+            model._eval_function.updates_op,
+            model._eval_function.session_kwargs)
 
   # TODO(priyag, sourabhbajaj): This should likely not be hardcoded here.
   K.set_learning_phase(0)
 
   def step_fn(ctx, inputs, targets):
-    """Clones the model and calls make_test_function."""
+    """Clones the model and calls make_eval_function."""
     # TODO(priyag, sourabhbajaj): The model gets cloned every time
     # fit/test/predict is called. We should look into caching this keyed on
     # input shapes.
-    clone_model_on_towers(
+    clone_model_on_replicas(
         model,
         current_strategy,
         make_callback_model=False,
@@ -576,8 +555,8 @@ def _experimental_test_loop(model, iterator, verbose=0, steps=None,
         mode=_Mode.TEST)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
-     grouped_session_args) = current_strategy.call_for_each_tower(
-         _per_device_test_function, model._grouped_model_test)
+     grouped_session_args) = current_strategy.call_for_each_replica(
+         _per_device_eval_function, model._grouped_model_test)
 
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
@@ -669,7 +648,7 @@ def predict_loop(model, iterator, verbose=0, steps=None):
     return _experimental_predict_loop(model, iterator, verbose, steps)
 
   if not model._grouped_model:
-    clone_model_on_towers(model, current_strategy)
+    clone_model_on_replicas(model, current_strategy)
 
   def _per_device_predict_function(model):
     model._make_predict_function()
@@ -678,10 +657,10 @@ def predict_loop(model, iterator, verbose=0, steps=None):
             model.predict_function.updates_op,
             model.predict_function.session_kwargs)
 
-  inputs, _ = _get_input_from_iterator(iterator, model)
+  inputs, _, _ = _get_input_from_iterator(iterator, model)
   with current_strategy.scope():
     (grouped_inputs, grouped_outputs, grouped_updates,
-     grouped_session_args) = current_strategy.call_for_each_tower(
+     grouped_session_args) = current_strategy.call_for_each_replica(
          _per_device_predict_function, model._grouped_model)
 
     (all_inputs, all_outputs, all_updates,
@@ -712,30 +691,34 @@ def predict_loop(model, iterator, verbose=0, steps=None):
     distributed_training_utils.set_weights(
         current_strategy, distributed_model, orig_model_weights)
 
-    if steps is not None:
-      # Since we do not know how many samples we will see, we cannot
-      # pre-allocate the returned Numpy arrays. Instead, we store one array per
-      # batch seen and concatenate them upon returning.
-      unconcatenated_outs = []
-      for step in range(steps):
-        batch_outs = distributed_predict_function(ins)
-        if not isinstance(batch_outs, list):
-          batch_outs = [batch_outs]
-        if step == 0:
-          for _ in batch_outs:
-            unconcatenated_outs.append([])
-        # TODO(anjalisridhar): Should combine the outputs from multiple towers
-        # correctly here.
-        for i, batch_out in enumerate(batch_outs):
-          unconcatenated_outs[i].append(batch_out)
-        if verbose >= 1:
-          progbar.update(step + 1)
-      if len(unconcatenated_outs) == 1:
-        return np.concatenate(unconcatenated_outs[0], axis=0)
-      return [
-          np.concatenate(unconcatenated_outs[i], axis=0)
-          for i in range(len(unconcatenated_outs))
-      ]
+    num_replicas = current_strategy.num_replicas_in_sync
+    # Since we do not know how many samples we will see, we cannot
+    # pre-allocate the returned Numpy arrays. Instead, we store one array per
+    # batch seen and concatenate them upon returning.
+    unconcatenated_outs = []
+    assert steps is not None
+    for step in range(steps):
+      batch_outs = distributed_predict_function(ins)
+      if not isinstance(batch_outs, list):
+        batch_outs = [batch_outs]
+      if step == 0:
+        # batch_outs gives you the number of model outputs. In the distributed
+        # case this will be number of model_outputs * num_replicas.
+        for _ in range(len(model.outputs)):
+          unconcatenated_outs.append([])
+      for i in range(len(model.outputs)):
+        nested_outs = batch_outs[i * num_replicas:
+                                 i * num_replicas + num_replicas]
+        outs = nest.flatten(nested_outs)
+        unconcatenated_outs[i].extend(outs)
+      if verbose >= 1:
+        progbar.update(step + 1)
+    if len(unconcatenated_outs) == 1:
+      return np.concatenate(unconcatenated_outs[0], axis=0)
+    return [
+        np.concatenate(unconcatenated_outs[i], axis=0)
+        for i in range(len(unconcatenated_outs))
+    ]
 
 
 def _experimental_predict_loop(model, iterator, verbose=0, steps=None):
@@ -773,7 +756,7 @@ def _experimental_predict_loop(model, iterator, verbose=0, steps=None):
     # TODO(priyag, sourabhbajaj): The model gets cloned every time
     # fit/test/predict is called. We should look into caching this keyed on
     # input shapes.
-    clone_model_on_towers(
+    clone_model_on_replicas(
         model,
         current_strategy,
         make_callback_model=False,
@@ -781,7 +764,7 @@ def _experimental_predict_loop(model, iterator, verbose=0, steps=None):
         mode=_Mode.PREDICT)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
-     grouped_session_args) = current_strategy.call_for_each_tower(
+     grouped_session_args) = current_strategy.call_for_each_replica(
          _per_device_predict_function, model._grouped_model_predict)
 
     (all_inputs, all_outputs, all_updates,
@@ -890,11 +873,11 @@ def _clone_and_build_model(model, inputs=None, targets=None):
   return cloned_model
 
 
-def clone_model_on_towers(model, strategy, make_callback_model=False,
-                          inputs=None, targets=None, mode=None):
-  """Create a cloned model on each tower."""
+def clone_model_on_replicas(model, strategy, make_callback_model=False,
+                            inputs=None, targets=None, mode=None):
+  """Create a cloned model on each replica."""
   with strategy.scope():
-    grouped_model = strategy.call_for_each_tower(
+    grouped_model = strategy.call_for_each_replica(
         _clone_and_build_model, model, inputs, targets)
     if mode is _Mode.TRAIN:
       model._grouped_model_train = grouped_model
@@ -908,45 +891,6 @@ def clone_model_on_towers(model, strategy, make_callback_model=False,
     model._make_callback_model(grouped_model)
 
 
-def _aggregate_metrics_across_towers(num_devices, out_labels,
-                                     stateful_metric_names, outs):
-  """Aggregates stateless metrics values across towers.
-
-  When using `MirroredStrategy`, the number of towers is equal to the
-  number of devices over which training is distributed. This may not always be
-  the case.
-
-  Args:
-    num_devices: Number of devices over which the model is being distributed.
-    out_labels: The list of metric names passed to `compile`.
-    stateful_metric_names: List of stateful metric names on the model.
-    outs: The output from all the towers.
-
-  Returns:
-    The average value of each metric across the towers.
-  """
-  # TODO(anjalisridhar): Temporary workaround for aggregating metrics
-  # across towers. Replace with the new metrics module eventually.
-  merged_output = []
-  # The first output is the total loss.
-  merged_output.append(outs[0])
-  current_index = 1
-  # Each label in `out_labels` corresponds to one set of metrics. The
-  # number of metric values corresponds to the number of devices. We
-  # currently take the mean of the values.
-  for metric_name in out_labels[1:]:
-    if metric_name in stateful_metric_names:
-      # For stateful metrics, we get one aggregated result value.
-      merged_output.append(outs[current_index])
-      current_index += 1
-    else:
-      m = np.mean(outs[current_index:current_index + num_devices])
-      merged_output.append(m)
-      current_index += num_devices
-
-  return merged_output
-
-
 def _get_input_from_iterator(iterator, model):
   """Get elements from the iterator and verify the input shape and type."""
   next_element = iterator.get_next()
@@ -954,15 +898,20 @@ def _get_input_from_iterator(iterator, model):
   if len(nest.flatten(next_element)) == len(model.inputs):
     x = next_element
     y = None
-  else:
+    sample_weights = None
+  elif len(nest.flatten(next_element)) == (len(model.inputs) +
+                                           len(model.outputs)):
     x, y = next_element
+    sample_weights = None
+  else:
+    x, y, sample_weights = next_element
 
   # Validate that all the elements in x and y are of the same type and shape.
   # We can then pass the first element of x and y to `_standardize_weights`
   # below and be confident of the output.
-  x_values, y_values = distributed_training_utils.\
-    validate_distributed_dataset_inputs(model._distribution_strategy, x, y)
-  # TODO(sourabhbajaj): Add support for sample weights in distribution
-  # strategy.
-  model._standardize_weights(x_values, y_values)
-  return x, y
+  x_values, y_values, sample_weights_values = distributed_training_utils.\
+    validate_distributed_dataset_inputs(model._distribution_strategy, x, y,
+                                        sample_weights)
+  model._standardize_weights(x_values, y_values,
+                             sample_weight=sample_weights_values)
+  return x, y, sample_weights
