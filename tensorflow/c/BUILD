@@ -218,6 +218,7 @@ tf_cuda_cc_test(
         "//tensorflow/cc:grad_ops",
         "//tensorflow/cc/saved_model:signature_constants",
         "//tensorflow/cc/saved_model:tag_constants",
+        "//tensorflow/compiler/jit",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
