@@ -2837,7 +2837,6 @@ void TF_ServerStart(TF_Server* server, TF_Status* status) {
 #ifdef __ANDROID__
   status->status = tensorflow::errors::Unimplemented(
       "Server functionality is not supported in Android");
-  return nullptr;
 #else
   status->status = server->server->Start();
 #endif
@@ -2847,7 +2846,6 @@ void TF_ServerStop(TF_Server* server, TF_Status* status) {
 #ifdef __ANDROID__
   status->status = tensorflow::errors::Unimplemented(
       "Server functionality is not supported in Android");
-  return nullptr;
 #else
   status->status = server->server->Stop();
 #endif
@@ -2857,7 +2855,6 @@ void TF_ServerJoin(TF_Server* server, TF_Status* status) {
 #ifdef __ANDROID__
   status->status = tensorflow::errors::Unimplemented(
       "Server functionality is not supported in Android");
-  return nullptr;
 #else
   status->status = server->server->Join();
 #endif
