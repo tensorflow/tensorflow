@@ -948,20 +948,20 @@ def run_in_graph_and_eager_modes(func=None,
           "`run_test_in_graph_and_eager_modes` only supports test methods. "
           "Did you mean to use `run_all_in_graph_and_eager_modes`?")
 
-    def decorated(self, **kwargs):
+    def decorated(self, *args, **kwargs):
       try:
         with context.graph_mode():
           with self.test_session(use_gpu=use_gpu, config=config):
-            f(self, **kwargs)
+            f(self, *args, **kwargs)
       except unittest.case.SkipTest:
         pass
 
       def run_eagerly(self, **kwargs):
         if not use_gpu:
           with ops.device("/device:CPU:0"):
-            f(self, **kwargs)
+            f(self, *args, **kwargs)
         else:
-          f(self, **kwargs)
+          f(self, *args, **kwargs)
 
       if assert_no_eager_garbage:
         ops.reset_default_graph()

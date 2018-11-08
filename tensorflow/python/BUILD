@@ -1538,6 +1538,7 @@ py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
