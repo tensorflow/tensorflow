@@ -344,6 +344,7 @@ py_test(
     name = "convolutional_test",
     size = "large",
     srcs = ["layers/convolutional_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
@@ -381,6 +382,7 @@ py_test(
     name = "core_test",
     size = "medium",
     srcs = ["layers/core_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
@@ -401,8 +403,9 @@ cuda_py_test(
 
 py_test(
     name = "local_test",
-    size = "large",
+    size = "medium",
     srcs = ["layers/local_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
@@ -690,8 +693,9 @@ py_test(
 
 py_test(
     name = "training_test",
-    size = "enormous",
+    size = "medium",
     srcs = ["engine/training_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [
@@ -824,6 +828,7 @@ py_test(
     name = "models_test",
     size = "medium",
     srcs = ["models_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
     tags = ["notsan"],  # b/67509773
     deps = [
