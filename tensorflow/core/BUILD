@@ -2813,7 +2813,6 @@ tf_cuda_library(
         ":functional_ops_op_lib",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/kernels:required",
-        ":core_cpu_impl",
     ]),
     alwayslink = 1,
 )
