@@ -146,6 +146,8 @@ class PopnnLstmLayerOp : public XlaOpKernel, IpuOpKernel {
     return {0, 1, 2, 3, 4};
   }
 
+  const uint64 NumberOfInplaceOperands() override { return 0; }
+
  private:
   int32 num_channels_;
 
@@ -223,6 +225,8 @@ class PopnnLstmLayerBackpropOp : public XlaOpKernel, IpuOpKernel {
 
  protected:
   const absl::flat_hash_set<int64> AllocatingIndexes() { return {}; }
+
+  const uint64 NumberOfInplaceOperands() override { return 0; }
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(PopnnLstmLayerBackpropOp);

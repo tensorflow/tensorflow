@@ -8,5 +8,7 @@ IpuOpKernel::IpuOpKernel(){};
 
 void IpuOpKernel::AddRequiredAttributesToMap() {
   attribute_map_.AddAttribute("allocating_indexes", AllocatingIndexes());
+  attribute_map_.AddAttribute("num_inplace_operands",
+                              NumberOfInplaceOperands());
 }
 }  // namespace tensorflow

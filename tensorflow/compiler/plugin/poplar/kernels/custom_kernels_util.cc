@@ -81,9 +81,17 @@ void AttributeMap::AddAttribute(const std::string& field_name,
   attributes_[field_name] = absl::StrJoin(attr, ",");
 }
 
+template <>
+void AttributeMap::AddAttribute(const std::string& field_name,
+                                const uint64& attr) {
+  attributes_[field_name] = Json::Value::UInt64(attr);
+}
+
 template void AttributeMap::AddAttribute<float>(const std::string&,
                                                 const float&);
 template void AttributeMap::AddAttribute<int>(const std::string&, const int&);
+template void AttributeMap::AddAttribute<uint64>(const std::string&,
+                                                 const uint64&);
 template void AttributeMap::AddAttribute<bool>(const std::string&, const bool&);
 template void AttributeMap::AddAttribute<std::string>(const std::string&,
                                                       const std::string&);
@@ -117,6 +125,15 @@ StatusOr<int> AttributeMap::GetAttributeAsInt(
         "Could not obtain the field %s for the custom op.", field_name.c_str());
   }
   return attributes_[field_name].asInt();
+}
+
+StatusOr<uint64> AttributeMap::GetAttributeAsUInt64(
+    const std::string& field_name) const {
+  if (!attributes_.isMember(field_name)) {
+    return xla::FailedPrecondition(
+        "Could not obtain the field %s for the custom op.", field_name.c_str());
+  }
+  return attributes_[field_name].asUInt64();
 }
 
 StatusOr<bool> AttributeMap::GetAttributeAsBool(

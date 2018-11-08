@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/inplace_util.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
+#include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
@@ -270,11 +271,39 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
       return absl::make_unique<NotInplaceHloInstructionDescription>();
     }
 
+    case HloOpcode::kCustomCall: {
+      if (IPUCustomKernelsUtil::IsPoplibsOp(inst)) {
+        // For custom Poplibs Ops, get num_inplace_operands attribute which
+        // indicates the following:
+        // If num_inplace_operands == 0 then the op is NotInplaceHloInstruction;
+        // Else the op is inplace on the first num_inplace_operands operands.
+        auto attribute_map = IPUCustomKernelsUtil::AttributeMap(inst);
+        auto statusor =
+            attribute_map.GetAttributeAsUInt64("num_inplace_operands");
+        if (!statusor.ok()) {
+          LOG(FATAL) << "Custom Poplibs op " << inst->name()
+                     << " is missing \"num_inplace_operands\" attribute.";
+        }
+        uint64 num_inplace_operands = statusor.ValueOrDie();
+        if (num_inplace_operands) {
+          OperandIndexes indexes(num_inplace_operands);
+          std::iota(indexes.begin(), indexes.end(), 0);
+          return absl::make_unique<InplaceHloInstructionDescription>(indexes);
+        } else {
+          return absl::make_unique<NotInplaceHloInstructionDescription>();
+        }
+      } else {
+        OperandIndexes indexes(inst->operand_count());
+        std::iota(indexes.begin(), indexes.end(), 0);
+        return absl::make_unique<ViewChangingHloInstructionDescription>(
+            indexes);
+      }
+    }
+
     // Unimplemented ops.
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCrossReplicaSum:
-    case HloOpcode::kCustomCall:
     case HloOpcode::kDomain:
     case HloOpcode::kFft:
     case HloOpcode::kGather:

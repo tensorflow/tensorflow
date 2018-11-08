@@ -45,6 +45,7 @@ class AttributeMap {
       const std::string& field_name) const;
   StatusOr<float> GetAttributeAsFloat(const std::string& field_name) const;
   StatusOr<int> GetAttributeAsInt(const std::string& field_name) const;
+  StatusOr<uint64> GetAttributeAsUInt64(const std::string& field_name) const;
   StatusOr<bool> GetAttributeAsBool(const std::string& field_name) const;
   StatusOr<tensorflow::DataType> GetAttributeAsTFDataType(
       const std::string& field_name) const;

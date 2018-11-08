@@ -566,6 +566,73 @@ ENTRY entry {
   EXPECT_THAT(inst->name(), "add");
 }
 
+TEST_F(HloInplaceDependencyTest, CustomPoplibsOpInplace) {
+  std::string hlo = R"(
+HloModule top
+
+ENTRY c1 {
+  p0 = s32[20] parameter(0)
+  p1 = s32[20] parameter(1)
+
+  c = s32[20] custom-call(p0, p1), custom_call_target="{\"allocating_indexes\":\"\",\"num_inplace_operands\":1}\n", metadata={op_type="popnn" op_name="_"}
+
+  ROOT t = (s32[20]) tuple(c)
+}
+
+)";
+
+  auto config = GetModuleConfigForTest();
+  config.set_resource_input_count(2);
+  config.set_resource_update_to_input_index({0});
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  CompilerAnnotations annotations(module0);
+
+  InplaceFinder inplaceFinder(annotations);
+  EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
+
+  auto inplace_instructions = annotations.inplace_instructions;
+
+  EXPECT_THAT(inplace_instructions.size(), 1);
+
+  const auto* inst = *(inplace_instructions.begin());
+  EXPECT_THAT(inst->name(), "c");
+}
+
+TEST_F(HloInplaceDependencyTest, CustomPoplibsOpNotInplace) {
+  std::string hlo = R"(
+HloModule top
+
+ENTRY c1 {
+  p0 = s32[20] parameter(0)
+  p1 = s32[20] parameter(1)
+
+  c = s32[20] custom-call(p0, p1), custom_call_target="{\"allocating_indexes\":\"\",\"num_inplace_operands\":0}\n", metadata={op_type="popnn" op_name="_"}
+
+  ROOT t = (s32[20]) tuple(c)
+}
+
+)";
+
+  auto config = GetModuleConfigForTest();
+  config.set_resource_input_count(2);
+  config.set_resource_update_to_input_index({0});
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* module0 = module.ValueOrDie().get();
+
+  CompilerAnnotations annotations(module0);
+
+  InplaceFinder inplaceFinder(annotations);
+  EXPECT_FALSE(inplaceFinder.Run(module0).ValueOrDie());
+
+  auto inplace_instructions = annotations.inplace_instructions;
+
+  EXPECT_THAT(inplace_instructions.size(), 0);
+}
+
 }  // namespace
 }  // namespace poplarplugin
 }  // namespace xla

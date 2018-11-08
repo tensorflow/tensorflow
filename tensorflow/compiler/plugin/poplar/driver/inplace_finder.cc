@@ -164,13 +164,12 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
 
       switch (inst->opcode()) {
         case HloOpcode::kCall:
+        case HloOpcode::kCustomCall:
           inplace_instructions_queue.push_front(inst);
-          changed = true;
           break;
         case HloOpcode::kAdd:
         case HloOpcode::kSubtract:
           inplace_instructions_queue.push_back(inst);
-          changed = true;
           break;
         default:
           break;
@@ -180,6 +179,7 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
     for (auto* inst : inplace_instructions_queue) {
       if (InplaceUtil::IsInPlace(inst, annotations_, reachability_map.get())) {
         annotations_.inplace_instructions.insert(inst);
+        changed = true;
       }
     }
     routes.clear();

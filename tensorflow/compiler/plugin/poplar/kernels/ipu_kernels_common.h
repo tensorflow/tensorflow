@@ -38,6 +38,10 @@ class IpuOpKernel {
   // Allocating indexes used by the Allocation Finder - op specific.
   virtual const absl::flat_hash_set<int64> AllocatingIndexes() = 0;
 
+  // Return how many of the first n operands are updated in place. If 0, the op
+  // is treated as NotInplace.
+  virtual const uint64 NumberOfInplaceOperands() = 0;
+
   // Adds all the required attributes to the map.
   void AddRequiredAttributesToMap();
 
