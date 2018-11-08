@@ -81,18 +81,6 @@ TF_CAPI_EXPORT extern void TFE_ContextOptionsSetAsync(TFE_ContextOptions*,
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetDevicePlacementPolicy(
     TFE_ContextOptions*, TFE_ContextDevicePlacementPolicy);
 
-// Infer type and number attributes from the operation inputs, disabled by
-// default.
-//
-// Enabling it replicates the inference behaviour present in graph construction.
-// It is assumed that inputs are added to the operaton in the same order as they
-// are declared in its definition.
-//
-// It is also assumed that inferable attributes are not set explicitly when
-// this option is enabled.
-TF_CAPI_EXPORT extern void TFE_ContextOptionsSetInferInputAttributes(
-    TFE_ContextOptions*, unsigned char enable);
-
 // Destroy an options object.
 TF_CAPI_EXPORT extern void TFE_DeleteContextOptions(TFE_ContextOptions*);
 
@@ -378,8 +366,6 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrFunctionList(TFE_Op* op,
                                                      const char* attr_name,
                                                      const TFE_Op** value,
                                                      int num_values);
-
-TF_CAPI_EXPORT extern void TFE_OpInferSingleInputTypeAttrs(TFE_Op* op);
 
 // Execute the operation defined by 'op' and return handles to computed
 // tensors in `retvals`.

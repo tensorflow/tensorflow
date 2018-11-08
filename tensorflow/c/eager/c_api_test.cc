@@ -1631,7 +1631,6 @@ TEST(CAPI, TestTFE_TensorHandleCopySharingUnderlyingTensorHandle) {
 TEST(CAPI, TestTFE_OpInferSingleInputAttrs) {
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
-  opts->input_attrs_inference = true;
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
@@ -1647,7 +1646,7 @@ TEST(CAPI, TestTFE_OpInferSingleInputAttrs) {
 
   tensorflow::AttrValueMap attr_values;
   minOp->operation.Attrs().FillAttrValueMap(&attr_values);
-  tensorflow::AttrValueMap::iterator attr_found = attr_values.find("T");
+  tensorflow::AttrValueMap::const_iterator attr_found = attr_values.find("T");
   EXPECT_NE(attr_found, attr_values.cend());
   EXPECT_EQ(attr_found->second.type(), tensorflow::DataType::DT_FLOAT);
   attr_found = attr_values.find("Tidx");
@@ -1668,7 +1667,6 @@ TEST(CAPI, TestTFE_OpInferSingleInputAttrs) {
 TEST(CAPI, TestTFE_OpInferSingleTypeInputListAttrs) {
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
-  opts->input_attrs_inference = true;
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
@@ -1686,7 +1684,7 @@ TEST(CAPI, TestTFE_OpInferSingleTypeInputListAttrs) {
 
   tensorflow::AttrValueMap attr_values;
   concatOp->operation.Attrs().FillAttrValueMap(&attr_values);
-  tensorflow::AttrValueMap::iterator attr_found = attr_values.find("T");
+  tensorflow::AttrValueMap::const_iterator attr_found = attr_values.find("T");
   EXPECT_NE(attr_found, attr_values.cend());
   EXPECT_EQ(attr_found->second.type(), tensorflow::DataType::DT_FLOAT);
   attr_found = attr_values.find("N");
@@ -1708,7 +1706,6 @@ TEST(CAPI, TestTFE_OpInferSingleTypeInputListAttrs) {
 TEST(CAPI, TestTFE_OpInferMixedTypeInputListAttrs) {
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
-  opts->input_attrs_inference = true;
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
@@ -1726,7 +1723,7 @@ TEST(CAPI, TestTFE_OpInferMixedTypeInputListAttrs) {
 
   tensorflow::AttrValueMap attr_values;
   assertOp->operation.Attrs().FillAttrValueMap(&attr_values);
-  tensorflow::AttrValueMap::iterator attr_found = attr_values.find("T");
+  tensorflow::AttrValueMap::const_iterator attr_found = attr_values.find("T");
   EXPECT_NE(attr_found, attr_values.cend());
   EXPECT_EQ(attr_found->second.list().type(0), tensorflow::DataType::DT_BOOL);
   EXPECT_EQ(attr_found->second.list().type(1), tensorflow::DataType::DT_FLOAT);
