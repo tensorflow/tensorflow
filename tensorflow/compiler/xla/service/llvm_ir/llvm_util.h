@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
@@ -154,6 +155,11 @@ StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
 // values at IR emission time.
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
                                            llvm::Module* module);
+
+// Allocates a tile of shared memory.
+llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
+                                               llvm::Type* tile_type,
+                                               absl::string_view name);
 
 // Inserts an allocate of the requested type at the entry point of the
 // function that the builder is currently building. The insert point

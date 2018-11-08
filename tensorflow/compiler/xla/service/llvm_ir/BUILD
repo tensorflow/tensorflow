@@ -198,6 +198,7 @@ cc_library(
     hdrs = ["sort_util.h"],
     deps = [
         ":ir_array",
+        ":kernel_support_library",
         ":llvm_loop",
         ":llvm_util",
         ":loop_emitter",

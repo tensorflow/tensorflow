@@ -2197,8 +2197,10 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   }
 
   int64 dimension_to_sort = sort->dimensions(0);
-  int64 dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
+  uint64 dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
   int64 num_stages = tensorflow::Log2Ceiling(dimension_to_sort_bound);
+  CHECK_GE(1ULL << num_stages, dimension_to_sort_bound);
+  CHECK_LT(1ULL << (num_stages - 1), dimension_to_sort_bound);
 
   // Naive C++ code for the outer loops:
   //
@@ -2224,24 +2226,55 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   // smaller than our chosen power of 2 tile size, and pass them to SortInPlace.
   // Each thread then processes one tile of data.
 
-  const int64 kTileSize = 64LL;
+  const uint64 kTileSize = std::min(2048ULL, 1ULL << num_stages);
 
   // If we cannot combine several xor masks together, we don't use tiling, so we
-  // calculate the standard launch dimensions for the shape.
+  // calculate the standard launch dimensions for the shape. However we only
+  // need to iterate through ~half of the dimension to sort (rounded up to the
+  // next highest power of 2), because each iteration compares one pair of
+  // elements.
+  Shape standard_iteration_shape = keys_shape;
+  uint64 standard_num_iterations_in_sort_dim = 1ULL << (num_stages - 1);
+  standard_iteration_shape.set_dimensions(dimension_to_sort,
+                                          standard_num_iterations_in_sort_dim);
   LaunchDimensions standard_launch_dimensions = CalculateLaunchDimensions(
-      keys_shape, ir_emitter_context_->device_description());
+      standard_iteration_shape, ir_emitter_context_->device_description());
 
-  // Calculate the launch dimensions for the case where we use tiling.
-  Shape tile_shape = keys_shape;
-  tile_shape.set_dimensions(dimension_to_sort,
-                            CeilOfRatio(dimension_to_sort_bound, kTileSize));
-  uint64 num_tiles = ShapeUtil::ElementsIn(tile_shape);
-  const uint64 kThreadsPerBlock = std::min(
-      {std::max(
-           1ULL,
-           ir_emitter_context_->device_description().threads_per_block_limit()),
-       32ULL, num_tiles});
-  uint64 num_blocks = CeilOfRatio(num_tiles, kThreadsPerBlock);
+  // Calculate the launch dimensions for the case where we use tiling. We split
+  // the dimension that should be sorted into tiles of size 'kTileSize'. This
+  // means we first need to round 'dimension_to_sort_bound' up to be a multiple
+  // of the tile size.
+  int64 rounded_bound = RoundUpToNearest(dimension_to_sort_bound, kTileSize);
+  Shape iteration_shape = keys_shape;
+
+  // We iterate through the element pairs that should be compared.
+  uint64 num_iterations_in_sort_dim = rounded_bound / 2;
+  iteration_shape.set_dimensions(dimension_to_sort, num_iterations_in_sort_dim);
+  uint64 num_iterations = ShapeUtil::ElementsIn(iteration_shape);
+
+  // For correctness reasons we need exactly 'kTileSize' / 2 many threads per
+  // block. Each thread is responsible for copying exactly two adjacent elements
+  // into shared memory, and then does a comparison of two possibly different
+  // elements taken from shared memory.
+  const uint64 kThreadsPerBlock = kTileSize / 2;
+
+  // Check whether we should use any tiling. We might not be able to use it if
+  // we have not enough threads, or not enough shared memory. Also it does not
+  // give a speedup if the tile size is < 128.
+  int64 total_shared_memory_needed = 0;
+  for (int64 i = 0; i < sort->operand_count(); ++i) {
+    total_shared_memory_needed +=
+        kTileSize * ShapeUtil::ByteSizeOfPrimitiveType(
+                        sort->operand(i)->shape().element_type());
+  }
+  bool no_tiling =
+      kTileSize < 128 ||
+      kThreadsPerBlock >
+          ir_emitter_context_->device_description().threads_per_block_limit() ||
+      total_shared_memory_needed >
+          ir_emitter_context_->device_description().shared_memory_per_block();
+
+  uint64 num_blocks = CeilOfRatio(num_iterations, kThreadsPerBlock);
   LaunchDimensions tiled_launch_dimensions(num_blocks, kThreadsPerBlock);
 
   auto emit_kernel = [&](absl::Span<const int64> xor_masks) {
@@ -2264,9 +2297,12 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
         values_arrays.push_back(GetIrArray(*sort, *sort, shape_index));
       }
     }
-    return llvm_ir::EmitSortInPlace(dimension_to_sort, keys_array,
-                                    values_arrays, IrName(sort), xor_masks, &b_,
-                                    launch_dimensions, kTileSize);
+    return llvm_ir::EmitSortInPlace(
+        dimension_to_sort, keys_array, values_arrays, IrName(sort), xor_masks,
+        &b_, launch_dimensions,
+        xor_masks.size() > 1 ? num_iterations_in_sort_dim
+                             : standard_num_iterations_in_sort_dim,
+        kTileSize);
   };
   std::vector<int64> xor_masks;
   for (int64 stage = 0; stage < num_stages; ++stage) {
@@ -2277,7 +2313,7 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
       } else {
         xor_mask = 1LL << mask;
       }
-      if (xor_mask >= kTileSize) {
+      if (xor_mask >= kTileSize || no_tiling) {
         if (!xor_masks.empty()) {
           TF_RETURN_IF_ERROR(emit_kernel(xor_masks));
           xor_masks.clear();
@@ -3303,13 +3339,9 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
                                  param->shape().element_type(), module_),
                              kTileSize + 1),
         kTileSize);
-    const int kNVPTXSharedMemoryAddrSpace = 3;
-    auto* tile_base_ptr = new llvm::GlobalVariable(
-        *b_.GetInsertBlock()->getParent()->getParent(), tile_type,
-        /*isConstant=*/false, llvm::GlobalValue::PrivateLinkage,
-        llvm::UndefValue::get(tile_type),
-        llvm_ir::AsStringRef(IrName(hlo, StrCat("tile", id))), nullptr,
-        llvm::GlobalValue::NotThreadLocal, kNVPTXSharedMemoryAddrSpace);
+    auto* tile_base_ptr = llvm_ir::AllocateSharedMemoryTile(
+        b_.GetInsertBlock()->getParent()->getParent(), tile_type,
+        IrName(hlo, StrCat("tile", id)));
     param_shmem_buffers[id] = tile_base_ptr;
     VLOG(3) << "Added shmem buffer for parameter " << id << ": "
             << llvm_ir::DumpToString(*tile_base_ptr);
