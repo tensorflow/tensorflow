@@ -49,7 +49,7 @@ namespace gpu_fusion_pass {
 
 // declaration of all the constants that are used in the gpu_fusion_pass
 // namespace
-const int kVlogLevel = -1;
+const int kVlogLevel = 2;
 
 // an adapter on the util version of the ReadBoolFromEnvVar routine
 // this version better suits the usage of the routine in this file.
@@ -450,6 +450,9 @@ class ROCmFusionOpAddNReluGrad : public ROCmFusionOpBase {
 Status ROCmFusionPass::Run(const GraphOptimizationPassOptions& options) {
   // enable the fusion pass if the env var TF_ROCM_FUSION_ENABLE is set
   if (ReadBoolFromEnvVar("TF_ROCM_FUSION_ENABLE")) {
+    
+    VLOG(0) << "ROCm Fusion is enabled.";
+    
     // Check if the graph is present, should be either in
     // - options.graph (for all but POST_PARTITIONING grouping)
     // - options.partition_graphs (for POST_PARTITIONING_grouping)

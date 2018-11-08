@@ -69,7 +69,7 @@ using dnn::NormalizeDescriptor;
 
 namespace rocm {
 
-const int kVlogLevel = -1;
+const int kVlogLevel = 2;
 
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kMIOpenPlugin);
 
