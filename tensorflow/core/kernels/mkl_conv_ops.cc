@@ -248,18 +248,18 @@ class MklConvFwdPrimitive : public MklPrimitive {
     if (!post_op_params.empty()) {
       for (auto const& post_op_param : post_op_params) {
         if (post_op_param.name == "relu") {
-          DCHECK(post_op_param.param.size() == 3);
+          DCHECK_EQ(post_op_param.param.size(), 3);
           float op_scale = post_op_param.param[0];
           float op_alpha = post_op_param.param[1];
           float op_beta = post_op_param.param[2];
           post_ops.append_eltwise(op_scale, mkldnn::eltwise_relu, op_alpha,
                                   op_beta);
         } else if (post_op_param.name == "sum") {
-          DCHECK(post_op_param.param.size() == 1);
+          DCHECK_EQ(post_op_param.param.size(), 1);
           float op_scale = post_op_param.param[0];
           post_ops.append_sum(op_scale);
         } else if (post_op_param.name == "output_scale") {
-          DCHECK(post_op_param.param.size() == 1);
+          DCHECK_EQ(post_op_param.param.size(), 1);
           std::vector<float> scales;
           scales.push_back(post_op_param.param[0]);
           post_ops_attr.set_output_scales(0, scales);
@@ -373,17 +373,17 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     // Generate keys for post-ops
     for (auto const& post_op_param : convFwdDims.post_op_params) {
       if (post_op_param.name == "relu") {
-        DCHECK(post_op_param.param.size() == 3);
+        DCHECK_EQ(post_op_param.param.size(), 3);
         key_creator.AddAsKey(post_op_param.name);
         key_creator.AddAsKey(post_op_param.param[0]);
         key_creator.AddAsKey(post_op_param.param[1]);
         key_creator.AddAsKey(post_op_param.param[2]);
       } else if (post_op_param.name == "sum") {
-        DCHECK(post_op_param.param.size() == 1);
+        DCHECK_EQ(post_op_param.param.size(), 1);
         key_creator.AddAsKey(post_op_param.name);
         key_creator.AddAsKey(post_op_param.param[0]);
       } else if (post_op_param.name == "output_scale") {
-        DCHECK(post_op_param.param.size() == 1);
+        DCHECK_EQ(post_op_param.param.size(), 1);
         key_creator.AddAsKey(post_op_param.name);
         key_creator.AddAsKey(post_op_param.param[0]);
       } else {
