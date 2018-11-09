@@ -214,6 +214,7 @@ renames = {
     'tf.local_variables_initializer': 'tf.compat.v1.local_variables_initializer',
     'tf.log_sigmoid': 'tf.math.log_sigmoid',
     'tf.logical_xor': 'tf.math.logical_xor',
+    'tf.make_template': 'tf.compat.v1.make_template',
     'tf.manip.batch_to_space_nd': 'tf.batch_to_space_nd',
     'tf.manip.gather_nd': 'tf.gather_nd',
     'tf.manip.reshape': 'tf.reshape',
