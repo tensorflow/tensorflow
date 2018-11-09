@@ -332,11 +332,6 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
     std::set<int32_t>* variable_tensor_indices, const ExportParams& params) {
   variable_tensor_indices->clear();
 
-  auto is_tflite_builtin = [](const BaseOperator* op) {
-    const auto& tflite_builtins = GetBuiltinOpsMap();
-    return (op && tflite_builtins.find(op->name()) != tflite_builtins.end());
-  };
-
   // The operators are in execution order, so we just follow tf.mini order.
   std::vector<Offset<Operator>> op_vector;
   for (const auto& op : model.operators) {
@@ -365,15 +360,7 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
     auto options = Options::Custom(0);
 
     std::vector<bool> mutating_input_variables;
-
-    // Some ops like AddN are exportable via Serialize() but do not have a
-    // corresponding TFLITE builtin. In that case, when flex mode is enable we
-    // should export it as a flex op, not as a native.
-    bool export_as_flex_op = !is_tflite_builtin(tflite_op) &&
-                             key.is_flex_op() &&
-                             !op->tensorflow_node_def.empty();
-    if (!export_as_flex_op) {
-      CHECK(tflite_op);  // guaranteed by the if-statement just above.
+    if (tflite_op) {
       options = tflite_op->Serialize(*op, builder);
       mutating_input_variables = tflite_op->GetMutatingInputVariables(*op);
 
@@ -386,7 +373,7 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
           variable_tensor_indices->insert(variable_tensor_index);
         }
       }
-    } else {
+    } else if (key.is_flex_op() && !op->tensorflow_node_def.empty()) {
       auto fbb = WriteFlexOpOptions(op->tensorflow_node_def);
       if (fbb) {
         options = Options::Custom(builder->CreateVector(fbb->GetBuffer()));
