@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
 namespace {
@@ -37,18 +38,14 @@ class PadOp : public XlaOpKernel {
         TensorShapeUtils::IsMatrix(pad_shape) && pad_shape.dim_size(1) == 2,
         errors::InvalidArgument("paddings must be a matrix with 2 columns: ",
                                 pad_shape.DebugString()));
-    const int fixed_dims =
-        (allow_legacy_scalars() && dims == 0 && pad_shape.dim_size(0) == 1)
-            ? 1
-            : dims;
     OP_REQUIRES(
-        ctx, fixed_dims == pad_shape.dim_size(0),
+        ctx, dims == pad_shape.dim_size(0),
         errors::InvalidArgument(
             "The first dimension of paddings must be the rank of inputs",
             pad_shape.DebugString(), " ", input_shape.DebugString()));
 
     xla::XlaOp input = ctx->Input("input");
-    if (fixed_dims == 0) {
+    if (dims == 0) {
       // Tensor is rank 0. Return it unchanged.
       ctx->SetOutput(0, input);
       return;
@@ -59,7 +56,7 @@ class PadOp : public XlaOpKernel {
                    ctx->ConstantInputAsInt64Literal("paddings", &pad_literal));
 
     xla::PaddingConfig config;
-    for (int i = 0; i < fixed_dims; ++i) {
+    for (int i = 0; i < dims; ++i) {
       auto* dim = config.add_dimensions();
       int before = pad_literal.Get<int64>({i, 0});
       int after = pad_literal.Get<int64>({i, 1});

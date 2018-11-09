@@ -141,6 +141,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -416,7 +417,102 @@ class FeatureLayer(Layer):
     return (input_shape[0], total_elements)
 
 
-class LinearModel(Layer):
+class _LinearModelLayer(Layer):
+  """Layer that contains logic for `LinearModel`."""
+
+  def __init__(self,
+               feature_columns,
+               units=1,
+               sparse_combiner='sum',
+               trainable=True,
+               name=None,
+               **kwargs):
+    super(_LinearModelLayer, self).__init__(
+        name=name, trainable=trainable, **kwargs)
+
+    self._feature_columns = _normalize_feature_columns(feature_columns)
+    self._feature_columns = sorted(self._feature_columns, key=lambda x: x.name)
+    for column in self._feature_columns:
+      if not isinstance(column, (DenseColumn, CategoricalColumn)):
+        raise ValueError(
+            'Items of feature_columns must be either a '
+            'DenseColumn or CategoricalColumn. Given: {}'.format(column))
+
+    self._units = units
+    self._sparse_combiner = sparse_combiner
+
+    self._state_manager = _StateManagerImpl(self, self.trainable)
+    self.bias = None
+
+  def build(self, _):
+    # We need variable scopes for now because we want the variable partitioning
+    # information to percolate down. We also use _pure_variable_scope's here
+    # since we want to open up a name_scope in the `call` method while creating
+    # the ops.
+    with variable_scope._pure_variable_scope(self.name):  # pylint: disable=protected-access
+      for column in self._feature_columns:
+        with variable_scope._pure_variable_scope(column.name):  # pylint: disable=protected-access
+          # Create the state for each feature column
+          column.create_state(self._state_manager)
+
+          # Create a weight variable for each column.
+          if isinstance(column, CategoricalColumn):
+            first_dim = column.num_buckets
+          else:
+            first_dim = column.variable_shape.num_elements()
+          self._state_manager.create_variable(
+              column,
+              name='weights',
+              dtype=dtypes.float32,
+              shape=(first_dim, self._units),
+              initializer=init_ops.zeros_initializer(),
+              trainable=self.trainable)
+
+      # Create a bias variable.
+      self.bias = self.add_variable(
+          name='bias_weights',
+          dtype=dtypes.float32,
+          shape=[self._units],
+          initializer=init_ops.zeros_initializer(),
+          trainable=self.trainable,
+          use_resource=True,
+          # TODO(rohanj): Get rid of this hack once we have a mechanism for
+          # specifying a default partitioner for an entire layer. In that case,
+          # the default getter for Layers should work.
+          getter=variable_scope.get_variable)
+
+    super(_LinearModelLayer, self).build(None)
+
+  def call(self, features):
+    if not isinstance(features, dict):
+      raise ValueError('We expected a dictionary here. Instead we got: {}'
+                       .format(features))
+    with ops.name_scope(self.name):
+      transformation_cache = FeatureTransformationCache(features)
+      weighted_sums = []
+      for column in self._feature_columns:
+        with ops.name_scope(column.name):
+          # All the weights used in the linear model are owned by the state
+          # manager associated with this Linear Model.
+          weight_var = self._state_manager.get_variable(column, 'weights')
+
+          weighted_sum = _create_weighted_sum(
+              column=column,
+              transformation_cache=transformation_cache,
+              state_manager=self._state_manager,
+              sparse_combiner=self._sparse_combiner,
+              weight_var=weight_var)
+          weighted_sums.append(weighted_sum)
+
+      _verify_static_batch_size_equality(weighted_sums, self._feature_columns)
+      predictions_no_bias = math_ops.add_n(
+          weighted_sums, name='weighted_sum_no_bias')
+      predictions = nn_ops.bias_add(
+          predictions_no_bias, self.bias, name='weighted_sum')
+      return predictions
+
+
+class LinearModel(training.Model):
   """Produces a linear prediction `Tensor` based on given `feature_columns`.
 
   This layer generates a weighted sum based on output dimension `units`.
@@ -518,60 +614,15 @@ class LinearModel(Layer):
       ValueError: if an item in `feature_columns` is neither a `DenseColumn`
         nor `CategoricalColumn`.
     """
-    super(LinearModel, self).__init__(name=name, trainable=trainable, **kwargs)
 
-    self._feature_columns = _normalize_feature_columns(feature_columns)
-    self._feature_columns = sorted(self._feature_columns, key=lambda x: x.name)
-    for column in self._feature_columns:
-      if not isinstance(column, (DenseColumn, CategoricalColumn)):
-        raise ValueError(
-            'Items of feature_columns must be either a '
-            'DenseColumn or CategoricalColumn. Given: {}'.format(column))
-
-    self._units = units
-    self._sparse_combiner = sparse_combiner
-
-    self._state_manager = _StateManagerImpl(self, self.trainable)
-    self._bias_variable = None
-
-  def build(self, _):
-    # We need variable scopes for now because we want the variable partitioning
-    # information to percolate down. We also use _pure_variable_scope's here
-    # since we want to open up a name_scope in the `call` method while creating
-    # the ops.
-    with variable_scope._pure_variable_scope(self.name):  # pylint: disable=protected-access
-      for column in self._feature_columns:
-        with variable_scope._pure_variable_scope(column.name):  # pylint: disable=protected-access
-          # Create the state for each feature column
-          column.create_state(self._state_manager)
-
-          # Create a weight variable for each column.
-          if isinstance(column, CategoricalColumn):
-            first_dim = column.num_buckets
-          else:
-            first_dim = column.variable_shape.num_elements()
-          self._state_manager.create_variable(
-              column,
-              name='weights',
-              dtype=dtypes.float32,
-              shape=(first_dim, self._units),
-              initializer=init_ops.zeros_initializer(),
-              trainable=self.trainable)
-
-      # Create a bias variable.
-      self._bias_variable = self.add_variable(
-          name='bias_weights',
-          dtype=dtypes.float32,
-          shape=[self._units],
-          initializer=init_ops.zeros_initializer(),
-          trainable=self.trainable,
-          use_resource=True,
-          # TODO(rohanj): Get rid of this hack once we have a mechanism for
-          # specifying a default partitioner for an entire layer. In that case,
-          # the default getter for Layers should work.
-          getter=variable_scope.get_variable)
-
-    super(LinearModel, self).build(None)
+    super(LinearModel, self).__init__(name=name, **kwargs)
+    self.layer = _LinearModelLayer(
+        feature_columns,
+        units,
+        sparse_combiner,
+        trainable,
+        name=self.name,
+        **kwargs)
 
   def call(self, features):
     """Returns a `Tensor` the represents the predictions of a linear model.
@@ -589,36 +640,11 @@ class LinearModel(Layer):
     Raises:
       ValueError: If features are not a dictionary.
     """
-    if not isinstance(features, dict):
-      raise ValueError('We expected a dictionary here. Instead we got: ',
-                       features)
-    with ops.name_scope(self.name):
-      transformation_cache = FeatureTransformationCache(features)
-      weighted_sums = []
-      for column in self._feature_columns:
-        with ops.name_scope(column.name):
-          # All the weights used in the linear model are owned by the state
-          # manager associated with this Linear Model.
-          weight_var = self._state_manager.get_variable(column, 'weights')
-
-          weighted_sum = _create_weighted_sum(
-              column=column,
-              transformation_cache=transformation_cache,
-              state_manager=self._state_manager,
-              sparse_combiner=self._sparse_combiner,
-              weight_var=weight_var)
-          weighted_sums.append(weighted_sum)
-
-      _verify_static_batch_size_equality(weighted_sums, self._feature_columns)
-      predictions_no_bias = math_ops.add_n(
-          weighted_sums, name='weighted_sum_no_bias')
-      predictions = nn_ops.bias_add(
-          predictions_no_bias, self._bias_variable, name='weighted_sum')
-      return predictions
+    return self.layer(features)
 
   @property
-  def bias_variable(self):
-    return self._bias_variable
+  def bias(self):
+    return self.layer.bias
 
 
 def _transform_features(features, feature_columns, state_manager):

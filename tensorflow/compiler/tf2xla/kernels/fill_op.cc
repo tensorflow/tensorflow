@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
 namespace {
@@ -36,29 +37,17 @@ class FillOp : public XlaOpKernel {
     const TensorShape dims_shape = ctx->InputShape("dims");
     const TensorShape value_shape = ctx->InputShape("value");
     OP_REQUIRES(
-        ctx, IsLegacyVector(dims_shape),
+        ctx, TensorShapeUtils::IsVector(dims_shape),
         errors::InvalidArgument("dims must be a vector of int32, got shape ",
                                 dims_shape.DebugString()));
-    OP_REQUIRES(ctx, IsLegacyScalar(value_shape),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(value_shape),
                 errors::InvalidArgument("value must be a scalar, got shape ",
                                         value_shape.DebugString()));
 
-    // Evaluate the 'dims' constant input, reshaping to a vector if it
-    // was a 'legacy' vector (secretly a scalar).
     std::vector<int64> dims;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputReshapedToIntVector("dims", &dims));
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector("dims", &dims));
 
-    // Look up the value input, reshaping to a scalar if it was a
-    // 'legacy' scalar (secretly a vector).
-    xla::XlaOp data = ctx->Input("value");
-    if (value_shape.dims() > 0) {
-      CHECK_EQ(value_shape.dims(), 1);
-      data = xla::Reshape(data, {});
-    }
-    // Emit the actual computation, which broadcasts the scalar to the
-    // desired shape.
-    auto result = xla::Broadcast(data, dims);
-
+    auto result = xla::Broadcast(ctx->Input("value"), dims);
     ctx->SetOutput(0, result);
   }
 };

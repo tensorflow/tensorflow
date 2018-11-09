@@ -41,31 +41,31 @@ class TfLiteIntArrayView {
   const TfLiteIntArray* int_array_;
 };
 
-// Helper class that actually performs partitioning by subgraph.
-// Outputs to a provided `subgraphs` structure.
+// Helper class that actually performs partitioning by node sub set.
+// Outputs to a provided `NodeSubset` structure.
 //
 // Example usage:
-// PartitionGraphIntoIndependentSubgraphsImpl partitioner(
-//     info, nodes_to_part, subgraphs);
+// PartitionGraphIntoIndependentNodeSubsetsImpl partitioner(
+//     info, nodes_to_part, node_subsets);
 // partitioner.Partition();
-class PartitionGraphIntoIndependentSubgraphsImpl {
+class PartitionGraphIntoIndependentNodeSubsetsImpl {
  public:
-  PartitionGraphIntoIndependentSubgraphsImpl(
+  PartitionGraphIntoIndependentNodeSubsetsImpl(
       const GraphInfo* info, const TfLiteIntArray* nodes_to_partition,
-      std::vector<Subgraph>* subgraphs)
+      std::vector<NodeSubset>* node_subsets)
       : info_(info),
-        subgraphs_(subgraphs),
-        node_type_(info->num_nodes(), Subgraph::kTfNonPartition) {
+        node_subsets_(node_subsets),
+        node_type_(info->num_nodes(), NodeSubset::kTfNonPartition) {
     // Populate the node_type_ map.
     for (auto node_index : TfLiteIntArrayView(nodes_to_partition)) {
-      node_type_[node_index] = Subgraph::kTfPartition;
+      node_type_[node_index] = NodeSubset::kTfPartition;
     }
   }
 
   // Actually partition the graph.
   void Partition() {
     // Initialize here to make Partition() re-entrant.
-    subgraphs_->clear();
+    node_subsets_->clear();
     tensor_epochs_.clear();
     tensor_epochs_.resize(info_->num_tensors(), kEpochAlwaysReady);
     node_epochs_.clear();
@@ -80,35 +80,35 @@ class PartitionGraphIntoIndependentSubgraphsImpl {
     }
 
     // Do a graph traversal where each iteration in the loop is an epoch
-    // that corresponds to a subgraph that only contains nodes that are of
+    // that corresponds to a node sub set that only contains nodes that are of
     // the same node_type_.
     while (true) {
-      BuildSubgraph();
-      if (subgraphs_->back().nodes.empty()) {
-        subgraphs_->pop_back();
+      BuildNodeSubset();
+      if (node_subsets_->back().nodes.empty()) {
+        node_subsets_->pop_back();
         break;
       }
     }
 
-    // Mark model outputs as subgraph outputs. All the rest have already been
-    // identified.
+    // Mark model outputs as node sub set outputs. All the rest have already
+    // been identified.
     for (int output_index : info_->outputs()) {
       int output_epoch = tensor_epochs_[output_index];
-      Subgraph& output_subgraph = (*subgraphs_)[output_epoch];
-      output_subgraph.output_tensors.push_back(output_index);
+      NodeSubset& output_subset = (*node_subsets_)[output_epoch];
+      output_subset.output_tensors.push_back(output_index);
     }
-    // Make sure every subgraph's inputs and outputs are unique. Since the
+    // Make sure every node sub set's inputs and outputs are unique. Since the
     // list of inputs and outputs is generated in a way that produces
     // duplicates.
-    for (Subgraph& subgraph : *subgraphs_) {
+    for (NodeSubset& node_subset : *node_subsets_) {
       // Sort and uniquefy using standard library algorithms.
       auto uniquefy = [](std::vector<int>* items) {
         std::sort(items->begin(), items->end());
         auto last = std::unique(items->begin(), items->end());
         items->erase(last, items->end());
       };
-      uniquefy(&subgraph.input_tensors);
-      uniquefy(&subgraph.output_tensors);
+      uniquefy(&node_subset.input_tensors);
+      uniquefy(&node_subset.output_tensors);
     }
   }
 
@@ -129,14 +129,14 @@ class PartitionGraphIntoIndependentSubgraphsImpl {
   // epoch since the epoch's node_type doesn't match.
   bool UpdateNode(int node_index) {
     const TfLiteNode& node = info_->node(node_index);
-    Subgraph& current_subgraph = subgraphs_->back();
-    int current_epoch = subgraphs_->size() - 1;
+    NodeSubset& current_subset = node_subsets_->back();
+    int current_epoch = node_subsets_->size() - 1;
     // Check if node is already done.
     if (node_epochs_[node_index] != kEpochNotReady) {
       return false;
     }
     // See if all dependencies of this node are already assigned to a
-    // subgraph.
+    // node sub set.
     for (int input_tensor_index : TfLiteIntArrayView(node.inputs)) {
       if (tensor_epochs_[input_tensor_index] == kEpochNotReady) {
         return false;
@@ -144,16 +144,16 @@ class PartitionGraphIntoIndependentSubgraphsImpl {
     }
     // When we are starting a new epoch, the first ready node defines
     // the type of that epoch.
-    if (current_subgraph.type == Subgraph::kTfUnexplored) {
-      current_subgraph.type = node_type_[node_index];
+    if (current_subset.type == NodeSubset::kTfUnexplored) {
+      current_subset.type = node_type_[node_index];
     }
     // The node gets assigned to this epoch if it is the same type as
     // the epoch's assigned type. Note, if this is the current ready
     // node encountered during this epoch, this condition will be
     // automatically true.
-    if (current_subgraph.type == node_type_[node_index]) {
+    if (current_subset.type == node_type_[node_index]) {
       node_epochs_[node_index] = current_epoch;
-      current_subgraph.nodes.push_back(node_index);
+      current_subset.nodes.push_back(node_index);
       // All outputs of this node now are assigned to this epoch as
       // well.
       for (int output_tensor_index : TfLiteIntArrayView(node.outputs)) {
@@ -165,13 +165,13 @@ class PartitionGraphIntoIndependentSubgraphsImpl {
         int input_epoch = tensor_epochs_[input_tensor_index];
         int node_epoch = current_epoch;
         if (input_epoch != node_epoch) {
-          current_subgraph.input_tensors.push_back(input_tensor_index);
-          // Set inputs to be outputs of the subgraph where they reside.
+          current_subset.input_tensors.push_back(input_tensor_index);
+          // Set inputs to be outputs of the node sub set where they reside.
           // the if condition makes sure inputs to the whole computation
           // are not included (i.e. those initialized to -2 above).
           if (input_epoch >= 0) {
-            Subgraph& input_subgraph = (*subgraphs_)[input_epoch];
-            input_subgraph.output_tensors.push_back(input_tensor_index);
+            NodeSubset& input_subset = (*node_subsets_)[input_epoch];
+            input_subset.output_tensors.push_back(input_tensor_index);
           }
         }
       }
@@ -181,9 +181,9 @@ class PartitionGraphIntoIndependentSubgraphsImpl {
     }
   }
 
-  // Completely populates the current subgraph by doing graph traversal
-  void BuildSubgraph() {
-    subgraphs_->emplace_back(Subgraph());
+  // Completely populates the current node_subset by doing graph traversal
+  void BuildNodeSubset() {
+    node_subsets_->emplace_back(NodeSubset());
     // loop until no more nodes can be updated.
     while (true) {
       bool did_something = false;
@@ -198,9 +198,9 @@ class PartitionGraphIntoIndependentSubgraphsImpl {
 
   // Temporary data needed for partitioning.
   const GraphInfo* info_;
-  // List of subgraphs to populate
-  std::vector<Subgraph>* subgraphs_;
-  std::vector<Subgraph::Type> node_type_;
+  // List of node_subsets to populate
+  std::vector<NodeSubset>* node_subsets_;
+  std::vector<NodeSubset::Type> node_type_;
   // Maps from tensor index to the epoch in which it is assigned. Also special
   // negative values of kEpochNotAssigned if not assigned, kEpochNotReady if it
   // is an input or constant.
@@ -212,11 +212,11 @@ class PartitionGraphIntoIndependentSubgraphsImpl {
 
 }  // namespace
 
-TfLiteStatus PartitionGraphIntoIndependentSubgraphs(
+TfLiteStatus PartitionGraphIntoIndependentNodeSubsets(
     const GraphInfo* info, const TfLiteIntArray* nodes_to_partition,
-    std::vector<Subgraph>* subgraphs) {
-  PartitionGraphIntoIndependentSubgraphsImpl(info, nodes_to_partition,
-                                             subgraphs)
+    std::vector<NodeSubset>* node_subsets) {
+  PartitionGraphIntoIndependentNodeSubsetsImpl(info, nodes_to_partition,
+                                               node_subsets)
       .Partition();
   return kTfLiteOk;
 }

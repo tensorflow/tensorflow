@@ -76,17 +76,18 @@ class SimpleTestGraph : public GraphInfo {
 // TfLiteIntArray. Populates `subgraphs` with resulting generated subgraphs.
 void PartitionGraph(const SimpleTestGraph& graph,
                     const std::vector<int>& nodes_to_partition,
-                    std::vector<Subgraph>* subgraphs) {
+                    std::vector<NodeSubset>* subgraphs) {
   TfLiteIntArray* nodes_to_partition_int_array =
       ConvertVector(nodes_to_partition);
-  PartitionGraphIntoIndependentSubgraphs(&graph, nodes_to_partition_int_array,
-                                         subgraphs);
+  PartitionGraphIntoIndependentNodeSubsets(&graph, nodes_to_partition_int_array,
+                                           subgraphs);
   TfLiteIntArrayFree(nodes_to_partition_int_array);
 }
 
 // Check a generated list of subgraphs against the expected list of subgraphs.
-void CheckPartitionSubgraphs(const std::vector<Subgraph>& generated_subgraphs,
-                             const std::vector<Subgraph>& expected_subgraphs) {
+void CheckPartitionSubgraphs(
+    const std::vector<NodeSubset>& generated_subgraphs,
+    const std::vector<NodeSubset>& expected_subgraphs) {
   ASSERT_EQ(generated_subgraphs.size(), expected_subgraphs.size());
   for (int subgraph_index = 0; subgraph_index < generated_subgraphs.size();
        subgraph_index++) {
@@ -103,7 +104,7 @@ void CheckPartitionSubgraphs(const std::vector<Subgraph>& generated_subgraphs,
 TEST(PartitionTest, Nodes0_PartitionNodes0) {
   SimpleTestGraph graph;
   std::vector<int> nodes_to_partition = {};
-  std::vector<Subgraph> generated_subgraphs;
+  std::vector<NodeSubset> generated_subgraphs;
   PartitionGraph(graph, nodes_to_partition, &generated_subgraphs);
   CheckPartitionSubgraphs(generated_subgraphs, {});
 }
@@ -117,11 +118,11 @@ TEST(PartitionTest, Nodes1PartitionNodes0) {
   graph.AddNode({0}, {1});
   graph.SetInputsAndOutputs({0}, {1});
   std::vector<int> nodes_to_partition = {};
-  std::vector<Subgraph> generated_subgraphs;
+  std::vector<NodeSubset> generated_subgraphs;
   PartitionGraph(graph, nodes_to_partition, &generated_subgraphs);
 
-  Subgraph expected_subgraph;
-  expected_subgraph.type = Subgraph::kTfNonPartition;
+  NodeSubset expected_subgraph;
+  expected_subgraph.type = NodeSubset::kTfNonPartition;
   expected_subgraph.nodes = {0};
   expected_subgraph.input_tensors = {0};
   expected_subgraph.output_tensors = {1};
@@ -136,12 +137,12 @@ TEST(PartitionTest, Nodes1PartitionNodes0Inputs0) {
   graph.AddTensors(1);
   graph.AddNode({}, {0});
   graph.SetInputsAndOutputs({}, {0});
-  std::vector<Subgraph> generated_subgraphs;
+  std::vector<NodeSubset> generated_subgraphs;
   std::vector<int> nodes_to_partition = {0};
   PartitionGraph(graph, nodes_to_partition, &generated_subgraphs);
 
-  Subgraph expected_subgraph;
-  expected_subgraph.type = Subgraph::kTfPartition;
+  NodeSubset expected_subgraph;
+  expected_subgraph.type = NodeSubset::kTfPartition;
   expected_subgraph.nodes = {0};
   expected_subgraph.input_tensors = {};
   expected_subgraph.output_tensors = {0};
@@ -157,11 +158,11 @@ TEST(PartitionTest, Nodes1PartitionNodes1) {
   graph.AddNode({0}, {1});
   graph.SetInputsAndOutputs({0}, {1});
   std::vector<int> nodes_to_partition = {0};
-  std::vector<Subgraph> generated_subgraphs;
+  std::vector<NodeSubset> generated_subgraphs;
   PartitionGraph(graph, nodes_to_partition, &generated_subgraphs);
 
-  Subgraph expected_subgraph;
-  expected_subgraph.type = Subgraph::kTfPartition;
+  NodeSubset expected_subgraph;
+  expected_subgraph.type = NodeSubset::kTfPartition;
   expected_subgraph.nodes = {0};
   expected_subgraph.input_tensors = {0};
   expected_subgraph.output_tensors = {1};
@@ -180,16 +181,16 @@ TEST(PartitionTest, Nodes2PartitionNodes1) {
   graph.AddNode({1}, {2});
   graph.SetInputsAndOutputs({0}, {2});
   std::vector<int> nodes_to_partition = {1};
-  std::vector<Subgraph> generated_subgraphs;
+  std::vector<NodeSubset> generated_subgraphs;
   PartitionGraph(graph, nodes_to_partition, &generated_subgraphs);
 
-  Subgraph expected_subgraph0;
-  expected_subgraph0.type = Subgraph::kTfPartition;
+  NodeSubset expected_subgraph0;
+  expected_subgraph0.type = NodeSubset::kTfPartition;
   expected_subgraph0.nodes = {0};
   expected_subgraph0.input_tensors = {0};
   expected_subgraph0.output_tensors = {1};
-  Subgraph expected_subgraph1;
-  expected_subgraph1.type = Subgraph::kTfPartition;
+  NodeSubset expected_subgraph1;
+  expected_subgraph1.type = NodeSubset::kTfPartition;
   expected_subgraph1.nodes = {1};
   expected_subgraph1.input_tensors = {1};
   expected_subgraph1.output_tensors = {2};
@@ -208,11 +209,11 @@ TEST(PartitionTest, Nodes2PartitionNodes2) {
   graph.AddNode({1}, {2});
   graph.SetInputsAndOutputs({0}, {2});
   std::vector<int> nodes_to_partition = {0, 1};
-  std::vector<Subgraph> generated_subgraphs;
+  std::vector<NodeSubset> generated_subgraphs;
   PartitionGraph(graph, nodes_to_partition, &generated_subgraphs);
 
-  Subgraph expected_subgraph0;
-  expected_subgraph0.type = Subgraph::kTfPartition;
+  NodeSubset expected_subgraph0;
+  expected_subgraph0.type = NodeSubset::kTfPartition;
   expected_subgraph0.nodes = {0, 1};
   expected_subgraph0.input_tensors = {0};
   expected_subgraph0.output_tensors = {2};
@@ -239,21 +240,21 @@ TEST(PartitionTest, Nodes3PartitionNodes2) {
   graph.AddNode({1, 2}, {3});
   graph.SetInputsAndOutputs({0}, {3});
   std::vector<int> nodes_to_partition = {0, 2};
-  std::vector<Subgraph> generated_subgraphs;
+  std::vector<NodeSubset> generated_subgraphs;
   PartitionGraph(graph, nodes_to_partition, &generated_subgraphs);
 
-  Subgraph expected_subgraph0;
-  expected_subgraph0.type = Subgraph::kTfPartition;
+  NodeSubset expected_subgraph0;
+  expected_subgraph0.type = NodeSubset::kTfPartition;
   expected_subgraph0.nodes = {0};
   expected_subgraph0.input_tensors = {0};
   expected_subgraph0.output_tensors = {1};
-  Subgraph expected_subgraph1;
-  expected_subgraph1.type = Subgraph::kTfNonPartition;
+  NodeSubset expected_subgraph1;
+  expected_subgraph1.type = NodeSubset::kTfNonPartition;
   expected_subgraph1.nodes = {1};
   expected_subgraph1.input_tensors = {1};
   expected_subgraph1.output_tensors = {2};
-  Subgraph expected_subgraph2;
-  expected_subgraph2.type = Subgraph::kTfPartition;
+  NodeSubset expected_subgraph2;
+  expected_subgraph2.type = NodeSubset::kTfPartition;
   expected_subgraph2.nodes = {2};
   expected_subgraph2.input_tensors = {1, 2};
   expected_subgraph2.output_tensors = {3};

@@ -158,6 +158,7 @@ tf_cc_test(
         ":bfloat16_propagation",
         ":bfloat16_support",
         ":hlo",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",

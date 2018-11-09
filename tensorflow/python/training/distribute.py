@@ -88,8 +88,7 @@ def _require_cross_replica_context(distribution_strategy):
   if context.cross_replica_context is distribution_strategy: return
   # We have an error to report, figure out the right message.
   if context.distribution_strategy is not distribution_strategy:
-    if (context.distribution_strategy is
-        distribution_strategy_context._get_default_distribution_strategy()):  # pylint: disable=protected-access
+    if not distribution_strategy_context.has_distribution_strategy():
       raise RuntimeError(
           'Need to be inside "with distribution_strategy.scope()" for %s' %
           (distribution_strategy,))
@@ -122,8 +121,7 @@ def _require_distribution_strategy_scope(distribution_strategy):
   context = _get_per_thread_mode()
   if context.distribution_strategy is distribution_strategy: return
   # We have an error to report, figure out the right message.
-  if (context.distribution_strategy is
-      distribution_strategy_context._get_default_distribution_strategy()):  # pylint: disable=protected-access
+  if not distribution_strategy_context.has_distribution_strategy():
     raise RuntimeError(
         'Need to be inside "with distribution_strategy.scope()" for %s' %
         (distribution_strategy,))

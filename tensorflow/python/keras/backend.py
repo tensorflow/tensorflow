@@ -3453,6 +3453,13 @@ def rnn(step_function,
 
     time = constant_op.constant(0, dtype='int32', name='time')
 
+    while_loop_kwargs = {
+        'cond': lambda time, *_: time < time_steps_t,
+        'maximum_iterations': input_length,
+        'parallel_iterations': 32,
+        'swap_memory': True,
+    }
+
     if mask is not None:
       if not states:
         raise ValueError('No initial states provided! '
@@ -3470,16 +3477,21 @@ def rnn(step_function,
           tensor_array_name='mask_ta')
       mask_ta = mask_ta.unstack(mask)
 
-      def _step(time, output_ta_t, *states):
+      # Mask for the T output will be base on the output of T - 1. In the case
+      # T = 0, a zero filled tensor will be used.
+      flat_zero_output = tuple(array_ops.zeros_like(o)
+                               for o in nest.flatten(output_time_zero))
+      def _step(time, output_ta_t, prev_output, *states):
         """RNN step function.
 
         Arguments:
             time: Current timestep value.
             output_ta_t: TensorArray.
+            prev_output: tuple of outputs from time - 1.
             *states: List of states.
 
         Returns:
-            Tuple: `(time + 1,output_ta_t) + tuple(new_states)`
+            Tuple: `(time + 1, output_ta_t, output) + tuple(new_states)`
         """
         current_input = tuple(ta.read(time) for ta in input_ta)
         # maybe set shape.
@@ -3491,9 +3503,9 @@ def rnn(step_function,
           global uses_learning_phase  # pylint: disable=global-variable-undefined
           uses_learning_phase = True
 
+        # mask output
         flat_output = nest.flatten(output)
-        # This assume the state[0] is same shape as the output
-        flat_previous_output = nest.flatten(states[0])
+        flat_previous_output = nest.flatten(prev_output)
         tiled_mask_t = tuple(_expand_mask(mask_t, o) for o in flat_output)
         flat_new_output = tuple(
             array_ops.where(m, o, po) for m, o, po in zip(
@@ -3513,9 +3525,16 @@ def rnn(step_function,
         output_ta_t = tuple(
             ta.write(time, out)
             for ta, out in zip(output_ta_t, flat_new_output))
-        return (time + 1, output_ta_t) + tuple(new_states)
-    else:
+        return (time + 1, output_ta_t,
+                tuple(flat_new_output)) + tuple(new_states)
 
+      final_outputs = control_flow_ops.while_loop(
+          body=_step,
+          loop_vars=(time, output_ta, flat_zero_output) + states,
+          **while_loop_kwargs)
+      # Skip final_outputs[2] which is the output for final timestep.
+      new_states = final_outputs[3:]
+    else:
       def _step(time, output_ta_t, *states):
         """RNN step function.
 
@@ -3545,16 +3564,14 @@ def rnn(step_function,
             ta.write(time, out) for ta, out in zip(output_ta_t, flat_output))
         return (time + 1, output_ta_t) + tuple(new_states)
 
-    final_outputs = control_flow_ops.while_loop(
-        cond=lambda time, *_: time < time_steps_t,
-        body=_step,
-        loop_vars=(time, output_ta) + states,
-        maximum_iterations=input_length,
-        parallel_iterations=32,
-        swap_memory=True)
+      final_outputs = control_flow_ops.while_loop(
+          body=_step,
+          loop_vars=(time, output_ta) + states,
+          **while_loop_kwargs)
+      new_states = final_outputs[2:]
+
     last_time = final_outputs[0]
     output_ta = final_outputs[1]
-    new_states = final_outputs[2:]
 
     outputs = tuple(o.stack() for o in output_ta)
     outputs = nest.pack_sequence_as(output_time_zero, outputs)

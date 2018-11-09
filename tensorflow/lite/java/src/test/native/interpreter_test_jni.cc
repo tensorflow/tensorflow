@@ -55,8 +55,8 @@ Java_org_tensorflow_lite_InterpreterTest_getNativeHandleForDelegate(
         TfLiteIntArray* execution_plan;
         TF_LITE_ENSURE_STATUS(
             context->GetExecutionPlan(context, &execution_plan));
-        context->ReplaceSubgraphsWithDelegateKernels(context, registration,
-                                                     execution_plan, delegate);
+        context->ReplaceNodeSubsetsWithDelegateKernels(
+            context, registration, execution_plan, delegate);
         return kTfLiteOk;
       },
       .CopyFromBufferHandle = nullptr,

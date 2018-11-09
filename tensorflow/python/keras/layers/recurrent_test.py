@@ -1044,6 +1044,41 @@ class RNNTest(test.TestCase):
                         second_implementation_output)
     self.assertAllClose(first_implementation_output, tf_lstm_cell_output)
 
+  def test_masking_rnn_with_output_and_states(self):
+
+    class Cell(keras.layers.Layer):
+
+      def __init__(self):
+        self.state_size = None
+        self.output_size = None
+        super(Cell, self).__init__()
+
+      def build(self, input_shape):
+        self.state_size = input_shape[-1]
+        self.output_size = input_shape[-1]
+
+      def call(self, inputs, states):
+        return inputs, [s + 1 for s in states]
+
+    x = keras.Input((3, 1), name='x')
+    x_masked = keras.layers.Masking()(x)
+    s_0 = keras.Input((1,), name='s_0')
+    y, s = keras.layers.RNN(
+        Cell(), return_state=True)(x_masked, initial_state=s_0)
+    model = keras.models.Model([x, s_0], [y, s])
+    model.compile(optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.001),
+                  loss='mse')
+
+    # last time step masked
+    x_np = np.array([[[1.], [2.], [0.]]])
+    s_0_np = np.array([[10.]])
+    y_np, s_np = model.predict([x_np, s_0_np])
+
+    # 1 is added to initial state two times
+    self.assertAllClose(s_np, s_0_np + 2)
+    # Expect last output to be the same as last output before masking
+    self.assertAllClose(y_np, x_np[:, 1, :])
+
 
 class Minimal2DRNNCell(keras.layers.Layer):
   """The minimal 2D RNN cell is a simple combination of 2 1-D RNN cell.

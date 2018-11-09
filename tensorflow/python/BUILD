@@ -2137,6 +2137,7 @@ py_library(
         ":list_ops",
         ":tensor_array_ops",
         ":tensor_shape",
+        ":tensor_util",
         ":util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:function",

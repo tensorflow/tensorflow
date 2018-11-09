@@ -44,11 +44,8 @@ REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 26,
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 10,
                       MarkForCompilationPass);
 
-// TODO(b/111210515): IncreaseDynamismForAutoJitPass creates slices with index
-// type DT_INT64 which do not have a kernel on GPU.
-//
-// REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 20,
-//                       IncreaseDynamismForAutoJitPass);
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 20,
+                      IncreaseDynamismForAutoJitPass);
 
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 30,
                       PartiallyDeclusterPass);

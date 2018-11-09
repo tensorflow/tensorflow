@@ -531,8 +531,8 @@ class Interpreter {
                                  int* first_new_tensor_index);
 
   // WARNING: This is an experimental API and subject to change.
-  // Entry point for C API ReplaceSubgraphsWithDelegateKernels
-  static TfLiteStatus ReplaceSubgraphsWithDelegateKernels(
+  // Entry point for C API ReplaceNodeSubsetsWithDelegateKernels
+  static TfLiteStatus ReplaceNodeSubsetsWithDelegateKernels(
       TfLiteContext* context, TfLiteRegistration registration,
       const TfLiteIntArray* nodes_to_replace, TfLiteDelegate* delegate);
 
@@ -541,7 +541,7 @@ class Interpreter {
   // slated for replacement with a delegate kernel specified by registration.
   // Ownership of 'nodes_to_replace' and 'delegate' remains with the caller.
   // WARNING: This is an experimental interface that is subject to change.
-  TfLiteStatus ReplaceSubgraphsWithDelegateKernels(
+  TfLiteStatus ReplaceNodeSubsetsWithDelegateKernels(
       TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace,
       TfLiteDelegate* delegate);
 

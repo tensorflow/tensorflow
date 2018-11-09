@@ -143,6 +143,10 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleMultiply(HloInstruction* multiply) override;
 
+  Status HandleNegate(HloInstruction* negate) override;
+
+  Status HandleNot(HloInstruction* logical_not) override;
+
   Status HandleOr(HloInstruction* logical_or) override;
 
   Status HandlePad(HloInstruction* pad) override;
@@ -1265,6 +1269,26 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
     return ReplaceWithNewInstruction(
         multiply,
         HloInstruction::CreateUnary(multiply->shape(), HloOpcode::kExp, add));
+  }
+  return Status::OK();
+}
+
+Status AlgebraicSimplifierVisitor::HandleNegate(HloInstruction* negate) {
+  // negate(negate(x)) => x
+  HloInstruction* x;
+  if (Match(negate, m::Negate(m::Negate(m::Op(&x)))) &&
+      ReplaceInstructionIfSameShape(negate, x)) {
+    return Status::OK();
+  }
+  return Status::OK();
+}
+
+Status AlgebraicSimplifierVisitor::HandleNot(HloInstruction* logical_not) {
+  // not(not(x)) => x
+  HloInstruction* x;
+  if (Match(logical_not, m::Not(m::Not(m::Op(&x)))) &&
+      ReplaceInstructionIfSameShape(logical_not, x)) {
+    return Status::OK();
   }
   return Status::OK();
 }

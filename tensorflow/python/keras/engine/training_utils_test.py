@@ -148,18 +148,6 @@ class TrainingUtilTest(test.TestCase):
     any_true = training_utils._nested_any(nested_data, lambda x: x)
     self.assertEquals(any_true, False)
 
-  def test_check_array_lengths(self):
-    training_utils.check_array_lengths(None, None, None)
-    a_np = np.random.random((4, 3, 3))
-    training_utils.check_array_lengths(a_np, a_np, a_np)
-    training_utils.check_array_lengths(
-        [a_np, a_np], [a_np, a_np], [a_np, a_np])
-    training_utils.check_array_lengths([None], [None], [None])
-
-    b_np = np.random.random((3, 4))
-    with self.assertRaises(ValueError):
-      training_utils.check_array_lengths([a_np], [b_np], None)
-
 
 class ModelInputsTest(test.TestCase):
 

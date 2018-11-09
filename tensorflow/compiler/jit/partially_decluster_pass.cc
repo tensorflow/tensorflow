@@ -133,6 +133,10 @@ Status PartiallyDeclusterNode(Graph* graph, Node* n) {
     graph->RemoveEdge(out_edge_to_clone);
   }
 
+  if (n->out_edges().empty()) {
+    graph->RemoveNode(n);
+  }
+
   return Status::OK();
 }
 
@@ -191,6 +195,10 @@ Status PartiallyDeclusterToRemoveDeviceToHostCopies(Graph* graph) {
     }
   }
 
+  // Recompute post order since PartiallyDeclusterNode may have deleted nodes.
+  post_order.clear();
+  GetPostOrder(*graph, &post_order, /*stable_comparator=*/NodeComparatorName(),
+               /*edge_filter=*/NotBackedge);
   nodes_to_partially_decluster.clear();
   TF_RETURN_IF_ERROR(
       FindNodesToDecluster(*graph, &nodes_to_partially_decluster, post_order));
