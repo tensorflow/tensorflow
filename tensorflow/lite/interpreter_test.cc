@@ -698,7 +698,7 @@ TEST(BasicInterpreter, TestUnsupportedDelegateFunctions) {
                                                   nullptr};
       TfLiteIntArray nodes_to_replace;
       nodes_to_replace.size = 0;
-      EXPECT_EQ(context->ReplaceSubgraphsWithDelegateKernels(
+      EXPECT_EQ(context->ReplaceNodeSubsetsWithDelegateKernels(
                     context, delegate_registration, &nodes_to_replace, nullptr),
                 kTfLiteError);
     }
@@ -1085,7 +1085,7 @@ class TestDelegate : public ::testing::Test {
           TFLITE_CHECK_EQ(strcmp(reg->custom_name, "my_add"), 0);
         }
 
-        context->ReplaceSubgraphsWithDelegateKernels(
+        context->ReplaceNodeSubsetsWithDelegateKernels(
             context, FakeFusedRegistration(), nodes_to_separate, delegate);
         TfLiteIntArrayFree(nodes_to_separate);
         return kTfLiteOk;
@@ -1265,7 +1265,7 @@ class TestDelegateWithDynamicTensors : public ::testing::Test {
       TfLiteIntArray* execution_plan;
       TF_LITE_ENSURE_STATUS(
           context->GetExecutionPlan(context, &execution_plan));
-      context->ReplaceSubgraphsWithDelegateKernels(
+      context->ReplaceNodeSubsetsWithDelegateKernels(
           context, DelegateRegistration(), execution_plan, delegate);
       return kTfLiteOk;
     };
