@@ -666,13 +666,14 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
 bool GenEagerPythonOp::AddEagerFallbackCode(
     const string& parameters, const std::vector<string>& output_sizes,
     const string& num_outputs_expr, const string& eager_not_allowed_error) {
+  AddDefLine(strings::StrCat(function_name_, kEagerFallbackSuffix),
+             strings::StrCat(parameters, ", ctx=None"));
+
   if (!eager_not_allowed_error.empty()) {
     strings::StrAppend(&result_, "  ", eager_not_allowed_error);
     return true;
   }
 
-  AddDefLine(strings::StrCat(function_name_, kEagerFallbackSuffix),
-             strings::StrCat(parameters, ", ctx=None"));
   strings::StrAppend(
       &result_, "  r\"\"\"This is the slowpath function for Eager mode.\n");
   strings::StrAppend(&result_, "  This is for function ", function_name_,
