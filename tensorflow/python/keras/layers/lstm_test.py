@@ -126,6 +126,18 @@ class LSTMLayerTest(test.TestCase):
                   optimizer=RMSPropOptimizer(0.01))
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
+  def test_masking_with_stacking_LSTM(self):
+    inputs = np.random.random((2, 3, 4))
+    targets = np.abs(np.random.random((2, 3, 5)))
+    targets /= targets.sum(axis=-1, keepdims=True)
+    model = keras.models.Sequential()
+    model.add(keras.layers.Masking(input_shape=(3, 4)))
+    lstm_cells = [keras.layers.LSTMCell(10), keras.layers.LSTMCell(5)]
+    model.add(keras.layers.RNN(lstm_cells, return_sequences=True, unroll=False))
+    model.compile(loss='categorical_crossentropy',
+                  optimizer=RMSPropOptimizer(0.01))
+    model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
+
   def test_from_config_LSTM(self):
     layer_class = keras.layers.LSTM
     for stateful in (False, True):
