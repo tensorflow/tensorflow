@@ -41,14 +41,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "FixedLenFeature"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "FixedLenSequenceFeature"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "GPUOptions"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
@@ -121,10 +113,6 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "SparseFeature"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "SparseTensor"
     mtype: "<type \'type\'>"
   }
@@ -159,10 +147,6 @@ tf_module {
   member {
     name: "UnconnectedGradients"
     mtype: "<class \'enum.EnumMeta\'>"
-  }
-  member {
-    name: "VarLenFeature"
-    mtype: "<type \'type\'>"
   }
   member {
     name: "Variable"
@@ -1003,18 +987,6 @@ tf_module {
   member_method {
     name: "parallel_stack"
     argspec: "args=[\'values\', \'name\'], varargs=None, keywords=None, defaults=[\'parallel_stack\'], "
-  }
-  member_method {
-    name: "parse_example"
-    argspec: "args=[\'serialized\', \'features\', \'name\', \'example_names\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "parse_single_example"
-    argspec: "args=[\'serialized\', \'features\', \'name\', \'example_names\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "parse_single_sequence_example"
-    argspec: "args=[\'serialized\', \'context_features\', \'sequence_features\', \'example_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "pow"
