@@ -670,7 +670,7 @@ tf_module {
   }
   member_method {
     name: "device"
-    argspec: "args=[\'device_name_or_function\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'device_name\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "div"
