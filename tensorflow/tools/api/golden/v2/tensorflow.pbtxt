@@ -457,10 +457,6 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
-    name: "user_ops"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "variant"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
@@ -863,10 +859,6 @@ tf_module {
   member_method {
     name: "init_scope"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "initialize_all_tables"
-    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'init_all_tables\'], "
   }
   member_method {
     name: "less"
@@ -1291,10 +1283,6 @@ tf_module {
   member_method {
     name: "subtract"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "tables_initializer"
-    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'init_all_tables\'], "
   }
   member_method {
     name: "tan"
