@@ -377,6 +377,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
+    name: "resource_loader"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "saved_model"
     mtype: "<type \'module\'>"
   }
@@ -1127,6 +1131,10 @@ tf_module {
   member_method {
     name: "sequence_mask"
     argspec: "args=[\'lengths\', \'maxlen\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'bool\'>\", \'None\'], "
+  }
+  member_method {
+    name: "serialize_tensor"
+    argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "set_random_seed"
