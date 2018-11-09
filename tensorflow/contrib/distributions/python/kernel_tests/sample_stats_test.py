@@ -471,7 +471,7 @@ class PercentileTestWithNearestInterpolation(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_percentile_in_eager_mode(self):
     # Test case for GitHub issue 23619
-    x = constant_op.constant([1,2,3,4], dtype=dtypes.float64)
+    x = constant_op.constant([1, 2, 3, 4], dtype=dtypes.float64)
     with self.cached_session():
       y = sample_stats.percentile(x, q=30, validate_args=True)
       self.assertAllEqual(2.0, self.evaluate(y))
