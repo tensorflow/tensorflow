@@ -111,17 +111,17 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
-    name = "lstm_training_test",
-    size = "large",
-    srcs = ["training_tests/lstm_training_test.py"],
-    additional_deps = [
-        ":ipu",
-        "//tensorflow/contrib/compiler:xla",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:layers",
-    ],
-)
+# tf_py_test(
+#     name = "lstm_training_test",
+#     size = "large",
+#     srcs = ["training_tests/lstm_training_test.py"],
+#     additional_deps = [
+#         ":ipu",
+#         "//tensorflow/contrib/compiler:xla",
+#         "//tensorflow/python:framework_test_lib",
+#         "//tensorflow/python:layers",
+#     ],
+# )
 
 tf_py_test(
     name = "while_loop_test",
