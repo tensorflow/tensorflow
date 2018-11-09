@@ -542,6 +542,8 @@ def _AddTests(test_class):
         # supported yet.
         continue
       if not dynamic_engine and use_calibration:
+        # Static engine with use_calibration=False will be static, so we want to
+        # test that. If use_calibration=True, only dynamic op is supported.
         # TODO(aaroey): construction of static calibration engine is not
         # supported yet.
         continue

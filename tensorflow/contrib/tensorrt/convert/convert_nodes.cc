@@ -95,9 +95,6 @@ inline tensorflow::Status ConvertDType(tensorflow::DataType tf_dtype,
     case tensorflow::DataType::DT_INT8:
       *trt_dtype = nvinfer1::DataType::kINT8;
       break;
-    case tensorflow::DataType::DT_QINT8:
-      *trt_dtype = nvinfer1::DataType::kINT8;
-      break;
     case tensorflow::DataType::DT_HALF:
       *trt_dtype = nvinfer1::DataType::kHALF;
       break;
@@ -637,16 +634,6 @@ void ReorderCKtoKC(const TRT_ShapedWeights& iweights,
           ostrides);
       break;
     }
-    case tensorflow::DataType::DT_INT8:
-    case tensorflow::DataType::DT_UINT8:
-    case tensorflow::DataType::DT_QINT8:
-    case tensorflow::DataType::DT_QUINT8: {
-      Reorder2({k, c}, static_cast<int8_t const*>(iweights.GetValues()),
-               istrides,
-               static_cast<int8_t*>(const_cast<void*>(oweights->GetValues())),
-               ostrides);
-      break;
-    }
     default:
       LOG(FATAL) << "Unsupported type in reorder expected fp32 or fp16 but got "
                  << DataTypeString(iweights.type_);
@@ -799,8 +786,12 @@ Status TrtNodeValidator::ConvertConstToWeights(
   return status;
 }
 
-Converter::Converter(nvinfer1::INetworkDefinition* trt_network, bool is_fp16)
-    : trt_network_(trt_network), is_fp16_(is_fp16) {
+Converter::Converter(nvinfer1::INetworkDefinition* trt_network,
+                     int precision_mode,
+                     bool use_calibration)
+    : trt_network_(trt_network),
+      precision_mode_(precision_mode),
+      use_calibration_(use_calibration) {
   this->RegisterOpConverters();
 }
 
@@ -971,7 +962,7 @@ Status Converter::TransposeTensor(nvinfer1::ITensor* input_tensor,
 
 Status Converter::GetWeightRange(const TRT_ShapedWeights& weights,
                                  float* out_min,
-                                 float* out_max) {
+                                 float* out_max) const {
   switch (weights.type_) {
     case tensorflow::DataType::DT_FLOAT: {
       auto inp = static_cast<float const*>(weights.GetValues());
@@ -987,9 +978,16 @@ Status Converter::GetWeightRange(const TRT_ShapedWeights& weights,
       *out_max = Eigen::half_impl::half_to_float(*result.second);
       break;
     }
+    case tensorflow::DataType::DT_INT32: {
+      auto inp = static_cast<int const*>(weights.GetValues());
+      auto result = std::minmax_element(inp, inp + weights.count());
+      *out_min = static_cast<float>(*result.first);
+      *out_max = static_cast<float>(*result.second);
+      break;
+    }
     default:
       return tensorflow::errors::Unimplemented(
-          "Data type not supported: " +
+          "Data type not supported for GetWeightRange: " +
           tensorflow::DataTypeString(weights.type_));
   }
   return tensorflow::Status::OK();
@@ -1030,21 +1028,24 @@ Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
         this->network()->addConstant(dims, input.weights().GetTrtWeights());
     TFTRT_RETURN_ERROR_IF_NULLPTR(layer, "TF-TRT Internal Reshape");
     *tensor = layer->getOutput(0);
-    // We need to set a quantization range for the output tensor of the
-    // IConstantLayer. Here we set the range to [min(weights), max(weights)].
-    float min_range = 0.0f;
-    float max_range = 0.0f;
-    TF_RETURN_IF_ERROR(
-        GetWeightRange(input.weights(), &min_range, &max_range));
-    // Avoid setting range to 0 because TRT will throw an error. If the weights
-    // are zero then the range doesn't matter: using 127.0f should ensure the
-    // quantized weight will be exactly zero.
-    if (min_range == 0.0f && max_range == 0.0f) {
-      min_range = -127.0f;
-      max_range = 127.0f;
+    if (precision_mode() == INT8MODE && !use_calibration()) {
+      // If we are in int8 mode and not calibrating, we need to explicitly set a
+      // quantization range for the output tensor of the IConstantLayer. Here we
+      // set the range to [min(weights), max(weights)].
+      float min_range = 0.0f;
+      float max_range = 0.0f;
+      TF_RETURN_IF_ERROR(
+          GetWeightRange(input.weights(), &min_range, &max_range));
+      // Avoid setting range to 0 because TRT will throw an error. If the weights
+      // are zero then the range doesn't matter: using 127.0f should ensure the
+      // quantized weight will be exactly zero.
+      if (min_range == 0.0f && max_range == 0.0f) {
+        min_range = -127.0f;
+        max_range = 127.0f;
+      }
+      ProvideQuantizationRange(const_cast<nvinfer1::ITensor*>(*tensor),
+          min_range, max_range);
     }
-    ProvideQuantizationRange(const_cast<nvinfer1::ITensor*>(*tensor),
-        min_range, max_range);
   }
   return tensorflow::Status::OK();
 }
@@ -1064,44 +1065,45 @@ void Converter::ProvideQuantizationRange(nvinfer1::ITensor* tensor,
 void Converter::ApplyQuantizationRanges(bool warn_missing_ranges) {
   // Infer ranges across marked ops
   PropagateQuantizationRanges();
-  // Get all tensors from network
-  std::set<nvinfer1::ITensor*> all_tensors;
-  std::set<nvinfer1::ITensor*> tensors_missing_ranges;
-  for (int i = 0; i < this->network()->getNbLayers(); i++) {
-    nvinfer1::ILayer* layer = this->network()->getLayer(i);
-    for (int j = 0; j < layer->getNbInputs(); j++)
-      all_tensors.insert(layer->getInput(j));
-    for (int j = 0; j < layer->getNbOutputs(); j++)
-      all_tensors.insert(layer->getOutput(j));
-  }
   // Apply ranges
-  for (auto tensor : all_tensors) {
-    auto it = quantization_ranges_.find(tensor);
-    if (it != quantization_ranges_.end()) {
-      float range = it->second;
-      VLOG(1) << "Setting range for: " << tensor->getName() << ": " << range;
+  for (auto pair : quantization_ranges_) {
+    nvinfer1::ITensor* tensor = pair.first;
+    const float range = pair.second;
 #if NV_TENSORRT_MAJOR >= 5
-      tensor->setDynamicRange(-range, range);
+    VLOG(1) << "Setting range for: " << tensor->getName() << ": " << range;
+    tensor->setDynamicRange(-range, range);
 #endif
-    } else {
-      tensors_missing_ranges.insert(tensor);
-    }
   }
+  
   // Warn user about tensors that are missing ranges. If TRT fuses some layers
   // then these tensors may not actually be required, which is why this is
   // just a warning. If we are still missing ranges even after fusion,
   // Builder::buildCudaEngine() will return nullptr and we will catch the
   // error at that point.
   if (warn_missing_ranges) {
-    for (auto tensor : tensors_missing_ranges) {
-      // Note: there may be some warnings for "(Unnamed ITensor* N)". These
-      // are tensors which are created internally by TF-TRT. The ranges for
-      // these unnamed ITensors are always inferred from user provided ranges,
-      // thus there will also be a warning for the range(s) the user missed.
-      LOG(WARNING) << "Quantization range was not found for "
-                    << tensor->getName() << ". "
-                    << "This might be okay if TensorRT does not need the range"
-                    << "(e.g. due to node fusion).";
+    // Get all tensors from network
+    std::set<nvinfer1::ITensor*> all_tensors;
+    for (int i = 0; i < this->network()->getNbLayers(); i++) {
+      nvinfer1::ILayer* layer = this->network()->getLayer(i);
+      for (int j = 0; j < layer->getNbInputs(); j++) {
+        all_tensors.insert(layer->getInput(j));
+      }
+      for (int j = 0; j < layer->getNbOutputs(); j++) {
+        all_tensors.insert(layer->getOutput(j));
+      }
+    }
+    // Find tensors with no ranges
+    for (auto tensor : all_tensors) {
+      if (quantization_ranges_.find(tensor) == quantization_ranges_.end()) {
+        // Note: there may be some warnings for "(Unnamed ITensor* N)". These
+        // are tensors which are created internally by TF-TRT. The ranges for
+        // these unnamed ITensors are always inferred from user provided ranges,
+        // thus there will also be a warning for the range(s) the user missed.
+        LOG(WARNING) << "Quantization range was not found for "
+                      << tensor->getName() << ". "
+                      << "This is okay if TensorRT does not need the range "
+                      << "(e.g. due to node fusion).";
+      }
     }
   }
 }
@@ -1446,7 +1448,7 @@ tensorflow::Status BinaryTensorOpWeight(OpConverterParams* params,
     }
   }
 
-  if (params->converter->is_fp16()) {
+  if (params->converter->precision_mode() == FP16MODE) {
     weights = ConvertFP32ToFP16(params->weight_store, weights);
   }
 
@@ -1549,7 +1551,7 @@ tensorflow::Status ConvertConv2DHelper(OpConverterParams* params, int group) {
     return tensorflow::errors::Internal(
         "Conv2D expects kernel of dimension 4, at: " + node_def.name());
   }
-  if (params->converter->is_fp16()) {
+  if (params->converter->precision_mode() == FP16MODE) {
     weights_rsck =
         ConvertFP32ToFP16(params->weight_store, inputs.at(1).weights());
   }
@@ -1986,7 +1988,16 @@ tensorflow::Status ConvertActivation(OpConverterParams* params) {
 tensorflow::Status ConvertQuantize(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  if (inputs.size() > 0 && inputs.at(0).is_weights()) {
+  if ((inputs.size() == 0) ||
+      (inputs.size() != 1 && node_def.op() == "FakeQuantWithMinMaxArgs") ||
+      (inputs.size() != 3 && node_def.op() == "FakeQuantWithMinMaxVars") ||
+      (inputs.size() != 3 && node_def.op() == "QuantizeAndDequantizeV2") ||
+      (inputs.size() != 4 && node_def.op() == "QuantizeAndDequantizeV3")) {
+    return tensorflow::errors::InvalidArgument(
+        "Invalid number of inputs for ", node_def.op(), ", at ",
+        node_def.name());
+  }
+  if (inputs.at(0).is_weights()) {
     // TensorRT will automatically quantize weights, so we will ignore ranges
     // for weights.
     params->outputs->push_back(inputs.at(0));
@@ -1994,21 +2005,24 @@ tensorflow::Status ConvertQuantize(OpConverterParams* params) {
   }
   float min_range = 0.0f;
   float max_range = 0.0f;
-  if (inputs.size() == 1) {
-    // Get ranges from attributes
+  if (node_def.op() == "FakeQuantWithMinMaxArgs") {
+    // Get ranges via node attributes.
     TFAttrs attrs(node_def);
     if (attrs.count("min") == 0 || attrs.count("max") == 0) {
       return tensorflow::errors::InvalidArgument(
-          "Min or max attribute not found for quantize, at ", node_def.name());
+          "Min or max attribute not found for ", node_def.op(), " at ",
+          node_def.name());
     }
     min_range = attrs.get<float>("min");
     max_range = attrs.get<float>("max");
-  } else if (inputs.size() == 3) {
-    // Get ranges from inputs
+  } else if (node_def.op() == "FakeQuantWithMinMaxVars" ||
+             node_def.op() == "QuantizeAndDequantizeV2" ||
+             node_def.op() == "QuantizeAndDequantizeV3") {
+    // Get ranges via inputs.
     if (!inputs.at(1).is_weights() || !inputs.at(2).is_weights()) {
       return tensorflow::errors::InvalidArgument(
-          "Min and max for quantize must be weights not tensors, at ",
-          node_def.name());
+          "Min and max inputs for ", node_def.op(),
+          " must be weights not tensors, at ", node_def.name());
     }
     // Min
     TRT_ShapedWeights weights_min = inputs.at(1).weights();
@@ -2022,7 +2036,8 @@ tensorflow::Status ConvertQuantize(OpConverterParams* params) {
     max_range = weights_max_ptr[0];
   } else {
     return tensorflow::errors::InvalidArgument(
-        "Expected 1 or 3 inputs for quantize node, at ", node_def.name());
+        "Unknown quantization op \"", node_def.op(), "\", at ",
+        node_def.name());
   }
   // Store ranges for tensor
   params->converter->ProvideQuantizationRange(
@@ -2047,6 +2062,16 @@ tensorflow::Status ConvertQuantize(OpConverterParams* params) {
 tensorflow::Status ConvertRelu6(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
+  if (inputs.size() != 1) {
+    return tensorflow::errors::InvalidArgument(
+        "Invalid number of inputs for Relu6, at ",
+        node_def.name());
+  }
+  if (inputs.at(0).is_weights()) {
+    return tensorflow::errors::Unimplemented(
+        "Relu6 is only implemented for tensors, not weights, at ",
+        node_def.name());
+  }
   // ***************************************************************************
   // TensorRT does not implement Relu6 natively. This function converts Relu6 op
   // to available TensorRT ops: Relu6(x) = min(Relu(x), 6)
@@ -2075,8 +2100,9 @@ tensorflow::Status ConvertRelu6(OpConverterParams* params) {
   // broadcast
   nvinfer1::Dims dims;
   dims.nbDims = relu_layer->getOutput(0)->getDimensions().nbDims;
-  for (int i = 0; i < dims.nbDims; i++)
+  for (int i = 0; i < dims.nbDims; i++) {
     dims.d[i] = 1;
+  }
   TRT_ShapedWeights weights = params->weight_store->GetTempWeights(
       tensorflow::DataType::DT_FLOAT, dims);
   auto weights_ptr = static_cast<float*>(const_cast<void*>(
@@ -2091,7 +2117,7 @@ tensorflow::Status ConvertRelu6(OpConverterParams* params) {
   // ElementWise Min Operation
   // Min op is a nop for INT8 execution path, as the input tensor
   // to this layer will only have values in range [0.f, 6.0f].
-  const nvinfer1::ITensor* tensor_l  = relu_layer->getOutput(0);
+  const nvinfer1::ITensor* tensor_l = relu_layer->getOutput(0);
   const nvinfer1::ITensor* tensor_r = const6_layer->getOutput(0);
   nvinfer1::IElementWiseLayer* relu6_layer = 
       params->converter->network()->addElementWise(
@@ -2117,7 +2143,7 @@ tensorflow::Status ConvertScale(OpConverterParams* params) {
 
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   TRT_ShapedWeights weights = inputs.at(1).weights();
-  if (params->converter->is_fp16()) {
+  if (params->converter->precision_mode() == FP16MODE) {
     weights = ConvertFP32ToFP16(params->weight_store, inputs.at(1).weights());
   }
 
@@ -3082,8 +3108,6 @@ void Converter::RegisterOpConverters() {
   op_registry_["TopKV2"] = ConvertTopK;
   op_registry_["Relu6"] = ConvertRelu6;
 # if NV_TENSORRT_MAJOR >= 5
-  op_registry_["QuantizeV2"] = ConvertQuantize;
-  op_registry_["Dequantize"] = ConvertQuantize;
   op_registry_["QuantizeAndDequantizeV2"] = ConvertQuantize;
   op_registry_["QuantizeAndDequantizeV3"] = ConvertQuantize;
   op_registry_["FakeQuantWithMinMaxVars"] = ConvertQuantize;
@@ -3132,7 +3156,7 @@ tensorflow::Status ConvertGraphDefToEngine(
 
   // Build the network
   VLOG(1) << "Starting engine conversion ";
-  Converter converter(trt_network.get(), precision_mode == FP16MODE);
+  Converter converter(trt_network.get(), precision_mode, use_calibration);
   std::vector<std::pair<string, string>> output_tensors;
   // Graph nodes are already topologically sorted during construction
   for (const auto& node_def : gdef.node()) {
