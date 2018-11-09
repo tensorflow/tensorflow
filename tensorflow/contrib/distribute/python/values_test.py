@@ -345,9 +345,8 @@ class PerDeviceDatasetTest(test.TestCase):
   config = config_pb2.ConfigProto()
   config.allow_soft_placement = True
 
-  def _test_iterator_no_prefetch(self, devices, dataset, expected_values):
-    per_device_dataset = values.PerDeviceDataset(
-        dataset, devices, prefetch_on_device=False)
+  def _test_iterator(self, devices, dataset, expected_values):
+    per_device_dataset = values.PerDeviceDataset(dataset, devices)
     if context.executing_eagerly():
       iterator = per_device_dataset.make_one_shot_iterator()
     else:
@@ -356,36 +355,14 @@ class PerDeviceDatasetTest(test.TestCase):
 
     for expected_value in expected_values:
       next_element = iterator.get_next()
-      actual = self.evaluate([
-          values.select_device(d, next_element) for d in devices])
-      self.assertEqual(expected_value, actual)
+      computed_value = self.evaluate(
+          [values.select_device(d, next_element) for d in devices])
+      self.assertEqual(expected_value, computed_value)
 
     with self.assertRaises(errors.OutOfRangeError):
       next_element = iterator.get_next()
       self.evaluate([
           values.select_device(d, next_element) for d in devices])
-
-  def _test_iterator_with_prefetch(self, devices, dataset, expected_values):
-    if not context.executing_eagerly():
-      per_device_dataset = values.PerDeviceDataset(
-          dataset, devices, prefetch_on_device=True)
-      iterator = per_device_dataset.make_initializable_iterator()
-      self.evaluate([iterator.initializer])
-
-      for expected_value in expected_values:
-        next_element = iterator.get_next()
-        computed_value = self.evaluate(
-            [values.select_device(d, next_element) for d in devices])
-        self.assertEqual(expected_value, computed_value)
-
-      with self.assertRaises(errors.OutOfRangeError):
-        next_element = iterator.get_next()
-        self.evaluate([
-            values.select_device(d, next_element) for d in devices])
-
-  def _test_iterator(self, devices, dataset, expected_values):
-    self._test_iterator_no_prefetch(devices, dataset, expected_values)
-    self._test_iterator_with_prefetch(devices, dataset, expected_values)
 
   @test_util.run_in_graph_and_eager_modes
   def testOneDevice(self):
@@ -441,8 +418,7 @@ class PerDeviceDatasetTest(test.TestCase):
       dataset = dataset_ops.Dataset.from_tensor_slices(
           random_ops.random_uniform((10,)))
 
-      per_device_dataset = values.PerDeviceDataset(
-          dataset, devices, prefetch_on_device=False)
+      per_device_dataset = values.PerDeviceDataset(dataset, devices)
       iterator = per_device_dataset.make_initializable_iterator()
 
       self.evaluate(iterator.initializer)
@@ -481,8 +457,7 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
   def _test_dataset(self, dataset_fn, worker_devices, devices,
                     expected_values, auto_shard=True):
     multi_worker_dataset = values.MultiWorkerDataset(
-        dataset_fn, worker_devices, auto_shard=auto_shard,
-        prefetch_on_device=False)
+        dataset_fn, worker_devices, auto_shard=auto_shard)
     multi_worker_iterator = multi_worker_dataset.make_initializable_iterator()
     with self.cached_session() as sess:
       sess.run(multi_worker_iterator.initializer)
@@ -564,7 +539,7 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
     with context.graph_mode(), self.cached_session() as sess:
       dataset_fn = lambda: dataset_ops.Dataset.range(8)
       multi_worker_dataset = values.MultiWorkerDataset(
-          dataset_fn, worker_devices, auto_shard=True, prefetch_on_device=False)
+          dataset_fn, worker_devices, auto_shard=True)
       multi_worker_iterator = multi_worker_dataset.make_initializable_iterator()
 
       sess.run(multi_worker_iterator.initializer)
@@ -587,7 +562,7 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
     with context.graph_mode():
       dataset_fn = lambda: dataset_ops.Dataset.range(8)
       multi_worker_dataset = values.MultiWorkerDataset(
-          dataset_fn, worker_devices, auto_shard=True, prefetch_on_device=False)
+          dataset_fn, worker_devices, auto_shard=True)
       multi_worker_iterator = multi_worker_dataset.make_initializable_iterator()
       with self.assertRaises(ValueError):
         multi_worker_iterator.get_next()

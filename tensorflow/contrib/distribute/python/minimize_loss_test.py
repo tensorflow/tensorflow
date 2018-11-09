@@ -22,7 +22,6 @@ from absl.testing import parameterized
 import numpy
 
 from tensorflow.contrib.distribute.python import combinations
-from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python.single_loss_example import batchnorm_example
 from tensorflow.contrib.distribute.python.single_loss_example import minimize_loss_example
 from tensorflow.python.data.ops import dataset_ops
@@ -228,12 +227,6 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
           momentum=momentum,
           renorm=renorm,
           update_ops_in_replica_mode=not update_ops_in_cross_replica_mode)
-
-      # Make sure prefetching is disabled since that makes the
-      # specific input on each device to be non deterministic, and
-      # this test relies on specific input being on each device.
-      if isinstance(distribution, mirrored_strategy.MirroredStrategy):
-        self.assertFalse(distribution._prefetch_on_device)
 
       def step_fn(ctx, *inputs):
         del ctx  # Unused

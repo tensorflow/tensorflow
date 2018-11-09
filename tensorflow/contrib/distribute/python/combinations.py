@@ -335,17 +335,13 @@ tpu_strategy_one_step = NamedDistribution(
     "TPUOneStep", lambda: tpu_lib.TPUStrategy(
         TPUClusterResolver(""), steps_per_run=1),
     required_tpu=True)
-# Note that we disable prefetching for testing since prefetching makes
-# the input non-deterministic.
 mirrored_strategy_with_gpu_and_cpu = NamedDistribution(
     "MirroredCPUAndGPU",
-    lambda: mirrored_lib.MirroredStrategy(
-        ["/gpu:0", "/cpu:0"], prefetch_on_device=False),
+    lambda: mirrored_lib.MirroredStrategy(["/gpu:0", "/cpu:0"]),
     required_gpus=1)
 mirrored_strategy_with_two_gpus = NamedDistribution(
     "Mirrored2GPUs",
-    lambda: mirrored_lib.MirroredStrategy(
-        ["/gpu:0", "/gpu:1"], prefetch_on_device=False),
+    lambda: mirrored_lib.MirroredStrategy(["/gpu:0", "/gpu:1"]),
     required_gpus=2)
 
 
