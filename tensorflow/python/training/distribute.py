@@ -21,7 +21,6 @@ from __future__ import print_function
 import threading
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import context as eager_context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -599,13 +598,9 @@ class DistributionStrategy(object):
     For example, TPU initialize_system ops.
 
     Returns:
-      In eager mode, returns `None`.
-      In graph mode, a list of ops to execute. Empty list if nothing to be done.
+      A list of ops to execute.
     """
-    if eager_context.executing_eagerly():
-      return
-    else:
-      return []
+    return []
 
   def finalize(self):
     """Any final actions to be done at the end of all computations.
@@ -616,13 +611,9 @@ class DistributionStrategy(object):
     For example, TPU shutdown ops.
 
     Returns:
-      In eager mode, returns `None`.
-      In graph mode, a list of ops to execute. Empty list if nothing to be done.
+      A list of ops to execute.
     """
-    if eager_context.executing_eagerly():
-      return
-    else:
-      return []
+    return []
 
   def run_steps_on_dataset(self, fn, iterator, iterations=1,
                            initial_loop_values=None):
