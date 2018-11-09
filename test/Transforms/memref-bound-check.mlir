@@ -11,8 +11,8 @@ mlfunc @test() {
   %A = alloc() : memref<9 x 9 x i32>
   %B = alloc() : memref<111 x i32>
 
-  for %i = -1 to 9 {
-    for %j = -1 to 9 {
+  for %i = -1 to 10 {
+    for %j = -1 to 10 {
       %idx = affine_apply (d0, d1) -> (d0, d1)(%i, %j)
       // Out of bound access.
       %x  = load %A[%idx#0, %idx#1] : memref<9 x 9 x i32>  
@@ -26,7 +26,7 @@ mlfunc @test() {
     }
   }
 
-  for %k = 0 to 9 {
+  for %k = 0 to 10 {
       // In bound.
       %u = load %B[%zero] : memref<111 x i32>
       // Out of bounds.
@@ -42,8 +42,8 @@ mlfunc @test_mod_floordiv_ceildiv() {
   %zero = constant 0 : index
   %A = alloc() : memref<128 x 64 x 64 x i32>
 
-  for %i = 0 to 255 {
-    for %j = 0 to 255 {
+  for %i = 0 to 256 {
+    for %j = 0 to 256 {
       %idx = affine_apply (d0, d1, d2) -> (d0 mod 128 + 1, d1 floordiv 4 + 1, d2 ceildiv 4)(%i, %j, %j)
       %x  = load %A[%idx#0, %idx#1, %idx#2] : memref<128 x 64 x 64 x i32>
       // expected-error@-1 {{'load' op memref out of upper bound access along dimension #1}}
@@ -64,8 +64,8 @@ mlfunc @test_no_out_of_bounds() {
   %C = alloc() : memref<257 x i32>
   %B = alloc() : memref<1 x i32>
 
-  for %i = 0 to 255 {
-    for %j = 0 to 255 {
+  for %i = 0 to 256 {
+    for %j = 0 to 256 {
       // All of these accesses are in bound; check that no errors are emitted.
       // CHECK: %3 = affine_apply #map4(%i0, %i1)
       // CHECK-NEXT: %4 = load %0[%3#0, %c0] : memref<257x256xi32>

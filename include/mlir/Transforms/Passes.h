@@ -70,6 +70,12 @@ ModulePass *createConvertToCFGPass();
 /// Creates a pass to perform tiling on loop nests.
 FunctionPass *createLoopTilingPass();
 
+/// Promotes all accessed memref regions to the specified faster memory space
+/// while generating DMAs to move data.
+FunctionPass *createDmaGenerationPass(unsigned lowMemorySpace,
+                                      unsigned highMemorySpace,
+                                      int minDmaTransferSize = 1024);
+
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_PASSES_H

@@ -335,6 +335,12 @@ private:
 class DmaStartOp
     : public Op<DmaStartOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
 public:
+  static void build(Builder *builder, OperationState *result,
+                    SSAValue *srcMemRef, ArrayRef<SSAValue *> srcIndices,
+                    SSAValue *destMemRef, ArrayRef<SSAValue *> destIndices,
+                    SSAValue *numElements, SSAValue *tagMemRef,
+                    ArrayRef<SSAValue *> tagIndices);
+
   // Returns the source MemRefType for this DMA operation.
   const SSAValue *getSrcMemRef() const { return getOperand(0); }
   // Returns the rank (number of indices) of the source MemRefType.
@@ -435,6 +441,10 @@ protected:
 class DmaWaitOp
     : public Op<DmaWaitOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
 public:
+  static void build(Builder *builder, OperationState *result,
+                    SSAValue *tagMemRef, ArrayRef<SSAValue *> tagIndices,
+                    SSAValue *numElements);
+
   static StringRef getOperationName() { return "dma_wait"; }
 
   // Returns the Tag MemRef associated with the DMA operation being waited on.
@@ -520,6 +530,10 @@ private:
 class LoadOp
     : public Op<LoadOp, OpTrait::VariadicOperands, OpTrait::OneResult> {
 public:
+  // Hooks to customize behavior of this op.
+  static void build(Builder *builder, OperationState *result, SSAValue *memref,
+                    ArrayRef<SSAValue *> indices = {});
+
   SSAValue *getMemRef() { return getOperand(0); }
   const SSAValue *getMemRef() const { return getOperand(0); }
   void setMemRef(SSAValue *value) { setOperand(0, value); }
@@ -537,9 +551,6 @@ public:
 
   static StringRef getOperationName() { return "load"; }
 
-  // Hooks to customize behavior of this op.
-  static void build(Builder *builder, OperationState *result, SSAValue *memref,
-                    ArrayRef<SSAValue *> indices = {});
   bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
@@ -640,6 +651,11 @@ private:
 class StoreOp
     : public Op<StoreOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
 public:
+  // Hooks to customize behavior of this op.
+  static void build(Builder *builder, OperationState *result,
+                    SSAValue *valueToStore, SSAValue *memref,
+                    ArrayRef<SSAValue *> indices = {});
+
   SSAValue *getValueToStore() { return getOperand(0); }
   const SSAValue *getValueToStore() const { return getOperand(0); }
 
@@ -660,10 +676,6 @@ public:
 
   static StringRef getOperationName() { return "store"; }
 
-  // Hooks to customize behavior of this op.
-  static void build(Builder *builder, OperationState *result,
-                    SSAValue *valueToStore, SSAValue *memref,
-                    ArrayRef<SSAValue *> indices = {});
   bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;

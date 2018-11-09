@@ -23,6 +23,7 @@
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Passes.h"
+#include "mlir/Analysis/Utils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/StmtVisitor.h"
@@ -57,73 +58,13 @@ FunctionPass *mlir::createMemRefBoundCheckPass() {
   return new MemRefBoundCheck();
 }
 
-/// Returns the memory region accessed by this memref.
-// TODO(bondhugula): extend this to store's and other memref dereferencing ops.
-static bool getMemoryRegion(OpPointer<LoadOp> loadOp,
-                            FlatAffineConstraints *region) {
-  OperationStmt *opStmt = dyn_cast<OperationStmt>(loadOp->getOperation());
-  // Only in MLFunctions.
-  if (!opStmt)
-    return false;
-
-  unsigned rank = loadOp->getMemRefType().getRank();
-  MLFuncBuilder b(opStmt);
-  auto idMap = b.getMultiDimIdentityMap(rank);
-
-  SmallVector<MLValue *, 4> indices;
-  for (auto *index : loadOp->getIndices()) {
-    indices.push_back(cast<MLValue>(index));
-  }
-
-  // Initialize 'accessMap' and compose with reachable AffineApplyOps.
-  AffineValueMap accessMap(idMap, indices);
-  forwardSubstituteReachableOps(&accessMap);
-  AffineMap srcMap = accessMap.getAffineMap();
-
-  region->reset(srcMap.getNumDims(), srcMap.getNumSymbols());
-
-  // Add equality constraints.
-  AffineMap map = accessMap.getAffineMap();
-  unsigned numDims = map.getNumDims();
-  unsigned numSymbols = map.getNumSymbols();
-  // Add inEqualties for loop lower/upper bounds.
-  for (unsigned i = 0; i < numDims + numSymbols; ++i) {
-    if (auto *loop = dyn_cast<ForStmt>(accessMap.getOperand(i))) {
-      if (!loop->hasConstantBounds())
-        return false;
-      // Add lower bound and upper bounds.
-      region->addConstantLowerBound(i, loop->getConstantLowerBound());
-      region->addConstantUpperBound(i, loop->getConstantUpperBound());
-    } else {
-      // Has to be a valid symbol.
-      auto *symbol = cast<MLValue>(accessMap.getOperand(i));
-      assert(symbol->isValidSymbol());
-      // Check if the symbols is a constant.
-      if (auto *opStmt = symbol->getDefiningStmt()) {
-        if (auto constOp = opStmt->dyn_cast<ConstantIndexOp>()) {
-          region->setIdToConstant(i, constOp->getValue());
-        }
-      }
-    }
-  }
-
-  // Add access function equalities to connect loop IVs to data dimensions.
-  region->composeMap(&accessMap);
-
-  // Eliminate the loop IVs and any local variables to yield the memory region
-  // involving just the memref dimensions.
-  region->projectOut(srcMap.getNumResults(),
-                     accessMap.getNumOperands() + region->getNumLocalIds());
-  assert(region->getNumDimIds() == rank);
-  return true;
-}
 
 void MemRefBoundCheck::visitOperationStmt(OperationStmt *opStmt) {
   // TODO(bondhugula): extend this to store's and other memref dereferencing
   // op's.
   if (auto loadOp = opStmt->dyn_cast<LoadOp>()) {
     FlatAffineConstraints memoryRegion;
-    if (!getMemoryRegion(loadOp, &memoryRegion))
+    if (!getMemoryRegion(opStmt, &memoryRegion))
       return;
     LLVM_DEBUG(llvm::dbgs() << "Memory region");
     LLVM_DEBUG(memoryRegion.dump());

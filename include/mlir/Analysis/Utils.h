@@ -27,6 +27,8 @@
 
 namespace mlir {
 
+class FlatAffineConstraints;
+class OperationStmt;
 class Statement;
 
 /// Returns true if statement 'a' dominates statement b.
@@ -34,6 +36,9 @@ bool dominates(const Statement &a, const Statement &b);
 
 /// Returns true if statement 'a' properly dominates statement b.
 bool properlyDominates(const Statement &a, const Statement &b);
+
+/// Returns the memory region accessed by this memref.
+bool getMemoryRegion(OperationStmt *opStmt, FlatAffineConstraints *region);
 
 } // end namespace mlir
 

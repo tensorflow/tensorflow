@@ -688,6 +688,20 @@ Attribute DimOp::constantFold(ArrayRef<Attribute> operands,
 // DmaStartOp
 // ---------------------------------------------------------------------------
 
+void DmaStartOp::build(Builder *builder, OperationState *result,
+                       SSAValue *srcMemRef, ArrayRef<SSAValue *> srcIndices,
+                       SSAValue *destMemRef, ArrayRef<SSAValue *> destIndices,
+                       SSAValue *numElements, SSAValue *tagMemRef,
+                       ArrayRef<SSAValue *> tagIndices) {
+  result->addOperands(srcMemRef);
+  result->addOperands(srcIndices);
+  result->addOperands(destMemRef);
+  result->addOperands(destIndices);
+  result->addOperands(numElements);
+  result->addOperands(tagMemRef);
+  result->addOperands(tagIndices);
+}
+
 void DmaStartOp::print(OpAsmPrinter *p) const {
   *p << getOperationName() << ' ' << *getSrcMemRef() << '[';
   p->printOperands(getSrcIndices());
@@ -777,6 +791,14 @@ void DmaStartOp::getCanonicalizationPatterns(OwningPatternList &results,
 // ---------------------------------------------------------------------------
 // DmaWaitOp
 // ---------------------------------------------------------------------------
+
+void DmaWaitOp::build(Builder *builder, OperationState *result,
+                      SSAValue *tagMemRef, ArrayRef<SSAValue *> tagIndices,
+                      SSAValue *numElements) {
+  result->addOperands(tagMemRef);
+  result->addOperands(tagIndices);
+  result->addOperands(numElements);
+}
 
 void DmaWaitOp::print(OpAsmPrinter *p) const {
   *p << getOperationName() << ' ';

@@ -161,7 +161,7 @@ mlfunc @store_range_load_after_range() {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   %c10 = constant 10 : index
-  for %i0 = 0 to 9 {
+  for %i0 = 0 to 10 {
     %a0 = affine_apply (d0) -> (d0) (%i0)
     store %c7, %m[%a0] : memref<100xf32>
     // expected-note@-1 {{dependence from memref access 0 to access 1 = false}}
@@ -177,7 +177,7 @@ mlfunc @store_range_load_last_in_range() {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   %c10 = constant 10 : index
-  for %i0 = 0 to 9 {
+  for %i0 = 0 to 10 {
     %a0 = affine_apply (d0) -> (d0) (%i0)
     store %c7, %m[%a0] : memref<100xf32>
     // expected-note@-1 {{dependence from memref access 0 to access 1 = true}}
@@ -193,7 +193,7 @@ mlfunc @store_range_load_before_range() {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   %c0 = constant 0 : index
-  for %i0 = 1 to 10 {
+  for %i0 = 1 to 11 {
     %a0 = affine_apply (d0) -> (d0) (%i0)
     store %c7, %m[%a0] : memref<100xf32>
     // expected-note@-1 {{dependence from memref access 0 to access 1 = false}}
@@ -209,7 +209,7 @@ mlfunc @store_range_load_first_in_range() {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
   %c0 = constant 0 : index
-  for %i0 = 1 to 10 {
+  for %i0 = 1 to 11 {
     %a0 = affine_apply (d0) -> (d0) (%i0)
     store %c7, %m[%a0] : memref<100xf32>
     // expected-note@-1 {{dependence from memref access 0 to access 1 = true}}
@@ -224,12 +224,12 @@ mlfunc @store_range_load_first_in_range() {
 mlfunc @store_load_diff_ranges_diff_1d_loop_nests() {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
-  for %i0 = 0 to 4 {
+  for %i0 = 0 to 5 {
     %a0 = affine_apply (d0) -> (d0) (%i0)
     store %c7, %m[%a0] : memref<100xf32>
     // expected-note@-1 {{dependence from memref access 0 to access 1 = false}}
   }
-  for %i1 = 5 to 10 {
+  for %i1 = 5 to 11 {
     %a1 = affine_apply (d0) -> (d0) (%i1)
     %v0 = load %m[%a1] : memref<100xf32>
   }
@@ -241,12 +241,12 @@ mlfunc @store_load_diff_ranges_diff_1d_loop_nests() {
 mlfunc @store_load_overlapping_ranges_diff_1d_loop_nests() {
   %m = alloc() : memref<100xf32>
   %c7 = constant 7.0 : f32
-  for %i0 = 0 to 4 {
+  for %i0 = 0 to 5 {
     %a0 = affine_apply (d0) -> (d0) (%i0)
     store %c7, %m[%a0] : memref<100xf32>
     // expected-note@-1 {{dependence from memref access 0 to access 1 = true}}
   }
-  for %i1 = 5 to 10 {
+  for %i1 = 5 to 11 {
     %a1 = affine_apply (d0) -> (d0 - 1) (%i1)
     %v0 = load %m[%a1] : memref<100xf32>
   }
@@ -258,15 +258,15 @@ mlfunc @store_load_overlapping_ranges_diff_1d_loop_nests() {
 mlfunc @store_load_diff_inner_ranges_diff_2d_loop_nests() {
   %m = alloc() : memref<10x10xf32>
   %c7 = constant 7.0 : f32
-  for %i0 = 0 to 4 {
-    for %i1 = 0 to 4 {
+  for %i0 = 0 to 5 {
+    for %i1 = 0 to 5 {
       %a0 = affine_apply (d0, d1) -> (d0, d1) (%i0, %i1)
        store %c7, %m[%a0#0, %a0#1] : memref<10x10xf32>
       // expected-note@-1 {{dependence from memref access 0 to access 1 = false}}
     }
   }
-  for %i2 = 0 to 4 {
-    for %i3 = 5 to 6 {
+  for %i2 = 0 to 5 {
+    for %i3 = 5 to 7 {
       %a1 = affine_apply (d0, d1) -> (d0, d1) (%i2, %i3)
       %v0 = load %m[%a1#0, %a1#1] : memref<10x10xf32>
     }
@@ -279,15 +279,15 @@ mlfunc @store_load_diff_inner_ranges_diff_2d_loop_nests() {
 mlfunc @store_load_overlapping_inner_ranges_diff_2d_loop_nests() {
   %m = alloc() : memref<10x10xf32>
   %c7 = constant 7.0 : f32
-  for %i0 = 0 to 4 {
-    for %i1 = 0 to 4 {
+  for %i0 = 0 to 5 {
+    for %i1 = 0 to 5 {
       %a0 = affine_apply (d0, d1) -> (d0, d1 + 1) (%i0, %i1)
        store %c7, %m[%a0#0, %a0#1] : memref<10x10xf32>
       // expected-note@-1 {{dependence from memref access 0 to access 1 = true}}
     }
   }
-  for %i2 = 0 to 4 {
-    for %i3 = 5 to 6 {
+  for %i2 = 0 to 5 {
+    for %i3 = 5 to 7 {
       %a1 = affine_apply (d0, d1) -> (d0, d1) (%i2, %i3)
       %v0 = load %m[%a1#0, %a1#1] : memref<10x10xf32>
     }
@@ -300,15 +300,15 @@ mlfunc @store_load_overlapping_inner_ranges_diff_2d_loop_nests() {
 mlfunc @store_load_diff_outer_ranges_diff_2d_loop_nests() {
   %m = alloc() : memref<10x10xf32>
   %c7 = constant 7.0 : f32
-  for %i0 = 0 to 4 {
-    for %i1 = 0 to 4 {
+  for %i0 = 0 to 5 {
+    for %i1 = 0 to 5 {
       %a0 = affine_apply (d0, d1) -> (d0, d1) (%i0, %i1)
        store %c7, %m[%a0#0, %a0#1] : memref<10x10xf32>
       // expected-note@-1 {{dependence from memref access 0 to access 1 = false}}
     }
   }
-  for %i2 = 5 to 7 {
-    for %i3 = 0 to 4 {
+  for %i2 = 5 to 8 {
+    for %i3 = 0 to 5 {
       %a1 = affine_apply (d0, d1) -> (d0, d1) (%i2, %i3)
       %v0 = load %m[%a1#0, %a1#1] : memref<10x10xf32>
     }
@@ -321,15 +321,15 @@ mlfunc @store_load_diff_outer_ranges_diff_2d_loop_nests() {
 mlfunc @store_load_overlapping_outer_ranges_diff_2d_loop_nests() {
   %m = alloc() : memref<10x10xf32>
   %c7 = constant 7.0 : f32
-  for %i0 = 0 to 4 {
-    for %i1 = 0 to 4 {
+  for %i0 = 0 to 5 {
+    for %i1 = 0 to 5 {
       %a0 = affine_apply (d0, d1) -> (d0 + 1, d1) (%i0, %i1)
        store %c7, %m[%a0#0, %a0#1] : memref<10x10xf32>
       // expected-note@-1 {{dependence from memref access 0 to access 1 = true}}
     }
   }
-  for %i2 = 5 to 7 {
-    for %i3 = 0 to 4 {
+  for %i2 = 5 to 8 {
+    for %i3 = 0 to 5 {
       %a1 = affine_apply (d0, d1) -> (d0, d1) (%i2, %i3)
       %v0 = load %m[%a1#0, %a1#1] : memref<10x10xf32>
     }

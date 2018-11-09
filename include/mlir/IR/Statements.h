@@ -240,7 +240,7 @@ public:
 
   /// Returns affine map for the lower bound.
   AffineMap getLowerBoundMap() const { return lbMap; }
-  /// Returns affine map for the upper bound.
+  /// Returns affine map for the upper bound. The upper bound is exclusive.
   AffineMap getUpperBoundMap() const { return ubMap; }
 
   /// Set lower bound.
@@ -271,8 +271,8 @@ public:
   /// Returns the value of the constant lower bound.
   /// Fails assertion if the bound is non-constant.
   int64_t getConstantLowerBound() const;
-  /// Returns the value of the constant upper bound.
-  /// Fails assertion if the bound is non-constant.
+  /// Returns the value of the constant upper bound. The upper bound is
+  /// exclusive. Fails assertion if the bound is non-constant.
   int64_t getConstantUpperBound() const;
   /// Sets the lower bound to the given constant value.
   void setConstantLowerBound(int64_t value);
@@ -353,7 +353,7 @@ public:
 private:
   // Affine map for the lower bound.
   AffineMap lbMap;
-  // Affine map for the upper bound.
+  // Affine map for the upper bound. The upper bound is exclusive.
   AffineMap ubMap;
   // Positive constant step. Since index is stored as an int64_t, we restrict
   // step to the set of positive integers that int64_t can represent.

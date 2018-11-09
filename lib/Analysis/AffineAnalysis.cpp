@@ -433,8 +433,8 @@ bool mlir::addIndexSet(ArrayRef<const MLValue *> indices,
       return false;
     // Add inequality for lower bound.
     domain->addConstantLowerBound(i, forStmt->getConstantLowerBound());
-    // Add inequality for upper bound.
-    domain->addConstantUpperBound(i, forStmt->getConstantUpperBound());
+    // Add inequality for upper bound. (ForStmt's upper bound is exclusive).
+    domain->addConstantUpperBound(i, forStmt->getConstantUpperBound() - 1);
   }
   return true;
 }

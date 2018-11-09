@@ -152,7 +152,7 @@ PassResult LoopUnroll::runOnMLFunction(MLFunction *f) {
   return success();
 }
 
-/// Unroll a for stmt. Default unroll factor is 4.
+/// Unroll a 'for' stmt. Default unroll factor is 4.
 bool LoopUnroll::runOnForStmt(ForStmt *forStmt) {
   // Unroll by the factor passed, if any.
   if (unrollFactor.hasValue())

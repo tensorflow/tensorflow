@@ -463,7 +463,8 @@ public:
 
   /// Returns the constant upper bound of the specified identifier (through a
   /// scan through the constraints); returns None if the bound isn't trivially a
-  /// constant.
+  /// constant. Note that the upper bound for FlatAffineConstraints is
+  /// inclusive.
   Optional<int64_t> getConstantUpperBound(unsigned pos);
 
   // Returns the lower and upper bounds of the specified dimensions as
