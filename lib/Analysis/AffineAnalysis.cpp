@@ -22,10 +22,12 @@
 
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
+#include "mlir/Analysis/Utils.h"
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Statements.h"
 #include "mlir/StandardOps/StandardOps.h"
+#include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -441,6 +443,9 @@ bool mlir::addIndexSet(ArrayRef<const MLValue *> indices,
 
 // IterationDomainContext encapsulates the state required to represent
 // the iteration domain of an OperationStmt.
+// TODO(andydavis) Move this into FlatAffineConstraints when we have shared
+// code to manage the operand values and positions to use FlatAffineConstraints
+// and AffineValueMap.
 struct IterationDomainContext {
   // Set of inequality constraint pairs, where each pair represents the
   // upper/lower bounds of a ForStmt in the iteration domain.
@@ -452,8 +457,8 @@ struct IterationDomainContext {
   // [numDims, values.size()) representing symbol identifiers.
   SmallVector<const MLValue *, 4> values;
   IterationDomainContext() : numDims(0) {}
-  unsigned getNumDims() { return numDims; }
-  unsigned getNumSymbols() { return values.size() - numDims; }
+  unsigned getNumDims() const { return numDims; }
+  unsigned getNumSymbols() const { return values.size() - numDims; }
 };
 
 // Computes the iteration domain for 'opStmt' and populates 'ctx', which
@@ -465,11 +470,8 @@ struct IterationDomainContext {
 // TODO(andydavis) Handle non-constant loop bounds by composing affine maps
 // for each ForStmt loop bound and adding de-duped ids/symbols to iteration
 // domain context.
-// TODO(andydavis) Capture the context of the symbols. For example, check
-// if a symbol is the result of a constant operation, and set the symbol to
-// that value in FlatAffineConstraints (using setIdToConstant).
-bool getIterationDomainContext(const Statement *stmt,
-                               IterationDomainContext *ctx) {
+static bool getIterationDomainContext(const Statement *stmt,
+                                      IterationDomainContext *ctx) {
   // Walk up tree storing parent statements in 'loops'.
   // TODO(andydavis) Extend this to gather enclosing IfStmts and consider
   // factoring it out into a utility function.
@@ -505,73 +507,121 @@ bool getIterationDomainContext(const Statement *stmt,
   return addIndexSet(ctx->values, &ctx->domain);
 }
 
+// ValuePositionMap manages the mapping from MLValues which represent dimension
+// and symbol identifiers from 'src' and 'dst' access functions to positions
+// in new space where some MLValues are kept separate (using addSrc/DstValue)
+// and some MLValues are merged (addSymbolValue).
+// Position lookups return the absolute position in the new space which
+// has the following format:
+//
+//   [src-dim-identifiers] [dst-dim-identifiers] [symbol-identifers]
+//
+// Note: access function non-IV dimension identifiers (that have 'dimension'
+// positions in the access function position space) are assigned as symbols
+// in the output position space. Convienience access functions which lookup
+// an MLValue in multiple maps are provided (i.e. getSrcDimOrSymPos) to handle
+// the common case of resolving positions for all access function operands.
+//
+// TODO(andydavis) Generalize this: could take a template parameter for
+// the number of maps (3 in the current case), and lookups could take indices
+// of maps to check. So getSrcDimOrSymPos would be "getPos(value, {0, 2})".
+class ValuePositionMap {
+public:
+  void addSrcValue(const MLValue *value) {
+    if (addValueAt(value, &srcDimPosMap, numSrcDims))
+      ++numSrcDims;
+  }
+  void addDstValue(const MLValue *value) {
+    if (addValueAt(value, &dstDimPosMap, numDstDims))
+      ++numDstDims;
+  }
+  void addSymbolValue(const MLValue *value) {
+    if (addValueAt(value, &symbolPosMap, numSymbols))
+      ++numSymbols;
+  }
+  unsigned getSrcDimOrSymPos(const MLValue *value) const {
+    return getDimOrSymPos(value, srcDimPosMap, 0);
+  }
+  unsigned getDstDimOrSymPos(const MLValue *value) const {
+    return getDimOrSymPos(value, dstDimPosMap, numSrcDims);
+  }
+  unsigned getSymPos(const MLValue *value) const {
+    auto it = symbolPosMap.find(value);
+    assert(it != symbolPosMap.end());
+    return numSrcDims + numDstDims + it->second;
+  }
+
+  unsigned getNumSrcDims() const { return numSrcDims; }
+  unsigned getNumDstDims() const { return numDstDims; }
+  unsigned getNumDims() const { return numSrcDims + numDstDims; }
+  unsigned getNumSymbols() const { return numSymbols; }
+
+private:
+  bool addValueAt(const MLValue *value,
+                  DenseMap<const MLValue *, unsigned> *posMap,
+                  unsigned position) {
+    auto it = posMap->find(value);
+    if (it == posMap->end()) {
+      (*posMap)[value] = position;
+      return true;
+    }
+    return false;
+  }
+  unsigned getDimOrSymPos(const MLValue *value,
+                          const DenseMap<const MLValue *, unsigned> &dimPosMap,
+                          unsigned dimPosOffset) const {
+    auto it = dimPosMap.find(value);
+    if (it != dimPosMap.end()) {
+      return dimPosOffset + it->second;
+    }
+    it = symbolPosMap.find(value);
+    assert(it != symbolPosMap.end());
+    return numSrcDims + numDstDims + it->second;
+  }
+
+  unsigned numSrcDims = 0;
+  unsigned numDstDims = 0;
+  unsigned numSymbols = 0;
+  DenseMap<const MLValue *, unsigned> srcDimPosMap;
+  DenseMap<const MLValue *, unsigned> dstDimPosMap;
+  DenseMap<const MLValue *, unsigned> symbolPosMap;
+};
+
 // Builds a map from MLValue to identifier position in a new merged identifier
 // list, which is the result of merging dim/symbol lists from src/dst
 // iteration domains. The format of the new merged list is as follows:
 //
 //   [src-dim-identifiers, dst-dim-identifiers, symbol-identifiers]
 //
-// This method populates 'srcDimPosMap' and 'dstDimPosMap' with mappings from
-// operand MLValues in 'srcAccessMap'/'dstAccessMap' to the position of these
-// values in the merged list.
-// In addition, this method populates 'symbolPosMap' with mappings from
-// operand MLValues in both 'srcIterationDomainContext' and
-// 'dstIterationDomainContext' to position of these values in the merged list.
+// This method populates 'valuePosMap' with mappings from operand MLValues in
+// 'srcAccessMap'/'dstAccessMap' (as well as those in
+// 'srcIterationDomainContext'/'dstIterationDomainContext') to the position of
+// these values in the merged list.
 static void buildDimAndSymbolPositionMaps(
     const IterationDomainContext &srcIterationDomainContext,
     const IterationDomainContext &dstIterationDomainContext,
     const AffineValueMap &srcAccessMap, const AffineValueMap &dstAccessMap,
-    DenseMap<const MLValue *, unsigned> *srcDimPosMap,
-    DenseMap<const MLValue *, unsigned> *dstDimPosMap,
-    DenseMap<const MLValue *, unsigned> *symbolPosMap) {
-  unsigned pos = 0;
-
-  auto updatePosMap = [&](DenseMap<const MLValue *, unsigned> *posMap,
-                          ArrayRef<const MLValue *> values, unsigned start,
-                          unsigned limit) {
-    for (unsigned i = start; i < limit; ++i) {
+    ValuePositionMap *valuePosMap) {
+  auto updateValuePosMap = [&](ArrayRef<const MLValue *> values, bool isSrc) {
+    for (unsigned i = 0, e = values.size(); i < e; ++i) {
       auto *value = values[i];
-      auto it = posMap->find(value);
-      if (it == posMap->end()) {
-        (*posMap)[value] = pos++;
-      }
+      if (!isa<ForStmt>(values[i]))
+        valuePosMap->addSymbolValue(value);
+      else if (isSrc)
+        valuePosMap->addSrcValue(value);
+      else
+        valuePosMap->addDstValue(value);
     }
   };
 
-  AffineMap srcMap = srcAccessMap.getAffineMap();
-  AffineMap dstMap = dstAccessMap.getAffineMap();
-
-  // Update position map with src dimension identifiers from iteration domain
-  // and access function.
-  updatePosMap(srcDimPosMap, srcIterationDomainContext.values, 0,
-               srcIterationDomainContext.numDims);
-  // Update position map with 'srcAccessMap' operands not in iteration domain.
-  updatePosMap(srcDimPosMap, srcAccessMap.getOperands(), 0,
-               srcMap.getNumDims());
-
-  // Update position map with dst dimension identifiers from iteration domain
-  // and access function.
-  updatePosMap(dstDimPosMap, dstIterationDomainContext.values, 0,
-               dstIterationDomainContext.numDims);
-  // Update position map with 'dstAccessMap' operands not in iteration domain.
-  updatePosMap(dstDimPosMap, dstAccessMap.getOperands(), 0,
-               dstMap.getNumDims());
-
-  // Update position map with src symbol identifiers from iteration domain
-  // and access function.
-  updatePosMap(symbolPosMap, srcIterationDomainContext.values,
-               dstIterationDomainContext.numDims,
-               srcIterationDomainContext.values.size());
-  updatePosMap(symbolPosMap, srcAccessMap.getOperands(), srcMap.getNumDims(),
-               srcMap.getNumDims() + srcMap.getNumSymbols());
-
-  // Update position map with dst symbol identifiers from iteration domain
-  // and access function.
-  updatePosMap(symbolPosMap, dstIterationDomainContext.values,
-               dstIterationDomainContext.numDims,
-               dstIterationDomainContext.values.size());
-  updatePosMap(symbolPosMap, dstAccessMap.getOperands(), dstMap.getNumDims(),
-               dstMap.getNumDims() + dstMap.getNumSymbols());
+  // Update value position map with identifiers from src iteration domain.
+  updateValuePosMap(srcIterationDomainContext.values, /*isSrc=*/true);
+  // Update value position map with identifiers from dst iteration domain.
+  updateValuePosMap(dstIterationDomainContext.values, /*isSrc=*/false);
+  // Update value position map with identifiers from src access function.
+  updateValuePosMap(srcAccessMap.getOperands(), /*isSrc=*/true);
+  // Update value position map with identifiers from dst access function.
+  updateValuePosMap(dstAccessMap.getOperands(), /*isSrc=*/false);
 }
 
 static unsigned getPos(const DenseMap<const MLValue *, unsigned> &posMap,
@@ -581,41 +631,55 @@ static unsigned getPos(const DenseMap<const MLValue *, unsigned> &posMap,
   return it->second;
 }
 
-// Adds iteration domain constraints from 'ctx.domain' into 'dependenceDomain'.
-// Uses 'dimPosMap' to map from dim operand value in 'ctx.values', to dim
-// position in 'dependenceDomain'.
-// Uses 'symbolPosMap' to map from symbol operand value in 'ctx.values', to
-// symbol position in 'dependenceDomain'.
-static void
-addDomainConstraints(const IterationDomainContext &ctx,
-                     const DenseMap<const MLValue *, unsigned> &dimPosMap,
-                     const DenseMap<const MLValue *, unsigned> &symbolPosMap,
-                     FlatAffineConstraints *dependenceDomain) {
-  unsigned inputNumIneq = ctx.domain.getNumInequalities();
-  unsigned inputNumDims = ctx.domain.getNumDimIds();
-  unsigned inputNumSymbols = ctx.domain.getNumSymbolIds();
-  unsigned inputNumIds = inputNumDims + inputNumSymbols;
+// Adds iteration domain constraints from 'srcCtx' and 'dstCtx' into
+// 'dependenceDomain'.
+// Uses 'valuePosMap' to map from operand values in 'ctx.values' to position in
+// 'dependenceDomain'.
+static void addDomainConstraints(const IterationDomainContext &srcCtx,
+                                 const IterationDomainContext &dstCtx,
+                                 const ValuePositionMap &valuePosMap,
+                                 FlatAffineConstraints *dependenceDomain) {
+  unsigned srcNumIneq = srcCtx.domain.getNumInequalities();
+  unsigned srcNumDims = srcCtx.domain.getNumDimIds();
+  unsigned srcNumSymbols = srcCtx.domain.getNumSymbolIds();
+  unsigned srcNumIds = srcNumDims + srcNumSymbols;
+
+  unsigned dstNumIneq = dstCtx.domain.getNumInequalities();
+  unsigned dstNumDims = dstCtx.domain.getNumDimIds();
+  unsigned dstNumSymbols = dstCtx.domain.getNumSymbolIds();
+  unsigned dstNumIds = dstNumDims + dstNumSymbols;
 
   unsigned outputNumDims = dependenceDomain->getNumDimIds();
   unsigned outputNumSymbols = dependenceDomain->getNumSymbolIds();
   unsigned outputNumIds = outputNumDims + outputNumSymbols;
 
-  SmallVector<int64_t, 4> eq;
-  eq.resize(outputNumIds + 1);
-  for (unsigned i = 0; i < inputNumIneq; ++i) {
+  SmallVector<int64_t, 4> ineq;
+  ineq.resize(outputNumIds + 1);
+  // Add inequalities from src domain.
+  for (unsigned i = 0; i < srcNumIneq; ++i) {
     // Zero fill.
-    std::fill(eq.begin(), eq.end(), 0);
-    // Add dim identifiers.
-    for (unsigned j = 0; j < inputNumDims; ++j)
-      eq[getPos(dimPosMap, ctx.values[j])] = ctx.domain.atIneq(i, j);
-    // Add symbol identifiers.
-    for (unsigned j = inputNumDims; j < inputNumIds; ++j) {
-      eq[getPos(symbolPosMap, ctx.values[j])] = ctx.domain.atIneq(i, j);
-    }
-    // Add constant term.
-    eq[outputNumIds] = ctx.domain.atIneq(i, inputNumIds);
+    std::fill(ineq.begin(), ineq.end(), 0);
+    // Set coefficients for identifiers corresponding to src domain.
+    for (unsigned j = 0; j < srcNumIds; ++j)
+      ineq[valuePosMap.getSrcDimOrSymPos(srcCtx.values[j])] =
+          srcCtx.domain.atIneq(i, j);
+    // Set constant term.
+    ineq[outputNumIds] = srcCtx.domain.atIneq(i, srcNumIds);
     // Add inequality constraint.
-    dependenceDomain->addInequality(eq);
+    dependenceDomain->addInequality(ineq);
+  }
+  // Add inequalities from dst domain.
+  for (unsigned i = 0; i < dstNumIneq; ++i) {
+    // Zero fill.
+    std::fill(ineq.begin(), ineq.end(), 0);
+    // Set coefficients for identifiers corresponding to dst domain.
+    for (unsigned j = 0; j < dstNumIds; ++j)
+      ineq[valuePosMap.getDstDimOrSymPos(dstCtx.values[j])] =
+          dstCtx.domain.atIneq(i, j);
+    // Set constant term.
+    ineq[outputNumIds] = dstCtx.domain.atIneq(i, dstNumIds);
+    // Add inequality constraint.
+    dependenceDomain->addInequality(ineq);
   }
 }
 
@@ -640,12 +704,13 @@ addDomainConstraints(const IterationDomainContext &ctx,
 //   a0     -c0      (a1 - c1)  (a1 - c2) = 0
 //   b0     -f0      (b1 - f1)  (b1 - f2) = 0
 //
-bool addMemRefAccessConstraints(
-    const AffineValueMap &srcAccessMap, const AffineValueMap &dstAccessMap,
-    const DenseMap<const MLValue *, unsigned> &srcDimPosMap,
-    const DenseMap<const MLValue *, unsigned> &dstDimPosMap,
-    const DenseMap<const MLValue *, unsigned> &symbolPosMap,
-    FlatAffineConstraints *dependenceDomain) {
+// Returns false if any AffineExpr cannot be flattened (which will be removed
+// when mod/floor/ceil support is added). Returns true otherwise.
+static bool
+addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
+                           const AffineValueMap &dstAccessMap,
+                           const ValuePositionMap &valuePosMap,
+                           FlatAffineConstraints *dependenceDomain) {
   AffineMap srcMap = srcAccessMap.getAffineMap();
   AffineMap dstMap = dstAccessMap.getAffineMap();
   assert(srcMap.getNumResults() == dstMap.getNumResults());
@@ -665,8 +730,7 @@ bool addMemRefAccessConstraints(
   unsigned outputNumSymbols = dependenceDomain->getNumSymbolIds();
   unsigned outputNumIds = outputNumDims + outputNumSymbols;
 
-  SmallVector<int64_t, 4> eq;
-  eq.resize(outputNumIds + 1);
+  SmallVector<int64_t, 4> eq(outputNumIds + 1);
   SmallVector<int64_t, 4> flattenedExpr;
   for (unsigned i = 0; i < numResults; ++i) {
     // Zero fill.
@@ -677,13 +741,10 @@ bool addMemRefAccessConstraints(
     if (!getFlattenedAffineExpr(srcExpr, srcNumDims, srcNumSymbols,
                                 &flattenedExpr))
       return false;
-    // Add dim identifier coefficients from src access function.
-    for (unsigned j = 0, e = srcNumDims; j < e; ++j)
-      eq[getPos(srcDimPosMap, srcOperands[j])] = flattenedExpr[j];
-    // Add symbol identifiers from src access function.
-    for (unsigned j = srcNumDims; j < srcNumIds; ++j)
-      eq[getPos(symbolPosMap, srcOperands[j])] = flattenedExpr[j];
-    // Add constant term.
+    // Set identifier coefficients from src access function.
+    for (unsigned j = 0, e = srcOperands.size(); j < e; ++j)
+      eq[valuePosMap.getSrcDimOrSymPos(srcOperands[j])] = flattenedExpr[j];
+    // Set constant term.
     eq[outputNumIds] = flattenedExpr[srcNumIds];
 
     // Get flattened AffineExpr for result 'i' from dst access function.
@@ -692,47 +753,216 @@ bool addMemRefAccessConstraints(
     if (!getFlattenedAffineExpr(dstExpr, dstNumDims, dstNumSymbols,
                                 &flattenedExpr))
       return false;
-    // Add dim identifier coefficients from dst access function.
-    for (unsigned j = 0, e = dstNumDims; j < e; ++j)
-      eq[getPos(dstDimPosMap, dstOperands[j])] = -flattenedExpr[j];
-    // Add symbol identifiers from dst access function.
-    for (unsigned j = dstNumDims; j < dstNumIds; ++j)
-      eq[getPos(symbolPosMap, dstOperands[j])] -= flattenedExpr[j];
-    // Add constant term.
+    // Set identifier coefficients from dst access function.
+    for (unsigned j = 0, e = dstOperands.size(); j < e; ++j)
+      eq[valuePosMap.getDstDimOrSymPos(dstOperands[j])] -= flattenedExpr[j];
+    // Set constant term.
     eq[outputNumIds] -= flattenedExpr[dstNumIds];
     // Add equality constraint.
     dependenceDomain->addEquality(eq);
   }
 
   // Add equality constraints for any operands that are defined by constant ops.
-  auto addEqForConstOperands =
-      [&](const DenseMap<const MLValue *, unsigned> &posMap,
-          ArrayRef<const MLValue *> operands, unsigned start, unsigned limit) {
-        for (unsigned i = start; i < limit; ++i) {
-          if (isa<ForStmt>(operands[i]))
-            continue;
-          auto *symbol = operands[i];
-          assert(symbol->isValidSymbol());
-          // Check if the symbols is a constant.
-          if (auto *opStmt = symbol->getDefiningStmt()) {
-            if (auto constOp = opStmt->dyn_cast<ConstantIndexOp>()) {
-              dependenceDomain->setIdToConstant(getPos(posMap, symbol),
-                                                constOp->getValue());
-            }
-          }
+  auto addEqForConstOperands = [&](ArrayRef<const MLValue *> operands) {
+    for (unsigned i = 0, e = operands.size(); i < e; ++i) {
+      if (isa<ForStmt>(operands[i]))
+        continue;
+      auto *symbol = operands[i];
+      assert(symbol->isValidSymbol());
+      // Check if the symbol is a constant.
+      if (auto *opStmt = symbol->getDefiningStmt()) {
+        if (auto constOp = opStmt->dyn_cast<ConstantIndexOp>()) {
+          dependenceDomain->setIdToConstant(valuePosMap.getSymPos(symbol),
+                                            constOp->getValue());
         }
-      };
+      }
+    }
+  };
 
-  // Add equality constraints for any src dims defined by constant ops.
-  addEqForConstOperands(srcDimPosMap, srcOperands, 0, srcNumDims);
   // Add equality constraints for any src symbols defined by constant ops.
-  addEqForConstOperands(symbolPosMap, srcOperands, srcNumDims, srcNumIds);
-  // Add equality constraints for any dst dims defined by constant ops.
-  addEqForConstOperands(dstDimPosMap, dstOperands, 0, dstNumDims);
+  addEqForConstOperands(srcOperands);
   // Add equality constraints for any dst symbols defined by constant ops.
-  addEqForConstOperands(symbolPosMap, dstOperands, dstNumDims, dstNumIds);
-
+  addEqForConstOperands(dstOperands);
   return true;
+}
+
+// Returns the number of outer loop common to 'src/dstIterationDomainContext'.
+static unsigned
+getNumCommonLoops(const IterationDomainContext &srcIterationDomainContext,
+                  const IterationDomainContext &dstIterationDomainContext) {
+  // Find the number of common loops shared by src and dst accesses.
+  unsigned minNumLoops = std::min(srcIterationDomainContext.getNumDims(),
+                                  dstIterationDomainContext.getNumDims());
+  unsigned numCommonLoops = 0;
+  for (unsigned i = 0; i < minNumLoops; ++i) {
+    if (!isa<ForStmt>(srcIterationDomainContext.values[i]) ||
+        !isa<ForStmt>(dstIterationDomainContext.values[i]) ||
+        srcIterationDomainContext.values[i] !=
+            dstIterationDomainContext.values[i])
+      break;
+    ++numCommonLoops;
+  }
+  return numCommonLoops;
+}
+
+// Returns true if the operation statement in 'srcAccess' properly dominates
+// the operation statement in 'dstAccess'. Returns false otherwise.
+// Note that 'numCommonLoops' is the number of contiguous surrounding outer
+// loops.
+static bool
+srcHappensBeforeDst(const MemRefAccess &srcAccess,
+                    const MemRefAccess &dstAccess,
+                    const IterationDomainContext &srcIterationDomainContext,
+                    unsigned numCommonLoops) {
+  if (numCommonLoops == 0) {
+    return mlir::properlyDominates(*srcAccess.opStmt, *dstAccess.opStmt);
+  }
+  auto *commonForValue = srcIterationDomainContext.values[numCommonLoops - 1];
+  assert(isa<ForStmt>(commonForValue));
+  auto *commonForStmt = dyn_cast<ForStmt>(commonForValue);
+  // Check the dominance relationship between the respective ancestors of the
+  // src and dst in the StmtBlock of the innermost among the common loops.
+  auto *srcStmt = commonForStmt->findAncestorStmtInBlock(*srcAccess.opStmt);
+  assert(srcStmt != nullptr);
+  auto *dstStmt = commonForStmt->findAncestorStmtInBlock(*dstAccess.opStmt);
+  assert(dstStmt != nullptr);
+  return mlir::properlyDominates(*srcStmt, *dstStmt);
+}
+
+// Adds ordering constraints to 'dependenceDomain' based on number of loops
+// common to 'src/dstIterationDomainContext' and requested 'loopDepth'.
+// Note that 'loopDepth' cannot exceed the number of common loops plus one.
+// EX: Given a loop nest of depth 2 with IVs 'i' and 'j':
+// *) If 'loopDepth == 1' then one constraint is added: i' >= i + 1
+// *) If 'loopDepth == 2' then two constraints are added: i == i' and j' > j + 1
+// *) If 'loopDepth == 3' then two constraints are added: i == i' and j == j'
+static void
+addOrderingConstraints(const IterationDomainContext &srcIterationDomainContext,
+                       const IterationDomainContext &dstIterationDomainContext,
+                       const ValuePositionMap &valuePosMap, unsigned loopDepth,
+                       FlatAffineConstraints *dependenceDomain) {
+  unsigned numCols = dependenceDomain->getNumCols();
+  SmallVector<int64_t, 4> eq(numCols);
+  unsigned numSrcDims = valuePosMap.getNumSrcDims();
+  unsigned numCommonLoops =
+      getNumCommonLoops(srcIterationDomainContext, dstIterationDomainContext);
+  unsigned numCommonLoopConstraints = std::min(numCommonLoops, loopDepth);
+  for (unsigned i = 0; i < numCommonLoopConstraints; ++i) {
+    std::fill(eq.begin(), eq.end(), 0);
+    eq[i] = -1;
+    eq[i + numSrcDims] = 1;
+    if (i == loopDepth - 1) {
+      eq[numCols - 1] = -1;
+      dependenceDomain->addInequality(eq);
+    } else {
+      dependenceDomain->addEquality(eq);
+    }
+  }
+}
+
+// Returns true if 'isEq' constraint in 'dependenceDomain' has a single
+// non-zero coefficient at (rowIdx, idPos). Returns false otherwise.
+// TODO(andydavis) Move this function to FlatAffineConstraints.
+static bool hasSingleNonZeroAt(unsigned idPos, unsigned rowIdx, bool isEq,
+                               FlatAffineConstraints *dependenceDomain) {
+  unsigned numCols = dependenceDomain->getNumCols();
+  for (unsigned j = 0; j < numCols - 1; ++j) {
+    int64_t v = isEq ? dependenceDomain->atEq(rowIdx, j)
+                     : dependenceDomain->atIneq(rowIdx, j);
+    if ((j == idPos && v == 0) || (j != idPos && v != 0))
+      return false;
+  }
+  return true;
+}
+
+// Computes distance and direction vectors in 'dependences', by adding
+// variables to 'dependenceDomain' which represent the difference of the IVs,
+// eliminating all other variables, and reading off distance vectors from
+// equality constraints (if possible), and direction vectors from inequalities.
+static void computeDirectionVector(
+    const IterationDomainContext &srcIterationDomainContext,
+    const IterationDomainContext &dstIterationDomainContext, unsigned loopDepth,
+    FlatAffineConstraints *dependenceDomain,
+    llvm::SmallVector<DependenceComponent, 2> *dependenceComponents) {
+  // Find the number of common loops shared by src and dst accesses.
+  unsigned numCommonLoops =
+      getNumCommonLoops(srcIterationDomainContext, dstIterationDomainContext);
+  if (numCommonLoops == 0)
+    return;
+  // Compute direction vectors for requested loop depth.
+  unsigned numIdsToEliminate = dependenceDomain->getNumIds();
+  // Add new variables to 'dependenceDomain' to represent the direction
+  // constraints for each shared loop.
+  for (unsigned j = 0; j < numCommonLoops; ++j) {
+    dependenceDomain->addDimId(j);
+  }
+
+  // Add equality contraints for each common loop, setting newly instroduced
+  // variable at column 'j' to the 'dst' IV minus the 'src IV.
+  SmallVector<int64_t, 4> eq;
+  eq.resize(dependenceDomain->getNumCols());
+  for (unsigned j = 0; j < numCommonLoops; ++j) {
+    std::fill(eq.begin(), eq.end(), 0);
+    eq[j] = 1;
+    eq[j + numCommonLoops] = 1;
+    eq[j + 2 * numCommonLoops] = -1;
+    dependenceDomain->addEquality(eq);
+  }
+
+  // Eliminate all variables other than the direction variables just added.
+  dependenceDomain->projectOut(numCommonLoops, numIdsToEliminate);
+
+  // Scan each common loop variable column and add direction vectors based
+  // on eliminated constraint system.
+  unsigned numCols = dependenceDomain->getNumCols();
+  dependenceComponents->reserve(numCommonLoops);
+  for (unsigned j = 0; j < numCommonLoops; ++j) {
+    DependenceComponent depComp;
+    for (unsigned i = 0, e = dependenceDomain->getNumEqualities(); i < e; ++i) {
+      // Check for equality constraint with single non-zero in column 'j'.
+      if (!hasSingleNonZeroAt(j, i, /*isEq=*/true, dependenceDomain))
+        continue;
+      // Get direction variable coefficient at (i, j).
+      int64_t d = dependenceDomain->atEq(i, j);
+      // Get constant coefficient at (i, numCols - 1).
+      int64_t c = -dependenceDomain->atEq(i, numCols - 1);
+      assert(c % d == 0 && "No dependence should have existed");
+      depComp.lb = depComp.ub = c / d;
+      dependenceComponents->push_back(depComp);
+      break;
+    }
+    // Skip checking inequalities if we set 'depComp' based on equalities.
+    if (depComp.lb.hasValue() || depComp.ub.hasValue())
+      continue;
+    // TODO(andydavis) Call FlatAffineConstraints::getConstantLower/UpperBound
+    // Check inequalities to track direction range for each 'j'.
+    for (unsigned i = 0, e = dependenceDomain->getNumInequalities(); i < e;
+         ++i) {
+      // Check for inequality constraint with single non-zero in column 'j'.
+      if (!hasSingleNonZeroAt(j, i, /*isEq=*/false, dependenceDomain))
+        continue;
+      // Get direction variable coefficient at (i, j).
+      int64_t d = dependenceDomain->atIneq(i, j);
+      // Get constant coefficient at (i, numCols - 1).
+      int64_t c = dependenceDomain->atIneq(i, numCols - 1);
+      if (d < 0) {
+        // Upper bound: add tightest upper bound.
+        auto ub = mlir::floorDiv(c, -d);
+        if (!depComp.ub.hasValue() || ub < depComp.ub.getValue())
+          depComp.ub = ub;
+      } else {
+        // Lower bound: add tightest lower bound.
+        auto lb = mlir::ceilDiv(-c, d);
+        if (!depComp.lb.hasValue() || lb > depComp.lb.getValue())
+          depComp.lb = lb;
+      }
+    }
+    if (depComp.lb.hasValue() || depComp.ub.hasValue()) {
+      if (depComp.lb.hasValue() && depComp.ub.hasValue())
+        assert(depComp.lb.getValue() <= depComp.ub.getValue());
+      dependenceComponents->push_back(depComp);
+    }
+  }
 }
 
 // Populates 'accessMap' with composition of AffineApplyOps reachable from
@@ -752,6 +982,9 @@ void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
 // between memref accesses 'srcAccess' and 'dstAccess'.
 // Returns 'false' if the accesses can be definitively shown not to access the
 // same element. Returns 'true' otherwise.
+// If a dependence exists, returns in 'dependenceComponents' a direction
+// vector for the dependence, with a component for each loop IV in loops
+// common to both accesses (see Dependence in AffineAnalysis.h for details).
 //
 // The memref access dependence check is comprised of the following steps:
 // *) Compute access functions for each access. Access functions are computed
@@ -830,13 +1063,10 @@ void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
 //
 //
 // TODO(andydavis) Support AffineExprs mod/floordiv/ceildiv.
-// TODO(andydavis) Add precedence order constraints for accesses that
-// share a common loop.
-// TODO(andydavis) Add support for returning the direction of the dependence.
-// For example, this function may return that there is a dependence between
-// 'srcAccess' and 'dstAccess' but the dependence may be from dst to src.
-bool mlir::checkMemrefAccessDependence(const MemRefAccess &srcAccess,
-                                       const MemRefAccess &dstAccess) {
+bool mlir::checkMemrefAccessDependence(
+    const MemRefAccess &srcAccess, const MemRefAccess &dstAccess,
+    unsigned loopDepth,
+    llvm::SmallVector<DependenceComponent, 2> *dependenceComponents) {
   // Return 'false' if these accesses do not acces the same memref.
   if (srcAccess.memref != dstAccess.memref)
     return false;
@@ -862,23 +1092,32 @@ bool mlir::checkMemrefAccessDependence(const MemRefAccess &srcAccess,
   if (!getIterationDomainContext(dstAccess.opStmt, &dstIterationDomainContext))
     return false;
 
+  // Return if loopDepth > numCommonLoops and 'srcAccess' does not properly
+  // dominate 'dstAccess' (i.e. no execution path from src to dst access).
+  unsigned numCommonLoops =
+      getNumCommonLoops(srcIterationDomainContext, dstIterationDomainContext);
+  assert(loopDepth <= numCommonLoops + 1);
+  if (loopDepth > numCommonLoops &&
+      !srcHappensBeforeDst(srcAccess, dstAccess, srcIterationDomainContext,
+                           numCommonLoops)) {
+    return false;
+  }
   // Build dim and symbol position maps for each access from access operand
   // MLValue to position in merged contstraint system.
-  DenseMap<const MLValue *, unsigned> srcDimPosMap;
-  DenseMap<const MLValue *, unsigned> dstDimPosMap;
-  DenseMap<const MLValue *, unsigned> symbolPosMap;
-  buildDimAndSymbolPositionMaps(
-      srcIterationDomainContext, dstIterationDomainContext, srcAccessMap,
-      dstAccessMap, &srcDimPosMap, &dstDimPosMap, &symbolPosMap);
+  ValuePositionMap valuePosMap;
+  buildDimAndSymbolPositionMaps(srcIterationDomainContext,
+                                dstIterationDomainContext, srcAccessMap,
+                                dstAccessMap, &valuePosMap);
 
-  // TODO(andydavis) Add documentation.
+  // Calculate number of equalities/inequalities and columns required to
+  // initialize FlatAffineConstraints for 'dependenceDomain'.
   unsigned numIneq = srcIterationDomainContext.domain.getNumInequalities() +
                      dstIterationDomainContext.domain.getNumInequalities();
   AffineMap srcMap = srcAccessMap.getAffineMap();
   assert(srcMap.getNumResults() == dstAccessMap.getAffineMap().getNumResults());
   unsigned numEq = srcMap.getNumResults();
-  unsigned numDims = srcDimPosMap.size() + dstDimPosMap.size();
-  unsigned numSymbols = symbolPosMap.size();
+  unsigned numDims = valuePosMap.getNumDims();
+  unsigned numSymbols = valuePosMap.getNumSymbols();
   unsigned numIds = numDims + numSymbols;
   unsigned numCols = numIds + 1;
 
@@ -888,18 +1127,23 @@ bool mlir::checkMemrefAccessDependence(const MemRefAccess &srcAccess,
   // Create memref access constraint by equating src/dst access functions.
   // Note that this check is conservative, and will failure in the future
   // when local variables for mod/div exprs are supported.
-  if (!addMemRefAccessConstraints(srcAccessMap, dstAccessMap, srcDimPosMap,
-                                  dstDimPosMap, symbolPosMap,
+  if (!addMemRefAccessConstraints(srcAccessMap, dstAccessMap, valuePosMap,
                                   &dependenceDomain))
     return true;
 
-  // Add domain constraints for src access function.
-  addDomainConstraints(srcIterationDomainContext, srcDimPosMap, symbolPosMap,
-                       &dependenceDomain);
-  // Add equality constraints from 'dstConstraints'.
-  addDomainConstraints(dstIterationDomainContext, dstDimPosMap, symbolPosMap,
-                       &dependenceDomain);
-  bool isEmpty = dependenceDomain.isEmpty();
-  // Return false if the solution space is empty.
-  return !isEmpty;
+  // Add 'src' happens before 'dst' ordering constraints.
+  addOrderingConstraints(srcIterationDomainContext, dstIterationDomainContext,
+                         valuePosMap, loopDepth, &dependenceDomain);
+  // Add src and dst domain constraints.
+  addDomainConstraints(srcIterationDomainContext, dstIterationDomainContext,
+                       valuePosMap, &dependenceDomain);
+
+  // Return false if the solution space is empty: no dependence.
+  if (dependenceDomain.isEmpty()) {
+    return false;
+  }
+  // Compute dependence direction vector and return true.
+  computeDirectionVector(srcIterationDomainContext, dstIterationDomainContext,
+                         loopDepth, &dependenceDomain, dependenceComponents);
+  return true;
 }

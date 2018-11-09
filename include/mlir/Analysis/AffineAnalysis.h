@@ -72,11 +72,6 @@ bool getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
 bool addIndexSet(llvm::ArrayRef<const MLValue *> indices,
                  FlatAffineConstraints *domain);
 
-/// Checks whether two accesses to the same memref access the same element.
-/// Each access is specified using the MemRefAccess structure, which contains
-/// the operation statement, indices and memref associated with the access.
-/// Returns 'false' if it can be determined conclusively that the accesses do
-/// not access the same memref element. Returns 'true' otherwise.
 struct MemRefAccess {
   const MLValue *memref;
   const OperationStmt *opStmt;
@@ -85,9 +80,30 @@ struct MemRefAccess {
   // 'indices'.
   void getAccessMap(AffineValueMap *accessMap) const;
 };
-bool checkMemrefAccessDependence(const MemRefAccess &srcAccess,
-                                 const MemRefAccess &dstAccess);
 
+// DependenceComponent contains state about the direction of a dependence as an
+// interval [lb, ub].
+// Distance vectors components are represented by the interval [lb, ub] with
+// lb == ub.
+// Direction vectors components are represented by the interval [lb, ub] with
+// lb < ub. Note that ub/lb == None means unbounded.
+struct DependenceComponent {
+  // The lower bound of the dependence distance.
+  llvm::Optional<int64_t> lb;
+  // The upper bound of the dependence distance (inclusive).
+  llvm::Optional<int64_t> ub;
+  DependenceComponent() : lb(llvm::None), ub(llvm::None) {}
+};
+
+/// Checks whether two accesses to the same memref access the same element.
+/// Each access is specified using the MemRefAccess structure, which contains
+/// the operation statement, indices and memref associated with the access.
+/// Returns 'false' if it can be determined conclusively that the accesses do
+/// not access the same memref element. Returns 'true' otherwise.
+bool checkMemrefAccessDependence(
+    const MemRefAccess &srcAccess, const MemRefAccess &dstAccess,
+    unsigned loopDepth,
+    llvm::SmallVector<DependenceComponent, 2> *dependenceComponents);
 } // end namespace mlir
 
 #endif // MLIR_ANALYSIS_AFFINE_ANALYSIS_H

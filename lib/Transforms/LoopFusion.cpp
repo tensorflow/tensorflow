@@ -233,11 +233,15 @@ PassResult LoopFusion::runOnMLFunction(MLFunction *f) {
 
   // TODO(andydavis) Add checks for fusion-preventing dependences and ordering
   // constraints which would prevent fusion.
-  // TODO(andydavis) This check if overly conservative for now. Support fusing
+  // TODO(andydavis) This check is overly conservative for now. Support fusing
   // statements with compatible dependences (i.e. statements where the
   // dependence between the statements does not reverse direction when the
   // statements are fused into the same loop).
-  if (!checkMemrefAccessDependence(candidate.accessA, candidate.accessB)) {
+  llvm::SmallVector<DependenceComponent, 2> dependenceComponents;
+  // TODO(andydavis) Check dependences at differnt loop nest depths.
+  if (!checkMemrefAccessDependence(candidate.accessA, candidate.accessB,
+                                   /*loopNestDepth=*/0,
+                                   &dependenceComponents)) {
     // Current conservatinve test policy: No dependence exists between accesses
     // in different loop nests -> fuse loops.
     fuseLoops(candidate);

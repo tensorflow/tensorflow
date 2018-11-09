@@ -90,40 +90,87 @@ static void getMemRefAccess(const OperationStmt *loadOrStoreOpStmt,
   }
 }
 
+// Populates 'loops' with the loop nest surrounding 'stmt', ordered from
+// outer-most ForStmt to inner-most.
+static void getLoopNest(Statement *stmt,
+                        SmallVector<const ForStmt *, 4> *loops) {
+  const auto *currStmt = stmt->getParentStmt();
+  while (currStmt != nullptr && isa<ForStmt>(currStmt)) {
+    loops->push_back(dyn_cast<ForStmt>(currStmt));
+    currStmt = currStmt->getParentStmt();
+  }
+  std::reverse(loops->begin(), loops->end());
+}
+
+// Returns the number of surrounding loops common to 'loopsA' and 'loopsB',
+// where each lists loops from outer-most to inner-most in loop nest.
+static unsigned getNumCommonSurroundingLoops(ArrayRef<const ForStmt *> loopsA,
+                                             ArrayRef<const ForStmt *> loopsB) {
+  unsigned minNumLoops = std::min(loopsA.size(), loopsB.size());
+  unsigned numCommonLoops = 0;
+  for (unsigned i = 0; i < minNumLoops; ++i) {
+    if (loopsA[i] != loopsB[i])
+      break;
+    ++numCommonLoops;
+  }
+  return numCommonLoops;
+}
+
+// Returns a result string which represents the direction vector (if there was
+// a dependence), returns the string "false" otherwise.
+static string
+getDirectionVectorStr(bool ret, unsigned numCommonLoops, unsigned loopNestDepth,
+                      ArrayRef<DependenceComponent> dependenceComponents) {
+  if (!ret)
+    return "false";
+  if (dependenceComponents.empty() || loopNestDepth > numCommonLoops)
+    return "true";
+  string result;
+  for (unsigned i = 0, e = dependenceComponents.size(); i < e; ++i) {
+    string lbStr = dependenceComponents[i].lb.hasValue()
+                       ? std::to_string(dependenceComponents[i].lb.getValue())
+                       : "-inf";
+    string ubStr = dependenceComponents[i].ub.hasValue()
+                       ? std::to_string(dependenceComponents[i].ub.getValue())
+                       : "+inf";
+    result += "[" + lbStr + ", " + ubStr + "]";
+  }
+  return result;
+}
+
 // For each access in 'loadsAndStores', runs a depence check between this
 // "source" access and all subsequent "destination" accesses in
 // 'loadsAndStores'. Emits the result of the dependence check as a note with
 // the source access.
-// TODO(andydavis) Clarify expected-note logs. In particular we may want to
-// drop the 'i' from the note string, tag dependence destination accesses
-// with a note with their 'j' index. In addition, we may want a schedme that
-// first assigned unique ids to each access, then emits a note for each access
-// with its id, and emits a note for each dependence check with a pair of ids.
-// For example, given this code:
-//
-//   memref_access0
-//   // emit note: "this op is memref access 0'
-//   // emit note: "dependence from memref access 0 to access 1 = false"
-//   // emit note: "dependence from memref access 0 to access 2 = true"
-//   memref_access1
-//   // emit note: "this op is memref access 1'
-//   // emit note: "dependence from memref access 1 to access 2 = false"
-//   memref_access2
-//   // emit note: "this op is memref access 2'
-//
 static void checkDependences(ArrayRef<OperationStmt *> loadsAndStores) {
   for (unsigned i = 0, e = loadsAndStores.size(); i < e; ++i) {
     auto *srcOpStmt = loadsAndStores[i];
     MemRefAccess srcAccess;
     getMemRefAccess(srcOpStmt, &srcAccess);
-    for (unsigned j = i + 1; j < e; ++j) {
+    SmallVector<const ForStmt *, 4> srcLoops;
+    getLoopNest(srcOpStmt, &srcLoops);
+    for (unsigned j = 0; j < e; ++j) {
       auto *dstOpStmt = loadsAndStores[j];
       MemRefAccess dstAccess;
       getMemRefAccess(dstOpStmt, &dstAccess);
-      bool ret = checkMemrefAccessDependence(srcAccess, dstAccess);
-      srcOpStmt->emitNote("dependence from memref access " + Twine(i) +
-                          " to access " + Twine(j) + " = " +
-                          (ret ? "true" : "false"));
+
+      SmallVector<const ForStmt *, 4> dstLoops;
+      getLoopNest(dstOpStmt, &dstLoops);
+      unsigned numCommonLoops =
+          getNumCommonSurroundingLoops(srcLoops, dstLoops);
+      for (unsigned d = 1; d <= numCommonLoops + 1; ++d) {
+        llvm::SmallVector<DependenceComponent, 2> dependenceComponents;
+        bool ret = checkMemrefAccessDependence(srcAccess, dstAccess, d,
+                                               &dependenceComponents);
+        // TODO(andydavis) Print dependence type (i.e. RAW, etc) and print
+        // distance vectors as: ([2, 3], [0, 10]). Also, shorten distance
+        // vectors from ([1, 1], [3, 3]) to (1, 3).
+        srcOpStmt->emitNote(
+            "dependence from " + Twine(i) + " to " + Twine(j) + " at depth " +
+            Twine(d) + " = " +
+            getDirectionVectorStr(ret, numCommonLoops, d, dependenceComponents)
+                .c_str());
+      }
     }
   }
 }
