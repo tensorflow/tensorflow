@@ -950,7 +950,6 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   static int64 ConvolveBackwardDataScratchSize = GetDnnWorkspaceLimit(
       "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB by default
   );
-  DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize, ctx);
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = out_backprop.dtype();
   ConvParameters conv_parameters = {
@@ -973,6 +972,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       device_id,                           // device_id
   };
   AlgorithmConfig algorithm_config;
+  ProfileResult best_result;
+  ProfileResult best_result_no_scratch;
   if (cudnn_use_autotune && !AutoTuneConvBwdData::GetInstance()->Find(
                                 conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
@@ -980,8 +981,6 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     CHECK(stream->parent()->GetConvolveBackwardDataAlgorithms(
         conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
         &algorithms));
-    ProfileResult best_result;
-    ProfileResult best_result_no_scratch;
     for (auto profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
@@ -1021,29 +1020,28 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     }
 #elif TENSORFLOW_USE_ROCM
     LOG(INFO) << "running auto-tune for Backward-Data";
-    ProfileResult profile_result;
     // MIOpen has its own Find and autotuner so use it here, passing
     // default AlgorithmConfig to force a search
     DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
                                               ctx);
     bool miopen_find_status =
-      stream
-          ->ThenConvolveBackwardDataWithAlgorithm(
-              filter_desc, filter_ptr, output_desc, out_backprop_ptr,
-              conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
-              AlgorithmConfig(), &profile_result)
-          .ok();
-    OP_REQUIRES(ctx, miopen_find_status && profile_result.is_valid(),
+        stream
+            ->ThenConvolveBackwardDataWithAlgorithm(
+                filter_desc, filter_ptr, output_desc, out_backprop_ptr,
+                conv_desc, input_desc, &in_backprop_ptr, &scratch_allocator,
+                AlgorithmConfig(), &best_result)
+            .ok();
+    OP_REQUIRES(ctx, miopen_find_status && best_result.is_valid(),
                 errors::NotFound("Failed to find backwards-data algorithm!"));
 
-
-    algorithm_config.set_algorithm(profile_result.algorithm());
-    // TODO - Add support for no-scratch algorithm
-    algorithm_config.set_algorithm_no_scratch(AlgorithmDesc());
+    algorithm_config.set_algorithm(best_result.algorithm());
+    algorithm_config.set_scratch_size(best_result.scratch_size());
 #endif
     AutoTuneConvBwdData::GetInstance()->Insert(conv_parameters,
                                                algorithm_config);
   }
+
+  DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize, ctx);
   bool cudnn_launch_status =
       stream
           ->ThenConvolveBackwardDataWithAlgorithm(

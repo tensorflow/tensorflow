@@ -924,6 +924,8 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       device_id,                           // device_id
   };
   AlgorithmConfig algorithm_config;
+  ProfileResult best_result;
+  ProfileResult best_result_no_scratch;
   if (cudnn_use_autotune && !AutoTuneConvBwdFilter::GetInstance()->Find(
                                 conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
@@ -931,8 +933,6 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(
         conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
         &algorithms));
-    ProfileResult best_result;
-    ProfileResult best_result_no_scratch;
     for (auto profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
@@ -973,27 +973,25 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     }
 #elif TENSORFLOW_USE_ROCM
     LOG(INFO) << "running auto-tune for Backward-Filter";
-    ProfileResult profile_result;
     DnnScratchAllocator scratch_allocator(
         ConvolveBackwardFilterScratchSize, ctx);
     bool miopen_find_status =
         stream
             ->ThenConvolveBackwardFilterWithAlgorithm(
-                input_desc, input_ptr, output_desc, out_backprop_ptr,
-                conv_desc, filter_desc, &filter_backprop_ptr,
-                &scratch_allocator, AlgorithmConfig(),
-                &profile_result)
+                input_desc, input_ptr, output_desc, out_backprop_ptr, conv_desc,
+                filter_desc, &filter_backprop_ptr, &scratch_allocator,
+                AlgorithmConfig(), &best_result)
             .ok();
-    OP_REQUIRES(ctx, miopen_find_status && profile_result.is_valid(),
+    OP_REQUIRES(ctx, miopen_find_status && best_result.is_valid(),
                 errors::NotFound("Failed to find backward filter algorithm!"));
-    algorithm_config.set_algorithm(profile_result.algorithm());
-    algorithm_config.set_algorithm_no_scratch(profile_result.algorithm());
+    algorithm_config.set_algorithm(best_result.algorithm());
+    algorithm_config.set_scratch_size(best_result.scratch_size());
 #endif
     AutoTuneConvBwdFilter::GetInstance()->Insert(conv_parameters,
                                                  algorithm_config);
   }
-  DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
-                                          ctx);
+
+  DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize, ctx);
   bool cudnn_launch_status =
       stream
           ->ThenConvolveBackwardFilterWithAlgorithm(

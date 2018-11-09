@@ -717,31 +717,21 @@ class PoolingDescriptor {
 class AlgorithmDesc {
  public:
   typedef int64 Index;
-  AlgorithmDesc()
-      : algo_(-1), tensor_ops_enabled_(true), scratch_size_(0) {}
   AlgorithmDesc(Index a, bool use_tensor_ops)
-      : algo_(a), tensor_ops_enabled_(use_tensor_ops), scratch_size_(0) {
+      : algo_(a), tensor_ops_enabled_(use_tensor_ops) {
     DCHECK_NE(a, -1);
   }
-  AlgorithmDesc(Index a, bool use_tensor_ops, size_t scratch_size)
-      : algo_(a),
-        tensor_ops_enabled_(use_tensor_ops),	
-        scratch_size_(scratch_size) {}
   bool tensor_ops_enabled() const { return tensor_ops_enabled_; }
   Index algo_id() const { return algo_; }
-  size_t scratch_size() const { return scratch_size_; }	
-  void set_scratch_size(size_t val) { scratch_size_ = val; }
   bool operator==(const AlgorithmDesc& other) const {
     return this->algo_ == other.algo_ &&
-           this->tensor_ops_enabled_ == other.tensor_ops_enabled_ &&
-           this->scratch_size_ == other.scratch_size_;
+           this->tensor_ops_enabled_ == other.tensor_ops_enabled_;
   }
   uint64 hash() const;
 
  private:
   Index algo_;
   bool tensor_ops_enabled_;
-  size_t scratch_size_;
 };
 
 // Describes the result from a perf experiment.
@@ -783,6 +773,8 @@ class AlgorithmConfig {
  public:
   AlgorithmConfig() {}
   explicit AlgorithmConfig(AlgorithmDesc algorithm) : algorithm_(algorithm) {}
+  explicit AlgorithmConfig(AlgorithmDesc algorithm, size_t scratch_size)
+      : algorithm_(algorithm), scratch_size_(scratch_size) {}
   AlgorithmConfig(AlgorithmDesc algorithm, AlgorithmDesc algorithm_no_scratch)
       : algorithm_(algorithm), algorithm_no_scratch_(algorithm_no_scratch) {}
   absl::optional<AlgorithmDesc> algorithm() const { return algorithm_; }
@@ -793,9 +785,12 @@ class AlgorithmConfig {
   void set_algorithm_no_scratch(AlgorithmDesc val) {
     algorithm_no_scratch_ = val;
   }
+  absl::optional<size_t> scratch_size() const { return scratch_size_; }
+  void set_scratch_size(size_t val) { scratch_size_ = val; }
   bool operator==(const AlgorithmConfig& other) const {
     return this->algorithm_ == other.algorithm_ &&
-           this->algorithm_no_scratch_ == other.algorithm_no_scratch_;
+           this->algorithm_no_scratch_ == other.algorithm_no_scratch_ &&
+           this->scratch_size_ == other.scratch_size_;
   }
   bool operator!=(const AlgorithmConfig& other) const {
     return !(*this == other);
@@ -805,6 +800,7 @@ class AlgorithmConfig {
  private:
   absl::optional<AlgorithmDesc> algorithm_;
   absl::optional<AlgorithmDesc> algorithm_no_scratch_;
+  absl::optional<size_t> scratch_size_;
 };
 
 // Describes a local response normalization (LRN). LRN is used e.g. in
