@@ -41,10 +41,8 @@ class MirrorPadOp : public XlaOpKernel {
     for (int64 dimno = xla::ShapeUtil::Rank(original_shape) - 1; dimno >= 0;
          --dimno) {
       auto t_rev = xla::Rev(accum, {dimno});
-      TF_ASSIGN_OR_RETURN(int64 lhs_padding,
-                          pad_literal.GetIntegralAsS64({dimno, 0}));
-      TF_ASSIGN_OR_RETURN(int64 rhs_padding,
-                          pad_literal.GetIntegralAsS64({dimno, 1}));
+      int64 lhs_padding = pad_literal.Get<int64>({dimno, 0});
+      int64 rhs_padding = pad_literal.Get<int64>({dimno, 1});
       int64 dim_size = original_shape.dimensions(dimno);
 
       // Padding amounts on each side must be no more than the size of the
@@ -89,7 +87,8 @@ class MirrorPadOp : public XlaOpKernel {
 
     // Evaluate the 'padding' constant input, reshaping to a matrix.
     xla::Literal pad_literal;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInput("paddings", &pad_literal));
+    OP_REQUIRES_OK(ctx,
+                   ctx->ConstantInputAsInt64Literal("paddings", &pad_literal));
 
     xla::XlaBuilder* b = ctx->builder();
     auto in0 = ctx->Input("input");
