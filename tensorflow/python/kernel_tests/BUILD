@@ -2888,7 +2888,7 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
-    shard_count = 20,
+    shard_count = 30,
 )
 
 cuda_py_test(
