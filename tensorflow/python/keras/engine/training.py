@@ -1861,12 +1861,6 @@ class Model(Network):
       batch_size = 32
 
     if self._distribution_strategy:
-      # Turn off prefetching since this is currently not deterministic. Once
-      # b/112498930 is fixed we can turn it back on.
-      # `_prefetch_on_device` is currently a property of only
-      # `MirroredStrategy`.
-      if hasattr(self._distribution_strategy, '_prefetch_on_device'):
-        self._distribution_strategy._prefetch_on_device = False  # pylint: disable=protected-access
       distributed_training_utils.validate_inputs(
           x, None, self._distribution_strategy)
       first_x_value = nest.flatten(x)[0]
@@ -1886,9 +1880,6 @@ class Model(Network):
     elif self._distribution_strategy:
       results = training_distributed.predict_loop(
           self, x, verbose=verbose, steps=steps)
-      # Turn prefetching back on since we turned it off previously.
-      if hasattr(self._distribution_strategy, '_prefetch_on_device'):
-        self._distribution_strategy._prefetch_on_device = True  # pylint: disable=protected-access
       return results
     else:
       return training_arrays.predict_loop(
