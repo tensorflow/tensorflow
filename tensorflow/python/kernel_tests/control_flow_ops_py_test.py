@@ -2086,7 +2086,7 @@ class ControlFlowTest(test.TestCase):
 
   def testWhileGradInCond(self):
 
-    with self.cached_session():
+    with self.cached_session() as sess:
       n = ops.convert_to_tensor(1.0, name="n")
       x = array_ops.placeholder(dtypes.float32, shape=None)
       c = lambda n: math_ops.less(n, 10.0)
