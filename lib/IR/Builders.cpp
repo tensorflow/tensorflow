@@ -48,6 +48,10 @@ FileLineColLoc Builder::getFileLineColLoc(UniquedFilename filename,
   return FileLineColLoc::get(filename, line, column, context);
 }
 
+Location Builder::getFusedLoc(ArrayRef<Location> locs, Attribute metadata) {
+  return FusedLoc::get(locs, metadata, context);
+}
+
 //===----------------------------------------------------------------------===//
 // Types.
 //===----------------------------------------------------------------------===//

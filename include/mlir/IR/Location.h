@@ -28,6 +28,7 @@
 
 namespace mlir {
 
+class Attribute;
 class MLIRContext;
 
 namespace detail {
@@ -35,6 +36,7 @@ namespace detail {
 class LocationStorage;
 class UnknownLocationStorage;
 class FileLineColLocationStorage;
+class FusedLocationStorage;
 
 } // namespace detail
 
@@ -58,7 +60,7 @@ public:
     // TODO: InlinedLocation,
 
     // Represents a value composed of multiple source constructs.
-    // TODO: FusedLocation,
+    FusedLocation,
   };
 
   using ImplType = detail::LocationStorage;
@@ -157,6 +159,32 @@ public:
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(Location::Kind kind) { return kind == Kind::FileLineCol; }
+};
+
+/// Represents a value composed of multiple source constructs, with an optional
+/// metadata attribute.
+class FusedLoc : public Location {
+public:
+  using ImplType = detail::FusedLocationStorage;
+  /* implicit */ FusedLoc(Location::ImplType *ptr);
+
+  /// Return a uniqued Fused Location object. The first location in the list
+  /// will get precedence during diagnostic emission, with the rest being
+  /// displayed as supplementary "fused from here" style notes.
+  static Location get(ArrayRef<Location> locs, MLIRContext *context);
+  static Location get(ArrayRef<Location> locs, Attribute metadata,
+                      MLIRContext *context);
+
+  ArrayRef<Location> getLocations() const;
+
+  /// Returns the optional metadata attached to this fused location. Given that
+  /// it is optional, the return value may be a null node.
+  Attribute getMetadata() const;
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(Location::Kind kind) {
+    return kind == Kind::FusedLocation;
+  }
 };
 
 // Make Location hashable.

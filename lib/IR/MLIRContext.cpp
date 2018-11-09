@@ -35,6 +35,7 @@
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/raw_ostream.h"
@@ -255,6 +256,25 @@ struct OpaqueElementsAttrInfo : DenseMapInfo<OpaqueElementsAttributeStorage *> {
     return lhs == std::make_pair(rhs->type, rhs->bytes);
   }
 };
+
+struct FusedLocKeyInfo : DenseMapInfo<FusedLocationStorage *> {
+  // Fused locations are uniqued based on their held locations and an optional
+  // metadata attribute.
+  using KeyTy = std::pair<ArrayRef<Location>, Attribute>;
+  using DenseMapInfo<FusedLocationStorage *>::getHashValue;
+  using DenseMapInfo<FusedLocationStorage *>::isEqual;
+
+  static unsigned getHashValue(KeyTy key) {
+    return hash_combine(hash_combine_range(key.first.begin(), key.first.end()),
+                        key.second);
+  }
+
+  static bool isEqual(const KeyTy &lhs, const FusedLocationStorage *rhs) {
+    if (rhs == getEmptyKey() || rhs == getTombstoneKey())
+      return false;
+    return lhs == std::make_pair(rhs->getLocations(), rhs->metadata);
+  }
+};
 } // end anonymous namespace.
 
 namespace mlir {
@@ -276,6 +296,10 @@ public:
   DenseMap<std::tuple<const char *, unsigned, unsigned>,
            FileLineColLocationStorage *>
       fileLineColLocs;
+
+  /// FusedLoc uniquing.
+  using FusedLocations = DenseSet<FusedLocationStorage *, FusedLocKeyInfo>;
+  FusedLocations fusedLocs;
 
   /// We put immortal objects into this allocator.
   llvm::BumpPtrAllocator allocator;
@@ -419,6 +443,19 @@ auto MLIRContext::getDiagnosticHandler() const -> DiagnosticHandlerTy {
 /// interact with this, it should use methods on Operation instead.
 void MLIRContext::emitDiagnostic(Location location, const llvm::Twine &message,
                                  DiagnosticKind kind) const {
+  // Check to see if we are emitting a diagnostic on a fused location.
+  if (auto fusedLoc = location.dyn_cast<FusedLoc>()) {
+    auto fusedLocs = fusedLoc->getLocations();
+
+    // Emit the original diagnostic with the first location in the fused list.
+    emitDiagnostic(fusedLocs.front(), message, kind);
+
+    // Emit the rest of the locations as notes.
+    for (unsigned i = 1, e = fusedLocs.size(); i != e; ++i)
+      emitDiagnostic(fusedLocs[i], "fused from here", DiagnosticKind::Note);
+    return;
+  }
+
   // If we had a handler registered, emit the diagnostic using it.
   auto handler = getImpl().diagnosticHandler;
   if (handler)
@@ -430,9 +467,8 @@ void MLIRContext::emitDiagnostic(Location location, const llvm::Twine &message,
 
   auto &os = llvm::errs();
 
-  if (auto fileLoc = location.dyn_cast<FileLineColLoc>())
-    os << fileLoc->getFilename() << ':' << fileLoc->getLine() << ':'
-       << fileLoc->getColumn() << ": ";
+  if (!location.isa<UnknownLoc>())
+    os << location << ": ";
 
   os << "error: ";
 
@@ -559,6 +595,62 @@ FileLineColLoc FileLineColLoc::get(UniquedFilename filename, unsigned line,
   }
 
   return entry;
+}
+
+Location FusedLoc::get(ArrayRef<Location> locs, MLIRContext *context) {
+  return get(locs, Attribute(), context);
+}
+
+Location FusedLoc::get(ArrayRef<Location> locs, Attribute metadata,
+                       MLIRContext *context) {
+  // Unique the set of locations to be fused.
+  SmallSetVector<Location, 4> decomposedLocs;
+  for (auto loc : locs) {
+    // If the location is a fused location we decompose it if it has no
+    // metadata or the metadata is the same as the top level metadata.
+    if (auto fusedLoc = loc.dyn_cast<FusedLoc>()) {
+      if (fusedLoc->getMetadata() == metadata) {
+        // UnknownLoc's have already been removed from FusedLocs so we can
+        // simply add all of the internal locations.
+        decomposedLocs.insert(fusedLoc->getLocations().begin(),
+                              fusedLoc->getLocations().end());
+        continue;
+      }
+    }
+    // Otherwise, only add known locations to the set.
+    if (!loc.isa<UnknownLoc>())
+      decomposedLocs.insert(loc);
+  }
+  locs = decomposedLocs.getArrayRef();
+
+  // Handle the simple cases of less than two locations.
+  if (locs.empty())
+    return UnknownLoc::get(context);
+  if (locs.size() == 1)
+    return locs.front();
+
+  auto &impl = context->getImpl();
+
+  // Look to see if the fused location has been created already.
+  auto existing =
+      impl.fusedLocs.insert_as(nullptr, std::make_pair(locs, metadata));
+
+  // If it has been created, return it.
+  if (!existing.second)
+    return *existing.first;
+
+  auto byteSize = FusedLocationStorage::totalSizeToAlloc<Location>(locs.size());
+  auto rawMem =
+      impl.allocator.Allocate(byteSize, alignof(FusedLocationStorage));
+  auto result =
+      new (rawMem) FusedLocationStorage{{Location::Kind::FusedLocation},
+                                        {},
+                                        static_cast<unsigned>(locs.size()),
+                                        metadata};
+
+  std::uninitialized_copy(locs.begin(), locs.end(),
+                          result->getTrailingObjects<Location>());
+  return *existing.first = result;
 }
 
 //===----------------------------------------------------------------------===//

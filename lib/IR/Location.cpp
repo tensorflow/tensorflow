@@ -36,3 +36,13 @@ unsigned FileLineColLoc::getLine() const {
 unsigned FileLineColLoc::getColumn() const {
   return static_cast<ImplType *>(loc)->column;
 }
+
+FusedLoc::FusedLoc(Location::ImplType *ptr) : Location(ptr) {}
+
+ArrayRef<Location> FusedLoc::getLocations() const {
+  return static_cast<ImplType *>(loc)->getLocations();
+}
+
+Attribute FusedLoc::getMetadata() const {
+  return static_cast<ImplType *>(loc)->metadata;
+}

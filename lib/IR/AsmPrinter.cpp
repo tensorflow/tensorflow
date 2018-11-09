@@ -1709,3 +1709,30 @@ void Module::print(raw_ostream &os) const {
 }
 
 void Module::dump() const { print(llvm::errs()); }
+
+void Location::print(raw_ostream &os) const {
+  switch (getKind()) {
+  case Kind::Unknown:
+    os << "[unknown-location]";
+    break;
+  case Kind::FileLineCol: {
+    auto fileLoc = cast<FileLineColLoc>();
+    os << fileLoc.getFilename() << ':' << fileLoc.getLine() << ':'
+       << fileLoc.getColumn();
+    break;
+  }
+  case Kind::FusedLocation: {
+    auto fusedLoc = cast<FusedLoc>();
+    if (auto metadata = fusedLoc.getMetadata())
+      os << '<' << metadata << '>';
+    os << '[';
+    interleave(
+        fusedLoc.getLocations(), [&](Location loc) { loc.print(os); },
+        [&]() { os << ", "; });
+    os << ']';
+    break;
+  }
+  }
+}
+
+void Location::dump() const { print(llvm::errs()); }

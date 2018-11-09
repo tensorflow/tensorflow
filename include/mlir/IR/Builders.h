@@ -66,6 +66,8 @@ public:
   UniquedFilename getUniquedFilename(StringRef filename);
   FileLineColLoc getFileLineColLoc(UniquedFilename filename, unsigned line,
                                    unsigned column);
+  Location getFusedLoc(ArrayRef<Location> locs,
+                       Attribute metadata = Attribute());
 
   // Types.
   FloatType getBF16Type();

@@ -21,8 +21,10 @@
 #ifndef MLIR_IR_LOCATIONDETAIL_H_
 #define MLIR_IR_LOCATIONDETAIL_H_
 
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/Location.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/TrailingObjects.h"
 
 namespace mlir {
 
@@ -43,6 +45,25 @@ struct UnknownLocationStorage : public LocationStorage {};
 struct FileLineColLocationStorage : public LocationStorage {
   const UniquedFilename filename;
   const unsigned line, column;
+};
+
+struct FusedLocationStorage final
+    : public LocationStorage,
+      public llvm::TrailingObjects<FusedLocationStorage, Location> {
+
+  ArrayRef<Location> getLocations() const {
+    return ArrayRef<Location>(getTrailingObjects<Location>(), numLocs);
+  }
+
+  // This stuff is used by the TrailingObjects template.
+  friend llvm::TrailingObjects<FusedLocationStorage, Location>;
+  size_t numTrailingObjects(OverloadToken<Location>) const { return numLocs; }
+
+  /// Number of trailing location objects.
+  unsigned numLocs;
+
+  /// Metadata used to reason about the generation of this fused location.
+  Attribute metadata;
 };
 
 } // end namespace detail
