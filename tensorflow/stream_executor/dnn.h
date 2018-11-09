@@ -1190,8 +1190,8 @@ class DnnSupport {
       const BatchDescriptor& output_descriptor,
       DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
-      dnn::AlgorithmConfig& best_algorithm_config,
-      DeviceMemory<uint8>& scratch_memory) = 0;
+      dnn::AlgorithmDesc* algorithm_desc,
+      DeviceMemory<uint8>* scratch_memory) = 0;
 
   virtual bool PrepareForConvolution(
       Stream* stream, const BatchDescriptor& batch_descriptor,
@@ -1202,8 +1202,8 @@ class DnnSupport {
       const BatchDescriptor& output_descriptor,
       DeviceMemory<double>* output_data, ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
-      dnn::AlgorithmConfig& best_algorithm_config,
-      DeviceMemory<uint8>& scratch_memory) = 0;
+      dnn::AlgorithmDesc* algorithm_desc,
+      DeviceMemory<uint8>* scratch_memory) = 0;
 
   virtual bool PrepareForConvolution(
       Stream* stream, const BatchDescriptor& batch_descriptor,
@@ -1215,8 +1215,8 @@ class DnnSupport {
       DeviceMemory<Eigen::half>* output_data,
       ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
-      dnn::AlgorithmConfig& best_algorithm_config,
-      DeviceMemory<uint8>& scratch_memory) = 0;
+      dnn::AlgorithmDesc* algorithm_desc,
+      DeviceMemory<uint8>* scratch_memory) = 0;
 
   // Enqueues a single-precision convolution operation onto the stream.
   //
@@ -1231,7 +1231,7 @@ class DnnSupport {
   //  output_descriptor: dimensions of the output layer.
   //  output_data: un-owned device memory region in which to place the
   //    convolution result.
-  //  algorithm_config: specifies which algorithm should be used for the
+  //  algorithm_desc: specifies which algorithm should be used for the
   //    operation.
   //  scratch: un-owned device memory for scratch space in order to speed up
   //    the convolution operation.
@@ -1260,8 +1260,8 @@ class DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<float>* output_data,
-      const dnn::AlgorithmConfig& algorithm_config,
-      DeviceMemory<uint8>& scratch_memory,
+      const dnn::AlgorithmDesc& algorithm_desc,
+      DeviceMemory<uint8>* scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
   // Enqueues a double-precision convolution operation onto the stream.
@@ -1274,8 +1274,8 @@ class DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<double>* output_data,
-      const dnn::AlgorithmConfig& algorithm_config,
-      DeviceMemory<uint8>& scratch_memory,
+      const dnn::AlgorithmDesc& algorithm_desc,
+      DeviceMemory<uint8>* scratch_memory,
       dnn::ProfileResult* output_profile_result) = 0;
 
   // Enqueues a half-precision convolution operation onto the stream.
@@ -1288,8 +1288,8 @@ class DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<Eigen::half>* output_data,
-      const dnn::AlgorithmConfig& algorithm_config,
-      DeviceMemory<uint8>& scratch_memory,
+      const dnn::AlgorithmDesc& algorithm_desc,
+      DeviceMemory<uint8>* scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
   // Return a list of algorithms supported by the forward convolution pass.
