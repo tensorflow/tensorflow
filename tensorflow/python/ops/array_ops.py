@@ -1706,7 +1706,7 @@ def ones(shape, dtype=dtypes.float32, name=None):
   return output
 
 
-@tf_export("placeholder")
+@tf_export(v1=["placeholder"])
 def placeholder(dtype, shape=None, name=None):
   """Inserts a placeholder for a tensor that will be always fed.
 
@@ -1751,6 +1751,22 @@ def placeholder(dtype, shape=None, name=None):
   return gen_array_ops.placeholder(dtype=dtype, shape=shape, name=name)
 
 
+@tf_export(v1=["placeholder_with_default"])
+def placeholder_with_default(input, shape, name=None):  # pylint: disable=redefined-builtin
+  """A placeholder op that passes through `input` when its output is not fed.
+
+  Args:
+    input: A `Tensor`. The default value to produce when output is not fed.
+    shape: A `tf.TensorShape` or list of `int`s. The (possibly partial) shape
+      of the tensor.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `input`.
+  """
+  return gen_array_ops.placeholder_with_default(input, shape, name)
+
+
 # pylint: disable=redefined-outer-name
 def _normalize_sparse_shape(shape, name):
   """Returns a tuple of (Tensor or None, rank or None)."""
@@ -1762,8 +1778,7 @@ def _normalize_sparse_shape(shape, name):
   return (ops.convert_to_tensor(shape, dtype=dtypes.int64, name=name), rank)
 
 
-@tf_export(
-    "sparse.placeholder", v1=["sparse.placeholder", "sparse_placeholder"])
+@tf_export(v1=["sparse.placeholder", "sparse_placeholder"])
 @deprecation.deprecated_endpoints("sparse_placeholder")
 def sparse_placeholder(dtype, shape=None, name=None):
   """Inserts a placeholder for a sparse tensor that will be always fed.
