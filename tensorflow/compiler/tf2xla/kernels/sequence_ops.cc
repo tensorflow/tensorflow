@@ -98,13 +98,13 @@ class RangeOp : public XlaOpKernel {
     const TensorShape start_in_shape = ctx->InputShape(0);
     const TensorShape limit_in_shape = ctx->InputShape(1);
     const TensorShape delta_in_shape = ctx->InputShape(2);
-    OP_REQUIRES(ctx, IsLegacyScalar(start_in_shape),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(start_in_shape),
                 errors::InvalidArgument("start must be a scalar, not shape ",
                                         start_in_shape.DebugString()));
-    OP_REQUIRES(ctx, IsLegacyScalar(limit_in_shape),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(limit_in_shape),
                 errors::InvalidArgument("limit must be a scalar, not shape ",
                                         limit_in_shape.DebugString()));
-    OP_REQUIRES(ctx, IsLegacyScalar(delta_in_shape),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(delta_in_shape),
                 errors::InvalidArgument("delta must be a scalar, not shape ",
                                         delta_in_shape.DebugString()));
     xla::Literal start, limit, delta;
