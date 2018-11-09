@@ -6243,6 +6243,29 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "mkl_quantized_concat_op_test",
+    size = "small",
+    srcs = ["mkl_quantized_concat_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":quantization_utils",
+        ":quantized_ops",
+        ":mkl_concat_op",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
     name = "quantized_batch_norm_op_test",
     size = "small",
     srcs = ["quantized_batch_norm_op_test.cc"],
@@ -6594,7 +6617,7 @@ tf_mkl_kernel_library(
 tf_mkl_kernel_library(
     name = "mkl_concat_op",
     prefix = "mkl_concat_op",
-    deps = ARRAY_DEPS + mkl_deps(),
+    deps = [":quantization_utils"] + ARRAY_DEPS + mkl_deps(),
 )
 
 tf_mkl_kernel_library(

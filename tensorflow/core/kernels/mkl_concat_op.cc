@@ -17,7 +17,6 @@ limitations under the License.
 #include <vector>
 
 #include "mkldnn.hpp"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -25,12 +24,15 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/concat_lib.h"
+#include "tensorflow/core/kernels/concat_lib_cpu.h"
+#include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/mkl_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 using mkldnn::concat;
 using mkldnn::stream;
-#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -78,9 +80,8 @@ class EigenConcatBaseOp : public OpKernel {
     const TensorShape& input_shape = input_shapes[0];
 
     int32 axis = concat_dim < 0 ? concat_dim + input_dims : concat_dim;
-    OP_REQUIRES(c,
-                (0 <= axis && axis < input_dims) ||
-                    (allow_legacy_scalars() && concat_dim == 0),
+    OP_REQUIRES(c, (0 <= axis && axis < input_dims) ||
+                       (allow_legacy_scalars() && concat_dim == 0),
                 errors::InvalidArgument(
                     "ConcatOp : Expected concatenating dimensions in the range "
                     "[",
@@ -102,13 +103,12 @@ class EigenConcatBaseOp : public OpKernel {
       const auto in = values[i];
       const bool in_is_scalar = IsLegacyScalar(input_shapes[i]);
       OP_REQUIRES(
-          c,
-          (input_shapes[i].dims() == input_dims) ||
-              (input_is_scalar && in_is_scalar),
+          c, (input_shapes[i].dims() == input_dims) ||
+                 (input_is_scalar && in_is_scalar),
           errors::InvalidArgument(
               "ConcatOp : Ranks of all input tensors should match: shape[0] = ",
-              input_shape.DebugString(), " vs. shape[", i,
-              "] = ", input_shapes[i].DebugString()));
+              input_shape.DebugString(), " vs. shape[", i, "] = ",
+              input_shapes[i].DebugString()));
       if (in.NumElements() > 0) {
         int64 inputs_flat_dim1 = in.NumElements() / inputs_flat_dim0;
         inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
@@ -133,22 +133,205 @@ class EigenConcatBaseOp : public OpKernel {
     }
   }
 };
+
+// --------------------------------------------------------------------------
+//                     Eigen quantized Concat Op
+// --------------------------------------------------------------------------
+namespace {
+template <typename T>
+struct RequantizeCopier {
+  RequantizeCopier(
+      const std::vector<std::pair<float, float>>* input_min_and_max,
+      float output_min, float output_max)
+      : output_min(output_min),
+        output_max(output_max),
+        input_min_and_max(input_min_and_max) {}
+
+  inline void Copy(T* dst, const T* src, int input_index, size_t n) {
+    const float input_min = (*input_min_and_max)[input_index].first;
+    const float input_max = (*input_min_and_max)[input_index].second;
+    if (input_min == output_min && input_max == output_max) {
+      DCHECK(DataTypeCanUseMemcpy(DataTypeToEnum<T>::v()));
+      memcpy(dst, src, n * sizeof(T));
+    } else {
+      Eigen::array<Eigen::DenseIndex, 1> dims;
+      dims[0] = n;
+      typename TTypes<T, 1>::UnalignedConstTensor input_array(src, dims);
+      typename TTypes<T, 1>::UnalignedTensor output_array(dst, dims);
+
+      QuantizedToFloatStruct<T> q2f(input_min, input_max);
+      auto input_float = DEQUANTIZE_WITH_EIGEN(input_array, q2f);
+      FloatToQuantizedStruct<T> f2q(output_min, output_max);
+      auto input_requantized = QUANTIZE_WITH_EIGEN(input_float, f2q, T);
+
+      // RequantizeCopier::Copy is called from within a shard of computation, so
+      // don't use the threadpool device here, simply assign with default CPU
+      // device.
+      output_array = input_requantized;
+    }
+  }
+
+  float output_min;
+  float output_max;
+  const std::vector<std::pair<float, float>>* input_min_and_max;
+};
+}  // namespace
+
+template <typename T, AxisArgumentName AxisArgName>
+class EigenQuantizedConcatOp : public OpKernel {
+ public:
+  typedef std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>
+      ConstMatrixVector;
+
+  explicit EigenQuantizedConcatOp(OpKernelConstruction* c) : OpKernel(c) {}
+
+  void CalculateInputAndOutputRange(
+      const OpInputList& input_mins, const OpInputList& input_maxes,
+      const size_t N,
+      std::vector<std::pair<float, float>>* input_mins_and_maxes,
+      float* output_min, float* output_max) {
+    input_mins_and_maxes->reserve(N);
+    float overall_min = std::numeric_limits<float>::max();
+    float overall_max = std::numeric_limits<float>::lowest();
+    for (int i = 0; i < N; ++i) {
+      const float input_min = input_mins[i].flat<float>()(0);
+      const float input_max = input_maxes[i].flat<float>()(0);
+      input_mins_and_maxes->emplace_back(input_min, input_max);
+      overall_min = std::min(overall_min, input_min);
+      overall_max = std::max(overall_max, input_max);
+    }
+    // Make sure min is no more than zero.
+    overall_min = std::min(0.0f, overall_min);
+    if (std::is_signed<T>::value) {
+      // For signed, we want a symmetrical distribution including zero for the
+      // output, so pick a range that meets that need.
+      const float largest_value =
+          std::max(std::abs(overall_min), std::abs(overall_max));
+      *output_min = -largest_value;
+      *output_max = largest_value;
+    } else {
+      *output_min = overall_min;
+      *output_max = overall_max;
+    }
+  }
+
+  void Compute(OpKernelContext* c){};
+
+  void Compute(OpKernelContext* c, const std::vector<Tensor>& values,
+               const TensorShapeList& input_shapes,
+               const OpInputList& input_mins, const OpInputList& input_maxes) {
+    const Tensor* concat_dim_tensor = nullptr;
+    const char* axis_attribute_name =
+        AxisArgName == NAME_IS_AXIS
+            ? "axis"
+            : AxisArgName == NAME_IS_CONCAT_DIM ? "concat_dim" : "<invalid>";
+    OP_REQUIRES_OK(c, c->input(axis_attribute_name, &concat_dim_tensor));
+    OP_REQUIRES(
+        c, IsLegacyScalar(concat_dim_tensor->shape()),
+        errors::InvalidArgument(
+            "Concat dim tensor should be a scalar integer, but got shape ",
+            concat_dim_tensor->shape().DebugString()));
+    const int32 concat_dim =
+        internal::SubtleMustCopy(concat_dim_tensor->scalar<int32>()());
+    // Instead of accessing values from context, we use input to Compute.
+    const size_t N = values.size();
+    const int input_dims = input_shapes[0].dims();
+    const TensorShape& input_shape = input_shapes[0];
+
+    int32 axis = concat_dim < 0 ? concat_dim + input_dims : concat_dim;
+    OP_REQUIRES(c, (0 <= axis && axis < input_dims) ||
+                       (allow_legacy_scalars() && concat_dim == 0),
+                errors::InvalidArgument(
+                    "ConcatOp : Expected concatenating dimensions in the range "
+                    "[",
+                    -input_dims, ", ", input_dims, "), but got ", concat_dim));
+
+    float output_min = std::numeric_limits<float>::max();
+    float output_max = std::numeric_limits<float>::lowest();
+    std::vector<std::pair<float, float>> input_mins_and_maxes;
+    CalculateInputAndOutputRange(input_mins, input_maxes, N,
+                                 &input_mins_and_maxes, &output_min,
+                                 &output_max);
+
+    // Note that we reduce the concat of n-dimensional tensors into a two
+    // dimensional concat. Assuming the dimensions of any input/output
+    // tensor are {x0, x1,...,xn-1, y0, y1,...,ym-1}, where the concat is along
+    // the dimension indicated with size y0, we flatten it to {x, y}, where y =
+    // Prod_i(yi) and x = ((n > 0) ? Prod_i(xi) : 1).
+    ConstMatrixVector inputs_flat;
+    inputs_flat.reserve(N);
+    int64 inputs_flat_dim0 = 1;
+    for (int d = 0; d < axis; ++d) {
+      inputs_flat_dim0 *= input_shape.dim_size(d);
+    }
+    int64 output_concat_dim = 0;
+    const bool input_is_scalar = IsLegacyScalar(input_shape);
+    for (int i = 0; i < N; ++i) {
+      const auto in = values[i];
+      const bool in_is_scalar = IsLegacyScalar(input_shapes[i]);
+      OP_REQUIRES(
+          c, (input_shapes[i].dims() == input_dims) ||
+                 (input_is_scalar && in_is_scalar),
+          errors::InvalidArgument(
+              "ConcatOp : Ranks of all input tensors should match: shape[0] = ",
+              input_shape.DebugString(), " vs. shape[", i, "] = ",
+              input_shapes[i].DebugString()));
+      if (in.NumElements() > 0) {
+        int64 inputs_flat_dim1 = in.NumElements() / inputs_flat_dim0;
+        inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
+            in.shaped<T, 2>({inputs_flat_dim0, inputs_flat_dim1})));
+      }
+      output_concat_dim +=
+          input_shapes[i].dims() > 0 ? input_shapes[i].dim_size(axis) : 1;
+    }
+
+    TensorShape output_shape(input_shape);
+    // TODO(irving): Remove rank 0 case once !kAllowLegacyScalars
+    if (output_shape.dims() == 0) {
+      output_shape.AddDim(output_concat_dim);
+    } else {
+      output_shape.set_dim(concat_dim, output_concat_dim);
+    }
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(c, c->allocate_output(0, output_shape, &output));
+
+    if (output->NumElements() > 0) {
+      int64 output_dim1 = output->NumElements() / inputs_flat_dim0;
+      auto output_flat = output->shaped<T, 2>({inputs_flat_dim0, output_dim1});
+      ConcatCPUImpl<T>(
+          c->device(), inputs_flat, sizeof(T) /* cost_per_unit */,
+          RequantizeCopier<T>(&input_mins_and_maxes, output_min, output_max),
+          &output_flat);
+    }
+
+    Tensor* output_min_tensor = nullptr;
+    OP_REQUIRES_OK(c, c->allocate_output(1, {}, &output_min_tensor));
+    output_min_tensor->flat<float>()(0) = output_min;
+
+    Tensor* output_max_tensor = nullptr;
+    OP_REQUIRES_OK(c, c->allocate_output(2, {}, &output_max_tensor));
+    output_max_tensor->flat<float>()(0) = output_max;
+  }
+};
+
 // --------------------------------------------------------------------------
 //                      Mkl Concat Op
 // --------------------------------------------------------------------------
 
-template <typename Device, typename T, AxisArgumentName AxisArgName>
+template <typename Device, MklQuantization version, typename T,
+          AxisArgumentName AxisArgName>
 class MklConcatOp : public OpKernel {
  private:
   TensorFormat data_format_;
   EigenConcatBaseOp<Device, T, AxisArgName> eigen_concat_op_;
+  EigenQuantizedConcatOp<T, AxisArgName> quantized_eigen_concat_op_;
 
  public:
   typedef std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>
       ConstMatrixVector;
 
   explicit MklConcatOp(OpKernelConstruction* c)
-      : OpKernel(c), eigen_concat_op_(c) {}
+      : OpKernel(c), eigen_concat_op_(c), quantized_eigen_concat_op_(c) {}
 
   void Compute(OpKernelContext* context) override {
     try {
@@ -226,9 +409,47 @@ class MklConcatOp : public OpKernel {
       // format and avoid calling eigen version.
       if (!are_all_tf_inputs && !are_all_mkl_inputs) invoke_eigen = true;
 
+      OpInputList input_mins, input_maxes;
+      if (version == MklQuantization::INT8) {
+        // MKL DNN concat does not support input tensors that have different
+        // ranges, check if the ranges of the all input tensors are the same
+        // if not, forward it to Eigen implementation.
+
+        OP_REQUIRES_OK(context, context->input_list("input_mins", &input_mins));
+        OP_REQUIRES(context, (input_mins.size() == N),
+                    errors::InvalidArgument(
+                        "QuantizedConcatOp : Expected mins input list length ",
+                        input_mins.size(), " to equal values length ", N));
+
+        OP_REQUIRES_OK(context,
+                       context->input_list("input_maxes", &input_maxes));
+        OP_REQUIRES(context, (input_maxes.size() == N),
+                    errors::InvalidArgument(
+                        "QuantizedConcatOp : Expected maxes input list length ",
+                        input_maxes.size(), " to equal values length ", N));
+        float input_min = input_mins[0].flat<float>()(0);
+        float input_max = input_maxes[0].flat<float>()(0);
+        const float eps = 1.0e-6;
+        for (int i = 1; i < N; i++) {
+          float min = input_mins[i].flat<float>()(0);
+          float max = input_maxes[i].flat<float>()(0);
+
+          if (fabs(input_min - min) > eps || fabs(input_max - max) > eps) {
+            invoke_eigen = true;
+            break;
+          }
+        }
+      }
+
       // Call Eigen library
       if (invoke_eigen) {
-        CallEigenVersion(context, input_tensors, mkl_input_shapes);
+        if (version == MklQuantization::INT8) {
+          CallQuantizedEigenVersion(context, input_tensors, input_mins,
+                                    input_maxes, mkl_input_shapes);
+        } else {
+          CallEigenVersion(context, input_tensors, mkl_input_shapes);
+        }
+
         return;
       }
 
@@ -374,10 +595,26 @@ class MklConcatOp : public OpKernel {
       std::vector<primitive> net;
       net.push_back(concat_op);
       stream(stream::kind::eager).submit(net).wait();
+
+      if (version == MklQuantization::INT8) {
+        Tensor* output_min = nullptr;
+        Tensor* output_max = nullptr;
+        MklDnnShape output_min_mkl_shape, output_max_mkl_shape;
+        output_min_mkl_shape.SetMklTensor(false);
+        output_max_mkl_shape.SetMklTensor(false);
+        AllocateOutputSetMklShape(context, 1, &output_min, {},
+                                  output_min_mkl_shape);
+        AllocateOutputSetMklShape(context, 2, &output_max, {},
+                                  output_max_mkl_shape);
+        // All input tensors should have the same range, just use the
+        // first one
+        output_min->flat<float>()(0) = input_mins[0].flat<float>()(0);
+        output_max->flat<float>()(0) = input_maxes[0].flat<float>()(0);
+      }
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
@@ -421,6 +658,44 @@ class MklConcatOp : public OpKernel {
     dnn_shape_output.SerializeMklDnnShape(
         output_tensor->flat<uint8>().data(),
         output_tensor->flat<uint8>().size() * sizeof(uint8));
+  }
+
+  void CallQuantizedEigenVersion(OpKernelContext* context,
+                                 const OpInputList& values,
+                                 const OpInputList& input_mins,
+                                 const OpInputList& input_maxes,
+                                 const MklDnnShapeList& mkl_input_shapes) {
+    CHECK_EQ(values.size(), mkl_input_shapes.size());
+
+    std::vector<Tensor> converted_values;
+    TensorShapeList tf_input_shapes;
+    for (int i = 0; i < mkl_input_shapes.size(); i++) {
+      if (mkl_input_shapes[i].IsMklTensor()) {
+        // do conversion from MKL to TF
+        Tensor tmp_tensor =
+            ConvertMklToTF<T>(context, values[i], mkl_input_shapes[i]);
+        converted_values.push_back(tmp_tensor);
+        tf_input_shapes.push_back(mkl_input_shapes[i].GetTfShape());
+      } else {
+        // no conversion since it is TF tensor already
+        converted_values.push_back(values[i]);
+        tf_input_shapes.push_back(values[i].shape());
+      }
+    }
+
+    // Call Eigen concat.
+    quantized_eigen_concat_op_.Compute(
+        context, converted_values, tf_input_shapes, input_mins, input_maxes);
+
+    MklDnnShape output_data_mkl_shape;
+    output_data_mkl_shape.SetMklTensor(false);
+    output_data_mkl_shape.SetDimensions(4);
+    AllocateOutputSetMklShape(context, 0, output_data_mkl_shape);
+
+    MklDnnShape output_min_max_mkl_shape;
+    output_min_max_mkl_shape.SetMklTensor(false);
+    AllocateOutputSetMklShape(context, 1, output_min_max_mkl_shape);
+    AllocateOutputSetMklShape(context, 2, output_min_max_mkl_shape);
   }
 
   // This method finds the most commom format accross all MKL inputs
@@ -473,22 +748,40 @@ class MklConcatOp : public OpKernel {
 };
 
 /* Use optimized concat for float type only */
-#define REGISTER_MKL_CPU(type)                                              \
-  REGISTER_KERNEL_BUILDER(Name("_MklConcat")                                \
-                              .Device(DEVICE_CPU)                           \
-                              .TypeConstraint<type>("T")                    \
-                              .HostMemory("concat_dim")                     \
-                              .Label(mkl_op_registry::kMklOpLabel),         \
-                          MklConcatOp<CPUDevice, type, NAME_IS_CONCAT_DIM>) \
-  REGISTER_KERNEL_BUILDER(Name("_MklConcatV2")                              \
-                              .Device(DEVICE_CPU)                           \
-                              .TypeConstraint<type>("T")                    \
-                              .TypeConstraint<int32>("Tidx")                \
-                              .HostMemory("axis")                           \
-                              .Label(mkl_op_registry::kMklOpLabel),         \
-                          MklConcatOp<CPUDevice, type, NAME_IS_AXIS>)
+#define REGISTER_MKL_CPU(type)                                                 \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("_MklConcat")                                                       \
+          .Device(DEVICE_CPU)                                                  \
+          .TypeConstraint<type>("T")                                           \
+          .HostMemory("concat_dim")                                            \
+          .Label(mkl_op_registry::kMklOpLabel),                                \
+      MklConcatOp<CPUDevice, MklQuantization::FP32, type, NAME_IS_CONCAT_DIM>) \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("_MklConcatV2")                                                     \
+          .Device(DEVICE_CPU)                                                  \
+          .TypeConstraint<type>("T")                                           \
+          .TypeConstraint<int32>("Tidx")                                       \
+          .HostMemory("axis")                                                  \
+          .Label(mkl_op_registry::kMklOpLabel),                                \
+      MklConcatOp<CPUDevice, MklQuantization::FP32, type, NAME_IS_AXIS>)
 
 TF_CALL_float(REGISTER_MKL_CPU);
+
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedConcatV2")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("T")
+        .HostMemory("axis")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklConcatOp<CPUDevice, MklQuantization::INT8, quint8, NAME_IS_AXIS>)
+
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedConcatV2")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<qint8>("T")
+        .HostMemory("axis")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklConcatOp<CPUDevice, MklQuantization::INT8, qint8, NAME_IS_AXIS>)
 
 #undef REGISTER_CONCAT_MKL
 }  // namespace tensorflow

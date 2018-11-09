@@ -1081,7 +1081,6 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static void CopyAttrsPooling(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsQuantizedPooling(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsQuantizedConv2D(const Node* orig_node, NodeBuilder* nb);
-  static void CopyAttrsQuantizedConcat(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsReshape(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsRequantize(const Node* orig_node, NodeBuilder* nb);
   static void CopyAttrsSlice(const Node* orig_node, NodeBuilder* nb);
