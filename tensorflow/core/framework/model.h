@@ -143,10 +143,7 @@ class Node {
   }
 
   // Returns the node output.
-  Node* output() const LOCKS_EXCLUDED(mu_) {
-    tf_shared_lock l(mu_);
-    return output_;
-  }
+  Node* output() const { return output_; }
 
   // Returns the aggregate processing time.
   int64 processing_time() const LOCKS_EXCLUDED(mu_) {
@@ -285,7 +282,7 @@ class Node {
 
   // The reference to the output node is not owned so that that deletion of a
   // node results in recursive deletion of the subtree rooted in the node.
-  Node* output_ GUARDED_BY(mu_);
+  Node* const output_;
 };
 
 // InterleaveMany is used to model datasets whose inputs are used to create
