@@ -36,6 +36,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -55,7 +56,11 @@ def _GetCheckpointFilename(save_dir, latest_filename):
   return os.path.join(save_dir, latest_filename)
 
 
-@tf_export("train.generate_checkpoint_state_proto")
+@deprecation.deprecated(
+    date=None,
+    instructions=("Use tf.train.CheckpointManager to manage checkpoints rather "
+                  "than editing the Checkpoint proto manually."))
+@tf_export(v1=["train.generate_checkpoint_state_proto"])
 def generate_checkpoint_state_proto(save_dir,
                                     model_checkpoint_path,
                                     all_model_checkpoint_paths=None,
@@ -121,7 +126,11 @@ def generate_checkpoint_state_proto(save_dir,
   return coord_checkpoint_proto
 
 
-@tf_export("train.update_checkpoint_state")
+@deprecation.deprecated(
+    date=None,
+    instructions=("Use tf.train.CheckpointManager to manage checkpoints rather "
+                  "than manually editing the Checkpoint proto."))
+@tf_export(v1=["train.update_checkpoint_state"])
 def update_checkpoint_state(save_dir,
                             model_checkpoint_path,
                             all_model_checkpoint_paths=None,
@@ -344,7 +353,10 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
   return None
 
 
-@tf_export("train.checkpoint_exists")
+@deprecation.deprecated(
+    date=None,
+    instructions="Use standard file APIs to check for files with this prefix.")
+@tf_export(v1=["train.checkpoint_exists"])
 def checkpoint_exists(checkpoint_prefix):
   """Checks whether a V1 or V2 checkpoint exists with the specified prefix.
 
@@ -369,7 +381,10 @@ def checkpoint_exists(checkpoint_prefix):
     return False
 
 
-@tf_export("train.get_checkpoint_mtimes")
+@deprecation.deprecated(
+    date=None,
+    instructions="Use standard file utilities to get mtimes.")
+@tf_export(v1=["train.get_checkpoint_mtimes"])
 def get_checkpoint_mtimes(checkpoint_prefixes):
   """Returns the mtimes (modification timestamps) of the checkpoints.
 
@@ -408,7 +423,10 @@ def get_checkpoint_mtimes(checkpoint_prefixes):
   return mtimes
 
 
-@tf_export("train.remove_checkpoint")
+@deprecation.deprecated(
+    date=None,
+    instructions="Use standard file APIs to delete files with this prefix.")
+@tf_export(v1=["train.remove_checkpoint"])
 def remove_checkpoint(checkpoint_prefix,
                       checkpoint_format_version=saver_pb2.SaverDef.V2,
                       meta_graph_suffix="meta"):
