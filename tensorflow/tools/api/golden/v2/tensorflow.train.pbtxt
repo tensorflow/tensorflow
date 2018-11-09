@@ -221,20 +221,12 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member_method {
-    name: "MonitoredTrainingSession"
-    argspec: "args=[\'master\', \'is_chief\', \'checkpoint_dir\', \'scaffold\', \'hooks\', \'chief_only_hooks\', \'save_checkpoint_secs\', \'save_summaries_steps\', \'save_summaries_secs\', \'config\', \'stop_grace_period_secs\', \'log_step_count_steps\', \'max_wait_secs\', \'save_checkpoint_steps\', \'summary_dir\'], varargs=None, keywords=None, defaults=[\'\', \'True\', \'None\', \'None\', \'None\', \'None\', \'<object object instance>\', \'<object object instance>\', \'<object object instance>\', \'None\', \'120\', \'100\', \'7200\', \'<object object instance>\', \'None\'], "
-  }
-  member_method {
     name: "NewCheckpointReader"
     argspec: "args=[\'filepattern\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "assert_global_step"
     argspec: "args=[\'global_step_tensor\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "basic_train_loop"
-    argspec: "args=[\'supervisor\', \'train_step_fn\', \'args\', \'kwargs\', \'master\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'\'], "
   }
   member_method {
     name: "checkpoint_exists"
