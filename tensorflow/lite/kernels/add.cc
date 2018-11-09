@@ -220,30 +220,38 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
                               const TfLiteTensor* input2,
                               TfLiteTensor* output) {
   if (output->type == kTfLiteUInt8) {
+    tflite::ArithmeticParams op_params;
+    op_params.left_shift = data->left_shift;
+    op_params.input1_offset = data->input1_offset;
+    op_params.input1_multiplier = data->input1_multiplier;
+    op_params.input1_shift = data->input1_shift;
+    op_params.input2_offset = data->input2_offset;
+    op_params.input2_multiplier = data->input2_multiplier;
+    op_params.input2_shift = data->input2_shift;
+    op_params.output_offset = data->output_offset;
+    op_params.output_multiplier = data->output_multiplier;
+    op_params.output_shift = data->output_shift;
+    SetActivationParams(data->output_activation_min,
+                        data->output_activation_max, &op_params);
+    bool need_broadcast = optimized_ops::ProcessBroadcastShapes(
+        GetTensorShape(input1), GetTensorShape(input2), &op_params);
 #define TF_LITE_ADD(type, opname)                                      \
-  tflite::ArithmeticParams op_params;                                  \
-  op_params.left_shift = data->left_shift;                             \
-  op_params.input1_offset = data->input1_offset;                       \
-  op_params.input1_multiplier = data->input1_multiplier;               \
-  op_params.input1_shift = data->input1_shift;                         \
-  op_params.input2_offset = data->input2_offset;                       \
-  op_params.input2_multiplier = data->input2_multiplier;               \
-  op_params.input2_shift = data->input2_shift;                         \
-  op_params.output_offset = data->output_offset;                       \
-  op_params.output_multiplier = data->output_multiplier;               \
-  op_params.output_shift = data->output_shift;                         \
-  SetActivationParams(data->output_activation_min,                     \
-                      data->output_activation_max, &op_params);        \
   type::opname(op_params, GetTensorShape(input1),                      \
                GetTensorData<uint8_t>(input1), GetTensorShape(input2), \
                GetTensorData<uint8_t>(input2), GetTensorShape(output), \
-               GetTensorData<uint8_t>(output))
-    // The quantized version of Add doesn't support activations, so we
-    // always use BroadcastAdd.
+               GetTensorData<uint8_t>(output));
     if (kernel_type == kReference) {
-      TF_LITE_ADD(reference_ops, BroadcastAdd4DSlow);
+      if (need_broadcast) {
+        TF_LITE_ADD(reference_ops, BroadcastAdd4DSlow);
+      } else {
+        TF_LITE_ADD(reference_ops, Add);
+      }
     } else {
-      TF_LITE_ADD(optimized_ops, BroadcastAdd4DSlow);
+      if (need_broadcast) {
+        TF_LITE_ADD(optimized_ops, BroadcastAddFivefold);
+      } else {
+        TF_LITE_ADD(optimized_ops, Add);
+      }
     }
 #undef TF_LITE_ADD
   } else if (output->type == kTfLiteInt16) {
