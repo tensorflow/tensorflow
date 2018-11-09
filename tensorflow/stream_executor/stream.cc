@@ -549,11 +549,16 @@ Stream &Stream::ThenConvolveWithScratch(
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      CheckError(dnn->DoConvolve(
+      DeviceMemory<uint8> scratch_memory;
+      dnn::AlgorithmConfig best_algorithm_config;
+      CheckError(dnn->PrepareForConvolution(
           this, input_descriptor, input_data, filter_descriptor, filter_data,
           convolution_descriptor, output_descriptor, output, scratch_allocator,
-          dnn::AlgorithmConfig(),
-          /*output_profile_result=*/nullptr));
+          dnn::AlgorithmConfig(), best_algorithm_config, scratch_memory));
+      CheckError(dnn->DoConvolve(
+          this, input_descriptor, input_data, filter_descriptor, filter_data,
+          convolution_descriptor, output_descriptor, output,
+          best_algorithm_config, scratch_memory, nullptr));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -576,11 +581,16 @@ Stream &Stream::ThenConvolveWithScratch(
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      CheckError(dnn->DoConvolve(
+      DeviceMemory<uint8> scratch_memory;
+      dnn::AlgorithmConfig best_algorithm_config;
+      CheckError(dnn->PrepareForConvolution(
           this, input_descriptor, input_data, filter_descriptor, filter_data,
           convolution_descriptor, output_descriptor, output, scratch_allocator,
-          dnn::AlgorithmConfig(),
-          /*output_profile_result=*/nullptr));
+          dnn::AlgorithmConfig(), best_algorithm_config, scratch_memory));
+      CheckError(dnn->DoConvolve(
+          this, input_descriptor, input_data, filter_descriptor, filter_data,
+          convolution_descriptor, output_descriptor, output,
+          best_algorithm_config, scratch_memory, nullptr));
     } else {
       SetErrorAndLogNoDnnSupport();
     }
@@ -758,12 +768,22 @@ Stream &Stream::ThenConvolveWithAlgorithm(
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      auto status = dnn->DoConvolve(
+      DeviceMemory<uint8> scratch_memory;
+      dnn::AlgorithmConfig best_algorithm_config;
+      auto status = dnn->PrepareForConvolution(
           this, input_descriptor, input_data, filter_descriptor, filter_data,
           convolution_descriptor, output_descriptor, output, scratch_allocator,
-          algorithm_config, output_profile_result);
-      if (!status && !output_profile_result) {
+          algorithm_config, best_algorithm_config, scratch_memory);
+      if (!status) {
         SetError();
+      } else {
+        status = dnn->DoConvolve(
+            this, input_descriptor, input_data, filter_descriptor, filter_data,
+            convolution_descriptor, output_descriptor, output,
+            best_algorithm_config, scratch_memory, output_profile_result);
+        if (!status && !output_profile_result) {
+          SetError();
+        }
       }
     } else {
       SetErrorAndLogNoDnnSupport();
@@ -789,12 +809,22 @@ Stream &Stream::ThenConvolveWithAlgorithm(
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      auto status = dnn->DoConvolve(
+      DeviceMemory<uint8> scratch_memory;
+      dnn::AlgorithmConfig best_algorithm_config;
+      auto status = dnn->PrepareForConvolution(
           this, input_descriptor, input_data, filter_descriptor, filter_data,
           convolution_descriptor, output_descriptor, output, scratch_allocator,
-          algorithm_config, output_profile_result);
-      if (!status && !output_profile_result) {
+          algorithm_config, best_algorithm_config, scratch_memory);
+      if (!status) {
         SetError();
+      } else {
+        status = dnn->DoConvolve(
+            this, input_descriptor, input_data, filter_descriptor, filter_data,
+            convolution_descriptor, output_descriptor, output,
+            best_algorithm_config, scratch_memory, output_profile_result);
+        if (!status && !output_profile_result) {
+          SetError();
+        }
       }
     } else {
       SetErrorAndLogNoDnnSupport();
@@ -820,12 +850,22 @@ Stream &Stream::ThenConvolveWithAlgorithm(
 
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      auto status = dnn->DoConvolve(
+      DeviceMemory<uint8> scratch_memory;
+      dnn::AlgorithmConfig best_algorithm_config;
+      auto status = dnn->PrepareForConvolution(
           this, input_descriptor, input_data, filter_descriptor, filter_data,
           convolution_descriptor, output_descriptor, output, scratch_allocator,
-          algorithm_config, output_profile_result);
-      if (!status && !output_profile_result) {
+          algorithm_config, best_algorithm_config, scratch_memory);
+      if (!status) {
         SetError();
+      } else {
+        status = dnn->DoConvolve(
+            this, input_descriptor, input_data, filter_descriptor, filter_data,
+            convolution_descriptor, output_descriptor, output,
+            best_algorithm_config, scratch_memory, output_profile_result);
+        if (!status && !output_profile_result) {
+          SetError();
+        }
       }
     } else {
       SetErrorAndLogNoDnnSupport();

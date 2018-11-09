@@ -251,6 +251,43 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<float>* scale_backprop,
       DeviceMemory<float>* offset_backprop) override;
 
+  bool PrepareForConvolution(
+      Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
+      const DeviceMemory<float>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<float>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      dnn::AlgorithmConfig& best_algorithm_config,
+      DeviceMemory<uint8>& scratch_memory) override;
+
+  bool PrepareForConvolution(
+      Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
+      const DeviceMemory<double>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<double>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<double>* output_data, ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      dnn::AlgorithmConfig& best_algorithm_config,
+      DeviceMemory<uint8>& scratch_memory) override;
+
+  bool PrepareForConvolution(
+      Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
+      const DeviceMemory<Eigen::half>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<Eigen::half>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<Eigen::half>* output_data,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      dnn::AlgorithmConfig& best_algorithm_config,
+      DeviceMemory<uint8>& scratch_memory) override;
+
   bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
                   const DeviceMemory<float>& input_data,
                   const dnn::FilterDescriptor& filter_descriptor,
@@ -258,8 +295,8 @@ class MIOpenSupport : public dnn::DnnSupport {
                   const dnn::ConvolutionDescriptor& convolution_descriptor,
                   const dnn::BatchDescriptor& output_descriptor,
                   DeviceMemory<float>* output_data,
-                  ScratchAllocator* scratch_allocator,
                   const dnn::AlgorithmConfig& algorithm_config,
+                  DeviceMemory<uint8>& scratch_memory,
                   dnn::ProfileResult* output_profile_result) override;
 
   bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
@@ -269,8 +306,8 @@ class MIOpenSupport : public dnn::DnnSupport {
                   const dnn::ConvolutionDescriptor& convolution_descriptor,
                   const dnn::BatchDescriptor& output_descriptor,
                   DeviceMemory<double>* output_data,
-                  ScratchAllocator* scratch_allocator,
                   const dnn::AlgorithmConfig& algorithm_config,
+                  DeviceMemory<uint8>& scratch_memory,
                   dnn::ProfileResult* output_profile_result) override;
 
   bool DoConvolve(Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
@@ -280,8 +317,8 @@ class MIOpenSupport : public dnn::DnnSupport {
                   const dnn::ConvolutionDescriptor& convolution_descriptor,
                   const dnn::BatchDescriptor& output_descriptor,
                   DeviceMemory<Eigen::half>* output_data,
-                  ScratchAllocator* scratch_allocator,
                   const dnn::AlgorithmConfig& algorithm_config,
+                  DeviceMemory<uint8>& scratch_memory,
                   dnn::ProfileResult* output_profile_result) override;
 
   bool DoFusedConvolve(
@@ -774,6 +811,20 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<U>* offset_backprop);
 
   template <class T>
+  bool PrepareForConvolutionImpl(
+      Stream* stream, int miopen_type,
+      const dnn::BatchDescriptor& batch_descriptor,
+      const DeviceMemory<T>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<T>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<T>* output_data, ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      dnn::AlgorithmConfig& best_algorithm_config,
+      DeviceMemory<uint8>& scratch_memory);
+
+  template <class T>
   bool DoConvolveImpl(Stream* stream,
                       int miopen_type,  // Actually miopenDataType_t.
                       const dnn::BatchDescriptor& batch_descriptor,
@@ -783,8 +834,8 @@ class MIOpenSupport : public dnn::DnnSupport {
                       const dnn::ConvolutionDescriptor& convolution_descriptor,
                       const dnn::BatchDescriptor& output_descriptor,
                       DeviceMemory<T>* output_data,
-                      ScratchAllocator* scratch_allocator,
                       const dnn::AlgorithmConfig& algorithm_config,
+                      DeviceMemory<uint8>& scratch_memory,
                       dnn::ProfileResult* output_profile_result);
 
   template <class T>

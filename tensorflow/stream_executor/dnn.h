@@ -1181,6 +1181,43 @@ class DnnSupport {
     return false;
   }
 
+  virtual bool PrepareForConvolution(
+      Stream* stream, const BatchDescriptor& batch_descriptor,
+      const DeviceMemory<float>& input_data,
+      const FilterDescriptor& filter_descriptor,
+      const DeviceMemory<float>& filter_data,
+      const ConvolutionDescriptor& convolution_descriptor,
+      const BatchDescriptor& output_descriptor,
+      DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      dnn::AlgorithmConfig& best_algorithm_config,
+      DeviceMemory<uint8>& scratch_memory) = 0;
+
+  virtual bool PrepareForConvolution(
+      Stream* stream, const BatchDescriptor& batch_descriptor,
+      const DeviceMemory<double>& input_data,
+      const FilterDescriptor& filter_descriptor,
+      const DeviceMemory<double>& filter_data,
+      const ConvolutionDescriptor& convolution_descriptor,
+      const BatchDescriptor& output_descriptor,
+      DeviceMemory<double>* output_data, ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      dnn::AlgorithmConfig& best_algorithm_config,
+      DeviceMemory<uint8>& scratch_memory) = 0;
+
+  virtual bool PrepareForConvolution(
+      Stream* stream, const BatchDescriptor& batch_descriptor,
+      const DeviceMemory<Eigen::half>& input_data,
+      const FilterDescriptor& filter_descriptor,
+      const DeviceMemory<Eigen::half>& filter_data,
+      const ConvolutionDescriptor& convolution_descriptor,
+      const BatchDescriptor& output_descriptor,
+      DeviceMemory<Eigen::half>* output_data,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      dnn::AlgorithmConfig& best_algorithm_config,
+      DeviceMemory<uint8>& scratch_memory) = 0;
+
   // Enqueues a single-precision convolution operation onto the stream.
   //
   // Arguments (all borrowed):
@@ -1194,10 +1231,10 @@ class DnnSupport {
   //  output_descriptor: dimensions of the output layer.
   //  output_data: un-owned device memory region in which to place the
   //    convolution result.
-  //  scratch_allocator: un-owned, may-be-null object that may allocate scratch
-  //    space in order to speed up the convolution operation.
   //  algorithm_config: specifies which algorithm should be used for the
   //    operation.
+  //  scratch: un-owned device memory for scratch space in order to speed up
+  //    the convolution operation.
   //  output_profile_result: the output profile result for this call. The
   //    profiling is only enabled when this is not nullptr.
   //
@@ -1222,8 +1259,9 @@ class DnnSupport {
       const DeviceMemory<float>& filter_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
+      DeviceMemory<float>* output_data,
       const dnn::AlgorithmConfig& algorithm_config,
+      DeviceMemory<uint8>& scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
   // Enqueues a double-precision convolution operation onto the stream.
@@ -1235,8 +1273,9 @@ class DnnSupport {
       const DeviceMemory<double>& filter_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<double>* output_data, ScratchAllocator* scratch_allocator,
+      DeviceMemory<double>* output_data,
       const dnn::AlgorithmConfig& algorithm_config,
+      DeviceMemory<uint8>& scratch_memory,
       dnn::ProfileResult* output_profile_result) = 0;
 
   // Enqueues a half-precision convolution operation onto the stream.
@@ -1249,8 +1288,8 @@ class DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<Eigen::half>* output_data,
-      ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
+      DeviceMemory<uint8>& scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
   // Return a list of algorithms supported by the forward convolution pass.
