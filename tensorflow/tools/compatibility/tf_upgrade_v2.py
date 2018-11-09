@@ -33,49 +33,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.function_keyword_renames = {}
 
     # Mapping from function to the new name of the function
-    self.function_renames = renames_v2.renames
+    self.symbol_renames = renames_v2.renames
     # pylint: disable=line-too-long
-    self.function_renames.update({
-        "tf.FixedLengthRecordReader": "tf.compat.v1.FixedLengthRecordReader",
-        "tf.IdentityReader": "tf.compat.v1.IdentityReader",
-        "tf.LMDBReader": "tf.compat.v1.LMDBReader",
-        "tf.ReaderBase": "tf.compat.v1.ReaderBase",
-        "tf.TFRecordReader": "tf.compat.v1.TFRecordReader",
-        "tf.TextLineReader": "tf.compat.v1.TextLineReader",
-        "tf.WholeFileReader": "tf.compat.v1.WholeFileReader",
-        "tf.saved_model.builder.SavedModelBuilder": "tf.compat.v1.saved_model.Builder",
-        "tf.saved_model.loader.load": "tf.compat.v1.saved_model.load",
-        "tf.saved_model.main_op.main_op": "tf.compat.v1.saved_model.main_op",
-        "tf.saved_model.main_op.main_op_with_restore": "tf.compat.v1.saved_model.main_op_with_restore",
-        "tf.saved_model.simple_save": "tf.compat.v1.saved_model.simple_save",
-        "tf.saved_model.utils.build_tensor_info": "tf.compat.v1.saved_model.build_tensor_info",
-        "tf.saved_model.utils.get_tensor_from_tensor_info": "tf.compat.v1.saved_model.get_tensor_from_tensor_info",
-        "tf.train.QueueRunner": "tf.compat.v1.QueueRunner",
-        "tf.train.add_queue_runner": "tf.compat.v1.add_queue_runner",
-        "tf.train.batch": "tf.compat.v1.train.batch",
-        "tf.train.batch_join": "tf.compat.v1.train.batch_join",
-        "tf.train.input_producer": "tf.compat.v1.train.input_producer",
-        "tf.train.limit_epochs": "tf.compat.v1.train.limit_epochs",
-        "tf.train.maybe_batch": "tf.compat.v1.train.maybe_batch",
-        "tf.train.maybe_batch_join": "tf.compat.v1.train.maybe_batch_join",
-        "tf.train.maybe_shuffle_batch": "tf.compat.v1.train.maybe_shuffle_batch",
-        "tf.train.maybe_shuffle_batch_join": "tf.compat.v1.train.maybe_shuffle_batch_join",
-        "tf.train.queue_runner.QueueRunner": "tf.compat.v1.queue_runner.QueueRunner",
-        "tf.train.queue_runner.add_queue_runner": "tf.compat.v1.queue_runner.add_queue_runner",
-        "tf.train.queue_runner.start_queue_runners": "tf.compat.v1.queue_runner.start_queue_runners",
-        "tf.train.range_input_producer": "tf.compat.v1.train.range_input_producer",
-        "tf.train.shuffle_batch": "tf.compat.v1.train.shuffle_batch",
-        "tf.train.shuffle_batch_join": "tf.compat.v1.train.shuffle_batch_join",
-        "tf.train.slice_input_producer": "tf.compat.v1.train.slice_input_producer",
-        "tf.train.string_input_producer": "tf.compat.v1.train.string_input_producer",
-        "tf.train.start_queue_runners": "tf.compat.v1.start_queue_runners",
+    # Add additional renames not in renames_v2.py here.
+    self.symbol_renames.update({
     })
     # pylint: enable=line-too-long
-    self.function_renames["tf.colocate_with"] = "tf.compat.v1.colocate_with"
-
-    # TODO(amitpatankar): Fix the function rename script
-    # to handle constants without hardcoding.
-    self.function_renames["QUANTIZED_DTYPES"] = "dtypes.QUANTIZED_DTYPES"
 
     # Variables that should be changed to functions.
     self.change_to_function = {}
@@ -115,6 +78,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.train.linear_cosine_decay": decay_function_comment,
         "tf.train.noisy_linear_cosine_decay": decay_function_comment,
         "tf.estimator.LinearClassifier": default_loss_reduction_changed,
+    }
+    # Right now we can't have both a rename and a warning.
+    self.symbol_renames = {
+        name: new_name for name, new_name in self.symbol_renames.items()
+        if name not in self.function_warnings
     }
 
 
