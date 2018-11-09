@@ -104,5 +104,20 @@ bool IsScalarConstant(const HloInstruction* instruction) {
   return instruction->IsConstant() && ShapeUtil::IsScalar(instruction->shape());
 }
 
+bool ContainsInstrWithOpcode(const HloComputation* comp,
+                             const absl::flat_hash_set<HloOpcode>& opcodes) {
+  for (const auto* instr : comp->instructions()) {
+    if (opcodes.count(instr->opcode())) {
+      return true;
+    }
+    for (const HloComputation* subcomp : instr->called_computations()) {
+      if (ContainsInstrWithOpcode(subcomp, opcodes)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 }  // namespace hlo_query
 }  // namespace xla
