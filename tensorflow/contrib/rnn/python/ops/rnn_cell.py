@@ -3523,6 +3523,11 @@ class NTMCell(rnn_cell_impl.LayerRNNCell):
         initializer=initializers.xavier_initializer())
         for i in range(self.read_head_num + self.write_head_num)]
 
+    self._M = self.add_variable(
+        'memory',
+        shape=[self.memory_size, self.memory_vector_dim],
+        initializer=init_ops.constant_initializer(1e-6, dtype=self.dtype))
+
     self.built = True
 
   def call(self, x, prev_state):
@@ -3578,7 +3583,12 @@ class NTMCell(rnn_cell_impl.LayerRNNCell):
     if (self.read_head_num + self.write_head_num) == 1:
       prev_w_list = [prev_w_list]
 
-    prev_M = prev_state.M
+    prev_M = control_flow_ops.cond(
+      math_ops.equal(prev_state.time, 0),
+      lambda: self._expand(self._M,
+        dim=0, N=x.shape[0].value or array_ops.shape(x)[0]),
+      lambda: prev_state.M)
+
     w_list = []
     for i, head_parameter in enumerate(head_parameter_list):
       k = math_ops.tanh(head_parameter[:, 0:self.memory_vector_dim])
@@ -3682,10 +3692,7 @@ class NTMCell(rnn_cell_impl.LayerRNNCell):
 
     controller_init_state = self.controller.zero_state(batch_size, dtype)
 
-    M = self._expand(vs.get_variable('memory',
-            [self.memory_size, self.memory_vector_dim],
-            initializer=init_ops.constant_initializer(1e-6)),
-          dim=0, N=batch_size)
+    M = array_ops.zeros([batch_size, self.memory_size, self.memory_vector_dim])
 
     return NTMControllerState(
       controller_state=controller_init_state,
