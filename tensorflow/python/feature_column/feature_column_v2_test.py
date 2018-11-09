@@ -27,6 +27,7 @@ from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -48,6 +49,7 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import queue_runner_impl
+from tensorflow.python.training import rmsprop
 
 
 def _initialized_session(config=None):
@@ -1446,6 +1448,14 @@ class LinearModelTest(test.TestCase):
           feature_columns=[fc.numeric_column('a'),
                            fc.numeric_column('a')])
 
+  def test_not_dict_input_features(self):
+    price = fc.numeric_column('price')
+    with ops.Graph().as_default():
+      features = [[1.], [5.]]
+      model = fc.LinearModel([price])
+      with self.assertRaisesRegexp(ValueError, 'We expected a dictionary here'):
+        predictions = model(features)
+
   def test_dense_bias(self):
     price = fc.numeric_column('price')
     with ops.Graph().as_default():
@@ -1826,6 +1836,23 @@ class LinearModelTest(test.TestCase):
           'linear_model/sparse_feature_embedding/weights:0',
           'linear_model/bias_weights:0',
       ], variable_names)
+
+  def test_fit_and_predict(self):
+    columns = [fc.numeric_column('a')]
+
+    model = fc.LinearModel(columns)
+    model.compile(
+        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        loss='categorical_crossentropy',
+        metrics=['accuracy'])
+
+    x = {'a': np.random.random((10, 1))}
+    y = np.random.randint(20, size=(10, 1))
+    y = keras.utils.to_categorical(y, num_classes=20)
+    model.fit(x, y, epochs=1, batch_size=5)
+    model.fit(x, y, epochs=1, batch_size=5)
+    model.evaluate(x, y, batch_size=5)
+    model.predict(x, batch_size=5)
 
   def test_static_batch_size_mismatch(self):
     price1 = fc.numeric_column('price1')
