@@ -136,6 +136,62 @@ TEST_F(BFloat16PropagationTest, PropagateThroughSelectButNotAdd) {
   EXPECT_FALSE(OutputsBF16(c));
 }
 
+TEST_F(BFloat16PropagationTest, PropagateThroughMaxPoolReduceWindow) {
+  auto module = CreateNewVerifiedModule();
+
+  auto sub_builder = HloComputation::Builder("max");
+  HloInstruction* p0 = sub_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "a"));
+  HloInstruction* p1 = sub_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, ShapeUtil::MakeShape(F32, {}), "b"));
+  sub_builder.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kMaximum, p0, p1));
+  auto max_computation = module->AddEmbeddedComputation(sub_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 4});
+
+  HloInstruction* a =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "a"));
+  HloInstruction* b =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "b"));
+  HloInstruction* c =
+      builder.AddInstruction(HloInstruction::CreateParameter(2, shape, "c"));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, a, b));
+  Window window;
+  WindowDimension dim;
+  dim.set_size(2);
+  dim.set_stride(1);
+  dim.set_padding_high(1);
+  dim.set_window_dilation(1);
+  dim.set_base_dilation(1);
+  *window.add_dimensions() = dim;
+  *window.add_dimensions() = dim;
+  HloInstruction* rw =
+      builder.AddInstruction(HloInstruction::CreateReduceWindow(
+          shape, add,
+          builder.AddInstruction(
+              HloInstruction::CreateConstant(LiteralUtil::Zero(F32))),
+          window, max_computation));
+  HloInstruction* xpose =
+      builder.AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShape(F32, {4, 2}), c, {1, 0}));
+  HloInstruction* dot = builder.AddInstruction(
+      CreateDot(ShapeUtil::MakeShape(F32, {4, 4}), xpose, rw));
+  HloInstruction* root = builder.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(F32, {4, 4}), HloOpcode::kAdd, dot, dot));
+
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+
+  EXPECT_EQ(computation->root_instruction(), root);
+  EXPECT_TRUE(OutputsBF16(add));
+  EXPECT_TRUE(OutputsBF16(xpose));
+  EXPECT_TRUE(OutputsBF16(rw));
+}
+
 // Tests that side-effecting all-reduce should not be changed.
 TEST_F(BFloat16PropagationTest, DoNotChangeAllReduce) {
   auto module = CreateNewVerifiedModule();
