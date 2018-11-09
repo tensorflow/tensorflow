@@ -141,7 +141,7 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     # parallelism.
     device_map = {d.name: i for i, d in enumerate(self._tpu_metadata.devices)
                   if "device:TPU:" in d.name}
-    self._device_index = values.PerDevice(device_map)
+    self._device_index = values.PerReplica(device_map)
     self._host_device = self.get_host_cpu_device(0)
     self._tpu_devices = sorted(device_map.keys())
     # Only create variables for the number of replicas we're running.
@@ -308,7 +308,8 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
       # For outputs that have already been aggregated, take the first value
       # from the list as each value should be the same. Else return the full
       # list of values.
-      # TODO(josh11b): If aggregation is NONE, we should return a PerDevice value.
+      # TODO(josh11b): If aggregation is NONE, we should return a PerReplica
+      # value.
       if aggregation is not variables_lib.VariableAggregation.NONE:
         # TODO(priyag): Should this return the element or a list with 1 element
         last_step_tensor_outputs_dict[name] = output[0]
@@ -445,7 +446,7 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
       return [val.get(device=d) for d in sorted(val.devices)]
     elif isinstance(val, list):
       # TODO(josh11b): We need to remove this case; per device values should
-      # be represented using a PerDevice wrapper instead of a list with
+      # be represented using a PerReplica wrapper instead of a list with
       # one entry per device.
       return val
     return [val]

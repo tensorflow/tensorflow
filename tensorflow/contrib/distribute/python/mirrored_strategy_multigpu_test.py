@@ -908,7 +908,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(config=config)
   def testAssignMirroredVarReplicaContextWithSum(self):
-    # Test that we don't reduce a non-per-device value with the "sum"
+    # Test that we don't reduce a non-per-replica value with the "sum"
     # aggregation type.
     self._skip_eager_if_gpus_less_than(1)
     def var_fn():
@@ -1320,11 +1320,11 @@ class MirroredStrategyDefunTest(test.TestCase):
         # call_for_each has one trace per device. To check that the expected set
         # of variables was accessed on each trace, we first retrieve each
         # device-specific graph function.
-        per_device_graph_functions = dist.call_for_each_replica(
+        per_replica_graph_functions = dist.call_for_each_replica(
             defun.get_concrete_function,
             mock_model, *inputs, run_concurrently=False)
         for device in devices:
-          graph_function = per_device_graph_functions.get(device=device)
+          graph_function = per_replica_graph_functions.get(device=device)
           self.assertEqual(set(mock_model.variables),
                            set(graph_function.graph.variables))
 
@@ -1398,16 +1398,16 @@ class MirroredStrategyDefunTest(test.TestCase):
                          two_variables=True)
 
   @test_util.run_in_graph_and_eager_modes()
-  def testPassPerDevice(self):
+  def testPassPerReplica(self):
     self._skip_eager_if_gpus_less_than(1)
 
     @function.defun
     def fn1(mock_model, factor):
       return mock_model(factor)
 
-    factors = values.PerDevice({"CPU:0": 5.0, "GPU:0": 3.0})
-    expected_result = values.PerDevice({"CPU:0": 5.0 * 1.25,
-                                        "GPU:0": 3.0 * 1.25})
+    factors = values.PerReplica({"CPU:0": 5.0, "GPU:0": 3.0})
+    expected_result = values.PerReplica({"CPU:0": 5.0 * 1.25,
+                                         "GPU:0": 3.0 * 1.25})
     self._call_and_check(fn1, [factors], expected_result, [fn1])
 
   @test_util.run_in_graph_and_eager_modes()

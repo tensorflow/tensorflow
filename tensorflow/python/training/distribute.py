@@ -291,11 +291,11 @@ class DistributionStrategy(object):
 
   * Wrapped values: In order to represent values parallel across devices
     (either replicas or the devices associated with a particular value), we
-    wrap them in a "PerDevice" or "Mirrored" object that contains a map
-    from device to values. "PerDevice" is used when the value may be
-    different across devices, and "Mirrored" when the value are the same.
+    wrap them in a "PerReplica" or "Mirrored" object that contains a map
+    from device to values. "PerReplica" is used when the value may be
+    different across replicas, and "Mirrored" when the value are the same.
   * Unwrapping and merging: Consider calling a function `fn` on
-    multiple devices, like `call_for_each_replica(fn, w)` with an
+    multiple replicas, like `call_for_each_replica(fn, w)` with an
     argument `w` that is a wrapped value. This means `w` will have a
     map taking replica device `d0` to `w0`, replica device `d1` to `w1`,
     etc. `call_for_each_replica()` unwraps `w` before calling `fn`, so
@@ -338,7 +338,7 @@ class DistributionStrategy(object):
   called _locality_ that says what values are compatible with which
   APIs:
 
-  * T: different value for each replica (e.g. a PerDevice-wrapped value).
+  * T: different value for each replica (e.g. a PerReplica-wrapped value).
   * M: value is "mirrored" across replicas, i.e. there are copies with the
     same value on each replica (e.g. a Mirrored-wrapped value).
   * V(`v`): value is "mirrored" across all the devices which have a
@@ -544,7 +544,7 @@ class DistributionStrategy(object):
           "DistributionStrategy.")
     return result
 
-  # TODO(josh11b): `PerDeviceDataset` currently only implements a few methods of
+  # TODO(josh11b): `PerReplicaDataset` currently only implements a few methods of
   # Dataset API such as make_one_shot_iterator and make_initializable_iterator.
   # Extend to implement more functionality of datasets.
   def distribute_dataset(self, dataset_fn):
@@ -567,7 +567,7 @@ class DistributionStrategy(object):
       dataset_fn: A function that returns a `tf.data.Dataset`.
 
     Returns:
-      A `PerDeviceDataset` that will produce data for each replica.
+      A `PerReplicaDataset` that will produce data for each replica.
     """
     raise NotImplementedError("must be implemented in descendants")
 
@@ -784,8 +784,8 @@ class DistributionStrategy(object):
       aggregation: Indicates how a variable will be aggregated. Accepted values
         are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`,
         `tf.VariableAggregation.ONLY_FIRST_REPLICA`.
-      value: A per-device value with one value per replica.
-      destinations: A mirrored variable, a per-device tensor, a device string,
+      value: A per-replica value with one value per replica.
+      destinations: A mirrored variable, a per-replica tensor, a device string,
         or list of device strings. The return value will be copied to all
         destination devices (or all the devices where the `destinations` value
         resides). To perform an all-reduction, pass `value` to `destinations`.
@@ -852,7 +852,7 @@ class DistributionStrategy(object):
 
     Otherwise this returns `fn(var, *args, **kwargs)` colocated with `var`.
 
-    Neither `*args` nor `**kwargs` may contain per-device values.
+    Neither `*args` nor `**kwargs` may contain per-replica values.
     If they contain mirrored values, they will be unwrapped before
     calling `fn`.
 
@@ -900,7 +900,7 @@ class DistributionStrategy(object):
     raise NotImplementedError("must be implemented in descendants")
 
   def unwrap(self, value):
-    """Returns the list of all per-device values contained in `value`.
+    """Returns the list of all per-replica values contained in `value`.
 
     Args:
       value: A value returned by `call_for_each_replica()` or a variable
@@ -913,7 +913,7 @@ class DistributionStrategy(object):
     return self._unwrap(value)
 
   def value_container(self, value):
-    """Returns the container that this per-device `value` belongs to.
+    """Returns the container that this per-replica `value` belongs to.
 
     Args:
       value: A value returned by `call_for_each_replica()` or a variable
@@ -1111,13 +1111,13 @@ class ReplicaContext(object):
 
     Args:
       merge_fn: function that joins arguments from threads that are given as
-        PerDevice. It accepts `DistributionStrategy` object as the first
+        PerReplica. It accepts `DistributionStrategy` object as the first
         argument.
       *args: positional per-thread arguments for `merge_fn`
       **kwargs: keyword per-thread arguments for `merge_fn`.
 
     Returns:
-      The return value of `merge_fn`, except for `PerDevice` values which are
+      The return value of `merge_fn`, except for `PerReplica` values which are
       unpacked.
     """
     require_replica_context(self)
