@@ -309,6 +309,14 @@ class ArrayTest(PForTest):
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
 
+  def test_matrix_diag_part(self):
+    x = random_ops.random_uniform([3, 4, 2])
+
+    def loop_fn(i):
+      return array_ops.matrix_diag_part(array_ops.gather(x, i))
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32])
+
   def test_strided_slice(self):
     x = random_ops.random_uniform([3, 3, 4, 4, 2, 2, 2])
 
