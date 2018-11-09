@@ -149,7 +149,7 @@ MicroInterpreter::MicroInterpreter(const Model* model,
   context_.ReportError = ReportOpError;
   context_.AddTensors = nullptr;
   context_.GetNodeAndRegistration = nullptr;
-  context_.ReplaceSubgraphsWithDelegateKernels = nullptr;
+  context_.ReplaceNodeSubsetsWithDelegateKernels = nullptr;
   context_.recommended_num_threads = 1;
   context_.GetExternalContext = nullptr;
   context_.SetExternalContext = nullptr;
