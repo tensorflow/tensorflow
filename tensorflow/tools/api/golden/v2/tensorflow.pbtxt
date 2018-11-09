@@ -481,10 +481,6 @@ tf_module {
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "add_check_numerics_ops"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "add_n"
     argspec: "args=[\'inputs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
