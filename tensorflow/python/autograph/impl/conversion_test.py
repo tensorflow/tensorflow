@@ -191,6 +191,20 @@ class ConversionTest(test.TestCase):
     with self.assertRaises(ValueError):
       conversion.entity_to_graph(f, program_ctx, None, None)
 
+  def test_entity_to_graph_lambda_code_with_garbage(self):
+    # pylint:disable=g-long-lambda
+    f = (  # intentional wrap
+        lambda x: (x  # intentional wrap
+                   + 1),)[0]
+    # pylint:enable=g-long-lambda
+
+    program_ctx = self._simple_program_ctx()
+    nodes, name, _ = conversion.entity_to_graph(f, program_ctx, None, None)
+    fn_node, _ = nodes
+    self.assertIsInstance(fn_node, gast.Assign)
+    self.assertIsInstance(fn_node.value, gast.Lambda)
+    self.assertEqual('tf__lambda', name)
+
   def test_ag_module_cached(self):
     def callee():
       return range(3)
