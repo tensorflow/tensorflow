@@ -2308,7 +2308,7 @@ ENTRY Main {
 )";
 
   HloModuleConfig config;
-  config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+  config.set_debug_options(GetDebugOptionsFromFlags());
   ParseAndVerifyModule(hlo_text, config);
 
   auto buffers = RunBufferAssignment(&module());

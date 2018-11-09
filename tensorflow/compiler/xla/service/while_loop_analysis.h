@@ -28,6 +28,10 @@ namespace xla {
 absl::optional<int64> ComputeWhileLoopTripCount(HloInstruction *while_op,
                                                 int64 max_value_returned = 128);
 
+// Returns an upper bound on the trip count of the loop if it's statically
+// known, nullopt otherwise.
+absl::optional<int64> ComputeWhileLoopTripCountUpperBound(
+    HloInstruction *while_op);
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_LOOP_ANALYSIS_H_

@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
+#include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 #include "tensorflow/compiler/xla/service/while_util.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -143,6 +144,12 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
   string while_instr_name = while_instr->ToString(print_no_metadata);
   VLOG(2) << "Trying to hoist from " << while_instr_name;
 
+  auto maybe_upper_bound = ComputeWhileLoopTripCountUpperBound(while_instr);
+  if (maybe_upper_bound && *maybe_upper_bound <= 1) {
+    VLOG(2) << "Loop has a trip count of at most 1, skipping.";
+    return false;
+  }
+
   HloComputation* while_body = while_instr->while_body();
 
   // Maps instructions in the while body to instructions hoisted outside the
@@ -178,6 +185,13 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
     // constants even if we didn't find any loop invariant values in the while
     // state tuple.
     return false;
+  }
+
+  // LICM in the presence of domain instructions is complex, bail.
+  for (auto* instruction : while_body->MakeInstructionPostOrder()) {
+    if (instruction->opcode() == HloOpcode::kDomain) {
+      return false;
+    }
   }
 
   // instructions_to_replace[i] is hoisted into a loop invariant instruction

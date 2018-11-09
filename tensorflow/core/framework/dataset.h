@@ -343,7 +343,7 @@ class IteratorContext {
 
   FunctionLibraryRuntime* lib() { return params_.lib; }
 
-  std::shared_ptr<model::Model> model() { return params_.model; }
+  const std::shared_ptr<model::Model>& model() { return params_.model; }
 
   std::function<void(std::function<void()>)>* runner() {
     return &params_.runner;
@@ -537,8 +537,7 @@ class DatasetBase : public core::RefCounted {
   Status MakeIterator(IteratorContext* ctx, const string& output_prefix,
                       std::unique_ptr<IteratorBase>* iterator) const {
     *iterator = MakeIteratorInternal(output_prefix);
-    std::shared_ptr<model::Model> model = ctx->model();
-    if (model) {
+    if (const auto& model = ctx->model()) {
       const string& prefix = (*iterator)->prefix();
       model->AddNode(MakeNodeFactory(ctx, iterator->get()), prefix,
                      output_prefix);
@@ -671,23 +670,23 @@ class DatasetBaseIterator : public IteratorBase {
   // When performance modeling is enabled, this method records the fact that
   // this iterator has produced an element.
   void RecordElement(IteratorContext* ctx) {
-    if (ctx->model()) {
-      ctx->model()->RecordElement(prefix());
+    if (const auto& model = ctx->model()) {
+      model->RecordElement(prefix());
     }
   }
 
   // When performance modeling is enabled, this method records the fact that
   // a thread of this iterator has started work.
   void RecordStart(IteratorContext* ctx, bool stop_output = false) {
-    if (ctx->model()) {
-      ctx->model()->RecordStart(prefix(), stop_output);
+    if (const auto& model = ctx->model()) {
+      model->RecordStart(prefix(), stop_output);
     }
   }
 
   // When performance modeling is enabled, this method records the fact that
   // a thread of this iterator has stopped work.
   void RecordStop(IteratorContext* ctx, bool start_output = false) {
-    if (ctx->model()) {
+    if (const auto& model = ctx->model()) {
       ctx->model()->RecordStop(prefix(), start_output);
     }
   }

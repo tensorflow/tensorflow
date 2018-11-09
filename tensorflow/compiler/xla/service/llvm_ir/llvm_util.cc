@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Target/TargetOptions.h"
@@ -258,6 +259,17 @@ llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
   return llvm::ConstantDataArray::getString(
       module->getContext(), llvm::StringRef(data, literal.size_bytes()),
       /*AddNull=*/false);
+}
+
+llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
+                                               llvm::Type* tile_type,
+                                               absl::string_view name) {
+  const int kNVPTXSharedMemoryAddrSpace = 3;
+  return new llvm::GlobalVariable(
+      *module, tile_type,
+      /*isConstant=*/false, llvm::GlobalValue::PrivateLinkage,
+      llvm::UndefValue::get(tile_type), AsStringRef(name), nullptr,
+      llvm::GlobalValue::NotThreadLocal, kNVPTXSharedMemoryAddrSpace);
 }
 
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,

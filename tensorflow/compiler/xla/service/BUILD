@@ -603,11 +603,11 @@ cc_library(
     hdrs = ["platform_util.h"],
     deps = [
         ":compiler",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "@com_google_absl//absl/strings",
@@ -647,6 +647,7 @@ cc_library(
         ":allocation_tracker",
         ":backend",
         ":channel_tracker",
+        ":compilation_cache",
         ":compiler",
         ":computation_layout",
         ":device_memory_allocator",
@@ -662,6 +663,7 @@ cc_library(
         ":source_map_util",
         ":stream_pool",
         ":transfer_manager",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:service_interface",
@@ -673,7 +675,6 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla:xla_proto",
-        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/core:lib",
         "//tensorflow/core:ptr_util",
         "//tensorflow/core:stream_executor_no_cuda",
@@ -730,12 +731,12 @@ cc_library(
         ":computation_layout",
         ":platform_util",
         ":service",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:stream_executor_no_cuda",
@@ -834,6 +835,7 @@ cc_library(
         ":maybe_owning_device_memory",
         ":shaped_buffer",
         ":stream_pool",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:status",
@@ -841,7 +843,6 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:stream_executor_no_cuda",
@@ -1698,6 +1699,19 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "while_loop_analysis_test",
+    srcs = ["while_loop_analysis_test.cc"],
+    deps = [
+        ":while_loop_analysis",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
 cc_library(
     name = "while_loop_simplifier",
     srcs = ["while_loop_simplifier.cc"],
@@ -2338,6 +2352,20 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "compilation_cache",
+    srcs = ["compilation_cache.cc"],
+    hdrs = ["compilation_cache.h"],
+    deps = [
+        ":executable",
+        ":hlo_module_config",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "layout_assignment",
     srcs = [
         "layout_assignment.cc",
@@ -2406,12 +2434,12 @@ tf_cc_test(
         ":hlo_graph_dumper",
         ":hlo_matchers",
         ":hlo_runner",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/core:test",
@@ -2812,8 +2840,8 @@ tf_cc_test(
         ":hlo_domain_isolator",
         ":hlo_domain_remover",
         ":hlo_parser",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:test",
-        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -3282,6 +3310,8 @@ cc_library(
         ":tuple_util",
         "//tensorflow/compiler/xla:literal_util",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -3308,6 +3338,7 @@ cc_library(
         ":hlo",
         ":hlo_pass",
         ":tuple_util",
+        ":while_loop_analysis",
         ":while_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",

@@ -417,19 +417,19 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     if num_gpus is None:
       raise ValueError("`num_gpus` is required if `cluster_spec` is given.")
     if num_gpus > 0:
-      self._worker_device_map = {
-          worker: [
+      self._worker_devices = [
+          (worker, [
               device_util.canonicalize(worker + "/device:GPU:%d" % gpu)
               for gpu in range(num_gpus)
-          ] for worker in self._workers
-      }
+          ]) for worker in self._workers
+      ]
     else:
-      self._worker_device_map = {
-          worker: [device_util.canonicalize(worker, "/device:CPU:0")]
+      self._worker_devices = [
+          (worker, [device_util.canonicalize(worker, "/device:CPU:0")])
           for worker in self._workers
-      }
+      ]
 
-    devices = nest.flatten(self._worker_device_map)
+    devices = nest.flatten([l for _, l in self._worker_devices])
 
     # Setting `_default_device` will add a device scope in the
     # distribution.scope. We set the default device to the first worker. When
@@ -490,7 +490,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   def distribute_dataset(self, dataset_fn):
     if self._cluster_spec:
       return values.MultiWorkerDataset(
-          partial(self._call_dataset_fn, dataset_fn), self._worker_device_map,
+          partial(self._call_dataset_fn, dataset_fn), self._worker_devices,
           self._prefetch_on_device, self._auto_shard_dataset)
     else:
       return values.PerDeviceDataset(

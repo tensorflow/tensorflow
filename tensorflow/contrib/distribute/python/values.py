@@ -579,7 +579,8 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
   # update_non_slot() function (like OptimizerV2._finish), which can
   # update several non-slot variables in one call.
   def _assign_func(self, *args, **kwargs):
-    if distribution_strategy_context.get_distribution_strategy().__class__.__name__ != "TPUStrategy":
+    strategy = distribution_strategy_context.get_distribution_strategy()
+    if strategy.__class__.__name__ != "TPUStrategy":
       raise ValueError("You may only assign to a TPUMirroredVariable within a "
                        "TPUStrategy.")
     f = kwargs.pop("f")
@@ -1177,43 +1178,47 @@ class PerDeviceDataset(object):
 class MultiWorkerDataIterator(object):
   """An iterator (like `tf.data.Iterator`) into a `MultiWorkerDataset`."""
 
-  def __init__(self, iterators, worker_device_map):
+  def __init__(self, iterators, worker_device_pairs):
     """Initialize the MultiWorkerDataIterator object.
 
     Args:
-      iterators: a dict mapping from each worker to an iterator for
-        that worker.
-      worker_device_map: a dict mapping from each worker's devices to a list of
-        devices that belong to this worker.
+      iterators: a list of worker, iterator pairs.
+      worker_device_pairs: a list of (worker's devices, a list of
+        devices that belong to this worker) pairs.
 
     Raises:
-      ValueError: if iterators and worker_device_map are not compatible.
+      ValueError: if iterators and worker_device_pairs are not compatible.
     """
-    self._iterators = iterators
-    self._worker_device_map = worker_device_map
-    if set(self._iterators) != set(self._worker_device_map):
-      raise ValueError("iterators and worker_device_map are not compatible.")
+    if [d for d, _ in iterators] != [d for d, _ in worker_device_pairs]:
+      raise ValueError("iterators and worker_device_pairs are not compatible.")
+    self._workers = [d for d, _ in iterators]
+    self._iterators = [i for _, i in iterators]
+    self._worker_devices = [l for _, l in worker_device_pairs]
 
   @property
   def initializer(self):
     return control_flow_ops.group(
-        [iterator.initializer for iterator in self._iterators.values()])
+        [iterator.initializer for iterator in self._iterators])
 
   def get_iterator(self, worker):
-    return self._iterators.get(worker)
+    for i, w in enumerate(self._workers):
+      if worker == w:
+        return self._iterators[i]
+    return None
 
   @property
   def output_shapes(self):
-    return self._iterators.values()[0].output_shapes
+    return self._iterators[0].output_shapes
 
   @property
   def output_types(self):
-    return self._iterators.values()[0].output_types
+    return self._iterators[0].output_types
 
   def get_next(self, name=None):
     """Scatter the input across hosts and devices."""
     index = {}
-    for worker, iterator in six.iteritems(self._iterators):
+    worker_info = zip(self._workers, self._iterators, self._worker_devices)
+    for worker, iterator, worker_devices in worker_info:
       if name is not None:
         d = tf_device.DeviceSpec.from_string(worker)
         new_name = "%s_%s_%d" % (name, d.job, d.task)
@@ -1222,13 +1227,12 @@ class MultiWorkerDataIterator(object):
       with ops.device(worker):
         data_per_worker = iterator.get_next(name=new_name)
 
-      worker_devices = self._worker_device_map[worker]
       # Ungroup these per-device value so as to get a flat map from devices to
       # values.
       for d in worker_devices:
         v = select_device(d, data_per_worker)
         if d in index:
-          raise ValueError("Duplicated devices in worker_device_map: %r" % v)
+          raise ValueError("Duplicated devices in worker_device_pairs: %r" % v)
         index[d] = v
 
     return regroup(index)
@@ -1237,49 +1241,48 @@ class MultiWorkerDataIterator(object):
 class MultiWorkerDataset(object):
   """Like a `tf.data.Dataset` that distributes data to different workers.
 
-  Each worker gets one shard of the input dataset. It is currently not working
-  in
-  eager mode.
+  Each worker gets one shard of the input dataset. This currently does not work
+  in eager mode.
   """
 
-  def __init__(self, dataset_fn, worker_device_map, prefetch_on_device=None,
+  def __init__(self, dataset_fn, worker_device_pairs, prefetch_on_device=None,
                auto_shard=False):
     """Initialize the MultiWorkerDataset object.
 
     Args:
       dataset_fn: a function that returns a `tf.data.Dataset`.
-      worker_device_map: a dict mapping from each worker to a list of devices
-        that belong to this worker.
+      worker_device_pairs: a list of (worker, list of devices on that worker)
+        pairs.
       prefetch_on_device: whether to prefetch to devices.
       auto_shard: whether to auto-shard the dataset.
     """
-    self._worker_device_map = worker_device_map
-    self._datasets = {}
+    self._worker_device_pairs = worker_device_pairs
+    self._datasets = []
     # TODO(yuefengz, priyag): support different set of jobs for input
     # processing.
-    for i, (worker, worker_devices) in enumerate(
-        six.iteritems(worker_device_map)):
+    for i, (worker, worker_devices) in enumerate(worker_device_pairs):
       with ops.device(worker):
         worker_input = dataset_fn()
         if auto_shard:
           worker_input = input_ops.auto_shard_dataset(
-              worker_input, len(worker_device_map), i)
-        self._datasets[worker] = PerDeviceDataset(
-            worker_input, worker_devices, prefetch_on_device=prefetch_on_device)
+              worker_input, len(worker_device_pairs), i)
+        dataset = PerDeviceDataset(worker_input, worker_devices,
+                                   prefetch_on_device=prefetch_on_device)
+        self._datasets.append((worker, dataset))
 
   def make_one_shot_iterator(self):
-    iterators = {}
-    for worker, dataset in six.iteritems(self._datasets):
+    iterators = []
+    for worker, dataset in self._datasets:
       with ops.device(worker):
-        iterators[worker] = dataset.make_one_shot_iterator()
-    return MultiWorkerDataIterator(iterators, self._worker_device_map)
+        iterators.append((worker, dataset.make_one_shot_iterator()))
+    return MultiWorkerDataIterator(iterators, self._worker_device_pairs)
 
   def make_initializable_iterator(self):
-    iterators = {}
-    for worker, dataset in six.iteritems(self._datasets):
+    iterators = []
+    for worker, dataset in self._datasets:
       with ops.device(worker):
-        iterators[worker] = dataset.make_initializable_iterator()
-    return MultiWorkerDataIterator(iterators, self._worker_device_map)
+        iterators.append((worker, dataset.make_initializable_iterator()))
+    return MultiWorkerDataIterator(iterators, self._worker_device_pairs)
 
 
 class _PerKey(object):
@@ -1438,8 +1441,8 @@ class MultiStepContext(object):
       output: The tensors that should be outputted with `name`. See below for
         actual types supported.
       aggregation: Aggregation method to use to aggregate outputs from multiple
-        replicas. Required if `set_last_step_output` is called in a replica context.
-        Optional in cross_replica_context.
+        replicas. Required if `set_last_step_output` is called in a replica
+        context. Optional in cross_replica_context.
         When present, the outputs from all the replicas are aggregated using the
         current distribution strategy's `reduce` method. Hence, the type of
         `output` must be what's supported by the corresponding `reduce` method.
@@ -1536,8 +1539,8 @@ class AggregatingVariable(checkpointable.CheckpointableBase):
         # We are calling an assign function in an update context.
         return f(self._v, *args, **kwargs)
 
-      # We are calling an assign function in cross replica context, wrap it in an
-      # update call.
+      # We are calling an assign function in cross replica context, wrap it in
+      # an update call.
       return distribution_strategy_context.get_distribution_strategy().update(
           self, f, *args, **kwargs)
     else:

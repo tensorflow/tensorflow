@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_LEGACY_FLAGS_DEBUG_OPTIONS_FLAGS_H_
-#define TENSORFLOW_COMPILER_XLA_LEGACY_FLAGS_DEBUG_OPTIONS_FLAGS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_DEBUG_OPTIONS_FLAGS_H_
+#define TENSORFLOW_COMPILER_XLA_DEBUG_OPTIONS_FLAGS_H_
 
 #include <vector>
 
@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/util/command_line_flags.h"
 
 namespace xla {
-namespace legacy_flags {
 
 // Appends flag definitions for debug options to flag_list.
 void AppendDebugOptionsFlags(std::vector<tensorflow::Flag>* flag_list);
@@ -32,7 +31,6 @@ void AppendDebugOptionsFlags(std::vector<tensorflow::Flag>* flag_list);
 // first.
 xla::DebugOptions GetDebugOptionsFromFlags();
 
-}  // namespace legacy_flags
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_LEGACY_FLAGS_DEBUG_OPTIONS_FLAGS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_DEBUG_OPTIONS_FLAGS_H_

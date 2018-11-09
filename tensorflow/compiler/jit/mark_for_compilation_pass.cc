@@ -65,7 +65,18 @@ struct OperationFilter {
   // TODO(b/118970344): Whether ControlTrigger ops are allowed.  It is unsound
   // to cluster ControlTrigger because of how we use deadness analysis.
   bool allow_control_trigger;
+
+  // Whether ops with dummy implementations are allowed. We avoid
+  // auto-clustering these ops so that the user is not surprised when XLA is
+  // implicitly enabled. If the user explicitly specifies to use XLA, it is fine
+  // to resort to a dummy implementation. Currently Assert and CheckNumerics ops
+  // have dummy XLA implementations.
+  bool allow_dummy_ops;
 };
+
+bool IsDummyImplOp(absl::string_view op_name) {
+  return op_name == "Assert" || op_name == "CheckNumerics";
+}
 
 bool IsStatefulRandomOp(absl::string_view op_name) {
   return op_name == "RandomUniform" || op_name == "RandomShuffle" ||
@@ -230,6 +241,9 @@ bool IsCompilableCall(const NodeDef& call_def,
       return false;
     }
     if (!op_filter.allow_control_trigger && node->IsControlTrigger()) {
+      return false;
+    }
+    if (!op_filter.allow_dummy_ops && IsDummyImplOp(node->type_string())) {
       return false;
     }
     if (!HasXLAKernel(*node, jit_device_type) &&
@@ -465,6 +479,8 @@ Status FindCompilationCandidates(
     op_filter.allow_control_trigger =
         (registration->autoclustering_policy ==
          XlaOpRegistry::AutoclusteringPolicy::kAlways);
+    op_filter.allow_dummy_ops = (registration->autoclustering_policy ==
+                                 XlaOpRegistry::AutoclusteringPolicy::kAlways);
 
     if (!HasXLAKernel(*node, jit_device_type) &&
         !IsCompilableCall(node->def(), jit_device_type, op_filter, 0,
@@ -481,6 +497,11 @@ Status FindCompilationCandidates(
     }
     if (!op_filter.allow_control_trigger && node->IsControlTrigger()) {
       VLOG(2) << "Rejecting " << node->name() << ": is a control trigger op";
+      continue;
+    }
+    if (!op_filter.allow_dummy_ops && IsDummyImplOp(node->type_string())) {
+      VLOG(2) << "Rejecting " << node->name() << ": dummy op ("
+              << node->type_string() << ")";
       continue;
     }
 
@@ -613,12 +634,14 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
                                             &registration));
   DeviceType jit_device_type(registration->compilation_device_name);
 
-  // We can always *compile* resource operations and stateful RNGs, even if we
-  // are sometimes unable to auto-cluster them.
+  // We can always *compile* resource operations, stateful RNGs and dummy ops,
+  // even if we are sometimes unable to auto-cluster them.
   OperationFilter op_filter;
   op_filter.allow_resource_ops = true;
   op_filter.allow_stateful_rng_ops = true;
   op_filter.allow_control_trigger = true;
+  op_filter.allow_dummy_ops = true;
+
   return IsCompilableCall(ndef, jit_device_type, op_filter, 0, flr);
 }
 

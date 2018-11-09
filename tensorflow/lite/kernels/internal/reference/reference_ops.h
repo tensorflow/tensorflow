@@ -2936,10 +2936,10 @@ inline void Floor(const RuntimeShape& input_shape, const float* input_data,
   }
 }
 
-template <typename T>
+template <typename T, typename CoordsT = int32>
 inline void Gather(const tflite::GatherParams& op_params,
                    const RuntimeShape& input_shape, const T* input_data,
-                   const RuntimeShape& coords_shape, const int32* coords_data,
+                   const RuntimeShape& coords_shape, const CoordsT* coords_data,
                    const RuntimeShape& output_shape, T* output_data) {
   int axis = op_params.axis;
   if (axis < 0) {

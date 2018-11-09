@@ -42,7 +42,7 @@ class GpuHloOrdering : public PredecessorHloOrdering {
 
   // Only the entry computation can possibly be sequentially ordered, and only
   // if we've assigned all instructions to a single stream.
-  const std::vector<const HloInstruction*>* SequentialOrder(
+  const HloInstructionSequence* SequentialOrder(
       const HloComputation& computation) const override {
     return &computation == module_->entry_computation() ? entry_sequence_.get()
                                                         : nullptr;
@@ -51,7 +51,7 @@ class GpuHloOrdering : public PredecessorHloOrdering {
   string ToString() const override { return ToStringHelper("GpuHloOrdering"); }
 
  private:
-  std::unique_ptr<std::vector<const HloInstruction*>> entry_sequence_;
+  std::unique_ptr<HloInstructionSequence> entry_sequence_;
 };
 
 GpuHloOrdering::GpuHloOrdering(
@@ -60,8 +60,8 @@ GpuHloOrdering::GpuHloOrdering(
     : PredecessorHloOrdering(module) {
   // The entry computation has a total order when there's only one stream.
   if (stream_assignment.StreamCount() == 1) {
-    entry_sequence_ = absl::make_unique<std::vector<const HloInstruction*>>(
-        thunk_launch_order);
+    entry_sequence_ =
+        absl::make_unique<HloInstructionSequence>(thunk_launch_order);
   }
 
   // The ordering of instructions for the entry computation is determined by the

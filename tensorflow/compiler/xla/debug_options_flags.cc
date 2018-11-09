@@ -13,17 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 
 #include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <vector>
 #include "absl/strings/str_split.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_parsers.h"
-#include "tensorflow/compiler/xla/legacy_flags/parse_flags_from_env.h"
+#include "tensorflow/compiler/xla/debug_options_parsers.h"
+#include "tensorflow/compiler/xla/parse_flags_from_env.h"
 
 namespace xla {
-namespace legacy_flags {
-
 namespace {
 
 DebugOptions* flag_values;
@@ -101,8 +99,8 @@ void AllocateFlags() {
       [](string comma_separated_values) {
         auto* extra_options_map =
             flag_values->mutable_xla_backend_extra_options();
-        impl::parse_xla_backend_extra_options(extra_options_map,
-                                              comma_separated_values);
+        parse_xla_backend_extra_options(extra_options_map,
+                                        comma_separated_values);
         return true;
       };
 
@@ -111,8 +109,8 @@ void AllocateFlags() {
       [](string reduce_precision_option_value) {
         HloReducePrecisionOptions* option_proto =
             flag_values->add_hlo_reduce_precision_options();
-        return impl::parse_xla_reduce_precision_option(
-            option_proto, reduce_precision_option_value);
+        return parse_xla_reduce_precision_option(option_proto,
+                                                 reduce_precision_option_value);
       };
 
   flag_objects = new std::vector<tensorflow::Flag>({
@@ -353,5 +351,4 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
   return *flag_values;
 }
 
-}  // namespace legacy_flags
 }  // namespace xla
