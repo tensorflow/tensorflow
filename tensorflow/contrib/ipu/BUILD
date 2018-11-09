@@ -192,15 +192,15 @@ test_suite(
     ],
 )
 
+test_suite(
+    name = "training_tests",
+    tests = [
 #TODO uncomment this once training is finished - also worth noting that an empty
 # tests field runs all the tests defined in the BUILD file, rather than none of
 # them.
-#test_suite(
-#    name = "training_tests",
-#    tests = [
 #        "lstm_training_test",
-#    ],
-#)
+    ],
+)
 
 test_suite(
     name = "poplar_test_suite",
