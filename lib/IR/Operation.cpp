@@ -18,12 +18,14 @@
 #include "mlir/IR/Operation.h"
 #include "AttributeListStorage.h"
 #include "mlir/IR/CFGFunction.h"
+#include "mlir/IR/Dialect.h"
 #include "mlir/IR/Instructions.h"
 #include "mlir/IR/MLFunction.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/Statements.h"
+
 using namespace mlir;
 
 /// Form the OperationName for an op with the specified string.  This either is
@@ -227,13 +229,16 @@ void Operation::erase() {
 /// results vector.  If not, this returns true and results is unspecified.
 bool Operation::constantFold(ArrayRef<Attribute> operands,
                              SmallVectorImpl<Attribute> &results) const {
-  // If we have a registered operation definition matching this one, use it to
-  // try to constant fold the operation.
-  if (auto *abstractOp = getAbstractOperation())
+  if (auto *abstractOp = getAbstractOperation()) {
+    // If we have a registered operation definition matching this one, use it to
+    // try to constant fold the operation.
     if (!abstractOp->constantFoldHook(this, operands, results))
       return false;
 
-  // TODO: Otherwise, fall back on the dialect hook to handle it.
+    // Otherwise, fall back on the dialect hook to handle it.
+    Dialect &dialect = abstractOp->dialect;
+    return dialect.constantFold(this, operands, results);
+  }
   return true;
 }
 

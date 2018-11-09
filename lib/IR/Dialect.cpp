@@ -41,3 +41,5 @@ Dialect::Dialect(StringRef opPrefix, MLIRContext *context)
     : opPrefix(opPrefix), context(context) {
   registerDialect(context);
 }
+
+Dialect::~Dialect() {}

@@ -39,11 +39,25 @@ public:
 
   StringRef getOperationPrefix() const { return opPrefix; }
 
-  // TODO: Constant folding hook.
+  /// Dialect implementations can implement this hook. It should attempt to
+  /// constant fold this operation with the specified constant operand values -
+  /// the elements in "operands" will correspond directly to the operands of the
+  /// operation, but may be null if non-constant.  If constant folding is
+  /// successful, this returns false and fills in the `results` vector.  If not,
+  /// this returns true and `results` is unspecified.
+  ///
+  /// If not overridden, this fallback implementation always fails to fold.
+  ///
+  virtual bool constantFold(const Operation *op, ArrayRef<Attribute> operands,
+                            SmallVectorImpl<Attribute> &results) const {
+    return true;
+  }
 
   // TODO: Hook to return the list of named types that are known.
 
   // TODO: Hook to return list of dialect defined types, like tf_control.
+
+  virtual ~Dialect();
 
 protected:
   /// The prefix should be common across all ops in this set, e.g. "" for the
