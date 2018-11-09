@@ -1853,7 +1853,7 @@ bool OpGradientDoesntRequireOutputIndices(
           {"Conv3DBackpropInputV2", {true, {}}},
           {"AvgPool3D", {true, {}}},
           {"AvgPool3DGrad", {true, {}}},
-          {"MaxPool3D", {true, {}}},
+          {"MaxPool3D", {false, {}}},
           {"MaxPool3DGrad", {true, {}}},
           {"MaxPool3DGradGrad", {true, {}}},
           {"BiasAdd", {true, {}}},
