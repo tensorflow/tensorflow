@@ -410,7 +410,6 @@ Status XlaComputationLaunchContext::PopulateOutputs(
   for (int i = 0; i < kernel->resource_updates.size(); ++i) {
     Allocator* allocator = ctx->device()->GetAllocator({});
     const XlaCompiler::ResourceUpdate& write = kernel->resource_updates[i];
-    se::DeviceMemoryBase buffer = output.buffer({output_num});
 
     if (variable_infos[i].var()->tensor()->dtype() != write.type) {
       return errors::Internal("Mismatched type in variable write");
@@ -420,17 +419,20 @@ Status XlaComputationLaunchContext::PopulateOutputs(
       Tensor output_tensor;
       TF_RETURN_IF_ERROR(
           ctx->allocate_temp(write.type, write.shape, &output_tensor));
-      XlaTensor* xla_tensor = XlaTensor::FromTensor(&output_tensor);
-      CHECK(xla_tensor);
-      xla_tensor->set_shaped_buffer(output.TakeSubTree({output_num}));
-      if (use_multiple_streams_) {
-        xla_tensor->ResetDefinitionEvent(definition_event, stream);
+      if (write.shape.num_elements() > 0) {
+        XlaTensor* xla_tensor = XlaTensor::FromTensor(&output_tensor);
+        CHECK(xla_tensor);
+        xla_tensor->set_shaped_buffer(output.TakeSubTree({output_num}));
+        if (use_multiple_streams_) {
+          xla_tensor->ResetDefinitionEvent(definition_event, stream);
+        }
       }
       *variable_infos[i].var()->tensor() = output_tensor;
     } else {
+      se::DeviceMemoryBase buffer = output.buffer({output_num});
+      output.set_buffer(xla::OwningDeviceMemory(), {output_num});
       Tensor output_tensor = XlaTensorBuffer::MakeTensor(
           write.type, write.shape, buffer, allocator);
-      output.set_buffer(xla::OwningDeviceMemory(), {output_num});
       *variable_infos[i].var()->tensor() = output_tensor;
     }
     ++output_num;
