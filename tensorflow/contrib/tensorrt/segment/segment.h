@@ -53,7 +53,7 @@ struct SegmentOptions {
 // @return the status.
 tensorflow::Status SegmentGraph(
     const tensorflow::Graph* tf_graph,
-    const std::function<Status(const tensorflow::Node*, int)>& candidate_fn,
+    const std::function<Status(const tensorflow::Node*)>& candidate_fn,
     const std::function<bool(const tensorflow::Edge*)>& input_candidate_fn,
     const std::function<bool(const tensorflow::Edge*)>& output_candidate_fn,
     const SegmentOptions& options, SegmentNodesVector* segments);

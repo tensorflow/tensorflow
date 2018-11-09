@@ -491,7 +491,6 @@ cuda_py_tests(
         "test/memory_alignment_test.py",
         "test/multi_connection_neighbor_engine_test.py",
         "test/neighboring_engine_test.py",
-        "test/quantization_mnist_test.py",
         "test/quantization_test.py",
         "test/rank_two_test.py",
         "test/reshape_transpose_test.py",
@@ -502,6 +501,28 @@ cuda_py_tests(
         ":tf_trt_integration_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+    ],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
+)
+
+cuda_py_tests(
+    name = "tf_trt_quantization_mnist_integration_test",
+    srcs = [
+        "test/quantization_mnist_test.py",
+    ],
+    additional_deps = [
+        ":tf_trt_integration_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/keras:keras",
+        "//tensorflow/python/estimator:estimator",
+    ],
+    data =[
+      "//tensorflow/contrib/tensorrt/test/quantization_mnist_test_data:quantization_mnist_data",
     ],
     tags = [
         "no_cuda_on_cpu_tap",

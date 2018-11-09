@@ -389,7 +389,7 @@ void ContractEdge(SimpleEdge* edge, SimpleGraph* graph,
 
 tensorflow::Status SegmentGraph(
     const tensorflow::Graph* tf_graph,
-    const std::function<Status(const tensorflow::Node*, int)>& candidate_fn,
+    const std::function<Status(const tensorflow::Node*)>& candidate_fn,
     const std::function<bool(const tensorflow::Edge*)>& input_candidate_fn,
     const std::function<bool(const tensorflow::Edge*)>& output_candidate_fn,
     const SegmentOptions& options, SegmentNodesVector* segments) {
@@ -414,7 +414,7 @@ tensorflow::Status SegmentGraph(
               << " (excluded by segmenter option).";
       node = nullptr;
     } else {
-      const Status status = candidate_fn(node->tf_node(), options.precision_mode);
+      const Status status = candidate_fn(node->tf_node());
       if (!status.ok()) {
         VLOG(1) << "Not a TF-TRT candidate: " << node->name() << ": " << status;
         node = nullptr;

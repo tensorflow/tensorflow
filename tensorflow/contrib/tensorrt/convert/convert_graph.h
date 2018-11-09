@@ -35,16 +35,20 @@ namespace convert {
 // supported by TRT.
 class TrtCandidateSelector {
  public:
-  TrtCandidateSelector(const grappler::GraphProperties& graph_properties);
+  TrtCandidateSelector(const grappler::GraphProperties& graph_properties,
+                       int precision_mode);
 
   // Returns OK iff 'node' is a TF-TRT conversion candidate, which will be added
   // to TRT subgraph and later converted into TRT engine.
-  Status IsTensorRTCandidate(const tensorflow::Node* node, int precision_mode);
+  Status IsTensorRTCandidate(const tensorflow::Node* node);
 
  private:
   // The TF-TRT node converter used to verify whether individual node is
   // supported. It will operate in validation-only mode.
   TrtNodeValidator validator_;
+
+  // Quantization ops are only converted when using quantized precisions.
+  int precision_mode_;
 
   // GraphProperties of the graph whose nodes are to be validated by
   // IsTensorRTCandidate().

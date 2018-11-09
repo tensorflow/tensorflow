@@ -82,10 +82,11 @@ std::vector<int> GetLoadedTensorRTVersion() {
 }
 
 TrtCandidateSelector::TrtCandidateSelector(
-    const grappler::GraphProperties& graph_properties)
-    : graph_properties_(graph_properties) {}
+    const grappler::GraphProperties& graph_properties,
+    int precision_mode)
+    : graph_properties_(graph_properties), precision_mode_(precision_mode) {}
 
-Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node, int precision_mode) {
+Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
   // TODO(laigd): move this set to TrtNodeValidator where it should belong.
   // LINT.IfChange
   static const std::set<string> candidate_ops = {
@@ -134,14 +135,15 @@ Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node, i
       PluginFactoryTensorRT::GetInstance()->IsPlugin(node->type_string()));
 #if NV_TENSORRT_MAJOR >= 5
   static const std::set<string> quantize_ops = {
-    "QuantizeV2",
-    "Dequantize",
     "QuantizeAndDequantizeV2",
     "QuantizeAndDequantizeV3",
     "FakeQuantWithMinMaxVars",
     "FakeQuantWithMinMaxArgs",
   };
-  if (precision_mode == INT8MODE &&
+  // In INT8 mode, we will always apply the quantization ranges provided by
+  // these ops to the relevant tensors. This happens regardless of the value of
+  // use_calibration.
+  if (precision_mode_ == INT8MODE &&
       quantize_ops.count(node->type_string())) {
     is_supported_op_type = true;
   }
@@ -885,11 +887,12 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
   segment_options.minimum_segment_size = params.minimum_segment_size;
   segment_options.precision_mode = params.precision_mode;
   tensorflow::tensorrt::segment::SegmentNodesVector initial_segments;
-  TrtCandidateSelector candidate_selector(*params.graph_properties);
+  TrtCandidateSelector candidate_selector(*params.graph_properties,
+                                          params.precision_mode);
   TF_RETURN_IF_ERROR(tensorrt::segment::SegmentGraph(
       &graph,
       std::bind(&TrtCandidateSelector::IsTensorRTCandidate, &candidate_selector,
-                std::placeholders::_1, std::placeholders::_2),
+                std::placeholders::_1),
       // Input validation is already done by TrtCandidateSelector, so we don't
       // need to check the input edges.
       [](const Edge* edge) { return true; }, OutputEdgeValidator(),

@@ -93,17 +93,17 @@ TEST(TrtCandidateSelector, Basics) {
   grappler::GraphProperties graph_properties(item);
   TF_EXPECT_OK(graph_properties.InferStatically(true));
 
-  TrtCandidateSelector selector(graph_properties);
-  TF_EXPECT_OK(selector.IsTensorRTCandidate(matmul.operation.node(), FP32MODE));
+  TrtCandidateSelector selector(graph_properties, FP32MODE);
+  TF_EXPECT_OK(selector.IsTensorRTCandidate(matmul.operation.node()));
   ExpectStatus(
-      selector.IsTensorRTCandidate(incompatible_matmul.operation.node(), FP32MODE),
+      selector.IsTensorRTCandidate(incompatible_matmul.operation.node()),
       error::INVALID_ARGUMENT,
       "transpose_a is not supported for TensorRT FullyConnected "
       "(op: MatMul), at: incompatible_matmul");
-  ExpectStatus(selector.IsTensorRTCandidate(unsupported_op.operation.node(), FP32MODE),
+  ExpectStatus(selector.IsTensorRTCandidate(unsupported_op.operation.node()),
                error::UNIMPLEMENTED, "Op type Sin is not supported");
   ExpectStatus(selector.IsTensorRTCandidate(
-                   matmul_with_incompatible_input.operation.node(), FP32MODE),
+                   matmul_with_incompatible_input.operation.node()),
                error::INTERNAL,
                "Failed to convert input with index 0 to a TRT_TensorOrWeights");
 }

@@ -1,9 +1,31 @@
-import tensorflow as tf
-import tensorflow.contrib.tensorrt as trt
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+
 import numpy as np
-import argparse
+import os
+
+import tensorflow as tf
+from tensorflow.contrib.tensorrt.python.trt_convert import create_inference_graph
+from tensorflow.core.protobuf import config_pb2 
+from tensorflow.python.keras.datasets import mnist
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
+from tensorflow.python import estimator as tf_estimator
+from tensorflow.python.estimator.estimator import Estimator
+from tensorflow.python.estimator.run_config import RunConfig
+from tensorflow.python.estimator.model_fn import ModeKeys, EstimatorSpec
 
 INPUT_NODE_NAME = 'input'
 OUTPUT_NODE_NAME = 'output'
@@ -67,7 +89,7 @@ def run(is_training, use_trt, batch_size, num_epochs, model_dir):
     model_dir: Where to save or load checkpoint.
   """
   # Get dataset
-  train, test = tf.keras.datasets.mnist.load_data()
+  train, test = mnist.load_data()
   
   def eval_input_fn():
     mnist_x, mnist_y = test
@@ -76,7 +98,6 @@ def run(is_training, use_trt, batch_size, num_epochs, model_dir):
         map_func=preprocess_fn,
         batch_size=batch_size,
         num_parallel_calls=8))
-    dataset = dataset.prefetch(buffer_size=tf.contrib.data.AUTOTUNE)
     dataset = dataset.repeat(count=1)
     iterator = dataset.make_one_shot_iterator()
     features, labels = iterator.get_next()
@@ -90,7 +111,6 @@ def run(is_training, use_trt, batch_size, num_epochs, model_dir):
         map_func=preprocess_fn,
         batch_size=batch_size,
         num_parallel_calls=8))
-    dataset = dataset.prefetch(buffer_size=tf.contrib.data.AUTOTUNE)
     dataset = dataset.repeat(count=num_epochs)
     iterator = dataset.make_one_shot_iterator()
     features, labels = iterator.get_next()
@@ -115,27 +135,27 @@ def run(is_training, use_trt, batch_size, num_epochs, model_dir):
         predictions=classes_out,
         name='acc_op')
     tf.summary.scalar('accuracy', accuracy[1])
-    if mode == tf.estimator.ModeKeys.EVAL:
-      return tf.estimator.EstimatorSpec(
+    if mode == ModeKeys.EVAL:
+      return EstimatorSpec(
           mode,
           loss=loss,
           eval_metric_ops={'accuracy': accuracy})
-    elif mode == tf.estimator.ModeKeys.TRAIN:
+    elif mode == ModeKeys.TRAIN:
       optimizer = tf.train.AdamOptimizer(learning_rate=1e-2)
       train_op = optimizer.minimize(
           loss,
           global_step=tf.train.get_global_step())
-      return tf.estimator.EstimatorSpec(
+      return EstimatorSpec(
           mode,
           loss=loss,
           train_op=train_op)
 
-  tf_config = tf.ConfigProto()
+  tf_config = config_pb2.ConfigProto()
   tf_config.gpu_options.allow_growth = True
-  estimator = tf.estimator.Estimator(
+  estimator = Estimator(
       model_fn=model_fn,
-      model_dir=model_dir,
-      config=tf.estimator.RunConfig(session_config=tf_config))
+      model_dir=None,
+      config=RunConfig(session_config=tf_config))
   if is_training:
     estimator.train(train_input_fn)
   results = estimator.evaluate(eval_input_fn)
@@ -163,7 +183,7 @@ def get_graph_def(use_trt, batch_size, model_dir):
   # Convert with TF-TRT
   if use_trt:
     print('nodes before:', len(graph_def.node))
-    graph_def = trt.create_inference_graph(graph_def,
+    graph_def = create_inference_graph(graph_def,
         outputs=[OUTPUT_NODE_NAME],
         max_batch_size=batch_size,
         precision_mode='int8',
@@ -180,16 +200,17 @@ def get_graph_def(use_trt, batch_size, model_dir):
 class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
 
   def testEval(self):
+    model_dir = test.test_src_dir_path('contrib/tensorrt/test/quantization_mnist_test_data')
     acc_tf = run(is_training=False,
         use_trt=False,
         batch_size=128,
         num_epochs=None,
-        model_dir='./quantization_mnist_test_data')['accuracy']
+        model_dir=model_dir)['accuracy']
     acc_tftrt = run(is_training=False,
         use_trt=True,
         batch_size=128,
         num_epochs=None,
-        model_dir='./quantization_mnist_test_data')['accuracy']
+        model_dir=model_dir)['accuracy']
     self.assertAllClose(acc_tf, 0.9717)
     self.assertAllClose(acc_tftrt, 0.9744)
 

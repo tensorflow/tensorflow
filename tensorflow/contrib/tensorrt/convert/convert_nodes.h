@@ -395,7 +395,9 @@ class TrtNodeValidator {
 // Class to convert TF nodes to TRT network.
 class Converter {
  public:
-  Converter(nvinfer1::INetworkDefinition* trt_network, bool is_fp16);
+  Converter(nvinfer1::INetworkDefinition* trt_network,
+            int precision_mode,
+            bool use_calibration);
 
   //////////////////////////////////////////////////////////////////////////////
   // Methods used by the TRT engine builder to build a TRT network from a TF
@@ -425,8 +427,11 @@ class Converter {
   // to add TRT layers.
   nvinfer1::INetworkDefinition* network() { return trt_network_; }
 
-  // Is the converter operating in fp16 mode?
-  bool is_fp16() const { return is_fp16_; }
+  // What precision are we targeting?
+  int precision_mode() const { return precision_mode_; }
+
+  // Calibration will be or was previously performed on this network?
+  bool use_calibration() const { return use_calibration_; }
 
   // This should be called on the inputs and outputs of any layer we create
   // where we know that the quantization range does not change during that
@@ -480,7 +485,7 @@ class Converter {
   
   // Gets the min and max value in a TRT_ShapedWeights
   Status GetWeightRange(const TRT_ShapedWeights& weights,
-                        float* out_min, float* out_max);
+                        float* out_min, float* out_max) const;
 
   // Registered op converters by op type.
   std::unordered_map<string, OpConverter> op_registry_;
@@ -513,7 +518,9 @@ class Converter {
   std::vector<std::pair<nvinfer1::ITensor*,nvinfer1::ITensor*>>
       quantization_infer_;
 
-  const bool is_fp16_;
+  const int precision_mode_;
+
+  const bool use_calibration_;
 
   // Batch size of inputs to trt_network_ added by AddInputTensor(). During
   // network construction it will update this, use it to verify the batch
