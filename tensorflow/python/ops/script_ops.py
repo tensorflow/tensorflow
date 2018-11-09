@@ -311,7 +311,7 @@ def eager_py_func(func, inp, Tout, name=None):
   This function allows expressing computations in a TensorFlow graph as
   Python functions. In particular, it wraps a Python function `func`
   in a once-differentiable TensorFlow operation that executes it with eager
-  exeuction enabled. As a consequence, `tf.contrib.eager.py_func` makes it
+  execution enabled. As a consequence, `tf.contrib.eager.py_func` makes it
   possible to express control flow using Python constructs (`if`, `while`,
   `for`, etc.), instead of TensorFlow control flow constructs (`tf.cond`,
   `tf.while_loop`). For example, you might use `tf.contrib.eager.py_func` to
