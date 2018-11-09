@@ -2020,6 +2020,7 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
   PyObject* op_outputs;
   bool op_outputs_tuple_created = false;
   std::pair<bool, tensorflow::gtl::FlatSet<int>>* outputs_not_required;
+
   if (OpGradientDoesntRequireOutputIndices(c_op_name, &outputs_not_required)) {
     if (outputs_not_required->first) {
       op_outputs = Py_None;
