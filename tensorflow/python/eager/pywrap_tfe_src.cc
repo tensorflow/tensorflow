@@ -1853,7 +1853,7 @@ bool OpGradientDoesntRequireOutputIndices(
           {"Conv3DBackpropInputV2", {true, {}}},
           {"AvgPool3D", {true, {}}},
           {"AvgPool3DGrad", {true, {}}},
-          {"MaxPool3D", {true, {}}},
+          {"MaxPool3D", {false, {}}},
           {"MaxPool3DGrad", {true, {}}},
           {"MaxPool3DGradGrad", {true, {}}},
           {"BiasAdd", {true, {}}},
@@ -2020,7 +2020,6 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
   PyObject* op_outputs;
   bool op_outputs_tuple_created = false;
   std::pair<bool, tensorflow::gtl::FlatSet<int>>* outputs_not_required;
-
   if (OpGradientDoesntRequireOutputIndices(c_op_name, &outputs_not_required)) {
     if (outputs_not_required->first) {
       op_outputs = Py_None;

@@ -179,7 +179,7 @@ def _AvgPool3DGradGrad(op, grad):
 def _MaxPool3DGrad(op, grad):
   return gen_nn_ops.max_pool3d_grad(
       op.inputs[0],
-      op.inputs[0],
+      op.outputs[0],
       grad,
       ksize=op.get_attr("ksize"),
       strides=op.get_attr("strides"),
