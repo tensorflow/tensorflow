@@ -24,6 +24,7 @@ import gast
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
+from tensorflow.python.util import tf_inspect
 
 
 class CleanCopier(object):
@@ -311,3 +312,40 @@ def parallel_walk(node, other):
         raise ValueError(
             'inconsistent values for field {}: {} and {}'.format(
                 f, n_child, o_child))
+
+
+class LambdaMatcher(gast.NodeVisitor):
+  """Finds nodes that match a given lambda function's signature."""
+
+  def __init__(self, lambda_fn):
+    self.lambda_fn = lambda_fn
+    self.matching_nodes = []
+
+  def visit_Lambda(self, node):
+    self.generic_visit(node)
+
+    arg_spec = tf_inspect.getfullargspec(self.lambda_fn)
+
+    node_args = tuple(arg.id for arg in node.args.args)
+    if node_args != tuple(arg_spec.args):
+      return
+
+    node_varargs = None if node.args.vararg is None else node.args.vararg.arg
+    if arg_spec.varargs != node_varargs:
+      return
+
+    node_varkw = None if node.args.kwarg is None else node.args.kwarg.arg
+    if arg_spec.varkw != node_varkw:
+      return
+
+    node_kwonlyargs = tuple(arg.id for arg in node.args.kwonlyargs)
+    if node_kwonlyargs != tuple(arg_spec.kwonlyargs):
+      return
+
+    self.matching_nodes.append(node)
+
+
+def find_matching_lambda_definitions(node, f):
+  matcher = LambdaMatcher(f)
+  matcher.visit(node)
+  return tuple(matcher.matching_nodes)
