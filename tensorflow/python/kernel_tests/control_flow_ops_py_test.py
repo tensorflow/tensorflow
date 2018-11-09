@@ -2097,8 +2097,12 @@ class ControlFlowTest(test.TestCase):
                                         [tensor_shape.unknown_shape()])
         return gradients_impl.gradients(r, x)
 
-      r = control_flow_ops.cond(math_ops.less(1, 2), fn1, lambda: x)
-      self.assertAllClose(9.0, r.eval(feed_dict={x: 1.0}))
+      #placed lambda function return tensor in list and set strict flag to True
+      #as cond_v2 implementation preserves nested output structures even with singeltons
+      r = control_flow_ops.cond(math_ops.less(1, 2), fn1, lambda: [x], strict=True)
+      #cannot run eval() on list object so use sess.run() and save output
+      result = sess.run(r,feed_dict={x: 1.0})
+      self.assertAllClose([9.0], result)
 
   @test_util.disable_control_flow_v2("b/116340060")
   def testGradInWhileWrtInitialLoopVal(self):
