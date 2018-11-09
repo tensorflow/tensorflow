@@ -458,19 +458,22 @@ class DistributionStrategy(object):
       kwargs["use_resource"] = True
       return self._create_variable(*args, **kwargs)
 
-    def disable_partitioned_variables(getter, *args, **kwargs):
-      if kwargs.pop("partitioner", None) is not None:
-        tf_logging.log_first_n(
-            tf_logging.WARN, "Partitioned variables are disabled when using "
-            "DistributionStrategy.", 1)
+    def distributed_getter(getter, *args, **kwargs):
+      if not self._allow_variable_partition():
+        if kwargs.pop("partitioner", None) is not None:
+          tf_logging.log_first_n(
+              tf_logging.WARN, "Partitioned variables are disabled when using "
+              "current DistributionStrategy.", 1)
       return getter(*args, **kwargs)
 
     return _CurrentDistributionContext(
         self, variable_scope.variable_creator_scope(creator_with_resource_vars),
         variable_scope.variable_scope(
             variable_scope.get_variable_scope(),
-            custom_getter=disable_partitioned_variables),
-        self._default_device)
+            custom_getter=distributed_getter), self._default_device)
+
+  def _allow_variable_partition(self):
+    return False
 
   def _create_variable(self, next_creator, *args, **kwargs):
     # Note: should support "colocate_with" argument.

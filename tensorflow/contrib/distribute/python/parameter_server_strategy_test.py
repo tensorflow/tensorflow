@@ -37,6 +37,7 @@ from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
+from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -177,6 +178,75 @@ class ParameterServerStrategyTestBase(
         self.assertEqual(y_val, 33.0)
         self.assertEqual(z_val, 43.0)
         self.assertEqual(f_val, 46.0)
+
+  def _test_device_assignment_distributed_enable_partitioner(
+      self, task_type, task_id, num_gpus):
+    d, _, sess_config = self._get_test_objects(task_type, task_id, num_gpus)
+    num_shards = len(d.parameter_devices)
+    partitioner = partitioned_variables.fixed_size_partitioner(num_shards)
+    with ops.Graph().as_default(), \
+         self.cached_session(target=self._default_target,
+                             config=sess_config) as sess, \
+         d.scope():
+
+      n = variable_scope.get_variable(
+          'n',
+          initializer=constant_op.constant([10.0, 20.0]),
+          aggregation=variable_scope.VariableAggregation.SUM,
+          partitioner=partitioner)
+
+      for part_id, var in enumerate(n):
+        self.assertEqual(var.device, '/job:ps/task:%d' % part_id)
+
+      def model_fn():
+        a = constant_op.constant([3.0, 5.0])
+        # The device scope is ignored for variables but not for normal ops.
+        with ops.device('/job:worker/task:0'):
+          x = variable_scope.get_variable(
+              'x',
+              initializer=constant_op.constant([10.0, 20.0]),
+              aggregation=variable_scope.VariableAggregation.SUM,
+              partitioner=partitioner)
+          x_add = x.assign_add(a, name='x_add')
+        # The variable x is on the task 1 since the device_function has been
+        # called once before the model_fn.
+        for part_id, var in enumerate(x):
+          self.assertEqual(var.device, '/job:ps/task:%d' % part_id)
+          self.assertEqual(var.device, x_add[part_id].device)
+
+        # The colocate_vars_with can override the distribution's device.
+        with d.colocate_vars_with(x_add[0]):
+          y = variable_scope.get_variable(
+              'y',
+              initializer=constant_op.constant([20.0, 10.0]),
+              aggregation=variable_scope.VariableAggregation.SUM,
+              partitioner=partitioner)
+        y_add = y.assign_add(
+            [array_ops.identity(x_add[0]),
+             array_ops.identity(x_add[1])])
+
+        for part_id, var in enumerate(y):
+          self.assertEqual(var.device, '/job:ps/task:0')
+          self.assertEqual(y_add[part_id].device, var.device)
+          self.assertEqual(var.device, x_add[0].device)
+
+        return x_add, y_add
+
+      x, y = d.call_for_each_tower(model_fn)
+
+      if context.num_gpus() >= 1:
+        variables.global_variables_initializer().run()
+        x_val, y_val = sess.run([x, y])
+        if num_gpus < 1:
+          self.assertEqual(x_val, [13.0, 25.0])
+          self.assertEqual(y_val, [33.0, 35.0])
+        else:
+          x_expect = [10.0 + 3 * num_gpus, 20.0 + 5 * num_gpus]
+          y_expect = [
+              20.0 + x_expect[0] * num_gpus, 10.0 + x_expect[1] * num_gpus
+          ]
+          self.assertEqual(x_val, x_expect)
+          self.assertEqual(y_val, y_expect)
 
   def _test_device_assignment_local(self,
                                     d,
@@ -478,6 +548,12 @@ class ParameterServerStrategyTest(ParameterServerStrategyTestBase,
       combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
   def testDeviceAssignmentDistributed(self, num_gpus):
     self._test_device_assignment_distributed('worker', 1, num_gpus)
+
+  @combinations.generate(
+      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
+  def testDeviceAssignmentDistributedEnablePartitioner(self, num_gpus):
+    self._test_device_assignment_distributed_enable_partitioner(
+        'worker', 1, num_gpus)
 
   def testSimpleBetweenGraph(self):
     self._run_between_graph_clients(self._test_simple_increment,
