@@ -223,7 +223,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
 
   def distribute_dataset(self, dataset_fn):
     """Distributes the dataset to each local GPU."""
-    return values.PerDeviceDataset(
+    return values.PerReplicaDataset(
         self._call_dataset_fn(dataset_fn), self._compute_devices, True)
 
   def _broadcast(self, tensor, destinations):
@@ -339,9 +339,9 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
               "You cannot update variable with a Mirrored object with multiple "
               "components %r when using ParameterServerStrategy. You must "
               "specify a single value or a Mirrored with a single value." % x)
-      elif isinstance(x, values.PerDevice):
+      elif isinstance(x, values.PerReplica):
         raise ValueError(
-            "You cannot update variable with a PerDevice object %r when using "
+            "You cannot update variable with a PerReplica object %r when using "
             "ParameterServerStrategy. You must specify a single value or a "
             "Mirrored with a single value" % x)
       else:

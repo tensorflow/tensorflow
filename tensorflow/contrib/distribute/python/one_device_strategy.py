@@ -62,7 +62,7 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
       return next_creator(*args, **kwargs)
 
   def distribute_dataset(self, dataset_fn):
-    return values.PerDeviceDataset(
+    return values.PerReplicaDataset(
         self._call_dataset_fn(dataset_fn), [self._device],
         self._prefetch_on_device)
 
