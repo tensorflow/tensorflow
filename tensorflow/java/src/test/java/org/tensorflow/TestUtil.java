@@ -24,7 +24,7 @@ public class TestUtil {
 
   public static final class AutoCloseableList<E extends AutoCloseable> extends ArrayList<E>
       implements AutoCloseable {
-    AutoCloseableList(Collection<? extends E> c) {
+    public AutoCloseableList(Collection<? extends E> c) {
       super(c);
     }
 

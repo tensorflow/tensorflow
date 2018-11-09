@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
+import numpy as _np  # Avoids becoming a part of public Tensorflow API.
 
 from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.compiler.xla.python_api import types
@@ -111,7 +111,7 @@ def _CreateShapeFromNumpy(ndarray):  # pylint: disable=invalid-name
 
   # Set the shape's layout based on the ordering of ndarray.
   # Numpy arrays come in two orders: Fortran (column-major) and C (row-major).
-  if np.isfortran(ndarray):
+  if _np.isfortran(ndarray):
     # Column-major layout. This corresponds to a "dimension order is
     # minor-to-major" layout in XLA.
     layout = range(ndarray.ndim)

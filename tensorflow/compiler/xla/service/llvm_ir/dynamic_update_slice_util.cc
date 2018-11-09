@@ -40,7 +40,7 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
     const Shape& update_shape, const ElementGenerator& start_indices_generator,
     bool is_signed, ElementGenerator update_array_generator,
     const IrArray& output_array, const gpu::LaunchDimensions* launch_dimensions,
-    tensorflow::StringPiece name, llvm::IRBuilder<>* b) {
+    absl::string_view name, llvm::IRBuilder<>* b) {
   const Shape& output_shape = output_array.GetShape();
 
   // Read start indices from start_indices_generator.
@@ -99,10 +99,10 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
   return LoopEmitter(loop_body_emitter, update_shape, b).EmitLoop(name);
 }
 
-Status EmitDynamicUpdateSliceInPlace(
-    tensorflow::gtl::ArraySlice<IrArray> operand_arrays,
-    const IrArray& output_array, tensorflow::StringPiece name,
-    llvm::IRBuilder<>* b) {
+Status EmitDynamicUpdateSliceInPlace(absl::Span<const IrArray> operand_arrays,
+                                     const IrArray& output_array,
+                                     absl::string_view name,
+                                     llvm::IRBuilder<>* b) {
   VLOG(2) << "EmitDynamicUpdateSliceInPlace for " << name;
 
   // No need to use operand_arrays[0], the input array of the
@@ -131,7 +131,7 @@ Status EmitDynamicUpdateSliceInPlace(
 // Emits a sequential loop if launch_dimensions is null.
 static Status EmitFusedDynamicUpdateSliceInPlaceImpl(
     HloInstruction* fusion,
-    tensorflow::gtl::ArraySlice<IrArray> fusion_operand_arrays,
+    GeneratorForOperandIrArrays operand_arrays_generator,
     const IrArray& fusion_output_array, ElementalIrEmitter* elemental_emitter,
     const gpu::LaunchDimensions* launch_dimensions, llvm::IRBuilder<>* b) {
   CHECK_EQ(fusion->opcode(), HloOpcode::kFusion);
@@ -161,7 +161,8 @@ static Status EmitFusedDynamicUpdateSliceInPlaceImpl(
       LayoutUtil::CopyLayoutBetweenShapes(fusion->shape(), &update_shape));
 
   // Create element generators for update and start_indices.
-  FusedIrEmitter fused_emitter(fusion_operand_arrays, elemental_emitter);
+  FusedIrEmitter fused_emitter(std::move(operand_arrays_generator),
+                               elemental_emitter);
   TF_RETURN_IF_ERROR(dynamic_update_slice->Accept(&fused_emitter));
   ElementGenerator update_array_generator = fused_emitter.GetGenerator(update);
   ElementGenerator start_indices_generator =
@@ -175,22 +176,23 @@ static Status EmitFusedDynamicUpdateSliceInPlaceImpl(
 
 Status EmitFusedDynamicUpdateSliceInPlace(
     HloInstruction* fusion,
-    tensorflow::gtl::ArraySlice<IrArray> fusion_operand_arrays,
+    GeneratorForOperandIrArrays operand_arrays_generator,
     const IrArray& fusion_output_array, ElementalIrEmitter* elemental_emitter,
     llvm::IRBuilder<>* b) {
   return EmitFusedDynamicUpdateSliceInPlaceImpl(
-      fusion, fusion_operand_arrays, fusion_output_array, elemental_emitter,
+      fusion, std::move(operand_arrays_generator), fusion_output_array,
+      elemental_emitter,
       /*launch_dimensions=*/nullptr, b);
 }
 
 Status EmitParallelFusedDynamicUpdateSliceInPlace(
     HloInstruction* fusion,
-    tensorflow::gtl::ArraySlice<IrArray> fusion_operand_arrays,
+    GeneratorForOperandIrArrays operand_arrays_generator,
     const IrArray& fusion_output_array, ElementalIrEmitter* elemental_emitter,
     const gpu::LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* b) {
   return EmitFusedDynamicUpdateSliceInPlaceImpl(
-      fusion, fusion_operand_arrays, fusion_output_array, elemental_emitter,
-      &launch_dimensions, b);
+      fusion, std::move(operand_arrays_generator), fusion_output_array,
+      elemental_emitter, &launch_dimensions, b);
 }
 
 }  // namespace llvm_ir

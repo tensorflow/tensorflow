@@ -20,15 +20,15 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib import linalg
 from tensorflow.contrib.distributions.python.ops.bijectors.affine_linear_operator import AffineLinearOperator
+from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.platform import test
 
 
 class AffineLinearOperatorTest(test.TestCase):
 
   def testIdentity(self):
-    with self.test_session():
+    with self.cached_session():
       affine = AffineLinearOperator(
           validate_args=True)
       x = np.array([[1, 0, -1], [2, 3, 4]], dtype=np.float32)
@@ -45,7 +45,7 @@ class AffineLinearOperatorTest(test.TestCase):
           affine.forward_log_det_jacobian(x, event_ndims=2).eval())
 
   def testDiag(self):
-    with self.test_session():
+    with self.cached_session():
       shift = np.array([-1, 0, 1], dtype=np.float32)
       diag = np.array([[1, 2, 3],
                        [2, 5, 6]], dtype=np.float32)
@@ -67,7 +67,7 @@ class AffineLinearOperatorTest(test.TestCase):
           affine.forward_log_det_jacobian(x, event_ndims=1).eval())
 
   def testTriL(self):
-    with self.test_session():
+    with self.cached_session():
       shift = np.array([-1, 0, 1], dtype=np.float32)
       tril = np.array([[[3, 0, 0],
                         [2, -1, 0],

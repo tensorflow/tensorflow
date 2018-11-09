@@ -89,7 +89,13 @@ class ModelAverageCustomGetter(object):
       self._local_2_global[local_var] = global_variable
       return local_var
     else:
-      return getter(name, trainable, collections, *args, **kwargs)
+      kwargs['trainable'] = trainable
+      kwargs['collections'] = collections
+      if ops.GraphKeys.LOCAL_VARIABLES in collections:
+        with ops.device(self._worker_device):
+          return getter(name, *args, **kwargs)
+      else:
+        return getter(name, *args, **kwargs)
 
 
 class ModelAverageOptimizer(optimizer.Optimizer):

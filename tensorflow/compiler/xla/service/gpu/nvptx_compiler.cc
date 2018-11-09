@@ -21,41 +21,46 @@ limitations under the License.
 #include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <utility>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
-#include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_pad_for_tensor_cores.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
-#include "tensorflow/compiler/xla/service/gpu/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/nvptx_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
-#include "tensorflow/compiler/xla/service/gpu/pad_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
+#include "tensorflow/compiler/xla/service/gpu/variadic_op_splitter.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
@@ -74,7 +79,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
-#include "tensorflow/compiler/xla/service/while_loop_invariant_code_motion.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -83,7 +87,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -125,16 +128,22 @@ string GetLibdeviceDir(const string& config_cuda_data_dir) {
             << potential_libdevice_dir;
   }
 
+  LOG(WARNING) << "Unable to find libdevice dir. Using '.'";
   // Last resort: maybe in the current folder.
   return ".";
 }
 
 // Runs optimization passes on the given HLO module.
+//
+// It takes a compiler pointer, as passes may compile and execute HLOs on the
+// fly for cuDNN verification or other purposes.
 Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
-                         DeviceMemoryAllocator* device_allocator) {
+                         DeviceMemoryAllocator* device_allocator,
+                         Compiler* compiler) {
   {
     HloPassPipeline pipeline("optimization");
-    pipeline.AddInvariantChecker<HloVerifier>();
+    pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
+                                              /*allow_mixed_precision=*/false);
     pipeline.AddPass<GpuHloSupportChecker>();
     ReducePrecisionInsertion::AddPasses(
         &pipeline, hlo_module->config().debug_options(),
@@ -146,12 +155,12 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // support BF16 operations without directly implementing a BF16 lowering for
     // most ops.
     pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
-    pipeline.AddPass<DotDecomposer>();
 
     {
       auto& pass =
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
-      pass.AddInvariantChecker<HloVerifier>();
+      pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
+                                            /*allow_mixed_precision=*/false);
 
       // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
       // where possible.  Not every batchnorm op can be implemented as a call to
@@ -194,18 +203,48 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
 
   {
     // Convert convolutions into CustomCalls to cudnn, then canonicalize them
-    // (PadInsertion).
+    // (CudnnConvPaddingLegalization).
     HloPassPipeline pipeline("conv_canonicalization");
-    pipeline.AddInvariantChecker<HloVerifier>();
-    pipeline.AddPass<CudnnConvolutionRewriter>();
-    pipeline.AddPass<PadInsertion>();
+    pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
+                                              /*allow_mixed_precision=*/false);
+    pipeline.AddPass<CudnnConvRewriter>();
+    pipeline.AddPass<CudnnFusedConvRewriter>();
+    pipeline.AddPass<CudnnConvPaddingLegalization>();
+    if (IsVoltaOrLater(*stream_exec)) {
+      pipeline.AddPass<CudnnConvPadForTensorCores>();
+      // CudnnConvPadForTensorCores leaves behind unnecessary
+      // tuple/get-tuple-element pairs that TupleSimplifier fixes.
+      pipeline.AddPass<TupleSimplifier>();
+    }
+    // CudnnConvRewriter, CudnnConvPaddingLegalization and
+    // CudnnConvPadForTensorCores may add instructions which can be simplified
+    // by constant folding.
+    pipeline.AddPass<HloConstantFolding>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
   {
-    HloPassPipeline pipeline("layout_assignment");
+    // Run layout assignment in a separate pipeline from
+    // "post-layout-assignment" because we want everything after layout
+    // assignment to have a layout-sensitive invariant-checker, but
+    // HloPassPipeline also runs its invariant checker before any passes are
+    // run, meaning, the pipeline that contains layout assignment cannot contain
+    // a layout-sensitive verifier!
+    HloPassPipeline pipeline("layout assignment");
     pipeline.AddPass<GpuLayoutAssignment>(
-        hlo_module->mutable_entry_computation_layout(), stream_exec);
+        hlo_module->mutable_entry_computation_layout(),
+        LayoutAssignment::InstructionCanChangeLayout, stream_exec);
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
+  {
+    HloPassPipeline pipeline("post-layout_assignment");
+    /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
+     * fixing the ticket. */
+    pipeline.AddInvariantChecker<HloVerifier>(
+        /*layout_sensitive=*/true,
+        /*allow_mixed_precision=*/false,
+        LayoutAssignment::InstructionCanChangeLayout);
 
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
@@ -218,7 +257,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // Choose the fastest algorithm for each conv.
     //
     // We pick the algorithm before fusion so we can generate better HLO. After
-    // CudnnConvolutionRewriter, our convolutions are CustomCalls which return a
+    // CudnnConvRewriter, our convolutions are CustomCalls which return a
     // tuple (conv_result, scratch_memory), and the each conv uses 0 bytes of
     // scratch:
     //
@@ -236,12 +275,12 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // The new tuple and gte instructions then be simplified away, because
     // nobody is expected to use the scratch value.
     //
-    // However, if we were to run CudnnConvolutionAlgorithmPicker after fusion
+    // However, if we were to run CudnnConvAlgorithmPicker after fusion
     // the gte(customcall, 0) would probably already be into a fusion node.  We
     // can't simplify across HloComputation boundaries, so in this case we
     // wouldn't be able to simplify away the new_tuple bits.
-    pipeline.AddPass<CudnnConvolutionAlgorithmPicker>(stream_exec,
-                                                      device_allocator);
+    pipeline.AddPass<CudnnConvAlgorithmPicker>(stream_exec, device_allocator,
+                                               compiler);
     // Clean up new_tuple described above.
     pipeline.AddPass<TupleSimplifier>();
 
@@ -251,17 +290,30 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
 
   {
     HloPassFix<HloPassPipeline> fusion("fusion");
-    fusion.AddInvariantChecker<HloVerifier>();
+    // We try to split variadic ops with many parameters into several such ops
+    // to avoid exceeding the parameter space.
+    fusion.AddPass<VariadicOpSplitter>();
+    /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
+     * fixing the ticket. */
+    fusion.AddInvariantChecker<HloVerifier>(
+        /*layout_sensitive=*/true,
+        /*allow_mixed_precision=*/false,
+        LayoutAssignment::InstructionCanChangeLayout);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/false);
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true);
     fusion.AddPass<FusionMerger>();
     fusion.AddPass<GpuMultiOutputFusion>();
     fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
                            /*only_fusion_computations=*/true);
+    fusion.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
 
     HloPassPipeline reduce_pipeline("reduce-precision");
-    reduce_pipeline.AddInvariantChecker<HloVerifier>();
+    /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
+     * fixing the ticket. */
+    reduce_pipeline.AddInvariantChecker<HloVerifier>(
+        /*is_layout_sensitive=*/true, /*allow_mixed_precision=*/false,
+        LayoutAssignment::InstructionCanChangeLayout);
     ReducePrecisionInsertion::AddPasses(
         &reduce_pipeline, hlo_module->config().debug_options(),
         ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
@@ -275,14 +327,6 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     }
   }
 
-  {
-    // Do an aggressive LICM pass over while loops.  In particular, this hoists
-    // constants that were sunk by WhileLoopConstantSinking.  Leaving them in
-    // the while loop may result in unnecessary copies.
-    HloPassPipeline pipeline("while-loop-licm");
-    pipeline.AddPass<WhileLoopInvariantCodeMotion>(true);
-    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
-  }
   return Status::OK();
 }
 
@@ -295,7 +339,12 @@ Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   // (b/27180329). Therefore, in that case, we set the output to be a copy of
   // the parameter.
   HloPassPipeline pipeline("GPU-ir-emit-prepare");
-  pipeline.AddInvariantChecker<HloVerifier>();
+  /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
+   * fixing the ticket. */
+  pipeline.AddInvariantChecker<HloVerifier>(
+      /*layout_sensitive=*/true,
+      /*allow_mixed_precision=*/false,
+      LayoutAssignment::InstructionCanChangeLayout);
 
   // Copy insertion should be performed immediately before IR emission to avoid
   // inserting unnecessary copies (later pass adds an instruction which
@@ -345,9 +394,9 @@ void WarnIfBadPtxasVersion(const string& ptxas_path) {
   string vmaj_str, vmin_str, vdot_str;
   if (!RE2::PartialMatch(out, R"(\bV(\d+)\.(\d+)\.(\d+)\b)", &vmaj_str,
                          &vmin_str, &vdot_str) ||
-      !tensorflow::strings::safe_strto64(vmaj_str, &vmaj) ||
-      !tensorflow::strings::safe_strto64(vmin_str, &vmin) ||
-      !tensorflow::strings::safe_strto64(vdot_str, &vdot)) {
+      !absl::SimpleAtoi(vmaj_str, &vmaj) ||
+      !absl::SimpleAtoi(vmin_str, &vmin) ||
+      !absl::SimpleAtoi(vdot_str, &vdot)) {
     LOG(WARNING) << "Couldn't parse ptxas version in output of " << ptxas_path
                  << " --version:\n"
                  << out;
@@ -370,11 +419,11 @@ void WarnIfBadPtxasVersion(const string& ptxas_path) {
            "prefers >= 9.2.88).  Compilation of XLA kernels below will likely "
            "fail.\n\nYou do not need to update CUDA; cherry-picking the ptxas "
            "binary is sufficient.";
-  } else if ((vmaj < 9 || vmin < 2 || vdot < 88)) {
+  } else if (std::make_tuple(vmaj, vmin, vdot) < std::make_tuple(9, 2, 88)) {
     LOG(WARNING)
         << "*** WARNING *** You are using ptxas " << vmaj << "." << vmin << "."
         << vdot
-        << ", which older than 9.2.88. ptxas 9.x before 9.2.88 is known to "
+        << ", which is older than 9.2.88. ptxas 9.x before 9.2.88 is known to "
            "miscompile XLA code, leading to incorrect results or "
            "invalid-address errors.\n\nYou do not need to update to CUDA "
            "9.2.88; cherry-picking the ptxas binary is sufficient.";
@@ -428,9 +477,10 @@ StatusOr<std::vector<uint8>> CompilePtx(const string& ptx, int cc_major,
   tracing::ScopedActivity activity("Compile PTX", /*is_expensive=*/true);
   const string ptxas_path =
       tensorflow::io::JoinPath(tensorflow::CudaRoot(), "bin", "ptxas");
-  VLOG(2) << "Using ptxas at " << ptxas_path;
+  VLOG(2) << "Checking ptxas at " << ptxas_path;
   auto env = tensorflow::Env::Default();
   TF_RETURN_IF_ERROR(env->FileExists(ptxas_path));
+  VLOG(2) << "Using ptxas at " << ptxas_path;
 
   WarnIfBadPtxasVersion(ptxas_path);
 
@@ -459,7 +509,7 @@ StatusOr<std::vector<uint8>> CompilePtx(const string& ptx, int cc_major,
   tensorflow::SubProcess ptxas_info_dumper;
   std::vector<string> ptxas_args = {
       ptxas_path, ptx_path, "-o", cubin_path,
-      tensorflow::strings::StrCat("-arch=sm_", cc_major, cc_minor)};
+      absl::StrCat("-arch=sm_", cc_major, cc_minor)};
   if (VLOG_IS_ON(2)) {
     ptxas_args.push_back("-v");
   }
@@ -495,11 +545,18 @@ NVPTXCompiler::NVPTXCompiler()
 StatusOr<std::unique_ptr<HloModule>> NVPTXCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     DeviceMemoryAllocator* device_allocator) {
+  // We dump the post-optimization HLO in RunBackend so no need to dump it here.
+  VLOG(3) << "*** HLO Before Optimization";
+  XLA_VLOG_LINES(3, module->ToString());
+
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunHloPasses");
   tracing::ScopedActivity activity("HLO Transforms", module->name(),
                                    /*is_expensive=*/true);
   TF_RETURN_IF_ERROR(
-      OptimizeHloModule(module.get(), stream_exec, device_allocator));
+      OptimizeHloModule(module.get(), stream_exec, device_allocator, this));
+
+  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
+
   return std::move(module);
 }
 
@@ -509,8 +566,6 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   XLA_SCOPED_LOGGING_TIMER("NVPTXCompiler::RunBackend");
 
   TF_RET_CHECK(stream_exec != nullptr);
-
-  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
 
   llvm::LLVMContext llvm_context;
   std::string buffer;
@@ -533,8 +588,8 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   // must also be used to determine the thunk launch schedule.
   std::unique_ptr<StreamAssignment> stream_assignment = AssignStreams(*module);
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<HloSchedule> hlo_schedule,
-      HloSchedule::Build(*module, *stream_assignment, pointer_size_));
+      std::unique_ptr<GpuHloSchedule> hlo_schedule,
+      GpuHloSchedule::Build(*module, *stream_assignment, pointer_size_));
 
   // Run buffer analysis on the HLO graph. This analysis figures out which
   // temporary buffers are required to run the computation.
@@ -551,7 +606,8 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   // include headers, so no need for us to print them ourselves.
   XLA_VLOG_LINES(1, buffer_assignment->GetStats().ToString());
   XLA_VLOG_LINES(2, buffer_assignment->ToString());
-  XLA_VLOG_LINES(2, module->ToString());
+  VLOG(3) << "*** HLO After Optimization";
+  XLA_VLOG_LINES(3, module->ToString());
   const string xla_dump_optimized_hlo_proto_to =
       module->config().debug_options().xla_dump_optimized_hlo_proto_to();
   if (!xla_dump_optimized_hlo_proto_to.empty()) {
@@ -581,10 +637,10 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   string ir_module_string_before_opt;
   const bool embed_ir_in_executable =
       module->config().debug_options().xla_embed_ir_in_executable();
-  if (VLOG_IS_ON(2) || embed_ir_in_executable) {
+  if (VLOG_IS_ON(3) || embed_ir_in_executable) {
     ir_module_string_before_opt = llvm_ir::DumpModuleToString(llvm_module);
-    VLOG(2) << "LLVM module before optimizations:";
-    XLA_VLOG_LINES(2, ir_module_string_before_opt);
+    VLOG(3) << "LLVM module before optimizations:";
+    XLA_VLOG_LINES(3, ir_module_string_before_opt);
   }
 
   const string& ir_dump_directory =
@@ -628,6 +684,8 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     }
     libdevice_dir = cached_libdevice_dir_;
   }
+  VLOG(2) << "Libdevice dir = " << libdevice_dir << "\n";
+
   int cc_major, cc_minor;
   if (!stream_exec->GetDeviceDescription().cuda_compute_capability(&cc_major,
                                                                    &cc_minor)) {
@@ -654,15 +712,15 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   if (user_post_optimization_hook_) {
     TF_CHECK_OK(user_post_optimization_hook_(llvm_module));
   }
-  VLOG(2) << "LLVM module after optimizations:";
-  XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(llvm_module));
-  VLOG(2) << "PTX:";
-  XLA_VLOG_LINES(2, ptx);
+  VLOG(3) << "LLVM module after optimizations:";
+  XLA_VLOG_LINES(3, llvm_ir::DumpModuleToString(llvm_module));
+  VLOG(3) << "PTX:";
+  XLA_VLOG_LINES(3, ptx);
 
   // Write PTX to IR dump directory, if IR dumping was requested.
   if (!ir_dump_directory.empty()) {
     const string ptx_outfile = tensorflow::io::JoinPath(
-        ir_dump_directory, tensorflow::strings::StrCat(module->name(), ".ptx"));
+        ir_dump_directory, absl::StrCat(module->name(), ".ptx"));
     auto status = [&] {
       auto* env = tensorflow::Env::Default();
       TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(ir_dump_directory));
@@ -678,11 +736,11 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   const std::vector<uint8> cubin =
       CompilePtxOrGetCachedResult(ptx, cc_major, cc_minor);
 
-  auto thunk_schedule = MakeUnique<ThunkSchedule>(
+  auto thunk_schedule = absl::make_unique<ThunkSchedule>(
       ir_emitter.ConsumeThunkSequence(), std::move(stream_assignment),
       hlo_schedule->ThunkLaunchOrder());
-  VLOG(2) << "Printing the thunk schedule...";
-  XLA_VLOG_LINES(2, thunk_schedule->ToString());
+  VLOG(3) << "Printing the thunk schedule...";
+  XLA_VLOG_LINES(3, thunk_schedule->ToString());
 
   std::unique_ptr<HloProfileIndexMap> profile_index_map;
   std::unique_ptr<HloProfilePrinterData> profile_printer;
@@ -692,9 +750,9 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     cost_analysis.set_bytes_per_second(
         stream_exec->GetDeviceDescription().memory_bandwidth());
     TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
-    profile_index_map = MakeUnique<HloProfileIndexMap>(*module);
-    profile_printer =
-        CreateHloProfilePrinterData(*profile_index_map, cost_analysis);
+    profile_index_map = absl::make_unique<HloProfileIndexMap>(*module);
+    profile_printer = CreateHloProfilePrinterData(
+        *profile_index_map, cost_analysis, entry_computation->name());
   }
 
   auto* gpu_executable = new GpuExecutable(
@@ -784,9 +842,8 @@ std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(const string& ptx,
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-NVPTXCompiler::CompileAheadOfTime(
-    std::vector<std::unique_ptr<HloModule>> module,
-    const AotCompilationOptions& options) {
+NVPTXCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
+                                  const AotCompilationOptions& options) {
   return Unimplemented(
       "not yet implemented: NVPTXCompiler::CompileAheadOfTime");
 }
@@ -801,7 +858,7 @@ se::Platform::Id NVPTXCompiler::PlatformId() const {
 static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(
       stream_executor::cuda::kCudaPlatformId,
-      []() { return xla::MakeUnique<xla::gpu::NVPTXCompiler>(); });
+      []() { return absl::make_unique<xla::gpu::NVPTXCompiler>(); });
   return true;
 }
 static bool module_initialized = InitModule();

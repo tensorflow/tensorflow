@@ -20,15 +20,11 @@ limitations under the License.
 namespace tensorflow {
 
 bool GpuOpFilter(KernelDef* kdef) {
-  // TODO(b/26783907): The GPU backend currently does not implement sort.
-  if (kdef->op() == "XlaSort" || kdef->op() == "TopKV2") {
-    return false;
-  }
   if (kdef->op() == "Const") {
-    AddDtypeToKernalDefConstraint("dtype", DT_STRING, kdef);
+    AddDtypeToKernelDefConstraint("dtype", DT_STRING, kdef);
   }
   if (kdef->op() == "Assert") {
-    AddDtypeToKernalDefConstraint("T", DT_STRING, kdef);
+    AddDtypeToKernelDefConstraint("T", DT_STRING, kdef);
   }
   return true;
 }

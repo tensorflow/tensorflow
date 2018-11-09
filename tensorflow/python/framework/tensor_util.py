@@ -367,7 +367,7 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
     A `TensorProto`. Depending on the type, it may contain data in the
     "tensor_content" attribute, which is not directly useful to Python programs.
     To access the values you should convert the proto back to a numpy ndarray
-    with `tensor_util.MakeNdarray(proto)`.
+    with `tf.make_ndarray(proto)`.
 
     If `values` is a `TensorProto`, it is immediately returned; `dtype` and
     `shape` are ignored.
@@ -930,7 +930,7 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
     except TypeError:  # Could come from slicing prev.
       pass
 
-  ret = tensor_shape.unknown_shape(shape[0].value)
+  ret = tensor_shape.unknown_shape(shape.dims[0].value)
   value = constant_value(tensor)
   if value is not None:
     ret = ret.merge_with(
@@ -942,8 +942,8 @@ def is_tensor(x):  # pylint: disable=invalid-name
   """Check whether `x` is of tensor type.
 
   Check whether an object is a tensor. This check is equivalent to calling
-  `isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])` and also checks
-  if all the component variables of a MirroredVariable or a TowerLocalVariable
+  `isinstance(x, (tf.Tensor, tf.SparseTensor, tf.Variable))` and also checks
+  if all the component variables of a MirroredVariable or a ReplicaLocalVariable
   are tensors.
 
   Args:

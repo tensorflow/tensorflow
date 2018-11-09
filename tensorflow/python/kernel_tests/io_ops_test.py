@@ -37,7 +37,7 @@ class IoOpsTest(test.TestCase):
       with tempfile.NamedTemporaryFile(
           prefix='ReadFileTest', dir=self.get_temp_dir(), delete=False) as temp:
         temp.write(contents)
-      with self.test_session():
+      with self.cached_session():
         read = io_ops.read_file(temp.name)
         self.assertEqual([], read.get_shape())
         self.assertEqual(read.eval(), contents)
@@ -51,7 +51,7 @@ class IoOpsTest(test.TestCase):
           prefix='WriteFileTest', dir=self.get_temp_dir(),
           delete=False) as temp:
         pass
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         w = io_ops.write_file(temp.name, contents)
         sess.run(w)
         with open(temp.name, 'rb') as f:
@@ -65,7 +65,7 @@ class IoOpsTest(test.TestCase):
       contents = compat.as_bytes(contents)
       subdir = os.path.join(self.get_temp_dir(), 'subdir1')
       filepath = os.path.join(subdir, 'subdir2', 'filename')
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         w = io_ops.write_file(filepath, contents)
         sess.run(w)
         with open(filepath, 'rb') as f:
@@ -88,7 +88,7 @@ class IoOpsTest(test.TestCase):
             prefix=c, dir=self.get_temp_dir(), delete=True) for c in cases
     ]
 
-    with self.test_session():
+    with self.cached_session():
       # Test exact match without wildcards.
       for f in files:
         self.assertEqual(

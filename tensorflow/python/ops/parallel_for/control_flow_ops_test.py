@@ -31,8 +31,11 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import bitwise_ops
+from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients as gradient_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
@@ -242,6 +245,16 @@ class ArrayTest(PForTest):
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 5)
 
+  def test_split_v(self):
+    x = random_ops.random_uniform([3, 6, 3])
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      return (array_ops.split(x1, [2, 1, 3], axis=0),
+              array_ops.split(x1, [3], axis=-1))
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 4)
+
   def test_transpose(self):
     x = random_ops.random_uniform([3, 2, 3, 4])
 
@@ -288,6 +301,14 @@ class ArrayTest(PForTest):
 
       self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
 
+  def test_identity_n(self):
+    x = random_ops.random_uniform([3, 4])
+
+    def loop_fn(i):
+      return array_ops.identity_n([x, array_ops.gather(x, i)])
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
+
   def test_strided_slice(self):
     x = random_ops.random_uniform([3, 3, 4, 4, 2, 2, 2])
 
@@ -300,28 +321,129 @@ class ArrayTest(PForTest):
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
 
 
-class MathTest(PForTest):
+class BitwiseTest(PForTest):
 
-  def test_unary_cwise_ops(self):
-    for op in [
-        math_ops.tanh, nn.relu, math_ops.sigmoid, math_ops.negative,
-        math_ops.square
-    ]:
-      x = random_ops.random_uniform([3, 5])
+  def test_unary_cwise(self):
+    for op in [bitwise_ops.invert]:
+      x = random_ops.random_uniform([7, 3, 5], maxval=10, dtype=dtypes.int32)
 
       # pylint: disable=cell-var-from-loop
       def loop_fn(i):
         x1 = array_ops.gather(x, i)
-        y = op(x1)
-        loss = math_ops.reduce_sum(y * y)
-        return op(x), y, gradient_ops.gradients(loss, x1)
+        return op(x1)
+      # pylint: enable=cell-var-from-loop
+
+      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.int32])
+
+  def test_binary_cwise(self):
+    binary_ops = [
+        bitwise_ops.bitwise_and,
+        bitwise_ops.bitwise_or,
+        bitwise_ops.bitwise_xor,
+        bitwise_ops.left_shift,
+        bitwise_ops.right_shift,
+    ]
+    for op in binary_ops:
+      x = random_ops.random_uniform([7, 3, 5], maxval=10, dtype=dtypes.int32)
+      y = random_ops.random_uniform([3, 5], maxval=10, dtype=dtypes.int32)
+
+      output_dtypes = []
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        x1 = array_ops.gather(x, i)
+        y1 = array_ops.gather(y, i)
+        outputs = [op(x, y), op(x1, y), op(x, y1), op(x1, y1), op(x1, x1)]
+        del output_dtypes[:]
+        output_dtypes.extend([t.dtype for t in outputs])
+        return outputs
+      # pylint: enable=cell-var-from-loop
+      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=output_dtypes)
+
+
+class MathTest(PForTest):
+
+  def test_unary_cwise_ops(self):
+    complex_ops = [
+        math_ops.angle,
+        math_ops.imag,
+        math_ops.complex_abs,
+        math_ops.real,
+        math_ops.conj,
+    ]
+    real_ops = [
+        lambda x: math_ops.acosh(1 + math_ops.square(x)),
+        math_ops.abs,
+        math_ops.acos,
+        math_ops.asin,
+        math_ops.asinh,
+        math_ops.atan,
+        math_ops.atanh,
+        math_ops.bessel_i0e,
+        math_ops.bessel_i1e,
+        math_ops.cos,
+        math_ops.cosh,
+        math_ops.digamma,
+        math_ops.erf,
+        math_ops.erfc,
+        math_ops.exp,
+        math_ops.expm1,
+        math_ops.inv,
+        math_ops.is_finite,
+        math_ops.is_inf,
+        math_ops.lgamma,
+        math_ops.log,
+        math_ops.log1p,
+        math_ops.neg,
+        math_ops.negative,
+        math_ops.reciprocal,
+        math_ops.rint,
+        math_ops.round,
+        math_ops.rsqrt,
+        math_ops.sigmoid,
+        math_ops.sign,
+        math_ops.sin,
+        math_ops.sinh,
+        math_ops.sqrt,
+        math_ops.square,
+        math_ops.tan,
+        math_ops.tanh,
+        math_ops.tanh,
+        nn.elu,
+        nn.relu,
+        nn.relu6,
+        nn.selu,
+        nn.softplus,
+        nn.softsign,
+    ]
+    for op in complex_ops + real_ops:
+      x = random_ops.random_uniform([3, 5])
+      if op in complex_ops:
+        y = random_ops.random_uniform([3, 5])
+        x = math_ops.complex(x, y)
+
+      # pylint: disable=cell-var-from-loop
+      output_dtypes = []
+      def loop_fn(i):
+        x1 = array_ops.gather(x, i)
+        y1 = op(x1)
+        outputs = [op(x), y1]
+        if y1.dtype == dtypes.float32:
+          loss = math_ops.reduce_sum(y1 * y1)
+          grad = gradient_ops.gradients(loss, x1)
+          if grad and grad[0] is not None:
+            outputs.extend(grad)
+        del output_dtypes[:]
+        output_dtypes.extend([t.dtype for t in outputs])
+        return outputs
 
       # pylint: enable=cell-var-from-loop
 
-      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
+      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=output_dtypes)
 
   def test_unary_cwise_no_grad(self):
-    for op in [math_ops.ceil, math_ops.floor, math_ops.logical_not]:
+    for op in [math_ops.ceil,
+               math_ops.floor,
+               math_ops.logical_not]:
       x = random_ops.random_uniform([3, 5])
       if op == math_ops.logical_not:
         x = x > 0
@@ -336,33 +458,80 @@ class MathTest(PForTest):
 
   def test_binary_cwise_ops(self):
     logical_ops = [
-        math_ops.logical_and, math_ops.logical_or, math_ops.logical_xor
+        math_ops.logical_and,
+        math_ops.logical_or,
+        math_ops.logical_xor
     ]
-    bool_ops = [
-        math_ops.less, math_ops.less_equal, math_ops.greater,
-        math_ops.greater_equal, math_ops.equal, math_ops.not_equal
-    ]
+
+    # Wrapper functions restricting the range of inputs of zeta and polygamma.
+    def safe_polygamma(x, y):
+      return math_ops.polygamma(
+          math_ops.round(clip_ops.clip_by_value(y, 1, 10)),
+          x * x + 1)
+
+    def safe_zeta(x, y):
+      return math_ops.zeta(x * x + 1, y * y)
+
     float_ops = [
-        math_ops.add, math_ops.subtract, math_ops.multiply, math_ops.divide,
-        math_ops.maximum, math_ops.minimum
+        math_ops.add,
+        math_ops.add_v2,
+        math_ops.atan2,
+        math_ops.complex,
+        math_ops.div,
+        math_ops.divide,
+        math_ops.div_no_nan,
+        math_ops.equal,
+        math_ops.floor_div,
+        math_ops.floor_mod,
+        math_ops.greater,
+        math_ops.greater_equal,
+        math_ops.igamma,
+        math_ops.igammac,
+        math_ops.igamma_grad_a,
+        math_ops.less,
+        math_ops.less_equal,
+        math_ops.maximum,
+        math_ops.minimum,
+        math_ops.mod,
+        math_ops.multiply,
+        math_ops.not_equal,
+        math_ops.pow,
+        math_ops.squared_difference,
+        math_ops.subtract,
+        math_ops.truncate_mod,
+        safe_polygamma,
+        safe_zeta,
     ]
-    for op in logical_ops + bool_ops + float_ops:
+    for op in logical_ops + float_ops:
       x = random_ops.random_uniform([7, 3, 5])
       y = random_ops.random_uniform([3, 5])
       if op in logical_ops:
         x = x > 0
         y = y > 0
 
+      output_dtypes = []
       # pylint: disable=cell-var-from-loop
       def loop_fn(i):
         x1 = array_ops.gather(x, i)
         y1 = array_ops.gather(y, i)
-        return op(x, y), op(x1, y), op(x, y1), op(x1, y1), op(x1, x1)
-
+        outputs = [op(x, y), op(x1, y), op(x, y1), op(x1, y1), op(x1, x1)]
+        del output_dtypes[:]
+        output_dtypes.extend([t.dtype for t in outputs])
+        return outputs
       # pylint: enable=cell-var-from-loop
 
-      dtype = dtypes.float32 if op in float_ops else dtypes.bool
-      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtype] * 5)
+      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=output_dtypes)
+
+  def test_approximate_equal(self):
+    x = random_ops.random_uniform([3, 5])
+    y = random_ops.random_uniform([3, 5])
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      y1 = array_ops.gather(y, i)
+      return math_ops.approximate_equal(x1, y1)
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.bool])
 
   def test_addn(self):
     x = random_ops.random_uniform([2, 3, 5])
@@ -623,9 +792,12 @@ class NNTest(PForTest):
       output = nn.max_pool(
           x1, ksize, strides=[1, 2, 2, 1], padding="VALID", data_format="NHWC")
       loss = nn.l2_loss(output)
-      return output, gradient_ops.gradients(loss, x1)
+      ones = array_ops.ones_like(output)
+      grad = gradient_ops.gradients(loss, x1, grad_ys=ones)
+      grad_grad = gradient_ops.gradients(grad, ones)
+      return output, grad, grad_grad
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
 
   def test_fused_batch_norm(self):
     data_formats = ["NHWC"]
@@ -1208,14 +1380,77 @@ class Benchmarks(test.Benchmark):
     with sess:
       init = variables.global_variables_initializer()
       sess.run(init)
-      sess.run(targets)
+      run_fn = sess.make_callable(targets)
+      run_fn()  # Warm up
       begin = time.time()
       for _ in range(iters):
-        sess.run(targets)
+        run_fn()
       end = time.time()
     avg_time_ms = 1000 * (end - begin) / iters
     self.report_benchmark(iters=iters, wall_time=avg_time_ms, name=name)
     return avg_time_ms
+
+  def benchmark_sess_run_overhead(self):
+    with ops.Graph().as_default():
+      x = constant_op.constant(1.0)
+      self._run(x, 10000, name="session_run_overhead")
+
+  def benchmark_add(self):
+    with ops.Graph().as_default():
+      n = 256
+      params = 1000
+      x = random_ops.random_normal([n, params])
+      y = random_ops.random_normal([n, params])
+
+      def loop_fn(i):
+        x_i = array_ops.gather(x, i)
+        y_i = array_ops.gather(y, i)
+        return x_i + y_i
+
+      pfor_outputs = pfor_control_flow_ops.pfor(loop_fn, n)
+      while_outputs = pfor_control_flow_ops.for_loop(loop_fn, dtypes.float32, n)
+      manual = x + y
+
+      self._run(manual, 1000, name="manual_add")
+      self._run(pfor_outputs, 1000, name="pfor_add")
+      self._run(while_outputs, 100, name="while_add")
+
+  def benchmark_matmul(self):
+    with ops.Graph().as_default():
+      n = 1024
+      params = 1000
+      x = random_ops.random_normal([n, params])
+      y = random_ops.random_normal([params, params])
+
+      def loop_fn(i):
+        x_i = array_ops.expand_dims(array_ops.gather(x, i), 0)
+        return math_ops.matmul(x_i, y)
+
+      pfor_outputs = pfor_control_flow_ops.pfor(loop_fn, n)
+      while_outputs = pfor_control_flow_ops.for_loop(loop_fn, dtypes.float32, n)
+      manual = math_ops.matmul(x, y)
+
+      self._run(manual, 1000, name="manual_matmul")
+      self._run(pfor_outputs, 1000, name="pfor_matmul")
+      self._run(while_outputs, 100, name="while_matmul")
+
+  def benchmark_map_fn(self):
+    with ops.Graph().as_default():
+      b = 256
+      params = 1000
+      inp = random_ops.random_normal((b, params))
+      map_fn = lambda x: x * x
+
+      def pfor_map_fn(f, x):
+        return pfor_control_flow_ops.pfor(
+            lambda i: f(array_ops.gather(x, i)),
+            array_ops.shape(x)[0])
+
+      map_output = functional_ops.map_fn(map_fn, inp)
+      pfor_output = pfor_map_fn(map_fn, inp)
+
+      self._run(map_output, 100, name="tf_map_fn")
+      self._run(pfor_output, 100, name="pfor_map_fn")
 
   def benchmark_basic_while(self):
     with ops.Graph().as_default():
@@ -1241,13 +1476,6 @@ class Benchmarks(test.Benchmark):
       self._run(pfor_outputs, 100, name="pfor_rnn")
       self._run(tf_outputs, 100, name="tf_rnn")
 
-  def benchmark_dynamic_lstm(self):
-    with ops.Graph().as_default():
-      pfor_outputs, tf_outputs = create_dynamic_lstm(rnn_cell.BasicLSTMCell,
-                                                     128, 512, 16)
-      self._run(pfor_outputs, 100, name="pfor_lstm")
-      self._run(tf_outputs, 100, name="tf_lstm")
-
 
 class SparseTest(PForTest):
 
@@ -1259,7 +1487,7 @@ class SparseTest(PForTest):
                                         [3])  # [0, 2, 0]
 
     pfor = pfor_control_flow_ops.pfor(loop_fn, num_iters)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(pfor, feed_dict={num_iters: 3})
 
   def test_sparse_result_none_stacked(self):

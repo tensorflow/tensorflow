@@ -152,6 +152,9 @@ class _BaseDeterministic(distribution.Distribution):
     """Relative tolerance for comparing points to `self.loc`."""
     return self._rtol
 
+  def _entropy(self):
+    return array_ops.zeros(self.batch_shape_tensor(), dtype=self.dtype)
+
   def _mean(self):
     return array_ops.identity(self.loc)
 
@@ -195,8 +198,11 @@ class Deterministic(_BaseDeterministic):
   #### Examples
 
   ```python
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
+
   # Initialize a single Deterministic supported at zero.
-  constant = tf.contrib.distributions.Deterministic(0.)
+  constant = tfd.Deterministic(0.)
   constant.prob(0.)
   ==> 1.
   constant.prob(2.)
@@ -205,7 +211,7 @@ class Deterministic(_BaseDeterministic):
   # Initialize a [2, 2] batch of scalar constants.
   loc = [[0., 1.], [2., 3.]]
   x = [[0., 1.1], [1.99, 3.]]
-  constant = tf.contrib.distributions.Deterministic(loc)
+  constant = tfd.Deterministic(loc)
   constant.prob(x)
   ==> [[1., 0.], [0., 1.]]
   ```
@@ -307,7 +313,8 @@ class VectorDeterministic(_BaseDeterministic):
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   # Initialize a single VectorDeterministic supported at [0., 2.] in R^2.
   constant = tfd.Deterministic([0., 2.])

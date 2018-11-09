@@ -24,6 +24,8 @@ tf_cc_binary(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -31,6 +33,7 @@ cc_library(
     name = "dumped_computation_to_graphviz_library",
     srcs = ["dumped_computation_to_graphviz.cc"],
     deps = [
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -38,10 +41,10 @@ cc_library(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -67,6 +70,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -74,6 +78,7 @@ cc_library(
     name = "replay_computation_library",
     srcs = ["replay_computation.cc"],
     deps = [
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -93,6 +98,7 @@ cc_library(
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:span",
     ],
     alwayslink = True,
 )
@@ -171,6 +177,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -190,6 +197,9 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -197,18 +207,19 @@ tf_cc_binary(
     name = "dumped_computation_to_tf_graphdef",
     srcs = ["dumped_computation_to_tf_graphdef.cc"],
     deps = [
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/compiler/xla/service:interpreter_plugin",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

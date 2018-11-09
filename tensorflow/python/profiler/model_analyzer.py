@@ -398,7 +398,7 @@ def advise(graph=None, run_meta=None, options=_DEFAULT_ADVISE_OPTIONS):
   Returns:
     Returns AdviceProto proto
   """
-  if not graph and context.in_eager_execution():
+  if not graph and not context.executing_eagerly():
     graph = ops.get_default_graph()
 
   if options == _DEFAULT_ADVISE_OPTIONS:

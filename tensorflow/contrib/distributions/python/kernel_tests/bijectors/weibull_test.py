@@ -31,7 +31,7 @@ class WeibullBijectorTest(test.TestCase):
   """Tests correctness of the weibull bijector."""
 
   def testBijector(self):
-    with self.test_session():
+    with self.cached_session():
       scale = 5.
       concentration = 0.3
       bijector = Weibull(
@@ -54,13 +54,13 @@ class WeibullBijectorTest(test.TestCase):
           atol=0.)
 
   def testScalarCongruency(self):
-    with self.test_session():
+    with self.cached_session():
       assert_scalar_congruency(
           Weibull(scale=20., concentration=0.3),
           lower_x=1., upper_x=100., rtol=0.02)
 
   def testBijectiveAndFinite(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = Weibull(
           scale=20., concentration=2., validate_args=True)
       x = np.linspace(1., 8., num=10).astype(np.float32)

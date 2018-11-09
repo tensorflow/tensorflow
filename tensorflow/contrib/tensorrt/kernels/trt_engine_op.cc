@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_resource_manager.h"
 #include "tensorflow/contrib/tensorrt/resources/trt_resources.h"
+#include "tensorflow/contrib/tensorrt/test/utils.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -122,15 +123,9 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
                  context->GetAttr("calibration_data", &calibration_data));
   OP_REQUIRES_OK(context,
                  context->GetAttr("segment_funcdef_name", &funcdef_name_));
-  if (precision_string == "FP32") {
-    precision_mode_ = convert::FP32MODE;
-  } else if (precision_string == "FP16") {
-    precision_mode_ = convert::FP16MODE;
-  } else if (precision_string == "INT8") {
-    precision_mode_ = convert::INT8MODE;
-  }
+  OP_REQUIRES_OK(context, GetPrecisionMode(precision_string, &precision_mode_));
   calibration_mode_ =
-      (precision_mode_ == convert::INT8MODE && calibration_data.size() == 0);
+      (precision_mode_ == INT8MODE && calibration_data.size() == 0);
   if (calibration_data.size()) {
     calibrator_.reset(new TRTInt8Calibrator(calibration_data));
     calibration_data.resize(0);
@@ -179,7 +174,7 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
   helper->Ref();  // Increment count for calculating native graph
   VLOG(1) << "Executing native segment " << name();
   lib->Run(opts, native_func_, inputs, outputs,
-           [ctx, outputs, helper](const tensorflow::Status& s) {
+           [this, ctx, outputs, helper](const tensorflow::Status& s) {
              tensorflow::core::ScopedUnref sc(helper);
              VLOG(1) << "Native Segment completed";
              if (!s.ok()) {
@@ -189,6 +184,8 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
              for (size_t t = 0; t < outputs->size(); ++t) {
                ctx->set_output(t, outputs->at(t));
              }
+             test::AddTestValue(StrCat(this->name(), ":ExecuteNativeSegment"),
+                                "done");
              delete outputs;
            });
 }
@@ -234,6 +231,7 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
                                                 ->implementation()
                                                 ->GpuStreamMemberHack()));
   calib_res->calibrator_->setBatch(input_data, *stream);
+  test::AddTestValue(StrCat(name(), ":ExecuteCalibration"), "done");
   VLOG(2) << "Passed calibration data";
   ExecuteNativeSegment(ctx, helper);
 }
@@ -258,7 +256,7 @@ int TRTEngineOp::GetEngineBatch(OpKernelContext* ctx) {
           StrCat("Engine buffer is full. buffer limit=", max_cached_engines_,
                  ", current entries=");
       for (auto i : cached_engine_batches_) StrAppend(&msg, i, ",");
-      StrAppend(&msg, "Requested batch=", num_batch);
+      StrAppend(&msg, " requested batch=", num_batch);
       LOG(WARNING) << msg;
       return -1;
     }
@@ -276,7 +274,8 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   }
   const int smallest_engine = GetEngineBatch(ctx);
   if (smallest_engine < 0) {
-    LOG(WARNING) << "Failed to get engine batch, running native segment";
+    LOG(WARNING) << "Failed to get engine batch, running native segment for "
+                 << name();
     ExecuteNativeSegment(ctx, helper);
     return;
   }
@@ -286,14 +285,15 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   auto& trt_engine_ptr = engine_ctx_pair.first;
   if (!trt_engine_ptr) {
     LOG(WARNING) << "Engine retrieval for batch size " << num_batch
-                 << " failed. Running native segment";
+                 << " failed. Running native segment for " << name();
     ExecuteNativeSegment(ctx, helper);
     return;
   }
   const bool retry = ExecuteTrtEngine(ctx, num_batch, trt_engine_ptr.get(),
                                       engine_ctx_pair.second.get());
   if (retry) {
-    LOG(WARNING) << "Failed to execute engine, retrying with native segment";
+    LOG(WARNING) << "Failed to execute engine, "
+                 << "retrying with native segment for " << name();
     ExecuteNativeSegment(ctx, helper);
     return;
   }
@@ -333,11 +333,9 @@ bool TRTEngineOp::ExecuteTrtEngine(
       case nvinfer1::DataType::kINT8:
         LOG(ERROR) << "INT8 inputs are not supported yet!";
         return kRetry;
-#if NV_TENSORRT_MAJOR > 3
       case nvinfer1::DataType::kINT32:
         buffers[binding_index] = (void*)(input_tensor.flat<int32>().data());
         break;
-#endif
       default:
         LOG(ERROR) << "Unknown TRT data type: " << int(dtype);
         return kRetry;
@@ -387,12 +385,10 @@ bool TRTEngineOp::ExecuteTrtEngine(
       case nvinfer1::DataType::kINT8:
         LOG(WARNING) << "int8 is not supported yet!";
         return kRetry;
-#if NV_TENSORRT_MAJOR > 3
       case nvinfer1::DataType::kINT32:
         buffers[binding_index] =
             reinterpret_cast<void*>(output_tensor->flat<int32>().data());
         break;
-#endif
       default:
         LOG(WARNING) << "Unknown TRT data type: " << static_cast<int>(dtype);
         return kRetry;
@@ -412,6 +408,7 @@ bool TRTEngineOp::ExecuteTrtEngine(
     LOG(WARNING) << "Failed to enqueue batch for TRT engine: " << name();
     return kRetry;
   }
+  test::AddTestValue(StrCat(name(), ":ExecuteTrtEngine"), "done");
   // Synchronization will be done by TF.
   return !kRetry;
 }
@@ -456,13 +453,11 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
       return null_pair;
     }
     TrtUniquePtrType<IRuntime> infer(nvinfer1::createInferRuntime(logger));
-#if NV_TENSORRT_MAJOR > 3
     auto allocator = GetAllocator(ctx);
     if (allocator == nullptr) {
       return null_pair;
     }
     infer->setGpuAllocator(allocator);
-#endif
     TrtUniquePtrType<nvinfer1::ICudaEngine> static_engine(
         infer->deserializeCudaEngine(serialized_segment_.c_str(),
                                      serialized_segment_.size(),
@@ -486,12 +481,10 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
   if (engine_it == engine_map_.end() &&
       engine_map_.size() < (size_t)max_cached_engines_) {
     nvinfer1::IGpuAllocator* allocator = nullptr;
-#if NV_TENSORRT_MAJOR > 3
     allocator = GetAllocator(ctx);
     if (allocator == nullptr) {
       return null_pair;
     }
-#endif
     std::vector<tensorflow::PartialTensorShape> shapes;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       shapes.emplace_back(ctx->input(i).shape());
@@ -564,21 +557,22 @@ tensorflow::Status TRTEngineOp::AllocateCalibrationResources(
       new TRTInt8Calibrator(device_buffers_, batch_size, name()));
   const string label(name());
   auto segment_graph = &segment_graph_;
-  const int cuda_gpu_id = ctx->device()->tensorflow_gpu_device_info()->gpu_id;
-  if (cuda_gpu_id < 0) {
+  const int platform_gpu_id =
+      ctx->device()->tensorflow_gpu_device_info()->gpu_id;
+  if (platform_gpu_id < 0) {
     LOG(ERROR) << "Can't get gpu_device_info from context->device()";
     return tensorflow::errors::InvalidArgument(
         "Context->device doesn't contain device info!");
   }
   const int64 workspace_size_bytes = workspace_size_;
   cres->thr_.reset(new std::thread([cres, label, segment_graph, shapes,
-                                    cuda_gpu_id, workspace_size_bytes]() {
-    VLOG(0) << "Starting calibration thread on device " << cuda_gpu_id
+                                    platform_gpu_id, workspace_size_bytes]() {
+    VLOG(0) << "Starting calibration thread on device " << platform_gpu_id
             << ", Calibration Resource @ " << cres;
-    auto err = cudaSetDevice(cuda_gpu_id);
+    auto err = cudaSetDevice(platform_gpu_id);
     if (err != cudaSuccess) {
       // TODO(aaroey): should return error here.
-      LOG(ERROR) << "Couldn't set cuda device to " << cuda_gpu_id
+      LOG(ERROR) << "Couldn't set cuda device to " << platform_gpu_id
                  << " in calibration thread";
     }
     // ConvertGraphDefToEngine() will try to build the engine. This thread
@@ -589,7 +583,7 @@ tensorflow::Status TRTEngineOp::AllocateCalibrationResources(
     // TODO(aaroey): maybe setting the max batch size using the python
     // calibration wrapper class.
     auto s = convert::ConvertGraphDefToEngine(
-        *segment_graph, convert::INT8MODE, cres->calibrator_->getBatchSize(),
+        *segment_graph, INT8MODE, cres->calibrator_->getBatchSize(),
         workspace_size_bytes, shapes, &cres->logger_, cres->allocator_.get(),
         cres->calibrator_.get(), &cres->engine_,
         /*convert_successfully=*/nullptr);

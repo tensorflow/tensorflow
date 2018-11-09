@@ -45,11 +45,7 @@ on API >= 14 devices.
 
 ## Prebuilt Components:
 
-If you just want the fastest path to trying the demo, you may download the
-nightly build
-[here](https://ci.tensorflow.org/view/Nightly/job/nightly-android/). Expand the
-"View" and then the "out" folders under "Last Successful Artifacts" to find
-tensorflow_demo.apk.
+The fastest path to trying the demo is to download the [prebuilt demo APK](http://download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk).
 
 Also available are precompiled native libraries, and a jcenter package that you
 may simply drop into your own applications. See
@@ -113,8 +109,7 @@ protobuf compilation.
 
 NOTE: Bazel does not currently support building for Android on Windows. Full
 support for gradle/cmake builds is coming soon, but in the meantime we suggest
-that Windows users download the [prebuilt
-binaries](https://ci.tensorflow.org/view/Nightly/job/nightly-android/) instead.
+that Windows users download the [prebuilt demo APK](http://download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk) instead.
 
 ##### Install Bazel and Android Prerequisites
 
@@ -126,20 +121,12 @@ the Android NDK and SDK must be installed on your system.
 2.  The Android NDK is required to build the native (C/C++) TensorFlow code. The
     current recommended version is 14b, which may be found
     [here](https://developer.android.com/ndk/downloads/older_releases.html#ndk-14b-downloads).
-
-      * NDK 16, the revision released in November 2017, is **incompatible** with
-        Bazel. See [here](https://github.com/tensorflow/tensorflow/issues/14918).
-
 3.  The Android SDK and build tools may be obtained
     [here](https://developer.android.com/tools/revisions/build-tools.html), or
     alternatively as part of [Android
     Studio](https://developer.android.com/studio/index.html). Build tools API >=
     23 is required to build the TF Android demo (though it will run on API >= 21
     devices).
-
-      - The Android Studio SDK Manager's NDK installer will install the latest
-        revision of the NDK, which is **incompatible** with Bazel. You'll need
-        to download an older version manually, as (2) suggests.
 
 ##### Edit WORKSPACE
 

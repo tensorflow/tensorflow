@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb_text.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -186,23 +187,40 @@ TEST(CAPI, LibraryLoadFunctions) {
   // tf_cuda_cc_test() bazel rule and remove the next line.
   if (!GPUDeviceName().empty()) return;
 
-  // Load the library.
-  TF_Status* status = TF_NewStatus();
-  TF_Library* lib =
-      TF_LoadLibrary("tensorflow/c/test_op.so", status);
-  TF_Code code = TF_GetCode(status);
-  string status_msg(TF_Message(status));
-  TF_DeleteStatus(status);
-  ASSERT_EQ(TF_OK, code) << status_msg;
+#if !defined(TENSORFLOW_NO_SHARED_OBJECTS)
+  {
+    // Load the library.
+    TF_Status* status = TF_NewStatus();
+    TF_Library* lib =
+        TF_LoadLibrary("tensorflow/c/test_op1.so", status);
+    TF_Code code = TF_GetCode(status);
+    string status_msg(TF_Message(status));
+    TF_DeleteStatus(status);
+    ASSERT_EQ(TF_OK, code) << status_msg;
 
-  // Test op list.
-  TF_Buffer op_list_buf = TF_GetOpList(lib);
-  tensorflow::OpList op_list;
-  EXPECT_TRUE(op_list.ParseFromArray(op_list_buf.data, op_list_buf.length));
-  ASSERT_EQ(op_list.op_size(), 1);
-  EXPECT_EQ("TestCApi", op_list.op(0).name());
-
-  TF_DeleteLibraryHandle(lib);
+    // Test op list.
+    TF_Buffer op_list_buf = TF_GetOpList(lib);
+    tensorflow::OpList op_list;
+    EXPECT_TRUE(op_list.ParseFromArray(op_list_buf.data, op_list_buf.length));
+    ASSERT_EQ(op_list.op_size(), 1);
+    EXPECT_EQ("TestCApi1", op_list.op(0).name());
+    TF_DeleteLibraryHandle(lib);
+  }
+#endif  // !defined(TENSORFLOW_NO_SHARED_OBJECTS)
+  {
+    TF_Buffer* op_list_buffer = TF_GetAllOpList();
+    tensorflow::OpList op_list;
+    op_list.ParseFromArray(op_list_buffer->data, op_list_buffer->length);
+    ASSERT_GE(op_list.op_size(), 1);
+    typedef tensorflow::protobuf::RepeatedPtrField<tensorflow::OpDef> OpDefs;
+    const OpDefs& ops = op_list.op();
+    bool found = std::find_if(ops.begin(), ops.end(),
+                              [](const tensorflow::OpDef& op_def) {
+                                return op_def.name() == "TestCApi";
+                              }) != ops.end();
+    EXPECT_TRUE(found);
+    TF_DeleteBuffer(op_list_buffer);
+  }
 }
 
 void TestEncodeDecode(int line, const std::vector<string>& data) {
@@ -259,8 +277,8 @@ TEST(CAPI, DeprecatedSession) {
   TF_Run(session, run_options, nullptr, nullptr, 0, nullptr, nullptr, 0,
          nullptr, 0, run_metadata, s);
   EXPECT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s)) << TF_Message(s);
-  EXPECT_EQ(std::string("Session was not created with a graph before Run()!"),
-            std::string(TF_Message(s)));
+  EXPECT_EQ("Session was not created with a graph before Run()!",
+            string(TF_Message(s)));
   TF_DeleteBuffer(run_metadata);
   TF_DeleteBuffer(run_options);
 
@@ -1224,8 +1242,8 @@ class CApiColocationTest : public ::testing::Test {
         TF_OperationGetAttrMetadata(op, tensorflow::kColocationAttrName, s_);
     if (expected.empty()) {
       ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_)) << TF_Message(s_);
-      EXPECT_EQ(std::string("Operation 'add' has no attr named '_class'."),
-                std::string(TF_Message(s_)));
+      EXPECT_EQ("Operation 'add' has no attr named '_class'.",
+                string(TF_Message(s_)));
       return;
     }
     EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
@@ -1369,16 +1387,16 @@ TEST(CAPI, SavedModel) {
     input.flat<string>()(i) = example.SerializeAsString();
   }
 
-  const tensorflow::string input_op_name =
-      std::string(tensorflow::ParseTensorName(input_name).first);
+  const tensorflow::string input_op_name(
+      tensorflow::ParseTensorName(input_name).first);
   TF_Operation* input_op =
       TF_GraphOperationByName(graph, input_op_name.c_str());
   ASSERT_TRUE(input_op != nullptr);
   csession.SetInputs({{input_op, TF_TensorFromTensor(input, s)}});
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
-  const tensorflow::string output_op_name =
-      std::string(tensorflow::ParseTensorName(output_name).first);
+  const tensorflow::string output_op_name(
+      tensorflow::ParseTensorName(output_name).first);
   TF_Operation* output_op =
       TF_GraphOperationByName(graph, output_op_name.c_str());
   ASSERT_TRUE(output_op != nullptr);
@@ -1483,8 +1501,8 @@ class CApiGradientsTest : public ::testing::Test {
     BuildSuccessGraph(inputs, outputs);
     BuildExpectedGraph(grad_inputs_provided, expected_grad_outputs);
 
-    AddGradients(grad_inputs_provided, inputs, 2, outputs, 1, grad_outputs);
-
+    AddGradients(grad_inputs_provided, nullptr, inputs, 2, outputs, 1,
+                 grad_outputs);
     EXPECT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
 
     // Compare that the graphs match.
@@ -1505,7 +1523,8 @@ class CApiGradientsTest : public ::testing::Test {
 
     BuildErrorGraph(inputs, outputs);
 
-    AddGradients(grad_inputs_provided, inputs, 1, outputs, 1, grad_outputs);
+    AddGradients(grad_inputs_provided, nullptr, inputs, 1, outputs, 1,
+                 grad_outputs);
 
     string expected_msg =
         "No gradient defined for op: TestOpWithNoGradient. Please see "
@@ -1549,19 +1568,20 @@ class CApiGradientsTest : public ::testing::Test {
     EXPECT_EQ(*a_data, *b_data);
   }
 
-  void AddGradients(bool grad_inputs_provided, TF_Output* inputs, int ninputs,
-                    TF_Output* outputs, int noutputs, TF_Output* grad_outputs) {
+  void AddGradients(bool grad_inputs_provided, const char* prefix,
+                    TF_Output* inputs, int ninputs, TF_Output* outputs,
+                    int noutputs, TF_Output* grad_outputs) {
     if (grad_inputs_provided) {
       TF_Output grad_inputs[1];
       const float grad_inputs_val[] = {1.0, 1.0, 1.0, 1.0};
       TF_Operation* grad_inputs_op =
           FloatConst2x2(graph_, s_, grad_inputs_val, "GradInputs");
       grad_inputs[0] = TF_Output{grad_inputs_op, 0};
-      TF_AddGradients(graph_, outputs, noutputs, inputs, ninputs, grad_inputs,
-                      s_, grad_outputs);
+      TF_AddGradientsWithPrefix(graph_, prefix, outputs, noutputs, inputs,
+                                ninputs, grad_inputs, s_, grad_outputs);
     } else {
-      TF_AddGradients(graph_, outputs, noutputs, inputs, ninputs, nullptr, s_,
-                      grad_outputs);
+      TF_AddGradientsWithPrefix(graph_, prefix, outputs, noutputs, inputs,
+                                ninputs, nullptr, s_, grad_outputs);
     }
   }
 
@@ -1706,6 +1726,20 @@ class CApiGradientsTest : public ::testing::Test {
     return op;
   }
 
+  void BuildGraphAndAddGradientsWithPrefixes(const char* prefix1,
+                                             const char* prefix2 = nullptr) {
+    TF_Output inputs[2];
+    TF_Output outputs[1];
+    TF_Output grad_outputs[2];
+
+    BuildSuccessGraph(inputs, outputs);
+
+    AddGradients(false, prefix1, inputs, 2, outputs, 1, grad_outputs);
+    if (prefix2 != nullptr) {
+      AddGradients(false, prefix2, inputs, 2, outputs, 1, grad_outputs);
+    }
+  }
+
   TF_Status* s_;
   TF_Graph* graph_;
   TF_Graph* expected_graph_;
@@ -1723,6 +1757,56 @@ TEST_F(CApiGradientsTest, OpWithNoGradientRegistered_GradInputs) {
 
 TEST_F(CApiGradientsTest, OpWithNoGradientRegistered_NoGradInputs) {
   TestGradientsError(false);
+}
+
+TEST_F(CApiGradientsTest, GradientsPrefix_PrefixIsOk) {
+  BuildGraphAndAddGradientsWithPrefixes("gradients");
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+}
+
+TEST_F(CApiGradientsTest, GradientsPrefix_TwoGradientsWithDistinctPrefixes) {
+  BuildGraphAndAddGradientsWithPrefixes("gradients", "gradients_1");
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+}
+
+TEST_F(CApiGradientsTest, GradientsPrefix_TwoGradientsInSameScope) {
+  BuildGraphAndAddGradientsWithPrefixes("scope/gradients", "scope/gradients_1");
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+}
+
+TEST_F(CApiGradientsTest, GradientsPrefix_TwoGradientsInDifferentScopes) {
+  BuildGraphAndAddGradientsWithPrefixes("scope/gradients", "scope_1/gradients");
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+}
+
+TEST_F(CApiGradientsTest, GradientsPrefix_2ndGradientsAsSubScopeOf1st) {
+  BuildGraphAndAddGradientsWithPrefixes("gradients", "gradients/sub");
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+}
+
+TEST_F(CApiGradientsTest, GradientsPrefix_PrefixMatchesExistingNodeName) {
+  BuildGraphAndAddGradientsWithPrefixes("Const_0");
+  ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_)) << TF_Message(s_);
+}
+
+TEST_F(CApiGradientsTest, GradientsPrefix_TwoGradientsWithIdenticalPrefixes) {
+  BuildGraphAndAddGradientsWithPrefixes("gradients", "gradients");
+  ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_)) << TF_Message(s_);
+}
+
+TEST_F(CApiGradientsTest, GradientsPrefix_2ndGradientsMatchingNodeOf1st) {
+  BuildGraphAndAddGradientsWithPrefixes("gradients", "gradients/MatMul");
+  ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_)) << TF_Message(s_);
+}
+
+TEST_F(CApiGradientsTest, GradientsPrefix_1stGradientsMatchingNodeOf2nd) {
+  BuildGraphAndAddGradientsWithPrefixes("gradients/MatMul", "gradients");
+  ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_)) << TF_Message(s_);
+}
+
+TEST_F(CApiGradientsTest, GradientsPrefix_2ndGradientsAsParentScopeOf1st) {
+  BuildGraphAndAddGradientsWithPrefixes("gradients/sub", "gradients");
+  ASSERT_EQ(TF_INVALID_ARGUMENT, TF_GetCode(s_)) << TF_Message(s_);
 }
 
 void ScalarFloatFromTensor(const TF_Tensor* t, float* f) {
@@ -2263,15 +2347,9 @@ TEST(TestApiDef, TestCreateApiDef) {
   // tf_cuda_cc_test() bazel rule and remove the next line.
   if (!GPUDeviceName().empty()) return;
 
+  TF_Buffer* op_list_buf = TF_GetAllOpList();
   TF_Status* status = TF_NewStatus();
-  TF_Library* lib =
-      TF_LoadLibrary("tensorflow/c/test_op.so", status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteStatus(status);
-
-  TF_Buffer op_list_buf = TF_GetOpList(lib);
-  status = TF_NewStatus();
-  auto* api_def_map = TF_NewApiDefMap(&op_list_buf, status);
+  auto* api_def_map = TF_NewApiDefMap(op_list_buf, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteStatus(status);
 
@@ -2289,7 +2367,7 @@ TEST(TestApiDef, TestCreateApiDef) {
 
   TF_DeleteBuffer(api_def_buf);
   TF_DeleteApiDefMap(api_def_map);
-  TF_DeleteLibraryHandle(lib);
+  TF_DeleteBuffer(op_list_buf);
 }
 
 TEST(TestApiDef, TestCreateApiDefWithOverwrites) {
@@ -2297,15 +2375,9 @@ TEST(TestApiDef, TestCreateApiDefWithOverwrites) {
   // tf_cuda_cc_test() bazel rule and remove the next line.
   if (!GPUDeviceName().empty()) return;
 
+  TF_Buffer* op_list_buf = TF_GetAllOpList();
   TF_Status* status = TF_NewStatus();
-  TF_Library* lib =
-      TF_LoadLibrary("tensorflow/c/test_op.so", status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TF_DeleteStatus(status);
-
-  TF_Buffer op_list_buf = TF_GetOpList(lib);
-  status = TF_NewStatus();
-  auto* api_def_map = TF_NewApiDefMap(&op_list_buf, status);
+  auto* api_def_map = TF_NewApiDefMap(op_list_buf, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteStatus(status);
 
@@ -2334,7 +2406,7 @@ TEST(TestApiDef, TestCreateApiDefWithOverwrites) {
 
   TF_DeleteBuffer(api_def_buf);
   TF_DeleteApiDefMap(api_def_map);
-  TF_DeleteLibraryHandle(lib);
+  TF_DeleteBuffer(op_list_buf);
 }
 
 class DummyKernel : public tensorflow::OpKernel {

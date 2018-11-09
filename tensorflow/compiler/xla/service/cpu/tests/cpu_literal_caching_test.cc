@@ -38,7 +38,8 @@ while_body {
 
 while_cond {
   arg_cond = f32[2,3,2] parameter(0)
-  infeed = (pred[], token[]) infeed()
+  token = token[] after-all()
+  infeed = (pred[], token[]) infeed(token)
   ROOT unknown = pred[] get-tuple-element((pred[], token[]) infeed), index=0
 }
 
@@ -50,8 +51,9 @@ ENTRY main {
      {{2, 1}, {2001, 3002}, {2001, 2002}}})
   const_b = f32[2,3,2] while(f32[2,3,2] const_a), condition=while_cond, body=while_body
 
-  out0 = token[] outfeed(f32[2,3,2] const_a)
-  ROOT out1 = token[] outfeed(f32[2,3,2] const_b)
+  token = token[] after-all()
+  out0 = token[] outfeed(f32[2,3,2] const_a, token[] token)
+  ROOT out1 = token[] outfeed(f32[2,3,2] const_b, token[] token)
 }
 )";
 
@@ -85,7 +87,8 @@ while_body {
 
 while_cond {
   arg_cond = (f32[2,1]{1,0}, f32[1]{0}) parameter(0)
-  infeed = (pred[], token[]) infeed()
+  token = token[] after-all()
+  infeed = (pred[], token[]) infeed(token)
   ROOT unknown = pred[] get-tuple-element((pred[], token[]) infeed), index=0
 }
 
@@ -94,8 +97,9 @@ ENTRY main {
   const_a = (f32[2,1]{1,0}, f32[1]{0}) constant((f32[2,1], f32[1]) ( f32[2,1] { { 1 }, { 2 } }, {2} ))
   const_b = (f32[2,1]{1,0}, f32[1]{0}) while((f32[2,1]{1,0}, f32[1]{0}) const_a), condition=while_cond, body=while_body
 
-  out0 = () outfeed((f32[2,1]{1,0}, f32[1]{0}) const_a)
-  ROOT out1 = () outfeed((f32[2,1]{1,0}, f32[1]{0}) const_b)
+  token = token[] after-all()
+  out0 = () outfeed((f32[2,1]{1,0}, f32[1]{0}) const_a, token[] token)
+  ROOT out1 = () outfeed((f32[2,1]{1,0}, f32[1]{0}) const_b, token[] token)
 }
 )";
 

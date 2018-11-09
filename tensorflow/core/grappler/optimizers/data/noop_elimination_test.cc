@@ -35,9 +35,17 @@ std::vector<std::pair<string, AttrValue>> GetCommonAttributes() {
   return commonAttributes;
 }
 
-NodeDef *MakeUnaryNode(const std::string &node_type, int count,
-                       string input_node, MutableGraphView *graph) {
+NodeDef *MakeUnaryNode(StringPiece node_type, int count, string input_node,
+                       MutableGraphView *graph) {
   NodeDef *node_count = graph_utils::AddScalarConstNode<int64>(count, graph);
+  return graph_utils::AddNode("", node_type,
+                              {std::move(input_node), node_count->name()},
+                              GetCommonAttributes(), graph);
+}
+
+NodeDef *MakeUnaryNonConstNode(StringPiece node_type, string input_node,
+                               MutableGraphView *graph) {
+  NodeDef *node_count = graph_utils::AddScalarPlaceholder(DT_INT32, graph);
   return graph_utils::AddNode("", node_type,
                               {std::move(input_node), node_count->name()},
                               GetCommonAttributes(), graph);
@@ -64,7 +72,7 @@ NodeDef *MakeRangeNode(MutableGraphView *graph) {
 }
 
 struct NoOpLastEliminationTest
-    : ::testing::TestWithParam<std::tuple<std::string, int, bool>> {};
+    : ::testing::TestWithParam<std::tuple<string, int, bool>> {};
 
 // This test checks whether the no-op elimination correctly handles
 // transformations at the end of the pipeline.
@@ -72,7 +80,7 @@ TEST_P(NoOpLastEliminationTest, EliminateLastNoOpNode) {
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
 
-  const std::string &node_type = std::get<0>(GetParam());
+  const string &node_type = std::get<0>(GetParam());
   const int node_count = std::get<1>(GetParam());
   const bool should_keep_node = std::get<2>(GetParam());
 
@@ -98,11 +106,13 @@ INSTANTIATE_TEST_CASE_P(
                       std::make_tuple("SkipDataset", -1, true),
                       std::make_tuple("SkipDataset", 0, false),
                       std::make_tuple("SkipDataset", 3, true),
+                      std::make_tuple("PrefetchDataset", 0, false),
+                      std::make_tuple("PrefetchDataset", 1, true),
                       std::make_tuple("RepeatDataset", 1, false),
                       std::make_tuple("RepeatDataset", 2, true)));
 
 struct NoOpMiddleEliminationTest
-    : ::testing::TestWithParam<std::tuple<std::string, int, bool>> {};
+    : ::testing::TestWithParam<std::tuple<string, int, bool>> {};
 
 // This test checks whether the no-op elimination correctly handles
 // transformations int the middle of the pipeline.
@@ -110,7 +120,7 @@ TEST_P(NoOpMiddleEliminationTest, EliminateMiddleNoOpNode) {
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
 
-  const std::string &node_type = std::get<0>(GetParam());
+  const string &node_type = std::get<0>(GetParam());
   const int node_count = std::get<1>(GetParam());
   const bool should_keep_node = std::get<2>(GetParam());
 
@@ -146,6 +156,8 @@ INSTANTIATE_TEST_CASE_P(
                       std::make_tuple("SkipDataset", -1, true),
                       std::make_tuple("SkipDataset", 0, false),
                       std::make_tuple("SkipDataset", 3, true),
+                      std::make_tuple("PrefetchDataset", 0, false),
+                      std::make_tuple("PrefetchDataset", 1, true),
                       std::make_tuple("RepeatDataset", 1, false),
                       std::make_tuple("RepeatDataset", 2, true)));
 
@@ -198,12 +210,51 @@ TEST_P(NoOpMultipleEliminationTest, EliminateMultipleNoOpNode) {
 const auto *const kTakeNode = new std::pair<string, int>{"TakeDataset", -1};
 const auto *const kSkipNode = new std::pair<string, int>{"SkipDataset", 0};
 const auto *const kRepeatNode = new std::pair<string, int>{"RepeatDataset", 1};
+const auto *const kPrefetchNode =
+    new std::pair<string, int>{"PrefetchDataset", 0};
 
 INSTANTIATE_TEST_CASE_P(
     BasicRemovalTest, NoOpMultipleEliminationTest,
-    ::testing::Combine(::testing::Values(*kTakeNode, *kSkipNode, *kRepeatNode),
-                       ::testing::Values(*kTakeNode, *kSkipNode,
-                                         *kRepeatNode)));
+    ::testing::Combine(::testing::Values(*kTakeNode, *kSkipNode, *kRepeatNode,
+                                         *kPrefetchNode),
+                       ::testing::Values(*kTakeNode, *kSkipNode, *kRepeatNode,
+                                         *kPrefetchNode)));
+
+struct NoOpPlaceholdersTest
+    : ::testing::TestWithParam<std::tuple<string, string>> {};
+
+TEST_P(NoOpPlaceholdersTest, NonConstNoOpNode) {
+  GrapplerItem item;
+  MutableGraphView graph(&item.graph);
+
+  static_assert(std::tuple_size<NodesTypes>::value == 2,
+                "Make sure to include everything in the test");
+  const std::vector<string> noop_nodes = {std::get<0>(GetParam()),
+                                          std::get<1>(GetParam())};
+  NodeDef *range_node = MakeRangeNode(&graph);
+  std::vector<string> nodes_to_keep;
+  nodes_to_keep.reserve(noop_nodes.size());
+  NodeDef *previous = range_node;
+
+  for (const auto &noop_node : noop_nodes) {
+    NodeDef *node = MakeUnaryNonConstNode(noop_node, previous->name(), &graph);
+    nodes_to_keep.push_back(node->name());
+    previous = node;
+  }
+
+  NoOpElimination optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+  for (const auto &noop_node_name : nodes_to_keep)
+    EXPECT_TRUE(graph_utils::ContainsGraphNodeWithName(noop_node_name, output));
+}
+
+INSTANTIATE_TEST_CASE_P(
+    DoNotRemovePlaceholders, NoOpPlaceholdersTest,
+    ::testing::Combine(::testing::Values("TakeDataset", "SkipDataset",
+                                         "RepeatDataset", "PrefetchDataset"),
+                       ::testing::Values("TakeDataset", "SkipDataset",
+                                         "RepeatDataset", "PrefetchDataset")));
 
 }  // namespace
 }  // namespace grappler

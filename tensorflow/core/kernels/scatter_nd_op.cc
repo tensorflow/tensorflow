@@ -145,6 +145,7 @@ class ScatterNdUpdateOp : public OpKernel {
     if (dtype_ == DT_RESOURCE) {
       Var* v;
       OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+      core::ScopedUnref scoped_unref(v);
       mutex_lock m(*v->mu());
       DoCompute(c);
     } else if (use_exclusive_lock_) {
@@ -296,8 +297,7 @@ TF_CALL_bool(REGISTER_SCATTER_ND_CPU);
   REGISTER_SCATTER_ND_GPU(type);
 
 TF_CALL_int32(REGISTER_SCATTER_ND_ALL_GPU);
-// TODO(b/66916790): Support half types in ScatterNd.
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_ALL_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_ND_ALL_GPU);
 TF_CALL_complex64(REGISTER_SCATTER_ND_ALL_GPU);
 TF_CALL_complex128(REGISTER_SCATTER_ND_ALL_GPU);
 
@@ -586,7 +586,6 @@ namespace functor {
   DECLARE_GPU_SPECS_INDEX(T, int64)
 
 TF_CALL_int32(DECLARE_GPU_SPECS);
-// TODO(b/66916790): Support half types in ScatterNd.
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
 TF_CALL_complex64(DECLARE_GPU_SPECS);
 TF_CALL_complex128(DECLARE_GPU_SPECS);

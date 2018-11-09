@@ -167,10 +167,9 @@ class _Residual(tf.keras.Model):
         fused=fused,
         dtype=dtype)
 
-  def call(self, x, training=True, concat=True):
+  def call(self, x, training=True):
     """Apply residual block to inputs."""
-
-    x1, x2 = tf.split(x, num_or_size_splits=2, axis=self.axis)
+    x1, x2 = x
     f_x2 = self.f(x2, training=training)
     x1_down = ops.downsample(
         x1, self.filters // 2, self.strides, axis=self.axis)
@@ -179,15 +178,13 @@ class _Residual(tf.keras.Model):
     y1 = f_x2 + x1_down
     g_y1 = self.g(y1, training=training)
     y2 = g_y1 + x2_down
-    if not concat:  # For correct backward grads
-      return y1, y2
 
-    return tf.concat([y1, y2], axis=self.axis)
+    return y1, y2
 
   def backward_grads(self, y, dy, training=True):
     """Manually compute backward gradients given input and output grads."""
-    dy1, dy2 = tf.split(dy, num_or_size_splits=2, axis=self.axis)
-    y1, y2 = tf.split(y, num_or_size_splits=2, axis=self.axis)
+    dy1, dy2 = dy
+    y1, y2 = y
 
     with tf.GradientTape() as gtape:
       gtape.watch(y1)
@@ -212,8 +209,8 @@ class _Residual(tf.keras.Model):
     with tf.control_dependencies(df + [dx2]):
       x1 = y1 - fx2
 
-    x = tf.concat([x1, x2], axis=self.axis)
-    dx = tf.concat([dx1, dx2], axis=self.axis)
+    x = x1, x2
+    dx = dx1, dx2
     grads = df + dg
 
     return x, dx, grads
@@ -221,9 +218,9 @@ class _Residual(tf.keras.Model):
   def backward_grads_with_downsample(self, x, y, dy, training=True):
     """Manually compute backward gradients given input and output grads."""
     # Splitting this from `backward_grads` for better readability
-    x1, x2 = tf.split(x, num_or_size_splits=2, axis=self.axis)
-    y1, _ = tf.split(y, num_or_size_splits=2, axis=self.axis)
-    dy1, dy2 = tf.split(dy, num_or_size_splits=2, axis=self.axis)
+    x1, x2 = x
+    y1, _ = y
+    dy1, dy2 = dy
 
     with tf.GradientTape() as gtape:
       gtape.watch(y1)
@@ -252,7 +249,7 @@ class _Residual(tf.keras.Model):
       z2 = ops.downsample(x2, self.filters // 2, self.strides, axis=self.axis)
     dx2 += x2tape.gradient(z2, x2, output_gradients=dy2)
 
-    dx = tf.concat([dx1, dx2], axis=self.axis)
+    dx = dx1, dx2
     grads = df + dg
 
     return dx, grads
@@ -452,7 +449,7 @@ class InitBlock(tf.keras.Model):
     if self.config.init_max_pool:
       net = self.max_pool(net)
 
-    return net
+    return tf.split(net, num_or_size_splits=2, axis=self.axis)
 
 
 class FinalBlock(tf.keras.Model):
@@ -498,7 +495,7 @@ class FinalBlock(tf.keras.Model):
         self.config.n_classes, dtype=self.config.dtype)
 
   def call(self, x, training=True):
-    net = x
+    net = tf.concat(x, axis=self.axis)
     net = self.batch_norm(net, training=training)
     net = self.activation(net)
     net = self.global_avg_pool(net)

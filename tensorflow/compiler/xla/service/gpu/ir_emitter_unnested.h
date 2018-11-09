@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_UNNESTED_H_
 
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
+#include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_tiling.h"
 
@@ -76,6 +77,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status HandleInfeed(HloInstruction* xla_infeed) override;
   Status HandleOutfeed(HloInstruction* outfeed) override;
   Status HandleRng(HloInstruction* random) override;
+  Status HandleScatter(HloInstruction* scatter) override;
   Status HandleSelect(HloInstruction* select) override;
   Status HandleSort(HloInstruction* sort) override;
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
@@ -96,22 +98,21 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitConstantGlobals();
 
  private:
-  // Builds the appropriate thunk for the instruction hlo and returns the owning
-  // pointer to it. The caller needs to make sure `inst` outlives the lifetime
-  // of the returned Thunk object.
-  std::unique_ptr<Thunk> BuildThunk(const HloInstruction* hlo);
+  // Add a owning Thunk object to the thunk sequence.
+  void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {
+    thunk_sequence_->emplace_back(std::move(thunk));
+  }
 
   // Builds the prototype of the IR kernel for `inst` and adds it to the module.
   // This kernel takes as arguments pointers to the given buffer allocations.
   llvm::Function* BuildKernelPrototype(
       const HloInstruction& inst,
-      tensorflow::gtl::ArraySlice<const BufferAllocation*> args);
+      absl::Span<const BufferAllocation* const> args);
 
   // Helper for writing extra outputs from inside a reduce kernel.
   Status EmitExtraOutputsForReduce(
       const HloInstruction* reduce, const llvm_ir::IrArray::Index& index,
-      tensorflow::gtl::ArraySlice<
-          std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
+      absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
           extra_output_gens);
 
   // EmitColumnReduction and EmitRowReduction emit code for column and row
@@ -125,14 +126,13 @@ class IrEmitterUnnested : public IrEmitter {
   // [height x width], but can be bitcast to [height x width] with "height"
   // being the major dimension.
   Status EmitColumnReduction(
-      int64 height, int64 width, HloInstruction* reduce,
-      const Shape& input_shape,
-      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> input_gens,
-      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> init_value_gens,
-      tensorflow::gtl::ArraySlice<HloComputation*> reducers,
-      tensorflow::gtl::ArraySlice<ShapeIndex> reduce_output_shapes,
-      tensorflow::gtl::ArraySlice<
-          std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
+      KernelThunk* kernel_thunk, int64 height, int64 width,
+      HloInstruction* reduce, const Shape& input_shape,
+      absl::Span<const llvm_ir::ElementGenerator> input_gens,
+      absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
+      absl::Span<HloComputation* const> reducers,
+      absl::Span<const ShapeIndex> reduce_output_shapes,
+      absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
           extra_output_gens);
 
   // Emits code that reduces a 3D tensor of shape [depth x height x width] to a
@@ -141,25 +141,24 @@ class IrEmitterUnnested : public IrEmitter {
   // [depth x height x width], but can be bitcast to [depth x height x width]
   // with "depth" being the most major dimension.
   Status EmitRowReduction(
-      int64 depth, int64 height, int64 width, HloInstruction* reduce,
-      const Shape& input_shape,
-      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> input_gens,
-      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> init_value_gens,
-      tensorflow::gtl::ArraySlice<HloComputation*> reducers,
-      tensorflow::gtl::ArraySlice<ShapeIndex> reduce_output_shapes,
-      tensorflow::gtl::ArraySlice<
-          std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
+      KernelThunk* kernel_thunk, int64 depth, int64 height, int64 width,
+      HloInstruction* reduce, const Shape& input_shape,
+      absl::Span<const llvm_ir::ElementGenerator> input_gens,
+      absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
+      absl::Span<HloComputation* const> reducers,
+      absl::Span<const ShapeIndex> reduce_output_shapes,
+      absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
           extra_output_gens);
 
   // Emits code that reduces a tensor of arbitrary rank to a scalar.
   Status EmitReductionToScalar(
-      HloInstruction* reduce, const Shape& input_shape,
-      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> input_gens,
-      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> init_value_gens,
-      tensorflow::gtl::ArraySlice<HloComputation*> reducers,
-      tensorflow::gtl::ArraySlice<ShapeIndex> reduce_output_shapes,
-      tensorflow::gtl::ArraySlice<
-          std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
+      KernelThunk* kernel_thunk, HloInstruction* reduce,
+      const Shape& input_shape,
+      absl::Span<const llvm_ir::ElementGenerator> input_gens,
+      absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
+      absl::Span<HloComputation* const> reducers,
+      absl::Span<const ShapeIndex> reduce_output_shapes,
+      absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
           extra_output_gens);
 
   // Figures out whether `reduce` is a row or column reduction, and which
@@ -179,15 +178,23 @@ class IrEmitterUnnested : public IrEmitter {
   //
   // Prerequisite: `IsReductionToVector(*reduce)`
   Status EmitReductionToVector(
-      HloInstruction* reduce, const Shape& input_shape,
-      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> input_gens,
-      tensorflow::gtl::ArraySlice<llvm_ir::ElementGenerator> init_value_gens,
-      tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
-      tensorflow::gtl::ArraySlice<HloComputation*> reducers,
-      tensorflow::gtl::ArraySlice<ShapeIndex> reduce_output_shapes,
-      tensorflow::gtl::ArraySlice<
-          std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
+      KernelThunk* kernel_thunk, HloInstruction* reduce,
+      const Shape& input_shape,
+      absl::Span<const llvm_ir::ElementGenerator> input_gens,
+      absl::Span<const llvm_ir::ElementGenerator> init_value_gens,
+      absl::Span<const int64> dimensions_to_reduce,
+      absl::Span<HloComputation* const> reducers,
+      absl::Span<const ShapeIndex> reduce_output_shapes,
+      absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
           extra_output_gens);
+
+  // Emits code for an in-place scatter, modifying `thunk`s launch dimensions in
+  // the process. `scatter` may be fused, scatter indices are taken from
+  // `scatter_indices_gen`, updates from`updates_gen`. The output buffer is
+  // expected to have the operand values in it already.
+  Status EmitScatter(Thunk* thunk, HloInstruction* scatter,
+                     const llvm_ir::ElementGenerator& scatter_indices_gen,
+                     const llvm_ir::ElementGenerator& updates_gen);
 
   // Returns true if a 0-2-1 tiling algorithm is already used to emit the kernel
   // for the hlo instruction.
@@ -195,18 +202,15 @@ class IrEmitterUnnested : public IrEmitter {
   // Emits a kernel for the hlo instruction using a 0-2-1 tiling algorithm and
   // returns the launch dimensions for the kernel. This is a helper to support
   // the implementation of CheckAndEmitHloWithTile021.
-  LaunchDimensions EmitHlo021Tile(
-      HloInstruction* hlo,
-      tensorflow::gtl::ArraySlice<int64> reduced_output_dims,
-      tensorflow::gtl::ArraySlice<int64> tiled_param_ids);
-  // Generates the IrArray for each output of hlo and returns the number of
-  // outputs.
-  int ConstructIrArrayForOutputs(const HloInstruction& hlo,
-                                 std::vector<llvm_ir::IrArray>* output_arrays);
-  // Generates the IrArray for each input of hlo and returns the number of
-  // inputs.
-  int ConstructIrArrayForInputs(const HloInstruction& hlo,
-                                std::vector<llvm_ir::IrArray>* param_arrays);
+  LaunchDimensions EmitHlo021Tile(HloInstruction* hlo,
+                                  absl::Span<const int64> reduced_output_dims,
+                                  absl::Span<const int64> tiled_param_ids);
+
+  // Generates the IrArray for each input of an hlo and returns a vector that
+  // constains such IrArrays.
+  std::vector<llvm_ir::IrArray> ConstructIrArrayForInputs(
+      const HloInstruction& hlo);
+
   // For each output of the `hlo` instruction, constructs the reduced shape for
   // the output with the given `reduced_output_dims` and cast the original
   // output IrArray element in `output_arrays` to the reduced shape. Returns
@@ -214,7 +218,7 @@ class IrEmitterUnnested : public IrEmitter {
   int ConstructOutputReducedShapeAndCastOutputIrArrayToShape(
       const HloInstruction& hlo,
       const std::vector<llvm_ir::IrArray>& output_arrays,
-      tensorflow::gtl::ArraySlice<int64> reduced_output_dims,
+      absl::Span<const int64> reduced_output_dims,
       std::vector<Shape>* output_reduced_shapes,
       std::vector<llvm_ir::IrArray>* output_in_reduced_shape_arrays);
   // For each input of the `hlo` instruction, checks its value in
@@ -226,7 +230,7 @@ class IrEmitterUnnested : public IrEmitter {
       const HloInstruction& hlo,
       const std::vector<llvm_ir::IrArray>& param_arrays,
       const std::vector<llvm::Value*>& param_buffers,
-      tensorflow::gtl::ArraySlice<int64> reduced_output_dims,
+      absl::Span<const int64> reduced_output_dims,
       std::vector<Shape>* param_reduced_shapes,
       std::vector<llvm_ir::IrArray>* param_in_reduced_shape_arrays);
 
@@ -250,7 +254,7 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns a thunk that, given a reduce or select-and-scatter op, initializes
   // its memory to the appropriate initial value.
   StatusOr<std::unique_ptr<Thunk>> BuildInitializerThunk(
-      const HloInstruction* hlo, const ShapeIndex& index = {});
+      HloInstruction* hlo, const ShapeIndex& index = {});
 
   // Returns a thunk that calls host-to-device cuMemcpy to implement `inst`.
   std::unique_ptr<Thunk> BuildHostToDeviceCopyThunk(const HloInstruction* inst);

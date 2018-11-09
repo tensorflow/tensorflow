@@ -29,7 +29,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables as variables_lib
@@ -39,7 +39,7 @@ from tensorflow.python.platform import test
 class LocalVariabletest(test.TestCase):
 
   def test_local_variable(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertEquals([], variables_lib.local_variables())
       value0 = 42
       variables_lib2.local_variable(value0)
@@ -55,7 +55,7 @@ class LocalVariabletest(test.TestCase):
 class ReduceSumNTest(test.TestCase):
 
   def test_reduce_sum_n(self):
-    with self.test_session():
+    with self.cached_session():
       a = constant_op.constant(1)
       b = constant_op.constant([2])
       c = constant_op.constant([[3, 4], [5, 6]])
@@ -119,13 +119,13 @@ class WithShapeTest(test.TestCase):
                                   }))
 
   def test_with_shape_invalid_expected_shape(self):
-    with self.test_session():
+    with self.cached_session():
       self.assertRaisesRegexp(ValueError, "Invalid rank",
                               tensor_util.with_shape, [[1], [2]],
                               constant_op.constant(1.0))
 
   def test_with_shape_invalid_type(self):
-    with self.test_session():
+    with self.cached_session():
       self.assertRaisesRegexp(ValueError, "Invalid dtype",
                               tensor_util.with_shape, [1.1],
                               constant_op.constant([1.0]))
@@ -138,7 +138,7 @@ class WithShapeTest(test.TestCase):
                               constant_op.constant(1.0))
 
   def test_with_shape_0(self):
-    with self.test_session():
+    with self.cached_session():
       value = 42
       shape = [0]
       unexpected_shapes = [[1], [2], [1, 1]]
@@ -150,7 +150,7 @@ class WithShapeTest(test.TestCase):
           unexpected_shapes)
 
   def test_with_shape_1(self):
-    with self.test_session():
+    with self.cached_session():
       value = [42]
       shape = [1]
       unexpected_shapes = [[0], [2], [1, 1]]
@@ -162,7 +162,7 @@ class WithShapeTest(test.TestCase):
           unexpected_shapes)
 
   def test_with_shape_2(self):
-    with self.test_session():
+    with self.cached_session():
       value = [42, 43]
       shape = [2]
       unexpected_shapes = [[0], [1], [2, 1]]
@@ -174,7 +174,7 @@ class WithShapeTest(test.TestCase):
           unexpected_shapes)
 
   def test_with_shape_2x2(self):
-    with self.test_session():
+    with self.cached_session():
       value = [[42, 43], [44, 45]]
       shape = [2, 2]
       unexpected_shapes = [[0], [1], [2, 1]]
@@ -185,8 +185,18 @@ class WithShapeTest(test.TestCase):
           shape,
           unexpected_shapes)
 
+  def test_with_shape_2x2_with_partial_expected_shape(self):
+    with self.cached_session():
+      value = [[42, 43], [44, 45]]
+      actual_shape = [2, 2]
+      tensor = constant_op.constant(value, shape=actual_shape)
+      partial_expected_shape = tensor_shape.TensorShape([None, 2])
+      # Won't raise any exception here:
+      tensor_with_shape = tensor_util.with_shape(partial_expected_shape, tensor)
+      np.testing.assert_array_equal(value, tensor_with_shape.eval())
+
   def test_with_shape_none(self):
-    with self.test_session():
+    with self.cached_session():
       tensor_no_shape = array_ops.placeholder(dtypes.float32)
 
       compatible_shape = [2, 2]
@@ -208,9 +218,8 @@ class WithShapeTest(test.TestCase):
         self.assertRaisesRegexp(errors_impl.OpError, "Wrong shape",
                                 tensor_2x2.eval, {tensor_no_shape: [42.0]})
 
-  @test_util.enable_c_shapes
   def test_with_shape_partial(self):
-    with self.test_session():
+    with self.cached_session():
       tensor_partial_shape = array_ops.placeholder(dtypes.float32)
       tensor_partial_shape.set_shape([None, 2])
 
@@ -366,7 +375,7 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
 
       squeezed_predictions, squeezed_labels = (
           tensor_util.remove_squeezable_dimensions(predictions, labels))
-      with self.test_session(g):
+      with self.session(g):
         variables_lib.local_variables_initializer().run()
         self.assertAllClose(
             predictions_value, squeezed_predictions.eval(feed_dict=feed_dict))

@@ -28,7 +28,8 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import saver
 from tensorflow.python.util.tf_export import tf_export
 
@@ -102,7 +103,10 @@ def list_variables(ckpt_dir_or_file):
 
 @tf_export("train.init_from_checkpoint")
 def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
-  """Initializes current variables with tensors loaded from given checkpoint.
+  """Replaces `tf.Variable` initializers so they load from a checkpoint file.
+
+  Values are not loaded immediately, but when the initializer is run
+  (typically by running a `tf.global_variables_initializer` op).
 
   Note: This overrides default initialization ops of specified variables and
   redefines dtype.
@@ -179,10 +183,10 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
     tf.errors.OpError: If missing checkpoints or tensors in checkpoints.
     ValueError: If missing variables in current graph.
   """
-  if distribute_lib.get_cross_tower_context():
+  if distribution_strategy_context.get_cross_replica_context():
     _init_from_checkpoint(None, ckpt_dir_or_file, assignment_map)
   else:
-    distribute_lib.get_tower_context().merge_call(
+    distribution_strategy_context.get_replica_context().merge_call(
         _init_from_checkpoint, ckpt_dir_or_file, assignment_map)
 
 
@@ -277,7 +281,7 @@ def _init_from_checkpoint(_, ckpt_dir_or_file, assignment_map):
 def _get_checkpoint_filename(ckpt_dir_or_file):
   """Returns checkpoint filename given directory or specific checkpoint file."""
   if gfile.IsDirectory(ckpt_dir_or_file):
-    return saver.latest_checkpoint(ckpt_dir_or_file)
+    return checkpoint_management.latest_checkpoint(ckpt_dir_or_file)
   return ckpt_dir_or_file
 
 
@@ -314,13 +318,13 @@ def _set_checkpoint_initializer(variable,
         saveable_objects.append(s)
 
     assert len(saveable_objects) == 1  # Should be only one variable.
-    init_op = saveable_objects[0].restore([restore_op], restored_shapes=None)
+  init_op = saveable_objects[0].restore([restore_op], restored_shapes=None)
 
-    # pylint:disable=protected-access
-    variable._initializer_op = init_op
-    restore_op.set_shape(variable.shape)
-    variable._initial_value = restore_op
-    # pylint:enable=protected-access
+  # pylint:disable=protected-access
+  variable._initializer_op = init_op
+  restore_op.set_shape(variable.shape)
+  variable._initial_value = restore_op
+  # pylint:enable=protected-access
 
 
 def _set_variable_or_list_initializer(variable_or_list, ckpt_file,

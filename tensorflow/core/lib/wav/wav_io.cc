@@ -19,7 +19,7 @@ limitations under the License.
 #include <string.h>
 #include <algorithm>
 
-#include "tensorflow/core/lib/core/casts.h"
+#include "absl/base/casts.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/wav/wav_io.h"
@@ -174,7 +174,7 @@ Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
 
   wav_string->resize(file_size);
   char* data = &wav_string->at(0);
-  WavHeader* header = bit_cast<WavHeader*>(data);
+  WavHeader* header = absl::bit_cast<WavHeader*>(data);
 
   // Fill RIFF chunk.
   auto* riff_chunk = &header->riff_chunk;
@@ -232,6 +232,11 @@ Status DecodeLin16WaveAsFloatVector(const string& wav_string,
         "Bad audio format for WAV: Expected 1 (PCM), but got", audio_format);
   }
   TF_RETURN_IF_ERROR(ReadValue<uint16>(wav_string, channel_count, &offset));
+  if (*channel_count < 1) {
+    return errors::InvalidArgument(
+        "Bad number of channels for WAV: Expected at least 1, but got ",
+        *channel_count);
+  }
   TF_RETURN_IF_ERROR(ReadValue<uint32>(wav_string, sample_rate, &offset));
   uint32 bytes_per_second;
   TF_RETURN_IF_ERROR(ReadValue<uint32>(wav_string, &bytes_per_second, &offset));

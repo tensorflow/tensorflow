@@ -19,9 +19,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/aot/compile.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {
 namespace tfcompile {
@@ -96,7 +96,7 @@ Status ParseCppClass(const string& cpp_class, string* class_name,
 
 // ValidateCppIdent returns OK iff ident is a valid C++ identifier.  The msg is
 // appended to error messages.
-Status ValidateCppIdent(StringPiece ident, StringPiece msg);
+Status ValidateCppIdent(absl::string_view ident, absl::string_view msg);
 
 }  // namespace tfcompile
 }  // namespace tensorflow

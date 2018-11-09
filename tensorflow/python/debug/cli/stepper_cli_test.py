@@ -132,8 +132,8 @@ def _parse_updated(lines):
 class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
-    self.a = variables.Variable(10.0, name="a")
-    self.b = variables.Variable(20.0, name="b")
+    self.a = variables.VariableV1(10.0, name="a")
+    self.b = variables.VariableV1(20.0, name="b")
 
     self.c = math_ops.add(self.a, self.b, name="c")  # Should be 30.0.
     self.d = math_ops.subtract(self.a, self.c, name="d")  # Should be -20.0.

@@ -146,6 +146,8 @@ def deserialize_keras_object(identifier,
                              module_objects=None,
                              custom_objects=None,
                              printable_module_name='object'):
+  if identifier is None:
+    return None
   if isinstance(identifier, dict):
     # In this case we are dealing with a Keras config dictionary.
     config = identifier
@@ -162,7 +164,7 @@ def deserialize_keras_object(identifier,
       if cls is None:
         raise ValueError('Unknown ' + printable_module_name + ': ' + class_name)
     if hasattr(cls, 'from_config'):
-      arg_spec = tf_inspect.getargspec(cls.from_config)
+      arg_spec = tf_inspect.getfullargspec(cls.from_config)
       custom_objects = custom_objects or {}
 
       if 'custom_objects' in arg_spec.args:
@@ -281,8 +283,8 @@ def has_arg(fn, name, accept_all=False):
   Returns:
       bool, whether `fn` accepts a `name` keyword argument.
   """
-  arg_spec = tf_inspect.getargspec(fn)
-  if accept_all and arg_spec.keywords is not None:
+  arg_spec = tf_inspect.getfullargspec(fn)
+  if accept_all and arg_spec.varkw is not None:
     return True
   return name in arg_spec.args
 

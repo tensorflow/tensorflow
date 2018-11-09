@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_MODEL_ANALYZER_H_
-#define TENSORFLOW_CORE_GRAPPLER_COSTS_MODEL_ANALYZER_H_
+#ifndef TENSORFLOW_PYTHON_GRAPPLER_MODEL_ANALYZER_H_
+#define TENSORFLOW_PYTHON_GRAPPLER_MODEL_ANALYZER_H_
 
 #include <iostream>
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -43,4 +43,4 @@ class ModelAnalyzer {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_GRAPPLER_COSTS_MODEL_ANALYZER_H_
+#endif  // TENSORFLOW_PYTHON_GRAPPLER_MODEL_ANALYZER_H_

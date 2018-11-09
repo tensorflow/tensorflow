@@ -77,7 +77,7 @@ class ResNet50Test(tf.test.TestCase):
     device, data_format = device_and_data_format()
     model = resnet50.ResNet50(data_format)
     if defun:
-      model.call = tfe.defun(model.call)
+      model.call = tfe.function(model.call)
     with tf.device(device), tfe.execution_mode(execution_mode):
       images, _ = random_batch(2, data_format)
       output = model(images, training=False)
@@ -216,12 +216,12 @@ class ResNet50Benchmarks(tf.test.Benchmark):
     tf.constant(1.).cpu()
 
   def _benchmark_eager_apply(self, label, device_and_format, defun=False,
-                             execution_mode=None, compiled=False):
+                             execution_mode=None):
     with tfe.execution_mode(execution_mode):
       device, data_format = device_and_format
       model = resnet50.ResNet50(data_format)
       if defun:
-        model.call = tfe.defun(model.call, compiled=compiled)
+        model.call = tfe.function(model.call)
       batch_size = 64
       num_burn = 5
       num_iters = 30
@@ -257,8 +257,7 @@ class ResNet50Benchmarks(tf.test.Benchmark):
                              make_iterator,
                              device_and_format,
                              defun=False,
-                             execution_mode=None,
-                             compiled=False):
+                             execution_mode=None):
     with tfe.execution_mode(execution_mode):
       device, data_format = device_and_format
       for batch_size in self._train_batch_sizes():
@@ -267,8 +266,8 @@ class ResNet50Benchmarks(tf.test.Benchmark):
         optimizer = tf.train.GradientDescentOptimizer(0.1)
         apply_grads = apply_gradients
         if defun:
-          model.call = tfe.defun(model.call, compiled=compiled)
-          apply_grads = tfe.defun(apply_gradients, compiled=compiled)
+          model.call = tfe.function(model.call)
+          apply_grads = tfe.function(apply_gradients)
 
         num_burn = 3
         num_iters = 10

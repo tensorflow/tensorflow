@@ -53,4 +53,4 @@ Status ExampleParserConfigurationProtoToFeatureVectors(
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_EXAMPLE_EXAMPLE_PARSE_CONFIGURATION_H_
+#endif  // TENSORFLOW_CORE_EXAMPLE_EXAMPLE_PARSER_CONFIGURATION_H_

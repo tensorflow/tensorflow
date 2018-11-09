@@ -34,9 +34,9 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -145,6 +145,7 @@ class BatchNormalization(Layer):
                **kwargs):
     super(BatchNormalization, self).__init__(
         name=name, trainable=trainable, **kwargs)
+    self._can_use_graph_functions = True
     if isinstance(axis, list):
       self.axis = axis[:]
     else:
@@ -251,7 +252,7 @@ class BatchNormalization(Layer):
     else:
       param_dtype = self.dtype or dtypes.float32
 
-    axis_to_dim = {x: input_shape[x].value for x in self.axis}
+    axis_to_dim = {x: input_shape.dims[x].value for x in self.axis}
     for x in axis_to_dim:
       if axis_to_dim[x] is None:
         raise ValueError('Input has undefined `axis` dimension. Input shape: ',
@@ -313,18 +314,18 @@ class BatchNormalization(Layer):
           shape=param_shape,
           dtype=param_dtype,
           initializer=self.moving_mean_initializer,
-          synchronization=variable_scope.VariableSynchronization.ON_READ,
+          synchronization=tf_variables.VariableSynchronization.ON_READ,
           trainable=False,
-          aggregation=variable_scope.VariableAggregation.MEAN)
+          aggregation=tf_variables.VariableAggregation.MEAN)
 
       self.moving_variance = self.add_weight(
           name='moving_variance',
           shape=param_shape,
           dtype=param_dtype,
           initializer=self.moving_variance_initializer,
-          synchronization=variable_scope.VariableSynchronization.ON_READ,
+          synchronization=tf_variables.VariableSynchronization.ON_READ,
           trainable=False,
-          aggregation=variable_scope.VariableAggregation.MEAN)
+          aggregation=tf_variables.VariableAggregation.MEAN)
 
       if self.renorm:
         # Create variables to maintain the moving mean and standard deviation.
@@ -340,21 +341,21 @@ class BatchNormalization(Layer):
               shape=shape,
               dtype=param_dtype,
               initializer=init_ops.zeros_initializer(),
-              synchronization=variable_scope.VariableSynchronization.ON_READ,
+              synchronization=tf_variables.VariableSynchronization.ON_READ,
               trainable=False,
-              aggregation=variable_scope.VariableAggregation.MEAN)
+              aggregation=tf_variables.VariableAggregation.MEAN)
           return var
 
-        with distribute_lib.get_distribution_strategy().colocate_vars_with(
-            self.moving_mean):
+        with distribution_strategy_context.get_distribution_strategy(
+        ).colocate_vars_with(self.moving_mean):
           self.renorm_mean = _renorm_variable('renorm_mean', param_shape)
           self.renorm_mean_weight = _renorm_variable('renorm_mean_weight', ())
         # We initialize renorm_stddev to 0, and maintain the (0-initialized)
         # renorm_stddev_weight. This allows us to (1) mix the average
         # stddev with the minibatch stddev early in training, and (2) compute
         # the unbiased average stddev by dividing renorm_stddev by the weight.
-        with distribute_lib.get_distribution_strategy().colocate_vars_with(
-            self.moving_variance):
+        with distribution_strategy_context.get_distribution_strategy(
+        ).colocate_vars_with(self.moving_variance):
           self.renorm_stddev = _renorm_variable('renorm_stddev', param_shape)
           self.renorm_stddev_weight = _renorm_variable('renorm_stddev_weight',
                                                        ())
@@ -530,7 +531,7 @@ class BatchNormalization(Layer):
     # Broadcasting only necessary for single-axis batch norm where the axis is
     # not the last dimension
     broadcast_shape = [1] * ndims
-    broadcast_shape[self.axis[0]] = input_shape[self.axis[0]].value
+    broadcast_shape[self.axis[0]] = input_shape.dims[self.axis[0]].value
     def _broadcast(v):
       if (v is not None and
           len(v.get_shape()) != ndims and

@@ -30,25 +30,25 @@ namespace xla {
 // used to break an HLO graph edge connecting two instructions with different
 // sharding. If a set of connected instructions have all the same sharding, no
 // kDomain instruction will be placed.
-class HloDomainIsolator : public HloPassInterface {
+class HloDomainIsolator : public HloModulePass {
  public:
   // Creates a new kDomain instruction for the edge between the use instruction
   // (the first HloInstruction argument), and the operand instruction (the
-  // second HloInstruction argument).
+  // third HloInstruction argument) if the interesting attribute of the
+  // instruction differes from the attribute of the root (the second
+  // HloInstruction argument).
   // Returns nullptr in case no domain separation is necessary.
-  using DomainCreator = std::function<std::unique_ptr<HloInstruction>(
-      HloInstruction*, HloInstruction*)>;
+  using DomainCreator = std::function<HloInstruction*(
+      HloInstruction*, HloInstruction*, HloInstruction*)>;
+  using DomainCreatorFactory = std::function<DomainCreator()>;
+  explicit HloDomainIsolator(DomainCreatorFactory creator_factory_);
 
-  explicit HloDomainIsolator(DomainCreator creator);
-
-  tensorflow::StringPiece name() const override { return "domain_isolator"; }
+  absl::string_view name() const override { return "domain_isolator"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  class RunContext;
-
-  DomainCreator creator_;
+  DomainCreatorFactory creator_factory_;
 };
 
 }  // namespace xla

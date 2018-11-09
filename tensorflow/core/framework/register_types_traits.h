@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_REGISTER_TYPES_TRAITS_H_
-#define TENSORFLOW_FRAMEWORK_REGISTER_TYPES_TRAITS_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_REGISTER_TYPES_TRAITS_H_
+#define TENSORFLOW_CORE_FRAMEWORK_REGISTER_TYPES_TRAITS_H_
 // This file is used by cuda code and must remain compilable by nvcc.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -69,6 +69,10 @@ template <>
 struct proxy_type_pod<GPUDevice, 2> {
   typedef Eigen::half type;
 };
+template <>
+struct proxy_type_pod<GPUDevice, 1> {
+  typedef ::tensorflow::int8 type;
+};
 
 #ifdef TENSORFLOW_USE_SYCL
 template <>
@@ -81,7 +85,7 @@ struct proxy_type_pod<SYCLDevice, 4> {
 };
 #endif  // TENSORFLOW_USE_SYCL
 
-/// If POD we use proxy_type_pod, otherwise this maps to identiy.
+/// If POD we use proxy_type_pod, otherwise this maps to identity.
 template <typename Device, typename T>
 struct proxy_type {
   typedef typename std::conditional<
@@ -94,12 +98,13 @@ struct proxy_type {
 #define TF_CALL_CPU_PROXY_TYPES(m)                                     \
   TF_CALL_int64(m) TF_CALL_int32(m) TF_CALL_uint16(m) TF_CALL_int16(m) \
       TF_CALL_int8(m) TF_CALL_complex128(m)
-#define TF_CALL_GPU_PROXY_TYPES(m) \
-  TF_CALL_double(m) TF_CALL_float(m) TF_CALL_half(m) TF_CALL_int32(m)
+#define TF_CALL_GPU_PROXY_TYPES(m)                                    \
+  TF_CALL_double(m) TF_CALL_float(m) TF_CALL_half(m) TF_CALL_int32(m) \
+      TF_CALL_int8(m)
 #ifdef TENSORFLOW_USE_SYCL
 #define TF_CALL_SYCL_PROXY_TYPES(m) \
   TF_CALL_double(m) TF_CALL_float(m) TF_CALL_int32(m)
 #endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_REGISTER_TYPES_TRAITS_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_REGISTER_TYPES_TRAITS_H_

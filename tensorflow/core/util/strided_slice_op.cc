@@ -326,7 +326,7 @@ Status ValidateStridedSliceOp(
       // Even if we don't have values for begin or end, we do know that this
       // dimension covers the whole interval. If we have shape information for
       // this dimension, that tells us the interval length.
-      if (dim_i > 0) {
+      if (dim_i >= 0) {
         if (stride_i < 0) {
           interval_length = -dim_i;
         } else {

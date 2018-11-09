@@ -32,7 +32,7 @@ class AdagradOptimizerTest(xla_test.XLATestCase):
 
   def testBasic(self):
     for dtype in self.float_types:
-      with self.test_session(), self.test_scope():
+      with self.cached_session(), self.test_scope():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -57,7 +57,7 @@ class AdagradOptimizerTest(xla_test.XLATestCase):
 
   def testTensorLearningRate(self):
     for dtype in self.float_types:
-      with self.test_session(), self.test_scope():
+      with self.cached_session(), self.test_scope():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -83,7 +83,7 @@ class AdagradOptimizerTest(xla_test.XLATestCase):
 
   def testSharing(self):
     for dtype in self.float_types:
-      with self.test_session(), self.test_scope():
+      with self.cached_session(), self.test_scope():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)

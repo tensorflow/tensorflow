@@ -336,9 +336,27 @@ class Mean(Metric):
       return values
     return values, weights
 
-  def result(self):
+  def result(self, write_summary=True):
+    """Returns the result of the Metric.
+
+    Args:
+      write_summary: bool indicating whether to feed the result to the summary
+        before returning.
+    Returns:
+      aggregated metric as float.
+    Raises:
+      ValueError: if the optional argument is not bool
+    """
+    # Convert the boolean to tensor for tf.cond, if it is not.
+    if not isinstance(write_summary, ops.Tensor):
+      write_summary = ops.convert_to_tensor(write_summary)
     t = self.numer / self.denom
-    summary_ops.scalar(name=self.name, tensor=t)
+    def write_summary_f():
+      summary_ops.scalar(name=self.name, tensor=t)
+      return t
+    control_flow_ops.cond(write_summary,
+                          write_summary_f,
+                          lambda: t)
     return t
 
 
@@ -469,6 +487,8 @@ class BinaryAccuracy(Mean):
         message="Shapes of labels and predictions are unequal")
     predictions = ops.convert_to_tensor(predictions)
     predictions = predictions > self.threshold
+    # Convert labels to bool to match predictions.
+    labels = math_ops.cast(labels, dtypes.bool)
     matches = math_ops.equal(labels, predictions)
     matches = math_ops.cast(matches, self.dtype)
     super(BinaryAccuracy, self).call(matches, weights=weights)

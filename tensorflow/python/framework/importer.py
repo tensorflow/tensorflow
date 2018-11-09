@@ -329,7 +329,7 @@ def _SetDefaultAttrValues(node_def, op_def):
         node_def.attr[key].CopyFrom(attr_def.default_value)
 
 
-@tf_export('import_graph_def')
+@tf_export('graph_util.import_graph_def', 'import_graph_def')
 @deprecated_args(None, 'Please file an issue at '
                  'https://github.com/tensorflow/tensorflow/issues if you depend'
                  ' on this feature.', 'op_dict')
@@ -344,9 +344,9 @@ def import_graph_def(graph_def,
   This function provides a way to import a serialized TensorFlow
   [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
   protocol buffer, and extract individual objects in the `GraphDef` as
-  @{tf.Tensor} and @{tf.Operation} objects. Once extracted,
+  `tf.Tensor` and `tf.Operation` objects. Once extracted,
   these objects are placed into the current default `Graph`. See
-  @{tf.Graph.as_graph_def} for a way to create a `GraphDef`
+  `tf.Graph.as_graph_def` for a way to create a `GraphDef`
   proto.
 
   Args:
@@ -370,7 +370,8 @@ def import_graph_def(graph_def,
 
   Returns:
     A list of `Operation` and/or `Tensor` objects from the imported graph,
-    corresponding to the names in `return_elements`.
+    corresponding to the names in `return_elements`,
+    and None if `returns_elements` is None.
 
   Raises:
     TypeError: If `graph_def` is not a `GraphDef` proto,

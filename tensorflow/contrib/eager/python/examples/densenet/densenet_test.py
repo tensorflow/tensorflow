@@ -98,12 +98,52 @@ class DensenetTest(tf.test.TestCase):
     output_shape = model(rand_input).shape
     self.assertEqual(output_shape, (batch_size, output_classes))
 
+  def test_regularization(self):
+    if tf.test.is_gpu_available():
+      rand_input = tf.random_uniform((10, 3, 32, 32))
+      data_format = 'channels_first'
+    else:
+      rand_input = tf.random_uniform((10, 32, 32, 3))
+      data_format = 'channels_last'
+    weight_decay = 1e-4
+
+    conv = tf.keras.layers.Conv2D(
+        3, (3, 3),
+        padding='same',
+        use_bias=False,
+        data_format=data_format,
+        kernel_regularizer=tf.keras.regularizers.l2(weight_decay))
+    optimizer = tf.train.GradientDescentOptimizer(0.1)
+    conv(rand_input)  # Initialize the variables in the layer
+
+    def compute_true_l2(vs, wd):
+      return tf.reduce_sum(tf.square(vs)) * wd
+
+    true_l2 = compute_true_l2(conv.variables, weight_decay)
+    keras_l2 = tf.add_n(conv.losses)
+    self.assertAllClose(true_l2, keras_l2)
+
+    with tf.GradientTape() as tape_true, tf.GradientTape() as tape_keras:
+      loss = tf.reduce_sum(conv(rand_input))
+      loss_with_true_l2 = loss + compute_true_l2(conv.variables, weight_decay)
+      loss_with_keras_l2 = loss + tf.add_n(conv.losses)
+
+    true_grads = tape_true.gradient(loss_with_true_l2, conv.variables)
+    keras_grads = tape_keras.gradient(loss_with_keras_l2, conv.variables)
+    self.assertAllClose(true_grads, keras_grads)
+
+    optimizer.apply_gradients(zip(keras_grads, conv.variables))
+    keras_l2_after_update = tf.add_n(conv.losses)
+    self.assertNotAllClose(keras_l2, keras_l2_after_update)
+
 
 def compute_gradients(model, images, labels):
   with tf.GradientTape() as tape:
     logits = model(images, training=True)
-    loss = tf.losses.softmax_cross_entropy(
+    cross_ent = tf.losses.softmax_cross_entropy(
         logits=logits, onehot_labels=labels)
+    regularization = tf.add_n(model.losses)
+    loss = cross_ent + regularization
     tf.contrib.summary.scalar(name='loss', tensor=loss)
   return tape.gradient(loss, model.variables)
 
@@ -178,7 +218,7 @@ class DensenetBenchmark(tf.test.Benchmark):
     tf.constant(1.).cpu()
 
   def _benchmark_eager_apply(self, label, device_and_format, defun=False,
-                             execution_mode=None, compiled=False):
+                             execution_mode=None):
     with tfe.execution_mode(execution_mode):
       device, data_format = device_and_format
       model = densenet.DenseNet(self.depth, self.growth_rate, self.num_blocks,
@@ -188,7 +228,8 @@ class DensenetBenchmark(tf.test.Benchmark):
                                 weight_decay=1e-4, dropout_rate=0,
                                 pool_initial=True, include_top=True)
       if defun:
-        model.call = tfe.defun(model.call, compiled=compiled)
+        # TODO(apassos) enable tfe.function here
+        model.call = tfe.defun(model.call)
       batch_size = 64
       num_burn = 5
       num_iters = 30
@@ -224,8 +265,7 @@ class DensenetBenchmark(tf.test.Benchmark):
                              make_iterator,
                              device_and_format,
                              defun=False,
-                             execution_mode=None,
-                             compiled=False):
+                             execution_mode=None):
     with tfe.execution_mode(execution_mode):
       device, data_format = device_and_format
       for batch_size in self._train_batch_sizes():
@@ -239,8 +279,8 @@ class DensenetBenchmark(tf.test.Benchmark):
         optimizer = tf.train.GradientDescentOptimizer(0.1)
         apply_grads = apply_gradients
         if defun:
-          model.call = tfe.defun(model.call, compiled=compiled)
-          apply_grads = tfe.defun(apply_gradients, compiled=compiled)
+          model.call = tfe.defun(model.call)
+          apply_grads = tfe.defun(apply_gradients)
 
         num_burn = 3
         num_iters = 10

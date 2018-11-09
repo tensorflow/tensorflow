@@ -126,7 +126,9 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     do {
       context_id = random::New64();
     } while (contexts_.find(context_id) != contexts_.end());
-    contexts_.emplace(context_id, new ServerContext(std::move(ctx)));
+    contexts_.emplace(
+        context_id,
+        new ServerContext(std::move(ctx), request->keep_alive_secs(), env_));
   }
   response->set_context_id(context_id);
 
@@ -231,9 +233,11 @@ Status EagerServiceImpl::WaitQueueDone(const WaitQueueDoneRequest* request,
 
 Status EagerServiceImpl::KeepAlive(const KeepAliveRequest* request,
                                    KeepAliveResponse* response) {
-  // TODO(nareshmodi): Automated context_id cleaning is not implemented
-  return errors::Unimplemented(
-      "EagerServiceImpl::KeepAlive is not implemented.");
+  ServerContext* context = nullptr;
+  TF_RETURN_IF_ERROR(GetServerContext(request->context_id(), &context));
+  core::ScopedUnref context_unref(context);
+
+  return Status::OK();
 }
 
 Status EagerServiceImpl::CloseContext(const CloseContextRequest* request,
@@ -304,12 +308,15 @@ tensorflow::Status EagerServiceImpl::GetServerContext(
     *server_context = nullptr;
     return errors::InvalidArgument(strings::Printf(
         "Unable to find a context_id matching the specified one "
-        "(%lld). Perhaps the worker was restarted?",
+        "(%lld). Perhaps the worker was restarted, or the context was GC'd?",
         context_id));
   }
 
   *server_context = iter->second;
   (*server_context)->Ref();
+
+  (*server_context)->RecordAccess();
+
   return Status::OK();
 }
 

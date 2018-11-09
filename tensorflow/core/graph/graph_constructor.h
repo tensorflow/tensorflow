@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPH_GRAPH_CONSTRUCTOR_H_
-#define TENSORFLOW_GRAPH_GRAPH_CONSTRUCTOR_H_
+#ifndef TENSORFLOW_CORE_GRAPH_GRAPH_CONSTRUCTOR_H_
+#define TENSORFLOW_CORE_GRAPH_GRAPH_CONSTRUCTOR_H_
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
@@ -138,6 +138,9 @@ struct ImportGraphDefOptions {
   // with ops that are not defined in the binary calling ImportGraphDef.
   // Similar to the producer_op_list argument to import_graph_def in the
   // python API.
+
+  // Try to set default execution device for this grapth.
+  string default_device;
 };
 
 // Optional results that may be returned by ImportGraphDef.
@@ -186,4 +189,4 @@ extern void CopyGraph(const Graph& src, Graph* dest);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_GRAPH_CONSTRUCTOR_H_
+#endif  // TENSORFLOW_CORE_GRAPH_GRAPH_CONSTRUCTOR_H_

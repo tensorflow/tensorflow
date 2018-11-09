@@ -530,5 +530,39 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DoesNotHoistConstantByDefault) {
   EXPECT_FALSE(simplified_loop);
 }
 
+TEST_F(WhileLoopInvariantCodeMotionTest, DoNotHoistOutOfSingleIteration) {
+  const char* const kHloModule = R"(
+    HloModule ModuleWithWhile
+
+    body {
+      p_body = (f32[2], f32[2], f32[2], s32[]) parameter(0)
+      val.0 = f32[2] get-tuple-element(p_body), index=0
+      val.1 = f32[2] get-tuple-element(p_body), index=1
+      add = f32[2] add(val.0, val.1)
+      const = s32[] constant(-1)
+      ROOT root = (f32[2], f32[2], f32[2], s32[]) tuple(val.0, val.1, add, const)
+    }
+
+    condition {
+      p_cond = (f32[2], f32[2], f32[2], s32[]) parameter(0)
+      gte = s32[] get-tuple-element(p_cond), index=3
+      const = s32[] constant(42)
+      ROOT result = pred[] equal-to(gte, const)
+    }
+
+    ENTRY entry {
+      param.0 = f32[2] parameter(0)
+      param.1 = s32[] parameter(1)
+      while_init = (f32[2], f32[2], f32[2], s32[]) tuple(param.0, param.0, param.0, param.1)
+      ROOT while = (f32[2], f32[2], f32[2], s32[]) while(while_init), condition=condition, body=body
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopInvariantCodeMotion{}.Run(module.get()));
+  EXPECT_FALSE(simplified_loop);
+}
+
 }  // namespace
 }  // namespace xla

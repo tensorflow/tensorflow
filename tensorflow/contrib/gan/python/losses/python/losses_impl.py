@@ -355,7 +355,8 @@ def wasserstein_gradient_penalty(
       raise ValueError('`generated_data` can\'t have unknown rank.')
 
     differences = generated_data - real_data
-    batch_size = differences.shape[0].value or array_ops.shape(differences)[0]
+    batch_size = differences.shape.dims[0].value or array_ops.shape(
+        differences)[0]
     alpha_shape = [batch_size] + [1] * (differences.shape.ndims - 1)
     alpha = random_ops.random_uniform(shape=alpha_shape)
     interpolates = real_data + (alpha * differences)
@@ -773,9 +774,9 @@ def mutual_information_penalty(
     structured_generator_inputs: A list of Tensors representing the random noise
       that must  have high mutual information with the generator output. List
       length should match `predicted_distributions`.
-    predicted_distributions: A list of tf.Distributions. Predicted by the
-      recognizer, and used to evaluate the likelihood of the structured noise.
-      List length should match `structured_generator_inputs`.
+    predicted_distributions: A list of `tfp.distributions.Distribution`s.
+      Predicted by the recognizer, and used to evaluate the likelihood of the
+      structured noise. List length should match `structured_generator_inputs`.
     weights: Optional `Tensor` whose rank is either 0, or the same dimensions as
       `structured_generator_inputs`.
     scope: The scope for the operations performed in computing the loss.

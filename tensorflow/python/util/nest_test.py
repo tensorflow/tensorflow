@@ -33,6 +33,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
+try:
+  import attr  # pylint:disable=g-import-not-at-top
+except ImportError:
+  attr = None
+
 
 class _CustomMapping(collections.Mapping):
 
@@ -52,6 +57,35 @@ class _CustomMapping(collections.Mapping):
 class NestTest(parameterized.TestCase, test.TestCase):
 
   PointXY = collections.namedtuple("Point", ["x", "y"])  # pylint: disable=invalid-name
+
+  if attr:
+    class BadAttr(object):
+      """Class that has a non-iterable __attrs_attrs__."""
+      __attrs_attrs__ = None
+
+    @attr.s
+    class SampleAttr(object):
+      field1 = attr.ib()
+      field2 = attr.ib()
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testAttrsFlattenAndPack(self):
+    if attr is None:
+      self.skipTest("attr module is unavailable.")
+
+    field_values = [1, 2]
+    sample_attr = NestTest.SampleAttr(*field_values)
+    self.assertFalse(nest._is_attrs(field_values))
+    self.assertTrue(nest._is_attrs(sample_attr))
+    flat = nest.flatten(sample_attr)
+    self.assertEqual(field_values, flat)
+    restructured_from_flat = nest.pack_sequence_as(sample_attr, flat)
+    self.assertIsInstance(restructured_from_flat, NestTest.SampleAttr)
+    self.assertEqual(restructured_from_flat, sample_attr)
+
+    # Check that flatten fails if attributes are not iterable
+    with self.assertRaisesRegexp(TypeError, "object is not iterable"):
+      flat = nest.flatten(NestTest.BadAttr())
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testFlattenAndPack(self):
@@ -264,7 +298,11 @@ class NestTest(parameterized.TestCase, test.TestCase):
          "Second structure:.*\n\n"
          "More specifically: Substructure "
          r'"type=tuple str=\(\(1, 2\), 3\)" is a sequence, while '
-         'substructure "type=str str=spam" is not')):
+         'substructure "type=str str=spam" is not\n'
+         "Entire first structure:\n"
+         r"\(\(\(\., \.\), \.\), \., \(\., \.\)\)\n"
+         "Entire second structure:\n"
+         r"\(\., \.\)")):
       nest.assert_same_structure(structure1, structure_different_num_elements)
 
     with self.assertRaisesRegexp(
@@ -353,6 +391,10 @@ class NestTest(parameterized.TestCase, test.TestCase):
                       NestTest.SameNameab(0, 1), NestTest.SameNamedType1(2, 3))
 
   EmptyNT = collections.namedtuple("empty_nt", "")  # pylint: disable=invalid-name
+
+  def testHeterogeneousComparison(self):
+    nest.assert_same_structure({"a": 4}, _CustomMapping(a=3))
+    nest.assert_same_structure(_CustomMapping(b=3), {"b": 4})
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testMapStructure(self):
@@ -457,7 +499,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
         inp_b: (np.random.randn(3, 4), np.random.randn(3, 7))
     }
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       output_np = sess.run(output, feed_dict=feed_dict)
     self.assertAllClose(output_np[0],
                         feed_dict[inp_a][0] + feed_dict[inp_b][0])
@@ -745,6 +787,35 @@ class NestTest(parameterized.TestCase, test.TestCase):
     for inputs, expected in test_cases:
       self.assertEqual(
           list(nest.flatten_with_joined_string_paths(inputs)), expected)
+
+  @parameterized.named_parameters(
+      ("tuples", (1, 2), (3, 4), True, (("0", 4), ("1", 6))),
+      ("dicts", {"a": 1, "b": 2}, {"b": 4, "a": 3}, True,
+       {"a": ("a", 4), "b": ("b", 6)}),
+      ("mixed", (1, 2), [3, 4], False, (("0", 4), ("1", 6))),
+      ("nested",
+       {"a": [2, 3], "b": [1, 2, 3]}, {"b": [5, 6, 7], "a": [8, 9]}, True,
+       {"a": [("a/0", 10), ("a/1", 12)],
+        "b": [("b/0", 6), ("b/1", 8), ("b/2", 10)]}))
+  def testMapWithPathsCompatibleStructures(self, s1, s2, check_types, expected):
+    def format_sum(path, *values):
+      return (path, sum(values))
+    result = nest.map_structure_with_paths(format_sum, s1, s2,
+                                           check_types=check_types)
+    self.assertEqual(expected, result)
+
+  @parameterized.named_parameters(
+      ("tuples", (1, 2), (3, 4, 5), ValueError),
+      ("dicts", {"a": 1}, {"b": 2}, ValueError),
+      ("mixed", (1, 2), [3, 4], TypeError),
+      ("nested",
+       {"a": [2, 3], "b": [1, 3]},
+       {"b": [5, 6, 7], "a": [8, 9]},
+       ValueError
+      ))
+  def testMapWithPathsIncompatibleStructures(self, s1, s2, error_type):
+    with self.assertRaises(error_type):
+      nest.map_structure_with_paths(lambda path, *s: 0, s1, s2)
 
 
 class NestBenchmark(test.Benchmark):

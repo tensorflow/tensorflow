@@ -595,20 +595,11 @@ public final class Tensor<T> implements AutoCloseable {
   }
 
   private static int elemByteSize(DataType dataType) {
-    switch (dataType) {
-      case FLOAT:
-      case INT32:
-        return 4;
-      case DOUBLE:
-      case INT64:
-        return 8;
-      case BOOL:
-      case UINT8:
-        return 1;
-      case STRING:
+    int size = dataType.byteSize();
+    if (size < 0) {
         throw new IllegalArgumentException("STRING tensors do not have a fixed element size");
     }
-    throw new IllegalArgumentException("DataType " + dataType + " is not supported yet");
+    return size;
   }
 
   private static void throwExceptionIfNotByteOfByteArrays(Object array) {

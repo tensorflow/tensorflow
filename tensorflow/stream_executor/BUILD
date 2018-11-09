@@ -30,12 +30,17 @@ cc_library(
     hdrs = STREAM_EXECUTOR_HEADERS,
     linkopts = select({
         "//tensorflow:freebsd": [],
+        "//tensorflow:windows": [],
         "//conditions:default": ["-ldl"],
     }),
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:ptr_util",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
         "@local_config_cuda//cuda:cuda_headers",
     ],
     alwayslink = 1,
@@ -48,6 +53,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:ptr_util",
+        "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
     ] + if_static([":stream_executor_impl"]),
 )
@@ -79,6 +85,7 @@ cc_library(
     }),
     linkopts = select({
         "//tensorflow:freebsd": [],
+        "//tensorflow:windows": [],
         "//conditions:default": ["-ldl"],
     }),
     visibility = ["//visibility:public"],

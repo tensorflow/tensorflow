@@ -18,16 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
-import json
+import copy
 import threading
 from absl.testing import parameterized
 
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import parameter_server_strategy
+from tensorflow.contrib.distribute.python import values
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.client import session
+from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import constant_op
@@ -36,19 +37,21 @@ from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
+from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import device_util
-from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import distribution_strategy_context
+from tensorflow.python.training import training_util
+
+CHIEF = run_config.TaskType.CHIEF
+WORKER = run_config.TaskType.WORKER
+PS = run_config.TaskType.PS
 
 
-class ParameterServerStrategyTest(test.TestCase, parameterized.TestCase):
-
-  @classmethod
-  def setUpClass(cls):
-    cls._workers, cls._ps = multi_worker_test_base.create_in_process_cluster(
-        num_workers=3, num_ps=2)
+class ParameterServerStrategyTestBase(
+    multi_worker_test_base.MultiWorkerTestBase):
 
   def setUp(self):
     self._result = 0
@@ -57,43 +60,33 @@ class ParameterServerStrategyTest(test.TestCase, parameterized.TestCase):
     self._init_reached = 0
     self._finish_condition = threading.Condition()
     self._finish_reached = 0
+    self._sess_config = config_pb2.ConfigProto(allow_soft_placement=True)
+    super(ParameterServerStrategyTestBase, self).setUp()
 
-  def _get_ps_distribution_strategy(self, task_type, task_index, num_gpus=0):
-    tf_config = {
-        'cluster': {
-            run_config.TaskType.WORKER: [
-                'fake_worker_0', 'fake_worker_1', 'fake_worker_2'
-            ],
-            run_config.TaskType.PS: ['fake_ps_0', 'fake_ps_1']
-        },
-        'task': {
-            'type': task_type,
-            'index': task_index
-        }
-    }
+  def _get_test_objects(self, task_type, task_id, num_gpus):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=num_gpus)
-    with self._lock:
-      # Accessing environment variables should be protected by locks because
-      # environment variables are shared by all threads.
-      with test.mock.patch.dict('os.environ',
-                                {'TF_CONFIG': json.dumps(tf_config)}):
-        distribution.configure()
-    return distribution
+    if not task_type:
+      return distribution, '', self._sess_config
 
-  @contextlib.contextmanager
-  def _test_session(self, target):
-    config = config_pb2.ConfigProto(allow_soft_placement=True)
-    config.graph_options.optimizer_options.opt_level = -1
-    with session.Session(graph=None, config=config, target=target) as sess:
-      yield sess
+    sess_config = copy.deepcopy(self._sess_config)
+    distribution.configure(
+        session_config=sess_config,
+        cluster_spec=self._cluster_spec,
+        task_type=task_type,
+        task_id=task_id)
+    return (distribution, 'grpc://' + self._cluster_spec[WORKER][task_id],
+            sess_config)
 
-  def _test_device_assignment_distributed(self, d, num_gpus=0):
+  def _test_device_assignment_distributed(self, task_type, task_id, num_gpus):
+    worker_device = '/job:%s/replica:0/task:%d' % (task_type, task_id)
+    d, _, sess_config = self._get_test_objects(task_type, task_id, num_gpus)
     with ops.Graph().as_default(), \
-         self._test_session(target=self._workers[0].target) as sess, \
+         self.cached_session(target=self._default_target,
+                             config=sess_config) as sess, \
          d.scope():
 
-      # Define a variable outside the call_for_each_tower scope. This is not
+      # Define a variable outside the call_for_each_replica scope. This is not
       # recommended.
       n = variable_scope.get_variable('n', initializer=10.0)
       self.assertEqual(n.device, '/job:ps/task:0')
@@ -103,21 +96,21 @@ class ParameterServerStrategyTest(test.TestCase, parameterized.TestCase):
           last_part_device = 'device:CPU:0'
         else:
           last_part_device = (
-              'device:GPU:%d' % distribute_lib.get_tower_context().tower_id)
+              'device:GPU:%d' %
+              distribution_strategy_context.get_replica_context().replica_id)
 
         a = constant_op.constant(1.0)
         b = constant_op.constant(2.0)
         c = a + b
-        self.assertEqual(a.device,
-                         '/job:worker/replica:0/task:1/%s' % last_part_device)
-        self.assertEqual(b.device,
-                         '/job:worker/replica:0/task:1/%s' % last_part_device)
-        self.assertEqual(c.device,
-                         '/job:worker/replica:0/task:1/%s' % last_part_device)
+        self.assertEqual(a.device, worker_device + '/' + last_part_device)
+        self.assertEqual(b.device, worker_device + '/' + last_part_device)
+        self.assertEqual(c.device, worker_device + '/' + last_part_device)
 
         # The device scope is ignored for variables but not for normal ops.
         with ops.device('/job:worker/task:0'):
-          x = variable_scope.get_variable('x', initializer=10.0)
+          x = variable_scope.get_variable(
+              'x', initializer=10.0,
+              aggregation=variable_scope.VariableAggregation.SUM)
           x_add = x.assign_add(c)
           e = a + c
         # The variable x is on the task 1 since the device_function has been
@@ -129,27 +122,34 @@ class ParameterServerStrategyTest(test.TestCase, parameterized.TestCase):
 
         # The colocate_vars_with can override the distribution's device.
         with d.colocate_vars_with(x):
-          y = variable_scope.get_variable('y', initializer=20.0)
-        y_add = y.assign_add(x_add)
+          y = variable_scope.get_variable(
+              'y', initializer=20.0,
+              aggregation=variable_scope.VariableAggregation.SUM)
+        # We add an identity here to avoid complaints about summing
+        # non-distributed values.
+        y_add = y.assign_add(array_ops.identity(x_add))
         self.assertEqual(y.device, '/job:ps/task:1')
         self.assertEqual(y_add.device, y.device)
         self.assertEqual(y.device, x.device)
 
-        z = variable_scope.get_variable('z', initializer=10.0)
+        z = variable_scope.get_variable(
+            'z', initializer=10.0,
+            aggregation=variable_scope.VariableAggregation.SUM)
         self.assertEqual(z.device, '/job:ps/task:0')
         self.assertNotEqual(z.device, x.device)
 
         with ops.control_dependencies([y_add]):
-          z_add = z.assign_add(y)
+          # We add an identity here to avoid complaints about summing
+          # non-distributed values.
+          z_add = z.assign_add(array_ops.identity(y))
         with ops.control_dependencies([z_add]):
           f = z + c
-        self.assertEqual(f.device,
-                         '/job:worker/replica:0/task:1/%s' % last_part_device)
+        self.assertEqual(f.device, worker_device + '/' + last_part_device)
 
         # The device scope would merge with the default worker device.
         with ops.device('/CPU:1'):
           g = e + 1.0
-        self.assertEqual(g.device, '/job:worker/replica:0/task:1/device:CPU:1')
+        self.assertEqual(g.device, worker_device + '/device:CPU:1')
 
         # Ths ops.colocate_with will be ignored when defining a variale but not
         # for a normal tensor.
@@ -167,7 +167,7 @@ class ParameterServerStrategyTest(test.TestCase, parameterized.TestCase):
         self.assertIn('/job:ps/', h.device)
         return y_add, z_add, f
 
-      y, z, f = d.call_for_each_tower(model_fn)
+      y, z, f = d.call_for_each_replica(model_fn)
       self.assertNotEqual(y, None)
       self.assertNotEqual(z, None)
       self.assertNotEqual(f, None)
@@ -179,11 +179,74 @@ class ParameterServerStrategyTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(z_val, 43.0)
         self.assertEqual(f_val, 46.0)
 
-  @combinations.generate(
-      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
-  def testDeviceAssignmentDistributed(self, num_gpus):
-    d = self._get_ps_distribution_strategy('worker', 1, num_gpus=num_gpus)
-    self._test_device_assignment_distributed(d, num_gpus=num_gpus)
+  def _test_device_assignment_distributed_enable_partitioner(
+      self, task_type, task_id, num_gpus):
+    d, _, sess_config = self._get_test_objects(task_type, task_id, num_gpus)
+    num_shards = len(d.parameter_devices)
+    partitioner = partitioned_variables.fixed_size_partitioner(num_shards)
+    with ops.Graph().as_default(), \
+         self.cached_session(target=self._default_target,
+                             config=sess_config) as sess, \
+         d.scope():
+
+      n = variable_scope.get_variable(
+          'n',
+          initializer=constant_op.constant([10.0, 20.0]),
+          aggregation=variable_scope.VariableAggregation.SUM,
+          partitioner=partitioner)
+
+      for part_id, var in enumerate(n):
+        self.assertEqual(var.device, '/job:ps/task:%d' % part_id)
+
+      def model_fn():
+        a = constant_op.constant([3.0, 5.0])
+        # The device scope is ignored for variables but not for normal ops.
+        with ops.device('/job:worker/task:0'):
+          x = variable_scope.get_variable(
+              'x',
+              initializer=constant_op.constant([10.0, 20.0]),
+              aggregation=variable_scope.VariableAggregation.SUM,
+              partitioner=partitioner)
+          x_add = x.assign_add(a, name='x_add')
+        # The variable x is on the task 1 since the device_function has been
+        # called once before the model_fn.
+        for part_id, var in enumerate(x):
+          self.assertEqual(var.device, '/job:ps/task:%d' % part_id)
+          self.assertEqual(var.device, x_add[part_id].device)
+
+        # The colocate_vars_with can override the distribution's device.
+        with d.colocate_vars_with(x_add[0]):
+          y = variable_scope.get_variable(
+              'y',
+              initializer=constant_op.constant([20.0, 10.0]),
+              aggregation=variable_scope.VariableAggregation.SUM,
+              partitioner=partitioner)
+        y_add = y.assign_add(
+            [array_ops.identity(x_add[0]),
+             array_ops.identity(x_add[1])])
+
+        for part_id, var in enumerate(y):
+          self.assertEqual(var.device, '/job:ps/task:0')
+          self.assertEqual(y_add[part_id].device, var.device)
+          self.assertEqual(var.device, x_add[0].device)
+
+        return x_add, y_add
+
+      x, y = d.call_for_each_tower(model_fn)
+
+      if context.num_gpus() >= 1:
+        variables.global_variables_initializer().run()
+        x_val, y_val = sess.run([x, y])
+        if num_gpus < 1:
+          self.assertEqual(x_val, [13.0, 25.0])
+          self.assertEqual(y_val, [33.0, 35.0])
+        else:
+          x_expect = [10.0 + 3 * num_gpus, 20.0 + 5 * num_gpus]
+          y_expect = [
+              20.0 + x_expect[0] * num_gpus, 10.0 + x_expect[1] * num_gpus
+          ]
+          self.assertEqual(x_val, x_expect)
+          self.assertEqual(y_val, y_expect)
 
   def _test_device_assignment_local(self,
                                     d,
@@ -191,59 +254,74 @@ class ParameterServerStrategyTest(test.TestCase, parameterized.TestCase):
                                     variable_device='CPU',
                                     num_gpus=0):
     with ops.Graph().as_default(), \
-         self._test_session(target=self._workers[0].target) as sess, \
+         self.cached_session(target=self._default_target,
+                             config=self._sess_config) as sess, \
          d.scope():
 
       def model_fn():
         if 'CPU' in compute_device:
-          tower_compute_device = '/device:CPU:0'
+          replica_compute_device = '/device:CPU:0'
         else:
-          tower_compute_device = (
-              '/device:GPU:%d' % distribute_lib.get_tower_context().tower_id)
-        tower_compute_device = device_util.canonicalize(tower_compute_device)
+          replica_compute_device = (
+              '/device:GPU:%d' %
+              distribution_strategy_context.get_replica_context().replica_id)
+        replica_compute_device = device_util.canonicalize(
+            replica_compute_device)
 
         if 'CPU' in variable_device:
-          tower_variable_device = '/device:CPU:0'
+          replica_variable_device = '/device:CPU:0'
         else:
-          tower_variable_device = (
-              '/device:GPU:%d' % distribute_lib.get_tower_context().tower_id)
-        tower_variable_device = device_util.canonicalize(tower_variable_device)
+          replica_variable_device = (
+              '/device:GPU:%d' %
+              distribution_strategy_context.get_replica_context().replica_id)
+        replica_variable_device = device_util.canonicalize(
+            replica_variable_device)
 
         a = constant_op.constant(1.0)
         b = constant_op.constant(2.0)
         c = a + b
-        self.assertEqual(a.device, tower_compute_device)
-        self.assertEqual(b.device, tower_compute_device)
-        self.assertEqual(c.device, tower_compute_device)
+        self.assertEqual(a.device, replica_compute_device)
+        self.assertEqual(b.device, replica_compute_device)
+        self.assertEqual(c.device, replica_compute_device)
 
         # The device scope is ignored for variables but not for normal ops.
         with ops.device('/device:GPU:2'):
-          x = variable_scope.get_variable('x', initializer=10.0)
+          x = variable_scope.get_variable(
+              'x', initializer=10.0,
+              aggregation=variable_scope.VariableAggregation.SUM)
           x_add = x.assign_add(c)
           e = a + c
         self.assertEqual(
-            device_util.canonicalize(x.device), tower_variable_device)
+            device_util.canonicalize(x.device), replica_variable_device)
         self.assertEqual(x_add.device, x.device)
         self.assertEqual(e.device, device_util.canonicalize('/device:GPU:2'))
 
         # The colocate_vars_with can override the distribution's device.
         with d.colocate_vars_with(x):
-          y = variable_scope.get_variable('y', initializer=20.0)
-        y_add = y.assign_add(x_add)
+          y = variable_scope.get_variable(
+              'y', initializer=20.0,
+              aggregation=variable_scope.VariableAggregation.SUM)
+        # We add an identity here to avoid complaints about summing
+        # non-distributed values.
+        y_add = y.assign_add(array_ops.identity(x_add))
         self.assertEqual(
-            device_util.canonicalize(y.device), tower_variable_device)
+            device_util.canonicalize(y.device), replica_variable_device)
         self.assertEqual(y_add.device, y.device)
         self.assertEqual(y.device, x.device)
 
-        z = variable_scope.get_variable('z', initializer=10.0)
+        z = variable_scope.get_variable(
+            'z', initializer=10.0,
+            aggregation=variable_scope.VariableAggregation.SUM)
         self.assertEqual(
-            device_util.canonicalize(z.device), tower_variable_device)
+            device_util.canonicalize(z.device), replica_variable_device)
 
         with ops.control_dependencies([y_add]):
-          z_add = z.assign_add(y)
+          # We add an identity here to avoid complaints about summing
+          # non-distributed values.
+          z_add = z.assign_add(array_ops.identity(y))
         with ops.control_dependencies([z_add]):
           f = z + c
-        self.assertEqual(f.device, tower_compute_device)
+        self.assertEqual(f.device, replica_compute_device)
 
         # The device scope would merge with the default worker device.
         with ops.device('/CPU:1'):
@@ -256,11 +334,13 @@ class ParameterServerStrategyTest(test.TestCase, parameterized.TestCase):
           u = variable_scope.get_variable('u', initializer=30.0)
           h = f + 1.0
         self.assertEqual(
-            device_util.canonicalize(u.device), tower_variable_device)
-        self.assertEqual(device_util.canonicalize(x.device), h.device)
+            device_util.canonicalize(u.device), replica_variable_device)
+        self.assertEqual(
+            device_util.canonicalize(x.device),
+            device_util.canonicalize(h.device))
         return y_add, z_add, f
 
-      y, z, f = d.call_for_each_tower(model_fn)
+      y, z, f = d.call_for_each_replica(model_fn)
       self.assertNotEqual(y, None)
       self.assertNotEqual(z, None)
       self.assertNotEqual(f, None)
@@ -272,49 +352,48 @@ class ParameterServerStrategyTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(z_val, 43.0)
         self.assertEqual(f_val, 46.0)
 
-  def testDeviceAssignmentLocal(self):
-    distribution = parameter_server_strategy.ParameterServerStrategy(
-        num_gpus_per_worker=0)
-    self._test_device_assignment_local(
-        distribution, compute_device='CPU', variable_device='CPU', num_gpus=0)
-
-    distribution = parameter_server_strategy.ParameterServerStrategy(
-        num_gpus_per_worker=1)
-    self._test_device_assignment_local(
-        distribution, compute_device='GPU', variable_device='GPU', num_gpus=1)
-
-    distribution = parameter_server_strategy.ParameterServerStrategy(
-        num_gpus_per_worker=2)
-    self._test_device_assignment_local(
-        distribution, compute_device='GPU', variable_device='CPU', num_gpus=2)
-
-  def _test_simple_increment(self, d, task_type, task_index, master_target):
+  def _test_simple_increment(self, task_type, task_id, num_gpus):
+    d, master_target, sess_config = self._get_test_objects(
+        task_type, task_id, num_gpus)
     if hasattr(d, '_cluster_spec') and d._cluster_spec:
-      num_workers = len(d._cluster_spec.as_dict().get('worker',
-                                                      ['dummy_worker']))
+      num_workers = len(d._cluster_spec.as_dict().get(WORKER))
+      if 'chief' in d._cluster_spec.as_dict():
+        num_workers += 1
     else:
       num_workers = 1
     with ops.Graph().as_default(), \
-         self._test_session(target=master_target) as sess, \
+         self.cached_session(target=master_target,
+                             config=sess_config) as sess, \
          d.scope():
 
       def model_fn():
-        x = variable_scope.get_variable('x', initializer=10.0)
-        y = variable_scope.get_variable('y', initializer=20.0)
+        x = variable_scope.get_variable(
+            'x', initializer=10.0,
+            aggregation=variable_scope.VariableAggregation.SUM)
+        y = variable_scope.get_variable(
+            'y', initializer=20.0,
+            aggregation=variable_scope.VariableAggregation.SUM)
+        z = variable_scope.get_variable(
+            'z', initializer=30.0,
+            aggregation=variable_scope.VariableAggregation.ONLY_FIRST_REPLICA)
 
-        x_add = x.assign_add(1.0, use_locking=True)
-        y_add = y.assign_add(1.0, use_locking=True)
+        # We explicitly make a constant tensor here to avoid complaints about
+        # summing non-distributed values.
+        one = constant_op.constant(1.0)
+        x_add = x.assign_add(one, use_locking=True)
+        y_add = y.assign_add(one, use_locking=True)
+        z_add = z.assign_add(one, use_locking=True)
 
-        train_op = control_flow_ops.group([x_add, y_add])
-        return x, y, train_op
+        train_op = control_flow_ops.group(x_add, y_add, z_add)
+        return x, y, z, train_op
 
-      x, y, train_op = d.call_for_each_tower(model_fn)
-      train_op = d.group(d.unwrap(train_op))
+      x, y, z, train_op = d.call_for_each_replica(model_fn)
+      train_op = d.group(train_op)
 
       if context.num_gpus() < d._num_gpus_per_worker:
         return True
 
-      if task_index == 0:
+      if task_id == 0:
         variables.global_variables_initializer().run()
 
       # Workers waiting for chief worker's initializing variables.
@@ -335,15 +414,30 @@ class ParameterServerStrategyTest(test.TestCase, parameterized.TestCase):
       self._finish_condition.notify_all()
       self._finish_condition.release()
 
-      x_val, y_val = sess.run([x, y])
-      self.assertEqual(x_val, 10.0 + 1.0 * num_workers * d.num_towers)
-      self.assertEqual(y_val, 20.0 + 1.0 * num_workers * d.num_towers)
-      return (x_val == 10.0 + 1.0 * num_workers * d.num_towers and
-              y_val == 20.0 + 1.0 * num_workers * d.num_towers)
+      x_val, y_val, z_val = sess.run([x, y, z])
+      self.assertEqual(x_val, 10.0 + 1.0 * num_workers * d.num_replicas_in_sync)
+      self.assertEqual(y_val, 20.0 + 1.0 * num_workers * d.num_replicas_in_sync)
+      self.assertEqual(z_val, 30.0 + 1.0 * num_workers)
+      return (x_val == 10.0 + 1.0 * num_workers * d.num_replicas_in_sync and
+              y_val == 20.0 + 1.0 * num_workers * d.num_replicas_in_sync and
+              z_val == 30.0 + 1.0 * num_workers)
 
-  def _test_minimize_loss_graph(self, d, task_type, task_index, master_target):
+  def _test_minimize_loss_graph(self, task_type, task_id, num_gpus):
+    d, master_target, sess_config = self._get_test_objects(
+        task_type, task_id, num_gpus)
+    if task_type:
+      # Multi-worker
+      assert hasattr(d, '_cluster_spec') and d._cluster_spec
+      num_workers = len(d._cluster_spec.as_dict().get(WORKER))
+      if CHIEF in d._cluster_spec.as_dict():
+        num_workers += 1
+    else:
+      # local
+      num_workers = 1
+
     with ops.Graph().as_default(), \
-         self._test_session(target=master_target) as sess, \
+         self.cached_session(target=master_target,
+                             config=sess_config) as sess, \
          d.scope():
       l = core.Dense(1, use_bias=False)
 
@@ -370,7 +464,7 @@ class ParameterServerStrategyTest(test.TestCase, parameterized.TestCase):
       def step():
         """Perform one optimization step."""
         # Run forward & backward to get gradients, variables list.
-        g_v = d.call_for_each_tower(grad_fn, one)
+        g_v = d.call_for_each_replica(grad_fn, one)
         # Update the variables using the gradients and the update() function.
         before_list = []
         after_list = []
@@ -381,7 +475,8 @@ class ParameterServerStrategyTest(test.TestCase, parameterized.TestCase):
             # TODO(yuefengz): support non-Mirrored variable as destinations.
             g = d.reduce(
                 variable_scope.VariableAggregation.SUM, g, destinations=v)
-            with ops.control_dependencies(d.unwrap(d.update(v, update, g))):
+            with ops.control_dependencies(
+                d.update(v, update, g, grouped=False)):
               after_list.append(d.read_var(v))
         return before_list, after_list
 
@@ -390,13 +485,14 @@ class ParameterServerStrategyTest(test.TestCase, parameterized.TestCase):
       if context.num_gpus() < d._num_gpus_per_worker:
         return True
 
-      if task_index == 0:
+      if (not task_type or
+          multi_worker_util.is_chief(d._cluster_spec, task_type, task_id)):
         variables.global_variables_initializer().run()
 
       # Workers waiting for chief worker's initializing variables.
       self._init_condition.acquire()
       self._init_reached += 1
-      while self._init_reached != 3:
+      while self._init_reached != num_workers:
         self._init_condition.wait()
       self._init_condition.notify_all()
       self._init_condition.release()
@@ -413,42 +509,117 @@ class ParameterServerStrategyTest(test.TestCase, parameterized.TestCase):
       self.assertLess(error_after, error_before)
       return error_after < error_before
 
-  def _run_client(self, index, model_fn, num_gpus):
-    task_type = run_config.TaskType.WORKER
-    result = model_fn(
-        self._get_ps_distribution_strategy(task_type, index, num_gpus=num_gpus),
-        task_type, index, self._workers[index].target)
-    if result:
-      with self._lock:
-        self._result += 1
 
-  def _run_multiple_clients(self, num_clients, model_fn, num_gpus=0):
-    threads = []
-    for i in range(num_clients):
-      t = threading.Thread(
-          target=self._run_client, args=(i, model_fn, num_gpus))
-      t.start()
-      threads.append(t)
-    for t in threads:
-      t.join()
+class ParameterServerStrategyTest(ParameterServerStrategyTestBase,
+                                  parameterized.TestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    cls._cluster_spec = multi_worker_test_base.create_in_process_cluster(
+        num_workers=3, num_ps=2)
+    cls._default_target = 'grpc://' + cls._cluster_spec[WORKER][0]
+
+  def test_num_replicas_in_sync(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    # All the devices on a given worker are in sync which in this case is the
+    # number of gpus on each worker.
+    self.assertEqual(2, distribution.num_replicas_in_sync)
+
+  def testDeviceAssignmentLocalCPU(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=0)
+    self._test_device_assignment_local(
+        distribution, compute_device='CPU', variable_device='CPU', num_gpus=0)
+
+  def testDeviceAssignmentLocalOneGPU(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=1)
+    self._test_device_assignment_local(
+        distribution, compute_device='GPU', variable_device='GPU', num_gpus=1)
+
+  def testDeviceAssignmentLocalTwoGPUs(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    self._test_device_assignment_local(
+        distribution, compute_device='GPU', variable_device='CPU', num_gpus=2)
+
+  @combinations.generate(
+      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
+  def testDeviceAssignmentDistributed(self, num_gpus):
+    self._test_device_assignment_distributed('worker', 1, num_gpus)
+
+  @combinations.generate(
+      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
+  def testDeviceAssignmentDistributedEnablePartitioner(self, num_gpus):
+    self._test_device_assignment_distributed_enable_partitioner(
+        'worker', 1, num_gpus)
 
   def testSimpleBetweenGraph(self):
-    self._run_multiple_clients(3, self._test_simple_increment)
-    self.assertEqual(self._result, 3)
+    self._run_between_graph_clients(self._test_simple_increment,
+                                    self._cluster_spec, context.num_gpus())
 
   @combinations.generate(
       combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
   def testLocalSimpleIncrement(self, num_gpus):
-    d = parameter_server_strategy.ParameterServerStrategy(
-        num_gpus_per_worker=num_gpus)
-    self._test_simple_increment(d, 'dummy_worker', 0, '')
+    self._test_simple_increment(None, 0, num_gpus)
+
+  @combinations.generate(
+      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
+  def testMinimizeLossGraphDistributed(self, num_gpus):
+    self._run_between_graph_clients(self._test_minimize_loss_graph,
+                                    self._cluster_spec, num_gpus)
+
+  @combinations.generate(
+      combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
+  def testMinimizeLossGraphLocal(self, num_gpus):
+    self._test_minimize_loss_graph(None, None, num_gpus)
+
+
+class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
+                                           parameterized.TestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    cls._cluster_spec = multi_worker_test_base.create_in_process_cluster(
+        num_workers=3, num_ps=2, has_chief=True)
+    cls._default_target = 'grpc://' + cls._cluster_spec[CHIEF][0]
+
+  def testSimpleBetweenGraph(self):
+    self._run_between_graph_clients(self._test_simple_increment,
+                                    self._cluster_spec, context.num_gpus())
 
   @combinations.generate(
       combinations.combine(mode=['graph'], num_gpus=[0, 1, 2]))
   def testMinimizeLossGraph(self, num_gpus):
-    self._run_multiple_clients(
-        3, self._test_minimize_loss_graph, num_gpus=num_gpus)
-    self.assertEqual(self._result, 3)
+    self._run_between_graph_clients(self._test_minimize_loss_graph,
+                                    self._cluster_spec, num_gpus)
+
+  def testGlobalStepIsWrapped(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    with ops.Graph().as_default(), distribution.scope():
+      created_step = training_util.create_global_step()
+      get_step = training_util.get_global_step()
+      self.assertEqual(created_step, get_step,
+                       msg=('created_step %s type %s vs. get_step %s type %s' %
+                            (id(created_step), created_step.__class__.__name__,
+                             id(get_step), get_step.__class__.__name__)))
+      self.assertIs(values.AggregatingVariable, type(created_step))
+      self.assertIs(values.AggregatingVariable, type(get_step))
+
+  def testValueContainer(self):
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2)
+    with ops.Graph().as_default(), distribution.scope():
+      def f():
+        with backprop.GradientTape() as tape:
+          v = variable_scope.get_variable('v', initializer=10.0)
+          _ = v * v
+        v, = tape.watched_variables()
+        w = distribution.value_container(v)
+        self.assertIs(values.AggregatingVariable, type(w))
+      distribution.call_for_each_replica(f)
 
 
 if __name__ == '__main__':
