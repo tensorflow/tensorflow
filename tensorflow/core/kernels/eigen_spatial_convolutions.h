@@ -18,6 +18,10 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#endif
+
 namespace Eigen {
 
 namespace internal {
@@ -52,8 +56,8 @@ namespace internal {
 //
 // TODO(ezhulenev): Consolidate this part of the code with the image patch
 // extraction code since they are both very similar.
-template <typename NewDimension, DenseIndex Rows, DenseIndex Cols,
-          typename ArgType, typename Device, typename Scalar_, typename Index,
+template <typename NewDimension, Index Rows, Index Cols, typename ArgType,
+          typename Device, typename Scalar_, typename Index,
           typename nocontract_t, typename contract_t, int Side, int packet_size,
           bool inner_dim_contiguous, bool inner_dim_reordered, int Alignment>
 class TensorContractionInputMapper<
@@ -511,8 +515,8 @@ class TensorContractionInputMapper<
   const TensorEvaluator<ArgType, Device> m_impl;
 };
 
-template <typename NewDimension, DenseIndex Rows, DenseIndex Cols,
-          typename ArgType, typename Device, typename Scalar, typename Index,
+template <typename NewDimension, Index Rows, Index Cols, typename ArgType,
+          typename Device, typename Scalar, typename Index,
           typename nocontract_t, typename contract_t, int Side, int packet_size,
           bool inner_dim_contiguous, bool inner_dim_reordered, int Alignment>
 class TensorContractionSubMapper<
@@ -770,8 +774,8 @@ class TensorContractionSubMapper<
 // *) nr - number of registers along the 'n' dimension.
 //    See GeneralBlockPanelKernel.h and "Anatomy of High-Performance Matrix
 //    Multiplication" paper.
-template <typename NewDimension, DenseIndex Rows, DenseIndex Cols,
-          typename ArgType, typename Device, typename Scalar, typename Index,
+template <typename NewDimension, Index Rows, Index Cols, typename ArgType,
+          typename Device, typename Scalar, typename Index,
           typename nocontract_t, typename contract_t, int packet_size,
           bool inner_dim_contiguous, bool inner_dim_reordered, int Alignment,
           int nr>
@@ -931,8 +935,8 @@ struct gemm_pack_rhs<
 
 // Template specialization for packet_size = 2. We must special-case packet
 // blocks with nr > packet_size, e.g. PacketBlock<Packet2d, 4>.
-template <typename NewDimension, DenseIndex Rows, DenseIndex Cols,
-          typename ArgType, typename Device, typename Scalar, typename Index,
+template <typename NewDimension, Index Rows, Index Cols, typename ArgType,
+          typename Device, typename Scalar, typename Index,
           typename nocontract_t, typename contract_t, bool inner_dim_contiguous,
           bool inner_dim_reordered, int Alignment, int nr>
 struct gemm_pack_rhs<
@@ -1097,8 +1101,8 @@ struct gemm_pack_rhs<
 };
 
 // Special case for non-vectorized types such as float16.
-template <typename NewDimension, DenseIndex Rows, DenseIndex Cols,
-          typename ArgType, typename Device, typename Scalar, typename Index,
+template <typename NewDimension, Index Rows, Index Cols, typename ArgType,
+          typename Device, typename Scalar, typename Index,
           typename nocontract_t, typename contract_t, bool inner_dim_contiguous,
           bool inner_dim_reordered, int Alignment, int nr>
 struct gemm_pack_rhs<
@@ -1170,6 +1174,141 @@ struct gemm_pack_rhs<
   }
 };
 
+#if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
+// Arrange a block of the right input matrix (in our case it's always a
+// "virtual matrix" constructed from extracted image patches) in contiguous
+// memory.
+//
+// Mkldnn doesn't require Lhs/Rhs blocks to be packed in any specific format, so
+// this is basically the same as taking a slice of the matrix. Knowing
+// properties of the original patch op we can do it more efficient than default
+// mkldnn_gemm_pack.
+template <typename NewDimension, Index Rows, Index Cols, typename ArgType,
+          typename Device, typename Scalar, typename StorageIndex,
+          typename nocontract_t, typename contract_t, int packet_size,
+          bool inner_dim_contiguous, bool inner_dim_reordered, int Alignment>
+struct mkldnn_gemm_pack<
+    Scalar, StorageIndex,
+    TensorContractionSubMapper<
+        Scalar, StorageIndex, Rhs,
+        TensorEvaluator<
+            const TensorReshapingOp<
+                NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >,
+            Device>,
+        nocontract_t, contract_t, packet_size, inner_dim_contiguous,
+        inner_dim_reordered, Alignment>,
+    ColMajor> {
+  typedef TensorContractionSubMapper<
+      Scalar, StorageIndex, Rhs,
+      TensorEvaluator<
+          const TensorReshapingOp<
+              NewDimension, const TensorImagePatchOp<Rows, Cols, ArgType> >,
+          Device>,
+      nocontract_t, contract_t, packet_size, inner_dim_contiguous,
+      inner_dim_reordered, Alignment>
+      SubMapper;
+
+  typedef SubMapper DataMapper;
+  typedef typename packet_traits<Scalar>::type Packet;
+
+  EIGEN_DONT_INLINE
+  void operator()(Scalar* block, const DataMapper& rhs, StorageIndex rows,
+                  StorageIndex cols) {
+    const bool standard_patches = !rhs.nonStandardPatches();
+
+    const StorageIndex vectorized_rows = (rows / packet_size) * packet_size;
+
+    if (standard_patches && rhs.patchDepth() % packet_size == 0) {
+      // If patches are standard and patch depth is a multiple of the packet
+      // size, than we can guarantee that single packet do not span across
+      // multiple patch rows or columns, and we can read it directly from
+      // TensorPatchOp argument.
+
+      // Give vectorized_rows the name used in all other gemm_pack_rhs above.
+      const Index peeled_k = vectorized_rows;
+
+      const Index start_col = rhs.colOffset();
+      const Index max_col = rhs.maxCol(peeled_k);
+
+      for (StorageIndex col = 0; col < cols; ++col) {
+        SubMapper lm = rhs.getLinearMapper(0, col);
+
+        Index k = 0;
+        for (Index c = start_col; c < max_col; ++c) {
+          eigen_assert(k <= peeled_k);
+
+          const Index start_row = (c == start_col) ? rhs.rowOffset() : 0;
+          const Index max_row = rhs.maxRow(peeled_k, c);
+          const bool pad_col = lm.padCol(c);
+
+          for (Index r = start_row; r < max_row; ++r) {
+            eigen_assert(k <= peeled_k);
+
+            const Index start_depth =
+                ((c == start_col) && (r == start_row)) ? rhs.depthOffset() : 0;
+            const Index max_depth = rhs.maxDepth(peeled_k - k, start_depth);
+            eigen_assert((max_depth - start_depth) % packet_size == 0);
+
+            const bool pad = pad_col || lm.padRow(r);
+            const Index base_idx = lm.baseIndex(r, c);
+
+            for (Index d = start_depth; d < max_depth; d += packet_size) {
+              eigen_assert(k < peeled_k);
+              const Packet p = pad ? pset1<Packet>(Scalar(0))
+                                   : rhs.packetNoPadding(d, base_idx);
+              internal::pstoreu(block, p);
+              block += packet_size;
+              k += packet_size;
+            }
+          }
+        }
+
+        // The loop above should fill peeled_k elements.
+        eigen_assert(peeled_k == k);
+
+        // Fill remaining elements using loadCoeffStandard.
+        for (; k < rows; ++k) {
+          *block = lm.loadCoeffStandard(k);
+          ++block;
+        }
+      }
+    } else if (standard_patches) {
+      // Single packet can span across multiple patch rows or columns, so we
+      // have to go through the slower path, that will fallback on building a
+      // packet from coefficients.
+
+      for (StorageIndex col = 0; col < cols; ++col) {
+        SubMapper lm = rhs.getLinearMapper(0, col);
+
+        for (StorageIndex i = 0; i < vectorized_rows; i += packet_size) {
+          const Packet p = lm.loadPacketStandard(i);
+          internal::pstoreu(block, p);
+          block += packet_size;
+        }
+
+        // Finalize with coefficients.
+        for (StorageIndex i = vectorized_rows; i < rows; ++i) {
+          *block = lm.loadCoeffStandard(i);
+          ++block;
+        }
+      }
+
+    } else {
+      // With non-standard patches we don't do any vectorized loads.
+      // TODO(ezhulenev): It doesn't look like that we should completely give up
+      // on packets. Make this code path faster!
+      for (StorageIndex col = 0; col < cols; ++col) {
+        SubMapper lm = rhs.getLinearMapper(0, col);
+        for (StorageIndex i = 0; i < rows; ++i) {
+          *block = lm(i);
+          ++block;
+        }
+      }
+    }
+  }
+};
+#endif  // defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
+
 }  // end namespace internal
 
 /** SpatialConvolution
@@ -1226,11 +1365,10 @@ EIGEN_DEVICE_FUNC
                     const DSizes<typename internal::traits<Input>::Index, 2>,
                     const Kernel> > > >::type
     SpatialConvolution(const Input& input, const Kernel& kernel,
-                       const DenseIndex row_stride = 1,
-                       const DenseIndex col_stride = 1,
+                       const Index row_stride = 1, const Index col_stride = 1,
                        const PaddingType padding_type = PADDING_SAME,
-                       const DenseIndex row_in_stride = 1,
-                       const DenseIndex col_in_stride = 1) {
+                       const Index row_in_stride = 1,
+                       const Index col_in_stride = 1) {
   typedef typename internal::traits<Input>::Index TensorIndex;
   TensorRef<Tensor<typename internal::traits<Input>::Scalar,
                    internal::traits<Input>::NumDimensions,
@@ -1260,9 +1398,9 @@ EIGEN_DEVICE_FUNC
   const TensorIndex kernelCols =
       isColMajor ? kern.dimensions()[3] : kern.dimensions()[0];
 
-  const DenseIndex kernelRowsEff =
+  const Index kernelRowsEff =
       kernelRows + (kernelRows - 1) * (row_in_stride - 1);
-  const DenseIndex kernelColsEff =
+  const Index kernelColsEff =
       kernelCols + (kernelCols - 1) * (col_in_stride - 1);
 
   array<IndexPair<TensorIndex>, 1> contract_dims;

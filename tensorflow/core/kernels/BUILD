@@ -94,13 +94,13 @@ config_setting(
 )
 
 config_setting(
-    # Add "--define tensorflow_eigen_mkldnn=1" to your build command to use mkldnn
-    # sgemm in Eigen tensor contractions (matrix multiplications and convolutions).
-    # The mkldnn kernels are generated at runtime and use avx/avx2/fma/avx512
-    # based on cpu status registers (https://en.wikipedia.org/wiki/CPUID).
-    name = "eigen_mkldnn",
+    # Add "--define tensorflow_mkldnn_contraction_kernel=1" to your build command to use mkldnn
+    # sgemm in Eigen tensor contractions (matrix multiplications and convolutions). The mkldnn
+    # kernels are generated at runtime and use avx/avx2/fma/avx512 based on cpu status registers
+    # (https://en.wikipedia.org/wiki/CPUID).
+    name = "mkldnn_contraction_kernel",
     values = {
-        "define": "tensorflow_eigen_mkldnn=1",
+        "define": "tensorflow_mkldnn_contraction_kernel=1",
     },
 )
 
@@ -554,6 +554,40 @@ cc_library(
     ],
 )
 
+# Depending on a build configuration this target provides custom kernel for Eigen
+# tensor contractions (small matrix multiplication kernel used to multiple together
+# blocks of the original tensors).
+#
+# 0) Default contraction kernel is Eigen::internal::gebp_kernel.
+#
+# 1) --define tensorflow_mkldnn_contraction_kernel=1
+#    Use Mkldnn single threaded sgemm. The mkldnn kernels are generated at runtime and
+#    use avx/avx2/fma/avx512 based on cpu status registers (https://en.wikipedia.org/wiki/CPUID).
+#
+# If you use `tensor.contract(other_tensor)` in your code, you must include additional header
+# to get the benefit of custom contraction kernel:
+#
+#   #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+#   #include "third_party/tensorflow/core/kernels/eigen_contraction_kernel.h"
+#   #endif
+cc_library(
+    name = "eigen_contraction_kernel",
+    hdrs = ["eigen_contraction_kernel.h"],
+    defines = select({
+        ":mkldnn_contraction_kernel": [
+            "TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL",
+            "TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL",
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        "//third_party/eigen3",
+    ] + select({
+        ":mkldnn_contraction_kernel": ["//third_party/intel_mkl_dnn:mkldnn_single_threaded"],
+        "//conditions:default": [],
+    }),
+)
+
 cc_library(
     name = "eigen_helpers",
     hdrs = [
@@ -566,20 +600,11 @@ cc_library(
         "eigen_softmax.h",
         "eigen_spatial_convolutions.h",
         "eigen_volume_patch.h",
-    ] + select({
-        ":eigen_mkldnn": ["eigen_mkldnn.h"],
-        "//conditions:default": [],
-    }),
-    defines = select({
-        ":eigen_mkldnn": ["EIGEN_USE_MKLDNN"],
-        "//conditions:default": [],
-    }),
+    ],
     deps = [
+        ":eigen_contraction_kernel",
         "//third_party/eigen3",
-    ] + select({
-        ":eigen_mkldnn": ["//third_party/intel_mkl_dnn:mkldnn_single_threaded"],
-        "//conditions:default": [],
-    }),
+    ],
 )
 
 cc_library(
@@ -2434,15 +2459,15 @@ tf_cc_tests(
 # Conditional test target generation is not supported by the "tf_cc_tests" macro
 # (can't add 'select' to the srcs field, type 'select' is not iterable).
 tf_cc_test(
-    name = "eigen_mkldnn_test",
+    name = "eigen_mkldnn_contraction_kernel_test",
     size = "small",
     srcs = select({
-        ":eigen_mkldnn": ["eigen_mkldnn_test.cc"],
+        ":mkldnn_contraction_kernel": ["eigen_mkldnn_contraction_kernel_test.cc"],
         "//conditions:default": [],
     }),
-    tags = ["eigen_mkldnn"],
+    tags = ["mkldnn_contraction_kernel"],
     deps = [
-        ":eigen_helpers",
+        ":eigen_contraction_kernel",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -3058,7 +3083,7 @@ tf_kernel_library(
     # <prefix>*impl.h are excluded by default from the CPU build, add explicitly.
     hdrs = ["batch_matmul_op_impl.h"],
     prefix = "batch_matmul_op",
-    deps = MATH_DEPS + if_mkl_ml([
+    deps = MATH_DEPS + [":eigen_contraction_kernel"] + if_mkl_ml([
         "//third_party/mkl:intel_binary_blob",
     ]),
 )
@@ -3132,11 +3157,10 @@ tf_kernel_library(
         "//conditions:default": [],
     }),
     deps = MATH_DEPS + [
+        ":eigen_contraction_kernel",
         ":gpu_util_hdrs",
     ] + select({
-        ":xsmm": [
-            "@libxsmm_archive//:xsmm_avx",
-        ],
+        ":xsmm": ["@libxsmm_archive//:xsmm_avx"],
         "//conditions:default": [],
     }) + mkl_deps() + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
@@ -3539,6 +3563,7 @@ tf_kernel_library(
         ":bounds_check",
         ":conv_2d",
         ":conv_3d",
+        ":eigen_contraction_kernel",
         ":image_resizer_state",
         ":fill_functor",
         ":ops_util",
@@ -3629,6 +3654,7 @@ cc_library(
 NN_DEPS = [
     ":bounds_check",
     ":conv_2d",
+    ":eigen_contraction_kernel",
     ":fused_batch_norm_util_gpu",
     ":ops_util",
     ":pooling_ops",
