@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 
 #include <algorithm>
+#include <iterator>
 #include <memory>
 #include <numeric>
 #include <string>
@@ -316,6 +317,9 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
 
   // Tries to simplify a slice where the result of the slice is a scalar.
   StatusOr<bool> TrySimplifyScalarSlice(HloInstruction* slice);
+
+  // Tries to convert slice(reshape(X)) into reshape(slice(X))
+  StatusOr<bool> TryToReorderSliceAndReshape(HloInstruction* slice);
 
   // Current HloComputation instance the AlgebraicSimplifierVisitor is
   // traversing.
@@ -2026,18 +2030,70 @@ StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyScalarSlice(
   return false;
 }
 
+bool IsUnstridedSlice(const HloInstruction* hlo) {
+  return absl::c_all_of(hlo->slice_strides(),
+                        [](int64 stride) { return stride == 1; });
+}
+
+StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReshape(
+    HloInstruction* slice) {
+  CHECK_EQ(slice->opcode(), HloOpcode::kSlice);
+  if (!IsUnstridedSlice(slice)) {
+    return false;
+  }
+  HloInstruction* reshape = slice->mutable_operand(0);
+  if (reshape->opcode() != HloOpcode::kReshape) {
+    return false;
+  }
+  HloInstruction* new_slice_operand = reshape->mutable_operand(0);
+  int64 slice_rank = ShapeUtil::Rank(slice->shape());
+  std::vector<int64> sliced_dims;
+  for (int64 i = 0; i < slice_rank; ++i) {
+    if (slice->slice_starts(i) != 0 ||
+        slice->slice_limits(i) != reshape->shape().dimensions(i)) {
+      sliced_dims.push_back(i);
+    }
+  }
+
+  if (sliced_dims.size() == 1 && sliced_dims[0] == 0 &&
+      slice->slice_starts(0) == 0) {
+    const Shape& new_slice_shape = new_slice_operand->shape();
+    const int64 rank = ShapeUtil::Rank(new_slice_shape);
+    std::vector<int64> new_slice_starts(rank, 0);
+    std::vector<int64> new_slice_stides(rank, 1);
+    std::vector<int64> new_slice_limits(new_slice_shape.dimensions().begin(),
+                                        new_slice_shape.dimensions().end());
+    int64 slice_elements = ShapeUtil::ElementsIn(slice->shape());
+    for (int64 i = rank - 1; i >= 0; --i) {
+      if (slice_elements >= new_slice_limits[i]) {
+        CHECK_EQ(slice_elements % new_slice_limits[i], 0);
+        slice_elements /= new_slice_limits[i];
+      } else {
+        new_slice_limits[i] = slice_elements;
+        slice_elements = 1;
+      }
+    }
+    HloInstruction* new_slice =
+        computation_->AddInstruction(HloInstruction::CreateSlice(
+            ShapeUtil::MakeShape(new_slice_shape.element_type(),
+                                 new_slice_limits),
+            new_slice_operand, new_slice_starts, new_slice_limits,
+            new_slice_stides));
+    TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
+        slice, HloInstruction::CreateReshape(slice->shape(), new_slice)));
+    return true;
+  }
+  return false;
+}
+
 Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
   // Delete no-op slices, i.e. where shape = operand shape.
   if (ReplaceInstructionIfSameShape(slice, slice->mutable_operand(0))) {
     return Status::OK();
   }
 
-  auto is_unstrided_slice = [](const HloInstruction* hlo) {
-    return absl::c_all_of(hlo->slice_strides(),
-                          [](int64 stride) { return stride == 1; });
-  };
   if (slice->operand(0)->opcode() == HloOpcode::kSlice &&
-      is_unstrided_slice(slice) && is_unstrided_slice(slice->operand(0))) {
+      IsUnstridedSlice(slice) && IsUnstridedSlice(slice->operand(0))) {
     HloInstruction* operand_slice = slice->mutable_operand(0);
     std::vector<int64> new_slice_starts = slice->slice_starts();
     std::vector<int64> new_slice_limits = slice->slice_limits();
@@ -2056,6 +2112,10 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
     return Status::OK();
   }
 
+  TF_ASSIGN_OR_RETURN(replaced, TryToReorderSliceAndReshape(slice));
+  if (replaced) {
+    return Status::OK();
+  }
   return Status::OK();
 }
 
