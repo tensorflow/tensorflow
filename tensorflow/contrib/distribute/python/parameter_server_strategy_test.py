@@ -86,8 +86,7 @@ class ParameterServerStrategyTestBase(
                              config=sess_config) as sess, \
          d.scope():
 
-      # Define a variable outside the call_for_each_replica scope. This is not
-      # recommended.
+      # Define a variable outside the call_for_each_replica scope.
       n = variable_scope.get_variable('n', initializer=10.0)
       self.assertEqual(n.device, '/job:ps/task:0')
 
@@ -232,7 +231,7 @@ class ParameterServerStrategyTestBase(
 
         return x_add, y_add
 
-      x, y = d.call_for_each_tower(model_fn)
+      x, y = d.call_for_each_replica(model_fn)
 
       if context.num_gpus() >= 1:
         variables.global_variables_initializer().run()
