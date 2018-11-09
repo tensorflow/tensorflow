@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/op_gen_lib.h"
@@ -100,6 +101,10 @@ void CollectOpDependencies(const OpSpec& op, RenderMode mode,
   for (const AttributeSpec& attribute : op.attributes()) {
     out->push_back(attribute.var().type());
     out->push_back(attribute.jni_type());
+    if (attribute.has_default_value() &&
+        attribute.type().kind() == Type::GENERIC) {
+      out->push_back(Type::ForDataType(attribute.default_value()->type()));
+    }
   }
   for (const AttributeSpec& optional_attribute : op.optional_attributes()) {
     out->push_back(optional_attribute.var().type());
@@ -139,6 +144,60 @@ void WriteSetAttrDirective(const AttributeSpec& attr, bool optional,
   }
 }
 
+void RenderSecondaryFactoryMethod(const OpSpec& op, const Type& op_class,
+                                  std::map<string, Type> default_types,
+                                  SourceWriter* writer) {
+  // Build the return type for the secondary factory, replacing generic
+  // parameters with their default value if any
+  Type return_type = Type::Class(op_class.name(), op_class.package());
+  for (const Type& parameter : op_class.parameters()) {
+    if (parameter.kind() == Type::GENERIC &&
+        default_types.find(parameter.name()) != default_types.end()) {
+      return_type.add_parameter(default_types.at(parameter.name()));
+    } else {
+      return_type.add_parameter(parameter);
+    }
+  }
+  Method factory = Method::Create("create", return_type);
+  Javadoc factory_doc = Javadoc::Create(
+      "Factory method to create a class to wrap a new " + op_class.name() +
+      " operation to the graph, using "
+      "default output types.");
+  Variable scope =
+      Variable::Create("scope", Type::Class("Scope", "org.tensorflow.op"));
+  AddArgument(scope, "current graph scope", &factory, &factory_doc);
+  std::stringstream factory_statement;
+  factory_statement << "return create(scope";
+  for (const ArgumentSpec& input : op.inputs()) {
+    AddArgument(input.var(), input.description(), &factory, &factory_doc);
+    factory_statement << ", " << input.var().name();
+  }
+  for (const AttributeSpec& attr : op.attributes()) {
+    // Only add attributes that are not types or have no default value to the
+    // signature of the secondary factory
+    factory_statement << ", ";
+    if (attr.type().kind() == Type::GENERIC &&
+        default_types.find(attr.type().name()) != default_types.end()) {
+      factory_statement << default_types.at(attr.type().name()).name()
+                        << ".class";
+    } else {
+      AddArgument(attr.var(), attr.description(), &factory, &factory_doc);
+      factory_statement << attr.var().name();
+    }
+  }
+  if (!op.optional_attributes().empty()) {
+    Variable options_var = Variable::Varargs("options", Type::Class("Options"));
+    AddArgument(options_var, "carries optional attributes values", &factory,
+                &factory_doc);
+    factory_statement << ", " << options_var.name();
+  }
+  factory_doc.add_tag("return", "a new instance of " + op_class.name());
+
+  writer->BeginMethod(factory, PUBLIC | STATIC, &factory_doc);
+  writer->Append(factory_statement.str().c_str()).Append(");").EndLine();
+  writer->EndMethod();
+}
+
 void RenderFactoryMethods(const OpSpec& op, const Type& op_class,
                           SourceWriter* writer) {
   Method factory = Method::Create("create", op_class);
@@ -151,8 +210,17 @@ void RenderFactoryMethods(const OpSpec& op, const Type& op_class,
   for (const ArgumentSpec& input : op.inputs()) {
     AddArgument(input.var(), input.description(), &factory, &factory_doc);
   }
+  std::map<string, Type> default_types;
   for (const AttributeSpec& attr : op.attributes()) {
     AddArgument(attr.var(), attr.description(), &factory, &factory_doc);
+    // If this attribute is a type with a default value, save its value
+    // for passing it implicitly in a secondary factory method
+    if (attr.has_default_value() && attr.type().kind() == Type::GENERIC) {
+      Type default_type = Type::ForDataType(attr.default_value()->type());
+      if (!default_type.wildcard()) {
+        default_types.insert(std::make_pair(attr.type().name(), default_type));
+      }
+    }
   }
   if (!op.optional_attributes().empty()) {
     AddArgument(Variable::Varargs("options", Type::Class("Options")),
@@ -194,6 +262,12 @@ void RenderFactoryMethods(const OpSpec& op, const Type& op_class,
       .Append("(opBuilder.build());")
       .EndLine();
   writer->EndMethod();
+
+  // If this operation has type attributes with a default value, create a
+  // second factory method that infers those values implicitly
+  if (!default_types.empty()) {
+    RenderSecondaryFactoryMethod(op, op_class, default_types, writer);
+  }
 }
 
 void RenderConstructor(const OpSpec& op, const Type& op_class,

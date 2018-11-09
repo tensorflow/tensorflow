@@ -41,6 +41,10 @@ fi
 set -e
 pip3.5 install --upgrade pip
 
+# Install last working version of setuptools. This must happen before we install
+# absl-py, which uses install_requires notation introduced in setuptools 20.5.
+pip3.5 install --upgrade setuptools==39.1.0
+
 pip3.5 install --upgrade virtualenv
 
 # Install six.
@@ -58,7 +62,7 @@ rm -rf /usr/lib/python3/dist-packages/six*
 # numpy needs to be installed from source to fix segfaults. See:
 # https://github.com/tensorflow/tensorflow/issues/6968
 # This workaround isn't needed for Ubuntu 16.04 or later.
-pip3.5 install --no-binary=:all: --upgrade numpy==1.12.0
+pip3.5 install --no-binary=:all: --upgrade numpy==1.14.5
 
 pip3.5 install scipy==0.18.1
 
@@ -81,14 +85,9 @@ pip3.5 install --upgrade astor
 pip3.5 install --upgrade gast
 pip3.5 install --upgrade termcolor
 
-# Install last working version of setuptools.
-pip3.5 install --upgrade setuptools==39.1.0
-
 # Keras
-pip3.5 install keras_applications==1.0.2
-pip3.5 install keras_preprocessing==1.0.1
-
-# Install last working version of setuptools.
-pip3.5 install --upgrade setuptools==39.1.0
+pip3.5 install keras_applications==1.0.6
+pip3.5 install keras_preprocessing==1.0.5
+pip3.5 install --upgrade h5py==2.8.0
 
 # LINT.ThenChange(//tensorflow/tools/ci_build/install/install_python3.6_pip_packages.sh)

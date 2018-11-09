@@ -66,16 +66,17 @@ class ConcatBaseOp : public OpKernel {
     // In case of ConcatV2, "axis" could be int32 or int64
     if (AxisArgName == NAME_IS_AXIS) {
       OP_REQUIRES(
-          c, (concat_dim_tensor->dtype() == DT_INT32 ||
-              concat_dim_tensor->dtype() == DT_INT64),
+          c,
+          (concat_dim_tensor->dtype() == DT_INT32 ||
+           concat_dim_tensor->dtype() == DT_INT64),
           errors::InvalidArgument(axis_attribute_name,
                                   " tensor should be int32 or int64, but got ",
-                                  concat_dim_tensor->dtype()));
+                                  DataTypeString(concat_dim_tensor->dtype())));
     } else {
       OP_REQUIRES(c, (concat_dim_tensor->dtype() == DT_INT32),
-                  errors::InvalidArgument(axis_attribute_name,
-                                          " tensor should be int32, but got ",
-                                          concat_dim_tensor->dtype()));
+                  errors::InvalidArgument(
+                      axis_attribute_name, " tensor should be int32, but got ",
+                      DataTypeString(concat_dim_tensor->dtype())));
     }
     if (concat_dim_tensor->dtype() == DT_INT32) {
       concat_dim =

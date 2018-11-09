@@ -34,7 +34,7 @@ class AdagradDAOptimizerTest(test.TestCase):
 
   def doTestAdagradDAwithoutRegularizationBasic1(self, use_resource=False):
     for dtype in [dtypes.float64, dtypes.float32]:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         global_step = variables.Variable(0, dtype=dtypes.int64)
         if use_resource:
           var0 = resource_variable_ops.ResourceVariable([0.0, 0.0], dtype=dtype)
@@ -81,7 +81,7 @@ class AdagradDAOptimizerTest(test.TestCase):
 
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
         global_step = resource_variable_ops.ResourceVariable(
             0, dtype=dtypes.int64)
@@ -101,7 +101,7 @@ class AdagradDAOptimizerTest(test.TestCase):
 
   def testAdagradDAwithoutRegularizationBasic2(self):
     for dtype in [dtypes.float64, dtypes.float32]:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         global_step = variables.Variable(0, dtype=dtypes.int64)
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([4.0, 3.0], dtype=dtype)
@@ -133,7 +133,7 @@ class AdagradDAOptimizerTest(test.TestCase):
 
   def testAdagradDAWithL1(self):
     for dtype in [dtypes.float64, dtypes.float32]:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         global_step = variables.Variable(0, dtype=dtypes.int64)
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([4.0, 3.0], dtype=dtype)
@@ -165,7 +165,7 @@ class AdagradDAOptimizerTest(test.TestCase):
 
   def testAdagradDAWithL1_L2(self):
     for dtype in [dtypes.float64, dtypes.float32]:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         global_step = variables.Variable(0, dtype=dtypes.int64)
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([4.0, 3.0], dtype=dtype)

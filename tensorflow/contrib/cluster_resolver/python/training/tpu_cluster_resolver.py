@@ -60,6 +60,7 @@ class TPUClusterResolver(ClusterResolver):
     if (self._tpu == compat.as_bytes('') or
         self._tpu == compat.as_bytes('local') or
         self._tpu.startswith(compat.as_bytes('/bns')) or
+        self._tpu.startswith(compat.as_bytes('localhost:')) or
         self._tpu.startswith(compat.as_bytes('grpc://'))):
       return False
     return True
@@ -148,6 +149,9 @@ class TPUClusterResolver(ClusterResolver):
       else:
         tpu = self._envVarFallback()
 
+    if tpu is None:
+      raise ValueError('Please provide a TPU Name to connect to.')
+
     self._tpu = compat.as_bytes(tpu)  # self._tpu is always bytes
     self._job_name = job_name
     self._credentials = credentials
@@ -197,7 +201,7 @@ class TPUClusterResolver(ClusterResolver):
     else:
       self._coordinator_address = coordinator_address
 
-  def master(self):
+  def master(self, task_type=None, task_index=None):
     """Get the Master string to be used for the session.
 
     In the normal case, this returns the grpc path (grpc://1.2.3.4:8470) of
@@ -208,6 +212,10 @@ class TPUClusterResolver(ClusterResolver):
     this TPUClusterResolver was 'grpc://10.240.1.2:8470',
     'grpc://10.240.1.2:8470' will be returned).
 
+    Args:
+      task_type: (Optional) The type of the TensorFlow task of the master.
+      task_index: (Optional) The index of the TensorFlow task of the master.
+
     Returns:
       string, the connection string to use when creating a session.
 
@@ -217,7 +225,11 @@ class TPUClusterResolver(ClusterResolver):
     if not self._shouldResolve():
       return self._tpu.split(compat.as_bytes(_ENDPOINTS_SEPARATOR))[0]
 
-    job_tasks = self.cluster_spec().job_tasks(self._job_name)
+    cluster_spec = self.cluster_spec()
+    if task_type and task_index:
+      return cluster_spec.task_address(task_type, task_index)
+
+    job_tasks = cluster_spec.job_tasks(self._job_name)
     if not job_tasks:
       raise ValueError('No TPUs exists with the specified names exist.')
 
@@ -225,6 +237,10 @@ class TPUClusterResolver(ClusterResolver):
 
   def get_master(self):
     return self.master()
+
+  def get_job_name(self):
+    if self._shouldResolve():
+      return self._job_name
 
   def cluster_spec(self):
     """Returns a ClusterSpec object based on the latest TPU information.

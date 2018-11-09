@@ -1,0 +1,29 @@
+op {
+  graph_op_name: "MultiDeviceIteratorFromStringHandle"
+  in_arg {
+    name: "string_handle"
+    description: <<END
+String representing the resource.
+END
+  }
+  out_arg {
+    name: "multi_device_iterator"
+    description: <<END
+A MultiDeviceIterator resource.
+END
+  }
+  attr {
+    name: "output_types"
+    description: <<END
+The type list for the return values.
+END
+  }
+  attr {
+    name: "output_shapes"
+    description: <<END
+The list of shapes being produced.
+END
+  }
+  summary: "Generates a MultiDeviceIterator resource from its provided string handle."
+  visibility: HIDDEN
+}

@@ -15,8 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace {
 
@@ -45,17 +46,16 @@ bool VectorizedReduceDisabled(const HloModuleConfig& config) {
   return extra_options_map.count(kXlaOptimizeForSizeCpuOption) > 0;
 }
 
-tensorflow::gtl::optional<int64> LlvmIrGemvTilingFactor(
-    const HloModuleConfig& config) {
+absl::optional<int64> LlvmIrGemvTilingFactor(const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
   auto it = extra_options_map.find(kLlvmIrDotTilingFactor);
   int64 tiling_factor;
   if (it != extra_options_map.end() &&
-      tensorflow::strings::safe_strto64(it->second, &tiling_factor)) {
+      absl::SimpleAtoi(it->second, &tiling_factor)) {
     return tiling_factor;
   }
-  return tensorflow::gtl::nullopt;
+  return absl::nullopt;
 }
 
 bool EnableExperimentalLlvmIrGemm(const HloModuleConfig& config) {
@@ -64,38 +64,37 @@ bool EnableExperimentalLlvmIrGemm(const HloModuleConfig& config) {
   return extra_options_map.count(kXlaEnableExperimentalLlvmIrGemm) > 0;
 }
 
-static tensorflow::StringPiece RemoveSuffix(tensorflow::StringPiece str,
-                                            tensorflow::StringPiece suffix) {
+static absl::string_view RemoveSuffix(absl::string_view str,
+                                      absl::string_view suffix) {
   CHECK_GE(str.size(), suffix.size());
   CHECK_EQ(str.substr(str.size() - suffix.size()), suffix);
   return str.substr(0, str.size() - suffix.size());
 }
 
-tensorflow::gtl::optional<std::tuple<int64, int64, int64>> LlvmIrGemmTileSize(
+absl::optional<std::tuple<int64, int64, int64>> LlvmIrGemmTileSize(
     const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
   auto it = extra_options_map.find(kLlvmIrGemmTileSize);
   if (it == extra_options_map.end()) {
-    return tensorflow::gtl::nullopt;
+    return absl::nullopt;
   }
 
-  std::vector<string> tile_components =
-      tensorflow::str_util::Split(it->second, ':');
+  std::vector<string> tile_components = absl::StrSplit(it->second, ':');
   CHECK_EQ(tile_components.size(), 3);
 
   int64 tile_size_m;
   int64 tile_size_k;
   int64 tile_size_n_in_vector_width;
 
-  CHECK(tensorflow::strings::safe_strto64(tile_components[0], &tile_size_m));
-  CHECK(tensorflow::strings::safe_strto64(tile_components[1], &tile_size_k));
+  CHECK(absl::SimpleAtoi(tile_components[0], &tile_size_m));
+  CHECK(absl::SimpleAtoi(tile_components[1], &tile_size_k));
 
-  tensorflow::StringPiece tile_size_n_in_vector_width_str =
+  absl::string_view tile_size_n_in_vector_width_str =
       RemoveSuffix(tile_components[2], "*vectwidth");
 
-  CHECK(tensorflow::strings::safe_strto64(tile_size_n_in_vector_width_str,
-                                          &tile_size_n_in_vector_width));
+  CHECK(absl::SimpleAtoi(tile_size_n_in_vector_width_str,
+                         &tile_size_n_in_vector_width));
 
   return std::tuple<int64, int64, int64>(tile_size_m, tile_size_k,
                                          tile_size_n_in_vector_width);

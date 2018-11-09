@@ -64,7 +64,7 @@ class KinesisDatasetTest(test.TestCase):
     init_batch_op = iterator.make_initializer(batch_dataset)
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Basic test: read from shard 0 of stream 1.
       sess.run(init_op, feed_dict={stream: stream_name, num_epochs: 1})
       for i in range(10):
@@ -108,7 +108,7 @@ class KinesisDatasetTest(test.TestCase):
     get_next = iterator.get_next()
 
     data = list()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Basic test: read from shard 0 of stream 2.
       sess.run(
           init_op, feed_dict={

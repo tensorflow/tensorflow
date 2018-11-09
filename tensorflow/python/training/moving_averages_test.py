@@ -18,9 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import variable_scope
@@ -33,7 +36,7 @@ from tensorflow.python.training import saver as saver_lib
 class MovingAveragesTest(test.TestCase):
 
   def testAssignMovingAverageWithoutZeroDebias(self):
-    with self.test_session():
+    with self.cached_session():
       var = variables.Variable([10.0, 11.0])
       val = constant_op.constant([1.0, 2.0], dtypes.float32)
       decay = 0.25
@@ -47,7 +50,7 @@ class MovingAveragesTest(test.TestCase):
           var.eval())
 
   def testAssignMovingAverage(self):
-    with self.test_session():
+    with self.cached_session():
       var = variables.Variable([0.0, 0.0])
       val = constant_op.constant([1.0, 2.0], dtypes.float32)
       decay = 0.25
@@ -84,7 +87,7 @@ class MovingAveragesTest(test.TestCase):
       moving_averages.assign_moving_average(var, 0.0, 0.99)
 
   def testWeightedMovingAverage(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       decay = 0.5
       weight = array_ops.placeholder(dtypes.float32, [])
       val = array_ops.placeholder(dtypes.float32, [])
@@ -107,6 +110,32 @@ class MovingAveragesTest(test.TestCase):
       numerator_2 = numerator_1 * decay + val_2 * weight_2 * (1.0 - decay)
       denominator_2 = denominator_1 * decay + weight_2 * (1.0 - decay)
       self.assertAllClose(numerator_2 / denominator_2, wma_array)
+
+  def testWeightedMovingAverageBfloat16(self):
+    bfloat16 = pywrap_tensorflow.TF_bfloat16_type()
+    with self.cached_session() as sess:
+      decay = 0.5
+      weight = array_ops.placeholder(dtypes.bfloat16, [])
+      val = array_ops.placeholder(dtypes.bfloat16, [])
+
+      wma = moving_averages.weighted_moving_average(val, decay, weight)
+      variables.global_variables_initializer().run()
+
+      # Get the first weighted moving average.
+      val_1 = 3.0
+      weight_1 = 4.0
+      wma_array = sess.run(wma, feed_dict={val: val_1, weight: weight_1})
+      numerator_1 = val_1 * weight_1 * (1.0 - decay)
+      denominator_1 = weight_1 * (1.0 - decay)
+      self.assertAllClose(numerator_1 / denominator_1, wma_array)
+
+      # Get the second weighted moving average.
+      val_2 = 11.0
+      weight_2 = 22.0
+      wma_array = sess.run(wma, feed_dict={val: val_2, weight: weight_2})
+      numerator_2 = numerator_1 * decay + val_2 * weight_2 * (1.0 - decay)
+      denominator_2 = denominator_1 * decay + weight_2 * (1.0 - decay)
+      self.assertAllClose(bfloat16(numerator_2 / denominator_2), wma_array)
 
 
 def _Repeat(value, dim):
@@ -185,53 +214,53 @@ class ExponentialMovingAverageTest(test.TestCase):
     self.assertAllClose(expected, avg2.eval())
 
   def testAverageVariablesNoNumUpdates_Scalar(self):
-    with self.test_session():
+    with self.cached_session():
       ema = moving_averages.ExponentialMovingAverage(0.25)
       self._CheckDecay(ema, actual_decay=0.25, dim=1)
 
   def testAverageVariablesNoNumUpdates_Scalar_Debias(self):
-    with self.test_session():
+    with self.cached_session():
       ema = moving_averages.ExponentialMovingAverage(0.25, zero_debias=True)
       self._CheckDecay(ema, actual_decay=0.25, dim=1)
 
   def testAverageVariablesNoNumUpdates_Vector(self):
-    with self.test_session():
+    with self.cached_session():
       ema = moving_averages.ExponentialMovingAverage(0.25)
       self._CheckDecay(ema, actual_decay=0.25, dim=5)
 
   def testAverageVariablesNoNumUpdates_Vector_Debias(self):
-    with self.test_session():
+    with self.cached_session():
       ema = moving_averages.ExponentialMovingAverage(0.25, zero_debias=True)
       self._CheckDecay(ema, actual_decay=0.25, dim=5)
 
   def testAverageVariablesNumUpdates_Scalar(self):
-    with self.test_session():
+    with self.cached_session():
       # With num_updates 1, the decay applied is 0.1818
       ema = moving_averages.ExponentialMovingAverage(0.25, num_updates=1)
       self._CheckDecay(ema, actual_decay=0.181818, dim=1)
 
   def testAverageVariablesNumUpdates_Scalar_Debias(self):
-    with self.test_session():
+    with self.cached_session():
       # With num_updates 1, the decay applied is 0.1818
       ema = moving_averages.ExponentialMovingAverage(
           0.25, num_updates=1, zero_debias=True)
       self._CheckDecay(ema, actual_decay=0.181818, dim=1)
 
   def testAverageVariablesNumUpdates_Vector(self):
-    with self.test_session():
+    with self.cached_session():
       # With num_updates 1, the decay applied is 0.1818
       ema = moving_averages.ExponentialMovingAverage(0.25, num_updates=1)
       self._CheckDecay(ema, actual_decay=0.181818, dim=5)
 
   def testAverageVariablesNumUpdates_Vector_Debias(self):
-    with self.test_session():
+    with self.cached_session():
       # With num_updates 1, the decay applied is 0.1818
       ema = moving_averages.ExponentialMovingAverage(
           0.25, num_updates=1, zero_debias=True)
       self._CheckDecay(ema, actual_decay=0.181818, dim=5)
 
   def testAverageVariablesWithControlDeps(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       v0 = variables.Variable(0, name="v0")
       add_to_v0 = v0.assign_add(1)
       v1 = variables.Variable([10.0], name="v1")
@@ -254,8 +283,27 @@ class ExponentialMovingAverageTest(test.TestCase):
       self.assertEqual(1, sess.run(v0))
       self.assertEqual([17.5], sess.run(v1_avg))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testBasicEager(self):
+    v0 = variables.Variable(1.0)
+    v1 = variables.Variable(2.0)
+
+    ema = moving_averages.ExponentialMovingAverage(0.25)
+    op = ema.apply([v0, v1])
+    if not context.executing_eagerly():
+      self.evaluate(variables.global_variables_initializer())
+      self.evaluate(op)
+
+    self.evaluate(v0.assign(2.0))
+    self.evaluate(v1.assign(4.0))
+
+    self.evaluate(ema.apply([v0, v1]))
+
+    self.assertAllEqual(self.evaluate(ema.average(v0)), 1.75)
+    self.assertAllEqual(self.evaluate(ema.average(v1)), 3.5)
+
   def averageVariablesNamesHelper(self, zero_debias):
-    with self.test_session():
+    with self.cached_session():
       v0 = variables.Variable(10.0, name="v0")
       v1 = variables.Variable(30.0, name="v1")
       # Add a non-trainable variable.
@@ -299,7 +347,7 @@ class ExponentialMovingAverageTest(test.TestCase):
 
   def averageVariablesNamesRespectScopeHelper(self, zero_debias):
     # See discussion on #2740.
-    with self.test_session():
+    with self.cached_session():
       with variable_scope.variable_scope("scope1"):
         v0 = variables.Variable(10.0, name="v0")
         v1 = variables.Variable(30.0, name="v1")
@@ -346,7 +394,7 @@ class ExponentialMovingAverageTest(test.TestCase):
     self.averageVariablesNamesRespectScopeHelper(zero_debias=False)
 
   def testSubsetAverageVariablesNames(self):
-    with self.test_session():
+    with self.cached_session():
       v0 = variables.Variable(10.0, name="v0")
       v1 = variables.Variable(30.0, name="v1")
       # Add a non-trainable variable.

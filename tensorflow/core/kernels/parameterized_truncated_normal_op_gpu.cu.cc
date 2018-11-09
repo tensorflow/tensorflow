@@ -44,9 +44,12 @@ class OpKernelContext;
 
 namespace functor {
 
+static constexpr int kMaxIterations = 1000;
+
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T>
+
 __global__ void __launch_bounds__(1024)
     TruncatedNormalKernel(random::PhiloxRandom gen, T* data, int64 num_batches,
                           int64 samples_per_batch, int64 num_elements,
@@ -59,9 +62,19 @@ __global__ void __launch_bounds__(1024)
   const int32 initial_offset = blockIdx.x * blockDim.x + threadIdx.x;
   gen.Skip(max_samples_per_item * initial_offset);
   typedef random::UniformDistribution<random::PhiloxRandom, T> Uniform;
+  typedef random::NormalDistribution<random::PhiloxRandom, T> Normal;
   Uniform dist;
+  Normal normal_dist;
   const int kDistSize = Uniform::kResultElementCount;
   const T quietNaN = Eigen::NumTraits<T>::quiet_NaN();
+  // The randn rejection sampling is used when the mean and at least this many
+  // standard deviations are inside the bounds.
+  // The uniform proposal samplers become less efficient as the bounds are
+  // further from the mean, the reverse is true for the randn sampler.
+  // This number was chosen by empirical benchmarking. If modified, the
+  // benchmarks in parameterized_truncated_normal_op_test should also be
+  // changed.
+  const T kStdDevsInsideBoundsToUseRandnSampler = T(1.7);
 
   // We skip the total number of threads to get to the next element. To produce
   // deterministic results between devices, each element in the output array
@@ -114,6 +127,32 @@ __global__ void __launch_bounds__(1024)
           (Eigen::numext::isfinite(normMin) ||
            Eigen::numext::isfinite(normMax)))) {
       data[offset] = quietNaN;
+    } else if (((normMin < -kStdDevsInsideBoundsToUseRandnSampler) &&
+                (normMax >= T(0.))) ||
+               ((normMax > kStdDevsInsideBoundsToUseRandnSampler) &&
+                (normMin <= T(0.)))) {
+      Eigen::array<T, 4> n;
+
+      int numIterations = 0;
+      while (numIterations < kMaxIterations) {
+        const auto randn = normal_dist(&gen);
+        remaining_samples -= gen.kResultElementCount;
+        UNROLL for (int i = 0; i < kDistSize; i++) {
+          if ((randn[i] >= normMin) && randn[i] <= normMax) {
+            data[offset] = randn[i] * stddev + mean;
+            numIterations = kMaxIterations;
+            break;
+          } else if (numIterations + 1 == kMaxIterations) {
+            // If we did not successfully sample after all these iterations
+            // something is wrong. Output a nan.
+            data[offset] = quietNaN;
+            numIterations = kMaxIterations;
+            break;
+          } else {
+            numIterations++;
+          }
+        }
+      }
     } else if (diff < cutoff) {
       // Sample from a uniform distribution on [normMin, normMax].
 
@@ -138,17 +177,15 @@ __global__ void __launch_bounds__(1024)
         const auto u = dist(&gen);
         remaining_samples -= gen.kResultElementCount;
         UNROLL for (int i = 0; i < kDistSize; i++) {
-          if (u[i] <= Eigen::numext::exp(g[i]) ||
-              numIterations + 1 >= kMaxIterations) {
+          bool accept = u[i] <= Eigen::numext::exp(g[i]);
+          if (accept) {
             // Accept the sample z.
-            // If we run out of iterations, just use the current uniform
-            // sample. Emperically, the probability of accepting each sample
-            // is at least 50% for typical inputs, so we will always accept
-            // by 100 iterations.
-            // This introduces a slight inaccuracy when at least one bound
-            // is large, minval is negative and maxval is positive.
             data[offset] = z[i] * stddev + mean;
             // Break out of the nested loop by updating numIterations.
+            numIterations = kMaxIterations;
+            break;
+          } else if (numIterations + 1 >= kMaxIterations) {
+            data[offset] = quietNaN;
             numIterations = kMaxIterations;
             break;
           } else {
@@ -171,9 +208,14 @@ __global__ void __launch_bounds__(1024)
           const T x = normMin < alpha ? alpha - z : normMin - alpha;
           const T g = Eigen::numext::exp(-x * x / two);
           const T u = rand[i + 1];
-          if ((u <= g && z < normMax) || numIterations + 1 >= kMaxIterations) {
+          bool accept = (u <= g && z < normMax);
+          if (accept) {
             data[offset] = z * stddev + mean;
             // Break out of the nested loop by updating numIterations.
+            numIterations = kMaxIterations;
+            break;
+          } else if (numIterations + 1 >= kMaxIterations) {
+            data[offset] = quietNaN;
             numIterations = kMaxIterations;
             break;
           } else {
@@ -190,8 +232,6 @@ __global__ void __launch_bounds__(1024)
 // Partial specialization for GPU
 template <typename T>
 struct TruncatedNormalFunctor<GPUDevice, T> {
-  static const int kMaxIterations = 100;
-
   void operator()(OpKernelContext* ctx, const GPUDevice& d, int64 num_batches,
                   int64 samples_per_batch, int64 num_elements,
                   typename TTypes<T>::ConstFlat means,
@@ -209,7 +249,7 @@ struct TruncatedNormalFunctor<GPUDevice, T> {
             stddevs.dimension(0) == 1, minvals.data(),
             minvals.dimension(0) == 1, maxvals.data(),
             maxvals.dimension(0) == 1, kMaxIterations);
-  };
+  }
 };
 
 // Explicit instantiation of the GPU distributions functors

@@ -32,87 +32,45 @@ from tensorflow.python.platform import test
 
 class BinaryTensorWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
 
+  def _ConstOp(self, shape):
+    return constant_op.constant(np.random.randn(*shape), dtype=dtypes.float32)
+
   def GetParams(self):
     """Tests for scale & elementwise layers in TF-TRT."""
-    dtype = dtypes.float32
     input_name = "input"
     input_dims = [10, 24, 24, 20]
+    output_name = "output"
     g = ops.Graph()
     with g.as_default():
-      x = array_ops.placeholder(dtype=dtype, shape=input_dims, name=input_name)
-      # scale
-      a = constant_op.constant(np.random.randn(1), dtype=dtype)
-      f = x + a
-      x = math_ops.sigmoid(f)
-      # scale
-      a = constant_op.constant(np.random.randn(1), dtype=dtype)
-      f = a + x
-      x = math_ops.sigmoid(f)
-      # scale
-      a = constant_op.constant(np.random.randn(24, 1, 1), dtype=dtype)
-      f = x + a
-      x = math_ops.sigmoid(f)
-      # scale
-      a = constant_op.constant(np.random.randn(24, 1, 1), dtype=dtype)
-      f = a + x
-      x = math_ops.sigmoid(f)
-      # scale
-      a = constant_op.constant(np.random.randn(24, 24, 20), dtype=dtype)
-      f = a + x
-      x = math_ops.sigmoid(f)
-      # scale
-      a = constant_op.constant(np.random.randn(24, 24, 20), dtype=dtype)
-      f = x + a
-      x = math_ops.sigmoid(f)
-      # elementwise
-      a = constant_op.constant(np.random.randn(20), dtype=dtype)
-      f = x + a
-      x = math_ops.sigmoid(f)
-      # elementwise
-      a = constant_op.constant(np.random.randn(20), dtype=dtype)
-      f = a + x
-      x = math_ops.sigmoid(f)
-      # elementwise
-      a = constant_op.constant(np.random.randn(1, 24, 1, 1), dtype=dtype)
-      f = a + x
-      x = math_ops.sigmoid(f)
-      # elementwise
-      a = constant_op.constant(np.random.randn(1, 24, 1, 1), dtype=dtype)
-      f = x + a
-      x = math_ops.sigmoid(f)
-      # elementwise
-      a = constant_op.constant(np.random.randn(1, 24, 24, 1), dtype=dtype)
-      f = a + x
-      x = math_ops.sigmoid(f)
-      # elementwise
-      a = constant_op.constant(np.random.randn(1, 24, 24, 1), dtype=dtype)
-      f = x + a
-      x = math_ops.sigmoid(f)
-      # elementwise
-      a = constant_op.constant(np.random.randn(1, 24, 24, 20), dtype=dtype)
-      f = a + x
-      x = math_ops.sigmoid(f)
-      # elementwise
-      a = constant_op.constant(np.random.randn(1, 24, 24, 20), dtype=dtype)
-      f = x + a
-      x = math_ops.sigmoid(f)
-      # elementwise
-      a = constant_op.constant(np.random.randn(24, 20), dtype=dtype)
-      f = a + x
-      x = math_ops.sigmoid(f)
-      # elementwise
-      a = constant_op.constant(np.random.randn(24, 20), dtype=dtype)
-      f = x + a
-      x = math_ops.sigmoid(f)
-      gen_array_ops.reshape(x, [5, -1], name=self.output_name)
+      x = array_ops.placeholder(
+          dtype=dtypes.float32, shape=input_dims, name=input_name)
+      for weights_shape in [
+          (1,),  # scale
+          (24, 1, 1),  # scale
+          (24, 24, 20),  # scale
+          (20,),  # elementwise
+          (1, 24, 1, 1),  # elementwise
+          (1, 24, 24, 1),  # elementwise
+          (1, 24, 24, 20),  # elementwise
+          (24, 20),  # elementwise
+      ]:
+        a = self._ConstOp(weights_shape)
+        f = x + a
+        x = math_ops.sigmoid(f)
+        a = self._ConstOp(weights_shape)
+        f = a + x
+        x = math_ops.sigmoid(f)
+      gen_array_ops.reshape(x, [5, -1], name=output_name)
     return trt_test.TfTrtIntegrationTestParams(
         gdef=g.as_graph_def(),
         input_names=[input_name],
         input_dims=[input_dims],
-        num_expected_engines=16,
-        expected_output_dims=(5, 23040),
-        allclose_atol=1.e-03,
-        allclose_rtol=1.e-03)
+        output_names=[output_name],
+        expected_output_dims=[(5, 23040)])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return ["my_trt_op_%d" % i for i in range(16)]
 
 
 if __name__ == "__main__":

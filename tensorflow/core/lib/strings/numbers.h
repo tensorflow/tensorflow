@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_STRINGS_NUMBERS_H_
-#define TENSORFLOW_LIB_STRINGS_NUMBERS_H_
+#ifndef TENSORFLOW_CORE_LIB_STRINGS_NUMBERS_H_
+#define TENSORFLOW_CORE_LIB_STRINGS_NUMBERS_H_
 
 #include <string>
 
@@ -140,11 +140,11 @@ inline bool ProtoParseNumeric(StringPiece s, uint64* value) {
 }
 
 inline bool ProtoParseNumeric(StringPiece s, float* value) {
-  return safe_strtof(std::string(s).c_str(), value);
+  return safe_strtof(s, value);
 }
 
 inline bool ProtoParseNumeric(StringPiece s, double* value) {
-  return safe_strtod(std::string(s).c_str(), value);
+  return safe_strtod(s, value);
 }
 
 // Convert strings to number of type T.
@@ -176,4 +176,4 @@ string HumanReadableElapsedTime(double seconds);
 }  // namespace strings
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_STRINGS_NUMBERS_H_
+#endif  // TENSORFLOW_CORE_LIB_STRINGS_NUMBERS_H_

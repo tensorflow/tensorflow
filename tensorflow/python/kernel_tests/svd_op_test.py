@@ -50,7 +50,7 @@ class SvdOpTest(test.TestCase):
       linalg_ops.svd(vector)
 
   def testConcurrentExecutesWithoutError(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       all_ops = []
       for compute_uv_ in True, False:
         for full_matrices_ in True, False:
@@ -140,7 +140,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
           low=-1.0, high=1.0,
           size=np.prod(shape_)).reshape(shape_).astype(dtype_)
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       if use_static_shape_:
         x_tf = constant_op.constant(x_np)
       else:
@@ -229,7 +229,7 @@ def _GetSvdGradOpTest(dtype_, shape_, compute_uv_, full_matrices_):
       tol = 3e-2
     else:
       tol = 1e-6
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       tf_a = constant_op.constant(a)
       if compute_uv_:
         tf_s, tf_u, tf_v = _NormalizingSvd(tf_a)

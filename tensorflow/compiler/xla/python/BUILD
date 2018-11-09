@@ -39,6 +39,9 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",
         "//tensorflow/python:numpy_lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -47,7 +50,14 @@ cc_library(
     srcs = ["local_computation_builder.cc"],
     hdrs = ["local_computation_builder.h"],
     deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
         "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:client_library",
@@ -57,8 +67,12 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/service:shaped_buffer",
-        "//tensorflow/core:framework_lite",
+        "//tensorflow/compiler/xrt:xrt_proto",
+        "//tensorflow/compiler/xrt/cc:xrt_ops",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -67,6 +81,7 @@ tf_py_wrap_cc(
     srcs = ["xla.i"],
     swig_includes = [
         "local_computation_builder.i",
+        "//tensorflow/python:platform/base.i",
     ],
     deps = [
         ":local_computation_builder",

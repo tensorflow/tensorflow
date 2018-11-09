@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import os
 
 from tensorflow.contrib.distribute.python import mirrored_strategy
@@ -346,49 +345,24 @@ class PerDeviceDatasetTest(test.TestCase):
   config = config_pb2.ConfigProto()
   config.allow_soft_placement = True
 
-  def _test_iterator_no_prefetch(self, devices, dataset, expected_values):
-    per_device_dataset = values.PerDeviceDataset(
-        dataset, devices, prefetch_on_device=False)
-    iterator = per_device_dataset.make_one_shot_iterator()
+  def _test_iterator(self, devices, dataset, expected_values):
+    per_device_dataset = values.PerDeviceDataset(dataset, devices)
+    if context.executing_eagerly():
+      iterator = per_device_dataset.make_one_shot_iterator()
+    else:
+      iterator = per_device_dataset.make_initializable_iterator()
+      self.evaluate([iterator.initializer])
 
     for expected_value in expected_values:
       next_element = iterator.get_next()
-      actual = self.evaluate([
-          values.select_device(d, next_element) for d in devices])
-      self.assertEqual(expected_value, actual)
+      computed_value = self.evaluate(
+          [values.select_device(d, next_element) for d in devices])
+      self.assertEqual(expected_value, computed_value)
 
     with self.assertRaises(errors.OutOfRangeError):
       next_element = iterator.get_next()
       self.evaluate([
           values.select_device(d, next_element) for d in devices])
-
-  def _test_iterator_with_prefetch(self, devices, dataset, expected_values):
-    if not context.executing_eagerly():
-      per_device_dataset = values.PerDeviceDataset(
-          dataset, devices, prefetch_on_device=True)
-      iterator = per_device_dataset.make_one_shot_iterator()
-
-      # With prefetching, we cannot guarantee which input ends up on which
-      # device, so we verify that the complete set seen on all devices is
-      # correct, and equal numbers are distributed to each device.
-      combined_actual = []
-      combined_expected = []
-      for expected_value in expected_values:
-        next_element = iterator.get_next()
-        combined_actual.extend(self.evaluate([
-            values.select_device(d, next_element) for d in devices]))
-        combined_expected.extend(expected_value)
-
-      self.assertEqual(set(combined_expected), set(combined_actual))
-
-      with self.assertRaises(errors.OutOfRangeError):
-        next_element = iterator.get_next()
-        self.evaluate([
-            values.select_device(d, next_element) for d in devices])
-
-  def _test_iterator(self, devices, dataset, expected_values):
-    self._test_iterator_no_prefetch(devices, dataset, expected_values)
-    self._test_iterator_with_prefetch(devices, dataset, expected_values)
 
   @test_util.run_in_graph_and_eager_modes
   def testOneDevice(self):
@@ -444,8 +418,7 @@ class PerDeviceDatasetTest(test.TestCase):
       dataset = dataset_ops.Dataset.from_tensor_slices(
           random_ops.random_uniform((10,)))
 
-      per_device_dataset = values.PerDeviceDataset(
-          dataset, devices, prefetch_on_device=False)
+      per_device_dataset = values.PerDeviceDataset(dataset, devices)
       iterator = per_device_dataset.make_initializable_iterator()
 
       self.evaluate(iterator.initializer)
@@ -465,7 +438,7 @@ class PerDeviceDatasetTest(test.TestCase):
 
 class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
 
-  def _test_iterator(self, iterator, devices, expected_values):
+  def _test_iterator(self, sess, iterator, devices, expected_values):
     next_element = iterator.get_next()
     for device in devices:
       v = values.select_device(device, next_element)
@@ -474,70 +447,79 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
         self.assertTrue(element.device in device)
 
     for expected_value in expected_values:
-      actual = self.evaluate(
+      actual = sess.run(
           [values.select_device(d, next_element) for d in devices])
       self.assertEqual(expected_value, actual)
 
     with self.assertRaises(errors.OutOfRangeError):
-      self.evaluate([values.select_device(d, next_element) for d in devices])
+      sess.run([values.select_device(d, next_element) for d in devices])
 
-  def _test_dataset(self, dataset_fn, worker_device_map, devices,
-                    expected_values):
+  def _test_dataset(self, dataset_fn, worker_devices, devices,
+                    expected_values, auto_shard=True):
     multi_worker_dataset = values.MultiWorkerDataset(
-        dataset_fn, worker_device_map, prefetch_on_device=False)
-    multi_worker_iterator = multi_worker_dataset.make_one_shot_iterator()
-    self._test_iterator(multi_worker_iterator, devices, expected_values)
+        dataset_fn, worker_devices, auto_shard=auto_shard)
+    multi_worker_iterator = multi_worker_dataset.make_initializable_iterator()
+    with self.cached_session() as sess:
+      sess.run(multi_worker_iterator.initializer)
+      self._test_iterator(sess, multi_worker_iterator, devices, expected_values)
 
   def _cpu_devices(self):
-    worker_device_map = collections.OrderedDict(
-        [("/job:worker/replica:0/task:0",
-          ["/job:worker/replica:0/task:0/device:CPU:0"]),
-         ("/job:worker/replica:0/task:1",
-          ["/job:worker/replica:0/task:1/device:CPU:0"])])
+    worker_devices = [
+        ("/job:worker/replica:0/task:0",
+         ["/job:worker/replica:0/task:0/device:CPU:0"]),
+        ("/job:worker/replica:0/task:1",
+         ["/job:worker/replica:0/task:1/device:CPU:0"])]
     devices = [
         "/job:worker/replica:0/task:0/device:CPU:0",
         "/job:worker/replica:0/task:1/device:CPU:0"
     ]
-    return worker_device_map, devices
+    return worker_devices, devices
 
   def _cpu_and_one_gpu_devices(self):
-    # The worker_device_map doesn't have to be a OrderDict object, this is just
-    # to simplify the testing so that we can pass expected values as a list
-    # instead of a dict.
-    worker_device_map = collections.OrderedDict(
-        [("/job:worker/replica:0/task:0", [
+    worker_devices = [
+        ("/job:worker/replica:0/task:0", [
             "/job:worker/replica:0/task:0/device:GPU:0",
             "/job:worker/replica:0/task:0/device:CPU:0"
-        ]), ("/job:worker/replica:0/task:1", [
+        ]),
+        ("/job:worker/replica:0/task:1", [
             "/job:worker/replica:0/task:1/device:GPU:0",
             "/job:worker/replica:0/task:1/device:CPU:0"
-        ])])
+        ])
+    ]
     devices = [
         "/job:worker/replica:0/task:0/device:GPU:0",
         "/job:worker/replica:0/task:0/device:CPU:0",
         "/job:worker/replica:0/task:1/device:GPU:0",
         "/job:worker/replica:0/task:1/device:CPU:0"
     ]
-    return worker_device_map, devices
+    return worker_devices, devices
 
   def testDataDistributionOneDevicePerWorker(self):
-    worker_device_map, devices = self._cpu_devices()
+    worker_devices, devices = self._cpu_devices()
     with context.graph_mode():
       dataset_fn = lambda: dataset_ops.Dataset.range(8)
-      self._test_dataset(dataset_fn, worker_device_map, devices,
+      self._test_dataset(dataset_fn, worker_devices, devices,
                          [[0, 1], [2, 3], [4, 5], [6, 7]])
+
+  def testDataDistributionNoAutoShard(self):
+    worker_devices, devices = self._cpu_devices()
+    with context.graph_mode():
+      dataset_fn = lambda: dataset_ops.Dataset.range(4)
+      self._test_dataset(dataset_fn, worker_devices, devices,
+                         [[0, 0], [1, 1], [2, 2], [3, 3]],
+                         auto_shard=False)
 
   def testDataDistributionTwoDevicePerWorker(self):
     if context.num_gpus() < 1:
       self.skipTest("A GPU is not available for this test.")
-    worker_device_map, devices = self._cpu_and_one_gpu_devices()
+    worker_devices, devices = self._cpu_and_one_gpu_devices()
     with context.graph_mode():
       dataset_fn = lambda: dataset_ops.Dataset.range(8)
-      self._test_dataset(dataset_fn, worker_device_map, devices,
+      self._test_dataset(dataset_fn, worker_devices, devices,
                          [[0, 2, 1, 3], [4, 6, 5, 7]])
 
   def testTupleDataset(self):
-    worker_device_map, devices = self._cpu_devices()
+    worker_devices, devices = self._cpu_devices()
 
     with context.graph_mode():
 
@@ -549,24 +531,24 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
       expected_values = [
           [(i, i**2), (i + 1, (i + 1)**2)] for i in range(0, 8, 2)
       ]
-      self._test_dataset(dataset_fn, worker_device_map, devices,
+      self._test_dataset(dataset_fn, worker_devices, devices,
                          expected_values)
 
   def testInitializableIterator(self):
-    worker_device_map, devices = self._cpu_devices()
-    with context.graph_mode():
+    worker_devices, devices = self._cpu_devices()
+    with context.graph_mode(), self.cached_session() as sess:
       dataset_fn = lambda: dataset_ops.Dataset.range(8)
       multi_worker_dataset = values.MultiWorkerDataset(
-          dataset_fn, worker_device_map, prefetch_on_device=False)
+          dataset_fn, worker_devices, auto_shard=True)
       multi_worker_iterator = multi_worker_dataset.make_initializable_iterator()
 
-      self.evaluate(multi_worker_iterator.initializer)
-      self._test_iterator(multi_worker_iterator, devices,
+      sess.run(multi_worker_iterator.initializer)
+      self._test_iterator(sess, multi_worker_iterator, devices,
                           [[0, 1], [2, 3], [4, 5], [6, 7]])
 
       # After re-initializing the iterator, should be able to iterate again.
-      self.evaluate(multi_worker_iterator.initializer)
-      self._test_iterator(multi_worker_iterator, devices,
+      sess.run(multi_worker_iterator.initializer)
+      self._test_iterator(sess, multi_worker_iterator, devices,
                           [[0, 1], [2, 3], [4, 5], [6, 7]])
 
   def testValueErrorForIterator(self):
@@ -575,13 +557,12 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
       values.MultiWorkerDataIterator({"w1": None}, {"w1": "d1", "w2": "d2"})
 
     # Test duplicated devices under same worker.
-    worker_device_map, _ = self._cpu_devices()
-    worker_device_map["/job:worker/replica:0/task:0"].append(
-        "/job:worker/replica:0/task:0/device:CPU:0")
+    worker_devices, _ = self._cpu_devices()
+    worker_devices[0][1].append("/job:worker/replica:0/task:0/device:CPU:0")
     with context.graph_mode():
       dataset_fn = lambda: dataset_ops.Dataset.range(8)
       multi_worker_dataset = values.MultiWorkerDataset(
-          dataset_fn, worker_device_map, prefetch_on_device=False)
+          dataset_fn, worker_devices, auto_shard=True)
       multi_worker_iterator = multi_worker_dataset.make_initializable_iterator()
       with self.assertRaises(ValueError):
         multi_worker_iterator.get_next()
@@ -635,7 +616,7 @@ class MirroredVariableTest(test.TestCase):
     if context.num_gpus() < 1 and context.executing_eagerly():
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    with self.test_session() as sess:
+    with self.cached_session(config=self.config) as sess:
       v, devices, mirrored = _make_mirrored()
 
       # Overwrite the initial values.
@@ -653,7 +634,7 @@ class MirroredVariableTest(test.TestCase):
 
   def _save_mirrored(self):
     """Save variables with mirroring, returns save_path."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       v, devices, mirrored = _make_mirrored()
 
       # Overwrite the initial values.
@@ -668,7 +649,7 @@ class MirroredVariableTest(test.TestCase):
 
   def _save_normal(self):
     """Save variables without mirroring, returns save_path."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       var = variable_scope.get_variable(
           name="v", initializer=1., use_resource=True)
 
@@ -684,7 +665,7 @@ class MirroredVariableTest(test.TestCase):
 
   def _restore_normal(self, save_path):
     """Restore to variables without mirroring in a fresh graph."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       var = variable_scope.get_variable(
           name="v", initializer=7., use_resource=True)
 
@@ -698,7 +679,7 @@ class MirroredVariableTest(test.TestCase):
 
   def _restore_mirrored(self, save_path):
     """Restore to variables with mirroring in a fresh graph."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       v, devices, mirrored = _make_mirrored()
 
       # Overwrite the initial values.
@@ -738,7 +719,7 @@ class MirroredVariableTest(test.TestCase):
     if context.num_gpus() < 1 or context.executing_eagerly():
       self.skipTest("A GPU is not available for this test or it's eager mode.")
 
-    with self.test_session(
+    with self.session(
         graph=ops.Graph()) as sess, mirrored_strategy.MirroredStrategy(
             ["/device:GPU:0"]).scope():
       with ops.device("/device:GPU:0"):
@@ -754,7 +735,7 @@ class MirroredVariableTest(test.TestCase):
 _devices = ["/device:GPU:0", "/device:CPU:0"]
 
 
-def _make_tower_local(method):
+def _make_replica_local(method):
   v = []
   index = {}
   for d, n, init in zip(_devices, ["v", "v/replica"], [1., 2.]):
@@ -762,11 +743,11 @@ def _make_tower_local(method):
       v.append(variable_scope.get_variable(
           name=n, initializer=init, use_resource=True))
       index[d] = v[-1]
-  tower_local = values.TowerLocalVariable(index, v[0], method)
-  return v, tower_local
+  replica_local = values.ReplicaLocalVariable(index, v[0], method)
+  return v, replica_local
 
 
-class TowerLocalVariableTest(test.TestCase):
+class ReplicaLocalVariableTest(test.TestCase):
 
   config = config_pb2.ConfigProto()
   config.allow_soft_placement = True
@@ -776,29 +757,30 @@ class TowerLocalVariableTest(test.TestCase):
     if context.num_gpus() < 1 and context.executing_eagerly():
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    v, tower_local = _make_tower_local(variable_scope.VariableAggregation.SUM)
+    v, replica_local = _make_replica_local(
+        variable_scope.VariableAggregation.SUM)
 
-    self.assertEquals(v[0].name, tower_local.name)
-    self.assertEquals(v[0].dtype, tower_local.dtype)
-    self.assertEquals(v[0].shape, tower_local.shape)
+    self.assertEquals(v[0].name, replica_local.name)
+    self.assertEquals(v[0].dtype, replica_local.dtype)
+    self.assertEquals(v[0].shape, replica_local.shape)
     self.assertEquals(variable_scope.VariableAggregation.SUM,
-                      tower_local.aggregation)
+                      replica_local.aggregation)
 
   @test_util.run_in_graph_and_eager_modes(config=config)
   def testVariableOnAnotherDevice(self):
     v = variable_scope.get_variable(
         name="v", initializer=[1.], use_resource=True)
     index = {"/job:foo/device:CPU:0": v}
-    tower_local = values.TowerLocalVariable(
+    replica_local = values.ReplicaLocalVariable(
         index, v, variable_scope.VariableAggregation.MEAN)
 
-    self.assertEquals(v.name, tower_local.name)
-    self.assertEquals(v.dtype, tower_local.dtype)
-    self.assertEquals(v.shape, tower_local.shape)
+    self.assertEquals(v.name, replica_local.name)
+    self.assertEquals(v.dtype, replica_local.dtype)
+    self.assertEquals(v.shape, replica_local.shape)
     self.assertEquals(variable_scope.VariableAggregation.MEAN,
-                      tower_local.aggregation)
+                      replica_local.aggregation)
 
-  def _assign_tower_local(self, devices, v, new):
+  def _assign_replica_local(self, devices, v, new):
     for d, var, n in zip(devices, v, new):
       with ops.device(d):
         self.evaluate(var.assign(n))
@@ -817,22 +799,23 @@ class TowerLocalVariableTest(test.TestCase):
     return mirrored_strategy.MirroredStrategy(_devices).scope()
 
   @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveAndRestoreTowerLocalSumOneGraph(self):
+  def testSaveAndRestoreReplicaLocalSumOneGraph(self):
     if context.num_gpus() < 1 and context.executing_eagerly():
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    with self.test_session() as sess:
-      v, tower_local = _make_tower_local(variable_scope.VariableAggregation.SUM)
+    with self.cached_session(config=self.config) as sess:
+      v, replica_local = _make_replica_local(
+          variable_scope.VariableAggregation.SUM)
 
       # Overwrite the initial values.
-      self._assign_tower_local(_devices, v, [3., 4.])
+      self._assign_replica_local(_devices, v, [3., 4.])
 
       with self._dist_scope():
         # Saves the current value of v[0] + v[1], 7.
-        save_path, saver = self._save_return_saver(sess, tower_local)
+        save_path, saver = self._save_return_saver(sess, replica_local)
 
         # Change the values between save and restore.
-        self._assign_tower_local(_devices, v, [5., 6.])
+        self._assign_replica_local(_devices, v, [5., 6.])
 
         # Restores the saved value of 7. which gets divided equally
         # between the variables.
@@ -840,64 +823,64 @@ class TowerLocalVariableTest(test.TestCase):
         self.assertEqual([3.5, 3.5], self.evaluate([v[0], v[1]]))
 
   @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveAndRestoreTowerLocalMeanOneGraph(self):
+  def testSaveAndRestoreReplicaLocalMeanOneGraph(self):
     if context.num_gpus() < 1 and context.executing_eagerly():
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    with self.test_session() as sess:
-      v, tower_local = _make_tower_local(
+    with self.cached_session(config=self.config) as sess:
+      v, replica_local = _make_replica_local(
           variable_scope.VariableAggregation.MEAN)
 
       # Overwrite the initial values.
-      self._assign_tower_local(_devices, v, [3., 4.])
+      self._assign_replica_local(_devices, v, [3., 4.])
 
       with self._dist_scope():
         # Saves the current value of (v[0] + v[1])/2, 3.5.
-        save_path, saver = self._save_return_saver(sess, tower_local)
+        save_path, saver = self._save_return_saver(sess, replica_local)
 
         # Change the values between save and restore.
-        self._assign_tower_local(_devices, v, [5., 6.])
+        self._assign_replica_local(_devices, v, [5., 6.])
 
         # Restores the saved value of 3.5 to both variables.
         saver.restore(sess, save_path)
         self.assertEqual([3.5, 3.5], self.evaluate([v[0], v[1]]))
 
-  def _save_tower_local_mean(self):
+  def _save_replica_local_mean(self):
     """Save variables with mirroring, returns save_path."""
-    with self.test_session(graph=ops.Graph()) as sess:
-      v, tower_local = _make_tower_local(
+    with self.session(graph=ops.Graph()) as sess:
+      v, replica_local = _make_replica_local(
           variable_scope.VariableAggregation.MEAN)
 
       # Overwrite the initial values.
-      self._assign_tower_local(_devices, v, [3., 4.])
+      self._assign_replica_local(_devices, v, [3., 4.])
 
       with self._dist_scope():
         # Saves the current value of (v[0] + v[1])/2, 3.5
-        save_path = self._save(sess, tower_local)
+        save_path = self._save(sess, replica_local)
 
         # Change the values between save and restore.
-        self._assign_tower_local(_devices, v, [5., 6.])
+        self._assign_replica_local(_devices, v, [5., 6.])
     return save_path
 
-  def _save_tower_local_sum(self):
+  def _save_replica_local_sum(self):
     """Save variables with mirroring, returns save_path."""
-    with self.test_session(graph=ops.Graph()) as sess:
-      v, tower_local = _make_tower_local("sum")
+    with self.session(graph=ops.Graph()) as sess:
+      v, replica_local = _make_replica_local("sum")
 
       # Overwrite the initial values.
-      self._assign_tower_local(_devices, v, [1.5, 2.])
+      self._assign_replica_local(_devices, v, [1.5, 2.])
 
       with self._dist_scope():
         # Saves the current value of v[0] + v[1], 3.5
-        save_path = self._save(sess, tower_local)
+        save_path = self._save(sess, replica_local)
 
         # Change the values between save and restore.
-        self._assign_tower_local(_devices, v, [5., 6.])
+        self._assign_replica_local(_devices, v, [5., 6.])
     return save_path
 
   def _save_normal(self):
     """Save variables without mirroring, returns save_path."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       var = variable_scope.get_variable(
           name="v", initializer=1., use_resource=True)
 
@@ -913,7 +896,7 @@ class TowerLocalVariableTest(test.TestCase):
 
   def _restore_normal(self, save_path):
     """Restore to variables without mirroring in a fresh graph."""
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       var = variable_scope.get_variable(
           name="v", initializer=7., use_resource=True)
 
@@ -925,94 +908,96 @@ class TowerLocalVariableTest(test.TestCase):
       saver.restore(sess, save_path)
       self.assertEqual(3.5, self.evaluate(var))
 
-  def _restore_tower_local_mean(self, save_path):
+  def _restore_replica_local_mean(self, save_path):
     """Restore to variables with mirroring in a fresh graph."""
-    with self.test_session(graph=ops.Graph()) as sess:
-      v, tower_local = _make_tower_local(
+    with self.session(graph=ops.Graph()) as sess:
+      v, replica_local = _make_replica_local(
           variable_scope.VariableAggregation.MEAN)
 
       # Overwrite the initial values.
-      self._assign_tower_local(_devices, v, [7., 8.])
+      self._assign_replica_local(_devices, v, [7., 8.])
 
       with self._dist_scope():
         # Restores the saved value of 3.5 to both variables.
-        saver = saver_lib.Saver(var_list=[tower_local])
+        saver = saver_lib.Saver(var_list=[replica_local])
         saver.restore(sess, save_path)
         self.assertEqual([3.5, 3.5], self.evaluate([v[0], v[1]]))
 
-  def _restore_tower_local_sum(self, save_path):
+  def _restore_replica_local_sum(self, save_path):
     """Restore to variables with mirroring in a fresh graph."""
-    with self.test_session(graph=ops.Graph()) as sess:
-      v, tower_local = _make_tower_local(variable_scope.VariableAggregation.SUM)
+    with self.session(graph=ops.Graph()) as sess:
+      v, replica_local = _make_replica_local(
+          variable_scope.VariableAggregation.SUM)
 
       # Overwrite the initial values.
-      self._assign_tower_local(_devices, v, [7., 8.])
+      self._assign_replica_local(_devices, v, [7., 8.])
 
       with self._dist_scope():
         # Restores the saved value of 3.5 to both variables.
-        saver = saver_lib.Saver(var_list=[tower_local])
+        saver = saver_lib.Saver(var_list=[replica_local])
         saver.restore(sess, save_path)
         self.assertEqual([1.75, 1.75], self.evaluate([v[0], v[1]]))
 
   @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveTowerLocalRestoreTowerLocalMean(self):
+  def testSaveReplicaLocalRestoreReplicaLocalMean(self):
     if context.num_gpus() < 1 and context.executing_eagerly():
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    save_path = self._save_tower_local_mean()
-    self._restore_tower_local_mean(save_path)
+    save_path = self._save_replica_local_mean()
+    self._restore_replica_local_mean(save_path)
 
   @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveTowerLocalRestoreTowerLocalSum(self):
+  def testSaveReplicaLocalRestoreReplicaLocalSum(self):
     if context.num_gpus() < 1 and context.executing_eagerly():
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    save_path = self._save_tower_local_sum()
-    self._restore_tower_local_sum(save_path)
+    save_path = self._save_replica_local_sum()
+    self._restore_replica_local_sum(save_path)
 
   @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveTowerLocalMeanRestoreNormal(self):
+  def testSaveReplicaLocalMeanRestoreNormal(self):
     if context.num_gpus() < 1 and context.executing_eagerly():
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    save_path = self._save_tower_local_mean()
+    save_path = self._save_replica_local_mean()
     self._restore_normal(save_path)
 
   @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveTowerLocalSumRestoreNormal(self):
+  def testSaveReplicaLocalSumRestoreNormal(self):
     if context.num_gpus() < 1 and context.executing_eagerly():
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    save_path = self._save_tower_local_sum()
+    save_path = self._save_replica_local_sum()
     self._restore_normal(save_path)
 
   @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveNormalRestoreTowerLocalMean(self):
+  def testSaveNormalRestoreReplicaLocalMean(self):
     if context.num_gpus() < 1 and context.executing_eagerly():
       self.skipTest("A GPU is not available for this test in eager mode.")
 
     save_path = self._save_normal()
-    self._restore_tower_local_mean(save_path)
+    self._restore_replica_local_mean(save_path)
 
   @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveNormalRestoreTowerLocalSum(self):
+  def testSaveNormalRestoreReplicaLocalSum(self):
     if context.num_gpus() < 1 and context.executing_eagerly():
       self.skipTest("A GPU is not available for this test in eager mode.")
 
     save_path = self._save_normal()
-    self._restore_tower_local_sum(save_path)
+    self._restore_replica_local_sum(save_path)
 
   def testTensorConversion(self):
     with context.graph_mode():
-      _, tower_local = _make_tower_local(variable_scope.VariableAggregation.SUM)
-      converted = ops.internal_convert_to_tensor(tower_local, as_ref=False)
+      _, replica_local = _make_replica_local(
+          variable_scope.VariableAggregation.SUM)
+      converted = ops.internal_convert_to_tensor(replica_local, as_ref=False)
       self.assertIsInstance(converted, ops.Tensor)
-      self.assertEqual(converted.dtype, tower_local.dtype)
+      self.assertEqual(converted.dtype, replica_local.dtype)
 
-      converted = ops.internal_convert_to_tensor(tower_local, as_ref=True)
+      converted = ops.internal_convert_to_tensor(replica_local, as_ref=True)
       # Resources variable are converted to tensors as well when as_ref is True.
       self.assertIsInstance(converted, ops.Tensor)
-      self.assertEqual(converted.dtype, tower_local.dtype)
+      self.assertEqual(converted.dtype, replica_local.dtype)
 
 
 if __name__ == "__main__":

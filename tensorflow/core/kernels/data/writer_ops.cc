@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -22,17 +22,14 @@ limitations under the License.
 #include "tensorflow/core/platform/file_system.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 class ToTFRecordOp : public AsyncOpKernel {
  public:
   explicit ToTFRecordOp(OpKernelConstruction* ctx)
       : AsyncOpKernel(ctx),
-        thread_pool_(new thread::ThreadPool(
-            ctx->env(), ThreadOptions(),
-            strings::StrCat("to_tf_record__op_", SanitizeThreadSuffix(name())),
-            1 /* num_threads */, false /* low_latency_hint */)) {}
+        background_worker_(ctx->env(), "tf_data_to_tf_record") {}
 
   template <typename T>
   Status ParseScalarArgument(OpKernelContext* ctx,
@@ -47,10 +44,9 @@ class ToTFRecordOp : public AsyncOpKernel {
   }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    // The call to `iterator->GetNext()` may block and depend on an
-    // inter-op thread pool thread, so we issue the call from the
-    // owned thread pool.
-    thread_pool_->Schedule([this, ctx, done]() {
+    // The call to `iterator->GetNext()` may block and depend on an inter-op
+    // thread pool thread, so we issue the call using a background thread.
+    background_worker_.Schedule([this, ctx, done]() {
       string filename;
       OP_REQUIRES_OK_ASYNC(
           ctx, ParseScalarArgument<string>(ctx, "filename", &filename), done);
@@ -70,20 +66,21 @@ class ToTFRecordOp : public AsyncOpKernel {
       DatasetBase* dataset;
       OP_REQUIRES_OK_ASYNC(
           ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset), done);
-      IteratorContext iter_ctx = dataset::MakeIteratorContext(ctx);
       std::unique_ptr<IteratorBase> iterator;
       OP_REQUIRES_OK_ASYNC(
           ctx,
-          dataset->MakeIterator(&iter_ctx, "ToTFRecordOpIterator", &iterator),
+          dataset->MakeIterator(IteratorContext(ctx), "ToTFRecordOpIterator",
+                                &iterator),
           done);
 
       std::vector<Tensor> components;
       components.reserve(dataset->output_dtypes().size());
       bool end_of_sequence;
       do {
-        OP_REQUIRES_OK_ASYNC(
-            ctx, iterator->GetNext(&iter_ctx, &components, &end_of_sequence),
-            done);
+        OP_REQUIRES_OK_ASYNC(ctx,
+                             iterator->GetNext(IteratorContext(ctx),
+                                               &components, &end_of_sequence),
+                             done);
 
         if (!end_of_sequence) {
           OP_REQUIRES_OK_ASYNC(
@@ -96,11 +93,12 @@ class ToTFRecordOp : public AsyncOpKernel {
   }
 
  private:
-  std::unique_ptr<thread::ThreadPool> thread_pool_;
+  BackgroundWorker background_worker_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("DatasetToTFRecord").Device(DEVICE_CPU),
                         ToTFRecordOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

@@ -51,7 +51,7 @@ from tensorflow.python.estimator import estimator as core_estimator
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary as core_summary
-from tensorflow.python.training import saver as saver_lib
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 from tensorflow.python.util import deprecation
@@ -735,7 +735,8 @@ class ValidationMonitor(EveryN):
       return False
     self._last_checkpoint_check_time = current_time
     # Check that we are not running evaluation on the same checkpoint.
-    latest_path = saver_lib.latest_checkpoint(self._estimator.model_dir)
+    latest_path = checkpoint_management.latest_checkpoint(
+        self._estimator.model_dir)
     if latest_path is None:
       logging.debug("Skipping evaluation since model has not been saved yet "
                     "at step %d.", step)
@@ -1059,7 +1060,8 @@ class ExportMonitor(EveryN):
 
   def end(self, session=None):
     super(ExportMonitor, self).end(session=session)
-    latest_path = saver_lib.latest_checkpoint(self._estimator.model_dir)
+    latest_path = checkpoint_management.latest_checkpoint(
+        self._estimator.model_dir)
     if latest_path is None:
       logging.info("Skipping export at the end since model has not been saved "
                    "yet.")

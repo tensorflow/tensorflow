@@ -14,9 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
+
 #include <unordered_set>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
@@ -32,20 +38,252 @@ bool IsTrivialOp(const NodeDef& node, const GraphRewriter& rewriter) {
   if (IsStopGradient(node)) {
     return true;
   }
-  if (IsIdentity(node)) {
-    if (rewriter.FeedsMerge(node) || rewriter.IsDrivenBySwitch(node) ||
-        rewriter.IsDrivenByControlDependency(node) ||
-        rewriter.DrivesControlDependency(node)) {
-      return false;
-    } else {
-      return true;
-    }
-  }
-  if (IsAddN(node) && NumNonControlInputs(node) <= 1) {
-    return true;
+  if (IsIdentity(node) || IsIdentityNSingleInput(node)) {
+    return !(rewriter.FeedsMerge(node) || rewriter.IsDrivenBySwitch(node) ||
+             rewriter.IsDrivenByControlDependency(node) ||
+             rewriter.DrivesControlDependency(node));
   }
 
-  return false;
+  return IsAddN(node) && NumNonControlInputs(node) <= 1;
+}
+
+absl::flat_hash_map<string, absl::flat_hash_set<int>> IdentityNTerminalPorts(
+    const NodeMap& node_map, const std::vector<string>& terminal_nodes,
+    int graph_size) {
+  // Determines which ports for IdentityN nodes (that can be rewritten) lead to
+  // a terminal node.
+  std::vector<string> to_visit;
+  to_visit.reserve(graph_size);
+  // Set terminal nodes as visited so terminal nodes that may be IdentityN don't
+  // get pruned later on.
+  absl::flat_hash_set<string> visited(terminal_nodes.begin(),
+                                      terminal_nodes.end());
+  for (string terminal_node : terminal_nodes) {
+    NodeDef* node = node_map.GetNode(terminal_node);
+    if (node == nullptr) {
+      continue;
+    }
+    for (string input : node->input()) {
+      to_visit.push_back(input);
+    }
+  }
+
+  absl::flat_hash_set<string> identity_n_fanouts;
+  while (!to_visit.empty()) {
+    string curr = to_visit.back();
+    to_visit.pop_back();
+    NodeDef* curr_node = node_map.GetNode(curr);
+    if (curr_node == nullptr ||
+        visited.find(curr_node->name()) != visited.end()) {
+      continue;
+    }
+    // For IdentityN nodes, only traverse up through the port that comes from a
+    // terminal node along with control inputs. The IdentityN node is not marked
+    // as visited so other node input traversals can go through the other ports
+    // of the IdentityN node.
+    if (IsIdentityN(*curr_node)) {
+      if (identity_n_fanouts.find(curr) == identity_n_fanouts.end()) {
+        identity_n_fanouts.emplace(curr);
+        int pos = NodePositionIfSameNode(curr, curr_node->name());
+        if (pos >= 0) {
+          to_visit.push_back(curr_node->input(pos));
+        }
+        for (const string& input : curr_node->input()) {
+          if (IsControlInput(input) &&
+              identity_n_fanouts.find(input) == identity_n_fanouts.end()) {
+            to_visit.push_back(input);
+          }
+        }
+      }
+    } else {
+      for (const string& input : curr_node->input()) {
+        to_visit.push_back(input);
+      }
+      visited.emplace(curr_node->name());
+    }
+  }
+
+  absl::flat_hash_map<string, absl::flat_hash_set<int>> identity_n_ports;
+  for (const auto& fanout : identity_n_fanouts) {
+    int pos;
+    string node_name = ParseNodeName(fanout, &pos);
+    if (node_name.empty() || pos < 0) {  // Exclude control inputs.
+      continue;
+    }
+    if (identity_n_ports.find(node_name) == identity_n_ports.end()) {
+      identity_n_ports[node_name] = {pos};
+    } else {
+      identity_n_ports[node_name].emplace(pos);
+    }
+  }
+
+  return identity_n_ports;
+}
+
+string NewIdentityFromIdentityN(int pos, const NodeDef& identity_n,
+                                GraphDef* graph, NodeMap* node_map) {
+  // TODO(lyandy): Migrate over to GrapplerOptimizerStage and use
+  // OptimizedNodeName for new node name.
+  string new_node_name =
+      strings::StrCat(identity_n.name(), "-", pos, "-grappler-ModelPruner");
+  if (node_map->NodeExists(new_node_name)) {
+    return "";
+  }
+  NodeDef* new_node = graph->add_node();
+  Status status = NodeDefBuilder(new_node_name, "Identity")
+                      .Input(identity_n.input(pos), 0,
+                             identity_n.attr().at("T").list().type(pos))
+                      .Device(identity_n.device())
+                      .Finalize(new_node);
+  if (!status.ok()) {
+    return "";
+  }
+  node_map->AddNode(new_node->name(), new_node);
+  node_map->AddOutput(NodeName(new_node->input(0)), new_node->name());
+  return new_node->name();
+}
+
+Status RewriteIdentityNAndInputsOutputs(
+    NodeDef* node, int num_non_control_inputs,
+    const absl::flat_hash_set<int>& terminal_ports, GraphDef* graph,
+    NodeMap* node_map) {
+  // Rewrite IdentityN node and associated inputs and outputs. For inputs and
+  // outputs that don't lead to a terminal node, a new Identity node is created
+  // and those inputs and outputs are rewritten to use the new Identity node as
+  // their outputs and inputs respectively. For the remaining nodes, the ouputs
+  // have their inputs updated with the adjusted port, from the IdentityN node
+  // having less inputs.
+  struct NodeOutputUpdate {
+    string input;
+    string output;
+  };
+
+  absl::flat_hash_map<int, int> terminal_input_pos;
+  absl::flat_hash_map<int, string> new_identities;
+  int new_idx = 0;
+  for (int i = 0; i < num_non_control_inputs; i++) {
+    if (terminal_ports.find(i) != terminal_ports.end()) {
+      terminal_input_pos[i] = new_idx++;
+    } else {
+      string identity = NewIdentityFromIdentityN(i, *node, graph, node_map);
+      if (identity.empty()) {
+        // Fail early when creating Identity from IdentityN errors.
+        return errors::Internal(
+            "Could not create Identity node from IdentityN node ", node->name(),
+            " at port ", i);
+      }
+      new_identities[i] = identity;
+    }
+  }
+
+  std::vector<NodeOutputUpdate> updates;
+  for (NodeDef* output : node_map->GetOutputs(node->name())) {
+    for (int i = 0; i < output->input_size(); i++) {
+      string input = output->input(i);
+      if (IsControlInput(input)) {
+        continue;
+      }
+      TensorId input_tensor = ParseTensorName(input);
+      if (input_tensor.node() == node->name()) {
+        if (terminal_ports.find(input_tensor.index()) == terminal_ports.end()) {
+          // Replace input that does not lead to a terminal node with newly
+          // created identity.
+          string new_identity = new_identities[input_tensor.index()];
+          output->set_input(i, new_identity);
+          updates.push_back({new_identity, output->name()});
+        } else {
+          // Update input ports that lead to a terminal node from splitting
+          // inputs.
+          int new_pos = terminal_input_pos[input_tensor.index()];
+          string updated_input_name =
+              new_pos > 0 ? strings::StrCat(node->name(), ":", new_pos)
+                          : node->name();
+          output->set_input(i, updated_input_name);
+        }
+      }
+    }
+  }
+
+  for (NodeOutputUpdate update : updates) {
+    node_map->AddOutput(update.input, update.output);
+  }
+
+  // Update inputs and types by removing inputs that were split away from
+  // main IdentityN node.
+  const int num_inputs = node->input_size();
+  int curr_pos = 0;
+  auto mutable_inputs = node->mutable_input();
+  auto mutable_types =
+      node->mutable_attr()->at("T").mutable_list()->mutable_type();
+  for (int i = 0; i < num_non_control_inputs; i++) {
+    if (terminal_input_pos.find(i) != terminal_input_pos.end()) {
+      mutable_inputs->SwapElements(i, curr_pos);
+      mutable_types->SwapElements(i, curr_pos);
+      curr_pos++;
+    }
+  }
+  mutable_types->Truncate(curr_pos);
+  // Control inputs.
+  for (int i = num_non_control_inputs; i < num_inputs; i++) {
+    mutable_inputs->SwapElements(i, curr_pos++);
+  }
+  mutable_inputs->DeleteSubrange(curr_pos, num_inputs - curr_pos);
+
+  return Status::OK();
+}
+
+Status SplitIdentityNInputs(GraphDef* graph,
+                            const std::vector<string>& terminal_nodes,
+                            bool* updated_graph) {
+  // For inputs of IdentityN nodes that do not lead to a terminal node, remove
+  // them from IdentityN and create new individual Identity nodes. This will
+  // allow ModelPruner to possibly remove nodes in the transitive fanin of the
+  // newly created Identity nodes.
+  NodeMap node_map(graph);
+
+  for (auto const& terminal :
+       IdentityNTerminalPorts(node_map, terminal_nodes, graph->node_size())) {
+    NodeDef* node = node_map.GetNode(terminal.first);
+    if (node == nullptr) {
+      continue;
+    }
+
+    const int num_non_control_inputs = NumNonControlInputs(*node);
+    if (node->attr().count("T") == 0 ||
+        node->attr().at("T").list().type_size() != num_non_control_inputs ||
+        terminal.second.size() >= num_non_control_inputs) {
+      continue;
+    }
+
+    TF_RETURN_IF_ERROR(RewriteIdentityNAndInputsOutputs(
+        node, num_non_control_inputs, terminal.second, graph, &node_map));
+    *updated_graph = true;
+  }
+
+  return Status::OK();
+}
+
+Status SetTransitiveFaninGraph(const GraphDef& input_graph,
+                               GraphDef* output_graph,
+                               const std::vector<string>& terminal_nodes) {
+  // Determines transitive fanin nodes from terminal nodes and add them to the
+  // output graph.
+  bool ill_formed = false;
+  std::vector<const NodeDef*> keep =
+      ComputeTransitiveFanin(input_graph, terminal_nodes, &ill_formed);
+  if (ill_formed) {
+    // Some graph edges are invalid, or some of the feeds/fetch don't exist:
+    // let's be conservative and preserve the graph as is.
+    return errors::InvalidArgument("Invalid input graph.");
+  }
+  // Try to keep the nodes ordered somewhat topologically since this helps
+  // further optimizations perform better.
+  output_graph->mutable_node()->Reserve(keep.size());
+  for (int i = keep.size() - 1; i >= 0; --i) {
+    *output_graph->add_node() = *keep[i];
+  }
+
+  return Status::OK();
 }
 
 Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
@@ -60,19 +298,16 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
     std::vector<string> terminal_nodes(nodes_to_preserve.begin(),
                                        nodes_to_preserve.end());
     std::sort(terminal_nodes.begin(), terminal_nodes.end());
-    bool ill_formed = false;
-    std::vector<const NodeDef*> keep =
-        ComputeTransitiveFanin(item.graph, terminal_nodes, &ill_formed);
-    if (ill_formed) {
-      // Some graph edges are invalid, or some of the feeds/fetch don't exist:
-      // let's be conservative and preserve the graph as is.
-      return errors::InvalidArgument("Invalid input graph.");
-    }
-    // Try to keep the nodes ordered somewhat topologically since this helps
-    // further optimizations perform better.
-    runnable_item.graph.mutable_node()->Reserve(keep.size());
-    for (int i = keep.size() - 1; i >= 0; --i) {
-      *runnable_item.graph.add_node() = *keep[i];
+    TF_RETURN_IF_ERROR(SetTransitiveFaninGraph(item.graph, &runnable_item.graph,
+                                               terminal_nodes));
+    bool did_split_identity_n = false;
+    TF_RETURN_IF_ERROR(SplitIdentityNInputs(
+        &runnable_item.graph, terminal_nodes, &did_split_identity_n));
+    if (did_split_identity_n) {
+      GraphDef fanin_split_identity_n_graph;
+      TF_RETURN_IF_ERROR(SetTransitiveFaninGraph(
+          runnable_item.graph, &fanin_split_identity_n_graph, terminal_nodes));
+      runnable_item.graph.Swap(&fanin_split_identity_n_graph);
     }
   } else {
     runnable_item = item;

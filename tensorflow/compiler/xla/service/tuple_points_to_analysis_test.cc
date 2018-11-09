@@ -72,9 +72,8 @@ class TuplePointsToAnalysisTest : public HloTestBase {
 
   // Checks that the given points-to set contains exactly (unordered) the given
   // LogicalBuffers.
-  void ExpectHasBuffers(
-      const PointsToSet::BufferList& points_to_set,
-      tensorflow::gtl::ArraySlice<const LogicalBuffer*> buffers) {
+  void ExpectHasBuffers(const PointsToSet::BufferList& points_to_set,
+                        absl::Span<const LogicalBuffer* const> buffers) {
     std::vector<const LogicalBuffer*> vec(buffers.begin(), buffers.end());
     EXPECT_THAT(points_to_set, UnorderedElementsAreArray(vec));
   }
@@ -83,7 +82,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
   // top-level buffers of the given instructions.
   void ExpectHasTopLevelBuffers(
       const PointsToSet::BufferList& points_to_set,
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions) {
+      absl::Span<HloInstruction* const> instructions) {
     PointsToSet::BufferList buffers;
     for (auto instruction : instructions) {
       buffers.push_back(GetBuffer(instruction, /*index=*/{}));
@@ -94,7 +93,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
   // Overload which takes a set instead of a vector.
   void ExpectHasTopLevelBuffers(
       const PointsToSet::BufferSet& points_to_set,
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions) {
+      absl::Span<HloInstruction* const> instructions) {
     ExpectHasTopLevelBuffers(
         PointsToSet::BufferList(points_to_set.begin(), points_to_set.end()),
         instructions);
@@ -104,8 +103,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
   // aliases which are exactly (unordered) the given instruction/index pairs.
   void ExpectHasBufferAliases(
       const HloInstruction* instruction, const ShapeIndex& index,
-      tensorflow::gtl::ArraySlice<std::pair<HloInstruction*, ShapeIndex>>
-          expected) {
+      absl::Span<const std::pair<HloInstruction*, ShapeIndex>> expected) {
     const LogicalBuffer* buffer =
         points_to_analysis_->GetBufferDefinedAt(instruction, index)
             .ValueOrDie();
@@ -557,10 +555,10 @@ TEST_F(TuplePointsToAnalysisTest, PointsToTupleConstantElements) {
   // Construct a tuple constant and kCopy it. Verify the points-to set of the
   // copy correctly correctly points into the nested elements of the constant.
   auto builder = HloComputation::Builder(TestName());
-  auto tuple_constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::MakeTuple(
-          {LiteralUtil::CreateR2<float>({{1.0}, {2.0}}).get(),
-           LiteralUtil::CreateR1<float>({2.0, 42}).get()})));
+  Literal elements[] = {LiteralUtil::CreateR2<float>({{1.0}, {2.0}}),
+                        LiteralUtil::CreateR1<float>({2.0, 42})};
+  auto tuple_constant = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::MakeTuple({&elements[0], &elements[1]})));
   auto copy = builder.AddInstruction(HloInstruction::CreateUnary(
       tuple_constant->shape(), HloOpcode::kCopy, tuple_constant));
 
@@ -1012,6 +1010,87 @@ TEST_F(CanShareOperandBufferWithUserTest, DynamicUpdateSliceCanShare) {
       points_to_analysis_->CanShareOperandBufferWithUser(starts, {}, dus, {}));
 }
 
+TEST_F(CanShareOperandBufferWithUserTest, ScatterCanShare) {
+  const char* hlo_text = R"(
+    HloModule TensorFlowScatterV1
+
+    update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+      lhs = s32[] parameter(0)
+      ROOT rhs = s32[] parameter(1)
+    }
+
+    ENTRY main {
+      operand = s32[3,3] parameter(0)
+      indices = s32[2] parameter(1)
+      updates = s32[2,3] parameter(2)
+      ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+          to_apply=update_s32,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseHloString(hlo_text));
+  computation_ = module_->entry_computation();
+  RunAnalysis();
+
+  HloInstruction* operand_param = computation_->parameter_instruction(0);
+  HloInstruction* indices_param = computation_->parameter_instruction(1);
+  HloInstruction* updates_param = computation_->parameter_instruction(2);
+  HloInstruction* scatter = computation_->root_instruction();
+
+  EXPECT_TRUE(points_to_analysis_->CanShareOperandBufferWithUser(
+      operand_param, {}, scatter, {}));
+  EXPECT_FALSE(points_to_analysis_->CanShareOperandBufferWithUser(
+      indices_param, {}, scatter, {}));
+  EXPECT_FALSE(points_to_analysis_->CanShareOperandBufferWithUser(
+      updates_param, {}, scatter, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, SortCanShare) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape keys_shape = ShapeUtil::MakeShape(F32, {8});
+  auto keys = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, keys_shape, "keys"));
+  auto sort =
+      builder.AddInstruction(HloInstruction::CreateSort(keys_shape, 0, keys));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  EXPECT_TRUE(
+      points_to_analysis_->CanShareOperandBufferWithUser(keys, {}, sort, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, SortCanShareWithTupleUser) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape keys_shape = ShapeUtil::MakeShape(F32, {8});
+  Shape values_shape = ShapeUtil::MakeShape(F32, {8});
+  auto keys = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, keys_shape, "keys"));
+  auto values = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, values_shape, "values"));
+  auto sort = builder.AddInstruction(HloInstruction::CreateSort(
+      ShapeUtil::MakeTupleShape({keys_shape, values_shape}), 0, keys,
+      {values}));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  // The buffer for the keys can be shared with the first tuple entry.
+  EXPECT_TRUE(
+      points_to_analysis_->CanShareOperandBufferWithUser(keys, {}, sort, {0}));
+  // The buffer for the values can be shared with the second tuple entry.
+  EXPECT_TRUE(points_to_analysis_->CanShareOperandBufferWithUser(values, {},
+                                                                 sort, {1}));
+  // Verify that the buffers are not shared with the "wrong" tuple entry.
+  EXPECT_FALSE(
+      points_to_analysis_->CanShareOperandBufferWithUser(keys, {}, sort, {1}));
+  EXPECT_FALSE(points_to_analysis_->CanShareOperandBufferWithUser(values, {},
+                                                                  sort, {0}));
+}
+
 TEST_F(CanShareOperandBufferWithUserTest, FusedDotAdd) {
   auto builder = HloComputation::Builder(TestName());
   Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
@@ -1024,8 +1103,11 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDotAdd) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
+  PrecisionConfig precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      /*new_size=*/2, PrecisionConfig::DEFAULT);
   auto dot = builder.AddInstruction(
-      HloInstruction::CreateDot(data_shape, a, b, dot_dnums));
+      HloInstruction::CreateDot(data_shape, a, b, dot_dnums, precision_config));
 
   auto one = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
@@ -1076,7 +1158,7 @@ TEST_F(CanShareOperandBufferWithUserTest, OutputFusionCantAliasOperandBuffer) {
 TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
   Shape data_shape = ShapeUtil::MakeShape(F32, {8});
 
-  auto make_cond = [this, &data_shape]() {
+  auto make_cond = [&data_shape]() {
     auto builder = HloComputation::Builder(TestName() + ".Cond");
     auto data = builder.AddInstruction(
         HloInstruction::CreateParameter(0, data_shape, "data"));
@@ -1085,7 +1167,7 @@ TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
     return builder.Build();
   };
 
-  auto make_body = [this, &data_shape]() {
+  auto make_body = [&data_shape]() {
     auto builder = HloComputation::Builder(TestName() + ".Body");
     auto data = builder.AddInstruction(
         HloInstruction::CreateParameter(0, data_shape, "data"));

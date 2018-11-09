@@ -15,16 +15,16 @@ limitations under the License.
 
 #include <deque>
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
 bool IsGreaterEqualToOrCompatibleWith(const PartialTensorShape& a,
@@ -61,14 +61,14 @@ std::vector<PartialTensorShape> PrependQueueShapeWithBatch(
 
 class EnqueueInQueueDatasetOp;
 
-class PrependFromQueueAndPaddedBatchDataset : public GraphDatasetBase {
+class PrependFromQueueAndPaddedBatchDataset : public DatasetBase {
  public:
   PrependFromQueueAndPaddedBatchDataset(
       OpKernelContext* ctx, const int64 batch_size, const DatasetBase* input,
       const DataTypeVector& dtypes,
       const std::vector<PartialTensorShape>& shapes,
       std::vector<Tensor> padding_values)
-      : GraphDatasetBase(ctx),
+      : DatasetBase(DatasetContext(ctx)),
         batch_size_(batch_size),
         input_(input),
         dtypes_(dtypes),
@@ -99,10 +99,11 @@ class PrependFromQueueAndPaddedBatchDataset : public GraphDatasetBase {
   }
 
  protected:
-  Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+  Status AsGraphDefInternal(SerializationContext* ctx,
+                            DatasetGraphDefBuilder* b,
                             Node** output) const override {
     Node* input_graph = nullptr;
-    TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph));
+    TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph));
     Node* batch_size = nullptr;
     TF_RETURN_IF_ERROR(b->AddScalar(batch_size_, &batch_size));
 
@@ -199,9 +200,10 @@ class PrependFromQueueAndPaddedBatchDataset : public GraphDatasetBase {
         max_shapes.push_back(std::move(out_shape));
       }
 
-      Tensor queues_t(cpu_allocator(), DT_VARIANT, TensorShape({batch_size}));
+      out_tensors->emplace_back(ctx->allocator({}), DT_VARIANT,
+                                TensorShape({batch_size}));
       if (!batch.empty()) {
-        auto queues = queues_t.flat<Variant>();
+        auto queues = out_tensors->back().flat<Variant>();
         Variant& queue_inserter = queues(0);
         queue_inserter = TensorQueueInserter();
         queue_inserter.get<TensorQueueInserter>()->set_queue(queue_);
@@ -211,10 +213,10 @@ class PrependFromQueueAndPaddedBatchDataset : public GraphDatasetBase {
           queues(b) = queues(0);
         }
       }
-      out_tensors->push_back(std::move(queues_t));
 
       for (int i = 0; i < max_shapes.size(); ++i) {
-        Tensor component(cpu_allocator(), dtypes[i], max_shapes[i]);
+        out_tensors->emplace_back(ctx->allocator({}), dtypes[i], max_shapes[i]);
+        Tensor& component = out_tensors->back();
         // Try hard to take the fast path.
         if (shapes[i].IsFullyDefined() &&
             shapes[i].IsIdenticalTo(input_shapes[i])) {
@@ -236,7 +238,6 @@ class PrependFromQueueAndPaddedBatchDataset : public GraphDatasetBase {
             }
           }
         }
-        out_tensors->push_back(std::move(component));
       }
 
       // end_of_sequence was set before we populated out_tensors, so
@@ -352,7 +353,7 @@ class PrependFromQueueAndPaddedBatchDataset : public GraphDatasetBase {
       Status Save(Iterator* iter, IteratorStateWriter* writer) {
         mutex_lock lock(mu_);
         if (input_impl_) {
-          TF_RETURN_IF_ERROR(iter->SaveParent(writer, input_impl_));
+          TF_RETURN_IF_ERROR(iter->SaveInput(writer, input_impl_));
         } else {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(iter->full_name("input_exhausted"), ""));
@@ -378,7 +379,7 @@ class PrependFromQueueAndPaddedBatchDataset : public GraphDatasetBase {
         } else {
           TF_RETURN_IF_ERROR(iter->dataset_input()->MakeIterator(
               ctx, iter->prefix(), &input_impl_));
-          TF_RETURN_IF_ERROR(iter->RestoreParent(ctx, reader, input_impl_));
+          TF_RETURN_IF_ERROR(iter->RestoreInput(ctx, reader, input_impl_));
         }
         entries_.clear();
         int64 entries_size = -1;
@@ -418,6 +419,11 @@ class PrependFromQueueAndPaddedBatchDataset : public GraphDatasetBase {
 
     const DatasetBase* dataset_input() const { return dataset()->input_; }
 
+    std::shared_ptr<model::Node> CreateNode(
+        IteratorContext* ctx, model::Node::Args args) const override {
+      return model::MakeKnownRatioNode(std::move(args), dataset()->batch_size_);
+    }
+
     Status SaveInternal(IteratorStateWriter* writer) override {
       return queue_->Save(this, writer);
     }
@@ -440,7 +446,7 @@ class PrependFromQueueAndPaddedBatchDataset : public GraphDatasetBase {
       TensorQueueInserter(const TensorQueueInserter& rhs) {
         queue_ = rhs.queue_;
         queue_->Ref();
-      };
+      }
 
       TensorQueueInserter(TensorQueueInserter&& rhs) {
         queue_ = rhs.queue_;
@@ -647,5 +653,5 @@ REGISTER_KERNEL_BUILDER(Name("EnqueueInQueueDataset").Device(DEVICE_CPU),
                         EnqueueInQueueDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

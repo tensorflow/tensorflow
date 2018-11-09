@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -31,8 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -67,7 +66,7 @@ XlaContext::XlaContext(
     XlaCompiler* compiler, xla::XlaBuilder* builder,
     bool allow_cpu_custom_calls, bool resolve_compile_time_constants,
     bool is_entry_computation,
-    const std::function<xla::StatusOr<TensorShape>(
+    const std::function<xla::StatusOr<xla::Shape>(
         const TensorShape&, DataType)>* shape_representation_fn)
     : compiler_(compiler),
       builder_(builder),
@@ -107,6 +106,19 @@ Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
   return Status::OK();
 }
 
+Status XlaContext::AddResourceRetval(int retval_index, XlaResource* resource) {
+  VLOG(1) << "Adding retval index " << retval_index << " with resource "
+          << resource->name() << ":" << resource->shape().DebugString()
+          << " to XLA computation";
+  if (retvals_.size() <= retval_index) {
+    retvals_.resize(retval_index + 1);
+  }
+  XlaExpression e;
+  e.set_resource(resource);
+  retvals_[retval_index] = Retval{DT_RESOURCE, resource->shape(), e};
+  return Status::OK();
+}
+
 xla::XlaBuilder* XlaContext::builder() { return builder_; }
 
 Status XlaContext::CreateResource(
@@ -115,12 +127,13 @@ Status XlaContext::CreateResource(
     const std::set<string>& tensor_array_gradients, XlaResource** resource) {
   resources_.emplace_back(
       new XlaResource(kind, arg_num, std::move(name), type, std::move(shape),
-                      handle, tensor_array_size, tensor_array_gradients));
+                      handle, tensor_array_size, tensor_array_gradients,
+                      /*tensor_array_multiple_writes_aggregate=*/false));
   *resource = resources_.back().get();
   return Status::OK();
 }
 
-xla::StatusOr<TensorShape> XlaContext::RepresentationShape(
+xla::StatusOr<xla::Shape> XlaContext::RepresentationShape(
     const TensorShape& shape, DataType type) const {
   return (*shape_representation_fn_)(shape, type);
 }

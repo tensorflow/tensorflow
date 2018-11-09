@@ -66,19 +66,13 @@ genrule(
     outs = ["include"],
     cmd = """
     mkdir $@
-    for f in $(locations @eigen_archive//:eigen_header_files) ; do
+    for f in $(SRCS); do
       d="$${f%/*}"
       d="$${d#*external/eigen_archive/}"
 
       mkdir -p "$@/$${d}"
       cp "$${f}" "$@/$${d}/"
     done
-
-    for f in $(locations :eigen_third_party_header_files) ; do
-      d="$${f%/*}"
-
-      mkdir -p "$@/$${d}"
-      cp "$${f}" "$@/$${d}/"
-    done
     """,
+    tags = ["manual"],
 )

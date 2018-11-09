@@ -147,6 +147,13 @@ TEST(RecordReaderWriterTest, TestBasics) {
       EXPECT_EQ("abc", record);
       TF_CHECK_OK(reader.ReadRecord(&offset, &record));
       EXPECT_EQ("defg", record);
+
+      io::RecordReader::Metadata md;
+      TF_ASSERT_OK(reader.GetMetadata(&md));
+      EXPECT_EQ(2, md.stats.entries);
+      EXPECT_EQ(7, md.stats.data_size);
+      // Two entries have 16 bytes of header/footer each.
+      EXPECT_EQ(39, md.stats.file_size);
     }
   }
 }
@@ -186,6 +193,29 @@ TEST(RecordReaderWriterTest, TestZlib) {
       TF_CHECK_OK(reader.ReadRecord(&offset, &record));
       EXPECT_EQ("defg", record);
     }
+  }
+}
+
+TEST(RecordReaderWriterTest, TestUseAfterClose) {
+  Env* env = Env::Default();
+  string fname = testing::TmpDir() + "/record_reader_writer_flush_close_test";
+
+  {
+    std::unique_ptr<WritableFile> file;
+    TF_CHECK_OK(env->NewWritableFile(fname, &file));
+
+    io::RecordWriterOptions options;
+    options.compression_type = io::RecordWriterOptions::ZLIB_COMPRESSION;
+    io::RecordWriter writer(file.get(), options);
+    TF_EXPECT_OK(writer.WriteRecord("abc"));
+    TF_CHECK_OK(writer.Flush());
+    TF_CHECK_OK(writer.Close());
+
+    CHECK_EQ(writer.WriteRecord("abc").code(), error::FAILED_PRECONDITION);
+    CHECK_EQ(writer.Flush().code(), error::FAILED_PRECONDITION);
+
+    // Second call to close is fine.
+    TF_CHECK_OK(writer.Close());
   }
 }
 

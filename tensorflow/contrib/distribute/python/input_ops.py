@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import ops
@@ -47,11 +48,8 @@ def auto_shard_dataset(dataset, num_shards, index):
 
   Returns:
     A modified `Dataset` obtained by updating the pipeline sharded by the
-    files.
-
-  Raises:
-    NotImplementedError: If we cannot automatically determine a good way to
-      shard the input dataset.
+    files. The input dataset will be returned if we cannot automatically
+    determine a good way to shard the input dataset.
   """
 
   # TODO(priyag): Clone datasets instead of updating in place, similar to the
@@ -78,6 +76,8 @@ def auto_shard_dataset(dataset, num_shards, index):
         # instead of updating in-place.
         return dataset._clone(
             filenames=dataset._filenames.shard(num_shards, index))
+      elif isinstance(dataset, dataset_ops.RangeDataset):
+        return dataset.shard(num_shards, index)
       elif hasattr(dataset, "_map_func"):
         # TODO(priyag): Make this check more robust by enforcing some common
         # property on all map/flatmap/interleave datasets.
@@ -127,8 +127,10 @@ def auto_shard_dataset(dataset, num_shards, index):
       tf_logging.warn(
           "Could not find a standard reader in the input pipeline"
           "(one of TextLineDataset, TFRecordDataset, FixedLengthRecordDataset)."
-          "Falling back to sharding the dataset anyway. Please verify"
-          "correctness of auto-sharding for your input.")
+          "So auto-sharding is not done. Please verify correctness of "
+          "auto-sharding for your input.")
+      # TODO(yuefengz): maybe still shard it?
+      return dataset
 
     # TODO(priyag): What do we want to do if the number of filenames is
     # uneven in the number of shards? By default, this will just return as

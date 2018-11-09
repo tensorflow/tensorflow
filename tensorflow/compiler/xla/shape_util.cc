@@ -22,6 +22,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/overflow_util.h"
@@ -30,26 +38,22 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/regexp.h"
 
 namespace xla {
 
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
+using absl::StrAppend;
+using absl::StrCat;
 
 string ShapeIndex::ToString() const { return ShapeIndexView(*this).ToString(); }
 
 string ShapeIndexView::ToString() const {
-  return StrCat("{", tensorflow::str_util::Join(indices_, ","), "}");
+  return StrCat("{", absl::StrJoin(indices_, ","), "}");
 }
 
 bool ShapeIndexView::operator==(const ShapeIndexView& other) const {
@@ -68,6 +72,11 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index) {
 std::ostream& operator<<(std::ostream& out, const ShapeIndexView& shape_index) {
   out << shape_index.ToString();
   return out;
+}
+
+bool ShapeIndexView::StartsWith(ShapeIndexView prefix) const {
+  return size() >= prefix.size() &&
+         indices_.subspan(0, prefix.size()) == prefix.indices_;
 }
 
 namespace {
@@ -91,11 +100,11 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts,
   }
 
   if (ShapeUtil::IsTuple(lhs)) {
-    return ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
-                           [=](const Shape& l, const Shape& r) {
-                             return CompareShapes(l, r, compare_layouts,
-                                                  ignore_fp_precision);
-                           });
+    return absl::c_equal(lhs.tuple_shapes(), rhs.tuple_shapes(),
+                         [=](const Shape& l, const Shape& r) {
+                           return CompareShapes(l, r, compare_layouts,
+                                                ignore_fp_precision);
+                         });
   } else if (!ShapeUtil::IsArray(lhs)) {
     // Non-tuple, non-array tupes such as opaque and token types are trivially
     // the same.
@@ -107,19 +116,9 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts,
       return false;
     }
     if (LayoutUtil::IsDenseArray(lhs)) {
-      if (!ContainersEqual(LayoutUtil::MinorToMajor(lhs),
-                           LayoutUtil::MinorToMajor(rhs))) {
+      if (!absl::c_equal(LayoutUtil::MinorToMajor(lhs),
+                         LayoutUtil::MinorToMajor(rhs))) {
         VLOG(3) << "CompareShapes: lhs layout != rhs layout";
-        return false;
-      }
-      if (!ContainersEqual(lhs.layout().padded_dimensions(),
-                           rhs.layout().padded_dimensions())) {
-        VLOG(3)
-            << "CompareShapes: lhs padded_dimensions != rhs padded_dimensions";
-        return false;
-      }
-      if (lhs.layout().padding_value() != rhs.layout().padding_value()) {
-        VLOG(3) << "CompareShapes: lhs padding value != rhs padding_value";
         return false;
       }
     }
@@ -135,17 +134,18 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts,
 // Constructs and returns the new shape with the given minor_to_major order in
 // its Layout.
 StatusOr<Shape> MakeShapeWithLayoutInternal(
-    PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
-    tensorflow::gtl::ArraySlice<int64> minor_to_major) {
+    PrimitiveType element_type, absl::Span<const int64> dimensions,
+    absl::Span<const int64> minor_to_major) {
   if (dimensions.size() != minor_to_major.size()) {
     return InvalidArgument("Dimensions size is %ld, but layout size is %ld.",
                            dimensions.size(), minor_to_major.size());
   }
   if (element_type == OPAQUE || element_type == TUPLE) {
     return InvalidArgument("Unsupported element type: %s",
-                           PrimitiveType_Name(element_type).c_str());
+                           PrimitiveType_Name(element_type));
   }
-  Shape shape = ShapeUtil::MakeShape(element_type, dimensions);
+  TF_ASSIGN_OR_RETURN(Shape shape,
+                      ShapeUtil::MakeValidatedShape(element_type, dimensions));
   auto min2maj = shape.mutable_layout()->mutable_minor_to_major();
   min2maj->Clear();
   for (int64 value : minor_to_major) {
@@ -210,30 +210,35 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   return program_shape;
 }
 
-/* static */ Shape ShapeUtil::MakeShape(
-    PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions) {
+/* static */ Shape ShapeUtil::MakeShape(PrimitiveType element_type,
+                                        absl::Span<const int64> dimensions) {
+  return MakeValidatedShape(element_type, dimensions).ValueOrDie();
+}
+
+/* static */ StatusOr<Shape> ShapeUtil::MakeValidatedShape(
+    PrimitiveType element_type, absl::Span<const int64> dimensions) {
   CHECK(IsArrayPrimitiveType(element_type));
   Shape result;
-  PopulateShape(element_type, dimensions, &result);
+  TF_RETURN_IF_ERROR(PopulateShape(element_type, dimensions, &result));
   return result;
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithLayout(
-    PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
-    tensorflow::gtl::ArraySlice<int64> minor_to_major) {
+    PrimitiveType element_type, absl::Span<const int64> dimensions,
+    absl::Span<const int64> minor_to_major) {
   return MakeShapeWithLayoutInternal(element_type, dimensions, minor_to_major)
       .ValueOrDie();
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithDescendingLayout(
-    PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions) {
+    PrimitiveType element_type, absl::Span<const int64> dimensions) {
   std::vector<int64> layout(dimensions.size());
   std::iota(layout.rbegin(), layout.rend(), static_cast<int64>(0));
   return MakeShapeWithLayout(element_type, dimensions, layout);
 }
 
 /* static */ Shape ShapeUtil::MakeShapeWithSparseLayout(
-    PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
+    PrimitiveType element_type, absl::Span<const int64> dimensions,
     int64 max_sparse_elements) {
   CHECK(IsArrayPrimitiveType(element_type));
   Shape shape = ShapeUtil::MakeShape(element_type, dimensions);
@@ -252,20 +257,19 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return MakeShapeWithDescendingLayout(shape.element_type(), dims);
 }
 
-/* static */ void ShapeUtil::PopulateShape(
-    PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
-    Shape* shape) {
+/* static */ Status ShapeUtil::PopulateShape(PrimitiveType element_type,
+                                             absl::Span<const int64> dimensions,
+                                             Shape* shape) {
   shape->Clear();
   shape->set_element_type(element_type);
   for (int64 dimension : dimensions) {
     shape->add_dimensions(dimension);
   }
   LayoutUtil::SetToDefaultLayout(shape);
-  TF_DCHECK_OK(ValidateShape(*shape));
+  return ValidateShape(*shape);
 }
 
-/* static */ Shape ShapeUtil::MakeTupleShape(
-    tensorflow::gtl::ArraySlice<Shape> shapes) {
+/* static */ Shape ShapeUtil::MakeTupleShape(absl::Span<const Shape> shapes) {
   Shape result;
   result.set_element_type(TUPLE);
   result.mutable_tuple_shapes()->Reserve(shapes.size());
@@ -419,8 +423,11 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 }
 
 /* static */ int64 ShapeUtil::ElementsIn(const Shape& shape) {
-  CHECK(IsArray(shape)) << ShapeUtil::HumanString(shape);
-  CHECK_EQ(shape.dimensions_size(), Rank(shape));
+  DCHECK(IsArray(shape)) << ShapeUtil::HumanString(shape);
+  DCHECK_EQ(shape.dimensions_size(), Rank(shape));
+  if (shape.dimensions().size() == 1) {
+    return shape.dimensions()[0];
+  }
   return std::accumulate<decltype(shape.dimensions().begin()), int64>(
       shape.dimensions().begin(), shape.dimensions().end(), 1LL,
       std::multiplies<int64>());
@@ -438,25 +445,39 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return count;
 }
 
+/* static */ bool ShapeUtil::HasPrimitiveType(const Shape& shape,
+                                              PrimitiveType primitive_type) {
+  if (shape.element_type() == primitive_type) {
+    return true;
+  }
+  for (const Shape& element_shape : shape.tuple_shapes()) {
+    if (HasPrimitiveType(element_shape, primitive_type)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /* static */ bool ShapeUtil::IsZeroElementArray(const Shape& shape) {
   return ShapeUtil::IsArray(shape) && ElementsIn(shape) == 0;
 }
 
-/* static */ bool ShapeUtil::IsScalarF32(const Shape& shape) {
-  return shape.element_type() == F32 && Rank(shape) == 0;
+/* static */ bool ShapeUtil::IsScalarWithElementType(
+    const Shape& shape, PrimitiveType element_type) {
+  return IsScalar(shape) && shape.element_type() == element_type;
 }
 
 namespace {
 
 // Class to memoize the computation of
-//   tensorflow::str_util::Lowercase(PrimitiveType_Name(p))
+//   absl::AsciiStrToLower(PrimitiveType_Name(p))
 // for all PrimitiveType values "p"
 class PrimitiveTypeNameGenerator {
  public:
   PrimitiveTypeNameGenerator() {
     for (int i = 0; i < PrimitiveType_ARRAYSIZE; i++) {
       if (PrimitiveType_IsValid(i)) {
-        lowercase_name_[i] = tensorflow::str_util::Lowercase(
+        lowercase_name_[i] = absl::AsciiStrToLower(
             PrimitiveType_Name(static_cast<PrimitiveType>(i)));
       }
     }
@@ -487,8 +508,7 @@ StatusOr<PrimitiveType> StringToPrimitiveType(const string& name) {
   }();
   auto found = name_to_type->find(name);
   if (found == name_to_type->end()) {
-    return InvalidArgument("Invalid element type string: \"%s\".",
-                           name.c_str());
+    return InvalidArgument("Invalid element type string: \"%s\".", name);
   }
   return found->second;
 }
@@ -507,7 +527,7 @@ StatusOr<PrimitiveType> StringToPrimitiveType(const string& name) {
     return text;
   }
   return StrCat(LowercasePrimitiveTypeName(shape.element_type()), "[",
-                tensorflow::str_util::Join(shape.dimensions(), ","), "]");
+                absl::StrJoin(shape.dimensions(), ","), "]");
 }
 
 /* static */ string ShapeUtil::HumanStringWithLayout(const Shape& shape) {
@@ -543,30 +563,29 @@ StatusOr<PrimitiveType> StringToPrimitiveType(const string& name) {
                                     : "(unknown)",
                                 ": ", HumanString(shape)));
   }
-  return StrCat("(", tensorflow::str_util::Join(parameters, ", "), ") -> ",
+  return StrCat("(", absl::StrJoin(parameters, ", "), ") -> ",
                 HumanString(program_shape.result()));
 }
 
 namespace {
 // Parses shapes with simple recursive descent structure -- consumes from the
 // front of s and passes that view recursively as required.
-StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
-  tensorflow::str_util::RemoveLeadingWhitespace(s);
+StatusOr<Shape> ParseShapeStringInternal(absl::string_view* s) {
+  *s = StripLeadingAsciiWhitespace(*s);
 
-  if (tensorflow::str_util::ConsumePrefix(s, "(")) {  // Tuple.
+  if (absl::ConsumePrefix(s, "(")) {  // Tuple.
     std::vector<Shape> shapes;
     bool must_end = false;
     while (true) {
-      if (tensorflow::str_util::ConsumePrefix(s, ")")) {
+      if (absl::ConsumePrefix(s, ")")) {
         break;
       } else if (must_end) {
-        return InvalidArgument("Expected end of tuple; got: \"%s\"",
-                               std::string(*s).c_str());
+        return InvalidArgument("Expected end of tuple; got: \"%s\"", *s);
       }
       shapes.emplace_back();
       TF_ASSIGN_OR_RETURN(shapes.back(), ParseShapeStringInternal(s));
-      tensorflow::str_util::RemoveLeadingWhitespace(s);
-      must_end = !tensorflow::str_util::ConsumePrefix(s, ",");
+      *s = StripLeadingAsciiWhitespace(*s);
+      must_end = !absl::ConsumePrefix(s, ",");
     }
     return ShapeUtil::MakeTupleShape(shapes);
   }
@@ -575,31 +594,31 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   string dimensions_string;
   string format_string;
   string layout_string;
-  // tensorflow::StringPiece is not compatible with internal RE2 StringPiece, so
+  // absl::string_view is not compatible with internal RE2 StringPiece, so
   // we convert in to the RE2-consumable type and then consume the corresponding
-  // amount from our StringPiece type.
+  // amount from our string_view type.
   static LazyRE2 shape_pattern = {
-      "^(\\w*\\d*)\\[([\\d,]*)\\](?:\\s*(dense|sparse)?\\s*{([\\d,]+)})?"};
+      "^(\\w*\\d*)\\[([\\d,\\s]*)\\](?:\\s*(dense|sparse)?\\s*{([\\d,\\s]+)})"
+      "?"};
   tensorflow::RegexpStringPiece s_consumable(s->data(), s->size());
   if (RE2::Consume(&s_consumable, *shape_pattern, &element_type_string,
                    &dimensions_string, &format_string, &layout_string)) {
     size_t consumed = s->size() - s_consumable.size();
     s->remove_prefix(consumed);
-    auto string_to_int64 = [&s](const string& input) -> StatusOr<int64> {
+    auto string_to_int64 = [&s](absl::string_view input) -> StatusOr<int64> {
       int64 element;
-      if (!tensorflow::strings::safe_strto64(input.c_str(), &element)) {
+      if (!absl::SimpleAtoi(input, &element)) {
         return InvalidArgument(
-            "Invalid s64 value in parsed shape string: \"%s\" in \"%s\"",
-            input.c_str(), std::string(*s).c_str());
+            "Invalid s64 value in parsed shape string: \"%s\" in \"%s\"", input,
+            *s);
       }
       return element;
     };
 
     auto comma_list_to_int64s =
-        [&s,
-         string_to_int64](const string& input) -> StatusOr<std::vector<int64>> {
+        [string_to_int64](const string& input) -> StatusOr<std::vector<int64>> {
       std::vector<int64> results;
-      for (const string& piece : tensorflow::str_util::Split(input, ',')) {
+      for (const auto& piece : absl::StrSplit(input, ',', absl::SkipEmpty())) {
         TF_ASSIGN_OR_RETURN(int64 element, string_to_int64(piece));
         results.push_back(element);
       }
@@ -615,7 +634,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
                         StringToPrimitiveType(element_type_string));
     if (primitive_type == PRIMITIVE_TYPE_INVALID || primitive_type == TUPLE) {
       return InvalidArgument("Invalid element type string: \"%s\".",
-                             element_type_string.c_str());
+                             element_type_string);
     }
 
     Shape result;
@@ -625,7 +644,8 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
       result = ShapeUtil::MakeTokenShape();
     } else if (format_string.empty() && layout_string.empty()) {
       // Create a shape without a layout set.
-      result = ShapeUtil::MakeShape(primitive_type, dimensions);
+      TF_ASSIGN_OR_RETURN(
+          result, ShapeUtil::MakeValidatedShape(primitive_type, dimensions));
     } else if (format_string == "sparse") {
       TF_ASSIGN_OR_RETURN(int64 max_elements, string_to_int64(layout_string));
       result = ShapeUtil::MakeShapeWithSparseLayout(primitive_type, dimensions,
@@ -645,17 +665,14 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
     return std::move(result);
   }
 
-  return InvalidArgument("Invalid shape string to parse: \"%s\"",
-                         std::string(*s).c_str());
+  return InvalidArgument("Invalid shape string to parse: \"%s\"", *s);
 }
 }  // namespace
 
-/* static */ StatusOr<Shape> ShapeUtil::ParseShapeString(
-    tensorflow::StringPiece s) {
+/* static */ StatusOr<Shape> ShapeUtil::ParseShapeString(absl::string_view s) {
   TF_ASSIGN_OR_RETURN(Shape shape, ParseShapeStringInternal(&s));
   if (!s.empty()) {
-    return InvalidArgument("Invalid shape string to parse: \"%s\"",
-                           std::string(s).c_str());
+    return InvalidArgument("Invalid shape string to parse: \"%s\"", s);
   }
   return shape;
 }
@@ -664,7 +681,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
                                             const Shape& rhs) {
   CHECK(ShapeUtil::IsArray(lhs));
   CHECK(ShapeUtil::IsArray(rhs));
-  return ContainersEqual(lhs.dimensions(), rhs.dimensions());
+  return absl::c_equal(lhs.dimensions(), rhs.dimensions());
 }
 
 /* static */ bool ShapeUtil::Compatible(const Shape& lhs, const Shape& rhs) {
@@ -678,8 +695,8 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
     return IsArray(rhs) && SameDimensions(lhs, rhs);
   } else if (lhs.element_type() == TUPLE) {
     return rhs.element_type() == TUPLE &&
-           ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
-                           CompatibleIgnoringElementType);
+           absl::c_equal(lhs.tuple_shapes(), rhs.tuple_shapes(),
+                         CompatibleIgnoringElementType);
   } else {
     // Opaque, token, etc types are vacuously compatible.
     return lhs.element_type() == rhs.element_type();
@@ -693,8 +710,8 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
            CompatibleIgnoringElementType(lhs, rhs);
   } else if (lhs.element_type() == TUPLE) {
     return rhs.element_type() == TUPLE &&
-           ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
-                           CompatibleIgnoringFpPrecision);
+           absl::c_equal(lhs.tuple_shapes(), rhs.tuple_shapes(),
+                         CompatibleIgnoringFpPrecision);
   } else {
     // Opaque, token, etc types are vacuously compatible.
     return lhs.element_type() == rhs.element_type();
@@ -771,6 +788,9 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
     return byte_size;
   } else if (shape.element_type() == TOKEN) {
     return 0;
+  } else if (shape.element_type() == OPAQUE) {
+    CHECK_GT(pointer_size, 0);
+    return pointer_size;
   }
   LOG(FATAL) << PrimitiveType_Name(shape.element_type())
              << " primitive type has no definitive size";
@@ -792,18 +812,8 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   if (LayoutUtil::IsSparseArray(shape)) {
     allocated_element_count = LayoutUtil::MaxSparseElements(shape.layout());
   } else {
-    CHECK(LayoutUtil::IsDenseArray(shape));
-    tensorflow::gtl::ArraySlice<int64> padded_dimensions =
-        LayoutUtil::PaddedDimensions(shape);
-    if (!padded_dimensions.empty()) {
-      CHECK_EQ(Rank(shape), padded_dimensions.size());
-      allocated_element_count = 1;
-      for (int64 dimension_size : padded_dimensions) {
-        allocated_element_count *= dimension_size;
-      }
-    } else {
-      allocated_element_count = ElementsIn(shape);
-    }
+    CHECK(LayoutUtil::IsDenseArray(shape)) << shape.ShortDebugString();
+    allocated_element_count = ElementsIn(shape);
   }
   return allocated_element_count *
          ByteSizeOfPrimitiveType(shape.element_type());
@@ -818,9 +828,10 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
 
 /* static */ Status ShapeUtil::ValidateShapeWithOptionalLayoutInternal(
     const Shape& shape) {
-  if (shape.element_type() == PRIMITIVE_TYPE_INVALID) {
+  if (shape.element_type() == PRIMITIVE_TYPE_INVALID ||
+      !PrimitiveType_IsValid(shape.element_type())) {
     return InvalidArgument("shape has invalid element type: %s",
-                           shape.ShortDebugString().c_str());
+                           shape.ShortDebugString());
   }
   if (shape.element_type() == TUPLE) {
     if (shape.dimensions_size() != 0) {
@@ -843,31 +854,27 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
     if (shape.dimensions_size() != 0) {
       return InvalidArgument(
           "shape has %s element type, but has dimensions field: %s",
-          LowercasePrimitiveTypeName(shape.element_type()).c_str(),
-          shape.ShortDebugString().c_str());
+          LowercasePrimitiveTypeName(shape.element_type()),
+          shape.ShortDebugString());
     }
     if (shape.has_layout()) {
       return InvalidArgument(
           "shape has %s element type, but has layout field: %s",
-          LowercasePrimitiveTypeName(shape.element_type()).c_str(),
-          shape.ShortDebugString().c_str());
+          LowercasePrimitiveTypeName(shape.element_type()),
+          shape.ShortDebugString());
     }
     return Status::OK();
   }
 
-  if (Rank(shape) != shape.dimensions_size()) {
-    return InvalidArgument(
-        "shape's rank is mismatched with dimension count; rank=%lld "
-        "dimensions_size=%d",
-        Rank(shape), shape.dimensions_size());
+  if (LayoutUtil::IsSparseArray(shape) && Rank(shape) == 0) {
+    return InvalidArgument("sparse arrays must have rank > 0");
   }
   for (int64 i = 0; i < Rank(shape); ++i) {
     int64 dimension = shape.dimensions(i);
     if (dimension < 0) {
       return InvalidArgument(
-          "shape's dimensions must not be < 0; dimension at index %lld was "
-          "%lld",
-          i, dimension);
+          "shape's dimensions must not be < 0; dimension at index %d was %d", i,
+          dimension);
     }
   }
 
@@ -882,8 +889,13 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
     return Status::OK();
   }
 
-  int64 shape_size = [&shape]() {
-    if (LayoutUtil::IsSparseArray(shape)) {
+  // We can only reason about some aspects of array's shape if it has a valid
+  // layout, these aspects will be ignored otherwise.
+  bool shape_has_valid_layout = LayoutUtil::HasLayout(shape) &&
+                                LayoutUtil::ValidateLayoutInShape(shape).ok();
+
+  int64 shape_size = [&]() {
+    if (shape_has_valid_layout && LayoutUtil::IsSparseArray(shape)) {
       int64 max_sparse_elements = LayoutUtil::MaxSparseElements(shape.layout());
       if (max_sparse_elements < 0) {
         return max_sparse_elements;
@@ -919,7 +931,9 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
       return dense_shape_size;
     }
 
-    for (int64 dim : shape.dimensions()) {
+    absl::Span<const int64> shape_max_dimensions =
+        AsInt64Slice(shape.dimensions());
+    for (int64 dim : shape_max_dimensions) {
       dense_shape_size = MultiplyWithoutOverflow(dense_shape_size, dim);
       if (dense_shape_size < 0) {
         return dense_shape_size;
@@ -932,7 +946,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
 
   if (shape_size < 0) {
     return InvalidArgument("Shape %s size may overflow int64.",
-                           ShapeUtil::HumanString(shape).c_str());
+                           ShapeUtil::HumanString(shape));
   }
 
   VLOG(3) << "Shape size is valid: " << shape_size;
@@ -941,11 +955,10 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
 
 /* static */ Status ShapeUtil::ValidateShapeWithOptionalLayout(
     const Shape& shape) {
-  if (LayoutUtil::HasLayout(shape)) {
-    // Since a layout is present, upgrade to the full set of invariant checks.
-    return ValidateShape(shape);
-  }
-  return ValidateShapeWithOptionalLayoutInternal(shape);
+  TF_RETURN_IF_ERROR(ValidateShapeWithOptionalLayoutInternal(shape));
+
+  return LayoutUtil::ValidateLayoutInShape(shape,
+                                           /*allow_missing_layouts=*/true);
 }
 
 /* static */ Status ShapeUtil::ValidateShape(const Shape& shape) {
@@ -965,7 +978,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
                                           ShapeIndexView index) {
   const Shape* subshape = &shape;
   for (auto i : index) {
-    if (!IsTuple(*subshape) || i >= subshape->tuple_shapes_size()) {
+    if (!IsTuple(*subshape) || i >= subshape->tuple_shapes_size() || i < 0) {
       return false;
     }
     subshape = &subshape->tuple_shapes(i);
@@ -992,7 +1005,7 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
         i >= return_shape->tuple_shapes_size()) {
       return InvalidArgument(
           "Shape index %s not a valid subshape index for tuple with shape %s",
-          index.ToString().c_str(), shape.DebugString().c_str());
+          index.ToString(), shape.DebugString());
     }
     return_shape = &return_shape->tuple_shapes(i);
   }
@@ -1015,12 +1028,13 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
 }
 
 /* static */ int64 ShapeUtil::GetLeafCount(const Shape& shape) {
+  if (!IsTuple(shape)) {
+    return 1;
+  }
   int64 count = 0;
-  ForEachSubshape(shape, [&](const Shape&, const ShapeIndex& index) {
-    if (IsLeafIndex(shape, index)) {
-      ++count;
-    }
-  });
+  for (const Shape& subshape : shape.tuple_shapes()) {
+    count += GetLeafCount(subshape);
+  }
   return count;
 }
 
@@ -1037,7 +1051,7 @@ bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
 
 /* static */ bool ShapeUtil::HasDegenerateDimensions(const Shape& shape) {
   CHECK(ShapeUtil::IsArray(shape));
-  return ArrayContains<int64>(AsInt64Slice(shape.dimensions()), 1);
+  return absl::c_linear_search(shape.dimensions(), 1);
 }
 
 namespace {
@@ -1117,7 +1131,7 @@ Status ForEachMutableSubshapeHelper(
 }
 
 /* static */ Shape ShapeUtil::PermuteDimensions(
-    tensorflow::gtl::ArraySlice<int64> permutation, const Shape& shape) {
+    absl::Span<const int64> permutation, const Shape& shape) {
   Shape new_shape = shape;
   new_shape.clear_dimensions();
   for (auto dim : Permute(permutation, shape.dimensions())) {
@@ -1160,20 +1174,12 @@ Status ForEachMutableSubshapeHelper(
              permutation, AsInt64Slice(shape.layout().minor_to_major()))) {
       new_layout->add_minor_to_major(index);
     }
-    if (shape.layout().padded_dimensions_size() > 0) {
-      new_layout->clear_padded_dimensions();
-      for (auto dim :
-           Permute(permutation, shape.layout().padded_dimensions())) {
-        new_layout->add_padded_dimensions(dim);
-      }
-    }
     // The permutation accepted by TransposeIsBitcast is the inverse of the
     // permutation here.
     CHECK(TransposeIsBitcast(shape, new_shape, InversePermutation(permutation)))
         << "shape=" << HumanStringWithLayout(shape)
         << ", new_shape=" << HumanStringWithLayout(new_shape)
-        << ", permutation={" << tensorflow::str_util::Join(permutation, ",")
-        << "}";
+        << ", permutation={" << absl::StrJoin(permutation, ",") << "}";
   }
   return new_shape;
 }
@@ -1262,16 +1268,11 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
 
 /* static */ bool ShapeUtil::TransposeIsBitcast(
     const Shape& input_shape, const Shape& output_shape,
-    tensorflow::gtl::ArraySlice<int64> dimension_mapping) {
+    absl::Span<const int64> dimension_mapping) {
   CHECK(LayoutUtil::HasLayout(input_shape) &&
         LayoutUtil::HasLayout(output_shape));
 
   if (!SameElementType(input_shape, output_shape)) {
-    return false;
-  }
-
-  // Padding is not handled.
-  if (LayoutUtil::IsPadded(input_shape) && LayoutUtil::IsPadded(output_shape)) {
     return false;
   }
 
@@ -1289,7 +1290,7 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
   //   apply(input_dimensions, I) =
   //       apply((dimension_mapping * output_dimensions), I)
   //   input_dimensions = dimension_mapping * output_dimensions
-  return ContainersEqual(
+  return absl::c_equal(
       ComposePermutations(dimension_mapping,
                           AsInt64Slice(output_shape.layout().minor_to_major())),
       input_shape.layout().minor_to_major());
@@ -1303,11 +1304,6 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
   CHECK(LayoutUtil::HasLayout(output_shape));
 
   if (!SameElementType(input_shape, output_shape)) {
-    return false;
-  }
-
-  // Padding is not handled.
-  if (LayoutUtil::IsPadded(input_shape) || LayoutUtil::IsPadded(output_shape)) {
     return false;
   }
 
@@ -1460,7 +1456,7 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
          check_input_unit_indices(output_shape, input_shape);
 }
 
-/* static */ tensorflow::gtl::optional<Shape> ShapeUtil::AlignLayouts(
+/* static */ absl::optional<Shape> ShapeUtil::AlignLayouts(
     const Shape& input_shape, const Shape& output_shape) {
   CHECK(IsArray(input_shape));
   CHECK(IsArray(output_shape));
@@ -1499,7 +1495,7 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     if (input_dimension_product < output_dimension_product ||
         j == output_rank) {
       if (i == input_rank) {
-        return tensorflow::gtl::nullopt;
+        return absl::nullopt;
       }
       dimension_to_alignment_index[i] = alignment.size() - 1;
       input_dimension_product *= input_shape.dimensions(i);
@@ -1510,7 +1506,7 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     }
   }
   if (input_dimension_product != output_dimension_product) {
-    return tensorflow::gtl::nullopt;
+    return absl::nullopt;
   }
   // We also need to store an end element so that we know where the last
   // alignment part ends.
@@ -1554,7 +1550,7 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     for (int64 j = 0; j < num_non_trivial_dimensions_in_alignment_part;
          ++i, ++j) {
       if (i == input_rank) {
-        return tensorflow::gtl::nullopt;
+        return absl::nullopt;
       }
       // Skip trivial dimensions with a bound of 1.
       if (input_shape.dimensions(input_dimension_numbers[i]) == 1) {
@@ -1567,7 +1563,7 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
       if (dimension_to_alignment_index[input_dimension_numbers[i]] !=
               current_alignment_index ||
           input_dimension_numbers[i] > current_dimension_number) {
-        return tensorflow::gtl::nullopt;
+        return absl::nullopt;
       }
       current_dimension_number = input_dimension_numbers[i];
     }
@@ -1593,7 +1589,11 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
   Shape output_shape_with_layout = MakeShapeWithLayout(
       output_shape.element_type(), AsInt64Slice(output_shape.dimensions()),
       output_layout);
-  CHECK(ReshapeIsBitcast(input_shape, output_shape_with_layout));
+  CHECK(ReshapeIsBitcast(input_shape, output_shape_with_layout))
+      << "reshape is not a bitcast for input_shape: "
+      << ShapeUtil::HumanStringWithLayout(input_shape)
+      << " and output_shape_with_layout: "
+      << ShapeUtil::HumanStringWithLayout(output_shape_with_layout);
   return output_shape_with_layout;
 }
 
@@ -1635,7 +1635,7 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
 }
 
 std::ostream& operator<<(std::ostream& out, const Shape& shape) {
-  out << ShapeUtil::HumanString(shape);
+  out << ShapeUtil::HumanStringWithLayout(shape);
   return out;
 }
 

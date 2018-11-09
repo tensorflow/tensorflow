@@ -47,8 +47,11 @@ class ServiceInterface {
   virtual Status ResetDevice(const ResetDeviceRequest* arg,
                              ResetDeviceResponse* result) = 0;
 
-  virtual Status ExecuteGraph(const ExecuteGraphRequest* arg,
-                              ExecuteResponse* result) = 0;
+  virtual Status Compile(const CompileRequest* arg,
+                         CompileResponse* result) = 0;
+
+  virtual Status Execute(const ExecuteRequest* arg,
+                         ExecuteResponse* result) = 0;
 
   virtual Status ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
                                       ExecuteParallelResponse* result) = 0;

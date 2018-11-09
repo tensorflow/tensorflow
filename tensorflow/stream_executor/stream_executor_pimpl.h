@@ -22,9 +22,9 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "absl/base/macros.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/logging.h"
@@ -81,8 +81,8 @@ class StreamExecutor {
   port::Status Init();
   port::Status Init(int device_ordinal, DeviceOptions device_options);
 
-  // DEPRECATED: Do not use; use platform() instead.
   // Returns the platform that this StreamExecutor is acting upon.
+  ABSL_DEPRECATED("Use platform() instead.")
   PlatformKind platform_kind() const { return platform_kind_; }
 
   // Returns a reference to the platform that created this executor.
@@ -255,15 +255,15 @@ class StreamExecutor {
 
   // [deprecated] Blocks the caller while a data segment of the given size is
   // copied from the host source to the device destination.
-  //
-  // Deprecation: prefer explicit H2D below, to avoid error-prone API usage.
+  ABSL_DEPRECATED(
+      "Prefer SynchronousMemcpyH2D, to avoid error-prone API usage.")
   bool SynchronousMemcpy(DeviceMemoryBase *device_dst, const void *host_src,
                          uint64 size) SE_MUST_USE_RESULT;
 
   // [deprecated] Blocks the caller while a data segment of the given size is
   // copied from the device source to the host destination.
-  //
-  // Deprecation: prefer explicit D2H below, to avoid error-prone API usage.
+  ABSL_DEPRECATED(
+      "Prefer SynchronousMemcpyD2H, to avoid error-prone API usage.")
   bool SynchronousMemcpy(void *host_dst, const DeviceMemoryBase &device_src,
                          uint64 size) SE_MUST_USE_RESULT;
 
@@ -549,6 +549,11 @@ class StreamExecutor {
   // See Stream::ThenDoHostCallback for full details.
   bool HostCallback(Stream *stream, std::function<void()> callback);
 
+  // Entrains on a stream a user-specified function to be run on the host.
+  // See Stream::ThenDoHostCallback for full details.
+  // This is the preferred form for a callback that may return an error.
+  bool HostCallback(Stream *stream, std::function<port::Status()> callback);
+
   // Performs platform-specific allocation and initialization of an event.
   port::Status AllocateEvent(Event *event);
 
@@ -693,6 +698,13 @@ class StreamExecutor {
 
   // The set of TraceListeners registered for this StreamExecutor.
   std::set<TraceListener*> listeners_ GUARDED_BY(mu_);
+
+  // Allocated memory in bytes.
+  int64 mem_alloc_bytes_;
+
+  // Memory limit in bytes. Value less or equal to 0 indicates there is no
+  // limit.
+  int64 memory_limit_bytes_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutor);
 };

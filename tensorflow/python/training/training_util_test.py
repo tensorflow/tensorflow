@@ -49,7 +49,7 @@ class GlobalStepTest(test.TestCase):
   def test_invalid_shape(self):
     with ops.Graph().as_default() as g:
       self.assertIsNone(training_util.get_global_step())
-      variables.Variable(
+      variables.VariableV1(
           [0],
           trainable=False,
           dtype=dtypes.int32,
@@ -73,7 +73,7 @@ class GlobalStepTest(test.TestCase):
   def test_get_global_step(self):
     with ops.Graph().as_default() as g:
       self.assertIsNone(training_util.get_global_step())
-      variables.Variable(
+      variables.VariableV1(
           0,
           trainable=False,
           dtype=dtypes.int32,

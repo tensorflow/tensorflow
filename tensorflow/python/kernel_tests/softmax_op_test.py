@@ -59,7 +59,7 @@ class SoftmaxTest(test.TestCase):
     # this bug in future.
     name = "arbitrary"
     np_softmax = self._npSoftmax(np_features, dim=dim, log=log)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       if log:
         tf_softmax = nn_ops.log_softmax(np_features, axis=dim, name=name)
       else:
@@ -111,7 +111,7 @@ class SoftmaxTest(test.TestCase):
       type = np.float64  # pylint: disable=redefined-builtin
     max = np.finfo(type).max  # pylint: disable=redefined-builtin
     features = np.array([[1., 1., 1., 1.], [max, 1., 2., 3.]]).astype(type)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       tf_log_softmax = nn_ops.log_softmax(features)
       out = tf_log_softmax.eval()
     self.assertAllClose(
@@ -156,12 +156,25 @@ class SoftmaxTest(test.TestCase):
         np.array([[1., 1., 1., 1.], [1., 2., 3., 4.]]).astype(np.float64))
     self._testOverflow()
 
-  def test1DTesnorAsInput(self):
+  def test1DTensorAsInput(self):
+    self._testSoftmax(
+        np.array([3., 2., 3., 9.]).astype(np.float64), use_gpu=False)
+    self._testOverflow(use_gpu=False)
+
+  def test1DTensorAsInputNoReshape(self):
     self._testSoftmax(
         np.array([3., 2., 3., 9.]).astype(np.float64), use_gpu=False)
     self._testOverflow(use_gpu=False)
 
   def test3DTensorAsInput(self):
+    self._testSoftmax(
+        np.array([[[1., 1., 1., 1.], [1., 2., 3., 4.]],
+                  [[2., 3., 4., 5.], [6., 7., 8., 9.]],
+                  [[5., 4., 3., 2.], [1., 2., 3., 4.]]]).astype(np.float32),
+        use_gpu=False)
+    self._testOverflow(use_gpu=False)
+
+  def test3DTensorAsInputNoReshape(self):
     self._testSoftmax(
         np.array([[[1., 1., 1., 1.], [1., 2., 3., 4.]],
                   [[2., 3., 4., 5.], [6., 7., 8., 9.]],
@@ -194,7 +207,7 @@ class SoftmaxTest(test.TestCase):
     self.assertEqual([3, 2, 4], op.get_shape())
 
   def testEmptyInput(self):
-    with self.test_session():
+    with self.cached_session():
       x = array_ops.placeholder(dtypes.float32, shape=[0, 3])
       self.assertEqual(0, array_ops.size(x).eval())
       # reshape would raise if logits is empty
@@ -202,12 +215,19 @@ class SoftmaxTest(test.TestCase):
         nn_ops.softmax(x, axis=0).eval()
 
   def testDimTooLarge(self):
-    with self.test_session():
+    with self.cached_session():
       # Use placeholder to make sure we get runtime error instead of shape
       # inference error.
       dim = array_ops.placeholder_with_default(100, shape=[])
       with self.assertRaises(errors_impl.InvalidArgumentError):
         nn_ops.softmax([1., 2., 3., 4.], axis=dim).eval()
+
+  def testInvalidAxis(self):
+    # Test case for GitHub issue 22793.
+    with self.cached_session():
+      ones = array_ops.ones(shape=[2, 3])
+      with self.assertRaises(errors_impl.InvalidArgumentError):
+        nn_ops.softmax(ones, axis=2).eval()
 
   def testLargeDims(self):
     # Make sure that we properly handle large inputs. See
@@ -217,7 +237,7 @@ class SoftmaxTest(test.TestCase):
       np_softmax = self._npSoftmax(ones)
 
       for use_gpu in [True, False]:
-        with self.test_session(use_gpu=use_gpu) as sess:
+        with self.cached_session(use_gpu=use_gpu) as sess:
           x = array_ops.placeholder(dtypes.float32)
           y = nn_ops.softmax(x)
           tf_softmax = sess.run(y, feed_dict={x: ones})

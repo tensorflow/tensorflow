@@ -22,7 +22,6 @@ import numpy as np
 from scipy import stats
 
 from tensorflow.contrib import distributions
-from tensorflow.contrib import linalg
 from tensorflow.contrib.distributions.python.ops import bijectors
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -30,6 +29,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.platform import test
 
 bs = bijectors
@@ -91,7 +91,7 @@ class TransformedDistributionTest(test.TestCase):
       # sample
       sample = log_normal.sample(100000, seed=235)
       self.assertAllEqual([], log_normal.event_shape)
-      with self.test_session(graph=g):
+      with self.session(graph=g):
         self.assertAllEqual([], log_normal.event_shape_tensor().eval())
         self.assertAllClose(
             sp_dist.mean(), np.mean(sample.eval()), atol=0.0, rtol=0.05)
@@ -107,7 +107,7 @@ class TransformedDistributionTest(test.TestCase):
                    [log_normal.log_survival_function, sp_dist.logsf]]:
         actual = func[0](test_vals)
         expected = func[1](test_vals)
-        with self.test_session(graph=g):
+        with self.session(graph=g):
           self.assertAllClose(expected, actual.eval(), atol=0, rtol=0.01)
 
   def testNonInjectiveTransformedDistribution(self):
@@ -123,7 +123,7 @@ class TransformedDistributionTest(test.TestCase):
       # sample
       sample = abs_normal.sample(100000, seed=235)
       self.assertAllEqual([], abs_normal.event_shape)
-      with self.test_session(graph=g):
+      with self.session(graph=g):
         sample_ = sample.eval()
         self.assertAllEqual([], abs_normal.event_shape_tensor().eval())
 
@@ -147,7 +147,7 @@ class TransformedDistributionTest(test.TestCase):
             abs_normal.log_prob(2.13).eval())
 
   def testQuantile(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       logit_normal = self._cls()(
           distribution=ds.Normal(loc=0., scale=1.),
           bijector=bs.Sigmoid(),
@@ -169,7 +169,7 @@ class TransformedDistributionTest(test.TestCase):
     exp_forward_only._inverse_log_det_jacobian = self._make_unimplemented(
         "inverse_log_det_jacobian ")
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       mu = 3.0
       sigma = 0.02
       log_normal = self._cls()(
@@ -195,7 +195,7 @@ class TransformedDistributionTest(test.TestCase):
 
     log_forward_only = bs.Invert(exp_inverse_only)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # The log bijector isn't defined over the whole real line, so we make
       # sigma sufficiently small so that the draws are positive.
       mu = 2.
@@ -211,7 +211,7 @@ class TransformedDistributionTest(test.TestCase):
       self.assertAllClose(expected_log_pdf, log_pdf_val, atol=0.)
 
   def testShapeChangingBijector(self):
-    with self.test_session():
+    with self.cached_session():
       softmax = bs.SoftmaxCentered()
       standard_normal = ds.Normal(loc=0., scale=1.)
       multi_logit_normal = self._cls()(
@@ -235,7 +235,7 @@ class TransformedDistributionTest(test.TestCase):
   def testCastLogDetJacobian(self):
     """Test log_prob when Jacobian and log_prob dtypes do not match."""
 
-    with self.test_session():
+    with self.cached_session():
       # Create an identity bijector whose jacobians have dtype int32
       int_identity = bs.Inline(
           forward_fn=array_ops.identity,
@@ -257,7 +257,7 @@ class TransformedDistributionTest(test.TestCase):
       normal.entropy().eval()
 
   def testEntropy(self):
-    with self.test_session():
+    with self.cached_session():
       shift = np.array([[-1, 0, 1], [-1, -2, -3]], dtype=np.float32)
       diag = np.array([[1, 2, 3], [2, 3, 2]], dtype=np.float32)
       actual_mvn_entropy = np.concatenate([
@@ -277,7 +277,7 @@ class TransformedDistributionTest(test.TestCase):
                           fake_mvn.entropy().eval())
 
   def testScalarBatchScalarEventIdentityScale(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       exp2 = self._cls()(
           ds.Exponential(rate=0.25),
           bijector=ds.bijectors.AffineScalar(scale=2.)
@@ -310,7 +310,7 @@ class ScalarToMultiTest(test.TestCase):
                batch_shape=(),
                event_shape=(),
                not_implemented_message=None):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Overriding shapes must be compatible w/bijector; most bijectors are
       # batch_shape agnostic and only care about event_ndims.
       # In the case of `Affine`, if we got it wrong then it would fire an
@@ -428,7 +428,7 @@ class ScalarToMultiTest(test.TestCase):
         batch_shape=[2],
         not_implemented_message="not implemented")
 
-    with self.test_session():
+    with self.cached_session():
       # Can't override event_shape for scalar batch, non-scalar event.
       with self.assertRaisesRegexp(ValueError, "base distribution not scalar"):
         self._cls()(
@@ -445,7 +445,7 @@ class ScalarToMultiTest(test.TestCase):
         event_shape=[3],
         not_implemented_message="not implemented when overriding event_shape")
 
-    with self.test_session():
+    with self.cached_session():
       # Can't override batch_shape for non-scalar batch, scalar event.
       with self.assertRaisesRegexp(ValueError, "base distribution not scalar"):
         self._cls()(
@@ -456,7 +456,7 @@ class ScalarToMultiTest(test.TestCase):
             validate_args=True)
 
   def testNonScalarBatchNonScalarEvent(self):
-    with self.test_session():
+    with self.cached_session():
       # Can't override event_shape and/or batch_shape for non_scalar batch,
       # non-scalar event.
       with self.assertRaisesRegexp(ValueError, "base distribution not scalar"):
@@ -469,7 +469,7 @@ class ScalarToMultiTest(test.TestCase):
             validate_args=True)
 
   def testMatrixEvent(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       batch_shape = [2]
       event_shape = [2, 3, 3]
       batch_shape_pl = array_ops.placeholder(

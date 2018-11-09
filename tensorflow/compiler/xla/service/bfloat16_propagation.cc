@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/bfloat16_propagation.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -81,7 +82,7 @@ void BFloat16Propagation::RevertIfFusionInternalBF16Changes(
   };
 
   auto root = fusion->fused_instructions_computation()->root_instruction();
-  tensorflow::gtl::FlatSet<const HloValue*> changed_root_buffers;
+  absl::flat_hash_set<const HloValue*> changed_root_buffers;
 
   auto root_changes_it = changes_to_bf16_.find(root);
   if (root_changes_it != changes_to_bf16_.end()) {
@@ -235,6 +236,10 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
         // the end of the BFloat16Propagation pass.
         continue;
       }
+      if (use.instruction->HasSideEffectNoRecurse()) {
+        // Keep side-effecting instruction's operands unchanged.
+        return false;
+      }
       // Any visited user that can accept BF16 has already been updated if
       // necessary, e.g., the output has been changed to BF16 if it propagates
       // precision, or a called computation's parameters have been changed to
@@ -328,22 +333,6 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
     return;
   }
 
-  // Do not change precision for instructions related to entry and exit of a
-  // computation, and control flow, because this pass might break the interfaces
-  // or assumptions for them.
-  if (hlo->opcode() == HloOpcode::kInfeed ||       //
-      hlo->opcode() == HloOpcode::kOutfeed ||      //
-      hlo->opcode() == HloOpcode::kSend ||         //
-      hlo->opcode() == HloOpcode::kSendDone ||     //
-      hlo->opcode() == HloOpcode::kRecv ||         //
-      hlo->opcode() == HloOpcode::kRecvDone ||     //
-      hlo->opcode() == HloOpcode::kCustomCall ||   //
-      hlo->opcode() == HloOpcode::kCall ||         //
-      hlo->opcode() == HloOpcode::kConditional ||  //
-      (hlo->opcode() == HloOpcode::kParameter && skip_parameters)) {
-    return;
-  }
-
   // Prevent root instructions from having their output modified by recording
   // all F32 output values as needing to stay as F32.
   CHECK(hlo->parent() != nullptr);
@@ -362,6 +351,17 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
         }
       });
     }
+    return;
+  }
+
+  // Do not change precision for instructions related to entry and exit of a
+  // computation, side-effecting instructions, and control flow, because this
+  // pass might break the interfaces or assumptions for them.
+  if (hlo->opcode() == HloOpcode::kCustomCall ||   //
+      hlo->opcode() == HloOpcode::kCall ||         //
+      hlo->opcode() == HloOpcode::kConditional ||  //
+      hlo->HasSideEffectNoRecurse() ||             //
+      (hlo->opcode() == HloOpcode::kParameter && skip_parameters)) {
     return;
   }
 
@@ -407,7 +407,7 @@ void BFloat16Propagation::AdjustCalledComputationParameters(
     HloInstruction* hlo) {
   auto adjust_computation =
       [this, hlo](HloComputation* computation,
-                  tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+                  absl::Span<HloInstruction* const> operands) {
         // Adjust parameters.
         CHECK_EQ(operands.size(), computation->num_parameters());
         for (int64 i = 0; i < operands.size(); ++i) {
@@ -500,7 +500,7 @@ void BFloat16Propagation::AdjustCalledComputationRoot(HloInstruction* hlo) {
 
 bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
     HloComputation* computation,
-    tensorflow::gtl::FlatSet<const HloComputation*>* visited_computations) {
+    absl::flat_hash_set<const HloComputation*>* visited_computations) {
   bool parameter_changed = false;
   auto insts = computation->MakeInstructionPostOrder();
   // Do the adjustment on each instruction in the computation in reverse
@@ -560,7 +560,7 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
       // another input parameter. A fixed point will be reached because the
       // parameters can only be changed from BF16 to F32, not the other way
       // around.
-      tensorflow::gtl::FlatSet<const HloComputation*> visited_in_while;
+      absl::flat_hash_set<const HloComputation*> visited_in_while;
       while (ResolveInconsistencyOfAliasingBuffersHelper(hlo->while_condition(),
                                                          &visited_in_while) ||
              ResolveInconsistencyOfAliasingBuffersHelper(hlo->while_body(),
@@ -587,7 +587,7 @@ void BFloat16Propagation::ResolveInconsistencyOfAliasingBuffers(
     HloModule* module) {
   const auto& computations_topological_order =
       module->MakeComputationPostOrder();
-  tensorflow::gtl::FlatSet<const HloComputation*> resolved;
+  absl::flat_hash_set<const HloComputation*> resolved;
   for (auto comp_it = computations_topological_order.rbegin();
        comp_it != computations_topological_order.rend(); ++comp_it) {
     if (ContainsKey(resolved, *comp_it)) {
@@ -675,10 +675,8 @@ Status BFloat16Propagation::ResolveConvertedConstants(HloModule* module) {
         continue;
       }
       if (!ShapeUtil::Equal(hlo->literal().shape(), hlo->shape())) {
-        TF_ASSIGN_OR_RETURN(
-            auto converted_literal,
-            hlo->literal().ConvertToShape(hlo->shape(),
-                                          /*round_f32_to_bf16=*/true));
+        TF_ASSIGN_OR_RETURN(auto converted_literal,
+                            hlo->literal().ConvertToShape(hlo->shape()));
         auto new_constant = computation->AddInstruction(
             HloInstruction::CreateConstant(std::move(converted_literal)));
         TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_constant));

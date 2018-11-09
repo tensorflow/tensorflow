@@ -208,7 +208,7 @@ class PlacerTest : public ::testing::Test {
   //
   // REQUIRES: "*graph" was produced by the most recent call to BuildGraph.
   Status Place(Graph* graph, DeviceSet* devices, SessionOptions* options) {
-    Placer placer(graph, devices, options);
+    Placer placer(graph, devices, options, nullptr);
     return placer.Run();
   }
 
@@ -800,11 +800,11 @@ TEST_F(PlacerTest, TestInvalidMultipleColocationGroups) {
   }
 
   Status s = Place(&g);
-  EXPECT_TRUE(
-      str_util::StrContains(s.error_message(),
-                            "Cannot colocate nodes 'foo' and 'in' because no "
-                            "device type supports both of those nodes and the "
-                            "other nodes colocated with them"));
+  EXPECT_TRUE(str_util::StrContains(
+      s.error_message(),
+      "Cannot colocate nodes {{colocation_node foo}} and "
+      "{{colocation_node in}} because no device type supports both of those "
+      "nodes and the other nodes colocated with them"));
 }
 
 TEST_F(PlacerTest, TestColocationGroupWithReferenceConnections) {
@@ -867,9 +867,9 @@ TEST_F(PlacerTest, TestColocationGroupWithUnsatisfiableReferenceConnections) {
   Status s = Place(&g);
   EXPECT_TRUE(str_util::StrContains(
       s.error_message(),
-      "Cannot colocate nodes 'var3' and 'assign3' because no "
-      "device type supports both of those nodes and the other "
-      "nodes colocated with them."));
+      "Cannot colocate nodes {{colocation_node var3}} and {{colocation_node "
+      "assign3}} because no device type supports both of those nodes and the "
+      "other nodes colocated with them."));
 }
 
 TEST_F(PlacerTest, TestColocationAndReferenceConnections) {
@@ -1028,9 +1028,10 @@ TEST_F(PlacerTest, TestNoKernelsRegistered) {
 
   Status s = Place(&g);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(str_util::StrContains(
-      s.error_message(),
-      "No OpKernel was registered to support Op 'VariableNoKernels'"));
+  EXPECT_TRUE(
+      str_util::StrContains(s.error_message(),
+                            "No OpKernel was registered to support Op "
+                            "'VariableNoKernels' used by {{node var}}"));
   EXPECT_TRUE(
       str_util::StrContains(s.error_message(), "<no registered kernels>"));
 }
@@ -1052,9 +1053,9 @@ TEST_F(PlacerTest, TestNoDevicesRegistered) {
 
   Status s = Place(&g, &cpu_only);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(str_util::StrContains(
-      s.error_message(),
-      "No OpKernel was registered to support Op 'VariableGPU'"));
+  EXPECT_TRUE(str_util::StrContains(s.error_message(),
+                                    "No OpKernel was registered to support Op "
+                                    "'VariableGPU' used by {{node var}}"));
   EXPECT_TRUE(str_util::StrContains(s.error_message(), "device='FakeGPU'"));
 }
 
@@ -1154,36 +1155,12 @@ TEST_F(PlacerTest, TestNonexistentGpuNoAllowSoftPlacementFormatTag) {
   }
 
   SessionOptions options;
-  options.config.mutable_experimental()->set_client_handles_error_formatting(
-      true);
   Status s = Place(&g, &options);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(
-      str_util::StrContains(s.error_message(),
-                            "Cannot assign a device for operation 'in'"
-                            " (defined at ^^node:in:${file}:${line}^^)"));
-}
-
-// Test that the "Cannot assign a device" error message does not contain a
-// format tag when not it shouldn't
-TEST_F(PlacerTest, TestNonexistentGpuNoAllowSoftPlacementNoFormatTag) {
-  Graph g(OpRegistry::Global());
-  {  // Scope for temporary variables used to construct g.
-    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
-    ops::SourceOp("TestDevice",
-                  b.opts().WithName("in").WithDevice("/device:fakegpu:11"));
-    TF_EXPECT_OK(BuildGraph(b, &g));
-  }
-
-  SessionOptions options;
-  options.config.mutable_experimental()->set_client_handles_error_formatting(
-      false);
-  Status s = Place(&g, &options);
-  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(str_util::StrContains(
-      s.error_message(), "Cannot assign a device for operation 'in'"));
-  EXPECT_FALSE(str_util::StrContains(
-      s.error_message(), "'in' (defined at ^^node:in:${file}:${line}^^)"));
+  LOG(WARNING) << s.error_message();
+  EXPECT_TRUE(str_util::StrContains(s.error_message(),
+                                    "Cannot assign a device for operation in"));
+  EXPECT_TRUE(str_util::StrContains(s.error_message(), "{{node in}}"));
 }
 
 // Test that placement fails when a node requests an explicit device that is not
@@ -1222,9 +1199,32 @@ TEST_F(PlacerTest, TestNonExistentDevice) {
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
   LOG(WARNING) << s.error_message();
   EXPECT_TRUE(str_util::StrContains(
-      s.error_message(),
-      "was explicitly assigned to /job:foo/replica:17 but available devices"));
+      s.error_message(), "was explicitly assigned to /job:foo/replica:17"));
+  EXPECT_TRUE(
+      str_util::StrContains(s.error_message(), "but available devices"));
 }
+
+#if !GOOGLE_CUDA
+// Test that we inform the user if they appear to be explicitly placing nodes
+// on a GPU when CUDA is not available
+TEST_F(PlacerTest, TestUseGpuWithNoCuda) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    ops::SourceOp("VariableGPU",
+                  b.opts().WithName("var").WithDevice("/device:gpu:0"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  SessionOptions options;
+  Status s = Place(&g, &options);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+  LOG(WARNING) << s.error_message();
+  EXPECT_TRUE(str_util::StrContains(
+      s.error_message(),
+      "The requested device appears to be a GPU, but CUDA is not enabled."));
+}
+#endif
 
 TEST_F(PlacerTest, TestUnsupportedDeviceAllowSoftPlacement) {
   Graph g(OpRegistry::Global());
@@ -1289,8 +1289,9 @@ TEST_F(PlacerTest, TestUnsatisfiableConstraintWithReferenceConnections) {
 
   Status s = Place(&g);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(str_util::StrContains(
-      s.error_message(), "Cannot colocate nodes 'var' and 'assign'"));
+  EXPECT_TRUE(str_util::StrContains(s.error_message(),
+                                    "Cannot colocate nodes {{colocation_node "
+                                    "var}} and {{colocation_node assign}}"));
 }
 
 // Test that a generator node follows its consumers (where there are several

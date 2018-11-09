@@ -66,9 +66,9 @@ void ProcessNextBuffer(int32 length) {
   auto shape = ShapeUtil::MakeShape(U8, {length});
   string bytes = shape.SerializeAsString();
   void* buffer = __xla_cpu_runtime_AcquireInfeedBufferForDequeue(
-      length, bytes.data(), bytes.size());
-  __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(length, buffer,
-                                                    bytes.data(), bytes.size());
+      /*run_options=*/nullptr, length, bytes.data(), bytes.size());
+  __xla_cpu_runtime_ReleaseInfeedBufferAfterDequeue(
+      /*run_options=*/nullptr, length, buffer, bytes.data(), bytes.size());
 }
 
 // Performs the acquire/release sequence on the outfeed, as the generated CPU
@@ -76,16 +76,16 @@ void ProcessNextBuffer(int32 length) {
 void ProcessNextOutfeedBuffer(int32 length, const Shape& shape) {
   string bytes = shape.SerializeAsString();
   void* buffer = __xla_cpu_runtime_AcquireOutfeedBufferForPopulation(
-      length, bytes.data(), bytes.size());
+      /*run_options=*/nullptr, length, bytes.data(), bytes.size());
   __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
-      length, buffer, bytes.data(), bytes.size());
+      /*run_options=*/nullptr, length, buffer, bytes.data(), bytes.size());
 }
 
 TEST_F(InfeedManagerTest, SingleThreadedSequential) {
   TestInfeedBuffer* a = new TestInfeedBuffer(64);
   TestInfeedBuffer* b = new TestInfeedBuffer(32);
 
-  cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager();
+  cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager(0);
 
   xfeed->infeed()->EnqueueBuffersAtomically({a});
   xfeed->infeed()->EnqueueBuffersAtomically({b});
@@ -97,7 +97,7 @@ TEST_F(InfeedManagerTest, SingleThreadedInterleaved) {
   TestInfeedBuffer* a = new TestInfeedBuffer(64);
   TestInfeedBuffer* b = new TestInfeedBuffer(32);
 
-  cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager();
+  cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager(0);
 
   xfeed->infeed()->EnqueueBuffersAtomically({a});
   ProcessNextBuffer(a->length());
@@ -108,7 +108,7 @@ TEST_F(InfeedManagerTest, SingleThreadedInterleaved) {
 TEST_F(InfeedManagerTest, MultiThreaded) {
   tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "test", 2);
 
-  cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager();
+  cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager(0);
 
   const int32 length = 64;
 
@@ -130,7 +130,7 @@ TEST_F(InfeedManagerTest, MultiThreaded) {
 
 TEST_F(InfeedManagerTest, OutfeedWrongShape) {
   TestInfeedBuffer* b = new TestInfeedBuffer(32, /*expect_shape_match=*/false);
-  cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager();
+  cpu::runtime::XfeedManager* xfeed = cpu::runtime::GetXfeedManager(0);
   xfeed->outfeed()->EnqueueBuffersAtomically({b});
 
   ProcessNextOutfeedBuffer(32, ShapeUtil::MakeShape(U8, {33}));

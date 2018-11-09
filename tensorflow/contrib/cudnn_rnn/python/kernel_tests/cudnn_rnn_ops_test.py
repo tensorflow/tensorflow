@@ -202,12 +202,13 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
           dtype=dtype)
       random_seed.set_random_seed(1234)
       params_size_t = model.params_size()
-      params = variables.Variable(
+      params = variables.VariableV1(
           random_ops.random_uniform([params_size_t], dtype=dtype),
           dtype=dtype,
           validate_shape=False)
       saveable = _CreateParamsSavable(params, model)
-      weights, biases = saveable._OpaqueParamsToCanonical()
+      weights, biases = saveable.format_converter._opaque_to_cu_canonical(
+          saveable._variables)
       reset_params = state_ops.assign(
           params,
           array_ops.zeros([params_size_t], dtype=dtype),
@@ -248,7 +249,7 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
       params_size_t = model.params_size()
       names = ["rnn_1", "rnn_2"]
       param_vars = [
-          variables.Variable(
+          variables.VariableV1(
               random_ops.random_uniform([params_size_t], dtype=dtype),
               dtype=dtype,
               validate_shape=False) for name in names
@@ -256,8 +257,10 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
       saveables = []
       for name, params in zip(names, param_vars):
         saveables.append(_CreateParamsSavable(params, model, name, name))
-      weights1, biases1 = saveables[0]._OpaqueParamsToCanonical()
-      weights2, biases2 = saveables[1]._OpaqueParamsToCanonical()
+      weights1, biases1 = saveables[0].format_converter._opaque_to_cu_canonical(
+          saveables[0]._variables)
+      weights2, biases2 = saveables[1].format_converter._opaque_to_cu_canonical(
+          saveables[1]._variables)
       reset_params = [
           state_ops.assign(
               params,
@@ -304,7 +307,7 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
           direction=direction,
           dtype=dtype)
       params_size_t = model.params_size()
-      params = variables.Variable(
+      params = variables.VariableV1(
           array_ops.ones([params_size_t], dtype=dtype),
           validate_shape=False,
           dtype=dtype)
@@ -413,6 +416,31 @@ class CudnnRNNTestParamsSize(TensorFlowTestCase):
         self._testOneLSTMParamsSize(num_layers, num_units, input_size,
                                     direction)
 
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testLSTMParamsSizeShape(self):
+    with self.assertRaisesRegexp(
+        ValueError, "Shape must be rank 0 but is rank 1"):
+      model = _CreateModel(
+          cudnn_rnn_ops.CUDNN_LSTM,
+          constant_op.constant([4]), 200, 200,
+          direction=cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
+      _ = model.params_size()
+    with self.assertRaisesRegexp(
+        ValueError, "Shape must be rank 0 but is rank 1"):
+      model = _CreateModel(
+          cudnn_rnn_ops.CUDNN_LSTM,
+          4, constant_op.constant([200]), 200,
+          direction=cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
+      _ = model.params_size()
+    with self.assertRaisesRegexp(
+        ValueError, "Shape must be rank 0 but is rank 1"):
+      model = _CreateModel(
+          cudnn_rnn_ops.CUDNN_LSTM,
+          4, 200, constant_op.constant([200]),
+          direction=cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
+      _ = model.params_size()
+
 
 class CudnnRNNTestInference(TensorFlowTestCase):
 
@@ -433,7 +461,7 @@ class CudnnRNNTestInference(TensorFlowTestCase):
     params_size_t = model.params_size()
     input_data = array_ops.ones([seq_length, batch_size, input_size])
     input_h = array_ops.ones([num_layers * dir_count, batch_size, num_units])
-    params = variables.Variable(
+    params = variables.VariableV1(
         array_ops.ones([params_size_t]), validate_shape=False)
     if has_input_c:
       input_c = array_ops.ones([num_layers * dir_count, batch_size, num_units])
@@ -559,20 +587,20 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
         dtype=dtype,
         dropout=dropout)
     params_size_t = model.params_size()
-    input_data = variables.Variable(
+    input_data = variables.VariableV1(
         random_ops.random_uniform(
             [seq_length, batch_size, input_size], dtype=dtype),
         dtype=dtype)
-    input_h = variables.Variable(
+    input_h = variables.VariableV1(
         random_ops.random_uniform(
             [num_layers * dir_count, batch_size, num_units], dtype=dtype),
         dtype=dtype)
-    params = variables.Variable(
+    params = variables.VariableV1(
         random_ops.random_uniform([params_size_t], dtype=dtype),
         validate_shape=False,
         dtype=dtype)
     if has_input_c:
-      input_c = variables.Variable(
+      input_c = variables.VariableV1(
           random_ops.random_uniform(
               [num_layers * dir_count, batch_size, num_units], dtype=dtype),
           dtype=dtype)
@@ -614,7 +642,8 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
-  def testSimpleTraining(self):
+  def DISABLED_testSimpleTraining(self):
+    # TODO(jamesqin): fix b/117989214
     test_configs = [
         {
             "rnn_mode": cudnn_rnn_ops.CUDNN_LSTM,

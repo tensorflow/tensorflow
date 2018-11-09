@@ -234,6 +234,16 @@ struct ConvBackpropDimensions {
 
   // Input and output feature depth.
   int64 in_depth, out_depth;
+
+  // Convenience access methods for spatial dimensions properties.
+  int64 input_size(int dim) const { return spatial_dims[dim].input_size; }
+  int64 filter_size(int dim) const { return spatial_dims[dim].filter_size; }
+  int64 output_size(int dim) const { return spatial_dims[dim].output_size; }
+  int64 stride(int dim) const { return spatial_dims[dim].stride; }
+  int64 dilation(int dim) const { return spatial_dims[dim].dilation; }
+
+  // Compute padding for the given spatial dimension.
+  int SpatialPadding(const Padding& padding, int dim) const;
 };
 
 // Common code between implementations of Conv?DBackpropInput and

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Script Language Operators. See the @{$python/script_ops} guide."""
+"""Script Language Operators."""
 
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
@@ -287,19 +287,19 @@ def _internal_py_func(func,
 
 # TODO(akshayka): Implement higher-order derivatives.
 @ops.RegisterGradient("EagerPyFunc")
-def _EagerPyFuncGrad(op, dy):
+def _EagerPyFuncGrad(op, *dy):
   """Computes the gradient of an EagerPyFunc."""
 
   token = op.get_attr("token")
 
-  def eagerly_executed_grad(dy):
+  def eagerly_executed_grad(*dy):
     tape, eager_inputs, eager_outputs = tape_cache.pop(compat.as_bytes(token))
     return tape.gradient(eager_outputs, eager_inputs, output_gradients=dy)
 
   with ops.control_dependencies(op.outputs):
     return _internal_py_func(
         func=eagerly_executed_grad,
-        inp=[dy] if isinstance(dy, ops.Tensor) else dy,
+        inp=dy,
         Tout=[tensor.dtype for tensor in op.inputs],
         eager=True,
         is_grad_func=True)
@@ -311,10 +311,10 @@ def eager_py_func(func, inp, Tout, name=None):
   This function allows expressing computations in a TensorFlow graph as
   Python functions. In particular, it wraps a Python function `func`
   in a once-differentiable TensorFlow operation that executes it with eager
-  exeuction enabled. As a consequence, `tf.contrib.eager.py_func` makes it
+  execution enabled. As a consequence, `tf.contrib.eager.py_func` makes it
   possible to express control flow using Python constructs (`if`, `while`,
-  `for`, etc.), instead of TensorFlow control flow constructs (@{tf.cond},
-  @{tf.while_loop}). For example, you might use `tf.contrib.eager.py_func` to
+  `for`, etc.), instead of TensorFlow control flow constructs (`tf.cond`,
+  `tf.while_loop`). For example, you might use `tf.contrib.eager.py_func` to
   implement the log huber function:
 
   ```python
@@ -343,17 +343,18 @@ def eager_py_func(func, inp, Tout, name=None):
   or print statements as desired, and wrap those functions in
   `tf.contrib.eager.py_func`.
 
-  For more information on eager execution, see @{$guide/eager}.
+  For more information on eager execution, see the
+  [Eager guide](https://tensorflow.org/guide/eager).
 
-  `tf.contrib.eager.py_func` is similar in spirit to @{tf.py_func}, but unlike
+  `tf.contrib.eager.py_func` is similar in spirit to `tf.py_func`, but unlike
   the latter, the former lets you use TensorFlow operations in the wrapped
-  Python function. In particular, while @{tf.py_func} only runs on CPUs and
+  Python function. In particular, while `tf.py_func` only runs on CPUs and
   wraps functions that take NumPy arrays as inputs and return NumPy arrays as
   outputs, `tf.contrib.eager.py_func` can be placed on GPUs and wraps functions
   that take Tensors as inputs, execute TensorFlow operations in their bodies,
   and return Tensors as outputs.
 
-  Like @{tf.py_func}, `tf.contrib.eager.py_func` has the following limitations
+  Like `tf.py_func`, `tf.contrib.eager.py_func` has the following limitations
   with respect to serialization and distribution:
 
   * The body of the function (i.e. `func`) will not be serialized in a

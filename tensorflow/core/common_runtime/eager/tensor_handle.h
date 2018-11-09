@@ -61,12 +61,13 @@ class TensorHandle : public core::RefCounted {
         ctx_(ctx),
         is_ready_(true) {}
 
-  TensorHandle(uint64 node_id, DataType dtype, EagerContext* ctx)
+  TensorHandle(uint64 node_id, Device* d, Device* op_device, DataType dtype,
+               EagerContext* ctx)
       : dtype(dtype),
         node_id_(node_id),
         tensor_(dtype),
-        device_(nullptr),
-        op_device_(nullptr),
+        device_(d),
+        op_device_(op_device),
         remote_op_id_(-1),
         remote_output_num_(-1),
         remote_shape_node_id_(-1),
@@ -113,15 +114,14 @@ class TensorHandle : public core::RefCounted {
 
   Status NumDims(int* num_dims);
   Status Dim(int dim_index, int64* dim);
+  Status NumElements(int64* num_elements);
 
   // Return the op_id and output num if the handle refers to a remote tensor.
   Status RemoteAddress(int64* op_id, int32* output_num);
 
   // Note that this can be called at most once, and only on non-ready handles,
   // and makes them ready.
-  void SetTensorAndDevice(const tensorflow::Tensor& tensor,
-                          tensorflow::Device* device,
-                          tensorflow::Device* op_device);
+  void SetTensor(const tensorflow::Tensor& tensor);
 
   Status CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
                       TensorHandle** output);

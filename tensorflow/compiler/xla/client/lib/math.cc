@@ -69,8 +69,7 @@ std::array<float, 6> kErfUCoefficient = {
 
 // Evaluate the polynomial given coefficients and `x`.
 // N.B. Coefficients should be supplied in decreasing order.
-XlaOp EvaluatePolynomial(XlaOp x,
-                         tensorflow::gtl::ArraySlice<float> coefficients) {
+XlaOp EvaluatePolynomial(XlaOp x, absl::Span<const float> coefficients) {
   XlaOp poly = ScalarLike(x, 0.0);
   for (float c : coefficients) {
     poly = poly * x + ScalarLike(x, c);
@@ -207,7 +206,11 @@ XlaOp Lgamma(XlaOp input) {
 
   XlaOp log_y = log_sqrt_two_pi + (z + one_half) * log_t - t + Log(x);
 
-  XlaOp reflection = log_pi - Log(Sin(pi * input)) - log_y;
+  // If z = a + 0j, the analytic continuation of log reduces to taking the
+  // absolute value of the real part.
+  // Re(log(z)) = Re(log|z| + arg(z)j)
+  //            = log|a|
+  XlaOp reflection = log_pi - Log(Abs(Sin(pi * input))) - log_y;
   XlaOp result = Select(need_to_reflect, reflection, log_y);
   return result;
 }

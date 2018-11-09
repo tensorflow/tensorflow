@@ -104,10 +104,11 @@ class ScopedAllocatorConcatOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& backing_tensor = context->input(0);
     // Check that type matches.
-    OP_REQUIRES(
-        context, backing_tensor.dtype() == dtype_,
-        errors::InvalidArgument("Backing tensor type ", backing_tensor.dtype(),
-                                " does not match expected type ", dtype_));
+    OP_REQUIRES(context, backing_tensor.dtype() == dtype_,
+                errors::InvalidArgument("Backing tensor type ",
+                                        DataTypeString(backing_tensor.dtype()),
+                                        " does not match expected type ",
+                                        DataTypeString(dtype_)));
     // Check that backing tensor is at least as large as the shape of the
     // output.
     OP_REQUIRES(context, backing_tensor.NumElements() >= shape_.num_elements(),
@@ -182,10 +183,11 @@ class ScopedAllocatorSplitOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     Tensor backing_copy(context->input(0));
     // Check that type matches.
-    OP_REQUIRES(
-        context, backing_copy.dtype() == dtype_,
-        errors::InvalidArgument("Backing tensor type ", backing_copy.dtype(),
-                                " does not match expected type ", dtype_));
+    OP_REQUIRES(context, backing_copy.dtype() == dtype_,
+                errors::InvalidArgument("Backing tensor type ",
+                                        DataTypeString(backing_copy.dtype()),
+                                        " does not match expected type ",
+                                        DataTypeString(dtype_)));
     const TensorBuffer* backing_buf = DMAHelper::buffer(&backing_copy);
     const void* backing_tensor_lb = backing_buf->data();
     const void* backing_tensor_ub = static_cast<const void*>(
@@ -195,10 +197,11 @@ class ScopedAllocatorSplitOp : public OpKernel {
               << " to output " << i - 1 << " buf addr "
               << DMAHelper::base(&context->input(i));
       Tensor copy(context->input(i));
-      OP_REQUIRES(
-          context, copy.dtype() == dtype_,
-          errors::InvalidArgument("Input ", i, " tensor type ", copy.dtype(),
-                                  " does not match expected type ", dtype_));
+      OP_REQUIRES(context, copy.dtype() == dtype_,
+                  errors::InvalidArgument("Input ", i, " tensor type ",
+                                          DataTypeString(copy.dtype()),
+                                          " does not match expected type ",
+                                          DataTypeString(dtype_)));
       context->set_output(i - 1, copy);
       const TensorBuffer* input_buf = DMAHelper::buffer(&copy);
       const void* input_lb = input_buf->data();

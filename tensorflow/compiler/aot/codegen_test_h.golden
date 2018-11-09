@@ -65,9 +65,8 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
   static constexpr size_t kNumArgs = 2;
 
   // Byte size of each argument buffer. There are kNumArgs entries.
-  static const intptr_t* ArgSizes() {
-    static constexpr intptr_t kArgSizes[kNumArgs] = {8, 96};
-    return kArgSizes;
+  static const ::tensorflow::int64 ArgSize(::tensorflow::int32 index) {
+    return BufferInfos()[ArgIndexToBufferIndex()[index]].size();
   }
 
   // Returns static data used to create an XlaCompiledCpuFunction.
@@ -75,17 +74,17 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
     static XlaCompiledCpuFunction::StaticData* kStaticData = [](){
       XlaCompiledCpuFunction::StaticData* data =
         new XlaCompiledCpuFunction::StaticData;
-      data->raw_function = entry_point;
-      data->arg_sizes = ArgSizes();
-      data->num_args = kNumArgs;
-      data->temp_sizes = TempSizes();
-      data->num_temps = kNumTemps;
-      data->result_index = kResultIndex;
-      data->arg_names = StaticArgNames();
-      data->result_names = StaticResultNames();
-      data->program_shape = StaticProgramShape();
-      data->hlo_profile_printer_data = StaticHloProfilePrinterData();
-      
+      data->set_raw_function(entry_point);
+      data->set_buffer_infos(BufferInfos());
+      data->set_num_buffers(kNumBuffers);
+      data->set_arg_index_table(ArgIndexToBufferIndex());
+      data->set_num_args(kNumArgs);
+      data->set_result_index(kResultIndex);
+      data->set_arg_names(StaticArgNames());
+      data->set_result_names(StaticResultNames());
+      data->set_program_shape(StaticProgramShape());
+      data->set_hlo_profile_printer_data(StaticHloProfilePrinterData());
+
       return data;
     }();
     return *kStaticData;
@@ -215,16 +214,31 @@ class MyClass : public tensorflow::XlaCompiledCpuFunction {
   }
 
  private:
-  // Number of result and temporary buffers for the compiled computation.
-  static constexpr size_t kNumTemps = 6;
+  // Number of buffers for the compiled computation.
+  static constexpr size_t kNumBuffers = 6;
+
+  static const ::tensorflow::cpu_function_runtime::BufferInfo* BufferInfos() {
+    static const ::tensorflow::cpu_function_runtime::BufferInfo
+      kBufferInfos[kNumBuffers] = {
+::tensorflow::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
+::tensorflow::cpu_function_runtime::BufferInfo({34ULL, 0ULL}),
+::tensorflow::cpu_function_runtime::BufferInfo({9ULL, ~0ULL}),
+::tensorflow::cpu_function_runtime::BufferInfo({386ULL, 1ULL}),
+::tensorflow::cpu_function_runtime::BufferInfo({13ULL, ~0ULL}),
+::tensorflow::cpu_function_runtime::BufferInfo({481ULL, ~0ULL})
+      };
+    return kBufferInfos;
+  }
+
+  static const ::tensorflow::int32* ArgIndexToBufferIndex() {
+    static constexpr ::tensorflow::int32 kArgIndexToBufferIndex[kNumArgs] = {
+1, 3
+    };
+    return kArgIndexToBufferIndex;
+  }
+
   // The 0-based index of the result tuple in the temporary buffers.
   static constexpr size_t kResultIndex = 5;
-
-  // Byte size of each result / temporary buffer. There are kNumTemps entries.
-  static const intptr_t* TempSizes() {
-    static constexpr intptr_t kTempSizes[kNumTemps] = {1, -1, 2, -1, 3, 120};
-    return kTempSizes;
-  }
 
   // Array of names of each positional argument, terminated by nullptr.
   static const char** StaticArgNames() {

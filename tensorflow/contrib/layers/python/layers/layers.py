@@ -55,9 +55,9 @@ from tensorflow.python.training import moving_averages
 # TODO(b/28426988): Replace legacy_* fns migrated from slim.
 # TODO(b/28426988): Remove legacy_* when all uses have migrated to new API.
 __all__ = [
-    'avg_pool2d', 'avg_pool3d', 'batch_norm', 'bias_add', 'conv2d', 'conv3d',
-    'conv2d_in_plane', 'conv2d_transpose', 'conv3d_transpose', 'convolution',
-    'convolution1d', 'convolution2d', 'convolution2d_in_plane',
+    'avg_pool2d', 'avg_pool3d', 'batch_norm', 'bias_add', 'conv1d', 'conv2d',
+    'conv3d', 'conv2d_in_plane', 'conv2d_transpose', 'conv3d_transpose',
+    'convolution', 'convolution1d', 'convolution2d', 'convolution2d_in_plane',
     'convolution2d_transpose', 'convolution3d', 'convolution3d_transpose',
     'dense_to_sparse', 'dropout', 'elu', 'flatten', 'fully_connected', 'GDN',
     'gdn', 'images_to_sequence', 'layer_norm', 'linear', 'pool', 'max_pool2d',
@@ -274,7 +274,7 @@ def _fused_batch_norm(inputs,
                        ' Expected 2 or 4 but got %d' % (inputs.name,
                                                         original_rank))
     if original_rank == 2:
-      channels = inputs.get_shape()[-1].value
+      channels = inputs.get_shape().dims[-1].value
       if channels is None:
         raise ValueError('`C` dimension must be known but is None')
       new_shape = [-1, 1, 1, channels]
@@ -692,7 +692,7 @@ def batch_norm(inputs,
       # explicitly reshape the params to params_shape_broadcast when computing
       # the moments and the batch normalization.
       params_shape_broadcast = list(
-          [1, inputs_shape[1].value] + [1 for _ in range(2, inputs_rank)])
+          [1, inputs_shape.dims[1].value] + [1 for _ in range(2, inputs_rank)])
     else:
       moments_axes = list(range(inputs_rank - 1))
       params_shape = inputs_shape[-1:]
@@ -890,7 +890,7 @@ def bias_add(inputs,
     elif inputs_rank != 4 and data_format == DATA_FORMAT_NCHW:
       raise ValueError('Data format NCHW only supports 4D Tensor')
     axis = 1 if data_format == DATA_FORMAT_NCHW else -1
-    num_features = inputs_shape[axis].value
+    num_features = inputs_shape.dims[axis].value
     if num_features is None:
       raise ValueError('`C` dimension must be known but is None')
     biases_collections = utils.get_variable_collections(variables_collections,
@@ -1584,7 +1584,7 @@ def dropout(inputs,
     outputs_collections: Collection to add the outputs.
     scope: Optional scope for name_scope.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed} for behavior.
+      `tf.set_random_seed` for behavior.
 
   Returns:
     A tensor representing the output of the operation.
@@ -1823,8 +1823,8 @@ def fully_connected(inputs,
     ValueError: If x has rank less than 2 or if its last dimension is not set.
   """
   if not isinstance(num_outputs, six.integer_types):
-    raise ValueError('num_outputs should be int or long, got %s.' %
-                     (num_outputs,))
+    raise ValueError('num_outputs type should be one of %s, got %s.' % (
+        list(six.integer_types), type(num_outputs)))
 
   layer_variable_getter = _build_variable_getter({
       'bias': 'biases',
@@ -2010,7 +2010,7 @@ class GDN(base.Layer):
   def build(self, input_shape):
     channel_axis = self._channel_axis()
     input_shape = tensor_shape.TensorShape(input_shape)
-    num_channels = input_shape[channel_axis].value
+    num_channels = input_shape.dims[channel_axis].value
     if num_channels is None:
       raise ValueError('The channel dimension of the inputs to `GDN` '
                        'must be defined.')
@@ -2100,7 +2100,7 @@ class GDN(base.Layer):
     input_shape = tensor_shape.TensorShape(input_shape)
     if not 3 <= input_shape.ndim <= 5:
       raise ValueError('`input_shape` must be of rank 3 to 5, inclusive.')
-    if input_shape[channel_axis].value is None:
+    if input_shape.dims[channel_axis].value is None:
       raise ValueError(
           'The channel dimension of `input_shape` must be defined.')
     return input_shape
@@ -2660,7 +2660,7 @@ def separable_convolution2d(
     inputs,
     num_outputs,
     kernel_size,
-    depth_multiplier,
+    depth_multiplier=1,
     stride=1,
     padding='SAME',
     data_format=DATA_FORMAT_NHWC,
@@ -2951,7 +2951,7 @@ def spatial_softmax(features,
       num_channels, height, width = static_shape[1], shape[2], shape[3]
     else:
       raise ValueError('data_format has to be either NCHW or NHWC.')
-    if num_channels.value is None:
+    if tensor_shape.dimension_value(num_channels) is None:
       raise ValueError('The num_channels dimension of the inputs to '
                        '`spatial_softmax` should be defined. Found `None`.')
 
@@ -2994,9 +2994,11 @@ def spatial_softmax(features,
       expected_y = math_ops.reduce_sum(
           pos_y * softmax_attention, [1], keepdims=True)
       expected_xy = array_ops.concat([expected_x, expected_y], 1)
-      feature_keypoints = array_ops.reshape(expected_xy,
-                                            [-1, num_channels.value * 2])
-      feature_keypoints.set_shape([None, num_channels.value * 2])
+      feature_keypoints = array_ops.reshape(
+          expected_xy,
+          [-1, tensor_shape.dimension_value(num_channels) * 2])
+      feature_keypoints.set_shape(
+          [None, tensor_shape.dimension_value(num_channels) * 2])
   return feature_keypoints
 
 
@@ -3109,7 +3111,7 @@ def maxout(inputs, num_units, axis=-1, scope=None):
     inputs: Tensor input
     num_units: Specifies how many features will remain after maxout
       in the `axis` dimension (usually channel).
-      This must be multiple of number of `axis`.
+      This must be a factor of number of features.
     axis: The dimension where max pooling will be performed. Default is the
     last dimension.
     scope: Optional scope for variable_scope.
@@ -3128,7 +3130,7 @@ def maxout(inputs, num_units, axis=-1, scope=None):
       raise ValueError('number of features({}) is not '
                        'a multiple of num_units({})'.format(
                            num_channels, num_units))
-    shape[axis] = -1
+    shape[axis] = num_units
     shape += [num_channels // num_units]
 
     # Dealing with batches with arbitrary sizes
@@ -3320,6 +3322,7 @@ relu6 = functools.partial(fully_connected, activation_fn=nn.relu6)
 linear = functools.partial(fully_connected, activation_fn=None)
 
 # Simple alias.
+conv1d = convolution1d
 conv2d = convolution2d
 conv3d = convolution3d
 conv2d_transpose = convolution2d_transpose

@@ -13,16 +13,12 @@
 # limitations under the License.
 # =============================================================================
 
-# pylint: disable=unused-import,g-bad-import-order
 """Contains the normalization layer classes and their functional aliases.
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
-import numpy as np
 
 from tensorflow.python.keras import layers as keras_layers
 from tensorflow.python.layers import base
@@ -30,7 +26,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('layers.BatchNormalization')
+@tf_export(v1=['layers.BatchNormalization'])
 class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
   """Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
@@ -158,7 +154,7 @@ class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
     return super(BatchNormalization, self).call(inputs, training=training)
 
 
-@tf_export('layers.batch_normalization')
+@tf_export(v1=['layers.batch_normalization'])
 def batch_normalization(inputs,
                         axis=-1,
                         momentum=0.99,
@@ -194,10 +190,10 @@ def batch_normalization(inputs,
 
   Note: when training, the moving_mean and moving_variance need to be updated.
   By default the update ops are placed in `tf.GraphKeys.UPDATE_OPS`, so they
-  need to be added as a dependency to the `train_op`. Also, be sure to add
-  any batch_normalization ops before getting the update_ops collection.
-  Otherwise, update_ops will be empty, and training/inference will not work
-  properly. For example:
+  need to be executed alongside the `train_op`. Also, be sure to add any
+  batch_normalization ops before getting the update_ops collection. Otherwise,
+  update_ops will be empty, and training/inference will not work properly. For
+  example:
 
   ```python
     x_norm = tf.layers.batch_normalization(x, training=training)
@@ -205,8 +201,8 @@ def batch_normalization(inputs,
     # ...
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-    with tf.control_dependencies(update_ops):
-      train_op = optimizer.minimize(loss)
+    train_op = optimizer.minimize(loss)
+    train_op = tf.group([train_op, update_ops])
   ```
 
   Arguments:

@@ -90,7 +90,7 @@ class SparseSoftmaxOp : public OpKernel {
     // { 0, ..., rank-1 }.
     const ArraySlice<int64> kReorderDims(dims);
     // All but the last dim -- the class dimension to be max-reduced along.
-    const ArraySlice<int64> kGroupByDims(kReorderDims, 0, rank - 1);
+    const ArraySlice<int64> kGroupByDims = kReorderDims.subspan(0, rank - 1);
     st.Reorder<T>(kReorderDims);
     int count = 0;
 

@@ -33,7 +33,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.function_keyword_renames = {}
 
     # Mapping from function to the new name of the function
-    self.function_renames = renames_v2.renames
+    self.symbol_renames = renames_v2.renames
+    # pylint: disable=line-too-long
+    # Add additional renames not in renames_v2.py here.
+    self.symbol_renames.update({
+    })
+    # pylint: enable=line-too-long
 
     # Variables that should be changed to functions.
     self.change_to_function = {}
@@ -45,6 +50,40 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
 
     # Specially handled functions.
     self.function_handle = {}
+
+    decay_function_comment = (
+        "ERROR: <function name> has been changed to return a callable instead "
+        "of a tensor when graph building, but its functionality remains "
+        "unchanged during eager execution (returns a callable like "
+        "before). The converter cannot detect and fix this reliably, so "
+        "you need to inspect this usage manually.\n"
+    )
+
+    # TODO(b/118888586): add default value change to update script.
+    default_loss_reduction_changed = (
+        "WARNING: default value of loss_reduction has been changed to "
+        "SUM_OVER_BATCH_SIZE.\n"
+    )
+
+    # Function warnings. <function name> placeholder inside warnings will be
+    # replaced by function name.
+    self.function_warnings = {
+        "tf.train.exponential_decay": decay_function_comment,
+        "tf.train.piecewise_constant": decay_function_comment,
+        "tf.train.polynomial_decay": decay_function_comment,
+        "tf.train.natural_exp_decay": decay_function_comment,
+        "tf.train.inverse_time_decay": decay_function_comment,
+        "tf.train.cosine_decay": decay_function_comment,
+        "tf.train.cosine_decay_restarts": decay_function_comment,
+        "tf.train.linear_cosine_decay": decay_function_comment,
+        "tf.train.noisy_linear_cosine_decay": decay_function_comment,
+        "tf.estimator.LinearClassifier": default_loss_reduction_changed,
+    }
+    # Right now we can't have both a rename and a warning.
+    self.symbol_renames = {
+        name: new_name for name, new_name in self.symbol_renames.items()
+        if name not in self.function_warnings
+    }
 
 
 if __name__ == "__main__":
@@ -96,10 +135,18 @@ Simple usage:
   report_filename = args.report_filename
   files_processed = 0
   if args.input_file:
+    if not args.output_file:
+      raise ValueError(
+          "--outfile=<output file> argument is required when converting a "
+          "single file.")
     files_processed, report_text, errors = upgrade.process_file(
         args.input_file, args.output_file)
     files_processed = 1
   elif args.input_tree:
+    if not args.output_tree:
+      raise ValueError(
+          "--outtree=<output directory> argument is required when converting a "
+          "file tree.")
     files_processed, report_text, errors = upgrade.process_tree(
         args.input_tree, args.output_tree, args.copy_other_files)
   else:

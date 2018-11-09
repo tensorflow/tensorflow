@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_ASSIGN_OP_H_
-#define TENSORFLOW_KERNELS_ASSIGN_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_ASSIGN_OP_H_
+#define TENSORFLOW_CORE_KERNELS_ASSIGN_OP_H_
 
 #define EIGEN_USE_THREADS
 
@@ -143,4 +143,4 @@ class AssignOp : public OpKernel {
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_ASSIGN_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_ASSIGN_OP_H_

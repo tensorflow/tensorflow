@@ -28,7 +28,6 @@ import six
 from tensorflow.contrib import layers
 from tensorflow.contrib.boosted_trees.estimator_batch import model
 from tensorflow.contrib.boosted_trees.estimator_batch import distillation_loss
-from tensorflow.contrib.boosted_trees.estimator_batch import estimator_utils
 from tensorflow.contrib.boosted_trees.estimator_batch import trainer_hooks
 from tensorflow.contrib.boosted_trees.python.ops import model_ops
 from tensorflow.contrib.boosted_trees.python.training.functions import gbdt_batch
@@ -86,7 +85,8 @@ def _dnn_tree_combined_model_fn(
     tree_center_bias=False,
     dnn_to_tree_distillation_param=None,
     use_core_versions=False,
-    output_type=model.ModelBuilderOutputType.MODEL_FN_OPS):
+    output_type=model.ModelBuilderOutputType.MODEL_FN_OPS,
+    override_global_step_value=None):
   """DNN and GBDT combined model_fn.
 
   Args:
@@ -135,6 +135,12 @@ def _dnn_tree_combined_model_fn(
       will be set to True.
     use_core_versions: Whether feature columns and loss are from the core (as
       opposed to contrib) version of tensorflow.
+    output_type: Whether to return ModelFnOps (old interface) or EstimatorSpec
+      (new interface).
+    override_global_step_value: If after the training is done, global step
+      value must be reset to this value. This is particularly useful for hyper
+      parameter tuning, which can't recognize early stopping due to the number
+      of trees. If None, no override of global step will happen.
 
   Returns:
     A `ModelFnOps` object.
@@ -163,6 +169,7 @@ def _dnn_tree_combined_model_fn(
   if (output_type == model.ModelBuilderOutputType.ESTIMATOR_SPEC and
       not use_core_versions):
     raise ValueError("You must use core versions with Estimator Spec")
+  global_step = training_util.get_global_step()
 
   with variable_scope.variable_scope(
       dnn_parent_scope,
@@ -184,46 +191,58 @@ def _dnn_tree_combined_model_fn(
             feature_columns=dnn_feature_columns,
             weight_collections=[dnn_parent_scope],
             scope=input_layer_scope)
-    previous_layer = input_layer
-    for layer_id, num_hidden_units in enumerate(dnn_hidden_units):
+    def dnn_logits_fn():
+      """Builds the logits from the input layer."""
+      previous_layer = input_layer
+      for layer_id, num_hidden_units in enumerate(dnn_hidden_units):
+        with variable_scope.variable_scope(
+            "hiddenlayer_%d" % layer_id,
+            values=(previous_layer,)) as hidden_layer_scope:
+          net = layers.fully_connected(
+              previous_layer,
+              num_hidden_units,
+              activation_fn=dnn_activation_fn,
+              variables_collections=[dnn_parent_scope],
+              scope=hidden_layer_scope)
+          if dnn_dropout is not None and mode == model_fn.ModeKeys.TRAIN:
+            net = layers.dropout(net, keep_prob=(1.0 - dnn_dropout))
+        _add_hidden_layer_summary(net, hidden_layer_scope.name)
+        previous_layer = net
       with variable_scope.variable_scope(
-          "hiddenlayer_%d" % layer_id,
-          values=(previous_layer,)) as hidden_layer_scope:
-        net = layers.fully_connected(
+          "logits", values=(previous_layer,)) as logits_scope:
+        dnn_logits = layers.fully_connected(
             previous_layer,
-            num_hidden_units,
-            activation_fn=dnn_activation_fn,
+            head.logits_dimension,
+            activation_fn=None,
             variables_collections=[dnn_parent_scope],
-            scope=hidden_layer_scope)
-        if dnn_dropout is not None and mode == model_fn.ModeKeys.TRAIN:
-          net = layers.dropout(net, keep_prob=(1.0 - dnn_dropout))
-      _add_hidden_layer_summary(net, hidden_layer_scope.name)
-      previous_layer = net
-    with variable_scope.variable_scope(
-        "logits", values=(previous_layer,)) as logits_scope:
-      dnn_logits = layers.fully_connected(
-          previous_layer,
-          head.logits_dimension,
-          activation_fn=None,
-          variables_collections=[dnn_parent_scope],
-          scope=logits_scope)
-    _add_hidden_layer_summary(dnn_logits, logits_scope.name)
-
-    def _dnn_train_op_fn(loss):
-      """Returns the op to optimize the loss."""
-      return optimizers.optimize_loss(
-          loss=loss,
-          global_step=training_util.get_global_step(),
-          learning_rate=_DNN_LEARNING_RATE,
-          optimizer=_get_optimizer(dnn_optimizer),
-          name=dnn_parent_scope,
-          variables=ops.get_collection(
-              ops.GraphKeys.TRAINABLE_VARIABLES, scope=dnn_parent_scope),
-          # Empty summaries to prevent optimizers from logging training_loss.
-          summaries=[])
+            scope=logits_scope)
+      _add_hidden_layer_summary(dnn_logits, logits_scope.name)
+      return dnn_logits
+    if predict_with_tree_only and mode == model_fn.ModeKeys.INFER:
+      dnn_logits = array_ops.constant(0.0)
+      dnn_train_op_fn = control_flow_ops.no_op
+    elif predict_with_tree_only and mode == model_fn.ModeKeys.EVAL:
+      dnn_logits = control_flow_ops.cond(
+          global_step > dnn_steps_to_train,
+          lambda: array_ops.constant(0.0),
+          dnn_logits_fn)
+      dnn_train_op_fn = control_flow_ops.no_op
+    else:
+      dnn_logits = dnn_logits_fn()
+      def dnn_train_op_fn(loss):
+        """Returns the op to optimize the loss."""
+        return optimizers.optimize_loss(
+            loss=loss,
+            global_step=training_util.get_global_step(),
+            learning_rate=_DNN_LEARNING_RATE,
+            optimizer=_get_optimizer(dnn_optimizer),
+            name=dnn_parent_scope,
+            variables=ops.get_collection(
+                ops.GraphKeys.TRAINABLE_VARIABLES, scope=dnn_parent_scope),
+            # Empty summaries to prevent optimizers from logging training_loss.
+            summaries=[])
 
   # Build Tree Logits.
-  global_step = training_util.get_global_step()
   with ops.device(global_step.device):
     ensemble_handle = model_ops.tree_ensemble_variable(
         stamp_token=0,
@@ -254,8 +273,13 @@ def _dnn_tree_combined_model_fn(
       """Returns the op to optimize the loss."""
       if dnn_to_tree_distillation_param:
         loss_weight, loss_fn = dnn_to_tree_distillation_param
-        weight_tensor = head_lib._weight_tensor(  # pylint: disable=protected-access
-            features, head.weight_column_name)
+        # pylint: disable=protected-access
+        if use_core_versions:
+          weight_tensor = head_lib._weight_tensor(features, head._weight_column)
+        else:
+          weight_tensor = head_lib._weight_tensor(
+              features, head.weight_column_name)
+        # pylint: enable=protected-access
         dnn_logits_fixed = array_ops.stop_gradient(dnn_logits)
 
         if loss_fn is None:
@@ -298,59 +322,34 @@ def _dnn_tree_combined_model_fn(
   finalized_trees, attempted_trees = gbdt_model.get_number_of_trees_tensor()
 
   if output_type == model.ModelBuilderOutputType.MODEL_FN_OPS:
-    if use_core_versions:
-      model_fn_ops = head.create_estimator_spec(
-          features=features,
-          mode=mode,
-          labels=labels,
-          train_op_fn=_no_train_op_fn,
-          logits=tree_train_logits)
-      dnn_train_op = head.create_estimator_spec(
-          features=features,
-          mode=mode,
-          labels=labels,
-          train_op_fn=_dnn_train_op_fn,
-          logits=dnn_logits)
-      dnn_train_op = estimator_utils.estimator_spec_to_model_fn_ops(
-          dnn_train_op).train_op
-
-      tree_train_op = head.create_estimator_spec(
-          features=tree_features,
-          mode=mode,
-          labels=labels,
-          train_op_fn=_tree_train_op_fn,
-          logits=tree_train_logits)
-      tree_train_op = estimator_utils.estimator_spec_to_model_fn_ops(
-          tree_train_op).train_op
-
-      model_fn_ops = estimator_utils.estimator_spec_to_model_fn_ops(
-          model_fn_ops)
-    else:
-      model_fn_ops = head.create_model_fn_ops(
-          features=features,
-          mode=mode,
-          labels=labels,
-          train_op_fn=_no_train_op_fn,
-          logits=tree_train_logits)
-      dnn_train_op = head.create_model_fn_ops(
-          features=features,
-          mode=mode,
-          labels=labels,
-          train_op_fn=_dnn_train_op_fn,
-          logits=dnn_logits).train_op
-      tree_train_op = head.create_model_fn_ops(
-          features=tree_features,
-          mode=mode,
-          labels=labels,
-          train_op_fn=_tree_train_op_fn,
-          logits=tree_train_logits).train_op
+    model_fn_ops = head.create_model_fn_ops(
+        features=features,
+        mode=mode,
+        labels=labels,
+        train_op_fn=_no_train_op_fn,
+        logits=tree_train_logits)
+    if mode != model_fn.ModeKeys.TRAIN:
+      return model_fn_ops
+    dnn_train_op = head.create_model_fn_ops(
+        features=features,
+        mode=mode,
+        labels=labels,
+        train_op_fn=dnn_train_op_fn,
+        logits=dnn_logits).train_op
+    tree_train_op = head.create_model_fn_ops(
+        features=tree_features,
+        mode=mode,
+        labels=labels,
+        train_op_fn=_tree_train_op_fn,
+        logits=tree_train_logits).train_op
 
     # Add the hooks
     model_fn_ops.training_hooks.extend([
         trainer_hooks.SwitchTrainOp(dnn_train_op, dnn_steps_to_train,
                                     tree_train_op),
         trainer_hooks.StopAfterNTrees(num_trees, attempted_trees,
-                                      finalized_trees)
+                                      finalized_trees,
+                                      override_global_step_value)
     ])
     return model_fn_ops
 
@@ -361,11 +360,13 @@ def _dnn_tree_combined_model_fn(
         labels=labels,
         train_op_fn=_no_train_op_fn,
         logits=tree_train_logits)
+    if mode != model_fn.ModeKeys.TRAIN:
+      return fusion_spec
     dnn_spec = head.create_estimator_spec(
         features=features,
         mode=mode,
         labels=labels,
-        train_op_fn=_dnn_train_op_fn,
+        train_op_fn=dnn_train_op_fn,
         logits=dnn_logits)
     tree_spec = head.create_estimator_spec(
         features=tree_features,
@@ -378,7 +379,8 @@ def _dnn_tree_combined_model_fn(
         trainer_hooks.SwitchTrainOp(dnn_spec.train_op, dnn_steps_to_train,
                                     tree_spec.train_op),
         trainer_hooks.StopAfterNTrees(num_trees, attempted_trees,
-                                      finalized_trees)
+                                      finalized_trees,
+                                      override_global_step_value)
     ]
     fusion_spec = fusion_spec._replace(training_hooks=training_hooks +
                                        list(fusion_spec.training_hooks))
@@ -411,7 +413,8 @@ class DNNBoostedTreeCombinedClassifier(estimator.Estimator):
                tree_feature_columns=None,
                tree_center_bias=False,
                dnn_to_tree_distillation_param=None,
-               use_core_versions=False):
+               use_core_versions=False,
+               override_global_step_value=None):
     """Initializes a DNNBoostedTreeCombinedClassifier instance.
 
     Args:
@@ -467,6 +470,10 @@ class DNNBoostedTreeCombinedClassifier(estimator.Estimator):
         will be set to True.
       use_core_versions: Whether feature columns and loss are from the core (as
         opposed to contrib) version of tensorflow.
+      override_global_step_value: If after the training is done, global step
+        value must be reset to this value. This is particularly useful for hyper
+        parameter tuning, which can't recognize early stopping due to the number
+        of trees. If None, no override of global step will happen.
     """
     head = head_lib.multi_class_head(
         n_classes=n_classes,
@@ -497,7 +504,8 @@ class DNNBoostedTreeCombinedClassifier(estimator.Estimator):
           tree_feature_columns=tree_feature_columns,
           tree_center_bias=tree_center_bias,
           dnn_to_tree_distillation_param=dnn_to_tree_distillation_param,
-          use_core_versions=use_core_versions)
+          use_core_versions=use_core_versions,
+          override_global_step_value=override_global_step_value)
 
     super(DNNBoostedTreeCombinedClassifier, self).__init__(
         model_fn=_model_fn,
@@ -531,7 +539,8 @@ class DNNBoostedTreeCombinedRegressor(estimator.Estimator):
                tree_feature_columns=None,
                tree_center_bias=False,
                dnn_to_tree_distillation_param=None,
-               use_core_versions=False):
+               use_core_versions=False,
+               override_global_step_value=None):
     """Initializes a DNNBoostedTreeCombinedRegressor instance.
 
     Args:
@@ -587,6 +596,10 @@ class DNNBoostedTreeCombinedRegressor(estimator.Estimator):
         will be set to True.
       use_core_versions: Whether feature columns and loss are from the core (as
         opposed to contrib) version of tensorflow.
+      override_global_step_value: If after the training is done, global step
+        value must be reset to this value. This is particularly useful for hyper
+        parameter tuning, which can't recognize early stopping due to the number
+        of trees. If None, no override of global step will happen.
     """
     head = head_lib.regression_head(
         label_name=label_name,
@@ -622,7 +635,8 @@ class DNNBoostedTreeCombinedRegressor(estimator.Estimator):
           tree_feature_columns=tree_feature_columns,
           tree_center_bias=tree_center_bias,
           dnn_to_tree_distillation_param=dnn_to_tree_distillation_param,
-          use_core_versions=use_core_versions)
+          use_core_versions=use_core_versions,
+          override_global_step_value=override_global_step_value)
 
     super(DNNBoostedTreeCombinedRegressor, self).__init__(
         model_fn=_model_fn,
@@ -657,7 +671,8 @@ class DNNBoostedTreeCombinedEstimator(estimator.Estimator):
                tree_feature_columns=None,
                tree_center_bias=False,
                dnn_to_tree_distillation_param=None,
-               use_core_versions=False):
+               use_core_versions=False,
+               override_global_step_value=None):
     """Initializes a DNNBoostedTreeCombinedEstimator instance.
 
     Args:
@@ -708,6 +723,10 @@ class DNNBoostedTreeCombinedEstimator(estimator.Estimator):
         will be set to True.
       use_core_versions: Whether feature columns and loss are from the core (as
         opposed to contrib) version of tensorflow.
+      override_global_step_value: If after the training is done, global step
+        value must be reset to this value. This is particularly useful for hyper
+        parameter tuning, which can't recognize early stopping due to the number
+        of trees. If None, no override of global step will happen.
     """
 
     def _model_fn(features, labels, mode, config):
@@ -732,7 +751,8 @@ class DNNBoostedTreeCombinedEstimator(estimator.Estimator):
           tree_feature_columns=tree_feature_columns,
           tree_center_bias=tree_center_bias,
           dnn_to_tree_distillation_param=dnn_to_tree_distillation_param,
-          use_core_versions=use_core_versions)
+          use_core_versions=use_core_versions,
+          override_global_step_value=override_global_step_value)
 
     super(DNNBoostedTreeCombinedEstimator, self).__init__(
         model_fn=_model_fn,
@@ -832,7 +852,8 @@ class CoreDNNBoostedTreeCombinedEstimator(core_estimator.Estimator):
           tree_center_bias=tree_center_bias,
           dnn_to_tree_distillation_param=dnn_to_tree_distillation_param,
           output_type=model.ModelBuilderOutputType.ESTIMATOR_SPEC,
-          use_core_versions=True)
+          use_core_versions=True,
+          override_global_step_value=None)
 
     super(CoreDNNBoostedTreeCombinedEstimator, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config)

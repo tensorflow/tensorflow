@@ -20,6 +20,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/eager/c_api.h"
 
 // --------------------------------------------------------------------------
 // Experimental C API for TensorFlow.
@@ -69,6 +70,12 @@ TF_CAPI_EXPORT extern void TF_EnableXLACompilation(TF_SessionOptions* options,
 TF_CAPI_EXPORT extern TF_Buffer* TF_CreateConfig(
     unsigned char enable_xla_compilation,
     unsigned char gpu_memory_allow_growth);
+
+// Create a serialized tensorflow.RunOptions proto, where RunOptions.trace_level
+// is set to FULL_TRACE if `enable_full_trace` is non-zero, and NO_TRACE
+// otherwise.
+TF_CAPI_EXPORT extern TF_Buffer* TF_CreateRunOptions(
+    unsigned char enable_full_trace);
 
 // Returns the graph content in a human-readable format, with length set in
 // `len`. The format is subject to change in the future.
@@ -124,6 +131,83 @@ TF_CAPI_EXPORT extern void TF_EnqueueNamedTensor(TF_Session* session,
                                                  int tensor_id,
                                                  TF_Tensor* tensor,
                                                  TF_Status* status);
+// Create a serialized tensorflow.ServerDef proto.
+TF_Buffer* TFE_GetServerDef(const char* text_proto, TF_Status* status);
+
+// TODO: remove this API in favor of the next one.
+TF_CAPI_EXPORT extern TFE_Context* TFE_NewContextFromSession(
+    const TFE_ContextOptions* opts, TF_Session* sess, TF_Status* status);
+
+// Creates from `session` a new eager context to run a graph function or
+// sends/recvs, so that these concurrent TFE executions can share (via
+// `session` and its associated device mgr) the same set of fifo queue resource
+// ops, used for host<->TF tensor transfers. This way the sends/recvs calls and
+// graph function execution can access the same fifo queue resource handles
+// (associated with devices managed by the device manager, which can be obtained
+// from `session`).
+//
+// TODO: Remove this function once we migrate away from using session.
+TF_CAPI_EXPORT extern TFE_Context* TFE_CreateContextFromSession(
+    TF_Session* session, TF_Status* status);
+
+// TODO: Retire this API in favor of the next one.
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_DequeueNamedTensor(
+    TF_Session* session, int tensor_id, TF_DataType inputType,
+    TF_Status* status);
+
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_DequeueNamedTensorFromCtx(
+    TFE_Context* ctx, int tensor_id, TF_DataType inputType, TF_Status* status);
+
+TF_CAPI_EXPORT extern void TFE_EnqueueNamedTensor(TF_Session* session,
+                                                  int tensor_id,
+                                                  TFE_TensorHandle* tensor,
+                                                  TF_Status* status);
+
+TF_CAPI_EXPORT extern void TFE_EnqueueNamedTensorFromCtx(
+    TFE_Context* ctx, int tensor_id, TFE_TensorHandle* tensor,
+    TF_Status* status);
+
+// TODO: consider folding the 2 APIs below into the ones above.
+TF_CAPI_EXPORT extern void TFE_EnqueueVariantTensor(TF_Session* session,
+                                                    int tensor_id,
+                                                    TFE_TensorHandle* tensor,
+                                                    TF_Status* status);
+
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_DequeueVariantTensor(
+    TF_Session* session, int tensor_id, TF_Status* status);
+
+// Prints `handle` in a human readable format to standard output for debugging.
+TF_CAPI_EXPORT extern void TFE_TensorHandlePrintDebugString(
+    TFE_TensorHandle* handle);
+
+TF_CAPI_EXPORT extern void TF_MakeInternalErrorStatus(TF_Status* status,
+                                                      const char* errMsg);
+
+// TF_NewAttrBuilder() returns an object that you can set attributes on as
+// though it were an op. This allows querying properties of that op for
+// type-checking purposes like if the op will run on a particular device type.
+typedef struct TF_AttrBuilder TF_AttrBuilder;
+TF_CAPI_EXPORT extern TF_AttrBuilder* TF_NewAttrBuilder(const char* op_name);
+TF_CAPI_EXPORT extern void TF_DeleteAttrBuilder(TF_AttrBuilder* builder);
+TF_CAPI_EXPORT extern void TF_AttrBuilderSetType(TF_AttrBuilder* builder,
+                                                 const char* attr_name,
+                                                 TF_DataType value);
+TF_CAPI_EXPORT extern void TF_AttrBuilderSetTypeList(TF_AttrBuilder* builder,
+                                                     const char* attr_name,
+                                                     const TF_DataType* values,
+                                                     int num_values);
+
+// Checks the tensorflow::NodeDef built via the methods above to see if it can
+// run on device_type.
+TF_CAPI_EXPORT extern void TF_AttrBuilderCheckCanRunOnDevice(
+    TF_AttrBuilder* builder, const char* device_type, TF_Status* status);
+
+// For argument number input_index, fetch the corresponding number_attr that
+// needs to be updated with the argument length of the input list.
+// Returns nullptr if there is any problem like op_name is not found, or the
+// argument does not support this attribute type.
+TF_CAPI_EXPORT extern const char* TF_GetNumberAttrForOpListInput(
+    const char* op_name, int input_index, TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

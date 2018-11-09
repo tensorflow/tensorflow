@@ -18,19 +18,18 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
-
-using ::tensorflow::strings::Appendf;
 
 ShapedBuffer::ShapedBuffer(const Shape& on_host_shape,
                            const Shape& on_device_shape,
@@ -76,7 +75,7 @@ void ShapedBuffer::clear() {
 }
 
 string ShapedBuffer::ToString() const {
-  string s = tensorflow::strings::StrCat(
+  string s = absl::StrCat(
       "ShapedBuffer(", platform_->Name(), ":", device_ordinal(),
       "), on-host shape=" + ShapeUtil::HumanStringWithLayout(on_host_shape()),
       ", on-device shape=" +
@@ -92,9 +91,9 @@ string ShapedBuffer::ToString() const {
           shape_str = ShapeUtil::HumanStringWithLayout(subshape);
         }
         const se::DeviceMemoryBase& memory = buffer(index);
-        Appendf(&s, "  %s%p (%lld bytes) : %s\n",
-                string(index.size() * 2, ' ').c_str(), memory.opaque(),
-                memory.size(), shape_str.c_str());
+        absl::StrAppendFormat(&s, "  %s%p (%d bytes) : %s\n",
+                              string(index.size() * 2, ' '), memory.opaque(),
+                              memory.size(), shape_str);
       });
   return s;
 }
@@ -148,7 +147,7 @@ void ScopedShapedBuffer::Deallocate() {
   // Deallocate all non-null buffers. A buffer may appear in more than one spot
   // in the shape (eg, a tuple with a repeated element) so keep track of what
   // has been deallocated.
-  tensorflow::gtl::FlatSet<void*> deallocated_ptrs;
+  absl::flat_hash_set<void*> deallocated_ptrs;
   for (auto& pair : buffers_) {
     se::DeviceMemoryBase& memory_base = pair.second;
     if (!memory_base.is_null() &&
@@ -156,6 +155,25 @@ void ScopedShapedBuffer::Deallocate() {
       TF_CHECK_OK(allocator_->Deallocate(device_ordinal(), memory_base));
     }
   }
+}
+
+ScopedShapedBuffer ScopedShapedBuffer::TakeSubTree(ShapeIndexView index) {
+  const xla::Shape& sub_on_host_shape =
+      xla::ShapeUtil::GetSubshape(on_host_shape(), {index});
+  const xla::Shape& sub_on_device_shape =
+      xla::ShapeUtil::GetSubshape(on_device_shape(), {index});
+
+  ScopedShapedBuffer output(sub_on_host_shape, sub_on_device_shape,
+                            memory_allocator(), device_ordinal());
+  auto src_it = buffers().find(index);
+  auto dst_it = output.buffers().begin();
+  while (dst_it != output.buffers().end()) {
+    dst_it->second = src_it->second;
+    src_it->second = tensorflow::se::DeviceMemoryBase(nullptr, 0);
+    ++src_it;
+    ++dst_it;
+  }
+  return output;
 }
 
 }  // namespace xla

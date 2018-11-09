@@ -22,8 +22,10 @@ from tensorflow.contrib.boosted_trees.estimator_batch import model
 from tensorflow.contrib.boosted_trees.python.utils import losses
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
+from tensorflow.python.estimator.canned import head as core_head_lib
 from tensorflow.python.estimator import estimator as core_estimator
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.losses import losses as core_losses
 
 
 # ================== Old estimator interface===================================
@@ -49,7 +51,9 @@ class GradientBoostedDecisionTreeClassifier(estimator.Estimator):
                logits_modifier_function=None,
                center_bias=True,
                use_core_libs=False,
-               output_leaf_index=False):
+               output_leaf_index=False,
+               override_global_step_value=None,
+               num_quantiles=100):
     """Initializes a GradientBoostedDecisionTreeClassifier estimator instance.
 
     Args:
@@ -83,6 +87,15 @@ class GradientBoostedDecisionTreeClassifier(estimator.Estimator):
         for result_dict in result_iter:
           # access leaf index list by result_dict["leaf_index"]
           # which contains one leaf index per tree
+      override_global_step_value: If after the training is done, global step
+        value must be reset to this value. This should be used to reset global
+        step to a number > number of steps used to train the current ensemble.
+        For example, the usual way is to train a number of trees and set a very
+        large number of training steps. When the training is done (number of
+        trees were trained), this parameter can be used to set the global step
+        to a large value, making it look like that number of training steps ran.
+        If None, no override of global step will happen.
+      num_quantiles: Number of quantiles to build for numeric feature values.
 
     Raises:
       ValueError: If learner_config is not valid.
@@ -123,6 +136,8 @@ class GradientBoostedDecisionTreeClassifier(estimator.Estimator):
             'logits_modifier_function': logits_modifier_function,
             'use_core_libs': use_core_libs,
             'output_leaf_index': output_leaf_index,
+            'override_global_step_value': override_global_step_value,
+            'num_quantiles': num_quantiles,
         },
         model_dir=model_dir,
         config=config,
@@ -146,7 +161,9 @@ class GradientBoostedDecisionTreeRegressor(estimator.Estimator):
                logits_modifier_function=None,
                center_bias=True,
                use_core_libs=False,
-               output_leaf_index=False):
+               output_leaf_index=False,
+               override_global_step_value=None,
+               num_quantiles=100):
     """Initializes a GradientBoostedDecisionTreeRegressor estimator instance.
 
     Args:
@@ -180,6 +197,15 @@ class GradientBoostedDecisionTreeRegressor(estimator.Estimator):
         for example_prediction_result in result_dict:
           # access leaf index list by example_prediction_result["leaf_index"]
           # which contains one leaf index per tree
+      override_global_step_value: If after the training is done, global step
+        value must be reset to this value. This should be used to reset global
+        step to a number > number of steps used to train the current ensemble.
+        For example, the usual way is to train a number of trees and set a very
+        large number of training steps. When the training is done (number of
+        trees were trained), this parameter can be used to set the global step
+        to a large value, making it look like that number of training steps ran.
+        If None, no override of global step will happen.
+      num_quantiles: Number of quantiles to build for numeric feature values.
     """
     head = head_lib.regression_head(
         label_name=label_name,
@@ -203,6 +229,8 @@ class GradientBoostedDecisionTreeRegressor(estimator.Estimator):
             'center_bias': center_bias,
             'use_core_libs': use_core_libs,
             'output_leaf_index': False,
+            'override_global_step_value': override_global_step_value,
+            'num_quantiles': num_quantiles,
         },
         model_dir=model_dir,
         config=config,
@@ -228,7 +256,9 @@ class GradientBoostedDecisionTreeEstimator(estimator.Estimator):
                logits_modifier_function=None,
                center_bias=True,
                use_core_libs=False,
-               output_leaf_index=False):
+               output_leaf_index=False,
+               override_global_step_value=None,
+               num_quantiles=100):
     """Initializes a GradientBoostedDecisionTreeEstimator estimator instance.
 
     Args:
@@ -258,6 +288,15 @@ class GradientBoostedDecisionTreeEstimator(estimator.Estimator):
         for example_prediction_result in result_dict:
           # access leaf index list by example_prediction_result["leaf_index"]
           # which contains one leaf index per tree
+      override_global_step_value: If after the training is done, global step
+        value must be reset to this value. This should be used to reset global
+        step to a number > number of steps used to train the current ensemble.
+        For example, the usual way is to train a number of trees and set a very
+        large number of training steps. When the training is done (number of
+        trees were trained), this parameter can be used to set the global step
+        to a large value, making it look like that number of training steps ran.
+        If None, no override of global step will happen.
+      num_quantiles: Number of quantiles to build for numeric feature values.
     """
     super(GradientBoostedDecisionTreeEstimator, self).__init__(
         model_fn=model.model_builder,
@@ -272,6 +311,8 @@ class GradientBoostedDecisionTreeEstimator(estimator.Estimator):
             'center_bias': center_bias,
             'use_core_libs': use_core_libs,
             'output_leaf_index': False,
+            'override_global_step_value': override_global_step_value,
+            'num_quantiles': num_quantiles,
         },
         model_dir=model_dir,
         config=config,
@@ -281,24 +322,24 @@ class GradientBoostedDecisionTreeEstimator(estimator.Estimator):
 class GradientBoostedDecisionTreeRanker(estimator.Estimator):
   """A ranking estimator using gradient boosted decision trees."""
 
-  def __init__(
-      self,
-      learner_config,
-      examples_per_layer,
-      head,
-      ranking_model_pair_keys,
-      num_trees=None,
-      feature_columns=None,
-      weight_column_name=None,
-      model_dir=None,
-      config=None,
-      label_keys=None,
-      feature_engineering_fn=None,
-      logits_modifier_function=None,
-      center_bias=False,
-      use_core_libs=False,
-      output_leaf_index=False,
-  ):
+  def __init__(self,
+               learner_config,
+               examples_per_layer,
+               head,
+               ranking_model_pair_keys,
+               num_trees=None,
+               feature_columns=None,
+               weight_column_name=None,
+               model_dir=None,
+               config=None,
+               label_keys=None,
+               feature_engineering_fn=None,
+               logits_modifier_function=None,
+               center_bias=False,
+               use_core_libs=False,
+               output_leaf_index=False,
+               override_global_step_value=None,
+               num_quantiles=100):
     """Initializes a GradientBoostedDecisionTreeRanker instance.
 
     This is an estimator that can be trained off the pairwise data and can be
@@ -338,6 +379,15 @@ class GradientBoostedDecisionTreeRanker(estimator.Estimator):
         for result_dict in result_iter:
           # access leaf index list by result_dict["leaf_index"]
           # which contains one leaf index per tree
+      override_global_step_value: If after the training is done, global step
+        value must be reset to this value. This should be used to reset global
+        step to a number > number of steps used to train the current ensemble.
+        For example, the usual way is to train a number of trees and set a very
+        large number of training steps. When the training is done (number of
+        trees were trained), this parameter can be used to set the global step
+        to a large value, making it look like that number of training steps ran.
+        If None, no override of global step will happen.
+      num_quantiles: Number of quantiles to build for numeric feature values.
 
     Raises:
       ValueError: If learner_config is not valid.
@@ -357,6 +407,8 @@ class GradientBoostedDecisionTreeRanker(estimator.Estimator):
             'use_core_libs': use_core_libs,
             'output_leaf_index': output_leaf_index,
             'ranking_model_pair_keys': ranking_model_pair_keys,
+            'override_global_step_value': override_global_step_value,
+            'num_quantiles': num_quantiles,
         },
         model_dir=model_dir,
         config=config,
@@ -365,6 +417,30 @@ class GradientBoostedDecisionTreeRanker(estimator.Estimator):
 # ================== New Estimator interface===================================
 # The estimators below use new core Estimator interface and must be used with
 # new feature columns and heads.
+
+
+# For multiclass classification, use the following head since it uses loss
+# that is twice differentiable.
+def core_multiclass_head(
+    n_classes,
+    weight_column=None,
+    loss_reduction=core_losses.Reduction.SUM_OVER_NONZERO_WEIGHTS):
+  """Core head for multiclass problems."""
+
+  def loss_fn(labels, logits):
+    result = losses.per_example_maxent_loss(
+        labels=labels,
+        logits=logits,
+        weights=weight_column,
+        num_classes=n_classes)
+    return result[0]
+
+  # pylint:disable=protected-access
+  head_fn = core_head_lib._multi_class_head_with_softmax_cross_entropy_loss(
+      n_classes=n_classes, loss_fn=loss_fn, loss_reduction=loss_reduction)
+  # pylint:enable=protected-access
+
+  return head_fn
 
 
 class CoreGradientBoostedDecisionTreeEstimator(core_estimator.Estimator):
@@ -386,7 +462,8 @@ class CoreGradientBoostedDecisionTreeEstimator(core_estimator.Estimator):
                feature_engineering_fn=None,
                logits_modifier_function=None,
                center_bias=True,
-               output_leaf_index=False):
+               output_leaf_index=False,
+               num_quantiles=100):
     """Initializes a core version of GradientBoostedDecisionTreeEstimator.
 
     Args:
@@ -416,6 +493,7 @@ class CoreGradientBoostedDecisionTreeEstimator(core_estimator.Estimator):
         for example_prediction_result in result_dict:
           # access leaf index list by example_prediction_result["leaf_index"]
           # which contains one leaf index per tree
+      num_quantiles: Number of quantiles to build for numeric feature values.
     """
 
     def _model_fn(features, labels, mode, config):
@@ -435,6 +513,8 @@ class CoreGradientBoostedDecisionTreeEstimator(core_estimator.Estimator):
               'logits_modifier_function': logits_modifier_function,
               'use_core_libs': True,
               'output_leaf_index': output_leaf_index,
+              'override_global_step_value': None,
+              'num_quantiles': num_quantiles,
           },
           output_type=model.ModelBuilderOutputType.ESTIMATOR_SPEC)
 
@@ -445,22 +525,21 @@ class CoreGradientBoostedDecisionTreeEstimator(core_estimator.Estimator):
 class CoreGradientBoostedDecisionTreeRanker(core_estimator.Estimator):
   """A ranking estimator using gradient boosted decision trees."""
 
-  def __init__(
-      self,
-      learner_config,
-      examples_per_layer,
-      head,
-      ranking_model_pair_keys,
-      num_trees=None,
-      feature_columns=None,
-      weight_column_name=None,
-      model_dir=None,
-      config=None,
-      label_keys=None,
-      logits_modifier_function=None,
-      center_bias=False,
-      output_leaf_index=False,
-  ):
+  def __init__(self,
+               learner_config,
+               examples_per_layer,
+               head,
+               ranking_model_pair_keys,
+               num_trees=None,
+               feature_columns=None,
+               weight_column_name=None,
+               model_dir=None,
+               config=None,
+               label_keys=None,
+               logits_modifier_function=None,
+               center_bias=False,
+               output_leaf_index=False,
+               num_quantiles=100):
     """Initializes a GradientBoostedDecisionTreeRanker instance.
 
     This is an estimator that can be trained off the pairwise data and can be
@@ -495,6 +574,7 @@ class CoreGradientBoostedDecisionTreeRanker(core_estimator.Estimator):
         for result_dict in result_iter:
           # access leaf index list by result_dict["leaf_index"]
           # which contains one leaf index per tree
+      num_quantiles: Number of quantiles to build for numeric feature values.
 
     Raises:
       ValueError: If learner_config is not valid.
@@ -519,6 +599,8 @@ class CoreGradientBoostedDecisionTreeRanker(core_estimator.Estimator):
               'use_core_libs': True,
               'output_leaf_index': output_leaf_index,
               'ranking_model_pair_keys': ranking_model_pair_keys,
+              'override_global_step_value': None,
+              'num_quantiles': num_quantiles,
           },
           output_type=model.ModelBuilderOutputType.ESTIMATOR_SPEC)
 

@@ -22,8 +22,10 @@ import abc
 import contextlib
 
 import numpy as np
+import six
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -39,6 +41,7 @@ __all__ = ["LinearOperator"]
 
 # TODO(langmore) Use matrix_solve_ls for singular or non-square matrices.
 @tf_export("linalg.LinearOperator")
+@six.add_metaclass(abc.ABCMeta)
 class LinearOperator(object):
   """Base class defining a [batch of] linear operator[s].
 
@@ -139,7 +142,6 @@ class LinearOperator(object):
   * If `is_X == None` (the default), callers should have no expectation either
     way.
   """
-  __metaclass__ = abc.ABCMeta
 
   def __init__(self,
                dtype,
@@ -397,8 +399,9 @@ class LinearOperator(object):
     # Derived classes get this "for free" once .shape() is implemented.
     with self._name_scope(name):
       # Prefer to use statically defined shape if available.
-      if self.domain_dimension.value is not None:
-        return ops.convert_to_tensor(self.domain_dimension.value)
+      dim_value = tensor_shape.dimension_value(self.domain_dimension)
+      if dim_value is not None:
+        return ops.convert_to_tensor(dim_value)
       else:
         return self.shape_tensor()[-1]
 
@@ -413,7 +416,10 @@ class LinearOperator(object):
       `Dimension` object.
     """
     # Derived classes get this "for free" once .shape is implemented.
-    return self.shape[-2]
+    if self.shape.dims:
+      return self.shape.dims[-2]
+    else:
+      return tensor_shape.Dimension(None)
 
   def range_dimension_tensor(self, name="range_dimension_tensor"):
     """Dimension (in the sense of vector spaces) of the range of this operator.
@@ -432,8 +438,9 @@ class LinearOperator(object):
     # Derived classes get this "for free" once .shape() is implemented.
     with self._name_scope(name):
       # Prefer to use statically defined shape if available.
-      if self.range_dimension.value is not None:
-        return ops.convert_to_tensor(self.range_dimension.value)
+      dim_value = tensor_shape.dimension_value(self.range_dimension)
+      if dim_value is not None:
+        return ops.convert_to_tensor(dim_value)
       else:
         return self.shape_tensor()[-2]
 
@@ -590,7 +597,9 @@ class LinearOperator(object):
 
       self_dim = -2 if adjoint else -1
       arg_dim = -1 if adjoint_arg else -2
-      self.shape[self_dim].assert_is_compatible_with(x.get_shape()[arg_dim])
+      tensor_shape.dimension_at_index(
+          self.shape, self_dim).assert_is_compatible_with(
+              x.get_shape()[arg_dim])
 
       return self._matmul(x, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
@@ -630,7 +639,8 @@ class LinearOperator(object):
       x = ops.convert_to_tensor(x, name="x")
       self._check_input_dtype(x)
       self_dim = -2 if adjoint else -1
-      self.shape[self_dim].assert_is_compatible_with(x.get_shape()[-1])
+      tensor_shape.dimension_at_index(
+          self.shape, self_dim).assert_is_compatible_with(x.get_shape()[-1])
       return self._matvec(x, adjoint=adjoint)
 
   def _determinant(self):
@@ -759,7 +769,9 @@ class LinearOperator(object):
 
       self_dim = -1 if adjoint else -2
       arg_dim = -1 if adjoint_arg else -2
-      self.shape[self_dim].assert_is_compatible_with(rhs.get_shape()[arg_dim])
+      tensor_shape.dimension_at_index(
+          self.shape, self_dim).assert_is_compatible_with(
+              rhs.get_shape()[arg_dim])
 
       return self._solve(rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
@@ -812,7 +824,9 @@ class LinearOperator(object):
       rhs = ops.convert_to_tensor(rhs, name="rhs")
       self._check_input_dtype(rhs)
       self_dim = -1 if adjoint else -2
-      self.shape[self_dim].assert_is_compatible_with(rhs.get_shape()[-1])
+      tensor_shape.dimension_at_index(
+          self.shape, self_dim).assert_is_compatible_with(
+              rhs.get_shape()[-1])
 
       return self._solvevec(rhs, adjoint=adjoint)
 
@@ -825,8 +839,9 @@ class LinearOperator(object):
     else:
       batch_shape = self.batch_shape_tensor()
 
-    if self.domain_dimension.value is not None:
-      n = self.domain_dimension.value
+    dim_value = tensor_shape.dimension_value(self.domain_dimension)
+    if dim_value is not None:
+      n = dim_value
     else:
       n = self.domain_dimension_tensor()
 

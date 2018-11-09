@@ -42,38 +42,38 @@ def _SparseToDense(sparse_indices,
 class SparseToDenseTest(test.TestCase):
 
   def testInt(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       tf_ans = _SparseToDense([1, 3], [5], 1, 0).eval()
     np_ans = np.array([0, 1, 0, 1, 0]).astype(np.int32)
     self.assertAllClose(np_ans, tf_ans)
 
   def testFloat(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       tf_ans = _SparseToDense([1, 3], [5], 1.0, 0.0).eval()
     np_ans = np.array([0, 1, 0, 1, 0]).astype(np.float32)
     self.assertAllClose(np_ans, tf_ans)
 
   def testString(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       tf_ans = _SparseToDense([1, 3], [5], "a", "b").eval()
     np_ans = np.array(["b", "a", "b", "a", "b"]).astype(np.string_)
     self.assertAllEqual(np_ans, tf_ans)
 
   def testSetValue(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       tf_ans = _SparseToDense([1, 3], [5], [1, 2], -1).eval()
     np_ans = np.array([-1, 1, -1, 2, -1]).astype(np.int32)
     self.assertAllClose(np_ans, tf_ans)
 
   def testSetSingleValue(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       tf_ans = _SparseToDense([1, 3], [5], 1, -1).eval()
     np_ans = np.array([-1, 1, -1, 1, -1]).astype(np.int32)
     self.assertAllClose(np_ans, tf_ans)
 
   def test2d(self):
     # pylint: disable=bad-whitespace
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       tf_ans = _SparseToDense([[1, 3], [2, 0]], [3, 4], 1, -1).eval()
     np_ans = np.array([[-1, -1, -1, -1],
                        [-1, -1, -1,  1],
@@ -81,12 +81,12 @@ class SparseToDenseTest(test.TestCase):
     self.assertAllClose(np_ans, tf_ans)
 
   def testZeroDefault(self):
-    with self.test_session():
+    with self.cached_session():
       x = sparse_ops.sparse_to_dense(2, [4], 7).eval()
       self.assertAllEqual(x, [0, 0, 7, 0])
 
   def test3d(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       tf_ans = _SparseToDense([[1, 3, 0], [2, 0, 1]], [3, 4, 2], 1, -1).eval()
     np_ans = np.ones((3, 4, 2), dtype=np.int32) * -1
     np_ans[1, 3, 0] = 1
@@ -94,12 +94,12 @@ class SparseToDenseTest(test.TestCase):
     self.assertAllClose(np_ans, tf_ans)
 
   def testBadShape(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesWithPredicateMatch(ValueError, "must be rank 1"):
         _SparseToDense([1, 3], [[5], [3]], 1, -1)
 
   def testBadValue(self):
-    with self.test_session():
+    with self.cached_session():
       dense = _SparseToDense([1, 3], [5], [[5], [3]], -1)
       with self.assertRaisesOpError(
           r"sparse_values has incorrect shape \[2,1\], "
@@ -107,20 +107,20 @@ class SparseToDenseTest(test.TestCase):
         dense.eval()
 
   def testBadNumValues(self):
-    with self.test_session():
+    with self.cached_session():
       dense = _SparseToDense([1, 3], [5], [1, 2, 3], -1)
       with self.assertRaisesOpError(
           r"sparse_values has incorrect shape \[3\], should be \[\] or \[2\]"):
         dense.eval()
 
   def testBadDefault(self):
-    with self.test_session():
+    with self.cached_session():
       dense = _SparseToDense([1, 3], [5], [1, 2], [0])
       with self.assertRaisesOpError("default_value should be a scalar"):
         dense.eval()
 
   def testOutOfBoundsIndicesWithWithoutValidation(self):
-    with self.test_session():
+    with self.cached_session():
       dense = _SparseToDense(
           sparse_indices=[[1], [10]],
           output_size=[5],
@@ -140,7 +140,7 @@ class SparseToDenseTest(test.TestCase):
         dense_without_validation.eval()
 
   def testRepeatingIndicesWithWithoutValidation(self):
-    with self.test_session():
+    with self.cached_session():
       dense = _SparseToDense(
           sparse_indices=[[1], [1]],
           output_size=[5],
@@ -158,7 +158,7 @@ class SparseToDenseTest(test.TestCase):
       dense_without_validation.eval()
 
   def testUnsortedIndicesWithWithoutValidation(self):
-    with self.test_session():
+    with self.cached_session():
       dense = _SparseToDense(
           sparse_indices=[[2], [1]],
           output_size=[5],
@@ -176,7 +176,7 @@ class SparseToDenseTest(test.TestCase):
       dense_without_validation.eval()
 
   def testShapeInferenceKnownShape(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       indices = array_ops.placeholder(dtypes.int64)
 
       shape = [4, 5, 6]
@@ -188,7 +188,7 @@ class SparseToDenseTest(test.TestCase):
       self.assertEqual(output.get_shape().as_list(), [None, None, None])
 
   def testShapeInferenceUnknownShape(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       indices = array_ops.placeholder(dtypes.int64)
       shape = array_ops.placeholder(dtypes.int64)
       output = sparse_ops.sparse_to_dense(indices, shape, 1, 0)

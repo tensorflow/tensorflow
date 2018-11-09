@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import collections
 import copy
-import os
 import re
 import sys
 import threading
@@ -44,6 +43,7 @@ from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import registry
@@ -55,8 +55,10 @@ from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lock_util
+from tensorflow.python.util import memory
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_stack
 from tensorflow.python.util.deprecation import deprecated_args
@@ -66,7 +68,7 @@ from tensorflow.python.util.tf_export import tf_export
 # Temporary global switches determining if we should enable the work-in-progress
 # calls to the C API. These will be removed once all functionality is supported.
 _USE_C_API = True
-_USE_C_SHAPES = os.getenv("TF_C_API_GRAPH_CONSTRUCTION_SHAPES", "1") != "0"
+_USE_C_SHAPES = True
 
 
 def tensor_id(tensor):
@@ -99,7 +101,7 @@ class _UserDeviceSpec(object):
       self.function = pydev.merge_device(self._device_name_or_function)
 
 
-class _NullContextmanager(object):
+class NullContextmanager(object):
 
   def __enter__(self):
     pass
@@ -228,7 +230,7 @@ class Tensor(_TensorLike):
   A `Tensor` is a symbolic handle to one of the outputs of an
   `Operation`. It does not hold the values of that operation's output,
   but instead provides a means of computing those values in a
-  TensorFlow @{tf.Session}.
+  TensorFlow `tf.Session`.
 
   This class has two primary purposes:
 
@@ -239,7 +241,7 @@ class Tensor(_TensorLike):
 
   2. After the graph has been launched in a session, the value of the
      `Tensor` can be computed by passing it to
-     @{tf.Session.run}.
+     `tf.Session.run`.
      `t.eval()` is a shortcut for calling
      `tf.get_default_session().run(t)`.
 
@@ -317,6 +319,9 @@ class Tensor(_TensorLike):
     self._value_index = value_index
     self._dtype = dtypes.as_dtype(dtype)
 
+    # This will be set by self._as_tf_output().
+    self._tf_output = None
+
     # This will be set by self.shape().
     self._shape_val = None
 
@@ -364,7 +369,7 @@ class Tensor(_TensorLike):
 
     The shape is computed using shape inference functions that are
     registered in the Op for each `Operation`.  See
-    @{tf.TensorShape}
+    `tf.TensorShape`
     for more details of what a shape represents.
 
     The inferred shape of a tensor is used to provide shape
@@ -454,7 +459,7 @@ class Tensor(_TensorLike):
   def __iter__(self):
     if not context.executing_eagerly():
       raise TypeError(
-          "Tensor objects are not iterable when eager execution is not "
+          "Tensor objects are only iterable when eager execution is "
           "enabled. To iterate over this tensor use tf.map_fn.")
     shape = self._shape_tuple()
     if shape is None:
@@ -514,6 +519,11 @@ class Tensor(_TensorLike):
     print(image.shape)
     ==> TensorShape([Dimension(28), Dimension(28), Dimension(3)])
     ```
+
+    NOTE: This shape is not enforced at runtime. Setting incorrect shapes can
+    result in inconsistencies between the statically-known graph and the runtime
+    value of tensors. For runtime validation of the shape, use `tf.ensure_shape`
+    instead.
 
     Args:
       shape: A `TensorShape` representing the shape of this tensor, a
@@ -594,7 +604,13 @@ class Tensor(_TensorLike):
 
   def _as_tf_output(self):
     # pylint: disable=protected-access
-    return c_api_util.tf_output(self.op._c_op, self.value_index)
+    # NOTE: Beyond preventing unnecessary (re-)allocation, the cached object
+    # also guarantees that a dictionary of tf_output objects will retain a
+    # deterministic (yet unsorted) order which prevents memory blowup in the
+    # cache of executor(s) stored for every session.
+    if self._tf_output is None:
+      self._tf_output = c_api_util.tf_output(self.op._c_op, self.value_index)
+    return self._tf_output
     # pylint: enable=protected-access
 
   def __str__(self):
@@ -694,7 +710,7 @@ class Tensor(_TensorLike):
 
     Args:
       feed_dict: A dictionary that maps `Tensor` objects to feed values.
-        See @{tf.Session.run} for a
+        See `tf.Session.run` for a
         description of the valid feed values.
       session: (Optional.) The `Session` to be used to evaluate this tensor. If
         none, the default session will be used.
@@ -752,6 +768,9 @@ class _EagerTensorBase(Tensor):
   def __format__(self, format_spec):
     return self.numpy().__format__(format_spec)
 
+  def __reduce__(self):
+    return (convert_to_tensor, (self.numpy(),))
+
   def _numpy(self):
     raise NotImplementedError()
 
@@ -791,6 +810,19 @@ class _EagerTensorBase(Tensor):
 
     Returns:
       Integer rank
+    """
+    raise NotImplementedError()
+
+  def _num_elements(self):
+    """Number of elements of this Tensor.
+
+    Unlike regular Tensors, the number of elements is always known for
+    EagerTensors.
+
+    This is more performant than tensor.shape.num_elements
+
+    Returns:
+      Long - num elements in the tensor
     """
     raise NotImplementedError()
 
@@ -1036,7 +1068,8 @@ def internal_convert_to_tensor(value,
                                name=None,
                                as_ref=False,
                                preferred_dtype=None,
-                               ctx=None):
+                               ctx=None,
+                               accept_symbolic_tensors=True):
   """Converts the given `value` to an `Tensor`.
 
   This function converts Python objects of various types to `Tensor`
@@ -1060,6 +1093,10 @@ def internal_convert_to_tensor(value,
       can be used as a soft preference.  If the conversion to
       `preferred_dtype` is not possible, this argument has no effect.
     ctx: Optional: The value of context.context().
+    accept_symbolic_tensors: Whether Keras graph tensors should be accepted as
+      a valid tensor type during eager execution.
+      If False, this function will raise an exception if it is passed such
+      a tensor during eager eager execution.
 
   Returns:
     A `Tensor` based on `value`.
@@ -1083,6 +1120,19 @@ def internal_convert_to_tensor(value,
         raise RuntimeError("Attempting to capture an EagerTensor without "
                            "building a function.")
       return graph.capture(value, name=name)
+  elif ((not accept_symbolic_tensors) and
+        isinstance(value, Tensor) and
+        ctx.executing_eagerly()):
+    # Found a symbolic tensor in an eager context.
+    # This happens when we use the Keras functional API (i.e. calling layers
+    # on the output of `keras.Input()`, which is symbolic) while eager
+    # execution is enabled.
+    if _is_keras_symbolic_tensor(value):
+      # If the graph of the tensor isn't the Keras graph, we should still
+      # fail, for the time being. TODO(fchollet): consider allowing
+      # all symbolic tensors to raise this exception in this case.
+      raise core._SymbolicException(  # pylint: disable=protected-access
+          "Using the symbolic output of a Keras layer during eager execution.")
 
   if dtype is not None:
     dtype = dtypes.as_dtype(dtype)
@@ -1454,10 +1504,10 @@ class IndexedSlices(_TensorLike):
 
   The `IndexedSlices` class is used principally in the definition of
   gradients for operations that have sparse gradients
-  (e.g. @{tf.gather}).
+  (e.g. `tf.gather`).
 
   Contrast this representation with
-  @{tf.SparseTensor},
+  `tf.SparseTensor`,
   which uses multi-dimensional indices and scalar values.
   """
 
@@ -1582,6 +1632,8 @@ def _create_c_op(graph, node_def, inputs, control_inputs):
   op_desc = c_api.TF_NewOperation(graph._c_graph,
                                   compat.as_str(node_def.op),
                                   compat.as_str(node_def.name))
+  if node_def.device:
+    c_api.TF_SetDevice(op_desc, compat.as_str(node_def.device))
   # Add inputs
   for op_input in inputs:
     if isinstance(op_input, (list, tuple)):
@@ -1618,8 +1670,8 @@ class Operation(object):
   more `Tensor` objects as input, and produces zero or more `Tensor`
   objects as output. Objects of type `Operation` are created by
   calling a Python op constructor (such as
-  @{tf.matmul})
-  or @{tf.Graph.create_op}.
+  `tf.matmul`)
+  or `tf.Graph.create_op`.
 
   For example `c = tf.matmul(a, b)` creates an `Operation` of type
   "MatMul" that takes tensors `a` and `b` as input, and produces `c`
@@ -1627,7 +1679,7 @@ class Operation(object):
 
   After the graph has been launched in a session, an `Operation` can
   be executed by passing it to
-  @{tf.Session.run}.
+  `tf.Session.run`.
   `op.run()` is a shortcut for calling `tf.get_default_session().run(op)`.
   """
 
@@ -2337,7 +2389,7 @@ class Operation(object):
 
     Args:
       feed_dict: A dictionary that maps `Tensor` objects to feed values.
-        See @{tf.Session.run}
+        See `tf.Session.run`
         for a description of the valid feed values.
       session: (Optional.) The `Session` to be used to run to this operation. If
         none, the default session will be used.
@@ -2509,8 +2561,8 @@ def _set_shape_and_handle_data_for_outputs_c_api(op):
     output._shape_val = output._c_api_shape()
     # Set the resource handle data for compatibility with the Python shape
     # inference code.
-    serialized = c_api.GetResourceHandleShapeAndType(op._graph._c_graph,
-                                                     output._as_tf_output())
+    serialized = c_api.GetHandleShapeAndType(op._graph._c_graph,  # pylint: disable=protected-access
+                                             output._as_tf_output())
     if serialized:
       output._handle_data = (
           cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData
@@ -2726,13 +2778,13 @@ class Graph(object):
   """A TensorFlow computation, represented as a dataflow graph.
 
   A `Graph` contains a set of
-  @{tf.Operation} objects,
+  `tf.Operation` objects,
   which represent units of computation; and
-  @{tf.Tensor} objects, which represent
+  `tf.Tensor` objects, which represent
   the units of data that flow between operations.
 
   A default `Graph` is always registered, and accessible by calling
-  @{tf.get_default_graph}.
+  `tf.get_default_graph`.
   To add an operation to the default graph, simply call one of the functions
   that defines a new `Operation`:
 
@@ -2742,7 +2794,7 @@ class Graph(object):
   ```
 
   Another typical usage involves the
-  @{tf.Graph.as_default}
+  `tf.Graph.as_default`
   context manager, which overrides the current default graph for the
   lifetime of the context:
 
@@ -2763,7 +2815,7 @@ class Graph(object):
   that are identified by name. For convenience when building a large
   graph, collections can store groups of related objects: for
   example, the `tf.Variable` uses a collection (named
-  @{tf.GraphKeys.GLOBAL_VARIABLES}) for
+  `tf.GraphKeys.GLOBAL_VARIABLES`) for
   all variables that are created during the construction of a graph. The caller
   may define additional collections by specifying a new name.
   """
@@ -2855,19 +2907,11 @@ class Graph(object):
 
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation
-    if self._use_c_api_hack():
-      self._scoped_c_graph = c_api_util.ScopedTFGraph()
-      # The C API requires all ops to have shape functions. Disable this
-      # requirement (many custom ops do not have shape functions, and we don't
-      # want to break these existing cases).
-      c_api.SetRequireShapeInferenceFns(self._c_graph, False)
-    else:
-      self._scoped_c_graph = None
-
-  # TODO(apassos) remove once the C API is used by default.
-  def _use_c_api_hack(self):
-    """Temporary hack; can be overridden to force C API usage."""
-    return _USE_C_API
+    self._scoped_c_graph = c_api_util.ScopedTFGraph()
+    # The C API requires all ops to have shape functions. Disable this
+    # requirement (many custom ops do not have shape functions, and we don't
+    # want to break these existing cases).
+    c_api.SetRequireShapeInferenceFns(self._c_graph, False)
 
   # Note: this method is private because the API of tf.Graph() is public and
   # frozen, and this functionality is still not ready for public visibility.
@@ -2940,7 +2984,7 @@ class Graph(object):
     """Returns a version number that increases as ops are added to the graph.
 
     Note that this is unrelated to the
-    @{tf.Graph.graph_def_versions}.
+    `tf.Graph.graph_def_versions`.
 
     Returns:
        An integer version that increases as ops are added to the graph.
@@ -2990,7 +3034,7 @@ class Graph(object):
     After calling `g.finalize()`, no new operations can be added to
     `g`.  This method is used to ensure that no operations are added
     to a graph when it is shared between multiple threads, for example
-    when using a @{tf.train.QueueRunner}.
+    when using a `tf.train.QueueRunner`.
     """
     self._finalized = True
 
@@ -3039,7 +3083,7 @@ class Graph(object):
     """Returns a serialized `GraphDef` representation of this graph.
 
     The serialized `GraphDef` can be imported into another `Graph`
-    (using @{tf.import_graph_def}) or used with the
+    (using `tf.import_graph_def`) or used with the
     [C++ Session API](../../../../api_docs/cc/index.md).
 
     This method is thread-safe.
@@ -3085,7 +3129,7 @@ class Graph(object):
     """Returns a serialized `GraphDef` representation of this graph.
 
     The serialized `GraphDef` can be imported into another `Graph`
-    (using @{tf.import_graph_def}) or used with the
+    (using `tf.import_graph_def`) or used with the
     [C++ Session API](../../api_docs/cc/index.md).
 
     This method is thread-safe.
@@ -3117,7 +3161,7 @@ class Graph(object):
     Returns:
       bool indicating whether or not 'name' is registered in function library.
     """
-    return name in self._functions
+    return compat.as_str(name) in self._functions
 
   def _get_function(self, name):
     """Returns the function definition for 'name'.
@@ -3127,7 +3171,7 @@ class Graph(object):
     Returns:
       The function def proto.
     """
-    return self._functions.get(name, None)
+    return self._functions.get(compat.as_str(name), None)
 
   def _add_function(self, function):
     """Adds a function to the graph.
@@ -3163,7 +3207,7 @@ class Graph(object):
     c_api.TF_GraphCopyFunction(self._c_graph, function._c_func.func, gradient)
     # pylint: enable=protected-access
 
-    self._functions[name] = function
+    self._functions[compat.as_str(name)] = function
 
     # Need a new-enough consumer to support the functions we add to the graph.
     if self._graph_def_versions.min_consumer < 12:
@@ -3292,6 +3336,36 @@ class Graph(object):
     self._create_op_helper(ret, compute_device=compute_device)
     return ret
 
+  def _make_colocation_conflict_message(self, op, colocation_op):
+    """Return detailed error message about device conflict due to colocation."""
+    # Example error message:
+    #   Tried to colocate op 'a' (defined at file1.py:149) having device
+    #   '/device:GPU:0' with op 'b' (defined at file2:96) which had an
+    #   incompatible device '/device:CPU:0'.
+    #
+    #   No node-device colocations were active during op 'a' creation.
+    #   Device assignments active during op 'a' creation:
+    #     with tf.device(/device:GPU:0): file1.py:148>
+    #
+    #   Node-device colocations active during op 'b' creation:
+    #     with tf.colocate_with(a): file2.py:93>
+    #   Device assignments active during op 'b' creation:
+    #     with tf.device(/cpu:0): file2.py:94
+    op_info = error_interpolation.compute_field_dict(op)
+    coloc_op_info = error_interpolation.compute_field_dict(colocation_op)
+    msg = ("Tried to colocate op '{op_name}'{op_loc} having device '{op_dev}' "
+           "with op '{coloc_op_name}'{coloc_op_loc} which had an incompatible "
+           "device '{coloc_op_dev}'.\n\n{op_summary}\n\n{coloc_op_summary}"
+           .format(op_name=op.name,
+                   op_loc=op_info["defined_at"],
+                   op_dev=op.device,
+                   op_summary=op_info["devs_and_colocs"],
+                   coloc_op_name=colocation_op.name,
+                   coloc_op_loc=coloc_op_info["defined_at"],
+                   coloc_op_dev=colocation_op.device,
+                   coloc_op_summary=coloc_op_info["devs_and_colocs"]))
+    return msg
+
   def _create_op_helper(self, op, compute_device=True):
     """Common logic for creating an op in this graph."""
     # Apply any additional attributes requested. Do not overwrite any existing
@@ -3332,20 +3406,22 @@ class Graph(object):
     if compute_device:
       self._apply_device_functions(op)
 
+    # Snapshot the colocation stack metadata before we might generate error
+    # messages using it.  Note that this snapshot depends on the actual stack
+    # and is independent of the op's _class attribute.
+    # pylint: disable=protected-access
+    op._colocation_code_locations = self._snapshot_colocation_stack_metadata()
+    # pylint: enable=protected-access
+
     if self._colocation_stack:
       all_colocation_groups = []
       for colocation_op in self._colocation_stack.peek_objs():
         all_colocation_groups.extend(colocation_op.colocation_groups())
         if colocation_op.device:
-          # Make this device match the device of the colocated op, to provide
-          # consistency between the device and the colocation property.
           if (op.device and pydev.canonical_name(op.device) !=
               pydev.canonical_name(colocation_op.device)):
-            logging.warning("Tried to colocate %s with an op %s that had "
-                            "a different device: %s vs %s. Postponing "
-                            "error-checking until all devices are assigned.",
-                            op.name, colocation_op.name, op.device,
-                            colocation_op.device)
+            msg = self._make_colocation_conflict_message(op, colocation_op)
+            logging.warning(msg)
           else:
             op._set_device(colocation_op.device)  # pylint: disable=protected-access
 
@@ -3353,7 +3429,6 @@ class Graph(object):
       # pylint: disable=protected-access
       op._set_attr("_class", attr_value_pb2.AttrValue(
           list=attr_value_pb2.AttrValue.ListValue(s=all_colocation_groups)))
-      op._colocation_code_locations = self._snapshot_colocation_stack_metadata()
       # pylint: enable=protected-access
 
     # Sets "container" attribute if
@@ -4094,10 +4169,7 @@ class Graph(object):
     if op is None and not ignore_existing:
       raise ValueError("Trying to reset colocation (op is None) but "
                        "ignore_existing is not True")
-
-    if op is not None and not isinstance(op, Operation):
-      # We always want to colocate with the reference op.
-      op = internal_convert_to_tensor_or_indexed_slices(op, as_ref=True).op
+    op = _op_to_colocate_with(op)
 
     # By default, colocate_with resets the device function stack,
     # since colocate_with is typically used in specific internal
@@ -4828,6 +4900,18 @@ class Graph(object):
     else:
       self._graph_control_dependencies_stack = control_dependencies
 
+  @property
+  def _distribution_strategy_stack(self):
+    """A stack to maintain distribution strategy context for each thread."""
+    if not hasattr(self._thread_local, "_distribution_strategy_stack"):
+      self._thread_local._distribution_strategy_stack = []  # pylint: disable=protected-access
+    return self._thread_local._distribution_strategy_stack  # pylint: disable=protected-access
+
+  @_distribution_strategy_stack.setter
+  def _distribution_strategy_stack(self, _distribution_strategy_stack):
+    self._thread_local._distribution_strategy_stack = (  # pylint: disable=protected-access
+        _distribution_strategy_stack)
+
   def _mutation_lock(self):
     """Returns a lock to guard code that creates & mutates ops.
 
@@ -4852,7 +4936,7 @@ def device(device_name_or_function):
   """Wrapper for `Graph.device()` using the default graph.
 
   See
-  @{tf.Graph.device}
+  `tf.Graph.device`
   for more details.
 
   Args:
@@ -4894,9 +4978,11 @@ def container(container_name):
 def _colocate_with_for_gradient(op, gradient_uid, ignore_existing=False):
   if context.executing_eagerly():
     if op is not None:
+      if not hasattr(op, "device"):
+        op = internal_convert_to_tensor_or_indexed_slices(op)
       return device(op.device)
     else:
-      return _NullContextmanager()
+      return NullContextmanager()
   else:
     default_graph = get_default_graph()
     if isinstance(op, EagerTensor):
@@ -4909,7 +4995,10 @@ def _colocate_with_for_gradient(op, gradient_uid, ignore_existing=False):
         op, gradient_uid=gradient_uid, ignore_existing=ignore_existing)
 
 
-@tf_export("colocate_with")
+@deprecation.deprecated(
+    date=None,
+    instructions="Colocations handled automatically by placer.")
+@tf_export(v1=["colocate_with"])
 def colocate_with(op, ignore_existing=False):
   return _colocate_with_for_gradient(op, None, ignore_existing=ignore_existing)
 
@@ -4918,7 +5007,7 @@ def colocate_with(op, ignore_existing=False):
 def control_dependencies(control_inputs):
   """Wrapper for `Graph.control_dependencies()` using the default graph.
 
-  See @{tf.Graph.control_dependencies}
+  See `tf.Graph.control_dependencies`
   for more details.
 
   When eager execution is enabled, any callable object in the `control_inputs`
@@ -4941,7 +5030,7 @@ def control_dependencies(control_inputs):
       for control in control_inputs:
         if callable(control):
           control()
-    return _NullContextmanager()
+    return NullContextmanager()
   else:
     return get_default_graph().control_dependencies(control_inputs)
 
@@ -5041,7 +5130,7 @@ def default_session(session):
   return _default_session_stack.get_controller(session)
 
 
-@tf_export("get_default_session")
+@tf_export(v1=["get_default_session"])
 def get_default_session():
   """Returns the default session for the current thread.
 
@@ -5179,6 +5268,7 @@ _default_graph_stack = _DefaultGraphStack()
 
 
 # pylint: disable=g-doc-return-or-yield,line-too-long
+@tf_export("init_scope")
 @tf_contextlib.contextmanager
 def init_scope():
   """A context manager that lifts ops out of control-flow scopes and function-building graphs.
@@ -5207,6 +5297,23 @@ def init_scope():
         `init_scope` will simply install a fresh graph as the default one.
 
     (3) The gradient tape is paused while the scope is active.
+
+  When eager execution is enabled, code inside an init_scope block runs with
+  eager execution enabled even when defining graph functions via
+  tf.contrib.eager.defun. For example:
+
+  ```python
+  tf.enable_eager_execution()
+
+  @tf.contrib.eager.defun
+  def func():
+    # A defun-decorated function constructs TensorFlow graphs,
+    # it does not execute eagerly.
+    assert not tf.executing_eagerly()
+    with tf.init_scope():
+      # Initialization runs with eager execution enabled
+      assert tf.executing_eagerly()
+  ```
 
   Raises:
     RuntimeError: if graph state is incompatible with this initialization.
@@ -5276,6 +5383,16 @@ def init_scope():
         outer_graph._device_function_stack = outer_device_stack  # pylint: disable=protected-access
 
 
+def executing_eagerly_outside_functions():
+  """Returns True if executing eagerly, even if inside a graph function."""
+  with init_scope():
+    return context.executing_eagerly()
+
+
+def inside_function():
+  return get_default_graph().building_function
+
+
 @tf_export("enable_eager_execution")
 def enable_eager_execution(config=None,
                            device_policy=None,
@@ -5284,11 +5401,12 @@ def enable_eager_execution(config=None,
 
   Eager execution provides an imperative interface to TensorFlow. With eager
   execution enabled, TensorFlow functions execute operations immediately (as
-  opposed to adding to a graph to be executed later in a @{tf.Session}) and
+  opposed to adding to a graph to be executed later in a `tf.Session`) and
   return concrete values (as opposed to symbolic references to a node in a
   computational graph).
 
   For example:
+
   ```python
   tf.enable_eager_execution()
 
@@ -5304,9 +5422,9 @@ def enable_eager_execution(config=None,
   both with and without eager execution).
 
   Args:
-    config: (Optional.) A @{tf.ConfigProto} to use to configure the environment
-      in which operations are executed. Note that @{tf.ConfigProto} is also
-      used to configure graph execution (via @{tf.Session}) and many options
+    config: (Optional.) A `tf.ConfigProto` to use to configure the environment
+      in which operations are executed. Note that `tf.ConfigProto` is also
+      used to configure graph execution (via `tf.Session`) and many options
       within `tf.ConfigProto` are not implemented (or are irrelevant) when
       eager execution is enabled.
     device_policy: (Optional.) Policy controlling how operations requiring
@@ -5338,11 +5456,12 @@ def enable_eager_execution(config=None,
      TensorFlow graph, or if options provided conflict with a previous call
      to this function.
   """
-  return enable_eager_execution_internal(
-      config=config,
-      device_policy=device_policy,
-      execution_mode=execution_mode,
-      server_def=None)
+  if context.default_execution_mode != context.EAGER_MODE:
+    return enable_eager_execution_internal(
+        config=config,
+        device_policy=device_policy,
+        execution_mode=execution_mode,
+        server_def=None)
 
 
 def enable_eager_execution_internal(config=None,
@@ -5380,15 +5499,14 @@ def enable_eager_execution_internal(config=None,
     raise ValueError(
         "execution_mode must be one of None, tf.contrib.eager.SYNC, "
         "tf.contrib.eager.ASYNC")
-  # pylint: disable=protected-access
-  if context._default_mode == context.GRAPH_MODE:
+  if context.default_execution_mode == context.GRAPH_MODE:
     graph_mode_has_been_used = (
-        _default_session_stack.stack
-        or len(get_default_graph().get_operations()) > 0)  # pylint: disable=g-explicit-length-test
+        _default_graph_stack._global_default_graph is not None) # pylint: disable=protected-access
     if graph_mode_has_been_used:
       raise ValueError(
           "tf.enable_eager_execution must be called at program startup.")
-  context._default_mode = context.EAGER_MODE
+  context.default_execution_mode = context.EAGER_MODE
+  # pylint: disable=protected-access
   if context._context is None:
     context._context = context.Context(
         config=config,
@@ -5606,7 +5724,7 @@ class GraphKeys(object):
 
   * `GLOBAL_VARIABLES`: the default collection of `Variable` objects, shared
     across distributed environment (model variables are subset of these). See
-    @{tf.global_variables}
+    `tf.global_variables`
     for more details.
     Commonly, all `TRAINABLE_VARIABLES` variables will be in `MODEL_VARIABLES`,
     and all `MODEL_VARIABLES` variables will be in `GLOBAL_VARIABLES`.
@@ -5618,19 +5736,19 @@ class GraphKeys(object):
     `tf.contrib.framework.model_variable` to add to this collection.
   * `TRAINABLE_VARIABLES`: the subset of `Variable` objects that will
     be trained by an optimizer. See
-    @{tf.trainable_variables}
+    `tf.trainable_variables`
     for more details.
   * `SUMMARIES`: the summary `Tensor` objects that have been created in the
     graph. See
-    @{tf.summary.merge_all}
+    `tf.summary.merge_all`
     for more details.
   * `QUEUE_RUNNERS`: the `QueueRunner` objects that are used to
     produce input for a computation. See
-    @{tf.train.start_queue_runners}
+    `tf.train.start_queue_runners`
     for more details.
   * `MOVING_AVERAGE_VARIABLES`: the subset of `Variable` objects that will also
     keep moving averages.  See
-    @{tf.moving_average_variables}
+    `tf.moving_average_variables`
     for more details.
   * `REGULARIZATION_LOSSES`: regularization losses collected during graph
     construction.
@@ -5732,19 +5850,36 @@ class GraphKeys(object):
   _STREAMING_MODEL_PORTS = "streaming_model_ports"
 
   @decorator_utils.classproperty
+  @deprecation.deprecated(None, "Use `tf.GraphKeys.GLOBAL_VARIABLES` instead.")
   def VARIABLES(cls):  # pylint: disable=no-self-argument
-    logging.log_first_n(logging.WARN,
-                        "VARIABLES collection name is deprecated, please use "
-                        "GLOBAL_VARIABLES instead; VARIABLES will be removed "
-                        "after 2017-03-02.", 1)
     return cls.GLOBAL_VARIABLES
+
+
+def dismantle_graph(graph):
+  """Cleans up reference cycles from a `Graph`.
+
+  Helpful for making sure the garbage collector doesn't need to run after a
+  temporary `Graph` is no longer needed.
+
+  Args:
+    graph: A `Graph` object to destroy. Neither it nor any of its ops are usable
+      after this function runs.
+  """
+  memory.dismantle_ordered_dict(graph._functions)  # pylint: disable=protected-access
+
+  # Now clean up Operation<->Graph reference cycles by clearing all of the
+  # attributes for the Graph and its ops.
+  graph_operations = graph.get_operations()
+  for op in graph_operations:
+    op.__dict__ = {}
+  graph.__dict__ = {}
 
 
 @tf_export("add_to_collection")
 def add_to_collection(name, value):
   """Wrapper for `Graph.add_to_collection()` using the default graph.
 
-  See @{tf.Graph.add_to_collection}
+  See `tf.Graph.add_to_collection`
   for more details.
 
   Args:
@@ -5763,7 +5898,7 @@ def add_to_collection(name, value):
 def add_to_collections(names, value):
   """Wrapper for `Graph.add_to_collections()` using the default graph.
 
-  See @{tf.Graph.add_to_collections}
+  See `tf.Graph.add_to_collections`
   for more details.
 
   Args:
@@ -5783,7 +5918,7 @@ def add_to_collections(names, value):
 def get_collection_ref(key):
   """Wrapper for `Graph.get_collection_ref()` using the default graph.
 
-  See @{tf.Graph.get_collection_ref}
+  See `tf.Graph.get_collection_ref`
   for more details.
 
   Args:
@@ -5807,7 +5942,7 @@ def get_collection_ref(key):
 def get_collection(key, scope=None):
   """Wrapper for `Graph.get_collection()` using the default graph.
 
-  See @{tf.Graph.get_collection}
+  See `tf.Graph.get_collection`
   for more details.
 
   Args:
@@ -5850,7 +5985,7 @@ class name_scope(object):  # pylint: disable=invalid-name
   This context manager validates that the given `values` are from the
   same graph, makes that graph the default graph, and pushes a
   name scope in that graph (see
-  @{tf.Graph.name_scope}
+  `tf.Graph.name_scope`
   for more details on that).
 
   For example, to define a new Python op called `my_op`:
@@ -5883,6 +6018,13 @@ class name_scope(object):  # pylint: disable=invalid-name
     self._values = values
     self._ctx = context.context()
     self._in_eager_mode = self._ctx.executing_eagerly()
+    self._has_symbolic_input_in_eager = False
+    if self._values and self._in_eager_mode:
+      # The presence of a graph tensor in `self._values` overrides the context.
+      for value in self._values:
+        if hasattr(value, "graph"):
+          self._has_symbolic_input_in_eager = True
+          self._name_scope = value.graph.name_scope(self._name)
 
   def __enter__(self):
     """Start the scope block.
@@ -5894,6 +6036,9 @@ class name_scope(object):  # pylint: disable=invalid-name
       ValueError: if neither `name` nor `default_name` is provided
         but `values` are.
     """
+    if self._has_symbolic_input_in_eager:
+      return self._name_scope.__enter__()
+
     if self._in_eager_mode:
       self._old_name = self._ctx.scope_name
       if not self._name:
@@ -5936,7 +6081,9 @@ class name_scope(object):  # pylint: disable=invalid-name
         raise
 
   def __exit__(self, type_arg, value_arg, traceback_arg):
-    if self._in_eager_mode:
+    if self._has_symbolic_input_in_eager:
+      self._name_scope.__exit__(type_arg, value_arg, traceback_arg)
+    elif self._in_eager_mode:
       self._ctx.scope_name = self._old_name
     else:
       self._name_scope.__exit__(type_arg, value_arg, traceback_arg)
@@ -6071,6 +6218,33 @@ def _operation_conversion_error(op, dtype=None, name=None, as_ref=False):
   raise TypeError(("Can't convert Operation '%s' to Tensor "
                    "(target dtype=%r, name=%r, as_ref=%r)") % (op.name, dtype,
                                                                name, as_ref))
+
+
+def _op_to_colocate_with(v):
+  """Operation object corresponding to v to use for colocation constraints."""
+  if v is None:
+    return None
+  if isinstance(v, Operation):
+    return v
+  # We always want to colocate with the reference op.
+  # When 'v' is a ResourceVariable, the reference op is the handle creating op.
+  #
+  # What this should be is:
+  # if isinstance(v, ResourceVariable):
+  #   return v.handle.op
+  # However, that would require a circular import dependency.
+  # As of October 2018, there were attempts underway to remove
+  # colocation constraints altogether. Assuming that will
+  # happen soon, perhaps this hack to work around the circular
+  # import dependency is acceptable.
+  if hasattr(v, "handle") and hasattr(v.handle, "op") and isinstance(
+      v.handle.op, Operation):
+    return v.handle.op
+  return internal_convert_to_tensor_or_indexed_slices(v, as_ref=True).op
+
+
+def _is_keras_symbolic_tensor(x):
+  return hasattr(x, "graph") and getattr(x.graph, "name", None) == "keras_graph"
 
 
 register_tensor_conversion_function(Operation, _operation_conversion_error)

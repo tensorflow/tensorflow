@@ -64,7 +64,7 @@ Status ShuffleAndRepeatFusion::Optimize(Cluster* cluster,
 
     // Set `output_types` and `output_shapes` attributes.
     for (auto key : {"output_shapes", "output_types"}) {
-      (*new_node.mutable_attr())[key] = repeat_node.attr().at(key);
+      graph_utils::CopyAttribute(key, repeat_node, &new_node);
     }
     return new_node;
   };
@@ -76,8 +76,8 @@ Status ShuffleAndRepeatFusion::Optimize(Cluster* cluster,
 
     // Use a more descriptive variable name now that we know the node type.
     const NodeDef& repeat_node = node;
-    GraphView::InputPort input_port = graph.GetInputPort(repeat_node.name(), 0);
-    NodeDef* node2 = graph.GetRegularFanin(input_port).node;
+    NodeDef* node2 = graph_utils::GetInputNode(repeat_node, graph);
+
     if (node2->op() != "ShuffleDataset") {
       continue;
     }
@@ -86,7 +86,7 @@ Status ShuffleAndRepeatFusion::Optimize(Cluster* cluster,
 
     NodeDef* shuffle_and_repeat_node =
         graph.AddNode(make_shuffle_and_repeat_node(shuffle_node, repeat_node));
-    graph.ReplaceInput(repeat_node, *shuffle_and_repeat_node);
+    graph.UpdateFanouts(repeat_node.name(), shuffle_and_repeat_node->name());
 
     // Mark the `Shuffle` and `Repeat` nodes for removal.
     nodes_to_delete.insert(shuffle_node.name());

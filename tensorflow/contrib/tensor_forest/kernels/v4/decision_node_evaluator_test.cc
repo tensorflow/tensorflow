@@ -60,6 +60,40 @@ TEST(InequalityDecisionNodeEvaluatorTest, TestStrictlyLess) {
   ASSERT_EQ(eval->Decide(dataset, 4), 1);
 }
 
+TEST(InequalityDecisionNodeEvaluatorTest, TestGreaterOrEqual) {
+  InequalityTest test;
+  test.mutable_feature_id()->mutable_id()->set_value("0");
+  test.mutable_threshold()->set_float_value(3.0);
+  test.set_type(InequalityTest::GREATER_OR_EQUAL);
+  std::unique_ptr<InequalityDecisionNodeEvaluator> eval(
+      new InequalityDecisionNodeEvaluator(test, 0, 1));
+
+  std::unique_ptr<tensorflow::tensorforest::TensorDataSet> dataset(
+      new tensorflow::tensorforest::TestableDataSet(
+          {0.0, 1.0, 2.0, 3.0, 4.0, 5.0}, 1));
+
+  ASSERT_EQ(eval->Decide(dataset, 2), 1);
+  ASSERT_EQ(eval->Decide(dataset, 3), 0);
+  ASSERT_EQ(eval->Decide(dataset, 4), 0);
+}
+
+TEST(InequalityDecisionNodeEvaluatorTest, TestStrictlyGreater) {
+  InequalityTest test;
+  test.mutable_feature_id()->mutable_id()->set_value("0");
+  test.mutable_threshold()->set_float_value(3.0);
+  test.set_type(InequalityTest::GREATER_THAN);
+  std::unique_ptr<InequalityDecisionNodeEvaluator> eval(
+      new InequalityDecisionNodeEvaluator(test, 0, 1));
+
+  std::unique_ptr<tensorflow::tensorforest::TensorDataSet> dataset(
+      new tensorflow::tensorforest::TestableDataSet(
+          {0.0, 1.0, 2.0, 3.0, 4.0, 5.0}, 1));
+
+  ASSERT_EQ(eval->Decide(dataset, 2), 1);
+  ASSERT_EQ(eval->Decide(dataset, 3), 1);
+  ASSERT_EQ(eval->Decide(dataset, 4), 0);
+}
+
 TEST(MatchingDecisionNodeEvaluatorTest, Basic) {
   MatchingValuesTest test;
   test.mutable_feature_id()->mutable_id()->set_value("0");

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_C_EAGER_RUNTIME_H_
-#define TENSORFLOW_C_EAGER_RUNTIME_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_ATTR_BUILDER_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_ATTR_BUILDER_H_
 
 // Support for eager execution of TensorFlow kernels.
 
@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -110,6 +109,12 @@ class AttrBuilder {
   using AttrVec = tensorflow::gtl::InlinedVector<std::pair<StringPiece, T>, 2>;
 
   void MayBeInitializeNodeDef();
+  // Fill `m` with the attr-value pairs set via AttrBuilder::Set() so far, as
+  // well as any default attr-value pairs from the associated op_def, if there
+  // is one.
+  //
+  // If `include_those_in_node_def` is true, also include any attr-value pairs
+  // from `node_def_`.
   void FillAttrValueMap(AttrValueMap* m, bool include_those_in_node_def) const;
 
   template <class T>
@@ -122,16 +127,15 @@ class AttrBuilder {
     AttrValue attr_value;
     if (found == nullptr) {
       SetAttrValue(value, &attr_value);
-      m->insert(AttrValueMap::value_type(attr_name.ToString(), attr_value));
+      m->insert(AttrValueMap::value_type(string(attr_name), attr_value));
     } else {
       // TODO(ashankar): Do what is done in
       // NodeDefBuilder::CheckInconsistency(attr_name, *found, attr_value);
       SetAttrValue(std::forward<T>(value), &attr_value);
-      (*m)[attr_name.ToString()] = attr_value;
+      (*m)[string(attr_name)] = attr_value;
     }
   }
 
-  AttrVec<StringPiece> string_attrs_;
   AttrVec<int> int_attrs_;
   AttrVec<float> float_attrs_;
   AttrVec<bool> bool_attrs_;
@@ -143,8 +147,6 @@ class AttrBuilder {
 };  // namespace tensorflow
 
 template <>
-AttrBuilder& AttrBuilder::Set(StringPiece attr_name, StringPiece&& value);
-template <>
 AttrBuilder& AttrBuilder::Set(StringPiece attr_name, int&& value);
 template <>
 AttrBuilder& AttrBuilder::Set(StringPiece attr_name, float&& value);
@@ -154,7 +156,6 @@ template <>
 AttrBuilder& AttrBuilder::Set(StringPiece attr_name,
                               tensorflow::DataType&& value);
 
-
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_C_EAGER_RUNTIME_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_ATTR_BUILDER_H_

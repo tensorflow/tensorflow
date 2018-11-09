@@ -27,6 +27,10 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 
+#include "tensorflow/core/framework/types.h"
+
+#include "structmember.h"  // NOLINT // For PyMemberDef
+
 // forward declare
 struct EagerTensor;
 
@@ -133,6 +137,40 @@ PyObject* PyIntFromDataType(TF_DataType l) {
 }  // namespace
 
 namespace tensorflow {
+// This function checks whether the desired type is "compatible" with the
+// inferred type. At a high level, compatibility means that all integral types
+// are compatible with each other, and all floating types are compatible with
+// each other.
+//
+// Type compatibility doesn't consider overflows (i.e. int64 is *always*
+// compatible with int32). This is intended to match graph behavior.
+bool IsCompatible(int desired_dtype, TF_DataType returned_dtype) {
+  tensorflow::DataType desired =
+      static_cast<tensorflow::DataType>(desired_dtype);
+  tensorflow::DataType returned =
+      static_cast<tensorflow::DataType>(returned_dtype);
+
+  if (desired == returned) return true;
+
+  if (tensorflow::DataTypeIsInteger(desired) &&
+      tensorflow::DataTypeIsInteger(returned)) {
+    return true;
+  } else if (tensorflow::DataTypeIsFloating(desired) &&
+             (tensorflow::DataTypeIsFloating(returned) ||
+              tensorflow::DataTypeIsInteger(returned))) {
+    return true;
+  } else if (tensorflow::DataTypeIsComplex(desired) &&
+             (tensorflow::DataTypeIsComplex(returned) ||
+              tensorflow::DataTypeIsInteger(returned) ||
+              tensorflow::DataTypeIsFloating(returned))) {
+    return true;
+  } else if (tensorflow::DataTypeIsQuantized(desired) &&
+             tensorflow::DataTypeIsInteger(returned)) {
+    return true;
+  }
+  return false;
+}
+
 // Casts data referred to by `handle` from type `src_type_enum` to type
 // `dst_type_enum`.
 TFE_TensorHandle* EagerCast(TFE_Context* ctx, TFE_TensorHandle* handle,
@@ -263,6 +301,14 @@ typedef struct EagerTensor {
   TF_Status* status;
 
   PyObject* weakreflist; /* List of weak references */
+
+  // Per-instance attribute dictionary, to support monkey patching
+  // (e.g. EagerTensor.assign when slicing variables). This dictionary is
+  // created by CPython the first time an attribute is assigned, pointed to by
+  // tp_dictoffset. Note that garbage collection is not enabled for
+  // EagerTensors, so assigning objects to EagerTensor attributes which require
+  // garbage collection is likely to cause issues.
+  PyObject* dict;
 } EagerTensor;
 
 namespace {
@@ -311,17 +357,42 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   Py_INCREF(Py_None);
   self->tensor_shape = Py_None;
   self->status = TF_NewStatus();
+  self->dict = nullptr;
   self->weakreflist = nullptr;
   PyObject* value;
   PyObject* context = nullptr;
   PyObject* device = nullptr;
   PyObject* dtype = Py_None;
-  const char* kwlist[] = {"value", "context", "device", "dtype", nullptr};
-  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOO|O",
+  PyObject* other_value = nullptr;
+  const char* kwlist[] = {"value", "context",     "device",
+                          "dtype", "other_value", nullptr};
+  if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOO|OO",
                                    const_cast<char**>(kwlist), &value, &context,
-                                   &device, &dtype)) {
+                                   &device, &dtype, &other_value)) {
     return -1;
   }
+
+  if (other_value != nullptr) {
+    if (!EagerTensor_CheckExact(other_value)) {
+      PyErr_SetString(PyExc_TypeError,
+                      tensorflow::strings::StrCat(
+                          "Expecting an EagerTensor for other_value, got ",
+                          Py_TYPE(other_value)->tp_name)
+                          .c_str());
+
+      return -1;
+    }
+    EagerTensor* other = reinterpret_cast<EagerTensor*>(other_value);
+    self->handle =
+        TFE_TensorHandleCopySharingTensor(other->handle, self->status);
+
+    if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_ValueError)) {
+      return -1;
+    }
+
+    return 0;
+  }
+
   // Extract dtype
   int desired_dtype = -1;
   if (dtype != Py_None) {
@@ -341,20 +412,40 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   if (handle == nullptr) return -1;
   TF_DataType handle_dtype = TFE_TensorHandleDataType(handle.get());
   if (desired_dtype >= 0 && desired_dtype != handle_dtype) {
-    handle = tensorflow::make_safe(tensorflow::EagerCast(
-        GetContext(context), handle.get(), handle_dtype,
-        static_cast<TF_DataType>(desired_dtype), self->status));
-    if (TF_GetCode(self->status) != TF_OK) {
-      PyErr_SetString(PyExc_TypeError,
-                      tensorflow::strings::StrCat(
-                          "Error while casting from DataType ", handle_dtype,
-                          " to ", desired_dtype, ". ", TF_Message(self->status))
-                          .c_str());
-      // Cleanup self->status before returning.
-      TF_SetStatus(self->status, TF_OK, "");
+    // Check type compatibility.
+    if (tensorflow::IsCompatible(desired_dtype, handle_dtype)) {
+      handle = tensorflow::make_safe(tensorflow::EagerCast(
+          GetContext(context), handle.get(), handle_dtype,
+          static_cast<TF_DataType>(desired_dtype), self->status));
+      if (TF_GetCode(self->status) != TF_OK) {
+        PyErr_SetString(
+            PyExc_TypeError,
+            tensorflow::strings::StrCat(
+                "Error while casting from DataType ",
+                tensorflow::DataTypeString(
+                    static_cast<tensorflow::DataType>(handle_dtype)),
+                " to ",
+                tensorflow::DataTypeString(
+                    static_cast<tensorflow::DataType>(desired_dtype)),
+                ". ", TF_Message(self->status))
+                .c_str());
+        // Cleanup self->status before returning.
+        TF_SetStatus(self->status, TF_OK, "");
+        return -1;
+      }
+      handle_dtype = TFE_TensorHandleDataType(handle.get());
+    } else {
+      tensorflow::Safe_PyObjectPtr value_str(PyObject_Str(value));
+      PyErr_SetString(
+          PyExc_TypeError,
+          tensorflow::strings::StrCat(
+              "Cannot convert value ", TFE_GetPythonString(value_str.get()),
+              " to EagerTensor with requested dtype: ",
+              tensorflow::DataTypeString(
+                  static_cast<tensorflow::DataType>(desired_dtype)))
+              .c_str());
       return -1;
     }
-    handle_dtype = TFE_TensorHandleDataType(handle.get());
   }
 
   // Almost all TensorFlow kernels for GPU devices keep int32 tensors in host
@@ -410,6 +501,10 @@ void EagerTensor_dealloc(EagerTensor* self) {
   Py_DECREF(self->handle_data);
   Py_DECREF(self->keras_mask);
   Py_DECREF(self->tensor_shape);
+  // If an attribute dictionary has been created, release it. Note that this
+  // is only ever created by CPython's attribute setting methods; we don't
+  // create it ourselves.
+  Py_CLEAR(self->dict);
   if (self->handle != nullptr) {
     TFE_DeleteTensorHandle(self->handle);
     self->handle = nullptr;
@@ -472,6 +567,18 @@ static PyObject* EagerTensor_rank(EagerTensor* self) {
 #else
   return PyLong_FromLong(num_dims);
 #endif
+}
+
+// Getter for `_num_elements`.
+static PyObject* EagerTensor_num_elements(EagerTensor* self) {
+  auto handle = self->handle;
+  int n = TFE_TensorHandleNumElements(handle, self->status);
+  if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_ValueError)) {
+    // Cleanup self->status before returning.
+    TF_SetStatus(self->status, TF_OK, "");
+    return nullptr;
+  }
+  return PyLong_FromLongLong(n);
 }
 
 static PyObject* EagerTensor_tensor_handle(EagerTensor* self, void* unused) {
@@ -582,6 +689,15 @@ static PyGetSetDef EagerTensor_getseters[] = {
     {nullptr} /* Sentinel */
 };
 
+#if PY_MAJOR_VERSION < 3
+// Only used for Python2 since Python3 seems to set the __dict__ correctly.
+static PyMemberDef EagerTensor_members[] = {
+    {const_cast<char*>("__dict__"), T_OBJECT, offsetof(EagerTensor, dict),
+     READONLY},
+    {nullptr},
+};
+#endif
+
 static PyMethodDef EagerTensor_methods[] = {
     {"_numpy", (PyCFunction)EagerTensor_numpy, METH_NOARGS,
      PyDoc_STR("_numpy")},
@@ -592,6 +708,8 @@ static PyMethodDef EagerTensor_methods[] = {
     {"_rank", (PyCFunction)EagerTensor_rank, METH_NOARGS, PyDoc_STR("_rank")},
     {"_copy_to_device", (PyCFunction)EagerTensor_copy_to_device,
      METH_VARARGS | METH_KEYWORDS, PyDoc_STR("_copy_to_device")},
+    {"_num_elements", (PyCFunction)EagerTensor_num_elements, METH_NOARGS,
+     PyDoc_STR("_num_elements")},
     {nullptr, nullptr},
 };
 
@@ -654,13 +772,13 @@ static PyTypeObject _EagerTensorType = {
     nullptr,                            /* tp_iter */
     nullptr,                            /* tp_iternext */
     EagerTensor_methods,                /* tp_methods */
-    nullptr,                            /* tp_members */
+    EagerTensor_members,                /* tp_members */
     EagerTensor_getseters,              /* tp_getset */
     nullptr,                            /* tp_base */
     nullptr,                            /* tp_dict */
     nullptr,                            /* tp_descr_get */
     nullptr,                            /* tp_descr_set */
-    0,                                  /* tp_dictoffset */
+    offsetof(EagerTensor, dict),        /* tp_dictoffset */
     (initproc)EagerTensor_init,         /* tp_init */
     nullptr,                            /* tp_alloc */
     nullptr,                            /* tp_new */
@@ -703,15 +821,32 @@ PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle) {
   return reinterpret_cast<PyObject*>(t);
 }
 
-tensorflow::int64 EagerTensor_id(const PyObject* tensor) {
-  CHECK(EagerTensor_CheckExact(tensor));
+tensorflow::int64 PyEagerTensor_ID(const PyObject* tensor) {
+  DCHECK(EagerTensor_CheckExact(tensor));
   return reinterpret_cast<const EagerTensor*>(tensor)->id;
 }
 
-tensorflow::DataType EagerTensor_dtype(const PyObject* tensor) {
-  CHECK(EagerTensor_CheckExact(tensor));
+tensorflow::DataType PyEagerTensor_Dtype(const PyObject* tensor) {
+  DCHECK(EagerTensor_CheckExact(tensor));
   return static_cast<tensorflow::DataType>(TFE_TensorHandleDataType(
       reinterpret_cast<const EagerTensor*>(tensor)->handle));
+}
+
+tensorflow::int64 PyEagerTensor_NumElements(const PyObject* tensor) {
+  DCHECK(EagerTensor_CheckExact(tensor));
+  const EagerTensor* as_c_eager_tensor =
+      reinterpret_cast<const EagerTensor*>(tensor);
+  tensorflow::int64 result = TFE_TensorHandleNumElements(
+      as_c_eager_tensor->handle, as_c_eager_tensor->status);
+
+  if (MaybeRaiseExceptionFromTFStatus(as_c_eager_tensor->status,
+                                      PyExc_ValueError)) {
+    // Cleanup status before returning.
+    TF_SetStatus(as_c_eager_tensor->status, TF_OK, "");
+    return -1;
+  }
+
+  return result;
 }
 
 PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
@@ -788,8 +923,9 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
     PyErr_SetString(PyExc_RuntimeError, "Error while creating EagerTensorType");
     return nullptr;
   }
+  EagerTensorType->tp_dictoffset = offsetof(EagerTensor, dict);
 #else
-  _EagerTensorType.tp_base = reinterpret_cast<PyTypeObject*>(base_class);
+  _EagerTensorType.tp_base = base_class_type;
 
   if (PyType_Ready(&_EagerTensorType) < 0) {
     if (PyErr_Occurred()) return nullptr;
@@ -800,9 +936,6 @@ PyObject* TFE_Py_InitEagerTensor(PyObject* base_class) {
   EagerTensorType = &_EagerTensorType;
   Py_INCREF(EagerTensorType);
 #endif
-  // We disable instance based attribute lookup. Its not clear if these
-  // dictionaries are correctly initialized in the first place.
-  EagerTensorType->tp_dictoffset = 0;
   return reinterpret_cast<PyObject*>(EagerTensorType);
 }
 

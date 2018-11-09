@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_WINDOWS_CPU_INFO_H_
-#define TENSORFLOW_PLATFORM_WINDOWS_CPU_INFO_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_WINDOWS_CPU_INFO_H_
+#define TENSORFLOW_CORE_PLATFORM_WINDOWS_CPU_INFO_H_
 
 // included so __cpuidex function is available for GETCPUID on Windows
 #include <intrin.h>
 
-#endif  // TENSORFLOW_PLATFORM_WINDOWS_CPU_INFO_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_WINDOWS_CPU_INFO_H_
