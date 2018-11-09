@@ -155,39 +155,38 @@ class ConcatOffsetOp : public XlaOpKernel {
     //  [0, 5, 0, 0]
     const int32 N = ctx->num_inputs() - 1;
     const TensorShape inp0_shape = ctx->InputShape(1);
-    xla::Literal inp0_literal;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInput(1, &inp0_literal));
-    const int64 dims = inp0_shape.num_elements();
+    std::vector<int64> inp0_dims;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &inp0_dims));
+    const int64 inp0_rank = inp0_shape.num_elements();
 
-    xla::Literal concat_dim_literal;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInput(0, &concat_dim_literal));
-    const int64 cdim = concat_dim_literal.Get<int>({});
+    int64 cdim;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(0, &cdim));
 
-    VLOG(1) << "ConcatOffset " << cdim << "," << dims;
-    int32 axis = cdim < 0 ? cdim + dims : cdim;
-    OP_REQUIRES(ctx, FastBoundsCheck(axis, dims),
+    VLOG(1) << "ConcatOffset " << cdim << "," << inp0_rank;
+    int32 axis = cdim < 0 ? cdim + inp0_rank : cdim;
+    OP_REQUIRES(ctx, FastBoundsCheck(axis, inp0_rank),
                 errors::InvalidArgument("Concat dim is out of range: ", axis,
-                                        " vs. ", dims));
+                                        " vs. ", inp0_rank));
     int32 offset = 0;
     for (int i = 0; i < N; ++i) {
       const TensorShape inp_shape = ctx->InputShape(1 + i);
-      OP_REQUIRES(ctx, dims == inp_shape.num_elements(),
-                  errors::InvalidArgument("input ", i, " should contain ", dims,
-                                          " elements, but got ",
+      OP_REQUIRES(ctx, inp0_rank == inp_shape.num_elements(),
+                  errors::InvalidArgument("input ", i, " should contain ",
+                                          inp0_rank, " elements, but got ",
                                           inp_shape.num_elements()));
-      xla::Literal inp_literal;
-      OP_REQUIRES_OK(ctx, ctx->ConstantInput(1 + i, &inp_literal));
+      std::vector<int64> inp_dims;
+      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1 + i, &inp_dims));
 
-      Tensor out_constant(DT_INT32, TensorShape({dims}));
+      Tensor out_constant(DT_INT32, TensorShape({inp0_rank}));
       auto out_vec = out_constant.vec<int32>();
-      for (int64 j = 0; j < dims; ++j) {
+      for (int64 j = 0; j < inp0_rank; ++j) {
         if (j == axis) {
           out_vec(j) = offset;
-          offset += inp_literal.Get<int>({j});
+          offset += inp_dims[j];
         } else {
-          const int32 inp0_element = inp0_literal.Get<int>({j});
-          const int32 inp_element = inp_literal.Get<int>({j});
-          OP_REQUIRES(ctx, (inp0_element == inp_element),
+          const int32 inp0_element = inp0_dims[j];
+          const int32 inp_element = inp_dims[j];
+          OP_REQUIRES(ctx, inp0_element == inp_element,
                       errors::InvalidArgument("input[", i, ",", j,
                                               "] mismatch: ", inp0_element,
                                               " vs. ", inp_element));
