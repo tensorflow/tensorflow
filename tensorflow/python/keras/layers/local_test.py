@@ -27,7 +27,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
-class LocallyConnected1DLayersTest(test.TestCase):
+class LocallyConnectedLayersTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_locallyconnected_1d(self):
@@ -111,9 +111,6 @@ class LocallyConnected1DLayersTest(test.TestCase):
               self.assertEqual(layer.kernel.constraint, k_constraint)
               self.assertEqual(layer.bias.constraint, b_constraint)
 
-
-class LocallyConnected2DLayersTest(test.TestCase):
-
   @tf_test_util.run_in_graph_and_eager_modes
   def test_locallyconnected_2d(self):
     num_samples = 8
@@ -178,11 +175,11 @@ class LocallyConnected2DLayersTest(test.TestCase):
               input_shape=(num_samples, num_row, num_col, stack_size))
 
   def test_locallyconnected_2d_regularization(self):
-    num_samples = 2
+    num_samples = 8
     filters = 3
     stack_size = 4
     num_row = 6
-    num_col = 7
+    num_col = 10
     for implementation in [1, 2]:
       for padding in ['valid', 'same']:
         kwargs = {
@@ -223,24 +220,20 @@ class LocallyConnected2DLayersTest(test.TestCase):
             self.assertEqual(layer.kernel.constraint, k_constraint)
             self.assertEqual(layer.bias.constraint, b_constraint)
 
-
-class LocallyConnectedImplementationModeTest(test.TestCase):
-
   @tf_test_util.run_in_graph_and_eager_modes
   def test_locallyconnected_implementation(self):
-    num_samples = 4
-    num_classes = 3
-    num_epochs = 2
+    n_train = 4
+    n_classes = 3
+    n_epochs = 2
 
     np.random.seed(1)
-    targets = np.random.randint(0, num_classes, (num_samples,))
+    targets = np.random.randint(0, n_classes, (n_train,))
 
-    for width in [1, 6]:
-      for height in [7]:
+    for width in [1, 17]:
+      for height in [16]:
         for filters in [2]:
           for data_format in ['channels_first', 'channels_last']:
-            inputs = get_inputs(
-                data_format, filters, height, num_samples, width)
+            inputs = get_inputs(data_format, filters, height, n_train, width)
 
             for kernel_x in [(3,)]:
               for kernel_y in [()] if width == 1 else [(2,)]:
@@ -253,7 +246,7 @@ class LocallyConnectedImplementationModeTest(test.TestCase):
                           'kernel_size': kernel_x + kernel_y,
                           'strides': stride_x + stride_y,
                           'data_format': data_format,
-                          'num_classes': num_classes,
+                          'n_classes': n_classes,
                           'input_shape': inputs.shape
                       }
 
@@ -271,13 +264,13 @@ class LocallyConnectedImplementationModeTest(test.TestCase):
                       # Train.
                       model_1.fit(x=inputs,
                                   y=targets,
-                                  epochs=num_epochs,
-                                  batch_size=num_samples)
+                                  epochs=n_epochs,
+                                  batch_size=n_train)
 
                       model_2.fit(x=inputs,
                                   y=targets,
-                                  epochs=num_epochs,
-                                  batch_size=num_samples)
+                                  epochs=n_epochs,
+                                  batch_size=n_train)
 
                       # Compare outputs after a few training steps.
                       out_1 = model_1.call(inputs)
@@ -323,7 +316,7 @@ class LocallyConnectedImplementationModeTest(test.TestCase):
       self.assertAllCloseAccordingToType(inputs_2d, inputs_2d_tf)
 
 
-def get_inputs(data_format, filters, height, num_samples, width):
+def get_inputs(data_format, filters, height, n_train, width):
   if data_format == 'channels_first':
     if width == 1:
       input_shape = (filters, height)
@@ -340,7 +333,7 @@ def get_inputs(data_format, filters, height, num_samples, width):
     raise NotImplementedError(data_format)
 
   inputs = np.random.normal(0, 1,
-                            (num_samples,) + input_shape).astype(np.float32)
+                            (n_train,) + input_shape).astype(np.float32)
   return inputs
 
 
@@ -359,7 +352,7 @@ def get_model(implementation,
               kernel_size,
               strides,
               layers,
-              num_classes,
+              n_classes,
               data_format,
               input_shape):
   model = keras.Sequential()
@@ -384,7 +377,7 @@ def get_model(implementation,
         implementation=implementation))
 
   model.add(keras.layers.Flatten())
-  model.add(keras.layers.Dense(num_classes))
+  model.add(keras.layers.Dense(n_classes))
   model.compile(
       optimizer=RMSPropOptimizer(0.01),
       metrics=[keras.metrics.categorical_accuracy],
