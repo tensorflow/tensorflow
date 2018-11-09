@@ -6204,6 +6204,28 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "mkl_quantized_pooling_ops_test",
+    size = "small",
+    srcs = ["mkl_quantized_pooling_ops_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":quantization_utils",
+        ":quantized_ops",
+        ":mkl_pooling_ops",
+        ":mkl_input_conversion_op",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test(
     name = "quantized_reshape_op_test",
     size = "small",
     srcs = ["quantized_reshape_op_test.cc"],

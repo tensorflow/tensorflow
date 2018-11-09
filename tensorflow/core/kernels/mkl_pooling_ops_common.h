@@ -18,8 +18,8 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 #include <memory>
-#include <vector>
 #include <string>
+#include <vector>
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/padding.h"
 
@@ -50,18 +50,20 @@ struct MklPoolingParams {
   memory::dims padding_left;
   memory::dims padding_right;
   mkldnn::algorithm alg_kind;
+  mkldnn::prop_kind prop_kind;
 
   MklPoolingParams(memory::dims src_dims, memory::dims dst_dims,
                    memory::dims filter_dims, memory::dims strides,
                    memory::dims padding_left, memory::dims padding_right,
-                   mkldnn::algorithm alg_kind)
+                   mkldnn::algorithm alg_kind, mkldnn::prop_kind prop_kind)
       : src_dims(src_dims),
         dst_dims(dst_dims),
         filter_dims(filter_dims),
         strides(strides),
         padding_left(padding_left),
         padding_right(padding_right),
-        alg_kind(alg_kind) {}
+        alg_kind(alg_kind),
+        prop_kind(prop_kind) {}
 };
 
 template <typename T>
@@ -96,6 +98,8 @@ class MklPoolingFwdPrimitive : public MklPrimitive {
   struct PoolingFwdContext {
     // algorithm
     mkldnn::algorithm alg_kind;
+
+    mkldnn::prop_kind prop_kind;
 
     // expected memory format
     memory::format src_fmt;
@@ -187,6 +191,7 @@ class MklPoolingFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(fwdParams.padding_left);
     key_creator.AddAsKey(fwdParams.padding_right);
     key_creator.AddAsKey<int>(static_cast<int>(fwdParams.alg_kind));
+    key_creator.AddAsKey<int>(static_cast<int>(fwdParams.prop_kind));
     return key_creator.GetKey();
   }
 
@@ -437,13 +442,17 @@ struct MklPoolParameters {
 
 #ifndef INTEL_MKL_ML_ONLY
 
-template <class T>
+template <class T, MklQuantization version>
 class MklPoolingOpBase : public OpKernel {
  public:
   explicit MklPoolingOpBase(OpKernelConstruction* context)
       : OpKernel(context), workspace_enabled_(false) {
     string data_format;
-    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
+    if (version == MklQuantization::INT8) {
+      // current quantized convolution doesn't have data_format attribute.
+      data_format = "NHWC";
+    } else
+      OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &this->data_format_tf_),
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("ksize", &this->ksize_));
@@ -461,7 +470,7 @@ class MklPoolingOpBase : public OpKernel {
     bool is_pool2d = (this->ksize_.size() == 4);
     this->data_format_mkldnn_ =
         is_pool2d ? TFDataFormatToMklDnnDataFormat(this->data_format_tf_)
-                 : TFDataFormatToMklDnn3DDataFormat(this->data_format_tf_);
+                  : TFDataFormatToMklDnn3DDataFormat(this->data_format_tf_);
 
     // We may not get this attribute for this node if it does not go through
     // graph rewrite pass. So we do not check for error while retrieving this
@@ -582,11 +591,11 @@ class MklPoolingOpBase : public OpKernel {
   bool workspace_enabled_;
 };
 
-template <class T>
-class MklPoolingForwardOpBase : public MklPoolingOpBase<T> {
+template <class T, MklQuantization version>
+class MklPoolingForwardOpBase : public MklPoolingOpBase<T, version> {
  public:
-  explicit MklPoolingForwardOpBase<T>(OpKernelConstruction* context)
-      : MklPoolingOpBase<T>(context) {}
+  explicit MklPoolingForwardOpBase<T, version>(OpKernelConstruction* context)
+      : MklPoolingOpBase<T, version>(context) {}
   void Compute(OpKernelContext* context) override = 0;
 
  protected:
@@ -667,11 +676,11 @@ class MklPoolingForwardOpBase : public MklPoolingOpBase<T> {
   const int kOutputTensorIndexOutput = 0;
 };  // MklPoolingForwardBaseOp
 
-template <class T>
-class MklPoolingBackwardOpBase : public MklPoolingOpBase<T> {
+template <class T, MklQuantization version>
+class MklPoolingBackwardOpBase : public MklPoolingOpBase<T, version> {
  public:
-  explicit MklPoolingBackwardOpBase<T>(OpKernelConstruction* context)
-      : MklPoolingOpBase<T>(context) {}
+  explicit MklPoolingBackwardOpBase<T, version>(OpKernelConstruction* context)
+      : MklPoolingOpBase<T, version>(context) {}
   void Compute(OpKernelContext* context) override = 0;
 
  protected:

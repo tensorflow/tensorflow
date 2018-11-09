@@ -357,11 +357,10 @@ class MklAvgPoolingGradOp : public OpKernel {
       if (!outbackprop_in_mkl_format) {
         // For avgpooling, tensor_in_shape should have 1 dimension, and 4
         // elements.
-        OP_REQUIRES(
-            context,
-            tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
-            errors::InvalidArgument("original input shape must be "
-                                    "1-dimensional and 4 elements"));
+        OP_REQUIRES(context, tensor_in_shape.dims() == 1 &&
+                                 tensor_in_shape.NumElements() == 4,
+                    errors::InvalidArgument("original input shape must be "
+                                            "1-dimensional and 4 elements"));
 
         // For avgpooling, out_backprop should have 4 dimensions.
         OP_REQUIRES(context, out_backprop.dims() == 4,
@@ -430,11 +429,11 @@ class MklAvgPoolingGradOp : public OpKernel {
 
 #else
 
-template <typename Device, typename T>
-class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
+template <typename Device, MklQuantization version, typename T>
+class MklAvgPoolingOp : public MklPoolingForwardOpBase<T, version> {
  public:
   explicit MklAvgPoolingOp(OpKernelConstruction* context)
-      : MklPoolingForwardOpBase<T>(context) {
+      : MklPoolingForwardOpBase<T, version>(context) {
     // Workspace is an MKLDNN construct that is only used in Max Pooling.
     // So set workspace_enabled_ to false.
     this->workspace_enabled_ = false;
@@ -484,9 +483,9 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
           dnn_shape_input.IsMklTensor()
               ? dnn_shape_input.GetSizesAsMklDnnDims()
               : is_pool2d ? TFShapeToMklDnnDimsInNCHW(input_tensor.shape(),
-                                                     this->data_format_tf_)
-                         : TFShapeToMklDnnDimsInNCDHW(input_tensor.shape(),
-                                                      this->data_format_tf_);
+                                                      this->data_format_tf_)
+                          : TFShapeToMklDnnDimsInNCDHW(input_tensor.shape(),
+                                                       this->data_format_tf_);
       memory::desc input_md = dnn_shape_input.IsMklTensor()
                                   ? dnn_shape_input.GetMklLayout()
                                   : memory::desc(src_dims, MklDnnType<T>(),
@@ -494,9 +493,15 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
 
       // Get an average pooling primitive from the op pool
       MklPoolingFwdPrimitive<T>* pooling_fwd = nullptr;
+      prop_kind pooling_prop_kind;
+      if (version == MklQuantization::INT8)
+        pooling_prop_kind = prop_kind::forward_inference;
+      else
+        pooling_prop_kind = prop_kind::forward_training;
       MklPoolingParams fwdParams(src_dims, output_dims_mkl_order, filter_dims,
                                  strides, padding_left, padding_right,
-                                 algorithm::pooling_avg_exclude_padding);
+                                 algorithm::pooling_avg_exclude_padding,
+                                 pooling_prop_kind);
       pooling_fwd = MklPoolingFwdPrimitiveFactory<T>::Get(fwdParams);
 
       // allocate output tensor
@@ -523,10 +528,29 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
 
       // execute pooling
       pooling_fwd->Execute(src_data, dst_data);
+
+      // pass min, max from input to output
+      if (version == MklQuantization::INT8) {
+        const float min_input = context->input(1).flat<float>()(0);
+        const float max_input = context->input(2).flat<float>()(0);
+
+        Tensor* output_min = nullptr;
+        Tensor* output_max = nullptr;
+        MklDnnShape output_min_mkl_shape, output_max_mkl_shape;
+        output_min_mkl_shape.SetMklTensor(false);
+        output_max_mkl_shape.SetMklTensor(false);
+        AllocateOutputSetMklShape(context, 1, &output_min, {},
+                                  output_min_mkl_shape);
+        AllocateOutputSetMklShape(context, 2, &output_max, {},
+                                  output_max_mkl_shape);
+        output_min->flat<float>()(0) = min_input;
+        output_max->flat<float>()(0) = max_input;
+      }
+
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           context,
           errors::Aborted("Operation received an exception:", error_msg));
@@ -537,11 +561,11 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
   engine cpu_engine_ = engine(engine::cpu, 0);
 };  // MklAvgPoolingOp
 
-template <class Device, class T>
-class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
+template <class Device, MklQuantization version, class T>
+class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T, version> {
  public:
   explicit MklAvgPoolingGradOp(OpKernelConstruction* context)
-      : MklPoolingBackwardOpBase<T>(context) {}
+      : MklPoolingBackwardOpBase<T, version>(context) {}
 
   void Compute(OpKernelContext* context) override {
     try {
@@ -576,24 +600,24 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
           orig_input_mkl_shape.IsMklTensor()
               ? orig_input_mkl_shape.GetSizesAsMklDnnDims()
               : is_pool2d ? TFShapeToMklDnnDimsInNCHW(orig_input_shape,
-                                                     this->data_format_tf_)
-                         : TFShapeToMklDnnDimsInNCDHW(orig_input_shape,
-                                                      this->data_format_tf_);
+                                                      this->data_format_tf_)
+                          : TFShapeToMklDnnDimsInNCDHW(orig_input_shape,
+                                                       this->data_format_tf_);
 
       memory::dims diff_dst_dims =
           grad_mkl_shape.IsMklTensor()
               ? grad_mkl_shape.GetSizesAsMklDnnDims()
               : is_pool2d ? TFShapeToMklDnnDimsInNCHW(grad_tensor.shape(),
-                                                     this->data_format_tf_)
-                         : TFShapeToMklDnnDimsInNCDHW(grad_tensor.shape(),
-                                                      this->data_format_tf_);
+                                                      this->data_format_tf_)
+                          : TFShapeToMklDnnDimsInNCDHW(grad_tensor.shape(),
+                                                       this->data_format_tf_);
       memory::dims output_dims_mkl_order;
       this->GetOutputDims(pool_params, &output_dims_mkl_order);
 
-      MklPoolingParams bwdParams(orig_input_dims_mkl_order,
-                                 output_dims_mkl_order, filter_dims, strides,
-                                 padding_left, padding_right,
-                                 algorithm::pooling_avg_exclude_padding);
+      MklPoolingParams bwdParams(
+          orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,
+          strides, padding_left, padding_right,
+          algorithm::pooling_avg_exclude_padding, prop_kind::forward_training);
       MklPoolingBwdPrimitive<T>* pooling_bwd =
           MklPoolingBwdPrimitiveFactory<T>::Get(bwdParams);
 
@@ -624,9 +648,9 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       // execute pooling op
       pooling_bwd->Execute(diff_dst_data, diff_src_data);
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(context, errors::Aborted("Compute received an exception:",
                                               error_msg));
     }
@@ -645,15 +669,13 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
                          const MklDnnShape& original_input_mkl_shape,
                          const MklDnnShape& input_gradient_mkl_shape) {
     if (!original_input_mkl_shape.IsMklTensor()) {
-      OP_REQUIRES(
-          context,
-          tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
-          errors::InvalidArgument("original input shape must be "
-                                  "1-dimensional and 4 elements"));
+      OP_REQUIRES(context, tensor_in_shape.dims() == 1 &&
+                               tensor_in_shape.NumElements() == 4,
+                  errors::InvalidArgument("original input shape must be "
+                                          "1-dimensional and 4 elements"));
     } else {
-      OP_REQUIRES(context,
-                  original_input_mkl_shape.GetDimension() == 1 &&
-                      original_input_mkl_shape.DimSize(0) == 4,
+      OP_REQUIRES(context, original_input_mkl_shape.GetDimension() == 1 &&
+                               original_input_mkl_shape.DimSize(0) == 4,
                   errors::InvalidArgument("original input shape must be "
                                           "1-dimensional and 4 elements"));
     }
@@ -671,31 +693,49 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
   }
 };  // MklAvgPoolingGradOp
 
-REGISTER_KERNEL_BUILDER(Name("_MklAvgPool3D")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T")
-                            .Label(mkl_op_registry::kMklOpLabel),
-                        MklAvgPoolingOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("_MklAvgPool3D")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<float>("T")
+        .Label(mkl_op_registry::kMklOpLabel),
+    MklAvgPoolingOp<CPUDevice, MklQuantization::FP32, float>);
 
-REGISTER_KERNEL_BUILDER(Name("_MklAvgPool3DGrad")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T")
-                            .Label(mkl_op_registry::kMklOpLabel),
-                        MklAvgPoolingGradOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("_MklAvgPool3DGrad")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<float>("T")
+        .Label(mkl_op_registry::kMklOpLabel),
+    MklAvgPoolingGradOp<CPUDevice, MklQuantization::FP32, float>);
 
 #endif  // INTEL_MKL_ML_ONLY
 
-REGISTER_KERNEL_BUILDER(Name("_MklAvgPool")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T")
-                            .Label(mkl_op_registry::kMklOpLabel),
-                        MklAvgPoolingOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("_MklAvgPool")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<float>("T")
+        .Label(mkl_op_registry::kMklOpLabel),
+    MklAvgPoolingOp<CPUDevice, MklQuantization::FP32, float>);
 
-REGISTER_KERNEL_BUILDER(Name("_MklAvgPoolGrad")
-                            .Device(DEVICE_CPU)
-                            .TypeConstraint<float>("T")
-                            .Label(mkl_op_registry::kMklOpLabel),
-                        MklAvgPoolingGradOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedAvgPool")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("T")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklAvgPoolingOp<CPUDevice, MklQuantization::INT8, quint8>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedAvgPool")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<qint8>("T")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklAvgPoolingOp<CPUDevice, MklQuantization::INT8, qint8>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("_MklAvgPoolGrad")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<float>("T")
+        .Label(mkl_op_registry::kMklOpLabel),
+    MklAvgPoolingGradOp<CPUDevice, MklQuantization::FP32, float>);
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL

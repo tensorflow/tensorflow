@@ -75,6 +75,8 @@ int inline GetTensorMetaDataIndex(int n, int total_tensors) {
 namespace mkl_op_registry {
 static const char* kMklOpLabel = "MklOp";
 static const char* kMklOpLabelPattern = "label='MklOp'";
+static const char* kMklQuantizedOpLabel = "QuantizedMklOp";
+static const char* kMklQuantizedOpLabelPattern = "label='QuantizedMklOp'";
 // Prefix that we add to Tensorflow op name to construct Mkl op name.
 static const char* const kMklOpPrefix = "_Mkl";
 
