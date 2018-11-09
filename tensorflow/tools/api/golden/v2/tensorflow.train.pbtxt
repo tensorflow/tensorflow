@@ -233,10 +233,6 @@ tf_module {
     argspec: "args=[\'global_step_tensor\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "checkpoint_exists"
-    argspec: "args=[\'checkpoint_prefix\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "cosine_decay"
     argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'alpha\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'None\'], "
   }
@@ -251,14 +247,6 @@ tf_module {
   member_method {
     name: "exponential_decay"
     argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'decay_rate\', \'staircase\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
-  }
-  member_method {
-    name: "generate_checkpoint_state_proto"
-    argspec: "args=[\'save_dir\', \'model_checkpoint_path\', \'all_model_checkpoint_paths\', \'all_model_checkpoint_timestamps\', \'last_preserved_timestamp\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "get_checkpoint_mtimes"
-    argspec: "args=[\'checkpoint_prefixes\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_checkpoint_state"
@@ -321,10 +309,6 @@ tf_module {
     argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'end_learning_rate\', \'power\', \'cycle\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'1.0\', \'False\', \'None\'], "
   }
   member_method {
-    name: "remove_checkpoint"
-    argspec: "args=[\'checkpoint_prefix\', \'checkpoint_format_version\', \'meta_graph_suffix\'], varargs=None, keywords=None, defaults=[\'2\', \'meta\'], "
-  }
-  member_method {
     name: "replica_device_setter"
     argspec: "args=[\'ps_tasks\', \'ps_device\', \'worker_device\', \'merge_devices\', \'cluster\', \'ps_ops\', \'ps_strategy\'], varargs=None, keywords=None, defaults=[\'0\', \'/job:ps\', \'/job:worker\', \'True\', \'None\', \'None\', \'None\'], "
   }
@@ -343,10 +327,6 @@ tf_module {
   member_method {
     name: "summary_iterator"
     argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "update_checkpoint_state"
-    argspec: "args=[\'save_dir\', \'model_checkpoint_path\', \'all_model_checkpoint_paths\', \'latest_filename\', \'all_model_checkpoint_timestamps\', \'last_preserved_timestamp\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "warm_start"
