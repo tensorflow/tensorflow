@@ -21,7 +21,9 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import sample_stats
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import spectral_ops_test_util
@@ -466,6 +468,13 @@ class PercentileTestWithNearestInterpolation(test.TestCase):
       minval = sample_stats.percentile(x, q=0, validate_args=True)
       self.assertAllEqual(0, minval.eval())
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_percentile_in_eager_mode(self):
+    # Test case for GitHub issue 23619
+    x = constant_op.constant([1,2,3,4], dtype=dtypes.float64)
+    with self.cached_session():
+      y = sample_stats.percentile(x, q=30, validate_args=True)
+      self.assertAllEqual(2.0, self.evaluate(y))
 
 if __name__ == "__main__":
   test.main()
