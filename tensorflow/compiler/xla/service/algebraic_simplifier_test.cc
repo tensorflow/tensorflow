@@ -3465,6 +3465,29 @@ TEST_F(AlgebraicSimplifierTest, SliceOfConcatNonScalarInput) {
   EXPECT_EQ(root->slice_limits(0), 2);
 }
 
+TEST_F(AlgebraicSimplifierTest, NegateNegate) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      param.0 = f32[2] parameter(0)
+      neg.0 = f32[2] negate(param.0)
+      neg.1 = f32[2] negate(neg.0)
+      not.0 = f32[2] not(neg.1)
+      ROOT not.1 = f32[2] not(not.0)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest()));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 bitcasting_callback());
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Parameter(0));
+}
+
 struct PadReduceWindowEffectiveBroadcastCase {
   std::vector<int64> input_spatials;
   std::vector<int64> symmetric_pad_spatials;
