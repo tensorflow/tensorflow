@@ -123,7 +123,7 @@ class SimpleClusterResolver(ClusterResolver):
     If a task_type and task_index is given, this will override the `master`
     string passed into the initialization function.
     """
-    if task_type and task_index:
+    if task_type is not None and task_index is not None:
       master = self.cluster_spec().task_address(task_type, task_index)
     else:
       master = self._master
@@ -305,7 +305,7 @@ class UnionClusterResolver(ClusterResolver):
     Returns:
       The name or URL of the session master.
     """
-    if task_type and task_index:
+    if task_type is not None and task_index is not None:
       master = self.cluster_spec().task_address(task_type, task_index)
       return _format_master_url(master, rpc_layer or self._rpc_layer)
 
