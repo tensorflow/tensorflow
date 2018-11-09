@@ -63,11 +63,19 @@ from __future__ import print_function
 
 """
 
+_TENSORFLOW_API_ATTR_V1 = (
+    tf_export.API_ATTRS_V1[tf_export.TENSORFLOW_API_NAME].names)
 _TENSORFLOW_API_ATTR = tf_export.API_ATTRS[tf_export.TENSORFLOW_API_NAME].names
 _TENSORFLOW_CONSTANTS_ATTR_V1 = (
     tf_export.API_ATTRS_V1[tf_export.TENSORFLOW_API_NAME].constants)
 _TENSORFLOW_CONSTANTS_ATTR = (
     tf_export.API_ATTRS[tf_export.TENSORFLOW_API_NAME].constants)
+
+
+def get_canonical_name(v2_names, v1_name):
+  if v2_names:
+    return v2_names[0]
+  return 'compat.v1.%s' % v1_name
 
 
 def collect_constant_renames():
@@ -97,12 +105,9 @@ def collect_constant_renames():
     # Second, we look for names that are in V1 but not in V2.
     for constant_name, api_names_v1 in constants_v1.items():
       api_names_v2 = constants_v2[constant_name]
-      if not api_names_v2:
-        continue
-      canonical_name = api_names_v2[0]
       for name in api_names_v1:
         if name not in api_names_v2:
-          renames.add((name, canonical_name))
+          renames.add((name, get_canonical_name(api_names_v2, name)))
   return renames
 
 
@@ -122,12 +127,11 @@ def collect_function_renames():
       _, attr = tf_decorator.unwrap(child[1])
       if not hasattr(attr, '__dict__'):
         continue
-      api_names = attr.__dict__.get(_TENSORFLOW_API_ATTR, [])
-      deprecated_api_names = attr.__dict__.get('_tf_deprecated_api_names', [])
-      canonical_name = tf_export.get_canonical_name(
-          api_names, deprecated_api_names)
+      api_names_v1 = attr.__dict__.get(_TENSORFLOW_API_ATTR_V1, [])
+      api_names_v2 = attr.__dict__.get(_TENSORFLOW_API_ATTR, [])
+      deprecated_api_names = set(api_names_v1) - set(api_names_v2)
       for name in deprecated_api_names:
-        renames.add((name, canonical_name))
+        renames.add((name, get_canonical_name(api_names_v2, name)))
 
   visitor = public_api.PublicAPIVisitor(visit)
   visitor.do_not_descend_map['tf'].append('contrib')
