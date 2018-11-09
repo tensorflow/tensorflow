@@ -81,12 +81,8 @@ class MirrorPadOp : public XlaOpKernel {
         TensorShapeUtils::IsMatrix(pad_shape) && pad_shape.dim_size(1) == 2,
         errors::InvalidArgument("paddings must be a matrix with 2 columns: ",
                                 pad_shape.DebugString()));
-    const int fixed_dims =
-        (allow_legacy_scalars() && dims == 0 && pad_shape.dim_size(0) == 1)
-            ? 1
-            : dims;
     OP_REQUIRES(
-        ctx, fixed_dims == pad_shape.dim_size(0),
+        ctx, dims == pad_shape.dim_size(0),
         errors::InvalidArgument(
             "The first dimension of paddings must be the rank of inputs",
             pad_shape.DebugString(), " ", input_shape.DebugString()));

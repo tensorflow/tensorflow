@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
@@ -45,15 +46,13 @@ class ConcatBaseOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     const TensorShape concat_dim_tensor_shape = ctx->InputShape(axis_index_);
-    OP_REQUIRES(
-        ctx, IsLegacyScalar(concat_dim_tensor_shape),
-        errors::InvalidArgument(
-            "Concat dim tensor should be a scalar integer, but got shape ",
-            concat_dim_tensor_shape.DebugString()));
-    xla::Literal literal;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInput(axis_index_, &literal));
-    // TODO(annarev): add a helper to support int64 input.
-    const int32 concat_dim = literal.Get<int>({});
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(concat_dim_tensor_shape),
+                errors::InvalidArgument(
+                    "Concat dim tensor should be a scalar, but got shape ",
+                    concat_dim_tensor_shape.DebugString()));
+    int64 concat_dim;
+    OP_REQUIRES_OK(ctx,
+                   ctx->ConstantInputAsIntScalar(axis_index_, &concat_dim));
 
     std::vector<xla::XlaOp> values;
     std::vector<TensorShape> shapes;
@@ -63,9 +62,7 @@ class ConcatBaseOp : public XlaOpKernel {
     const TensorShape& input_shape = shapes[0];
 
     int32 axis = concat_dim < 0 ? concat_dim + input_dims : concat_dim;
-    OP_REQUIRES(ctx,
-                (0 <= axis && axis < input_dims) ||
-                    (allow_legacy_scalars() && concat_dim == 0),
+    OP_REQUIRES(ctx, 0 <= axis && axis < input_dims,
                 errors::InvalidArgument(
                     "ConcatOp : Expected concatenating dimensions in the range "
                     "[",
@@ -75,14 +72,11 @@ class ConcatBaseOp : public XlaOpKernel {
     // elements.
     std::vector<xla::XlaOp> input_data;
     int output_concat_dim = 0;
-    const bool input_is_scalar = IsLegacyScalar(input_shape);
     for (int i = 0; i < N; ++i) {
       xla::XlaOp handle = values[i];
       const TensorShape& in_shape = shapes[i];
-      const bool in_is_scalar = IsLegacyScalar(in_shape);
       OP_REQUIRES(
-          ctx,
-          in_shape.dims() == input_dims || (input_is_scalar && in_is_scalar),
+          ctx, in_shape.dims() == input_dims,
           errors::InvalidArgument(
               "ConcatOp : Ranks of all input tensors should match: shape[0] = ",
               input_shape.DebugString(), " vs. shape[", i,
@@ -131,11 +125,10 @@ class ConcatOffsetOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     const TensorShape concat_dim_shape = ctx->InputShape(0);
-    OP_REQUIRES(
-        ctx, IsLegacyScalar(concat_dim_shape),
-        errors::InvalidArgument(
-            "Concat dim tensor should be a scalar integer, but got shape ",
-            concat_dim_shape.DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(concat_dim_shape),
+                errors::InvalidArgument(
+                    "Concat dim tensor should be a scalar, but got shape ",
+                    concat_dim_shape.DebugString()));
     for (int i = 1; i < ctx->num_inputs(); ++i) {
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(ctx->InputShape(i)),
                   errors::InvalidArgument("input ", i,
