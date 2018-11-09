@@ -222,14 +222,15 @@ void DoNonMaxSuppressionOp(
   std::copy_n(selected.begin(), selected.size(), output_indices_data.data());
 }
 
-void BatchedNonMaxSuppressionOp(OpKernelContext* context, 
-                           const Tensor& inp_boxes, const Tensor& inp_scores, 
-                           int num_boxes, 
-                           const int max_size_per_class, 
-                           const int total_size_per_batch, 
-                           const float score_threshold, 
-                           const float iou_threshold,
-                           bool use_static_shapes = false) {
+void BatchedNonMaxSuppressionOp(OpKernelContext* context,
+                                const Tensor& inp_boxes,
+                                const Tensor& inp_scores,
+                                int num_boxes,
+                                const int max_size_per_class,
+                                const int total_size_per_batch,
+                                const float score_threshold,
+                                const float iou_threshold,
+                                bool use_static_shapes = false) {
 
   int q = inp_boxes.dim_size(2);
   int num_classes = inp_scores.dim_size(2);
@@ -242,9 +243,9 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
   // [num_batches, per_batch_size, 4]
   std::vector <std::vector<float>> nmsed_boxes(num_batches);
   // [num_batches, per_batch_size]
-  std::vector <std::vector<float>> nmsed_scores(num_batches); 
+  std::vector <std::vector<float>> nmsed_scores(num_batches);
   // [num_batches, per_batch_size]
-  std::vector <std::vector<float>> nmsed_classes(num_batches); 
+  std::vector <std::vector<float>> nmsed_classes(num_batches);
   // [num_batches]
   std::vector <int> final_valid_detections;
   // [num_batches, per_batch_size]
