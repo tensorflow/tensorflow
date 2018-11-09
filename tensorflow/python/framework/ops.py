@@ -5875,7 +5875,7 @@ def dismantle_graph(graph):
   graph.__dict__ = {}
 
 
-@tf_export("add_to_collection")
+@tf_export(v1=["add_to_collection"])
 def add_to_collection(name, value):
   """Wrapper for `Graph.add_to_collection()` using the default graph.
 
@@ -5894,7 +5894,8 @@ def add_to_collection(name, value):
   """
   get_default_graph().add_to_collection(name, value)
 
-@tf_export("add_to_collections")
+
+@tf_export(v1=["add_to_collections"])
 def add_to_collections(names, value):
   """Wrapper for `Graph.add_to_collections()` using the default graph.
 

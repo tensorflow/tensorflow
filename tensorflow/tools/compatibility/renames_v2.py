@@ -56,6 +56,8 @@ renames = {
     'tf.VariableScope': 'tf.compat.v1.VariableScope',
     'tf.WholeFileReader': 'tf.compat.v1.WholeFileReader',
     'tf.accumulate_n': 'tf.math.accumulate_n',
+    'tf.add_to_collection': 'tf.compat.v1.add_to_collection',
+    'tf.add_to_collections': 'tf.compat.v1.add_to_collections',
     'tf.all_variables': 'tf.compat.v1.all_variables',
     'tf.angle': 'tf.math.angle',
     'tf.assert_greater_equal': 'tf.debugging.assert_greater_equal',

@@ -509,14 +509,6 @@ tf_module {
     argspec: "args=[\'inputs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "add_to_collection"
-    argspec: "args=[\'name\', \'value\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "add_to_collections"
-    argspec: "args=[\'names\', \'value\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "arg_max"
     argspec: "args=[\'input\', \'dimension\', \'output_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int64\'>\", \'None\'], "
   }
