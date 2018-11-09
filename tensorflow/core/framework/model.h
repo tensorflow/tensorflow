@@ -161,18 +161,18 @@ class Node {
   }
 
   // Records that a node thread has started executing.
-  void record_start() LOCKS_EXCLUDED(mu_) {
+  void record_start(int64 time_nanos) LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
-    work_start_[std::this_thread::get_id()] = Env::Default()->NowNanos();
+    work_start_[std::this_thread::get_id()] = time_nanos;
   }
 
   // Records that a node thread has stopped executing.
-  void record_stop() LOCKS_EXCLUDED(mu_) {
+  void record_stop(int64 time_nanos) LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     std::thread::id tid = std::this_thread::get_id();
     auto iter = work_start_.find(tid);
     if (iter != work_start_.end()) {
-      processing_time_ += Env::Default()->NowNanos() - iter->second;
+      processing_time_ += time_nanos - iter->second;
       work_start_.erase(iter);
     } else {
       LOG(WARNING)

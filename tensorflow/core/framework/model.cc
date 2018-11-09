@@ -441,10 +441,11 @@ void Model::RecordStart(const string& name, bool stop_output) {
   tf_shared_lock l(mu_);
   auto node = gtl::FindOrNull(lookup_table_, name);
   if (node) {
+    int64 now_nanos = Env::Default()->NowNanos();
     if (stop_output && (*node)->output()) {
-      (*node)->output()->record_stop();
+      (*node)->output()->record_stop(now_nanos);
     }
-    (*node)->record_start();
+    (*node)->record_start(now_nanos);
   }
 }
 
@@ -452,9 +453,10 @@ void Model::RecordStop(const string& name, bool start_output) {
   tf_shared_lock l(mu_);
   auto node = gtl::FindOrNull(lookup_table_, name);
   if (node) {
-    (*node)->record_stop();
+    int64 now_nanos = Env::Default()->NowNanos();
+    (*node)->record_stop(now_nanos);
     if (start_output && (*node)->output()) {
-      (*node)->output()->record_start();
+      (*node)->output()->record_start(now_nanos);
     }
   }
 }
