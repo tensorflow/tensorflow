@@ -458,6 +458,7 @@ def meta_graph_filename(checkpoint_filename, meta_graph_suffix="meta"):
 
 
 # TODO(allenl): Allow tf.keras.Model instances in the constructor directly?
+@tf_export("train.CheckpointManager")
 class CheckpointManager(object):
   """Deletes old checkpoints.
 
@@ -634,13 +635,10 @@ class CheckpointManager(object):
     """
     return self._checkpoint_prefix
 
-  def save(self, session=None, checkpoint_number=None):
+  def save(self, checkpoint_number=None):
     """Creates a new checkpoint and manages it.
 
     Args:
-      session: The session to evaluate variables in. Ignored when executing
-        eagerly. If not provided when graph building, the default session is
-        used.
       checkpoint_number: An optional integer, or an integer-dtype `Variable` or
         `Tensor`, used to number the checkpoint. If `None` (default),
         checkpoints are numbered using `checkpoint.save_counter`. Even if
@@ -657,9 +655,9 @@ class CheckpointManager(object):
     if context.executing_eagerly():
       save_counter = self._checkpoint.save_counter
       save_counter.assign_add(1)
+      session = None
     else:
-      if session is None:
-        session = ops.get_default_session()
+      session = ops.get_default_session()
 
       def _initializing_creator(next_creator, **kwargs):
         """Initialize the save counter if it has been newly created."""
