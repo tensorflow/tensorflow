@@ -264,9 +264,9 @@ class MklConvFwdPrimitive : public MklPrimitive {
           scales.push_back(post_op_param.param[0]);
           post_ops_attr.set_output_scales(0, scales);
         } else {
-          DCHECK((post_op_param.name == "relu") || 
-              (post_op_param.name == "sum") ||
-              (post_op_param.name == "output_scale"));
+          DCHECK((post_op_param.name == "relu") ||
+                 (post_op_param.name == "sum") ||
+                 (post_op_param.name == "output_scale"));
         }
       }
       post_ops_attr.set_post_ops(post_ops);
