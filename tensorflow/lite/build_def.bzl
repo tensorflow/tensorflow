@@ -417,6 +417,12 @@ def gen_selected_ops(name, model):
         tools = [tool],
     )
 
+def flex_dep(target_op_sets):
+    if "SELECT_TF_OPS" in target_op_sets:
+        return ["//tensorflow/lite/delegates/flex:delegate"]
+    else:
+        return []
+
 def gen_model_coverage_test(model_name, data, failure_type):
     """Generates Python test targets for testing TFLite models.
 
@@ -453,5 +459,5 @@ def gen_model_coverage_test(model_name, data, failure_type):
                 "//tensorflow/lite/testing/model_coverage:model_coverage_lib",
                 "//tensorflow/lite/python:lite",
                 "//tensorflow/python:client_testlib",
-            ],
+            ] + flex_dep(target_op_sets),
         )
