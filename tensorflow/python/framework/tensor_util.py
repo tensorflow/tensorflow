@@ -339,11 +339,29 @@ _TF_TO_IS_OK = {
     dtypes.string: [_FilterStr],
     dtypes.uint16: [_FilterInt],
     dtypes.uint8: [_FilterInt],
+    dtypes.uint32: [_FilterInt],
+    dtypes.uint64: [_FilterInt],
 }
 
 
 def _AssertCompatible(values, dtype):
-  fn_list = _TF_TO_IS_OK.get(dtype, [_FilterNotTensor])
+  if dtype is None:
+    fn_list = [_FilterNotTensor]
+  else:
+    try:
+      fn_list = _TF_TO_IS_OK[dtype]
+    except KeyError:
+      # There isn't a specific fn_list, so we try to do the best possible.
+      if dtype.is_integer:
+        fn_list = [_FilterInt]
+      elif dtype.is_floating:
+        fn_list = [_FilterFloat]
+      elif dtype.is_complex:
+        fn_list = [_FilterComplex]
+      elif dtype.is_quantized:
+        fn_list = [_FilterInt, _FilterTuple]
+      else:
+        fn_list = [_FilterNotTensor]
   mismatch = _FirstNotNone([fn(values) for fn in fn_list])
   if mismatch is not None:
     if dtype is None:
