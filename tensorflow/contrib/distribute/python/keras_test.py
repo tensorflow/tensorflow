@@ -47,7 +47,6 @@ _RANDOM_SEED = 1337
 _TRAIN_SIZE = 200
 _INPUT_SIZE = (10,)
 _NUM_CLASS = 2
-_TOLERANCE = 1e-5
 
 
 # TODO(anjalisridhar): Add a decorator that will allow us to run these tests as
@@ -213,10 +212,76 @@ def multi_input_output_model():
   return model
 
 
+def get_correctness_test_inputs(use_numpy, with_distribution,
+                                x_train, y_train, x_predict):
+  """Generates the inputs for correctness check when enable Keras with DS."""
+  global_batch_size = 64
+  batch_size = global_batch_size
+  # TODO(b/118776054): Use global batch size for Keras/DS support.
+  if with_distribution:
+    batch_size //= with_distribution.num_replicas_in_sync
+
+  if use_numpy:
+    training_inputs = {
+        'batch_size': batch_size,
+        'x': x_train,
+        'y': y_train,
+        'epochs': 1,
+        'shuffle': False,
+    }
+    eval_inputs = {
+        'batch_size': batch_size,
+        'x': x_train,
+        'y': y_train,
+    }
+    predict_inputs = {
+        # TODO(b/119318587): We should not require batch_size when distribution
+        # is enabled.
+        'batch_size': (len(x_predict) // with_distribution.num_replicas_in_sync
+                       if with_distribution else None),
+        'x': np.array(x_predict, dtype=np.float32),
+    }
+  else:
+    # For dataset inputs, we do not pass batch_size to
+    # keras.fit/evaluate/predict. The batch size is part of the dataset.
+    train_dataset = dataset_ops.Dataset.from_tensor_slices(
+        (x_train, y_train))
+    x = batch_wrapper(train_dataset, batch_size, with_distribution)
+
+    training_inputs = {
+        'batch_size': None,
+        'x': x,
+        'y': None,
+        'epochs': 1,
+        'shuffle': False,
+        'steps_per_epoch': len(x_train) // global_batch_size,
+    }
+    eval_inputs = {
+        'batch_size': None,
+        'x': x,
+        'y': None,
+        'steps': 20,
+    }
+    predict_batch_size = len(x_predict)
+    if with_distribution:
+      predict_batch_size //= with_distribution.num_replicas_in_sync
+    predict_dataset = dataset_ops.Dataset.from_tensor_slices(x_predict)
+    predict_dataset = batch_wrapper(predict_dataset,
+                                    predict_batch_size, with_distribution)
+    predict_inputs = {
+        'batch_size': None,
+        'steps': 1,
+        'x': predict_dataset,
+    }
+
+  return training_inputs, eval_inputs, predict_inputs
+
+
 strategies = [combinations.default_strategy,
               combinations.one_device_strategy,
               combinations.mirrored_strategy_with_gpu_and_cpu,
               combinations.mirrored_strategy_with_two_gpus,
+              combinations.tpu_strategy,  # steps_per_run=2
               combinations.tpu_strategy_one_step]
 
 
@@ -242,6 +307,13 @@ def strategy_and_optimizer_combinations():
                  combinations.adam_optimizer_v1_fn,
                  combinations.gradient_descent_optimizer_v1_fn,
                  combinations.rmsprop_optimizer_v1_fn],
+      mode=['graph'])
+
+
+def strategy_and_inputs():
+  return combinations.combine(
+      distribution=strategies,
+      use_numpy=[True, False],
       mode=['graph'])
 
 
@@ -1023,19 +1095,29 @@ class TestDistributionStrategyCorrectness(test.TestCase,
       history = model.fit(x=train_dataset, epochs=1, steps_per_epoch=10)
       self.assertEqual(history.history['binary_accuracy'], [1.0])
 
-  @combinations.generate(strategy_combinations())
-  def test_correctness(self, distribution):
+  @combinations.generate(strategy_and_inputs())
+  def test_correctness(self, distribution, use_numpy):
     with self.cached_session():
+      tolerance = 1e-5
+
+      if isinstance(distribution, mirrored_strategy.MirroredStrategy):
+        # TODO(b/119257215): use the default one once the flakyness is fixed.
+        tolerance = 1e-4
+
       keras.backend.set_image_data_format('channels_last')
-      num_samples = 10000
       np.random.seed(_RANDOM_SEED)
       random_seed.set_random_seed(_RANDOM_SEED)
 
-      # Train and predict datasets are created with the same input numpy arrays.
+      # Train, eval, and predict datasets are created with the same input numpy
+      # arrays.
+      # TODO(xiejw): Change this back to 10000, once we support final partial
+      # batch.
+      num_samples = 9984
       x_train = np.random.rand(num_samples, 1)
       y_train = 3 * x_train
       x_train = x_train.astype('float32')
       y_train = y_train.astype('float32')
+      x_predict = [[1.], [2.], [3.], [4.]]
 
       # The model is built once and the initial weights are saved.
       # This is used to initialize the model for both the distribution and
@@ -1049,49 +1131,38 @@ class TestDistributionStrategyCorrectness(test.TestCase,
       initial_weights = model.get_weights()
 
       def fit_and_predict(with_distribution=None):
+        # We have initialized the model to the same weight for the distribution
+        # and non-distribution run.
         model.set_weights(initial_weights)
         model.compile(
             loss=keras.losses.mean_squared_error,
             optimizer=gradient_descent.GradientDescentOptimizer(0.5),
             distribute=with_distribution)
 
-        batch_size = 64
-        if with_distribution:
-          batch_size //= with_distribution.num_replicas_in_sync
-        train_dataset = dataset_ops.Dataset.from_tensor_slices((x_train,
-                                                                y_train))
-        train_dataset = batch_wrapper(train_dataset, batch_size, distribution)
-        # We have initialized the model to the same weight for the distribution
-        # and non-distribution run. If you want to initialize the model to
-        # random weights for each run, you need to run the model through the
-        # entire dataset at least once to ensure that the weights converge to
-        # the same value.
-        model.fit(x=train_dataset, epochs=1, steps_per_epoch=10)
+        training_inputs, eval_inputs, predict_inputs = (
+            get_correctness_test_inputs(use_numpy, with_distribution,
+                                        x_train, y_train, x_predict))
 
+        model.fit(**training_inputs)
+        eval_result = model.evaluate(**eval_inputs)
         weights = model.get_weights()
-        x_predict = [[1.], [2.], [3.], [4.]]
-        predict_batch_size = 4
-        if with_distribution:
-          predict_batch_size //= with_distribution.num_replicas_in_sync
-        predict_dataset = dataset_ops.Dataset.from_tensor_slices(x_predict)
-        predict_dataset = batch_wrapper(predict_dataset,
-                                        predict_batch_size, distribution)
-        predict_result = model.predict(predict_dataset, steps=1)
+        predict_result = model.predict(**predict_inputs)
 
-        return weights, predict_result
+        return weights, eval_result, predict_result
 
-      wts_with_ds, predict_with_ds = fit_and_predict(
+      wts_with_ds, eval_with_ds, predict_with_ds = fit_and_predict(
           with_distribution=distribution)
-      wts_without_ds, predict_without_ds = fit_and_predict(
+      wts_without_ds, eval_without_ds, predict_without_ds = fit_and_predict(
           with_distribution=None)
 
-      # Verify that the weights are the same within some limits of tolerance.
+      # Verify that the weights, eval results, predict outputs  are the same
+      # within some limits of tolerance.
       self.assertAllClose(
-          wts_with_ds, wts_without_ds, atol=_TOLERANCE, rtol=_TOLERANCE)
-      # Verify that the predicted outputs are the same within some limits of
-      # tolerance.
+          wts_with_ds, wts_without_ds, atol=tolerance, rtol=tolerance)
       self.assertAllClose(
-          predict_with_ds, predict_without_ds, atol=_TOLERANCE, rtol=_TOLERANCE)
+          eval_with_ds, eval_without_ds, atol=tolerance, rtol=tolerance)
+      self.assertAllClose(
+          predict_with_ds, predict_without_ds, atol=tolerance, rtol=tolerance)
 
 
 # TODO(priyag): Add a test for TPUStrategy with steps_per_run > 1.
