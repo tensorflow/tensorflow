@@ -33,7 +33,6 @@ from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.callbacks import Callback
 from tensorflow.python.keras.engine.training_utils import weighted_masked_objective
-from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables as variables_lib
@@ -334,35 +333,6 @@ class TrainingTest(test.TestCase):
     self.assertEqual(len(out), 2)
 
   @tf_test_util.run_in_graph_and_eager_modes
-  def test_invalid_loss(self):
-    num_classes = 5
-    train_samples = 1000
-    test_samples = 1000
-    input_dim = 5
-
-    model = testing_utils.get_small_sequential_mlp(
-        num_hidden=10, num_classes=num_classes, input_dim=input_dim)
-    optimizer = RMSPropOptimizer(learning_rate=0.001)
-    model.compile(optimizer, loss='categorical_crossentropy')
-    np.random.seed(1337)
-    (x_train, y_train), (_, _) = testing_utils.get_test_data(
-        train_samples=train_samples,
-        test_samples=test_samples,
-        input_shape=(input_dim,),
-        num_classes=num_classes)
-
-    with self.assertRaises(ValueError):
-      model.fit(x_train, np.concatenate([y_train, y_train], axis=-1))
-
-    if not context.executing_eagerly():
-      # TODO(psv): Investigate these use cases in eager mode.
-      with self.assertRaises(ValueError):
-        model.fit(x_train, y_train)
-
-      with self.assertRaises(ValueError):
-        model.compile(optimizer, loss=None)
-
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_activity_regularizer_fit(self):
     loss = {}
     for reg in [None, 'l2']:
@@ -512,30 +482,6 @@ class TrainingTest(test.TestCase):
       x2 = model.predict(val_a)
       self.assertAllClose(x1, x2, atol=1e-7)
 
-  @tf_test_util.run_in_graph_and_eager_modes
-  def test_compile_warning_for_loss_missing_output(self):
-    with self.cached_session():
-      inp = keras.layers.Input(shape=(16,), name='input_a')
-      out_1 = keras.layers.Dense(8, name='dense_1')(inp)
-      out_2 = keras.layers.Dense(3, activation='softmax', name='dense_2')(out_1)
-      model = keras.models.Model(inputs=[inp], outputs=[out_1, out_2])
-      optimizer = RMSPropOptimizer(learning_rate=0.001)
-
-      with test.mock.patch.object(logging, 'warning') as mock_log:
-        model.compile(
-            optimizer,
-            loss={
-                'dense_2': 'categorical_crossentropy',
-            },
-            metrics={
-                'dense_2': 'categorical_accuracy',
-                'dense_1': metrics_module.CategoricalAccuracy(),
-            })
-        msg = ('Output "dense_1" missing from loss dictionary. We assume this '
-               'was done on purpose. The fit and evaluate APIs will not be '
-               'expecting any data to be passed to "dense_1".')
-        self.assertRegexpMatches(str(mock_log.call_args), msg)
-
   def test_logs_passed_to_callbacks(self):
     with self.cached_session():
       input_dim = 5
@@ -593,6 +539,62 @@ class TrainingTest(test.TestCase):
               'acc', 'loss', 'weighted_mean_absolute_error', 'val_acc',
               'val_loss', 'val_weighted_mean_absolute_error'
           ]))
+
+
+class TestExceptionsAndWarnings(test.TestCase):
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_invalid_loss(self):
+    num_classes = 5
+    train_samples = 1000
+    test_samples = 1000
+    input_dim = 5
+
+    model = testing_utils.get_small_sequential_mlp(
+        num_hidden=10, num_classes=num_classes, input_dim=input_dim)
+    optimizer = RMSPropOptimizer(learning_rate=0.001)
+    model.compile(optimizer, loss='categorical_crossentropy')
+    np.random.seed(1337)
+    (x_train, y_train), (_, _) = testing_utils.get_test_data(
+        train_samples=train_samples,
+        test_samples=test_samples,
+        input_shape=(input_dim,),
+        num_classes=num_classes)
+
+    with self.assertRaises(ValueError):
+      model.fit(x_train, np.concatenate([y_train, y_train], axis=-1))
+
+    if not context.executing_eagerly():
+      # TODO(psv): Investigate these use cases in eager mode.
+      with self.assertRaises(ValueError):
+        model.fit(x_train, y_train)
+
+      with self.assertRaises(ValueError):
+        model.compile(optimizer, loss=None)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_compile_warning_for_loss_missing_output(self):
+    with self.cached_session():
+      inp = keras.layers.Input(shape=(16,), name='input_a')
+      out_1 = keras.layers.Dense(8, name='dense_1')(inp)
+      out_2 = keras.layers.Dense(3, activation='softmax', name='dense_2')(out_1)
+      model = keras.models.Model(inputs=[inp], outputs=[out_1, out_2])
+      optimizer = RMSPropOptimizer(learning_rate=0.001)
+
+      with test.mock.patch.object(logging, 'warning') as mock_log:
+        model.compile(
+            optimizer,
+            loss={
+                'dense_2': 'categorical_crossentropy',
+            },
+            metrics={
+                'dense_2': 'categorical_accuracy',
+                'dense_1': metrics_module.CategoricalAccuracy(),
+            })
+        msg = ('Output "dense_1" missing from loss dictionary. We assume this '
+               'was done on purpose. The fit and evaluate APIs will not be '
+               'expecting any data to be passed to "dense_1".')
+        self.assertRegexpMatches(str(mock_log.call_args), msg)
 
 
 class LossWeightingTest(test.TestCase):
@@ -665,25 +667,6 @@ class LossWeightingTest(test.TestCase):
     score = model.evaluate(
         x_test[test_ids, :], y_test[test_ids, :], verbose=0)
     self.assertLess(score[0], ref_score[0])
-
-  @tf_test_util.run_in_graph_and_eager_modes
-  def test_sequential_model_fails_with_dict_inputs(self):
-    num_classes = 5
-    model = testing_utils.get_small_sequential_mlp(
-        num_hidden=10, num_classes=num_classes)
-    model.compile(
-        RMSPropOptimizer(learning_rate=0.001),
-        metrics=['acc'],
-        weighted_metrics=['mae'],
-        loss='categorical_crossentropy')
-
-    x = {'dense_input': np.random.random((10, 1))}
-    y = np.random.randint(num_classes, size=(10, 1))
-
-    with self.assertRaisesRegexp(
-        ValueError, 'Passing a dictionary input to a Sequential Model which '
-        'doesnt have FeatureLayer as the first layer is an error'):
-      model.fit(x, y, batch_size=5, epochs=1)
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_sample_weights(self):
@@ -1230,40 +1213,6 @@ class TestDynamicTrainability(test.TestCase):
       inner_model.trainable = True
       inner_model.layers[-1].trainable = False
       self.assertListEqual(outer_model.trainable_weights, [])
-
-
-class TestTrainingUtils(test.TestCase):
-
-  def test_check_array_lengths(self):
-    keras.engine.training_utils.check_array_lengths(None, None, None)
-    a_np = np.random.random((4, 3, 3))
-    keras.engine.training_utils.check_array_lengths(a_np, a_np, a_np)
-    keras.engine.training_utils.check_array_lengths(
-        [a_np, a_np], [a_np, a_np], [a_np, a_np])
-    keras.engine.training_utils.check_array_lengths([None], [None], [None])
-
-    b_np = np.random.random((3, 4))
-    with self.assertRaises(ValueError):
-      keras.engine.training_utils.check_array_lengths([a_np], [b_np], None)
-
-  def test_slice_arrays(self):
-    input_a = np.random.random((10, 3))
-    slice_arrays(input_a, 0)
-    slice_arrays(None)
-    slice_arrays(input_a, 0, 1)
-    slice_arrays(input_a, stop=2)
-    input_a = [None, [1, 1], None, [1, 1]]
-    slice_arrays(input_a, 0)
-    slice_arrays(input_a, 0, 1)
-    slice_arrays(input_a, stop=2)
-    input_a = [None]
-    slice_arrays(input_a, 0)
-    slice_arrays(input_a, 0, 1)
-    slice_arrays(input_a, stop=2)
-    input_a = None
-    slice_arrays(input_a, 0)
-    slice_arrays(input_a, 0, 1)
-    slice_arrays(input_a, stop=2)
 
 
 class TestTrainingWithDataTensors(test.TestCase):
