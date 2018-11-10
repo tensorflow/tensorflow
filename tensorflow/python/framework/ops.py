@@ -6183,7 +6183,7 @@ def prepend_name_scope(name, import_scope):
 
 # pylint: disable=g-doc-return-or-yield
 # pylint: disable=not-context-manager
-@tf_export("op_scope")
+@tf_export(v1=["op_scope"])
 @tf_contextlib.contextmanager
 def op_scope(values, name, default_name=None):
   """DEPRECATED. Same as name_scope above, just different argument order."""
