@@ -7,6 +7,12 @@ extfunc @illegaltype(i) // expected-error {{expected type}}
 
 // -----
 
+mlfunc @illegaltype() {
+  %0 = constant splat<<vector 4 x f32>, 0> : vector<4 x f32> // expected-error {{expected type}}
+}
+
+// -----
+
 extfunc @nestedtensor(tensor<tensor<i8>>) -> () // expected-error {{invalid tensor element type}}
 
 // -----

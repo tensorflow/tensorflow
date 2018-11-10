@@ -1088,7 +1088,11 @@ DenseElementsAttr Parser::parseDenseElementsAttr(VectorOrTensorType type) {
 ///
 /// This method also checks the type has static shape and ranked.
 VectorOrTensorType Parser::parseVectorOrTensorType() {
-  auto type = parseType().dyn_cast<VectorOrTensorType>();
+  auto elementType = parseType();
+  if (!elementType)
+    return nullptr;
+
+  auto type = elementType.dyn_cast<VectorOrTensorType>();
   if (!type) {
     return (emitError("expected elements literal has a tensor or vector type"),
             nullptr);
