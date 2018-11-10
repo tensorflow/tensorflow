@@ -371,7 +371,7 @@ def _AssertCompatible(values, dtype):
                       (dtype.name, repr(mismatch), type(mismatch).__name__))
 
 
-@tf_export("make_tensor_proto")
+@tf_export(v1=["make_tensor_proto"])
 def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
   """Create a TensorProto.
 
