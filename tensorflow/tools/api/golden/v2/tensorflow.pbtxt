@@ -1137,10 +1137,6 @@ tf_module {
     argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "setdiff1d"
-    argspec: "args=[\'x\', \'y\', \'index_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
-  }
-  member_method {
     name: "shape"
     argspec: "args=[\'input\', \'name\', \'out_type\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'int32\'>\"], "
   }
