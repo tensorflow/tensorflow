@@ -374,9 +374,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_pip",
-        # TODO(b/118820960): Re-enable this test in guitar.
-        "manual",
-        "noguitar",
     ],
 )
 
