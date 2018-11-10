@@ -2224,7 +2224,7 @@ class TestTrainingWithMetrics(test.TestCase):
     w = np.random.random((50, 2))
     mse1 = model.evaluate(x, y, sample_weight=w, batch_size=5)[2]
     mse2 = model.evaluate(x, y, sample_weight=w, batch_size=10)[2]
-    self.assertEqual(mse1, mse2)
+    self.assertNear(mse1, mse2, err=1e-7)
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_metric_state_reset_between_fit_and_evaluate(self):
