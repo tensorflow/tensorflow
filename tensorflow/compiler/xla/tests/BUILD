@@ -869,6 +869,7 @@ xla_test(
     timeout = "long",
     srcs = ["convolution_test.cc"],
     shard_count = 40,
+    tags = ["optonly"],
     deps = CONVOLUTION_TEST_DEPS + [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
