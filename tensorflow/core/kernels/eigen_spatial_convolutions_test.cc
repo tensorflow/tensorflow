@@ -1378,7 +1378,9 @@ static void PackRhsHelper(int iters,
                           int input_batches, int input_cols, int input_rows,
                           int input_depth,
                           /* Filter (kernel) dimensions: */
-                          int filter_count, int filter_cols, int filter_rows) {
+                          int filter_count, int filter_cols, int filter_rows,
+                          /* Input strides: */
+                          int col_strides, int row_strides) {
   tensorflow::testing::UseRealTime();
   tensorflow::testing::StopTiming();
 
@@ -1468,16 +1470,18 @@ static void PackRhsHelper(int iters,
     const auto image_patch_op = TensorImagePatchOp<Dynamic, Dynamic, ArgType>(
         tensor_map,                                            //
         filter_rows, filter_cols,                              //
-        /*row_strides=*/1, /*col_strides=*/1,                  //
+        row_strides, col_strides,                              //
         /*in_row_strides=*/1, /*in_col_strides=*/1,            //
         /*row_inflate_strides=*/1, /*col_inflate_strides=*/1,  //
         Eigen::PADDING_SAME, /*padding_value=*/0.0);
 
     // 2. Reshape extracted patches into "virtual" 2d tensor.
-    // NOTE: for PADDING_SAME output {rows, cols} == input {rows, cols}.
+    // NOTE: This is valid for PADDING_SAME only.
+    Index output_rows = input_rows / row_strides;
+    Index output_cols = input_cols / col_strides;
     NewDimension reshape_dims;
-    reshape_dims[0] = input_depth * filter_rows * filter_cols;  // patch size
-    reshape_dims[1] = input_rows * input_cols * input_batches;  // num_patches
+    reshape_dims[0] = input_depth * filter_rows * filter_cols;    // patch size
+    reshape_dims[1] = output_rows * output_cols * input_batches;  // num_patches
 
     const auto reshape_op =
         TensorReshapingOp<NewDimension, decltype(image_patch_op)>(
@@ -1540,14 +1544,14 @@ static void PackRhsHelper(int iters,
   tensorflow::testing::SetLabel(stringStream.str());
 }
 
-#define BM_NAME(prefix, N, H, W, C, FC, FH, FW) \
-  BM_##prefix##_##N##_##H##x##W##_IC##C##_FC##FC##_##FH##x##FW
+#define BM_NAME(prefix, N, H, W, C, FC, FH, FW, SH, SW) \
+  BM_##prefix##_##N##_##H##x##W##_IC##C##_FC##FC##_##FH##x##FW##_s##SH##x##SW
 
-#define BM_PackRhs(N, H, W, C, FC, FH, FW)                          \
-  static void BM_NAME(PackRhs, N, H, W, C, FC, FH, FW)(int iters) { \
-    PackRhsHelper(iters, N, H, W, C, FC, FH, FW);                   \
-  }                                                                 \
-  BENCHMARK(BM_NAME(PackRhs, N, H, W, C, FC, FH, FW))
+#define BM_PackRhs(N, H, W, C, FC, FH, FW, SH, SW)                          \
+  static void BM_NAME(PackRhs, N, H, W, C, FC, FH, FW, SH, SW)(int iters) { \
+    PackRhsHelper(iters, N, H, W, C, FC, FH, FW, SH, SW);                   \
+  }                                                                         \
+  BENCHMARK(BM_NAME(PackRhs, N, H, W, C, FC, FH, FW, SH, SW))
 
 // Number of input channel (input depth) it equal to the number of patch
 // channels (patch depth).
@@ -1558,13 +1562,28 @@ BM_PackRhs(/*batch*/ 32,        //
            /*image*/ 64, 64,    //
            /*channels*/ 32,     //
            /*num_filters*/ 64,  //
-           /*filter*/ 5, 5);
+           /*filter*/ 5, 5,     //
+           /*stride*/ 1, 1);
+
+BM_PackRhs(/*batch*/ 32,        //
+           /*image*/ 64, 64,    //
+           /*channels*/ 32,     //
+           /*num_filters*/ 64,  //
+           /*filter*/ 5, 5,     //
+           /*stride*/ 2, 2);
 
 // Slow path: input channel dimension is not the multiple of the packet size.
 BM_PackRhs(/*batch*/ 32,        //
            /*image*/ 64, 64,    //
            /*channels*/ 30,     //
            /*num_filters*/ 64,  //
-           /*filter*/ 5, 5);
+           /*filter*/ 5, 5,     //
+           /*stride*/ 1, 1);
 
+BM_PackRhs(/*batch*/ 32,        //
+           /*image*/ 64, 64,    //
+           /*channels*/ 30,     //
+           /*num_filters*/ 64,  //
+           /*filter*/ 5, 5,     //
+           /*stride*/ 2, 2);
 }  // namespace Eigen
