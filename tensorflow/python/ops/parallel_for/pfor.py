@@ -1303,7 +1303,10 @@ def _inputs_with_flattening(pfor_input, input_indices):
 @RegisterPForWithArgs("Conv2D", dims=[0])
 @RegisterPForWithArgs("AvgPool", dims=[0])
 @RegisterPForWithArgs("MaxPool", dims=[0])
+@RegisterPForWithArgs("MaxPool3D", dims=[0])
+@RegisterPForWithArgs("MaxPool3DGrad", dims=[0, 1, 2])
 @RegisterPForWithArgs("MaxPoolGrad", dims=[0, 1, 2])
+@RegisterPForWithArgs("MaxPool3DGradGrad", dims=[0, 1, 2])
 @RegisterPForWithArgs("MaxPoolGradGrad", dims=[0, 1, 2])
 @RegisterPForWithArgs("SoftmaxCrossEntropyWithLogits", dims=[0, 1])
 def _convert_flatten_batch(pfor_input, op_type, dims):
