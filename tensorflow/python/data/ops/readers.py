@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
 from tensorflow.python.framework import dtypes
@@ -255,7 +256,8 @@ class FixedLengthRecordDataset(dataset_ops.Dataset):
                record_bytes,
                header_bytes=None,
                footer_bytes=None,
-               buffer_size=None):
+               buffer_size=None,
+               compression_type=None):
     """Creates a `FixedLengthRecordDataset`.
 
     Args:
@@ -268,6 +270,8 @@ class FixedLengthRecordDataset(dataset_ops.Dataset):
         bytes to ignore at the end of a file.
       buffer_size: (Optional.) A `tf.int64` scalar representing the number of
         bytes to buffer when reading.
+      compression_type: (Optional.) A `tf.string` scalar evaluating to one of
+        `""` (no compression), `"ZLIB"`, or `"GZIP"`.
     """
     super(FixedLengthRecordDataset, self).__init__()
     self._filenames = ops.convert_to_tensor(
@@ -281,11 +285,23 @@ class FixedLengthRecordDataset(dataset_ops.Dataset):
         "footer_bytes", footer_bytes)
     self._buffer_size = convert.optional_param_to_tensor(
         "buffer_size", buffer_size, _DEFAULT_READER_BUFFER_SIZE_BYTES)
+    self._compression_type = convert.optional_param_to_tensor(
+        "compression_type",
+        compression_type,
+        argument_default="",
+        argument_dtype=dtypes.string)
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.fixed_length_record_dataset(
-        self._filenames, self._header_bytes, self._record_bytes,
-        self._footer_bytes, self._buffer_size)
+    if (self._compression_type is not None or
+        compat.forward_compatible(2018, 11, 30)):
+      return gen_dataset_ops.fixed_length_record_dataset_v2(
+          self._filenames, self._header_bytes, self._record_bytes,
+          self._footer_bytes, self._buffer_size, self._compression_type)
+    else:
+      return gen_dataset_ops.fixed_length_record_dataset(
+          self._filenames, self._header_bytes, self._record_bytes,
+          self._footer_bytes, self._buffer_size)
+
 
   def _inputs(self):
     return []
