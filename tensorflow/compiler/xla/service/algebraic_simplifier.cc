@@ -2066,7 +2066,9 @@ StatusOr<bool> AlgebraicSimplifierVisitor::TryToReorderSliceAndReshape(
     int64 slice_elements = ShapeUtil::ElementsIn(slice->shape());
     for (int64 i = rank - 1; i >= 0; --i) {
       if (slice_elements >= new_slice_limits[i]) {
-        CHECK_EQ(slice_elements % new_slice_limits[i], 0);
+        if (slice_elements % new_slice_limits[i] != 0) {
+          return false;
+        }
         slice_elements /= new_slice_limits[i];
       } else {
         new_slice_limits[i] = slice_elements;
