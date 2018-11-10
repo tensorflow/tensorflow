@@ -27,7 +27,7 @@ limitations under the License.
 #define gpu_assert(x)
 #endif
 
-#include "rccl/rccl.h"
+#include "rccl.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/platform/mutex.h"
