@@ -325,6 +325,7 @@ renames = {
     'tf.self_adjoint_eigvals': 'tf.linalg.eigvalsh',
     'tf.serialize_many_sparse': 'tf.io.serialize_many_sparse',
     'tf.serialize_sparse': 'tf.io.serialize_sparse',
+    'tf.setdiff1d': 'tf.compat.v1.setdiff1d',
     'tf.space_to_batch': 'tf.nn.space_to_batch',
     'tf.space_to_depth': 'tf.nn.space_to_depth',
     'tf.sparse.placeholder': 'tf.compat.v1.sparse.placeholder',
