@@ -39,7 +39,7 @@ class WeightedQuantilesSummary {
       // Explicitly initialize all of memory (including padding from memory
       // alignment) to allow the struct to be msan-resistant "plain old data".
       //
-      // POD = http://en.cppreference.com/w/cpp/concept/PODType
+      // POD = https://en.cppreference.com/w/cpp/named_req/PODType
       memset(this, 0, sizeof(*this));
 
       value = v;
