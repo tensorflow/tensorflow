@@ -1321,8 +1321,8 @@ class Model(Network):
         # We assert that the first layer is a FeatureLayer.
         if not training_utils.is_feature_layer(self.layers[0]):
           raise ValueError('Passing a dictionary input to a Sequential Model '
-                           'which doesnt have FeatureLayer as the first layer '
-                           'is an error')
+                           'which doesn\'t have FeatureLayer as the first layer'
+                           ' is an error.')
         input_shape = (None,)
         self.build(input_shape=input_shape)
       else:
