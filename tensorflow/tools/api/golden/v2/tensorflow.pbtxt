@@ -1253,34 +1253,6 @@ tf_module {
     argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "to_bfloat16"
-    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToBFloat16\'], "
-  }
-  member_method {
-    name: "to_complex128"
-    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToComplex128\'], "
-  }
-  member_method {
-    name: "to_complex64"
-    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToComplex64\'], "
-  }
-  member_method {
-    name: "to_double"
-    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToDouble\'], "
-  }
-  member_method {
-    name: "to_float"
-    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToFloat\'], "
-  }
-  member_method {
-    name: "to_int32"
-    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToInt32\'], "
-  }
-  member_method {
-    name: "to_int64"
-    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToInt64\'], "
-  }
-  member_method {
     name: "transpose"
     argspec: "args=[\'a\', \'perm\', \'name\', \'conjugate\'], varargs=None, keywords=None, defaults=[\'None\', \'transpose\', \'False\'], "
   }

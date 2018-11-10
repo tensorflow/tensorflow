@@ -713,8 +713,8 @@ def saturate_cast(value, dtype, name=None):
                                        name="max"))
     return cast(value, dtype, name=name)
 
-
-@tf_export("to_float")
+@deprecation.deprecated(date=None, instructions="Use tf.cast instead.")
+@tf_export(v1=["to_float"])
 def to_float(x, name="ToFloat"):
   """Casts a tensor to type `float32`.
 
@@ -732,7 +732,8 @@ def to_float(x, name="ToFloat"):
   return cast(x, dtypes.float32, name=name)
 
 
-@tf_export("to_double")
+@deprecation.deprecated(date=None, instructions="Use tf.cast instead.")
+@tf_export(v1=["to_double"])
 def to_double(x, name="ToDouble"):
   """Casts a tensor to type `float64`.
 
@@ -750,7 +751,8 @@ def to_double(x, name="ToDouble"):
   return cast(x, dtypes.float64, name=name)
 
 
-@tf_export("to_int32")
+@deprecation.deprecated(date=None, instructions="Use tf.cast instead.")
+@tf_export(v1=["to_int32"])
 def to_int32(x, name="ToInt32"):
   """Casts a tensor to type `int32`.
 
@@ -768,7 +770,8 @@ def to_int32(x, name="ToInt32"):
   return cast(x, dtypes.int32, name=name)
 
 
-@tf_export("to_int64")
+@deprecation.deprecated(date=None, instructions="Use tf.cast instead.")
+@tf_export(v1=["to_int64"])
 def to_int64(x, name="ToInt64"):
   """Casts a tensor to type `int64`.
 
@@ -786,7 +789,8 @@ def to_int64(x, name="ToInt64"):
   return cast(x, dtypes.int64, name=name)
 
 
-@tf_export("to_bfloat16")
+@deprecation.deprecated(date=None, instructions="Use tf.cast instead.")
+@tf_export(v1=["to_bfloat16"])
 def to_bfloat16(x, name="ToBFloat16"):
   """Casts a tensor to type `bfloat16`.
 
@@ -804,7 +808,8 @@ def to_bfloat16(x, name="ToBFloat16"):
   return cast(x, dtypes.bfloat16, name=name)
 
 
-@tf_export("to_complex64")
+@deprecation.deprecated(date=None, instructions="Use tf.cast instead.")
+@tf_export(v1=["to_complex64"])
 def to_complex64(x, name="ToComplex64"):
   """Casts a tensor to type `complex64`.
 
@@ -822,7 +827,8 @@ def to_complex64(x, name="ToComplex64"):
   return cast(x, dtypes.complex64, name=name)
 
 
-@tf_export("to_complex128")
+@deprecation.deprecated(date=None, instructions="Use tf.cast instead.")
+@tf_export(v1=["to_complex128"])
 def to_complex128(x, name="ToComplex128"):
   """Casts a tensor to type `complex128`.
 
