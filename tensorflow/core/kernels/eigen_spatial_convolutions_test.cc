@@ -1425,12 +1425,17 @@ static void PackRhsHelper(int iters,
       /*inner_dim_reordered*/ false,                  //
       /*Alignment*/ 0>;
 
+#if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
+  using PackRhsImpl = Eigen::internal::mkldnn_gemm_pack<float, Eigen::Index,
+                                                        SubMapper, ColMajor>;
+#else
   using PackRhsImpl =
       Eigen::internal::gemm_pack_rhs<float, Eigen::Index, SubMapper,  //
                                      Traits::nr,                      //
                                      ColMajor,                        //
                                      /*Conjugate*/ false,             //
                                      /*PanelMode*/ false>;
+#endif
 
   Eigen::DefaultDevice device;
 
@@ -1522,9 +1527,9 @@ static void PackRhsHelper(int iters,
     Index packed_offset =
         internal::random<Index>(0, packed_total_size - packed_size - 1);
 
-    pack_rhs(packed.data() + packed_offset,
-             input_mappers[input_idx].getSubMapper(depth_offset, col_offset),
-             depth, cols);
+    SubMapper sub_mapper =
+        input_mappers[input_idx].getSubMapper(depth_offset, col_offset);
+    pack_rhs(packed.data() + packed_offset, sub_mapper, depth, cols);
   }
   tensorflow::testing::StopTiming();
 
