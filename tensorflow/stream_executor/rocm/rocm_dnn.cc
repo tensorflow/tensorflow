@@ -2588,7 +2588,6 @@ bool MIOpenSupport::PrepareForConvolutionImpl(
   if (status != miopenStatusSuccess) {
     LOG(FATAL) << "failed to set stream for miopen handle: "
                << ToString(status);
-    LOG(INFO) << "PrepareForConvolution #1\n";
     return false;
   }
 
@@ -2653,7 +2652,6 @@ bool MIOpenSupport::PrepareForConvolutionImpl(
         scratch_allocator->AllocateBytes(stream, scratch_memory_size);
     if (!allocated.ok()) {
       // Silently return when we are profiling.
-      LOG(INFO) << "PrepareForConvolution #2\n";
       return false;
     }
     if (allocated.ok()) {
