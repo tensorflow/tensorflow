@@ -621,10 +621,6 @@ tf_module {
     argspec: "args=[\'value\', \'dtype\', \'shape\', \'name\', \'verify_shape\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'Const\', \'False\'], "
   }
   member_method {
-    name: "container"
-    argspec: "args=[\'container_name\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "control_dependencies"
     argspec: "args=[\'control_inputs\'], varargs=None, keywords=None, defaults=None"
   }

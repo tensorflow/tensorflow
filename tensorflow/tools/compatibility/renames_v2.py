@@ -88,6 +88,7 @@ renames = {
     'tf.colocate_with': 'tf.compat.v1.colocate_with',
     'tf.confusion_matrix': 'tf.math.confusion_matrix',
     'tf.conj': 'tf.math.conj',
+    'tf.container': 'tf.compat.v1.container',
     'tf.count_up_to': 'tf.compat.v1.count_up_to',
     'tf.cross': 'tf.linalg.cross',
     'tf.cumprod': 'tf.math.cumprod',
