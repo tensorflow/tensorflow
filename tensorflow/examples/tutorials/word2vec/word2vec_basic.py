@@ -309,7 +309,8 @@ with tf.Session(graph=graph) as session:
   config = projector.ProjectorConfig()
   embedding_conf = config.embeddings.add()
   embedding_conf.tensor_name = embeddings.name
-  embedding_conf.metadata_path = os.path.join(FLAGS.log_dir, 'metadata.tsv')
+  # This path is relative to the LOG_DIR.
+  embedding_conf.metadata_path = 'metadata.tsv'
   projector.visualize_embeddings(writer, config)
 
 writer.close()
