@@ -808,6 +808,17 @@ class Model(Network):
           name='predict_function',
           **kwargs)
 
+  def _get_execution_function(self, mode):
+    if mode == 'train':
+      self._make_fit_function()
+      return self._fit_function
+    if mode == 'test':
+      self._make_eval_function()
+      return self._eval_function
+    if mode == 'predict':
+      self._make_predict_function()
+      return self.predict_function
+
   def _get_iterator_get_next_tensors(self, iterator):
     get_next_op = self._iterator_get_next.get(iterator, None)
     if get_next_op is None:
@@ -1641,7 +1652,9 @@ class Model(Network):
           validation_steps=validation_steps)
     else:
       return training_arrays.fit_loop(
-          self, x, y,
+          self,
+          x,
+          y,
           sample_weights=sample_weights,
           batch_size=batch_size,
           epochs=epochs,
@@ -1891,32 +1904,28 @@ class Model(Network):
     Arguments:
         x: Input data. It could be:
           - A Numpy array (or array-like), or a list of arrays
-            (in case the model has multiple inputs).
+              (in case the model has multiple inputs).
           - A TensorFlow tensor, or a list of tensors
-            (in case the model has multiple inputs).
+              (in case the model has multiple inputs).
           - A dict mapping input names to the corresponding array/tensors,
-            if the model has named inputs.
+              if the model has named inputs.
           - A `tf.data` dataset or a dataset iterator.
-        y: Target data. Like the input data `x`,
-          it could be either Numpy array(s) or TensorFlow tensor(s).
-          It should be consistent with `x` (you cannot have Numpy inputs and
-          tensor targets, or inversely). If `x` is a dataset or a
-          dataset iterator, `y` should not be specified
+        y: Target data. Like the input data `x`, it could be either Numpy
+          array(s) or TensorFlow tensor(s). It should be consistent with `x`
+          (you cannot have Numpy inputs and tensor targets, or inversely). If
+          `x` is a dataset or a dataset iterator, `y` should not be specified
           (since targets will be obtained from the iterator).
         sample_weight: Optional array of the same length as x, containing
-            weights to apply to the model's loss for each sample.
-            In the case of temporal data, you can pass a 2D array
-            with shape (samples, sequence_length),
-            to apply a different weight to every timestep of every sample.
-            In this case you should make sure to specify
-            sample_weight_mode="temporal" in compile(). This argument is not
-            supported when `x` is a dataset or a dataset iterator.
-        class_weight: Optional dictionary mapping
-            class indices (integers) to
-            a weight (float) to apply to the model's loss for the samples
-            from this class during training.
-            This can be useful to tell the model to "pay more attention" to
-            samples from an under-represented class.
+          weights to apply to the model's loss for each sample. In the case of
+          temporal data, you can pass a 2D array with shape (samples,
+          sequence_length), to apply a different weight to every timestep of
+          every sample. In this case you should make sure to specify
+          sample_weight_mode="temporal" in compile(). This argument is not
+          supported when `x` is a dataset or a dataset iterator.
+        class_weight: Optional dictionary mapping class indices (integers) to a
+          weight (float) to apply to the model's loss for the samples from this
+          class during training. This can be useful to tell the model to "pay
+          more attention" to samples from an under-represented class.
 
     Returns:
         Scalar training loss
