@@ -28,9 +28,8 @@ from tensorflow.python.platform import tf_logging
 
 # TODO(priyag): Any other reader datasets to consider here?
 _READER_DATASET_OPS = [
-    "TextLineDataset",
-    "TFRecordDataset",
-    "FixedLengthRecordDataset"
+    "TextLineDataset", "TFRecordDataset", "FixedLengthRecordDataset",
+    "FixedLengthRecordDatasetV2"
 ]
 
 
