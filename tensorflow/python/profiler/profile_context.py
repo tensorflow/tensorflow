@@ -32,6 +32,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.profiler import model_analyzer
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 WARMUP_STEPS = 10
 MAX_TRACED_STEPS = 100
@@ -110,6 +111,7 @@ def _profiled_run(self,
   # pylint: enable=protected-access
 
 
+@tf_export('profiler.ProfileContext')
 class ProfileContext(object):
   """A Context that captures RunMetadata and performs profiling.
 

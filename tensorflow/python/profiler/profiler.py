@@ -28,6 +28,7 @@ from tensorflow.python.profiler.model_analyzer import advise
 from tensorflow.python.profiler.model_analyzer import profile
 from tensorflow.python.profiler.model_analyzer import Profiler
 from tensorflow.python.profiler.option_builder import ProfileOptionBuilder
+from tensorflow.python.profiler.profile_context import ProfileContext
 from tensorflow.python.profiler.tfprof_logger import write_op_log
 
 from tensorflow.python.util.tf_export import tf_export
@@ -36,6 +37,7 @@ from tensorflow.python.util.tf_export import tf_export
 _allowed_symbols = [
     'Profiler',
     'profile',
+    'ProfileContext',
     'ProfileOptionBuilder',
     'advise',
     'write_op_log',
