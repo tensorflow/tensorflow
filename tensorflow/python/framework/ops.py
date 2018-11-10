@@ -4995,7 +4995,7 @@ def device_v2(device_name):
     return get_default_graph().device(device_name)
 
 
-@tf_export("container")
+@tf_export(v1=["container"])
 def container(container_name):
   """Wrapper for `Graph.container()` using the default graph.
 
