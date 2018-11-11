@@ -73,12 +73,10 @@ protected:
   PatternState() {}
 };
 
-/// This is the type returned by a pattern match.  The first field indicates
-/// the benefit of the match, the second is a state token that can optionally
-/// be produced by a pattern match to maintain state between the match and
-/// rewrite phases.
-using PatternMatchResult =
-    std::pair<PatternBenefit, std::unique_ptr<PatternState>>;
+/// This is the type returned by a pattern match.  A match failure returns a
+/// None value.  A match success returns a Some value with any state the pattern
+/// may need to maintain (but may also be null).
+using PatternMatchResult = Optional<std::unique_ptr<PatternState>>;
 
 //===----------------------------------------------------------------------===//
 // Pattern class
@@ -86,40 +84,41 @@ using PatternMatchResult =
 
 class Pattern {
 public:
-  // Return the benefit (the inverse of "cost") of matching this pattern,
-  // if it is statically determinable.  The result is a PatternBenefit if known,
-  // or 'None' if the cost is dynamically computed.
-  Optional<PatternBenefit> getStaticBenefit() const;
+  /// Return the benefit (the inverse of "cost") of matching this pattern.  The
+  /// benefit of a Pattern is always static - rewrites that may have dynamic
+  /// benefit can be instantiated multiple times (different Pattern instances)
+  /// for each benefit that they may return, and be guarded by different match
+  /// condition predicates.
+  PatternBenefit getBenefit() const { return benefit; }
 
-  // Return the root node that this pattern matches.  Patterns that can
-  // match multiple root types are instantiated once per root.
-  OperationName getRootKind() const;
+  /// Return the root node that this pattern matches.  Patterns that can
+  /// match multiple root types are instantiated once per root.
+  OperationName getRootKind() const { return rootKind; }
 
   //===--------------------------------------------------------------------===//
   // Implementation hooks for patterns to implement.
   //===--------------------------------------------------------------------===//
 
-  // Attempt to match against code rooted at the specified operation,
-  // which is the same operation code as getRootKind().  On success it
-  // returns the benefit of the match along with an (optional)
-  // pattern-specific state which is passed back into its rewrite
-  // function if this match is selected.  On failure, this returns a
-  // sentinel indicating that it didn’t match.
+  /// Attempt to match against code rooted at the specified operation,
+  /// which is the same operation code as getRootKind().  On failure, this
+  /// returns a None value.  On success it a (possibly null) pattern-specific
+  /// state wrapped in a Some.  This state is passed back into its rewrite
+  /// function if this match is selected.
   virtual PatternMatchResult match(Operation *op) const = 0;
 
-  // Rewrite the IR rooted at the specified operation with the result of
-  // this pattern, generating any new operations with the specified
-  // builder.  If an unexpected error is encountered (an internal
-  // compiler error), it is emitted through the normal MLIR diagnostic
-  // hooks and the IR is left in a valid state.
+  /// Rewrite the IR rooted at the specified operation with the result of
+  /// this pattern, generating any new operations with the specified
+  /// rewriter.  If an unexpected error is encountered (an internal
+  /// compiler error), it is emitted through the normal MLIR diagnostic
+  /// hooks and the IR is left in a valid state.
   virtual void rewrite(Operation *op, std::unique_ptr<PatternState> state,
                        PatternRewriter &rewriter) const;
 
-  // Rewrite the IR rooted at the specified operation with the result of
-  // this pattern, generating any new operations with the specified
-  // builder.  If an unexpected error is encountered (an internal
-  // compiler error), it is emitted through the normal MLIR diagnostic
-  // hooks and the IR is left in a valid state.
+  /// Rewrite the IR rooted at the specified operation with the result of
+  /// this pattern, generating any new operations with the specified
+  /// builder.  If an unexpected error is encountered (an internal
+  /// compiler error), it is emitted through the normal MLIR diagnostic
+  /// hooks and the IR is left in a valid state.
   virtual void rewrite(Operation *op, PatternRewriter &rewriter) const;
 
   virtual ~Pattern() {}
@@ -129,29 +128,22 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// This method indicates that no match was found.
-  static PatternMatchResult matchFailure();
+  static PatternMatchResult matchFailure() { return None; }
 
   /// This method indicates that a match was found and has the specified cost.
   PatternMatchResult
-  matchSuccess(PatternBenefit benefit,
-               std::unique_ptr<PatternState> state = {}) const;
-
-  /// This method indicates that a match was found for patterns that have a
-  /// known static benefit.
-  PatternMatchResult
-  matchSuccess(std::unique_ptr<PatternState> state = {}) const;
+  matchSuccess(std::unique_ptr<PatternState> state = {}) const {
+    return PatternMatchResult(std::move(state));
+  }
 
 protected:
   /// Patterns must specify the root operation name they match against, and can
-  /// also optionally specify a static benefit of matching.
-  Pattern(StringRef rootName, MLIRContext *context,
-          Optional<PatternBenefit> staticBenefit = llvm::None);
-
-  Pattern(StringRef rootName, MLIRContext *context, unsigned staticBenefit);
+  /// also specify the benefit of the pattern matching.
+  Pattern(StringRef rootName, PatternBenefit benefit, MLIRContext *context);
 
 private:
   const OperationName rootKind;
-  const Optional<PatternBenefit> staticBenefit;
+  const PatternBenefit benefit;
 };
 
 //===----------------------------------------------------------------------===//

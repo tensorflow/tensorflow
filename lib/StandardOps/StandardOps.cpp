@@ -55,10 +55,9 @@ namespace {
 struct MemRefCastFolder : public Pattern {
   /// The rootOpName is the name of the root operation to match against.
   MemRefCastFolder(StringRef rootOpName, MLIRContext *context)
-      : Pattern(rootOpName, context, 1) {}
+      : Pattern(rootOpName, 1, context) {}
 
-  std::pair<PatternBenefit, std::unique_ptr<PatternState>>
-  match(Operation *op) const override {
+  PatternMatchResult match(Operation *op) const override {
     for (auto *operand : op->getOperands())
       if (matchPattern(operand, m_Op<MemRefCastOp>()))
         return matchSuccess();
@@ -113,10 +112,9 @@ namespace {
 ///
 struct SimplifyAddX0 : public Pattern {
   SimplifyAddX0(MLIRContext *context)
-      : Pattern(AddIOp::getOperationName(), context, 1) {}
+      : Pattern(AddIOp::getOperationName(), 1, context) {}
 
-  std::pair<PatternBenefit, std::unique_ptr<PatternState>>
-  match(Operation *op) const override {
+  PatternMatchResult match(Operation *op) const override {
     auto addi = op->cast<AddIOp>();
 
     if (matchPattern(addi->getOperand(1), m_Zero()))
@@ -220,10 +218,9 @@ namespace {
 /// Fold constant dimensions into an alloc instruction.
 struct SimplifyAllocConst : public Pattern {
   SimplifyAllocConst(MLIRContext *context)
-      : Pattern(AllocOp::getOperationName(), context, 1) {}
+      : Pattern(AllocOp::getOperationName(), 1, context) {}
 
-  std::pair<PatternBenefit, std::unique_ptr<PatternState>>
-  match(Operation *op) const override {
+  PatternMatchResult match(Operation *op) const override {
     auto alloc = op->cast<AllocOp>();
 
     // Check to see if any dimensions operands are constants.  If so, we can
@@ -1059,10 +1056,9 @@ namespace {
 ///
 struct SimplifyMulX1 : public Pattern {
   SimplifyMulX1(MLIRContext *context)
-      : Pattern(MulIOp::getOperationName(), context, 1) {}
+      : Pattern(MulIOp::getOperationName(), 1, context) {}
 
-  std::pair<PatternBenefit, std::unique_ptr<PatternState>>
-  match(Operation *op) const override {
+  PatternMatchResult match(Operation *op) const override {
     auto muli = op->cast<MulIOp>();
 
     if (matchPattern(muli->getOperand(1), m_One()))
@@ -1192,10 +1188,9 @@ namespace {
 ///
 struct SimplifyXMinusX : public Pattern {
   SimplifyXMinusX(MLIRContext *context)
-      : Pattern(SubIOp::getOperationName(), context, 1) {}
+      : Pattern(SubIOp::getOperationName(), 1, context) {}
 
-  std::pair<PatternBenefit, std::unique_ptr<PatternState>>
-  match(Operation *op) const override {
+  PatternMatchResult match(Operation *op) const override {
     auto subi = op->cast<SubIOp>();
     if (subi->getOperand(0) == subi->getOperand(1))
       return matchSuccess();

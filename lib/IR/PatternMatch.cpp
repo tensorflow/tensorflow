@@ -47,20 +47,9 @@ bool PatternBenefit::operator!=(const PatternBenefit& other) {
 // Pattern implementation
 //===----------------------------------------------------------------------===//
 
-Pattern::Pattern(StringRef rootName, MLIRContext *context,
-                 Optional<PatternBenefit> staticBenefit)
-    : rootKind(OperationName(rootName, context)), staticBenefit(staticBenefit) {
-}
-
-Pattern::Pattern(StringRef rootName, MLIRContext *context,
-                 unsigned staticBenefit)
-    : rootKind(rootName, context), staticBenefit(staticBenefit) {}
-
-Optional<PatternBenefit> Pattern::getStaticBenefit() const {
-  return staticBenefit;
-}
-
-OperationName Pattern::getRootKind() const { return rootKind; }
+Pattern::Pattern(StringRef rootName, PatternBenefit benefit,
+                 MLIRContext *context)
+    : rootKind(OperationName(rootName, context)), benefit(benefit) {}
 
 void Pattern::rewrite(Operation *op, std::unique_ptr<PatternState> state,
                       PatternRewriter &rewriter) const {
@@ -69,32 +58,6 @@ void Pattern::rewrite(Operation *op, std::unique_ptr<PatternState> state,
 
 void Pattern::rewrite(Operation *op, PatternRewriter &rewriter) const {
   llvm_unreachable("need to implement one of the rewrite functions!");
-}
-
-/// This method indicates that no match was found.
-PatternMatchResult Pattern::matchFailure() {
-  return {PatternBenefit::impossibleToMatch(), std::unique_ptr<PatternState>()};
-}
-
-/// This method indicates that a match was found and has the specified cost.
-PatternMatchResult
-Pattern::matchSuccess(PatternBenefit benefit,
-                      std::unique_ptr<PatternState> state) const {
-  assert((!getStaticBenefit().hasValue() ||
-          getStaticBenefit().getValue() == benefit) &&
-         "This version of matchSuccess must be called with a benefit that "
-         "matches the static benefit if set!");
-
-  return {benefit, std::move(state)};
-}
-
-/// This method indicates that a match was found for patterns that have a
-/// known static benefit.
-PatternMatchResult
-Pattern::matchSuccess(std::unique_ptr<PatternState> state) const {
-  auto benefit = getStaticBenefit();
-  assert(benefit.hasValue() && "Pattern doesn't have a static benefit");
-  return matchSuccess(benefit.getValue(), std::move(state));
 }
 
 //===----------------------------------------------------------------------===//
@@ -163,31 +126,26 @@ auto PatternMatcher::findMatch(Operation *op) -> MatchResult {
     if (pattern->getRootKind() != op->getName())
       continue;
 
-    // If we know the static cost of the pattern is worse than what we've
-    // already found then don't run it.
-    auto staticBenefit = pattern->getStaticBenefit();
-    if (staticBenefit.hasValue() && bestBenefit.hasValue() &&
-        staticBenefit.getValue().getBenefit() <
-            bestBenefit.getValue().getBenefit())
-      continue;
-
-    // Check to see if this pattern matches this node.
-    auto result = pattern->match(op);
-    auto benefit = result.first;
-
-    // If this pattern failed to match, ignore it.
+    auto benefit = pattern->getBenefit();
     if (benefit.isImpossibleToMatch())
       continue;
 
-    // If it matched but had lower benefit than our best match so far, then
-    // ignore it.
+    // If the benefit of the pattern is worse than what we've already found then
+    // don't run it.
     if (bestBenefit.hasValue() &&
         benefit.getBenefit() < bestBenefit.getValue().getBenefit())
       continue;
 
+    // Check to see if this pattern matches this node.
+    auto result = pattern->match(op);
+
+    // If this pattern failed to match, ignore it.
+    if (!result)
+      continue;
+
     // Okay we found a match that is better than our previous one, remember it.
     bestBenefit = benefit;
-    bestMatch = {pattern.get(), std::move(result.second)};
+    bestMatch = {pattern.get(), std::move(result.getValue())};
   }
 
   // If we found any match, return it.
