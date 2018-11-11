@@ -72,12 +72,7 @@ class HloTestBase : public ::testing::Test {
   // options from command-line flags. If you want a fresh HloModule object and
   // then add HloComputations to it, it's recommended to use this method in your
   // tests.
-  //
-  // This returns a vanilla HloModule that doesn't run the HLO verifier on
-  // destruction.  If you want to run the verifier, you want
-  // HloVerifiedTestBase::CreateNewVerifiedModule.
-  std::unique_ptr<HloModule> CreateNewUnverifiedModule(
-      const string& name = TestName());
+  std::unique_ptr<HloModule> CreateNewModule(const string& name = TestName());
 
   // Runs the hlo_pass with the provided module and returns the result. This
   // function also verifies that the module remains unchanged when hlo_pass

@@ -60,7 +60,7 @@ TEST_F(GpuHloSupportCheckerTest, SparseUnimplemented) {
   // Since verifier is reporting sparse layouts as errors, we should
   // use a regular HloModule instead of VerifiedHloModule to avoid
   // verifier errors being triggered in the destructor.
-  auto module = HloTestBase::CreateNewUnverifiedModule();
+  auto module = HloTestBase::CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
   Status status = checker().Run(module.get()).status();

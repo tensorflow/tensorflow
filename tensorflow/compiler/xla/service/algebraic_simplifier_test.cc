@@ -2906,7 +2906,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
         /*feature_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
 
     // TODO(b/80488902): verify this module.
-    auto module = HloTestBase::CreateNewUnverifiedModule();
+    auto module = HloTestBase::CreateNewModule();
     auto* computation = module->AddEntryComputation(b.Build());
 
     AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/true,
@@ -3084,7 +3084,7 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToTransposeReshape) {
 // Test that ReduceWindow(Pad(op, x), y) can simplify to ReduceWindow(op, x).
 TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
   // TODO(b/80488902): verify this module.
-  auto module = HloTestBase::CreateNewUnverifiedModule();
+  auto module = HloTestBase::CreateNewModule();
   HloComputation::Builder builder(TestName());
 
   // Create operand to the pad.
@@ -3166,7 +3166,7 @@ TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
 // ReduceWindow(Convert(op), x).
 TEST_F(AlgebraicSimplifierTest, FoldConvertedPadIntoReduceWindow) {
   // TODO(b/80488902): verify this module.
-  auto module = HloTestBase::CreateNewUnverifiedModule();
+  auto module = HloTestBase::CreateNewModule();
   HloComputation::Builder builder(TestName());
 
   // Create operand to the pad.

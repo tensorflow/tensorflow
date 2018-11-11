@@ -65,7 +65,7 @@ class HloComputationTest : public HloTestBase {
 };
 
 TEST_F(HloComputationTest, GetEmbeddedComputationsEmpty) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto negate_computation =
       module->AddEntryComputation(CreateNegateComputation());
   EXPECT_TRUE(negate_computation->MakeEmbeddedComputationsList().empty());
@@ -73,7 +73,7 @@ TEST_F(HloComputationTest, GetEmbeddedComputationsEmpty) {
 
 TEST_F(HloComputationTest, GetEmbeddedComputationsOneComputation) {
   // Create computation which calls one other computation.
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto negate_computation =
       module->AddEmbeddedComputation(CreateNegateComputation());
   auto map_computation =
@@ -85,7 +85,7 @@ TEST_F(HloComputationTest, GetEmbeddedComputationsOneComputation) {
 
 TEST_F(HloComputationTest, GetEmbeddedComputationsDiamond) {
   // Create computations with a diamond-shaped callgraph.
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto negate_computation =
       module->AddEmbeddedComputation(CreateNegateComputation());
   auto map1_computation =
@@ -119,7 +119,7 @@ TEST_F(HloComputationTest, PostOrderSingleton) {
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_THAT(computation->MakeInstructionPostOrder(), ElementsAre(constant));
 }
@@ -134,7 +134,7 @@ TEST_F(HloComputationTest, PostOrderSimple) {
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant));
   auto negate2 = builder.AddInstruction(
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, negate1));
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_THAT(computation->MakeInstructionPostOrder(),
               ElementsAre(constant, negate1, negate2));
@@ -151,7 +151,7 @@ TEST_F(HloComputationTest, PostOrderTrace) {
       builder.AddInstruction(HloInstruction::CreateTrace("foobar", negate1));
   auto negate2 = builder.AddInstruction(
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, negate1));
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   // Trace instructions should be at the end of the sort.
   EXPECT_THAT(computation->MakeInstructionPostOrder(),
@@ -170,7 +170,7 @@ TEST_F(HloComputationTest, PostOrderDisconnectedInstructions) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto constant4 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_THAT(computation->MakeInstructionPostOrder(),
               UnorderedElementsAre(constant1, constant2, constant3, constant4));
@@ -192,7 +192,7 @@ TEST_F(HloComputationTest, PostOrderWithMultipleRoots) {
       r0f32_, HloOpcode::kAdd, constant2, constant3));
   auto add3 = builder.AddInstruction(HloInstruction::CreateBinary(
       r0f32_, HloOpcode::kAdd, constant1, constant3));
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   auto post_order = computation->MakeInstructionPostOrder();
   EXPECT_EQ(6, post_order.size());
@@ -217,7 +217,7 @@ TEST_F(HloComputationTest, VisitWithMultipleRoots) {
                                                       constant2, constant3));
   builder.AddInstruction(HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd,
                                                       constant1, constant3));
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   // Visitor which keeps track of which instructions have been visited.
   class TestVisitor : public DfsHloVisitorWithDefault {
@@ -257,7 +257,7 @@ TEST_F(HloComputationTest, DeepCopyArray) {
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0})));
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   auto copy = computation->DeepCopyInstruction(constant).ValueOrDie();
 
@@ -274,7 +274,7 @@ TEST_F(HloComputationTest, DeepCopyTuple) {
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   auto tuple_copy = computation->DeepCopyInstruction(tuple).ValueOrDie();
 
@@ -376,7 +376,7 @@ TEST_F(HloComputationTest, DeepCopyToken) {
   // copied.
   auto builder = HloComputation::Builder(TestName());
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   auto copy = computation->DeepCopyInstruction(token).ValueOrDie();
 
@@ -393,7 +393,7 @@ TEST_F(HloComputationTest, DeepCopyTokenTuple) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
   auto tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({token, constant}));
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   auto copy = computation->DeepCopyInstruction(tuple).ValueOrDie();
 
@@ -412,7 +412,7 @@ TEST_F(HloComputationTest, CycleDetection) {
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant));
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(r0f32_, HloOpcode::kAdd, negate, negate));
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   // Add a control dependency to create a cycle.
   ASSERT_IS_OK(add->AddControlDependencyTo(negate));
@@ -440,7 +440,7 @@ TEST_F(HloComputationTest, RemoveInstructionWithDuplicateOperand) {
       r0f32_, HloOpcode::kAdd, dead_negate, dead_negate));
   auto negate = builder.AddInstruction(
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, constant));
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(4, computation->instruction_count());
   EXPECT_THAT(computation->root_instruction(), op::Negate(constant));
@@ -466,7 +466,7 @@ TEST_F(HloComputationTest, CloneWithControlDependency) {
       HloInstruction::CreateParameter(0, r0f32_, "param0"));
   auto negate = builder.AddInstruction(
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, param));
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto computation =
       module->AddEntryComputation(builder.Build(/*root_instruction=*/add));
 
@@ -505,7 +505,7 @@ TEST_F(HloComputationTest, Stringification) {
       2, PrecisionConfig::DEFAULT);
   builder.AddInstruction(
       HloInstruction::CreateDot(sout, x, reshape, dot_dnums, precision_config));
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto* computation = module->AddEntryComputation(builder.Build());
 
   auto options = HloPrintOptions().set_print_metadata(false);
@@ -540,7 +540,7 @@ TEST_F(HloComputationTest, StringificationIndent) {
       2, PrecisionConfig::DEFAULT);
   builder.AddInstruction(
       HloInstruction::CreateDot(sout, x, reshape, dot_dnums, precision_config));
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto* computation = module->AddEntryComputation(builder.Build());
 
   auto options =
@@ -576,7 +576,7 @@ TEST_F(HloComputationTest, StringificationCanonical) {
       2, PrecisionConfig::DEFAULT);
   builder.AddInstruction(
       HloInstruction::CreateDot(sout, x, reshape, dot_dnums, precision_config));
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto* computation = module->AddEntryComputation(builder.Build());
 
   auto options = HloPrintOptions().set_print_metadata(false);
