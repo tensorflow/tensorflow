@@ -38,37 +38,9 @@ XLA_TEST_F(HloVerifiedTestBaseTest, NoModule) {
   // Test shouldn't fail if no module is created at all.
 }
 
-XLA_TEST_F(HloVerifiedTestBaseTest, GoodLazilyCreatedModule) {
-  // Use module() to lazily create an empty module, build it up, and verify no
-  // failures.
-  HloModule& hlo_module = module();
-  auto builder = HloComputation::Builder(TestName());
-  auto input = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
-  builder.AddInstruction(
-      HloInstruction::CreateUnary(input->shape(), HloOpcode::kNegate, input));
-  hlo_module.AddEntryComputation(builder.Build());
-}
-
-// This test is expected to fail. See test class comment.
-XLA_TEST_F(HloVerifiedTestBaseTest, DISABLED_BadLazilyCreatedModule) {
-  // Use module() to lazily create an empty module and build up an invalid
-  // module.
-  HloModule& hlo_module = module();
-  auto builder = HloComputation::Builder(TestName());
-  auto input = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
-  builder.AddInstruction(
-      HloInstruction::CreateUnary(input->shape(), HloOpcode::kNegate, input));
-  hlo_module.AddEntryComputation(builder.Build());
-
-  *hlo_module.entry_computation()->root_instruction()->mutable_shape() =
-      ShapeUtil::MakeShape(PRED, {1, 2, 3});
-}
-
 XLA_TEST_F(HloVerifiedTestBaseTest, GoodCreateNewModule) {
   // Call CreateNewModule and build up a valid module.
-  HloModule* module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto input = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
@@ -80,7 +52,7 @@ XLA_TEST_F(HloVerifiedTestBaseTest, GoodCreateNewModule) {
 // This test is expected to fail. See test class comment.
 XLA_TEST_F(HloVerifiedTestBaseTest, DISABLED_BadCreateNewModule) {
   // Call CreateNewModule and build up a invalid module.
-  HloModule* module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto input = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
@@ -90,21 +62,6 @@ XLA_TEST_F(HloVerifiedTestBaseTest, DISABLED_BadCreateNewModule) {
 
   *module->entry_computation()->root_instruction()->mutable_shape() =
       ShapeUtil::MakeShape(PRED, {1, 2, 3});
-}
-
-XLA_TEST_F(HloVerifiedTestBaseTest, ParseAndVerifyModuleGood) {
-  const char* const hlo_string = R"(
-HloModule ParseAndVerifyModuleGood
-
-ENTRY entry {
-  x = f32[] parameter(0)
-  y = f32[] parameter(1)
-  ROOT add = f32[] add(x,y)
-}
-)";
-
-  ParseAndVerifyModule(hlo_string);
-  EXPECT_EQ(module().entry_computation()->instruction_count(), 3);
 }
 
 XLA_TEST_F(HloVerifiedTestBaseTest, ParseAndReturnVerifiedModuleGood) {

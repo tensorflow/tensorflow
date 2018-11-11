@@ -103,10 +103,10 @@ TEST_F(BFloat16ConversionFoldingTest, FoldIfSupported) {
       HloInstruction::CreateBinary(f32_shape, HloOpcode::kAdd, convert1, c));
   builder.AddInstruction(HloInstruction::CreateConvert(bf16_shape, add1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(FoldConversions(module));
+  EXPECT_TRUE(FoldConversions(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), add1);
   EXPECT_EQ(add0->shape().element_type(), BF16);
@@ -138,10 +138,10 @@ TEST_F(BFloat16ConversionFoldingTest, DoNotFoldIfUnsupported) {
   HloInstruction* convert2 =
       builder.AddInstruction(HloInstruction::CreateConvert(bf16_shape, mul1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_FALSE(FoldConversions(module));
+  EXPECT_FALSE(FoldConversions(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), convert2);
   EXPECT_EQ(mul0->shape().element_type(), F32);
@@ -173,10 +173,10 @@ TEST_F(BFloat16ConversionFoldingTest, DoNotFoldUnsupportedMixedPrecision) {
   HloInstruction* convert2 =
       builder.AddInstruction(HloInstruction::CreateConvert(bf16_shape, sub1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_FALSE(FoldConversions(module));
+  EXPECT_FALSE(FoldConversions(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), convert2);
   EXPECT_EQ(sub0->shape().element_type(), F32);
@@ -203,10 +203,10 @@ TEST_F(BFloat16ConversionFoldingTest, DoNotFoldTuple) {
   HloInstruction* convert1 =
       builder.AddInstruction(HloInstruction::CreateConvert(bf16_shape, gte));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_FALSE(FoldConversions(module));
+  EXPECT_FALSE(FoldConversions(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), convert1);
   EXPECT_EQ(gte->shape().element_type(), F32);
@@ -216,7 +216,7 @@ TEST_F(BFloat16ConversionFoldingTest, DoNotFoldTuple) {
 TEST_F(BFloat16ConversionFoldingTest, FoldCrossReplicaSumTupleOutput) {
   auto builder = HloComputation::Builder(TestName());
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation::Builder sum_builder("add");
   auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {}), "x"));
@@ -252,7 +252,7 @@ TEST_F(BFloat16ConversionFoldingTest, FoldCrossReplicaSumTupleOutput) {
 
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(FoldConversions(module));
+  EXPECT_TRUE(FoldConversions(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), tuple);
   EXPECT_EQ(tuple->operand(0), gte_a);

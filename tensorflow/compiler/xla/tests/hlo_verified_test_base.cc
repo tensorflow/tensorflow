@@ -49,26 +49,6 @@ HloVerifiedTestBase::HloVerifiedTestBase(bool layout_sensitive,
       verifier_layout_sensitive_(layout_sensitive),
       allow_mixed_precision_in_hlo_verifier_(allow_mixed_precision) {}
 
-HloModule& HloVerifiedTestBase::module() {
-  if (!module_) {
-    module_ = CreateNewVerifiedModule(TestName());
-  }
-  return *module_;
-}
-
-HloModule* HloVerifiedTestBase::CreateNewModule(const string& name) {
-  modules_.emplace_back(CreateNewVerifiedModule(name));
-  return modules_.back().get();
-}
-
-void HloVerifiedTestBase::ParseAndVerifyModule(absl::string_view hlo_text,
-                                               const HloModuleConfig& config) {
-  CHECK(!module_) << "Called ParseModule when test already has a module.";
-  module_ = CreateNewVerifiedModule(TestName());
-  TF_CHECK_OK(ParseHloString(hlo_text, module_.get()));
-  module_->VerifyOrAddFailure("after parsing");
-}
-
 StatusOr<std::unique_ptr<VerifiedHloModule>>
 HloVerifiedTestBase::ParseAndReturnVerifiedModule(
     absl::string_view hlo_text, const HloModuleConfig& config) {

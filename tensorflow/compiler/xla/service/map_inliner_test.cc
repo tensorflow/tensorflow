@@ -59,12 +59,12 @@ TEST_F(MapInlinerTest, MapMax) {
       HloInstruction::CreateMap(lhs->shape(), {lhs, rhs}, max_f32.get()));
 
   auto computation = builder.Build();
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEmbeddedComputation(std::move(max_f32));
   hlo_module->AddEntryComputation(std::move(computation));
 
   MapInliner inliner;
-  EXPECT_TRUE(inliner.Run(hlo_module).ValueOrDie());
+  EXPECT_TRUE(inliner.Run(hlo_module.get()).ValueOrDie());
   EXPECT_THAT(hlo_module->entry_computation()->root_instruction(),
               op::Maximum(lhs, rhs));
 
@@ -93,12 +93,12 @@ TEST_F(MapInlinerTest, MapConstant) {
       HloInstruction::CreateMap(lhs->shape(), {lhs}, const2_f32.get()));
 
   auto computation = builder.Build();
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEmbeddedComputation(std::move(const2_f32));
   hlo_module->AddEntryComputation(std::move(computation));
   HloInstruction* root = hlo_module->entry_computation()->root_instruction();
   MapInliner inliner;
-  EXPECT_TRUE(inliner.Run(hlo_module).ValueOrDie());
+  EXPECT_TRUE(inliner.Run(hlo_module.get()).ValueOrDie());
   root = hlo_module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Broadcast(op::Constant()));
 
@@ -131,12 +131,12 @@ TEST_F(MapInlinerTest, MapSubtractOppositeOrder) {
     HloInstruction::CreateMap(lhs->shape(), {lhs, rhs}, max_f32.get()));
 
   auto computation = builder.Build();
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEmbeddedComputation(std::move(max_f32));
   hlo_module->AddEntryComputation(std::move(computation));
 
   MapInliner inliner;
-  EXPECT_TRUE(inliner.Run(hlo_module).ValueOrDie());
+  EXPECT_TRUE(inliner.Run(hlo_module.get()).ValueOrDie());
   EXPECT_THAT(hlo_module->entry_computation()->root_instruction(),
           op::Subtract(rhs, lhs));
 

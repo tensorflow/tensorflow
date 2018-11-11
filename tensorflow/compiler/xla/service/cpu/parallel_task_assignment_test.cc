@@ -57,8 +57,9 @@ TEST_F(ParallelTaskAssignmentTest, DotOperationNotParallelized) {
     }
   )";
 
-  ParseAndVerifyModule(hlo_string);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(&module()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(m.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -84,8 +85,9 @@ TEST_F(ParallelTaskAssignmentTest,
     }
   )";
 
-  ParseAndVerifyModule(hlo_string);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(&module()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(m.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -100,8 +102,9 @@ TEST_F(ParallelTaskAssignmentTest, RngOperationNotParallelized) {
     }
   )";
 
-  ParseAndVerifyModule(hlo_string);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(&module()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(m.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -116,8 +119,9 @@ TEST_F(ParallelTaskAssignmentTest, InfeedOutfeedOperationNotParallelized) {
     }
   )";
 
-  ParseAndVerifyModule(hlo_string);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(&module()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(m.get()));
   EXPECT_FALSE(changed);
 }
 

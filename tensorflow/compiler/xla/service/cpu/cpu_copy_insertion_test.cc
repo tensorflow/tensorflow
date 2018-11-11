@@ -65,7 +65,7 @@ class CpuCopyInsertionTest : public HloVerifiedTestBase {
 TEST_F(CpuCopyInsertionTest, WhileBodyWithConstantRoot) {
   // Test a while body and condition which are each simply a constant (root of
   // computation is a constant). Each constant should be copied.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto param_0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape_, "param_0"));
@@ -90,7 +90,7 @@ TEST_F(CpuCopyInsertionTest, WhileBodyWithConstantRoot) {
 
   module->AddEntryComputation(builder.Build());
 
-  InsertCopies(module);
+  InsertCopies(module.get());
 
   EXPECT_EQ(CountCopies(*module), 3);
 
@@ -103,7 +103,7 @@ TEST_F(CpuCopyInsertionTest, TupleCall) {
   // Test a kCall instruction which calls a computation which produces a three
   // element tuple: one is a constant, one is a parameter, and one is produced
   // in the computation. The constant and parameter should be copied.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape_, "param_0"));
@@ -127,7 +127,7 @@ TEST_F(CpuCopyInsertionTest, TupleCall) {
 
   module->AddEntryComputation(builder.Build());
 
-  InsertCopies(module);
+  InsertCopies(module.get());
 
   EXPECT_EQ(CountCopies(*subcomputation), 2);
   EXPECT_THAT(subcomputation->root_instruction(),
