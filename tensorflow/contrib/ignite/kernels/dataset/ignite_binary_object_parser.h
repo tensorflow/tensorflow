@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_BINARY_OBJECT_PARSER_H_
-#define TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_BINARY_OBJECT_PARSER_H_
+#ifndef TENSORFLOW_CONTRIB_IGNITE_KERNELS_DATASET_IGNITE_BINARY_OBJECT_PARSER_H_
+#define TENSORFLOW_CONTRIB_IGNITE_KERNELS_DATASET_IGNITE_BINARY_OBJECT_PARSER_H_
 
 #include <vector>
-#include "tensorflow/contrib/ignite/kernels/ignite_byte_swapper.h"
+#include "tensorflow/contrib/ignite/kernels/client/ignite_byte_swapper.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -78,4 +78,4 @@ enum ObjectType {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_BINARY_OBJECT_PARSER_H_
+#endif  // TENSORFLOW_CONTRIB_IGNITE_KERNELS_DATASET_IGNITE_BINARY_OBJECT_PARSER_H_

@@ -14,13 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 
-IGNITE_VERSION=2.6.0
-SCRIPT_PATH="$( cd "$(dirname "$0")" ; pwd -P )"
+nohup apache-ignite-fabric/bin/ignite.sh /data/config/ignite-config-igfs.xml &
+sleep 5 # Wait Apache Ignite to be started
 
-# Start Apache Ignite with plain client listener.
-docker run -itd --name ignite-plain -p 42300:10800 \
--v ${SCRIPT_PATH}:/data apacheignite/ignite:${IGNITE_VERSION} /data/bin/start-plain.sh
-
-# Start Apache Ignite with IGFS.
-docker run -itd --name ignite-igfs -p 10500:10500 \
--v ${SCRIPT_PATH}:/data apacheignite/ignite:${IGNITE_VERSION} /data/bin/start-igfs.sh
+tail -f nohup.out
