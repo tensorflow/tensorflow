@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,14 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Python helper for loading IGFS ops and kernels."""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
-IGNITE_VERSION=2.6.0
-SCRIPT_PATH="$( cd "$(dirname "$0")" ; pwd -P )"
+from tensorflow.contrib.util import loader
+from tensorflow.python.platform import resource_loader
 
-# Start Apache Ignite with plain client listener.
-docker run -itd --name ignite-plain -p 42300:10800 \
--v ${SCRIPT_PATH}:/data apacheignite/ignite:${IGNITE_VERSION} /data/bin/start-plain.sh
-
-# Start Apache Ignite with IGFS.
-docker run -itd --name ignite-igfs -p 10500:10500 \
--v ${SCRIPT_PATH}:/data apacheignite/ignite:${IGNITE_VERSION} /data/bin/start-igfs.sh
+_dataset_ops = loader.load_op_library(
+    resource_loader.get_path_to_datafile("../../_ignite_ops.so"))

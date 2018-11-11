@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/ignite/kernels/ignite_dataset_iterator.h"
+#include "tensorflow/contrib/ignite/kernels/dataset/ignite_dataset_iterator.h"
 
-#include "tensorflow/contrib/ignite/kernels/ignite_plain_client.h"
-#include "tensorflow/contrib/ignite/kernels/ignite_ssl_wrapper.h"
+#include "tensorflow/contrib/ignite/kernels/client/ignite_plain_client.h"
+#include "tensorflow/contrib/ignite/kernels/client/ignite_ssl_wrapper.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/logging.h"
 

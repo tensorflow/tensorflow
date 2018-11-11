@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_DATASET_H_
-#define TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_DATASET_H_
+#ifndef TENSORFLOW_CONTRIB_IGNITE_KERNELS_DATASET_IGNITE_DATASET_H_
+#define TENSORFLOW_CONTRIB_IGNITE_KERNELS_DATASET_IGNITE_DATASET_H_
 
 #include "tensorflow/core/framework/dataset.h"
 
@@ -60,4 +60,4 @@ class IgniteDataset : public DatasetBase {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_DATASET_H_
+#endif  // TENSORFLOW_CONTRIB_IGNITE_KERNELS_DATASET_IGNITE_DATASET_H_

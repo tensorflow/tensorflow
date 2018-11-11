@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/ignite/kernels/ignite_ssl_wrapper.h"
+#include "tensorflow/contrib/ignite/kernels/client/ignite_ssl_wrapper.h"
 
 #include <openssl/err.h>
 #include <openssl/ssl.h>

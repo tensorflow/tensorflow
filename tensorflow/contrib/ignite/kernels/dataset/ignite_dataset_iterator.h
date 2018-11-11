@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_DATASET_ITERATOR_H_
-#define TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_DATASET_ITERATOR_H_
+#ifndef TENSORFLOW_CONTRIB_IGNITE_KERNELS_DATASET_IGNITE_DATASET_ITERATOR_H_
+#define TENSORFLOW_CONTRIB_IGNITE_KERNELS_DATASET_IGNITE_DATASET_ITERATOR_H_
 
-#include "tensorflow/contrib/ignite/kernels/ignite_binary_object_parser.h"
-#include "tensorflow/contrib/ignite/kernels/ignite_client.h"
-#include "tensorflow/contrib/ignite/kernels/ignite_dataset.h"
+#include "tensorflow/contrib/ignite/kernels/client/ignite_client.h"
+#include "tensorflow/contrib/ignite/kernels/dataset/ignite_binary_object_parser.h"
+#include "tensorflow/contrib/ignite/kernels/dataset/ignite_dataset.h"
 #include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
@@ -96,4 +96,4 @@ constexpr int32_t kMinResLength = 12;
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_DATASET_ITERATOR_H_
+#endif  // TENSORFLOW_CONTRIB_IGNITE_KERNELS_DATASET_IGNITE_DATASET_ITERATOR_H_
