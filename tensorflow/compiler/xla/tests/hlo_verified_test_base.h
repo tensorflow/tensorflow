@@ -69,12 +69,12 @@ class HloVerifiedTestBase : public HloTestBase {
   std::unique_ptr<VerifiedHloModule> CreateNewVerifiedModule(
       const string& name = TestName());
 
-  // CreateNewModule creates an *unverified* module, which presumably isn't what
-  // you want if you're using HloVerifiedTestBase, so we delete this function to
-  // keep you from accidentally calling it.  If you really want it, you can get
-  // it by calling HloTestBase::CreateNewModule().
-  std::unique_ptr<HloModule> CreateNewModule(const string& name = TestName()) =
-      delete;
+  // CreateNewUnverifiedModule creates an *unverified* module, which presumably
+  // isn't what you want if you're using HloVerifiedTestBase, so we delete this
+  // function to keep you from accidentally calling it.  If you really want it,
+  // you can get it by calling HloTestBase::CreateNewUnverifiedModule().
+  std::unique_ptr<HloModule> CreateNewUnverifiedModule(
+      const string& name = TestName()) = delete;
 
  private:
   bool verifier_layout_sensitive_;

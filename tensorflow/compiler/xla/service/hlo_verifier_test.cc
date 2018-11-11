@@ -66,7 +66,7 @@ TEST_F(HloVerifierTest, NullInstructionParent) {
       HloInstruction::CreateParameter(0, scalar_shape, "param"));
   HloInstruction* negate = builder.AddInstruction(
       HloInstruction::CreateUnary(scalar_shape, HloOpcode::kNegate, param));
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   module->AddEntryComputation(builder.Build());
 
   TF_ASSERT_OK(verifier().Run(module.get()).status());
@@ -85,7 +85,7 @@ TEST_F(HloVerifierTest, NullComputationParent) {
       HloInstruction::CreateParameter(0, scalar_shape, "param"));
   builder.AddInstruction(
       HloInstruction::CreateUnary(scalar_shape, HloOpcode::kNegate, param));
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
 
   TF_ASSERT_OK(verifier().Run(module.get()).status());
@@ -104,7 +104,7 @@ TEST_F(HloVerifierTest, DifferentOperandParents) {
       HloInstruction::CreateParameter(0, scalar_shape, "param"));
   HloInstruction* negate = builder.AddInstruction(
       HloInstruction::CreateUnary(scalar_shape, HloOpcode::kNegate, param));
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   module->AddEntryComputation(builder.Build());
 
   HloComputation::Builder emb_builder(TestName());
@@ -138,7 +138,7 @@ TEST_F(HloVerifierTest, ResetsShapeVerifierState) {
   builder.AddInstruction(
       HloInstruction::CreateBinary(s2, HloOpcode::kMultiply, add, add));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   module->AddEntryComputation(builder.Build());
 
   // Run the verifier twice.  It should fail both times, because it shouldn't
@@ -303,7 +303,7 @@ TEST_F(HloVerifierTest, NegativeInteriorPaddingNotAllowed) {
           HloInstruction::CreateConstant(LiteralUtil::Zero(F32))),
       padding_config));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   module->AddEntryComputation(builder.Build());
 
   auto status = verifier().Run(module.get()).status();
@@ -327,7 +327,7 @@ TEST_F(HloVerifierTest, PadNegativeInteriorDilationNotAllowed) {
           HloInstruction::CreateConstant(LiteralUtil::Zero(F32).Clone())),
       padding_config));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(verifier().Run(module.get()).status().error_message(),

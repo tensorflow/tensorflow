@@ -28,7 +28,7 @@ namespace {
 class TokenHloTest : public HloTestBase {};
 
 XLA_TEST_F(TokenHloTest, SingleTokenInstruction) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
   auto builder = HloComputation::Builder(TestName());
   builder.AddInstruction(HloInstruction::CreateToken());
 
@@ -39,7 +39,7 @@ XLA_TEST_F(TokenHloTest, SingleTokenInstruction) {
 }
 
 XLA_TEST_F(TokenHloTest, TokenTree) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto token0 = builder.AddInstruction(HloInstruction::CreateToken());
   auto token1 = builder.AddInstruction(HloInstruction::CreateToken());
@@ -54,7 +54,7 @@ XLA_TEST_F(TokenHloTest, TokenTree) {
 }
 
 XLA_TEST_F(TokenHloTest, InvalidTokenShapedEntryParameter) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
   auto builder = HloComputation::Builder(TestName());
   builder.AddInstruction(
       HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
@@ -75,7 +75,7 @@ XLA_TEST_F(TokenHloTest, InvalidTokenShapedEntryParameter) {
 }
 
 XLA_TEST_F(TokenHloTest, InvalidTupleTokenShapedEntryParameter) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
   auto builder = HloComputation::Builder(TestName());
   builder.AddInstruction(HloInstruction::CreateParameter(
       0,
@@ -95,7 +95,7 @@ XLA_TEST_F(TokenHloTest, InvalidTupleTokenShapedEntryParameter) {
 }
 
 XLA_TEST_F(TokenHloTest, InvalidOperandToTokenInstruction) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
