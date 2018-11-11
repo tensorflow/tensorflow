@@ -38,8 +38,8 @@ XLA_TEST_F(HloVerifiedTestBaseTest, NoModule) {
   // Test shouldn't fail if no module is created at all.
 }
 
-XLA_TEST_F(HloVerifiedTestBaseTest, GoodCreateNewModule) {
-  // Call CreateNewModule and build up a valid module.
+XLA_TEST_F(HloVerifiedTestBaseTest, GoodCreateNewUnverifiedModule) {
+  // Call CreateNewUnverifiedModule and build up a valid module.
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto input = builder.AddInstruction(
@@ -50,8 +50,8 @@ XLA_TEST_F(HloVerifiedTestBaseTest, GoodCreateNewModule) {
 }
 
 // This test is expected to fail. See test class comment.
-XLA_TEST_F(HloVerifiedTestBaseTest, DISABLED_BadCreateNewModule) {
-  // Call CreateNewModule and build up a invalid module.
+XLA_TEST_F(HloVerifiedTestBaseTest, DISABLED_BadCreateNewUnverifiedModule) {
+  // Call CreateNewUnverifiedModule and build up a invalid module.
   auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto input = builder.AddInstruction(

@@ -42,7 +42,7 @@ XLA_TEST_F(BroadcastTest, BroadcastScalarToScalar) {
       ShapeUtil::MakeShape(F32, {}), input, {}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewUnverifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
@@ -58,7 +58,7 @@ XLA_TEST_F(BroadcastTest, BroadcastScalarTo2D) {
       ShapeUtil::MakeShape(F32, {2, 2}), input, {}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewUnverifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
@@ -81,7 +81,7 @@ XLA_TEST_F(BroadcastTest, BroadcastVectorTo2D) {
   builder.AddInstruction(HloInstruction::CreateTuple({element1, element2}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewUnverifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
@@ -102,7 +102,7 @@ XLA_TEST_F(BroadcastTest, Broadcast2DTo2D) {
       ShapeUtil::MakeShape(F32, {2, 2}), input, {0, 1}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewUnverifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
@@ -121,7 +121,7 @@ XLA_TEST_F(BroadcastTest, Broadcast2DTo2DTranspose) {
       ShapeUtil::MakeShape(F32, {2, 2}), input, {1, 0}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewUnverifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
@@ -138,7 +138,7 @@ XLA_TEST_F(BroadcastTest, Broadcast2DTo3D) {
       ShapeUtil::MakeShape(F32, {2, 3, 2}), input, {0, 2}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewUnverifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
@@ -158,7 +158,7 @@ TEST_F(BroadcastTest, Broadcast_R1_2_To_R4_2x2x3x3) {
       ShapeUtil::MakeShape(F32, {2, 2, 3, 3}), input, {1}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewUnverifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
@@ -183,7 +183,7 @@ TEST_F(BroadcastTest, Broadcast_R1_1025_To_R4_3x3x3x1025) {
       ShapeUtil::MakeShape(F32, {3, 3, 3, r1_size}), input, {3}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewUnverifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
@@ -214,7 +214,7 @@ XLA_TEST_F(BroadcastTest, Broadcast_R1_64_To_R4_32x64x7x7) {
       ShapeUtil::MakeShape(F32, {32, 64, 7, 7}), input, {1}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewUnverifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
@@ -230,7 +230,7 @@ TEST_F(BroadcastTest, Broadcast_R0_to_R4_64x64x3x3) {
       ShapeUtil::MakeShape(F32, {64, 64, 3, 3}), input, {}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewUnverifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   LOG(INFO) << hlo_module->ToString();
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
@@ -253,7 +253,7 @@ TEST_F(BroadcastTest, Broadcast_R2_2x2_To_R4_3x3x2x2) {
       ShapeUtil::MakeShape(F32, {3, 3, 2, 2}), input, {2, 3}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewUnverifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
@@ -287,7 +287,7 @@ TEST_F(BroadcastTest, Broadcast_R3_2x3x4_to_R4_2x3x4x5) {
       ShapeUtil::MakeShape(F32, {2, 3, 4, 5}), input, {0, 1, 2}));
 
   // Create HLO module, compile, and execute.
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewUnverifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 

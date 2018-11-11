@@ -107,7 +107,8 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
       instruction_can_change_layout_func);
 }
 
-std::unique_ptr<HloModule> HloTestBase::CreateNewModule(const string& name) {
+std::unique_ptr<HloModule> HloTestBase::CreateNewUnverifiedModule(
+    const string& name) {
   return absl::make_unique<HloModule>(name, GetModuleConfigForTest());
 }
 
