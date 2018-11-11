@@ -162,8 +162,10 @@ cc_library(
         ":test_runner",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels:builtin_ops",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -248,8 +250,9 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/lite:string_util",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -263,6 +266,8 @@ cc_test(
     ],
     deps = [
         ":tf_driver",
+        "//tensorflow/lite:string_util",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
     ],
 )

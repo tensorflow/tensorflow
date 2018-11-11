@@ -13,31 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_PLAIN_CLIENT_H_
-#define TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_PLAIN_CLIENT_H_
+#include "tensorflow/core/platform/env.h"
 
-#include "tensorflow/contrib/ignite/kernels/ignite_client.h"
+#include "tensorflow/contrib/ignite/kernels/igfs/igfs.h"
 
 namespace tensorflow {
 
-class PlainClient : public Client {
- public:
-  PlainClient(string host, int port, bool big_endian);
-  ~PlainClient();
-
-  Status Connect() override;
-  Status Disconnect() override;
-  bool IsConnected() override;
-  int GetSocketDescriptor() override;
-  Status ReadData(uint8_t* buf, const int32_t length) override;
-  Status WriteData(const uint8_t* buf, const int32_t length) override;
-
- private:
-  const string host_;
-  const int port_;
-  int sock_;
-};
+REGISTER_FILE_SYSTEM("igfs", IGFS);
 
 }  // namespace tensorflow
-
-#endif  // TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_PLAIN_CLIENT_H_

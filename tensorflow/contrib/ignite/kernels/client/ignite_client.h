@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_CLIENT_H_
-#define TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_CLIENT_H_
+#ifndef TENSORFLOW_CONTRIB_IGNITE_KERNELS_CLIENT_IGNITE_CLIENT_H_
+#define TENSORFLOW_CONTRIB_IGNITE_KERNELS_CLIENT_IGNITE_CLIENT_H_
 
-#include "tensorflow/contrib/ignite/kernels/ignite_byte_swapper.h"
+#include "tensorflow/contrib/ignite/kernels/client/ignite_byte_swapper.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
@@ -32,44 +32,44 @@ class Client {
   virtual Status ReadData(uint8_t *buf, const int32_t length) = 0;
   virtual Status WriteData(const uint8_t *buf, const int32_t length) = 0;
 
-  inline Status ReadByte(uint8_t *data) { return ReadData(data, 1); }
+  Status ReadByte(uint8_t *data) { return ReadData(data, 1); }
 
-  inline Status ReadShort(int16_t *data) {
+  Status ReadShort(int16_t *data) {
     TF_RETURN_IF_ERROR(ReadData((uint8_t *)data, 2));
     byte_swapper_.SwapIfRequiredInt16(data);
 
     return Status::OK();
   }
 
-  inline Status ReadInt(int32_t *data) {
+  Status ReadInt(int32_t *data) {
     TF_RETURN_IF_ERROR(ReadData((uint8_t *)data, 4));
     byte_swapper_.SwapIfRequiredInt32(data);
 
     return Status::OK();
   }
 
-  inline Status ReadLong(int64_t *data) {
+  Status ReadLong(int64_t *data) {
     TF_RETURN_IF_ERROR(ReadData((uint8_t *)data, 8));
     byte_swapper_.SwapIfRequiredInt64(data);
 
     return Status::OK();
   }
 
-  inline Status WriteByte(const uint8_t data) { return WriteData(&data, 1); }
+  Status WriteByte(const uint8_t data) { return WriteData(&data, 1); }
 
-  inline Status WriteShort(const int16_t data) {
+  Status WriteShort(const int16_t data) {
     int16_t tmp = data;
     byte_swapper_.SwapIfRequiredInt16(&tmp);
     return WriteData((uint8_t *)&tmp, 2);
   }
 
-  inline Status WriteInt(const int32_t data) {
+  Status WriteInt(const int32_t data) {
     int32_t tmp = data;
     byte_swapper_.SwapIfRequiredInt32(&tmp);
     return WriteData((uint8_t *)&tmp, 4);
   }
 
-  inline Status WriteLong(const int64_t data) {
+  Status WriteLong(const int64_t data) {
     int64_t tmp = data;
     byte_swapper_.SwapIfRequiredInt64(&tmp);
     return WriteData((uint8_t *)&tmp, 8);
@@ -81,4 +81,4 @@ class Client {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CONTRIB_IGNITE_KERNELS_IGNITE_CLIENT_H_
+#endif  // TENSORFLOW_CONTRIB_IGNITE_KERNELS_CLIENT_IGNITE_CLIENT_H_

@@ -3178,6 +3178,39 @@ class ControlFlowTest(test.TestCase):
                 ]), 1)
 
 
+  def testQIntSwitchMerge(self):
+    with self.cached_session(force_gpu=test.is_gpu_available()) as sess:
+      constant_qint = constant_op.constant(np.array([42]), dtypes.qint8)
+      cond = constant_op.constant(True, dtypes.bool)
+      v_f, v_t = control_flow_ops.switch(constant_qint, cond)
+      result = control_flow_ops.merge([v_f, v_t])
+      sess.run(result)
+
+  def testQIntRefSwitchMerge(self):
+    with self.cached_session(use_gpu=test.is_gpu_available()) as sess:
+      var_qint = gen_state_ops.variable(
+          shape=[1], dtype=dtypes.qint8, name="v", container="", shared_name="")
+      assign_op = state_ops.assign(
+          var_qint, constant_op.constant(np.array([42]), dtypes.qint8))
+      sess.run(assign_op)
+
+      cond = constant_op.constant(True, dtypes.bool)
+      v_f, v_t = control_flow_ops.ref_switch(var_qint, cond)
+      result = control_flow_ops.ref_merge([v_f, v_t])
+      sess.run(result)
+
+  def testQIntArgAndRet(self):
+
+    @function.Defun(dtypes.qint8)
+    def func(x):
+      return x
+
+    with self.cached_session(force_gpu=test.is_gpu_available()) as sess:
+      qint = constant_op.constant(np.array([42]), dtypes.qint8)
+      result = func(qint)
+      sess.run(result)
+
+
 class ControlFlowContextCheckTest(test.TestCase):
 
   def _getWhileTensor(self):

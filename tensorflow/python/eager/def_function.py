@@ -213,7 +213,7 @@ class PolymorphicFunction(object):
                python_function,
                name,
                input_signature=None,
-               autograph=True,
+               autograph=False,
                experimental_autograph_options=None):
     """Initializes a polymorphic function.
 
@@ -495,7 +495,7 @@ class PolymorphicFunction(object):
 
 def function(func=None,
              input_signature=None,
-             autograph=True,
+             autograph=False,
              experimental_autograph_options=None):
   """Defines a function as per the "functions, not sessions" document."""
   if input_signature is not None:

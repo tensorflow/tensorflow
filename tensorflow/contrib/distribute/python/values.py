@@ -51,7 +51,7 @@ from tensorflow.python.util import nest
 # TODO(josh11b): Should device values be strings or DeviceSpec objects?
 # Not sure DeviceSpec objects are usable as a dict key.
 class DistributedValues(object):
-  """Holds a map from device to values. Either PerDevice or Mirrored."""
+  """Holds a map from device to values. Either PerReplica or Mirrored."""
 
   def __init__(self, index):
     self._index = {device_util.canonicalize(key): value
@@ -163,12 +163,12 @@ class DistributedDelegate(DistributedValues):
   # TODO(josh11b): Even more operator overloads.
 
 
-class PerDevice(DistributedValues):
+class PerReplica(DistributedValues):
   """Holds a map from device to unsynchronized values."""
   pass
 
 
-# Note that unlike PerDevice, Mirrored values inherit from
+# Note that unlike PerReplica, Mirrored values inherit from
 # DistributedDelegate and so can be used directly in cross-replica mode.
 class Mirrored(DistributedDelegate):
   """Holds a map from device to values which are kept in sync."""
@@ -870,7 +870,7 @@ def _assert_replica_context():
         "Replica-local variables may only be assigned in a replica context.")
 
 
-class ReplicaLocalVariable(DistributedVariable, PerDevice,
+class ReplicaLocalVariable(DistributedVariable, PerReplica,
                            checkpointable.CheckpointableBase):
   """Holds a map from device to variables whose values are reduced on save."""
 
@@ -951,9 +951,9 @@ def _devices_match(d1, d2):
   return device_util.canonicalize(d1) == device_util.canonicalize(d2)
 
 
-def regroup(per_device, wrap_class=PerDevice):
-  """Makes device->nest map into a nest of PerDevice/Mirrored values."""
-  items = list(per_device.items())
+def regroup(per_replica, wrap_class=PerReplica):
+  """Makes device->nest map into a nest of PerReplica/Mirrored values."""
+  items = list(per_replica.items())
   assert items
   v0 = items[0][1]  # First value
 
@@ -1014,7 +1014,7 @@ def regroup(per_device, wrap_class=PerDevice):
   # want to return the containing MirroredVariable, after a bunch of
   # sanity checking. In particular, each component should have the
   # same container, and the devices of the variables should match the
-  # keys of the per-device dictionary.
+  # keys of the per-replica dictionary.
   if hasattr(v0, "_distributed_container"):
     # pylint: disable=protected-access
     assert not isinstance(v0, MirroredVariable), (
@@ -1030,11 +1030,11 @@ def regroup(per_device, wrap_class=PerDevice):
     return distributed_container
   # pylint: enable=protected-access
 
-  return wrap_class(per_device)
+  return wrap_class(per_replica)
 
 
 def select_device(device, structured):
-  """Specialize a nest of regular & per-device values for one device."""
+  """Specialize a nest of regular & per-replica values for one device."""
   def _get(x):
     return x.get(device) if isinstance(x, DistributedValues) else x
 
@@ -1079,8 +1079,8 @@ def update_regroup(strategy, updates, should_group):
   return nest.pack_sequence_as(regrouped, grouped_flat)
 
 
-class PerDeviceDataIterator(object):
-  """An iterator (like `tf.data.Iterator`) into a `PerDeviceDataset`."""
+class PerReplicaDataIterator(object):
+  """An iterator (like `tf.data.Iterator`) into a `PerReplicaDataset`."""
 
   def __init__(self, iterator, devices, prefetch_on_device=None):
     self._iterator = iterator
@@ -1123,8 +1123,8 @@ class PerDeviceDataIterator(object):
     return self._iterator.output_types
 
 
-class PerDeviceDataset(object):
-  """Like `tf.data.Dataset` split devices, producing `PerDevice` data."""
+class PerReplicaDataset(object):
+  """Like `tf.data.Dataset` split devices, producing `PerReplica` data."""
 
   def __init__(self, dataset, devices, prefetch_on_device=None):
     self._devices = devices
@@ -1145,20 +1145,20 @@ class PerDeviceDataset(object):
       self._dataset = dataset.batch(len(devices), drop_remainder=True)
 
   def make_one_shot_iterator(self):
-    """Get a one time use iterator for the distributed PerDeviceDataset."""
+    """Get a one time use iterator for the distributed PerReplicaDataset."""
     # Graph mode with one shot iterator is disabled.
     if not context.executing_eagerly():
       raise ValueError("Cannot create a one shot iterator. Please use "
                        "`make_initializable_iterator()` instead.")
     # Eager mode prefetching would error out in constructor. Only remaining
     # case is non-prefetching in eager mode. We delegate to
-    # PerDeviceDataIterator to handle that case.
+    # PerReplicaDataIterator to handle that case.
     dataset_iterator = self._dataset.make_one_shot_iterator()
-    return PerDeviceDataIterator(
+    return PerReplicaDataIterator(
         dataset_iterator, self._devices, prefetch_on_device=False)
 
   def make_initializable_iterator(self):
-    """Get an initializable iterator for the distributed PerDeviceDataset."""
+    """Get an initializable iterator for the distributed PerReplicaDataset."""
     # Eager mode generates already initialized iterators. Hence we cannot create
     # an initializable iterator.
     if context.executing_eagerly():
@@ -1169,7 +1169,7 @@ class PerDeviceDataset(object):
           self._dataset, self._devices)
     else:
       dataset_iterator = self._dataset.make_initializable_iterator()
-    return PerDeviceDataIterator(
+    return PerReplicaDataIterator(
         dataset_iterator,
         self._devices,
         prefetch_on_device=self._prefetch_on_device)
@@ -1227,7 +1227,7 @@ class MultiWorkerDataIterator(object):
       with ops.device(worker):
         data_per_worker = iterator.get_next(name=new_name)
 
-      # Ungroup these per-device value so as to get a flat map from devices to
+      # Ungroup these per-replica value so as to get a flat map from devices to
       # values.
       for d in worker_devices:
         v = select_device(d, data_per_worker)
@@ -1266,8 +1266,8 @@ class MultiWorkerDataset(object):
         if auto_shard:
           worker_input = input_ops.auto_shard_dataset(
               worker_input, len(worker_device_pairs), i)
-        dataset = PerDeviceDataset(worker_input, worker_devices,
-                                   prefetch_on_device=prefetch_on_device)
+        dataset = PerReplicaDataset(
+            worker_input, worker_devices, prefetch_on_device=prefetch_on_device)
         self._datasets.append((worker, dataset))
 
   def make_one_shot_iterator(self):
@@ -1283,100 +1283,6 @@ class MultiWorkerDataset(object):
       with ops.device(worker):
         iterators.append((worker, dataset.make_initializable_iterator()))
     return MultiWorkerDataIterator(iterators, self._worker_device_pairs)
-
-
-class _PerKey(object):
-  """Holds data associated by keys."""
-
-  def __init__(self, *index):
-    # pylint: disable=protected-access
-    self._index = list(index)
-
-  def get(self, iteration):
-    return array_ops.gather(self._index, iteration)
-
-  def get_shape(self):
-    return self._index[-1][-1].get_shape()
-
-  def get_dtype(self):
-    return self._index[-1][-1].dtype
-
-  def __str__(self):
-    return "%s:%s" % (self.__class__.__name__, self._index)
-
-  def __repr__(self):
-    return "%s(%r)" % (self.__class__.__name__, self._index)
-
-
-class PerIteration(_PerKey):
-  """Holds input for multiple iterations at once."""
-
-  def __init__(self, *index):
-    # pylint: disable=protected-access
-    super(PerIteration, self).__init__(*[batch._index for batch in index])
-
-
-class Batches(_PerKey):
-  pass
-
-
-class MultiIterator(object):
-  """Iterator that returns results of multiple get_next()s."""
-
-  def __init__(self, dataset_iterator, iterations, batches_per_iteration):
-    self._dataset_iterator = dataset_iterator
-    self._iterations = iterations
-    self._batches_per_iteration = batches_per_iteration
-
-  def get_next(self, name=None):
-    """Return PerIteration with `iterations x batches_per_iteration` inputs."""
-    data = []
-    for _ in range(self._batches_per_iteration):
-      batch = []
-      for _ in range(self._iterations):
-        batch.append(self._dataset_iterator.get_next(name=name))
-      data.append(batch)
-
-    # Here is an example.  Suppose each get_next returns a tuple of two tensors.
-    # For 3 `iterations` and 2 `batches_per_iteration`, the `data` is:
-    # [[(a,z), (b,y), (c,x)], [(A,Z), (B,Y), (C,X)]]
-    #
-    # After the first `map_structure` it gets transformed to:
-    #  [(Batches(a, A), Batches(z, Z)),
-    #   (Batches(b, B), Batches(y, Y)),
-    #   (Batches(c, C), Batches(x, X))]
-    #
-    # After the second `map_structure` it gets transformed to a tuple of:
-    # (PerIteration([Batches(a, A), Batches(b, B), Batches(c, C)]),
-    #  PerIteration([Batches(z, Z), Batches(y, Y), Batches(x, X)]))
-
-    data = nest.map_structure(Batches, *data)
-    data = nest.map_structure(PerIteration, *data)
-
-    return data
-
-  @property
-  def initializer(self):
-    return self._dataset_iterator.initializer
-
-
-class PerIterationDataset(object):
-  """A dataset that returns MultiIterators."""
-
-  def __init__(self, dataset, iterations, batches_per_iteration):
-    self._dataset = dataset
-    self._iterations = iterations
-    self._batches_per_iteration = batches_per_iteration
-
-  def make_one_shot_iterator(self):
-    iterator = self._dataset.make_one_shot_iterator()
-    return MultiIterator(iterator, self._iterations,
-                         self._batches_per_iteration)
-
-  def make_initializable_iterator(self):
-    iterator = self._dataset.make_initializable_iterator()
-    return MultiIterator(iterator, self._iterations,
-                         self._batches_per_iteration)
 
 
 class MapOutput(object):
@@ -1447,7 +1353,7 @@ class MultiStepContext(object):
         current distribution strategy's `reduce` method. Hence, the type of
         `output` must be what's supported by the corresponding `reduce` method.
         For e.g. if using MirroredStrategy and aggregation is set, output
-        must be a `PerDevice` value.
+        must be a `PerReplica` value.
         The aggregation method is also recorded in a dictionary
         `_last_step_outputs_aggregations` for later interpreting of the
         outputs as already reduced or not.
@@ -1493,7 +1399,7 @@ class MultiStepContext(object):
 
 
 def value_container(val):
-  """Returns the container that this per-device `value` belongs to.
+  """Returns the container that this per-replica `value` belongs to.
 
   Args:
     val: A value returned by `call_for_each_replica()` or a variable

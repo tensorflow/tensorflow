@@ -189,10 +189,10 @@ def _make_mirrored():
 
 class RegroupAndSelectDeviceTest(test.TestCase):
 
-  def _is_per_device(self, result, expected, klass=values.PerDevice):
+  def _is_per_replica(self, result, expected, klass=values.PerReplica):
     self.assertIsInstance(result, klass)
     # We canonicalize the devices to match the device strings returned
-    # by PerDevice, which also does device string canonicalization.
+    # by PerReplica, which also does device string canonicalization.
     devices = [device_util.canonicalize(_device_str(i))
                for i in range(len(expected))]
     self.assertEqual(set(devices), set(result.devices))
@@ -205,18 +205,18 @@ class RegroupAndSelectDeviceTest(test.TestCase):
                              _device_str(1): _nested_value("2")})
     self.assertIsInstance(result, tuple)
     self.assertEqual(3, len(result))
-    self._is_per_device(result[0], ["a1", "a2"])
-    self._is_per_device(result[2], ["h1", "h2"])
+    self._is_per_replica(result[0], ["a1", "a2"])
+    self._is_per_replica(result[2], ["h1", "h2"])
 
     self.assertIsInstance(result[1], list)
     self.assertEqual(3, len(result[1]))
-    self._is_per_device(result[1][0], ["b1", "b2"])
-    self._is_per_device(result[1][2], ["g1", "g2"])
+    self._is_per_replica(result[1][0], ["b1", "b2"])
+    self._is_per_replica(result[1][2], ["g1", "g2"])
 
     self.assertIsInstance(result[1][1], dict)
     self.assertEqual(set(["c", "e"]), set(result[1][1].keys()))
-    self._is_per_device(result[1][1]["c"], ["d1", "d2"])
-    self._is_per_device(result[1][1]["e"], ["f1", "f2"])
+    self._is_per_replica(result[1][1]["c"], ["d1", "d2"])
+    self._is_per_replica(result[1][1]["e"], ["f1", "f2"])
 
     # Also test that we can undo the merge using select_device()
     self.assertEqual(_nested_value("1"),
@@ -237,18 +237,18 @@ class RegroupAndSelectDeviceTest(test.TestCase):
                             values.Mirrored)
     self.assertIsInstance(result, tuple)
     self.assertEqual(3, len(result))
-    self._is_per_device(result[0], ["a1", "a2"], values.Mirrored)
-    self._is_per_device(result[2], ["h1", "h2"], values.Mirrored)
+    self._is_per_replica(result[0], ["a1", "a2"], values.Mirrored)
+    self._is_per_replica(result[2], ["h1", "h2"], values.Mirrored)
 
     self.assertIsInstance(result[1], list)
     self.assertEqual(3, len(result[1]))
-    self._is_per_device(result[1][0], ["b1", "b2"], values.Mirrored)
-    self._is_per_device(result[1][2], ["g1", "g2"], values.Mirrored)
+    self._is_per_replica(result[1][0], ["b1", "b2"], values.Mirrored)
+    self._is_per_replica(result[1][2], ["g1", "g2"], values.Mirrored)
 
     self.assertIsInstance(result[1][1], dict)
     self.assertEqual(set(["c", "e"]), set(result[1][1].keys()))
-    self._is_per_device(result[1][1]["c"], ["d1", "d2"], values.Mirrored)
-    self._is_per_device(result[1][1]["e"], ["f1", "f2"], values.Mirrored)
+    self._is_per_replica(result[1][1]["c"], ["d1", "d2"], values.Mirrored)
+    self._is_per_replica(result[1][1]["e"], ["f1", "f2"], values.Mirrored)
 
     # Also test that we can undo the merge using select_device()
     self.assertEqual(_nested_value("1"),
@@ -274,7 +274,7 @@ class RegroupAndSelectDeviceTest(test.TestCase):
                              _device_str(1): ("b", foo)})
     self.assertIsInstance(result, tuple)
     self.assertEqual(2, len(result))
-    self._is_per_device(result[0], ["a", "b"])
+    self._is_per_replica(result[0], ["a", "b"])
     self.assertIs(foo, result[1])
 
     # Test select_device(), should undo the merge done by regroup().
@@ -340,17 +340,17 @@ class RegroupAndSelectDeviceTest(test.TestCase):
                                                merged_estimator_spec))
 
 
-class PerDeviceDatasetTest(test.TestCase):
+class PerReplicaDatasetTest(test.TestCase):
 
   config = config_pb2.ConfigProto()
   config.allow_soft_placement = True
 
   def _test_iterator(self, devices, dataset, expected_values):
-    per_device_dataset = values.PerDeviceDataset(dataset, devices)
+    per_replica_dataset = values.PerReplicaDataset(dataset, devices)
     if context.executing_eagerly():
-      iterator = per_device_dataset.make_one_shot_iterator()
+      iterator = per_replica_dataset.make_one_shot_iterator()
     else:
-      iterator = per_device_dataset.make_initializable_iterator()
+      iterator = per_replica_dataset.make_initializable_iterator()
       self.evaluate([iterator.initializer])
 
     for expected_value in expected_values:
@@ -418,8 +418,8 @@ class PerDeviceDatasetTest(test.TestCase):
       dataset = dataset_ops.Dataset.from_tensor_slices(
           random_ops.random_uniform((10,)))
 
-      per_device_dataset = values.PerDeviceDataset(dataset, devices)
-      iterator = per_device_dataset.make_initializable_iterator()
+      per_replica_dataset = values.PerReplicaDataset(dataset, devices)
+      iterator = per_replica_dataset.make_initializable_iterator()
 
       self.evaluate(iterator.initializer)
       next_element = iterator.get_next()

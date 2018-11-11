@@ -192,7 +192,7 @@ def _reduce_non_distributed_value(distribution, aggregation, value,
     raise ValueError("You are passing a `DistributedValue` to "
                      "`_reduce_non_distributed_value`, which is not allowed.")
 
-  # If the same value is present on all replicas then the PerDevice value will
+  # If the same value is present on all replicas then the PerReplica value will
   # be a single value. We also handle the case when `value` is a single value
   # and equal to 0.
   if value == 0:
@@ -348,8 +348,6 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       specified.
     cross_device_ops: optional, a descedant of `CrossDeviceOps`. If this is not
       set, the `configure` method will try to find the best one.
-    prefetch_on_device: optional boolean to specify whether to prefetch input
-      data to devices.
     auto_shard_dataset: whether to auto-shard the dataset when there are
       multiple workers.
     cross_tower_ops: Deprecated alias for `cross_device_ops`.
@@ -360,14 +358,12 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
                num_gpus=None,
                num_gpus_per_worker=None,
                cross_device_ops=None,
-               prefetch_on_device=None,
                auto_shard_dataset=False,
                cross_tower_ops=None):
     super(MirroredStrategy, self).__init__()
 
     assert not (cross_device_ops and cross_tower_ops)
     self._cross_tower_ops = cross_device_ops or cross_tower_ops
-    self._prefetch_on_device = prefetch_on_device
     self._auto_shard_dataset = auto_shard_dataset
     # Remember num GPUs which might be needed by `configure` method.
     if num_gpus is not None and num_gpus_per_worker is not None:
@@ -402,7 +398,8 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     # TODO(josh11b): Require at least 2 devices?
     self._devices = [device_util.resolve(d) for d in devices]
     self._canonical_device_set = set(self._devices)
-    self._device_index = values.PerDevice({d: i for i, d in enumerate(devices)})
+    self._device_index = values.PerReplica(
+        {d: i for i, d in enumerate(devices)})
 
   def _initialize_multi_worker(self, num_gpus, cluster_spec):
     """Initializes the object for multi-worker training."""
@@ -446,7 +443,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     # TODO(josh11b): Require at least 2 devices?
     self._devices = [device_util.resolve(d) for d in devices]
     self._canonical_device_set = set(self._devices)
-    self._device_index = values.PerDevice(
+    self._device_index = values.PerReplica(
         {d: i for i, d in enumerate(devices)})
 
   def _create_variable(self, next_creator, *args, **kwargs):
@@ -491,11 +488,10 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     if self._cluster_spec:
       return values.MultiWorkerDataset(
           partial(self._call_dataset_fn, dataset_fn), self._worker_devices,
-          self._prefetch_on_device, self._auto_shard_dataset)
+          auto_shard=self._auto_shard_dataset)
     else:
-      return values.PerDeviceDataset(
-          self._call_dataset_fn(dataset_fn), self._devices,
-          self._prefetch_on_device)
+      return values.PerReplicaDataset(
+          self._call_dataset_fn(dataset_fn), self._devices)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   def _run_steps_on_dataset(self, fn, iterator, iterations,
@@ -546,10 +542,10 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     for (name, aggregation) in ctx._last_step_outputs_aggregations.items():  # pylint: disable=protected-access
       output = last_step_tensor_outputs_dict[name]
       # For outputs that have already been aggregated, wrap them in a Mirrored
-      # container, else in a PerDevice container.
+      # container, else in a PerReplica container.
       if aggregation is variables_lib.VariableAggregation.NONE:
         last_step_tensor_outputs_dict[name] = values.regroup(
-            {d: t for d, t in zip(self._devices, output)}, values.PerDevice)
+            {d: t for d, t in zip(self._devices, output)}, values.PerReplica)
       else:
         assert len(output) == 1
         last_step_tensor_outputs_dict[name] = output[0]
@@ -577,8 +573,8 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
                     **values.select_device_mirrored(d, kwargs)))
         index[d] = l
     # TODO(josh11b): Need a values.regroup equivalent that handles MapOutput
-    # in addition to PerDevice data.
-    return values.PerDevice({k: values.MapOutput(v) for k, v in index.items()})
+    # in addition to PerReplica data.
+    return values.PerReplica({k: values.MapOutput(v) for k, v in index.items()})
 
   def configure(self,
                 session_config=None,
@@ -617,9 +613,10 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   def _reduce(self, aggregation, value, destinations):
     assert not isinstance(value, values.Mirrored)
     if not isinstance(value, values.DistributedValues):
-      # This function handles reducing values that are not PerDevice or Mirrored
-      # values. For example, the same value could be present on all replicas in
-      # which case `value` would be a single value or value could be 0.
+      # This function handles reducing values that are not PerReplica or
+      # Mirrored values. For example, the same value could be present on all
+      # replicas in which case `value` would be a single value or value could
+      # be 0.
       return _reduce_non_distributed_value(self, aggregation, value,
                                            destinations)
     if aggregation == variable_scope.VariableAggregation.ONLY_FIRST_REPLICA:

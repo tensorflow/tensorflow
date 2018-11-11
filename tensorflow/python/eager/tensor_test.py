@@ -261,9 +261,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testCompatibility(self):
-    # TODO(nareshmodi): uint32, uint64 are not correctly handled in graph mode.
     integer_types = [dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
-                     dtypes.uint8, dtypes.uint16]
+                     dtypes.uint8, dtypes.uint16, dtypes.uint32, dtypes.uint64]
 
     # Floats are not compatible with ints
     for t in integer_types:

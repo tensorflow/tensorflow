@@ -423,7 +423,7 @@ def flex_dep(target_op_sets):
     else:
         return []
 
-def gen_model_coverage_test(model_name, data, failure_type):
+def gen_model_coverage_test(model_name, data, failure_type, tags):
     """Generates Python test targets for testing TFLite models.
 
     Args:
@@ -433,6 +433,7 @@ def gen_model_coverage_test(model_name, data, failure_type):
       failure_type: List of failure types (none, toco, crash, inference)
         expected for the corresponding combinations of op sets
         ("TFLITE_BUILTINS", "TFLITE_BUILTINS,SELECT_TF_OPS", "SELECT_TF_OPS").
+      tags: List of strings of additional tags.
     """
     i = 0
     for target_op_sets in ["TFLITE_BUILTINS", "TFLITE_BUILTINS,SELECT_TF_OPS", "SELECT_TF_OPS"]:
@@ -454,7 +455,7 @@ def gen_model_coverage_test(model_name, data, failure_type):
                 "no_oss",
                 "no_windows",
                 "notap",
-            ],
+            ] + tags,
             deps = [
                 "//tensorflow/lite/testing/model_coverage:model_coverage_lib",
                 "//tensorflow/lite/python:lite",

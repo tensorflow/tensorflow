@@ -2178,6 +2178,57 @@ TEST_F(AlgebraicSimplifierTest, SliceOfSliceToSlice) {
   EXPECT_EQ(computation->root_instruction()->slice_limits(1), dim1 - 4);
 }
 
+TEST_F(AlgebraicSimplifierTest, SliceOfReshapeToReshapeOfSlice) {
+  HloComputation::Builder builder(TestName());
+  const int64 dim0 = 11;
+  const int64 dim1 = 12;
+  const int64 dim2 = 13;
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {dim0 * dim1, dim2}), "param"));
+  HloInstruction* original_reshape =
+      builder.AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(F32, {dim0, dim1, dim2}), param));
+
+  builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {dim0 - 2, dim1, dim2}), original_reshape,
+      /*start_indices=*/{0, 0, 0},
+      /*limit_indices=*/{dim0 - 2, dim1, dim2}, /*strides=*/{1, 1, 1}));
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Slice(op::Reshape(param)));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Slice(param)));
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceOfReshapeUnchanged) {
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {1, 144, 25, 1, 512}), "param"));
+  HloInstruction* original_reshape =
+      builder.AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(F32, {3600, 512}), param));
+
+  builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {960, 512}), original_reshape,
+      /*start_indices=*/{0, 0},
+      /*limit_indices=*/{960, 512}, /*strides=*/{1, 1}));
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Slice(op::Reshape(param)));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+}
+
 TEST_F(AlgebraicSimplifierTest, RemoveNoopSort) {
   auto builder = HloComputation::Builder(TestName());
 

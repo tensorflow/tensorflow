@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
+#include "tensorflow/compiler/xla/service/hlo_dce.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
@@ -507,6 +509,63 @@ TEST_F(WhileLoopSimplifierTest, LoopWithArrayConstantNotSimplified) {
 
   ParseAndVerifyModule(hlo_string);
   EXPECT_FALSE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
+}
+
+TEST_F(WhileLoopSimplifierTest, FlattenNestedTuple) {
+  const string hlo_string = R"(
+  HloModule Test
+  Body {
+    param = ((s32[1]), (s32[2], s32[3], (s32[4]))) parameter(0)
+    ta = (s32[1]) get-tuple-element(param), index=0
+    a = s32[1] get-tuple-element(ta), index=0
+    a.1 = s32[1] add(a, a)
+    tbcd = (s32[2], s32[3], (s32[4])) get-tuple-element(param), index=1
+    ROOT tuple = ((s32[1]), (s32[2], s32[3], (s32[4]))) tuple(ta, tbcd)
+  }
+  Cond {
+    param = ((s32[1]), (s32[2], s32[3], (s32[4]))) parameter(0)
+    ROOT cond = pred[] constant(true)
+  }
+  ENTRY Loop {
+    a = s32[1] constant({0})
+    b = s32[2] constant({0,1})
+    c = s32[3] constant({0,1,2})
+    d = s32[4] constant({0,1,2,3})
+    ta = (s32[1]) tuple(a)
+    td = (s32[4]) tuple(d)
+    tbcd = (s32[2], s32[3], (s32[4])) tuple(b, c, td)
+    init = ((s32[1]), (s32[2], s32[3], (s32[4]))) tuple(ta, tbcd)
+    ROOT while = ((s32[1]), (s32[2], s32[3], (s32[4]))) while(init),
+      condition=Cond, body=Body
+  })";
+
+  ParseAndVerifyModule(hlo_string);
+  EXPECT_TRUE(WhileLoopSimplifier().Run(&module()).ValueOrDie());
+  // DCE away the old loop so there's just one while loop in the module, making
+  // it easy to find.
+  EXPECT_TRUE(HloDCE().Run(&module()).ok());
+
+  const auto& instrs = module().entry_computation()->instructions();
+  HloInstruction* new_while =
+      *absl::c_find_if(instrs, [](const HloInstruction* instr) {
+        return instr->opcode() == HloOpcode::kWhile;
+      });
+  Shape flat_tuple =
+      ShapeUtil::ParseShapeString("(s32[1], s32[2], s32[3], s32[4])")
+          .ValueOrDie();
+  SCOPED_TRACE(module().ToString());
+  EXPECT_TRUE(ShapeUtil::Equal(new_while->shape(), flat_tuple));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_body()->root_instruction()->shape(), flat_tuple));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_body()->parameter_instruction(0)->shape(), flat_tuple));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      new_while->while_condition()->parameter_instruction(0)->shape(),
+      flat_tuple));
+  EXPECT_TRUE(ShapeUtil::Equal(
+      module().entry_computation()->root_instruction()->shape(),
+      ShapeUtil::ParseShapeString("((s32[1]), (s32[2], s32[3], (s32[4])))")
+          .ValueOrDie()));
 }
 
 }  // namespace

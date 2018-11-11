@@ -332,11 +332,13 @@ message LiteralProto {
   repeated double f64s = 9;
   repeated float c64s = 12;  // Stored as interleaved real, imag floats.
   repeated LiteralProto tuple_literals = 10;
-  // The F16s and BF16s are encoded in little endian byte order
+  // The F16s, BF16s, U16s and S16s are encoded in little endian byte order
   bytes f16s = 11;
   bytes bf16s = 13;
+  bytes u16s = 16;
+  bytes s16s = 17;
   repeated int64 sparse_indices = 14;
-  // Next = 16
+  // Next = 18
 }
 
 message WindowDimension {

@@ -155,7 +155,11 @@ listdiff.__doc__ = gen_array_ops.list_diff.__doc__ + "\n" + listdiff.__doc__
 
 
 # pylint: disable=undefined-variable
-@tf_export("setdiff1d")
+@deprecation.deprecated(
+    "2018-11-30",
+    "This op will be removed after the deprecation date. "
+    "Please switch to tf.sets.difference().")
+@tf_export(v1=["setdiff1d"])
 def setdiff1d(x, y, index_dtype=dtypes.int32, name=None):
   return gen_array_ops.list_diff(x, y, index_dtype, name)
 
@@ -165,7 +169,18 @@ setdiff1d.__doc__ = gen_array_ops.list_diff.__doc__
 
 @tf_export("broadcast_dynamic_shape")
 def broadcast_dynamic_shape(shape_x, shape_y):
-  """Returns the broadcasted dynamic shape between `shape_x` and `shape_y`.
+  """Computes the shape of a broadcast given symbolic shapes.
+
+  When shape_x and shape_y are Tensors representing shapes (i.e. the result of
+  calling tf.shape on another Tensor) this computes a Tensor which is the shape
+  of the result of a broadcasting op applied in tensors of shapes shape_x and
+  shape_y.
+
+  For example, if shape_x is [1, 2, 3] and shape_y is [5, 1, 3], the result is a
+  Tensor whose value is [5, 2, 3].
+
+  This is useful when validating the result of a broadcasting operation when the
+  tensors do not have statically known shapes.
 
   Args:
     shape_x: A rank 1 integer `Tensor`, representing the shape of x.
@@ -179,7 +194,17 @@ def broadcast_dynamic_shape(shape_x, shape_y):
 
 @tf_export("broadcast_static_shape")
 def broadcast_static_shape(shape_x, shape_y):
-  """Returns the broadcasted static shape between `shape_x` and `shape_y`.
+  """Computes the shape of a broadcast given known shapes.
+
+  When shape_x and shape_y are fully known TensorShapes this computes a
+  TensorShape which is the shape of the result of a broadcasting op applied in
+  tensors of shapes shape_x and shape_y.
+
+  For example, if shape_x is [1, 2, 3] and shape_y is [5, 1, 3], the result is a
+  TensorShape whose value is [5, 2, 3].
+
+  This is useful when validating the result of a broadcasting operation when the
+  tensors have statically known shapes.
 
   Args:
     shape_x: A `TensorShape`

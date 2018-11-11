@@ -921,11 +921,12 @@ void OpKernelContext::clear_recorded_memory() {
 
 struct KernelRegistration {
   KernelRegistration(const KernelDef& d, StringPiece c,
-                     kernel_factory::OpKernelRegistrar::Factory f)
-      : def(d), kernel_class_name(c), factory(f) {}
+                     std::unique_ptr<kernel_factory::OpKernelFactory> f)
+      : def(d), kernel_class_name(c), factory(std::move(f)) {}
+
   const KernelDef def;
   const string kernel_class_name;
-  const kernel_factory::OpKernelRegistrar::Factory factory;
+  std::unique_ptr<kernel_factory::OpKernelFactory> factory;
 };
 
 // This maps from 'op_type' + DeviceType to the set of KernelDefs and
@@ -992,7 +993,7 @@ namespace kernel_factory {
 
 void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
                                      StringPiece kernel_class_name,
-                                     Factory factory) {
+                                     std::unique_ptr<OpKernelFactory> factory) {
   // See comments in register_kernel::Name in header for info on _no_register.
   if (kernel_def->op() != "_no_register") {
     const string key =
@@ -1007,8 +1008,8 @@ void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
     // program flakily. Until we get rid of static initializers in kernel
     // registration mechanism, we have this workaround here.
     reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry())
-        ->insert(std::make_pair(
-            key, KernelRegistration(*kernel_def, kernel_class_name, factory)));
+        ->emplace(key, KernelRegistration(*kernel_def, kernel_class_name,
+                                          std::move(factory)));
   }
   delete kernel_def;
 }
@@ -1232,7 +1233,7 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
   OpKernelConstruction context(
       device_type, device, allocator, &node_def, op_def, flib, inputs,
       input_memory_types, outputs, output_memory_types, graph_def_version, &s);
-  *kernel = (*registration->factory)(&context);
+  *kernel = registration->factory->Create(&context);
   if (!s.ok()) {
     delete *kernel;
     *kernel = nullptr;
