@@ -425,7 +425,9 @@ class TRT_TensorOrWeights::SimpleITensor : public nvinfer1::ITensor {
   void setLocation(nvinfer1::TensorLocation location) override {}
 
 #if NV_TENSORRT_MAJOR >= 5
-  bool setDynamicRange(float min, float max) override {}
+  bool setDynamicRange(float min, float max) override { return true; }
+
+  float getDynamicRange() const override { return 0; }
 #endif
 
  private:
@@ -818,7 +820,7 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
     if (i != 0) output_name = StrCat(output_name, ":", i);
     // We need to check the name before setting it. If the input is one of the
     // engine input, setting the name here will overwrite engine input
-    // bindings which will cause runtime error. 
+    // bindings which will cause runtime error.
     if (output.is_tensor()) {
       const char* tensor_name = output.tensor()->getName();
       if (!tensorflow::str_util::StartsWith(tensor_name, kInputPHName)) {
@@ -1074,7 +1076,7 @@ void Converter::ApplyQuantizationRanges(bool warn_missing_ranges) {
     tensor->setDynamicRange(-range, range);
 #endif
   }
-  
+
   // Warn user about tensors that are missing ranges. If TRT fuses some layers
   // then these tensors may not actually be required, which is why this is
   // just a warning. If we are still missing ranges even after fusion,
@@ -2077,23 +2079,23 @@ tensorflow::Status ConvertRelu6(OpConverterParams* params) {
   // to available TensorRT ops: Relu6(x) = min(Relu(x), 6)
   // ***************************************************************************
 
-  // Input Tensor 
+  // Input Tensor
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
-  
+
   // Relu operation i.e. Relu(x) = max(0, x)
-  nvinfer1::IActivationLayer* relu_layer = 
+  nvinfer1::IActivationLayer* relu_layer =
       params->converter->network()->addActivation(
           *const_cast<nvinfer1::ITensor*>(tensor),
           nvinfer1::ActivationType::kRELU);
   TFTRT_RETURN_ERROR_IF_NULLPTR(relu_layer, node_def.name());
-  
+
   // Large range of relu is problematic during quantization in INT8 precision mode.
   // Setting dynamic range of relu = [0.f, 6.0f] helps with quantization.
   // TRT only uses dynamic ranges in INT8 precision mode,
   // and this does not affect the FP32 path.
   params->converter->ProvideQuantizationRange(
       relu_layer->getOutput(0), 0.0f, 6.0f);
-  
+
   // Create a constant layer to store the floating point weight i.e. 6.0f This
   // tensor will be broadcasted uniformly during elementwise `min` operation.
   // The constant has to have the same rank as the input in order for TRT to
@@ -2108,18 +2110,18 @@ tensorflow::Status ConvertRelu6(OpConverterParams* params) {
   auto weights_ptr = static_cast<float*>(const_cast<void*>(
       weights.GetValues()));
   weights_ptr[0] = 6.f;
-  nvinfer1::IConstantLayer* const6_layer = 
+  nvinfer1::IConstantLayer* const6_layer =
       params->converter->network()->addConstant(dims, weights.GetTrtWeights());
   TFTRT_RETURN_ERROR_IF_NULLPTR(const6_layer, node_def.name());
   params->converter->ProvideQuantizationRange(
       const6_layer->getOutput(0), 0.0f, 6.0f);
-  
+
   // ElementWise Min Operation
   // Min op is a nop for INT8 execution path, as the input tensor
   // to this layer will only have values in range [0.f, 6.0f].
   const nvinfer1::ITensor* tensor_l = relu_layer->getOutput(0);
   const nvinfer1::ITensor* tensor_r = const6_layer->getOutput(0);
-  nvinfer1::IElementWiseLayer* relu6_layer = 
+  nvinfer1::IElementWiseLayer* relu6_layer =
       params->converter->network()->addElementWise(
           *const_cast<nvinfer1::ITensor*>(tensor_l),
           *const_cast<nvinfer1::ITensor*>(tensor_r),

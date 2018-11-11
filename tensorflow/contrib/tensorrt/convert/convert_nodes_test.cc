@@ -137,8 +137,8 @@ class FakeITensor : public nvinfer1::ITensor {
 
   FakeITensor(const nvinfer1::Dims& dims) : dims_(dims), dynamic_range_(0.0f) {}
 
-  FakeITensor(const std::vector<int>& dims) : dims_(GetTestDims(dims)),
-      dynamic_range_(0.0f) {}
+  FakeITensor(const std::vector<int>& dims)
+      : dims_(GetTestDims(dims)), dynamic_range_(0.0f) {}
 
   void setName(const char* name) override { name_ = name; }
 
@@ -172,7 +172,7 @@ class FakeITensor : public nvinfer1::ITensor {
     return true;
   }
 
-  float getDynamicRange() { return dynamic_range_; }
+  float getDynamicRange() const override { return dynamic_range_; }
 #endif
 
  private:
@@ -441,8 +441,8 @@ class ConverterTest : public ::testing::Test {
     return converter_->GetInputs(node_def, inputs);
   }
 
-  Status GetWeightRange(const TRT_ShapedWeights& weights,
-                        float* out_min, float* out_max) const {
+  Status GetWeightRange(const TRT_ShapedWeights& weights, float* out_min,
+                        float* out_max) const {
     return converter_->GetWeightRange(weights, out_min, out_max);
   }
 
@@ -1241,21 +1241,20 @@ TEST_F(OpConverterTest, ConvertMatMul) {
 TEST_F(OpConverterTest, ConvertQuantize) {
   {
     // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_quantize", "QuantizeAndDequantizeV2",
-        {});
+    NodeDef node_def =
+        MakeNodeDef("my_quantize", "QuantizeAndDequantizeV2", {});
     RunConversion(
         node_def, error::INVALID_ARGUMENT,
         "Invalid number of inputs for QuantizeAndDequantizeV2, at my_quantize");
   }
   {
     // FakeQuantWithMinMaxArgs attributes are empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_quantize", "FakeQuantWithMinMaxArgs",
-        {"input"});
+    NodeDef node_def =
+        MakeNodeDef("my_quantize", "FakeQuantWithMinMaxArgs", {"input"});
     AddTestTensor("input", {1, 2, 3});
-    RunConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Min or max attribute not found for FakeQuantWithMinMaxArgs "
-        "at my_quantize");
+    RunConversion(node_def, error::INVALID_ARGUMENT,
+                  "Min or max attribute not found for FakeQuantWithMinMaxArgs "
+                  "at my_quantize");
   }
   {
     // FakeQuantWithMinMaxArgs ranges set via attributes, ok.
@@ -1265,8 +1264,8 @@ TEST_F(OpConverterTest, ConvertQuantize) {
     ops::FakeQuantWithMinMaxArgs::Attrs quantize_attrs;
     quantize_attrs.min_ = -6.0f;
     quantize_attrs.max_ = 6.0f;
-    auto quantize =
-        ops::FakeQuantWithMinMaxArgs(s.WithOpName("my_quantize"), input, quantize_attrs);
+    auto quantize = ops::FakeQuantWithMinMaxArgs(s.WithOpName("my_quantize"),
+                                                 input, quantize_attrs);
     const NodeDef& node_def = quantize.operation.node()->def();
     AddTestTensor("input", {1, 2, 3});
     RunConversion(node_def);
@@ -1284,14 +1283,12 @@ TEST_F(OpConverterTest, ConvertQuantize) {
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
     auto weights_min = ops::Placeholder(s.WithOpName("weights_min"), DT_FLOAT);
     auto weights_max = ops::Placeholder(s.WithOpName("weights_max"), DT_FLOAT);
-    auto quantize = ops::FakeQuantWithMinMaxVars(s.WithOpName("my_quantize"),
-                                                 input,
-                                                 weights_min,
-                                                 weights_max);
+    auto quantize = ops::FakeQuantWithMinMaxVars(
+        s.WithOpName("my_quantize"), input, weights_min, weights_max);
     const NodeDef& node_def = quantize.operation.node()->def();
     AddTestTensor("input", {1, 2, 3});
     AddTestWeights<float>("weights_min", {1}, {-6.0f});
-    AddTestWeights<float>("weights_max", {1}, {6.0f}); 
+    AddTestWeights<float>("weights_max", {1}, {6.0f});
     RunConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
@@ -1307,14 +1304,12 @@ TEST_F(OpConverterTest, ConvertQuantize) {
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
     auto weights_min = ops::Placeholder(s.WithOpName("weights_min"), DT_FLOAT);
     auto weights_max = ops::Placeholder(s.WithOpName("weights_max"), DT_FLOAT);
-    auto quantize = ops::QuantizeAndDequantizeV2(s.WithOpName("my_quantize"),
-                                                 input,
-                                                 weights_min,
-                                                 weights_max);
+    auto quantize = ops::QuantizeAndDequantizeV2(
+        s.WithOpName("my_quantize"), input, weights_min, weights_max);
     const NodeDef& node_def = quantize.operation.node()->def();
     AddTestTensor("input", {1, 2, 3});
     AddTestWeights<float>("weights_min", {1}, {-6.0f});
-    AddTestWeights<float>("weights_max", {1}, {6.0f}); 
+    AddTestWeights<float>("weights_max", {1}, {6.0f});
     RunConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
@@ -1331,16 +1326,13 @@ TEST_F(OpConverterTest, ConvertQuantize) {
     auto weights_min = ops::Placeholder(s.WithOpName("weights_min"), DT_FLOAT);
     auto weights_max = ops::Placeholder(s.WithOpName("weights_max"), DT_FLOAT);
     auto num_bits = ops::Placeholder(s.WithOpName("num_bits"), DT_INT32);
-    auto quantize = ops::QuantizeAndDequantizeV3(s.WithOpName("my_quantize"),
-                                                 input,
-                                                 weights_min,
-                                                 weights_max,
-                                                 num_bits);
+    auto quantize = ops::QuantizeAndDequantizeV3(
+        s.WithOpName("my_quantize"), input, weights_min, weights_max, num_bits);
     const NodeDef& node_def = quantize.operation.node()->def();
     AddTestTensor("input", {1, 2, 3});
     AddTestWeights<float>("weights_min", {1}, {-6.0f});
-    AddTestWeights<float>("weights_max", {1}, {6.0f}); 
-    AddTestWeights<int>("num_bits", {1}, {8}); 
+    AddTestWeights<float>("weights_max", {1}, {6.0f});
+    AddTestWeights<int>("num_bits", {1}, {8});
     RunConversion(node_def);
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_quantize", &output));
@@ -1356,15 +1348,14 @@ TEST_F(OpConverterTest, ConvertQuantize) {
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
     auto weights_min = ops::Placeholder(s.WithOpName("weights_min"), DT_FLOAT);
     auto weights_max = ops::Placeholder(s.WithOpName("weights_max"), DT_FLOAT);
-    auto quantize = ops::QuantizeAndDequantizeV2(s.WithOpName("my_quantize"),
-                                                 input,
-                                                 weights_min,
-                                                 weights_max);
+    auto quantize = ops::QuantizeAndDequantizeV2(
+        s.WithOpName("my_quantize"), input, weights_min, weights_max);
     const NodeDef& node_def = quantize.operation.node()->def();
     AddTestTensor("input", {1, 2, 3});
     AddTestTensor("weights_min", {1});
     AddTestTensor("weights_max", {1});
-    RunConversion(node_def, error::INVALID_ARGUMENT,
+    RunConversion(
+        node_def, error::INVALID_ARGUMENT,
         "Min and max inputs for QuantizeAndDequantizeV2 must be weights not "
         "tensors, at my_quantize");
   }
@@ -1374,9 +1365,8 @@ TEST_F(OpConverterTest, ConvertRelu6) {
   {
     // Input list is empty, should fail.
     NodeDef node_def = MakeNodeDef("my_relu6", "Relu6", {});
-    RunConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Invalid number of inputs for Relu6, at my_relu6");
+    RunConversion(node_def, error::INVALID_ARGUMENT,
+                  "Invalid number of inputs for Relu6, at my_relu6");
   }
 
   // Get the NodeDef for Relu6.
@@ -1384,7 +1374,7 @@ TEST_F(OpConverterTest, ConvertRelu6) {
   auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
   auto relu6 = ops::Relu6(s.WithOpName("my_relu6"), input);
   const NodeDef& node_def = relu6.operation.node()->def();
-  
+
   {
     // Clip tensor values and set quantization ranges, ok.
     Reset();
@@ -1404,7 +1394,8 @@ TEST_F(OpConverterTest, ConvertRelu6) {
     // Input is weights, should fail.
     Reset();
     AddTestWeights<float>("input", {1, 2, 3}, {-100, -1, 0, 3, 5, 9});
-    RunConversion(node_def, error::UNIMPLEMENTED,
+    RunConversion(
+        node_def, error::UNIMPLEMENTED,
         "Relu6 is only implemented for tensors, not weights, at my_relu6");
   }
 }

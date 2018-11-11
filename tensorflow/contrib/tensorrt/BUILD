@@ -521,8 +521,8 @@ cuda_py_tests(
         "//tensorflow/python/keras:keras",
         "//tensorflow/python/estimator:estimator",
     ],
-    data =[
-      "//tensorflow/contrib/tensorrt/test/quantization_mnist_test_data:quantization_mnist_data",
+    data = [
+        "//tensorflow/contrib/tensorrt/test/quantization_mnist_test_data:quantization_mnist_data",
     ],
     tags = [
         "no_cuda_on_cpu_tap",
