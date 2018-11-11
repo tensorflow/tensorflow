@@ -65,7 +65,7 @@ TEST_F(HloSchedulingTest, LastUseScheduledFirst) {
   auto sub = builder.AddInstruction(
       HloInstruction::CreateBinary(vec, HloOpcode::kSubtract, add, negate));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
   HloMemoryScheduler scheduler([](const BufferValue& buffer) {
@@ -172,7 +172,7 @@ TEST_F(HloSchedulingTest, TuplesAreAccountedCorrectly) {
   builder.AddInstruction(HloInstruction::CreateBinary(r1f32, HloOpcode::kAdd,
                                                       tuple_elm, abs_abs2));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
   TF_ASSERT_OK_AND_ASSIGN(HloSchedule schedule,
                           ScheduleModule(*module,
@@ -218,7 +218,7 @@ TEST_F(HloSchedulingTest, MultiOutputFusionAccountedCorrectly) {
   builder.AddInstruction(
       HloInstruction::CreateBinary(r1f32, HloOpcode::kAdd, tuple_elm, exp));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto* computation = module->AddEntryComputation(builder.Build());
 
   auto fusion = computation->CreateFusionInstruction(
@@ -242,7 +242,7 @@ TEST_F(HloSchedulingTest, MultiOutputFusionAccountedCorrectly) {
 }
 
 TEST_F(HloSchedulingTest, HeapSimulatorAccountsForSubcomputations) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   const Shape r1f32 = ShapeUtil::MakeShape(F32, {4});
 
   // param != 0

@@ -23,8 +23,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-std::unique_ptr<HloModule> GpuCodegenTest::CreateNewUnverifiedModuleWithFTZ(
-    bool ftz) {
+std::unique_ptr<HloModule> GpuCodegenTest::CreateNewModuleWithFTZ(bool ftz) {
   HloModuleConfig config;
   auto debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_ftz(ftz);

@@ -70,7 +70,7 @@ class CustomCallTest : public HloTestBase {
 };
 
 XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR0F32Add2)) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto builder = HloComputation::Builder(TestName());
 
   auto constant = builder.AddInstruction(
@@ -85,7 +85,7 @@ XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR0F32Add2)) {
 }
 
 XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR2F32Reduce)) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto builder = HloComputation::Builder(TestName());
 
   Array2D<float> array(2, 2);
@@ -106,7 +106,7 @@ XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR2F32Reduce)) {
 }
 
 XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(UsedInOtherComputations)) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto b = HloComputation::Builder(TestName());
 
   auto input = b.AddInstruction(
@@ -130,7 +130,7 @@ XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(UsedInOtherComputations)) {
 }
 
 XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(InputAndOutputLayoutDiffer)) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto b = HloComputation::Builder(TestName());
 
   auto input =
@@ -155,7 +155,7 @@ XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(LayoutConstrained)) {
   // The argument and result of the computation are set to different layouts,
   // but the custom call is layout constrained to a fixed operand and result
   // layout, so the correct result should be produced.
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewModule();
   auto b = HloComputation::Builder(TestName());
 
   auto input =
