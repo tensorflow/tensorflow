@@ -865,12 +865,6 @@ class RNN(Layer):
     else:
       output = last_output
 
-    # Properly set learning phase
-    if getattr(last_output, '_uses_learning_phase', False):
-      output._uses_learning_phase = True
-      for state in states:
-        state._uses_learning_phase = True
-
     if self.return_state:
       if not isinstance(states, (list, tuple)):
         states = [states]
@@ -1132,12 +1126,6 @@ class SimpleRNNCell(Layer):
     if self.activation is not None:
       output = self.activation(output)
 
-    # Properly set learning phase on output tensor.
-    if 0 < self.dropout + self.recurrent_dropout:
-      if training is None and not context.executing_eagerly():
-        # This would be harmless to set in eager mode, but eager tensors
-        # disallow setting arbitrary attributes.
-        output._uses_learning_phase = True
     return output, [output]
 
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
@@ -1640,12 +1628,6 @@ class GRUCell(Layer):
       hh = self.activation(x_h + recurrent_h)
     # previous and candidate state mixed by update gate
     h = z * h_tm1 + (1 - z) * hh
-    if 0 < self.dropout + self.recurrent_dropout:
-      if training is None and not context.executing_eagerly():
-        # This would be harmless to set in eager mode, but eager tensors
-        # disallow setting arbitrary attributes.
-        h._uses_learning_phase = True
-
     return h, [h]
 
   def get_config(self):
@@ -2171,11 +2153,6 @@ class LSTMCell(Layer):
       c, o = self._compute_carry_and_output_fused(z, c_tm1)
 
     h = o * self.activation(c)
-    if 0 < self.dropout + self.recurrent_dropout:
-      if training is None and not context.executing_eagerly():
-        # This would be harmless to set in eager mode, but eager tensors
-        # disallow setting arbitrary attributes.
-        h._uses_learning_phase = True
     return h, [h, c]
 
   def get_config(self):

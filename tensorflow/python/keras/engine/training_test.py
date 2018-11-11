@@ -338,9 +338,10 @@ class TrainingTest(test.TestCase):
     for reg in [None, 'l2']:
       inputs = keras.layers.Input(shape=(10,))
       x = keras.layers.Dense(
-          10, activation='relu', activity_regularizer=reg)(
-              inputs)
-      outputs = keras.layers.Dense(1, activation='sigmoid')(x)
+          10, activation='relu', activity_regularizer=reg,
+          kernel_initializer='ones', use_bias=False)(inputs)
+      outputs = keras.layers.Dense(1, activation='sigmoid',
+                                   kernel_initializer='ones', use_bias=False)(x)
       model = keras.Model(inputs, outputs)
 
       x = np.ones((10, 10), 'float32')
@@ -1054,22 +1055,6 @@ class LossMaskingTest(test.TestCase):
               keras.backend.variable(x),
               keras.backend.variable(y),
               keras.backend.variable(weights), keras.backend.variable(mask)))
-
-
-class LearningPhaseTest(test.TestCase):
-
-  def test_empty_model_no_learning_phase(self):
-    with self.cached_session():
-      model = keras.models.Sequential()
-      self.assertFalse(model.uses_learning_phase)
-
-  def test_dropout_has_learning_phase(self):
-    with self.cached_session():
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(2, input_dim=3))
-      model.add(keras.layers.Dropout(0.5))
-      model.add(keras.layers.Dense(2))
-      self.assertTrue(model.uses_learning_phase)
 
 
 class TestDynamicTrainability(test.TestCase):

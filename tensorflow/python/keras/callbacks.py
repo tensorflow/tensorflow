@@ -154,7 +154,7 @@ def configure_callbacks(callbacks,
     val_data = val_inputs + val_targets
     if val_sample_weights:
       val_data += val_sample_weights
-    if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
+    if not isinstance(K.learning_phase(), int):
       val_data += [0.]
   for cbk in callbacks:
     cbk.validation_data = val_data
@@ -1239,7 +1239,7 @@ class TensorBoard(Callback):
 
           feed_dict.update({self.batch_id: i, self.step: step})
 
-          if self.model.uses_learning_phase:
+          if not isinstance(K.learning_phase(), int):
             feed_dict[K.learning_phase()] = False
 
           self.sess.run(self.assign_embeddings, feed_dict=feed_dict)

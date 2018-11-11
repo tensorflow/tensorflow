@@ -721,7 +721,7 @@ class Model(Network):
       inputs = (self._feed_inputs +
                 self._feed_targets +
                 self._feed_sample_weights)
-      if self.uses_learning_phase and not isinstance(K.learning_phase(), int):
+      if not isinstance(K.learning_phase(), int):
         inputs += [K.learning_phase()]
 
       with K.name_scope('training'):
@@ -766,7 +766,7 @@ class Model(Network):
       inputs = (self._feed_inputs +
                 self._feed_targets +
                 self._feed_sample_weights)
-      if self.uses_learning_phase and not isinstance(K.learning_phase(), int):
+      if not isinstance(K.learning_phase(), int):
         inputs += [K.learning_phase()]
       updates = self.state_updates
       # Add stateful metrics updates.
@@ -794,7 +794,7 @@ class Model(Network):
     if not hasattr(self, 'predict_function'):
       self.predict_function = None
     if self.predict_function is None:
-      if self.uses_learning_phase and not isinstance(K.learning_phase(), int):
+      if not isinstance(K.learning_phase(), int):
         inputs = self._feed_inputs + [K.learning_phase()]
       else:
         inputs = self._feed_inputs
@@ -1948,7 +1948,7 @@ class Model(Network):
       outputs = training_eager.train_on_batch(
           self, x, y, sample_weights=sample_weights)
     else:
-      if self.uses_learning_phase and not isinstance(K.learning_phase(), int):
+      if not isinstance(K.learning_phase(), int):
         ins = x + y + sample_weights + [1]
       else:
         ins = x + y + sample_weights
@@ -2007,7 +2007,7 @@ class Model(Network):
       outputs = training_eager.test_on_batch(
           self, x, y, sample_weights=sample_weights)
     else:
-      if self.uses_learning_phase and not isinstance(K.learning_phase(), int):
+      if not isinstance(K.learning_phase(), int):
         ins = x + y + sample_weights + [0]
       else:
         ins = x + y + sample_weights
@@ -2052,7 +2052,7 @@ class Model(Network):
       return self(inputs)  # pylint: disable=not-callable
 
     if not context.executing_eagerly():
-      if self.uses_learning_phase and not isinstance(K.learning_phase(), int):
+      if not isinstance(K.learning_phase(), int):
         ins = inputs + [0]
       else:
         ins = inputs

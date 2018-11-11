@@ -248,7 +248,7 @@ def model_iteration(model,
   targets = targets or []
   sample_weights = sample_weights or []
   learning_phase_input = []
-  if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
+  if not isinstance(K.learning_phase(), int):
     learning_phase_input = [1] if mode == 'train' else [0]
   ins = inputs + targets + sample_weights + learning_phase_input
   num_samples_or_steps = _get_num_samples_or_steps(ins, batch_size,
