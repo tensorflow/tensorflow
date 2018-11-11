@@ -542,7 +542,7 @@ def merge_update_step(update_ops, local_step):
       incre_op = local_step.assign_add(1).op
     return incre_op
 
-  return distribution_strategy_context.get_tower_context().merge_call(
+  return distribution_strategy_context.get_replica_context().merge_call(
       merge_update_step_fn, update_ops, local_step)
 
 
@@ -554,7 +554,7 @@ def merge_grads(grads_and_vars):
         variable_scope.VariableAggregation.MEAN, grads_and_vars)
     return reduced_grads
 
-  return distribution_strategy_context.get_tower_context().merge_call(
+  return distribution_strategy_context.get_replica_context().merge_call(
       merge_grad_fn, grads_and_vars)
 
 

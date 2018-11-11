@@ -714,57 +714,6 @@ class DistributionStrategy(object):
     _require_cross_replica_context(self)
     return self._call_for_each_replica(fn, *args, **kwargs)
 
-  def call_for_each_tower(self, fn, *args, **kwargs):
-    """Run `fn` once per replica. DEPRECATED.
-
-    DEPRECATED: Use `call_for_each_replica` instead.
-
-    `fn` may call `tf.get_replica_context()` to access methods such as
-    `replica_id()` and `merge_call()`.
-
-    `merge_call()` is used to communicate between the replicas and
-    re-enter the cross-replica context. All replicas pause their execution
-    having encountered a `merge_call()` call. After that the
-    `merge_fn`-function is executed. Its results are then unwrapped and
-    given back to each replica call. After that execution resumes until
-    `fn` is complete or encounters another `merge_call()`.  Example:
-
-    ```python
-    # Called once in "cross-replica" context.
-    def merge_fn(distribution, three_plus_replica_id):
-      # sum the values across replicas
-      return sum(distribution.unwrap(three_plus_replica_id))
-
-    # Called once per replica in `distribution`, in a "replica" context.
-    def fn(three):
-      replica_ctx = tf.get_replica_context()
-      v = three + replica_ctx.replica_id
-      # Computes the sum of the `v` values across all replicas.
-      s = replica_ctx.merge_call(merge_fn, v)
-      return s + v
-
-    with distribution.scope():
-      # in "cross-replica" context
-      ...
-      merged_results = distribution.call_for_each_replica(fn, 3)
-      # merged_results has the values from every replica execution of `fn`.
-      print(distribution.unwrap(merged_results))  # Prints a list
-    ```
-
-    Args:
-      fn: function to run (will be run once per replica).
-      *args: positional arguments for `fn`
-      **kwargs: keyword arguments for `fn`.
-          `"run_concurrently"`: Boolean indicating whether executions of `fn`
-             can be run concurrently (under eager execution only), defaults to
-             `True`.
-
-    Returns:
-      Merged return value of `fn` across all replicas.
-    """
-    _require_cross_replica_context(self)
-    return self._call_for_each_replica(fn, *args, **kwargs)
-
   def _call_for_each_replica(self, fn, *args, **kwargs):
     raise NotImplementedError("must be implemented in descendants")
 
@@ -946,14 +895,6 @@ class DistributionStrategy(object):
     raise NotImplementedError("must be implemented in descendants")
 
   @property
-  def num_towers(self):
-    """Returns number of replicas, for purposes of averaging across replicas.
-
-    DEPRECATED: use `num_replicas` instead.
-    """
-    return self.num_replicas
-
-  @property
   def num_replicas_in_sync(self):
     """Returns number of replicas over which gradients are aggregated."""
     raise NotImplementedError("must be implemented in descendants")
@@ -1065,17 +1006,11 @@ class DistributionStrategy(object):
 class ReplicaContext(object):
   """DistributionStrategy API inside a `call_for_each_replica()` call."""
 
-  def __init__(self, distribution_strategy, replica_id=None, tower_id=None):
-    """`tower_id` is deprecated, use `replica_id` instead."""
-    if tower_id is not None:
-      replica_id = tower_id
-    assert replica_id is not None
+  def __init__(self, distribution_strategy, replica_id):
     self._distribution_strategy = distribution_strategy
     self._thread_context = distribution_strategy_context._InReplicaThreadMode(  # pylint: disable=protected-access
         self)
     self._replica_id = replica_id
-    # We keep a copy in _tower_id to ease the replica->tower transition.
-    self._tower_id = replica_id  # DEPRECATED
 
   def __enter__(self):
     _push_per_thread_mode(self._thread_context)
@@ -1131,14 +1066,6 @@ class ReplicaContext(object):
     return self._distribution_strategy.is_single_replica
 
   @property
-  def num_towers(self):
-    """Returns number of replicas, for purposes of averaging across replicas.
-
-    DEPRECATED: use `num_replicas` instead.
-    """
-    return self._distribution_strategy.num_replicas
-
-  @property
   def num_replicas(self):
     """Returns number of replicas, for purposes of averaging across replicas."""
     return self._distribution_strategy.num_replicas
@@ -1151,12 +1078,6 @@ class ReplicaContext(object):
   @property
   def replica_id(self):
     """Which replica is being defined, a number from 0 to `num_replicas - 1`."""
-    require_replica_context(self)
-    return self._replica_id
-
-  @property
-  def tower_id(self):
-    """DEPRECATED: Use `replica_id` instead."""
     require_replica_context(self)
     return self._replica_id
 
