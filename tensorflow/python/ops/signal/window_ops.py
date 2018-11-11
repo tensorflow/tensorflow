@@ -27,8 +27,10 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('signal.hann_window')
 def hann_window(window_length, periodic=True, dtype=dtypes.float32, name=None):
   """Generate a [Hann window][hann].
 
@@ -53,6 +55,7 @@ def hann_window(window_length, periodic=True, dtype=dtypes.float32, name=None):
                                dtype, 0.5, 0.5)
 
 
+@tf_export('signal.hamming_window')
 def hamming_window(window_length, periodic=True, dtype=dtypes.float32,
                    name=None):
   """Generate a [Hamming][hamming] window.

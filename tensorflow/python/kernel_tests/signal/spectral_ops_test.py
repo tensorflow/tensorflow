@@ -20,14 +20,14 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.signal.python.ops import spectral_ops
-from tensorflow.contrib.signal.python.ops import window_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import spectral_ops_test_util
+from tensorflow.python.ops.signal import spectral_ops
+from tensorflow.python.ops.signal import window_ops
 from tensorflow.python.platform import test
 
 

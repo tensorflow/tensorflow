@@ -20,13 +20,13 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.signal.python.kernel_tests import test_util
-from tensorflow.contrib.signal.python.ops import shape_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.kernel_tests.signal import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.signal import shape_ops
 from tensorflow.python.platform import test
 
 

@@ -18,12 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.signal.python.ops import shape_ops
-from tensorflow.contrib.signal.python.ops import util_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.signal import shape_ops
+from tensorflow.python.ops.signal import util_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _shuffle_to_front(input_tensor, k):
@@ -57,6 +58,7 @@ def _shuffle_to_front(input_tensor, k):
   return array_ops.transpose(input_tensor, perm=permutation)
 
 
+@tf_export("signal.overlap_and_add")
 def overlap_and_add(signal, frame_step, name=None):
   """Reconstructs a signal from a framed representation.
 

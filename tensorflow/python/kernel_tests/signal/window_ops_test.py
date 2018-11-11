@@ -22,10 +22,10 @@ import functools
 
 import numpy as np
 
-from tensorflow.contrib.signal.python.kernel_tests import test_util
-from tensorflow.contrib.signal.python.ops import window_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.kernel_tests.signal import test_util
+from tensorflow.python.ops.signal import window_ops
 from tensorflow.python.platform import test
 
 
