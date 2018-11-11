@@ -18,13 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
-from tensorflow.contrib.signal.python.ops import util_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
-
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.signal import util_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _infer_frame_shape(signal, frame_length, frame_step, pad_end, axis):
@@ -53,6 +52,7 @@ def _infer_frame_shape(signal, frame_length, frame_step, pad_end, axis):
   return outer_dimensions + [num_frames, frame_length] + inner_dimensions
 
 
+@tf_export("signal.frame")
 def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
           name=None):
   """Expands `signal`'s `axis` dimension into frames of `frame_length`.
@@ -70,7 +70,7 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
 
   ```python
   pcm = tf.placeholder(tf.float32, [None, 9152])
-  frames = tf.contrib.signal.frame(pcm, 512, 180)
+  frames = tf.signal.frame(pcm, 512, 180)
   magspec = tf.abs(tf.spectral.rfft(frames, [512]))
   image = tf.expand_dims(magspec, 3)
   ```

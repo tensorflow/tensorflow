@@ -18,23 +18,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
-
 import numpy as np
 
-from tensorflow.contrib.signal.python.ops import reconstruction_ops
-from tensorflow.contrib.signal.python.ops import shape_ops
-from tensorflow.contrib.signal.python.ops import window_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import spectral_ops
+from tensorflow.python.ops.signal import reconstruction_ops
+from tensorflow.python.ops.signal import shape_ops
+from tensorflow.python.ops.signal import window_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('signal.stft')
 def stft(signals, frame_length, frame_step, fft_length=None,
-         window_fn=functools.partial(window_ops.hann_window, periodic=True),
+         window_fn=window_ops.hann_window,
          pad_end=False, name=None):
   """Computes the [Short-time Fourier Transform][stft] of `signals`.
 
@@ -91,9 +91,9 @@ def stft(signals, frame_length, frame_step, fft_length=None,
     return spectral_ops.rfft(framed_signals, [fft_length])
 
 
+@tf_export('signal.inverse_stft_window_fn')
 def inverse_stft_window_fn(frame_step,
-                           forward_window_fn=functools.partial(
-                               window_ops.hann_window, periodic=True),
+                           forward_window_fn=window_ops.hann_window,
                            name=None):
   """Generates a window function that can be used in `inverse_stft`.
 
@@ -152,18 +152,18 @@ def inverse_stft_window_fn(frame_step,
   return inverse_stft_window_fn_inner
 
 
+@tf_export('signal.inverse_stft')
 def inverse_stft(stfts,
                  frame_length,
                  frame_step,
                  fft_length=None,
-                 window_fn=functools.partial(window_ops.hann_window,
-                                             periodic=True),
+                 window_fn=window_ops.hann_window,
                  name=None):
   """Computes the inverse [Short-time Fourier Transform][stft] of `stfts`.
 
   To reconstruct an original waveform, a complimentary window function should
   be used in inverse_stft. Such a window function can be constructed with
-  tf.contrib.signal.inverse_stft_window_fn.
+  tf.signal.inverse_stft_window_fn.
 
   Example:
 
@@ -171,10 +171,10 @@ def inverse_stft(stfts,
   frame_length = 400
   frame_step = 160
   waveform = tf.placeholder(dtype=tf.float32, shape=[1000])
-  stft = tf.contrib.signal.stft(waveform, frame_length, frame_step)
-  inverse_stft = tf.contrib.signal.inverse_stft(
+  stft = tf.signal.stft(waveform, frame_length, frame_step)
+  inverse_stft = tf.signal.inverse_stft(
       stft, frame_length, frame_step,
-      window_fn=tf.contrib.signal.inverse_stft_window_fn(frame_step))
+      window_fn=tf.signal.inverse_stft_window_fn(frame_step))
   ```
 
   if a custom window_fn is used in stft, it must be passed to
@@ -185,11 +185,11 @@ def inverse_stft(stfts,
   frame_step = 160
   window_fn = functools.partial(window_ops.hamming_window, periodic=True),
   waveform = tf.placeholder(dtype=tf.float32, shape=[1000])
-  stft = tf.contrib.signal.stft(
+  stft = tf.signal.stft(
       waveform, frame_length, frame_step, window_fn=window_fn)
-  inverse_stft = tf.contrib.signal.inverse_stft(
+  inverse_stft = tf.signal.inverse_stft(
       stft, frame_length, frame_step,
-      window_fn=tf.contrib.signal.inverse_stft_window_fn(
+      window_fn=tf.signal.inverse_stft_window_fn(
          frame_step, forward_window_fn=window_fn))
   ```
 

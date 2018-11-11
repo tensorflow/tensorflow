@@ -20,12 +20,12 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.signal.python.ops import reconstruction_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.signal import reconstruction_ops
 from tensorflow.python.platform import test
 
 

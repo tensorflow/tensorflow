@@ -23,8 +23,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import spectral_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('signal.mfccs_from_log_mel_spectrograms')
 def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
   """Computes [MFCCs][mfcc] of `log_mel_spectrograms`.
 
@@ -48,14 +50,14 @@ def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
   pcm = tf.placeholder(tf.float32, [None, None])
 
   # A 1024-point STFT with frames of 64 ms and 75% overlap.
-  stfts = tf.contrib.signal.stft(pcm, frame_length=1024, frame_step=256,
-                                 fft_length=1024)
+  stfts = tf.signal.stft(pcm, frame_length=1024, frame_step=256,
+                         fft_length=1024)
   spectrograms = tf.abs(stfts)
 
   # Warp the linear scale spectrograms into the mel-scale.
   num_spectrogram_bins = stfts.shape[-1].value
   lower_edge_hertz, upper_edge_hertz, num_mel_bins = 80.0, 7600.0, 80
-  linear_to_mel_weight_matrix = tf.contrib.signal.linear_to_mel_weight_matrix(
+  linear_to_mel_weight_matrix = tf.signal.linear_to_mel_weight_matrix(
     num_mel_bins, num_spectrogram_bins, sample_rate, lower_edge_hertz,
     upper_edge_hertz)
   mel_spectrograms = tf.tensordot(
@@ -67,7 +69,7 @@ def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
   log_mel_spectrograms = tf.log(mel_spectrograms + 1e-6)
 
   # Compute MFCCs from log_mel_spectrograms and take the first 13.
-  mfccs = tf.contrib.signal.mfccs_from_log_mel_spectrograms(
+  mfccs = tf.signal.mfccs_from_log_mel_spectrograms(
     log_mel_spectrograms)[..., :13]
   ```
 

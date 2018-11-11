@@ -75,6 +75,7 @@ TENSORFLOW_API_INIT_FILES = [
     "strings/__init__.py",
     "saved_model/__init__.py",
     "sets/__init__.py",
+    "signal/__init__.py",
     "sparse/__init__.py",
     "spectral/__init__.py",
     "summary/__init__.py",

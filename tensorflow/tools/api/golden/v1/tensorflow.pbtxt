@@ -533,6 +533,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "signal"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "sparse"
     mtype: "<type \'module\'>"
   }

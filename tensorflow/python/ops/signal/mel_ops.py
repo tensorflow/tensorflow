@@ -18,11 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.signal.python.ops import shape_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.signal import shape_ops
+from tensorflow.python.util.tf_export import tf_export
+
 
 # mel spectrum constants.
 _MEL_BREAK_FREQUENCY_HERTZ = 700.0
@@ -85,6 +87,7 @@ def _validate_arguments(num_mel_bins, sample_rate,
     raise ValueError('dtype must be a floating point type. Got: %s' % dtype)
 
 
+@tf_export('signal.linear_to_mel_weight_matrix')
 def linear_to_mel_weight_matrix(num_mel_bins=20,
                                 num_spectrogram_bins=129,
                                 sample_rate=8000,
