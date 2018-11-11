@@ -62,10 +62,13 @@ class MklSoftmaxOp : public OpKernel {
       const int input_dims = src_tf_shape.dims();
       auto src_dims = TFShapeToMklDnnDims(src_tf_shape);
       memory::dims output_dims;
+      int axis;
       if (src_mkl_shape.IsMklTensor()) {
+        axis = 1;
         output_dims = src_mkl_shape.GetSizesAsMklDnnDims();
       }
       else {
+        axis = input_dims - 1;
         output_dims = src_dims; //nhwc
       }
       memory::format layout_type;
@@ -87,20 +90,10 @@ class MklSoftmaxOp : public OpKernel {
           layout_type = memory::format::tnc;
           break;
         case 4:
-          if (src_mkl_shape.IsMklTensor()) {
-            layout_type = memory::format::nhwc;
-          }
-          else {
-            layout_type = memory::format::nchw;
-          }
+          layout_type = memory::format::nchw;
           break;
         case 5:
-          if (src_mkl_shape.IsMklTensor()) {
-            layout_type = memory::format::ndhwc;
-          }
-          else {
-            layout_type = memory::format::ncdhw;
-          }
+          layout_type = memory::format::ncdhw;
           break;
         default:
           OP_REQUIRES_OK(context, errors::Aborted("Input dims must be <= 5 and >=1"));
@@ -127,15 +120,13 @@ class MklSoftmaxOp : public OpKernel {
       // data format is "nc" for src and dst; since the src and dst buffer is
       // always in 2D shape
       src.SetUsrMem(src_md, &src_tensor);
-      src.SetOpMemDesc(src_dims, layout_type);
 
       // creating a memory descriptor
       // passing outermost dim as default axis, where the softmax is applied
       // If axis is not the last dimension, python op will do a transpose so that we can
       // still perform softmax on its last dimension.
-      int axis = input_dims - 1;
       auto softmax_fwd_desc = softmax_forward::desc(prop_kind::forward_scoring,
-                                                    src.GetOpMemDesc(), axis);
+                                                    src.GetUsrMemDesc(), axis);
       auto softmax_fwd_pd =
           softmax_forward::primitive_desc(softmax_fwd_desc, cpu_engine);
 
