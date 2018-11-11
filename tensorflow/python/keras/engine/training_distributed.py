@@ -133,7 +133,7 @@ def fit_loop(
     # placeholders that are created with default values.
     sample_weights = [None for _ in range(
         len(model.outputs) * current_strategy.num_replicas_in_sync)]
-    if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
+    if not isinstance(K.learning_phase(), int):
       ins = dataset_inputs + dataset_targets + sample_weights + [1]
     else:
       ins = dataset_inputs + dataset_targets
@@ -469,7 +469,7 @@ def test_loop(model, iterator, verbose=0, steps=None):
     # placeholders that are created with default values.
     sample_weights = [None for _ in range(
         len(model.outputs) * current_strategy.num_replicas_in_sync)]
-    if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
+    if not isinstance(K.learning_phase(), int):
       ins = dataset_inputs + dataset_targets + sample_weights + [0]
     else:
       ins = dataset_inputs + dataset_targets
@@ -677,7 +677,7 @@ def predict_loop(model, iterator, verbose=0, steps=None):
         name='distributed_predict_function',
         **all_session_args)
 
-    if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
+    if not isinstance(K.learning_phase(), int):
       ins = dataset_inputs + [0]
     else:
       ins = dataset_inputs

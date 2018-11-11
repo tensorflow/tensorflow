@@ -134,8 +134,6 @@ class NormalizationLayersTest(test.TestCase):
         np.testing.assert_allclose(np.std(out, axis=(0, 2, 3)), 1.0, atol=1e-1)
 
   def test_batchnorm_convnet_channel_last(self):
-    # keras.backend.set_learning_phase(True)
-
     model = keras.models.Sequential()
     norm = keras.layers.BatchNormalization(
         axis=-1, input_shape=(4, 4, 3), momentum=0.8)

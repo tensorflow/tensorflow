@@ -91,10 +91,6 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "uses_learning_phase"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "variables"
     mtype: "<type \'property\'>"
   }
