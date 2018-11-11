@@ -1169,6 +1169,7 @@ Status BaseGPUDeviceFactory::GetDeviceLocalities(
     int num_tf_gpus, const std::vector<InterconnectMap>& interconnects,
     LocalityMap* localities) {
   std::vector<TfGpuId> all_tf_gpu_ids;
+  all_tf_gpu_ids.reserve(num_tf_gpus);
   for (int i = 0; i < num_tf_gpus; ++i) {
     all_tf_gpu_ids.push_back(TfGpuId(i));
   }
