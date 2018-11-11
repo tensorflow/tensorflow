@@ -38,11 +38,12 @@ main {
 }
 )";
 
-  ParseAndVerifyModule(hlo_text);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_TRUE(pass.Run(&module()).ValueOrDie());
+  ASSERT_TRUE(pass.Run(m.get()).ValueOrDie());
 
-  HloInstruction* root = module().entry_computation()->root_instruction();
+  HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root,
               op::Reshape(op::Dot(
                   op::Reshape(op::Parameter(0)), op::Reshape(op::Parameter(1)),
@@ -61,11 +62,12 @@ main {
 }
 )";
 
-  ParseAndVerifyModule(hlo_text);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_TRUE(pass.Run(&module()).ValueOrDie());
+  ASSERT_TRUE(pass.Run(m.get()).ValueOrDie());
 
-  HloInstruction* root = module().entry_computation()->root_instruction();
+  HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root,
               op::Reshape(op::Dot(
                   op::Reshape(op::Parameter(0)), op::Reshape(op::Parameter(1)),
@@ -84,11 +86,12 @@ main {
 }
 )";
 
-  ParseAndVerifyModule(hlo_text);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_TRUE(pass.Run(&module()).ValueOrDie());
+  ASSERT_TRUE(pass.Run(m.get()).ValueOrDie());
 
-  HloInstruction* root = module().entry_computation()->root_instruction();
+  HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root,
               op::Reshape(op::Dot(
                   op::Reshape(op::Parameter(0)), op::Reshape(op::Parameter(1)),
@@ -107,11 +110,12 @@ main {
 }
 )";
 
-  ParseAndVerifyModule(hlo_text);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_TRUE(pass.Run(&module()).ValueOrDie());
+  ASSERT_TRUE(pass.Run(m.get()).ValueOrDie());
 
-  HloInstruction* root = module().entry_computation()->root_instruction();
+  HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root,
               op::Reshape(op::Dot(
                   op::Reshape(op::Parameter(0)), op::Reshape(op::Parameter(1)),
@@ -130,11 +134,12 @@ main {
 }
 )";
 
-  ParseAndVerifyModule(hlo_text);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_TRUE(pass.Run(&module()).ValueOrDie());
+  ASSERT_TRUE(pass.Run(m.get()).ValueOrDie());
 
-  HloInstruction* root = module().entry_computation()->root_instruction();
+  HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root,
               op::Reshape(op::Dot(
                   op::Reshape(op::Parameter(0)), op::Reshape(op::Parameter(1)),
@@ -153,11 +158,12 @@ main {
 }
 )";
 
-  ParseAndVerifyModule(hlo_text);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_text));
   BatchDotSimplification pass;
-  ASSERT_TRUE(pass.Run(&module()).ValueOrDie());
+  ASSERT_TRUE(pass.Run(m.get()).ValueOrDie());
 
-  HloInstruction* root = module().entry_computation()->root_instruction();
+  HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root,
               op::Reshape(op::Dot(
                   op::Reshape(op::Parameter(0)), op::Reshape(op::Parameter(1)),

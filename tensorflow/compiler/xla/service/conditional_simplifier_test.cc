@@ -96,25 +96,28 @@ HloComputation* ConditionalSimplifierTest::MakeConditional(HloModule* module) {
 }
 
 TEST_F(ConditionalSimplifierTest, ConditionalGetsInlined) {
-  HloComputation* computation = MakeConditional(&module());
-  ASSERT_TRUE(ConditionalSimplifier().Run(&module()).ValueOrDie());
+  auto m = CreateNewVerifiedModule();
+  HloComputation* computation = MakeConditional(m.get());
+  ASSERT_TRUE(ConditionalSimplifier().Run(m.get()).ValueOrDie());
   EXPECT_THAT(computation->root_instruction(),
               op::Add(op::Parameter(), op::Constant()));
 }
 
 TEST_F(ConditionalSimplifierTest, ConditionalWithControlDependency) {
-  HloComputation* computation = MakeConditional(&module());
+  auto m = CreateNewVerifiedModule();
+  HloComputation* computation = MakeConditional(m.get());
 
   auto* true_op = computation->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
   TF_ASSERT_OK(
       true_op->AddControlDependencyTo(computation->root_instruction()));
 
-  EXPECT_FALSE(ConditionalSimplifier().Run(&module()).ValueOrDie());
+  EXPECT_FALSE(ConditionalSimplifier().Run(m.get()).ValueOrDie());
 }
 
 TEST_F(ConditionalSimplifierTest, NotRemovedIfContainsSend) {
-  HloComputation* computation = MakeConditional(&module());
+  auto m = CreateNewVerifiedModule();
+  HloComputation* computation = MakeConditional(m.get());
   auto* conditional = computation->root_instruction();
   ASSERT_EQ(conditional->opcode(), HloOpcode::kConditional);
 
@@ -125,11 +128,12 @@ TEST_F(ConditionalSimplifierTest, NotRemovedIfContainsSend) {
           HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true))),
       token, /*channel_id=*/0));
   true_computation->AddInstruction(HloInstruction::CreateSendDone(send));
-  EXPECT_FALSE(ConditionalSimplifier().Run(&module()).ValueOrDie());
+  EXPECT_FALSE(ConditionalSimplifier().Run(m.get()).ValueOrDie());
 }
 
 TEST_F(ConditionalSimplifierTest, NotRemovedIfContainsRecv) {
-  HloComputation* computation = MakeConditional(&module());
+  auto m = CreateNewVerifiedModule();
+  HloComputation* computation = MakeConditional(m.get());
   auto* conditional = computation->root_instruction();
   ASSERT_EQ(conditional->opcode(), HloOpcode::kConditional);
 
@@ -138,18 +142,19 @@ TEST_F(ConditionalSimplifierTest, NotRemovedIfContainsRecv) {
   auto* recv = true_computation->AddInstruction(HloInstruction::CreateRecv(
       ShapeUtil::MakeShape(F32, {1}), token, /*channel_id=*/0));
   true_computation->AddInstruction(HloInstruction::CreateRecvDone(recv));
-  EXPECT_FALSE(ConditionalSimplifier().Run(&module()).ValueOrDie());
+  EXPECT_FALSE(ConditionalSimplifier().Run(m.get()).ValueOrDie());
 }
 
 TEST_F(ConditionalSimplifierTest, NotRemovedIfContainsNonRemovableInstruction) {
-  HloComputation* computation = MakeConditional(&module());
+  auto m = CreateNewVerifiedModule();
+  HloComputation* computation = MakeConditional(m.get());
   auto* conditional = computation->root_instruction();
   ASSERT_EQ(conditional->opcode(), HloOpcode::kConditional);
   auto* false_computation = conditional->false_computation();
   auto token = false_computation->AddInstruction(HloInstruction::CreateToken());
   false_computation->AddInstruction(HloInstruction::CreateInfeed(
       ShapeUtil::MakeShape(F32, {1}), token, "config"));
-  EXPECT_FALSE(ConditionalSimplifier().Run(&module()).ValueOrDie());
+  EXPECT_FALSE(ConditionalSimplifier().Run(m.get()).ValueOrDie());
 }
 
 }  // namespace

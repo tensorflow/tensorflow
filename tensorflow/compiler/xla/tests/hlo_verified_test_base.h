@@ -60,42 +60,23 @@ class HloVerifiedTestBase : public HloTestBase {
   // Constructs a default shape verifier.
   std::unique_ptr<ShapeVerifier> MakeShapeVerifier();
 
-  // Returns the default HloModule, lazily creating it if necessary via
-  // HloTestBase::CreateNewModule().
-  ABSL_DEPRECATED("Use CreateNewVerifiedModule() instead.")
-  HloModule& module();
-
-  ABSL_DEPRECATED("Use ParseAndReturnVerifiedModule() instead.")
-  void ParseAndVerifyModule(absl::string_view hlo_text,
-                            const HloModuleConfig& config = HloModuleConfig());
-
   // Parses the given string and returns module as a VerifiedHloModule.
   StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
       absl::string_view hlo_text,
       const HloModuleConfig& config = HloModuleConfig());
 
-  // Creates a new module for a test, and stores it in modules_ so it can be
-  // verified. Intentionally hides HloTestBase::CreateNewModule, to prevent
-  // creation of unverified modules.
-  ABSL_DEPRECATED("Use CreateNewVerifiedModule() instead.")
-  HloModule* CreateNewModule(const string& name = TestName());
-
   // Creates and returns a verified HLO module with the given name.
   std::unique_ptr<VerifiedHloModule> CreateNewVerifiedModule(
       const string& name = TestName());
 
+  // CreateNewModule creates an *unverified* module, which presumably isn't what
+  // you want if you're using HloVerifiedTestBase, so we delete this function to
+  // keep you from accidentally calling it.  If you really want it, you can get
+  // it by calling HloTestBase::CreateNewModule().
+  std::unique_ptr<HloModule> CreateNewModule(const string& name = TestName()) =
+      delete;
+
  private:
-  // It is confusing to store modules created by module() and CreateNewModule()
-  // in different fields, but it allows us to migrate tests to
-  // HloVerifiedTestBase more easily, so it's a win because we can verify more
-  // modules. See b/80488902.
-  //
-  // Lazily populated. Access via module().
-  std::unique_ptr<VerifiedHloModule> module_;
-
-  // Populated by calls to CreateNewModule.
-  std::vector<std::unique_ptr<VerifiedHloModule>> modules_;
-
   bool verifier_layout_sensitive_;
   bool allow_mixed_precision_in_hlo_verifier_;
 };

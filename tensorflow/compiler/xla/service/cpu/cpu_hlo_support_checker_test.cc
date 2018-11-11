@@ -42,10 +42,10 @@ TEST_F(CpuHloSupportCheckerTest, Add) {
       HloInstruction::CreateParameter(1, scalar_shape, "param1"));
   builder.AddInstruction(HloInstruction::CreateBinary(
       scalar_shape, HloOpcode::kAdd, param0, param1));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK(checker().Run(module).status());
+  TF_ASSERT_OK(checker().Run(module.get()).status());
 }
 
 TEST_F(CpuHloSupportCheckerTest, SparseUnimplemented) {

@@ -87,7 +87,7 @@ TEST_F(ConvCanonicalizationTest, NonCanonicalToCanonical) {
       input, kernel, /*feature_group_count=*/1, conv_window_, dnums,
       DefaultPrecisionConfig(2)));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
 
@@ -96,7 +96,7 @@ TEST_F(ConvCanonicalizationTest, NonCanonicalToCanonical) {
         return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
       });
   ConvCanonicalization conv_canonicalization(&target_machine_features);
-  EXPECT_TRUE(conv_canonicalization.Run(module).ValueOrDie());
+  EXPECT_TRUE(conv_canonicalization.Run(module.get()).ValueOrDie());
 
   const HloInstruction* output_reshape = entry_computation->root_instruction();
   EXPECT_EQ(HloOpcode::kTranspose, output_reshape->opcode());
@@ -150,7 +150,7 @@ TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {
       input, kernel, /*feature_group_count=*/1, conv_window_, dnums,
       DefaultPrecisionConfig(2)));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   cpu::TargetMachineFeaturesWithFakeAlignmentLogic target_machine_features(
@@ -158,7 +158,7 @@ TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {
         return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
       });
   ConvCanonicalization conv_canonicalization(&target_machine_features);
-  EXPECT_FALSE(conv_canonicalization.Run(module).ValueOrDie());
+  EXPECT_FALSE(conv_canonicalization.Run(module.get()).ValueOrDie());
 }
 
 }  // namespace cpu
