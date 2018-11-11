@@ -47,7 +47,6 @@ cc_library(
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
-        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = True,
