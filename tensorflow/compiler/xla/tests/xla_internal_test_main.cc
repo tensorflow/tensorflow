@@ -49,7 +49,7 @@ GTEST_API_ int main(int argc, char** argv) {
       // different API than Tensorflow's.
       testing::InitGoogleTest(&argc, argv);
 #if defined(PLATFORM_GOOGLE)
-      base::SetFlag(&FLAGS_benchmarks, pattern);
+      absl::SetFlag(&FLAGS_benchmarks, pattern);
       RunSpecifiedBenchmarks();
 #else
       tensorflow::testing::Benchmark::Run(pattern);
