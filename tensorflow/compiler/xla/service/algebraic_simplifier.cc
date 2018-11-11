@@ -2026,6 +2026,7 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
         reshape, HloInstruction::CreateReshape(reshape->shape(),
                                                operand->mutable_operand(0)));
   }
+
   if (operand->opcode() == HloOpcode::kRng && operand->user_count() == 1) {
     *operand->mutable_shape() = reshape->shape();
     return ReplaceInstruction(reshape, operand);
@@ -2762,6 +2763,11 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
                        transpose->shape(), operand->mutable_operand(0),
                        ComposePermutations(operand->dimensions(),
                                            transpose->dimensions())));
+  }
+
+  if (ShapeUtil::TrueRank(transpose->shape()) <= 1) {
+    return ReplaceWithNewInstruction(
+        transpose, HloInstruction::CreateReshape(transpose->shape(), operand));
   }
 
   if (operand->opcode() == HloOpcode::kRng && operand->user_count() == 1) {
