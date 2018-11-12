@@ -64,7 +64,7 @@ class TPUClusterResolver(ClusterResolver):
     if self._service:
       return self._service
 
-    credentials = self.credentials
+    credentials = self._credentials
     if credentials is None or credentials == 'default':
       credentials = GoogleCredentials.get_application_default()
 
