@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -50,9 +50,9 @@ namespace {
 static std::array<bool, 2> use_bf16_params{true, false};
 
 class HloEvaluatorTest : public ::testing::WithParamInterface<bool>,
-                         public HloVerifiedTestBase {
+                         public HloTestBase {
  protected:
-  HloEvaluatorTest() : HloVerifiedTestBase(), use_bfloat16_(GetParam()) {
+  HloEvaluatorTest() : HloTestBase(), use_bfloat16_(GetParam()) {
     evaluator_ = absl::make_unique<HloEvaluator>();
   }
 
@@ -67,7 +67,7 @@ class HloEvaluatorTest : public ::testing::WithParamInterface<bool>,
   }
 
   // Evaluate function that takes in a local module instead of using m_
-  // that is in HloVerifiedTestBase. Once m_ in HloVerifiedTestBase is
+  // that is in HloTestBase. Once m_ in HloTestBase is
   // removed, this should be the default Evaluate function.
   Literal EvaluateWithModule(
       HloModule* module, absl::Span<const Literal* const> arg_literals = {}) {
@@ -1298,7 +1298,7 @@ TEST_P(HloEvaluatorTest, Conv2DGroupedConvolution) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
-class HloEvaluatorPreciseReduceTest : public HloVerifiedTestBase {};
+class HloEvaluatorPreciseReduceTest : public HloTestBase {};
 
 // Tests that Reduce doesn't lose precision when adding many numbers (because
 // it accumulates its result in a double).

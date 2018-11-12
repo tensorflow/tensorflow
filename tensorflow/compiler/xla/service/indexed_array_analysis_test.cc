@@ -16,12 +16,12 @@ limitations under the License.
 #include <ctype.h>
 
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 
 namespace xla {
 namespace {
-class IndexedArrayAnalysisTest : public HloVerifiedTestBase {
+class IndexedArrayAnalysisTest : public HloTestBase {
  protected:
   void AssertArrayForRootExpressionIs(const string& hlo_text,
                                       const string& root_expression) {

@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
@@ -29,7 +29,7 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-class WhileLoopSimplifierTest : public HloVerifiedTestBase {
+class WhileLoopSimplifierTest : public HloTestBase {
  protected:
   // Makes an HloModule that contains a loop with `num_iters` iteration.
   TF_MUST_USE_RESULT std::unique_ptr<VerifiedHloModule>

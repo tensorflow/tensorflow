@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -30,7 +30,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class FlattenCallGraphTest : public HloVerifiedTestBase {
+class FlattenCallGraphTest : public HloTestBase {
  protected:
   // Build and return a trivial computation taking and returning a scalar.
   std::unique_ptr<HloComputation> MakeScalarComputation() {

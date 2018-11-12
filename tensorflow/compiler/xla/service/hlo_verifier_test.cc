@@ -35,7 +35,7 @@ namespace {
 
 using ::testing::HasSubstr;
 
-// This class cannot be converted to use HloVerifiedTestBase. It explicitly
+// This class cannot be converted to use HloTestBase. It explicitly
 // uses HloTestBase to create and test malformed HLOs.
 class HloVerifierTest : public HloTestBase {
  public:

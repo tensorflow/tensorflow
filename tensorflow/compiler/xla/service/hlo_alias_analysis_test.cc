@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -39,9 +39,9 @@ namespace {
 
 using ::testing::UnorderedElementsAre;
 
-class HloAliasAnalysisTest : public HloVerifiedTestBase {
+class HloAliasAnalysisTest : public HloTestBase {
  protected:
-  HloAliasAnalysisTest() : HloVerifiedTestBase() {
+  HloAliasAnalysisTest() : HloTestBase() {
     module_ = CreateNewVerifiedModule();
   }
 

@@ -17,13 +17,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
 
-class WhileLoopAnalysisTest : public HloVerifiedTestBase {};
+class WhileLoopAnalysisTest : public HloTestBase {};
 
 TEST_F(WhileLoopAnalysisTest, SingleIterationUpperBound) {
   const char* const kHloModule = R"(

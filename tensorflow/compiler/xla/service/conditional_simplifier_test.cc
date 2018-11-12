@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -37,7 +37,7 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-class ConditionalSimplifierTest : public HloVerifiedTestBase {
+class ConditionalSimplifierTest : public HloTestBase {
  public:
   // Makes a computation that contains a conditional with constant predicate.
   HloComputation* MakeConditional(HloModule* module);

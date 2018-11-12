@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
@@ -26,7 +26,7 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-class WhileLoopInvariantCodeMotionTest : public HloVerifiedTestBase {
+class WhileLoopInvariantCodeMotionTest : public HloTestBase {
  public:
   // Makes a computation which has one parameter, of the given shape, and always
   // returns PRED[]{true}.  This is useful as a dummy loop condition.

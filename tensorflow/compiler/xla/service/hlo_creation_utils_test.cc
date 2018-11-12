@@ -19,13 +19,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
 namespace {
 
-class HloCreationUtilsTest : public HloVerifiedTestBase {
+class HloCreationUtilsTest : public HloTestBase {
  protected:
   std::unique_ptr<VerifiedHloModule> CreateModuleWithProgramShape(
       PrimitiveType primitive_type, absl::Span<const int64> input_shape_dims,

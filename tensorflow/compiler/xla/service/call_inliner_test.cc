@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -40,7 +40,7 @@ namespace {
 
 // Tests for call inlining that are most tractable at the HLO level (vs
 // ComputationBuilder API in call_test.cc).
-using CallInlinerTest = HloVerifiedTestBase;
+using CallInlinerTest = HloTestBase;
 
 TEST_F(CallInlinerTest, ControlDependenciesAreCarriedToCaller) {
   // "inner" computation just has a control dependency from the "zero" value to

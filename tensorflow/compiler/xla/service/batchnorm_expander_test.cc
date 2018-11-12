@@ -29,14 +29,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
-using BatchNormExpanderTest = HloVerifiedTestBase;
+using BatchNormExpanderTest = HloTestBase;
 
 // Test that we expand BatchNormTraining.
 TEST_F(BatchNormExpanderTest, BatchNormTraining) {
