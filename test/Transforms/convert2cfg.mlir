@@ -15,7 +15,7 @@ extfunc @body(index) -> ()
 // CHECK-NEXT: bb1:	// pred: bb0
 // CHECK-NEXT:   %c1 = constant 1 : index
 // CHECK-NEXT:   %c42 = constant 42 : index
-// CHECK-NEXT:   br bb2(%c1) : index
+// CHECK-NEXT:   br bb2(%c1 : index)
 // CHECK-NEXT: bb2(%0: index):	// 2 preds: bb1, bb3
 // CHECK-NEXT:   %1 = cmpi "slt", %0, %c42 : index
 // CHECK-NEXT:   cond_br %1, bb3, bb4
@@ -23,7 +23,7 @@ extfunc @body(index) -> ()
 // CHECK-NEXT:   call @body(%0) : (index) -> ()
 // CHECK-NEXT:   %c1_0 = constant 1 : index
 // CHECK-NEXT:   %2 = addi %0, %c1_0 : index
-// CHECK-NEXT:   br bb2(%2) : index
+// CHECK-NEXT:   br bb2(%2 : index)
 // CHECK-NEXT: bb4:	// pred: bb2
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
@@ -78,7 +78,7 @@ extfunc @other(index, i32) -> (i32)
 // CHECK-NEXT: bb1:	// pred: bb0
 // CHECK-NEXT:   %c0 = constant 0 : index
 // CHECK-NEXT:   %c42 = constant 42 : index
-// CHECK-NEXT:   br bb2(%c0) : index
+// CHECK-NEXT:   br bb2(%c0 : index)
 // CHECK-NEXT: bb2(%0: index):	// 2 preds: bb1, bb3
 // CHECK-NEXT:   %1 = cmpi "slt", %0, %c42 : index
 // CHECK-NEXT:   cond_br %1, bb3, bb4
@@ -89,7 +89,7 @@ extfunc @other(index, i32) -> (i32)
 // CHECK-NEXT:   %5 = call @other(%2, %arg1) : (index, i32) -> i32
 // CHECK-NEXT:   %c1 = constant 1 : index
 // CHECK-NEXT:   %6 = addi %0, %c1 : index
-// CHECK-NEXT:   br bb2(%6) : index
+// CHECK-NEXT:   br bb2(%6 : index)
 // CHECK-NEXT: bb4:	// pred: bb2
 // CHECK-NEXT:   %c0_0 = constant 0 : index
 // CHECK-NEXT:   %7 = call @other(%c0_0, %c0_i32) : (index, i32) -> i32
@@ -120,7 +120,7 @@ extfunc @post(index) -> ()
 // CHECK-NEXT: bb1:	// pred: bb0
 // CHECK-NEXT:   %c0 = constant 0 : index
 // CHECK-NEXT:   %c42 = constant 42 : index
-// CHECK-NEXT:   br bb2(%c0) : index
+// CHECK-NEXT:   br bb2(%c0 : index)
 // CHECK-NEXT: bb2(%0: index):	// 2 preds: bb1, bb7
 // CHECK-NEXT:   %1 = cmpi "slt", %0, %c42 : index
 // CHECK-NEXT:   cond_br %1, bb3, bb8
@@ -130,7 +130,7 @@ extfunc @post(index) -> ()
 // CHECK-NEXT: bb4:	// pred: bb3
 // CHECK-NEXT:   %c7 = constant 7 : index
 // CHECK-NEXT:   %c56 = constant 56 : index
-// CHECK-NEXT:   br bb5(%c7) : index
+// CHECK-NEXT:   br bb5(%c7 : index)
 // CHECK-NEXT: bb5(%2: index):	// 2 preds: bb4, bb6
 // CHECK-NEXT:   %3 = cmpi "slt", %2, %c56 : index
 // CHECK-NEXT:   cond_br %3, bb6, bb7
@@ -138,12 +138,12 @@ extfunc @post(index) -> ()
 // CHECK-NEXT:   call @body2(%0, %2) : (index, index) -> ()
 // CHECK-NEXT:   %c2 = constant 2 : index
 // CHECK-NEXT:   %4 = addi %2, %c2 : index
-// CHECK-NEXT:   br bb5(%4) : index
+// CHECK-NEXT:   br bb5(%4 : index)
 // CHECK-NEXT: bb7:	// pred: bb5
 // CHECK-NEXT:   call @post(%0) : (index) -> ()
 // CHECK-NEXT:   %c1 = constant 1 : index
 // CHECK-NEXT:   %5 = addi %0, %c1 : index
-// CHECK-NEXT:   br bb2(%5) : index
+// CHECK-NEXT:   br bb2(%5 : index)
 // CHECK-NEXT: bb8:	// pred: bb2
 // CHECK-NEXT:   return
 // CHECK-NEXT: }
@@ -169,7 +169,7 @@ extfunc @body3(index, index) -> ()
 // CHECK-NEXT: bb1:	// pred: bb0
 // CHECK-NEXT:   %c0 = constant 0 : index
 // CHECK-NEXT:   %c42 = constant 42 : index
-// CHECK-NEXT:   br bb2(%c0) : index
+// CHECK-NEXT:   br bb2(%c0 : index)
 // CHECK-NEXT: bb2(%0: index):	// 2 preds: bb1, bb11
 // CHECK-NEXT:   %1 = cmpi "slt", %0, %c42 : index
 // CHECK-NEXT:   cond_br %1, bb3, bb12
@@ -179,7 +179,7 @@ extfunc @body3(index, index) -> ()
 // CHECK-NEXT: bb4:	// pred: bb3
 // CHECK-NEXT:   %c7 = constant 7 : index
 // CHECK-NEXT:   %c56 = constant 56 : index
-// CHECK-NEXT:   br bb5(%c7) : index
+// CHECK-NEXT:   br bb5(%c7 : index)
 // CHECK-NEXT: bb5(%2: index):	// 2 preds: bb4, bb6
 // CHECK-NEXT:   %3 = cmpi "slt", %2, %c56 : index
 // CHECK-NEXT:   cond_br %3, bb6, bb7
@@ -187,14 +187,14 @@ extfunc @body3(index, index) -> ()
 // CHECK-NEXT:   call @body2(%0, %2) : (index, index) -> ()
 // CHECK-NEXT:   %c2 = constant 2 : index
 // CHECK-NEXT:   %4 = addi %2, %c2 : index
-// CHECK-NEXT:   br bb5(%4) : index
+// CHECK-NEXT:   br bb5(%4 : index)
 // CHECK-NEXT: bb7:	// pred: bb5
 // CHECK-NEXT:   call @mid(%0) : (index) -> ()
 // CHECK-NEXT:   br bb8
 // CHECK-NEXT: bb8:	// pred: bb7
 // CHECK-NEXT:   %c18 = constant 18 : index
 // CHECK-NEXT:   %c37 = constant 37 : index
-// CHECK-NEXT:   br bb9(%c18) : index
+// CHECK-NEXT:   br bb9(%c18 : index)
 // CHECK-NEXT: bb9(%5: index):	// 2 preds: bb8, bb10
 // CHECK-NEXT:   %6 = cmpi "slt", %5, %c37 : index
 // CHECK-NEXT:   cond_br %6, bb10, bb11
@@ -202,12 +202,12 @@ extfunc @body3(index, index) -> ()
 // CHECK-NEXT:   call @body3(%0, %5) : (index, index) -> ()
 // CHECK-NEXT:   %c3 = constant 3 : index
 // CHECK-NEXT:   %7 = addi %5, %c3 : index
-// CHECK-NEXT:   br bb9(%7) : index
+// CHECK-NEXT:   br bb9(%7 : index)
 // CHECK-NEXT: bb11:	// pred: bb9
 // CHECK-NEXT:   call @post(%0) : (index) -> ()
 // CHECK-NEXT:   %c1 = constant 1 : index
 // CHECK-NEXT:   %8 = addi %0, %c1 : index
-// CHECK-NEXT:   br bb2(%8) : index
+// CHECK-NEXT:   br bb2(%8 : index)
 // CHECK-NEXT: bb12:	// pred: bb2
 // CHECK-NEXT:   return
 // CHECK-NEXT: }

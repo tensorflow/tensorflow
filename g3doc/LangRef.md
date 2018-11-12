@@ -975,8 +975,13 @@ bb2:
   br bb3(%b: i64)    // Branch passes %b as the argument
 
 // bb3 receives an argument, named %c, from predecessors
+// and passes it on to bb4 twice.
 bb3(%c: i64):
-  return %c : i64
+  br bb4(%c, %c : i64, i64)
+
+bb4(%d : i64, %e : i64):
+  %0 = addi %d, %e : i64
+  return %0 : i64
 }
 ```
 
@@ -1004,7 +1009,7 @@ Syntax:
 
 ``` {.ebnf}
 terminator-stmt ::= `br` bb-id branch-use-list?
-branch-use-list ::= `(` ssa-use-list `)` `:` type-list-no-parens
+branch-use-list ::= `(` ssa-use-list `:` type-list-no-parens `)`
 ```
 
 The `br` terminator statement represents an unconditional jump to a target basic
@@ -1039,7 +1044,7 @@ instruction that targets the same basic block:
 cfgfunc @select(%a : i32, %b :i32, %flag : i1) -> i32 {
 bb0:
     // Both targets are the same, operands differ
-    cond_br %flag : i1, bb1 (%a : i32), bb1 (%b : i32)
+    cond_br %flag, bb1 (%a : i32), bb1 (%b : i32)
 
 bb1 (%x : i32) :
     return %x : i32

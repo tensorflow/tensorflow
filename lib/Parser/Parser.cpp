@@ -1844,8 +1844,7 @@ public:
 
   template <typename ValueTy>
   ParseResult
-  parseOptionalSSAUseAndTypeList(SmallVectorImpl<ValueTy *> &results,
-                                 bool isParenthesized);
+  parseOptionalSSAUseAndTypeList(SmallVectorImpl<ValueTy *> &results);
 
   // Operations
   ParseResult parseOperation(const CreateOperationFunction &createOpFunc);
@@ -2060,30 +2059,17 @@ ResultType FunctionParser::parseSSADefOrUseAndType(
 }
 
 /// Parse a (possibly empty) list of SSA operands, followed by a colon, then
-/// followed by a type list.  If hasParens is true, then the operands are
-/// surrounded by parens.
+/// followed by a type list.
 ///
-///   ssa-use-and-type-list[parens]
-///     ::= `(` ssa-use-list `)` ':' type-list-no-parens
-///
-///   ssa-use-and-type-list[!parens]
+///   ssa-use-and-type-list
 ///     ::= ssa-use-list ':' type-list-no-parens
 ///
 template <typename ValueTy>
 ParseResult FunctionParser::parseOptionalSSAUseAndTypeList(
-    SmallVectorImpl<ValueTy *> &results, bool isParenthesized) {
-
-  // If we are in the parenthesized form and no paren exists, then we succeed
-  // with an empty list.
-  if (isParenthesized && !consumeIf(Token::l_paren))
-    return ParseSuccess;
-
+    SmallVectorImpl<ValueTy *> &results) {
   SmallVector<SSAUseInfo, 4> valueIDs;
   if (parseOptionalSSAUseList(valueIDs))
     return ParseFailure;
-
-  if (isParenthesized && !consumeIf(Token::r_paren))
-    return emitError("expected ')' in operand list");
 
   // If there were no operands, then there is no colon or type lists.
   if (valueIDs.empty())
@@ -2650,7 +2636,7 @@ ParseResult CFGFunctionParser::parseBranchBlockAndUseList(
 
   // Handle optional arguments.
   if (consumeIf(Token::l_paren) &&
-      (parseOptionalSSAUseAndTypeList(values, /*isParenthesized=*/false) ||
+      (parseOptionalSSAUseAndTypeList(values) ||
        parseToken(Token::r_paren, "expected ')' to close argument list"))) {
     return ParseFailure;
   }
@@ -2661,7 +2647,7 @@ ParseResult CFGFunctionParser::parseBranchBlockAndUseList(
 /// Parse the terminator instruction for a basic block.
 ///
 ///   terminator-stmt ::= `br` bb-id branch-use-list?
-///   branch-use-list ::= `(` ssa-use-list `)` ':' type-list-no-parens
+///   branch-use-list ::= `(` ssa-use-list ':' type-list-no-parens `)`
 ///   terminator-stmt ::=
 ///     `cond_br` ssa-use `,` bb-id branch-use-list? `,` bb-id
 ///     branch-use-list?
@@ -2679,7 +2665,7 @@ TerminatorInst *CFGFunctionParser::parseTerminator() {
 
     // Parse any operands.
     SmallVector<CFGValue *, 8> operands;
-    if (parseOptionalSSAUseAndTypeList(operands, /*isParenthesized=*/false))
+    if (parseOptionalSSAUseAndTypeList(operands))
       return nullptr;
     return builder.createReturn(getEncodedSourceLocation(loc), operands);
   }

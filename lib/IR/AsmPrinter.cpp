@@ -35,6 +35,7 @@
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
@@ -1180,6 +1181,8 @@ private:
   DenseMap<const BasicBlock *, unsigned> basicBlockIDs;
 
   void numberValuesInBlock(const BasicBlock *block);
+
+  template <typename Range> void printBranchOperands(const Range &range);
 };
 } // end anonymous namespace
 
@@ -1290,19 +1293,28 @@ void CFGFunctionPrinter::print(const OperationInst *inst) {
   printOperation(inst);
 }
 
+// Print the operands from "container" to "os", followed by a colon and their
+// respective types, everything in parentheses.  Do nothing if the container is
+// empty.
+template <typename Range>
+void CFGFunctionPrinter::printBranchOperands(const Range &range) {
+  if (llvm::empty(range))
+    return;
+
+  os << '(';
+  interleaveComma(range,
+                  [this](const CFGValue *operand) { printValueID(operand); });
+  os << " : ";
+  interleaveComma(range, [this](const CFGValue *operand) {
+    printType(operand->getType());
+  });
+  os << ')';
+}
+
 void CFGFunctionPrinter::print(const BranchInst *inst) {
   os << "br ";
   printBBName(inst->getDest());
-
-  if (inst->getNumOperands() != 0) {
-    os << '(';
-    interleaveComma(inst->getOperands(),
-                    [&](const CFGValue *operand) { printValueID(operand); });
-    os << ") : ";
-    interleaveComma(inst->getOperands(), [&](const CFGValue *operand) {
-      printType(operand->getType());
-    });
-  }
+  printBranchOperands(inst->getOperands());
 }
 
 void CFGFunctionPrinter::print(const CondBranchInst *inst) {
@@ -1311,29 +1323,11 @@ void CFGFunctionPrinter::print(const CondBranchInst *inst) {
 
   os << ", ";
   printBBName(inst->getTrueDest());
-  if (inst->getNumTrueOperands() != 0) {
-    os << '(';
-    interleaveComma(inst->getTrueOperands(),
-                    [&](const CFGValue *operand) { printValueID(operand); });
-    os << " : ";
-    interleaveComma(inst->getTrueOperands(), [&](const CFGValue *operand) {
-      printType(operand->getType());
-    });
-    os << ")";
-  }
+  printBranchOperands(inst->getTrueOperands());
 
   os << ", ";
   printBBName(inst->getFalseDest());
-  if (inst->getNumFalseOperands() != 0) {
-    os << '(';
-    interleaveComma(inst->getFalseOperands(),
-                    [&](const CFGValue *operand) { printValueID(operand); });
-    os << " : ";
-    interleaveComma(inst->getFalseOperands(), [&](const CFGValue *operand) {
-      printType(operand->getType());
-    });
-    os << ")";
-  }
+  printBranchOperands(inst->getFalseOperands());
 }
 
 void CFGFunctionPrinter::print(const ReturnInst *inst) {
