@@ -281,16 +281,26 @@ def function_to_graph(f,
   node, source = parser.parse_entity(f)
   node = node.body[0]
 
-  # TODO(mdan): Can we convert everything and scoop the lambda afterwards?
-  if f.__name__ == '<lambda>':
-    nodes = ast_util.find_matching_lambda_definitions(node, f)
-    if len(nodes) != 1:
+  # In general, the output of inspect.getsource is inexact because it uses crude
+  # regex matching methods to search the source file. This is particularly
+  # problematic for lambda functions, where the entire containing lines are
+  # returned. Certain distributions of CPython may also return the enclosing
+  # function for local functions.
+  nodes = ast_util.find_matching_definitions(node, f)
+  if len(nodes) != 1:
+    if f.__name__ == '<lambda>':
       raise ValueError(
           'Unable to identify source code of lambda function {}. It was'
-          ' defined on this line: {}, which contains multiple lambdas with'
-          ' identical argument names. To avoid ambiguity, define each lambda'
+          ' defined on this line: {}, which must contain a single lambda with'
+          ' matching signature. To avoid ambiguity, define each lambda'
           ' in a separate expression.'.format(f, source))
-    node, = nodes
+    else:
+      raise ValueError(
+          'Unable to identify source code of function {}. The source code'
+          ' reported by Python did not include exactly one matching signature:'
+          '\n{}\nTo avoid ambiguity, use a unique name for each'
+          ' function.'.format(f, source))
+  node, = nodes
 
   # TODO(znado): Place inside standard_analysis.
   origin_info.resolve(node, source, f)
