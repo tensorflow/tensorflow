@@ -102,10 +102,9 @@ string SanitizeFunctionName(string function_name);
 // intrinsics (for example, "minnum") must include a type in overloaded_types
 // for each overloaded type. Typically, overloaded intrinsics have only a single
 // overloaded type.
-llvm::Value* EmitCallToIntrinsic(llvm::Intrinsic::ID intrinsic_id,
-                                 absl::Span<llvm::Value* const> operands,
-                                 absl::Span<llvm::Type* const> overloaded_types,
-                                 llvm::IRBuilder<>* b);
+llvm::CallInst* EmitCallToIntrinsic(
+    llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
+    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b);
 
 // Emit float max. Emit maxnum intrinsic is fast math is disabled, or
 // fcmp+select otherwise
