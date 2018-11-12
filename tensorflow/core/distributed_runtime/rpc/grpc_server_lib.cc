@@ -451,7 +451,11 @@ Status GrpcServer::Create(const ServerDef& server_def, Env* env,
   std::unique_ptr<GrpcServer> ret(
       new GrpcServer(server_def, env == nullptr ? Env::Default() : env));
   ServiceInitFunction service_func = nullptr;
-  TF_RETURN_IF_ERROR(ret->Init(service_func, NewRpcRendezvousMgr, nullptr));
+  Status s = ret->Init(service_func, NewRpcRendezvousMgr, nullptr);
+  if (!s.ok()) {
+    LOG(ERROR) << s;
+    return s;
+  }
   *out_server = std::move(ret);
   return Status::OK();
 }
@@ -462,7 +466,11 @@ Status GrpcServer::Create(const ServerDef& server_def, Env* env,
   std::unique_ptr<GrpcServer> ret(
       new GrpcServer(server_def, env == nullptr ? Env::Default() : env));
   ServiceInitFunction service_func = nullptr;
-  TF_RETURN_IF_ERROR(ret->Init(service_func, NewRpcRendezvousMgr, nullptr));
+  Status s = ret->Init(service_func, NewRpcRendezvousMgr, nullptr);
+  if (!s.ok()) {
+    LOG(ERROR) << s;
+    return s;
+  }
   *out_server = std::move(ret);
   return Status::OK();
 }
