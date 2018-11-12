@@ -141,6 +141,7 @@ Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
   std::vector<const Edge*> input_edges;
   TF_RETURN_IF_ERROR(node->input_edges(&input_edges));
   std::vector<std::pair<const NodeDef*, int>> input_node_and_ports;
+  input_node_and_ports.reserve(input_edges.size());
   for (const Edge* input_edge : input_edges) {
     input_node_and_ports.emplace_back(&input_edge->src()->def(),
                                       input_edge->src_output());
@@ -923,7 +924,7 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
     converted_segments.push_back(std::move(curr_segment));
 
     if (VLOG_IS_ON(8)) {
-      string fname = curr_engine.engine_name;
+      string fname = engine_segments.back().engine_name;
       StrAppend(&fname, ".pb");
       std::fstream f;
       f.open(fname.c_str(), std::fstream::out | std::fstream::binary);
