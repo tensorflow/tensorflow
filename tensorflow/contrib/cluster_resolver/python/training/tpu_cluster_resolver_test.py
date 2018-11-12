@@ -459,10 +459,10 @@ class TPUClusterResolverTest(test.TestCase):
 
     del os.environ['KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS']
 
-  def testDiscoveryUrl(self):
+  def testEnvironmentDiscoveryUrl(self):
     os.environ['TPU_API_DISCOVERY_URL'] = 'https://{api}.internal/{apiVersion}'
     self.assertEqual('https://{api}.internal/{apiVersion}',
-                     TPUClusterResolver._discoveryUrl())
+                     TPUClusterResolver._environmentDiscoveryUrl())
 
 if __name__ == '__main__':
   test.main()
