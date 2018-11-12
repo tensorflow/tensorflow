@@ -95,6 +95,7 @@ tf_cuda_library(
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
+            "//tensorflow/core/distributed_runtime:server_lib",
         ],
     }) + select({
         "//tensorflow:with_xla_support": [
