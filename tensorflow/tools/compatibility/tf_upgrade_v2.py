@@ -44,7 +44,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     })
     # pylint: enable=line-too-long
 
-    excluded_renames = ["tf.boolean_mask"]
+    # For custom behavior and if auto-generate rename in renames_v2.py
+    # is incorrect, add the op name here to exclude it from renames_v2.py.
+    excluded_renames = [
+    ]
 
     # Variables that should be changed to functions.
     self.change_to_function = {}
