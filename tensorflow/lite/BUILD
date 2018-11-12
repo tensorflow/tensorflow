@@ -27,11 +27,11 @@ config_setting(
     },
 )
 
-# Enables inclusion of TensorFlow kernels via the TF Lite Flex delegate.
+# Enables inclusion of select TensorFlow kernels via the TF Lite Flex delegate.
 # WARNING: This build flag is experimental and subject to change.
 config_setting(
-    name = "with_tflite_flex",
-    define_values = {"with_tflite_flex": "true"},
+    name = "with_select_tf_ops",
+    define_values = {"with_select_tf_ops": "true"},
     visibility = ["//visibility:public"],
 )
 
@@ -190,7 +190,7 @@ cc_library(
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({
-        ":with_tflite_flex": [
+        ":with_select_tf_ops": [
             "//tensorflow/lite/delegates/flex:delegate",
         ],
         "//conditions:default": [],
