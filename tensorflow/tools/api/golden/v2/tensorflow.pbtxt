@@ -461,14 +461,6 @@ tf_module {
     argspec: "args=[\'condition\', \'data\', \'summarize\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
-    name: "NoGradient"
-    argspec: "args=[\'op_type\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "NotDifferentiable"
-    argspec: "args=[\'op_type\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "abs"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -935,6 +927,10 @@ tf_module {
   member_method {
     name: "negative"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "no_gradient"
+    argspec: "args=[\'op_type\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "no_op"

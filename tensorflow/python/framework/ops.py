@@ -2442,8 +2442,9 @@ class RegisterGradient(object):
     return f
 
 
-@tf_export("NoGradient", "NotDifferentiable")
-def NotDifferentiable(op_type):
+@deprecation.deprecated_endpoints("NotDifferentiable", "NoGradient")
+@tf_export("no_gradient", v1=["no_gradient", "NotDifferentiable", "NoGradient"])
+def no_gradient(op_type):
   """Specifies that ops of type `op_type` is not differentiable.
 
   This function should *not* be used for operations that have a
@@ -2476,8 +2477,9 @@ def NotDifferentiable(op_type):
   _gradient_registry.register(None, op_type)
 
 
-# Alias for the old name, will be eventually removed.
-NoGradient = NotDifferentiable
+# Aliases for the old names, will be eventually removed.
+NoGradient = no_gradient
+NotDifferentiable = no_gradient
 
 
 def get_gradient_function(op):
