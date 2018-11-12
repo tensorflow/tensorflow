@@ -330,8 +330,8 @@ std::shared_ptr<Node> MakeUnknownNode(Node::Args args) {
   return std::make_shared<Unknown>(std::move(args));
 }
 
-void Model::AddNode(Node::Factory factory, const string& name,
-                    const string& output_name) {
+std::shared_ptr<Node> Model::AddNode(Node::Factory factory, const string& name,
+                                     const string& output_name) {
   // The name captures the sequence of iterators joined by `::`. We use the full
   // sequence as the key in the lookup table, but only the last element of the
   // sequence as the name node.
@@ -357,6 +357,7 @@ void Model::AddNode(Node::Factory factory, const string& name,
     output->add_input(node);
   }
   lookup_table_.insert(std::make_pair(name, node));
+  return node;
 }
 
 void Model::AddProcessingTime(const string& name, int64 delta) {
