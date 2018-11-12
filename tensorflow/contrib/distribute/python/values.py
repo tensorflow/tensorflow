@@ -62,7 +62,8 @@ class DistributedValues(object):
     if device is None:
       replica_context = distribution_strategy_context.get_replica_context()
       if replica_context:
-        device = replica_context.device
+        # TODO(josh11b): support model parallelism better here
+        device = replica_context.devices[0]
       else:
         device = distribute_lib.get_update_device()
         if device is None:
@@ -478,7 +479,8 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
     if device is None:
       replica_context = distribution_strategy_context.get_replica_context()
       if replica_context:
-        device = replica_context.device
+        # TODO(josh11b): support model parallelism better here
+        device = replica_context.devices[0]
       else:
         device = distribute_lib.get_update_device()
         if device is None:

@@ -545,5 +545,9 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
 
   @property
   def device(self):
+    raise RuntimeError("Use .devices instead")
+
+  @property
+  def devices(self):
     distribute_lib.require_replica_context(self)
-    return self._distribution_strategy.worker_devices[self._replica_id]
+    return [self._distribution_strategy.worker_devices[self._replica_id]]

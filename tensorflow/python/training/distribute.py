@@ -1080,9 +1080,14 @@ class ReplicaContext(object):
 
   @property
   def device(self):
-    """The device this replica is to be executed on, as a string."""
+    """BEING DELETED: use .devices instead."""
+    raise RuntimeError("Use .devices instead")
+
+  @property
+  def devices(self):
+    """The devices this replica is to be executed on, as a list of strings."""
     require_replica_context(self)
-    return device_util.current()
+    return [device_util.current()]
 
   # TODO(josh11b): Implement `start_all_reduce(method, t)` for efficient
   # all-reduce. It would return a function returning the result of reducing `t`

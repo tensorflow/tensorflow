@@ -190,6 +190,7 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
 
 
 class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):
+  """ReplicaContext for OneDeviceStrategy."""
 
   def __init__(self, distribution_strategy):
     distribute_lib.ReplicaContext.__init__(
@@ -197,4 +198,8 @@ class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):
 
   @property
   def device(self):
-    return self._distribution_strategy.worker_devices[0]
+    raise RuntimeError("Use .devices instead")
+
+  @property
+  def devices(self):
+    return [self._distribution_strategy.worker_devices[0]]
