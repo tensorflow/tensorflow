@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -34,11 +34,11 @@ namespace {
 namespace op = xla::testing::opcode_matchers;
 using ::testing::_;
 
-class CudnnConvRewriterTest : public HloVerifiedTestBase {
+class CudnnConvRewriterTest : public HloTestBase {
  public:
   CudnnConvRewriterTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/true,
-                            /*allow_mixed_precision=*/false) {
+      : HloTestBase(/*layout_sensitive=*/true,
+                    /*allow_mixed_precision=*/false) {
     for (int i = 0; i < 2; ++i) {
       WindowDimension* window_dim = default_conv_window_.add_dimensions();
       window_dim->set_size(1);

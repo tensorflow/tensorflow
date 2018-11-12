@@ -38,6 +38,31 @@ limitations under the License.
 
 namespace xla {
 
+// An HLO module derived class which verifies itself on destruction. This class
+// is intended to be used in unit tests. Any verification errors are raised via
+// ADD_FAILURE.
+class VerifiedHloModule : public HloModule {
+ public:
+  VerifiedHloModule(const string& name, const HloModuleConfig& config,
+                    bool verifier_layout_sensitive,
+                    bool allow_mixed_precision_in_hlo_verifier)
+      : HloModule(name, config),
+        verifier_(verifier_layout_sensitive,
+                  allow_mixed_precision_in_hlo_verifier) {}
+
+  ~VerifiedHloModule() override { VerifyOrAddFailure("in destructor"); }
+
+  // Verifies the module using HloVerifier and returns the status.
+  Status Verify();
+
+  // Verifies the module and flags any error with ADD_FAILURE. 'message' is
+  // included in the failure message.
+  void VerifyOrAddFailure(const string& message);
+
+ private:
+  HloVerifier verifier_;
+};
+
 // A base class for tests which build and/or run HLO code. The class includes
 // support for running an HLO module on two platforms and compare the results.
 // This is a lower level of abstraction than using the client interface and
@@ -74,10 +99,25 @@ class HloTestBase : public ::testing::Test {
   // tests.
   //
   // This returns a vanilla HloModule that doesn't run the HLO verifier on
-  // destruction.  If you want to run the verifier, you want
-  // HloVerifiedTestBase::CreateNewVerifiedModule.
+  // destruction.
   std::unique_ptr<HloModule> CreateNewUnverifiedModule(
       const string& name = TestName());
+
+  // Like CreateNewUnverifiedModule, except the HloModule returned here runs the
+  // HLO verifier on destruction.
+  std::unique_ptr<VerifiedHloModule> CreateNewVerifiedModule(
+      const string& name = TestName());
+
+  // Parses the given string and returns module as a vanilla, unverified
+  // HloModule.
+  StatusOr<std::unique_ptr<HloModule>> ParseAndReturnUnverifiedModule(
+      absl::string_view hlo_text,
+      const HloModuleConfig& config = HloModuleConfig());
+
+  // Parses the given string and returns module as a VerifiedHloModule.
+  StatusOr<std::unique_ptr<VerifiedHloModule>> ParseAndReturnVerifiedModule(
+      absl::string_view hlo_text,
+      const HloModuleConfig& config = HloModuleConfig());
 
   // Runs the hlo_pass with the provided module and returns the result. This
   // function also verifies that the module remains unchanged when hlo_pass
@@ -252,6 +292,8 @@ class HloTestBase : public ::testing::Test {
   HloRunner test_runner_;
   HloRunner reference_runner_;
 
+  bool verifier_layout_sensitive_;
+  bool allow_mixed_precision_in_hlo_verifier_;
   std::unique_ptr<HloVerifier> hlo_verifier_;
 
   ErrorSpec error_spec_{0.0001};

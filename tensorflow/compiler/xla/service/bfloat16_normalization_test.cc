@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -68,11 +68,11 @@ class TestBFloat16Support : public BFloat16Support {
   }
 };
 
-class BFloat16NormalizationTest : public HloVerifiedTestBase {
+class BFloat16NormalizationTest : public HloTestBase {
  protected:
   BFloat16NormalizationTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/true) {}
+      : HloTestBase(/*verifier_layout_sensitive=*/false,
+                    /*allow_mixed_precision_in_hlo_verifier=*/true) {}
 
   bool Normalize(HloModule* module) {
     TestBFloat16Support bfloat16_support_;

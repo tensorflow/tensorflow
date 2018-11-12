@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -55,11 +55,11 @@ class TestBFloat16Support : public BFloat16Support {
   }
 };
 
-class BFloat16PropagationTest : public HloVerifiedTestBase {
+class BFloat16PropagationTest : public HloTestBase {
  protected:
   BFloat16PropagationTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/true) {}
+      : HloTestBase(/*verifier_layout_sensitive=*/false,
+                    /*allow_mixed_precision_in_hlo_verifier=*/true) {}
 
   // Runs the propagation pass on the given module, and returns whether the
   // module is changed after this pass.

@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -44,7 +44,7 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace {
 
-class HloCseTest : public HloVerifiedTestBase {
+class HloCseTest : public HloTestBase {
  protected:
   HloCseTest() {}
 };

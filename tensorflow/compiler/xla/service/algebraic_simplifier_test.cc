@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -54,7 +53,7 @@ AlgebraicSimplifier::ValidBitcastCallback non_bitcasting_callback() {
   return [](const Shape&, const Shape&) { return false; };
 }
 
-class AlgebraicSimplifierTest : public HloVerifiedTestBase {};
+class AlgebraicSimplifierTest : public HloTestBase {};
 
 // Test that A + 0 is simplified to A
 TEST_F(AlgebraicSimplifierTest, AddZero) {
@@ -2906,7 +2905,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
         /*feature_group_count=*/1, window, dnums, DefaultPrecisionConfig(2)));
 
     // TODO(b/80488902): verify this module.
-    auto module = HloTestBase::CreateNewUnverifiedModule();
+    auto module = CreateNewUnverifiedModule();
     auto* computation = module->AddEntryComputation(b.Build());
 
     AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/true,
@@ -3084,7 +3083,7 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToTransposeReshape) {
 // Test that ReduceWindow(Pad(op, x), y) can simplify to ReduceWindow(op, x).
 TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
   // TODO(b/80488902): verify this module.
-  auto module = HloTestBase::CreateNewUnverifiedModule();
+  auto module = CreateNewUnverifiedModule();
   HloComputation::Builder builder(TestName());
 
   // Create operand to the pad.
@@ -3166,7 +3165,7 @@ TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
 // ReduceWindow(Convert(op), x).
 TEST_F(AlgebraicSimplifierTest, FoldConvertedPadIntoReduceWindow) {
   // TODO(b/80488902): verify this module.
-  auto module = HloTestBase::CreateNewUnverifiedModule();
+  auto module = CreateNewUnverifiedModule();
   HloComputation::Builder builder(TestName());
 
   // Create operand to the pad.
@@ -3846,7 +3845,7 @@ struct DotOfConcatTestSpec {
 };
 
 class DotOfConcatSimplificationTest
-    : public HloVerifiedTestBase,
+    : public HloTestBase,
       public ::testing::WithParamInterface<DotOfConcatTestSpec> {};
 
 // Test that we transform
@@ -4022,7 +4021,7 @@ struct DotOfGatherTestSpec {
 };
 
 class DotOfGatherSimplificationTest
-    : public HloVerifiedTestBase,
+    : public HloTestBase,
       public ::testing::WithParamInterface<DotOfGatherTestSpec> {};
 
 // input: dot(DS(ctA), ctB))
