@@ -468,6 +468,7 @@ renames = {
     'tf.train.start_queue_runners': 'tf.compat.v1.train.start_queue_runners',
     'tf.train.string_input_producer': 'tf.compat.v1.train.string_input_producer',
     'tf.train.update_checkpoint_state': 'tf.compat.v1.train.update_checkpoint_state',
+    'tf.train.write_graph': 'tf.io.write_graph',
     'tf.trainable_variables': 'tf.compat.v1.trainable_variables',
     'tf.uniform_unit_scaling_initializer': 'tf.initializers.uniform_unit_scaling',
     'tf.unsorted_segment_max': 'tf.math.unsorted_segment_max',
