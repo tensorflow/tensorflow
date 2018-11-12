@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
 import time
 import unittest
 
@@ -634,12 +635,20 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       bar2 = constant_op.constant(3)
       _ = checker[..., bar:bar2]
       _ = checker[..., bar]
-      with self.assertRaisesRegexp(
-          TypeError,
-          "Value passed to parameter 'begin' has DataType float32 not in "
-          "list of allowed values"):
-        _ = checker[..., 3.0]
       _ = checker[..., 3]
+
+  def testTensorIndexingTypeError(self):
+    with self.session(use_gpu=True):
+      checker = StridedSliceChecker(self, StridedSliceChecker.REF_TENSOR)
+      expected = re.escape(array_ops._SLICE_TYPE_ERROR)
+      with self.assertRaisesRegexp(TypeError, expected):
+        _ = checker["foo"]
+      with self.assertRaisesRegexp(TypeError, expected):
+        _ = checker[constant_op.constant("foo")]
+      with self.assertRaisesRegexp(TypeError, expected):
+        _ = checker[0.0]
+      with self.assertRaisesRegexp(TypeError, expected):
+        _ = checker[constant_op.constant(0.0)]
 
   def testExpand(self):
     with self.session(use_gpu=True):
