@@ -414,6 +414,8 @@ renames = {
     'tf.svd': 'tf.linalg.svd',
     'tf.tables_initializer': 'tf.compat.v1.tables_initializer',
     'tf.test.compute_gradient_error': 'tf.compat.v1.test.compute_gradient_error',
+    'tf.test.get_temp_dir': 'tf.compat.v1.test.get_temp_dir',
+    'tf.test.test_src_dir_path': 'tf.compat.v1.test.test_src_dir_path',
     'tf.to_bfloat16': 'tf.compat.v1.to_bfloat16',
     'tf.to_complex128': 'tf.compat.v1.to_complex128',
     'tf.to_complex64': 'tf.compat.v1.to_complex64',
