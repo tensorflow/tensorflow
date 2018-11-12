@@ -346,8 +346,26 @@ class OptimizerV2(optimizer_v1.Optimizer):
     value = self._hyper[name]
     return self._call_if_callable(value)
 
+  def __getattribute__(self, name):
+    """Overridden to support hyperparameter access."""
+    try:
+      return super(OptimizerV2, self).__getattribute__(name)
+    except AttributeError as e:
+      # Needed to avoid infinite recursion with __setattr__.
+      if name == "_hyper":
+        raise e
+      # Backwards compatibility with Keras optimizers.
+      if name == "lr":
+        name = "learning_rate"
+      if name in self._hyper:
+        return self._hyper[name]
+      raise e
+
   def __setattr__(self, name, value):
     """Override setattr to support dynamic hyperparameter setting."""
+    # Backwards compatibility with Keras optimizers.
+    if name == "lr":
+      name = "learning_rate"
     if hasattr(self, "_hyper") and name in self._hyper:
       self._set_hyper(name, value)
     else:
