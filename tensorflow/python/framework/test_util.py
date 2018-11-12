@@ -53,7 +53,7 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape  # pylint: disable=unused-import
+from tensorflow.python.eager import tape
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -748,6 +748,10 @@ def assert_no_garbage_created(f):
 
   def decorator(self, **kwargs):
     """Sets DEBUG_SAVEALL, runs the test, and checks for new garbage."""
+    # Force-load `distribution_strategy_context` to prevent GC at
+    # test time when using eager. Remove once b/117329403 is resolved.
+    tape.distribution_strategy_context.get_distribution_strategy()
+
     gc.disable()
     previous_debug_flags = gc.get_debug()
     gc.set_debug(gc.DEBUG_SAVEALL)
