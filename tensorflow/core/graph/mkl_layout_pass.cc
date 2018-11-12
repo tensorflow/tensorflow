@@ -2725,70 +2725,54 @@ Status MklLayoutRewritePass::FuseNode(
 
 std::tuple<bool, std::vector<Node*>, const MklLayoutRewritePass::FusionInfo>
 MklLayoutRewritePass::CheckForNodeFusion(Node* a) const {
-  const FusionInfo* fi_ptr = nullptr;
+  // Stores matched nodes, in the same order as node_checkers.
+  std::vector<Node *> nodes;
 
   for (auto fi = finfo_.begin(); fi != finfo_.end(); ++fi) {
-    fi_ptr = &*fi;
     //
     // Make sure node "a" and its succeding nodes (b, c ...), match the pattern
     // defined in fusion info (ops[0], ops[1], ...),
-    // aka. "a->b->c" matches "op1->op2->op3"
+    // a.k.a. "a->b->c" matches "op1->op2->op3"
     //
 
-    std::stack<Node *, std::vector<Node *>> work_stack;
+    // Stores the first unvisted outgoing edge of each matched node in "nodes".
     std::stack<EdgeSet::const_iterator> current_neighbor_stack;
-    auto node_checker = fi->node_checkers.begin();
+    nodes.clear();
 
-    Node *current_node = nullptr;
-    if (a != nullptr) {
-      work_stack.push(a);
+    auto node_checker = fi->node_checkers.begin();
+    if (a != nullptr && (*node_checker)(a)) {
+      nodes.push_back(a);
       current_neighbor_stack.push(a->out_edges().begin());
+      ++ node_checker;
     }
 
-    while (!work_stack.empty()) {
-      current_node = work_stack.top();
+    while (!nodes.empty()) {
+      auto& current_neighbor_iter = current_neighbor_stack.top();
 
-      if ((*node_checker)(current_node)){
-        if (node_checker == (fi->node_checkers.end() - 1)) {
-          // We find a match, break and return.
-          std::vector<Node *> nodes;
-          while (!work_stack.empty()) {
-            nodes.insert(nodes.begin(), work_stack.top());
-            work_stack.pop();
+      if (current_neighbor_iter != nodes.back()->out_edges().end()) {
+        // Found an unvisited edge. Goes through the edge to get the neighbor.
+        Node* neighbor_node = (*current_neighbor_iter)->dst();
+        ++current_neighbor_stack.top();  // Retrieves the next unvisited edge.
+
+        if ((*node_checker)(neighbor_node)) {
+          // Found a match. Stores the node and moves to the next checker.
+          nodes.push_back(neighbor_node);
+          current_neighbor_stack.push(neighbor_node->out_edges().begin());
+          if (++node_checker == fi->node_checkers.end()) {
+            return make_tuple(true, nodes, *fi);
           }
-          
-          return make_tuple(true, nodes, *fi_ptr);
-        }
-
-        auto &current_neighbor_iter = current_neighbor_stack.top();
-        if (current_neighbor_iter == current_node->out_edges().end()) {
-            // All output edges have been exhausted, pop the stack
-            // and roll back to the preceding node.
-            work_stack.pop();
-            current_neighbor_stack.pop();
-            -- node_checker;
-        } else {
-            // Found a edge not been visited, go through this edge
-            // and get the next neighbor.
-            Node *neighbor_node = (*current_neighbor_iter)->dst();
-            work_stack.push(neighbor_node);
-            current_neighbor_stack.push(neighbor_node->out_edges().begin());
-            ++ node_checker;
-
-            // Increase current_neighbor_iter, which is at the top of stack.
-            ++ current_neighbor_iter;
         }
       } else {
-        // current node doesn't match, pop stack to roll back.
-        // visited_nodes.insert(current_node);
-        work_stack.pop();
+        // Removes the current node since none of its neighbor leads to a
+        // further match.
+        nodes.pop_back();
         current_neighbor_stack.pop();
-        -- node_checker;
+        --node_checker;
       }
     }
   }
 
-  return make_tuple(false, std::vector<Node *>(), *fi_ptr);
+  return make_tuple(false, std::vector<Node *>(), FusionInfo());
 }
 
 ///////////////////////////////////////////////////////////////////////////////
