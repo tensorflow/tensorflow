@@ -915,17 +915,17 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     if (node->type_string() != "Transpose") return false;
 
     // If "Transpose" has multiple output data edges, also don't fuse it.
-    // if (node->num_outputs() > 1 || node->out_edges().size() > 1) return false;
+    if (node->num_outputs() > 1 || node->out_edges().size() > 1) return false;
 
     // Check if has out control edge. If true, this is a training graph.
     // Currently we focus on inference and do no fusion in training.
     // Note: this constraint will eventually be removed, if we enabled this fusion for training
     // in the future. 
-    // for (const Edge* e : node->out_edges()) {
-    //   if (e->IsControlEdge()) {
-    //     return false;
-    //   }
-    // }
+    for (const Edge* e : node->out_edges()) {
+      if (e->IsControlEdge()) {
+        return false;
+      }
+    }
 
     // If "Transpose" has input control edges, don't fuse on it.
     for (const Edge* e : node->in_edges()) {
