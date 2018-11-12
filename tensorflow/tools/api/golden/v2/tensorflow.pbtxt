@@ -957,22 +957,6 @@ tf_module {
     argspec: "args=[\'input\', \'min_range\', \'max_range\', \'T\', \'mode\', \'name\', \'round_mode\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'None\', \'HALF_AWAY_FROM_ZERO\'], "
   }
   member_method {
-    name: "random_crop"
-    argspec: "args=[\'value\', \'size\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "random_normal"
-    argspec: "args=[\'shape\', \'mean\', \'stddev\', \'dtype\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \"<dtype: \'float32\'>\", \'None\', \'None\'], "
-  }
-  member_method {
-    name: "random_shuffle"
-    argspec: "args=[\'value\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "random_uniform"
-    argspec: "args=[\'shape\', \'minval\', \'maxval\', \'dtype\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \"<dtype: \'float32\'>\", \'None\', \'None\'], "
-  }
-  member_method {
     name: "range"
     argspec: "args=[\'start\', \'limit\', \'delta\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'1\', \'None\', \'range\'], "
   }
