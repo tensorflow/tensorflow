@@ -1223,6 +1223,124 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
       for s, u_s in zip(additional_state_list[2], additional_state_list[3]):
         self.assertAllClose(s, u_s, atol=1e-04)
 
+  def test_rnn_output_and_state_masking_independent(self):
+    num_samples = 2
+    num_timesteps = 4
+    state_and_io_size = 2
+    mask_last_num_timesteps = 2  # for second sample only
+
+    # a step function that just outputs inputs,
+    # but increments states +1 per timestep
+    def step_function(inputs, states):
+      return inputs, [s + 1 for s in states]
+
+    inputs_vals = np.random.random(
+        (num_samples, num_timesteps, state_and_io_size))
+    initial_state_vals = np.random.random((num_samples, state_and_io_size))
+    # masking of two last timesteps for second sample only
+    mask_vals = np.ones((num_samples, num_timesteps))
+    mask_vals[1, -mask_last_num_timesteps:] = 0
+
+    # outputs expected to be same as inputs for the first sample
+    expected_outputs = inputs_vals.copy()
+    # but for the second sample all outputs in masked region should be the same
+    # as last output before masked region
+    expected_outputs[1, -mask_last_num_timesteps:] = \
+        expected_outputs[1, -(mask_last_num_timesteps + 1)]
+
+    expected_state = initial_state_vals.copy()
+    # first state should be incremented for every timestep (no masking)
+    expected_state[0] += num_timesteps
+    # second state should not be incremented for last two timesteps
+    expected_state[1] += (num_timesteps - mask_last_num_timesteps)
+
+    # verify same expected output for `unroll=true/false`
+    inputs = keras.backend.variable(inputs_vals)
+    initial_states = [keras.backend.variable(initial_state_vals)]
+    mask = keras.backend.variable(mask_vals)
+    for unroll in [True, False]:
+      last_output, outputs, last_states = keras.backend.rnn(
+          step_function,
+          inputs,
+          initial_states,
+          mask=mask,
+          unroll=unroll,
+          input_length=num_timesteps if unroll else None)
+
+      self.assertAllClose(
+          keras.backend.eval(outputs), expected_outputs)
+      self.assertAllClose(
+          keras.backend.eval(last_states[0]), expected_state)
+
+  def test_rnn_output_num_dim_larger_than_2_masking(self):
+    num_samples = 3
+    num_timesteps = 4
+    num_features = 5
+
+    def step_function(inputs, states):
+      outputs = keras.backend.tile(keras.backend.expand_dims(inputs), [1, 1, 2])
+      return outputs, [keras.backend.identity(s) for s in states]
+      # Note: cannot just return states (which can be a problem) ->
+      # tensorflow/python/ops/resource_variable_ops.py", line 824, in set_shape
+      # NotImplementedError: ResourceVariable does not implement set_shape()
+
+    inputs_vals = np.random.random((num_samples, num_timesteps, num_features))
+    initial_state_vals = np.random.random((num_samples, 6))
+    mask_vals = np.ones((num_samples, num_timesteps))
+    mask_vals[-1, -1] = 0  # final timestep masked for last sample
+
+    expected_outputs = np.repeat(inputs_vals[..., None], repeats=2, axis=-1)
+    # for the last sample, the final timestep (in masked region) should be the
+    # same as the second to final output (before masked region)
+    expected_outputs[-1, -1] = expected_outputs[-1, -2]
+
+    inputs = keras.backend.variable(inputs_vals)
+    initial_states = [keras.backend.variable(initial_state_vals)]
+    mask = keras.backend.variable(mask_vals)
+    for unroll in [True, False]:
+      last_output, outputs, last_states = keras.backend.rnn(
+          step_function,
+          inputs,
+          initial_states,
+          mask=mask,
+          unroll=unroll,
+          input_length=num_timesteps if unroll else None)
+
+      self.assertAllClose(keras.backend.eval(outputs), expected_outputs)
+
+  def test_rnn_state_num_dim_larger_than_2_masking(self):
+    num_samples = 3
+    num_timesteps = 4
+
+    def step_function(inputs, states):
+        return inputs, [s + 1 for s in states]
+
+    inputs_vals = np.random.random((num_samples, num_timesteps, 5))
+    initial_state_vals = np.random.random((num_samples, 6, 7))
+    mask_vals = np.ones((num_samples, num_timesteps))
+    mask_vals[0, -2:] = 0  # final two timesteps masked for first sample
+
+    expected_last_state = initial_state_vals.copy()
+    expected_last_state[0] += (num_timesteps - 2)
+    expected_last_state[1:] += num_timesteps
+
+    inputs = keras.backend.variable(inputs_vals)
+    initial_states = [keras.backend.variable(initial_state_vals)]
+    mask = keras.backend.variable(mask_vals)
+    for unroll in [True, False]:
+      last_output, outputs, last_states = keras.backend.rnn(
+          step_function,
+          inputs,
+          initial_states,
+          mask=mask,
+          unroll=unroll,
+          input_length=num_timesteps if unroll else None)
+
+      # not updated last timestep:
+      self.assertAllClose(
+          keras.backend.eval(last_states[0]),
+          expected_last_state)
+
   def test_normalize_batch_in_training(self):
     val = np.random.random((10, 3, 10, 10))
     x = keras.backend.variable(val)
