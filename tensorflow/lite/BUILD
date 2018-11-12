@@ -201,6 +201,7 @@ cc_library(
     name = "string_util",
     srcs = ["string_util.cc"],
     hdrs = ["string_util.h"],
+    copts = tflite_copts(),
     deps = [
         ":framework",
         ":string",
@@ -323,6 +324,7 @@ cc_library(
     name = "util",
     srcs = ["util.cc"],
     hdrs = ["util.h"],
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:c_api_internal",
     ],
