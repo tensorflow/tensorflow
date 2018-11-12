@@ -153,7 +153,7 @@ mlfunc bar(%A : memref<8x?xf32, #lmap>) {
   // dynamically using dim instruction.
   %N = builtin "dim"(%A){index : 1} : (memref<8x?xf32, #lmap>) -> int
 
-  for %i = 0 to 15 {
+  for %i = 0 to 8 {
     for %j = 0 to %N {
       // A[i,j] += 1
       %s1 = load %A [%i, %j] : memref<8x?xf32, #lmap>
