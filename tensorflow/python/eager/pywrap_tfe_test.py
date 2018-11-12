@@ -22,7 +22,6 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
-from tensorflow.python.eager import tape
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -34,11 +33,6 @@ from tensorflow.python.ops import resource_variable_ops
 
 
 class Tests(test.TestCase):
-
-  def setUp(self):
-    # Force-load `distribution_strategy_context` to prevent GC at
-    # test time. See discussion in cl//219478951.
-    tape.distribution_strategy_context.get_distribution_strategy()
 
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
