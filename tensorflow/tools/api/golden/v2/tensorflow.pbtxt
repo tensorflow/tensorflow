@@ -558,7 +558,7 @@ tf_module {
   }
   member_method {
     name: "boolean_mask"
-    argspec: "args=[\'tensor\', \'mask\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'boolean_mask\', \'None\'], "
+    argspec: "args=[\'tensor\', \'mask\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'boolean_mask\'], "
   }
   member_method {
     name: "broadcast_dynamic_shape"

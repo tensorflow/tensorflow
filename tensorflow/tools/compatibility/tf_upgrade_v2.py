@@ -44,6 +44,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     })
     # pylint: enable=line-too-long
 
+    excluded_renames = ["tf.boolean_mask"]
+
     # Variables that should be changed to functions.
     self.change_to_function = {}
 
@@ -54,6 +56,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.convert_to_tensor": ["value", "dtype", "preferred_dtype", "name"],
         "tf.argmin": ["input", "axis", "output_type", "name"],
         "tf.argmax": ["input", "axis", "output_type", "name"],
+        "tf.boolean_mask": ["tensor", "mask", "name", "axis"],
     }
 
     # Specially handled functions.
@@ -89,8 +92,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     }
     # Right now we can't have both a rename and a warning.
     self.symbol_renames = {
-        name: new_name for name, new_name in self.symbol_renames.items()
-        if name not in self.function_warnings
+        name: new_name
+        for name, new_name in self.symbol_renames.items()
+        if name not in self.function_warnings and name not in excluded_renames
     }
 
 
