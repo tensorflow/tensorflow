@@ -8,9 +8,9 @@ the usage documentation.
 
 Usage information is given in these documents:
 
-*   [Command-line glossary](g3doc/cmdline_reference.md)
-*   [Command-line examples](g3doc/cmdline_examples.md)
-*   [Python API examples](g3doc/python_api.md)
+*   [Command-line glossary](../g3doc/convert/cmdline_reference.md)
+*   [Command-line examples](../g3doc/convert/cmdline_examples.md)
+*   [Python API examples](../g3doc/convert/python_api.md)
 
 ## Where the converter fits in the TensorFlow landscape
 
@@ -26,4 +26,4 @@ to client devices, generally mobile devices, where the TensorFlow Lite
 interpreter handles them on-device.  This flow is represented in the diagram
 below.
 
-![drawing](g3doc/toco_landscape.svg)
+![drawing](../g3doc/images/convert/workflow.svg)
