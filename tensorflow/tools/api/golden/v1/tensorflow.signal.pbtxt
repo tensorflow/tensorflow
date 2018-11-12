@@ -1,6 +1,18 @@
 path: "tensorflow.signal"
 tf_module {
   member_method {
+    name: "fft"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "fft2d"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "fft3d"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "frame"
     argspec: "args=[\'signal\', \'frame_length\', \'frame_step\', \'pad_end\', \'pad_value\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'0\', \'-1\', \'None\'], "
   }
@@ -11,6 +23,18 @@ tf_module {
   member_method {
     name: "hann_window"
     argspec: "args=[\'window_length\', \'periodic\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "ifft"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "ifft2d"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "ifft3d"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "inverse_stft"
