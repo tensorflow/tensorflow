@@ -767,6 +767,9 @@ class HloInstruction {
   // when we plumb a primordial token from the entry computation.
   static std::unique_ptr<HloInstruction> CreateToken();
 
+  static std::unique_ptr<HloInstruction> CreateGetDimensionSize(
+      const Shape& shape, HloInstruction* operand, int64 dimension);
+
   // Returns the opcode for this instruction.
   HloOpcode opcode() const { return opcode_; }
 
