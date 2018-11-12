@@ -22,12 +22,12 @@ limitations under the License.
 #include <memory>
 #include <queue>
 #include <set>
+#include <set>
+#include <stack>
 #include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <stack>
-#include <set>
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
@@ -514,8 +514,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       csinfo_.conv2d_grad_filter_with_bias,
                       GetConv2DBackpropFilterOrBiasAddGrad});
 
-    // The fusion patterns in "finfo_" that show up first will get applied first,
-    // for example, graph "A->B->C-D" and finfo_ is {A->B->C to ABC, A->B->C->D to ABCD},
+    // The fusion patterns in "finfo_" that show up first will get applied
+    // first,
+    // for example, graph "A->B->C-D" and finfo_ is {A->B->C to ABC, A->B->C->D
+    // to ABCD},
     // since the first gets applied first, the final graph will be ABC->D.
 
     //
@@ -903,7 +905,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   Status FuseNode(std::unique_ptr<Graph>* g, std::vector<Node*>& nodes,
                   const MklLayoutRewritePass::FusionInfo fi);
 
-  // Fuse tranpose(to "NHWC") + mklop("NHWC") + transpose(to "NCHW") into mklop("NCHW").
+  // Fuse tranpose(to "NHWC") + mklop("NHWC") + transpose(to "NCHW") into
+  // mklop("NCHW").
   // Here "mklop" can be any MKL-DNN supported op, such as Conv2D.
   static Status FuseTransposeMklOpTranspose(
       std::unique_ptr<Graph>* g, std::vector<Node*>& nodes,
@@ -919,8 +922,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
     // Check if has out control edge. If true, this is a training graph.
     // Currently we focus on inference and do no fusion in training.
-    // Note: this constraint will eventually be removed, if we enabled this fusion for training
-    // in the future. 
+    // Note: this constraint will eventually be removed, if we enabled this
+    // fusion for training
+    // in the future.
     for (const Edge* e : node->out_edges()) {
       if (e->IsControlEdge()) {
         return false;
@@ -1835,7 +1839,6 @@ void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
 
       new_strides = {strides[NHWC::dim::N], strides[NHWC::dim::C],
                      strides[NHWC::dim::H], strides[NHWC::dim::W]};
-      
 
       new_dilations = {dilations[NHWC::dim::N], dilations[NHWC::dim::C],
                        dilations[NHWC::dim::H], dilations[NHWC::dim::W]};
@@ -2698,8 +2701,8 @@ Status MklLayoutRewritePass::FuseTransposeMklOpTranspose(
   for (const Edge* e : transpose_to_nchw->out_edges()) {
     if (!e->IsControlEdge()) {
       const int kTransposeWithMklOpOutputSlot = 0;
-      CHECK_NOTNULL((*g)->AddEdge(new_node, kTransposeWithMklOpOutputSlot, e->dst(),
-                                  e->dst_input()));
+      CHECK_NOTNULL((*g)->AddEdge(new_node, kTransposeWithMklOpOutputSlot,
+                                  e->dst(), e->dst_input()));
     }
   }
 
@@ -2726,7 +2729,7 @@ Status MklLayoutRewritePass::FuseNode(
 std::tuple<bool, std::vector<Node*>, const MklLayoutRewritePass::FusionInfo>
 MklLayoutRewritePass::CheckForNodeFusion(Node* a) const {
   // Stores matched nodes, in the same order as node_checkers.
-  std::vector<Node *> nodes;
+  std::vector<Node*> nodes;
 
   for (auto fi = finfo_.begin(); fi != finfo_.end(); ++fi) {
     //
@@ -2743,7 +2746,7 @@ MklLayoutRewritePass::CheckForNodeFusion(Node* a) const {
     if (a != nullptr && (*node_checker)(a)) {
       nodes.push_back(a);
       current_neighbor_stack.push(a->out_edges().begin());
-      ++ node_checker;
+      ++node_checker;
     }
 
     while (!nodes.empty()) {
@@ -2772,7 +2775,7 @@ MklLayoutRewritePass::CheckForNodeFusion(Node* a) const {
     }
   }
 
-  return make_tuple(false, std::vector<Node *>(), FusionInfo());
+  return make_tuple(false, std::vector<Node*>(), FusionInfo());
 }
 
 ///////////////////////////////////////////////////////////////////////////////
