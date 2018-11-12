@@ -274,6 +274,7 @@ def model_iteration(model,
   # TODO(omalleyt): Handle ProgBar as part of Callbacks once hooks are ready.
   progbar = _get_progbar(model, count_mode)
   progbar.params = callbacks.params
+  progbar.params['verbose'] = verbose
 
   # Find beforehand arrays that need sparse-to-dense conversion.
   if issparse is not None:
