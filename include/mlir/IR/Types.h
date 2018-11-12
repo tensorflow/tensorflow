@@ -187,7 +187,16 @@ public:
   IntegerType() = default;
   /* implicit */ IntegerType(Type::ImplType *ptr);
 
+  /// Get or create a new IntegerType of the given width within the context.
+  /// Assume the width is within the allowed range and assert on failures.
+  /// Use getChecked to handle failures gracefully.
   static IntegerType get(unsigned width, MLIRContext *context);
+
+  /// Get or create a new IntegerType of the given width within the context,
+  /// defined at the given, potentially unknown, location.  If the width is
+  /// outside the allowed range, emit errors and return a null type.
+  static IntegerType getChecked(unsigned width, MLIRContext *context,
+                                Location location);
 
   /// Return the bitwidth of this integer type.
   unsigned getWidth() const;

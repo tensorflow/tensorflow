@@ -318,12 +318,9 @@ Type Parser::parseType() {
     auto width = getToken().getIntTypeBitwidth();
     if (!width.hasValue())
       return (emitError("invalid integer width"), nullptr);
-    if (width > IntegerType::kMaxWidth)
-      return (emitError("integer bitwidth is limited to " +
-                        Twine(IntegerType::kMaxWidth) + " bits"),
-              nullptr);
+    auto loc = getEncodedSourceLocation(getToken().getLoc());
     consumeToken(Token::inttype);
-    return builder.getIntegerType(width.getValue());
+    return IntegerType::getChecked(width.getValue(), builder.getContext(), loc);
   }
 
   // float-type

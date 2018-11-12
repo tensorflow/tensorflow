@@ -683,17 +683,36 @@ IndexType IndexType::get(MLIRContext *context) {
   return impl.indexType;
 }
 
-IntegerType IntegerType::get(unsigned width, MLIRContext *context) {
-  assert(width <= kMaxWidth && "admissible integer bitwidth exceeded");
+static IntegerType getIntegerType(unsigned width, MLIRContext *context,
+                                  llvm::Optional<Location> location) {
+  if (width > IntegerType::kMaxWidth) {
+    if (location)
+      context->emitError(*location, "integer bitwidth is limited to " +
+                                        Twine(IntegerType::kMaxWidth) +
+                                        " bits");
+    return {};
+  }
+
   auto &impl = context->getImpl();
 
   auto *&result = impl.integers[width];
   if (!result) {
     result = impl.allocator.Allocate<IntegerTypeStorage>();
-    new (result) IntegerTypeStorage{{Kind::Integer, context}, width};
+    new (result) IntegerTypeStorage{{Type::Kind::Integer, context}, width};
   }
 
   return result;
+}
+
+IntegerType IntegerType::getChecked(unsigned width, MLIRContext *context,
+                                    Location location) {
+  return getIntegerType(width, context, location);
+}
+
+IntegerType IntegerType::get(unsigned width, MLIRContext *context) {
+  auto type = getIntegerType(width, context, None);
+  assert(type && "failed to construct IntegerType");
+  return type;
 }
 
 FloatType FloatType::get(Kind kind, MLIRContext *context) {
