@@ -29,8 +29,11 @@ def tflite_copts():
         ],
         str(Label("//tensorflow:windows")): [
             "/DTF_COMPILE_LIBRARY",
+            "/wd4018",  # -Wno-sign-compare
         ],
-        "//conditions:default": [],
+        "//conditions:default": [
+            "-Wno-sign-compare",
+        ],
     }) + select({
         str(Label("//tensorflow:with_default_optimizations")): [],
         "//conditions:default": ["-DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK"],
