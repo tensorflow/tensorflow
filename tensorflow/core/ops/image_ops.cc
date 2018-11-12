@@ -158,9 +158,12 @@ Status NMSLiteShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->GetAttr("use_static_shapes", &use_static_shapes));
   if(!use_static_shapes) {
     DimensionHandle output_dim;
-    DimensionHandle batch_dim = c->UnknownDim();
-
+    DimensionHandle batch_dim = c->Dim(boxes, 0);
+    
     TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(3, &output_dim));
+    if(c->Value(output_dim) <= 0) {
+      return errors::InvalidArgument("max_total_size should be > 0 ");
+    }
     c->set_output(0, c->MakeShape({batch_dim, output_dim, 4}));
     c->set_output(1, c->MakeShape({batch_dim, output_dim}));
     c->set_output(2, c->MakeShape({batch_dim, output_dim}));

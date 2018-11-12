@@ -3248,10 +3248,11 @@ def non_max_suppression_lite(boxes,
       overlap too much with respect to IOU.
     score_threshold: A float representing the threshold for deciding when to
       remove boxes based on score.
-    use_static_shapes: If true, the output nmsed boxes, scores, classes and 
-      selected_indices are padded to be of length `max_size_per_class` and 
-      it doesn't clip boxes to max_total_size. If false, the outputs are
-      padded/clipped to max_total_size. Defaults to false.
+    use_static_shapes: If false, the output nmsed boxes, scores, classes and
+      selected_indices are padded/clipped to `max_total_size`. If true, the
+      output nmsed boxes, scores, classes and selected_indices are
+      padded/clipped to be of length `max_size_per_class` or `max_total_size`.
+      Defaults to false.
     name: A name for the operation (optional).
 
   Returns:
