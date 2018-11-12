@@ -2258,7 +2258,7 @@ def matvec(a,
 _OverrideBinaryOperatorHelper(matmul, "matmul")
 
 sparse_matmul = gen_math_ops.sparse_mat_mul
-tf_export("sparse_matmul")(sparse_matmul)
+tf_export(v1=["sparse_matmul"])(sparse_matmul)
 
 
 @ops.RegisterStatistics("MatMul", "flops")
