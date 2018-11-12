@@ -285,7 +285,12 @@ class PolymorphicFunction(object):
 
     self._stateless_fn = self._defun_with_scope(invalid_creator_scope)
     self._stateless_fn._name = self._name  # pylint: disable=protected-access
-    return self._stateful_fn._canonicalize_function_inputs(*args, **kwds)  # pylint: disable=protected-access
+    if self._input_signature is None or args or kwds:
+      return self._stateful_fn._canonicalize_function_inputs(*args, **kwds)  # pylint: disable=protected-access
+    # If an input signature is defined, we may need to fetch a concrete function
+    # without any inputs specified. In this case args and kwds should be ignored
+    # but running _canonicalize_function_inputs would raise an exception.
+    return (), {}
 
   def __call__(self, *args, **kwds):
     """Calls the graph function."""
