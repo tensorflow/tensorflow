@@ -188,6 +188,14 @@ public:
     insertPoint = BasicBlock::iterator();
   }
 
+  /// Return the block the current insertion point belongs to.  Note that the
+  /// the insertion point is not necessarily the end of the block.
+  BasicBlock *getInsertionBlock() const { return block; }
+
+  /// Return the insert position as the BasicBlock iterator.  The block itself
+  /// can be obtained by calling getInsertionBlock.
+  BasicBlock::iterator getInsertionPoint() const { return insertPoint; }
+
   /// Set the insertion point to the specified location.
   void setInsertionPoint(BasicBlock *block, BasicBlock::iterator insertPoint) {
     assert(block->getFunction() == function &&
@@ -279,6 +287,8 @@ public:
 
 private:
   template <typename T> T *insertTerminator(T *term) {
+    // FIXME: b/118738403
+    assert(!block->getTerminator() && "cannot insert the second terminator");
     block->setTerminator(term);
     return term;
   }

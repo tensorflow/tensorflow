@@ -218,8 +218,14 @@ public:
     types.append(newTypes.begin(), newTypes.end());
   }
 
+  /// Add an attribute with the specified name.
   void addAttribute(StringRef name, Attribute attr) {
-    attributes.push_back({Identifier::get(name, context), attr});
+    addAttribute(Identifier::get(name, context), attr);
+  }
+
+  /// Add an attribute with the specified name.
+  void addAttribute(Identifier name, Attribute attr) {
+    attributes.push_back({name, attr});
   }
 };
 
