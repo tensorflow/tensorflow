@@ -2833,6 +2833,15 @@ Status ValidateScatterDimensionNumbers(
     }
   }
 
+  // Validate window size.
+  auto window_size = dim_numbers.update_window_dims_size() +
+                     dim_numbers.inserted_window_dims_size();
+  if (window_size != ShapeUtil::Rank(operand_shape)) {
+    return InvalidArgument(
+        "Scatter op has window of size %d; doesn't match operand of rank %d.",
+        window_size, ShapeUtil::Rank(operand_shape));
+  }
+
   // Validate scatter_dims_to_operand_dims in ScatterDimensionNumbers.
   if (dim_numbers.scatter_dims_to_operand_dims_size() !=
       scatter_indices_shape[dim_numbers.index_vector_dim()]) {
