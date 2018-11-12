@@ -479,6 +479,7 @@ class IteratorBase {
 
  private:
   friend class DatasetBase;  // for access to `AddCleanupFunction`
+  friend class DatasetBaseIterator;  // for access to `node_`
 
   // Registers a cleanup function to be called upon object destruction.
   //
@@ -487,7 +488,11 @@ class IteratorBase {
     cleanup_fns_.push_back(std::move(cleanup_fn));
   }
 
+  // Associates the given performance modeling `Node` with this iterator.
+  void SetNode(std::shared_ptr<model::Node> node) { node_ = node.get(); }
+
   std::vector<std::function<void()>> cleanup_fns_;
+  model::Node* node_ = nullptr;  // Not owned.
 };
 
 // Represents runtime information needed to construct a dataset.
@@ -539,8 +544,8 @@ class DatasetBase : public core::RefCounted {
     *iterator = MakeIteratorInternal(output_prefix);
     if (const auto& model = ctx->model()) {
       const string& prefix = (*iterator)->prefix();
-      model->AddNode(MakeNodeFactory(ctx, iterator->get()), prefix,
-                     output_prefix);
+      (*iterator)->SetNode(model->AddNode(MakeNodeFactory(ctx, iterator->get()),
+                                          prefix, output_prefix));
       (*iterator)->AddCleanupFunction(
           [model, prefix]() { model->RemoveNode(prefix); });
     }
@@ -670,24 +675,32 @@ class DatasetBaseIterator : public IteratorBase {
   // When performance modeling is enabled, this method records the fact that
   // this iterator has produced an element.
   void RecordElement(IteratorContext* ctx) {
-    if (const auto& model = ctx->model()) {
-      model->RecordElement(prefix());
+    if (node_) {
+      node_->record_element();
     }
   }
 
   // When performance modeling is enabled, this method records the fact that
   // a thread of this iterator has started work.
   void RecordStart(IteratorContext* ctx, bool stop_output = false) {
-    if (const auto& model = ctx->model()) {
-      model->RecordStart(prefix(), stop_output);
+    if (node_) {
+      int64 now_nanos = Env::Default()->NowNanos();
+      if (stop_output && node_->output()) {
+        node_->output()->record_stop(now_nanos);
+      }
+      node_->record_start(now_nanos);
     }
   }
 
   // When performance modeling is enabled, this method records the fact that
   // a thread of this iterator has stopped work.
   void RecordStop(IteratorContext* ctx, bool start_output = false) {
-    if (const auto& model = ctx->model()) {
-      ctx->model()->RecordStop(prefix(), start_output);
+    if (node_) {
+      int64 now_nanos = Env::Default()->NowNanos();
+      node_->record_stop(now_nanos);
+      if (start_output && node_->output()) {
+        node_->output()->record_start(now_nanos);
+      }
     }
   }
 
