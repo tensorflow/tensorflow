@@ -144,14 +144,17 @@ public:
 class IntegerAttr : public Attribute {
 public:
   using ImplType = detail::IntegerAttributeStorage;
-  using ValueType = int64_t;
+  using ValueType = APInt;
 
   IntegerAttr() = default;
   /* implicit */ IntegerAttr(Attribute::ImplType *ptr);
 
   static IntegerAttr get(int64_t value, MLIRContext *context);
+  static IntegerAttr get(const APInt &value, MLIRContext *context);
 
-  int64_t getValue() const;
+  APInt getValue() const;
+  // TODO(jpienaar): Change callers to use getValue instead.
+  int64_t getInt() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(Kind kind) { return kind == Kind::Integer; }

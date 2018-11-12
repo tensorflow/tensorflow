@@ -380,11 +380,11 @@ bool mlir::constantFoldBounds(ForStmt *forStmt) {
     auto maxOrMin = foldedResults[0].cast<IntegerAttr>().getValue();
     for (unsigned i = 1; i < foldedResults.size(); i++) {
       auto foldedResult = foldedResults[i].cast<IntegerAttr>().getValue();
-      maxOrMin = lower ? std::max(maxOrMin, foldedResult)
-                       : std::min(maxOrMin, foldedResult);
+      maxOrMin = lower ? llvm::APIntOps::smax(maxOrMin, foldedResult)
+                       : llvm::APIntOps::smin(maxOrMin, foldedResult);
     }
-    lower ? forStmt->setConstantLowerBound(maxOrMin)
-          : forStmt->setConstantUpperBound(maxOrMin);
+    lower ? forStmt->setConstantLowerBound(maxOrMin.getSExtValue())
+          : forStmt->setConstantUpperBound(maxOrMin.getSExtValue());
 
     // Return false on success.
     return false;

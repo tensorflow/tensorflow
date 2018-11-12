@@ -187,6 +187,21 @@ struct FloatAttrKeyInfo : DenseMapInfo<FloatAttributeStorage *> {
   }
 };
 
+struct IntegerAttrKeyInfo : DenseMapInfo<IntegerAttributeStorage *> {
+  // Integer attributes are uniqued based on wrapped APInt.
+  using KeyTy = APInt;
+  using DenseMapInfo<IntegerAttributeStorage *>::getHashValue;
+  using DenseMapInfo<IntegerAttributeStorage *>::isEqual;
+
+  static unsigned getHashValue(KeyTy key) { return llvm::hash_value(key); }
+
+  static bool isEqual(const KeyTy &lhs, const IntegerAttributeStorage *rhs) {
+    if (rhs == getEmptyKey() || rhs == getTombstoneKey())
+      return false;
+    return lhs == rhs->getValue();
+  }
+};
+
 struct ArrayAttrKeyInfo : DenseMapInfo<ArrayAttributeStorage *> {
   // Array attributes are uniqued based on their elements.
   using KeyTy = ArrayRef<Attribute>;
@@ -377,7 +392,7 @@ public:
 
   // Attribute uniquing.
   BoolAttributeStorage *boolAttrs[2] = {nullptr};
-  DenseMap<int64_t, IntegerAttributeStorage *> integerAttrs;
+  DenseSet<IntegerAttributeStorage *, IntegerAttrKeyInfo> integerAttrs;
   DenseSet<FloatAttributeStorage *, FloatAttrKeyInfo> floatAttrs;
   StringMap<StringAttributeStorage *> stringAttrs;
   using ArrayAttrSet = DenseSet<ArrayAttributeStorage *, ArrayAttrKeyInfo>;
@@ -1040,17 +1055,37 @@ BoolAttr BoolAttr::get(bool value, MLIRContext *context) {
   return result;
 }
 
-IntegerAttr IntegerAttr::get(int64_t value, MLIRContext *context) {
-  auto *&result = context->getImpl().integerAttrs[value];
-  if (result)
-    return result;
+IntegerAttr IntegerAttr::get(const APInt &value, MLIRContext *context) {
+  auto &impl = context->getImpl();
 
-  result = context->getImpl().allocator.Allocate<IntegerAttributeStorage>();
-  new (result) IntegerAttributeStorage{{Attribute::Kind::Integer,
-                                        /*isOrContainsFunction=*/false},
-                                       value};
-  result->value = value;
-  return result;
+  // Look to see if the integer attribute has been created already.
+  auto existing = impl.integerAttrs.insert_as(nullptr, value);
+
+  // If it has been created, return it.
+  if (!existing.second)
+    return *existing.first;
+
+  // If it doesn't, create one and return it.
+  auto elements = ArrayRef<uint64_t>(value.getRawData(), value.getNumWords());
+
+  auto byteSize =
+      IntegerAttributeStorage::totalSizeToAlloc<uint64_t>(elements.size());
+  auto rawMem =
+      impl.allocator.Allocate(byteSize, alignof(IntegerAttributeStorage));
+  // TODO: This uses 64 bit APInts by default without consideration of value.
+  auto result = ::new (rawMem) IntegerAttributeStorage{
+      {Attribute::Kind::Integer, /*isOrContainsFunction=*/false},
+      {},
+      /*numBits*/ 64,
+      elements.size()};
+  std::uninitialized_copy(elements.begin(), elements.end(),
+                          result->getTrailingObjects<uint64_t>());
+  return *existing.first = result;
+}
+
+IntegerAttr IntegerAttr::get(int64_t value, MLIRContext *context) {
+  // TODO: This uses 64 bit APInts by default.
+  return get(APInt(64, value, /*isSigned=*/true), context);
 }
 
 FloatAttr FloatAttr::get(double value, MLIRContext *context) {

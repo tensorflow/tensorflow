@@ -68,6 +68,7 @@ public:
   }
 
 private:
+  // TODO: Change these to operate on APInts too.
   IntegerAttr
   constantFoldBinExpr(AffineExpr expr,
                       std::function<uint64_t(int64_t, uint64_t)> op) {
@@ -76,8 +77,7 @@ private:
     auto rhs = constantFold(binOpExpr.getRHS());
     if (!lhs || !rhs)
       return nullptr;
-    return IntegerAttr::get(op(lhs.getValue(), rhs.getValue()),
-                            expr.getContext());
+    return IntegerAttr::get(op(lhs.getInt(), rhs.getInt()), expr.getContext());
   }
 
   // The number of dimension operands in AffineMap containing this expression.

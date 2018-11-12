@@ -37,9 +37,11 @@ bool BoolAttr::getValue() const { return static_cast<ImplType *>(attr)->value; }
 
 IntegerAttr::IntegerAttr(Attribute::ImplType *ptr) : Attribute(ptr) {}
 
-int64_t IntegerAttr::getValue() const {
-  return static_cast<ImplType *>(attr)->value;
+APInt IntegerAttr::getValue() const {
+  return static_cast<ImplType *>(attr)->getValue();
 }
+
+int64_t IntegerAttr::getInt() const { return getValue().getSExtValue(); }
 
 FloatAttr::FloatAttr(Attribute::ImplType *ptr) : Attribute(ptr) {}
 

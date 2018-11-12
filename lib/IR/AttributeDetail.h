@@ -46,8 +46,17 @@ struct BoolAttributeStorage : public AttributeStorage {
 };
 
 /// An attribute representing a integral value.
-struct IntegerAttributeStorage : public AttributeStorage {
-  int64_t value;
+struct IntegerAttributeStorage final
+    : public AttributeStorage,
+      public llvm::TrailingObjects<IntegerAttributeStorage, uint64_t> {
+  const unsigned numBits;
+  size_t numObjects;
+
+  /// Returns an APInt representing the stored value.
+  APInt getValue() const {
+    auto val = APInt(numBits, {getTrailingObjects<uint64_t>(), numObjects});
+    return val;
+  }
 };
 
 /// An attribute representing a floating point value.

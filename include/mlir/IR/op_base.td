@@ -85,6 +85,7 @@ class F32Attr : Attr<F32> {
 class I32Attr : Attr<I<32>> {
  let storageType = [{ IntegerAttr }];
  let returnType = [{ int }];
+ let convertFromStorage = [{ return {0}.getSExtValue(); }];
 }
 
 // Class representing a Trait (defined in a C++ file that needs to be included

@@ -226,7 +226,7 @@ class CmpIOp : public Op<CmpIOp, OpTrait::OperandsAreIntegerLike,
 public:
   CmpIPredicate getPredicate() const {
     return (CmpIPredicate)getAttrOfType<IntegerAttr>(getPredicateAttrName())
-        .getValue();
+        .getInt();
   }
 
   static StringRef getOperationName() { return "cmpi"; }
@@ -293,8 +293,7 @@ public:
 
   /// This returns the dimension number that the 'dim' is inspecting.
   unsigned getIndex() const {
-    return static_cast<unsigned>(
-        getAttrOfType<IntegerAttr>("index").getValue());
+    return getAttrOfType<IntegerAttr>("index").getValue().getZExtValue();
   }
 
   static StringRef getOperationName() { return "dim"; }

@@ -700,13 +700,10 @@ TensorLiteralParser::parseElementOrList(llvm::SmallVectorImpl<int> &dims) {
       if (!result.isa<IntegerAttr>())
         return p.emitError("expected tensor literal element has integer type");
       auto value = result.cast<IntegerAttr>().getValue();
-      // If we couldn't successfully round trip the value, it means some bits
-      // are truncated and we should give up here.
-      llvm::APInt apint(bitsWidth, (uint64_t)value, /*isSigned=*/true);
-      if (apint.getSExtValue() != value)
+      if (value.getMinSignedBits() > bitsWidth)
         return p.emitError("tensor literal element has more bits than that "
                            "specified in the type");
-      addToStorage((uint64_t)value);
+      addToStorage(value.getSExtValue());
       break;
     }
     default:

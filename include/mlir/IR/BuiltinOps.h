@@ -153,7 +153,7 @@ public:
                     Type type);
 
   int64_t getValue() const {
-    return getAttrOfType<IntegerAttr>("value").getValue();
+    return getAttrOfType<IntegerAttr>("value").getInt();
   }
 
   static bool isClassFor(const Operation *op);
@@ -174,7 +174,7 @@ public:
   static void build(Builder *builder, OperationState *result, int64_t value);
 
   int64_t getValue() const {
-    return getAttrOfType<IntegerAttr>("value").getValue();
+    return getAttrOfType<IntegerAttr>("value").getInt();
   }
 
   static bool isClassFor(const Operation *op);

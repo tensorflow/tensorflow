@@ -538,8 +538,8 @@ bool CmpIOp::parse(OpAsmParser *parser, OperationState *result) {
 void CmpIOp::print(OpAsmPrinter *p) const {
   *p << getOperationName() << " ";
 
-  int predicateValue =
-      getAttrOfType<IntegerAttr>(getPredicateAttrName()).getValue();
+  auto predicateValue =
+      getAttrOfType<IntegerAttr>(getPredicateAttrName()).getInt();
   assert(predicateValue >= static_cast<int>(CmpIPredicate::FirstValidValue) &&
          predicateValue < static_cast<int>(CmpIPredicate::NumPredicates) &&
          "unknown predicate index");
@@ -561,7 +561,7 @@ bool CmpIOp::verify() const {
   auto predicateAttr = getAttrOfType<IntegerAttr>(getPredicateAttrName());
   if (!predicateAttr)
     return emitOpError("requires an integer attribute named 'predicate'");
-  auto predicate = predicateAttr.getValue();
+  auto predicate = predicateAttr.getInt();
   if (predicate < (int64_t)CmpIPredicate::FirstValidValue ||
       predicate >= (int64_t)CmpIPredicate::NumPredicates)
     return emitOpError("'predicate' attribute value out of range");
@@ -645,7 +645,7 @@ bool DimOp::verify() const {
   auto indexAttr = getAttrOfType<IntegerAttr>("index");
   if (!indexAttr)
     return emitOpError("requires an integer attribute named 'index'");
-  uint64_t index = (uint64_t)indexAttr.getValue();
+  uint64_t index = indexAttr.getValue().getZExtValue();
 
   auto type = getOperand()->getType();
   if (auto tensorType = type.dyn_cast<RankedTensorType>()) {

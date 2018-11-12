@@ -90,10 +90,9 @@ struct constant_int_op_binder {
 
 // The matcher that matches a given target constant scalar / vector splat /
 // tensor splat integer value.
-template <IntegerAttr::ValueType TargetValue>
-struct constant_int_value_matcher {
+template <int64_t TargetValue> struct constant_int_value_matcher {
   bool match(Operation *op) {
-    IntegerAttr::ValueType value;
+    APInt value;
 
     return constant_int_op_binder(&value).match(op) && TargetValue == value;
   }
