@@ -2305,6 +2305,19 @@ XlaOp XlaBuilder::RecvFromHost(const XlaOp& token, const Shape& shape,
   });
 }
 
+XlaOp XlaBuilder::GetDimensionSize(const XlaOp& operand, int64 dimension) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const auto& operand_shape, GetShape(operand));
+    TF_ASSIGN_OR_RETURN(
+        *instr.mutable_shape(),
+        ShapeInference::InferGetDimensionSizeShape(operand_shape, dimension));
+    instr.add_dimensions(dimension);
+    return AddInstruction(std::move(instr), HloOpcode::kGetDimensionSize,
+                          {operand});
+  });
+}
+
 StatusOr<bool> XlaBuilder::IsConstant(const XlaOp& operand) const {
   TF_RETURN_IF_ERROR(first_error_);
 
@@ -3156,6 +3169,10 @@ XlaOp Iota(XlaBuilder* builder, PrimitiveType type, int64 size) {
 
 XlaOp Iota(XlaBuilder* builder, const Shape& shape, int64 iota_dimension) {
   return builder->Iota(shape, iota_dimension);
+}
+
+XlaOp GetDimensionSize(const XlaOp& operand, int64 dimension) {
+  return operand.builder()->GetDimensionSize(operand, dimension);
 }
 
 }  // namespace xla

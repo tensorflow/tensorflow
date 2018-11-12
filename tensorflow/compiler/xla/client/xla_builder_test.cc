@@ -349,6 +349,15 @@ TEST_F(XlaBuilderTest, CollectivePermute) {
   EXPECT_EQ(root->opcode(), HloOpcode::kCollectivePermute);
 }
 
+TEST_F(XlaBuilderTest, GetDimensionSize) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+  GetDimensionSize(x, 1);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kGetDimensionSize);
+}
+
 TEST_F(XlaBuilderTest, ReportError) {
   XlaBuilder b(TestName());
   auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");

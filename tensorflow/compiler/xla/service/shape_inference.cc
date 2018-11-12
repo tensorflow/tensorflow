@@ -2031,6 +2031,16 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   return operand_shape;
 }
 
+/* static */ StatusOr<Shape> ShapeInference::InferGetDimensionSizeShape(
+    const Shape& shape, int64 dimension) {
+  if (dimension < 0 || dimension >= ShapeUtil::Rank(shape)) {
+    return InvalidArgument("GetDimensionSize dimension out of bounds: %d.",
+                           dimension);
+  }
+
+  return ShapeUtil::MakeShape(S64, {});
+}
+
 /* static */ StatusOr<Shape> ShapeInference::InferSliceShape(
     const Shape& arg, absl::Span<const int64> starts,
     absl::Span<const int64> limits, absl::Span<const int64> strides) {
