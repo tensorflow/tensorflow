@@ -17,6 +17,8 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import re
 import sys
 
 from absl.testing import parameterized
@@ -861,17 +863,14 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
        'Cannot index into an inner ragged dimension'),
 
       # Tests for type errors
-      (SLICE_BUILDER[0.5], TypeError, "Value passed to parameter 'begin' has "
-       'DataType float32 not in list of allowed values: int32, int64'),
+      (SLICE_BUILDER[0.5], TypeError, re.escape(array_ops._SLICE_TYPE_ERROR)),
       (SLICE_BUILDER[1:3:0.5], TypeError,
-       "Input 'strides' of 'StridedSlice' Op has type float32 that does not "
-       "match type int32 of argument 'begin'."),
+       re.escape(array_ops._SLICE_TYPE_ERROR)),
       (SLICE_BUILDER[:, 1:3:0.5], TypeError,
        'slice strides must be integers or None'),
       (SLICE_BUILDER[:, 0.5:1.5], TypeError,
        'slice offsets must be integers or None'),
-      (SLICE_BUILDER['foo'.encode()], TypeError, 'cannot concatenate .*'
-       if sys.version_info[0] == 2 else "can't concat .*"),
+      (SLICE_BUILDER['foo'], TypeError, re.escape(array_ops._SLICE_TYPE_ERROR)),
       (SLICE_BUILDER[:, 'foo':'foo'], TypeError,
        'slice offsets must be integers or None'),
 

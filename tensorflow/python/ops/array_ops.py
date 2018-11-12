@@ -416,6 +416,36 @@ def rank_internal(input, name=None, optimize=True):
       return gen_array_ops.rank(input, name=name)
 
 
+_SLICE_TYPE_ERROR = (
+    "Only integers, slices (`:`), ellipsis (`...`), "
+    "tf.newaxis (`None`) and scalar tf.int32/tf.int64 tensors are valid "
+    "indices")
+
+_SUPPORTED_SLICE_DTYPES = (
+    dtypes.int32,
+    dtypes.int32_ref,
+    dtypes.int64,
+    dtypes.int64_ref
+)
+
+
+def _check_index(idx):
+  """Check if a given value is a valid index into a tensor."""
+  if isinstance(idx, (int, tensor_shape.Dimension)):
+    return
+
+  # Optimistic check. Assumptions:
+  # * any object with a dtype is supported
+  # * any object with a dtype has a sizeable shape attribute.
+  dtype = getattr(idx, "dtype", None)
+  if (dtype is None or
+      dtypes.as_dtype(dtype) not in _SUPPORTED_SLICE_DTYPES or
+      idx.shape and len(idx.shape) == 1):
+    # TODO(slebedev): IndexError seems more appropriate here, but it
+    # will break `_slice_helper` contract.
+    raise TypeError(_SLICE_TYPE_ERROR + ", got {!r}".format(idx))
+
+
 def _slice_helper(tensor, slice_spec, var=None):
   """Overload for Tensor.__getitem__.
 
@@ -469,7 +499,8 @@ def _slice_helper(tensor, slice_spec, var=None):
 
   Raises:
     ValueError: If a slice range is negative size.
-    TypeError: If the slice indices aren't int, slice, or Ellipsis.
+    TypeError: If the slice indices aren't int, slice, ellipsis,
+      tf.newaxis or scalar int32/int64 tensors.
   """
 
   if not isinstance(slice_spec, (list, tuple)):
@@ -487,16 +518,19 @@ def _slice_helper(tensor, slice_spec, var=None):
       # for example a[:] gives slice(None,sys.maxsize,None)
       # whereas a[::1] gives slice(None,None,None)
       if s.start is not None and s.start is not sys.maxsize:
+        _check_index(s.start)
         begin.append(s.start)
       else:
         begin.append(0)
         begin_mask |= (1 << index)
       if s.stop is not None and s.stop != sys.maxsize:
+        _check_index(s.stop)
         end.append(s.stop)
       else:
         end.append(0)
         end_mask |= (1 << index)
       if s.step is not None:
+        _check_index(s.step)
         strides.append(s.step)
       else:
         strides.append(1)
@@ -511,6 +545,7 @@ def _slice_helper(tensor, slice_spec, var=None):
       strides.append(1)
       new_axis_mask |= (1 << index)
     else:
+      _check_index(s)
       begin.append(s)
       end.append(s + 1)
       strides.append(1)
@@ -780,7 +815,8 @@ def _SliceHelperVar(var, slice_spec):
 
   Raises:
     ValueError: If a slice range is negative size.
-    TypeError: If the slice indices aren't int, slice, or Ellipsis.
+    TypeError: TypeError: If the slice indices aren't int, slice,
+      ellipsis, tf.newaxis or int32/int64 tensors.
 
   """
 
