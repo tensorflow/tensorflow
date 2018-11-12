@@ -98,6 +98,7 @@ renames = {
     'tf.confusion_matrix': 'tf.math.confusion_matrix',
     'tf.conj': 'tf.math.conj',
     'tf.container': 'tf.compat.v1.container',
+    'tf.convert_to_tensor': 'tf.compat.v1.convert_to_tensor',
     'tf.convert_to_tensor_or_indexed_slices': 'tf.compat.v1.convert_to_tensor_or_indexed_slices',
     'tf.convert_to_tensor_or_sparse_tensor': 'tf.compat.v1.convert_to_tensor_or_sparse_tensor',
     'tf.count_up_to': 'tf.compat.v1.count_up_to',

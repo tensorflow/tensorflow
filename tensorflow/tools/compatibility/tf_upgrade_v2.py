@@ -30,7 +30,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
   def __init__(self):
     # Maps from a function name to a dictionary that describes how to
     # map from an old argument keyword to the new argument keyword.
-    self.function_keyword_renames = {}
+    self.function_keyword_renames = {
+        "tf.convert_to_tensor": {
+            "preferred_dtype": "dtype_hint"
+        },
+    }
 
     # Mapping from function to the new name of the function
     self.symbol_renames = renames_v2.renames
@@ -47,6 +51,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # for safety, if positional arguments are used. If you have reversed the
     # positional arguments yourself, this could do the wrong thing.
     self.function_reorders = {
+        "tf.convert_to_tensor": ["value", "dtype", "preferred_dtype", "name"],
         "tf.argmin": ["input", "axis", "output_type", "name"],
         "tf.argmax": ["input", "axis", "output_type", "name"],
     }
