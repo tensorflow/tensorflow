@@ -415,9 +415,7 @@ class DistributionStrategy(object):
 
   You may use this API whether or not a `DistributionStrategy` is
   being used, since there is a default implementation of
-  `ReplicaContext` and `DistributionStrategy`. Or you can use the
-  `get_replica_context().is_single_replica` property to run different code
-  in the distributed vs. single replica cases.
+  `ReplicaContext` and `DistributionStrategy`.
   """
 
   # TODO(josh11b): Raise an exception if variable partitioning requested before
@@ -1058,12 +1056,6 @@ class ReplicaContext(object):
       return merge_fn(self._distribution_strategy, *args, **kwargs)
     finally:
       _pop_per_thread_mode()
-
-  @property
-  def is_single_replica(self):
-    """Returns whether there is a single replica or multiple."""
-    require_replica_context(self)
-    return self._distribution_strategy.is_single_replica
 
   @property
   def num_replicas(self):
