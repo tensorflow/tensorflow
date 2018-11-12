@@ -262,7 +262,7 @@ class DistributionStrategy(object):
       iterator = my_distribution.distribute_dataset(
           dataset).make_one_shot_iterator()
       replica_train_ops = my_distribution.call_for_each_replica(
-          replica_fn, iterator.get_next())
+          replica_fn, args=(iterator.get_next(),))
       train_op = tf.group(my_distribution.unwrap(replica_train_ops))
     ```
 
@@ -294,7 +294,7 @@ class DistributionStrategy(object):
     from device to values. "PerReplica" is used when the value may be
     different across replicas, and "Mirrored" when the value are the same.
   * Unwrapping and merging: Consider calling a function `fn` on
-    multiple replicas, like `call_for_each_replica(fn, w)` with an
+    multiple replicas, like `call_for_each_replica(fn, args=[w])` with an
     argument `w` that is a wrapped value. This means `w` will have a
     map taking replica device `d0` to `w0`, replica device `d1` to `w1`,
     etc. `call_for_each_replica()` unwraps `w` before calling `fn`, so
@@ -557,7 +557,7 @@ class DistributionStrategy(object):
       distributed_dataset = distribution_strategy.distribute_dataset(dataset_fn)
       iterator = distributed_dataset.make_one_shot_iterator()
       replica_results = distribution_strategy.call_for_each_replica(
-          replica_fn, iterator.get_next())
+          replica_fn, args=(iterator.get_next(),))
     ```
 
     Args:
@@ -693,26 +693,38 @@ class DistributionStrategy(object):
     with distribution.scope():
       # in "cross-replica" context
       ...
-      merged_results = distribution.call_for_each_replica(fn, 3)
+      merged_results = distribution.call_for_each_replica(fn, args=[3])
       # merged_results has the values from every replica execution of `fn`.
       print(distribution.unwrap(merged_results))  # Prints a list
     ```
 
     Args:
       fn: function to run (will be run once per replica).
-      *args: positional arguments for `fn`
-      **kwargs: keyword arguments for `fn`.
-          `"run_concurrently"`: Boolean indicating whether executions of `fn`
-             can be run concurrently (under eager execution only), defaults to
-             `True`.
+      args: Tuple or list with positional arguments for `fn`.
+      kwargs: Dict with keyword arguments for `fn`.
 
     Returns:
       Merged return value of `fn` across all replicas.
     """
     _require_cross_replica_context(self)
-    return self._call_for_each_replica(fn, *args, **kwargs)
+    # Handle old *args, **kwargs, and new args=(...), kwargs={...}, to
+    # allow transition.
+    a = kwargs.pop("args", None)
+    if a is not None:
+      if args:
+        raise ValueError(
+            "Can't pass *args and args=... to call_for_each_replica")
+      args = a
+    k = kwargs.pop("kwargs", None)
+    if k is not None:
+      if kwargs:
+        raise ValueError(
+            "Can't pass **kwargs and kwargs=... to call_for_each_replica")
+      kwargs = k
+    kwargs.pop("run_concurrently", None)  # Ignore old option.
+    return self._call_for_each_replica(fn, args, kwargs)
 
-  def _call_for_each_replica(self, fn, *args, **kwargs):
+  def _call_for_each_replica(self, fn, args, kwargs):
     raise NotImplementedError("must be implemented in descendants")
 
   def reduce(self, aggregation, value, destinations):
@@ -1131,9 +1143,7 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     else:
       raise NotImplementedError("TODO")
 
-  def _call_for_each_replica(self, fn, *args, **kwargs):
-    # We don't run `fn` in multiple threads in _DefaultDistributionStrategy.
-    kwargs.pop("run_concurrently", None)
+  def _call_for_each_replica(self, fn, args, kwargs):
     with ReplicaContext(self, replica_id=0):
       return fn(*args, **kwargs)
 

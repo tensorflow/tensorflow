@@ -104,7 +104,7 @@ class DistributionTestBase(test.TestCase):
       def step():
         """Perform one optimization step."""
         # Run forward & backward to get gradients, variables list.
-        g_v = d.call_for_each_replica(grad_fn, one, run_concurrently=l.built)
+        g_v = d.call_for_each_replica(grad_fn, args=(one,))
 
         # Update the variables using the gradients and the update() function.
         before_list = []
@@ -160,7 +160,7 @@ class DistributionTestBase(test.TestCase):
       def step():
         """Perform one optimization step."""
         # Run forward & backward to get gradients, variables list.
-        g_v = d.call_for_each_replica(grad_fn, one)
+        g_v = d.call_for_each_replica(grad_fn, args=(one,))
 
         # Update the variables using the gradients and the update() function.
         before_list = []
@@ -207,7 +207,7 @@ class DistributionTestBase(test.TestCase):
         self.assertFalse(expected_devices[device_id])
         expected_devices[device_id] = True
 
-      d.call_for_each_replica(mark_devices_fn, d.worker_device_index)
+      d.call_for_each_replica(mark_devices_fn, args=(d.worker_device_index,))
       self.assertAllEqual(expected_devices, [True] * len(d.worker_devices))
 
   def _test_replica_id(self, d):

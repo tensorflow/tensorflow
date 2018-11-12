@@ -317,10 +317,9 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
 
     return ctx
 
-  def _call_for_each_replica(self, fn, *args, **kwargs):
+  def _call_for_each_replica(self, fn, args, kwargs):
     # TODO(jhseu): Consider making it so call_for_each_replica implies that
     # we're in a tpu.rewrite(), and update TPUMirroredVariable accordingly.
-    kwargs.pop("run_concurrently", None)
     with _TPUReplicaContext(self):
       return fn(*args, **kwargs)
 
