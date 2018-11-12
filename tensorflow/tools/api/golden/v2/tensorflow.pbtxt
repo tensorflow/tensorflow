@@ -621,14 +621,6 @@ tf_module {
     argspec: "args=[\'value\', \'dtype\', \'name\', \'preferred_dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
-    name: "convert_to_tensor_or_indexed_slices"
-    argspec: "args=[\'value\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "convert_to_tensor_or_sparse_tensor"
-    argspec: "args=[\'value\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
     name: "cos"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

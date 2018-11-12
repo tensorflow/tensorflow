@@ -1271,7 +1271,7 @@ def convert_n_to_tensor(values, dtype=None, name=None, preferred_dtype=None):
       as_ref=False)
 
 
-@tf_export("convert_to_tensor_or_indexed_slices")
+@tf_export(v1=["convert_to_tensor_or_indexed_slices"])
 def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None):
   """Converts the given object to a `Tensor` or an `IndexedSlices`.
 
