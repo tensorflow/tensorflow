@@ -22,6 +22,7 @@ from __future__ import print_function
 import sys
 
 import numpy as np
+import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
@@ -431,7 +432,7 @@ _SUPPORTED_SLICE_DTYPES = (
 
 def _check_index(idx):
   """Check if a given value is a valid index into a tensor."""
-  if isinstance(idx, (int, tensor_shape.Dimension)):
+  if isinstance(idx, (six.integer_types, tensor_shape.Dimension)):
     return
 
   # Optimistic check. Assumptions:
