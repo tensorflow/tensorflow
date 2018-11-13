@@ -162,4 +162,11 @@ class BinaryOp<string mnemonic, list<OpProperty> props> :
 
 class UnaryOp<string mnemonic, list<OpProperty> props> :
     Op<mnemonic, props>, Operands<[Tensor]>, Results<[Tensor]> {
+  let builder = [{
+    static void build(Builder *builder, OperationState *result,
+                      SSAValue *arg) {
+      result->addOperands({arg});
+      result->types.push_back(arg->getType());
+    }
+  }];
 }
