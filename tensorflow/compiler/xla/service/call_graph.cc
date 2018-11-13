@@ -325,6 +325,15 @@ bool CallGraph::IsFlattened() const {
   return true;
 }
 
+std::vector<HloInstruction*> CallGraph::GetComputationCallers(
+    HloComputation* c) {
+  std::vector<HloInstruction*> callers;
+  for (auto callsite : GetNode(c).caller_callsites()) {
+    callers.push_back(callsite.instruction());
+  }
+  return callers;
+}
+
 std::pair<HloInstruction*, HloInstruction*>
 CallGraph::NearestAncestorsInSameComputation(HloInstruction* a,
                                              HloInstruction* b) const {
