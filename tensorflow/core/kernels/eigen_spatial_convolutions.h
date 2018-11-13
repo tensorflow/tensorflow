@@ -849,6 +849,55 @@ struct gemm_pack_rhs<
             const bool pad_col2 = dm2.padCol(c);
             const bool pad_col3 = dm3.padCol(c);
 
+            // We can squeeze reads along the `row` and `depth` dimensions if
+            // the row stride is `1`, which means that `row` and `depth`
+            // dimensions are contiguous (two innermost dimensions).
+            if (rhs.rowStride() == 1 &&                                //
+                !pad_col0 && !pad_col1 && !pad_col2 && !pad_col3 &&    //
+                !dm0.padRow(start_row) && !dm0.padRow(max_row - 1) &&  //
+                !dm1.padRow(start_row) && !dm1.padRow(max_row - 1) &&  //
+                !dm2.padRow(start_row) && !dm2.padRow(max_row - 1) &&  //
+                !dm3.padRow(start_row) && !dm3.padRow(max_row - 1)) {
+              // Compute how many elements we can squeeze read.
+              const Index start_depth =
+                  (c == start_col) ? rhs.depthOffset() : 0;
+
+              // Upper bound for the number of elements in the depth dimension
+              // that we can squeeze read.
+              const Index squeeze_length =
+                  (max_row - start_row) * rhs.patchDepth() - start_depth;
+
+              // Do not overshoot beyond the block size.
+              const Index max_depth =
+                  start_depth + std::min<Index>(peeled_k - k, squeeze_length);
+              eigen_assert((max_depth - start_depth) % packet_size == 0);
+
+              const Index idx0 = dm0.baseIndex(start_row, c);
+              const Index idx1 = dm1.baseIndex(start_row, c);
+              const Index idx2 = dm2.baseIndex(start_row, c);
+              const Index idx3 = dm3.baseIndex(start_row, c);
+
+              for (Index d = start_depth; d < max_depth; d += packet_size) {
+                eigen_assert(k < peeled_k);
+                PacketBlock<Packet, 4> kernel;
+                kernel.packet[0] = rhs.packetNoPadding(d, idx0);
+                kernel.packet[1] = rhs.packetNoPadding(d, idx1);
+                kernel.packet[2] = rhs.packetNoPadding(d, idx2);
+                kernel.packet[3] = rhs.packetNoPadding(d, idx3);
+                ptranspose(kernel);
+                pstoreu(block + 0 * packet_size, kernel.packet[0]);
+                pstoreu(block + 1 * packet_size, kernel.packet[1]);
+                pstoreu(block + 2 * packet_size, kernel.packet[2]);
+                pstoreu(block + 3 * packet_size, kernel.packet[3]);
+                block += 4 * packet_size;
+                k += packet_size;
+              }
+
+              // Go to the next column.
+              continue;
+            }
+
+            // If we can't squeeze reads, process rows one by one.
             for (Index r = start_row; r < max_row; ++r) {
               eigen_assert(k <= peeled_k);
 
@@ -1010,6 +1059,56 @@ struct gemm_pack_rhs<
             const bool pad_col2 = dm2.padCol(c);
             const bool pad_col3 = dm3.padCol(c);
 
+            // We can squeeze reads along the `row` and `depth` dimensions if
+            // the row stride is `1`, which means that `row` and `depth`
+            // dimensions are contiguous (two innermost dimensions).
+            if (rhs.rowStride() == 1 &&                                //
+                !pad_col0 && !pad_col1 && !pad_col2 && !pad_col3 &&    //
+                !dm0.padRow(start_row) && !dm0.padRow(max_row - 1) &&  //
+                !dm1.padRow(start_row) && !dm1.padRow(max_row - 1) &&  //
+                !dm2.padRow(start_row) && !dm2.padRow(max_row - 1) &&  //
+                !dm3.padRow(start_row) && !dm3.padRow(max_row - 1)) {
+              // Compute how many elements we can squeeze read.
+              const Index start_depth =
+                  (c == start_col) ? rhs.depthOffset() : 0;
+
+              // Upper bound for the number of elements in the depth dimension
+              // that we can squeeze read.
+              const Index squeeze_length =
+                  (max_row - start_row) * rhs.patchDepth() - start_depth;
+
+              // Do not overshoot beyond the block size.
+              const Index max_depth =
+                  start_depth + std::min<Index>(peeled_k - k, squeeze_length);
+              eigen_assert((max_depth - start_depth) % packet_size == 0);
+
+              const Index idx0 = dm0.baseIndex(start_row, c);
+              const Index idx1 = dm1.baseIndex(start_row, c);
+              const Index idx2 = dm2.baseIndex(start_row, c);
+              const Index idx3 = dm3.baseIndex(start_row, c);
+
+              for (Index d = start_depth; d < max_depth; d += packet_size) {
+                PacketBlock<Packet, 2> kernel0;
+                PacketBlock<Packet, 2> kernel1;
+                kernel0.packet[0] = rhs.packetNoPadding(d, idx0);
+                kernel0.packet[1] = rhs.packetNoPadding(d, idx1);
+                kernel1.packet[0] = rhs.packetNoPadding(d, idx2);
+                kernel1.packet[1] = rhs.packetNoPadding(d, idx3);
+                ptranspose(kernel0);
+                ptranspose(kernel1);
+                pstoreu(block + 0 * packet_size, kernel0.packet[0]);
+                pstoreu(block + 1 * packet_size, kernel1.packet[0]);
+                pstoreu(block + 2 * packet_size, kernel0.packet[1]);
+                pstoreu(block + 3 * packet_size, kernel1.packet[1]);
+                block += 4 * packet_size;
+                k += packet_size;
+              }
+
+              // Go to the next column.
+              continue;
+            }
+
+            // If we can't squeeze reads, process rows one by one.
             for (Index r = start_row; r < max_row; ++r) {
               eigen_assert(k <= peeled_k);
 
@@ -1292,13 +1391,14 @@ struct mkldnn_gemm_pack<
             !lm.padRow(max_row - 1)) {
           const Index start_depth = (c == start_col) ? rhs.depthOffset() : 0;
 
-          // Number of elements in the depth dimension that we can squeeze read.
-          const Index squeeze_size =
+          // Upper bound on the number of elements in the depth dimension that
+          // we can squeeze read.
+          const Index squeeze_length =
               (max_row - start_row) * rhs.patchDepth() - start_depth;
 
           // Do not overshoot beyond the block size.
           const Index max_depth =
-              start_depth + std::min<Index>(peeled_k - k, squeeze_size);
+              start_depth + std::min<Index>(peeled_k - k, squeeze_length);
 
           const Index base_idx = lm.baseIndex(start_row, c);
 
