@@ -21,8 +21,8 @@ from __future__ import print_function
 import collections as pycoll
 import threading
 
-from tensorflow.contrib.all_reduce.python import all_reduce
 from tensorflow.contrib.distribute.python import values as value_lib
+from tensorflow.python.distribute import all_reduce
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
