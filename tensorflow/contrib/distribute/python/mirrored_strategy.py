@@ -659,10 +659,6 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     return values.value_container(val)
 
   @property
-  def num_replicas(self):
-    return len(self._devices)
-
-  @property
   def num_replicas_in_sync(self):
     return len(self._devices)
 

@@ -450,10 +450,6 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
         ["/job:%s/task:%d" % (self._task_type, self._task_id), "/job:ps"])
 
   @property
-  def num_replicas(self):
-    return len(self._compute_devices)
-
-  @property
   def num_replicas_in_sync(self):
     return len(self._compute_devices)
 

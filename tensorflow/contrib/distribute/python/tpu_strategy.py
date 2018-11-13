@@ -148,7 +148,7 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     self._host_device = self.get_host_cpu_device(0)
     self._tpu_devices = sorted(device_map.keys())
     # Only create variables for the number of replicas we're running.
-    self._tpu_devices = self._tpu_devices[:self.num_replicas]
+    self._tpu_devices = self._tpu_devices[:self.num_replicas_in_sync]
 
     # TODO(sourabhbajaj): Remove this once performance of running one step
     # at a time is comparable to multiple steps.
@@ -335,7 +335,7 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     self._outer_control_flow_context = (
         ops.get_default_graph()._get_control_flow_context())  # pylint: disable=protected-access
 
-    replicate_inputs = [[]] * self.num_replicas
+    replicate_inputs = [[]] * self.num_replicas_in_sync
     replicate_outputs = tpu.replicate(iterate_on_tpu, replicate_inputs)
     del self._outer_control_flow_context
     ctx.run_op = control_flow_ops.group(replicate_outputs, enqueue_ops)
@@ -443,7 +443,7 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
       if aggregation == vs.VariableAggregation.MEAN:
         # TODO(jhseu):  Revisit once we support model-parallelism.
-        value *= (1. / self.num_replicas)
+        value *= (1. / self.num_replicas_in_sync)
       elif aggregation != vs.VariableAggregation.SUM:
         raise NotImplementedError(
             "Currently only support sum & mean in TPUStrategy.")
@@ -514,10 +514,6 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     return tensor
 
   @property
-  def num_replicas(self):
-    return self._num_cores_override or self._tpu_metadata.num_cores
-
-  @property
   def num_hosts(self):
     return self._tpu_metadata.num_hosts
 
@@ -527,7 +523,7 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
 
   @property
   def num_replicas_in_sync(self):
-    return self.num_replicas
+    return self._num_cores_override or self._tpu_metadata.num_cores
 
   @property
   def between_graph(self):
