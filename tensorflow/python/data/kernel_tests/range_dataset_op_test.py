@@ -56,7 +56,7 @@ class RangeDatasetTest(test_base.DatasetTestBase):
     start, stop, step = 2, 10, 0
     dataset = dataset_ops.Dataset.range(start, stop, step)
     self.assertDatasetProduces(
-        dataset, expected_err=(errors.InvalidArgumentError, ""))
+        dataset, expected_error=(errors.InvalidArgumentError, ""))
 
   def testNegativeStep(self):
     start, stop, step = 2, 10, -1
