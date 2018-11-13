@@ -182,19 +182,18 @@ def set_report_options(opts, report_options=None):
 
   return opts
 
-def set_ipu_model_options(opts, compile_ipu_code=True, num_ipus=1):
+def set_ipu_model_options(opts, compile_ipu_code=True):
   """Set the IPU Model options.
 
   Args:
     :param compile_ipu_code: Whether or not to actually compile real IPU code
                              for modelling.
-    :param num_ipus: Number of simulated IPUs.
+
   Returns:
 
     :return: The IPUOptions configuration protobuf, with IPU model options
              set.
   """
-  opts.ipu_model_config.num_ipus = num_ipus
   opts.ipu_model_config.compile_ipu_code = compile_ipu_code
 
   return opts
@@ -253,15 +252,15 @@ def auto_select_ipus(opts, num_ipus, sharded=False):
   if not isinstance(num_ipus, (int, list, tuple)):
     raise Exception("`num_ipus` must be an integer, list or tuple.")
 
+  opts.enable_sharding = sharded
+
   if isinstance(num_ipus, int):
     dev = opts.device_config.add()
     dev.auto_count = num_ipus
-    dev.shard_config = sharded
   else:
     for n in num_ipus:
       dev = opts.device_config.add()
       dev.auto_count = n
-      dev.shard_config = sharded
 
   return opts
 
@@ -444,10 +443,11 @@ def select_ipus(opts, indices, sharded=False):
   if not isinstance(indices, (list, tuple)):
     raise Exception("`indicies` must be a list or tuple.")
 
+  opts.enable_sharding = sharded
+
   for i in indices:
     dev = opts.device_config.add()
     dev.cfg_index = i
-    dev.shard_config = sharded
 
   return opts
 
@@ -591,7 +591,8 @@ def move_variable_initialization_to_cpu(graph=None):
     graph = ops.get_default_graph()
 
   init_ops = []
-  dep_ops = list(map(lambda x:x.initializer.inputs[1].op, graph.get_collection('variables')))
+  dep_ops = list(map(lambda x:x.initializer.inputs[1].op,
+                     graph.get_collection('variables')))
   visited  = set()
 
   while len(dep_ops) > 0:
@@ -604,5 +605,7 @@ def move_variable_initialization_to_cpu(graph=None):
   for op in init_ops:
     op._set_device('/device:CPU:0')
     op._set_attr('_class', attr_value_pb2.AttrValue(s=b'loc:@cpu'))
+    op._set_attr('_XlaCompile', attr_value_pb2.AttrValue(b=False))
+    op._set_attr('_XlaScope', attr_value_pb2.AttrValue(s=b''))
 
   return

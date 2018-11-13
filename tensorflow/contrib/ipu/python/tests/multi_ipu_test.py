@@ -38,8 +38,7 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
     out = xla.compile(my_graph, [pa, pb, pc])
 
     cfg = ipu.utils.create_ipu_config(profiling=True)
-    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False,
-                                          num_ipus=2)
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     cfg = ipu.utils.auto_select_ipus(cfg, 2, True)
     with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
 

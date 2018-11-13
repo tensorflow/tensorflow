@@ -306,7 +306,7 @@ std::string PoplarExecutor::GetDeviceTargetName() const {
 
 bool PoplarExecutor::ShardingEnabled() const {
   return (current_config_.device_config_size() > 0 &&
-          current_config_.device_config(0).shard_config());
+          current_config_.enable_sharding());
 }
 
 static bool DeviceConfigurationsEqual(const tensorflow::IPUOptions& a,
@@ -326,7 +326,6 @@ Status PoplarExecutor::ConfigurePoplarDevice(
     const tensorflow::IPUOptions& cfg) {
   if (!DeviceConfigurationsEqual(cfg, current_config_) || !device_open_) {
     current_config_ = cfg;
-
     try {
       static poplar::DeviceManager device_mgr =
           poplar::DeviceManager::getDeviceManager();
@@ -378,7 +377,10 @@ Status PoplarExecutor::ConfigurePoplarDevice(
                 ordinal_);
           }
 
-          const auto& device = current_config_.device_config(ordinal_);
+          auto device = current_config_.device_config(0);
+          if (!current_config_.enable_sharding()) {
+            device = current_config_.device_config(ordinal_);
+          }
 
           if (device.selection_case() ==
               tensorflow::IPUOptions::DeviceConfig::SelectionCase::kCfgIndex) {
@@ -425,17 +427,27 @@ Status PoplarExecutor::ConfigurePoplarDevice(
       } else {
         if (current_config_.ipu_model_config().enable_ipu_model()) {
           // Poplar IPU Model device
-          int num_ipus = current_config_.ipu_model_config().num_ipus();
-          int tiles_per_ipu =
-              current_config_.ipu_model_config().tiles_per_ipu();
+
+          int num_ipus = 1;
+          if (current_config_.device_config_size() > 0) {
+            auto device = current_config_.device_config(0);
+            if (!current_config_.enable_sharding()) {
+              device = current_config_.device_config(ordinal_);
+            }
+
+            if (device.selection_case() ==
+                tensorflow::IPUOptions::DeviceConfig::SelectionCase::
+                    kCfgIndex) {
+              return InvalidArgument(
+                  "Must specify the number of IPUs using auto_count");
+            }
+
+            num_ipus = device.auto_count();
+          }
 
           poplar::IPUModel model;
-          if (num_ipus != 0) {
-            model.numIPUs = num_ipus;
-          }
-          if (tiles_per_ipu != 0) {
-            model.tilesPerIPU = tiles_per_ipu;
-          }
+          model.numIPUs = num_ipus;
+
           model.compileIPUCode =
               current_config_.ipu_model_config().compile_ipu_code();
           poplar_device_ = model.createDevice();

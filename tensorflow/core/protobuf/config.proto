@@ -167,9 +167,7 @@ message IPUOptions {
   // Options controlling the software IPU model (see IPUModel in poplar)
   message IpuModelConfig {
     bool enable_ipu_model = 1;
-    int32 num_ipus = 2;
-    int32 tiles_per_ipu = 3;
-    bool compile_ipu_code = 4;
+    bool compile_ipu_code = 2;
   };
   IpuModelConfig ipu_model_config = 1;
 
@@ -217,11 +215,6 @@ message IPUOptions {
       // Set this to acquire a specific IPU hardware configuration.
       int32 cfg_index = 2;
     }
-
-    // When there are values in this list, then break the device up into several
-    // smaller virtual devices, each targetable using the IPU_REPLICATED_CORE
-    // ordinals.  The system can only support one such sharded device.
-    bool shard_config = 3;
   };
 
   // Options controlling the configuration of each IPU device
@@ -235,6 +228,11 @@ message IPUOptions {
 
   // Option to disable caching of sub-graphs containing convolutions
   bool disable_graph_convolution_caching = 8;
+
+  // When set, break the device up into several smaller virtual devices, each
+  // targetable using the IPU_REPLICATED_CORE ordinals.  The system can only
+  // support one such sharded device.
+  bool enable_sharding = 9;
 };
 
 // Options passed to the graph optimizer

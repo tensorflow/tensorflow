@@ -32,11 +32,10 @@ def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True,
   opts.ipu_model_config.enable_ipu_model = True
 
   if sharded:
-    opts.ipu_model_config.num_ipus = 2
+    opts.enable_sharding = True
 
     dev = opts.device_config.add()
     dev.auto_count = 2
-    dev.shard_config = True
 
   with session_lib.Session(
       config=config_pb2.ConfigProto(ipu_options=opts)) as sess:

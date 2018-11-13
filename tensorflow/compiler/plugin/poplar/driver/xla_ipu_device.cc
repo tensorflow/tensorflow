@@ -99,7 +99,7 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
 
   bool is_sharded = false;
   if (config_count > 0) {
-    is_sharded = options.config.ipu_options().device_config(0).shard_config();
+    is_sharded = options.config.ipu_options().enable_sharding();
   }
 
   if (!is_sharded) {
@@ -124,9 +124,7 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
       devopts.device_ordinal = ordinal;
 
       auto* device = new IpuDevice(options, devopts);
-
       TF_RETURN_IF_ERROR(device->Init(options.config.ipu_options()));
-
       devices->push_back(device);
     }
   }
@@ -152,27 +150,42 @@ Status XlaIpuRepDeviceFactory::CreateDevices(const SessionOptions& options,
 
   bool is_sharded = false;
   if (config_count > 0) {
-    is_sharded = options.config.ipu_options().device_config(0).shard_config();
+    is_sharded = options.config.ipu_options().enable_sharding();
   }
 
   if (is_sharded) {
+    if (config_count != 1) {
+      return xla::InvalidArgument(
+          "Config must contain only one device when sharding is enabled");
+    }
+
     auto platform = se::MultiPlatformManager::PlatformWithName(PLATFORM_NAME);
     if (!platform.ok()) {
       return platform.status();
     }
+
+    auto* p = static_cast<xp::PoplarPlatform*>(platform.ValueOrDie());
 
     XlaDevice::Options devopts;
     devopts.platform = platform.ValueOrDie();
     devopts.device_name_prefix = name_prefix;
     devopts.compilation_device_name = DEVICE_IPU_XLA_JIT;
     devopts.device_name = DEVICE_XLA_IPU_REP;
-    devopts.device_ordinal = 0;
 
-    auto* device = new IpuDevice(options, devopts);
+    if (options.config.ipu_options().device_config(0).selection_case() ==
+        tensorflow::IPUOptions::DeviceConfig::SelectionCase::kCfgIndex) {
+      return xla::InvalidArgument(
+          "Must specify the number of IPUs using auto_count");
+    }
 
-    TF_RETURN_IF_ERROR(device->Init(options.config.ipu_options()));
+    int num_shards = options.config.ipu_options().device_config(0).auto_count();
 
-    devices->push_back(device);
+    for (int ordinal = 0; ordinal < num_shards; ordinal++) {
+      devopts.device_ordinal = ordinal;
+      auto* device = new IpuDevice(options, devopts);
+      TF_RETURN_IF_ERROR(device->Init(options.config.ipu_options()));
+      devices->push_back(device);
+    }
   }
   return Status::OK();
 }

@@ -36,12 +36,10 @@ poplar::Graph& GetGraph(CompilerResources& res, const HloInstruction* inst) {
   return res.main_graph;
 }
 
-static bool BothInstructionsSharded(const HloInstruction* a,
-                                    const HloInstruction* b) {
-  if (a->has_sharding() && b->has_sharding()) {
+static bool InstructionSharded(const HloInstruction* a) {
+  if (a->has_sharding()) {
     const auto& a_sharding = a->sharding();
-    const auto& b_sharding = a->sharding();
-    if (a_sharding.HasUniqueDevice() && b_sharding.HasUniqueDevice()) {
+    if (a_sharding.HasUniqueDevice()) {
       return true;
     }
   }
@@ -97,7 +95,7 @@ StatusOr<poplar::Tensor> FindInstructionInput(const TensorMap& map,
   }
 
   poplar::Tensor out = outputs[0];
-  if (BothInstructionsSharded(inst, operand)) {
+  if (InstructionSharded(inst)) {
     out = poputil::copyToIpu(res.main_graph, out, seq, GetShard(inst));
   }
 
@@ -109,7 +107,7 @@ ArgVector FindInstructionInputs(const TensorMap& map, CompilerResources& res,
                                 poplar::program::Sequence& seq) {
   const HloInstruction* operand = inst->operand(input);
   OutVector inputs = FindInstructionOutputs(map, operand);
-  if (BothInstructionsSharded(inst, operand)) {
+  if (InstructionSharded(inst)) {
     for (unsigned int i = 0; i < inputs.size(); i++) {
       inputs[i] =
           poputil::copyToIpu(res.main_graph, inputs[i], seq, GetShard(inst));
