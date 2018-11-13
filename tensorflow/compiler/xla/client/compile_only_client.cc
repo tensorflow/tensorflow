@@ -15,34 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
 
+#include "absl/memory/memory.h"
 #include "llvm/ADT/Triple.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace xla {
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 CompileOnlyClient::CompileAheadOfTime(
-    const tensorflow::gtl::ArraySlice<AotComputationInstance> computations,
-    const AotCompilationOptions& options) {
-  std::vector<CompileOnlyService::AotComputationInstance> service_instances;
-  service_instances.reserve(computations.size());
-  for (const AotComputationInstance& instance : computations) {
-    service_instances.push_back({});
-    CompileOnlyService::AotComputationInstance& service_instance =
-        service_instances.back();
-    TF_RET_CHECK(instance.computation != nullptr);
-    service_instance.computation = instance.computation->handle();
-    service_instance.argument_layouts = instance.argument_layouts;
-    service_instance.result_layout = instance.result_layout;
-  }
-  return compiler_service_->CompileAheadOfTime(service_instances, options);
-}
-
-StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-CompileOnlyClient::CompileAheadOfTime(
-    const tensorflow::gtl::ArraySlice<AotXlaComputationInstance> computations,
-    const AotCompilationOptions& options) {
+    const absl::Span<const AotXlaComputationInstance> computations,
+    const AotCompilationOptions& options,
+    std::unique_ptr<AotCompilationMetadata>* metadata) {
   std::vector<CompileOnlyService::AotXlaComputationInstance> service_instances;
   service_instances.reserve(computations.size());
   for (const AotXlaComputationInstance& instance : computations) {
@@ -54,10 +37,11 @@ CompileOnlyClient::CompileAheadOfTime(
     service_instance.argument_layouts = instance.argument_layouts;
     service_instance.result_layout = instance.result_layout;
   }
-  return compiler_service_->CompileAheadOfTime(service_instances, options);
+  return compiler_service_->CompileAheadOfTime(service_instances, options,
+                                               metadata);
 }
 
-int64 CompileOnlyClient::PointerSizeForTriple(tensorflow::StringPiece triple) {
+int64 CompileOnlyClient::PointerSizeForTriple(absl::string_view triple) {
   llvm::Triple llvm_triple(
       llvm::Triple::normalize(llvm::StringRef(triple.data(), triple.size())));
   if (llvm_triple.isArch64Bit()) {

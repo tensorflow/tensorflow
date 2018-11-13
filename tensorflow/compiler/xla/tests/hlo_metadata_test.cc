@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/local_client_test_base.h"
@@ -30,9 +30,9 @@ class HloMetadataTest : public LocalClientTestBase {
   }
 
   void BuildAddComputation(XlaBuilder* builder) {
-    auto x = builder->Parameter(0, ShapeUtil::MakeShape(F32, {}), "x");
-    auto y = builder->Parameter(1, ShapeUtil::MakeShape(F32, {}), "y");
-    builder->Add(x, y);
+    auto x = Parameter(builder, 0, ShapeUtil::MakeShape(F32, {}), "x");
+    auto y = Parameter(builder, 1, ShapeUtil::MakeShape(F32, {}), "y");
+    Add(x, y);
   }
 
   OpMetadata metadata_;

@@ -44,6 +44,10 @@ limitations under the License.
 #include "include/libxsmm_spmdm.h"
 #endif
 
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#endif
+
 namespace tensorflow {
 namespace {
 
@@ -1490,7 +1494,7 @@ inline void LibxsmmSparseMatMul<TL, TR>::Compute(
 
 #endif  // TENSORFLOW_USE_LIBXSMM
 
-// Here is a an overview of the SparseMatMul code. Note that we assume that the
+// Here is an overview of the SparseMatMul code. Note that we assume that the
 // left matrix is sparse.
 //
 // The matrix "left" is divided into a grid with blocksize of (M, KL). Each

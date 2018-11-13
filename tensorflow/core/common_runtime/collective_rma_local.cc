@@ -27,7 +27,8 @@ void CollectiveRemoteAccessLocal::RecvFromPeer(
     const string& peer_device, const string& peer_task, bool peer_is_local,
     const string& key, Device* to_device, DeviceContext* to_device_ctx,
     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
-    const DeviceLocality& client_locality, const StatusCallback& done) {
+    const DeviceLocality& client_locality, int dev_to_dev_stream_index,
+    const StatusCallback& done) {
   VLOG(1) << "RecvFromPeer " << this << " from " << peer_device << " key "
           << key;
   if (!peer_is_local) {
@@ -37,8 +38,9 @@ void CollectiveRemoteAccessLocal::RecvFromPeer(
     return;
   }
   buf_rendezvous_.ConsumeBuf(
-      key, [this, to_tensor, to_device_ctx, to_device, to_alloc_attr, done](
-               const Status& s, BufRendezvous::Hook* hook) {
+      key, [this, to_tensor, to_device_ctx, to_device, to_alloc_attr,
+            dev_to_dev_stream_index,
+            done](const Status& s, BufRendezvous::Hook* hook) {
         if (!s.ok()) {
           done(s);
           delete hook;
@@ -53,10 +55,14 @@ void CollectiveRemoteAccessLocal::RecvFromPeer(
                       to_alloc_attr,     // dst AllocatorAttributes
                       hook->prod_value,  // src Tensor*
                       to_tensor,         // dst Tensor*
-                      [hook, done](const Status& s) {
+                      dev_to_dev_stream_index, [hook, done](const Status& s) {
+                        // This callback may be executing in the GPUEventMgr
+                        // pool in which case it must be very short duration
+                        // and non-blocking (except e.g. for queue insertion).
+                        // It would be safer, though expensive, to transfer
+                        // to another thread here.
                         done(s);
-                        hook->prod_cb(s);
-                        delete hook;
+                        BufRendezvous::DoneWithHook(hook);
                       });
         }
       });
@@ -78,7 +84,7 @@ void CollectiveRemoteAccessLocal::MemCpyAsync(
     DeviceContext* src_dev_ctx, DeviceContext* dst_dev_ctx, Device* src_dev,
     Device* dst_dev, const AllocatorAttributes& src_attr,
     const AllocatorAttributes& dst_attr, const Tensor* src, Tensor* dst,
-    const StatusCallback& done) {
+    int dev_to_dev_stream_index, const StatusCallback& done) {
   // We want a real copy to happen, i.e. the bytes inside of src should be
   // transferred to the buffer backing dst.  If src and dst are on different
   // devices then CopyTensor::ViaDMA will do just that.  But if they're both
@@ -91,12 +97,27 @@ void CollectiveRemoteAccessLocal::MemCpyAsync(
       dst_attr.on_host() ? DEVICE_CPU : dst_dev->attributes().device_type());
   const bool non_cpu_src = src_device_type != DeviceType(DEVICE_CPU);
   const bool non_cpu_dst = dst_device_type != DeviceType(DEVICE_CPU);
+  // For GPU devices when only one compute stream is used (the default)
+  // the OpKernelContext does not supply a DeviceContext.  It's assumed
+  // that all nodes use the default context.
+  if (src_dev_ctx == nullptr && src_device_type == DEVICE_GPU) {
+    const DeviceBase::GpuDeviceInfo* dev_info =
+        src_dev->tensorflow_gpu_device_info();
+    CHECK(dev_info);
+    src_dev_ctx = dev_info->default_context;
+  }
+  if (dst_dev_ctx == nullptr && dst_device_type == DEVICE_GPU) {
+    const DeviceBase::GpuDeviceInfo* dev_info =
+        src_dev->tensorflow_gpu_device_info();
+    CHECK(dev_info);
+    dst_dev_ctx = dev_info->default_context;
+  }
   if (non_cpu_src) CHECK(src_dev_ctx);
   if (non_cpu_dst) CHECK(dst_dev_ctx);
   if (non_cpu_src || non_cpu_dst) {
     CopyTensor::ViaDMA("",  // edge name (non-existent)
                        src_dev_ctx, dst_dev_ctx, src_dev, dst_dev, src_attr,
-                       dst_attr, src, dst, done);
+                       dst_attr, src, dst, dev_to_dev_stream_index, done);
   } else {
     int64 bytes = src->TotalBytes();
     DCHECK_EQ(dst->TotalBytes(), bytes);

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_TYPE_TRAITS_H_
-#define TENSORFLOW_FRAMEWORK_TYPE_TRAITS_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_TYPE_TRAITS_H_
+#define TENSORFLOW_CORE_FRAMEWORK_TYPE_TRAITS_H_
 
 #include <limits>
 #include <utility>
@@ -106,4 +106,4 @@ struct is_signed<tensorflow::qint32> : public is_signed<tensorflow::int32> {};
 
 }  // namespace std
 
-#endif  // TENSORFLOW_FRAMEWORK_TYPE_TRAITS_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_TYPE_TRAITS_H_

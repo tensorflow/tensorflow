@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_ARITHMETIC_OPTIMIZER_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_ARITHMETIC_OPTIMIZER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_ARITHMETIC_OPTIMIZER_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_ARITHMETIC_OPTIMIZER_H_
 
 #include <unordered_set>
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
@@ -54,45 +55,41 @@ class ArithmeticOptimizer : public GraphOptimizer {
 
   // Granular control for arithmetic optimizer stages
   struct ArithmeticOptimizerOptions {
-    // TODO(ezhulenev): flag do disable TrySimplifyAndReplaceUses in tests.
-    // Remove when all optimizers will be migrated to separate stages.
-    bool dedup_computations = true;
-    bool enable_try_simplify_and_replace = true;
     bool combine_add_to_addn = true;
+    bool convert_sqrt_div_to_rsqrt_mul = true;
+    bool dedup_computations = true;
+    bool fold_conjugate_into_transpose = true;
+    bool fold_multiply_into_conv = true;
+    bool fold_transpose_into_matmul = true;
     bool hoist_common_factor_out_of_aggregation = true;
+    bool hoist_cwise_unary_chains = true;
     bool minimize_broadcasts = true;
+    bool optimize_max_or_min_of_monotonic = true;
+    bool remove_idempotent = true;
     bool remove_identity_transpose = true;
+    bool remove_involution = true;
+    bool remove_logical_not = true;
+    bool remove_negation = true;
     bool remove_redundant_bitcast = true;
     bool remove_redundant_cast = true;
-    bool remove_negation = true;
-    bool hoist_unary_out_of_concat = false;
+    bool remove_redundant_reshape = true;
+    bool reorder_cast_like_and_value_preserving = true;
+    bool replace_mul_with_square = true;
+    bool simplify_aggregation = true;
+    bool convert_pow = true;
+    bool convert_log1p = true;
+    bool convert_expm1 = true;
+    bool unary_ops_composition = true;
+    bool remove_stack_strided_slice_same_axis = true;
 
     // Choose which arithmetic optimizer stages will be enabled for a given
     // optimization level by default.
     static ArithmeticOptimizerOptions Default(
         RewriterConfig::Toggle opt_level) {
       ArithmeticOptimizerOptions options;
-      if (opt_level == RewriterConfig::AGGRESSIVE) {
-        options.hoist_unary_out_of_concat = true;
-      }
       return options;
     }
   };
-
-  // Returns true is a node with given name and the optimizer prefix already
-  // exists.
-  string OptimizedNodeName(const NodeDef& node, StringPiece suffix) const;
-  bool OptimizedNodeExists(const NodeDef& node, StringPiece suffix) const;
-
-  // Creates a new node in the graph, with name equal to that of node, prefixed
-  // with "ArithmeticOptimizer/" and the given suffix. Also updates node_map_,
-  // and optionally copies node into the new node if copy_node is true.
-  NodeDef* AddNode(const NodeDef& node, StringPiece suffix, bool copy_node);
-
-  // Creates a new node in the graph, prefixed with "ArithmeticOptimizer/",
-  // updates node_map_, and optionally copies *node_to_copy into the new
-  // node, if node_to_copy is not nullptr.
-  NodeDef* AddNode(const string& name, const NodeDef* node_to_copy);
 
   // Returns true if it is safe to dedup node from the graph.
   bool CanDedup(const NodeDef& node) const;
@@ -109,7 +106,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
   Status SimplifyArithmeticOps(bool can_use_shapes);
   // Tries to simplify the expression that roots at `node` and replaces the uses
   // of `node` to the simplified expression. Returns the name of the simplified
-  // tensor (e.g. "split:1") or an emtpy string if no simplification is
+  // tensor (e.g. "split:1") or an empty string if no simplification is
   // performed.
   //
   // `node_map` stores the mapping from node names to NodeDef*, and will be
@@ -133,9 +130,10 @@ class ArithmeticOptimizer : public GraphOptimizer {
   std::unique_ptr<NodeMap> node_map_;
   std::unique_ptr<GraphProperties> graph_properties_;
   GraphDef* optimized_graph_ = nullptr;  // Not owned.
+  gtl::FlatSet<string> feed_nodes_;
 };
 
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_ARITHMETIC_OPTIMIZER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_ARITHMETIC_OPTIMIZER_H_

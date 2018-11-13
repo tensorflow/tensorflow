@@ -12,15 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class TakeDatasetOp : public UnaryDatasetOpKernel {
@@ -38,21 +38,18 @@ class TakeDatasetOp : public UnaryDatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, int64 count, const DatasetBase* input)
-        : GraphDatasetBase(ctx), count_(count), input_(input) {
+        : DatasetBase(DatasetContext(ctx)), count_(count), input_(input) {
       input_->Ref();
     }
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      if (count_ < 0) {
-        // Pass through
-        return input_->MakeIterator(prefix);
-      } else if (count_ == 0) {
+      if (count_ == 0) {
         return std::unique_ptr<IteratorBase>(
             new EmptyIterator({this, strings::StrCat(prefix, "::EmptyTake")}));
       } else {
@@ -69,13 +66,14 @@ class TakeDatasetOp : public UnaryDatasetOpKernel {
       return input_->output_shapes();
     }
 
-    string DebugString() override { return "TakeDatasetOp::Dataset"; }
+    string DebugString() const override { return "TakeDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       Node* count = nullptr;
       TF_RETURN_IF_ERROR(b->AddScalar(count_, &count));
       TF_RETURN_IF_ERROR(
@@ -96,6 +94,12 @@ class TakeDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         return Status::OK();
       }
@@ -109,9 +113,11 @@ class TakeDatasetOp : public UnaryDatasetOpKernel {
     class FiniteIterator : public DatasetIterator<Dataset> {
      public:
       explicit FiniteIterator(const Params& params)
-          : DatasetIterator<Dataset>(params),
-            i_(0),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
+          : DatasetIterator<Dataset>(params), i_(0) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
@@ -121,7 +127,7 @@ class TakeDatasetOp : public UnaryDatasetOpKernel {
           *end_of_sequence = true;
           return Status::OK();
         }
-        while (i_ < dataset()->count_) {
+        while (dataset()->count_ < 0 || i_ < dataset()->count_) {
           TF_RETURN_IF_ERROR(
               input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
           if (!*end_of_sequence) {
@@ -136,11 +142,17 @@ class TakeDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));
         if (input_impl_) {
-          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         } else {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impl_empty"), ""));
@@ -153,7 +165,7 @@ class TakeDatasetOp : public UnaryDatasetOpKernel {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("i"), &i_));
         if (!reader->Contains(full_name("input_impl_empty"))) {
-          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         } else {
           input_impl_.reset();
         }
@@ -174,5 +186,5 @@ class TakeDatasetOp : public UnaryDatasetOpKernel {
 REGISTER_KERNEL_BUILDER(Name("TakeDataset").Device(DEVICE_CPU), TakeDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

@@ -106,6 +106,16 @@ class CUDADriver {
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g89b3f154e17cc89b6eea277dbdf5c93a
   static void DeviceDeallocate(CudaContext* context, void *location);
 
+  // Allocates a unified memory space of size bytes associated with the given
+  // context via cuMemAllocManaged.
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gb347ded34dc326af404aa02af5388a32
+  static void* UnifiedMemoryAllocate(CudaContext* context, uint64 bytes);
+
+  // Deallocates a unified memory space of size bytes associated with the given
+  // context via cuMemFree.
+  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1g89b3f154e17cc89b6eea277dbdf5c93a
+  static void UnifiedMemoryDeallocate(CudaContext* context, void* location);
+
   // Allocates page-locked and CUDA-registered memory on the host via
   // cuMemAllocHost.
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__MEM.html#group__CUDA__MEM_1gdd8311286d2c2691605362c689bc64e0
@@ -147,7 +157,7 @@ class CUDADriver {
   // userspace processes is given here:
   // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g65dc0012348bc84810e2103a40d8e2cf
   static port::Status CreateContext(CUdevice device,
-                                    DeviceOptions device_options,
+                                    const DeviceOptions& device_options,
                                     CudaContext** context);
 
   // Destroys the provided context via cuCtxDestroy.

@@ -32,6 +32,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.saved_model import loader as saved_model_loader
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.util import compat
 
 _SPARSE_FLOAT_FEATURE_NAME_TEMPLATE = "%s_%d"
 
@@ -50,6 +51,7 @@ def make_custom_export_strategy(name,
     feature_columns: A list of feature columns.
     export_input_fn: A function that takes no arguments and returns an
       `InputFnOps`.
+    use_core_columns: A boolean, whether core feature columns were used.
 
   Returns:
     An `ExportStrategy`.
@@ -88,10 +90,12 @@ def make_custom_export_strategy(name,
             len(sparse_float_indices), len(sparse_int_indices))
         sorted_by_importance = sorted(
             feature_importances.items(), key=lambda x: -x[1])
-        assets_dir = os.path.join(result_dir, "assets.extra")
+        assets_dir = os.path.join(
+            compat.as_bytes(result_dir), compat.as_bytes("assets.extra"))
         gfile.MakeDirs(assets_dir)
-        with gfile.GFile(os.path.join(assets_dir, "feature_importances"),
-                         "w") as f:
+        with gfile.GFile(os.path.join(
+            compat.as_bytes(assets_dir),
+            compat.as_bytes("feature_importances")), "w") as f:
           f.write("\n".join("%s, %f" % (k, v) for k, v in sorted_by_importance))
     return result_dir
 
@@ -192,8 +196,12 @@ def convert_to_universal_format(dtec, sorted_feature_names,
           matching_id = categorical_test.value.add()
           matching_id.int64_value = split.feature_id
           node.custom_left_child_test.Pack(categorical_test)
+        elif (node_type == "oblivious_dense_float_binary_split" or
+              node_type == "oblivious_categorical_id_binary_split"):
+          raise ValueError("Universal tree format doesn't support oblivious "
+                           "trees")
         else:
-          raise ValueError("Unexpected node type %s", node_type)
+          raise ValueError("Unexpected node type %s" % node_type)
         node.left_child_id.value = split.left_id
         node.right_child_id.value = split.right_id
   return model_and_features
@@ -225,6 +233,13 @@ def _get_feature_importances(dtec, feature_names, num_dense_floats,
         split = tree_node.categorical_id_binary_split
         split_column = feature_names[split.feature_column + num_dense_floats +
                                      num_sparse_float]
+      elif node_type == "oblivious_dense_float_binary_split":
+        split = tree_node.oblivious_dense_float_binary_split
+        split_column = feature_names[split.feature_column]
+      elif node_type == "oblivious_categorical_id_binary_split":
+        split = tree_node.oblivious_categorical_id_binary_split
+        split_column = feature_names[split.feature_column + num_dense_floats +
+                                     num_sparse_float]
       elif node_type == "categorical_id_set_membership_binary_split":
         split = tree_node.categorical_id_set_membership_binary_split
         split_column = feature_names[split.feature_column + num_dense_floats +
@@ -233,7 +248,7 @@ def _get_feature_importances(dtec, feature_names, num_dense_floats,
         assert tree_node.node_metadata.gain == 0
         continue
       else:
-        raise ValueError("Unexpected split type %s", node_type)
+        raise ValueError("Unexpected split type %s" % node_type)
       # Apply shrinkage factor. It is important since it is not always uniform
       # across different trees.
       sums[split_column] += (

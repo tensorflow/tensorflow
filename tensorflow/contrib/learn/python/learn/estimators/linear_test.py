@@ -43,6 +43,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import ftrl
 from tensorflow.python.training import input as input_lib
@@ -863,6 +864,38 @@ class LinearClassifierTest(test.TestCase):
     scores = classifier.evaluate(input_fn=input_fn, steps=1)
     self.assertGreater(scores['accuracy'], 0.9)
 
+  def testSdcaOptimizerWeightedSparseFeaturesOOVWithNoOOVBuckets(self):
+    """LinearClassifier with SDCAOptimizer with OOV features (-1 IDs)."""
+
+    def input_fn():
+      return {
+          'example_id':
+              constant_op.constant(['1', '2', '3']),
+          'price':
+              sparse_tensor.SparseTensor(
+                  values=[2., 3., 1.],
+                  indices=[[0, 0], [1, 0], [2, 0]],
+                  dense_shape=[3, 5]),
+          'country':
+              sparse_tensor.SparseTensor(
+                  # 'GB' is out of the vocabulary.
+                  values=['IT', 'US', 'GB'],
+                  indices=[[0, 0], [1, 0], [2, 0]],
+                  dense_shape=[3, 5])
+      }, constant_op.constant([[1], [0], [1]])
+
+    country = feature_column_lib.sparse_column_with_keys(
+        'country', keys=['US', 'CA', 'MK', 'IT', 'CN'])
+    country_weighted_by_price = feature_column_lib.weighted_sparse_column(
+        country, 'price')
+    sdca_optimizer = sdca_optimizer_lib.SDCAOptimizer(
+        example_id_column='example_id')
+    classifier = linear.LinearClassifier(
+        feature_columns=[country_weighted_by_price], optimizer=sdca_optimizer)
+    classifier.fit(input_fn=input_fn, steps=50)
+    scores = classifier.evaluate(input_fn=input_fn, steps=1)
+    self.assertGreater(scores['accuracy'], 0.9)
+
   def testSdcaOptimizerCrossedFeatures(self):
     """Tests LinearClassifier with SDCAOptimizer and crossed features."""
 
@@ -932,6 +965,63 @@ class LinearClassifierTest(test.TestCase):
         optimizer=sdca_optimizer)
     classifier.fit(input_fn=input_fn, steps=50)
     scores = classifier.evaluate(input_fn=input_fn, steps=1)
+    self.assertGreater(scores['accuracy'], 0.9)
+
+  def testSdcaOptimizerPartitionedVariables(self):
+    """Tests LinearClassifier with SDCAOptimizer with partitioned variables."""
+
+    def input_fn():
+      return {
+          'example_id':
+              constant_op.constant(['1', '2', '3']),
+          'price':
+              constant_op.constant([[0.6], [0.8], [0.3]]),
+          'sq_footage':
+              constant_op.constant([[900.0], [700.0], [600.0]]),
+          'country':
+              sparse_tensor.SparseTensor(
+                  values=['IT', 'US', 'GB'],
+                  indices=[[0, 0], [1, 3], [2, 1]],
+                  dense_shape=[3, 5]),
+          'weights':
+              constant_op.constant([[3.0], [1.0], [1.0]])
+      }, constant_op.constant([[1], [0], [1]])
+
+    price = feature_column_lib.real_valued_column('price')
+    sq_footage_bucket = feature_column_lib.bucketized_column(
+        feature_column_lib.real_valued_column('sq_footage'),
+        boundaries=[650.0, 800.0])
+    country = feature_column_lib.sparse_column_with_hash_bucket(
+        'country', hash_bucket_size=5)
+    sq_footage_country = feature_column_lib.crossed_column(
+        [sq_footage_bucket, country], hash_bucket_size=10)
+
+    sdca_optimizer = sdca_optimizer_lib.SDCAOptimizer(
+        example_id_column='example_id',
+        partitioner=partitioned_variables.fixed_size_partitioner(
+            num_shards=2, axis=0))
+
+    tf_config = {
+        'cluster': {
+            run_config.TaskType.PS: ['fake_ps_0', 'fake_ps_1']
+        }
+    }
+    with test.mock.patch.dict('os.environ',
+                              {'TF_CONFIG': json.dumps(tf_config)}):
+      config = run_config.RunConfig()
+      # Because we did not start a distributed cluster, we need to pass an
+      # empty ClusterSpec, otherwise the device_setter will look for
+      # distributed jobs, such as "/job:ps" which are not present.
+      config._cluster_spec = server_lib.ClusterSpec({})
+
+    classifier = linear.LinearClassifier(
+        feature_columns=[price, sq_footage_bucket, country, sq_footage_country],
+        weight_column_name='weights',
+        optimizer=sdca_optimizer,
+        config=config)
+    classifier.fit(input_fn=input_fn, steps=50)
+    scores = classifier.evaluate(input_fn=input_fn, steps=1)
+    print('all scores = {}'.format(scores))
     self.assertGreater(scores['accuracy'], 0.9)
 
   def testEval(self):
@@ -1504,6 +1594,60 @@ class LinearRegressorTest(test.TestCase):
         feature_columns=[price, sq_footage_bucket, country, sq_footage_country],
         weight_column_name='weights',
         optimizer=sdca_optimizer)
+    regressor.fit(input_fn=input_fn, steps=20)
+    loss = regressor.evaluate(input_fn=input_fn, steps=1)['loss']
+    self.assertLess(loss, 0.05)
+
+  def testSdcaOptimizerPartitionedVariables(self):
+    """Tests LinearRegressor with SDCAOptimizer with partitioned variables."""
+
+    def input_fn():
+      return {
+          'example_id':
+              constant_op.constant(['1', '2', '3']),
+          'price':
+              constant_op.constant([0.6, 0.8, 0.3]),
+          'sq_footage':
+              constant_op.constant([[900.0], [700.0], [600.0]]),
+          'country':
+              sparse_tensor.SparseTensor(
+                  values=['IT', 'US', 'GB'],
+                  indices=[[0, 0], [1, 3], [2, 1]],
+                  dense_shape=[3, 5]),
+          'weights':
+              constant_op.constant([[3.0], [5.0], [7.0]])
+      }, constant_op.constant([[1.55], [-1.25], [-3.0]])
+
+    price = feature_column_lib.real_valued_column('price')
+    sq_footage_bucket = feature_column_lib.bucketized_column(
+        feature_column_lib.real_valued_column('sq_footage'),
+        boundaries=[650.0, 800.0])
+    country = feature_column_lib.sparse_column_with_hash_bucket(
+        'country', hash_bucket_size=5)
+    sq_footage_country = feature_column_lib.crossed_column(
+        [sq_footage_bucket, country], hash_bucket_size=10)
+    sdca_optimizer = sdca_optimizer_lib.SDCAOptimizer(
+        example_id_column='example_id', symmetric_l2_regularization=1.0,
+        partitioner=partitioned_variables.fixed_size_partitioner(
+            num_shards=2, axis=0))
+    tf_config = {
+        'cluster': {
+            run_config.TaskType.PS: ['fake_ps_0', 'fake_ps_1']
+        }
+    }
+    with test.mock.patch.dict('os.environ',
+                              {'TF_CONFIG': json.dumps(tf_config)}):
+      config = run_config.RunConfig()
+      # Because we did not start a distributed cluster, we need to pass an
+      # empty ClusterSpec, otherwise the device_setter will look for
+      # distributed jobs, such as "/job:ps" which are not present.
+      config._cluster_spec = server_lib.ClusterSpec({})
+
+    regressor = linear.LinearRegressor(
+        feature_columns=[price, sq_footage_bucket, country, sq_footage_country],
+        weight_column_name='weights',
+        optimizer=sdca_optimizer,
+        config=config)
     regressor.fit(input_fn=input_fn, steps=20)
     loss = regressor.evaluate(input_fn=input_fn, steps=1)['loss']
     self.assertLess(loss, 0.05)

@@ -1,6 +1,9 @@
 op {
   graph_op_name: "Softplus"
   endpoint {
+    name: "math.softplus"
+  }
+  endpoint {
     name: "nn.softplus"
   }
 }

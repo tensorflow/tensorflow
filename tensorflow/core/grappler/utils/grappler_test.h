@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_GRAPPLER_TEST_H_
-#define TENSORFLOW_GRAPPLER_GRAPPLER_TEST_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_GRAPPLER_TEST_H_
+#define TENSORFLOW_CORE_GRAPPLER_UTILS_GRAPPLER_TEST_H_
 
 #include <vector>
 
@@ -58,13 +58,24 @@ class GrapplerTest : public ::testing::Test {
   // Count nodes of the given op-type in a graph.
   int CountOpNodes(const GraphDef& graph, const string& op);
 
-  // Get a random tansor with given shape.
+  // Get a random tensor with given shape.
   template <DataType DTYPE>
   Tensor GenerateRandomTensor(const TensorShape& shape) const {
     typedef typename EnumToDataType<DTYPE>::Type T;
     Tensor tensor(DTYPE, shape);
     for (auto i = 0; i < tensor.NumElements(); i++)
       tensor.flat<T>()(i) = i + random::New64() % 10;
+    return tensor;
+  }
+
+  // Get a constant tensor with given shape.
+  template <DataType DTYPE>
+  Tensor GenerateConstantTensor(
+      const TensorShape& shape,
+      typename EnumToDataType<DTYPE>::Type value) const {
+    typedef typename EnumToDataType<DTYPE>::Type T;
+    Tensor tensor(DTYPE, shape);
+    for (auto i = 0; i < tensor.NumElements(); i++) tensor.flat<T>()(i) = value;
     return tensor;
   }
 
@@ -75,4 +86,4 @@ class GrapplerTest : public ::testing::Test {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_GRAPPLER_TEST_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_UTILS_GRAPPLER_TEST_H_

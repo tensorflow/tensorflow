@@ -1,5 +1,5 @@
 op {
   graph_op_name: "CollectiveBcastSend"
-  visibility: SKIP
   summary: "Broadcasts a tensor value to one or more other devices."
+  visibility: HIDDEN
 }

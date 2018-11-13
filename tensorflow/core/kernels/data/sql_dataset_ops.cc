@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include <utility>
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/kernels/data/sql/driver_manager.h"
 #include "tensorflow/core/kernels/data/sql/query_connection.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
@@ -24,9 +24,10 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
-// See documentation in ../ops/dataset_ops.cc for a high-level
+
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following ops.
 
 class SqlDatasetOp : public DatasetOpKernel {
@@ -70,23 +71,25 @@ class SqlDatasetOp : public DatasetOpKernel {
                     "The set of supported databases is: {'sqlite'}.",
                     driver_name.c_str())));
 
-    *output = new Dataset(driver_name, data_source_name, query, output_types_,
-                          output_shapes_);
+    *output = new Dataset(ctx, driver_name, data_source_name, query,
+                          output_types_, output_shapes_);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
-    Dataset(const string& driver_name, const string& data_source_name,
-            const string& query, const DataTypeVector& output_types,
+    Dataset(OpKernelContext* ctx, const string& driver_name,
+            const string& data_source_name, const string& query,
+            const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
-        : driver_name_(driver_name),
+        : DatasetBase(DatasetContext(ctx)),
+          driver_name_(driver_name),
           data_source_name_(data_source_name),
           query_(query),
           output_types_(output_types),
           output_shapes_(output_shapes) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::Sql")}));
@@ -100,7 +103,23 @@ class SqlDatasetOp : public DatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "SqlDatasetOp::Dataset"; }
+    string DebugString() const override { return "SqlDatasetOp::Dataset"; }
+
+   protected:
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      Node* driver_name_node;
+      TF_RETURN_IF_ERROR(b->AddScalar(driver_name_, &driver_name_node));
+      Node* data_source_name_node;
+      TF_RETURN_IF_ERROR(
+          b->AddScalar(data_source_name_, &data_source_name_node));
+      Node* query_node;
+      TF_RETURN_IF_ERROR(b->AddScalar(query_, &query_node));
+      TF_RETURN_IF_ERROR(b->AddDataset(
+          this, {driver_name_node, data_source_name_node, query_node}, output));
+      return Status::OK();
+    }
 
    private:
     class Iterator : public DatasetIterator<Dataset> {
@@ -121,22 +140,67 @@ class SqlDatasetOp : public DatasetOpKernel {
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
         if (!query_connection_initialized_) {
-          query_connection_initialized_ = true;
-          query_connection_ = sql::DriverManager::CreateQueryConnection(
-              dataset()->driver_name_);
-          Status s = query_connection_->Open(dataset()->data_source_name_,
-                                             dataset()->query_,
-                                             dataset()->output_types_);
-          if (!s.ok()) {
-            LOG(WARNING) << "Failed to connect to database: " << s;
-            return s;
-          }
+          TF_RETURN_IF_ERROR(InitializeQueryConnection());
         }
+        next_calls_++;
         return query_connection_->GetNext(ctx, out_tensors, end_of_sequence);
       }
 
+     protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeSourceNode(std::move(args));
+      }
+
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        if (query_connection_initialized_) {
+          TF_RETURN_IF_ERROR(
+              writer->WriteScalar(full_name("next_calls"), next_calls_));
+        }
+        return Status::OK();
+      }
+
+      Status RestoreInternal(IteratorContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        if (reader->Contains(full_name("next_calls"))) {
+          TF_RETURN_IF_ERROR(InitializeQueryConnection());
+          TF_RETURN_IF_ERROR(
+              reader->ReadScalar(full_name("next_calls"), &next_calls_));
+          int64 rem_next_calls = next_calls_;
+          std::vector<Tensor> out_tensors;
+          bool end_of_sequence = false;
+          while (rem_next_calls--) {
+            TF_RETURN_IF_ERROR(query_connection_->GetNext(ctx, &out_tensors,
+                                                          &end_of_sequence));
+            out_tensors.clear();
+          }
+        } else {
+          query_connection_initialized_ = false;
+        }
+        return Status::OK();
+      }
+
      private:
+      Status InitializeQueryConnection() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        query_connection_initialized_ = true;
+        query_connection_ =
+            sql::DriverManager::CreateQueryConnection(dataset()->driver_name_);
+        Status s = query_connection_->Open(dataset()->data_source_name_,
+                                           dataset()->query_,
+                                           dataset()->output_types_);
+        next_calls_ = 0;
+        if (!s.ok()) {
+          LOG(WARNING) << "Failed to connect to database: " << s;
+          return s;
+        }
+        return Status::OK();
+      }
+
       mutex mu_;
+      // TODO(shivaniagrawal): explore ways to seek into a SQLite databases.
+      int64 next_calls_ GUARDED_BY(mu_) = 0;
       std::unique_ptr<sql::QueryConnection> query_connection_ GUARDED_BY(mu_);
       bool query_connection_initialized_ GUARDED_BY(mu_) = false;
     };
@@ -153,5 +217,5 @@ class SqlDatasetOp : public DatasetOpKernel {
 REGISTER_KERNEL_BUILDER(Name("SqlDataset").Device(DEVICE_CPU), SqlDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

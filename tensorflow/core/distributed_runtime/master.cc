@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/master.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
@@ -167,13 +168,55 @@ class DeviceFinder {
     }
     // Enumerates all known workers' target. A target name is a
     // prefix of a device name. E.g., /job:mnist/replica:0/task:10.
-    CHECK_GT(env_->local_devices.size(), 0) << "No local devices provided.";
-    const string& local_device_name = env_->local_devices[0]->name();
-    std::vector<string> workers;
-    worker_cache->ListWorkers(&workers);
     if (filters_.empty()) {
+      // If no filters were specified, we list all known workers in
+      // `worker_cache`.
+      std::vector<string> workers;
+      worker_cache->ListWorkers(&workers);
       std::swap(workers, targets_);
     } else {
+      // When applying filters, we must include the local worker, even if it
+      // does not match any of the filters.
+      CHECK_GT(env_->local_devices.size(), 0) << "No local devices provided.";
+      const string& local_device_name = env_->local_devices[0]->name();
+      DeviceNameUtils::ParsedName local_parsed_name;
+      CHECK(DeviceNameUtils::ParseFullName(local_device_name,
+                                           &local_parsed_name));
+      bool all_filters_have_job = true;
+      std::unordered_set<string> filter_job_names({local_parsed_name.job});
+      for (const DeviceNameUtils::ParsedName& filter : filters_) {
+        all_filters_have_job = all_filters_have_job && filter.has_job;
+        if (filter.has_job) {
+          filter_job_names.insert(filter.job);
+        }
+      }
+
+      std::vector<string> workers;
+      if (all_filters_have_job) {
+        // If all of the device filters have a job specified, then we only need
+        // to list the workers in the jobs named in the filter, because a worker
+        // in any other job would not match any filter.
+        for (const string& job_name : filter_job_names) {
+          VLOG(2) << "Selectively listing workers in job: " << job_name;
+          std::vector<string> workers_in_job;
+          worker_cache->ListWorkersInJob(job_name, &workers_in_job);
+          workers.insert(workers.end(), workers_in_job.begin(),
+                         workers_in_job.end());
+        }
+      } else {
+        // If any of the device filters does not have a job specified, then we
+        // must list the workers from all jobs.
+        VLOG(2) << "Listing workers in all jobs because some device "
+                << "filter has no job specified. Filters were:";
+        if (device_filters.empty()) {
+          VLOG(2) << "- <NO FILTERS>";
+        } else {
+          for (const string& filter : device_filters) {
+            VLOG(2) << "- " << filter;
+          }
+        }
+        worker_cache->ListWorkers(&workers);
+      }
       for (const string& name : workers) {
         if (MatchFilters(name) ||
             DeviceNameUtils::IsSameAddressSpace(name, local_device_name)) {
@@ -269,7 +312,8 @@ class DeviceFinder {
     mutex_lock l(mu_);
     seen_targets_[target_index] = true;
     if (!s.ok()) {
-      LOG(ERROR) << "Master init: " << s;
+      LOG(ERROR) << "CreateSession failed because worker "
+                 << targets_[target_index] << " returned error: " << s;
       status_.Update(s);
     } else {
       found_.insert(found_.end(), devices->begin(), devices->end());
@@ -472,7 +516,7 @@ void Master::PartialRunSetup(const PartialRunSetupRequest* req,
     return;
   }
 
-  SchedClosure([this, session, req, resp, done]() {
+  SchedClosure([session, req, resp, done]() {
     Status s = session->PartialRunSetup(req, resp);
     session->Unref();
     done(s);
@@ -627,7 +671,7 @@ void Master::MakeCallable(const MakeCallableRequest* req,
   }
 
   SchedClosure(std::bind(
-      [this, session, req, resp](MyClosure done) {
+      [session, req, resp](MyClosure done) {
         Status s = session->MakeCallable(*req, resp);
         session->Unref();
         done(s);
@@ -644,7 +688,7 @@ void Master::RunCallable(CallOptions* opts, const RunCallableRequest* req,
   }
 
   SchedClosure(std::bind(
-      [this, session, opts, req, resp](MyClosure done) {
+      [session, opts, req, resp](MyClosure done) {
         Status s = session->RunCallable(opts, *req, resp);
         session->Unref();
         done(s);
@@ -661,7 +705,7 @@ void Master::ReleaseCallable(const ReleaseCallableRequest* req,
   }
 
   SchedClosure(std::bind(
-      [this, session, req, resp](MyClosure done) {
+      [session, req, resp](MyClosure done) {
         Status s = session->ReleaseCallable(*req, resp);
         session->Unref();
         done(s);

@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -28,10 +28,10 @@ from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.platform import test
 
 
-class StackOpTest(XLATestCase):
+class StackOpTest(xla_test.XLATestCase):
 
   def testStackPushPop(self):
-    with self.test_session(), self.test_scope():
+    with self.cached_session(), self.test_scope():
       size = array_ops.placeholder(dtypes.int32)
       v = array_ops.placeholder(dtypes.float32)
       h = gen_data_flow_ops.stack_v2(size, dtypes.float32, stack_name="foo")
@@ -41,7 +41,7 @@ class StackOpTest(XLATestCase):
       self.assertAllClose([[4.0, 5.0]], c1.eval({size: 5, v: [[4.0, 5.0]]}))
 
   def testStackPushPopSwap(self):
-    with self.test_session(), self.test_scope():
+    with self.cached_session(), self.test_scope():
       a = np.arange(2000)
       x = array_ops.placeholder(dtypes.float32)
       h = gen_data_flow_ops.stack_v2(5, dtypes.float32, stack_name="foo")
@@ -51,7 +51,7 @@ class StackOpTest(XLATestCase):
       self.assertAllClose(a, c1.eval({x: a}))
 
   def testMultiStack(self):
-    with self.test_session(), self.test_scope():
+    with self.cached_session(), self.test_scope():
       v = array_ops.placeholder(dtypes.float32)
       h1 = gen_data_flow_ops.stack_v2(5, dtypes.float32, stack_name="foo")
       c1 = gen_data_flow_ops.stack_push_v2(h1, v)
@@ -66,7 +66,7 @@ class StackOpTest(XLATestCase):
 
   def testSameNameStacks(self):
     """Different stacks with the same name do not interfere."""
-    with self.test_session() as sess, self.test_scope():
+    with self.cached_session() as sess, self.test_scope():
       v1 = array_ops.placeholder(dtypes.float32)
       v2 = array_ops.placeholder(dtypes.float32)
       h1 = gen_data_flow_ops.stack_v2(5, dtypes.float32, stack_name="foo")
@@ -84,14 +84,14 @@ class StackOpTest(XLATestCase):
       self.assertAllClose(out2, 5.0)
 
   def testCloseStack(self):
-    with self.test_session() as sess, self.test_scope():
+    with self.cached_session() as sess, self.test_scope():
       size = array_ops.placeholder(dtypes.int32)
       h = gen_data_flow_ops.stack_v2(size, dtypes.float32, stack_name="foo")
       c1 = gen_data_flow_ops.stack_close_v2(h)
       sess.run(c1, {size: 5})
 
   def testPushCloseStack(self):
-    with self.test_session() as sess, self.test_scope():
+    with self.cached_session() as sess, self.test_scope():
       v = array_ops.placeholder(dtypes.float32)
       h = gen_data_flow_ops.stack_v2(5, dtypes.float32, stack_name="foo")
       c = gen_data_flow_ops.stack_push_v2(h, v)

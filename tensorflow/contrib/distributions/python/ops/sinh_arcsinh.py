@@ -25,6 +25,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops.distributions import normal
 from tensorflow.python.ops.distributions import transformed_distribution
+from tensorflow.python.util import deprecation
 
 __all__ = [
     "SinhArcsinh",
@@ -94,6 +95,14 @@ class SinhArcsinh(transformed_distribution.TransformedDistribution):
   ```
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc,
                scale,
@@ -115,7 +124,7 @@ class SinhArcsinh(transformed_distribution.TransformedDistribution):
       tailweight:  Tailweight parameter. Default is `1.0` (unchanged tailweight)
       distribution: `tf.Distribution`-like instance. Distribution that is
         transformed to produce this distribution.
-        Default is `tf.distributions.Normal(0., 1.)`.
+        Default is `tfp.distributions.Normal(0., 1.)`.
         Must be a scalar-batch, scalar-event distribution.  Typically
         `distribution.reparameterization_type = FULLY_REPARAMETERIZED` or it is
         a function of non-trainable parameters. WARNING: If you backprop through
@@ -132,7 +141,7 @@ class SinhArcsinh(transformed_distribution.TransformedDistribution):
         if one or more of the statistic's batch members are undefined.
       name: Python `str` name prefixed to Ops created by this class.
     """
-    parameters = locals()
+    parameters = dict(locals())
 
     with ops.name_scope(name,
                         values=[loc, scale, skewness, tailweight]) as name:

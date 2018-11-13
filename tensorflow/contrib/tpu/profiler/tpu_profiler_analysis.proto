@@ -38,6 +38,9 @@ message EnumProfileSessionsAndToolsResponse {
 message ProfileSessionDataRequest {
   string repository_root = 1;
   string session_id = 2;
+  // Which host the data is associated. if empty, data from all hosts are
+  // aggregated.
+  string host_name = 5;
   // Which tool
   string tool_name = 3;
   // Tool's specific parameters. e.g. TraceViewer's viewport etc

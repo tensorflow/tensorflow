@@ -17,7 +17,7 @@ limitations under the License.
 //
 // Dumps a graphviz URL for a snapshot computation to the command line.
 //
-// some_binary_snapshot_proto is obtained by serializing the SessionModule from
+// some_binary_snapshot_proto is obtained by serializing the HloSnapshot from
 // ServiceInterface::SnapshotComputation to disk.
 //
 // The GraphViz URL is placed into the log stderr, whereas computation
@@ -28,17 +28,17 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/service.h"
-#include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
@@ -46,14 +46,15 @@ limitations under the License.
 namespace xla {
 namespace tools {
 
-void RealMain(tensorflow::gtl::ArraySlice<char*> args) {
+void RealMain(absl::Span<char* const> args) {
   Client* client = ClientLibrary::LocalClientOrDie();
   for (char* arg : args) {
-    SessionModule module;
+    HloSnapshot module;
     TF_CHECK_OK(
         tensorflow::ReadBinaryProto(tensorflow::Env::Default(), arg, &module));
-    Computation computation = client->LoadSnapshot(module).ConsumeValueOrDie();
-    DebugOptions debug_options = legacy_flags::GetDebugOptionsFromFlags();
+    XlaComputation computation =
+        client->LoadSnapshot(module).ConsumeValueOrDie();
+    DebugOptions debug_options = GetDebugOptionsFromFlags();
     debug_options.set_xla_generate_hlo_graph(".*");
     ComputationStats stats =
         client->GetComputationStats(computation, debug_options)
@@ -67,7 +68,7 @@ void RealMain(tensorflow::gtl::ArraySlice<char*> args) {
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
+  xla::AppendDebugOptionsFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {
@@ -76,8 +77,8 @@ int main(int argc, char** argv) {
   }
   tensorflow::port::InitMain(argv[0], &argc, &argv);
 
-  tensorflow::gtl::ArraySlice<char*> args(argv, argc);
-  args.pop_front();  // Pop off the binary name, argv[0]
+  absl::Span<char* const> args(argv, argc);
+  args.remove_prefix(1);  // Pop off the binary name, argv[0]
   xla::tools::RealMain(args);
   return 0;
 }

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_GPU_GPU_UTIL_H_
-#define TENSORFLOW_COMMON_RUNTIME_GPU_GPU_UTIL_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_UTIL_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_UTIL_H_
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -90,13 +90,11 @@ class GPUUtil {
                                  Device* gpu_device, Tensor* gpu_tensor,
                                  StatusCallback done);
 
-  static void DeviceToDeviceCopy(DeviceContext* send_dev_context,
-                                 DeviceContext* recv_dev_context, Device* src,
-                                 Device* dst,
-                                 AllocatorAttributes src_alloc_attr,
-                                 AllocatorAttributes dst_alloc_attr,
-                                 const Tensor* input, Tensor* output,
-                                 StatusCallback done);
+  static void DeviceToDeviceCopy(
+      DeviceContext* send_dev_context, DeviceContext* recv_dev_context,
+      Device* src, Device* dst, AllocatorAttributes src_alloc_attr,
+      AllocatorAttributes dst_alloc_attr, const Tensor* input, Tensor* output,
+      int dev_to_dev_stream_index, StatusCallback done);
 
   // Deep-copying of GPU tensor on the same device.
   // 'src_gpu_tensor''s and 'dst_gpu_tensor''s backing memory must be on
@@ -110,4 +108,4 @@ class GPUUtil {
 };
 
 }  // namespace tensorflow
-#endif  // TENSORFLOW_COMMON_RUNTIME_GPU_GPU_UTIL_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_UTIL_H_

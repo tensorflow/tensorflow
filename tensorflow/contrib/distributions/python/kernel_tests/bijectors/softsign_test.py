@@ -40,21 +40,20 @@ class SoftsignBijectorTest(test.TestCase):
   def setUp(self):
     self._rng = np.random.RandomState(42)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testBijectorBounds(self):
     bijector = Softsign(validate_args=True)
-    with self.test_session():
-      with self.assertRaisesOpError("greater than -1"):
-        bijector.inverse(-3.).eval()
-      with self.assertRaisesOpError("greater than -1"):
-        bijector.inverse_log_det_jacobian(-3., event_ndims=0).eval()
+    with self.assertRaisesOpError("greater than -1"):
+      self.evaluate(bijector.inverse(-3.))
+    with self.assertRaisesOpError("greater than -1"):
+      self.evaluate(bijector.inverse_log_det_jacobian(-3., event_ndims=0))
 
-      with self.assertRaisesOpError("less than 1"):
-        bijector.inverse(3.).eval()
-      with self.assertRaisesOpError("less than 1"):
-        bijector.inverse_log_det_jacobian(3., event_ndims=0).eval()
+    with self.assertRaisesOpError("less than 1"):
+      self.evaluate(bijector.inverse(3.))
+    with self.assertRaisesOpError("less than 1"):
+      self.evaluate(bijector.inverse_log_det_jacobian(3., event_ndims=0))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testBijectorForwardInverse(self):
     bijector = Softsign(validate_args=True)
     self.assertEqual("softsign", bijector.name)
@@ -64,7 +63,7 @@ class SoftsignBijectorTest(test.TestCase):
     self.assertAllClose(y, self.evaluate(bijector.forward(x)))
     self.assertAllClose(x, self.evaluate(bijector.inverse(y)))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testBijectorLogDetJacobianEventDimsZero(self):
     bijector = Softsign(validate_args=True)
     y = self._rng.rand(2, 10)
@@ -74,7 +73,7 @@ class SoftsignBijectorTest(test.TestCase):
     self.assertAllClose(ildj, self.evaluate(
         bijector.inverse_log_det_jacobian(y, event_ndims=0)))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testBijectorForwardInverseEventDimsOne(self):
     bijector = Softsign(validate_args=True)
     self.assertEqual("softsign", bijector.name)
@@ -83,7 +82,7 @@ class SoftsignBijectorTest(test.TestCase):
     self.assertAllClose(y, self.evaluate(bijector.forward(x)))
     self.assertAllClose(x, self.evaluate(bijector.inverse(y)))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testBijectorLogDetJacobianEventDimsOne(self):
     bijector = Softsign(validate_args=True)
     y = self._rng.rand(2, 10)
@@ -94,12 +93,12 @@ class SoftsignBijectorTest(test.TestCase):
             bijector.inverse_log_det_jacobian(y, event_ndims=1)))
 
   def testScalarCongruency(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = Softsign(validate_args=True)
       assert_scalar_congruency(bijector, lower_x=-20., upper_x=20.)
 
   def testBijectiveAndFinite(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = Softsign(validate_args=True)
       x = np.linspace(-20., 20., 100).astype(np.float32)
       y = np.linspace(-0.99, 0.99, 100).astype(np.float32)

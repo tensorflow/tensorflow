@@ -683,11 +683,12 @@ def parse_feature_columns_from_sequence_examples(
       the serialized proto.
 
   Returns:
-    A tuple consisting of:
-    context_features: a dict mapping `FeatureColumns` from
-      `context_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
-    sequence_features: a dict mapping `FeatureColumns` from
-      `sequence_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
+    A tuple consisting of (context_features, sequence_features)
+
+    *  context_features: a dict mapping `FeatureColumns` from
+        `context_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
+    *  sequence_features: a dict mapping `FeatureColumns` from
+        `sequence_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
   """
   # Sequence example parsing requires a single (scalar) example.
   try:

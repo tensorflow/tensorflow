@@ -20,20 +20,136 @@ from __future__ import print_function
 import copy
 
 from tensorflow.python.eager import context
-from tensorflow.python.estimator import util as estimator_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.keras._impl.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
 
 InputSpec = base_layer.InputSpec  # pylint: disable=invalid-name
 
 
-@tf_export('layers.Layer')
+_KERAS_STYLE_SCOPE = False
+
+
+@tf_export(v1=['layers.experimental.keras_style_scope'])
+@tf_contextlib.contextmanager
+def keras_style_scope():
+  """Use Keras-style variable management.
+
+  All tf.layers and tf RNN cells created in this scope use Keras-style
+  variable management.  Creating such layers with a scope= argument is
+  disallowed, and reuse=True is disallowed.
+
+  The purpose of this scope is to allow users of existing layers to
+  slowly transition to a Keras layers API without breaking existing
+  functionality.
+
+  One example of this is when using TensorFlow's RNN classes with Keras
+  Models or Networks.  Because Keras models do not properly set variable
+  scopes, users of RNNs may either accidentally share scopes between two
+  different models, or get errors about variables that already exist.
+
+  Example:
+
+  ```python
+  class RNNModel(tf.keras.Model):
+
+    def __init__(self, name):
+      super(RNNModel, self.).__init__(name=name)
+      self.rnn = tf.nn.rnn_cell.MultiRNNCell(
+        [tf.nn.rnn_cell.LSTMCell(64) for _ in range(2)])
+
+    def call(self, input, state):
+      return self.rnn(input, state)
+
+  model_1 = RNNModel("model_1")
+  model_2 = RNNModel("model_2")
+
+  # OK
+  output_1, next_state_1 = model_1(input, state)
+  # Raises an error about trying to create an already existing variable.
+  output_2, next_state_2 = model_2(input, state)
+  ```
+
+  The solution is to wrap the model construction and execution in a keras-style
+  scope:
+
+  ```python
+  with keras_style_scope():
+    model_1 = RNNModel("model_1")
+    model_2 = RNNModel("model_2")
+
+    # model_1 and model_2 are guaranteed to create their own variables.
+    output_1, next_state_1 = model_1(input, state)
+    output_2, next_state_2 = model_2(input, state)
+
+    assert len(model_1.weights) > 0
+    assert len(model_2.weights) > 0
+    assert(model_1.weights != model_2.weights)
+  ```
+
+  Yields:
+    A keras layer style scope.
+  """
+  global _KERAS_STYLE_SCOPE
+  stack = _KERAS_STYLE_SCOPE
+  _KERAS_STYLE_SCOPE = True
+  try:
+    yield
+  finally:
+    _KERAS_STYLE_SCOPE = stack
+
+
+@tf_export(v1=['layers.experimental.set_keras_style'])
+def set_keras_style():
+  """Use Keras-style variable management.
+
+  All tf.layers and tf RNN cells created after keras style ha been enabled
+  use Keras-style variable management.  Creating such layers with a
+  scope= argument is disallowed, and reuse=True is disallowed.
+
+  The purpose of this function is to allow users of existing layers to
+  slowly transition to Keras layers API without breaking existing
+  functionality.
+
+  For more details, see the documentation for `keras_style_scope`.
+
+  Note, once keras style has been set, it is set globally for the entire
+  program and cannot be unset.
+
+  Example:
+
+  ```python
+  set_keras_style()
+
+  model_1 = RNNModel(name="model_1")
+  model_2 = RNNModel(name="model_2")
+
+  # model_1 and model_2 are guaranteed to create their own variables.
+  output_1, next_state_1 = model_1(input, state)
+  output_2, next_state_2 = model_2(input, state)
+
+  assert len(model_1.weights) > 0
+  assert len(model_2.weights) > 0
+  assert(model_1.weights != model_2.weights)
+  ```
+  """
+  global _KERAS_STYLE_SCOPE
+  _KERAS_STYLE_SCOPE = True
+
+
+def _is_in_keras_style_scope():
+  global _KERAS_STYLE_SCOPE
+  return _KERAS_STYLE_SCOPE
+
+
+@tf_export(v1=['layers.Layer'])
 class Layer(base_layer.Layer):
   """Base layer class.
 
@@ -83,6 +199,19 @@ class Layer(base_layer.Layer):
     super(Layer, self).__init__(trainable=trainable, name=name, dtype=dtype,
                                 **kwargs)
 
+    if _is_in_keras_style_scope():
+      if scope is not None:
+        raise ValueError(
+            'scope argument not allowed when keras style layers are enabled, '
+            'but saw: {}'.format(scope))
+      if self._reuse is not None:
+        raise ValueError(
+            'reuse argument not allowed when keras style layers are enabled, '
+            'but saw: {}'.format(self._reuse))
+      self._keras_style = True
+    else:
+      self._keras_style = False
+
     self._graph = None
     self._call_has_scope_arg = 'scope' in self._call_fn_args
     if scope:
@@ -102,6 +231,7 @@ class Layer(base_layer.Layer):
     # Determine layer name (non-unique).
     if isinstance(name, vs.VariableScope):
       base_name = name.name
+      self._name, _ = self._make_unique_name()
     else:
       base_name = name
       self._name = name
@@ -131,13 +261,25 @@ class Layer(base_layer.Layer):
 
   def add_loss(self, losses, inputs=None):
     previous_losses_length = len(self._losses)
+    previous_callable_losses_length = len(self._callable_losses)
     super(Layer, self).add_loss(losses, inputs=inputs)
-    # TODO(fchollet): deprecate collection below.
-    new_losses = self._losses[previous_losses_length:]
-    _add_elements_to_collection(new_losses, ops.GraphKeys.REGULARIZATION_LOSSES)
+    if not context.executing_eagerly():
+      # TODO(fchollet): deprecate collection below.
+      new_losses = self._losses[previous_losses_length:]
+      new_callable_losses = self._callable_losses[
+          previous_callable_losses_length:]
+      for regularizer in new_callable_losses:
+        loss_tensor = regularizer()
+        if loss_tensor is not None:
+          new_losses.append(loss_tensor)
+      _add_elements_to_collection(
+          new_losses,
+          ops.GraphKeys.REGULARIZATION_LOSSES)
 
   def _name_scope(self):
     """Determines op naming for the Layer."""
+    if self._keras_style:
+      return super(Layer, self)._name_scope()
     return self._current_scope.original_name_scope
 
   def _set_scope(self, scope=None):
@@ -152,10 +294,17 @@ class Layer(base_layer.Layer):
             scope, default_name=self._base_name) as captured_scope:
           self._scope = captured_scope
 
-  def add_weight(self, name, shape, dtype=None,
-                 initializer=None, regularizer=None,
-                 trainable=True, constraint=None,
+  def add_weight(self,
+                 name,
+                 shape,
+                 dtype=None,
+                 initializer=None,
+                 regularizer=None,
+                 trainable=None,
+                 constraint=None,
                  use_resource=None,
+                 synchronization=vs.VariableSynchronization.AUTO,
+                 aggregation=vs.VariableAggregation.NONE,
                  partitioner=None):
     """Adds a new variable to the layer, or gets an existing one; returns it.
 
@@ -170,9 +319,19 @@ class Layer(base_layer.Layer):
         or "non_trainable_variables" (e.g. BatchNorm mean, stddev).
         Note, if the current variable scope is marked as non-trainable
         then this parameter is ignored and any added variables are also
-        marked as non-trainable.
+        marked as non-trainable. `trainable` defaults to `True` unless
+        `synchronization` is set to `ON_READ`.
       constraint: constraint instance (callable).
       use_resource: Whether to use `ResourceVariable`.
+      synchronization: Indicates when a distributed a variable will be
+        aggregated. Accepted values are constants defined in the class
+        `tf.VariableSynchronization`. By default the synchronization is set to
+        `AUTO` and the current `DistributionStrategy` chooses
+        when to synchronize. If `synchronization` is set to `ON_READ`,
+        `trainable` must not be set to `True`.
+      aggregation: Indicates how a distributed variable will be aggregated.
+        Accepted values are constants defined in the class
+        `tf.VariableAggregation`.
       partitioner: (optional) partitioner instance (callable).  If
         provided, when the requested variable is created it will be split
         into multiple partitions according to `partitioner`.  In this case,
@@ -190,7 +349,45 @@ class Layer(base_layer.Layer):
     Raises:
       RuntimeError: If called with partioned variable regularization and
         eager execution is enabled.
+      ValueError: When trainable has been set to True with synchronization
+        set as `ON_READ`.
     """
+    if self._keras_style:
+      return super(Layer, self).add_weight(
+          name=name,
+          shape=shape,
+          dtype=dtype,
+          initializer=initializer,
+          regularizer=regularizer,
+          trainable=trainable,
+          constraint=constraint,
+          use_resource=use_resource,
+          synchronization=vs.VariableSynchronization.AUTO,
+          aggregation=vs.VariableAggregation.NONE,
+          partitioner=partitioner)
+
+    if synchronization == vs.VariableSynchronization.ON_READ:
+      if trainable:
+        raise ValueError(
+            'Synchronization value can be set to '
+            'VariableSynchronization.ON_READ only for non-trainable variables. '
+            'You have specified trainable=True and '
+            'synchronization=VariableSynchronization.ON_READ.')
+      else:
+        # Set trainable to be false when variable is to be synced on read.
+        trainable = False
+    elif trainable is None:
+      trainable = True
+
+    def _should_add_regularizer(variable, existing_variable_set):
+      if isinstance(variable, tf_variables.PartitionedVariable):
+        for var in variable:
+          if var in existing_variable_set:
+            return False
+        return True
+      else:
+        return variable not in existing_variable_set
+
     init_graph = None
     if not context.executing_eagerly():
       default_graph = ops.get_default_graph()
@@ -221,19 +418,24 @@ class Layer(base_layer.Layer):
         use_resource = (use_resource or
                         self._use_resource_variables or
                         scope.use_resource)
+        if initializer is None:
+          initializer = scope.initializer
         variable = super(Layer, self).add_weight(
             name,
             shape,
             dtype=dtypes.as_dtype(dtype),
-            initializer=initializer or scope.initializer,
+            initializer=initializer,
             trainable=trainable,
             constraint=constraint,
             partitioner=partitioner,
             use_resource=use_resource,
+            synchronization=synchronization,
+            aggregation=aggregation,
             getter=vs.get_variable)
 
         if regularizer:
-          if context.executing_eagerly() or variable not in existing_variables:
+          if context.executing_eagerly() or _should_add_regularizer(
+              variable, existing_variables):
             self._handle_weight_regularization(name, variable, regularizer)
 
         if init_graph is not None:
@@ -276,7 +478,16 @@ class Layer(base_layer.Layer):
     Raises:
       ValueError: if the layer's `call` method returns None (an invalid value).
     """
-    self._set_scope(kwargs.pop('scope', None))
+    scope = kwargs.pop('scope', None)
+
+    if self._keras_style:
+      if scope is not None:
+        raise ValueError(
+            'scope argument not allowed when keras style layers are enabled, '
+            'but saw: {}'.format(scope))
+      return super(Layer, self).__call__(inputs, *args, **kwargs)
+
+    self._set_scope(scope)
 
     if not context.executing_eagerly():
       try:
@@ -308,7 +519,7 @@ class Layer(base_layer.Layer):
       try:
         call_has_scope_arg = self._call_has_scope_arg
       except AttributeError:
-        self._call_fn_args = estimator_util.fn_args(self.call)
+        self._call_fn_args = function_utils.fn_args(self.call)
         self._call_has_scope_arg = 'scope' in self._call_fn_args
         call_has_scope_arg = self._call_has_scope_arg
       if call_has_scope_arg:
@@ -353,4 +564,3 @@ def _add_elements_to_collection(elements, collection_list):
     for element in elements:
       if element not in collection_set:
         collection.append(element)
-

@@ -25,6 +25,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops.distributions import normal
 from tensorflow.python.ops.distributions import transformed_distribution
+from tensorflow.python.util import deprecation
 
 __all__ = [
     "VectorSinhArcsinhDiag",
@@ -95,6 +96,14 @@ class VectorSinhArcsinhDiag(transformed_distribution.TransformedDistribution):
   ```
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc=None,
                scale_diag=None,
@@ -143,7 +152,7 @@ class VectorSinhArcsinhDiag(transformed_distribution.TransformedDistribution):
         broadcastable with `event_shape`.
       distribution: `tf.Distribution`-like instance. Distribution from which `k`
         iid samples are used as input to transformation `F`.  Default is
-        `tf.distributions.Normal(loc=0., scale=1.)`.
+        `tfp.distributions.Normal(loc=0., scale=1.)`.
         Must be a scalar-batch, scalar-event distribution.  Typically
         `distribution.reparameterization_type = FULLY_REPARAMETERIZED` or it is
         a function of non-trainable parameters. WARNING: If you backprop through
@@ -163,7 +172,7 @@ class VectorSinhArcsinhDiag(transformed_distribution.TransformedDistribution):
     Raises:
       ValueError: if at most `scale_identity_multiplier` is specified.
     """
-    parameters = locals()
+    parameters = dict(locals())
 
     with ops.name_scope(
         name,

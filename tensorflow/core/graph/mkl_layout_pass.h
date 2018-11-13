@@ -15,8 +15,8 @@ limitations under the License.
 
 // A graph pass that rewrites graph for propagating MKL layout as a tensor
 
-#ifndef TENSORFLOW_GRAPH_MKL_LAYOUT_PASS_H_
-#define TENSORFLOW_GRAPH_MKL_LAYOUT_PASS_H_
+#ifndef TENSORFLOW_CORE_GRAPH_MKL_LAYOUT_PASS_H_
+#define TENSORFLOW_CORE_GRAPH_MKL_LAYOUT_PASS_H_
 
 #ifdef INTEL_MKL
 
@@ -33,4 +33,4 @@ extern bool RunMklLayoutRewritePass(std::unique_ptr<Graph>* g);
 
 #endif
 
-#endif  // TENSORFLOW_GRAPH_MKL_LAYOUT_PASS_H_
+#endif  // TENSORFLOW_CORE_GRAPH_MKL_LAYOUT_PASS_H_

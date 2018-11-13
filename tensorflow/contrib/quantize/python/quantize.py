@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import re
-from tensorflow.contrib import graph_editor
 from tensorflow.contrib.quantize.python import common
 from tensorflow.contrib.quantize.python import graph_matcher
 from tensorflow.contrib.quantize.python import input_to_ops
@@ -35,11 +34,20 @@ _QUANTIZABLE_TYPES = {'Conv2D', 'MatMul', 'DepthwiseConv2dNative'}
 # Activations that are supported by the quantization rewrite.
 _ACTIVATION_TYPES = {'Relu', 'Relu6', 'Identity'}
 
+_RELU_TYPES = {'Relu', 'Relu6'}
+
+_QUANTIZATION_OP = {'FakeQuantWithMinMaxVars'}
+_VALID_SRC_OP = {'Add', 'Mul'}
+_INTERMEDIATE_OP = {'Add', 'Mul'}
+_PASS_THROUGH_OP = {'Reshape', 'Identity', 'BatchToSpaceND', 'SpaceToBatchND'}
+_VALID_ACTIVATION_OP = {'Relu', 'Relu6'}
+
 
 def Quantize(graph,
              is_training,
              weight_bits=8,
              activation_bits=8,
+             symmetric=False,
              ema_decay=0.999,
              quant_delay=None,
              vars_collection=ops.GraphKeys.GLOBAL_VARIABLES,
@@ -57,6 +65,8 @@ def Quantize(graph,
     is_training: Whether quantizing training graph or eval graph.
     weight_bits: Number of bits to use for quantizing weights.
     activation_bits: Number of bits to use for quantizing activations.
+    symmetric: (Optional) If true, use symmetric quantization limits instead of
+      training the minimum and maximum of each quantization range separately.
     ema_decay: (Optional) Float, EMA decay parameter.  EMA is used to update
       quantization intervals for quantizing activations (see here about EMA:
       https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average).
@@ -74,47 +84,57 @@ def Quantize(graph,
     scope += '/'
 
   input_to_ops_map = input_to_ops.InputToOps(graph)
+  quantized_ops = set()
   for layer_match in _FindLayersToQuantize(graph):
     # Quantize the weights.
     context = _GetContextFromOp(layer_match.layer_op)
 
     # If `scope` is given, only quantize it if the consumer of weights
     # (the layer op) is in the right scope.
-    _InsertQuantOp(
-        context,
-        'weights_quant',
-        layer_match.weight_tensor.op, [layer_match.layer_op],
-        is_training,
-        moving_avg=False,
-        ema_decay=ema_decay,
-        quant_delay=quant_delay,
-        narrow_range=True,
-        vars_collection=vars_collection,
-        bits=weight_bits,
-        consumer_scope=scope)
+    if layer_match.weight_tensor is not None:
+      _InsertQuantOp(
+          context,
+          'weights_quant',
+          layer_match.weight_tensor.op,
+          input_to_ops_map.ConsumerOperations(layer_match.weight_tensor.op),
+          is_training,
+          moving_avg=False,
+          ema_decay=ema_decay,
+          quant_delay=quant_delay,
+          narrow_range=True,
+          vars_collection=vars_collection,
+          bits=weight_bits,
+          symmetric=symmetric,
+          consumer_scope=scope)
 
     # Quantize the activations.
-    consumer_ops = input_to_ops_map.ConsumerOperations(
-        layer_match.activation_op)
-    add_context = context
-    if layer_match.bypass_op:
-      add_context = re.search(r'^(.*)/([^/]+)', context).group(1)
-
-    # If `scope` is given, only quantize it if the producer of weights
-    # (usually it's the layer op) is in the right scope.
-    _InsertQuantOp(
-        add_context,
-        'act_quant',
-        layer_match.activation_op,
-        consumer_ops,
-        is_training,
-        moving_avg=True,
-        ema_decay=ema_decay,
-        quant_delay=quant_delay,
-        vars_collection=vars_collection,
-        bits=activation_bits,
-        init_min=0.0,
-        producer_scope=scope)
+    if layer_match.activation_op is not None:
+      consumer_ops = input_to_ops_map.ConsumerOperations(
+          layer_match.activation_op)
+      add_context = context
+      if layer_match.bypass_op:
+        pattern_match_result = re.search(r'^(.*)/([^/]+)', context)
+        if pattern_match_result is not None:
+          add_context = pattern_match_result.group(1)
+        else:
+          add_context = ''
+      # If `scope` is given, only quantize it if the producer of weights
+      # (usually it's the layer op) is in the right scope.
+      _InsertQuantOp(
+          add_context,
+          'act_quant',
+          layer_match.activation_op,
+          consumer_ops,
+          is_training,
+          moving_avg=True,
+          ema_decay=ema_decay,
+          quant_delay=quant_delay,
+          vars_collection=vars_collection,
+          bits=activation_bits,
+          symmetric=symmetric,
+          init_min=0.0,
+          producer_scope=scope)
+      quantized_ops.add(layer_match.activation_op)
 
     # Quantize the inputs and output to the bypass (if it exists). The input to
     # the bypass is the bias add, and the output is the activation.
@@ -124,15 +144,18 @@ def Quantize(graph,
       _InsertQuantOp(
           context,
           'conv_quant',
-          layer_match.bias_add_op, [layer_match.bypass_op],
+          layer_match.bias_add_op,
+          input_to_ops_map.ConsumerOperations(layer_match.bias_add_op),
           is_training,
           moving_avg=True,
           ema_decay=ema_decay,
           quant_delay=quant_delay,
           vars_collection=vars_collection,
           bits=activation_bits,
+          symmetric=symmetric,
           producer_scope=scope,
           consumer_scope=scope)
+      quantized_ops.add(layer_match.bias_add_op)
       # Make sure the op following this isn't an activation. In which case, we
       # shouldn't quantize it, since the activation will be Fused into the
       # Add at inference time.
@@ -152,13 +175,19 @@ def Quantize(graph,
             quant_delay=quant_delay,
             vars_collection=vars_collection,
             bits=activation_bits,
+            symmetric=symmetric,
             producer_scope=scope,
             consumer_scope=scope)
+        quantized_ops.add(layer_match.bypass_op)
 
     # Quantize bypass ops that occur after the activation.
     if layer_match.post_activation_bypass_op is not None:
-      post_activation_bypass_context = re.search(
-          r'^(.*)/([^/]+)', layer_match.post_activation_bypass_op.name).group(1)
+      pattern_match_result = re.search(
+          r'^(.*)/([^/]+)', layer_match.post_activation_bypass_op.name)
+      if pattern_match_result is not None:
+        post_activation_bypass_context = pattern_match_result.group(1)
+      else:
+        post_activation_bypass_context = ''
       # If `scope` is given, only quantize it if the producer is in the right
       # scope.
       # Make sure the op following this isn't an activation. In which case, we
@@ -166,7 +195,7 @@ def Quantize(graph,
       # Add at inference time.
       consumers = input_to_ops_map.ConsumerOperations(
           layer_match.post_activation_bypass_op)
-      if any([consumer.type in _ACTIVATION_TYPES for consumer in consumers]):
+      if any([consumer.type in _RELU_TYPES for consumer in consumers]):
         logging.info('Skipping %s, because its followed by an activation.',
                      layer_match.post_activation_bypass_op.name)
       else:
@@ -181,7 +210,117 @@ def Quantize(graph,
             quant_delay=quant_delay,
             vars_collection=vars_collection,
             bits=activation_bits,
+            symmetric=symmetric,
             producer_scope=scope)
+        quantized_ops.add(layer_match.post_activation_bypass_op)
+
+  _QuantizeActivationLayers(
+      quantized_ops,
+      graph,
+      is_training,
+      activation_bits,
+      ema_decay,
+      quant_delay,
+      vars_collection,
+      scope=scope)
+
+
+def _QuantizeActivationLayers(quantized_ops,
+                              graph,
+                              is_training,
+                              activation_bits=8,
+                              ema_decay=0.999,
+                              quant_delay=None,
+                              vars_collection=ops.GraphKeys.GLOBAL_VARIABLES,
+                              scope=None):
+  """Quantize intermediate activation tensors after addition and multiplication.
+
+  Args:
+    quantized_ops: Set of previously quantized activation ops.
+    graph: Graph to modify.
+    is_training: Whether quantizing training graph or eval graph.
+    activation_bits: Number of bits to use for quantizing activations.
+    ema_decay: (Optional) Float, EMA decay parameter.  EMA is used to update
+      quantization intervals for quantizing activations (see here about EMA:
+      https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average).
+    quant_delay: (Optional, default None) Int, count of global steps for which
+      to delay quantization.  This helps weights stabilize at the start of
+      training.
+    vars_collection: (Optional) Collection where to store the variables for
+      quantization interval ends.
+    scope: The scope to be transformed. If it's not None, only the ops which are
+      in this scope will be transformed.
+
+  Raises:
+    ValueError: When quantization fails.
+  """
+  input_to_ops_map = input_to_ops.InputToOps(graph)
+  for op in (op for op in graph.get_operations()):
+    if _CheckIfQuantizableOp(op, quantized_ops):
+      logging.info('Inserting fake quant op activation_%s_quant after %s',
+                   op.type, op.name)
+      consumers = input_to_ops_map.ConsumerOperations(op)
+      _InsertQuantOp(
+          op.name,
+          'activation_' + op.type + '_quant',
+          op,
+          consumers,
+          is_training,
+          moving_avg=True,
+          ema_decay=ema_decay,
+          quant_delay=quant_delay,
+          vars_collection=vars_collection,
+          bits=activation_bits,
+          producer_scope=scope)
+
+
+def _CheckIfQuantizableOp(src_op, quantized_ops):
+  """Check if the output of an op should be quantized.
+
+  Args:
+    src_op: op to be checked
+    quantized_ops: Set of previously quantized activation ops.
+
+  Returns:
+    Boolean specifying if output should be quantized or not.
+  """
+  src_op_name = set([src_op.type])
+  if src_op in quantized_ops:
+    return False
+  if not src_op_name.intersection(_VALID_SRC_OP):
+    return False
+
+  # If src op is an add or a mul and the output is immediately
+  # followed by an activation skip
+  if len(src_op.outputs) == 1 and len(src_op.outputs[0].consumers()) == 1:
+    op_consumers = src_op.outputs[0].consumers()
+    if set([op_consumers[0].type]).intersection(_VALID_ACTIVATION_OP):
+      logging.info('Skipping quant after %s', src_op.name)
+      return False
+  # Is an Add or a Mul
+  input_ops = src_op.inputs
+
+  for op in input_ops:
+    curr_op = op.op
+    curr_op_type = set([curr_op.type])
+    while curr_op_type.intersection(_PASS_THROUGH_OP):
+      # Walk back through pass through ops
+      curr_op = curr_op.inputs[0].op
+      curr_op_type = set([curr_op.type])
+      # Now at a valid or quantizable op, need to check if
+      # atleast one of the inputs to a valid op is connected
+      # to a quantizable op via pass through ops
+
+    if (curr_op_type.intersection(_QUANTIZATION_OP) or
+        curr_op.name.find('delayed_quant/Merge') > 0):
+      return True
+
+    if curr_op_type.intersection(_INTERMEDIATE_OP):
+      # Check if atleast one input to intermediate_op are quantizable
+      for input_op in curr_op.inputs:
+        if _CheckIfQuantizableOp(input_op.op, quantized_ops):
+          return True
+  return False
 
 
 def _FindLayersToQuantize(graph):
@@ -194,9 +333,11 @@ def _FindLayersToQuantize(graph):
                 /
          conv|fc
             |
+      [batch_to_space_nd]
+            |
     [post_conv_correction]
             |
-     biasadd|folded_bias
+     [biasadd|folded_bias]
             |
          [bypass]
             |
@@ -218,8 +359,19 @@ def _FindLayersToQuantize(graph):
   """
   input_pattern = graph_matcher.OpTypePattern('*')
   weight_var_pattern = graph_matcher.OpTypePattern('Variable|VariableV2')
-  weight_identity_pattern = graph_matcher.OpTypePattern(
+  weight_partition_identity_pattern = graph_matcher.OpTypePattern(
       'Identity', inputs=[weight_var_pattern])
+  weight_partition_concat_pattern = graph_matcher.OpTypePattern(
+      'ConcatV2', inputs=[weight_partition_identity_pattern, '*', '*'])
+  weight_identity_pattern = graph_matcher.OpTypePattern(
+      'Identity',
+      inputs=[
+          graph_matcher.OneofPattern([
+              weight_partition_identity_pattern,
+              weight_partition_concat_pattern,
+              weight_var_pattern,
+          ])
+      ])
   weight_resource_var_pattern = graph_matcher.OpTypePattern('ReadVariableOp')
   folded_weight_pattern = graph_matcher.OpTypePattern('Mul')
 
@@ -233,53 +385,86 @@ def _FindLayersToQuantize(graph):
               weight_identity_pattern, weight_resource_var_pattern,
               folded_weight_pattern
           ])
+      ],
+      ordered_inputs=False)
+
+  # For atrous convolutions a BatchToSpaceND will occur after the depthwise
+  # convolution.
+  batch_to_space_pattern = graph_matcher.OpTypePattern(
+      'BatchToSpaceND',
+      inputs=[
+          layer_pattern,
+          graph_matcher.OpTypePattern('*'),
+          graph_matcher.OpTypePattern('*')
       ])
 
+  layer_output_pattern = graph_matcher.OneofPattern(
+      [batch_to_space_pattern, layer_pattern])
+
+  # For separable convolutions, we are looking for a conv, followed by a conv
+  # with no activations between the two.
+  sep_conv_pattern = graph_matcher.OpTypePattern(
+      '|'.join(_QUANTIZABLE_TYPES),
+      inputs=[
+          graph_matcher.OneofPattern([layer_output_pattern]),
+          graph_matcher.OpTypePattern('*')
+      ],
+      ordered_inputs=False)
   folded_bias_mul_pattern = graph_matcher.OpTypePattern(
-      'Mul', inputs=[graph_matcher.OpTypePattern('*'), layer_pattern])
+      'Mul',
+      inputs=[graph_matcher.OpTypePattern('*'), layer_output_pattern],
+      ordered_inputs=False)
   post_layer_op_correction_pattern = graph_matcher.OpTypePattern(
-      'Add', inputs=[folded_bias_mul_pattern,
-                     graph_matcher.OpTypePattern('*')])
+      'Add',
+      inputs=[folded_bias_mul_pattern,
+              graph_matcher.OpTypePattern('*')],
+      ordered_inputs=False)
   folded_bias_add_pattern = graph_matcher.OpTypePattern(
       'Add',
       inputs=[
           post_layer_op_correction_pattern,
           graph_matcher.OpTypePattern('*')
-      ])
+      ],
+      ordered_inputs=False)
+
+  # batch_norms with forced updates have an Identity operation at the end.
+  # TODO(suharshs): Find a way to easily skip extra Identity operations. The
+  # current issue is that doing so can often match patterns across many layers
+  # incorrectly.
+  batch_norm_identity = graph_matcher.OpTypePattern(
+      'Identity', inputs=[folded_bias_add_pattern])
 
   bias_add_pattern = graph_matcher.OpTypePattern(
-      'Add|BiasAdd', inputs=[layer_pattern, '*'])
+      'Add|BiasAdd', inputs=[layer_output_pattern, '*'], ordered_inputs=False)
 
   # The bias can come from the bias add or the folded bias add.
-  bypass_pattern_a = graph_matcher.OpTypePattern(
+  bypass_pattern = graph_matcher.OpTypePattern(
       'Add',
       inputs=[
           graph_matcher.OneofPattern(
-              [bias_add_pattern, folded_bias_add_pattern]), '*'
-      ])
-  bypass_pattern_b = graph_matcher.OpTypePattern(
-      'Add',
-      inputs=[
-          '*',
-          graph_matcher.OneofPattern(
-              [bias_add_pattern, folded_bias_add_pattern])
-      ])
+              [bias_add_pattern, folded_bias_add_pattern, batch_norm_identity]),
+          '*'
+      ],
+      ordered_inputs=False)
 
   # The input to the activation can come from bias add, fold bias add, the
   # bypasses.
+  # TODO(suharshs): We should ideally skip Identity operations instead of
+  # treating them as activations.
   activation_pattern = graph_matcher.OpTypePattern(
-      '|'.join(_ACTIVATION_TYPES),
+      '|'.join(_ACTIVATION_TYPES) + '|Identity',
       inputs=[
           graph_matcher.OneofPattern([
-              bias_add_pattern, folded_bias_add_pattern, bypass_pattern_a,
-              bypass_pattern_b
+              bias_add_pattern,
+              folded_bias_add_pattern,
+              batch_norm_identity,
+              bypass_pattern,
+              layer_pattern,
           ])
       ])
 
-  post_activation_bypass_pattern_a = graph_matcher.OpTypePattern(
-      'Add', inputs=['*', activation_pattern])
-  post_activation_bypass_pattern_b = graph_matcher.OpTypePattern(
-      'Add', inputs=[activation_pattern, '*'])
+  post_activation_bypass_pattern = graph_matcher.OpTypePattern(
+      'Add', inputs=['*', activation_pattern], ordered_inputs=False)
 
   # The order of the following matching blocks is very important. Since matches
   # aren't guaranteed to be disjoint, we structure matches from largest to
@@ -295,10 +480,7 @@ def _FindLayersToQuantize(graph):
   # to ensure we don't match only the first part of this layer, missing the
   # post activation bypass node.
   post_activation_bypass_layer_matcher = graph_matcher.GraphMatcher(
-      graph_matcher.OneofPattern([
-          post_activation_bypass_pattern_a,
-          post_activation_bypass_pattern_b,
-      ]))
+      post_activation_bypass_pattern)
   for match_result in post_activation_bypass_layer_matcher.match_graph(graph):
     layer_op = match_result.get_op(layer_pattern)
     weight_tensor = match_result.get_tensor(weight_identity_pattern)
@@ -310,14 +492,9 @@ def _FindLayersToQuantize(graph):
     bias_add_op = match_result.get_op(bias_add_pattern)
     if bias_add_op is None:
       bias_add_op = match_result.get_op(folded_bias_add_pattern)
-    bypass_op = match_result.get_op(bypass_pattern_a)
-    if bypass_op is None:
-      bypass_op = match_result.get_op(bypass_pattern_b)
+    bypass_op = match_result.get_op(bypass_pattern)
     post_activation_bypass_op = match_result.get_op(
-        post_activation_bypass_pattern_a)
-    if post_activation_bypass_op is None:
-      post_activation_bypass_op = match_result.get_op(
-          post_activation_bypass_pattern_b)
+        post_activation_bypass_pattern)
     if layer_op not in matched_layer_set:
       matched_layer_set.add(layer_op)
       layer_matches.append(
@@ -338,14 +515,13 @@ def _FindLayersToQuantize(graph):
     bias_add_op = match_result.get_op(bias_add_pattern)
     if bias_add_op is None:
       bias_add_op = match_result.get_op(folded_bias_add_pattern)
-    bypass_op = match_result.get_op(bypass_pattern_a)
-    if bypass_op is None:
-      bypass_op = match_result.get_op(bypass_pattern_b)
+    bypass_op = match_result.get_op(bypass_pattern)
     if layer_op not in matched_layer_set:
-      matched_layer_set.add(layer_op)
-      layer_matches.append(
-          _LayerMatch(layer_op, weight_tensor, activation_op, bypass_op, None,
-                      bias_add_op))
+      if not _IsSkipLayer(activation_op):
+        matched_layer_set.add(layer_op)
+        layer_matches.append(
+            _LayerMatch(layer_op, weight_tensor, activation_op, bypass_op, None,
+                        bias_add_op))
 
   # Match the final layer, where there may not be an activation and instead
   # the output of the final BiasAdd must be quantized. So we treat the BiasAdd
@@ -368,15 +544,46 @@ def _FindLayersToQuantize(graph):
       layer_matches.append(
           _LayerMatch(layer_op, weight_tensor, activation_op, None, None, None))
 
+  # Look for separable convolutions here
+  sep_conv_matcher = graph_matcher.GraphMatcher(sep_conv_pattern)
+  for match_result in sep_conv_matcher.match_graph(graph):
+    layer_op = match_result.get_op(layer_pattern)
+    weight_tensor = match_result.get_tensor(weight_identity_pattern)
+    if weight_tensor is None:
+      weight_tensor = match_result.get_tensor(weight_resource_var_pattern)
+    activation_op = match_result.get_op(layer_pattern)
+    if layer_op not in matched_layer_set:
+      matched_layer_set.add(layer_op)
+      layer_matches.append(
+          _LayerMatch(layer_op, weight_tensor, activation_op, None, None, None))
+
   return layer_matches
 
 
-def _HasPostActivationBypass(activation_op):
-  for activation_tensor in activation_op.outputs:
-    for output_op in activation_tensor.consumers():
-      if output_op.type == 'Add':
-        return True
-  return False
+def _IsSkipLayer(activation_op):
+  """Skip quantizing conv->identity->Batch norm layers.
+
+  Args:
+    activation_op: Activation op detected by layer matching pattern
+
+  Returns:
+    skip_layer: boolean, true when conv->identity->batch norm is detected.
+  """
+
+  # Exclude quantization of conv->identity->BN,
+  # After folding, this part corresponds to estimation of mean and variance
+  # and should not be quantized.
+  skip_layer = False
+  if activation_op.type == 'Identity' and len(activation_op.outputs) == 1:
+    if len(activation_op.outputs[0].consumers()) == 1:
+      consumer = activation_op.outputs[0].consumers()[0]
+      if consumer.type == 'FusedBatchNorm':
+        skip_layer = True
+        logging.info(
+            'Skipping quantizing %s, because it is the output of a conv/fc '
+            'followed by a identity, feeding a fused batch norm.',
+            activation_op.name)
+  return skip_layer
 
 
 class _LayerMatch(object):
@@ -416,6 +623,24 @@ class _LayerMatch(object):
     return self._bias_add_op
 
 
+def _FollowedByFakeQuant(tensor):
+  """Returns True if the tensor is followed by a FakeQuant."""
+  fake_quant_ops = set([
+      'FakeQuantWithMinMaxVars', 'FakeQuantWithMinMaxArgs',
+      'FakeQuantWithMinMaxVarsPerChannel'
+  ])
+  pass_through_ops = set(['Reshape', 'Identity'])
+  consumers = tensor.consumers()
+  while consumers:
+    c = consumers.pop()
+    if c.type in fake_quant_ops:
+      return True
+    elif c.type in pass_through_ops:
+      for output in c.outputs:
+        consumers.extend(output.consumers())
+  return False
+
+
 def _InsertQuantOp(context,
                    name,
                    producer,
@@ -425,6 +650,7 @@ def _InsertQuantOp(context,
                    init_min=-6.0,
                    init_max=6.0,
                    bits=8,
+                   symmetric=False,
                    ema_decay=0.999,
                    quant_delay=None,
                    vars_collection=ops.GraphKeys.GLOBAL_VARIABLES,
@@ -445,6 +671,8 @@ def _InsertQuantOp(context,
     init_min: Starting minimum value for the new quantization op.
     init_max: Starting maximum value for the new quantization op.
     bits: Number of bits to use for quantization, must be between 2 and 8.
+    symmetric: (Optional) If true, use symmetric quantization limits instead of
+      training the minimum and maximum of each quantization range separately.
     ema_decay: (Optional) Float, EMA decay parameter.  EMA is used to update
       quantization intervals for quantizing activations (see here about EMA:
       https://en.wikipedia.org/wiki/Moving_average#Exponential_moving_average).
@@ -496,11 +724,7 @@ def _InsertQuantOp(context,
   # Prevent ops from being quantized multiple times. Bypass ops can sometimes
   # overlap between multiple matches, so we need to ensure that we don't
   # add duplicate FakeQuant operations.
-  fake_quant_ops = set([
-      'FakeQuantWithMinMaxVars',
-      'FakeQuantWithMinMaxArgs'
-  ])
-  if fake_quant_ops.intersection(set([c.type for c in inputs.consumers()])):
+  if _FollowedByFakeQuant(inputs):
     return
 
   if moving_avg:
@@ -512,6 +736,7 @@ def _InsertQuantOp(context,
             ema_decay=ema_decay,
             is_training=is_training,
             num_bits=bits,
+            symmetric=symmetric,
             narrow_range=narrow_range,
             vars_collection=vars_collection,
             name_prefix=name_prefix))
@@ -523,6 +748,7 @@ def _InsertQuantOp(context,
             init_max=init_max,
             is_training=is_training,
             num_bits=bits,
+            symmetric=symmetric,
             narrow_range=narrow_range,
             vars_collection=vars_collection,
             name_prefix=name_prefix))
@@ -539,8 +765,8 @@ def _InsertQuantOp(context,
         name=name_prefix + '/delayed_quant')
 
   if consumers:
-    tensors_modified_count = graph_editor.reroute_ts(
-        [quant], [inputs], can_modify=consumers)
+    tensors_modified_count = common.RerouteTensor(
+        quant, inputs, can_modify=consumers)
     # Some operations can have multiple output tensors going to the same
     # consumer. Since consumers is a set, we need to ensure that
     # tensors_modified_count is greater than or equal to the length of the set

@@ -1,0 +1,7 @@
+path: "tensorflow.keras.experimental"
+tf_module {
+  member {
+    name: "PeepholeLSTMCell"
+    mtype: "<type \'type\'>"
+  }
+}

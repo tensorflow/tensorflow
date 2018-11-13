@@ -12,13 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tensorflow set operations.
-
-@@set_size
-@@set_intersection
-@@set_union
-@@set_difference
-"""
+"""Tensorflow set operations."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

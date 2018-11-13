@@ -25,7 +25,6 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -35,14 +34,13 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import training as train
 
 
-@test_util.with_c_api
 class MemoryOptimizerSwapTest(test.TestCase):
   """Tests the Grappler memory optimizer."""
 
   def testNoSwapping(self):
     """Make sure the graph is preserved when there is nothing to swap."""
-    a = variables.Variable(10, name='a')
-    b = variables.Variable(20, name='b')
+    a = variables.VariableV1(10, name='a')
+    b = variables.VariableV1(20, name='b')
     c = math_ops.add_n([a, b], name='c')
     d = math_ops.add_n([b, c], name='d')
     train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
@@ -62,8 +60,8 @@ class MemoryOptimizerSwapTest(test.TestCase):
 
   def testSimpleSwap(self):
     """Check that the swap annotations are followed."""
-    a = variables.Variable(10, name='a')
-    b = variables.Variable(20, name='b')
+    a = variables.VariableV1(10, name='a')
+    b = variables.VariableV1(20, name='b')
     c = math_ops.add_n([a, b], name='c')
     d = math_ops.add_n([b, c], name='d')
     train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
@@ -76,8 +74,10 @@ class MemoryOptimizerSwapTest(test.TestCase):
 
     rewriter_config = rewriter_config_pb2.RewriterConfig(
         disable_model_pruning=True,
+        meta_optimizer_iterations=rewriter_config_pb2.RewriterConfig.ONE,
         constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
-        memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL)
+        memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL,
+        min_graph_nodes=-1)
     graph = tf_optimizer.OptimizeGraph(rewriter_config, mg)
 
     self.assertEqual(len(graph.node), graph_size + 2)
@@ -95,7 +95,6 @@ class MemoryOptimizerSwapTest(test.TestCase):
         self.assertEqual('c', node.input[1])
 
 
-@test_util.with_c_api
 class MemoryOptimizerRecomputeTest(test.TestCase):
   """Tests the Python interface to recomputation rewrites.
 
@@ -135,6 +134,7 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
             dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF,
             layout_optimizer=rewriter_config_pb2.RewriterConfig.OFF,
             arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+            min_graph_nodes=-1,
             memory_optimization=rewriter_config_pb2.RewriterConfig.
             RECOMPUTATION_HEURISTICS), original_metagraph)
     self.assertGreater(
@@ -160,6 +160,7 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
             dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF,
             layout_optimizer=rewriter_config_pb2.RewriterConfig.OFF,
             arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+            min_graph_nodes=-1,
             memory_optimization=rewriter_config_pb2.RewriterConfig.
             RECOMPUTATION_HEURISTICS,
             # Checks that name scope "gradients/" also match sub-scope.
@@ -243,7 +244,7 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
         init_op_name=init_op_name,
         train_op_name=train_op_name,
         loss_op_name=loss_op_name)
-    self.assertAllClose(original_loss, memory_optimized_loss, rtol=1e-4)
+    self.assertAllClose(original_loss, memory_optimized_loss, rtol=1e-2)
 
   def _annotated_graph(self):
     graph = ops.Graph()
@@ -299,6 +300,7 @@ class MemoryOptimizerRecomputeTest(test.TestCase):
              if 'Recomputed/' in node.name]))
     rewritten_graph_def = tf_optimizer.OptimizeGraph(
         rewriter_config_pb2.RewriterConfig(
+            min_graph_nodes=-1,
             memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL),
         metagraph)
     self.assertEqual(

@@ -107,7 +107,7 @@ def _init_sampler(tc, init, num):
 class ConstantInitializersTest(test.TestCase):
 
   def testZerosInitializer(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       shape = [2, 3]
       x = variable_scope.get_variable(
           "x", shape=shape, initializer=init_ops.zeros_initializer())
@@ -115,7 +115,7 @@ class ConstantInitializersTest(test.TestCase):
       self.assertAllEqual(x.eval(), np.zeros(shape))
 
   def testOnesInitializer(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       shape = [2, 3]
       x = variable_scope.get_variable(
           "x", shape=shape, initializer=init_ops.ones_initializer())
@@ -123,7 +123,7 @@ class ConstantInitializersTest(test.TestCase):
       self.assertAllEqual(x.eval(), np.ones(shape))
 
   def testConstantZeroInitializer(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       shape = [2, 3]
       x = variable_scope.get_variable(
           "x", shape=shape, initializer=init_ops.constant_initializer(0.0))
@@ -131,7 +131,7 @@ class ConstantInitializersTest(test.TestCase):
       self.assertAllEqual(x.eval(), np.zeros(shape))
 
   def testConstantOneInitializer(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       shape = [2, 3]
       x = variable_scope.get_variable(
           "x", shape=shape, initializer=init_ops.constant_initializer(1.0))
@@ -139,7 +139,7 @@ class ConstantInitializersTest(test.TestCase):
       self.assertAllEqual(x.eval(), np.ones(shape))
 
   def testConstantIntInitializer(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       shape = [2, 3]
       x = variable_scope.get_variable(
           "x",
@@ -151,7 +151,7 @@ class ConstantInitializersTest(test.TestCase):
       self.assertAllEqual(x.eval(), 7 * np.ones(shape, dtype=np.int32))
 
   def testConstantTupleInitializer(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       shape = [3]
       x = variable_scope.get_variable(
           "x",
@@ -163,7 +163,7 @@ class ConstantInitializersTest(test.TestCase):
       self.assertAllEqual(x.eval(), [10, 20, 30])
 
   def _testNDimConstantInitializer(self, name, value, shape, expected):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       init = init_ops.constant_initializer(value, dtype=dtypes.int32)
       x = variable_scope.get_variable(name, shape=shape, initializer=init)
       x.initializer.run()
@@ -187,7 +187,7 @@ class ConstantInitializersTest(test.TestCase):
 
   def _testNDimConstantInitializerLessValues(self, name, value, shape,
                                              expected):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       init = init_ops.constant_initializer(value, dtype=dtypes.int32)
       x = variable_scope.get_variable(name, shape=shape, initializer=init)
       x.initializer.run()
@@ -213,7 +213,7 @@ class ConstantInitializersTest(test.TestCase):
 
   def _testNDimConstantInitializerMoreValues(self, value, shape):
     ops.reset_default_graph()
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       init = init_ops.constant_initializer(value, dtype=dtypes.int32)
       self.assertRaises(
           ValueError,
@@ -343,7 +343,7 @@ class UniformUnitScalingInitializationTest(test.TestCase):
 
   def testZeroSize(self):
     shape = [0, 2]
-    with self.test_session():
+    with self.cached_session():
       x = variable_scope.get_variable(
           "x",
           shape=shape,
@@ -362,11 +362,76 @@ class UniformUnitScalingInitializationTest(test.TestCase):
         dtype=dtypes.string)
 
 
+class VarianceScalingInitializationTest(test.TestCase):
+
+  def testTruncatedNormalDistribution(self):
+    shape = [100, 100]
+    expect_mean = 0.
+    expect_var = 1. / shape[0]
+    init = init_ops.variance_scaling_initializer(
+        distribution='truncated_normal')
+
+    with self.session(use_gpu=True), \
+      test.mock.patch.object(
+          random_ops, 'truncated_normal', wraps=random_ops.truncated_normal) \
+          as mock_truncated_normal:
+      x = init(shape).eval()
+      self.assertTrue(mock_truncated_normal.called)
+
+    self.assertNear(np.mean(x), expect_mean, err=1e-2)
+    self.assertNear(np.var(x), expect_var, err=1e-2)
+
+  def testNormalDistribution(self):
+    shape = [100, 100]
+    expect_mean = 0.
+    expect_var = 1. / shape[0]
+    init = init_ops.variance_scaling_initializer(distribution='normal')
+
+    with self.session(use_gpu=True), \
+      test.mock.patch.object(
+          random_ops, 'truncated_normal', wraps=random_ops.truncated_normal) \
+          as mock_truncated_normal:
+      x = init(shape).eval()
+      self.assertTrue(mock_truncated_normal.called)
+
+    self.assertNear(np.mean(x), expect_mean, err=1e-2)
+    self.assertNear(np.var(x), expect_var, err=1e-2)
+
+  def testUntruncatedNormalDistribution(self):
+    shape = [100, 100]
+    expect_mean = 0.
+    expect_var = 1. / shape[0]
+    init = init_ops.variance_scaling_initializer(
+        distribution='untruncated_normal')
+
+    with self.session(use_gpu=True), \
+      test.mock.patch.object(
+          random_ops, 'random_normal', wraps=random_ops.random_normal) \
+          as mock_random_normal:
+      x = init(shape).eval()
+      self.assertTrue(mock_random_normal.called)
+
+    self.assertNear(np.mean(x), expect_mean, err=1e-2)
+    self.assertNear(np.var(x), expect_var, err=1e-2)
+
+  def testUniformDistribution(self):
+    shape = [100, 100]
+    expect_mean = 0.
+    expect_var = 1. / shape[0]
+    init = init_ops.variance_scaling_initializer(distribution='uniform')
+
+    with self.session(use_gpu=True):
+      x = init(shape).eval()
+
+    self.assertNear(np.mean(x), expect_mean, err=1e-2)
+    self.assertNear(np.var(x), expect_var, err=1e-2)
+
+
 # TODO(vrv): move to sequence_ops_test?
 class RangeTest(test.TestCase):
 
   def _Range(self, start, limit, delta):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       tf_ans = math_ops.range(start, limit, delta, name="range")
       self.assertEqual([len(np.arange(start, limit, delta))],
                        tf_ans.get_shape())
@@ -385,7 +450,7 @@ class RangeTest(test.TestCase):
     self.assertEqual(math_ops.range(0, 5, 1).dtype, dtypes.int32)
 
   def testLimitOnly(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       self.assertAllEqual(np.arange(5), math_ops.range(5).eval())
 
   def testEmpty(self):
@@ -455,9 +520,8 @@ class LinSpaceTest(test.TestCase):
       return [False]
 
   def _LinSpace(self, start, stop, num):
-    # NOTE(touts): Needs to pass a graph to get a new session each time.
     with ops.Graph().as_default() as graph:
-      with self.test_session(graph=graph, force_gpu=self.force_gpu):
+      with self.session(graph=graph, force_gpu=self.force_gpu):
         tf_ans = math_ops.linspace(start, stop, num, name="linspace")
         self.assertEqual([num], tf_ans.get_shape())
         return tf_ans.eval()
@@ -541,7 +605,7 @@ class OrthogonalInitializerTest(test.TestCase):
 
   def testInvalidShape(self):
     init1 = init_ops.orthogonal_initializer()
-    with self.test_session(graph=ops.Graph(), use_gpu=True):
+    with self.session(graph=ops.Graph(), use_gpu=True):
       self.assertRaises(ValueError, init1, shape=[5])
 
   def testGain(self):
@@ -549,7 +613,7 @@ class OrthogonalInitializerTest(test.TestCase):
     for dtype in [dtypes.float32, dtypes.float64]:
       init1 = init_ops.orthogonal_initializer(seed=1, dtype=dtype)
       init2 = init_ops.orthogonal_initializer(gain=3.14, seed=1, dtype=dtype)
-      with self.test_session(graph=ops.Graph(), use_gpu=True):
+      with self.session(graph=ops.Graph(), use_gpu=True):
         t1 = init1(shape).eval()
         t2 = init2(shape).eval()
       return np.allclose(t1, t2 / 3.14, rtol=1e-15, atol=1e-15)
@@ -559,7 +623,7 @@ class OrthogonalInitializerTest(test.TestCase):
       for shape in [(10, 10), (10, 9, 8), (100, 5, 5), (50, 40), (40, 50)]:
         init = init_ops.orthogonal_initializer(dtype=dtype)
         tol = 1e-5 if dtype == dtypes.float32 else 1e-12
-        with self.test_session(graph=ops.Graph(), use_gpu=True):
+        with self.session(graph=ops.Graph(), use_gpu=True):
           # Check the shape
           t = init(shape).eval()
           self.assertAllEqual(shape, t.shape)
@@ -598,7 +662,7 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
 
   def testInvalidShape(self):
     init1 = init_ops.convolutional_delta_orthogonal()
-    with self.test_session(graph=ops.Graph(), use_gpu=True):
+    with self.session(graph=ops.Graph(), use_gpu=True):
       self.assertRaises(ValueError, init1, shape=[3, 3, 6, 5])
 
   def testGain(self):
@@ -607,7 +671,7 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
       init1 = init_ops.convolutional_delta_orthogonal(seed=1, dtype=dtype)
       init2 = init_ops.convolutional_delta_orthogonal(gain=3.14,
                                                       seed=1, dtype=dtype)
-      with self.test_session(graph=ops.Graph(), use_gpu=True):
+      with self.session(graph=ops.Graph(), use_gpu=True):
         t1 = init1(shape).eval()
         t2 = init2(shape).eval()
       return np.allclose(t1, t2 / 3.14, rtol=1e-15, atol=1e-15)
@@ -639,7 +703,7 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
         outputs_2norm = linalg_ops.norm(outputs)
         ratio = outputs_2norm / inputs_2norm
         my_ops = variables.global_variables_initializer()
-        with self.test_session(use_gpu=True) as sess:
+        with self.session(use_gpu=True) as sess:
           sess.run(my_ops)
           # Check the shape of the outputs
           t = outputs.eval()
@@ -654,7 +718,7 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
     shape = [3, 3, 10, 10]
     count = 70
     tol = 1e-5
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       for i in range(count):
         x = variable_scope.get_variable("{}".format(i), shape=shape,
                                         initializer=
@@ -698,7 +762,7 @@ class ConvolutionOrthogonal1dInitializerTest(test.TestCase):
 
   def testInvalidShape(self):
     init1 = init_ops.convolutional_orthogonal_1d()
-    with self.test_session(graph=ops.Graph(), use_gpu=True):
+    with self.session(graph=ops.Graph(), use_gpu=True):
       self.assertRaises(ValueError, init1, shape=[3, 6, 5])
 
   def testGain(self):
@@ -707,7 +771,7 @@ class ConvolutionOrthogonal1dInitializerTest(test.TestCase):
       init1 = init_ops.convolutional_orthogonal_1d(seed=1, dtype=dtype)
       init2 = init_ops.convolutional_orthogonal_1d(gain=3.14,
                                                    seed=1, dtype=dtype)
-      with self.test_session(graph=ops.Graph(), use_gpu=True):
+      with self.session(graph=ops.Graph(), use_gpu=True):
         t1 = init1(shape).eval()
         t2 = init2(shape).eval()
       return np.allclose(t1, t2 / 3.14, rtol=1e-15, atol=1e-15)
@@ -718,7 +782,7 @@ class ConvolutionOrthogonal1dInitializerTest(test.TestCase):
     shape = [3, 10, 10]
     count = 70
     tol = 1e-5
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       for i in range(count):
         x = variable_scope.get_variable("{}".format(i), shape=shape,
                                         initializer=
@@ -765,7 +829,7 @@ class ConvolutionOrthogonal1dInitializerTest(test.TestCase):
     tol = 1e-3
     gain = 3.14
     # Check orthogonality/isometry by computing the ratio between
-    # the 2-norms of the inputs and ouputs.
+    # the 2-norms of the inputs and outputs.
     for kernel_size in [[1], [2], [3], [4], [5], [6]]:
       convolution = convolutional.conv1d
       inputs = random_ops.random_normal(shape, dtype=dtype)
@@ -778,7 +842,7 @@ class ConvolutionOrthogonal1dInitializerTest(test.TestCase):
       outputs_2norm = linalg_ops.norm(outputs)
       ratio = outputs_2norm / inputs_2norm
       my_ops = variables.global_variables_initializer()
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         sess.run(my_ops)
         # Check the shape of the outputs
         t = outputs.eval()
@@ -812,7 +876,7 @@ class ConvolutionOrthogonal2dInitializerTest(test.TestCase):
 
   def testInvalidShape(self):
     init1 = init_ops.convolutional_orthogonal_2d()
-    with self.test_session(graph=ops.Graph(), use_gpu=True):
+    with self.session(graph=ops.Graph(), use_gpu=True):
       self.assertRaises(ValueError, init1, shape=[3, 3, 6, 5])
 
   def testGain(self):
@@ -821,7 +885,7 @@ class ConvolutionOrthogonal2dInitializerTest(test.TestCase):
       init1 = init_ops.convolutional_orthogonal_2d(seed=1, dtype=dtype)
       init2 = init_ops.convolutional_orthogonal_2d(gain=3.14,
                                                    seed=1, dtype=dtype)
-      with self.test_session(graph=ops.Graph(), use_gpu=True):
+      with self.session(graph=ops.Graph(), use_gpu=True):
         t1 = init1(shape).eval()
         t2 = init2(shape).eval()
       return np.allclose(t1, t2 / 3.14, rtol=1e-15, atol=1e-15)
@@ -860,7 +924,7 @@ class ConvolutionOrthogonal2dInitializerTest(test.TestCase):
     tol = 1e-3
     gain = 3.14
     # Check orthogonality/isometry by computing the ratio between
-    # the 2-norms of the inputs and ouputs.
+    # the 2-norms of the inputs and outputs.
     for kernel_size in [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]:
       convolution = convolutional.conv2d
       inputs = random_ops.random_normal(shape, dtype=dtype)
@@ -873,7 +937,7 @@ class ConvolutionOrthogonal2dInitializerTest(test.TestCase):
       outputs_2norm = linalg_ops.norm(outputs)
       ratio = outputs_2norm / inputs_2norm
       my_ops = variables.global_variables_initializer()
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         sess.run(my_ops)
         # Check the shape of the outputs
         t = outputs.eval()
@@ -907,7 +971,7 @@ class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
 
   def testInvalidShape(self):
     init1 = init_ops.convolutional_orthogonal_3d()
-    with self.test_session(graph=ops.Graph(), use_gpu=True):
+    with self.session(graph=ops.Graph(), use_gpu=True):
       self.assertRaises(ValueError, init1, shape=[3, 3, 3, 6, 5])
 
   def testGain(self):
@@ -916,7 +980,7 @@ class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
       init1 = init_ops.convolutional_orthogonal_3d(seed=1, dtype=dtype)
       init2 = init_ops.convolutional_orthogonal_3d(gain=3.14,
                                                    seed=1, dtype=dtype)
-      with self.test_session(graph=ops.Graph(), use_gpu=True):
+      with self.session(graph=ops.Graph(), use_gpu=True):
         t1 = init1(shape).eval()
         t2 = init2(shape).eval()
       return np.allclose(t1, t2 / 3.14, rtol=1e-15, atol=1e-15)
@@ -927,7 +991,7 @@ class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
     shape = [3, 3, 3, 5, 5]
     count = 20
     tol = 1e-5
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       for i in range(count):
         x = variable_scope.get_variable("{}".format(i), shape=shape,
                                         initializer=
@@ -985,7 +1049,7 @@ class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
     tol = 1e-3
     gain = 3.14
     # Check orthogonality/isometry by computing the ratio between
-    # the 2-norms of the inputs and ouputs.
+    # the 2-norms of the inputs and outputs.
     for kernel_size in [[1, 1, 1], [2, 2, 2], [3, 3, 3]]:
       convolution = convolutional.conv3d
       inputs = random_ops.random_normal(shape, dtype=dtype)
@@ -998,7 +1062,7 @@ class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
       outputs_2norm = linalg_ops.norm(outputs)
       ratio = outputs_2norm / inputs_2norm
       my_ops = variables.global_variables_initializer()
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         sess.run(my_ops)
         # Check the shape of the outputs
         t = outputs.eval()
@@ -1015,7 +1079,7 @@ class IdentityInitializerTest(test.TestCase):
 
   def testInvalidShape(self):
     init = init_ops.identity_initializer()
-    with self.test_session(graph=ops.Graph(), use_gpu=True):
+    with self.session(graph=ops.Graph(), use_gpu=True):
       self.assertRaises(ValueError, init, shape=[5, 7, 7])
       self.assertRaises(ValueError, init, shape=[5])
       self.assertRaises(ValueError, init, shape=[])
@@ -1023,7 +1087,7 @@ class IdentityInitializerTest(test.TestCase):
   def testNonSquare(self):
     init = init_ops.identity_initializer()
     shape = (10, 5)
-    with self.test_session(graph=ops.Graph(), use_gpu=True):
+    with self.session(graph=ops.Graph(), use_gpu=True):
       self.assertAllClose(init(shape).eval(), np.eye(*shape))
 
   def testGain(self):
@@ -1031,16 +1095,16 @@ class IdentityInitializerTest(test.TestCase):
     for dtype in [dtypes.float32, dtypes.float64]:
       init_default = init_ops.identity_initializer(dtype=dtype)
       init_custom = init_ops.identity_initializer(gain=0.9, dtype=dtype)
-      with self.test_session(graph=ops.Graph(), use_gpu=True):
+      with self.session(graph=ops.Graph(), use_gpu=True):
         self.assertAllClose(init_default(shape).eval(), np.eye(*shape))
-      with self.test_session(graph=ops.Graph(), use_gpu=True):
+      with self.session(graph=ops.Graph(), use_gpu=True):
         self.assertAllClose(init_custom(shape).eval(), np.eye(*shape) * 0.9)
 
   def testPartitions(self):
     shape = (10, 10)
     init = init_ops.identity_initializer()
     partitioner = partitioned_variables.variable_axis_size_partitioner(1)
-    with self.test_session(graph=ops.Graph(), use_gpu=True):
+    with self.session(graph=ops.Graph(), use_gpu=True):
       with variable_scope.variable_scope(
           "foo", partitioner=partitioner, initializer=init):
         v = array_ops.identity(variable_scope.get_variable("bar", shape=shape))

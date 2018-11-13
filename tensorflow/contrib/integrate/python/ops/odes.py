@@ -28,7 +28,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 
@@ -74,7 +73,7 @@ def _scaled_dot_product(scale, xs, ys, name=None):
     # _possibly_nonzero lets us avoid wasted computation.
     return math_ops.add_n(
         [(scale * x) * y for x, y in zip(xs, ys)
-         if _possibly_nonzero(x) or _possibly_nonzero(y)],
+         if _possibly_nonzero(x) and _possibly_nonzero(y)],
         name=scope)
 
 
@@ -123,7 +122,7 @@ def _runge_kutta_step(func,
       yi = y0 + _scaled_dot_product(dt_cast, beta_i, k)
       k.append(func(yi, ti))
 
-    if not (tableau.c_sol[-1] == 0 and tableau.c_sol == tableau.beta[-1]):
+    if not (tableau.c_sol[-1] == 0 and tableau.c_sol[:-1] == tableau.beta[-1]):
       # This property (true for Dormand-Prince) lets us save a few FLOPs.
       yi = y0 + _scaled_dot_product(dt_cast, tableau.c_sol, k)
 
@@ -279,12 +278,26 @@ def _assert_increasing(t):
   return ops.control_dependencies([assert_increasing])
 
 
-def _check_input_types(t, y0):
+def _check_input_types(y0, t, dt=None):
   if not (y0.dtype.is_floating or y0.dtype.is_complex):
     raise TypeError('`y0` must have a floating point or complex floating '
                     'point dtype')
   if not t.dtype.is_floating:
     raise TypeError('`t` must have a floating point dtype')
+
+  if dt is not None and not dt.dtype.is_floating:
+    raise TypeError('`dt` must have a floating point dtype')
+
+
+def _check_input_sizes(t, dt):
+  if len(t.get_shape().as_list()) > 1:
+    raise ValueError('t must be a 1D tensor')
+
+  if len(dt.get_shape().as_list()) > 1:
+    raise ValueError('t must be a 1D tensor')
+
+  if t.get_shape()[0] != dt.get_shape()[0] + 1:
+    raise ValueError('t and dt have incompatible lengths, must be N and N-1')
 
 
 def _dopri5(func,
@@ -510,7 +523,7 @@ def odeint(func,
     # avoiding the need to pack/unpack in user functions.
     y0 = ops.convert_to_tensor(y0, name='y0')
     t = ops.convert_to_tensor(t, preferred_dtype=dtypes.float64, name='t')
-    _check_input_types(t, y0)
+    _check_input_types(y0, t)
 
     error_dtype = abs(y0).dtype
     rtol = ops.convert_to_tensor(rtol, dtype=error_dtype, name='rtol')
@@ -527,27 +540,78 @@ def odeint(func,
         **options)
 
 
-class _FixedGridIntegrator(six.with_metaclass(abc.ABCMeta)):
+@six.add_metaclass(abc.ABCMeta)
+class _FixedGridIntegrator(object):
   """Base class for fixed-grid ODE integrators."""
 
-  def integrate(self, evol_func, y0, time_grid):
-    time_delta_grid = time_grid[1:] - time_grid[:-1]
+  def integrate(self, evol_func, y0, time_grid, dt_grid, steps_on_intervals):
+    """Returns integrated values of differential equation on the `time grid`.
 
-    scan_func = self._make_scan_func(evol_func)
+    Numerically integrates differential equation defined via time derivative
+    evaluator `evol_func` using fixed time steps specified in dt_grid.
 
-    y_grid = functional_ops.scan(scan_func, (time_grid[:-1], time_delta_grid),
-                                 y0)
-    return array_ops.concat([[y0], y_grid], axis=0)
+    Args:
+      evol_func: Callable, evaluates time derivative of y at a given time.
+      y0: N-D Tensor holds initial values of the solution.
+      time_grid: 1-D Tensor holding the time points at which the solution
+        will be recorded, must have a floating dtype.
+      dt_grid: 1-D Tensor holds fixed time steps to be used on time_grid
+        intervals. Must be a floating dtype and have one less element than that
+        of the time_grid.
+      steps_on_intervals: 1-D Tensor of integer dtype, must have the same size
+        as dt_grid. Specifies number of steps needed for every interval. Assumes
+        steps_on_intervals * dt_grid == time intervals.
 
-  def _make_scan_func(self, evol_func):
+    Returns:
+      (N+1)-D tensor, where the first dimension corresponds to different
+      time points. Contains the solved value of y for each desired time point in
+      `t`, with the initial value `y0` being the first element along the first
+      dimension.
+    """
 
-    def scan_func(y, t_and_dt):
-      t, dt = t_and_dt
+    iteration_func = self._make_iteration_func(evol_func, dt_grid)
+    integrate_interval = self._make_interval_integrator(iteration_func,
+                                                        steps_on_intervals)
+
+    num_times = array_ops.size(time_grid)
+    current_time = time_grid[0]
+    solution_array = tensor_array_ops.TensorArray(y0.dtype, num_times)
+    solution_array = solution_array.write(0, y0)
+
+    solution_array, _, _, _ = control_flow_ops.while_loop(
+        lambda _, __, ___, i: i < num_times,
+        integrate_interval,
+        (solution_array, y0, current_time, 1)
+    )
+    solution_array = solution_array.stack()
+    solution_array.set_shape(time_grid.get_shape().concatenate(y0.get_shape()))
+    return solution_array
+
+  def _make_iteration_func(self, evol_func, dt_grid):
+    """Returns a function that builds operations of a single time step."""
+
+    def iteration_func(y, t, dt_step, interval_step):
+      """Performs a single time step advance."""
+      dt = dt_grid[interval_step - 1]
       dy = self._step_func(evol_func, t, dt, y)
       dy = math_ops.cast(dy, dtype=y.dtype)
-      return y + dy
+      return y + dy, t + dt, dt_step + 1, interval_step
 
-    return scan_func
+    return iteration_func
+
+  def _make_interval_integrator(self, iteration_func, interval_sizes):
+    """Returns a function that builds operations for interval integration."""
+
+    def integrate_interval(solution_array, y, t, interval_num):
+      """Integrates y with fixed time step on interval `interval_num`."""
+      y, t, _, _ = control_flow_ops.while_loop(
+          lambda _, __, j, interval_num: j < interval_sizes[interval_num - 1],
+          iteration_func,
+          (y, t, 0, interval_num)
+      )
+      return solution_array.write(interval_num, y), y, t, interval_num + 1
+
+    return integrate_interval
 
   @abc.abstractmethod
   def _step_func(self, evol_func, t, dt, y):
@@ -555,6 +619,7 @@ class _FixedGridIntegrator(six.with_metaclass(abc.ABCMeta)):
 
 
 class _MidpointFixedGridIntegrator(_FixedGridIntegrator):
+  """Fixed grid integrator implementing midpoint scheme."""
 
   def _step_func(self, evol_func, t, dt, y):
     dt_cast = math_ops.cast(dt, y.dtype)
@@ -563,6 +628,7 @@ class _MidpointFixedGridIntegrator(_FixedGridIntegrator):
 
 
 class _RK4FixedGridIntegrator(_FixedGridIntegrator):
+  """Fixed grid integrator implementing RK4 scheme."""
 
   def _step_func(self, evol_func, t, dt, y):
     k1 = evol_func(y, t)
@@ -575,7 +641,7 @@ class _RK4FixedGridIntegrator(_FixedGridIntegrator):
     return math_ops.add_n([k1, 2 * k2, 2 * k3, k4]) * (dt_cast / 6)
 
 
-def odeint_fixed(func, y0, t, method='rk4', name=None):
+def odeint_fixed(func, y0, t, dt=None, method='rk4', name=None):
   """ODE integration on a fixed grid (with no step size control).
 
   Useful in certain scenarios to avoid the overhead of adaptive step size
@@ -590,6 +656,14 @@ def odeint_fixed(func, y0, t, method='rk4', name=None):
       `y`. The initial time point should be the first element of this sequence,
       and each time must be larger than the previous time. May have any floating
       point dtype.
+    dt: 0-D or 1-D Tensor providing time step suggestion to be used on time
+      integration intervals in `t`. 1-D Tensor should provide values
+      for all intervals, must have 1 less element than that of `t`.
+      If given a 0-D Tensor, the value is interpreted as time step suggestion
+      same for all intervals. If passed None, then time step is set to be the
+      t[1:] - t[:-1]. Defaults to None. The actual step size is obtained by
+      insuring an integer number of steps per interval, potentially reducing the
+      time step.
     method: One of 'midpoint' or 'rk4'.
     name: Optional name for the resulting operation.
 
@@ -602,16 +676,29 @@ def odeint_fixed(func, y0, t, method='rk4', name=None):
   Raises:
     ValueError: Upon caller errors.
   """
-  with ops.name_scope(name, 'odeint_fixed', [y0, t]):
+  with ops.name_scope(name, 'odeint_fixed', [y0, t, dt]):
     t = ops.convert_to_tensor(t, preferred_dtype=dtypes.float64, name='t')
     y0 = ops.convert_to_tensor(y0, name='y0')
-    _check_input_types(t, y0)
+
+    intervals = t[1:] - t[:-1]
+    if dt is None:
+      dt = intervals
+    dt = ops.convert_to_tensor(dt, preferred_dtype=dtypes.float64, name='dt')
+
+    steps_on_intervals = math_ops.ceil(intervals / dt)
+    dt = intervals / steps_on_intervals
+    steps_on_intervals = math_ops.cast(steps_on_intervals, dtype=dtypes.int32)
+
+    _check_input_types(y0, t, dt)
+    _check_input_sizes(t, dt)
 
     with _assert_increasing(t):
       with ops.name_scope(method):
         if method == 'midpoint':
-          return _MidpointFixedGridIntegrator().integrate(func, y0, t)
+          return _MidpointFixedGridIntegrator().integrate(func, y0, t, dt,
+                                                          steps_on_intervals)
         elif method == 'rk4':
-          return _RK4FixedGridIntegrator().integrate(func, y0, t)
+          return _RK4FixedGridIntegrator().integrate(func, y0, t, dt,
+                                                     steps_on_intervals)
         else:
           raise ValueError('method not supported: {!s}'.format(method))

@@ -20,11 +20,11 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -82,6 +82,14 @@ class ShapedBuffer {
   // Sets the device memory buffer at the given index.
   void set_buffer(const se::DeviceMemoryBase& buffer, const ShapeIndex& index) {
     *buffers_.mutable_element(index) = buffer;
+  }
+
+  // Sets all buffers.
+  //
+  // Precondition: buffers.shape == on_device_shape_
+  void set_buffers(ShapeTree<se::DeviceMemoryBase> buffers) {
+    CHECK(ShapeUtil::Equal(buffers.shape(), on_device_shape_));
+    buffers_ = std::move(buffers);
   }
 
   // Returns the underlying ShapeTree containing all the device addresses in the
@@ -148,13 +156,34 @@ class ScopedShapedBuffer : public ShapedBuffer {
   // ScopedShapedBuffer.
   DeviceMemoryAllocator* memory_allocator() const { return allocator_; }
 
-  // Releases all device memory owned by this ScopedShapedBuffer and returns the
-  // device memory pointers in the form of a ShapedBuffer. The returned
-  // ShapedBuffer takes over the memory from the ScopedShapedBuffer. The
-  // resulting ScopedShapedBuffer can only be destroyed.
-  ShapedBuffer release();
+  // Sets the device memory buffer at the given index.
+  //
+  // If the given buffer's device memory is non-null, its device_ordinal and
+  // allocator must match those in `this`.
+  void set_buffer(OwningDeviceMemory buffer, const ShapeIndex& index) {
+    if (!buffer.is_null()) {
+      CHECK_EQ(buffer.device_ordinal(), device_ordinal());
+      CHECK_EQ(buffer.allocator(), allocator_);
+      *buffers_.mutable_element(index) = buffer.Forget();
+    } else {
+      *buffers_.mutable_element(index) = se::DeviceMemoryBase();
+    }
+  }
+
+  // Like unique_ptr::release(), creates and returns a regular ShapedBuffer from
+  // this ScopedShapedBuffer, without freeing any of the associated memory.
+  //
+  // It's the caller's job to ensure that the memory contained therein is freed.
+  TF_MUST_USE_RESULT ShapedBuffer release();
+
+  // Extracts the sub-tree rooted at 'index' and returns a ScopedShapedBuffer
+  // that holds ownership of the subtree. Sets the buffers corresponding to the
+  // subtree to null in 'this'.
+  ScopedShapedBuffer TakeSubTree(ShapeIndexView index);
 
  protected:
+  void Deallocate();
+
   DeviceMemoryAllocator* allocator_;
 };
 

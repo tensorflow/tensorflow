@@ -12,15 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class RangeDatasetOp : public DatasetOpKernel {
@@ -43,12 +43,15 @@ class RangeDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, int64 start, int64 stop, int64 step)
-        : GraphDatasetBase(ctx), start_(start), stop_(stop), step_(step) {}
+        : DatasetBase(DatasetContext(ctx)),
+          start_(start),
+          stop_(stop),
+          step_(step) {}
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::Range")}));
@@ -65,13 +68,14 @@ class RangeDatasetOp : public DatasetOpKernel {
       return *shapes;
     }
 
-    string DebugString() override {
+    string DebugString() const override {
       return strings::StrCat("RangeDatasetOp(", start_, ", ", stop_, ", ",
                              step_, ")::Dataset");
     }
 
    protected:
-    Status AsGraphDefInternal(DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* start = nullptr;
       Node* stop = nullptr;
@@ -100,9 +104,8 @@ class RangeDatasetOp : public DatasetOpKernel {
           *end_of_sequence = true;
           return Status::OK();
         }
-        Tensor value_tensor(ctx->allocator({}), DT_INT64, {});
-        value_tensor.scalar<int64>()() = next_;
-        out_tensors->emplace_back(std::move(value_tensor));
+        out_tensors->reserve(1);
+        out_tensors->emplace_back(next_);
         *end_of_sequence = false;
         next_ += dataset()->step_;
 
@@ -110,6 +113,11 @@ class RangeDatasetOp : public DatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeSourceNode(std::move(args));
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("next"), next_));
@@ -138,5 +146,5 @@ REGISTER_KERNEL_BUILDER(Name("RangeDataset").Device(DEVICE_CPU),
                         RangeDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

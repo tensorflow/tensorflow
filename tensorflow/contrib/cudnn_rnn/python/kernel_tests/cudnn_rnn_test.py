@@ -54,11 +54,11 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import adagrad
 from tensorflow.python.training import adam
-from tensorflow.python.training import checkpointable_utils
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import momentum
 from tensorflow.python.training import rmsprop
 from tensorflow.python.training import saver as saver_lib
+from tensorflow.python.training.checkpointable import util as checkpointable_utils
 
 
 CUDNN_LSTM = cudnn_rnn_ops.CUDNN_LSTM
@@ -460,7 +460,7 @@ class CudnnRNNTestBasic(test_util.TensorFlowTestCase):
       grad, = gradients.gradients(
           math_ops.reduce_sum(accumulation), (original_input,))
     init_op = variables.global_variables_initializer()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       accumulation_eval, grad_eval = sess.run((accumulation, grad))
       self.assertAllEqual([28, 100, 100], accumulation_eval.shape)
@@ -717,7 +717,7 @@ class CudnnRNNTestSaveRestoreCheckpointable(test_util.TensorFlowTestCase):
       inputs = 3. * array_ops.ones([num_applications, num_layers, input_size],
                                    dtype=dtypes.float32)
       cudnn_output, _ = cudnn_layer(inputs)
-      status.assert_consumed().run_restore_ops()
+      status.run_restore_ops()
     second_save_path = cudnn_checkpoint.save(checkpoint_prefix)
     restore_layer = compatible_cell_fn()
     restore_layer_checkpoint = checkpointable_utils.Checkpoint(
@@ -728,7 +728,7 @@ class CudnnRNNTestSaveRestoreCheckpointable(test_util.TensorFlowTestCase):
       restore_layer_output, current_state = restore_layer(
           inputs=3. * array_ops.ones([1, input_size]),
           state=current_state)
-    status.assert_consumed().run_restore_ops()
+    status.run_restore_ops()
     self.assertTrue(restore_layer.variables)
     for variable, expected_value in zip(
         restore_layer.variables, expected_variable_values):
@@ -768,7 +768,7 @@ class CudnnRNNTestSaveRestoreCheckpointable(test_util.TensorFlowTestCase):
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testLSTMCheckpointableSingleLayer(self):
     num_units = 2
     direction = CUDNN_RNN_UNIDIRECTION
@@ -781,7 +781,7 @@ class CudnnRNNTestSaveRestoreCheckpointable(test_util.TensorFlowTestCase):
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testGRUCheckpointableSingleLayer(self):
     num_units = 2
     direction = CUDNN_RNN_UNIDIRECTION
@@ -802,7 +802,7 @@ class CudnnRNNTestSaveRestoreCheckpointable(test_util.TensorFlowTestCase):
           [single_cell_fn() for _ in range(num_layers)])
     input_size = 3
     save_graph = ops.Graph()
-    with save_graph.as_default(), self.test_session(graph=save_graph):
+    with save_graph.as_default(), self.session(graph=save_graph):
       save_layer = _MultiCellFn()
       save_layer(inputs=array_ops.ones([1, input_size]),
                  state=save_layer.zero_state(1, dtypes.float32))
@@ -826,7 +826,7 @@ class CudnnRNNTestSaveRestoreCheckpointable(test_util.TensorFlowTestCase):
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testCudnnCompatibleLSTMCheckpointablMultiLayer(self):
     num_units = 2
     num_layers = 3
@@ -1039,7 +1039,7 @@ class CudnnRNNTestParamsSize(test_util.TensorFlowTestCase):
 
     # Min param size estimate = sum(weights.size) + sum(biases.size)
     min_params_size = (
-        np.sum(map(np.prod, rnn.canonical_weight_shapes)) +
+        np.sum(list(map(np.prod, rnn.canonical_weight_shapes))) +
         np.sum([sp[0] for sp in rnn.canonical_bias_shapes]))
 
     opaque_params = rnn.trainable_variables[0]
@@ -1184,7 +1184,8 @@ class CudnnRNNTestTraining(test_util.TensorFlowTestCase):
 
     num_grads = [self._ComputeNumericGrad(sess, y, x, delta) for x in xs]
     self.assertEqual(len(sym_grads), len(num_grads))
-    for sym, num in zip(sym_grads, num_grads):
+    for x, sym, num in zip(xs, sym_grads, num_grads):
+      logging.info("Comparing gradients for input: %s", x.name)
       self.assertFalse(np.any(np.isnan(sym)))
       self.assertFalse(np.any(np.isnan(num)))
       self.assertAllClose(sym, num, atol=tolerance, rtol=tolerance)
@@ -1225,18 +1226,18 @@ class CudnnRNNTestTraining(test_util.TensorFlowTestCase):
     params = rnn.trainable_variables[0]
 
     inputs = variables.Variable(
-        random_ops.random_uniform(
-            [seq_length, batch_size, input_size], dtype=dtype),
-        dtype=dtype)
+        random_ops.random_uniform([seq_length, batch_size, input_size],
+                                  dtype=dtype),
+        dtype=dtype).read_value()
     input_h = variables.Variable(
         random_ops.random_uniform(
             [num_layers * dir_count, batch_size, num_units], dtype=dtype),
-        dtype=dtype)
+        dtype=dtype).read_value()
     if has_input_c:
       input_c = variables.Variable(
           random_ops.random_uniform(
               [num_layers * dir_count, batch_size, num_units], dtype=dtype),
-          dtype=dtype)
+          dtype=dtype).read_value()
       initial_state = (input_h, input_c)
     else:
       initial_state = (input_h,)
@@ -1262,7 +1263,7 @@ class CudnnRNNTestTraining(test_util.TensorFlowTestCase):
 
   def _TestSimpleTrainingHelper(self, rnn_mode, test_configs):
     dropouts = [0, 0.5, 1.]
-    v2_options = [str(False), str(True)]
+    v2_options = [False, True]
     for config, dropout, use_v2 in itertools.product(test_configs, dropouts,
                                                      v2_options):
       dtype = config.get("dtype", dtypes.float32)
@@ -1270,6 +1271,9 @@ class CudnnRNNTestTraining(test_util.TensorFlowTestCase):
       tolerance = config.get("tolerance", 1e-6)
       dir_count = config.get("dir_count", 1)
       shape = config["shape"]
+      if dtype == dtypes.float64:
+        # TODO(jamesqin): b/117848763
+        use_v2 = False
       with ops.Graph().as_default():
         self._TestOneSimpleTraining(
             rnn_mode, shape["num_layers"], shape["num_units"],
@@ -1519,7 +1523,7 @@ if __name__ == "__main__":
   parser.add_argument(
       "--grad_check_num_samples",
       type=int,
-      default=5,
+      default=1,
       help="Number of samples to run for gradient check.")
   FLAGS, unparsed = parser.parse_known_args()
   sys.argv = [argv0] + unparsed

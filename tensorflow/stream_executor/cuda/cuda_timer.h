@@ -37,8 +37,9 @@ class CUDATimer : public internal::TimerInterface {
   explicit CUDATimer(CUDAExecutor *parent)
       : parent_(parent), start_event_(nullptr), stop_event_(nullptr) {}
 
-  // Note: teardown is explicitly handled in this API by a call to
+  // Note: teardown needs to be explicitly handled in this API by a call to
   // StreamExecutor::DeallocateTimer(), which invokes Destroy().
+  // TODO(csigg): Change to RAII.
   ~CUDATimer() override {}
 
   // Allocates the platform-specific pieces of the timer, called as part of

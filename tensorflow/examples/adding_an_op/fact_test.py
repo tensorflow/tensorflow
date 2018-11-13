@@ -24,7 +24,7 @@ import tensorflow as tf
 class FactTest(tf.test.TestCase):
 
   def test(self):
-    with self.test_session():
+    with self.cached_session():
       print(tf.user_ops.my_fact().eval())
 
 

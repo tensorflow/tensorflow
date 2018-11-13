@@ -43,19 +43,27 @@ typedef std::complex<double> complex128;
 
 // see framework/bfloat16.h for description.
 struct bfloat16 {
-  B16_DEVICE_FUNC bfloat16() {}
+  // The default constructor must yield a zero value, not an uninitialized
+  // value; some TF kernels use T() as a zero value.
+  B16_DEVICE_FUNC bfloat16() : value(ZERO_VALUE) {}
 
-  B16_DEVICE_FUNC explicit bfloat16(const float v) {
+  B16_DEVICE_FUNC static bfloat16 truncate_to_bfloat16(const float v) {
+    bfloat16 output;
     if (float_isnan(v)) {
-      value = NAN_VALUE;
-      return;
+      output.value = NAN_VALUE;
+      return output;
     }
     const uint16_t* p = reinterpret_cast<const uint16_t*>(&v);
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    value = p[0];
+    output.value = p[0];
 #else
-    value = p[1];
+    output.value = p[1];
 #endif
+    return output;
+  }
+
+  B16_DEVICE_FUNC explicit bfloat16(const float v) {
+    value = round_to_bfloat16(v).value;
   }
 
   B16_DEVICE_FUNC explicit bfloat16(const double val)
@@ -169,8 +177,6 @@ struct bfloat16 {
 
   // Converts a float point to bfloat16, with round-nearest-to-even as rounding
   // method.
-  // TODO(b/69266521): Add a truncate_to_bfloat16 function and make this
-  // function as default behavior.
   // TODO: There is a slightly faster implementation (8% faster on CPU)
   // than this (documented in cl/175987786), that is exponentially harder to
   // understand and document. Switch to the faster version when converting to
@@ -354,12 +360,27 @@ struct bfloat16 {
     return x;
   }
 
+  static bfloat16 highest() {
+    bfloat16 x;
+    x.value = 0x7F7F;  // 0x1.FEp127
+    return x;
+  }
+
+  static bfloat16 lowest() {
+    bfloat16 x;
+    x.value = 0xFF7F;  // -0x1.FEp127
+    return x;
+  }
+
   uint16_t value;
 
   // A value that represents "not a number".
   static const uint16_t NAN_VALUE = 0x7FC0;
 
  private:
+  // A value that represents "zero".
+  static const uint16_t ZERO_VALUE = 0;
+
   B16_DEVICE_FUNC static bool float_isnan(const float& x) {
 #ifdef __CUDA_ARCH__
     return ::isnan(x);

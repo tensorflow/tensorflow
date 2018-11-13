@@ -11,6 +11,7 @@ message Node {
   oneof node {
     Leaf leaf = 1;
     BucketizedSplit bucketized_split = 2;
+    CategoricalSplit categorical_split = 3;
   }
   NodeMetadata metadata = 777;
 }
@@ -50,6 +51,18 @@ message BucketizedSplit {
   // the rule feature <= threshold.
   int32 feature_id = 1;
   int32 threshold = 2;
+
+  // Node children indexing into a contiguous
+  // vector of nodes starting from the root.
+  int32 left_id = 3;
+  int32 right_id = 4;
+}
+
+message CategoricalSplit {
+  // Categorical feature column and split describing the rule feature value ==
+  // value.
+  int32 feature_id = 1;
+  int32 value = 2;
 
   // Node children indexing into a contiguous
   // vector of nodes starting from the root.
@@ -114,4 +127,21 @@ message TreeEnsemble {
   repeated TreeMetadata tree_metadata = 3;
   // Metadata that is used during the training.
   GrowingMetadata growing_metadata = 4;
+}
+
+// DebugOutput contains outputs useful for debugging/model interpretation, at
+// the individual example-level. Debug outputs that are available to the user
+// are: 1) Directional feature contributions (DFCs) 2) Node IDs for ensemble
+// prediction path 3) Leaf node IDs.
+message DebugOutput {
+  // Return the logits and associated feature splits across prediction paths for
+  // each tree, for every example, at predict time. We will use these values to
+  // compute DFCs in Python, by subtracting each child prediction from its
+  // parent prediction and associating this change with its respective feature
+  // id.
+  repeated int32 feature_ids = 1;
+  repeated float logits_path = 2;
+
+  // TODO(crawles): return 2) Node IDs for ensemble prediction path 3) Leaf node
+  // IDs.
 }

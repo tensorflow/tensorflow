@@ -1,7 +1,0 @@
-path: "tensorflow.math"
-tf_module {
-  member_method {
-    name: "polyval"
-    argspec: "args=[\'coeffs\', \'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-}

@@ -12,41 +12,59 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Prototype of a distributed computation library for TF."""
+"""A distributed computation library for TF.
+
+See [tensorflow/contrib/distribute/README.md](
+https://www.tensorflow.org/code/tensorflow/contrib/distribute/README.md)
+for overview and examples.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import
+from tensorflow.contrib.distribute.python.collective_all_reduce_strategy import CollectiveAllReduceStrategy
 from tensorflow.contrib.distribute.python.cross_tower_ops import *
 from tensorflow.contrib.distribute.python.mirrored_strategy import MirroredStrategy
 from tensorflow.contrib.distribute.python.monitor import Monitor
 from tensorflow.contrib.distribute.python.one_device_strategy import OneDeviceStrategy
+from tensorflow.contrib.distribute.python.parameter_server_strategy import ParameterServerStrategy
 from tensorflow.contrib.distribute.python.step_fn import *
+from tensorflow.contrib.distribute.python.tpu_strategy import TPUStrategy
+from tensorflow.python.distribute.distribute_config import DistributeConfig
+from tensorflow.python.distribute.distribute_coordinator import run_standard_tensorflow_server
 from tensorflow.python.training.distribute import *
+from tensorflow.python.training.distribution_strategy_context import *
 
 from tensorflow.python.util.all_util import remove_undocumented
 
 
 _allowed_symbols = [
-    'AllReduceCrossTowerOps',
-    'CrossTowerOps',
+    'AllReduceCrossDeviceOps',
+    'CollectiveAllReduceStrategy',
+    'CrossDeviceOps',
+    'DistributeConfig',
     'DistributionStrategy',
     'MirroredStrategy',
     'Monitor',
+    'MultiWorkerAllReduce',
     'OneDeviceStrategy',
-    'ReductionToOneDeviceCrossTowerOps',
+    'ParameterServerStrategy',
+    'ReductionToOneDeviceCrossDeviceOps',
     'Step',
     'StandardInputStep',
     'StandardSingleLossStep',
-    'TowerContext',
-    'get_cross_tower_context',
+    'ReplicaContext',
+    'TPUStrategy',
+    'get_cross_replica_context',
     'get_distribution_strategy',
     'get_loss_reduction',
-    'get_tower_context',
+    'get_replica_context',
     'has_distribution_strategy',
-    'require_tower_context',
+    'require_replica_context',
+    'run_standard_tensorflow_server',
+    'UpdateContext',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

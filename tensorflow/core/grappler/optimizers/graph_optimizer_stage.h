@@ -13,14 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_OPTIMIZERS_OPTIMIZER_STAGE_H_
-#define TENSORFLOW_GRAPPLER_OPTIMIZERS_OPTIMIZER_STAGE_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_STAGE_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_STAGE_H_
 
 #include <unordered_map>
 #include <unordered_set>
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -44,16 +46,22 @@ const NodeScopeAndName ParseNodeScopeAndName(const string& node_name);
 struct GraphOptimizerContext {
   GraphOptimizerContext(const std::unordered_set<string>* nodes_to_preserve,
                         GraphDef* optimized_graph,
-                        GraphProperties* graph_properties, NodeMap* node_map)
+                        GraphProperties* graph_properties, NodeMap* node_map,
+                        gtl::FlatSet<string>* feed_nodes,
+                        RewriterConfig::Toggle opt_level)
       : nodes_to_preserve(nodes_to_preserve),
         optimized_graph(optimized_graph),
         graph_properties(graph_properties),
-        node_map(node_map) {}
+        node_map(node_map),
+        feed_nodes(feed_nodes),
+        opt_level(opt_level) {}
 
   const std::unordered_set<string>* nodes_to_preserve;
   GraphDef* optimized_graph;
   GraphProperties* graph_properties;
   NodeMap* node_map;
+  gtl::FlatSet<string>* feed_nodes;
+  RewriterConfig::Toggle opt_level;
 };
 
 Status GetInputNode(const GraphOptimizerContext& ctx, const string& input,
@@ -240,6 +248,25 @@ class GraphOptimizerStagePipeline {
     return false;
   }
 
+  // Pass a node through all registered optimizer stages, until break predicate
+  // is true or a stage fails.
+  //
+  // Returns any stage failure status, or else Status::OK().
+  Status PassThroughAllStagesWithStatus(NodeDef* node, Result* result) {
+    for (auto& stage : stages_) {
+      if (!stage->IsSupported(node)) {
+        continue;
+      }
+      const Status stage_status = stage->TrySimplify(node, result);
+      if (!stage_status.ok()) {
+        return stage_status;
+      } else if (break_predicate_(*result)) {
+        break;
+      }
+    }
+    return Status::OK();
+  }
+
   std::size_t NumStages() { return stages_.size(); }
 
   std::vector<string> StageNames() {
@@ -260,4 +287,4 @@ class GraphOptimizerStagePipeline {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_OPTIMIZERS_OPTIMIZER_STAGE_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_GRAPH_OPTIMIZER_STAGE_H_

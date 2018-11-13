@@ -85,6 +85,9 @@ class GraphCycles {
   // and returns false.
   bool ContractEdge(int32 a, int32 b);
 
+  // Return true if can contract edge, otherwise return false.
+  bool CanContractEdge(int32 a, int32 b);
+
   // Return whether dest_node is reachable from source_node
   // by following edges.
   bool IsReachable(int32 source_node, int32 dest_node) const;
@@ -115,6 +118,7 @@ class GraphCycles {
   bool CheckInvariants() const;
 
   std::unordered_set<int32> Successors(int32 node);
+  std::unordered_set<int32> Predecessors(int32 node);
 
   // ----------------------------------------------------
   struct Rep;

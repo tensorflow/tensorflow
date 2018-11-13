@@ -31,7 +31,7 @@ namespace tensorflow {
 
 BFCAllocator::BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
                            bool allow_growth, const string& name)
-    : suballocator_(sub_allocator),
+    : sub_allocator_(sub_allocator),
       name_(name),
       free_chunks_list_(kInvalidChunkHandle),
       next_allocation_id_(1) {
@@ -72,7 +72,7 @@ BFCAllocator::~BFCAllocator() {
   VLOG(2) << "Number of regions allocated: "
           << region_manager_.regions().size();
   for (const auto& region : region_manager_.regions()) {
-    suballocator_->Free(region.ptr(), region.memory_size());
+    sub_allocator_->Free(region.ptr(), region.memory_size());
   }
 
   for (BinNum b = 0; b < kNumBins; b++) {
@@ -86,7 +86,7 @@ BFCAllocator::Chunk* BFCAllocator::ChunkFromHandle(ChunkHandle h) {
   return &(chunks_[h]);
 }
 
-bool BFCAllocator::Extend(size_t rounded_bytes) {
+bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
   size_t available_bytes = memory_limit_ - total_region_allocated_bytes_;
   // Rounds available_bytes down to the nearest multiple of kMinAllocationSize.
   available_bytes = (available_bytes / kMinAllocationSize) * kMinAllocationSize;
@@ -108,7 +108,7 @@ bool BFCAllocator::Extend(size_t rounded_bytes) {
 
   // Try allocating.
   size_t bytes = std::min(curr_region_allocation_bytes_, available_bytes);
-  void* mem_addr = suballocator_->Alloc(32, bytes);
+  void* mem_addr = sub_allocator_->Alloc(alignment, bytes);
   if (mem_addr == nullptr && !started_backpedal_) {
     // Only backpedal once.
     started_backpedal_ = true;
@@ -119,7 +119,7 @@ bool BFCAllocator::Extend(size_t rounded_bytes) {
     while (mem_addr == nullptr) {
       bytes = RoundedBytes(bytes * kBackpedalFactor);
       if (bytes < rounded_bytes) break;
-      mem_addr = suballocator_->Alloc(32, bytes);
+      mem_addr = sub_allocator_->Alloc(alignment, bytes);
     }
   }
 
@@ -155,17 +155,9 @@ bool BFCAllocator::Extend(size_t rounded_bytes) {
 
   region_manager_.set_handle(c->ptr, h);
 
-  // TODO(vrv): Try to merge this new region with an existing region,
-  // if the address space is contiguous, to avoid fragmentation
-  // across regions.
-
   // Insert the chunk into the right bin.
   InsertFreeChunkIntoBin(h);
 
-  // Invoke visitors on newly allocated region.
-  for (const auto& visitor : region_visitors_) {
-    visitor(mem_addr, bytes);
-  }
   return true;
 }
 
@@ -261,7 +253,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   }
 
   // Try to extend
-  if (Extend(rounded_bytes)) {
+  if (Extend(unused_alignment, rounded_bytes)) {
     ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes);
     if (ptr != nullptr) {
       return ptr;
@@ -465,58 +457,33 @@ void BFCAllocator::FreeAndMaybeCoalesce(BFCAllocator::ChunkHandle h) {
   Chunk* c = ChunkFromHandle(h);
   CHECK(c->in_use() && (c->bin_num == kInvalidBinNum));
 
-  // Mark the chunk as no longer in use
+  // Mark the chunk as no longer in use.
   c->allocation_id = -1;
 
   // Updates the stats.
   stats_.bytes_in_use -= c->size;
 
-  // This chunk is no longer in-use, consider coalescing the chunk
-  // with adjacent chunks.
-  ChunkHandle chunk_to_reassign = h;
+  ChunkHandle coalesced_chunk = h;
 
-  // If the next chunk is free, coalesce the two
-  if (c->next != kInvalidChunkHandle) {
-    Chunk* cnext = ChunkFromHandle(c->next);
-    if (!cnext->in_use()) {
-      //      VLOG(8) << "Chunk at " << cnext->ptr << " merging with c " <<
-      //      c->ptr;
-
-      chunk_to_reassign = h;
-
-      // Deletes c->next
-      RemoveFreeChunkFromBin(c->next);
-      Merge(h, ChunkFromHandle(h)->next);
-    }
+  // If the next chunk is free, merge it into c and delete it.
+  if (c->next != kInvalidChunkHandle && !ChunkFromHandle(c->next)->in_use()) {
+    // VLOG(8) << "Merging c->next " << ChunkFromHandle(c->next)->ptr
+    //         << " with c " << c->ptr;
+    RemoveFreeChunkFromBin(c->next);
+    Merge(h, c->next);
   }
 
-  // If the previous chunk is free, coalesce the two
-  c = ChunkFromHandle(h);
-  if (c->prev != kInvalidChunkHandle) {
-    Chunk* cprev = ChunkFromHandle(c->prev);
-    if (!cprev->in_use()) {
-      //      VLOG(8) << "Chunk at " << c->ptr << " merging into c->prev "
-      //       << cprev->ptr;
+  // If the previous chunk is free, merge c into it and delete c.
+  if (c->prev != kInvalidChunkHandle && !ChunkFromHandle(c->prev)->in_use()) {
+    // VLOG(8) << "Merging c " << c->ptr << " into c->prev "
+    //         << ChunkFromHandle(c->prev)->ptr;
 
-      chunk_to_reassign = c->prev;
-
-      // Deletes c
-      RemoveFreeChunkFromBin(c->prev);
-      Merge(ChunkFromHandle(h)->prev, h);
-      c = ChunkFromHandle(h);
-    }
+    coalesced_chunk = c->prev;
+    RemoveFreeChunkFromBin(c->prev);
+    Merge(c->prev, h);
   }
 
-  InsertFreeChunkIntoBin(chunk_to_reassign);
-}
-
-void BFCAllocator::AddAllocVisitor(Visitor visitor) {
-  VLOG(1) << "AddVisitor";
-  mutex_lock l(lock_);
-  region_visitors_.push_back(visitor);
-  for (const auto& region : region_manager_.regions()) {
-    visitor(region.ptr(), region.memory_size());
-  }
+  InsertFreeChunkIntoBin(coalesced_chunk);
 }
 
 bool BFCAllocator::TracksAllocationSizes() { return true; }
@@ -616,7 +583,7 @@ string BFCAllocator::RenderOccupancy() {
     region_offset += region.memory_size();
   }
 
-  return StringPiece(rendered, resolution).ToString();
+  return string(rendered, resolution);
 }
 
 void BFCAllocator::DumpMemoryLog(size_t num_bytes) {

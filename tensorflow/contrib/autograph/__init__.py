@@ -12,29 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Autograph compiles Python code into equivalent TensorFlow code.
+"""This is the legacy module for AutoGraph, kept for backward compatibility.
 
-Equivalent here means that they have the same effect when executed.
+New users should instead use `tensorflow.python.autograph`.
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# TODO(mdan): Bring only the relevant symbols to the top level.
-from tensorflow.contrib.autograph import utils
-from tensorflow.contrib.autograph.impl.api import convert
-from tensorflow.contrib.autograph.impl.api import converted_call
-from tensorflow.contrib.autograph.impl.api import do_not_convert
-from tensorflow.contrib.autograph.impl.api import RunMode
-from tensorflow.contrib.autograph.impl.api import to_code
-from tensorflow.contrib.autograph.impl.api import to_graph
-from tensorflow.contrib.autograph.pyct.transformer import AutographParseError
-from tensorflow.python.util.all_util import remove_undocumented
-
-_allowed_symbols = [
-    'utils', 'convert', 'converted_call', 'do_not_convert', 'RunMode',
-    'to_code', 'to_graph', 'AutographParseError'
-]
-
-remove_undocumented(__name__, _allowed_symbols)
+from tensorflow.python.autograph import *  # pylint:disable=wildcard-import

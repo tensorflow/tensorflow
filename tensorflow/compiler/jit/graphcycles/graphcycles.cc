@@ -34,7 +34,7 @@ limitations under the License.
 #include <algorithm>
 #include <unordered_set>
 
-#include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -44,7 +44,7 @@ namespace {
 typedef std::unordered_set<int32> NodeSet;
 template <typename T>
 struct VecStruct {
-  typedef gtl::InlinedVector<T, 4> type;
+  typedef absl::InlinedVector<T, 4> type;
 };
 template <typename T>
 using Vec = typename VecStruct<T>::type;
@@ -354,6 +354,16 @@ bool GraphCycles::IsReachableNonConst(int32 x, int32 y) {
   return reachable;
 }
 
+bool GraphCycles::CanContractEdge(int32 a, int32 b) {
+  CHECK(HasEdge(a, b)) << "No edge exists from " << a << " to " << b;
+  RemoveEdge(a, b);
+  bool reachable = IsReachableNonConst(a, b);
+  // Restore the graph to its original state.
+  InsertEdge(a, b);
+  // If reachable, then contracting edge will cause cycle.
+  return !reachable;
+}
+
 bool GraphCycles::ContractEdge(int32 a, int32 b) {
   CHECK(HasEdge(a, b));
   RemoveEdge(a, b);
@@ -386,6 +396,10 @@ bool GraphCycles::ContractEdge(int32 a, int32 b) {
 
 std::unordered_set<int32> GraphCycles::Successors(int32 node) {
   return rep_->nodes_[node]->out;
+}
+
+std::unordered_set<int32> GraphCycles::Predecessors(int32 node) {
+  return rep_->nodes_[node]->in;
 }
 
 }  // namespace tensorflow

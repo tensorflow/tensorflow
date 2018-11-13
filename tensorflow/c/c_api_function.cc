@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/strings/base64.h"
@@ -534,6 +535,10 @@ TF_Function* TF_GraphToFunction(const TF_Graph* fn_body, const char* fn_name,
     return nullptr;
   }
   return tf_function;
+}
+
+const char* TF_FunctionName(TF_Function* func) {
+  return func->fdef.signature().name().c_str();
 }
 
 void TF_GraphCopyFunction(TF_Graph* g, const TF_Function* func,

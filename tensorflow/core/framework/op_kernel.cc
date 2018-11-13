@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 
+#include <mutex>  // NOLINT
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -23,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/kernel_def.pb_text.h"
+#include "tensorflow/core/framework/kernel_def_util.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -37,9 +39,11 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 
@@ -79,10 +83,8 @@ Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
 
 // OpKernel ------------------------------------------------------------------
 
-// TODO(mrry): Convert to std::make_unique when available.
 OpKernel::OpKernel(OpKernelConstruction* context)
-    : OpKernel(context,
-               std::unique_ptr<const NodeDef>(new NodeDef(context->def()))) {}
+    : OpKernel(context, MakeUnique<const NodeDef>(context->def())) {}
 
 OpKernel::OpKernel(OpKernelConstruction* context,
                    std::unique_ptr<const NodeDef> node_def)
@@ -262,11 +264,16 @@ OpKernelContext::OpKernelContext(Params* params, int num_outputs)
       outputs_(num_outputs),
       temp_memory_allocated_(0),
       persistent_memory_allocated_(0) {
-  Allocator* eigen_gpu_allocator = get_allocator(AllocatorAttributes());
   params_->ensure_eigen_gpu_device();
-  params_->device->ReinitializeGpuDevice(this, params_->eigen_gpu_device,
-                                         params_->op_device_context,
-                                         eigen_gpu_allocator);
+  if (params_->eigen_gpu_device != nullptr) {
+    Allocator* eigen_gpu_allocator = get_allocator(AllocatorAttributes());
+    Status s = params_->device->ReinitializeGpuDevice(
+        this, params_->eigen_gpu_device, params_->op_device_context,
+        eigen_gpu_allocator);
+    if (!s.ok()) {
+      SetStatus(s);
+    }
+  }
   if (params_->record_tensor_accesses) {
     referenced_tensors_.Init();
   }
@@ -279,17 +286,24 @@ OpKernelContext::~OpKernelContext() {
     }
   }
   if (params_->record_tensor_accesses) referenced_tensors_.Destroy();
+  if (params_->track_allocations && !wrapped_allocators_.empty()) {
+    LOG(WARNING) << "OpKernelContext is tracking allocations but they are not "
+                 << "being consumed by the StepStatsCollector.";
+    for (auto& wrapped_alloator : wrapped_allocators_) {
+      wrapped_alloator.second->GetRecordsAndUnRef();
+    }
+  }
 }
 
 Allocator* OpKernelContext::get_allocator(AllocatorAttributes attr) {
   Allocator* allocator = nullptr;
-  if (attr.scope_id > 0) {
+  if (TF_PREDICT_FALSE(attr.scope_id > 0)) {
     allocator = params_->device->GetScopedAllocator(attr, step_id());
     CHECK(allocator);
   } else {
-    allocator = params_->device->GetStepAllocator(attr, resource_manager());
+    allocator = params_->device->GetAllocator(attr);
   }
-  if (track_allocations()) {
+  if (TF_PREDICT_FALSE(track_allocations())) {
     mutex_lock lock(mu_);
     for (const auto& wrapped : wrapped_allocators_) {
       if (wrapped.first == allocator) {
@@ -522,10 +536,8 @@ std::unique_ptr<Tensor> OpKernelContext::forward_input(
       return nullptr;
     }
   }
-  // TODO(rmlarsen): Use MakeUnique here. There is already a copy in
-  // tensorflow/compiler/xla/ptr_util.h. Perhaps this should be part of
-  // general cleanup of ownership in this code.
-  std::unique_ptr<Tensor> output_tensor(new Tensor());
+
+  auto output_tensor = MakeUnique<Tensor>();
   CHECK(output_tensor->CopyFrom(*input.tensor, output_shape));
   return output_tensor;
 }
@@ -699,10 +711,10 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
   const DataType type = params_->op_kernel->output_type(index);
   DCHECK(!IsRefType(type));
   DCHECK(mutable_output(index) == nullptr);
-  Tensor* output_tensor = new Tensor();
-  Status s = allocate_tensor(type, shape, output_tensor, attr);
+  auto output_tensor = MakeUnique<Tensor>();
+  Status s = allocate_tensor(type, shape, output_tensor.get(), attr);
   if (s.ok()) {
-    outputs_[index] = TensorValue(output_tensor);
+    outputs_[index] = TensorValue(output_tensor.release());
     *output = outputs_[index].tensor;
   }
   return s;
@@ -823,19 +835,6 @@ Status OpKernelContext::mutable_output(StringPiece name, Tensor** tensor) {
   return Status::OK();
 }
 
-Status OpKernelContext::release_output(StringPiece name, TensorValue* value) {
-  int start, stop;
-  TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
-  if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued output name '",
-                                   name,
-                                   "' when single-valued output was "
-                                   "expected");
-  }
-  *value = release_output(start);
-  return Status::OK();
-}
-
 bool OpKernelContext::ValidateInputsAreSameShape(OpKernel* op) {
   const auto& inputs = *params_->inputs;
   for (size_t i = 1; i < inputs.size(); ++i) {
@@ -922,11 +921,12 @@ void OpKernelContext::clear_recorded_memory() {
 
 struct KernelRegistration {
   KernelRegistration(const KernelDef& d, StringPiece c,
-                     kernel_factory::OpKernelRegistrar::Factory f)
-      : def(d), kernel_class_name(c.ToString()), factory(f) {}
+                     std::unique_ptr<kernel_factory::OpKernelFactory> f)
+      : def(d), kernel_class_name(c), factory(std::move(f)) {}
+
   const KernelDef def;
   const string kernel_class_name;
-  const kernel_factory::OpKernelRegistrar::Factory factory;
+  std::unique_ptr<kernel_factory::OpKernelFactory> factory;
 };
 
 // This maps from 'op_type' + DeviceType to the set of KernelDefs and
@@ -934,12 +934,52 @@ struct KernelRegistration {
 // KernelDef.
 typedef std::unordered_multimap<string, KernelRegistration> KernelRegistry;
 
+#if defined(_WIN32)
+static const char kKernelLibPattern[] = "libtfkernel*.dll";
+#elif defined(__APPLE__)
+static const char kKernelLibPattern[] = "libtfkernel*.dylib";
+#else
+static const char kKernelLibPattern[] = "libtfkernel*.so";
+#endif
+
+void LoadDynamicKernelsInternal() {
+  Env* env = Env::Default();
+  string bazel_kernel_dir = io::JoinPath(env->GetRunfilesDir(),
+                                         "tensorflow",
+                                         "core",
+                                         "kernels");
+  std::vector<string> files;
+  Status s_kernel_dir = env->GetChildren(bazel_kernel_dir, &files);
+  if (s_kernel_dir.ok()) {
+    string dll_spec = io::JoinPath(bazel_kernel_dir, kKernelLibPattern);
+    for (const auto&  file : files) {
+      string fullpath =  io::JoinPath(bazel_kernel_dir, file);
+      if (env->MatchPath(fullpath, dll_spec)) {
+        // TODO(gunan): Store the handles to the opened files.
+        void* unused_filehandle;
+        TF_CHECK_OK(env->LoadLibrary(fullpath.c_str(), &unused_filehandle));
+      }
+    }
+  }
+}
+
+// Mechanism for loading existing kernel libraries.
+void LoadDynamicKernels() {
+  // TODO(gunan): As more features are available, add intelligent kernel
+  // selection, and dropping unsuitable kernel logic here.
+  static std::once_flag dll_loader_flag;
+  std::call_once(dll_loader_flag, LoadDynamicKernelsInternal);
+}
+
 void* GlobalKernelRegistry() {
   static KernelRegistry* global_kernel_registry = new KernelRegistry;
   return global_kernel_registry;
 }
 
 static KernelRegistry* GlobalKernelRegistryTyped() {
+#ifdef AUTOLOAD_DYNAMIC_KERNELS
+  LoadDynamicKernels();
+#endif  // AUTOLOAD_DYNAMIC_KERNELS
   return reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry());
 }
 
@@ -953,14 +993,23 @@ namespace kernel_factory {
 
 void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
                                      StringPiece kernel_class_name,
-                                     Factory factory) {
+                                     std::unique_ptr<OpKernelFactory> factory) {
   // See comments in register_kernel::Name in header for info on _no_register.
   if (kernel_def->op() != "_no_register") {
     const string key =
         Key(kernel_def->op(), DeviceType(kernel_def->device_type()),
             kernel_def->label());
-    GlobalKernelRegistryTyped()->insert(std::make_pair(
-        key, KernelRegistration(*kernel_def, kernel_class_name, factory)));
+
+    // To avoid calling LoadDynamicKernels DO NOT CALL GlobalKernelRegistryTyped
+    // here.
+    // InitInternal gets called by static initializers, so it ends up executing
+    // before main. This causes LoadKernelLibraries function to get called
+    // before some file libraries can initialize, which in turn crashes the
+    // program flakily. Until we get rid of static initializers in kernel
+    // registration mechanism, we have this workaround here.
+    reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry())
+        ->emplace(key, KernelRegistration(*kernel_def, kernel_class_name,
+                                          std::move(factory)));
   }
   delete kernel_def;
 }
@@ -968,62 +1017,6 @@ void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
 }  // namespace kernel_factory
 
 namespace {
-
-// Helper for AttrsMatch().
-bool InTypeList(DataType dt, const AttrValue& type_list) {
-  for (int in_list : type_list.list().type()) {
-    if (dt == in_list) return true;
-  }
-  return false;
-}
-
-// Returns whether the attrs satisfy the constraints in the kernel_def.  Returns
-// an error if attrs in kernel_def are not found, or have a mismatching type.
-Status AttrsMatch(AttrSlice attrs, const KernelDef& kernel_def, bool* match) {
-  *match = false;
-  for (const auto& constraint : kernel_def.constraint()) {
-    if (constraint.allowed_values().list().type_size() == 0) {
-      return errors::Unimplemented(
-          "KernelDef '", ProtoShortDebugString(kernel_def),
-          " has constraint on attr '", constraint.name(),
-          "' with unsupported type: ",
-          SummarizeAttrValue(constraint.allowed_values()));
-    }
-
-    const AttrValue* found = attrs.Find(constraint.name());
-    if (found) {
-      if (found->type() != DT_INVALID) {
-        if (!InTypeList(found->type(), constraint.allowed_values())) {
-          return Status::OK();
-        }
-      } else {
-        if (!AttrValueHasType(*found, "list(type)").ok()) {
-          return errors::InvalidArgument(
-              "KernelDef '", ProtoShortDebugString(kernel_def),
-              "' has constraint on attr '", constraint.name(),
-              "' that has value '", SummarizeAttrValue(*found),
-              "' that does not have type 'type' or 'list(type)' in NodeDef "
-              "'",
-              attrs.SummarizeNode(), "'");
-        }
-
-        for (int t : found->list().type()) {
-          if (!InTypeList(static_cast<DataType>(t),
-                          constraint.allowed_values())) {
-            return Status::OK();
-          }
-        }
-      }
-    } else {
-      return errors::InvalidArgument(
-          "OpKernel '", kernel_def.op(), "' has constraint on attr '",
-          constraint.name(), "' not in NodeDef '", attrs.SummarizeNode(),
-          "', KernelDef: '", ProtoShortDebugString(kernel_def), "'");
-    }
-  }
-  *match = true;
-  return Status::OK();
-}
 
 static const StringPiece kKernelAttr("_kernel");
 
@@ -1043,12 +1036,12 @@ Status FindKernelRegistration(const DeviceType& device_type,
     // If there is a kernel registered for the op and device_type,
     // check that the attrs match.
     bool match;
-    TF_RETURN_IF_ERROR(AttrsMatch(node_def, iter->second.def, &match));
+    TF_RETURN_IF_ERROR(KernelAttrsMatch(iter->second.def, node_def, &match));
     if (match) {
       if (*reg != nullptr) {
         return errors::InvalidArgument(
             "Multiple OpKernel registrations match NodeDef '",
-            SummarizeNodeDef(node_def), "': '",
+            FormatNodeDefForError(node_def), "': '",
             ProtoShortDebugString((*reg)->def), "' and '",
             ProtoShortDebugString(iter->second.def), "'");
       }
@@ -1062,6 +1055,15 @@ Status FindKernelRegistration(const DeviceType& device_type,
 
 }  // namespace
 
+bool KernelDefAvailable(const DeviceType& device_type,
+                        const NodeDef& node_def) {
+  const KernelRegistration* reg = nullptr;
+  bool was_attr_mismatch;
+  Status result =
+      FindKernelRegistration(device_type, node_def, &reg, &was_attr_mismatch);
+  return result.ok() && reg != nullptr;
+}
+
 // TODO(irving): Change const NodeDef& to const Node&
 Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
                      const KernelDef** def, string* kernel_class_name) {
@@ -1073,7 +1075,7 @@ Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
     Status s = errors::NotFound(
         "No registered '", node_def.op(), "' OpKernel for ",
         DeviceTypeString(device_type), " devices compatible with node ",
-        SummarizeNodeDef(node_def));
+        FormatNodeDefForError(node_def));
     if (was_attr_mismatch) {
       errors::AppendToMessage(
           &s, " (OpKernel was found, but attributes didn't match)");
@@ -1114,30 +1116,51 @@ Status SupportedDeviceTypesForNode(
 }
 
 void LogAllRegisteredKernels() {
-  for (const auto& key_registration : *GlobalKernelRegistryTyped()) {
-    const KernelDef& kernel_def(key_registration.second.def);
+  KernelList kernel_list = GetAllRegisteredKernels();
+  for (const auto& kernel_def : kernel_list.kernel()) {
     LOG(INFO) << "OpKernel ('" << ProtoShortDebugString(kernel_def) << "')";
   }
 }
 
-string KernelsRegisteredForOp(StringPiece op_name) {
-  string ret;
-  for (const auto& key_registration : *GlobalKernelRegistryTyped()) {
-    const KernelDef& kernel_def(key_registration.second.def);
-    if (kernel_def.op() == op_name) {
-      strings::StrAppend(&ret, "  device='", kernel_def.device_type(), "'");
-      if (!kernel_def.label().empty()) {
-        strings::StrAppend(&ret, "; label='", kernel_def.label(), "'");
-      }
-      for (int i = 0; i < kernel_def.constraint_size(); ++i) {
-        strings::StrAppend(
-            &ret, "; ", kernel_def.constraint(i).name(), " in ",
-            SummarizeAttrValue(kernel_def.constraint(i).allowed_values()));
-      }
-      strings::StrAppend(&ret, "\n");
+KernelList GetAllRegisteredKernels() {
+  return GetFilteredRegisteredKernels([](const KernelDef& k) { return true; });
+}
+
+KernelList GetFilteredRegisteredKernels(
+    const std::function<bool(const KernelDef&)>& predicate) {
+  const KernelRegistry* const typed_registry = GlobalKernelRegistryTyped();
+  KernelList kernel_list;
+  kernel_list.mutable_kernel()->Reserve(typed_registry->size());
+  for (const auto& p : *typed_registry) {
+    const KernelDef& kernel_def = p.second.def;
+    if (predicate(kernel_def)) {
+      *kernel_list.add_kernel() = kernel_def;
     }
   }
-  if (ret.empty()) return "  <no registered kernels>\n";
+  return kernel_list;
+}
+
+KernelList GetRegisteredKernelsForOp(StringPiece op_name) {
+  auto op_pred = [op_name](const KernelDef& k) { return k.op() == op_name; };
+  return GetFilteredRegisteredKernels(op_pred);
+}
+
+string KernelsRegisteredForOp(StringPiece op_name) {
+  KernelList kernel_list = GetRegisteredKernelsForOp(op_name);
+  if (kernel_list.kernel_size() == 0) return "  <no registered kernels>\n";
+  string ret;
+  for (const auto& kernel_def : kernel_list.kernel()) {
+    strings::StrAppend(&ret, "  device='", kernel_def.device_type(), "'");
+    if (!kernel_def.label().empty()) {
+      strings::StrAppend(&ret, "; label='", kernel_def.label(), "'");
+    }
+    for (int i = 0; i < kernel_def.constraint_size(); ++i) {
+      strings::StrAppend(
+          &ret, "; ", kernel_def.constraint(i).name(), " in ",
+          SummarizeAttrValue(kernel_def.constraint(i).allowed_values()));
+    }
+    strings::StrAppend(&ret, "\n");
+  }
   return ret;
 }
 
@@ -1178,7 +1201,7 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
     s.Update(errors::NotFound("No registered '", node_def.op(),
                               "' OpKernel for ", DeviceTypeString(device_type),
                               " devices compatible with node ",
-                              SummarizeNodeDef(node_def)));
+                              FormatNodeDefForError(node_def)));
     if (was_attr_mismatch) {
       errors::AppendToMessage(
           &s, " (OpKernel was found, but attributes didn't match)");
@@ -1193,7 +1216,7 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
   DataTypeVector outputs;
   s.Update(InOutTypesForNode(node_def, *op_def, &inputs, &outputs));
   if (!s.ok()) {
-    errors::AppendToMessage(&s, " for node: ", SummarizeNodeDef(node_def));
+    errors::AppendToMessage(&s, " for node: ", FormatNodeDefForError(node_def));
     return s;
   }
 
@@ -1210,7 +1233,7 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
   OpKernelConstruction context(
       device_type, device, allocator, &node_def, op_def, flib, inputs,
       input_memory_types, outputs, output_memory_types, graph_def_version, &s);
-  *kernel = (*registration->factory)(&context);
+  *kernel = registration->factory->Create(&context);
   if (!s.ok()) {
     delete *kernel;
     *kernel = nullptr;
@@ -1273,59 +1296,57 @@ const Eigen::SyclDevice& OpKernelContext::eigen_device() const {
 }
 #endif
 
-namespace {
-template <class OpKernelT>
-void CtxFailureInternal(OpKernelT* op_kernel, const char* file, int line,
-                        const Status& s) {
-  const string logging_prefix =
-      file == nullptr ? "CtxFailure: "
-                      : strings::StrCat("CtxFailure at ", io::Basename(file),
-                                        ":", line, ": ");
-
-  if (errors::IsOutOfRange(s)) {
-    // VLOG OutOfRange errors. Dataset ops create OutOfRange errors when they
-    // reach end-of-sequence.
-    VLOG(1) << logging_prefix << s;
-  } else {
-    LOG(WARNING) << logging_prefix << s;
-  }
-  op_kernel->SetStatus(s);
-}
-}  // anonymous namespace
-
 void OpKernelConstruction::CtxFailure(const Status& s) {
-  CtxFailureInternal(this, nullptr, 0, s);
+  VLOG(1) << s;
+  SetStatus(s);
 }
 
 void OpKernelConstruction::CtxFailureWithWarning(const Status& s) {
-  CtxFailureInternal(this, nullptr, 0, s);
+  LOG(WARNING) << s;
+  SetStatus(s);
 }
 
 void OpKernelConstruction::CtxFailure(const char* file, int line,
                                       const Status& s) {
-  CtxFailureInternal(this, file, line, s);
+  VLOG(1) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
+          << " : " << s;
+  SetStatus(s);
 }
 
 void OpKernelConstruction::CtxFailureWithWarning(const char* file, int line,
                                                  const Status& s) {
-  CtxFailureInternal(this, file, line, s);
+  LOG(WARNING) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
+               << " : " << s;
+  SetStatus(s);
 }
 
 void OpKernelContext::CtxFailure(const Status& s) {
-  CtxFailureInternal(this, nullptr, 0, s);
+  VLOG(1) << s;
+  SetStatus(s);
 }
 
 void OpKernelContext::CtxFailureWithWarning(const Status& s) {
-  CtxFailureInternal(this, nullptr, 0, s);
+  LOG(WARNING) << s;
+  SetStatus(s);
 }
 
 void OpKernelContext::CtxFailure(const char* file, int line, const Status& s) {
-  CtxFailureInternal(this, file, line, s);
+  VLOG(1) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
+          << " : " << s;
+  SetStatus(s);
 }
 
 void OpKernelContext::CtxFailureWithWarning(const char* file, int line,
                                             const Status& s) {
-  CtxFailureInternal(this, file, line, s);
+  LOG(WARNING) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
+               << " : " << s;
+  SetStatus(s);
+}
+
+void CheckNotInComputeAsync(OpKernelContext* ctx,
+                            const char* correct_macro_name) {
+  CHECK_EQ(nullptr, ctx->op_kernel().AsAsync())
+      << "Use " << correct_macro_name << " in AsyncOpKernel implementations.";
 }
 
 }  // namespace tensorflow

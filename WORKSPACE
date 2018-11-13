@@ -14,34 +14,45 @@ load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
 
 closure_repositories()
 
+http_archive(
+    name = "base_images_docker",
+    sha256 = "e2b1b7254270bb7605e814a9dbf6d1e4ae04a11136ff1714fbfdabe3f87f7cf9",
+    strip_prefix = "base-images-docker-12801524f867e657fbb5d1a74f31618aff181ac6",
+    urls = ["https://github.com/GoogleCloudPlatform/base-images-docker/archive/12801524f867e657fbb5d1a74f31618aff181ac6.tar.gz"],
+)
+
+http_archive(
+    name = "bazel_toolchains",
+    sha256 = "15b5858b1b5541ec44df31b94c3b8672815b31d71215a98398761ea9f4c4eedb",
+    strip_prefix = "bazel-toolchains-6200b238c9c2d137c0d9a7262c80cc71d98e692b",
+    urls = [
+        "https://github.com/bazelbuild/bazel-toolchains/archive/6200b238c9c2d137c0d9a7262c80cc71d98e692b.tar.gz",
+    ],
+)
+
+http_archive(
+    name = "io_bazel_rules_docker",
+    sha256 = "29d109605e0d6f9c892584f07275b8c9260803bf0c6fcb7de2623b2bedc910bd",
+    strip_prefix = "rules_docker-0.5.1",
+    urls = ["https://github.com/bazelbuild/rules_docker/archive/v0.5.1.tar.gz"],
+)
+
+load("//third_party/toolchains/preconfig/generate:workspace.bzl", "remote_config_workspace")
+
+remote_config_workspace()
+
 # We must check the bazel version before trying to parse any other BUILD
 # files, in case the parsing of those build files depends on the bazel
 # version we require here.
 load("//tensorflow:version_check.bzl", "check_bazel_version_at_least")
-check_bazel_version_at_least("0.10.0")
+check_bazel_version_at_least("0.15.0")
 
 load("//tensorflow:workspace.bzl", "tf_workspace")
 
-# Uncomment and update the paths in these entries to build the Android demo.
-#android_sdk_repository(
-#    name = "androidsdk",
-#    api_level = 23,
-#    # Ensure that you have the build_tools_version below installed in the
-#    # SDK manager as it updates periodically.
-#    build_tools_version = "26.0.1",
-#    # Replace with path to Android SDK on your system
-#    path = "<PATH_TO_SDK>",
-#)
-#
-#android_ndk_repository(
-#    name="androidndk",
-#    path="<PATH_TO_NDK>",
-#    # This needs to be 14 or higher to compile TensorFlow.
-#    # Please specify API level to >= 21 to build for 64-bit
-#    # archtectures or the Android NDK will automatically select biggest
-#    # API level that it supports without notice.
-#    # Note that the NDK version is not the API level.
-#    api_level=14)
+load("//third_party/android:android_configure.bzl", "android_configure")
+android_configure(name="local_config_android")
+load("@local_config_android//:android.bzl", "android_workspace")
+android_workspace()
 
 # Please add all new TensorFlow dependencies in workspace.bzl.
 tf_workspace()
@@ -95,3 +106,4 @@ new_http_archive(
         "http://download.tensorflow.org/models/speech_commands_v0.01.zip",
     ],
 )
+

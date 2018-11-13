@@ -81,7 +81,9 @@ Status FeedInputs(
 
     // Update name_index
     (*name_index)[feed_node->name()] = feed_node;
-    g->AddControlEdge(g->source_node(), feed_node);
+    // Duplicate control edges aren't allowed, but feed_node was *just* created
+    // so there's no need to check for a duplicate.
+    g->AddControlEdge(g->source_node(), feed_node, true);
 
     // Look through edges coming out of "n" for edges whose src_output() index
     // matches "output_index".  If found, replace the edges with a connection
@@ -107,7 +109,9 @@ Status FeedInputs(
         g->AddEdge(feed_node, 0, e->dst(), e->dst_input());
       } else {
         CHECK_EQ(Graph::kControlSlot, e->src_output());
-        g->AddControlEdge(feed_node, e->dst());
+        // Duplicate control edges aren't allowed, but feed_node was *just*
+        // created so there's no need to check for a duplicate.
+        g->AddControlEdge(feed_node, e->dst(), true);
       }
       g->RemoveEdge(e);
     }
@@ -160,7 +164,9 @@ Status FetchOutputs(
     // Update the index.
     (*name_index)[fetch_node->name()] = fetch_node;
 
-    g->AddControlEdge(fetch_node, g->sink_node());
+    // Duplicate control edges aren't allowed, but fetch_node was *just* created
+    // so there's no need to check for a duplicate.
+    g->AddControlEdge(fetch_node, g->sink_node(), true);
     out_fetch_nodes->push_back(fetch_node);
     out_fetch_types->push_back(BaseType(n->output_type(id.second)));
   }

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -34,7 +35,7 @@ class CategoricalOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     // Get the logits
-    const xla::ComputationDataHandle& logits = ctx->Input(0);
+    const xla::XlaOp& logits = ctx->Input(0);
     TensorShape logits_shape = ctx->InputShape(0);
     int64 num_samples;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &num_samples));
@@ -56,33 +57,52 @@ class CategoricalOp : public XlaOpKernel {
     const int64 batch_size = logits_shape.dim_size(0);
     const int64 num_classes = logits_shape.dim_size(1);
 
-    xla::ComputationBuilder* builder = ctx->builder();
+    xla::XlaBuilder* builder = ctx->builder();
 
-    std::array<int64, 3> uniform_shape_array = {
-        {batch_size, num_samples, num_classes}};
-    xla::PrimitiveType uniform_xla_type;
-    OP_REQUIRES_OK(ctx,
-                   DataTypeToPrimitiveType(input_type(0), &uniform_xla_type));
-    xla::Shape uniform_shape =
-        xla::ShapeUtil::MakeShape(uniform_xla_type, uniform_shape_array);
-    auto uniforms = builder->RngUniform(
-        XlaHelpers::Zero(builder, input_type(0)),
-        XlaHelpers::One(builder, input_type(0)), uniform_shape);
+    xla::Shape uniform_shape;
+    int class_dimension;
+    if (num_samples > 1) {
+      std::array<int64, 3> uniform_shape_array = {
+          {batch_size, num_samples, num_classes}};
+      xla::PrimitiveType uniform_xla_type;
+      OP_REQUIRES_OK(ctx,
+                     DataTypeToPrimitiveType(input_type(0), &uniform_xla_type));
+      uniform_shape =
+          xla::ShapeUtil::MakeShape(uniform_xla_type, uniform_shape_array);
+      class_dimension = 2;
+    } else {
+      // Have a special case for when we only need one sample, because
+      // dimensions may be padded on architectures with tiled memory layouts, so
+      // if the num_classes or batch size is large then this can lead to
+      // expensive wasted memory.
+      std::array<int64, 2> uniform_shape_array = {{batch_size, num_classes}};
+      xla::PrimitiveType uniform_xla_type;
+      OP_REQUIRES_OK(ctx,
+                     DataTypeToPrimitiveType(input_type(0), &uniform_xla_type));
+      uniform_shape =
+          xla::ShapeUtil::MakeShape(uniform_xla_type, uniform_shape_array);
+      class_dimension = 1;
+    }
+    xla::XlaOp uniforms =
+        xla::RngUniform(XlaHelpers::Zero(builder, input_type(0)),
+                        XlaHelpers::One(builder, input_type(0)), uniform_shape);
 
     // Use Gumbel softmax trick to generate categorical samples.
     // See:
     // https://hips.seas.harvard.edu/blog/2013/04/06/the-gumbel-max-trick-for-discrete-distributions/
     // TODO(b/68769470): Switch to using a cumulative sum approach.
     auto softmax_entries =
-        builder->Sub(logits, builder->Log(builder->Neg(builder->Log(uniforms))),
-                     /*broadcast_dimensions=*/{0, 2});
+        xla::Sub(logits, xla::Log(-xla::Log(uniforms)),
+                 /*broadcast_dimensions=*/{0, class_dimension});
 
-    TensorShape softmax_shape(uniform_shape_array);
-    xla::ComputationDataHandle argmax;
-    OP_REQUIRES_OK(
-        ctx,
-        XlaHelpers::ArgMax(builder, ctx, softmax_entries, softmax_shape,
-                           input_type(0), output_type(0), /*axis=*/2, &argmax));
+    xla::PrimitiveType xla_output_type;
+    OP_REQUIRES_OK(ctx,
+                   DataTypeToPrimitiveType(output_type(0), &xla_output_type));
+    xla::XlaOp argmax = XlaHelpers::ArgMax(softmax_entries, xla_output_type,
+                                           /*axis=*/class_dimension);
+    if (num_samples == 1) {
+      argmax = xla::Reshape(argmax, {batch_size, 1});
+    }
 
     ctx->SetOutput(0, argmax);
   }
@@ -92,7 +112,7 @@ class CategoricalOp : public XlaOpKernel {
 };
 
 // TODO(b/68769717): Rename this sampler to Categorical.
-REGISTER_XLA_OP(Name("Multinomial").CompileTimeConstInput("num_samples"),
+REGISTER_XLA_OP(Name("Multinomial").CompileTimeConstantInput("num_samples"),
                 CategoricalOp);
 
 }  // anonymous namespace

@@ -30,7 +30,7 @@ from tensorflow.python.platform import test
 
 class RandomSeedTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testRandomSeed(self):
     zero_t = constant_op.constant(0, dtype=dtypes.int64, name='zero')
     one_t = constant_op.constant(1, dtype=dtypes.int64, name='one')

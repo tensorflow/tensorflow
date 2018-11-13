@@ -92,9 +92,14 @@ class TensorSpecTest(test_util.TensorFlowTestCase):
         repr(desc1),
         "TensorSpec(shape=(1,), dtype=tf.float32, name='beep')")
     desc2 = tensor_spec.TensorSpec([1, None], dtypes.int32)
-    self.assertEqual(
-        repr(desc2),
-        "TensorSpec(shape=(1, ?), dtype=tf.int32, name=None)")
+    if desc2.shape._v2_behavior:
+      self.assertEqual(
+          repr(desc2),
+          "TensorSpec(shape=(1, None), dtype=tf.int32, name=None)")
+    else:
+      self.assertEqual(
+          repr(desc2),
+          "TensorSpec(shape=(1, ?), dtype=tf.int32, name=None)")
 
   def testFromTensorSpec(self):
     spec_1 = tensor_spec.TensorSpec((1, 2), dtypes.int32)

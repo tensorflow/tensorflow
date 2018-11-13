@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -80,7 +80,7 @@ class FlattenCallGraphTest : public HloTestBase {
     HloInstruction* param0 = builder.AddInstruction(
         HloInstruction::CreateParameter(0, kScalarShape, "param0"));
     HloInstruction* zero = builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
     builder.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGt, param0, zero));
     return builder.Build();
@@ -108,7 +108,7 @@ TEST_F(FlattenCallGraphTest, ComplexGraph) {
   //    c
   //
   // Calls are made via kCall, kWhile, and kMap instructions.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* cond_computation =
       module->AddEmbeddedComputation(MakeConditionComputation());
   HloComputation* c_computation =
@@ -149,7 +149,7 @@ TEST_F(FlattenCallGraphTest, ComplexGraph) {
 
 // Test corner case of a computation used as a body and a loop condition.
 TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* cond_computation;
   {
     HloComputation::Builder builder(TestName() + ".cond");
@@ -157,7 +157,7 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
         builder.AddInstruction(HloInstruction::CreateParameter(
             0, ShapeUtil::MakeShape(PRED, {}), "param0"));
     HloInstruction* false_constant = builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
     builder.AddInstruction(
         HloInstruction::CreateBinary(ShapeUtil::MakeShape(PRED, {}),
                                      HloOpcode::kEq, param0, false_constant));
@@ -168,7 +168,7 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
   {
     HloComputation::Builder builder(TestName() + ".entry");
     HloInstruction* false_constant = builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
     builder.AddInstruction(HloInstruction::CreateWhile(
         ShapeUtil::MakeShape(PRED, {}), cond_computation, cond_computation,
         false_constant));
@@ -201,7 +201,7 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
 //     C
 //
 TEST_F(FlattenCallGraphTest, FlattenCalls) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* c_computation =
       module->AddEmbeddedComputation(MakeScalarComputation());
 
@@ -224,7 +224,7 @@ TEST_F(FlattenCallGraphTest, FlattenCalls) {
 }
 
 TEST_F(FlattenCallGraphTest, FlattenCallsInConditional) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* sub_computation =
       module->AddEmbeddedComputation(MakeScalarComputation());
 
@@ -232,11 +232,11 @@ TEST_F(FlattenCallGraphTest, FlattenCallsInConditional) {
   // computation in the true and false branch.
   HloComputation::Builder builder(TestName());
   auto pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(56.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(56.0f)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(12.0f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(12.0f)));
   builder.AddInstruction(HloInstruction::CreateConditional(
       kScalarShape, pred, constant1, sub_computation, constant2,
       sub_computation));

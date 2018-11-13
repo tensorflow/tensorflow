@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 
 // TODO(jlebar): Move functions related to cublas/cudnn to a separate file; they
 // don't belong in "ir_emission_utils".
@@ -28,9 +29,42 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Different types of convolutions supported by cudnn.
+//
+// A way to think about these is that a convolution is defined by three arrays
+// -- the "input", the "filter", and the "output" -- and given any two of these,
+// we can compute the third.  For example, a backward-input convolution takes as
+// input a filter and an "output" and produces an "input" such that if one were
+// to do a forward convolution of "input" using filter, the result would be
+// something with the same shape as "output".
+//
+// This way of thinking is not correct if you look at the values produced. For
+// example, a backward-input convolution is not actually the mathematical
+// inverse of a forward convolution.  But it's right as far as the shapes and
+// "connectivity" (i.e. which elements of the input affect which elements of
+// the output) are concerned.
+enum class CudnnConvKind {
+  kForward,            // input  + filter => output
+  kBackwardInput,      // filter + output => input
+  kBackwardFilter,     // input  + output => filter
+  kForwardActivation,  // activation(conv(input, filter) + broadcast(bias) +
+                       // (optionally) side_input) => output
+};
+
+StatusOr<CudnnConvKind> GetCudnnConvKind(const HloCustomCallInstruction* instr);
+
+// Converts a CudnnConvKind value to a string.
+string CudnnConvKindToString(CudnnConvKind kind);
+
 constexpr int64 kWarpSize = 32;
 
 // Returns true if `hlo` will be implemented as a call to BLAS gemm.
+//
+// Precondition: `hlo` is in an "unnested context", meaning, it lives within the
+// entry computation, within the either of a while loop's subcomputations,
+// within any of a conditional's subcomputations, etc., but *does not* live
+// within a reduce subcomputation, a map subcomputation, a fusion
+// subcomputation, etc.  It's OK if `hlo` *is* a fusion.
 bool ImplementedAsGemm(const HloInstruction& hlo);
 
 // A call to cuDNN for batch normalization is represented as CustomCall HLO with
@@ -74,9 +108,9 @@ bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo);
 // memory used by cudnn.  Callers shouldn't inspect scratch_memory, as its value
 // is not well-defined.
 //
-// CudnnConvolutionRewriter lowers kConvolution HLOs to these custom calls.
+// CudnnConvRewriter lowers kConvolution HLOs to these custom calls.
 // When it does so, it chooses algorithm -1 and 0 bytes of scratch space.  Later
-// on in the pipeline, CudnnConvolutionAlgorithmChooser chooses an explicit
+// on in the pipeline, CudnnConvAlgorithmChooser chooses an explicit
 // algorithm for each conv and sets the amount of scratch space needed.
 //
 // (Representing the scratch memory as an output may seem strange at first, but
@@ -87,6 +121,7 @@ bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo);
 extern const char* const kCudnnConvForwardCallTarget;
 extern const char* const kCudnnConvBackwardInputCallTarget;
 extern const char* const kCudnnConvBackwardFilterCallTarget;
+extern const char* const kCudnnConvBiasActivationForwardCallTarget;
 
 // Returns true if `hlo` will be implemented as a call to a cuDNN convolution
 // routine.
@@ -96,23 +131,6 @@ extern const char* const kCudnnConvBackwardFilterCallTarget;
 // kConvolution opcode.
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo);
 
-// Creates a CustomCall for a cudnn forward/backward-input/backward-filter conv.
-// Note that these CustomCalls return a tuple (conv_result, scratch_memory).  If
-// you want just the conv result, you'll need to get-tuple-element the value
-// returned by this function.
-//
-// The created cudnn call will use the default cudnn algorithm and no scratch
-// space.
-HloInstruction* CreateCudnnConvForward(
-    const Shape& shape, HloInstruction* input, HloInstruction* kernel,
-    const Window& window, const ConvolutionDimensionNumbers& dnums);
-HloInstruction* CreateCudnnConvBackwardInput(
-    const Shape& shape, HloInstruction* output, HloInstruction* reverse_filter,
-    const Window& window, const ConvolutionDimensionNumbers& dnums);
-HloInstruction* CreateCudnnConvBackwardFilter(
-    const Shape& shape, HloInstruction* input, HloInstruction* output,
-    const Window& window, const ConvolutionDimensionNumbers& dnums);
-
 // Returns true if `hlo` will be implemented as a library call, e.g. cuBLAS gemm
 // or cuDNN convolution.
 bool ImplementedAsLibraryCall(const HloInstruction& hlo);
@@ -120,18 +138,22 @@ bool ImplementedAsLibraryCall(const HloInstruction& hlo);
 bool IsReductionToVector(const HloInstruction& reduce);
 
 // Emits call to "vprintf" with given format and arguments.
-llvm::Value* EmitPrintf(tensorflow::StringPiece fmt,
-                        tensorflow::gtl::ArraySlice<llvm::Value*> arguments,
+llvm::Value* EmitPrintf(absl::string_view fmt,
+                        absl::Span<llvm::Value* const> arguments,
                         llvm::IRBuilder<>* builder);
 
 // Emits code to shuffle data between threads of a warp. This has the same
-// semantics as the PTX "shfl.down" instruction [0] but works for values of any
-// size. The last operand of the emitted "shfl" is `kWarpSize - 1`.
+// semantics as the PTX "shfl.sync.down" instruction but works for values that
+// aren't 32 bits in size. The last operand of the emitted "shfl" is
+// `kWarpSize - 1`.
 //
-// [0]
-// http://docs.nvidia.com/cuda/parallel-thread-execution/#data-movement-and-conversion-instructions-shfl
-llvm::Value* EmitShuffleDown(llvm::Value* value, llvm::Value* offset,
-                             llvm::IRBuilder<>* builder);
+// This function emits a "full-warp" shuffle, which all threads of a warp
+// participate in.  *Do not use this function from a divergent context:* You
+// can't correctly do so on both Volta and earlier GPUs.
+//
+// https://docs.nvidia.com/cuda/parallel-thread-execution/#data-movement-and-conversion-instructions-shfl-sync
+llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
+                                     llvm::IRBuilder<>* builder);
 
 }  // namespace gpu
 }  // namespace xla

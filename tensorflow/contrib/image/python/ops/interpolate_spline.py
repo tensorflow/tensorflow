@@ -17,10 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -95,10 +93,22 @@ def _solve_interpolation(train_points, train_values, order,
   Returns:
     w: `[b, n, k]` weights on each interpolation center
     v: `[b, d, k]` weights on each input dimension
+  Raises:
+    ValueError: if d or k is not fully specified.
   """
 
-  b, n, d = train_points.get_shape().as_list()
-  _, _, k = train_values.get_shape().as_list()
+  # These dimensions are set dynamically at runtime.
+  b, n, _ = array_ops.unstack(array_ops.shape(train_points), num=3)
+
+  d = train_points.shape[-1]
+  if tensor_shape.dimension_value(d) is None:
+    raise ValueError('The dimensionality of the input points (d) must be '
+                     'statically-inferrable.')
+
+  k = train_values.shape[-1]
+  if tensor_shape.dimension_value(k) is None:
+    raise ValueError('The dimensionality of the output values (k) must be '
+                     'statically-inferrable.')
 
   # First, rename variables so that the notation (c, f, w, v, A, B, etc.)
   # follows https://en.wikipedia.org/wiki/Polyharmonic_spline.
@@ -113,14 +123,12 @@ def _solve_interpolation(train_points, train_values, order,
 
     matrix_a = _phi(_pairwise_squared_distance_matrix(c), order)  # [b, n, n]
     if regularization_weight > 0:
-      batch_identity_matrix = np.expand_dims(np.eye(n), 0)
-      batch_identity_matrix = constant_op.constant(
-          batch_identity_matrix, dtype=train_points.dtype)
-
+      batch_identity_matrix = array_ops.expand_dims(
+          linalg_ops.eye(n, dtype=c.dtype), 0)
       matrix_a += regularization_weight * batch_identity_matrix
 
     # Append ones to the feature values for the bias term in the linear model.
-    ones = array_ops.ones([b, n, 1], train_points.dtype)
+    ones = array_ops.ones_like(c[..., :1], dtype=c.dtype)
     matrix_b = array_ops.concat([c, ones], 2)  # [b, n, d + 1]
 
     # [b, n + d + 1, n]
@@ -164,9 +172,6 @@ def _apply_interpolation(query_points, train_points, w, v, order):
     Polyharmonic interpolation evaluated at points defined in query_points.
   """
 
-  batch_size = train_points.get_shape()[0].value
-  num_query_points = query_points.get_shape()[1].value
-
   # First, compute the contribution from the rbf term.
   pairwise_dists = _cross_squared_distance_matrix(query_points, train_points)
   phi_pairwise_dists = _phi(pairwise_dists, order)
@@ -177,7 +182,7 @@ def _apply_interpolation(query_points, train_points, w, v, order):
   # Pad query_points with ones, for the bias term in the linear model.
   query_points_pad = array_ops.concat([
       query_points,
-      array_ops.ones([batch_size, num_query_points, 1], train_points.dtype)
+      array_ops.ones_like(query_points[..., :1], train_points.dtype)
   ], 2)
   linear_term = math_ops.matmul(query_points_pad, v)
 
@@ -250,6 +255,9 @@ def interpolate_spline(train_points,
 
   Note the interpolation procedure is differentiable with respect to all inputs
   besides the order parameter.
+
+  We support dynamically-shaped inputs, where batch_size, n, and m are None
+  at graph construction time. However, d and k must be known.
 
   Args:
     train_points: `[batch_size, n, d]` float `Tensor` of n d-dimensional

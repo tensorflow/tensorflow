@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_CWISE_OPS_H_
-#define TENSORFLOW_KERNELS_CWISE_OPS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_CWISE_OPS_H_
+#define TENSORFLOW_CORE_KERNELS_CWISE_OPS_H_
 
 #include <cmath>
 #include <functional>
@@ -149,6 +149,27 @@ template <typename T, typename DivOrMod>
 struct functor_traits<safe_div_or_mod_op<T, DivOrMod>> {
   enum {
     Cost = functor_traits<DivOrMod>::Cost + NumTraits<T>::AddCost,
+    PacketAccess = false,
+  };
+};
+
+template <typename T>
+struct div_no_nan_op {
+  EIGEN_EMPTY_STRUCT_CTOR(div_no_nan_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a,
+                                                           const T& b) const {
+    if (b != 0) {
+      return scalar_quotient_op<T>()(a, b);
+    } else {
+      return 0;
+    }
+  }
+};
+
+template <typename T>
+struct functor_traits<div_no_nan_op<T>> {
+  enum {
+    Cost = functor_traits<scalar_quotient_op<T>>::Cost + NumTraits<T>::AddCost,
     PacketAccess = false,
   };
 };
@@ -450,6 +471,45 @@ struct functor_traits<bitwise_xor_op<Scalar>> {
   enum { Cost = Eigen::NumTraits<Scalar>::AddCost, PacketAccess = true };
 };
 
+// TODO(srvasude): Add packet versions of this operation.
+template <typename Scalar>
+struct xlogy_op {
+  EIGEN_EMPTY_STRUCT_CTOR(xlogy_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
+  operator()(const Scalar& x, const Scalar& y) const {
+    if (x == Scalar(0.)) {
+      return Scalar(0.);
+    }
+    return x * numext::log(y);
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<xlogy_op<Scalar>> {
+  enum {
+    Cost = (sizeof(Scalar) == 4 ? 40 : 85) + Eigen::NumTraits<Scalar>::MulCost,
+    PacketAccess = false
+  };
+};
+
+template <typename Scalar>
+// TODO(srvasude): Add packet versions of this operation.
+struct xdivy_op {
+  EIGEN_EMPTY_STRUCT_CTOR(xdivy_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
+  operator()(const Scalar& x, const Scalar& y) const {
+    if (x == Scalar(0.)) {
+      return Scalar(0.);
+    }
+    return x / y;
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<xdivy_op<Scalar>> {
+  enum { Cost = Eigen::NumTraits<Scalar>::MulCost, PacketAccess = false };
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
@@ -596,7 +656,7 @@ template <typename T>
 struct erfc : base<T, Eigen::internal::scalar_erfc_op<T>> {};
 
 template <typename T>
-struct sigmoid : base<T, Eigen::internal::scalar_sigmoid_op<T>> {};
+struct sigmoid : base<T, Eigen::internal::scalar_logistic_op<T>> {};
 
 template <typename T>
 struct sin : base<T, Eigen::internal::scalar_sin_op<T>> {};
@@ -615,6 +675,12 @@ struct acos : base<T, Eigen::internal::scalar_acos_op<T>> {};
 
 template <typename T>
 struct atan : base<T, Eigen::internal::scalar_atan_op<T>> {};
+
+template <typename T>
+struct bessel_i0e : base<T, Eigen::internal::scalar_i0e_op<T>> {};
+
+template <typename T>
+struct bessel_i1e : base<T, Eigen::internal::scalar_i1e_op<T>> {};
 
 struct logical_not : base<bool, Eigen::internal::scalar_boolean_not_op<bool>> {
 };
@@ -715,6 +781,9 @@ struct safe_div : base<T, Eigen::internal::safe_div_or_mod_op<
 };
 
 template <typename T>
+struct div_no_nan : base<T, Eigen::internal::div_no_nan_op<T>> {};
+
+template <typename T>
 struct fmod : base<T, Eigen::internal::scalar_fmod_op<T>> {};
 
 template <typename T>
@@ -765,6 +834,10 @@ template <typename T>
 struct igamma : base<T, Eigen::internal::scalar_igamma_op<T>> {};
 
 template <typename T>
+struct random_gamma_grad
+    : base<T, Eigen::internal::scalar_gamma_sample_der_alpha_op<T>> {};
+
+template <typename T>
 struct igammac : base<T, Eigen::internal::scalar_igammac_op<T>> {};
 
 template <typename T>
@@ -794,6 +867,12 @@ struct squared_difference
     : base<T, Eigen::internal::scalar_compose_op<
                   T, Eigen::internal::scalar_square_op<T>,
                   Eigen::internal::scalar_difference_op<T>>> {};
+
+template <typename T>
+struct xdivy : base<T, Eigen::internal::xdivy_op<T>> {};
+
+template <typename T>
+struct xlogy : base<T, Eigen::internal::xlogy_op<T>> {};
 
 template <typename T>
 struct less : base<T, Eigen::internal::less<T>, bool> {};
@@ -1002,4 +1081,4 @@ struct BatchSelectFunctor {
 }  // end namespace functor
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_CWISE_OPS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_CWISE_OPS_H_

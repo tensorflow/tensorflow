@@ -31,7 +31,14 @@ usage() {
   exit 1
 }
 
-DEFAULT_ARCH="i386 x86_64 armv7 armv7s arm64"
+echo "********************************************************************"
+echo "TensorFlow Lite is the recommended library for mobile and embedded machine learning inference."
+echo "You are currently using an older version. Please switch over to TensorFlow Lite."
+echo ""
+echo "Link to the code: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite"
+echo "********************************************************************"
+echo ""
+
 while getopts "a:g:T" opt_name; do
   case "$opt_name" in
     a) BUILD_ARCH="${OPTARG}";;
@@ -130,7 +137,7 @@ if [[ ! -z "${BUILD_ARCH}" ]]; then
 fi
 
 # build the ios tensorflow libraries.
-echo "Building TensorFlow with flags: ${TF_SCRIPT_FLAGS} -f ${TF_CC_FLAGS}"
+echo "Building TensorFlow with command: ${TF_SCRIPT_FLAGS} -f ${TF_CC_FLAGS}"
 tensorflow/contrib/makefile/compile_ios_tensorflow.sh ${TF_SCRIPT_FLAGS} -f "${TF_CC_FLAGS}"
 
 # Creates a static universal library in

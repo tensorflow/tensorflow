@@ -67,6 +67,13 @@ class FileBlockCache {
   virtual Status Read(const string& filename, size_t offset, size_t n,
                       char* buffer, size_t* bytes_transferred) = 0;
 
+  // Validate the given file signature with the existing file signature in the
+  // cache. Returns true if the signature doesn't change or the file did not
+  // exist before. If the signature changes, update the existing signature with
+  // the new one and remove the file from cache.
+  virtual bool ValidateAndUpdateFileSignature(const string& filename,
+                                              int64 file_signature) = 0;
+
   /// Remove all cached blocks for `filename`.
   virtual void RemoveFile(const string& filename) = 0;
 
@@ -80,6 +87,10 @@ class FileBlockCache {
 
   /// The current size (in bytes) of the cache.
   virtual size_t CacheSize() const = 0;
+
+  // Returns true if the cache is enabled. If false, the BlockFetcher callback
+  // is always executed during Read.
+  virtual bool IsCacheEnabled() const = 0;
 };
 
 }  // namespace tensorflow

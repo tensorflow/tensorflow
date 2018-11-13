@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import ops
 from tensorflow.python.ops.distributions import distribution as distribution_lib
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 class Autoregressive(distribution_lib.Distribution):
@@ -64,13 +65,14 @@ class Autoregressive(distribution_lib.Distribution):
   ```
 
   where the ellipses (`...`) represent `n-2` composed calls to `fn`, `fn`
-  constructs a `tf.distributions.Distribution`-like instance, and `x0` is a
+  constructs a `tfp.distributions.Distribution`-like instance, and `x0` is a
   fixed initializing `Tensor`.
 
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   def normal_fn(self, event_size):
     n = event_size * (event_size + 1) / 2
@@ -107,6 +109,14 @@ class Autoregressive(distribution_lib.Distribution):
        https://arxiv.org/abs/1606.05328
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                distribution_fn,
                sample0=None,
@@ -118,7 +128,7 @@ class Autoregressive(distribution_lib.Distribution):
 
     Args:
       distribution_fn: Python `callable` which constructs a
-        `tf.distributions.Distribution`-like instance from a `Tensor` (e.g.,
+        `tfp.distributions.Distribution`-like instance from a `Tensor` (e.g.,
         `sample0`). The function must respect the "autoregressive property",
         i.e., there exists a permutation of event such that each coordinate is a
         diffeomorphic function of on preceding coordinates.
@@ -144,7 +154,7 @@ class Autoregressive(distribution_lib.Distribution):
         `distribution_fn(sample0).event_shape.num_elements()` are both `None`.
       ValueError: if `num_steps < 1`.
     """
-    parameters = locals()
+    parameters = dict(locals())
     with ops.name_scope(name) as name:
       self._distribution_fn = distribution_fn
       self._sample0 = sample0

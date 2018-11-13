@@ -71,7 +71,7 @@ class MPISendTensorCall {
 
   void Init(const Rendezvous::ParsedKey& parsed, const int64 step_id,
             const bool is_dead) {
-    mRes_.set_key(parsed.FullKey().ToString());
+    mRes_.set_key(string(parsed.FullKey()));
     mRes_.set_step_id(step_id);
     mRes_.mutable_response()->set_is_dead(is_dead);
     mRes_.mutable_response()->set_send_start_micros(

@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/graph_view.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/cc/ops/parsing_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
@@ -24,6 +27,102 @@ namespace grappler {
 namespace {
 
 class GraphViewTest : public ::testing::Test {};
+
+TEST_F(GraphViewTest, OpPortIdToArgIdShapeN) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+  ops::ShapeN b(s.WithOpName("b"), {a, a, a});
+
+  GraphDef graph_def;
+  TF_CHECK_OK(s.ToGraphDef(&graph_def));
+  GraphView graph_view(&graph_def);
+
+  const NodeDef& a_node_def = *graph_view.GetNode("a");
+  const NodeDef& b_node_def = *graph_view.GetNode("b");
+
+  const OpDef* a_op_def = nullptr;
+  const OpDef* b_op_def = nullptr;
+  EXPECT_TRUE(
+      OpRegistry::Global()->LookUpOpDef(a_node_def.op(), &a_op_def).ok());
+  EXPECT_TRUE(
+      OpRegistry::Global()->LookUpOpDef(b_node_def.op(), &b_op_def).ok());
+
+  // Const has 0 inputs, 1 output.
+  EXPECT_EQ(-1, OpInputPortIdToArgId(a_node_def, *a_op_def, 0));
+  EXPECT_EQ(0, OpOutputPortIdToArgId(a_node_def, *a_op_def, 0));
+  EXPECT_EQ(-1, OpOutputPortIdToArgId(a_node_def, *a_op_def, 1));
+
+  // ShapeN has N=3 inputs and outputs.
+  EXPECT_EQ(0, OpInputPortIdToArgId(b_node_def, *b_op_def, 0));
+  EXPECT_EQ(0, OpInputPortIdToArgId(b_node_def, *b_op_def, 1));
+  EXPECT_EQ(0, OpInputPortIdToArgId(b_node_def, *b_op_def, 2));
+  EXPECT_EQ(-1, OpInputPortIdToArgId(b_node_def, *b_op_def, 3));
+  EXPECT_EQ(0, OpOutputPortIdToArgId(b_node_def, *b_op_def, 0));
+  EXPECT_EQ(0, OpOutputPortIdToArgId(b_node_def, *b_op_def, 1));
+  EXPECT_EQ(0, OpOutputPortIdToArgId(b_node_def, *b_op_def, 2));
+  EXPECT_EQ(-1, OpOutputPortIdToArgId(b_node_def, *b_op_def, 3));
+  EXPECT_EQ(-1, OpOutputPortIdToArgId(b_node_def, *b_op_def, 4));
+}
+
+TEST_F(GraphViewTest, OpPortIdToArgIdSparseSplit) {
+  for (int num_splits : {1, 2}) {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output a = ops::Const<int64>(s.WithOpName("a"), 1, {10, 10});
+    ops::SparseSplit b(s.WithOpName("b"), a, a, a, a, num_splits);
+
+    GraphDef graph_def;
+    TF_CHECK_OK(s.ToGraphDef(&graph_def));
+    GraphView graph_view(&graph_def);
+
+    const NodeDef& b_node_def = *graph_view.GetNode("b");
+    const OpDef* b_op_def = nullptr;
+    EXPECT_TRUE(
+        OpRegistry::Global()->LookUpOpDef(b_node_def.op(), &b_op_def).ok());
+
+    // We have 4 inputs.
+    EXPECT_EQ(0, OpInputPortIdToArgId(b_node_def, *b_op_def, 0));
+    EXPECT_EQ(1, OpInputPortIdToArgId(b_node_def, *b_op_def, 1));
+    EXPECT_EQ(2, OpInputPortIdToArgId(b_node_def, *b_op_def, 2));
+    EXPECT_EQ(3, OpInputPortIdToArgId(b_node_def, *b_op_def, 3));
+    EXPECT_EQ(-1, OpInputPortIdToArgId(b_node_def, *b_op_def, 4));
+
+    for (int port_id = 0; port_id <= num_splits * 3; ++port_id) {
+      int arg_id = -1;
+      if (port_id < num_splits * 3) {
+        arg_id = port_id / num_splits;
+      }
+      EXPECT_EQ(arg_id, OpOutputPortIdToArgId(b_node_def, *b_op_def, port_id));
+    }
+  }
+}
+
+TEST_F(GraphViewTest, ParseSingleExample) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::Const<string>(s.WithOpName("a"), "", {});
+  Output b = ops::Const<int64>(s.WithOpName("b"), 1, {1, 1});
+  ops::ParseSingleExample c(s.WithOpName("c"), a, {b, b}, 2, {"w", "x"},
+                            {"y", "z"}, {DT_INT64, DT_INT64}, {{1}, {1}});
+
+  GraphDef graph_def;
+  TF_CHECK_OK(s.ToGraphDef(&graph_def));
+  GraphView graph_view(&graph_def);
+
+  const NodeDef& c_node_def = *graph_view.GetNode("c");
+
+  const OpDef* c_op_def = nullptr;
+  EXPECT_TRUE(
+      OpRegistry::Global()->LookUpOpDef(c_node_def.op(), &c_op_def).ok());
+
+  EXPECT_EQ(0, OpOutputPortIdToArgId(c_node_def, *c_op_def, 0));
+  EXPECT_EQ(0, OpOutputPortIdToArgId(c_node_def, *c_op_def, 1));
+  EXPECT_EQ(1, OpOutputPortIdToArgId(c_node_def, *c_op_def, 2));
+  EXPECT_EQ(1, OpOutputPortIdToArgId(c_node_def, *c_op_def, 3));
+  EXPECT_EQ(2, OpOutputPortIdToArgId(c_node_def, *c_op_def, 4));
+  EXPECT_EQ(2, OpOutputPortIdToArgId(c_node_def, *c_op_def, 5));
+  EXPECT_EQ(3, OpOutputPortIdToArgId(c_node_def, *c_op_def, 6));
+  EXPECT_EQ(3, OpOutputPortIdToArgId(c_node_def, *c_op_def, 7));
+  EXPECT_EQ(-1, OpOutputPortIdToArgId(c_node_def, *c_op_def, 8));
+}
 
 TEST_F(GraphViewTest, BasicGraph) {
   TrivialTestGraphInputYielder fake_input(4, 2, 2, false, {"/CPU:0", "/GPU:0"});
@@ -61,19 +160,22 @@ TEST_F(GraphViewTest, BasicGraph) {
 
   const NodeDef* add_node = graph.GetNode("AddN");
   EXPECT_NE(nullptr, add_node);
-  string fanouts;
-  for (const auto& fo : graph.GetFanouts(*add_node, false)) {
-    strings::StrAppend(&fanouts,
-                       strings::StrCat(fo.node->name(), ":", fo.port_id, " "));
-  }
-  EXPECT_EQ("AddN_2:0 AddN_3:0 ", fanouts);
 
-  string fanins;
-  for (const auto& fi : graph.GetFanins(*add_node, false)) {
-    strings::StrAppend(&fanins,
-                       strings::StrCat(fi.node->name(), ":", fi.port_id, " "));
+  absl::flat_hash_set<string> fanouts;
+  absl::flat_hash_set<string> expected_fanouts = {"AddN_2:0", "AddN_3:0"};
+  for (const auto& fo : graph.GetFanouts(*add_node, false)) {
+    fanouts.insert(absl::StrCat(fo.node->name(), ":", fo.port_id));
   }
-  EXPECT_EQ("Square_1:0 Square:0 ", fanins);
+  EXPECT_EQ(graph.NumFanouts(*add_node, false), 2);
+  EXPECT_EQ(fanouts, expected_fanouts);
+
+  absl::flat_hash_set<string> fanins;
+  absl::flat_hash_set<string> expected_fanins = {"Square_1:0", "Square:0"};
+  for (const auto& fi : graph.GetFanins(*add_node, false)) {
+    fanins.insert(absl::StrCat(fi.node->name(), ":", fi.port_id));
+  }
+  EXPECT_EQ(graph.NumFanins(*add_node, false), 2);
+  EXPECT_EQ(fanins, expected_fanins);
 }
 
 TEST_F(GraphViewTest, ControlDependencies) {

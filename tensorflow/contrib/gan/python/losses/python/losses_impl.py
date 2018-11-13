@@ -355,7 +355,8 @@ def wasserstein_gradient_penalty(
       raise ValueError('`generated_data` can\'t have unknown rank.')
 
     differences = generated_data - real_data
-    batch_size = differences.shape[0].value or array_ops.shape(differences)[0]
+    batch_size = differences.shape.dims[0].value or array_ops.shape(
+        differences)[0]
     alpha_shape = [batch_size] + [1] * (differences.shape.ndims - 1)
     alpha = random_ops.random_uniform(shape=alpha_shape)
     interpolates = real_data + (alpha * differences)
@@ -773,9 +774,9 @@ def mutual_information_penalty(
     structured_generator_inputs: A list of Tensors representing the random noise
       that must  have high mutual information with the generator output. List
       length should match `predicted_distributions`.
-    predicted_distributions: A list of tf.Distributions. Predicted by the
-      recognizer, and used to evaluate the likelihood of the structured noise.
-      List length should match `structured_generator_inputs`.
+    predicted_distributions: A list of `tfp.distributions.Distribution`s.
+      Predicted by the recognizer, and used to evaluate the likelihood of the
+      structured noise. List length should match `structured_generator_inputs`.
     weights: Optional `Tensor` whose rank is either 0, or the same dimensions as
       `structured_generator_inputs`.
     scope: The scope for the operations performed in computing the loss.
@@ -949,6 +950,11 @@ def cycle_consistency_loss(data_x,
   * loss = (loss_x2x + loss_y2y) / 2
   where `loss` is the final result.
 
+  For the L1-norm, we follow the original implementation:
+  https://github.com/junyanz/CycleGAN/blob/master/models/cycle_gan_model.lua
+  we use L1-norm of pixel-wise error normalized by data size such that
+  `cycle_loss_weight` can be specified independent of image size.
+
   See https://arxiv.org/abs/1703.10593 for more details.
 
   Args:
@@ -965,19 +971,12 @@ def cycle_consistency_loss(data_x,
     A scalar `Tensor` of cycle consistency loss.
   """
 
-  def _partial_cycle_consistency_loss(data, reconstructed_data):
-    # Following the original implementation
-    # https://github.com/junyanz/CycleGAN/blob/master/models/cycle_gan_model.lua
-    # use L1-norm of pixel-wise error normalized by data size so that
-    # `cycle_loss_weight` can be specified independent of image size.
-    return math_ops.reduce_mean(math_ops.abs(data - reconstructed_data))
-
   with ops.name_scope(
       scope,
       'cycle_consistency_loss',
       values=[data_x, reconstructed_data_x, data_y, reconstructed_data_y]):
-    loss_x2x = _partial_cycle_consistency_loss(data_x, reconstructed_data_x)
-    loss_y2y = _partial_cycle_consistency_loss(data_y, reconstructed_data_y)
+    loss_x2x = losses.absolute_difference(data_x, reconstructed_data_x)
+    loss_y2y = losses.absolute_difference(data_y, reconstructed_data_y)
     loss = (loss_x2x + loss_y2y) / 2.0
     if add_summaries:
       summary.scalar('cycle_consistency_loss_x2x', loss_x2x)

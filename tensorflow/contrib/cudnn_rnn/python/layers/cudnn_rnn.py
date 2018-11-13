@@ -56,7 +56,7 @@ class _CudnnRNN(base_layer.Layer):
   Cudnn RNNs have two major differences from other platform-independent RNNs tf
   provides:
   * Cudnn LSTM and GRU are mathematically different from their tf counterparts.
-    (e.g. @{tf.contrib.rnn.LSTMBlockCell} and @{tf.nn.rnn_cell.GRUCell}.
+    (e.g. `tf.contrib.rnn.LSTMBlockCell` and `tf.nn.rnn_cell.GRUCell`.
   * Cudnn-trained checkpoints are not directly compatible with tf RNNs:
     * They use a single opaque parameter buffer for the entire (possibly)
       multi-layer multi-directional RNN; Whereas tf RNN weights are per-cell and
@@ -182,7 +182,7 @@ class _CudnnRNN(base_layer.Layer):
       dropout: dropout rate, a number between [0, 1]. Dropout is applied between
           each layer (no dropout is applied for a model with a single layer).
           When set to 0, dropout is disabled.
-      seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+      seed: the op seed used for initializing dropout. See `tf.set_random_seed`
           for behavior.
       dtype: tf.float16, tf.float32 or tf.float64
       kernel_initializer: starting value to initialize the weight.
@@ -356,7 +356,8 @@ class _CudnnRNN(base_layer.Layer):
             "Partitioner is not supported for Cudnn RNN layer variables, using "
             "it will create forward-compatibility issues with future "
             "CUDA/CuDNN generations.")
-      # Initialize opaque params with a tensor.
+      # Initialize opaque params with a tensor with unknown shape, thus couldn't
+      # use self.add_variable(name, shape, initializer, ...)
       self.kernel = vs.get_variable(
           "opaque_kernel", dtype=self._plain_dtype,
           initializer=opaque_params_t, validate_shape=False)
@@ -387,11 +388,11 @@ class _CudnnRNN(base_layer.Layer):
       output_states: a tuple of tensor(s) of the same shape and structure as
         `initial_state`.
     Raises:
-      ValueError: initial_state is not a tuple.
+      TypeError: initial_state is not a tuple.
     """
     if initial_state is not None and not isinstance(initial_state, tuple):
-      raise ValueError("Invalid initial_state type: %s, expecting tuple.",
-                       type(initial_state))
+      raise TypeError("Invalid initial_state type: %s, expecting tuple." %
+                      initial_state)
     dtype = self.dtype
     inputs = ops.convert_to_tensor(inputs, dtype=dtype)
 

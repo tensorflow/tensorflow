@@ -43,6 +43,10 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#endif
+
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
@@ -101,8 +105,9 @@ template <typename T>
 struct LaunchConv2DBackpropInputOp<CPUDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& out_backprop, const Tensor& filter,
-                  int row_stride, int col_stride, const Padding& padding,
-                  Tensor* in_backprop, TensorFormat data_format) {
+                  int row_dilation, int col_dilation, int row_stride,
+                  int col_stride, const Padding& padding, Tensor* in_backprop,
+                  TensorFormat data_format) {
     const CPUDevice& d = ctx->eigen_device<CPUDevice>();
     functor::SpatialConvolutionBackwardInput<CPUDevice, T>()(
         d, in_backprop->tensor<T, 4>(), filter.tensor<T, 4>(),
@@ -280,8 +285,8 @@ class Conv2DFastBackpropInputOp : public OpKernel {
 
     LaunchConv2DBackpropInputOp<Device, T>()(
         context, false, false, out_backprop, filter,
-        dims.spatial_dims[0].stride, dims.spatial_dims[1].stride, padding_,
-        in_backprop, data_format_);
+        /*row_dilation=*/1, /*col_dilation=*/1, dims.spatial_dims[0].stride,
+        dims.spatial_dims[1].stride, padding_, in_backprop, data_format_);
   }
 
  private:
@@ -595,6 +600,11 @@ TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
+// To be used inside depthwise_conv_grad_op.cc.
+template struct LaunchConv2DBackpropInputOp<CPUDevice, Eigen::half>;
+template struct LaunchConv2DBackpropInputOp<CPUDevice, float>;
+template struct LaunchConv2DBackpropInputOp<CPUDevice, double>;
+
 // GPU definitions.
 #if GOOGLE_CUDA
 // The slow version (but compiles for GPU)
@@ -761,8 +771,13 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
     return;
   }
 
+  // If the filter in-depth (filter_shape.dim_size(2)) is 1 and smaller than the
+  // input depth, it's a depthwise convolution. More generally, if the filter
+  // in-depth divides but is smaller than the input depth, it is a grouped
+  // convolution.
+  bool is_grouped_convolution = filter_shape.dim_size(2) != dims.in_depth;
   if (dims.spatial_dims[0].filter_size == 1 &&
-      dims.spatial_dims[1].filter_size == 1 &&
+      dims.spatial_dims[1].filter_size == 1 && !is_grouped_convolution &&
       dims.spatial_dims[0].stride == 1 && dims.spatial_dims[1].stride == 1 &&
       data_format == FORMAT_NHWC) {
     // 1x1 filter, so call cublas directly.
@@ -795,9 +810,10 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
                  dims.spatial_dims[0].input_size &&
              dims.spatial_dims[1].filter_size ==
                  dims.spatial_dims[1].input_size &&
-             padding == VALID && data_format == FORMAT_NHWC) {
-    // The input data and filter have the same height/width, so call cublas
-    // directly.
+             !is_grouped_convolution && padding == VALID &&
+             data_format == FORMAT_NHWC) {
+    // The input data and filter have the same height/width, and we are not
+    // using grouped convolution, so call cublas directly.
     const uint64 m = dims.batch_size;
     const uint64 k = dims.out_depth;
     const uint64 n = dims.spatial_dims[0].input_size *
@@ -856,15 +872,16 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   se::dnn::FilterDescriptor filter_desc;
   filter_desc.set_input_filter_height(dims.spatial_dims[0].filter_size)
       .set_input_filter_width(dims.spatial_dims[1].filter_size)
-      .set_input_feature_map_count(dims.in_depth)
-      .set_output_feature_map_count(dims.out_depth);
+      .set_input_feature_map_count(filter_shape.dim_size(2))
+      .set_output_feature_map_count(filter_shape.dim_size(3));
   se::dnn::ConvolutionDescriptor conv_desc;
   conv_desc.set_vertical_dilation_rate(dims.spatial_dims[0].dilation)
       .set_horizontal_dilation_rate(dims.spatial_dims[1].dilation)
       .set_vertical_filter_stride(dims.spatial_dims[0].stride)
       .set_horizontal_filter_stride(dims.spatial_dims[1].stride)
       .set_zero_padding_height(padding_rows / 2)
-      .set_zero_padding_width(padding_cols / 2);
+      .set_zero_padding_width(padding_cols / 2)
+      .set_group_count(dims.in_depth / filter_shape.dim_size(2));
 
   // NOTE(keveman):
   // cuDNN only supports the following layouts :
@@ -888,7 +905,8 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
                               &transformed_filter));
 
   functor::TransformFilter<GPUDevice, T, int, 4>()(
-      ctx->eigen_device<GPUDevice>(), To32Bit(filter.tensor<T, 4>()),
+      ctx->eigen_device<GPUDevice>(), FORMAT_OIHW,
+      To32Bit(filter.tensor<T, 4>()),
       To32Bit(transformed_filter.tensor<T, 4>()));
 
   Tensor transformed_out_backprop;
@@ -940,21 +958,23 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = out_backprop.dtype();
   ConvParameters conv_parameters = {
-      dims.batch_size,                       // batch
-      dims.in_depth,                         // in_depths
-      {{input_desc.height(),                 // in_rows
-        input_desc.width()}},                // in_cols
-      dims.out_depth,                        // out_depths
-      {{dims.spatial_dims[0].filter_size,    // filter_rows
-        dims.spatial_dims[1].filter_size}},  // filter_cols
-      {{dims.spatial_dims[0].dilation,       // dilation_rows
-        dims.spatial_dims[1].dilation}},     // dilation_cols
-      {{dims.spatial_dims[0].stride,         // stride_rows
-        dims.spatial_dims[1].stride}},       // stride_cols
-      {{padding_rows,                        // padding_rows
-        padding_cols}},                      // padding_cols
-      dtype,                                 // tensor data type
-      device_id,                             // device_id
+      dims.batch_size,                     // batch
+      dims.in_depth,                       // in_depths
+      {{input_desc.height(),               // in_rows
+        input_desc.width()}},              // in_cols
+      FORMAT_NCHW,                         // compute_data_format
+      dims.out_depth,                      // out_depths
+      {{dims.spatial_dims[0].filter_size,  // filter_rows
+        dims.spatial_dims[1].filter_size,  // filter_cols
+        filter_shape.dim_size(2)}},        // filter_depths
+      {{dims.spatial_dims[0].dilation,     // dilation_rows
+        dims.spatial_dims[1].dilation}},   // dilation_cols
+      {{dims.spatial_dims[0].stride,       // stride_rows
+        dims.spatial_dims[1].stride}},     // stride_cols
+      {{padding_rows,                      // padding_rows
+        padding_cols}},                    // padding_cols
+      dtype,                               // tensor data type
+      device_id,                           // device_id
   };
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune && !AutoTuneConvBwdData::GetInstance()->Find(
@@ -1075,7 +1095,8 @@ namespace functor {
   extern template struct InflatePadAndShuffle<GPUDevice, T, 4, int>;     \
   template <>                                                            \
   void TransformFilter<GPUDevice, T, int, 4>::operator()(                \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,    \
+      const GPUDevice& d, FilterTensorFormat dst_filter_format,          \
+      typename TTypes<T, 4, int>::ConstTensor in,                        \
       typename TTypes<T, 4, int>::Tensor out);                           \
   extern template struct TransformFilter<GPUDevice, T, int, 4>;          \
   template <>                                                            \
@@ -1092,9 +1113,9 @@ namespace functor {
       typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format); \
   extern template struct PadInput<GPUDevice, T, int, 4>;
 
-DECLARE_GPU_SPEC(double);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(Eigen::half);
+DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
@@ -1113,6 +1134,12 @@ REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropInput")
                             .TypeConstraint<Eigen::half>("T")
                             .HostMemory("input_sizes"),
                         Conv2DSlowBackpropInputOp<GPUDevice, Eigen::half>);
+
+// To be used inside depthwise_conv_grad_op.cc.
+template struct LaunchConv2DBackpropInputOp<GPUDevice, float>;
+template struct LaunchConv2DBackpropInputOp<GPUDevice, Eigen::half>;
+template struct LaunchConv2DBackpropInputOp<GPUDevice, double>;
+
 #endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

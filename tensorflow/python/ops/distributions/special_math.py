@@ -12,13 +12,68 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
+# Functions "ndtr" and "ndtri" are derived from calculations made in:
+# https://root.cern.ch/doc/v608/SpecFuncCephesInv_8cxx_source.html
+# In the following email exchange, the author gives his consent to redistribute
+# derived works under an Apache 2.0 license.
+#
+# From: Stephen Moshier <steve@moshier.net>
+# Date: Sat, Jun 9, 2018 at 2:36 PM
+# Subject: Re: Licensing cephes under Apache (BSD-like) license.
+# To: rif <rif@google.com>
+#
+#
+#
+# Hello Rif,
+#
+# Yes, Google may distribute Cephes files under the Apache 2 license.
+#
+# If clarification is needed, I do not favor BSD over other free licenses.
+# I would agree that Apache 2 seems to cover the concern you mentioned
+# about sublicensees.
+#
+# Best wishes for good luck with your projects!
+# Steve Moshier
+#
+#
+#
+# On Thu, 31 May 2018, rif wrote:
+#
+# > Hello Steve.
+# > My name is Rif. I work on machine learning software at Google.
+# >
+# > Your cephes software continues to be incredibly useful and widely used. I
+# > was wondering whether it would be permissible for us to use the Cephes code
+# > under the Apache 2.0 license, which is extremely similar in permissions to
+# > the BSD license (Wikipedia comparisons). This would be quite helpful to us
+# > in terms of avoiding multiple licenses on software.
+# >
+# > I'm sorry to bother you with this (I can imagine you're sick of hearing
+# > about this by now), but I want to be absolutely clear we're on the level and
+# > not misusing your important software. In former conversation with Eugene
+# > Brevdo (ebrevdo@google.com), you wrote "If your licensing is similar to BSD,
+# > the formal way that has been handled is simply to add a statement to the
+# > effect that you are incorporating the Cephes software by permission of the
+# > author." I wanted to confirm that (a) we could use the Apache license, (b)
+# > that we don't need to (and probably you don't want to) keep getting
+# > contacted about individual uses, because your intent is generally to allow
+# > this software to be reused under "BSD-like" license, and (c) you're OK
+# > letting incorporators decide whether a license is sufficiently BSD-like?
+# >
+# > Best,
+# >
+# > rif
+# >
+# >
+# >
+
 """Special Math Ops."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -42,15 +97,15 @@ __all__ = [
 # then made more conservative just to be safe. (Conservative means use the
 # expansion more than we probably need to.) See `NdtrTest` in
 # special_math_test.py.
-LOGNDTR_FLOAT64_LOWER = -20
-LOGNDTR_FLOAT32_LOWER = -10
+LOGNDTR_FLOAT64_LOWER = np.array(-20, np.float64)
+LOGNDTR_FLOAT32_LOWER = np.array(-10, np.float32)
 
 # Upper bound values were chosen by examining for which values of 'x'
 # Log[cdf(x)] is 0, after which point we need to use the approximation
 # Log[cdf(x)] = Log[1 - cdf(-x)] approx -cdf(-x). We chose a value slightly
 # conservative, meaning we use the approximation earlier than needed.
-LOGNDTR_FLOAT64_UPPER = 8
-LOGNDTR_FLOAT32_UPPER = 5
+LOGNDTR_FLOAT64_UPPER = np.array(8, np.float64)
+LOGNDTR_FLOAT32_UPPER = np.array(5, np.float32)
 
 
 def ndtr(x, name="ndtr"):
@@ -91,7 +146,7 @@ def ndtr(x, name="ndtr"):
 def _ndtr(x):
   """Implements ndtr core logic."""
   half_sqrt_2 = constant_op.constant(
-      0.5 * math.sqrt(2.), dtype=x.dtype, name="half_sqrt_2")
+      0.5 * np.sqrt(2.), dtype=x.dtype, name="half_sqrt_2")
   w = x * half_sqrt_2
   z = math_ops.abs(w)
   y = array_ops.where(math_ops.less(z, half_sqrt_2),
@@ -136,7 +191,7 @@ def _ndtri(p):
 
   # Constants used in piece-wise rational approximations. Taken from the cephes
   # library:
-  # https://github.com/scipy/scipy/blob/master/scipy/special/cephes/ndtri.c
+  # https://root.cern.ch/doc/v608/SpecFuncCephesInv_8cxx_source.html
   p0 = list(reversed([-5.99633501014107895267E1,
                       9.80010754185999661536E1,
                       -5.66762857469070293439E1,
@@ -190,18 +245,18 @@ def _ndtri(p):
 
   def _create_polynomial(var, coeffs):
     """Compute n_th order polynomial via Horner's method."""
-    if not coeffs:
-      return 0.
+    coeffs = np.array(coeffs, var.dtype.as_numpy_dtype)
+    if not coeffs.size:
+      return array_ops.zeros_like(var)
     return coeffs[0] + _create_polynomial(var, coeffs[1:]) * var
 
-  maybe_complement_p = array_ops.where(p > 1. - np.exp(-2.), 1. - p, p)
+  maybe_complement_p = array_ops.where(p > -np.expm1(-2.), 1. - p, p)
   # Write in an arbitrary value in place of 0 for p since 0 will cause NaNs
   # later on. The result from the computation when p == 0 is not used so any
   # number that doesn't result in NaNs is fine.
-  one_half = constant_op.constant(0.5, dtype=p.dtype)
   sanitized_mcp = array_ops.where(
       maybe_complement_p <= 0.,
-      array_ops.fill(array_ops.shape(p), one_half),
+      array_ops.fill(array_ops.shape(p), np.array(0.5, p.dtype.as_numpy_dtype)),
       maybe_complement_p)
 
   # Compute x for p > exp(-2): x/sqrt(2pi) = w + w**3 P0(w**2)/Q0(w**2).
@@ -216,10 +271,12 @@ def _ndtri(p):
   # arrays based on whether p < exp(-32).
   z = math_ops.sqrt(-2. * math_ops.log(sanitized_mcp))
   first_term = z - math_ops.log(z) / z
-  second_term_small_p = (_create_polynomial(1. / z, p2)
-                         / _create_polynomial(1. / z, q2)) / z
-  second_term_otherwise = (_create_polynomial(1. / z, p1)
-                           / _create_polynomial(1. / z, q1)) / z
+  second_term_small_p = (
+      _create_polynomial(1. / z, p2) /
+      _create_polynomial(1. / z, q2) / z)
+  second_term_otherwise = (
+      _create_polynomial(1. / z, p1) /
+      _create_polynomial(1. / z, q1) / z)
   x_for_small_p = first_term - second_term_small_p
   x_otherwise = first_term - second_term_otherwise
 
@@ -304,7 +361,8 @@ def log_ndtr(x, series_order=3, name="log_ndtr"):
     else:
       raise TypeError("x.dtype=%s is not supported." % x.dtype)
 
-    # The basic idea here was ported from py/scipy/special/cephes/ndtr.c.
+    # The basic idea here was ported from:
+    #   https://root.cern.ch/doc/v608/SpecFuncCephesInv_8cxx_source.html
     # We copy the main idea, with a few changes
     # * For x >> 1, and X ~ Normal(0, 1),
     #     Log[P[X < x]] = Log[1 - P[X < -x]] approx -P[X < -x],
@@ -330,23 +388,25 @@ def _log_ndtr_lower(x, series_order):
   """Asymptotic expansion version of `Log[cdf(x)]`, appropriate for `x<<-1`."""
   x_2 = math_ops.square(x)
   # Log of the term multiplying (1 + sum)
-  log_scale = -0.5 * x_2 - math_ops.log(-x) - 0.5 * math.log(2. * math.pi)
+  log_scale = -0.5 * x_2 - math_ops.log(-x) - 0.5 * np.log(2. * np.pi)
   return log_scale + math_ops.log(_log_ndtr_asymptotic_series(x, series_order))
 
 
 def _log_ndtr_asymptotic_series(x, series_order):
   """Calculates the asymptotic series used in log_ndtr."""
+  dtype = x.dtype.as_numpy_dtype
   if series_order <= 0:
-    return 1.
+    return np.array(1, dtype)
   x_2 = math_ops.square(x)
-  even_sum = 0.
-  odd_sum = 0.
+  even_sum = array_ops.zeros_like(x)
+  odd_sum = array_ops.zeros_like(x)
   x_2n = x_2  # Start with x^{2*1} = x^{2*n} with n = 1.
   for n in range(1, series_order + 1):
+    y = np.array(_double_factorial(2 * n - 1), dtype) / x_2n
     if n % 2:
-      odd_sum += _double_factorial(2 * n - 1) / x_2n
+      odd_sum += y
     else:
-      even_sum += _double_factorial(2 * n - 1) / x_2n
+      even_sum += y
     x_2n *= x_2
   return 1. + even_sum - odd_sum
 

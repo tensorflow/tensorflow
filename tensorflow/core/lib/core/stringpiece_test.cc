@@ -55,4 +55,9 @@ TEST(StringPiece, Ctor) {
   }
 }
 
+TEST(StringPiece, ConversionToString) {
+  EXPECT_EQ("", string(StringPiece("")));
+  EXPECT_EQ("foo", string(StringPiece("foo")));
+}
+
 }  // namespace tensorflow

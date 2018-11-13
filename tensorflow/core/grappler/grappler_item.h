@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_GRAPPLER_ITEM_H_
-#define TENSORFLOW_GRAPPLER_GRAPPLER_ITEM_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_GRAPPLER_ITEM_H_
+#define TENSORFLOW_CORE_GRAPPLER_GRAPPLER_ITEM_H_
 
 #include <memory>
 #include <string>
@@ -77,6 +77,15 @@ struct GrapplerItem {
   // Return a set of node names that must be preserved. This includes feed and
   // fetch nodes, keep_ops, init_ops.
   std::unordered_set<string> NodesToPreserve() const;
+
+  // Restrict types of optimizations that are allowed for this GrapplerItem.
+  struct AllowedOptimizations {
+    // Is it allowed to add nodes to the graph that do not have registered
+    // gradient function.
+    bool non_differentiable_rewrites = true;
+  };
+
+  AllowedOptimizations allowed_optimizations;
 };
 
 // Return the transitive fanin of a set of terminal nodes.
@@ -93,4 +102,4 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_GRAPPLER_ITEM_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_GRAPPLER_ITEM_H_

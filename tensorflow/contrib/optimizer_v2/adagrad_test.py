@@ -36,7 +36,7 @@ class AdagradOptimizerTest(test.TestCase):
 
   def doTestBasic(self, use_locking=False, use_resource=False):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         if use_resource:
           var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
           var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
@@ -68,12 +68,9 @@ class AdagradOptimizerTest(test.TestCase):
   def testBasicResource(self):
     self.doTestBasic(use_locking=False, use_resource=True)
 
-  def testBasicLocked(self):
-    self.doTestBasic(use_locking=True)
-
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = resource_variable_ops.ResourceVariable(
             [[1.0, 2.0], [3.0, 4.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
@@ -92,7 +89,7 @@ class AdagradOptimizerTest(test.TestCase):
 
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -116,7 +113,7 @@ class AdagradOptimizerTest(test.TestCase):
 
   def testSparseBasic(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = variables.Variable([[1.0], [2.0]], dtype=dtype)
         var1 = variables.Variable([[3.0], [4.0]], dtype=dtype)
         grads0 = ops.IndexedSlices(
@@ -147,7 +144,7 @@ class AdagradOptimizerTest(test.TestCase):
 
   def testSparseRepeatedIndices(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         repeated_index_update_var = variables.Variable(
             [[1.0], [2.0]], dtype=dtype)
         aggregated_update_var = variables.Variable(
@@ -177,7 +174,7 @@ class AdagradOptimizerTest(test.TestCase):
 
   def testSparseRepeatedIndicesResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var_repeated = resource_variable_ops.ResourceVariable(
             [1.0, 2.0], dtype=dtype)
         loss_repeated = math_ops.reduce_sum(
@@ -201,7 +198,7 @@ class AdagradOptimizerTest(test.TestCase):
 
   def testSparseStability(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         shape = [1, 6]
         var0 = variables.Variable(
             [[
@@ -237,7 +234,7 @@ class AdagradOptimizerTest(test.TestCase):
 
   def testSharing(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -270,7 +267,7 @@ class AdagradOptimizerTest(test.TestCase):
             np.array([2.715679168701172, 3.715679168701172]), var1.eval())
 
   def testDynamicShapeVariable_Ok(self):
-    with self.test_session():
+    with self.cached_session():
       v = variable_scope.get_variable("v", initializer=constant_op.constant(1.),
                                       validate_shape=False)
       self.assertFalse(v.shape.is_fully_defined())

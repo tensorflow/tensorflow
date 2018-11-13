@@ -25,6 +25,8 @@ namespace tensorflow {
 
 class Summary;
 
+namespace data {
+
 // A `StatsAggregator` accumulates statistics incrementally. A
 // `StatsAggregator` can accumulate multiple different statistics, distinguished
 // by a string name.
@@ -47,12 +49,20 @@ class StatsAggregator {
   virtual void AddToHistogram(const string& name,
                               gtl::ArraySlice<double> values) = 0;
 
+  // TODO(shivaniagarawal): consistency in double and float usage.
+  // Add the given `value` as Scalar with the given `name`.
+  virtual void AddScalar(const string& name, float value) = 0;
+
   // Stores a protocol buffer representation of the aggregator state in the
   // given `out_summary`.
   // TODO(mrry): Consider separating this method from the `StatsAggregator`
   // interface. It is possible that not all implementations will support
   // encoding their state as a protocol buffer.
   virtual void EncodeToProto(Summary* out_summary) = 0;
+
+  // Increment the `label` cell of metrics mapped with `name` by given `value`.
+  virtual void IncrementCounter(const string& name, const string& label,
+                                int64 val) = 0;
 };
 
 // A `StatsAggregatorResource` wraps a shareable `StatsAggregator` as a resource
@@ -79,6 +89,7 @@ class StatsAggregatorResource : public ResourceBase {
   const std::shared_ptr<StatsAggregator> stats_aggregator_;
 };
 
+}  // namespace data
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_STATS_AGGREGATOR_H_

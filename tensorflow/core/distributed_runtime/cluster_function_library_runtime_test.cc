@@ -36,7 +36,8 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
     ChannelCreationFunction channel_func =
         ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
     std::unique_ptr<WorkerCacheInterface> worker_cache(
-        NewGrpcWorkerCache(NewGrpcChannelCache(spec, channel_func)));
+        NewGrpcWorkerCache(std::shared_ptr<GrpcChannelCache>(
+            NewGrpcChannelCache(spec, channel_func))));
 
     worker_session_.reset(new WorkerSession(
         "cluster_test_session", "/job:localhost/replica:0/task:0",

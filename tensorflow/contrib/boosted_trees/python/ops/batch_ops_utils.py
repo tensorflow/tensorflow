@@ -20,15 +20,18 @@ from __future__ import print_function
 import abc
 import collections
 
+import six
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 
 
+@six.add_metaclass(abc.ABCMeta)
 class ScheduledOp(object):
   """Represents a scheduled remote operation."""
-
-  __metaclass__ = abc.ABCMeta
 
   @abc.abstractmethod
   def batching_key(self):
@@ -60,6 +63,7 @@ def _move_tensors(tensors, device):
   """Moves a list of tensors to a device by concatenating/splitting them."""
   # Reset the device setting to avoid weird interactions with device merging
   # logic.
+  zero = constant_op.constant(0, dtype=dtypes.int32)
   with ops.device(None):
     if all(tensor.shape == tensor_shape.scalar() for tensor in tensors):
       with ops.device(tensors[0].device):
@@ -68,12 +72,11 @@ def _move_tensors(tensors, device):
         return array_ops.unstack(values)
     else:
       with ops.device(tensors[0].device):
-        sizes = array_ops.stack(
-            [array_ops.shape(tensor)[0] for tensor in tensors])
-        values = array_ops.concat(tensors, axis=0)
+        sizes = array_ops.stack(array_ops.shape_n(tensors))[:, 0]
+        values = array_ops.concat(tensors, axis=zero)
       with ops.device(device):
         sizes = array_ops.unstack(sizes)
-        return list(array_ops.split(values, sizes, axis=0))
+        return list(array_ops.split(values, sizes, axis=zero))
 
 
 def _scheduled_stamp_resource_op_runner(batch, stamp):

@@ -34,7 +34,7 @@ from tensorflow.python.platform import test
 class NegativeBinomialTest(test.TestCase):
 
   def testNegativeBinomialShape(self):
-    with self.test_session():
+    with self.cached_session():
       probs = [.1] * 5
       total_count = [2.0] * 5
       negbinom = negative_binomial.NegativeBinomial(
@@ -46,7 +46,7 @@ class NegativeBinomialTest(test.TestCase):
       self.assertEqual(tensor_shape.TensorShape([]), negbinom.event_shape)
 
   def testNegativeBinomialShapeBroadcast(self):
-    with self.test_session():
+    with self.cached_session():
       probs = [[.1, .2, .3]] * 5
       total_count = [[2.]] * 5
       negbinom = negative_binomial.NegativeBinomial(
@@ -60,7 +60,7 @@ class NegativeBinomialTest(test.TestCase):
 
   def testLogits(self):
     logits = [[0., 9., -0.5]]
-    with self.test_session():
+    with self.cached_session():
       negbinom = negative_binomial.NegativeBinomial(
           total_count=3., logits=logits)
       self.assertEqual([1, 3], negbinom.probs.get_shape())
@@ -69,14 +69,14 @@ class NegativeBinomialTest(test.TestCase):
 
   def testInvalidP(self):
     invalid_ps = [-.01, 0., -2.,]
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("Condition x >= 0"):
         negbinom = negative_binomial.NegativeBinomial(
             5., probs=invalid_ps, validate_args=True)
         negbinom.probs.eval()
 
     invalid_ps = [1.01, 2., 1.001,]
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("probs has components greater than 1."):
         negbinom = negative_binomial.NegativeBinomial(
             5., probs=invalid_ps, validate_args=True)
@@ -84,14 +84,14 @@ class NegativeBinomialTest(test.TestCase):
 
   def testInvalidNegativeCount(self):
     invalid_rs = [-.01, 0., -2.,]
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("Condition x > 0"):
         negbinom = negative_binomial.NegativeBinomial(
             total_count=invalid_rs, probs=0.1, validate_args=True)
         negbinom.total_count.eval()
 
   def testNegativeBinomialLogCdf(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       probs = [.2] * batch_size
       probs_v = .2
@@ -109,7 +109,7 @@ class NegativeBinomialTest(test.TestCase):
       self.assertAllClose(np.exp(expected_log_cdf), cdf.eval())
 
   def testNegativeBinomialLogCdfValidateArgs(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       probs = [.9] * batch_size
       total_count = 5.
@@ -119,7 +119,7 @@ class NegativeBinomialTest(test.TestCase):
         negbinom.log_cdf(-1.).eval()
 
   def testNegativeBinomialLogPmf(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       probs = [.2] * batch_size
       probs_v = .2
@@ -137,7 +137,7 @@ class NegativeBinomialTest(test.TestCase):
       self.assertAllClose(np.exp(expected_log_pmf), pmf.eval())
 
   def testNegativeBinomialLogPmfValidateArgs(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       probs = [.9] * batch_size
       total_count = 5.
@@ -162,7 +162,7 @@ class NegativeBinomialTest(test.TestCase):
       self.assertEqual([6], pmf.get_shape())
 
   def testNegativeBinomialLogPmfMultidimensional(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       probs = constant_op.constant([[.2, .3, .5]] * batch_size)
       probs_v = np.array([.2, .3, .5])
@@ -183,7 +183,7 @@ class NegativeBinomialTest(test.TestCase):
       self.assertAllClose(np.exp(expected_log_pmf), pmf_values)
 
   def testNegativeBinomialMean(self):
-    with self.test_session():
+    with self.cached_session():
       total_count = 5.
       probs = np.array([.1, .3, .25], dtype=np.float32)
       negbinom = negative_binomial.NegativeBinomial(
@@ -193,7 +193,7 @@ class NegativeBinomialTest(test.TestCase):
       self.assertAllClose(expected_means, negbinom.mean().eval())
 
   def testNegativeBinomialVariance(self):
-    with self.test_session():
+    with self.cached_session():
       total_count = 5.
       probs = np.array([.1, .3, .25], dtype=np.float32)
       negbinom = negative_binomial.NegativeBinomial(
@@ -203,7 +203,7 @@ class NegativeBinomialTest(test.TestCase):
       self.assertAllClose(expected_vars, negbinom.variance().eval())
 
   def testNegativeBinomialStddev(self):
-    with self.test_session():
+    with self.cached_session():
       total_count = 5.
       probs = np.array([.1, .3, .25], dtype=np.float32)
       negbinom = negative_binomial.NegativeBinomial(
@@ -213,7 +213,7 @@ class NegativeBinomialTest(test.TestCase):
       self.assertAllClose(expected_stds, negbinom.stddev().eval())
 
   def testNegativeBinomialSample(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       probs = [.3, .9]
       total_count = [4., 11.]
       n = int(100e3)
@@ -242,7 +242,7 @@ class NegativeBinomialTest(test.TestCase):
                             rtol=.02)
 
   def testLogProbOverflow(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       logits = np.float32([20., 30., 40.])
       total_count = np.float32(1.)
       x = np.float32(0.)
@@ -253,7 +253,7 @@ class NegativeBinomialTest(test.TestCase):
                           np.isfinite(log_prob_))
 
   def testLogProbUnderflow(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       logits = np.float32([-90, -100, -110])
       total_count = np.float32(1.)
       x = np.float32(0.)

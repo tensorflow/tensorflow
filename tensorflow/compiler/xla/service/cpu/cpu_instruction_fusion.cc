@@ -34,7 +34,8 @@ bool CanBeLoopFused(const HloInstruction& hlo) {
          hlo.opcode() == HloOpcode::kConcatenate ||
          hlo.opcode() == HloOpcode::kDynamicSlice ||
          hlo.opcode() == HloOpcode::kDynamicUpdateSlice ||
-         hlo.opcode() == HloOpcode::kPad ||
+         hlo.opcode() == HloOpcode::kGather ||
+         hlo.opcode() == HloOpcode::kIota || hlo.opcode() == HloOpcode::kPad ||
          hlo.opcode() == HloOpcode::kReshape ||
          hlo.opcode() == HloOpcode::kReverse ||
          hlo.opcode() == HloOpcode::kSlice ||
@@ -77,7 +78,7 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   }
 
   if (!CanBeLoopFused(*producer)) {
-    VLOG(2) << "Producer is not fusile.";
+    VLOG(2) << "Producer is not fusible.";
     return false;
   }
 
@@ -139,7 +140,7 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   }
 
   if (CanBeLoopFused(*consumer)) {
-    VLOG(2) << "Fusing: consumer is elementwise or fusile.";
+    VLOG(2) << "Fusing: consumer is elementwise or fusible.";
     return true;
   }
 

@@ -15,23 +15,10 @@
 
 """Testing.
 
-See the @{$python/test} guide.
+See the [Testing](https://tensorflow.org/api_guides/python/test) guide.
 
 Note: `tf.test.mock` is an alias to the python `mock` or `unittest.mock`
 depending on the python version.
-
-@@main
-@@TestCase
-@@test_src_dir_path
-@@assert_equal_graph_def
-@@get_temp_dir
-@@is_built_with_cuda
-@@is_gpu_available
-@@gpu_device_name
-@@compute_gradient
-@@compute_gradient_error
-@@create_local_cluster
-
 """
 
 from __future__ import absolute_import
@@ -77,7 +64,7 @@ def main(argv=None):
   return _googletest.main(argv)
 
 
-@tf_export('test.get_temp_dir')
+@tf_export(v1=['test.get_temp_dir'])
 def get_temp_dir():
   """Returns a temporary directory for use during tests.
 
@@ -89,7 +76,7 @@ def get_temp_dir():
   return _googletest.GetTempDir()
 
 
-@tf_export('test.test_src_dir_path')
+@tf_export(v1=['test.test_src_dir_path'])
 def test_src_dir_path(relative_path):
   """Creates an absolute test srcdir path given a relative path.
 

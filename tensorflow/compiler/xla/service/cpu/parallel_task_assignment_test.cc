@@ -15,15 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/parallel_task_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
+#include "tensorflow/compiler/xla/service/cpu/target_machine_features_fake.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace xla {
 namespace {
 
-class ParallelTaskAssignmentTest : public HloVerifiedTestBase {
+class ParallelTaskAssignmentTest : public HloTestBase {
  protected:
   const HloCostAnalysis::ShapeSizeFunction shape_size_func_ =
       cpu::CpuExecutable::ShapeSizeBytes;
@@ -31,6 +31,19 @@ class ParallelTaskAssignmentTest : public HloVerifiedTestBase {
   // Use any value larger than 2 since we only test whether a module is
   // parallelized or not
   const int max_parallelism_ = 10;
+
+  cpu::TargetMachineFeaturesWithFakeAlignmentLogic target_machine_features_;
+
+  ParallelTaskAssignmentTest()
+      : HloTestBase(), target_machine_features_([](int64 shape_size) {
+          return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
+        }) {}
+
+  StatusOr<bool> RunParallelTaskAssigner(HloModule* module) {
+    return cpu::ParallelTaskAssigner(max_parallelism_, shape_size_func_,
+                                     &target_machine_features_)
+        .Run(module);
+  }
 };
 
 TEST_F(ParallelTaskAssignmentTest, DotOperationNotParallelized) {
@@ -44,10 +57,9 @@ TEST_F(ParallelTaskAssignmentTest, DotOperationNotParallelized) {
     }
   )";
 
-  ParseAndVerifyModule(hlo_string);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, cpu::ParallelTaskAssigner(
-                                            max_parallelism_, shape_size_func_)
-                                            .Run(&module()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(m.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -73,10 +85,9 @@ TEST_F(ParallelTaskAssignmentTest,
     }
   )";
 
-  ParseAndVerifyModule(hlo_string);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, cpu::ParallelTaskAssigner(
-                                            max_parallelism_, shape_size_func_)
-                                            .Run(&module()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(m.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -91,10 +102,9 @@ TEST_F(ParallelTaskAssignmentTest, RngOperationNotParallelized) {
     }
   )";
 
-  ParseAndVerifyModule(hlo_string);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, cpu::ParallelTaskAssigner(
-                                            max_parallelism_, shape_size_func_)
-                                            .Run(&module()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(m.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -102,15 +112,16 @@ TEST_F(ParallelTaskAssignmentTest, InfeedOutfeedOperationNotParallelized) {
   const string hlo_string = R"(
     HloModule TestTaskParallel_infeed_outfeed
     ENTRY InfeedOutfeed {
-      infeed0 = u32[12345678,2]{1,0} infeed()
-      ROOT outfeed0 = u32[12345678,2]{1,0} outfeed(infeed0)
+      token = token[] after-all()
+      infeed0 = (u32[12345678,2]{1,0}, token[]) infeed(token)
+      infeed0.data = u32[12345678,2]{1,0} get-tuple-element((u32[12345678,2]{1,0}, token[]) infeed0), index=0
+      ROOT outfeed0 = token[] outfeed(infeed0.data, token)
     }
   )";
 
-  ParseAndVerifyModule(hlo_string);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, cpu::ParallelTaskAssigner(
-                                            max_parallelism_, shape_size_func_)
-                                            .Run(&module()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(m.get()));
   EXPECT_FALSE(changed);
 }
 

@@ -15,15 +15,17 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_BASE_COLLECTIVE_EXECUTOR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_BASE_COLLECTIVE_EXECUTOR_H_
 
+#include <memory>
 #include <string>
+
 #include "tensorflow/core/common_runtime/buf_rendezvous.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 
 namespace tensorflow {
-class Broadcaster;
+class CollectiveImplementation;
 class DeviceMgr;
-class RingReducer;
+class Device;
 
 // Helper interface that aliases regular subfields of a Tensor as separate
 // Tensors for in-place update.
@@ -87,11 +89,13 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
  public:
   BaseCollectiveExecutor(CollectiveExecutorMgrInterface* cem,
                          PerStepCollectiveRemoteAccess* remote_access,
-                         int64 step_id, const DeviceMgr* dev_mgr)
+                         int64 step_id, const DeviceMgr* dev_mgr,
+                         const string* gpu_ring_order)
       : CollectiveExecutor(cem),
         step_id_(step_id),
         dev_mgr_(dev_mgr),
-        remote_access_(remote_access) {}
+        remote_access_(remote_access),
+        gpu_ring_order_(gpu_ring_order) {}
 
   ~BaseCollectiveExecutor() override;
 
@@ -99,6 +103,10 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
 
   void ExecuteAsync(OpKernelContext* ctx, const CollectiveParams& col_params,
                     const string& exec_key, StatusCallback done) override;
+
+  void CompleteParamsAsync(const string& device, CollectiveParams* cp,
+                           CancellationManager* cancel_mgr,
+                           StatusCallback done) override;
 
   PerStepCollectiveRemoteAccess* remote_access() override {
     return remote_access_.get();
@@ -108,11 +116,11 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
                     bool peer_is_local, const string& key, Device* to_device,
                     DeviceContext* to_device_ctx,
                     const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
-                    const DeviceLocality& client_locality,
+                    const DeviceLocality& client_locality, int stream_index,
                     const StatusCallback& done) override {
-    remote_access_->RecvFromPeer(peer_device, peer_task, peer_is_local, key,
-                                 to_device, to_device_ctx, to_alloc_attr,
-                                 to_tensor, client_locality, done);
+    remote_access_->RecvFromPeer(
+        peer_device, peer_task, peer_is_local, key, to_device, to_device_ctx,
+        to_alloc_attr, to_tensor, client_locality, stream_index, done);
   }
 
   void PostToPeer(const string& peer_device, const string& peer_task,
@@ -131,20 +139,11 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
   const int64 step_id_;
   const DeviceMgr* dev_mgr_;  // Not owned.
   std::unique_ptr<PerStepCollectiveRemoteAccess> remote_access_;
+  const string* gpu_ring_order_;  // Not owned.
 
  private:
-  RingReducer* CreateReducer(OpKernelContext* ctx,
-                             OpKernelContext::Params* params,
-                             const CollectiveParams& col_params,
-                             const string& exec_key, int64 step_id,
-                             const Tensor* input, Tensor* output,
-                             string* error);
-
-  Broadcaster* CreateBroadcaster(OpKernelContext* ctx,
-                                 OpKernelContext::Params* params,
-                                 const CollectiveParams& col_params,
-                                 const string& exec_key, int64 step_id,
-                                 Tensor* output, string* error);
+  Status CreateCollective(const CollectiveParams& col_params,
+                          CollectiveImplementationInterface** col_impl);
 };
 
 }  // namespace tensorflow

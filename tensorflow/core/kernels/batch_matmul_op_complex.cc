@@ -17,14 +17,18 @@ limitations under the License.
 
 namespace tensorflow {
 
-#if !defined(INTEL_MKL)
+// MKL_ML registers its own complex64/128 kernels in mkl_batch_matmul_op.cc
+// if defined(INTEL_MKL) && !defined(INTEL_MKL_DNN_ONLY) && defined(ENABLE_MKL).
+// Anything else (the complement) should register the TF ones.
+// (MKL-DNN doesn't implement these kernels either.)
+#if !defined(INTEL_MKL) || defined(INTEL_MKL_DNN_ONLY) || !defined(ENABLE_MKL)
 TF_CALL_complex64(REGISTER_BATCH_MATMUL_CPU);
 TF_CALL_complex128(REGISTER_BATCH_MATMUL_CPU);
-#endif
+#endif  // !INTEL_MKL || INTEL_MKL_DNN_ONLY || !ENABLE_MKL
 
 #if GOOGLE_CUDA
 TF_CALL_complex64(REGISTER_BATCH_MATMUL_GPU);
 TF_CALL_complex128(REGISTER_BATCH_MATMUL_GPU);
-#endif
+#endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

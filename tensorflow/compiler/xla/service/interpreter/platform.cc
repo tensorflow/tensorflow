@@ -17,27 +17,27 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/service/interpreter/executor.h"
-#include "tensorflow/compiler/xla/service/interpreter/platform_id.h"
 #include "tensorflow/stream_executor/device_options.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/ptr_util.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/status_macros.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/platform.h"
 
 namespace stream_executor {
 namespace interpreter {
 
-XlaInterpreterPlatform::XlaInterpreterPlatform() : name_("Interpreter") {}
+XlaInterpreterPlatform::XlaInterpreterPlatform(const string& name,
+                                               const Platform::Id& id)
+    : name_(name), id_(id) {}
 
 XlaInterpreterPlatform::~XlaInterpreterPlatform() {}
 
-Platform::Id XlaInterpreterPlatform::id() const {
-  return kXlaInterpreterPlatformId;
-}
+Platform::Id XlaInterpreterPlatform::id() const { return id_; }
 
 int XlaInterpreterPlatform::VisibleDeviceCount() const { return 1; }
 
@@ -71,15 +71,15 @@ port::StatusOr<StreamExecutor*> XlaInterpreterPlatform::GetExecutor(
 port::StatusOr<std::unique_ptr<StreamExecutor>>
 XlaInterpreterPlatform::GetUncachedExecutor(
     const StreamExecutorConfig& config) {
-  auto executor = MakeUnique<StreamExecutor>(
-      this, MakeUnique<XlaInterpreterExecutor>(config.plugin_config));
+  auto executor = absl::make_unique<StreamExecutor>(
+      this, absl::make_unique<XlaInterpreterExecutor>(config.plugin_config));
   auto init_status = executor->Init(config.ordinal, config.device_options);
   if (!init_status.ok()) {
     return port::Status{
         port::error::INTERNAL,
-        port::Printf(
+        absl::StrFormat(
             "failed initializing StreamExecutor for device ordinal %d: %s",
-            config.ordinal, init_status.ToString().c_str())};
+            config.ordinal, init_status.ToString())};
   }
 
   return std::move(executor);
@@ -106,9 +106,9 @@ REGISTER_MODULE_INITIALIZER(
     interpreter_platform,
     stream_executor::interpreter::InitializeXlaInterpreterPlatform());
 
-DECLARE_MODULE_INITIALIZER(multi_platform_manager);
-
 // Note that module initialization sequencing is not supported in the
 // open-source project, so this will be a no-op there.
 REGISTER_MODULE_INITIALIZER_SEQUENCE(interpreter_platform,
                                      multi_platform_manager);
+REGISTER_MODULE_INITIALIZER_SEQUENCE(multi_platform_manager_listener,
+                                     interpreter_platform);

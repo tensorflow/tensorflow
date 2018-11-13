@@ -19,7 +19,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -34,26 +35,16 @@ class SplitOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     const int32 num_split = num_outputs();
-    const TensorShape index_shape = ctx->InputShape(0);
+    const TensorShape split_dim_shape = ctx->InputShape("split_dim");
     const TensorShape input_shape = ctx->InputShape(1);
 
-    xla::Literal literal_index;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInput(0, &literal_index));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(split_dim_shape),
+        errors::InvalidArgument("split_dim must be a scalar but has rank ",
+                                split_dim_shape.dims()));
+    int64 split_dim_orig;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(0, &split_dim_orig));
 
-    int32 split_dim_orig;
-    if (index_shape.dims() == 0) {
-      split_dim_orig = literal_index.Get<int>({});
-    } else {
-      OP_REQUIRES(
-          ctx, index_shape.dims() == 1,
-          errors::InvalidArgument("split_index input to Split Op must be a "
-                                  "scalar or a vector with 1 element"));
-      OP_REQUIRES(
-          ctx, index_shape.dim_size(0) == 1,
-          errors::InvalidArgument("split_index input to Split Op must be a "
-                                  "scalar or a vector with 1 element"));
-      split_dim_orig = literal_index.Get<int>({0});
-    }
     int32 split_dim = split_dim_orig < 0 ? split_dim_orig + input_shape.dims()
                                          : split_dim_orig;
     OP_REQUIRES(ctx, 0 <= split_dim && split_dim < input_shape.dims(),
@@ -98,12 +89,12 @@ class SplitOp : public XlaOpKernel {
       // Slice out the ith split from the split dimension.
       begin[split_dim] = i * slice_size;
       limits[split_dim] = (i + 1) * slice_size;
-      ctx->SetOutput(i, ctx->builder()->Slice(input, begin, limits, strides));
+      ctx->SetOutput(i, xla::Slice(input, begin, limits, strides));
     }
   }
 };
 
-REGISTER_XLA_OP(Name("Split").CompileTimeConstInput("split_dim"), SplitOp);
+REGISTER_XLA_OP(Name("Split").CompileTimeConstantInput("split_dim"), SplitOp);
 
 class SplitVOp : public XlaOpKernel {
  public:
@@ -124,7 +115,7 @@ class SplitVOp : public XlaOpKernel {
                                         input_shape.dims(), "), but got ",
                                         split_dim_orig));
 
-    xla::ComputationDataHandle input = ctx->Input(0);
+    xla::XlaOp input = ctx->Input(0);
 
     OP_REQUIRES(ctx, input_shape.dims() > 0,
                 errors::InvalidArgument("Can't split a 0 dimensional input"));
@@ -134,10 +125,9 @@ class SplitVOp : public XlaOpKernel {
         errors::InvalidArgument(
             "Number of ways to split should be > 0, but got ", num_split));
 
-    // check that sizes are correct
+    // Check that sizes are correct.
     int total_split_size = 0;
     int neg_one_dim = -1;
-    std::vector<int64> split_sizes_vec(num_split, -1);
     const TensorShape split_size_shape = ctx->InputShape(1);
     OP_REQUIRES(ctx,
                 split_size_shape.dims() == 1 &&
@@ -148,13 +138,12 @@ class SplitVOp : public XlaOpKernel {
                     " number of elements as the output. Got ",
                     split_size_shape.dims(), "-D and ",
                     split_size_shape.num_elements(), " elements"));
-    // get the dimension of this split
-    xla::Literal split_size_literal;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInput(1, &split_size_literal));
+    // Get the dimension of this split.
+    std::vector<int64> split_sizes;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &split_sizes));
 
     for (int i = 0; i < num_split; ++i) {
-      int slice_size;
-      slice_size = split_size_literal.Get<int>({i});
+      int64 slice_size = split_sizes[i];
       if (slice_size == -1) {
         OP_REQUIRES(
             ctx, neg_one_dim == -1,
@@ -163,7 +152,6 @@ class SplitVOp : public XlaOpKernel {
                                     i));
         neg_one_dim = i;
       } else {
-        split_sizes_vec[i] = slice_size;
         total_split_size += slice_size;
       }
     }
@@ -182,7 +170,7 @@ class SplitVOp : public XlaOpKernel {
                                 total_split_size));
 
     if (neg_one_dim >= 0) {
-      split_sizes_vec[neg_one_dim] =
+      split_sizes[neg_one_dim] =
           input_shape.dim_size(split_dim) - total_split_size;
     }
 
@@ -194,20 +182,20 @@ class SplitVOp : public XlaOpKernel {
     std::vector<int64> strides(input_shape.dims(), 1);
     for (int i = 0; i < num_split; ++i) {
       TensorShape output_shape(input_shape);
-      int slice_size = split_sizes_vec[i];
+      int slice_size = split_sizes[i];
       output_shape.set_dim(split_dim, slice_size);
 
       // Slice out the ith split from the split dimension.
       limits[split_dim] = begin[split_dim] + slice_size;
-      ctx->SetOutput(i, ctx->builder()->Slice(input, begin, limits, strides));
+      ctx->SetOutput(i, xla::Slice(input, begin, limits, strides));
       begin[split_dim] = limits[split_dim];
     }
   }
 };
 
 REGISTER_XLA_OP(Name("SplitV")
-                    .CompileTimeConstInput("split_dim")
-                    .CompileTimeConstInput("size_splits"),
+                    .CompileTimeConstantInput("split_dim")
+                    .CompileTimeConstantInput("size_splits"),
                 SplitVOp);
 
 }  // namespace

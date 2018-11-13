@@ -21,7 +21,7 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -32,13 +32,13 @@ from tensorflow.python.platform import googletest
 CPU_DEVICE = "/job:localhost/replica:0/task:0/cpu:0"
 
 
-class ClusteringTest(XLATestCase):
+class ClusteringTest(xla_test.XLATestCase):
 
   def testAdd(self):
     val1 = np.array([4, 3, 2, 1], dtype=np.float32)
     val2 = np.array([5, 6, 7, 8], dtype=np.float32)
     expected = val1 + val2
-    with self.test_session():
+    with self.cached_session():
       with self.test_scope():
         input1 = constant_op.constant(val1, name="const1")
         input2 = constant_op.constant(val2, name="const2")
@@ -50,7 +50,7 @@ class ClusteringTest(XLATestCase):
     val1 = np.array([4, 3, 2, 1]).astype(np.float32)
     val2 = np.array([5, 6, 7, 8]).astype(np.float32)
     expected = val1 + val2
-    with self.test_session():
+    with self.cached_session():
       with ops.device(CPU_DEVICE):
         input1 = constant_op.constant(val1, name="const1")
         input2 = constant_op.constant(val2, name="const2")
@@ -68,7 +68,7 @@ class ClusteringTest(XLATestCase):
     # where x and z are placed on the CPU and y and w are placed on the XLA
     # device. If y and w are clustered for compilation, then the graph will
     # deadlock since the clustered graph will contain a self-loop.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with ops.device(CPU_DEVICE):
         x = array_ops.placeholder(dtypes.float32, [2])
       with self.test_scope():
@@ -81,7 +81,7 @@ class ClusteringTest(XLATestCase):
     self.assertAllClose(result, [12., 2.], rtol=1e-3)
 
   def testHostMemory(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = array_ops.placeholder(dtypes.int32)
       with self.test_scope():
         y = x + 1

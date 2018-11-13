@@ -97,7 +97,7 @@ class SwapRegretOptimizerTest(test.TestCase):
     matrix1 = np.matrix([[0.6, 0.1, 0.1], [0.0, 0.6, 0.9], [0.4, 0.3, 0.0]])
     matrix2 = np.matrix([[0.4, 0.4, 0.2], [0.2, 0.1, 0.5], [0.4, 0.5, 0.3]])
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       eigenvector1 = session.run(
           swap_regret_optimizer._maximal_eigenvector_power_method(
               standard_ops.constant(matrix1)))
@@ -119,7 +119,7 @@ class SwapRegretOptimizerTest(test.TestCase):
     expected_projected_matrix = np.array([[0.6, 0.1, 0.1], [0.0, 0.6, 0.9],
                                           [0.4, 0.3, 0.0]])
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       projected_matrix = session.run(
           swap_regret_optimizer._project_stochastic_matrix_wrt_euclidean_norm(
               matrix))
@@ -134,7 +134,7 @@ class SwapRegretOptimizerTest(test.TestCase):
     expected_projected_matrix = np.array([[0.4, 0.4, 0.2], [0.2, 0.1, 0.5],
                                           [0.4, 0.5, 0.3]])
 
-    with self.test_session() as session:
+    with self.cached_session() as session:
       projected_matrix = session.run(
           standard_ops.exp(
               swap_regret_optimizer.
@@ -165,7 +165,7 @@ class SwapRegretOptimizerTest(test.TestCase):
     ]
 
     matrices = []
-    with self.test_session() as session:
+    with self.cached_session() as session:
       session.run(standard_ops.global_variables_initializer())
       while len(matrices) < len(expected_matrices):
         matrices.append(session.run(optimizer.stochastic_matrix))
@@ -198,7 +198,7 @@ class SwapRegretOptimizerTest(test.TestCase):
     ]
 
     matrices = []
-    with self.test_session() as session:
+    with self.cached_session() as session:
       session.run(standard_ops.global_variables_initializer())
       while len(matrices) < len(expected_matrices):
         matrices.append(session.run(optimizer.stochastic_matrix))

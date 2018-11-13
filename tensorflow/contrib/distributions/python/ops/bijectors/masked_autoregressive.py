@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import core as layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
@@ -33,6 +34,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import template as template_ops
 from tensorflow.python.ops import variable_scope as variable_scope_lib
 from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -60,8 +62,8 @@ class MaskedAutoregressiveFlow(bijector.Bijector):
   `shift_and_log_scale_fn`, `masked_autoregressive_default_template`, achieves
   this property by zeroing out weights in its `masked_dense` layers.
 
-  In the `tf.distributions` framework, a "normalizing flow" is implemented as a
-  `tf.contrib.distributions.bijectors.Bijector`. The `forward` "autoregression"
+  In the `tfp` framework, a "normalizing flow" is implemented as a
+  `tfp.bijectors.Bijector`. The `forward` "autoregression"
   is implemented using a `tf.while_loop` and a deep neural network (DNN) with
   masked weights such that the autoregressive property is automatically met in
   the `inverse`.
@@ -125,8 +127,9 @@ class MaskedAutoregressiveFlow(bijector.Bijector):
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
-  tfb = tfd.bijectors
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
+  tfb = tfp.bijectors
 
   dims = 5
 
@@ -186,6 +189,14 @@ class MaskedAutoregressiveFlow(bijector.Bijector):
        Processing Systems_, 2017. https://arxiv.org/abs/1705.07057
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                shift_and_log_scale_fn,
                is_constant_jacobian=False,
@@ -227,7 +238,8 @@ class MaskedAutoregressiveFlow(bijector.Bijector):
 
   def _forward(self, x):
     if self._unroll_loop:
-      event_size = x.shape.with_rank_at_least(1)[-1].value
+      event_size = tensor_shape.dimension_value(
+          x.shape.with_rank_at_least(1)[-1])
       if event_size is None:
         raise ValueError(
             "The final dimension of `x` must be known at graph construction "
@@ -250,7 +262,8 @@ class MaskedAutoregressiveFlow(bijector.Bijector):
     # the graph compiler of the maximum number of steps. If not,
     # static_event_size will be None, and the maximum_iterations argument will
     # have no effect.
-    static_event_size = x.shape.with_rank_at_least(1)[-1].value
+    static_event_size = tensor_shape.dimension_value(
+        x.shape.with_rank_at_least(1)[-1])
     y0 = array_ops.zeros_like(x, name="y0")
     # call the template once to ensure creation
     _ = self._shift_and_log_scale_fn(y0)
@@ -296,6 +309,14 @@ MASK_INCLUSIVE = "inclusive"
 MASK_EXCLUSIVE = "exclusive"
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _gen_slices(num_blocks, n_in, n_out, mask_type=MASK_EXCLUSIVE):
   """Generate the slices for building an autoregressive mask."""
   # TODO(b/67594795): Better support of dynamic shape.
@@ -313,6 +334,14 @@ def _gen_slices(num_blocks, n_in, n_out, mask_type=MASK_EXCLUSIVE):
   return slices
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _gen_mask(num_blocks,
               n_in,
               n_out,
@@ -327,6 +356,14 @@ def _gen_mask(num_blocks,
   return mask
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def masked_dense(inputs,
                  units,
                  num_blocks=None,
@@ -371,7 +408,8 @@ def masked_dense(inputs,
        Conference on Machine Learning_, 2015. https://arxiv.org/abs/1502.03509
   """
   # TODO(b/67594795): Better support of dynamic shape.
-  input_depth = inputs.shape.with_rank_at_least(1)[-1].value
+  input_depth = tensor_shape.dimension_value(
+      inputs.shape.with_rank_at_least(1)[-1])
   if input_depth is None:
     raise NotImplementedError(
         "Rightmost dimension must be known prior to graph execution.")
@@ -399,6 +437,14 @@ def masked_dense(inputs,
     return layer.apply(inputs)
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def masked_autoregressive_default_template(
     hidden_layers,
     shift_only=False,
@@ -473,13 +519,13 @@ def masked_autoregressive_default_template(
        Masked Autoencoder for Distribution Estimation. In _International
        Conference on Machine Learning_, 2015. https://arxiv.org/abs/1502.03509
   """
-
-  with ops.name_scope(name, "masked_autoregressive_default_template",
-                      values=[log_scale_min_clip, log_scale_max_clip]):
+  name = name or "masked_autoregressive_default_template"
+  with ops.name_scope(name, values=[log_scale_min_clip, log_scale_max_clip]):
     def _fn(x):
       """MADE parameterized via `masked_autoregressive_default_template`."""
       # TODO(b/67594795): Better support of dynamic shape.
-      input_depth = x.shape.with_rank_at_least(1)[-1].value
+      input_depth = tensor_shape.dimension_value(
+          x.shape.with_rank_at_least(1)[-1])
       if input_depth is None:
         raise NotImplementedError(
             "Rightmost dimension must be known prior to graph execution.")
@@ -511,10 +557,17 @@ def masked_autoregressive_default_template(
                     else _clip_by_value_preserve_grad)
       log_scale = which_clip(log_scale, log_scale_min_clip, log_scale_max_clip)
       return shift, log_scale
-    return template_ops.make_template(
-        "masked_autoregressive_default_template", _fn)
+    return template_ops.make_template(name, _fn)
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _clip_by_value_preserve_grad(x, clip_value_min, clip_value_max, name=None):
   """Clips input while leaving gradient unaltered."""
   with ops.name_scope(name, "clip_by_value_preserve_grad",
