@@ -1161,7 +1161,7 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
     if (rnn_algo == CUDNN_RNN_ALGO_PERSIST_DYNAMIC) {
       CHECK_GE(batch_size, 0);
       rnn_plan_wrapper =
-          dynload::CreatePersistentRnnPlan(rnn_desc.get(), batch_size, data_type);
+          CreatePersistentRnnPlan(rnn_desc.get(), batch_size, data_type);
       if (!rnn_plan_wrapper.ok()) {
         return port::StatusOr<CudnnRnnDescriptor>(rnn_plan_wrapper.status());
       } else {
