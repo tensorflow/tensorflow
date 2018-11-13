@@ -1041,8 +1041,6 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     rt = ragged.from_row_splits(values, [0, 1])
     self._TestGetItemException(rt, slice_spec, expected, message)
 
-  # TODO(edloper): Remove this decorator once c shapes become the default.
-  @test_util.enable_c_shapes
   def testGetItemNewAxis(self):
     # rt: [[[['a', 'b'], ['c', 'd']], [], [['e', 'f']]], []]
     splits1 = [0, 3, 3]

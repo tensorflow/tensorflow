@@ -691,7 +691,6 @@ class EmbeddingLookupSparseWithDistributedAggregationTest(test.TestCase):
       index += num_val
     return grouped_vals
 
-  @test_util.enable_c_shapes
   def testEmbeddingLookupSparse(self):
     vocab_size = 13
     batch_size = 10
