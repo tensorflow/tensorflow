@@ -949,8 +949,8 @@ tf_module {
     argspec: "args=[], varargs=inputs, keywords=kwargs, defaults=None"
   }
   member_method {
-    name: "py_func"
-    argspec: "args=[\'func\', \'inp\', \'Tout\', \'stateful\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    name: "py_function"
+    argspec: "args=[\'func\', \'inp\', \'Tout\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "quantize_v2"
