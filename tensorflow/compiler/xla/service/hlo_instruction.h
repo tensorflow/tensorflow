@@ -883,11 +883,15 @@ class HloInstruction {
       return false;
     }
 
-    // Use an explicit loop rather than ContainerEquals, because copying around
-    // std::functions may be too expensive in some cases.
-    for (size_t i = 0; i < operands().size(); ++i) {
-      if (!eq_operands(operand(i), other.operand(i))) {
-        return false;
+    // Two AllReduces are Identical if they have the same all_reduce_id.
+    // Their operands don't have to be Identical.
+    if (!this->IsCrossModuleAllReduce()) {
+      // Use an explicit loop rather than ContainerEquals, because copying
+      // around std::functions may be too expensive in some cases.
+      for (size_t i = 0; i < operands().size(); ++i) {
+        if (!eq_operands(operand(i), other.operand(i))) {
+          return false;
+        }
       }
     }
 
@@ -996,6 +1000,8 @@ class HloInstruction {
   HloComputation* while_body() const;
   void set_while_condition(HloComputation* while_condition);
   void set_while_body(HloComputation* while_body);
+
+  HloInstruction* while_init() const;
 
   // Gets/sets the true and false HloComputation for Conditional. The setters
   // should only be called by HloModule or HloComputation methods.
@@ -1435,6 +1441,7 @@ class HloInstruction {
 
   // Delegates to HloAllReduceInstruction::all_reduce_id.
   absl::optional<int64> all_reduce_id() const;
+  void set_all_reduce_id(const absl::optional<int64>& all_reduce_id);
 
   // Returns data on the window in a windowed operation such as
   // convolution.

@@ -370,6 +370,11 @@ HloAllReduceInstruction::HloAllReduceInstruction(
   AppendComputation(reduce_computation);
 }
 
+void HloAllReduceInstruction::set_all_reduce_id(
+    const absl::optional<int64>& all_reduce_id) {
+  all_reduce_id_ = all_reduce_id;
+}
+
 HloInstructionProto HloAllReduceInstruction::ToProto() const {
   HloInstructionProto proto = HloCollectiveInstruction::ToProto();
   // Proto3 is so sad.

@@ -252,6 +252,7 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
   }
 
   absl::optional<int64> all_reduce_id() const { return all_reduce_id_; }
+  void set_all_reduce_id(const absl::optional<int64>& all_reduce_id);
 
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;

@@ -3513,6 +3513,41 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "ar_crs_combiner",
+    srcs = ["ar_crs_combiner.cc"],
+    hdrs = ["ar_crs_combiner.h"],
+    deps = [
+        ":call_graph",
+        ":pattern_matcher",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "ar_crs_combiner_test",
+    srcs = ["ar_crs_combiner_test.cc"],
+    deps = [
+        ":ar_crs_combiner",
+        ":hlo",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
 tf_cc_test(
     name = "map_inliner_test",
     srcs = ["map_inliner_test.cc"],
