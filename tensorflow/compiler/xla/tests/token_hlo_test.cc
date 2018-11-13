@@ -38,6 +38,20 @@ XLA_TEST_F(TokenHloTest, SingleTokenInstruction) {
   EXPECT_TRUE(LiteralTestUtil::Equal(result, LiteralUtil::CreateToken()));
 }
 
+XLA_TEST_F(TokenHloTest, TokenInTuple) {
+  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
+  builder.AddInstruction(HloInstruction::CreateTuple({token}));
+
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
+  Literal token_literal = LiteralUtil::CreateToken();
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(result, LiteralUtil::MakeTuple({&token_literal})));
+}
+
 XLA_TEST_F(TokenHloTest, TokenTree) {
   std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
   auto builder = HloComputation::Builder(TestName());
