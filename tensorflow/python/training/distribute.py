@@ -921,14 +921,6 @@ class DistributionStrategy(object):
     return self._require_static_shapes
 
   @property
-  def num_replicas(self):
-    """Returns number of replicas, for purposes of averaging across replicas.
-
-    DEPRECATED: use `num_replicas_in_sync` instead.
-    """
-    raise NotImplementedError("must be implemented in descendants")
-
-  @property
   def num_replicas_in_sync(self):
     """Returns number of replicas over which gradients are aggregated."""
     raise NotImplementedError("must be implemented in descendants")

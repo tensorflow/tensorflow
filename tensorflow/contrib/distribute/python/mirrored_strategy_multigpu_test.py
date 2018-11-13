@@ -88,11 +88,6 @@ class MirroredTwoDeviceDistributionTest(strategy_test_lib.DistributionTestBase):
       self.skipTest("Not GPU test")
     self._test_replica_id(self._get_distribution_strategy())
 
-  def testNumReplicas(self):
-    if not GPU_TEST:
-      self.skipTest("Not GPU test")
-    self.assertEqual(2, self._get_distribution_strategy().num_replicas)
-
   def testNumReplicasInSync(self):
     if not GPU_TEST:
       self.skipTest("Not GPU test")
@@ -1210,7 +1205,7 @@ class ReplicaLocalVariableAssignTest(test.TestCase):
       # values on each of the replicas.
       self.assertEqual(2.0, self.evaluate(dist.read_var(replica_local_var)))
       # Assigning 6.0 in cross replica context will assign a value of
-      # 6.0/num_replicas to each replica.
+      # 6.0/num_replicas_in_sync to each replica.
       tlv_ops = replica_local_var.assign(6.0)
       self.evaluate(tlv_ops)
       # On reading the replica local var we should get the assigned value back.

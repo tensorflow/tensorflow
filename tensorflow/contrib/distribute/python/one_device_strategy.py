@@ -153,10 +153,6 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     return value
 
   @property
-  def num_replicas(self):
-    return 1
-
-  @property
   def num_replicas_in_sync(self):
     return 1
 
