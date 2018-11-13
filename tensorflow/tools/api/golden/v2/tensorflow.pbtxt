@@ -649,10 +649,6 @@ tf_module {
     argspec: "args=[\'device_name\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "div"
-    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "div_no_nan"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
