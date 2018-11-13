@@ -200,7 +200,8 @@ def get_graph_def(use_trt, batch_size, model_dir):
 class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
 
   def testEval(self):
-    model_dir = test.test_src_dir_path('contrib/tensorrt/test/quantization_mnist_test_data')
+    model_dir = test.test_src_dir_path(
+        'contrib/tensorrt/test/quantization_mnist_test_data')
     acc_tf = run(is_training=False,
         use_trt=False,
         batch_size=128,
