@@ -524,6 +524,7 @@ cuda_py_test(
         "noasan",
         "nomsan",
         "notsan",
+        "no_oss",  # http://b/119349471
     ],
 )
 
