@@ -1121,26 +1121,6 @@ tf_module {
     argspec: "args=[\'axis\', \'sp_inputs\', \'name\', \'expand_nonconcat_dim\', \'concat_dim\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
   }
   member_method {
-    name: "sparse_reduce_max"
-    argspec: "args=[\'sp_input\', \'axis\', \'keepdims\', \'reduction_axes\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "sparse_reduce_max_sparse"
-    argspec: "args=[\'sp_input\', \'axis\', \'keepdims\', \'reduction_axes\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "sparse_reduce_sum"
-    argspec: "args=[\'sp_input\', \'axis\', \'keepdims\', \'reduction_axes\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "sparse_reduce_sum_sparse"
-    argspec: "args=[\'sp_input\', \'axis\', \'keepdims\', \'reduction_axes\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "sparse_split"
-    argspec: "args=[\'keyword_required\', \'sp_input\', \'num_split\', \'axis\', \'name\', \'split_dim\'], varargs=None, keywords=None, defaults=[\'KeywordRequired()\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
-  }
-  member_method {
     name: "sparse_to_dense"
     argspec: "args=[\'sparse_indices\', \'output_shape\', \'sparse_values\', \'default_value\', \'validate_indices\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'True\', \'None\'], "
   }
