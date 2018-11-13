@@ -808,7 +808,7 @@ class MirroredReplicaContext(distribute_lib.ReplicaContext):
   `MirroredStrategy.call_for_each_replica()`).
   """
 
-  def _merge_call(self, fn, *args, **kwargs):
+  def _merge_call(self, fn, args, kwargs):
     """Delegate to the main thread to actually perform merge_call()."""
     t = threading.current_thread()  # a _MirroredReplicaThread
     t.merge_fn = fn

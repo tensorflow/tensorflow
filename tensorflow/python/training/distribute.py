@@ -687,7 +687,7 @@ class DistributionStrategy(object):
       replica_ctx = tf.get_replica_context()
       v = three + replica_ctx.replica_id
       # Computes the sum of the `v` values across all replicas.
-      s = replica_ctx.merge_call(merge_fn, v)
+      s = replica_ctx.merge_call(merge_fn, args=(v,))
       return s + v
 
     with distribution.scope():
@@ -1049,17 +1049,31 @@ class ReplicaContext(object):
       merge_fn: function that joins arguments from threads that are given as
         PerReplica. It accepts `DistributionStrategy` object as the first
         argument.
-      *args: positional per-thread arguments for `merge_fn`
-      **kwargs: keyword per-thread arguments for `merge_fn`.
+      args: List or tuple with positional per-thread arguments for `merge_fn`
+      kwargs: Dict with keyword per-thread arguments for `merge_fn`.
 
     Returns:
       The return value of `merge_fn`, except for `PerReplica` values which are
       unpacked.
     """
     require_replica_context(self)
-    return self._merge_call(merge_fn, *args, **kwargs)
+    # Handle old *args, **kwargs, and new args=(...), kwargs={...}, to
+    # allow transition.
+    a = kwargs.pop("args", None)
+    if a is not None:
+      if args:
+        raise ValueError(
+            "Can't pass *args and args=... to merge_call")
+      args = a
+    k = kwargs.pop("kwargs", None)
+    if k is not None:
+      if kwargs:
+        raise ValueError(
+            "Can't pass **kwargs and kwargs=... to merge_call")
+      kwargs = k
+    return self._merge_call(merge_fn, args, kwargs)
 
-  def _merge_call(self, merge_fn, *args, **kwargs):
+  def _merge_call(self, merge_fn, args, kwargs):
     """Default implementation for single replica."""
     _push_per_thread_mode(  # thread-local, so not needed with multiple threads
         distribution_strategy_context._CrossReplicaThreadMode(  # pylint: disable=protected-access
