@@ -437,6 +437,24 @@ bool OpTrait::impl::verifySameOperandsAndResult(const Operation *op) {
   return false;
 }
 
+bool OpTrait::impl::verifyIsTerminator(const Operation *op) {
+  // Verify that the operation is at the end of the respective parent block.
+  if (auto *stmt = dyn_cast<OperationStmt>(op)) {
+    StmtBlock *block = stmt->getBlock();
+    if (!block || !isa<MLFunction>(block) || &block->back() != stmt)
+      return op->emitOpError("must be the last statement in the ML function");
+  } else {
+    const OperationInst *inst = cast<OperationInst>(op);
+    const BasicBlock *block = inst->getBlock();
+    if (!block || &block->back() != inst)
+      return op->emitOpError(
+          "must be the last instruction in the parent basic block.");
+  }
+
+  // TODO(riverriddle) Verify successor blocks when added.
+  return false;
+}
+
 bool OpTrait::impl::verifyResultsAreFloatLike(const Operation *op) {
   for (auto *result : op->getResults()) {
     if (!getTensorOrVectorElementType(result->getType()).isa<FloatType>())

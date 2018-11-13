@@ -283,6 +283,7 @@ bool verifyAtLeastNResults(const Operation *op, unsigned numOperands);
 bool verifySameOperandsAndResult(const Operation *op);
 bool verifyResultsAreFloatLike(const Operation *op);
 bool verifyResultsAreIntegerLike(const Operation *op);
+bool verifyIsTerminator(const Operation *op);
 } // namespace impl
 
 /// Helper class for implementing traits.  Clients are not expected to interact
@@ -667,6 +668,21 @@ public:
   static bool verifyTrait(const Operation *op) {
     return impl::verifySameTypeOperands(op);
   }
+};
+
+/// This class provides the API for ops that are known to be terminators.
+template <typename ConcreteType>
+class IsTerminator : public TraitBase<ConcreteType, IsTerminator> {
+public:
+  static AbstractOperation::OperationProperties getTraitProperties() {
+    return static_cast<AbstractOperation::OperationProperties>(
+        OperationProperty::Terminator);
+  }
+  static bool verifyTrait(const Operation *op) {
+    return impl::verifyIsTerminator(op);
+  }
+
+  // TODO(riverriddle) Add handling for successor blocks and operands.
 };
 
 } // end namespace OpTrait

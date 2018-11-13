@@ -53,6 +53,10 @@ enum class OperationProperty {
   /// This bit is set for operations that have no side effects: that means that
   /// they do not read or write memory, or access any hidden state.
   NoSideEffect = 0b10,
+
+  /// This bit is set for an operation if it is a terminator: that means
+  /// an operation at the end of a block.
+  Terminator = 0b100,
 };
 
 /// This is a "type erased" representation of a registered operation.  This

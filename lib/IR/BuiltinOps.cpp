@@ -33,7 +33,7 @@ using namespace mlir;
 
 BuiltinDialect::BuiltinDialect(MLIRContext *context)
     : Dialect(/*opPrefix=*/"", context) {
-  addOperations<AffineApplyOp, ConstantOp, ReturnOp>();
+  addOperations<AffineApplyOp, BranchOp, CondBranchOp, ConstantOp, ReturnOp>();
 }
 
 void mlir::printDimAndSymbolList(Operation::const_operand_iterator begin,
@@ -162,6 +162,68 @@ bool AffineApplyOp::constantFold(ArrayRef<Attribute> operandConstants,
   if (map.constantFold(operandConstants, results))
     return true;
   // Return false on success.
+  return false;
+}
+
+//===----------------------------------------------------------------------===//
+// BranchOp
+//===----------------------------------------------------------------------===//
+
+void BranchOp::build(Builder *builder, OperationState *result) {}
+
+bool BranchOp::parse(OpAsmParser *parser, OperationState *result) {
+  // TODO(riverriddle) Parse successors and operands.
+  return true;
+}
+
+void BranchOp::print(OpAsmPrinter *p) const {
+  *p << "br ";
+  // TODO(riverriddle) Print successors and operands.
+}
+
+bool BranchOp::verify() const {
+  // ML functions do not have branching terminators.
+  if (!isa<OperationInst>(getOperation()))
+    return (emitOpError("cannot occur in a ML function"), true);
+  return false;
+}
+
+//===----------------------------------------------------------------------===//
+// CondBranchOp
+//===----------------------------------------------------------------------===//
+
+void CondBranchOp::build(Builder *builder, OperationState *result,
+                         SSAValue *condition) {
+  result->addOperands(condition);
+}
+
+bool CondBranchOp::parse(OpAsmParser *parser, OperationState *result) {
+  OpAsmParser::OperandType condInfo;
+  Type int1Ty = parser->getBuilder().getIntegerType(1);
+  if (parser->parseOperand(condInfo))
+    return true;
+  // TODO(riverriddle) Parse successors and operands.
+
+  if (parser->resolveOperand(condInfo, int1Ty, result->operands)) {
+    return parser->emitError(parser->getNameLoc(),
+                             "expected condition type was boolean (i1)");
+  }
+  return false;
+}
+
+void CondBranchOp::print(OpAsmPrinter *p) const {
+  *p << "cond_br ";
+  p->printOperand(getCondition());
+
+  // TODO(riverriddle) Print successors and operands.
+}
+
+bool CondBranchOp::verify() const {
+  // ML functions do not have branching terminators.
+  if (!isa<OperationInst>(getOperation()))
+    return (emitOpError("cannot occur in a ML function"), true);
+  if (!getCondition()->getType().isInteger(1))
+    return emitOpError("expected condition type was boolean (i1)");
   return false;
 }
 
@@ -322,30 +384,25 @@ void ReturnOp::print(OpAsmPrinter *p) const {
 }
 
 bool ReturnOp::verify() const {
-  // ReturnOp must be part of an ML function.
-  if (auto *stmt = dyn_cast<OperationStmt>(getOperation())) {
-    StmtBlock *block = stmt->getBlock();
-    if (!block || !isa<MLFunction>(block) || &block->back() != stmt)
-      return emitOpError("must be the last statement in the ML function");
+  const Function *function;
+  if (auto *stmt = dyn_cast<OperationStmt>(getOperation()))
+    function = cast<MLFunction>(stmt->getBlock());
+  else
+    function = cast<OperationInst>(getOperation())->getFunction();
 
-    // The operand number and types must match the function signature.
-    MLFunction *function = cast<MLFunction>(block);
-    const auto &results = function->getType().getResults();
-    if (stmt->getNumOperands() != results.size())
-      return emitOpError("has " + Twine(stmt->getNumOperands()) +
-                         " operands, but enclosing function returns " +
-                         Twine(results.size()));
+  // The operand number and types must match the function signature.
+  const auto &results = function->getType().getResults();
+  if (getNumOperands() != results.size())
+    return emitOpError("has " + Twine(getNumOperands()) +
+                       " operands, but enclosing function returns " +
+                       Twine(results.size()));
 
-    for (unsigned i = 0, e = results.size(); i != e; ++i)
-      if (stmt->getOperand(i)->getType() != results[i]) {
-        emitError("type of return operand " + Twine(i) +
-                  " doesn't match function result type");
-        return true;
-      }
+  for (unsigned i = 0, e = results.size(); i != e; ++i)
+    if (getOperand(i)->getType() != results[i]) {
+      emitError("type of return operand " + Twine(i) +
+                " doesn't match function result type");
+      return true;
+    }
 
-    // Return success. Checking that operand types match those in the function
-    // signature is performed in the ML function verifier.
-    return false;
-  }
-  return emitOpError("cannot occur in a CFG function");
+  return false;
 }

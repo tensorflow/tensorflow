@@ -245,6 +245,13 @@ public:
     return false;
   }
 
+  // Returns whether the operation is a terminator.
+  bool isTerminator() const {
+    if (auto *absOp = getAbstractOperation())
+      return absOp->hasProperty(OperationProperty::Terminator);
+    return false;
+  }
+
   /// Remove this operation from its parent block and delete it.
   void erase();
 

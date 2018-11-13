@@ -85,6 +85,74 @@ private:
   explicit AffineApplyOp(const Operation *state) : Op(state) {}
 };
 
+/// The "br" operation represents a branch instruction in a CFG function.
+/// The operation takes variable number of operands and produces no results.
+/// The operand number and types for each successor must match the
+/// arguments of the basic block successor. For example:
+///
+///   bb2:
+///      %2 = call @someFn()
+///      br bb3(%2 : tensor<*xf32>)
+///   bb3(%3: tensor<*xf32>):
+///
+class BranchOp : public Op<BranchOp, OpTrait::VariadicOperands,
+                           OpTrait::ZeroResult, OpTrait::IsTerminator> {
+public:
+  static StringRef getOperationName() { return "br"; }
+
+  static void build(Builder *builder, OperationState *result);
+
+  // Hooks to customize behavior of this op.
+  static bool parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p) const;
+  bool verify() const;
+
+  /// TODO(riverriddle) Add support for basic block successors and operands.
+
+private:
+  friend class Operation;
+  explicit BranchOp(const Operation *state) : Op(state) {}
+};
+
+/// The "cond_br" operation represents a conditional branch instruction in a
+/// CFG function. The operation takes variable number of operands and produces
+/// no results. The operand number and types for each successor must match the
+//  arguments of the basic block successor. For example:
+///
+///   bb0:
+///      %0 = extract_element %arg0[] : tensor<i1>
+///      cond_br %0, bb1, bb2
+///   bb1:
+///      ...
+///   bb2:
+///      ...
+///
+class CondBranchOp : public Op<CondBranchOp, OpTrait::AtLeastNOperands<1>::Impl,
+                               OpTrait::ZeroResult, OpTrait::IsTerminator> {
+public:
+  static StringRef getOperationName() { return "cond_br"; }
+
+  static void build(Builder *builder, OperationState *result,
+                    SSAValue *condition);
+
+  // Hooks to customize behavior of this op.
+  static bool parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter *p) const;
+  bool verify() const;
+
+  // The condition operand is the last operand in the list.
+  SSAValue *getCondition() { return getOperand(getNumOperands() - 1); }
+  const SSAValue *getCondition() const {
+    return getOperand(getNumOperands() - 1);
+  }
+
+  /// TODO(riverriddle) Add support for basic block successors and operands.
+
+private:
+  friend class Operation;
+  explicit CondBranchOp(const Operation *state) : Op(state) {}
+};
+
 /// The "constant" operation requires a single attribute named "value".
 /// It returns its value as an SSA value.  For example:
 ///
@@ -184,22 +252,22 @@ private:
   explicit ConstantIndexOp(const Operation *state) : ConstantOp(state) {}
 };
 
-/// The "return" operation represents a return statement of an ML function.
+/// The "return" operation represents a return statement within a function.
 /// The operation takes variable number of operands and produces no results.
-/// The operand number and types must match the signature of the ML function
+/// The operand number and types must match the signature of the function
 /// that contains the operation. For example:
 ///
 ///   mlfunc @foo() : (i32, f8) {
 ///   ...
 ///   return %0, %1 : i32, f8
 ///
-class ReturnOp
-    : public Op<ReturnOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
+class ReturnOp : public Op<ReturnOp, OpTrait::VariadicOperands,
+                           OpTrait::ZeroResult, OpTrait::IsTerminator> {
 public:
   static StringRef getOperationName() { return "return"; }
 
   static void build(Builder *builder, OperationState *result,
-                    ArrayRef<SSAValue *> results);
+                    ArrayRef<SSAValue *> results = {});
 
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
