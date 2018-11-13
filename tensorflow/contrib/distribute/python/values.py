@@ -23,10 +23,12 @@ from __future__ import print_function
 
 import collections
 import contextlib
+import operator
 import weakref
 import six
 
 from tensorflow.contrib.distribute.python import input_ops
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
@@ -1287,6 +1289,204 @@ class MultiWorkerDataset(object):
     return MultiWorkerDataIterator(iterators, self._worker_device_pairs)
 
 
+class InputIterator(object):
+  """An input iterator, intended to be passed to `DistributionStrategy.run`."""
+
+  def get_next(self):
+    """Returns the next inputs for all replicas."""
+    raise NotImplementedError("must be implemented in descendants")
+
+  def initialize(self):
+    """Initialize the underlying input dataset, when applicable.
+
+    In eager mode, this will create a new iterator and return it.
+    In graph mode, this will initialize the same underlying iterator(s).
+
+    Users are required to call this if
+    - This iterator was returned from a call to `make_input_fn_iterator` with an
+      input function that returns a dataset.
+    - Or this iterator was returned from a call to `make_dataset_iterator`.
+
+    Returns:
+      A list of initialization ops to be executed.
+    """
+    raise NotImplementedError("must be implemented in descendants")
+
+
+class InputFunctionIterator(InputIterator):
+  """Iterator created from input function."""
+
+  def __init__(self, input_fn, worker_device_pairs):
+    """Make an iterator for input provided via an input function.
+
+    Currently implements PER_WORKER mode, in which the `input_fn` is called
+    once on each worker.
+
+    TODO(priyag): Integrate with `InputContext` when it is submitted.
+    TODO(priyag): Add other replication modes.
+    TODO(priyag): Allow taking input function that returns a callable that
+    returns nest of tensors.
+
+    Args:
+      input_fn: Input function that returns a `tf.data.Dataset` object.
+      worker_device_pairs: A list of (worker, list of devices on that worker)
+        pairs.
+    """
+    if not worker_device_pairs:
+      raise ValueError("Cannot create iterator when no devices given.")
+
+    self._worker_device_pairs = worker_device_pairs
+    self._is_eager = context.executing_eagerly()
+    self._iterators = []
+
+    for worker, worker_devices in worker_device_pairs:
+      with ops.device(worker):
+        result = input_fn()
+        if not isinstance(result, dataset_ops.Dataset):
+          raise ValueError("input_fn must return a tf.data.Dataset.")
+        iterator = _DatasetIterator(result, worker, worker_devices)
+        self._iterators.append(iterator)
+
+  def get_next(self, name=None):
+    """Returns the next input from the iterator for all replicas."""
+    assert self._is_eager == context.executing_eagerly(), (
+        "Iterator should be created and used in same execution mode.")
+
+    index = {}
+    for i, (worker, worker_devices) in enumerate(self._worker_device_pairs):
+      if name is not None:
+        d = tf_device.DeviceSpec.from_string(worker)
+        new_name = "%s_%s_%d" % (name, d.job, d.task)
+      else:
+        new_name = None
+      with ops.device(worker):
+        data_per_worker = self._iterators[i].get_next(new_name)
+
+      # Ungroup these per-replica value so as to get a flat map from devices to
+      # values.
+      for d in worker_devices:
+        v = select_device(d, data_per_worker)
+        if d in index:
+          raise ValueError("Duplicated devices in worker_device_pairs: %r" % v)
+        index[d] = v
+
+    return regroup(index)
+
+  def initialize(self):
+    """Initialze underlying iterators.
+
+    Returns:
+      A list of any initializer ops that should be run.
+    """
+    assert self._is_eager == context.executing_eagerly(), (
+        "Iterator should be created and used in same execution mode.")
+
+    init_ops = []
+    for it in self._iterators:
+      init_ops.extend(it.initialize())
+    return init_ops
+
+  # TODO(priyag): Remove when we switch to using `MultiDeviceIterator` for TPUs.
+  def _output_classes(self):
+    return self._iterators[0].output_classes
+
+  # TODO(priyag): Remove when we switch to using `MultiDeviceIterator` for TPUs.
+  def _output_shapes(self):
+    return self._iterators[0].output_shapes
+
+  # TODO(priyag): Remove when we switch to using `MultiDeviceIterator` for TPUs.
+  def _output_types(self):
+    return self._iterators[0].output_types
+
+  # TODO(priyag): Remove when we switch to using `MultiDeviceIterator` for TPUs.
+  def _get_iterator(self, worker):
+    for i, (w, _) in enumerate(self._worker_device_pairs):
+      if worker == w:
+        return self._iterators[i]
+    return None
+
+
+class _DatasetIterator(object):
+  """Iterator for a single `tf.data.Dataset`."""
+
+  def __init__(self, dataset, worker, devices):
+    """Create iterator for the given dataset.
+
+    `MultiDeviceIterator` is used to prefetch input to the devices on the
+    given worker. `MultiDeviceIterator` doesn't work in eager mode yet.
+
+    Args:
+      dataset: A `tf.data.Dataset` instance.
+      worker: Worker on which ops should be created.
+      devices: Distribute data from `dataset` to these devices.
+    """
+    self._dataset = dataset
+    self._worker = worker
+    self._devices = devices
+    self._is_eager = context.executing_eagerly()
+    self._make_iterator()
+
+  def _make_iterator(self):
+    """Make appropriate iterator on the dataset."""
+    with ops.device(self._worker):
+      if self._is_eager:
+        # TODO(rohanj): Enable prefetching in eager mode.
+        # TODO(priyag): Measure the performance of this approach vs calling
+        # get_next on the original dataset N times.
+        dataset = self._dataset.batch(len(self._devices), drop_remainder=True)
+        iterator = dataset.make_one_shot_iterator()
+      else:
+        iterator = multi_device_iterator_ops.MultiDeviceIterator(
+            self._dataset, self._devices)
+    self._iterator = iterator
+
+  def get_next(self, name=None):
+    """Get next element from the underlying iterator."""
+    with ops.device(self._worker):
+      if self._is_eager:
+        # Batched dataset case.
+        batch = self._iterator.get_next(name=name)
+        index = {}
+        for i, d in enumerate(self._devices):
+          index[d] = nest.map_structure(operator.itemgetter(i), batch)
+          with ops.device(d):
+            index[d] = nest.map_structure(array_ops.identity, index[d])
+      else:
+        # MultiDeviceIterator case.
+        data_list = self._iterator.get_next()
+        index = dict(zip(self._devices, data_list))
+
+      return regroup(index)
+
+  def initialize(self):
+    """Initialze underlying iterator.
+
+    In eager execution, this simply recreates the underlying iterator.
+    In graph execution, it returns the initializer ops for the underlying
+    iterator.
+
+    Returns:
+      A list of any initializer ops that should be run.
+    """
+    if self._is_eager:
+      self._make_iterator()
+      return []
+    else:
+      return [self._iterator.initializer]
+
+  @property
+  def output_classes(self):
+    return self._iterator.output_classes
+
+  @property
+  def output_shapes(self):
+    return self._iterator.output_shapes
+
+  @property
+  def output_types(self):
+    return self._iterator.output_types
+
+
 class MultiStepContext(object):
   """A context object that can be used to capture things when running steps.
 
@@ -1299,7 +1499,7 @@ class MultiStepContext(object):
   """
 
   def __init__(self):
-    """Initializes an output context.
+    """Initialize an output context.
 
     Returns:
       A context object.

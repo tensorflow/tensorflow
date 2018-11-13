@@ -568,6 +568,138 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
         multi_worker_iterator.get_next()
 
 
+class InputFunctionIteratorTestBase(test.TestCase):
+
+  def _test_iterator(self, input_fn, worker_device_pairs, expected_values,
+                     sess=None):
+    devices = nest.flatten([ds for _, ds in worker_device_pairs])
+    iterator = values.InputFunctionIterator(input_fn, worker_device_pairs)
+
+    evaluate = lambda x: sess.run(x) if sess else self.evaluate(x)
+
+    evaluate(iterator.initialize())
+
+    for expected_value in expected_values:
+      next_element = iterator.get_next()
+      computed_value = evaluate(
+          [values.select_device(d, next_element) for d in devices])
+      self.assertEqual(expected_value, computed_value)
+
+    with self.assertRaises(errors.OutOfRangeError):
+      next_element = iterator.get_next()
+      evaluate([values.select_device(d, next_element) for d in devices])
+
+    # After re-initializing the iterator, should be able to iterate again.
+    evaluate(iterator.initialize())
+
+    for expected_value in expected_values:
+      next_element = iterator.get_next()
+      computed_value = evaluate(
+          [values.select_device(d, next_element) for d in devices])
+      self.assertEqual(expected_value, computed_value)
+
+
+class InputFunctionIteratorSingleWorkerTest(InputFunctionIteratorTestBase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testOneDeviceCPU(self):
+    worker_device_pairs = [("", ["/device:CPU:0"])]
+    input_fn = lambda: dataset_ops.Dataset.range(10)
+
+    expected_values = [[i] for i in range(10)]
+
+    self._test_iterator(input_fn, worker_device_pairs, expected_values)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testTwoDevicesOneGPUOneCPU(self):
+    if context.num_gpus() < 1:
+      self.skipTest("A GPU is not available for this test.")
+
+    worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
+    input_fn = lambda: dataset_ops.Dataset.range(10)
+
+    expected_values = [[i, i+1] for i in range(0, 10, 2)]
+
+    self._test_iterator(input_fn, worker_device_pairs, expected_values)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testTupleDataset(self):
+    if context.num_gpus() < 1:
+      self.skipTest("A GPU is not available for this test.")
+
+    worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
+    def input_fn():
+      dataset1 = dataset_ops.Dataset.range(10)
+      dataset2 = dataset_ops.Dataset.range(10).map(lambda x: x**2)
+      return dataset_ops.Dataset.zip((dataset1, dataset2))
+
+    expected_values = [[(i, i**2), (i+1, (i+1)**2)] for i in range(0, 10, 2)]
+
+    self._test_iterator(input_fn, worker_device_pairs, expected_values)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testUnevenDatasetBatches(self):
+    if context.num_gpus() < 1:
+      self.skipTest("A GPU is not available for this test.")
+
+    worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
+    input_fn = lambda: dataset_ops.Dataset.range(11)
+
+    expected_values = [[i, i+1] for i in range(0, 10, 2)]
+    self._test_iterator(input_fn, worker_device_pairs, expected_values)
+
+
+class InputFunctionIteratorMultiWorkerTest(
+    multi_worker_test_base.MultiWorkerTestBase,
+    InputFunctionIteratorTestBase):
+
+  def _cpu_devices(self):
+    return [
+        ("/job:worker/replica:0/task:0",
+         ["/job:worker/replica:0/task:0/device:CPU:0"]),
+        ("/job:worker/replica:0/task:1",
+         ["/job:worker/replica:0/task:1/device:CPU:0"])]
+
+  def _cpu_and_one_gpu_devices(self):
+    return [
+        ("/job:worker/replica:0/task:0", [
+            "/job:worker/replica:0/task:0/device:GPU:0",
+            "/job:worker/replica:0/task:0/device:CPU:0"
+        ]),
+        ("/job:worker/replica:0/task:1", [
+            "/job:worker/replica:0/task:1/device:GPU:0",
+            "/job:worker/replica:0/task:1/device:CPU:0"
+        ])
+    ]
+
+  def testOneDevicePerWorker(self):
+    worker_devices = self._cpu_devices()
+    with context.graph_mode(), self.cached_session() as sess:
+      input_fn = lambda: dataset_ops.Dataset.range(4)
+      self._test_iterator(input_fn, worker_devices,
+                          [[0, 0], [1, 1], [2, 2], [3, 3]], sess)
+
+  def testTwoDevicesPerWorker(self):
+    if context.num_gpus() < 1:
+      self.skipTest("A GPU is not available for this test.")
+    worker_devices = self._cpu_and_one_gpu_devices()
+    with context.graph_mode(), self.cached_session() as sess:
+      input_fn = lambda: dataset_ops.Dataset.range(4)
+      self._test_iterator(input_fn, worker_devices,
+                          [[0, 1, 0, 1], [2, 3, 2, 3]], sess)
+
+  def testTupleDataset(self):
+    worker_devices = self._cpu_devices()
+    with context.graph_mode(), self.cached_session() as sess:
+      def input_fn():
+        dataset1 = dataset_ops.Dataset.range(4)
+        dataset2 = dataset_ops.Dataset.range(4).map(lambda x: x**2)
+        return dataset_ops.Dataset.zip((dataset1, dataset2))
+
+      expected_values = [[(i, i**2), (i, i**2)] for i in range(0, 4)]
+      self._test_iterator(input_fn, worker_devices, expected_values, sess)
+
+
 class MirroredVariableTest(test.TestCase):
 
   config = config_pb2.ConfigProto()
