@@ -87,18 +87,8 @@ class StackedRNNCells(Layer):
 
   @property
   def state_size(self):
-    # States are a flat list of the individual cell state size.
-    # e.g. states of a 2-layer LSTM would be `[h1, c1, h2, c2]`.
-    # (assuming one LSTM has states [h, c])
-    # In the case of reverse_state_order=True, the state_size will be
-    # [h2, c2, h1, c1].
-    state_size = []
-    for cell in self.cells[::-1] if self.reverse_state_order else self.cells:
-      if _is_multiple_state(cell.state_size):
-        state_size += list(cell.state_size)
-      else:
-        state_size.append(cell.state_size)
-    return tuple(state_size)
+    return tuple(c.state_size for c in
+                 (self.cells[::-1] if self.reverse_state_order else self.cells))
 
   @property
   def output_size(self):
@@ -110,8 +100,6 @@ class StackedRNNCells(Layer):
       return self.cells[-1].state_size
 
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
-    # The init state is flattened into a list because state_size is a flattened
-    # list.
     initial_states = []
     for cell in self.cells[::-1] if self.reverse_state_order else self.cells:
       get_initial_state_fn = getattr(cell, 'get_initial_state', None)
@@ -122,39 +110,27 @@ class StackedRNNCells(Layer):
         initial_states.append(_generate_zero_filled_state_for_cell(
             cell, inputs, batch_size, dtype))
 
-    return nest.flatten(initial_states)
+    return tuple(initial_states)
 
   def call(self, inputs, states, constants=None, **kwargs):
     # Recover per-cell states.
-    nested_states = []
-    for cell in self.cells[::-1] if self.reverse_state_order else self.cells:
-      if _is_multiple_state(cell.state_size):
-        nested_states.append(states[:len(cell.state_size)])
-        states = states[len(cell.state_size):]
-      else:
-        nested_states.append([states[0]])
-        states = states[1:]
-    if self.reverse_state_order:
-      nested_states = nested_states[::-1]
+    state_size = (self.state_size[::-1]
+                  if self.reverse_state_order else self.state_size)
+    nested_states = nest.pack_sequence_as(state_size, nest.flatten(states))
 
     # Call the cells in order and store the returned states.
     new_nested_states = []
     for cell, states in zip(self.cells, nested_states):
+      states = states if nest.is_sequence(states) else [states]
       if generic_utils.has_arg(cell.call, 'constants'):
         inputs, states = cell.call(inputs, states, constants=constants,
                                    **kwargs)
       else:
         inputs, states = cell.call(inputs, states, **kwargs)
-
       new_nested_states.append(states)
 
-    # Format the new states as a flat list
-    new_states = []
-    if self.reverse_state_order:
-      new_nested_states = new_nested_states[::-1]
-    for cell_states in new_nested_states:
-      new_states += cell_states
-    return inputs, new_states
+    return inputs, nest.pack_sequence_as(state_size,
+                                         nest.flatten(new_nested_states))
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):

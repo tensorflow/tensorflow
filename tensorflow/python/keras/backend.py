@@ -3543,6 +3543,7 @@ def rnn(step_function,
         flat_output = nest.flatten(output)
         output_ta_t = tuple(
             ta.write(time, out) for ta, out in zip(output_ta_t, flat_output))
+        new_states = nest.pack_sequence_as(initial_states, flat_new_state)
         return (time + 1, output_ta_t) + tuple(new_states)
 
       final_outputs = control_flow_ops.while_loop(
