@@ -636,6 +636,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       _ = checker[..., bar:bar2]
       _ = checker[..., bar]
       _ = checker[..., 3]
+      _ = checker[..., 2 ** 64 // 2**63]  # Test longs in Python 2
 
   def testTensorIndexingTypeError(self):
     with self.session(use_gpu=True):
