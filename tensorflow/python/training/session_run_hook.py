@@ -84,11 +84,6 @@ Note that if sess.run() raises OutOfRangeError or StopIteration then
 hooks.after_run() will not be called but hooks.end() will still be called.
 If sess.run() raises any other exception then neither hooks.after_run() nor
 hooks.end() will be called.
-
-@@SessionRunHook
-@@SessionRunArgs
-@@SessionRunContext
-@@SessionRunValues
 """
 
 from __future__ import absolute_import

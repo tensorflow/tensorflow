@@ -47,6 +47,7 @@ class PyWrapOptimizeGraphTest(test.TestCase):
 
     rewriter_config = rewriter_config_pb2.RewriterConfig()
     rewriter_config.optimizers.append('constfold')
+    rewriter_config.min_graph_nodes = -1
 
     graph = tf_optimizer.OptimizeGraph(rewriter_config, mg)
 
@@ -56,7 +57,7 @@ class PyWrapOptimizeGraphTest(test.TestCase):
   def testKeepNodes(self):
     g = ops.Graph()
     with g.as_default():
-      a1 = variables.Variable(
+      a1 = variables.VariableV1(
           1.0)  # Must be preserved since it's in the collection 'variables'.
       a2 = constant_op.constant(0, shape=[50, 50], name='keep')
       ops.add_to_collection('a2', a2)  # Explicitly add to collection.
@@ -68,6 +69,7 @@ class PyWrapOptimizeGraphTest(test.TestCase):
     # Optimize the graph.
     mg = meta_graph.create_meta_graph_def(graph=g)
     rewriter_config = rewriter_config_pb2.RewriterConfig()
+    rewriter_config.min_graph_nodes = -1
     optimized_graph = tf_optimizer.OptimizeGraph(rewriter_config, mg)
 
     # Check that the nodes referenced in various collections have been preserved
@@ -109,6 +111,7 @@ class PyWrapOptimizeGraphTest(test.TestCase):
     # Optimize the graph.
     mg = meta_graph.create_meta_graph_def(graph=g)
     rewriter_config = rewriter_config_pb2.RewriterConfig()
+    rewriter_config.min_graph_nodes = -1
     optimized_graph = tf_optimizer.OptimizeGraph(rewriter_config, mg)
     mg.graph_def.CopyFrom(optimized_graph)
 

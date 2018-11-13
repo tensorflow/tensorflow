@@ -68,11 +68,6 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/coder/kernels/range_coder_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/coder/kernels/range_coder_ops_util.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/coder/ops/coder_ops.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/data/kernels/ignore_errors_dataset_op.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/data/kernels/prefetching_kernels.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/data/kernels/threadpool_dataset_op.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/data/kernels/unique_dataset_op.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/data/ops/dataset_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/clustering_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/masked_matmul_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/factorization/kernels/wals_solver_ops.cc"
@@ -94,9 +89,6 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
       "${tensorflow_source_dir}/tensorflow/contrib/layers/ops/sparse_feature_cross_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/libsvm/kernels/decode_libsvm_op.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/libsvm/ops/libsvm_ops.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/nccl/kernels/nccl_manager.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/nccl/kernels/nccl_ops.cc"
-      "${tensorflow_source_dir}/tensorflow/contrib/nccl/ops/nccl_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/nearest_neighbor/kernels/hyperplane_lsh_probes.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/nearest_neighbor/ops/nearest_neighbor_ops.cc"
       "${tensorflow_source_dir}/tensorflow/contrib/resampler/kernels/resampler_ops.cc"
@@ -132,14 +124,13 @@ if(tensorflow_BUILD_CONTRIB_KERNELS)
   list(APPEND tf_core_kernels_srcs ${tf_contrib_kernels_srcs})
 endif(tensorflow_BUILD_CONTRIB_KERNELS)
 
-if(NOT tensorflow_ENABLE_SSL_SUPPORT)
-  # Cloud libraries require boringssl.
-  file(GLOB tf_core_kernels_cloud_srcs
-      "${tensorflow_source_dir}/tensorflow/contrib/cloud/kernels/*.h"
-      "${tensorflow_source_dir}/tensorflow/contrib/cloud/kernels/*.cc"
-  )
+# Cloud libraries require curl and boringssl.
+# Curl is not supported yet anyway so we remove for now.
+file(GLOB tf_core_kernels_cloud_srcs
+    "${tensorflow_source_dir}/tensorflow/contrib/cloud/kernels/*.h"
+    "${tensorflow_source_dir}/tensorflow/contrib/cloud/kernels/*.cc"
+)
 list(REMOVE_ITEM tf_core_kernels_srcs ${tf_core_kernels_cloud_srcs})
-endif()
 
 file(GLOB_RECURSE tf_core_kernels_exclude_srcs
    "${tensorflow_source_dir}/tensorflow/core/kernels/*test*.h"

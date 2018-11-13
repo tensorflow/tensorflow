@@ -552,18 +552,32 @@ TEST(FlatSet, UniqueSet) {
   }
   EXPECT_EQ(set.size(), N);
 
+  // Move constructor
+  UniqSet set2(std::move(set));
+
   // Lookups
   for (int i = 0; i < N; i++) {
-    EXPECT_EQ(set.count(MakeUniq(i)), 1);
+    EXPECT_EQ(set2.count(MakeUniq(i)), 1);
   }
 
+  // Move-assignment operator
+  UniqSet set3;
+  set3 = std::move(set2);
+
   // erase
-  set.erase(MakeUniq(2));
-  EXPECT_EQ(set.count(MakeUniq(2)), 0);
+  set3.erase(MakeUniq(2));
+  EXPECT_EQ(set3.count(MakeUniq(2)), 0);
 
   // clear
   set.clear();
   EXPECT_EQ(set.size(), 0);
+
+  // Check that moved-from sets are in a valid (though unspecified) state.
+  EXPECT_GE(set.size(), 0);
+  EXPECT_GE(set2.size(), 0);
+  // This insert should succeed no matter what state `set` is in, because
+  // MakeUniq(-1) is never called above: This key can't possibly exist.
+  EXPECT_TRUE(set.emplace(MakeUniq(-1)).second);
 }
 
 TEST(FlatSet, UniqueSetIter) {
@@ -577,6 +591,12 @@ TEST(FlatSet, UniqueSetIter) {
     sum += *p;
   }
   EXPECT_EQ(sum, (kCount * (kCount + 1)) / 2);
+}
+
+TEST(FlatSet, InsertUncopyable) {
+  UniqSet set;
+  EXPECT_TRUE(set.insert(MakeUniq(0)).second);
+  EXPECT_EQ(set.size(), 1);
 }
 
 /* This would be a good negative compilation test, if we could do that.

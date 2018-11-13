@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <memory>
 
-#include "grpc++/grpc++.h"
-#include "grpc++/impl/codegen/proto_utils.h"
-#include "grpc++/support/byte_buffer.h"
+#include "grpcpp/grpcpp.h"
+#include "grpcpp/impl/codegen/proto_utils.h"
+#include "grpcpp/support/byte_buffer.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 
+#include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -22,12 +24,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 namespace {
 
-using ::tensorflow::strings::StrCat;
+using absl::StrCat;
 using ::testing::HasSubstr;
 
 string TestName() {
@@ -64,8 +65,8 @@ TEST(HloGraphDumperTest, NestedFusion) {
     sums.push_back(b.AddInstruction(HloInstruction::CreateBinary(
         shape, HloOpcode::kAdd, sums[i], params[i + 2])));
   }
-
-  HloModule m(TestName());
+  HloModuleConfig config;
+  HloModule m(TestName(), config);
   m.AddEntryComputation(b.Build());
   HloComputation* root_computation = m.entry_computation();
 
@@ -120,14 +121,33 @@ TEST(HloGraphDumperTest, NestedFusion) {
 TEST(HloGraphDumperTest, Constant) {
   HloComputation::Builder b("b");
   auto instruction = b.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(-42)));
-  instruction->set_name("i_am_a_constant_root_instruction");
-  HloModule m(TestName());
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(-42)));
+  instruction->SetAndSanitizeName("i_am_a_constant_root_instruction");
+  HloModuleConfig config;
+  HloModule m(TestName(), config);
   HloComputation* root_computation = m.AddEntryComputation(b.Build());
   string graph = hlo_graph_dumper::DumpGraph(
       *root_computation, /*label=*/"an_empty_graph", DebugOptions());
   EXPECT_THAT(graph, HasSubstr("an_empty_graph"));
   EXPECT_THAT(graph, Not(HasSubstr("i_am_a_constant_root_instruction")));
+}
+
+TEST(HloGraphDumperTest, TupleConstant) {
+  Shape tuple_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(F32, {3, 2}), ShapeUtil::MakeShape(S32, {4, 5})});
+  HloComputation::Builder b("b");
+  auto constant = b.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateFromShape(tuple_shape)));
+  auto gte = b.AddInstruction(HloInstruction::CreateGetTupleElement(
+      ShapeUtil::MakeShape(F32, {3, 2}), constant, 0));
+
+  HloModuleConfig config;
+  HloModule m(TestName(), config);
+  HloComputation* root_computation = m.AddEntryComputation(b.Build(gte));
+  string graph = hlo_graph_dumper::DumpGraph(
+      *root_computation, /*label=*/"tuple_constant", DebugOptions());
+  EXPECT_THAT(graph, HasSubstr("tuple_constant"));
+  EXPECT_THAT(graph, HasSubstr("constant (f32[3,2], s32[4,5])"));
 }
 
 }  // anonymous namespace

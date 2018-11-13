@@ -55,8 +55,15 @@ PyObject* DoQuantizeTrainingOnGraphDefHelper(
 
 
 %insert("python") %{
+from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
+
+@deprecation.deprecated(
+    None,
+    "GraphDef quantized training rewriter is deprecated in the long term")
+@tf_export(v1=["train.do_quantize_training_on_graphdef"])
 def do_quantize_training_on_graphdef(input_graph, num_bits):
-  """A general quantization scheme is being developed in @{tf.contrib.quantize}.
+  """A general quantization scheme is being developed in `tf.contrib.quantize`.
 
   Consider using that instead, though since it is in the tf.contrib namespace,
   it is not subject to backward compatibility guarantees.
@@ -72,6 +79,8 @@ def do_quantize_training_on_graphdef(input_graph, num_bits):
   return graph
 
 do_quantize_training_on_graphdef._tf_api_names = [
+    'train.do_quantize_training_on_graphdef']
+do_quantize_training_on_graphdef._tf_api_names_v1 = [
     'train.do_quantize_training_on_graphdef']
 %}
 

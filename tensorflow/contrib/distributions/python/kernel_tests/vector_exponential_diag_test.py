@@ -37,42 +37,42 @@ class VectorExponentialDiagTest(test.TestCase):
   def testScalarParams(self):
     mu = -1.
     diag = -5.
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(ValueError, "at least 1 dimension"):
         ds.VectorExponentialDiag(mu, diag)
 
   def testVectorParams(self):
     mu = [-1.]
     diag = [-5.]
-    with self.test_session():
+    with self.cached_session():
       dist = ds.VectorExponentialDiag(mu, diag, validate_args=True)
       self.assertAllEqual([3, 1], dist.sample(3).get_shape())
 
   def testMean(self):
     mu = [-1., 1]
     diag = [1., -5]
-    with self.test_session():
+    with self.cached_session():
       dist = ds.VectorExponentialDiag(mu, diag, validate_args=True)
       self.assertAllEqual([-1. + 1., 1. - 5.], dist.mean().eval())
 
   def testMode(self):
     mu = [-1.]
     diag = [1., -5]
-    with self.test_session():
+    with self.cached_session():
       dist = ds.VectorExponentialDiag(mu, diag, validate_args=True)
       self.assertAllEqual([-1., -1.], dist.mode().eval())
 
   def testMeanWithBroadcastLoc(self):
     mu = [-1.]
     diag = [1., -5]
-    with self.test_session():
+    with self.cached_session():
       dist = ds.VectorExponentialDiag(mu, diag, validate_args=True)
       self.assertAllEqual([-1. + 1, -1. - 5], dist.mean().eval())
 
   def testSample(self):
     mu = [-2., 1]
     diag = [1., -2]
-    with self.test_session():
+    with self.cached_session():
       dist = ds.VectorExponentialDiag(mu, diag, validate_args=True)
       samps = dist.sample(int(1e4), seed=0).eval()
       cov_mat = array_ops.matrix_diag(diag).eval()**2
@@ -85,7 +85,7 @@ class VectorExponentialDiagTest(test.TestCase):
   def testSingularScaleRaises(self):
     mu = [-1., 1]
     diag = [1., 0]
-    with self.test_session():
+    with self.cached_session():
       dist = ds.VectorExponentialDiag(mu, diag, validate_args=True)
       with self.assertRaisesOpError("Singular"):
         dist.sample().eval()
@@ -97,7 +97,7 @@ class VectorExponentialDiagTest(test.TestCase):
     # diag corresponds to no batches of 3-variate normals
     diag = np.ones([3])
 
-    with self.test_session():
+    with self.cached_session():
       dist = ds.VectorExponentialDiag(mu, diag, validate_args=True)
 
       mean = dist.mean()
@@ -117,7 +117,7 @@ class VectorExponentialDiagTest(test.TestCase):
                           atol=0.10, rtol=0.05)
 
   def testCovariance(self):
-    with self.test_session():
+    with self.cached_session():
       vex = ds.VectorExponentialDiag(
           loc=array_ops.ones([2, 3], dtype=dtypes.float32))
       self.assertAllClose(
@@ -153,7 +153,7 @@ class VectorExponentialDiagTest(test.TestCase):
           vex.covariance().eval())
 
   def testVariance(self):
-    with self.test_session():
+    with self.cached_session():
       vex = ds.VectorExponentialDiag(
           loc=array_ops.zeros([2, 3], dtype=dtypes.float32))
       self.assertAllClose(
@@ -178,7 +178,7 @@ class VectorExponentialDiagTest(test.TestCase):
           vex.variance().eval())
 
   def testStddev(self):
-    with self.test_session():
+    with self.cached_session():
       vex = ds.VectorExponentialDiag(
           loc=array_ops.zeros([2, 3], dtype=dtypes.float32))
       self.assertAllClose(

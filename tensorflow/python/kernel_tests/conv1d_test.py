@@ -31,9 +31,7 @@ class Conv1DTest(test.TestCase):
 
   def testBasic(self):
     """Test that argument passing to conv1d is handled properly."""
-    # TODO(yongtang): dtypes.float64 can only be enabled once conv2d support
-    # dtypes.float64, as conv1d implicitly calls conv2d after expand_dims.
-    for dtype in [dtypes.float16, dtypes.float32]:
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
       x = constant_op.constant([1, 2, 3, 4], dtype=dtype)
       x = array_ops.expand_dims(x, 0)  # Add batch dimension
       x = array_ops.expand_dims(x, 2)  # And depth dimension
@@ -42,7 +40,7 @@ class Conv1DTest(test.TestCase):
       filters = array_ops.expand_dims(filters, 2)  # out_channels
       # Filters is 2x1x1
       for stride in [1, 2]:
-        with self.test_session(use_gpu=test.is_gpu_available()):
+        with self.cached_session(use_gpu=test.is_gpu_available()):
           c = nn_ops.conv1d(x, filters, stride, padding="VALID")
           reduced = array_ops.squeeze(c)
           output = reduced.eval()
@@ -55,7 +53,7 @@ class Conv1DTest(test.TestCase):
             self.assertAllClose(output, [2 * 1 + 1 * 2, 2 * 3 + 1 * 4])
 
   def testConv1DTranspose(self):
-    with self.test_session():
+    with self.cached_session():
       stride = 2
 
       # Input, output: [batch, width, depth]

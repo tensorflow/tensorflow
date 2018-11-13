@@ -25,7 +25,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if defined(INTEL_MKL)
+#if defined(INTEL_MKL) && !defined(INTEL_MKL_DNN_ONLY)
 #include <vector>
 #include "mkl_cblas.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -223,10 +223,12 @@ class BatchMatMulMkl : public OpKernel {
       Name("BatchMatMul").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"), \
       BatchMatMulMkl<CPUDevice, TYPE>)
 
+#ifdef ENABLE_MKL
 TF_CALL_float(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_double(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_complex64(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_complex128(REGISTER_BATCH_MATMUL_MKL);
+#endif  // ENABLE_MKL
 
 }  // end namespace tensorflow
 #endif

@@ -151,7 +151,7 @@ add_dependencies(tf_cc tf_cc_framework tf_cc_ops)
 if (WIN32)
   set (pywrap_tensorflow_lib "${CMAKE_CURRENT_BINARY_DIR}/$(Configuration)/pywrap_tensorflow_internal.lib")
 else (WIN32)
-  set (pywrap_tensorflow_lib "${CMAKE_CURRENT_BINARY_DIR}/libpywrap_tensorflow_internal.so")
+  set (pywrap_tensorflow_lib "${CMAKE_CURRENT_BINARY_DIR}/libpywrap_tensorflow_internal${CMAKE_SHARED_LIBRARY_SUFFIX}")
 endif (WIN32)
 add_custom_target(tf_extension_ops)
 

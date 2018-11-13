@@ -26,6 +26,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -60,6 +61,14 @@ class SoftmaxCentered(bijector.Bijector):
   makes the (forward) image non-open and the theorem does not directly apply.
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                validate_args=False,
                name="softmax_centered"):
@@ -101,7 +110,7 @@ class SoftmaxCentered(bijector.Bijector):
 
     # Set shape hints.
     if x.shape.ndims is not None:
-      shape = x.shape[:-1].concatenate(x.shape[-1] + 1)
+      shape = x.shape[:-1].concatenate(x.shape.dims[-1] + 1)
       y.shape.assert_is_compatible_with(shape)
       y.set_shape(shape)
 
@@ -126,7 +135,7 @@ class SoftmaxCentered(bijector.Bijector):
 
     # Set shape hints.
     if y.shape.ndims is not None:
-      shape = y.shape[:-1].concatenate(y.shape[-1] - 1)
+      shape = y.shape[:-1].concatenate(y.shape.dims[-1] - 1)
       x.shape.assert_is_compatible_with(shape)
       x.set_shape(shape)
 

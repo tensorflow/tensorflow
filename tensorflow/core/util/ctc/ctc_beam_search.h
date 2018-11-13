@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// LINT.IfChange
 
 #ifndef TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_SEARCH_H_
 #define TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_SEARCH_H_
@@ -259,6 +260,16 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Step(
   } else {
     max_coeff = raw_input.maxCoeff();
   }
+
+  // Get normalization term of softmax: log(sum(exp(logit[j]-max_coeff))).
+  float logsumexp = 0.0;
+  for (int j = 0; j < raw_input.size(); ++j) {
+    logsumexp += Eigen::numext::exp(raw_input(j) - max_coeff);
+  }
+  logsumexp = Eigen::numext::log(logsumexp);
+  // Final normalization offset to get correct log probabilities.
+  float norm_offset = max_coeff + logsumexp;
+
   const float label_selection_input_min =
       (label_selection_margin_ >= 0) ? (max_coeff - label_selection_margin_)
                                      : -std::numeric_limits<float>::infinity();
@@ -290,10 +301,10 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Step(
                       beam_scorer_->GetStateExpansionScore(b->state, previous));
       }
       // Plabel(l=abc @ t=6) *= P(c @ 6)
-      b->newp.label += raw_input(b->label) - max_coeff;
+      b->newp.label += raw_input(b->label) - norm_offset;
     }
     // Pblank(l=abc @ t=6) = P(l=abc @ t=5) * P(- @ 6)
-    b->newp.blank = b->oldp.total + raw_input(blank_index_) - max_coeff;
+    b->newp.blank = b->oldp.total + raw_input(blank_index_) - norm_offset;
     // P(l=abc @ t=6) = Plabel(l=abc @ t=6) + Pblank(l=abc @ t=6)
     b->newp.total = LogSumExp(b->newp.blank, b->newp.label);
 
@@ -328,6 +339,8 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Step(
       const float logit = top_k ? top_k_logits[ind] : raw_input(ind);
       // Perform label selection: if input for this label looks very
       // unpromising, never evaluate it with a scorer.
+      // We may compare logits instead of log probabilities, 
+      // since the difference is the same in both cases.
       if (logit < label_selection_input_min) {
         continue;
       }
@@ -341,7 +354,7 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Step(
         //   Plabel(l=abcd @ t=6) = P(l=abc @ t=5) * P(d @ 6)
         beam_scorer_->ExpandState(b->state, b->label, &c.state, c.label);
         float previous = (c.label == b->label) ? b->oldp.blank : b->oldp.total;
-        c.newp.label = logit - max_coeff +
+        c.newp.label = logit - norm_offset +
                        beam_scorer_->GetStateExpansionScore(c.state, previous);
         // P(l=abcd @ t=6) = Plabel(l=abcd @ t=6)
         c.newp.total = c.newp.label;
@@ -418,3 +431,4 @@ Status CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::TopPaths(
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_SEARCH_H_
+// LINT.ThenChange(//tensorflow/lite/experimental/kernels/ctc_beam_search.h)

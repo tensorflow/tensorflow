@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "tensorflow/compiler/xla/service/interpreter/platform_id.h"
 #include "tensorflow/stream_executor/executor_cache.h"
 #include "tensorflow/stream_executor/plugin.h"
 #include "tensorflow/stream_executor/stream_executor.h"
@@ -28,7 +29,8 @@ namespace interpreter {
 
 class XlaInterpreterPlatform : public Platform {
  public:
-  XlaInterpreterPlatform();
+  XlaInterpreterPlatform(const string& name = "Interpreter",
+                         const Platform::Id& id = kXlaInterpreterPlatformId);
   ~XlaInterpreterPlatform() override;
 
   Platform::Id id() const override;
@@ -55,6 +57,8 @@ class XlaInterpreterPlatform : public Platform {
  private:
   // This platform's name.
   string name_;
+  // This platform's id.
+  Platform::Id id_;
 
   // Cache of created StreamExecutors.
   ExecutorCache executor_cache_;

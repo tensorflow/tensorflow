@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -27,36 +26,31 @@ from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.platform import test
 
 linalg = linalg_lib
-random_seed.set_random_seed(23)
 
 
 class LinearOperatorDiagTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  def _operator_and_mat_and_feed_dict(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
     shape = list(build_info.shape)
     diag = linear_operator_test_util.random_sign_uniform(
         shape[:-1], minval=1., maxval=2., dtype=dtype)
+
+    lin_op_diag = diag
+
     if use_placeholder:
-      diag_ph = array_ops.placeholder(dtype=dtype)
-      # Evaluate the diag here because (i) you cannot feed a tensor, and (ii)
-      # diag is random and we want the same value used for both mat and
-      # feed_dict.
-      diag = diag.eval()
-      operator = linalg.LinearOperatorDiag(diag_ph)
-      feed_dict = {diag_ph: diag}
-    else:
-      operator = linalg.LinearOperatorDiag(diag)
-      feed_dict = None
+      lin_op_diag = array_ops.placeholder_with_default(diag, shape=None)
 
-    mat = array_ops.matrix_diag(diag)
+    operator = linalg.LinearOperatorDiag(lin_op_diag)
 
-    return operator, mat, feed_dict
+    matrix = array_ops.matrix_diag(diag)
+
+    return operator, matrix
 
   def test_assert_positive_definite_raises_for_zero_eigenvalue(self):
     # Matrix with one positive eigenvalue and one zero eigenvalue.
-    with self.test_session():
+    with self.cached_session():
       diag = [1.0, 0.0]
       operator = linalg.LinearOperatorDiag(diag)
 
@@ -66,7 +60,7 @@ class LinearOperatorDiagTest(
         operator.assert_positive_definite().run()
 
   def test_assert_positive_definite_raises_for_negative_real_eigvalues(self):
-    with self.test_session():
+    with self.cached_session():
       diag_x = [1.0, -2.0]
       diag_y = [0., 0.]  # Imaginary eigenvalues should not matter.
       diag = math_ops.complex(diag_x, diag_y)
@@ -78,7 +72,7 @@ class LinearOperatorDiagTest(
         operator.assert_positive_definite().run()
 
   def test_assert_positive_definite_does_not_raise_if_pd_and_complex(self):
-    with self.test_session():
+    with self.cached_session():
       x = [1., 2.]
       y = [1., 0.]
       diag = math_ops.complex(x, y)  # Re[diag] > 0.
@@ -87,14 +81,14 @@ class LinearOperatorDiagTest(
 
   def test_assert_non_singular_raises_if_zero_eigenvalue(self):
     # Singlular matrix with one positive eigenvalue and one zero eigenvalue.
-    with self.test_session():
+    with self.cached_session():
       diag = [1.0, 0.0]
       operator = linalg.LinearOperatorDiag(diag, is_self_adjoint=True)
       with self.assertRaisesOpError("Singular operator"):
         operator.assert_non_singular().run()
 
   def test_assert_non_singular_does_not_raise_for_complex_nonsingular(self):
-    with self.test_session():
+    with self.cached_session():
       x = [1., 0.]
       y = [0., 1.]
       diag = math_ops.complex(x, y)
@@ -102,7 +96,7 @@ class LinearOperatorDiagTest(
       linalg.LinearOperatorDiag(diag).assert_non_singular().run()
 
   def test_assert_self_adjoint_raises_if_diag_has_complex_part(self):
-    with self.test_session():
+    with self.cached_session():
       x = [1., 0.]
       y = [0., 1.]
       diag = math_ops.complex(x, y)
@@ -111,7 +105,7 @@ class LinearOperatorDiagTest(
         operator.assert_self_adjoint().run()
 
   def test_assert_self_adjoint_does_not_raise_for_diag_with_zero_imag(self):
-    with self.test_session():
+    with self.cached_session():
       x = [1., 0.]
       y = [0., 0.]
       diag = math_ops.complex(x, y)
@@ -127,7 +121,7 @@ class LinearOperatorDiagTest(
     # These cannot be done in the automated (base test class) tests since they
     # test shapes that tf.matmul cannot handle.
     # In particular, tf.matmul does not broadcast.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = random_ops.random_normal(shape=(2, 2, 3, 4))
 
       # This LinearOperatorDiag will be broadcast to (2, 2, 3, 3) during solve

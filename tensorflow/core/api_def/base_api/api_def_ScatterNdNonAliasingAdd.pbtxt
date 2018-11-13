@@ -37,7 +37,7 @@ respect to both `input` and `updates`.
 `input` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
 
 `indices` must be integer tensor, containing indices into `input`.
-It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+It must be shape \\([d_0, ..., d_{Q-2}, K]\\) where `0 < K <= P`.
 
 The innermost dimension of `indices` (with length `K`) corresponds to
 indices into elements (if `K = P`) or `(P-K)`-dimensional slices
@@ -45,9 +45,7 @@ indices into elements (if `K = P`) or `(P-K)`-dimensional slices
 
 `updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
-```
-[d_0, ..., d_{Q-2}, input.shape[K], ..., input.shape[P-1]].
-```
+$$[d_0, ..., d_{Q-2}, input.shape[K], ..., input.shape[P-1]].$$
 
 For example, say we want to add 4 scattered elements to a rank-1 tensor to 8
 elements. In Python, that addition would look like this:
@@ -63,6 +61,6 @@ The resulting value `output` would look like this:
 
     [1, 13, 3, 14, 14, 6, 7, 20]
 
-See @{tf.scatter_nd} for more details about how to make updates to slices.
+See `tf.scatter_nd` for more details about how to make updates to slices.
 END
 }

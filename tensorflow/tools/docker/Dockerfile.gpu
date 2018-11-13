@@ -12,7 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         cuda-cusolver-9-0 \
         cuda-cusparse-9-0 \
         curl \
-        libcudnn7=7.0.5.15-1+cuda9.0 \
+        libcudnn7=7.2.1.38-1+cuda9.0 \
+        libnccl2=2.2.13-1+cuda9.0 \
         libfreetype6-dev \
         libhdf5-serial-dev \
         libpng12-dev \
@@ -27,6 +28,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+RUN apt-get update && \
+        apt-get install nvinfer-runtime-trt-repo-ubuntu1604-4.0.1-ga-cuda9.0 && \
+        apt-get update && \
+        apt-get install libnvinfer4=4.1.2-1+cuda9.0
+
 RUN curl -O https://bootstrap.pypa.io/get-pip.py && \
     python get-pip.py && \
     rm get-pip.py
@@ -36,6 +42,8 @@ RUN pip --no-cache-dir install \
         h5py \
         ipykernel \
         jupyter \
+        keras_applications \
+        keras_preprocessing \
         matplotlib \
         numpy \
         pandas \

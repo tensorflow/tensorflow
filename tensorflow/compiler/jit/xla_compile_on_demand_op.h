@@ -29,11 +29,8 @@ limitations under the License.
 namespace tensorflow {
 
 // An OpKernel that compiles an op to an XLA computation and runs it. Unlike
-// _XlaLaunch this doesn't rely on any rewrites of the graphdef - it will run a
+// XlaLaunch this doesn't rely on any rewrites of the graphdef - it will run a
 // vanilla TensorFlow op as long as the bridge supports it.
-//
-// Importantly _XlaLaunch assumes all input and output tensors are on the host,
-// whereas XlacompileOnDemandOp works with tensors in device memory.
 class XlaCompileOnDemandOp : public OpKernel {
  public:
   explicit XlaCompileOnDemandOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
@@ -41,8 +38,10 @@ class XlaCompileOnDemandOp : public OpKernel {
 
  private:
   XlaCompiler::Argument CreateCompilerArgument(OpKernelContext* ctx, int64 i);
-  bool ShouldArgumentBeConstant(const OpKernel* op_kernel, int64 argument_idx);
-  bool MustArgumentBeConstant(const OpKernel* op_kernel, int64 argument_idx);
+  Status ShouldArgumentBeConstant(const OpKernel* op_kernel, int64 argument_idx,
+                                  bool* result);
+  Status MustArgumentBeConstant(const OpKernel* op_kernel, int64 argument_idx,
+                                bool* result);
   Status Compile(OpKernelContext* ctx, const XlaDevice::Metadata& metadata,
                  const XlaCompiler::CompilationResult** result,
                  xla::LocalExecutable** executable);

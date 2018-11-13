@@ -29,14 +29,14 @@ from tensorflow.python.ops import math_ops
 def get_seed(seed):
   """Returns the local seeds an operation should use given an op-specific seed.
 
-  See @{tf.get_seed} for more details. This wrapper adds support for the case
+  See `tf.get_seed` for more details. This wrapper adds support for the case
   where `seed` may be a tensor.
 
   Args:
-    seed: An integer or a @{tf.int64} scalar tensor.
+    seed: An integer or a `tf.int64` scalar tensor.
 
   Returns:
-    A tuple of two @{tf.int64} scalar tensors that should be used for the local
+    A tuple of two `tf.int64` scalar tensors that should be used for the local
     seed of the calling dataset.
   """
   seed, seed2 = random_seed.get_seed(seed)

@@ -19,7 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
-#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -41,34 +40,35 @@ class GenericTransferManager : public TransferManager {
 
   se::Platform::Id PlatformId() const override;
 
-  StatusOr<std::unique_ptr<Literal>> TransferLiteralFromDevice(
-      se::StreamExecutor* executor, const ShapedBuffer& device_buffer) override;
+  void TransferLiteralFromDevice(se::Stream* stream,
+                                 const ShapedBuffer& device_buffer,
+                                 MutableBorrowingLiteral literal,
+                                 std::function<void(Status)> done) override;
 
-  Status TransferLiteralToDevice(se::StreamExecutor* executor,
-                                 const Literal& literal,
-                                 const ShapedBuffer& device_buffer) override;
+  Status TransferLiteralToDeviceAsync(
+      se::Stream* stream, const LiteralSlice& literal,
+      const ShapedBuffer& device_buffer) override;
 
   Status TransferLiteralToInfeed(se::StreamExecutor* executor,
-                                 const Literal& literal) override;
+                                 const LiteralSlice& literal) override;
   Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
                                     const Shape& literal_shape,
-                                    Literal* literal) override;
+                                    MutableBorrowingLiteral literal) override;
 
-  Status ResetDevices(
-      tensorflow::gtl::ArraySlice<se::StreamExecutor*> executors) override;
+  Status ResetDevices(absl::Span<se::StreamExecutor* const> executors) override;
 
   int64 GetByteSizeRequirement(const Shape& shape) const override;
 
  protected:
-  Status TransferBufferToInfeed(se::StreamExecutor* executor, int64 size,
-                                const void* source) override;
-
   Status WriteSingleTupleIndexTable(
-      se::StreamExecutor* executor,
-      tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> elements,
+      se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
       const Shape& shape, se::DeviceMemoryBase* region) override;
 
  private:
+  Status TransferLiteralFromDeviceInternal(se::StreamExecutor* executor,
+                                           const ShapedBuffer& device_buffer,
+                                           MutableBorrowingLiteral literal);
+
   // The platform this transfer manager targets.
   const se::Platform::Id platform_id_;
 

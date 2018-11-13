@@ -43,7 +43,7 @@ def alpha_dropout(x, keep_prob, noise_shape=None, seed=None, name=None): # pylin
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
       shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed} for behavior.
+      `tf.set_random_seed` for behavior.
     name: A name for this operation (optional).
 
   Returns:

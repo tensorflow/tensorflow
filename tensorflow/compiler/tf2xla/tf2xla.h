@@ -18,21 +18,21 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/xla/client/client.h"
-#include "tensorflow/compiler/xla/client/computation.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/core/framework/graph.pb.h"
 
 namespace tensorflow {
 
-// Converts a tensorflow::GraphDef into an xla::Computation.  The given `config`
-// specifies the portion of the graph to convert, via feeds and fetches. Each
-// feed is a positional input argument for the generated computation, while each
-// fetch is a positional output argument.
+// Converts a tensorflow::GraphDef into an xla::XlaComputation. The given
+// `config` specifies the portion of the graph to convert, via feeds and
+// fetches. Each feed is a positional input argument for the generated
+// computation, while each fetch is a positional output argument.
 //
 // The computation is built in the context of the given `client`, which may
 // subsequently be used to compile or execute the computation.
 Status ConvertGraphDefToXla(const GraphDef& graph_def,
                             const tf2xla::Config& config, xla::Client* client,
-                            xla::Computation* computation);
+                            xla::XlaComputation* computation);
 
 }  // namespace tensorflow
 

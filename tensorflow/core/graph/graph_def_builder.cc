@@ -44,12 +44,12 @@ GraphDefBuilder::Options GraphDefBuilder::Options::WithControlInputs(
 }
 GraphDefBuilder::Options GraphDefBuilder::Options::WithNameImpl(
     StringPiece name) {
-  name_ = name.ToString();
+  name_ = string(name);
   return *this;
 }
 GraphDefBuilder::Options GraphDefBuilder::Options::WithDeviceImpl(
     StringPiece device) {
-  device_ = device.ToString();
+  device_ = string(device);
   return *this;
 }
 GraphDefBuilder::Options GraphDefBuilder::Options::WithControlInputImpl(

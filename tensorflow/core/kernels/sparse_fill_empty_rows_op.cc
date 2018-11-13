@@ -125,7 +125,7 @@ class SparseFillEmptyRowsOp : public OpKernel {
       // Scratch here describes the number of elements in this dense row
       empty_row_indicator(row) = (scratch(row) == 0);
       // In filled version, each row has at least one element.
-      scratch(row) = std::max(scratch(row), 1LL);
+      scratch(row) = std::max(scratch(row), int64{1});
       // Update scratch to represent the number of elements up to and
       // including dense_row + 1:
       //  scratch(0) == #{elements of row 0}

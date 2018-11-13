@@ -30,6 +30,14 @@ arm64-v8a armeabi armeabi-v7a mips mips64 x86 x86_64 tegra)"
   exit 1
 }
 
+echo "********************************************************************"
+echo "TensorFlow Lite is the recommended library for mobile and embedded machine learning inference."
+echo "You are currently using an older version. Please switch over to TensorFlow Lite."
+echo ""
+echo "Link to the code: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite"
+echo "********************************************************************"
+echo ""
+
 if [[ -z "${NDK_ROOT}" ]]; then
     echo "NDK_ROOT should be set as an environment variable" 1>&2
     exit 1

@@ -193,6 +193,7 @@ cuda_py_test(
     srcs = ["rmsprop_test.py"],
     additional_deps = [
         ":training",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework",

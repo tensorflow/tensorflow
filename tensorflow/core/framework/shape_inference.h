@@ -323,13 +323,13 @@ class InferenceContext {
     return input_tensors_as_shapes_;
   }
 
-  ShapeHandle output(int64 idx) const { return outputs_[idx]; }
-  void set_output(int idx, ShapeHandle shape) { outputs_[idx] = shape; }
+  ShapeHandle output(int64 idx) const { return outputs_.at(idx); }
+  void set_output(int idx, ShapeHandle shape) { outputs_.at(idx) = shape; }
   Status set_output(StringPiece output_name,
                     const std::vector<ShapeHandle>& shapes);
 
   int num_outputs() const { return outputs_.size(); }
-  ShapeHandle output(int idx) const { return outputs_[idx]; }
+  ShapeHandle output(int idx) const { return outputs_.at(idx); }
   Status output(StringPiece output_name,
                 std::vector<ShapeHandle>* output) const;
 
@@ -381,6 +381,8 @@ class InferenceContext {
 
   string DebugString(ShapeHandle s);
   string DebugString(DimensionHandle d);
+  string DebugString(const ShapeAndType& shape_and_type);
+  string DebugString(gtl::ArraySlice<ShapeAndType> shape_and_types);
 
   // Describes the whole context, for debugging purposes.
   string DebugString() const;
@@ -432,6 +434,13 @@ class InferenceContext {
   // <start> and <end> can be negative, to index from the end of the shape.
   // <start> and <end> are set to the rank of <s> if > rank of <s>.
   Status Subshape(ShapeHandle s, int64 start, int64 end,
+                  ShapeHandle* out) TF_MUST_USE_RESULT;
+
+  // Returns in <*out> a sub-shape of <s>, with dimensions [start:end:stride].
+  // <start> and <end> can be negative, to index from the end of the shape.
+  // <start> and <end> are set to the rank of <s> if > rank of <s>.
+  // <stride> can be negative, to reverse the <s>.
+  Status Subshape(ShapeHandle s, int64 start, int64 end, int64 stride,
                   ShapeHandle* out) TF_MUST_USE_RESULT;
 
   // Returns in <*out> the result of appending the dimensions of <s2> to those
@@ -635,6 +644,9 @@ class InferenceContext {
       const {
     return merged_dims_;
   }
+
+  // Adds new outputs; useful when mutating the graph.
+  Status ExpandOutputs(int new_output_size);
 
  private:
   // Creates and stores shapes for use in InferenceContext.

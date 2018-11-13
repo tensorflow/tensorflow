@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_FIFO_QUEUE_H_
-#define TENSORFLOW_KERNELS_FIFO_QUEUE_H_
+#ifndef TENSORFLOW_CORE_KERNELS_FIFO_QUEUE_H_
+#define TENSORFLOW_CORE_KERNELS_FIFO_QUEUE_H_
 
 #include <deque>
 #include <vector>
@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/queue_op.h"
 #include "tensorflow/core/kernels/typed_queue.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -69,6 +70,22 @@ class FIFOQueue : public TypedQueue<std::deque<PersistentTensor> > {
   TF_DISALLOW_COPY_AND_ASSIGN(FIFOQueue);
 };
 
+// Defines a FIFOQueueOp, which produces a Queue (specifically, one
+// backed by FIFOQueue) that persists across different graph
+// executions, and sessions. Running this op produces a single-element
+// tensor of handles to Queues in the corresponding device.
+class FIFOQueueOp : public TypedQueueOp {
+ public:
+  explicit FIFOQueueOp(OpKernelConstruction* context);
+
+ private:
+  Status CreateResource(QueueInterface** ret) override
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  std::vector<TensorShape> component_shapes_;
+  TF_DISALLOW_COPY_AND_ASSIGN(FIFOQueueOp);
+};
+
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_FIFO_QUEUE_H_
+#endif  // TENSORFLOW_CORE_KERNELS_FIFO_QUEUE_H_

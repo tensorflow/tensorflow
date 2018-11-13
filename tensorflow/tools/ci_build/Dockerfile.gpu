@@ -14,6 +14,7 @@ RUN /install/install_bootstrap_deb_packages.sh
 RUN add-apt-repository -y ppa:openjdk-r/ppa && \
     add-apt-repository -y ppa:george-edison55/cmake-3.x
 RUN /install/install_deb_packages.sh
+
 RUN /install/install_pip_packages.sh
 RUN /install/install_bazel.sh
 RUN /install/install_golang.sh
@@ -22,6 +23,11 @@ RUN /install/install_golang.sh
 COPY install/.bazelrc /etc/bazel.bazelrc
 ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
 
+# Link NCCL libray and header where the build script expects them.
+RUN mkdir /usr/local/cuda-9.0/lib &&  \
+    ln -s /usr/lib/x86_64-linux-gnu/libnccl.so.2 /usr/local/cuda/lib/libnccl.so.2 && \
+    ln -s /usr/include/nccl.h /usr/local/cuda/include/nccl.h
+
 # Configure the build for our CUDA configuration.
 ENV TF_NEED_CUDA 1
-ENV TF_CUDA_COMPUTE_CAPABILITIES 3.0
+ENV TF_NEED_TENSORRT 1

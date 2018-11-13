@@ -33,25 +33,35 @@ class SingleLossStepTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           combinations.distributions_and_v1_optimizers(),
-          combinations.combine(mode=combinations.graph_and_eager_modes)))
-  def testTrainNetwork(self, distribution, optimizer_fn):
+          combinations.combine(mode=combinations.graph_and_eager_modes),
+          combinations.combine(is_tpu=[False])) +
+      combinations.combine(
+          distribution=[combinations.tpu_strategy],
+          optimizer_fn=combinations.optimizers_v1,
+          mode=["graph"],
+          is_tpu=[True]))
+  def testTrainNetwork(self, distribution, optimizer_fn, is_tpu):
     with distribution.scope():
       single_loss_step, layer = single_loss_example(
-          optimizer_fn, distribution, use_bias=True)
+          optimizer_fn, distribution, use_bias=True, iterations_per_step=2)
 
+      self.evaluate(distribution.initialize())
       if context.executing_eagerly():
         run_step = single_loss_step
       else:
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
+          sess.run(single_loss_step._iterator.initializer)
           run_step = sess.make_callable(single_loss_step())
       self.evaluate(variables.global_variables_initializer())
 
       weights, biases = [], []
-      for _ in range(10):
+      for _ in range(5):
         run_step()
 
-        weights.append(self.evaluate(distribution.fetch(layer.kernel)))
-        biases.append(self.evaluate(distribution.fetch(layer.bias)))
+        weights.append(self.evaluate(layer.kernel))
+        biases.append(self.evaluate(layer.bias))
+
+      self.evaluate(distribution.finalize())
 
       error = abs(numpy.add(numpy.squeeze(weights), numpy.squeeze(biases)) - 1)
       is_not_increasing = all(y <= x for x, y in zip(error, error[1:]))

@@ -112,6 +112,21 @@ func TestControlDependencies(t *testing.T) {
 	}
 }
 
+func TestDevice(t *testing.T) {
+	s := NewScope()
+	matrix := Const(s, [][]float32{{3.0}})
+	s = s.WithDevice("/device:GPU:0")
+	square := MatMul(s.SubScope("square"), matrix, matrix)
+	s = s.WithDevice("")
+	cube := MatMul(s.SubScope("cube"), square, matrix)
+	if got, want := square.Op.Device(), "/device:GPU:0"; got != want {
+		t.Errorf("Got %q, want %q", got, want)
+	}
+	if got, want := cube.Op.Device(), ""; got != want {
+		t.Errorf("Got %q, want %q", got, want)
+	}
+}
+
 func TestScopeFinalize(t *testing.T) {
 	var (
 		root = NewScope()

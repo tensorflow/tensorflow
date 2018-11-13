@@ -34,7 +34,7 @@ from tensorflow.python.training import gradient_descent
 
 class OptimizerTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testBasic(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       # Note that we name the variables uniquely here since the variables don't
@@ -64,7 +64,7 @@ class OptimizerTest(test.TestCase):
 
   def testAggregationMethod(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         cost = 5 * var0 + 3 * var1
@@ -89,7 +89,7 @@ class OptimizerTest(test.TestCase):
 
   def testPrecomputedGradient(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session():
+      with self.cached_session():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         cost = 5 * var0 + 3 * var1
@@ -112,7 +112,7 @@ class OptimizerTest(test.TestCase):
         self.assertAllClose([3.0 - 3 * 3 * 42.0, 4.0 - 3 * 3 * (-42.0)],
                             var1.eval())
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNoVariables(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       # pylint: disable=cell-var-from-loop
@@ -127,7 +127,7 @@ class OptimizerTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, 'No.*variables'):
         sgd_op.minimize(loss)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNoGradients(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       # Note that we name the variables uniquely here since the variables don't
@@ -145,7 +145,7 @@ class OptimizerTest(test.TestCase):
         # var1 has no gradient
         sgd_op.minimize(loss, var_list=[var1])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNoGradientsForAnyVariables_Minimize(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       # Note that we name the variables uniquely here since the variables don't
@@ -161,7 +161,7 @@ class OptimizerTest(test.TestCase):
                                    'No gradients provided for any variable'):
         sgd_op.minimize(loss, var_list=[var0, var1])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testNoGradientsForAnyVariables_ApplyGradients(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       # Note that we name the variables uniquely here since the variables don't
@@ -175,7 +175,7 @@ class OptimizerTest(test.TestCase):
                                    'No gradients provided for any variable'):
         sgd_op.apply_gradients([(None, var0), (None, var1)])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testGradientsAsVariables(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       # Note that we name the variables uniquely here since the variables don't
@@ -215,7 +215,7 @@ class OptimizerTest(test.TestCase):
       self.assertAllClose([-14., -13.], self.evaluate(var0))
       self.assertAllClose([-6., -5.], self.evaluate(var1))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testComputeGradientsWithTensors(self):
     x = ops.convert_to_tensor(1.0)
     def f():
@@ -231,7 +231,7 @@ class OptimizerTest(test.TestCase):
       sgd_op.apply_gradients(grads_and_vars)
 
   def testTrainOp(self):
-    with self.test_session():
+    with self.cached_session():
       var0 = variables.Variable([1.0, 2.0])
       var1 = variables.Variable([3.0, 4.0])
       cost = 5 * var0 + 3 * var1
@@ -244,7 +244,7 @@ class OptimizerTest(test.TestCase):
   def testConstraint(self):
     constraint_01 = lambda x: clip_ops.clip_by_value(x, -0.1, 0.)
     constraint_0 = lambda x: clip_ops.clip_by_value(x, 0., 1.)
-    with self.test_session():
+    with self.cached_session():
       var0 = variables.Variable([1.0, 2.0],
                                 constraint=constraint_01)
       var1 = variables.Variable([3.0, 4.0],

@@ -45,46 +45,48 @@ limitations under the License.
 namespace tensorflow {
 
 bool TensorHandle::IsReady() {
-  if (node_id == 0) return true;
+  if (node_id_ == 0) return true;
   mutex_lock l(ctx_mutex_);
   return is_ready_;
 }
 
-Status TensorHandle::WaitReady() {
+bool TensorHandle::IsRemote() {
+  return remote_op_id_ >= 0 && remote_output_num_ >= 0;
+}
+
+Status TensorHandle::WaitForNode(uint64 node_id, bool return_if_is_ready) {
   if (node_id == 0) return Status::OK();
   EagerExecutor* executor = nullptr;
   {
     mutex_lock l(ctx_mutex_);
-    if (is_ready_) return Status::OK();
+    if (return_if_is_ready && is_ready_) return Status::OK();
     executor = ctx_->Executor();
   }
   return executor->WaitFor(node_id);
 }
 
+Status TensorHandle::WaitReady() { return WaitForNode(node_id_, true); }
+
 Status TensorHandle::Tensor(const tensorflow::Tensor** t) {
+  if (IsRemote()) {
+    return errors::Unavailable(
+        "Unable to get a tensor for a remote device. Please copy the tensor "
+        "handle to a local device using TFE_TensorHandleCopyToDevice");
+  }
   TF_RETURN_IF_ERROR(WaitReady());
   DCHECK(IsReady());
   *t = &tensor_;
   return Status::OK();
 }
 
-Status TensorHandle::Device(tensorflow::Device** d) {
-  TF_RETURN_IF_ERROR(WaitReady());
-  DCHECK(IsReady());
-  *d = device_;
-  return Status::OK();
-}
-
-Status TensorHandle::OpDevice(tensorflow::Device** d) {
-  TF_RETURN_IF_ERROR(WaitReady());
-  DCHECK(IsReady());
-  *d = op_device_;
-  return Status::OK();
-}
-
 Status TensorHandle::TensorAndDevice(const tensorflow::Tensor** tensor,
                                      tensorflow::Device** device,
                                      tensorflow::Device** op_device) {
+  if (IsRemote()) {
+    return errors::Unavailable(
+        "Unable to get a tensor for a remote device. Please copy the tensor "
+        "handle to a local device using TFE_TensorHandleCopyToDevice");
+  }
   TF_RETURN_IF_ERROR(WaitReady());
   DCHECK(IsReady());
   *tensor = &tensor_;
@@ -93,17 +95,81 @@ Status TensorHandle::TensorAndDevice(const tensorflow::Tensor** tensor,
   return Status::OK();
 }
 
-void TensorHandle::SetTensorAndDevice(const tensorflow::Tensor& tensor,
-                                      tensorflow::Device* device,
-                                      tensorflow::Device* op_device) {
+Status TensorHandle::Shape(tensorflow::TensorShape* shape) {
+  if (IsRemote()) {
+    TF_RETURN_IF_ERROR(WaitForNode(remote_shape_node_id_, false));
+    CHECK(remote_shape_ != nullptr);
+    *shape = *(remote_shape_.get());
+  } else {
+    TF_RETURN_IF_ERROR(WaitReady());
+    DCHECK(IsReady());
+    *shape = tensor_.shape();
+  }
+  return Status::OK();
+}
+
+Status TensorHandle::NumDims(int* num_dims) {
+  if (IsRemote()) {
+    TF_RETURN_IF_ERROR(WaitForNode(remote_shape_node_id_, false));
+    *num_dims = remote_shape_->dims();
+  } else {
+    TF_RETURN_IF_ERROR(WaitReady());
+    DCHECK(IsReady());
+    DCHECK(num_dims != nullptr);
+
+    *num_dims = tensor_.dims();
+  }
+
+  return Status::OK();
+}
+
+Status TensorHandle::Dim(int dim_index, int64* dim) {
+  if (IsRemote()) {
+    TF_RETURN_IF_ERROR(WaitForNode(remote_shape_node_id_, false));
+    *dim = remote_shape_->dim_size(dim_index);
+  } else {
+    TF_RETURN_IF_ERROR(WaitReady());
+    DCHECK(IsReady());
+    DCHECK(dim != nullptr);
+
+    *dim = tensor_.dim_size(dim_index);
+  }
+
+  return Status::OK();
+}
+
+Status TensorHandle::NumElements(int64* num_elements) {
+  if (IsRemote()) {
+    TF_RETURN_IF_ERROR(WaitForNode(remote_shape_node_id_, false));
+    *num_elements = remote_shape_->num_elements();
+  } else {
+    TF_RETURN_IF_ERROR(WaitReady());
+    DCHECK(IsReady());
+    DCHECK(num_elements != nullptr);
+
+    *num_elements = tensor_.NumElements();
+  }
+
+  return Status::OK();
+}
+
+Status TensorHandle::RemoteAddress(int64* op_id, int32* output_num) {
+  if (!IsRemote()) {
+    return errors::FailedPrecondition(
+        "This TensorHandle refers to a local tensor handle");
+  }
+  *op_id = remote_op_id_;
+  *output_num = remote_output_num_;
+
+  return Status::OK();
+}
+
+void TensorHandle::SetTensor(const tensorflow::Tensor& tensor) {
   mutex_lock l(ctx_mutex_);
-  DCHECK(node_id > 0 && !is_ready_)
-      << "SetTensorAndDevice should be only called  "
-      << "on non-ready handles.";
+  DCHECK(node_id_ > 0 && !is_ready_) << "SetTensor should be only called  "
+                                     << "on non-ready handles.";
   is_ready_ = true;
   tensor_ = tensor;
-  device_ = device;
-  op_device_ = op_device;
 }
 
 Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
@@ -122,7 +188,6 @@ Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
   // has device type XLA_CPU, and the other CPU.
   const bool both_on_cpu = src_cpu && dst_cpu;
   if (is_same_device || both_on_cpu) {
-    dstd = dst_cpu ? nullptr : dstd;
     *output = new tensorflow::TensorHandle(*src, dstd, dstd, ctx);
     return tensorflow::Status::OK();
   }
@@ -164,6 +229,7 @@ Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
   tensorflow::CopyTensor::ViaDMA("copy", src_device_context, dst_device_context,
                                  srcd, dstd, tensorflow::AllocatorAttributes(),
                                  tensorflow::AllocatorAttributes(), src, &dst,
+                                 0 /*dev_to_dev_stream_index*/,
                                  [&status, &n](const tensorflow::Status& s) {
                                    status = s;
                                    n.Notify();

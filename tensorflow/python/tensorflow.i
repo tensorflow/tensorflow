@@ -38,7 +38,6 @@ limitations under the License.
 
 %include "tensorflow/python/lib/io/file_io.i"
 %include "tensorflow/python/training/quantize_training.i"
-%include "tensorflow/python/training/server_lib.i"
 
 %include "tensorflow/python/framework/python_op_gen.i"
 
@@ -54,4 +53,5 @@ limitations under the License.
 %include "tensorflow/python/grappler/item.i"
 %include "tensorflow/python/grappler/tf_optimizer.i"
 %include "tensorflow/python/grappler/cost_analyzer.i"
+%include "tensorflow/python/grappler/graph_analyzer.i"
 %include "tensorflow/python/grappler/model_analyzer.i"

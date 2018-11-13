@@ -32,7 +32,7 @@ class BFloat16ScopeTest(test.TestCase):
     """Test if name for the variable scope is propogated correctly.
     """
     with bfloat16.bfloat16_scope() as bf:
-      self.assertEqual(bf.name, "bfloat16")
+      self.assertEqual(bf.name, "")
 
   def testRequestedDType(self):
     """Test if requested dtype is honored in the getter.

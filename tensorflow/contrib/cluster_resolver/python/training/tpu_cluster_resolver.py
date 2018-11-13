@@ -36,6 +36,9 @@ except ImportError:
 
 
 _GKE_ENV_VARIABLE = 'KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'
+_ENDPOINTS_SEPARATOR = ','
+_DEFAULT_ENV_VARIABLE = 'TPU_NAME'
+_DISCOVERY_SERVICE_URL_ENV_VARIABLE = 'TPU_API_DISCOVERY_URL'
 
 
 class TPUClusterResolver(ClusterResolver):
@@ -47,6 +50,34 @@ class TPUClusterResolver(ClusterResolver):
   Cloud Platform project.
   """
 
+  def _tpuService(self):
+    """Creates a new Cloud TPU API object.
+
+    This works around an issue where the underlying HTTP connection sometimes
+    times out when the script has been running for too long. Other methods in
+    this object calls this method to get a new API object whenever they need
+    to communicate with the Cloud API.
+
+    Returns:
+      A Google Cloud TPU API object.
+    """
+    if self._service:
+      return self._service
+
+    credentials = self._credentials
+    if credentials is None or credentials == 'default':
+      credentials = GoogleCredentials.get_application_default()
+
+    if self._discovery_url:
+      return discovery.build(
+          'tpu', 'v1alpha1',
+          credentials=credentials,
+          discoveryServiceUrl=self._discovery_url)
+    else:
+      return discovery.build(
+          'tpu', 'v1alpha1',
+          credentials=credentials)
+
   def _requestComputeMetadata(self, path):
     req = Request('http://metadata/computeMetadata/v1/%s' % path,
                   headers={'Metadata-Flavor': 'Google'})
@@ -57,6 +88,7 @@ class TPUClusterResolver(ClusterResolver):
     if (self._tpu == compat.as_bytes('') or
         self._tpu == compat.as_bytes('local') or
         self._tpu.startswith(compat.as_bytes('/bns')) or
+        self._tpu.startswith(compat.as_bytes('localhost:')) or
         self._tpu.startswith(compat.as_bytes('grpc://'))):
       return False
     return True
@@ -67,8 +99,18 @@ class TPUClusterResolver(ClusterResolver):
     return _GKE_ENV_VARIABLE in os.environ
 
   @staticmethod
-  def _gkeMaster():
-    return os.environ[_GKE_ENV_VARIABLE].split(',')[0]
+  def _gkeEndpoints():
+    return os.environ[_GKE_ENV_VARIABLE]
+
+  @staticmethod
+  def _envVarFallback():
+    if _DEFAULT_ENV_VARIABLE in os.environ:
+      return os.environ[_DEFAULT_ENV_VARIABLE]
+    return None
+
+  @staticmethod
+  def _environmentDiscoveryUrl():
+    return os.environ.get(_DISCOVERY_SERVICE_URL_ENV_VARIABLE)
 
   def __init__(self,
                tpu=None,
@@ -78,7 +120,8 @@ class TPUClusterResolver(ClusterResolver):
                coordinator_name=None,
                coordinator_address=None,
                credentials='default',
-               service=None):
+               service=None,
+               discovery_url=None):
     """Creates a new TPUClusterResolver object.
 
     The ClusterResolver will then use the parameters to query the Cloud TPU APIs
@@ -108,6 +151,11 @@ class TPUClusterResolver(ClusterResolver):
       service: The GCE API object returned by the googleapiclient.discovery
         function. If you specify a custom service object, then the credentials
         parameter will be ignored.
+      discovery_url: A URL template that points to the location of
+        the discovery service. It should have two parameters {api} and
+        {apiVersion} that when filled in produce an absolute URL to the
+        discovery document for that service. The environment variable
+        'TPU_API_DISCOVERY_URL' will override this.
 
     Raises:
       ImportError: If the googleapiclient is not installed.
@@ -123,51 +171,58 @@ class TPUClusterResolver(ClusterResolver):
 
     in_gke = self._inGke()
     # When using GKE with Cloud TPUs, the env variable will be set.
-    if tpu is None and in_gke:
-      tpu = self._gkeMaster()
+    if tpu is None:
+      if in_gke:
+        tpu = self._gkeEndpoints()
+      else:
+        tpu = self._envVarFallback()
+
+    if tpu is None:
+      raise ValueError('Please provide a TPU Name to connect to.')
 
     self._tpu = compat.as_bytes(tpu)  # self._tpu is always bytes
     self._job_name = job_name
-    self._credentials = credentials
 
+    # Whether we should actually attempt to contact Cloud APIs
     should_resolve = self._shouldResolve()
 
+    # We error out if we are in a non-Cloud environment which cannot talk to the
+    # Cloud APIs using the standard class and a special object is not passed in.
+    self._service = service
+    if (self._service is None and should_resolve and
+        not _GOOGLE_API_CLIENT_INSTALLED):
+      raise ImportError('googleapiclient and oauth2client must be installed '
+                        'before using the TPU cluster resolver. Execute: '
+                        '`pip install --upgrade google-api-python-client` '
+                        'and `pip install --upgrade oauth2client` to '
+                        'install with pip.')
+
+    # We save user-passed credentials, unless the user didn't pass in anything.
+    self._credentials = credentials
+    if (credentials == 'default' and should_resolve and
+        _GOOGLE_API_CLIENT_INSTALLED):
+      self._credentials = None
+
+    # Automatically detect project and zone if unspecified.
     if not project and should_resolve:
       project = compat.as_str(
           self._requestComputeMetadata('project/project-id'))
-
     if not zone and should_resolve:
       zone_path = compat.as_str(self._requestComputeMetadata('instance/zone'))
       zone = zone_path.split('/')[-1]
-
     self._project = project
     self._zone = zone
 
-    if credentials == 'default' and should_resolve:
-      if _GOOGLE_API_CLIENT_INSTALLED:
-        self._credentials = GoogleCredentials.get_application_default()
-
-    if service is None and should_resolve:
-      if not _GOOGLE_API_CLIENT_INSTALLED:
-        raise ImportError('googleapiclient must be installed before using the '
-                          'TPU cluster resolver. Execute: `pip install '
-                          '--upgrade google-api-python-client` to install with '
-                          'pip.')
-
-      self._service = discovery.build(
-          'tpu', 'v1alpha1',
-          credentials=self._credentials)
-    else:
-      self._service = service
+    self._discovery_url = self._environmentDiscoveryUrl() or discovery_url
 
     self._coordinator_name = coordinator_name
-    if coordinator_name and not coordinator_address and (should_resolve or
-                                                         in_gke):
+    if (coordinator_name and not coordinator_address and
+        (should_resolve or in_gke)):
       self._start_local_server()
     else:
       self._coordinator_address = coordinator_address
 
-  def master(self):
+  def master(self, task_type=None, task_index=None):
     """Get the Master string to be used for the session.
 
     In the normal case, this returns the grpc path (grpc://1.2.3.4:8470) of
@@ -178,6 +233,10 @@ class TPUClusterResolver(ClusterResolver):
     this TPUClusterResolver was 'grpc://10.240.1.2:8470',
     'grpc://10.240.1.2:8470' will be returned).
 
+    Args:
+      task_type: (Optional) The type of the TensorFlow task of the master.
+      task_index: (Optional) The index of the TensorFlow task of the master.
+
     Returns:
       string, the connection string to use when creating a session.
 
@@ -185,9 +244,13 @@ class TPUClusterResolver(ClusterResolver):
       ValueError: If none of the TPUs specified exists.
     """
     if not self._shouldResolve():
-      return self._tpu
+      return self._tpu.split(compat.as_bytes(_ENDPOINTS_SEPARATOR))[0]
 
-    job_tasks = self.cluster_spec().job_tasks(self._job_name)
+    cluster_spec = self.cluster_spec()
+    if task_type and task_index:
+      return cluster_spec.task_address(task_type, task_index)
+
+    job_tasks = cluster_spec.job_tasks(self._job_name)
     if not job_tasks:
       raise ValueError('No TPUs exists with the specified names exist.')
 
@@ -195,6 +258,10 @@ class TPUClusterResolver(ClusterResolver):
 
   def get_master(self):
     return self.master()
+
+  def get_job_name(self):
+    if self._shouldResolve():
+      return self._job_name
 
   def cluster_spec(self):
     """Returns a ClusterSpec object based on the latest TPU information.
@@ -224,12 +291,17 @@ class TPUClusterResolver(ClusterResolver):
       # Case 1.
       full_name = 'projects/%s/locations/%s/nodes/%s' % (
           self._project, self._zone, compat.as_text(self._tpu))
-      request = self._service.projects().locations().nodes().get(name=full_name)
+      service = self._tpuService()
+      request = service.projects().locations().nodes().get(name=full_name)
       response = request.execute()
 
+      if 'state' in response and response['state'] != 'READY':
+        raise RuntimeError('TPU "%s" is not yet ready; state: "%s"' %
+                           (compat.as_text(self._tpu), response['state']))
+
       if 'health' in response and response['health'] != 'HEALTHY':
-        raise RuntimeError('TPU "%s" is unhealthy: "%s"' % (self._tpu,
-                                                            response['health']))
+        raise RuntimeError('TPU "%s" is unhealthy: "%s"' %
+                           (compat.as_text(self._tpu), response['health']))
 
       if 'networkEndpoints' in response:
         worker_list = [
@@ -247,8 +319,12 @@ class TPUClusterResolver(ClusterResolver):
         # Case 3.
         return None
       # Case 2.
-      cluster_spec = {self._job_name: [self._tpu[len(
-          compat.as_bytes('grpc://')):]]}
+      cluster_spec = {
+          self._job_name: [
+              x[len(compat.as_bytes('grpc://')):]
+              for x in self._tpu.split(compat.as_bytes(_ENDPOINTS_SEPARATOR))
+          ]
+      }
 
     if self._coordinator_address:
       # {1, 2}.a

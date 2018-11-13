@@ -12,22 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/batch_util.h"
-#include "tensorflow/core/kernels/data/dataset.h"
+#include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class BatchDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit BatchDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {}
+      : UnaryDatasetOpKernel(ctx),
+        op_version_(ctx->def().op() == "BatchDataset" ? 1 : 2) {}
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
@@ -38,14 +39,24 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
         ctx, batch_size > 0,
         errors::InvalidArgument("Batch size must be greater than zero."));
 
-    *output = new Dataset(ctx, batch_size, input);
+    bool drop_remainder = false;
+    if (op_version_ > 1) {
+      OP_REQUIRES_OK(ctx, ParseScalarArgument<bool>(ctx, "drop_remainder",
+                                                    &drop_remainder));
+    }
+
+    *output = new Dataset(ctx, batch_size, drop_remainder, input);
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
-    Dataset(OpKernelContext* ctx, int64 batch_size, const DatasetBase* input)
-        : GraphDatasetBase(ctx), batch_size_(batch_size), input_(input) {
+    Dataset(OpKernelContext* ctx, int64 batch_size, bool drop_remainder,
+            const DatasetBase* input)
+        : DatasetBase(DatasetContext(ctx)),
+          batch_size_(batch_size),
+          drop_remainder_(drop_remainder),
+          input_(input) {
       input_->Ref();
 
       // NOTE(mrry): Currently we implement "batch up to" semantics. If
@@ -54,14 +65,19 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
       const auto& input_shapes = input_->output_shapes();
       output_shapes_.reserve(input_shapes.size());
       for (const auto& input_shape : input_shapes) {
-        output_shapes_.emplace_back(
-            PartialTensorShape({-1}).Concatenate(input_shape));
+        if (drop_remainder_) {
+          output_shapes_.emplace_back(
+              PartialTensorShape({batch_size_}).Concatenate(input_shape));
+        } else {
+          output_shapes_.emplace_back(
+              PartialTensorShape({-1}).Concatenate(input_shape));
+        }
       }
     }
 
     ~Dataset() override { input_->Unref(); }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(new Iterator(
           Iterator::Params{this, strings::StrCat(prefix, "::Batch")}));
@@ -75,19 +91,22 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override {
+    string DebugString() const override {
       return strings::StrCat("BatchDatasetOp(", batch_size_, ")::Dataset");
     }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* input_graph_node = nullptr;
-      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+      TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
       Node* batch_size = nullptr;
       TF_RETURN_IF_ERROR(b->AddScalar(batch_size_, &batch_size));
-      TF_RETURN_IF_ERROR(
-          b->AddDataset(this, {input_graph_node, batch_size}, output));
+      Node* drop_remainder = nullptr;
+      TF_RETURN_IF_ERROR(b->AddScalar(drop_remainder_, &drop_remainder));
+      TF_RETURN_IF_ERROR(b->AddDataset(
+          this, {input_graph_node, batch_size, drop_remainder}, output));
       return Status::OK();
     }
 
@@ -95,8 +114,11 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
     class Iterator : public DatasetIterator<Dataset> {
      public:
       explicit Iterator(const Params& params)
-          : DatasetIterator<Dataset>(params),
-            input_impl_(params.dataset->input_->MakeIterator(params.prefix)) {}
+          : DatasetIterator<Dataset>(params) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
@@ -130,6 +152,12 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
           return Status::OK();
         }
 
+        if (dataset()->drop_remainder_ &&
+            batch_elements.size() < dataset()->batch_size_) {
+          *end_of_sequence = true;
+          return Status::OK();
+        }
+
         // Copy the retrieved batch elements into one output tensor
         // per tuple component.
         // NOTE(mrry): If the input or output sizes are statically
@@ -144,8 +172,14 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
           const Tensor& first_element = batch_elements[0][component_index];
           TensorShape batch_component_shape({num_batch_elements});
           batch_component_shape.AppendShape(first_element.shape());
-          Tensor batch_component(ctx->allocator({}), first_element.dtype(),
-                                 batch_component_shape);
+          out_tensors->emplace_back(ctx->allocator({}), first_element.dtype(),
+                                    batch_component_shape);
+          if (!out_tensors->back().IsInitialized()) {
+            return errors::ResourceExhausted(
+                "Failed to allocate memory for the batch of component ",
+                component_index);
+          }
+          Tensor& batch_component = out_tensors->back();
           // Build the output tuple component by copying one slice
           // from each input element in the batch.
           for (size_t i = 0; i < num_batch_elements; ++i) {
@@ -163,20 +197,25 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
                 std::move(batch_elements[i][component_index]), &batch_component,
                 i));
           }
-          out_tensors->emplace_back(std::move(batch_component));
         }
         *end_of_sequence = false;
         return Status::OK();
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         dataset()->batch_size_);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (!input_impl_) {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impl_empty"), ""));
         } else {
-          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
         }
         return Status::OK();
       }
@@ -185,7 +224,7 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         if (!reader->Contains(full_name("input_impl_empty"))) {
-          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         } else {
           input_impl_.reset();
         }
@@ -198,14 +237,20 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const int64 batch_size_;
+    const bool drop_remainder_;
     const DatasetBase* const input_;
     std::vector<PartialTensorShape> output_shapes_;
   };
+
+  const int op_version_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("BatchDataset").Device(DEVICE_CPU),
                         BatchDatasetOp);
 
-}  // namespace
+REGISTER_KERNEL_BUILDER(Name("BatchDatasetV2").Device(DEVICE_CPU),
+                        BatchDatasetOp);
 
+}  // namespace
+}  // namespace data
 }  // namespace tensorflow

@@ -22,10 +22,10 @@ limitations under the License.
 namespace tensorflow {
 
 // The returned WorkerCacheInterface object takes the ownership of "cc".
-WorkerCacheInterface* NewGrpcWorkerCache(GrpcChannelCache* cc);
+WorkerCacheInterface* NewGrpcWorkerCache(std::shared_ptr<GrpcChannelCache> cc);
 
 WorkerCacheInterface* NewGrpcWorkerCacheWithLocalWorker(
-    GrpcChannelCache* cc, WorkerInterface* local_worker,
+    std::shared_ptr<GrpcChannelCache> cc, WorkerInterface* local_worker,
     const string& local_target);
 
 }  // namespace tensorflow

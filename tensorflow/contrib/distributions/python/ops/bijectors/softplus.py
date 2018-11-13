@@ -25,6 +25,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops.distributions import bijector
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -80,6 +81,14 @@ class Softplus(bijector.Bijector):
           "hinge_softness": (
               "Nonzero floating point `Tensor`.  Controls the softness of what "
               "would otherwise be a kink at the origin.  Default is 1.0")})
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                hinge_softness=None,
                validate_args=False,

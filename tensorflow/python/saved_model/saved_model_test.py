@@ -44,6 +44,7 @@ from tensorflow.python.saved_model import main_op
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import saver_test_utils
+from tensorflow.python.training import training
 from tensorflow.python.util import compat
 
 SAVED_MODEL_PATH = ("cc/saved_model/testdata/half_plus_two/00000123")
@@ -53,23 +54,23 @@ def tearDownModule():
   file_io.delete_recursively(test.get_temp_dir())
 
 
-@test_util.with_c_api
 class SavedModelTest(test.TestCase):
 
   def _get_export_dir(self, label):
-    if ops._USE_C_API:
-      label += "_c_api"
     return os.path.join(test.get_temp_dir(), label)
 
   def _init_and_validate_variable(self, sess, variable_name, variable_value):
-    v = variables.Variable(variable_value, name=variable_name)
+    v = variables.VariableV1(variable_value, name=variable_name)
     sess.run(variables.global_variables_initializer())
     self.assertEqual(variable_value, v.eval())
 
   def _build_asset_collection(self, asset_file_name, asset_file_contents,
-                              asset_file_tensor_name):
+                              asset_file_tensor_name, asset_subdir=""):
+    parent_dir = os.path.join(
+        compat.as_bytes(test.get_temp_dir()), compat.as_bytes(asset_subdir))
+    file_io.recursive_create_dir(parent_dir)
     asset_filepath = os.path.join(
-        compat.as_bytes(test.get_temp_dir()), compat.as_bytes(asset_file_name))
+        compat.as_bytes(parent_dir), compat.as_bytes(asset_file_name))
     file_io.write_string_to_file(asset_filepath, asset_file_contents)
     asset_file_tensor = constant_op.constant(
         asset_filepath, name=asset_file_tensor_name)
@@ -80,10 +81,11 @@ class SavedModelTest(test.TestCase):
   def _validate_asset_collection(self, export_dir, graph_collection_def,
                                  expected_asset_file_name,
                                  expected_asset_file_contents,
-                                 expected_asset_tensor_name):
+                                 expected_asset_tensor_name,
+                                 asset_id=0):
     assets_any = graph_collection_def[constants.ASSETS_KEY].any_list.value
     asset = meta_graph_pb2.AssetFileDef()
-    assets_any[0].Unpack(asset)
+    assets_any[asset_id].Unpack(asset)
     assets_path = os.path.join(
         compat.as_bytes(export_dir),
         compat.as_bytes(constants.ASSETS_DIRECTORY),
@@ -95,7 +97,7 @@ class SavedModelTest(test.TestCase):
     self.assertEqual(expected_asset_tensor_name, asset.tensor_info.name)
 
   def _validate_inputs_tensor_info_fail(self, builder, tensor_info):
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 42)
 
       foo_signature = signature_def_utils.build_signature_def({
@@ -108,7 +110,7 @@ class SavedModelTest(test.TestCase):
           signature_def_map={"foo_key": foo_signature})
 
   def _validate_inputs_tensor_info_accept(self, builder, tensor_info):
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 42)
 
       foo_signature = signature_def_utils.build_signature_def({
@@ -119,7 +121,7 @@ class SavedModelTest(test.TestCase):
           signature_def_map={"foo_key": foo_signature})
 
   def _validate_outputs_tensor_info_fail(self, builder, tensor_info):
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 42)
 
       foo_signature = signature_def_utils.build_signature_def(
@@ -131,7 +133,7 @@ class SavedModelTest(test.TestCase):
           signature_def_map={"foo_key": foo_signature})
 
   def _validate_outputs_tensor_info_accept(self, builder, tensor_info):
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 42)
 
       foo_signature = signature_def_utils.build_signature_def(
@@ -151,7 +153,7 @@ class SavedModelTest(test.TestCase):
   def testBadSavedModelFileFormat(self):
     export_dir = self._get_export_dir("test_bad_saved_model_file_format")
     # Attempt to load a SavedModel from an export directory that does not exist.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       with self.assertRaisesRegexp(IOError,
                                    "SavedModel file does not exist at: %s" %
                                    export_dir):
@@ -162,7 +164,7 @@ class SavedModelTest(test.TestCase):
     path_to_pb = os.path.join(export_dir, constants.SAVED_MODEL_FILENAME_PB)
     with open(path_to_pb, "w") as f:
       f.write("invalid content")
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       with self.assertRaisesRegexp(IOError, "Cannot parse file.*%s" %
                                    constants.SAVED_MODEL_FILENAME_PB):
         loader.load(sess, ["foo"], export_dir)
@@ -176,7 +178,7 @@ class SavedModelTest(test.TestCase):
                                  constants.SAVED_MODEL_FILENAME_PBTXT)
     with open(path_to_pbtxt, "w") as f:
       f.write("invalid content")
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       with self.assertRaisesRegexp(IOError, "Cannot parse file.*%s" %
                                    constants.SAVED_MODEL_FILENAME_PBTXT):
         loader.load(sess, ["foo"], export_dir)
@@ -185,7 +187,7 @@ class SavedModelTest(test.TestCase):
     export_dir = self._get_export_dir("test_verify_session_graph_usage")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 42)
       builder.add_meta_graph_and_variables(sess, [tag_constants.TRAINING])
 
@@ -207,12 +209,12 @@ class SavedModelTest(test.TestCase):
 
     # Expect an assertion error since add_meta_graph_and_variables() should be
     # invoked before any add_meta_graph() calls.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self.assertRaises(AssertionError, builder.add_meta_graph, ["foo"])
 
     # Expect an assertion error for multiple calls of
     # add_meta_graph_and_variables() since weights should be saved exactly once.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 42)
       builder.add_meta_graph_and_variables(sess, ["bar"])
       self.assertRaises(AssertionError, builder.add_meta_graph_and_variables,
@@ -225,35 +227,35 @@ class SavedModelTest(test.TestCase):
     # Graph with a single variable. SavedModel invoked to:
     # - add with weights.
     # - a single tag (from predefined constants).
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 42)
       builder.add_meta_graph_and_variables(sess, [tag_constants.TRAINING])
 
     # Graph that updates the single variable. SavedModel invoked to:
     # - simply add the model (weights are not updated).
     # - a single tag (from predefined constants).
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 43)
       builder.add_meta_graph([tag_constants.SERVING])
 
     # Graph that updates the single variable. SavedModel invoked to:
     # - simply add the model (weights are not updated).
     # - multiple tags (from predefined constants).
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 45)
       builder.add_meta_graph([tag_constants.SERVING, tag_constants.GPU])
 
     # Graph that updates the single variable. SavedModel invoked to:
     # - simply add the model (weights are not updated).
     # - multiple tags (from predefined constants for serving on TPU).
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 45)
       builder.add_meta_graph([tag_constants.SERVING, tag_constants.TPU])
 
     # Graph that updates the single variable. SavedModel is invoked:
     # - to add the model (weights are not updated).
     # - multiple custom tags.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 44)
       builder.add_meta_graph(["foo", "bar"])
 
@@ -261,49 +263,49 @@ class SavedModelTest(test.TestCase):
     builder.save()
 
     # Restore the graph with a single predefined tag whose variables were saved.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, [tag_constants.TRAINING], export_dir)
       self.assertEqual(
           42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
     # Restore the graph with a single predefined tag whose variables were not
     # saved.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, [tag_constants.SERVING], export_dir)
       self.assertEqual(
           42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
     # Restore the graph with multiple predefined tags whose variables were not
     # saved.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, [tag_constants.SERVING, tag_constants.GPU], export_dir)
       self.assertEqual(
           42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
     # Restore the graph with multiple predefined tags (for serving on TPU)
     # whose variables were not saved.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, [tag_constants.SERVING, tag_constants.TPU], export_dir)
       self.assertEqual(
           42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
     # Restore the graph with multiple tags. Provide duplicate tags to test set
     # semantics.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, ["foo", "bar", "foo"], export_dir)
       self.assertEqual(
           42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
     # Try restoring a graph with a non-existent tag. This should yield a runtime
     # error.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self.assertRaises(RuntimeError, loader.load, sess, ["INVALID"],
                         export_dir)
 
     # Try restoring a graph where a subset of the tags match. Since tag matching
     # for meta graph defs follows "all" semantics, this should yield a runtime
     # error.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self.assertRaises(RuntimeError, loader.load, sess, ["foo", "baz"],
                         export_dir)
 
@@ -313,7 +315,7 @@ class SavedModelTest(test.TestCase):
 
     # Graph with two variables. SavedModel invoked to:
     # - add with weights.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v1", 1)
       self._init_and_validate_variable(sess, "v2", 2)
       builder.add_meta_graph_and_variables(sess, ["foo"])
@@ -321,14 +323,14 @@ class SavedModelTest(test.TestCase):
     # Graph with a single variable (subset of the variables from the previous
     # graph whose weights were saved). SavedModel invoked to:
     # - simply add the model (weights are not updated).
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v2", 3)
       builder.add_meta_graph(["bar"])
 
     # Graph with a single variable (disjoint set of variables from the previous
     # graph whose weights were saved). SavedModel invoked to:
     # - simply add the model (weights are not updated).
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v3", 4)
       builder.add_meta_graph(["baz"])
 
@@ -336,7 +338,7 @@ class SavedModelTest(test.TestCase):
     builder.save()
 
     # Restore the graph with tag "foo", whose variables were saved.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, ["foo"], export_dir)
       collection_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
       self.assertEqual(len(collection_vars), 2)
@@ -346,7 +348,7 @@ class SavedModelTest(test.TestCase):
     # Restore the graph with tag "bar", whose variables were not saved. Only the
     # subset of the variables added to the graph will be restored with the
     # checkpointed value.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, ["bar"], export_dir)
       collection_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
       self.assertEqual(len(collection_vars), 1)
@@ -355,7 +357,7 @@ class SavedModelTest(test.TestCase):
     # Try restoring the graph with tag "baz", whose variables were not saved.
     # Since this graph has a disjoint set of variables from the set that was
     # saved, this should raise an error.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self.assertRaises(errors.NotFoundError, loader.load, sess, ["baz"],
                         export_dir)
 
@@ -364,12 +366,12 @@ class SavedModelTest(test.TestCase):
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
     # Graph with no variables.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       constant_5_name = constant_op.constant(5.0).name
       builder.add_meta_graph_and_variables(sess, ["foo"])
 
     # Second graph with no variables
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       constant_6_name = constant_op.constant(6.0).name
       builder.add_meta_graph(["bar"])
 
@@ -377,7 +379,7 @@ class SavedModelTest(test.TestCase):
     builder.save()
 
     # Restore the graph with tag "foo".
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, ["foo"], export_dir)
       # Read the constant a from the graph.
       a = ops.get_default_graph().get_tensor_by_name(constant_5_name)
@@ -386,7 +388,7 @@ class SavedModelTest(test.TestCase):
       self.assertEqual(30.0, sess.run(c))
 
     # Restore the graph with tag "bar".
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, ["bar"], export_dir)
       # Read the constant a from the graph.
       a = ops.get_default_graph().get_tensor_by_name(constant_6_name)
@@ -400,7 +402,7 @@ class SavedModelTest(test.TestCase):
 
     # Graph with a single variable. SavedModel invoked to:
     # - add with weights.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 42)
       builder.add_meta_graph_and_variables(sess, ["foo"])
 
@@ -408,7 +410,7 @@ class SavedModelTest(test.TestCase):
     builder.save(as_text=True)
 
     # Restore the graph with tag "foo", whose variables were saved.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, ["foo"], export_dir)
       self.assertEqual(
           42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
@@ -424,13 +426,13 @@ class SavedModelTest(test.TestCase):
 
     # Graph with a single variable. SavedModel invoked to:
     # - add with weights.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 42)
       builder.add_meta_graph_and_variables(sess, ["foo"])
 
     # Graph with the same single variable. SavedModel invoked to:
     # - simply add the model (weights are not updated).
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 43)
       builder.add_meta_graph(["bar"])
 
@@ -438,13 +440,13 @@ class SavedModelTest(test.TestCase):
     builder.save(as_text=True)
 
     # Restore the graph with tag "foo", whose variables were saved.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, ["foo"], export_dir)
       self.assertEqual(
           42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
     # Restore the graph with tag "bar", whose variables were not saved.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, ["bar"], export_dir)
       self.assertEqual(
           42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
@@ -455,8 +457,8 @@ class SavedModelTest(test.TestCase):
 
     # Graph with a single variable added to a collection. SavedModel invoked to:
     # - add with weights.
-    with self.test_session(graph=ops.Graph()) as sess:
-      v = variables.Variable(42, name="v")
+    with self.session(graph=ops.Graph()) as sess:
+      v = variables.VariableV1(42, name="v")
       ops.add_to_collection("foo_vars", v)
       sess.run(variables.global_variables_initializer())
       self.assertEqual(42, v.eval())
@@ -465,8 +467,8 @@ class SavedModelTest(test.TestCase):
     # Graph with the same single variable added to a different collection.
     # SavedModel invoked to:
     # - simply add the model (weights are not updated).
-    with self.test_session(graph=ops.Graph()) as sess:
-      v = variables.Variable(43, name="v")
+    with self.session(graph=ops.Graph()) as sess:
+      v = variables.VariableV1(43, name="v")
       ops.add_to_collection("bar_vars", v)
       sess.run(variables.global_variables_initializer())
       self.assertEqual(43, v.eval())
@@ -478,7 +480,7 @@ class SavedModelTest(test.TestCase):
     # Restore the graph with tag "foo", whose variables were saved. The
     # collection 'foo_vars' should contain a single element. The collection
     # 'bar_vars' should not be found.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, ["foo"], export_dir)
       collection_foo_vars = ops.get_collection("foo_vars")
       self.assertEqual(len(collection_foo_vars), 1)
@@ -491,7 +493,7 @@ class SavedModelTest(test.TestCase):
     # reflect the new collection. The value of the variable in the
     # collection-def corresponds to the saved value (from the previous graph
     # with tag "foo").
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, ["bar"], export_dir)
       collection_bar_vars = ops.get_collection("bar_vars")
       self.assertEqual(len(collection_bar_vars), 1)
@@ -505,7 +507,7 @@ class SavedModelTest(test.TestCase):
 
     # Graph with a single variable and a single entry in the signature def map.
     # SavedModel is invoked to add with weights.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 42)
       # Build and populate an empty SignatureDef for testing.
       foo_signature = signature_def_utils.build_signature_def(dict(),
@@ -515,7 +517,7 @@ class SavedModelTest(test.TestCase):
 
     # Graph with the same single variable and multiple entries in the signature
     # def map. No weights are saved by SavedModel.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 43)
       # Build and populate a different SignatureDef for testing.
       bar_signature = signature_def_utils.build_signature_def(dict(),
@@ -537,7 +539,7 @@ class SavedModelTest(test.TestCase):
 
     # Restore the graph with tag "foo". The single entry in the SignatureDef map
     # corresponding to "foo_key" should exist.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       foo_graph = loader.load(sess, ["foo"], export_dir)
       self.assertEqual(
           42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
@@ -549,7 +551,7 @@ class SavedModelTest(test.TestCase):
     # Restore the graph with tag "bar". The SignatureDef map should have two
     # entries. One corresponding to "bar_key" and another corresponding to the
     # new value of "foo_key".
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       bar_graph = loader.load(sess, ["bar"], export_dir)
       self.assertEqual(
           42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
@@ -608,7 +610,7 @@ class SavedModelTest(test.TestCase):
     export_dir = self._get_export_dir("test_assets")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 42)
 
       # Build an asset collection.
@@ -626,7 +628,7 @@ class SavedModelTest(test.TestCase):
     # Save the SavedModel to disk.
     builder.save()
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       foo_graph = loader.load(sess, ["foo"], export_dir)
       self._validate_asset_collection(export_dir, foo_graph.collection_def,
                                       "hello42.txt", "foo bar baz",
@@ -637,19 +639,154 @@ class SavedModelTest(test.TestCase):
           compat.as_bytes("ignored.txt"))
       self.assertFalse(file_io.file_exists(ignored_asset_path))
 
+  def testAssetsNameCollisionDiffFile(self):
+    export_dir = self._get_export_dir("test_assets_name_collision_diff_file")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.session(graph=ops.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 42)
+
+      asset_collection = self._build_asset_collection(
+          "hello42.txt", "foo bar bak", "asset_file_tensor",
+          asset_subdir="1")
+
+      asset_collection = self._build_asset_collection(
+          "hello42.txt", "foo bar baz", "asset_file_tensor_1",
+          asset_subdir="2")
+
+      builder.add_meta_graph_and_variables(
+          sess, ["foo"], assets_collection=asset_collection)
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with self.session(graph=ops.Graph()) as sess:
+      foo_graph = loader.load(sess, ["foo"], export_dir)
+      self._validate_asset_collection(export_dir, foo_graph.collection_def,
+                                      "hello42.txt", "foo bar bak",
+                                      "asset_file_tensor:0")
+      self._validate_asset_collection(export_dir, foo_graph.collection_def,
+                                      "hello42.txt_1", "foo bar baz",
+                                      "asset_file_tensor_1:0",
+                                      asset_id=1)
+
+  def testAssetsNameCollisionSameFilepath(self):
+    export_dir = self._get_export_dir("test_assets_name_collision_same_path")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.session(graph=ops.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 42)
+
+      asset_collection = self._build_asset_collection(
+          "hello42.txt", "foo bar baz", "asset_file_tensor")
+
+      asset_collection = self._build_asset_collection(
+          "hello42.txt", "foo bar baz", "asset_file_tensor_1")
+
+      builder.add_meta_graph_and_variables(
+          sess, ["foo"], assets_collection=asset_collection)
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with self.session(graph=ops.Graph()) as sess:
+      foo_graph = loader.load(sess, ["foo"], export_dir)
+      self._validate_asset_collection(export_dir, foo_graph.collection_def,
+                                      "hello42.txt", "foo bar baz",
+                                      "asset_file_tensor:0")
+      # The second tensor should be recorded, but the same.
+      self._validate_asset_collection(export_dir, foo_graph.collection_def,
+                                      "hello42.txt", "foo bar baz",
+                                      "asset_file_tensor_1:0",
+                                      asset_id=1)
+      ignored_asset_path = os.path.join(
+          compat.as_bytes(export_dir),
+          compat.as_bytes(constants.ASSETS_DIRECTORY),
+          compat.as_bytes("hello42.txt_1"))
+      self.assertFalse(file_io.file_exists(ignored_asset_path))
+
+  def testAssetsNameCollisionSameFile(self):
+    export_dir = self._get_export_dir("test_assets_name_collision_same_file")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.session(graph=ops.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 42)
+
+      asset_collection = self._build_asset_collection(
+          "hello42.txt", "foo bar baz", "asset_file_tensor",
+          asset_subdir="1")
+
+      asset_collection = self._build_asset_collection(
+          "hello42.txt", "foo bar baz", "asset_file_tensor_1",
+          asset_subdir="2")
+
+      builder.add_meta_graph_and_variables(
+          sess, ["foo"], assets_collection=asset_collection)
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with self.session(graph=ops.Graph()) as sess:
+      foo_graph = loader.load(sess, ["foo"], export_dir)
+      self._validate_asset_collection(export_dir, foo_graph.collection_def,
+                                      "hello42.txt", "foo bar baz",
+                                      "asset_file_tensor:0")
+      # The second tensor should be recorded, but the same.
+      self._validate_asset_collection(export_dir, foo_graph.collection_def,
+                                      "hello42.txt", "foo bar baz",
+                                      "asset_file_tensor_1:0",
+                                      asset_id=1)
+      ignored_asset_path = os.path.join(
+          compat.as_bytes(export_dir),
+          compat.as_bytes(constants.ASSETS_DIRECTORY),
+          compat.as_bytes("hello42.txt_1"))
+      self.assertFalse(file_io.file_exists(ignored_asset_path))
+
+  def testAssetsNameCollisionManyFiles(self):
+    export_dir = self._get_export_dir("test_assets_name_collision_many_files")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.session(graph=ops.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 42)
+
+      for i in range(5):
+        idx = str(i)
+        asset_collection = self._build_asset_collection(
+            "hello42.txt", "foo bar baz " + idx, "asset_file_tensor_" + idx,
+            asset_subdir=idx)
+
+      builder.add_meta_graph_and_variables(
+          sess, ["foo"], assets_collection=asset_collection)
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with self.session(graph=ops.Graph()) as sess:
+      foo_graph = loader.load(sess, ["foo"], export_dir)
+      for i in range(1, 5):
+        idx = str(i)
+        self._validate_asset_collection(
+            export_dir, foo_graph.collection_def, "hello42.txt_" + idx,
+            "foo bar baz " + idx, "asset_file_tensor_{}:0".format(idx),
+            asset_id=i)
+
+      self._validate_asset_collection(export_dir, foo_graph.collection_def,
+                                      "hello42.txt", "foo bar baz 0",
+                                      "asset_file_tensor_0:0")
+
   def testCustomMainOp(self):
     export_dir = self._get_export_dir("test_main_op")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       # Add `v1` and `v2` variables to the graph.
-      v1 = variables.Variable(1, name="v1")
+      v1 = variables.VariableV1(1, name="v1")
       ops.add_to_collection("v", v1)
-      v2 = variables.Variable(2, name="v2")
+      v2 = variables.VariableV1(2, name="v2")
       ops.add_to_collection("v", v2)
 
       # Initialize another variable `v3` to 42.
-      v3 = variables.Variable(42, name="v3")
+      v3 = variables.VariableV1(42, name="v3")
       ops.add_to_collection("v", v3)
 
       # Set up an assignment op to be run as part of the main_op.
@@ -664,7 +801,7 @@ class SavedModelTest(test.TestCase):
     # Save the SavedModel to disk.
     builder.save()
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, ["foo"], export_dir)
       self.assertEqual(1, ops.get_collection("v")[0].eval())
       self.assertEqual(2, ops.get_collection("v")[1].eval())
@@ -676,15 +813,15 @@ class SavedModelTest(test.TestCase):
     export_dir = self._get_export_dir("test_legacy_init_op")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       # Add `v1` and `v2` variables to the graph.
-      v1 = variables.Variable(1, name="v1")
+      v1 = variables.VariableV1(1, name="v1")
       ops.add_to_collection("v", v1)
-      v2 = variables.Variable(2, name="v2")
+      v2 = variables.VariableV1(2, name="v2")
       ops.add_to_collection("v", v2)
 
       # Initialize another variable `v3` to 42.
-      v3 = variables.Variable(42, name="v3", trainable=False, collections=[])
+      v3 = variables.VariableV1(42, name="v3", trainable=False, collections=[])
       ops.add_to_collection("v", v3)
 
       # Set up an assignment op to be run as part of the legacy_init_op.
@@ -698,7 +835,7 @@ class SavedModelTest(test.TestCase):
     # Save the SavedModel to disk.
     builder.save()
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, ["foo"], export_dir)
       self.assertEqual(1, ops.get_collection("v")[0].eval())
       self.assertEqual(2, ops.get_collection("v")[1].eval())
@@ -709,36 +846,138 @@ class SavedModelTest(test.TestCase):
   def testLegacyInitOpWithNonEmptyCollection(self):
     export_dir = self._get_export_dir(
         "test_legacy_init_op_with_non_empty_collection")
+    self._testInitOpsWithNonEmptyCollection(
+        export_dir, constants.LEGACY_INIT_OP_KEY)
+
+  def testMainOpWithNonEmptyCollection(self):
+    export_dir = self._get_export_dir(
+        "test_main_op_with_non_empty_collection")
+    self._testInitOpsWithNonEmptyCollection(export_dir, constants.MAIN_OP_KEY)
+
+  def _testInitOpsWithNonEmptyCollection(self, export_dir, key):
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    g = ops.Graph()
+    with self.session(graph=g) as sess:
       # Initialize variable `v1` to 1.
-      v1 = variables.Variable(1, name="v1")
+      v1 = variables.VariableV1(1, name="v1")
       ops.add_to_collection("v", v1)
 
       # Initialize another variable `v2` to 42.
-      v2 = variables.Variable(42, name="v2", trainable=False, collections=[])
+      v2 = variables.VariableV1(42, name="v2", trainable=False, collections=[])
       ops.add_to_collection("v", v2)
 
-      # Set up an assignment op to be run as part of the legacy_init_op.
+      # Set up an assignment op to be run as part of the init op.
       assign_v2 = state_ops.assign(v2, v1)
-      legacy_init_op = control_flow_ops.group(assign_v2, name="legacy_init_op")
+      init_op = control_flow_ops.group(assign_v2, name="init_op")
 
       sess.run(variables.global_variables_initializer())
 
-      ops.add_to_collection(constants.LEGACY_INIT_OP_KEY,
-                            control_flow_ops.no_op())
-      # AssertionError should be raised since the LEGACY_INIT_OP_KEY collection
+      ops.add_to_collection(key, control_flow_ops.no_op())
+      # ValueError should be raised since the LEGACY_INIT_OP_KEY collection
       # is not empty and we don't support multiple init ops.
-      with self.assertRaises(AssertionError):
+      with self.assertRaisesRegexp(ValueError, "Graph already contains"):
         builder.add_meta_graph_and_variables(
-            sess, ["foo"], legacy_init_op=legacy_init_op)
+            sess, ["foo"], legacy_init_op=init_op)
+      # We shouldn't be able to add as MAIN_OP, either.
+      with self.assertRaisesRegexp(ValueError, "Graph already contains"):
+        builder.add_meta_graph_and_variables(sess, ["foo"], main_op=init_op)
+
+  def testTrainOp(self):
+    export_dir = self._get_export_dir("test_train_op")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.session(graph=ops.Graph()) as sess:
+      # Add `v1` and `v2` variables to the graph.
+      v1 = variables.VariableV1(1, name="v1")
+      ops.add_to_collection("v", v1)
+      v2 = variables.VariableV1(2, name="v2")
+      ops.add_to_collection("v", v2)
+
+      sess.run(variables.global_variables_initializer())
+      train_op = state_ops.assign_add(v1, v2)
+
+      sess.run(train_op)
+      # TODO(karmel): remove explicit call when in the public method.
+      builder._add_train_op(train_op)
+      builder.add_meta_graph_and_variables(sess, ["foo"])
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with self.session(graph=ops.Graph()) as sess:
+      loader.load(sess, ["foo"], export_dir)
+      self.assertEqual(3, ops.get_collection("v")[0].eval())
+      self.assertEqual(2, ops.get_collection("v")[1].eval())
+      self.assertIsInstance(
+          ops.get_collection(constants.TRAIN_OP_KEY)[0], ops.Tensor)
+
+  def testTrainOpGroup(self):
+    export_dir = self._get_export_dir("test_train_op_group")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.session(graph=ops.Graph()) as sess:
+      # Add `v1` and `v2` variables to the graph.
+      v1 = variables.VariableV1(1, name="v1")
+      ops.add_to_collection("v", v1)
+      v2 = variables.VariableV1(2, name="v2")
+      ops.add_to_collection("v", v2)
+
+      sess.run(variables.global_variables_initializer())
+      train_op = control_flow_ops.group()
+
+      sess.run(train_op)
+      # TODO(karmel): remove explicit call when in the public method.
+      builder._add_train_op(train_op)
+      builder.add_meta_graph_and_variables(sess, ["foo"])
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with self.session(graph=ops.Graph()) as sess:
+      loader.load(sess, ["foo"], export_dir)
+      self.assertEqual(1, ops.get_collection("v")[0].eval())
+      self.assertEqual(2, ops.get_collection("v")[1].eval())
+      self.assertIsInstance(
+          ops.get_collection(constants.TRAIN_OP_KEY)[0], ops.Operation)
+
+  def testTrainOpAfterVariables(self):
+    export_dir = self._get_export_dir("test_train_op_after_variables")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.session(graph=ops.Graph()) as sess:
+      # Add `v1` and `v2` variables to the graph.
+      v1 = variables.VariableV1(1, name="v1")
+      ops.add_to_collection("v", v1)
+      v2 = variables.VariableV1(2, name="v2")
+      ops.add_to_collection("v", v2)
+
+      sess.run(variables.global_variables_initializer())
+      builder.add_meta_graph_and_variables(sess, ["pre_foo"])
+
+      train_op = state_ops.assign_add(v1, v2)
+      sess.run(train_op)
+      # TODO(karmel): remove explicit call when in the public method.
+      builder._add_train_op(train_op)
+      builder.add_meta_graph(["foo"])
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with self.session(graph=ops.Graph()) as sess:
+      loader.load(sess, ["foo"], export_dir)
+      self.assertIsInstance(
+          ops.get_collection(constants.TRAIN_OP_KEY)[0], ops.Tensor)
+
+    with self.session(graph=ops.Graph()) as sess:
+      loader.load(sess, ["pre_foo"], export_dir)
+      self.assertFalse(ops.get_collection(constants.TRAIN_OP_KEY))
 
   def testMultipleAssets(self):
     export_dir = self._get_export_dir("test_multiple_assets")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 42)
 
       # Build an asset collection specific to `foo` graph.
@@ -749,7 +988,7 @@ class SavedModelTest(test.TestCase):
       builder.add_meta_graph_and_variables(
           sess, ["foo"], assets_collection=asset_collection)
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 42)
 
       # Build an asset collection specific to `bar` graph.
@@ -763,14 +1002,14 @@ class SavedModelTest(test.TestCase):
     builder.save()
 
     # Check assets restored for graph with tag "foo".
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       foo_graph = loader.load(sess, ["foo"], export_dir)
       self._validate_asset_collection(export_dir, foo_graph.collection_def,
                                       "foo.txt", "content_foo",
                                       "asset_file_tensor:0")
 
     # Check assets restored for graph with tag "bar".
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       bar_graph = loader.load(sess, ["bar"], export_dir)
       self._validate_asset_collection(export_dir, bar_graph.collection_def,
                                       "bar.txt", "content_bar",
@@ -780,7 +1019,7 @@ class SavedModelTest(test.TestCase):
     export_dir = self._get_export_dir("test_duplicate_assets")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 42)
 
       # Build an asset collection with `foo.txt` that has `foo` specific
@@ -792,7 +1031,7 @@ class SavedModelTest(test.TestCase):
       builder.add_meta_graph_and_variables(
           sess, ["foo"], assets_collection=asset_collection)
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       self._init_and_validate_variable(sess, "v", 42)
 
       # Build an asset collection with `foo.txt` that has `bar` specific
@@ -807,14 +1046,14 @@ class SavedModelTest(test.TestCase):
     builder.save()
 
     # Check assets restored for graph with tag "foo".
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       foo_graph = loader.load(sess, ["foo"], export_dir)
       self._validate_asset_collection(export_dir, foo_graph.collection_def,
                                       "foo.txt", "content_foo",
                                       "asset_file_tensor:0")
 
     # Check assets restored for graph with tag "bar".
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       bar_graph = loader.load(sess, ["bar"], export_dir)
 
       # Validate the assets for `bar` graph. `foo.txt` should contain the
@@ -832,13 +1071,13 @@ class SavedModelTest(test.TestCase):
         graph=ops.Graph(),
         config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
       with sess.graph.device("/cpu:0"):
-        v1 = variables.Variable(1, name="v1")
+        v1 = variables.VariableV1(1, name="v1")
       with sess.graph.device("/cpu:1"):
-        v2 = variables.Variable(2, name="v2")
+        v2 = variables.VariableV1(2, name="v2")
 
       # v3 is an unsaved variable derived from v1 and v2.  It is used to
       # exercise the ability to run an init op when restoring a graph.
-      v3 = variables.Variable(1, name="v3", trainable=False, collections=[])
+      v3 = variables.VariableV1(1, name="v3", trainable=False, collections=[])
       assign_v3 = state_ops.assign(v3, math_ops.add(v1, v2))
       init_op = control_flow_ops.group(assign_v3, name="init_op")
 
@@ -896,6 +1135,133 @@ class SavedModelTest(test.TestCase):
       self.assertEqual(b"k1", v1.keys().eval())
       self.assertEqual(3.0, v1.values().eval())
 
+  def testCustomSaver(self):
+    export_dir = self._get_export_dir("test_custom_saver")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.session(graph=ops.Graph()) as sess:
+      variables.VariableV1(1, name="v1")
+      sess.run(variables.global_variables_initializer())
+      custom_saver = training.Saver(name="my_saver")
+      builder.add_meta_graph_and_variables(sess, ["tag"], saver=custom_saver)
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with ops.Graph().as_default() as graph:
+      with self.session(graph=graph) as sess:
+        saved_graph = loader.load(sess, ["tag"], export_dir)
+        graph_ops = [x.name for x in graph.get_operations()]
+        self.assertTrue("my_saver/restore_all" in graph_ops)
+        self.assertFalse("save/restore_all" in graph_ops)
+        self.assertEqual(
+            saved_graph.saver_def.restore_op_name, "my_saver/restore_all")
+
+  def testNoCustomSaver(self):
+    export_dir = self._get_export_dir("test_no_custom_saver")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.session(graph=ops.Graph()) as sess:
+      variables.VariableV1(1, name="v1")
+      sess.run(variables.global_variables_initializer())
+      training.Saver(name="my_saver")
+      builder.add_meta_graph_and_variables(sess, ["tag"])
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with ops.Graph().as_default() as graph:
+      with self.session(graph=graph) as sess:
+        saved_graph = loader.load(sess, ["tag"], export_dir)
+        graph_ops = [x.name for x in graph.get_operations()]
+        self.assertTrue("my_saver/restore_all" in graph_ops)
+        self.assertTrue("save/restore_all" in graph_ops)
+        self.assertEqual(
+            saved_graph.saver_def.restore_op_name, "save/restore_all")
+
+  def testMultipleCustomSavers(self):
+    export_dir = self._get_export_dir("test_multiple_custom_savers")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.session(graph=ops.Graph()) as sess:
+      variables.VariableV1(1, name="v1")
+      sess.run(variables.global_variables_initializer())
+      builder.add_meta_graph_and_variables(sess, ["tag_0"])
+
+      saver_1 = training.Saver()
+      builder.add_meta_graph(["tag_1"], saver=saver_1)
+
+      saver_2 = training.Saver()
+      builder.add_meta_graph(["tag_2"], saver=saver_2)
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    def _validate_custom_saver(tag_name, saver_name):
+      with ops.Graph().as_default() as graph:
+        with self.session(graph=graph) as sess:
+          saved_graph = loader.load(sess, [tag_name], export_dir)
+          self.assertEqual(
+              saved_graph.saver_def.restore_op_name,
+              saver_name)
+
+    _validate_custom_saver("tag_0", "save/restore_all")
+    _validate_custom_saver("tag_1", "save_1/restore_all")
+    _validate_custom_saver("tag_2", "save_2/restore_all")
+
+  def testImportScope(self):
+    export_dir = self._get_export_dir("test_scoped_assets")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    # Build a SavedModel with a variable, an asset, and a constant tensor.
+    with self.session(graph=ops.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 42)
+      asset_collection = self._build_asset_collection("foo.txt", "content_foo",
+                                                      "asset_file_tensor")
+      constant_op.constant("constant value", name="constant_tensor_name")
+      builder.add_meta_graph_and_variables(
+          sess, ["tag_name"], assets_collection=asset_collection)
+
+      # Save the asset file path for later comparison.
+      asset_file_path = asset_collection[0].eval()
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    with self.session(graph=ops.Graph()) as sess:
+      # Restore the SavedModel under an import_scope in a new graph/session.
+      graph_proto = loader.load(
+          sess, ["tag_name"], export_dir, import_scope="scope_name")
+
+      # The loaded variable tensor should be scoped, but its contents should be
+      # unchanged.
+      self.assertEqual(
+          "scope_name/v:0",
+          ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].name)
+      self.assertEqual(
+          42,
+          ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
+
+      # The loaded asset tensor should be scoped, but the asset file path and
+      # contents should be unchanged.
+      asset_collection = ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS)
+      self.assertEqual(1, len(asset_collection))
+      self.assertEqual(asset_file_path, asset_collection[0].eval())
+      self.assertEqual("scope_name/asset_file_tensor:0",
+                       asset_collection[0].name)
+      # The static asset data inside graph_proto.collection_def should not be
+      # scoped.
+      self._validate_asset_collection(export_dir, graph_proto.collection_def,
+                                      "foo.txt", "content_foo",
+                                      "asset_file_tensor:0")
+
+      # The constant tensor should be scoped, but its contents should be
+      # unchanged.
+      self.assertEqual(
+          compat.as_bytes("constant value"),
+          ops.get_default_graph().get_tensor_by_name(
+              "scope_name/constant_tensor_name:0").eval())
+
   def testClearDevices(self):
     export_dir = self._get_export_dir("test_clear_devices")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
@@ -915,7 +1281,7 @@ class SavedModelTest(test.TestCase):
 
     # Restore the graph with a single predefined tag whose variables were saved
     # without any device information.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, [tag_constants.TRAINING], export_dir)
       self.assertEqual(
           42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
@@ -927,8 +1293,8 @@ class SavedModelTest(test.TestCase):
     # Add a graph with two float32 variables and a Complex Op composing them
     # with strip_default_attrs enabled.
     with session.Session(graph=ops.Graph()) as sess:
-      real_num = variables.Variable(1.0, dtype=dtypes.float32, name="real")
-      imag_num = variables.Variable(2.0, dtype=dtypes.float32, name="imag")
+      real_num = variables.VariableV1(1.0, dtype=dtypes.float32, name="real")
+      imag_num = variables.VariableV1(2.0, dtype=dtypes.float32, name="imag")
       math_ops.complex(real_num, imag_num, name="complex")
       sess.run(variables.global_variables_initializer())
       builder.add_meta_graph_and_variables(
@@ -937,8 +1303,8 @@ class SavedModelTest(test.TestCase):
     # Add a graph with the same float32 variables and a Complex Op composing
     # them with strip_default_attrs disabled.
     with session.Session(graph=ops.Graph()) as sess:
-      real_num = variables.Variable(1.0, dtype=dtypes.float32, name="real")
-      imag_num = variables.Variable(2.0, dtype=dtypes.float32, name="imag")
+      real_num = variables.VariableV1(1.0, dtype=dtypes.float32, name="real")
+      imag_num = variables.VariableV1(2.0, dtype=dtypes.float32, name="imag")
       math_ops.complex(real_num, imag_num, name="complex")
       sess.run(variables.global_variables_initializer())
       builder.add_meta_graph(["bar"], strip_default_attrs=False)
@@ -1000,7 +1366,7 @@ class SavedModelTest(test.TestCase):
     # Add a graph with a single variable and a test op with a defaultless
     # float32 attr, "test_attr".
     with session.Session(graph=ops.Graph()) as sess:
-      variables.Variable(1.0, dtype=dtypes.float64, name="var")
+      variables.VariableV1(1.0, dtype=dtypes.float64, name="var")
       test_ops.test_attr(T=dtypes.float32, name="test_attr")
       sess.run(variables.global_variables_initializer())
       builder.add_meta_graph_and_variables(sess, ["foo"])
@@ -1028,12 +1394,8 @@ class SavedModelTest(test.TestCase):
     # does not have any attr values for the "TestAttr" node, and there is no
     # default specified in the TestAttr OpDef.
     sess = session.Session(graph=ops.Graph())
-    if ops._USE_C_API:
-      error_message = "NodeDef missing attr 'T' from Op<name=TestAttr"
-    else:
-      error_message = ("Expected one attr with name .*T(out)?.* in name: "
-                       "\"test_attr\".*")
-    with self.assertRaisesRegexp(ValueError, error_message):
+    with self.assertRaisesRegexp(
+        ValueError, "NodeDef missing attr 'T' from Op<name=TestAttr"):
       loader.load(sess, ["foo"], export_dir)
 
     # Rewrite the SavedModel to change the type of the T attr in "test_attr"
@@ -1058,8 +1420,11 @@ class SavedModelTest(test.TestCase):
     sess = session.Session(graph=ops.Graph())
     with self.assertRaisesRegexp(
         errors.InvalidArgumentError,
-        ".*No OpKernel was registered to support Op \'TestAttr\' with these "
-        "attrs..*"):
+        "No OpKernel was registered to support Op 'TestAttr' used by node "
+        "test_attr \\(defined at .*\\) with these attrs: \\[.*\\]\n"
+        "Registered devices:.*\n"
+        "Registered kernels:.*"
+    ):
       loader.load(sess, ["foo"], export_dir)
 
 

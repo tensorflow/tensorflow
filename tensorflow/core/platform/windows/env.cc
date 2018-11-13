@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/windows/wide_char.h"
 #include "tensorflow/core/platform/windows/windows_file_system.h"
 
 #pragma comment(lib, "Shlwapi.lib")
@@ -71,8 +72,8 @@ class WindowsEnv : public Env {
   }
 
   bool MatchPath(const string& path, const string& pattern) override {
-    std::wstring ws_path(WindowsFileSystem::Utf8ToWideChar(path));
-    std::wstring ws_pattern(WindowsFileSystem::Utf8ToWideChar(pattern));
+    std::wstring ws_path(Utf8ToWideChar(path));
+    std::wstring ws_pattern(Utf8ToWideChar(pattern));
     return PathMatchSpecW(ws_path.c_str(), ws_pattern.c_str()) == TRUE;
   }
 
@@ -125,7 +126,7 @@ class WindowsEnv : public Env {
     std::string file_name = library_filename;
     std::replace(file_name.begin(), file_name.end(), '/', '\\');
 
-    std::wstring ws_file_name(WindowsFileSystem::Utf8ToWideChar(file_name));
+    std::wstring ws_file_name(Utf8ToWideChar(file_name));
 
     HMODULE hModule = LoadLibraryExW(ws_file_name.c_str(), NULL,
                                      LOAD_WITH_ALTERED_SEARCH_PATH);
@@ -157,6 +158,17 @@ class WindowsEnv : public Env {
       filename = name + version + ".dll";
     }
     return filename;
+  }
+
+  string GetRunfilesDir() override {
+    string bin_path = this->GetExecutablePath();
+    string runfiles_path = bin_path + ".runfiles\\org_tensorflow";
+    Status s = this->IsDirectory(runfiles_path);
+    if (s.ok()) {
+      return runfiles_path;
+    } else {
+      return bin_path.substr(0, bin_path.find_last_of("/\\"));
+    }
   }
 
  private:

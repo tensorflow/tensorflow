@@ -16,50 +16,75 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_TARGET_MACHINE_FEATURES_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_TARGET_MACHINE_FEATURES_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace xla {
 namespace cpu {
 
-// Wraps an llvm::TargetMachine and parses out some information that feeds into
-// LLVM IR code generation decisions.
+// Abstract interface for classes providing information about the target we're
+// compiling for.
 class TargetMachineFeatures {
  public:
   static constexpr int kX86AvxVectorByteSize = 32;
 
-  TargetMachineFeatures(llvm::TargetMachine* target_machine)
-      : target_machine_(target_machine) {}
+  // Input and output tensor buffers must be aligned to this many bytes if we
+  // want to call an Eigen backed GEMM or Convolution.
+  static constexpr int kEigenExpectedTensorAlignment = 16;
 
   // Return the vectorization factor, which is the number of bytes of data
   // explicitly vectorized routines will try to process at once.
-  int vectorization_factor_in_bytes() const {
+  virtual int vectorization_factor_in_bytes() const = 0;
+
+  // Return the size of the largest vector size in bytes.  We need to pass in
+  // "function" since llvm functions can contain annotations for specializing
+  // them to specific micro-architectures (though currently XLA does not use
+  // this functionality).
+  virtual int vector_register_byte_size(
+      const llvm::Function& function) const = 0;
+
+  // Return the number of elements of type `type` that can fit into the largest
+  // vector register available.  We need to pass in "function" since llvm
+  // functions can contain annotations for specializing them to specific
+  // micro-architectures (though currently XLA does not use this functionality).
+  virtual int vector_register_num_elements(const llvm::Function& function,
+                                           PrimitiveType type) const = 0;
+
+  // Returns the minimum alignment for a buffer of size size_bytes.
+  virtual int64 minimum_alignment_for_allocation(int64 size_bytes) const = 0;
+
+  virtual ~TargetMachineFeatures() = default;
+};
+
+// Implements the TargetMachineFeatures interface using an llvm::TargetMachine.
+class LLVMTargetMachineFeatures : public TargetMachineFeatures {
+ public:
+  static constexpr int kX86AvxVectorByteSize = 32;
+
+  LLVMTargetMachineFeatures(llvm::TargetMachine* target_machine)
+      : target_machine_(target_machine) {}
+
+  int vectorization_factor_in_bytes() const override {
     // Ideally this should be a function of the cache line size (which we can
     // get from llvm::TargetTransformInfo::getCacheLineSize) of the target
     // machine.  Guess a value of 128 bytes for now.
     return 128;
   }
 
-  // Return the size of the largest vector size in bytes.  We need to pass in
-  // "function" since llvm functions can contain annotations for specializing
-  // them to specific micro-architectures (though currently XLA does not use
-  // this functionality).
-  int vector_register_byte_size(const llvm::Function& function) const {
+  int vector_register_byte_size(const llvm::Function& function) const override {
     llvm::TargetTransformInfo* tti = GetTargetTransformInfoFor(function);
     return tti->getRegisterBitWidth(/*Vector=*/true) / 8;
   }
 
-  // Return the number of elements of type `type` that can fit into the largest
-  // vector register available.  We need to pass in "function" since llvm
-  // functions can contain annotations for specializing them to specific
-  // micro-architectures (though currently XLA does not use this functionality).
   int vector_register_num_elements(const llvm::Function& function,
-                                   PrimitiveType type) const {
+                                   PrimitiveType type) const override {
     return vector_register_byte_size(function) /
            (primitive_util::BitWidth(type) / 8);
   }
+
+  int64 minimum_alignment_for_allocation(int64 size_bytes) const override;
 
  private:
   llvm::TargetTransformInfo* GetTargetTransformInfoFor(
@@ -72,8 +97,7 @@ class TargetMachineFeatures {
   // This is mutated from within `GetTargetTransformInfoFor` which is
   // semantically a getter (and thus `const`); and is therefore declared
   // mutable.  Making this mutable is okay because it has cache semantics.
-  mutable tensorflow::gtl::FlatMap<const llvm::Function*,
-                                   llvm::TargetTransformInfo>
+  mutable absl::flat_hash_map<const llvm::Function*, llvm::TargetTransformInfo>
       target_transform_info_cache_;
   llvm::TargetMachine* target_machine_;
 };

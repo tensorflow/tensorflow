@@ -40,6 +40,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:remote_fused_graph_ops",
         "//tensorflow/core/kernels:reshape_op",
         "//tensorflow/core/kernels:softmax_op",
+        "@com_google_absl//absl/base",
     ],
 )
 
@@ -70,7 +71,6 @@ tf_kernel_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:remote_fused_graph_execute_utils",
         "//third_party/eigen3",
-        "@com_google_absl//absl/memory",
     ],
 )
 

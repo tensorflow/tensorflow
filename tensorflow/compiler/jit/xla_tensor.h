@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_TENSOR_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_TENSOR_H_
 
+#include <memory>
+
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -34,10 +37,9 @@ class XlaTensor {
  public:
   // Downcast from a Tensor to an XlaTensor. Return nullptr if the downcast
   // fails.
-  static XlaTensor* FromTensor(Tensor* tensor);
-  // Downcast from a Tensor to an XlaTensor. Return nullptr if the downcast
-  // fails.
-  static const XlaTensor* FromTensor(const Tensor* tensor);
+  static XlaTensor* FromTensor(const Tensor* tensor);
+
+  static bool RefCountIsOne(const Tensor& tensor);
 
   // Create a DeviceMemoryBase from a Tensor. The Tensor can be an XlaTensor, in
   // which case the returned value is shaped_buffer()->root_buffer(), or a
@@ -48,13 +50,13 @@ class XlaTensor {
   // Assign the internal ShapedBuffer to new memory for the given dtype and
   // shape. If a ShapedBuffer exists already (has_shaped_buffer() == true), it
   // is replaced and the managed memory deallocated.
-  Status AllocateShapedBuffer(DataType dtype, const TensorShape& shape,
+  Status AllocateShapedBuffer(DataType dtype, const xla::Shape& on_host_shape,
                               xla::LocalClient* client, int device_ordinal);
 
   // Some Tensors can have complex on-device shapes, including tuple shapes. To
   // manage the memory for these tensors a ShapedBuffer may be required.
 
-  // Return true if this TensorInfo contains a ShapedBuffer.
+  // Return true if this XlaTensor contains a ShapedBuffer.
   bool has_shaped_buffer() const { return shaped_buffer_ != nullptr; }
   // Return the contained ShapedBuffer.
   // REQUIRES: has_shaped_buffer()
@@ -62,17 +64,21 @@ class XlaTensor {
     CHECK(has_shaped_buffer());
     return *shaped_buffer_;
   }
-  // Mutates the TensorInfo to set the ShapedBuffer.
+  xla::ShapedBuffer& shaped_buffer() {
+    CHECK(has_shaped_buffer());
+    return *shaped_buffer_;
+  }
+  // Mutates the XlaTensor to set the ShapedBuffer.
   void set_shaped_buffer(xla::ScopedShapedBuffer shaped_buffer) {
     shaped_buffer_ =
-        xla::MakeUnique<xla::ScopedShapedBuffer>(std::move(shaped_buffer));
+        absl::make_unique<xla::ScopedShapedBuffer>(std::move(shaped_buffer));
   }
 
   // Some tensors on the device may have known values on the host. We use these
   // in on-demand mode to avoid re-copying values from the device if we know the
   // host value already.
 
-  // Return true if this TensorInfo contains a host tensor.
+  // Return true if this XlaTensor contains a host tensor.
   bool has_host_tensor() const { return host_tensor_ != nullptr; }
   // Return the contained host tensor.
   // REQUIRES: has_host_tensor()
@@ -81,6 +87,20 @@ class XlaTensor {
   void set_host_tensor(const Tensor& tensor) {
     host_tensor_.reset(new Tensor(tensor));
   }
+
+  // Adds synchronization events to 'stream' that wait for this tensor to be
+  // defined on 'stream'. Does nothing if the tensor is already defined on that
+  // stream.
+  void WaitForDefinitionEventOnStream(se::Stream* stream);
+
+  // (Re)sets the definition event of the tensor to 'event', and promises that
+  // the tensor has already been defined on stream. Removes any previous
+  // definition event or any previous promises about the tensor being defined on
+  // streams.
+  // It is legal to reset the definition event of a tensor when overwriting the
+  // tensor's value (at which point, it is effectively a new tensor once again.)
+  void ResetDefinitionEvent(std::shared_ptr<se::Event> event,
+                            se::Stream* stream);
 
   // Convert from a raw pointer to an XlaTensor, removing the pointer tag.
   static XlaTensor* FromOpaquePointer(void* ptr);
@@ -92,8 +112,16 @@ class XlaTensor {
   std::unique_ptr<xla::ScopedShapedBuffer> shaped_buffer_;
   // An optional host tensor value.
   std::unique_ptr<Tensor> host_tensor_;
+  // An optional event that is triggered when the tensor's content has been
+  // defined. If this event is nullptr, it is assumed that the tensor's content
+  // is always defined.
+  std::shared_ptr<se::Event> definition_event_;
+  // A list of all streams for which the tensor's content is defined for any
+  // newly enqueued command.
+  absl::InlinedVector<se::Stream*, 2> streams_defined_on_ GUARDED_BY(mu_);
+  mutex mu_;
 };
 
 }  // namespace tensorflow
 
-#endif
+#endif  // TENSORFLOW_COMPILER_JIT_XLA_TENSOR_H_

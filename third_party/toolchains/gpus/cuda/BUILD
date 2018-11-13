@@ -133,6 +133,15 @@ cc_library(
 )
 
 cc_library(
+    name = "cudnn_header",
+    includes = [
+        ".",
+        "cuda/include",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "cufft",
     srcs = ["cuda/lib/libcufft.so.9.0"],
     data = ["cuda/lib/libcufft.so.9.0"],
@@ -1191,33 +1200,10 @@ if [ -d "$(@D)/extras" ]; then rm $(@D)/extras -drf; fi && if [ -d "$(@D)/includ
 genrule(
     name = "cuda-nvvm",
     outs = [
-        "cuda/nvvm/bin/cicc",
-        "cuda/nvvm/include/nvvm.h",
-        "cuda/nvvm/lib64/libnvvm.so",
-        "cuda/nvvm/lib64/libnvvm.so.3",
-        "cuda/nvvm/lib64/libnvvm.so.3.2.0",
         "cuda/nvvm/libdevice/libdevice.10.bc",
-        "cuda/nvvm/libnvvm-samples/CMakeLists.txt",
-        "cuda/nvvm/libnvvm-samples/README.txt",
-        "cuda/nvvm/libnvvm-samples/build.bat",
-        "cuda/nvvm/libnvvm-samples/build.sh",
-        "cuda/nvvm/libnvvm-samples/common/include/DDSWriter.h",
-        "cuda/nvvm/libnvvm-samples/common/include/drvapi_error_string.h",
-        "cuda/nvvm/libnvvm-samples/cuda-c-linking/CMakeLists.txt",
-        "cuda/nvvm/libnvvm-samples/cuda-c-linking/README.txt",
-        "cuda/nvvm/libnvvm-samples/cuda-c-linking/cuda-c-linking.cpp",
-        "cuda/nvvm/libnvvm-samples/cuda-c-linking/math-funcs.cu",
-        "cuda/nvvm/libnvvm-samples/ptxgen/CMakeLists.txt",
-        "cuda/nvvm/libnvvm-samples/ptxgen/README.txt",
-        "cuda/nvvm/libnvvm-samples/ptxgen/ptxgen.c",
-        "cuda/nvvm/libnvvm-samples/simple/CMakeLists.txt",
-        "cuda/nvvm/libnvvm-samples/simple/README.txt",
-        "cuda/nvvm/libnvvm-samples/simple/simple-gpu.ll",
-        "cuda/nvvm/libnvvm-samples/simple/simple-gpu64.ll",
-        "cuda/nvvm/libnvvm-samples/simple/simple.c",
     ],
     cmd = """
-if [ -d "$(@D)/extras" ]; then rm $(@D)/extras -drf; fi && if [ -d "$(@D)/include" ]; then rm $(@D)/include -drf; fi && if [ -d "$(@D)/lib" ]; then rm $(@D)/lib -drf; fi && if [ -d "$(@D)/nvvm" ]; then rm $(@D)/nvvm -drf; fi && cp "/usr/local/cuda-9.0/nvvm/bin/cicc" "$(@D)/cuda/nvvm/bin/cicc" && cp "/usr/local/cuda-9.0/nvvm/include/nvvm.h" "$(@D)/cuda/nvvm/include/nvvm.h" && cp "/usr/local/cuda-9.0/nvvm/lib64/libnvvm.so" "$(@D)/cuda/nvvm/lib64/libnvvm.so" && cp "/usr/local/cuda-9.0/nvvm/lib64/libnvvm.so.3" "$(@D)/cuda/nvvm/lib64/libnvvm.so.3" && cp "/usr/local/cuda-9.0/nvvm/lib64/libnvvm.so.3.2.0" "$(@D)/cuda/nvvm/lib64/libnvvm.so.3.2.0" && cp "/usr/local/cuda-9.0/nvvm/libdevice/libdevice.10.bc" "$(@D)/cuda/nvvm/libdevice/libdevice.10.bc" && cp "/usr/local/cuda-9.0/nvvm/libnvvm-samples/CMakeLists.txt" "$(@D)/cuda/nvvm/libnvvm-samples/CMakeLists.txt" && cp "/usr/local/cuda-9.0/nvvm/libnvvm-samples/README.txt" "$(@D)/cuda/nvvm/libnvvm-samples/README.txt" && cp "/usr/local/cuda-9.0/nvvm/libnvvm-samples/build.bat" "$(@D)/cuda/nvvm/libnvvm-samples/build.bat" && cp "/usr/local/cuda-9.0/nvvm/libnvvm-samples/build.sh" "$(@D)/cuda/nvvm/libnvvm-samples/build.sh" && cp "/usr/local/cuda-9.0/nvvm/libnvvm-samples/common/include/DDSWriter.h" "$(@D)/cuda/nvvm/libnvvm-samples/common/include/DDSWriter.h" && cp "/usr/local/cuda-9.0/nvvm/libnvvm-samples/common/include/drvapi_error_string.h" "$(@D)/cuda/nvvm/libnvvm-samples/common/include/drvapi_error_string.h" && cp "/usr/local/cuda-9.0/nvvm/libnvvm-samples/cuda-c-linking/CMakeLists.txt" "$(@D)/cuda/nvvm/libnvvm-samples/cuda-c-linking/CMakeLists.txt" && cp "/usr/local/cuda-9.0/nvvm/libnvvm-samples/cuda-c-linking/README.txt" "$(@D)/cuda/nvvm/libnvvm-samples/cuda-c-linking/README.txt" && cp "/usr/local/cuda-9.0/nvvm/libnvvm-samples/cuda-c-linking/cuda-c-linking.cpp" "$(@D)/cuda/nvvm/libnvvm-samples/cuda-c-linking/cuda-c-linking.cpp" && cp "/usr/local/cuda-9.0/nvvm/libnvvm-samples/cuda-c-linking/math-funcs.cu" "$(@D)/cuda/nvvm/libnvvm-samples/cuda-c-linking/math-funcs.cu" && cp "/usr/local/cuda-9.0/nvvm/libnvvm-samples/ptxgen/CMakeLists.txt" "$(@D)/cuda/nvvm/libnvvm-samples/ptxgen/CMakeLists.txt" && cp "/usr/local/cuda-9.0/nvvm/libnvvm-samples/ptxgen/README.txt" "$(@D)/cuda/nvvm/libnvvm-samples/ptxgen/README.txt" && cp "/usr/local/cuda-9.0/nvvm/libnvvm-samples/ptxgen/ptxgen.c" "$(@D)/cuda/nvvm/libnvvm-samples/ptxgen/ptxgen.c" && cp "/usr/local/cuda-9.0/nvvm/libnvvm-samples/simple/CMakeLists.txt" "$(@D)/cuda/nvvm/libnvvm-samples/simple/CMakeLists.txt" && cp "/usr/local/cuda-9.0/nvvm/libnvvm-samples/simple/README.txt" "$(@D)/cuda/nvvm/libnvvm-samples/simple/README.txt" && cp "/usr/local/cuda-9.0/nvvm/libnvvm-samples/simple/simple-gpu.ll" "$(@D)/cuda/nvvm/libnvvm-samples/simple/simple-gpu.ll" && cp "/usr/local/cuda-9.0/nvvm/libnvvm-samples/simple/simple-gpu64.ll" "$(@D)/cuda/nvvm/libnvvm-samples/simple/simple-gpu64.ll" && cp "/usr/local/cuda-9.0/nvvm/libnvvm-samples/simple/simple.c" "$(@D)/cuda/nvvm/libnvvm-samples/simple/simple.c"
+if [ -d "$(@D)/extras" ]; then rm $(@D)/extras -drf; fi && if [ -d "$(@D)/include" ]; then rm $(@D)/include -drf; fi && if [ -d "$(@D)/lib" ]; then rm $(@D)/lib -drf; fi && if [ -d "$(@D)/nvvm" ]; then rm $(@D)/nvvm -drf; fi && cp "/usr/local/cuda-9.0/nvvm/libdevice/libdevice.10.bc" "$(@D)//libdevice.10.bc"
    """,
 )
 
@@ -1272,7 +1258,7 @@ genrule(
         "cuda/lib/libcupti.so.9.0",
     ],
     cmd = """
-if [ -d "$(@D)/extras" ]; then rm $(@D)/extras -drf; fi && if [ -d "$(@D)/include" ]; then rm $(@D)/include -drf; fi && if [ -d "$(@D)/lib" ]; then rm $(@D)/lib -drf; fi && if [ -d "$(@D)/nvvm" ]; then rm $(@D)/nvvm -drf; fi && cp "/usr/local/cuda-9.0/targets/x86_64-linux/lib/stubs/libcuda.so" "$(@D)/cuda/lib/libcuda.so" && cp "/usr/local/cuda-9.0/targets/x86_64-linux/lib/libcudart.so.9.0" "$(@D)/cuda/lib/libcudart.so.9.0" && cp "/usr/local/cuda-9.0/targets/x86_64-linux/lib/libcudart_static.a" "$(@D)/cuda/lib/libcudart_static.a" && cp "/usr/local/cuda-9.0/targets/x86_64-linux/lib/libcublas.so.9.0" "$(@D)/cuda/lib/libcublas.so.9.0" && cp "/usr/local/cuda-9.0/targets/x86_64-linux/lib/libcusolver.so.9.0" "$(@D)/cuda/lib/libcusolver.so.9.0" && cp "/usr/local/cuda-9.0/targets/x86_64-linux/lib/libcurand.so.9.0" "$(@D)/cuda/lib/libcurand.so.9.0" && cp "/usr/local/cuda-9.0/targets/x86_64-linux/lib/libcufft.so.9.0" "$(@D)/cuda/lib/libcufft.so.9.0" && cp "/usr/lib/x86_64-linux-gnu/libcudnn.so.7" "$(@D)/cuda/lib/libcudnn.so.7" && cp "/usr/local/cuda-9.0/extras/CUPTI/lib64/libcupti.so.9.0" "$(@D)/cuda/lib/libcupti.so.9.0"
+if [ -d "$(@D)/extras" ]; then rm $(@D)/extras -drf; fi && if [ -d "$(@D)/include" ]; then rm $(@D)/include -drf; fi && if [ -d "$(@D)/lib" ]; then rm $(@D)/lib -drf; fi && if [ -d "$(@D)/nvvm" ]; then rm $(@D)/nvvm -drf; fi && cp "/usr/local/cuda-9.0/targets/x86_64-linux/lib/stubs/libcuda.so" "$(@D)/cuda/lib/libcuda.so" && cp "/usr/local/cuda-9.0/targets/x86_64-linux/lib/libcudart.so.9.0.176" "$(@D)/cuda/lib/libcudart.so.9.0" && cp "/usr/local/cuda-9.0/targets/x86_64-linux/lib/libcudart_static.a" "$(@D)/cuda/lib/libcudart_static.a" && cp "/usr/local/cuda-9.0/targets/x86_64-linux/lib/libcublas.so.9.0.480" "$(@D)/cuda/lib/libcublas.so.9.0" && cp "/usr/local/cuda-9.0/targets/x86_64-linux/lib/libcusolver.so.9.0.176" "$(@D)/cuda/lib/libcusolver.so.9.0" && cp "/usr/local/cuda-9.0/targets/x86_64-linux/lib/libcurand.so.9.0.176" "$(@D)/cuda/lib/libcurand.so.9.0" && cp "/usr/local/cuda-9.0/targets/x86_64-linux/lib/libcufft.so.9.0.176" "$(@D)/cuda/lib/libcufft.so.9.0" && cp "/usr/lib/x86_64-linux-gnu/libcudnn.so.7.2.1" "$(@D)/cuda/lib/libcudnn.so.7" && cp "/usr/local/cuda/extras/CUPTI/lib64/libcupti.so.9.0.176" "$(@D)/cuda/lib/libcupti.so.9.0"
    """,
 )
 

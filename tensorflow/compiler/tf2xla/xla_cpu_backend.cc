@@ -20,22 +20,11 @@ limitations under the License.
 namespace tensorflow {
 
 bool CpuOpFilter(KernelDef* kdef) {
-  // TODO(b/34339814): implement inverse erf for double types and remove this
-  // workaround.
-  if (kdef->op() == "RandomStandardNormal") {
-    kdef->clear_constraint();
-    // Change the type constraint to permit only DTD_FLOAT.
-    KernelDef::AttrConstraint* attr_constraint = kdef->add_constraint();
-    attr_constraint->set_name("dtype");
-    attr_constraint->mutable_allowed_values()->mutable_list()->add_type(
-        DT_FLOAT);
-    return true;
-  }
   if (kdef->op() == "Const") {
-    AddDtypeToKernalDefConstraint("dtype", DT_STRING, kdef);
+    AddDtypeToKernelDefConstraint("dtype", DT_STRING, kdef);
   }
   if (kdef->op() == "Assert") {
-    AddDtypeToKernalDefConstraint("T", DT_STRING, kdef);
+    AddDtypeToKernelDefConstraint("T", DT_STRING, kdef);
   }
   return true;
 }

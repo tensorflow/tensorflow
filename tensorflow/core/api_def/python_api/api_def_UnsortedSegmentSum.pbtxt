@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "UnsortedSegmentSum"
+  endpoint {
+    name: "math.unsorted_segment_sum"
+  }
+  endpoint {
+    name: "unsorted_segment_sum"
+    deprecation_version: 2
+  }
+}

@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <utility>
 
-#include "grpc++/generic/generic_stub.h"
-#include "grpc++/grpc++.h"
+#include "grpcpp/generic/generic_stub.h"
+#include "grpcpp/grpcpp.h"
 
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_client_cq_tag.h"

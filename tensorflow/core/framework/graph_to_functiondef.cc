@@ -153,7 +153,7 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
       const string normalized = node_names.Normalize(node->name());
       argdef->set_name(normalized);
       Edge const* edge;
-      TF_CHECK_OK(node->input_edge(0, &edge));
+      TF_RETURN_IF_ERROR(node->input_edge(0, &edge));
       return_values[normalized] =
           strings::StrCat(edge->src()->name(), ":", edge->src_output());
       continue;

@@ -198,7 +198,7 @@ function(add_python_module MODULE_NAME)
             # so we currently add explicit commands to include those files
             # later on in this script.
             if (NOT "${script}" MATCHES "_test\.py$")
-	        add_custom_command(TARGET tf_python_copy_scripts_to_destination PRE_BUILD
+            add_custom_command(TARGET tf_python_copy_scripts_to_destination PRE_BUILD
                   COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/${script} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/${script})
             endif()
         endforeach()
@@ -222,17 +222,17 @@ endforeach(python_module)
 
 add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory
-    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite")
+    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/lite")
 add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory
-    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite/python")
+    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/lite/python")
 add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
     COMMAND ${CMAKE_COMMAND} -E touch
-    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite/python/__init__.py")
+    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/lite/python/__init__.py")
 add_custom_command(
     TARGET tf_python_copy_scripts_to_destination PRE_BUILD
     COMMAND ${CMAKE_COMMAND} -E touch
-    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite/python/lite.py)
+    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/lite/python/lite.py)
 
 # Generate the tensorflow.python.platform.build_info module.
 set(BUILD_INFO_PY "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/platform/build_info.py")
@@ -244,13 +244,11 @@ add_custom_command(TARGET tf_python_copy_scripts_to_destination PRE_BUILD
 # tf_python_op_gen_main library
 ########################################################
 set(tf_python_op_gen_main_srcs
-    "${tensorflow_source_dir}/tensorflow/python/eager/python_eager_op_gen.h"
-    "${tensorflow_source_dir}/tensorflow/python/eager/python_eager_op_gen.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.cc"
-    "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.cc"
-    "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_main.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.h"
+    "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_internal.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_internal.h"
+    "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_main.cc"
 )
 
 add_library(tf_python_op_gen_main OBJECT ${tf_python_op_gen_main_srcs})
@@ -299,7 +297,7 @@ function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
     )
     target_link_libraries(${tf_python_op_lib_name}_gen_python PRIVATE
         tf_protos_cc
-				tf_python_protos_cc
+                tf_python_protos_cc
         ${tensorflow_EXTERNAL_LIBRARIES}
     )
 
@@ -382,8 +380,6 @@ GENERATE_PYTHON_OP_LIB("contrib_boosted_trees_stats_accumulator_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/boosted_trees/python/ops/gen_stats_accumulator_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_coder_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/coder/python/ops/gen_coder_ops.py)
-GENERATE_PYTHON_OP_LIB("contrib_data_dataset_ops"
-  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/data/python/ops/gen_dataset_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_factorization_clustering_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/factorization/python/ops/gen_clustering_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_factorization_factorization_ops"
@@ -429,6 +425,8 @@ GENERATE_PYTHON_OP_LIB("contrib_text_skip_gram_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/text/python/ops/gen_skip_gram_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_bigquery_reader_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/cloud/python/ops/gen_bigquery_reader_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_gcs_config_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/cloud/python/ops/gen_gcs_config_ops.py)
 GENERATE_PYTHON_OP_LIB("debug_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/debug/ops/gen_debug_ops.py)
 
@@ -461,6 +459,18 @@ add_custom_command(
       COMMENT "Running SWIG to generate Python wrappers"
       VERBATIM )
 
+add_library(tf_c_python_api OBJECT
+  "${tensorflow_source_dir}/tensorflow/c/python_api.cc"
+  "${tensorflow_source_dir}/tensorflow/c/python_api.h"
+)
+add_dependencies(
+  tf_c_python_api
+  tf_c
+  tf_core_lib
+  tf_core_framework
+  tf_protos_cc
+  tf_python_protos_cc)
+
 set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/core/profiler/internal/print_model_analysis.h"
     "${tensorflow_source_dir}/tensorflow/core/profiler/internal/print_model_analysis.cc"
@@ -469,12 +479,12 @@ set (pywrap_tensorflow_internal_src
     "${tensorflow_source_dir}/tensorflow/python/eager/pywrap_tfe_src.cc"
     "${tensorflow_source_dir}/tensorflow/python/client/tf_session_helper.h"
     "${tensorflow_source_dir}/tensorflow/python/client/tf_session_helper.cc"
-    "${tensorflow_source_dir}/tensorflow/python/eager/python_eager_op_gen.h"
-    "${tensorflow_source_dir}/tensorflow/python/eager/python_eager_op_gen.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/cpp_shape_inference.h"
     "${tensorflow_source_dir}/tensorflow/python/framework/cpp_shape_inference.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.h"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.cc"
+    "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_internal.h"
+    "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_internal.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/bfloat16.h"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/bfloat16.cc"
     "${tensorflow_source_dir}/tensorflow/python/lib/core/numpy.h"
@@ -544,15 +554,15 @@ if(WIN32)
         ${NUMPY_INCLUDE_DIR}
     )
     #target_link_libraries(pywrap_tensorflow_internal_static
-    #	tf_protos_cc
-    #	tf_python_protos_cc
+    #   tf_protos_cc
+    #   tf_python_protos_cc
     #)
     add_dependencies(pywrap_tensorflow_internal_static tf_protos_cc tf_python_protos_cc)
     set(pywrap_tensorflow_internal_static_dependencies
         $<TARGET_FILE:pywrap_tensorflow_internal_static>
         $<TARGET_FILE:tf_protos_cc>
         $<TARGET_FILE:tf_python_protos_cc>
-	${nsync_STATIC_LIBRARIES}
+    ${nsync_STATIC_LIBRARIES}
     )
 
     if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
@@ -739,7 +749,7 @@ if(WIN32)
   endif()
 else()
   add_custom_command(TARGET pywrap_tensorflow_internal POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/libpywrap_tensorflow_internal.so
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/libpywrap_tensorflow_internal${CMAKE_SHARED_LIBRARY_SUFFIX}
                                      ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/_pywrap_tensorflow_internal.so)
 endif()
 
@@ -748,8 +758,81 @@ endif()
 # Generate API __init__.py files.
 ########################################################
 
-# Parse tensorflow/tools/api/generator/BUILD to get list of generated files.
-FILE(READ ${tensorflow_source_dir}/tensorflow/tools/api/generator/BUILD api_generator_BUILD_text)
+# Parse tensorflow/python/tools/api/generator/BUILD to get list of generated files.
+FILE(READ ${tensorflow_source_dir}/tensorflow/python/tools/api/generator/api_init_files.bzl api_generator_BUILD_text)
+STRING(REGEX MATCH "# BEGIN GENERATED FILES.*# END GENERATED FILES" api_init_files_text ${api_generator_BUILD_text})
+string(REPLACE "# BEGIN GENERATED FILES" "" api_init_files_text ${api_init_files_text})
+string(REPLACE "# END GENERATED FILES" "" api_init_files_text ${api_init_files_text})
+string(REPLACE "," ";" api_init_files_list ${api_init_files_text})
+
+message(STATUS ${api_init_files_text})
+
+set(api_init_files "")
+foreach(api_init_file ${api_init_files_list})
+    string(STRIP "${api_init_file}" api_init_file)
+    if(api_init_file)
+        string(REPLACE "\"" "" api_init_file "${api_init_file}")  # Remove quotes
+        list(APPEND api_init_files "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/${api_init_file}")
+    endif()
+endforeach(api_init_file)
+set(api_init_list_file "${tensorflow_source_dir}/api_init_files_list.txt")
+file(WRITE "${api_init_list_file}" "${api_init_files}")
+
+# Run create_python_api.py to generate __init__.py files.
+
+### TODO
+# In order to download and compile MKL/MKL-DNN automatically in cmake script, mkl-built libraries should be added to system path
+# to be loaded by python executor. However `add_custom_command` has an issue with `COMMAND ${CMAKE_COMMAND} -E env PATH=`, where
+# arguments of multiple paths (such as D:/;D:/mkl) will be parsed in to seperate string without semicolon and that command fail to
+# recongnize paths. As CUDA isn't built with MKL, the MKL built directory is the only path to this command to work around that issue.
+# To not override the CUDA and system path in other circumstances, `if-else` branch used here to handle this problem,
+# and should be removed if the path issue can be resolved.
+# UPDATE: Below block appears to handle multiple items in PATH correctly, but risks command line limits if PATH is large.
+# If you have issues, try `set(PY_RUNTIME_ENV "PATH=${mkl_BIN_DIRS}")` instead.
+###
+
+set(PY_RUNTIME_ENV "")
+if(tensorflow_ENABLE_MKL_SUPPORT)
+    # add mkl dist dlls to system path for python
+    file(TO_CMAKE_PATH "$ENV{PATH}" PY_RUNTIME_ENV)
+    set(PY_RUNTIME_ENV ${mkl_BIN_DIRS} ${PY_RUNTIME_ENV})
+    file(TO_NATIVE_PATH "${PY_RUNTIME_ENV}" PY_RUNTIME_ENV)
+    set(PY_RUNTIME_ENV "PATH=${PY_RUNTIME_ENV}")
+endif(tensorflow_ENABLE_MKL_SUPPORT)
+
+add_custom_command(
+      OUTPUT ${api_init_files}
+      DEPENDS tf_python_ops tf_python_copy_scripts_to_destination pywrap_tensorflow_internal tf_python_touchup_modules tf_extension_ops
+
+      # tensorflow/__init__.py depends on files generated in this step. So, remove it while
+      # this step is running since the files aren't there yet.
+      COMMAND ${CMAKE_COMMAND} -E remove -f ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/__init__.py
+
+      # Run create_python_api.py to generate API init files.
+      COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/tf_python "${PY_RUNTIME_ENV}" ${PYTHON_EXECUTABLE}
+              "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/tools/api/generator/create_python_api.py"
+              "--root_init_template=${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/api_template.__init__.py"
+              "--apidir=${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow"
+              "--package=tensorflow.python"
+              "--apiname=tensorflow"
+              "${api_init_list_file}"
+
+      COMMENT "Generating __init__.py files for Python API."
+      WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tf_python"
+      VERBATIM
+)
+
+add_custom_target(tf_python_api SOURCES ${api_init_files})
+add_dependencies(tf_python_api tf_python_ops)
+
+# TODO(mikecase): This can be removed once tf.estimator is moved
+# out of TensorFlow.
+########################################################
+# Generate API __init__.py files for tf.estimator.
+########################################################
+
+# Parse tensorflow/python/tools/api/generator/BUILD to get list of generated files.
+FILE(READ ${tensorflow_source_dir}/tensorflow/python/tools/api/generator/api_init_files.bzl api_generator_BUILD_text)
 STRING(REGEX MATCH "# BEGIN GENERATED FILES.*# END GENERATED FILES" api_init_files_text ${api_generator_BUILD_text})
 string(REPLACE "# BEGIN GENERATED FILES" "" api_init_files_text ${api_init_files_text})
 string(REPLACE "# END GENERATED FILES" "" api_init_files_text ${api_init_files_text})
@@ -760,40 +843,32 @@ foreach(api_init_file ${api_init_files_list})
     string(STRIP "${api_init_file}" api_init_file)
     if(api_init_file)
         string(REPLACE "\"" "" api_init_file "${api_init_file}")  # Remove quotes
-        list(APPEND api_init_files "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tools/api/generator/${api_init_file}")
+        list(APPEND api_init_files "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/estimator/api/${api_init_file}")
     endif()
 endforeach(api_init_file)
-set(api_init_list_file "${tensorflow_source_dir}/api_init_files_list.txt")
-file(WRITE "${api_init_list_file}" "${api_init_files}")
+set(estimator_api_init_list_file "${tensorflow_source_dir}/estimator_api_init_files_list.txt")
+file(WRITE "${estimator_api_init_list_file}" "${api_init_files}")
 
 # Run create_python_api.py to generate __init__.py files.
 add_custom_command(
       OUTPUT ${api_init_files}
       DEPENDS tf_python_ops tf_python_copy_scripts_to_destination pywrap_tensorflow_internal tf_python_touchup_modules tf_extension_ops
 
-      # tensorflow/__init__.py depends on files generated in this step. So, remove it while
-      # this step is running since the files aren't there yet.
-      COMMAND ${CMAKE_COMMAND} -E rename ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/__init__.py
-                                         ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/final.__init__.py
-      COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/__init__.py
-
       # Run create_python_api.py to generate API init files.
-      COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/tf_python ${PYTHON_EXECUTABLE}
-              "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tools/api/generator/create_python_api.py" "${api_init_list_file}"
-
-      # Re-add tensorflow/__init__.py back.
-      COMMAND ${CMAKE_COMMAND} -E remove -f ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/__init__.py
-      COMMAND ${CMAKE_COMMAND} -E rename ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/final.__init__.py
-                                         ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/__init__.py
+      COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${CMAKE_CURRENT_BINARY_DIR}/tf_python "${PY_RUNTIME_ENV}" ${PYTHON_EXECUTABLE}
+              "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/tools/api/generator/create_python_api.py"
+              "--apidir=${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/estimator/api"
+              "--package=tensorflow.python.estimator"
+              "--apiname=estimator"
+          "--output_package=tensorflow.python.estimator.api"
+              "${estimator_api_init_list_file}"
 
       COMMENT "Generating __init__.py files for Python API."
       WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tf_python"
 )
 
-add_custom_target(tf_python_api SOURCES ${api_init_files})
-add_dependencies(tf_python_api tf_python_ops)
-
-
+add_custom_target(estimator_python_api SOURCES ${api_init_files})
+add_dependencies(estimator_python_api tf_python_ops)
 ############################################################
 # Build a PIP package containing the TensorFlow runtime.
 ############################################################
@@ -804,6 +879,7 @@ add_dependencies(tf_python_build_pip_package
     tf_python_touchup_modules
     tf_python_ops
     tf_python_api
+    estimator_python_api
     tf_extension_ops)
 
 # Fix-up Python files that were not included by the add_python_module() macros.
@@ -815,7 +891,6 @@ add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
 add_custom_command(TARGET tf_python_copy_scripts_to_destination PRE_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/contrib/testing/python/framework/util_test.py
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/testing/python/framework/)
-
 add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/tools/pip_package/README
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/)

@@ -30,6 +30,8 @@ namespace grappler {
 
 bool GetTensorShapeProtoFromTensorProto(const TensorProto& tensor_proto,
                                         TensorShapeProto* tensor_shape_proto);
+TensorShapeProto MaybeGetMinimumShape(const TensorShapeProto& original_shape,
+                                      int rank, bool* found_unknown_shapes);
 
 class OpLevelCostEstimator {
  public:
@@ -37,12 +39,6 @@ class OpLevelCostEstimator {
   virtual ~OpLevelCostEstimator() {}
 
   virtual Costs PredictCosts(const OpContext& op_context) const;
-
-  // Basic device performance info, sufficient for roofline estimate.
-  struct DeviceInfo {
-    double gigaops;     // Billions of operations executed per second.
-    double gb_per_sec;  // Bandwidth to main memory in GB per second.
-  };
 
   // Returns basic device performance info.
   virtual DeviceInfo GetDeviceInfo(const DeviceProperties& device) const;
@@ -58,7 +54,8 @@ class OpLevelCostEstimator {
   // Naive cost estimate based on the given operations count and the given total
   // io size in bytes. Sizes of op_info inputs and outputs are not taken into
   // consideration.
-  Costs PredictOpCountBasedCost(double operations, double total_io_bytes,
+  Costs PredictOpCountBasedCost(double operations, double input_io_bytes,
+                                double output_io_bytes,
                                 const OpInfo& op_info) const;
 
   // This family of routines counts the number of operations to perform the
@@ -81,13 +78,6 @@ class OpLevelCostEstimator {
     int64 sx;         // Stride x.
     int64 sy;         // Stride y.
     Padding padding;  // SAME or VALID.
-  };
-  enum ConvolutionFormat {
-    UNKNOWN_CONVOLUTION_FORMAT,
-    NHWC,
-    NCHW,
-    NCHW_VECT_C,
-    NCHW_VECT_W,
   };
   int64 CountConv2DOperations(const OpInfo& op_features,
                               bool* found_unknown_shapes) const;
@@ -195,9 +185,6 @@ class OpLevelCostEstimator {
   // Helper to construct tensor shapes.
   static OpInfo::TensorProperties DescribeTensor(
       DataType type, const std::vector<int64>& dims);
-
-  // Returns the Conv2D format for this operation.
-  static ConvolutionFormat GetConvolutionFormat(const OpContext& op_context);
 
   // This method calculates the execution time depending on whether IO can
   // overlap with computation. It assumes the memory and the compute times have

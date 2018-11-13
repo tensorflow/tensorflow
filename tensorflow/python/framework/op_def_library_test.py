@@ -36,7 +36,6 @@ def _unknown_shape(op):
   return [tensor_shape.unknown_shape() for _ in op.outputs]
 
 
-@test_util.with_c_api
 class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -1330,7 +1329,6 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
             self.assertEqual(t_c, [x.dtype for x in c])
 
 
-@test_util.with_c_api
 class OpDefLibraryGraphTest(test_util.TensorFlowTestCase):
 
   def setUp(self):

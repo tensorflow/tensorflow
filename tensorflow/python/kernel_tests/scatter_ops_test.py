@@ -133,7 +133,7 @@ class ScatterTest(test.TestCase):
                         repeat_indices=False,
                         updates_are_scalar=False):
     np.random.seed(8)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       for indices_shape in (), (2,), (3, 7), (3, 4, 7):
         for extra_shape in (), (5,), (5, 9):
           # Generate random indices with no duplicates for easy numpy comparison
@@ -159,7 +159,13 @@ class ScatterTest(test.TestCase):
 
           # Clips small values to avoid division by zero.
           def clip_small_values(x):
-            return 1e-4 * np.sign(x) if np.abs(x) < 1e-4 else x
+            threshold = 1e-4
+            sign = np.sign(x)
+
+            if isinstance(x, np.int32):
+              threshold = 1
+              sign = np.random.choice([-1, 1])
+            return threshold * sign if np.abs(x) < threshold else x
 
           updates = np.vectorize(clip_small_values)(updates)
           old = _AsType(np.random.randn(*((first_dim,) + extra_shape)), vtype)
@@ -172,7 +178,7 @@ class ScatterTest(test.TestCase):
             np_scatter = _TF_OPS_TO_NUMPY[tf_scatter]
           np_scatter(new, indices, updates)
           # Scatter via tensorflow
-          ref = variables.Variable(old)
+          ref = variables.VariableV1(old)
           ref.initializer.run()
           tf_scatter(ref, indices, updates).eval()
           self.assertAllClose(ref.eval(), new)
@@ -181,7 +187,11 @@ class ScatterTest(test.TestCase):
                          tf_scatter,
                          repeat_indices=False,
                          updates_are_scalar=False):
-    for vtype in (np.float32, np.float64):
+    vtypes = [np.float32, np.float64]
+    if tf_scatter != state_ops.scatter_div:
+      vtypes.append(np.int32)
+
+    for vtype in vtypes:
       for itype in (np.int32, np.int64):
         self._VariableRankTest(tf_scatter, vtype, itype, repeat_indices,
                                updates_are_scalar)
@@ -266,7 +276,7 @@ class ScatterTest(test.TestCase):
 
   def testBooleanScatterUpdate(self):
     if not test.is_gpu_available():
-      with self.test_session(use_gpu=False) as session:
+      with self.session(use_gpu=False) as session:
         var = variables.Variable([True, False])
         update0 = state_ops.scatter_update(var, 1, True)
         update1 = state_ops.scatter_update(
@@ -283,8 +293,8 @@ class ScatterTest(test.TestCase):
       params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)
       updates = np.array([-3, -4, -5]).astype(np.float32)
       if not test.is_gpu_available():
-        with self.test_session(use_gpu=False):
-          ref = variables.Variable(params)
+        with self.session(use_gpu=False):
+          ref = variables.VariableV1(params)
           ref.initializer.run()
 
           # Indices all in range, no problem.
@@ -310,7 +320,7 @@ class ScatterTest(test.TestCase):
       updates = np.array([-3, -4, -5]).astype(np.float32)
       # With GPU, the code ignores indices that are out of range.
       # We don't test the implementation; just test there's no failures.
-      with self.test_session(force_gpu=True):
+      with self.cached_session(force_gpu=True):
         ref = variables.Variable(params)
         ref.initializer.run()
 

@@ -12,21 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Operators for manipulating tensors.
-
-@@roll
-"""
+"""Operators for manipulating tensors."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.ops import gen_manip_ops as _gen_manip_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
 # pylint: disable=protected-access
-@tf_export('manip.roll')
+@tf_export('roll', v1=['roll', 'manip.roll'])
+@deprecation.deprecated_endpoints('manip.roll')
 def roll(input, shift, axis):  # pylint: disable=redefined-builtin
   return _gen_manip_ops.roll(input, shift, axis)
 

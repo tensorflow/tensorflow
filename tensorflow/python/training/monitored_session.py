@@ -25,7 +25,7 @@ import sys
 import six
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.estimator import util
+from tensorflow.python.distribute import distribute_coordinator_context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -41,6 +41,7 @@ from tensorflow.python.training import queue_runner
 from tensorflow.python.training import saver as training_saver
 from tensorflow.python.training import session_manager as sm
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.util import function_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -194,8 +195,12 @@ class Scaffold(object):
           default_ready_op)
     if self._ready_for_local_init_op is None:
       def default_ready_for_local_init_op():
-        return variables.report_uninitialized_variables(
-            variables.global_variables())
+        return array_ops.concat([
+            variables.report_uninitialized_variables(
+                variables.global_variables()),
+            resources.report_uninitialized_resources(
+                resources.shared_resources())
+        ], 0)
       self._ready_for_local_init_op = Scaffold.get_or_default(
           'ready_for_local_init_op', ops.GraphKeys.READY_FOR_LOCAL_INIT_OP,
           default_ready_for_local_init_op)
@@ -284,7 +289,64 @@ class Scaffold(object):
         resources.initialize_resources(resources.local_resources()))
 
 
-@tf_export('train.MonitoredTrainingSession')
+def _create_monitored_session_with_worker_context(worker_context,  # pylint: disable=missing-docstring
+                                                  scaffold,
+                                                  checkpoint_dir=None,
+                                                  hooks=None,
+                                                  chief_only_hooks=None,
+                                                  save_checkpoint_secs=None,
+                                                  save_summaries_steps=None,
+                                                  save_summaries_secs=None,
+                                                  config=None,
+                                                  stop_grace_period_secs=120,
+                                                  log_step_count_steps=100,
+                                                  max_wait_secs=7200,
+                                                  save_checkpoint_steps=None,
+                                                  summary_dir=None):
+  all_hooks = []
+  if hooks:
+    all_hooks.extend(hooks)
+  if chief_only_hooks and worker_context.is_chief:
+    all_hooks.extend(chief_only_hooks)
+
+  summary_dir = summary_dir or checkpoint_dir
+  if summary_dir and worker_context.should_save_summary:
+    if log_step_count_steps and log_step_count_steps > 0:
+      all_hooks.append(
+          basic_session_run_hooks.StepCounterHook(
+              output_dir=summary_dir, every_n_steps=log_step_count_steps))
+
+    if (save_summaries_steps and save_summaries_steps > 0) or (
+        save_summaries_secs and save_summaries_secs > 0):
+      all_hooks.append(
+          basic_session_run_hooks.SummarySaverHook(
+              scaffold=scaffold,
+              save_steps=save_summaries_steps,
+              save_secs=save_summaries_secs,
+              output_dir=summary_dir))
+
+  if checkpoint_dir and worker_context.should_checkpoint:
+    if (save_checkpoint_secs and save_checkpoint_secs > 0) or (
+        save_checkpoint_steps and save_checkpoint_steps > 0):
+      all_hooks.append(
+          basic_session_run_hooks.CheckpointSaverHook(
+              checkpoint_dir,
+              save_steps=save_checkpoint_steps,
+              save_secs=save_checkpoint_secs,
+              scaffold=scaffold))
+
+  session_creator = worker_context.session_creator(
+      scaffold,
+      config=config,
+      checkpoint_dir=checkpoint_dir,
+      max_wait_secs=max_wait_secs)
+  return MonitoredSession(
+      session_creator=session_creator,
+      hooks=all_hooks,
+      stop_grace_period_secs=stop_grace_period_secs)
+
+
+@tf_export(v1=['train.MonitoredTrainingSession'])
 def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              is_chief=True,
                              checkpoint_dir=None,
@@ -298,7 +360,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              stop_grace_period_secs=120,
                              log_step_count_steps=100,
                              max_wait_secs=7200,
-                             save_checkpoint_steps=USE_DEFAULT):
+                             save_checkpoint_steps=USE_DEFAULT,
+                             summary_dir=None):
   """Creates a `MonitoredSession` for training.
 
   For a chief, this utility sets proper session initializer/restorer. It also
@@ -348,6 +411,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       `save_checkpoint_steps` and `save_checkpoint_secs` are set to `None`, then
       the default checkpoint saver isn't used. If both are provided, then only
       `save_checkpoint_secs` is used. Default not enabled.
+    summary_dir: A string.  Optional path to a directory where to
+      save summaries. If None, checkpoint_dir is used instead.
 
   Returns:
     A `MonitoredSession` object.
@@ -370,14 +435,35 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
     save_checkpoint_steps = None
 
   scaffold = scaffold or Scaffold()
+  worker_context = distribute_coordinator_context.get_current_worker_context()
+
+  if worker_context:
+    return _create_monitored_session_with_worker_context(
+        worker_context,
+        scaffold,
+        checkpoint_dir=checkpoint_dir,
+        hooks=hooks,
+        chief_only_hooks=chief_only_hooks,
+        save_checkpoint_secs=save_checkpoint_secs,
+        save_summaries_steps=save_summaries_steps,
+        save_summaries_secs=save_summaries_secs,
+        config=config,
+        stop_grace_period_secs=stop_grace_period_secs,
+        log_step_count_steps=log_step_count_steps,
+        max_wait_secs=max_wait_secs,
+        save_checkpoint_steps=save_checkpoint_steps,
+        summary_dir=summary_dir)
+
   if not is_chief:
     session_creator = WorkerSessionCreator(
         scaffold=scaffold,
         master=master,
         config=config,
         max_wait_secs=max_wait_secs)
-    return MonitoredSession(session_creator=session_creator, hooks=hooks or [],
-                            stop_grace_period_secs=stop_grace_period_secs)
+    return MonitoredSession(
+        session_creator=session_creator,
+        hooks=hooks or [],
+        stop_grace_period_secs=stop_grace_period_secs)
 
   all_hooks = []
   if chief_only_hooks:
@@ -388,34 +474,42 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       master=master,
       config=config)
 
-  if checkpoint_dir:
+  summary_dir = summary_dir or checkpoint_dir
+  if summary_dir:
     if log_step_count_steps and log_step_count_steps > 0:
       all_hooks.append(
           basic_session_run_hooks.StepCounterHook(
-              output_dir=checkpoint_dir, every_n_steps=log_step_count_steps))
+              output_dir=summary_dir, every_n_steps=log_step_count_steps))
 
     if (save_summaries_steps and save_summaries_steps > 0) or (
         save_summaries_secs and save_summaries_secs > 0):
-      all_hooks.append(basic_session_run_hooks.SummarySaverHook(
-          scaffold=scaffold,
-          save_steps=save_summaries_steps,
-          save_secs=save_summaries_secs,
-          output_dir=checkpoint_dir))
+      all_hooks.append(
+          basic_session_run_hooks.SummarySaverHook(
+              scaffold=scaffold,
+              save_steps=save_summaries_steps,
+              save_secs=save_summaries_secs,
+              output_dir=summary_dir))
+
+  if checkpoint_dir:
     if (save_checkpoint_secs and save_checkpoint_secs > 0) or (
         save_checkpoint_steps and save_checkpoint_steps > 0):
-      all_hooks.append(basic_session_run_hooks.CheckpointSaverHook(
-          checkpoint_dir,
-          save_steps=save_checkpoint_steps,
-          save_secs=save_checkpoint_secs,
-          scaffold=scaffold))
+      all_hooks.append(
+          basic_session_run_hooks.CheckpointSaverHook(
+              checkpoint_dir,
+              save_steps=save_checkpoint_steps,
+              save_secs=save_checkpoint_secs,
+              scaffold=scaffold))
 
   if hooks:
     all_hooks.extend(hooks)
-  return MonitoredSession(session_creator=session_creator, hooks=all_hooks,
-                          stop_grace_period_secs=stop_grace_period_secs)
+  return MonitoredSession(
+      session_creator=session_creator,
+      hooks=all_hooks,
+      stop_grace_period_secs=stop_grace_period_secs)
 
 
 @tf_export('train.SessionCreator')
+@six.add_metaclass(abc.ABCMeta)
 class SessionCreator(object):
   """A factory for tf.Session."""
 
@@ -540,6 +634,11 @@ class _MonitoredSession(object):
     self._hooks = hooks or []
     for h in self._hooks:
       h.begin()
+
+    worker_context = distribute_coordinator_context.get_current_worker_context()
+    if not session_creator and worker_context:
+      session_creator = worker_context.session_creator()
+
     # Create the session.
     self._coordinated_creator = self._CoordinatedSessionCreator(
         session_creator=session_creator or ChiefSessionCreator(),
@@ -620,7 +719,7 @@ class _MonitoredSession(object):
         `step_context`. It may also optionally have `self` for cases when it
         belongs to an object.
     """
-    step_fn_arguments = util.fn_args(step_fn)
+    step_fn_arguments = function_utils.fn_args(step_fn)
     if step_fn_arguments != ('step_context',) and step_fn_arguments != (
         'self',
         'step_context',
@@ -706,7 +805,8 @@ class _MonitoredSession(object):
       self.tf_sess = self._session_creator.create_session()
       # We don't want coordinator to suppress any exception.
       self.coord = coordinator.Coordinator(clean_stop_exception_types=[])
-      queue_runner.start_queue_runners(sess=self.tf_sess, coord=self.coord)
+      if ops.get_collection(ops.GraphKeys.QUEUE_RUNNERS):
+        queue_runner.start_queue_runners(sess=self.tf_sess, coord=self.coord)
       # Inform the hooks that a new session has been created.
       for hook in self._hooks:
         hook.after_create_session(self.tf_sess, self.coord)
@@ -972,8 +1072,10 @@ class _WrappedSession(object):
     if self._sess:
       try:
         self._sess.close()
-      except _PREEMPTION_ERRORS:
-        pass
+      except _PREEMPTION_ERRORS as e:
+        logging.warning('An error occurred when attempting to close the '
+                        'session. This may be due to a preemption in a '
+                        'connected worker or parameter server. Error: %s', e)
       finally:
         self._sess = None
 
@@ -1019,7 +1121,11 @@ class _RecoverableSession(_WrappedSession):
         logging.info('An error was raised while a session was being created. '
                      'This may be due to a preemption of a connected worker '
                      'or parameter server. A new session will be created. '
-                     'Error: %s', e)
+                     'This error may also occur due to a gRPC failure caused '
+                     'by high memory or network bandwidth usage in the '
+                     'parameter servers. If this error occurs repeatedly, try '
+                     'increasing the number of parameter servers assigned to '
+                     'the job. Error: %s', e)
 
   def _check_stop(self):
     try:
@@ -1032,7 +1138,11 @@ class _RecoverableSession(_WrappedSession):
                    'session is complete. This may be due to a preemption in '
                    'a connected worker or parameter server. The current '
                    'session will be closed and a new session will be '
-                   'created. Error: %s', e)
+                   'created. This error may also occur due to a gRPC failure '
+                   'caused by high memory or network bandwidth usage in the '
+                   'parameter servers. If this error occurs repeatedly, try '
+                   'increasing the number of parameter servers assigned to '
+                   'the job. Error: %s', e)
       self.close()
       self._sess = self._create_session()
       # Since we have just recreated the session, the overall computation should
@@ -1055,7 +1165,11 @@ class _RecoverableSession(_WrappedSession):
         logging.info('An error was raised. This may be due to a preemption in '
                      'a connected worker or parameter server. The current '
                      'session will be closed and a new session will be '
-                     'created. Error: %s', e)
+                     'created. This error may also occur due to a gRPC failure '
+                     'caused by high memory or network bandwidth usage in the '
+                     'parameter servers. If this error occurs repeatedly, try '
+                     'increasing the number of parameter servers assigned to '
+                     'the job. Error: %s', e)
         self.close()
         self._sess = None
 
@@ -1071,7 +1185,11 @@ class _RecoverableSession(_WrappedSession):
         logging.info('An error was raised. This may be due to a preemption in '
                      'a connected worker or parameter server. The current '
                      'session will be closed and a new session will be '
-                     'created. Error: %s', e)
+                     'created. This error may also occur due to a gRPC failure '
+                     'caused by high memory or network bandwidth usage in the '
+                     'parameter servers. If this error occurs repeatedly, try '
+                     'increasing the number of parameter servers assigned to '
+                     'the job. Error: %s', e)
         self.close()
         self._sess = None
 
@@ -1269,3 +1387,6 @@ class _HookedSession(_WrappedSession):
 
     options.debug_options.debug_tensor_watch_opts.extend(
         incoming_options.debug_options.debug_tensor_watch_opts)
+    options.debug_options.reset_disk_byte_usage = (
+        options.debug_options.reset_disk_byte_usage or
+        incoming_options.debug_options.reset_disk_byte_usage)

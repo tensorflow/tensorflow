@@ -2,11 +2,26 @@ licenses(["restricted"])
 
 package(default_visibility = ["//visibility:public"])
 
+toolchain(
+    name = "toolchain-linux-x86_64",
+    exec_compatible_with = [
+        "@bazel_tools//platforms:linux",
+        "@bazel_tools//platforms:x86_64",
+    ],
+    target_compatible_with = [
+        "@bazel_tools//platforms:linux",
+        "@bazel_tools//platforms:x86_64",
+    ],
+    toolchain = ":cc-compiler-local",
+    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
+)
+
 cc_toolchain_suite(
     name = "toolchain",
     toolchains = {
         "local|compiler": ":cc-compiler-local",
         "darwin|compiler": ":cc-compiler-darwin",
+        "x64_windows|msvc-cl": ":cc-compiler-windows",
     },
 )
 
@@ -42,6 +57,20 @@ cc_toolchain(
     supports_param_files = 0,
 )
 
+cc_toolchain(
+    name = "cc-compiler-windows",
+    all_files = "%{win_linker_files}",
+    compiler_files = ":empty",
+    cpu = "x64_windows",
+    dwp_files = ":empty",
+    dynamic_runtime_libs = [":empty"],
+    linker_files = "%{win_linker_files}",
+    objcopy_files = ":empty",
+    static_runtime_libs = [":empty"],
+    strip_files = ":empty",
+    supports_param_files = 1,
+)
+
 filegroup(
     name = "empty",
     srcs = [],
@@ -50,4 +79,9 @@ filegroup(
 filegroup(
     name = "crosstool_wrapper_driver_is_not_gcc",
     srcs = ["clang/bin/crosstool_wrapper_driver_is_not_gcc"],
+)
+
+filegroup(
+    name = "windows_msvc_wrapper_files",
+    srcs = glob(["windows/msvc_*"]),
 )

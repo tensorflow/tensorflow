@@ -226,5 +226,145 @@ TEST(TensorUtil, ConcatSplitStrings) {
   }
 }
 
+TEST(TensorProtoUtil, CreatesStringTensorProto) {
+  std::vector<string> values{"a", "b", "c"};
+  std::vector<size_t> shape{1, 3};
+
+  auto proto = tensor::CreateTensorProto(values, shape);
+
+  EXPECT_EQ(proto.DebugString(),
+            "dtype: DT_STRING\n"
+            "tensor_shape {\n"
+            "  dim {\n"
+            "    size: 1\n"
+            "  }\n"
+            "  dim {\n"
+            "    size: 3\n"
+            "  }\n"
+            "}\n"
+            "string_val: \"a\"\n"
+            "string_val: \"b\"\n"
+            "string_val: \"c\"\n");
+}
+
+TEST(TensorProtoUtil, CreatesInt32TensorProto) {
+  std::vector<int32> values{1, 2};
+  std::vector<size_t> shape{2};
+
+  auto proto = tensor::CreateTensorProto(values, shape);
+
+  EXPECT_EQ(proto.DebugString(),
+            "dtype: DT_INT32\n"
+            "tensor_shape {\n"
+            "  dim {\n"
+            "    size: 2\n"
+            "  }\n"
+            "}\n"
+            "int_val: 1\n"
+            "int_val: 2\n");
+}
+
+TEST(TensorProtoUtil, CreatesInt64TensorProto) {
+  std::vector<int64> values{1, 2};
+  std::vector<size_t> shape{2};
+
+  auto proto = tensor::CreateTensorProto(values, shape);
+
+  EXPECT_EQ(proto.DebugString(),
+            "dtype: DT_INT64\n"
+            "tensor_shape {\n"
+            "  dim {\n"
+            "    size: 2\n"
+            "  }\n"
+            "}\n"
+            "int64_val: 1\n"
+            "int64_val: 2\n");
+}
+
+TEST(TensorProtoUtil, CreatesUInt32TensorProto) {
+  std::vector<uint32> values{1, 2};
+  std::vector<size_t> shape{2};
+
+  auto proto = tensor::CreateTensorProto(values, shape);
+
+  EXPECT_EQ(proto.DebugString(),
+            "dtype: DT_UINT32\n"
+            "tensor_shape {\n"
+            "  dim {\n"
+            "    size: 2\n"
+            "  }\n"
+            "}\n"
+            "uint32_val: 1\n"
+            "uint32_val: 2\n");
+}
+
+TEST(TensorProtoUtil, CreatesUInt64TensorProto) {
+  std::vector<uint64> values{1, 2};
+  std::vector<size_t> shape{2};
+
+  auto proto = tensor::CreateTensorProto(values, shape);
+
+  EXPECT_EQ(proto.DebugString(),
+            "dtype: DT_UINT64\n"
+            "tensor_shape {\n"
+            "  dim {\n"
+            "    size: 2\n"
+            "  }\n"
+            "}\n"
+            "uint64_val: 1\n"
+            "uint64_val: 2\n");
+}
+
+TEST(TensorProtoUtil, CreatesFloatTensorProto) {
+  std::vector<float> values{1.1, 2.2};
+  std::vector<size_t> shape{2};
+
+  auto proto = tensor::CreateTensorProto(values, shape);
+
+  EXPECT_EQ(proto.DebugString(),
+            "dtype: DT_FLOAT\n"
+            "tensor_shape {\n"
+            "  dim {\n"
+            "    size: 2\n"
+            "  }\n"
+            "}\n"
+            "float_val: 1.1\n"
+            "float_val: 2.2\n");
+}
+
+TEST(TensorProtoUtil, CreatesDoubleTensorProto) {
+  std::vector<double> values{1.1, 2.2};
+  std::vector<size_t> shape{2};
+
+  auto proto = tensor::CreateTensorProto(values, shape);
+
+  EXPECT_EQ(proto.DebugString(),
+            "dtype: DT_DOUBLE\n"
+            "tensor_shape {\n"
+            "  dim {\n"
+            "    size: 2\n"
+            "  }\n"
+            "}\n"
+            "double_val: 1.1\n"
+            "double_val: 2.2\n");
+}
+
+TEST(TensorProtoUtil, CreatesBoolTensorProto) {
+  std::vector<bool> values{true, false};
+  std::vector<size_t> shape{2};
+
+  auto proto = tensor::CreateTensorProto(values, shape);
+
+  EXPECT_EQ(proto.DebugString(),
+            "dtype: DT_BOOL\n"
+            "tensor_shape {\n"
+            "  dim {\n"
+            "    size: 2\n"
+            "  }\n"
+            "}\n"
+            "bool_val: true\n"
+            "bool_val: false\n");
+}
+
 }  // namespace
 }  // namespace tensorflow

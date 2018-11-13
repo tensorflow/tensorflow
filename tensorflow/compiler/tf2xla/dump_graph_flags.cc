@@ -19,7 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/dump_graph_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/parse_flags_from_env.h"
+#include "tensorflow/compiler/xla/parse_flags_from_env.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
@@ -41,7 +41,7 @@ static void AllocateFlags() {
            "Path prefix to which graphs dumped during debugging should be "
            "written."),
   });
-  xla::legacy_flags::ParseFlagsFromEnv(*flag_list);
+  xla::ParseFlagsFromEnv(*flag_list);
 }
 
 // Append to *append_to flag definitions associated with the XLA bridge's

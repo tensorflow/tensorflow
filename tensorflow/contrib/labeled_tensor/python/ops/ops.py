@@ -652,7 +652,8 @@ def map_fn(fn, labeled_tensor, name=None):
         tensor_lt = core.LabeledTensor(tensor, original_axes)
         return fn(tensor_lt).tensor
 
-      map_op = functional_ops.map_fn(tf_fn, labeled_tensor.tensor)
+      map_op = functional_ops.map_fn(
+          tf_fn, labeled_tensor.tensor, dtype=first_map_lt.dtype)
       map_lt = core.LabeledTensor(map_op, final_axes)
 
       return core.identity(map_lt, name=scope)

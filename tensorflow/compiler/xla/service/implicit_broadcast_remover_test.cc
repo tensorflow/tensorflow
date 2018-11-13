@@ -15,22 +15,23 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/implicit_broadcast_remover.h"
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 namespace {
 
-class ImplicitBroadcastRemoverTest : public HloVerifiedTestBase {
+class ImplicitBroadcastRemoverTest : public HloTestBase {
  protected:
   ImplicitBroadcastRemover remover_;
 };
 
 TEST_F(ImplicitBroadcastRemoverTest, NoImplicitBroadcast) {
+  auto m = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
   const Shape shape = ShapeUtil::MakeShape(F32, {2, 4});
@@ -41,15 +42,16 @@ TEST_F(ImplicitBroadcastRemoverTest, NoImplicitBroadcast) {
   builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, param1));
 
-  HloComputation* computation = module().AddEntryComputation(builder.Build());
+  HloComputation* computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_FALSE(remover_.Run(&module()).ValueOrDie());
+  EXPECT_FALSE(remover_.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
               op::Add(op::Parameter(), op::Parameter()));
 }
 
 TEST_F(ImplicitBroadcastRemoverTest, ScalarBroadcast) {
+  auto m = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
   const Shape shape = ShapeUtil::MakeShape(F32, {2, 4});
@@ -60,13 +62,13 @@ TEST_F(ImplicitBroadcastRemoverTest, ScalarBroadcast) {
   builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kPower, param0, param1));
 
-  HloComputation* computation = module().AddEntryComputation(builder.Build());
+  HloComputation* computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
 
   EXPECT_FALSE(ShapeUtil::Compatible(root->shape(), root->operand(0)->shape()));
   EXPECT_TRUE(ShapeUtil::Compatible(root->shape(), root->operand(1)->shape()));
 
-  EXPECT_TRUE(remover_.Run(&module()).ValueOrDie());
+  EXPECT_TRUE(remover_.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
 
   EXPECT_THAT(root, op::Power(op::Broadcast(op::Parameter()), op::Parameter()));
@@ -76,6 +78,7 @@ TEST_F(ImplicitBroadcastRemoverTest, ScalarBroadcast) {
 }
 
 TEST_F(ImplicitBroadcastRemoverTest, DegenerateDimensionBroadcast) {
+  auto m = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
   const Shape shape = ShapeUtil::MakeShape(F32, {2, 4, 6});
@@ -86,9 +89,9 @@ TEST_F(ImplicitBroadcastRemoverTest, DegenerateDimensionBroadcast) {
   builder.AddInstruction(HloInstruction::CreateBinary(
       shape, HloOpcode::kSubtract, param0, param1));
 
-  HloComputation* computation = module().AddEntryComputation(builder.Build());
+  HloComputation* computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(remover_.Run(&module()).ValueOrDie());
+  EXPECT_TRUE(remover_.Run(m.get()).ValueOrDie());
 
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Subtract(op::Parameter(),
@@ -98,6 +101,7 @@ TEST_F(ImplicitBroadcastRemoverTest, DegenerateDimensionBroadcast) {
 }
 
 TEST_F(ImplicitBroadcastRemoverTest, ScalarBroadcastToDegenerateDimensions) {
+  auto m = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
   const Shape shape = ShapeUtil::MakeShape(F32, {1, 4, 1});
@@ -108,9 +112,9 @@ TEST_F(ImplicitBroadcastRemoverTest, ScalarBroadcastToDegenerateDimensions) {
   builder.AddInstruction(HloInstruction::CreateBinary(
       shape, HloOpcode::kSubtract, param0, param1));
 
-  HloComputation* computation = module().AddEntryComputation(builder.Build());
+  HloComputation* computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(remover_.Run(&module()).ValueOrDie());
+  EXPECT_TRUE(remover_.Run(m.get()).ValueOrDie());
 
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root,
@@ -120,6 +124,7 @@ TEST_F(ImplicitBroadcastRemoverTest, ScalarBroadcastToDegenerateDimensions) {
 }
 
 TEST_F(ImplicitBroadcastRemoverTest, TernaryDegenerateDimensionBroadcast) {
+  auto m = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
   const Shape shape = ShapeUtil::MakeShape(F32, {2, 4, 6, 8});
@@ -132,9 +137,9 @@ TEST_F(ImplicitBroadcastRemoverTest, TernaryDegenerateDimensionBroadcast) {
   builder.AddInstruction(HloInstruction::CreateTernary(shape, HloOpcode::kClamp,
                                                        param0, param1, param2));
 
-  HloComputation* computation = module().AddEntryComputation(builder.Build());
+  HloComputation* computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(remover_.Run(&module()).ValueOrDie());
+  EXPECT_TRUE(remover_.Run(m.get()).ValueOrDie());
 
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Clamp(op::Broadcast(op::Reshape(op::Parameter())),
@@ -147,6 +152,7 @@ TEST_F(ImplicitBroadcastRemoverTest, TernaryDegenerateDimensionBroadcast) {
 
 TEST_F(ImplicitBroadcastRemoverTest,
        TernaryScalarAndDegenerateDimensionBroadcast) {
+  auto m = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
   const Shape shape = ShapeUtil::MakeShape(F32, {2, 4, 6});
@@ -159,9 +165,9 @@ TEST_F(ImplicitBroadcastRemoverTest,
   builder.AddInstruction(HloInstruction::CreateTernary(shape, HloOpcode::kClamp,
                                                        param0, param1, param2));
 
-  HloComputation* computation = module().AddEntryComputation(builder.Build());
+  HloComputation* computation = m->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(remover_.Run(&module()).ValueOrDie());
+  EXPECT_TRUE(remover_.Run(m.get()).ValueOrDie());
 
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Clamp(op::Broadcast(op::Parameter()),

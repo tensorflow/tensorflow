@@ -34,8 +34,8 @@ limitations under the License.
 // between output O of layer A and input I of layer B using
 // "input index" and "output index" labels per edge.
 
-#ifndef TENSORFLOW_GRAPH_GRAPH_H_
-#define TENSORFLOW_GRAPH_GRAPH_H_
+#ifndef TENSORFLOW_CORE_GRAPH_GRAPH_H_
+#define TENSORFLOW_CORE_GRAPH_GRAPH_H_
 
 #include <functional>
 #include <string>
@@ -72,6 +72,7 @@ class Node {
   int id() const { return id_; }
   int cost_id() const { return cost_id_; }
   const string& name() const;
+  void set_name(string name);
   const string& type_string() const;
 
   // def() provides the NodeDef the user supplied, but the specifics
@@ -162,12 +163,16 @@ class Node {
   }
   bool IsHostSend() const { return class_ == NC_HOST_SEND; }
   bool IsHostRecv() const { return class_ == NC_HOST_RECV; }
+  bool IsScopedAllocator() const { return class_ == NC_SCOPED_ALLOCATOR; }
+  bool IsCollective() const { return class_ == NC_COLLECTIVE; }
 
   bool IsMetadata() const { return class_ == NC_METADATA; }
+  bool IsFakeParam() const { return class_ == NC_FAKE_PARAM; }
 
   template <typename T>
   void AddAttr(const string& name, const T& val) {
     SetAttrValue(val, AddAttrHelper(name));
+    UpdateProperties();
   }
 
   void ClearAttr(const string& name);
@@ -208,6 +213,10 @@ class Node {
   // e.g. in AddAttr.
   void MaybeCopyOnWrite();
 
+  // Called after an attr has changed. Decides whether we need to update some
+  // property of the node (stored in props_).
+  void UpdateProperties();
+
   AttrValue* AddAttrHelper(const string& name);
 
   // A set of mutually exclusive classes for different kinds of nodes,
@@ -233,6 +242,9 @@ class Node {
     NC_GET_SESSION_TENSOR,
     NC_DELETE_SESSION_TENSOR,
     NC_METADATA,
+    NC_SCOPED_ALLOCATOR,
+    NC_COLLECTIVE,
+    NC_FAKE_PARAM,
     NC_OTHER  // Not a special kind of node
   };
 
@@ -280,6 +292,16 @@ struct InputTensor {
 
   InputTensor(const Node* n, int i) : node(n), index(i) {}
   InputTensor() : node(nullptr), index(0) {}
+
+  // Returns true if this InputTensor is identical to 'other'. Nodes are
+  // compared using pointer equality.
+  bool operator==(const InputTensor& other) const;
+
+  // A hash function for InputTensors. Nodes are hashed based on their pointer
+  // value.
+  struct Hash {
+    uint64 operator()(InputTensor const& s) const;
+  };
 };
 
 // Represents an output of a node, i.e., the `index`-th output of `node`. Note
@@ -291,6 +313,16 @@ struct OutputTensor {
 
   OutputTensor(const Node* n, int i) : node(n), index(i) {}
   OutputTensor() : node(nullptr), index(0) {}
+
+  // Returns true if this OutputTensor is identical to 'other'. Nodes are
+  // compared using pointer equality.
+  bool operator==(const OutputTensor& other) const;
+
+  // A hash function for OutputTensors. Nodes are hashed based on their pointer
+  // value.
+  struct Hash {
+    uint64 operator()(OutputTensor const& s) const;
+  };
 };
 
 class Edge {
@@ -393,9 +425,9 @@ class Graph {
   // Constructs a graph with a single SOURCE (always id kSourceId) and a
   // single SINK (always id kSinkId) node, and an edge from SOURCE->SINK.
   //
-  // The graph can hold ops found in registry. `registry`s lifetime must be at
+  // The graph can hold ops found in the registry. `ops`s lifetime must be at
   // least that of the constructed graph's.
-  explicit Graph(const OpRegistryInterface* registry);
+  explicit Graph(const OpRegistryInterface* ops);
 
   // Constructs a graph with a single SOURCE (always id kSourceId) and a
   // single SINK (always id kSinkId) node, and an edge from SOURCE->SINK.
@@ -566,12 +598,12 @@ class Graph {
   // Returns OK if `node` is non-null and belongs to this graph
   Status IsValidNode(const Node* node) const;
 
-  // Returns OK if IsValidNode(`node`) and `idx` is less than
-  // node->num_outputs()
+  // Returns OK if IsValidNode(`node`) and `idx` is a valid output.  Does not
+  // accept control outputs.
   Status IsValidOutputTensor(const Node* node, int idx) const;
 
-  // Returns OK if IsValidNode(`node`) and `idx` is less than
-  // node->num_inputs()
+  // Returns OK if IsValidNode(`node`) and `idx` a valid input.  Does not accept
+  // control inputs.
   Status IsValidInputTensor(const Node* node, int idx) const;
 
   // Create and return a new WhileContext owned by this graph. This is called
@@ -583,6 +615,9 @@ class Graph {
                          std::vector<OutputTensor> body_inputs,
                          std::vector<OutputTensor> body_outputs,
                          WhileContext** result);
+
+  // Builds a node name to node pointer index for all nodes in the graph.
+  std::unordered_map<string, Node*> BuildNodeNameIndex() const;
 
   // TODO(josh11b): uint64 hash() const;
 
@@ -656,10 +691,6 @@ class Graph {
   // AddWhileContext() or Node::while_ctx(), but this manages the lifetime.
   std::map<string, WhileContext> while_ctxs_;
 
-  // Searches through edges_ for the Edge whose destination node and index
-  // matches dst. An edge with destination `dst` must exist in the graph.
-  const Edge* FindEdge(const Node* dst, int index);
-
   TF_DISALLOW_COPY_AND_ASSIGN(Graph);
 };
 
@@ -695,6 +726,8 @@ inline bool IsControlFlow(const Node* n) { return n->IsControlFlow(); }
 // Returns true if the node only depends on its input's metadata
 // (shape).  Specifically, returns true for "Size", "Shape" and "Rank" ops.
 inline bool IsMetadata(const Node* n) { return n->IsMetadata(); }
+
+inline bool IsScopedAllocator(const Node* n) { return n->IsScopedAllocator(); }
 
 inline bool IsHostMemoryPreserving(const Node* node) {
   return IsIdentity(node) || IsControlFlow(node);
@@ -827,4 +860,4 @@ inline const string& Node::assigned_device_name() const {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_GRAPH_H_
+#endif  // TENSORFLOW_CORE_GRAPH_GRAPH_H_

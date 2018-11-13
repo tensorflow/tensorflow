@@ -17,6 +17,13 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/mkl_cpu_allocator.h"
 
+#ifdef _WIN32
+// Declare function to avoid unresolved symbol in VS
+i_malloc_t i_malloc;
+i_calloc_t i_calloc;
+i_realloc_t i_realloc;
+i_free_t i_free;
+#endif
 namespace tensorflow {
 
 constexpr const char* MklCPUAllocator::kMaxLimitStr;

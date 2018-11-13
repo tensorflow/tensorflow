@@ -16,13 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_ARRAY_SLICE_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_ARRAY_SLICE_H_
 
-#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "absl/types/span.h"
 
 namespace stream_executor {
 namespace port {
 
-using tensorflow::gtl::ArraySlice;
-using tensorflow::gtl::MutableArraySlice;
+template <typename T>
+using ArraySlice = absl::Span<const T>;
+template <typename T>
+using MutableArraySlice = absl::Span<T>;
 
 }  // namespace port
 }  // namespace stream_executor

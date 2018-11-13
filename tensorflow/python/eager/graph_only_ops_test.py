@@ -32,13 +32,13 @@ class GraphOnlyOpsTest(test_util.TensorFlowTestCase):
   def testGraphZerosLike(self):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
     z_tf = graph_only_ops.graph_zeros_like(x)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(np.zeros((2, 3)), z_tf.eval())
 
   def testGraphPlaceholder(self):
     x_tf = graph_only_ops.graph_placeholder(dtypes.int32, shape=(1,))
     y_tf = math_ops.square(x_tf)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = np.array([42])
       y = sess.run(y_tf, feed_dict={x_tf: np.array([42])})
       self.assertAllClose(np.square(x), y)

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_UTIL_H_
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
@@ -38,20 +40,24 @@ class WhileUtil {
   };
 
   // Replaces `while_instr` with a new while instruction that is equivalent to
-  // `while_instr`, except that it has all of the HLO instructions in
+  // `while_instr` except that it has all of the HLO instructions in
   // `instructions` as live-in, loop invariant values.  These new live in values
   // are represented as new elements appended to the parameter of the while
   // loop, which must be of tuple shape.  GetTupleElement instructions computing
   // each new live in value is returned in the `while_body_live_in_values`
   // vector.
   //
-  // Precondition: `while_instr` must have a tuple shaped state.
+  // Deletes `while_instr` after replacing it.
   //
-  // Every instruction in `instructions` must be contained in the computation
-  // that contains `while_instr`.
+  // Preconditions:
+  //
+  //  `while_instr` must have a tuple shaped state.
+  //
+  //   Every instruction in `instructions` must be contained in the computation
+  //   that contains `while_instr`.
   static StatusOr<MakeInstructionsLiveInResult> MakeInstructionsLiveIn(
       HloInstruction* while_instr,
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions);
+      absl::Span<HloInstruction* const> instructions);
 
   using LoopStateTy = std::vector<HloInstruction*>;
   using LoopBodyGeneratorTy = std::function<StatusOr<LoopStateTy>(
@@ -73,7 +79,21 @@ class WhileUtil {
   static StatusOr<LoopStateTy> MakeCountedLoop(
       HloComputation* computation, int32 trip_count,
       const LoopStateTy& init_values,
-      const LoopBodyGeneratorTy& loop_body_generator);
+      const LoopBodyGeneratorTy& loop_body_generator,
+      const OpMetadata& metadata);
+
+  // Returns the GetTupleElement instructions in `while_body` that access
+  // elements in the parameter tuple that don't change across iterations.
+  // Assumes `while_body` is the body computation of the while loop in question.
+  static std::vector<HloInstruction*> GetInvariantGTEsForWhileBody(
+      const HloComputation& while_body);
+
+  // Returns a map of index to GetTupleElement instructions in
+  // `while_conditional` that access elements in the parameter tuple. Assumes
+  // `while_conditional` is the conditional computation of the while loop in
+  // question.
+  static absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>>
+  GetGTEsMapForWhileConditional(const HloComputation& while_conditional);
 };
 }  // namespace xla
 

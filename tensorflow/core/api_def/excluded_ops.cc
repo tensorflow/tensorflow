@@ -20,7 +20,20 @@ namespace tensorflow {
 const std::unordered_set<std::string>* GetExcludedOps() {
   static std::unordered_set<std::string>* excluded_ops =
       new std::unordered_set<std::string>(
-          {"BigQueryReader", "GenerateBigQueryReaderPartitions"});
+          {"BigQueryReader", "GenerateBigQueryReaderPartitions",
+           "GcsConfigureBlockCache", "GcsConfigureCredentials",
+#ifdef INTEL_MKL
+           // QuantizedFusedOps for Intel CPU
+           "QuantizedConv2DAndRequantize", "QuantizedConv2DWithBias",
+           "QuantizedConv2DWithBiasAndRequantize", "QuantizedConv2DAndRelu",
+           "QuantizedConv2DAndReluAndRequantize",
+           "QuantizedConv2DWithBiasAndRelu",
+           "QuantizedConv2DWithBiasAndReluAndRequantize",
+           "QuantizedConv2DWithBiasSumAndRelu",
+           "QuantizedConv2DWithBiasSumAndReluAndRequantize",
+           "QuantizedConv2DWithBiasSignedSumAndReluAndRequantize"
+#endif  // INTEL_MKL
+          });
   return excluded_ops;
 }
 }  // namespace tensorflow

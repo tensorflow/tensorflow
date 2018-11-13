@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
-#include "tensorflow/core/common_runtime/gpu/process_state.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -149,8 +149,8 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
   char* buf = nullptr;
   const int64 total_bytes = is_dead ? 0 : tensor.TotalBytes();
   if (total_bytes > 0) {
-    port::Tracing::ScopedAnnotation annotation("SetProtoFromGPU");
-    alloc = ProcessState::singleton()->GetCUDAHostAllocator(0);
+    tracing::ScopedAnnotation annotation("SetProtoFromGPU");
+    alloc = GPUProcessState::singleton()->GetCUDAHostAllocator(0);
     buf = alloc->Allocate<char>(total_bytes);
     if (LogMemory::IsEnabled()) {
       LogMemory::RecordRawAllocation("SetProtoFromGPU",
@@ -185,13 +185,11 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
 }
 
 // static
-void GPUUtil::DeviceToDeviceCopy(DeviceContext* send_dev_context,
-                                 DeviceContext* recv_dev_context, Device* src,
-                                 Device* dst,
-                                 AllocatorAttributes src_alloc_attr,
-                                 AllocatorAttributes dst_alloc_attr,
-                                 const Tensor* input, Tensor* output,
-                                 StatusCallback done) {
+void GPUUtil::DeviceToDeviceCopy(
+    DeviceContext* send_dev_context, DeviceContext* recv_dev_context,
+    Device* src, Device* dst, AllocatorAttributes src_alloc_attr,
+    AllocatorAttributes dst_alloc_attr, const Tensor* input, Tensor* output,
+    int dev_to_dev_stream_index, StatusCallback done) {
   const DeviceBase::GpuDeviceInfo* dev_info = nullptr;
   se::Stream* send_stream = nullptr;
   Status s = PrepareCopy(src, send_dev_context, *input, output, &dev_info,
@@ -202,7 +200,7 @@ void GPUUtil::DeviceToDeviceCopy(DeviceContext* send_dev_context,
   }
   auto send_device_to_device_stream =
       static_cast<const GPUDeviceContext*>(send_dev_context)
-          ->device_to_device_stream();
+          ->device_to_device_stream(dev_to_dev_stream_index);
   if (send_device_to_device_stream == nullptr) {
     done(errors::Internal("No send gpu copy-out-stream is available."));
     return;

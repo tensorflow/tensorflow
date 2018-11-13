@@ -12,6 +12,16 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 py_library(
+    name = "all_reduce_py",
+    srcs = ["__init__.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":all_reduce",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
     name = "all_reduce",
     srcs = [
         "python/all_reduce.py",
@@ -19,10 +29,10 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:nccl_ops",
     ],
 )
 

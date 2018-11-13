@@ -49,11 +49,11 @@ tf_cc_binary(
         ":tpu_profiler_analysis_proto_cc",
         ":tpu_profiler_proto_cc",
         ":version",
+        "//tensorflow:grpc++",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/platform/cloud:gcs_file_system",
-        "@grpc//:grpc++_unsecure",
     ],
 )
 
@@ -90,13 +90,6 @@ tf_cc_test(
 tf_proto_library(
     name = "op_profile_proto",
     srcs = ["op_profile.proto"],
-    cc_api_version = 2,
-    visibility = ["//visibility:public"],
-)
-
-tf_proto_library(
-    name = "tf_op_stats_proto",
-    srcs = ["tf_op_stats.proto"],
     cc_api_version = 2,
     visibility = ["//visibility:public"],
 )

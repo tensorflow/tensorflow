@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_COSTS_UTILS_H_
-#define TENSORFLOW_GRAPPLER_COSTS_UTILS_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_UTILS_H_
+#define TENSORFLOW_CORE_GRAPPLER_COSTS_UTILS_H_
 
 #include <string>
 #include <unordered_map>
@@ -42,6 +42,17 @@ std::vector<OpInfo::TensorProperties> FindInputFeatures(
     const NodeDef& node,
     const std::unordered_map<string, const CostGraphDef::Node*>& name_to_cost,
     const std::unordered_map<string, const NodeDef*>& name_to_node);
+
+// Returns the size of tensor (unit: bytes). For tensor shape with unknown rank,
+// it assumes the tensor to be scalar. For any unknown dimension, it assumes
+// size one.
+int64 CalculateTensorSize(const OpInfo::TensorProperties& prop);
+
+// Returns the size of output at port_num (unit: bytes). A special case is
+// port_num -1, which is for control dependency and assumed to be 4 bytes.
+int64 CalculateOutputSize(
+    const std::vector<OpInfo::TensorProperties>& output_properties,
+    int port_num);
 
 // Returns the DeviceProperties of the device on which 'node' runs.
 DeviceProperties GetDeviceInfo(const CostGraphDef::Node& node);
@@ -80,7 +91,7 @@ class TensorSizeHistogram {
   uint64 Max() const { return max_; }
   uint64 NumElem() const { return num_elem_; }
   uint64 SumElem() const { return sum_elem_; }
-  std::string ToString() const;
+  string ToString() const;
 
  protected:
   const int Index(const uint64 value) const;
@@ -111,4 +122,4 @@ string GetStatsStringFromRunMetadata(const RunMetadata& run_metadata,
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_COSTS_UTILS_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_COSTS_UTILS_H_

@@ -39,16 +39,18 @@ GLOBAL_STEP_READ_KEY = 'global_step_read_op_cache'
 write_graph = graph_io.write_graph
 
 
-@tf_export('train.global_step')
+@tf_export(v1=['train.global_step'])
 def global_step(sess, global_step_tensor):
   """Small helper to get the global step.
 
   ```python
-  # Creates a variable to hold the global_step.
+  # Create a variable to hold the global_step.
   global_step_tensor = tf.Variable(10, trainable=False, name='global_step')
-  # Creates a session.
+  # Create a session.
   sess = tf.Session()
-  # Initializes the variable.
+  # Initialize the variable
+  sess.run(global_step_tensor.initializer)
+  # Get the variable value.
   print('global_step: %s' % tf.train.global_step(sess, global_step_tensor))
 
   global_step: 10
@@ -67,7 +69,7 @@ def global_step(sess, global_step_tensor):
   return int(sess.run(global_step_tensor))
 
 
-@tf_export('train.get_global_step')
+@tf_export(v1=['train.get_global_step'])
 def get_global_step(graph=None):
   """Get the global step tensor.
 
@@ -102,7 +104,7 @@ def get_global_step(graph=None):
   return global_step_tensor
 
 
-@tf_export('train.create_global_step')
+@tf_export(v1=['train.create_global_step'])
 def create_global_step(graph=None):
   """Create global step tensor in graph.
 
@@ -119,29 +121,31 @@ def create_global_step(graph=None):
   graph = graph or ops.get_default_graph()
   if get_global_step(graph) is not None:
     raise ValueError('"global_step" already exists.')
+  if context.executing_eagerly():
+    with ops.device('cpu:0'):
+      return variable_scope.get_variable(
+          ops.GraphKeys.GLOBAL_STEP,
+          shape=[],
+          dtype=dtypes.int64,
+          initializer=init_ops.zeros_initializer(),
+          trainable=False,
+          aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA,
+          collections=[ops.GraphKeys.GLOBAL_VARIABLES,
+                       ops.GraphKeys.GLOBAL_STEP])
   # Create in proper graph and base name_scope.
   with graph.as_default() as g, g.name_scope(None):
-    if context.executing_eagerly():
-      with ops.device('cpu:0'):
-        return variable_scope.get_variable(
-            ops.GraphKeys.GLOBAL_STEP,
-            shape=[],
-            dtype=dtypes.int64,
-            initializer=init_ops.zeros_initializer(),
-            trainable=False,
-            collections=[ops.GraphKeys.GLOBAL_VARIABLES,
-                         ops.GraphKeys.GLOBAL_STEP])
     return variable_scope.get_variable(
         ops.GraphKeys.GLOBAL_STEP,
         shape=[],
         dtype=dtypes.int64,
         initializer=init_ops.zeros_initializer(),
         trainable=False,
+        aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES,
                      ops.GraphKeys.GLOBAL_STEP])
 
 
-@tf_export('train.get_or_create_global_step')
+@tf_export(v1=['train.get_or_create_global_step'])
 def get_or_create_global_step(graph=None):
   """Returns and create (if necessary) the global step tensor.
 
@@ -159,7 +163,7 @@ def get_or_create_global_step(graph=None):
   return global_step_tensor
 
 
-@tf_export('train.assert_global_step')
+@tf_export(v1=['train.assert_global_step'])
 def assert_global_step(global_step_tensor):
   """Asserts `global_step_tensor` is a scalar int `Variable` or `Tensor`.
 

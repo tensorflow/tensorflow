@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
@@ -28,10 +28,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
 
-class TernaryOpsTest(XLATestCase):
+class TernaryOpsTest(xla_test.XLATestCase):
 
   def _testTernary(self, op, a, b, c, expected):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       with self.test_scope():
         pa = array_ops.placeholder(dtypes.as_dtype(a.dtype), a.shape, name="a")
         pb = array_ops.placeholder(dtypes.as_dtype(b.dtype), b.shape, name="b")
@@ -122,8 +122,7 @@ class TernaryOpsTest(XLATestCase):
           expected=np.array([[2], [5]], dtype=dtype))
 
   def testClipByValue(self):
-    # TODO(b/78258593): enable integer types here too.
-    for dtype in self.float_types:
+    for dtype in self.numeric_types - self.complex_types:
       test_cases = [
           (np.array([2, 4, 5], dtype=dtype), dtype(7)),  #
           (dtype(1), np.array([2, 4, 5], dtype=dtype)),  #

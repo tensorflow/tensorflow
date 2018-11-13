@@ -26,4 +26,4 @@ available. An example use can be found in test/test_tftrt.py script
 In order to make use of TensorRT integration, you will need a local installation
 of TensorRT 3.0.4 from the [NVIDIA Developer website](https://developer.nvidia.com/tensorrt).
 Installation instructions for compatibility with TensorFlow are provided on the
-[TensorFlow Installation page](https://www.tensorflow.org/install/install_linux#nvidia_requirements_to_run_tensorflow_with_gpu_support).
+[TensorFlow GPU support](https://www.tensorflow.org/install/gpu) guide.

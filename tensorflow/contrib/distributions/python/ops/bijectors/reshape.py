@@ -23,12 +23,14 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -36,10 +38,26 @@ __all__ = [
 ]
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _static_ndims_from_shape(shape):
-  return shape.shape.with_rank_at_least(1)[0].value
+  return tensor_shape.dimension_value(shape.shape.with_rank_at_least(1)[0])
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _ndims_from_shape(shape):
   return array_ops.shape(shape)[0]
 
@@ -63,9 +81,10 @@ class Reshape(bijector.Bijector):
   Example usage:
   ```python
 
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfb = tfp.bijectors
 
-  r = tfd.bijectors.Reshape(event_shape_out=[1, -1])
+  r = tfb.Reshape(event_shape_out=[1, -1])
 
   r.forward([3., 4.])    # shape [2]
   # ==> [[3., 4.]]       # shape [1, 2]
@@ -86,6 +105,14 @@ class Reshape(bijector.Bijector):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self, event_shape_out, event_shape_in=(-1,),
                validate_args=False, name=None):
     """Creates a `Reshape` bijector.

@@ -19,9 +19,9 @@ limitations under the License.
 
 #define TF_CUDA_CAPABILITIES CudaVersion("3.0")
 
-#define TF_CUDA_VERSION "8.0"
-#define TF_CUDNN_VERSION "5"
+#define TF_CUDA_VERSION "9.0"
+#define TF_CUDNN_VERSION "7"
 
-#define TF_CUDA_TOOLKIT_PATH "/usr/local/cuda-8.0"
+#define TF_CUDA_TOOLKIT_PATH "/usr/local/cuda-9.0"
 
 #endif  // CUDA_CUDA_CONFIG_H_

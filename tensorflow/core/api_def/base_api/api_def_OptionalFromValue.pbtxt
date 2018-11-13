@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "OptionalFromValue"
+  summary: "Constructs an Optional variant from a tuple of tensors."
+}
