@@ -66,7 +66,7 @@ class HloSubcomputationUnificationTest : public HloTestBase {
 };
 
 TEST_F(HloSubcomputationUnificationTest, UnifyIdentities) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
   auto callee1 =
@@ -103,7 +103,7 @@ TEST_F(HloSubcomputationUnificationTest, UnifyIdentities) {
 }
 
 TEST_F(HloSubcomputationUnificationTest, UnifyAdditions) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
   auto callee1 =
@@ -184,7 +184,7 @@ TEST_F(HloSubcomputationUnificationTest, DifferentParameterShapes) {
 // Regression test for b/31466798. Checks that entry_computation is still valid
 // after unification.
 TEST_F(HloSubcomputationUnificationTest, TwoIdenticalComputations) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   for (int i = 0; i < 2; ++i) {
     HloComputation::Builder builder("pow");
     auto x =
