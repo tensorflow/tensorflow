@@ -78,11 +78,6 @@ class MirroredTwoDeviceDistributionTest(strategy_test_lib.DistributionTestBase):
     self._test_minimize_loss_graph(
         self._get_distribution_strategy(), soft_placement=soft_placement)
 
-  def testMapReduce(self):
-    if not GPU_TEST:
-      self.skipTest("Not GPU test")
-    self._test_map_reduce(self._get_distribution_strategy())
-
   def testDeviceIndex(self):
     if not GPU_TEST:
       self.skipTest("Not GPU test")
