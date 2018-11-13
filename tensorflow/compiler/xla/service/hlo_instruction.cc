@@ -312,6 +312,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                 proto.exponent_bits(), proto.mantissa_bits());
       break;
     case HloOpcode::kInfeed: {
+      TF_RET_CHECK(ShapeUtil::IsTuple(proto.shape()) &&
+                   (ShapeUtil::TupleElementCount(proto.shape()) == 2))
+          << "Infeed should have a tuple shape with 2 operands, but has: "
+          << proto.shape();
       const Shape& data_shape =
           ShapeUtil::GetTupleElementShape(proto.shape(), 0);
       TF_RET_CHECK(proto.operand_ids_size() == 1)
