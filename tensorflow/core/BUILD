@@ -3421,6 +3421,22 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "platform_strings",
+    srcs = ["platform/platform_strings_computed.h"],
+    hdrs = ["platform/platform_strings.h"],
+)
+
+tf_cc_test(
+    name = "platform_strings_test",
+    size = "small",
+    srcs = ["platform/platform_strings_test.cc"],
+    deps = [
+        ":lib",
+        ":platform_strings",
+    ],
+)
+
 tf_cc_test(
     name = "platform_env_test",
     size = "small",
