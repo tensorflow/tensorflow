@@ -184,6 +184,7 @@ struct TF_ApiDefMap {
 struct TF_Server {
   TF_Server(std::unique_ptr<tensorflow::ServerInterface> server);
 
+  const tensorflow::string target;
   std::unique_ptr<tensorflow::ServerInterface> server;
 };
 #endif

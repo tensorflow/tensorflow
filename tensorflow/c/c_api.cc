@@ -2815,7 +2815,7 @@ TF_Buffer* TF_GetRegisteredKernelsForOp(const char* name, TF_Status* status) {
 
 #ifndef __ANDROID__
 TF_Server::TF_Server(std::unique_ptr<tensorflow::ServerInterface> server)
-    : server(std::move(server)) {}
+    : target(server->target()), server(std::move(server)) {}
 #endif  // __ANDROID__
 
 TF_Server* TF_NewServer(const void* proto, size_t proto_len,
@@ -2864,6 +2864,14 @@ void TF_ServerJoin(TF_Server* server, TF_Status* status) {
       "Server functionality is not supported in Android");
 #else
   status->status = server->server->Join();
+#endif
+}
+
+const char* TF_ServerTarget(TF_Server* server) {
+#ifdef __ANDROID__
+  return nullptr;
+#else
+  return server->target.c_str();
 #endif
 }
 
