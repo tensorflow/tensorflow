@@ -5547,24 +5547,6 @@ func OrderedMapPeek(scope *Scope, key tf.Output, indices tf.Output, dtypes []tf.
 	return values
 }
 
-// Returns the truth value of x OR y element-wise.
-//
-// *NOTE*: `LogicalOr` supports broadcasting. More about broadcasting
-// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-func LogicalOr(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "LogicalOr",
-		Input: []tf.Input{
-			x, y,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Compute the regularized incomplete beta integral \\(I_x(a, b)\\).
 //
 // The regularized incomplete beta integral is defined as:
@@ -22658,6 +22640,24 @@ func QuantizeDownAndShrinkRange(scope *Scope, input tf.Output, input_min tf.Outp
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// Returns the truth value of x OR y element-wise.
+//
+// *NOTE*: `LogicalOr` supports broadcasting. More about broadcasting
+// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+func LogicalOr(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "LogicalOr",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Selects elements from `x` or `y`, depending on `condition`.
 //
 // The `x`, and `y` tensors must all have the same shape, and the
@@ -30072,6 +30072,83 @@ func UnbatchDataset(scope *Scope, input_dataset tf.Output, output_types []tf.Dat
 	return op.Output(0)
 }
 
+// OrderedMapStageAttr is an optional argument to OrderedMapStage.
+type OrderedMapStageAttr func(optionalAttr)
+
+// OrderedMapStageCapacity sets the optional capacity attribute to value.
+//
+// value: Maximum number of elements in the Staging Area. If > 0, inserts
+// on the container will block when the capacity is reached.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func OrderedMapStageCapacity(value int64) OrderedMapStageAttr {
+	return func(m optionalAttr) {
+		m["capacity"] = value
+	}
+}
+
+// OrderedMapStageMemoryLimit sets the optional memory_limit attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func OrderedMapStageMemoryLimit(value int64) OrderedMapStageAttr {
+	return func(m optionalAttr) {
+		m["memory_limit"] = value
+	}
+}
+
+// OrderedMapStageContainer sets the optional container attribute to value.
+//
+// value: If non-empty, this queue is placed in the given container. Otherwise,
+// a default container is used.
+// If not specified, defaults to ""
+func OrderedMapStageContainer(value string) OrderedMapStageAttr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// OrderedMapStageSharedName sets the optional shared_name attribute to value.
+//
+// value: It is necessary to match this name to the matching Unstage Op.
+// If not specified, defaults to ""
+func OrderedMapStageSharedName(value string) OrderedMapStageAttr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// Stage (key, values) in the underlying container which behaves like a ordered
+//
+// associative container.   Elements are ordered by key.
+//
+// Arguments:
+//	key: int64
+//
+//	values: a list of tensors
+// dtypes A list of data types that inserted values should adhere to.
+//
+//
+// Returns the created operation.
+func OrderedMapStage(scope *Scope, key tf.Output, indices tf.Output, values []tf.Output, dtypes []tf.DataType, optional ...OrderedMapStageAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtypes": dtypes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "OrderedMapStage",
+		Input: []tf.Input{
+			key, indices, tf.OutputList(values),
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
 // RpcAttr is an optional argument to Rpc.
 type RpcAttr func(optionalAttr)
 
@@ -30189,83 +30266,6 @@ func Rpc(scope *Scope, address tf.Output, method tf.Output, request tf.Output, o
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
-}
-
-// OrderedMapStageAttr is an optional argument to OrderedMapStage.
-type OrderedMapStageAttr func(optionalAttr)
-
-// OrderedMapStageCapacity sets the optional capacity attribute to value.
-//
-// value: Maximum number of elements in the Staging Area. If > 0, inserts
-// on the container will block when the capacity is reached.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func OrderedMapStageCapacity(value int64) OrderedMapStageAttr {
-	return func(m optionalAttr) {
-		m["capacity"] = value
-	}
-}
-
-// OrderedMapStageMemoryLimit sets the optional memory_limit attribute to value.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func OrderedMapStageMemoryLimit(value int64) OrderedMapStageAttr {
-	return func(m optionalAttr) {
-		m["memory_limit"] = value
-	}
-}
-
-// OrderedMapStageContainer sets the optional container attribute to value.
-//
-// value: If non-empty, this queue is placed in the given container. Otherwise,
-// a default container is used.
-// If not specified, defaults to ""
-func OrderedMapStageContainer(value string) OrderedMapStageAttr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// OrderedMapStageSharedName sets the optional shared_name attribute to value.
-//
-// value: It is necessary to match this name to the matching Unstage Op.
-// If not specified, defaults to ""
-func OrderedMapStageSharedName(value string) OrderedMapStageAttr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// Stage (key, values) in the underlying container which behaves like a ordered
-//
-// associative container.   Elements are ordered by key.
-//
-// Arguments:
-//	key: int64
-//
-//	values: a list of tensors
-// dtypes A list of data types that inserted values should adhere to.
-//
-//
-// Returns the created operation.
-func OrderedMapStage(scope *Scope, key tf.Output, indices tf.Output, values []tf.Output, dtypes []tf.DataType, optional ...OrderedMapStageAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtypes": dtypes}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "OrderedMapStage",
-		Input: []tf.Input{
-			key, indices, tf.OutputList(values),
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
 }
 
 // StackPushV2Attr is an optional argument to StackPushV2.
