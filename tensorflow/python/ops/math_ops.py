@@ -1091,7 +1091,10 @@ def truediv(x, y, name=None):
   return _truediv_python3(x, y, name)
 
 
-@tf_export("div")
+@deprecation.deprecated(
+    date=None,
+    instructions="Deprecated in favor of operator or tf.math.divide.")
+@tf_export(v1=["div"])
 def div(x, y, name=None):
   """Divides x / y elementwise (using Python 2 division operator semantics).
 
