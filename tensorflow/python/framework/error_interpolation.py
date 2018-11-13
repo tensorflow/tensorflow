@@ -40,6 +40,7 @@ _ParseTag = collections.namedtuple("_ParseTag", ["type", "name"])
 
 _BAD_FILE_SUBSTRINGS = [
     os.path.join("tensorflow", "python"),
+    os.path.join("tensorflow", "contrib"),
     "<embedded",
 ]
 
