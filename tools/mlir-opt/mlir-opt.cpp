@@ -332,7 +332,7 @@ static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
 /// single test, but could be used for other purposes as well.
 static OptResult
 splitAndProcessFile(std::unique_ptr<MemoryBuffer> originalBuffer) {
-  const char marker[] = "-----";
+  const char marker[] = "// -----\n";
   auto *origMemBuffer = originalBuffer.get();
   SmallVector<StringRef, 8> sourceBuffers;
   origMemBuffer->getBuffer().split(sourceBuffers, marker);
