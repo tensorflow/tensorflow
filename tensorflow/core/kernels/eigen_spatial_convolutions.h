@@ -1418,8 +1418,12 @@ struct mkldnn_gemm_pack<
  * It is possible to swap the order of the width and height dimensions provided
  * that the same order is used in the input, the kernel, and the output.
  *
+ * It is also possible to add an output kernel to the contraction, output
+ * kernel is called by Eigen when it "finalizes" the block of an output tensor.
+ *
  */
-template <typename Input, typename Kernel>
+template <typename Input, typename Kernel,
+          typename OutputKernel = const NoOpOutputKernel>
 EIGEN_DEVICE_FUNC
     EIGEN_ALWAYS_INLINE static const typename internal::conditional<
         internal::traits<Input>::Layout == ColMajor,
@@ -1434,8 +1438,8 @@ EIGEN_DEVICE_FUNC
                     const Kernel>,
                 const TensorReshapingOp<
                     const DSizes<typename internal::traits<Input>::Index, 2>,
-                    const TensorImagePatchOp<Dynamic, Dynamic,
-                                             const Input> > > >,
+                    const TensorImagePatchOp<Dynamic, Dynamic, const Input> >,
+                const OutputKernel> >,
         TensorReshapingOp<
             const DSizes<typename internal::traits<Input>::Index,
                          internal::traits<Input>::NumDimensions>,
@@ -1447,12 +1451,14 @@ EIGEN_DEVICE_FUNC
                     const TensorImagePatchOp<Dynamic, Dynamic, const Input> >,
                 const TensorReshapingOp<
                     const DSizes<typename internal::traits<Input>::Index, 2>,
-                    const Kernel> > > >::type
+                    const Kernel>,
+                const OutputKernel> > >::type
     SpatialConvolution(const Input& input, const Kernel& kernel,
                        const Index row_stride = 1, const Index col_stride = 1,
                        const PaddingType padding_type = PADDING_SAME,
                        const Index row_in_stride = 1,
-                       const Index col_in_stride = 1) {
+                       const Index col_in_stride = 1,
+                       const OutputKernel& output_kernel = OutputKernel()) {
   typedef typename internal::traits<Input>::Index TensorIndex;
   TensorRef<Tensor<typename internal::traits<Input>::Scalar,
                    internal::traits<Input>::NumDimensions,
@@ -1575,13 +1581,13 @@ EIGEN_DEVICE_FUNC
                             kernelRows, kernelCols, row_stride, col_stride,
                             row_in_stride, col_in_stride, padding_type)
                         .reshape(pre_contract_dims),
-                    contract_dims)
+                    contract_dims, output_kernel)
           .reshape(post_contract_dims),
       input
           .extract_image_patches(kernelRows, kernelCols, row_stride, col_stride,
                                  row_in_stride, col_in_stride, padding_type)
           .reshape(pre_contract_dims)
-          .contract(kernel.reshape(kernel_dims), contract_dims)
+          .contract(kernel.reshape(kernel_dims), contract_dims, output_kernel)
           .reshape(post_contract_dims));
 }
 
