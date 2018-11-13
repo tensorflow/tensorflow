@@ -1672,7 +1672,6 @@ cc_library(
     name = "mobile_additional_lib_deps",
     deps = tf_additional_lib_deps() + [
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
     ],
 )
 
@@ -3003,16 +3002,6 @@ cc_library(
 )
 
 tf_cuda_library(
-    name = "metrics",
-    srcs = ["common_runtime/metrics.cc"],
-    hdrs = ["common_runtime/metrics.h"],
-    deps = [
-        ":lib",
-        "@com_google_absl//absl/time",
-    ],
-)
-
-tf_cuda_library(
     name = "direct_session_internal",
     srcs = ["common_runtime/direct_session.cc"],
     hdrs = [
@@ -3028,12 +3017,10 @@ tf_cuda_library(
         ":graph",
         ":lib",
         ":lib_internal",
-        ":metrics",
         ":proto_text",
         ":protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
         "//tensorflow/core/kernels:function_ops",
-        "@com_google_absl//absl/time",
     ],
     alwayslink = 1,
 )
