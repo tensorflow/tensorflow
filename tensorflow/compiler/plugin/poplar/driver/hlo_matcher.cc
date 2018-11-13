@@ -42,7 +42,8 @@ HloMatcher::HloMatcher(const std::vector<HloMatcherPattern>& patterns,
 
 // A set of sets of ops which are all associative together
 static std::set<std::set<HloOpcode>> associative_ops_sets = {
-    {HloOpcode::kMultiply}, {HloOpcode::kAdd},
+    {HloOpcode::kMultiply},
+    {HloOpcode::kAdd},
 };
 
 StatusOr<Trace> HloMatcher::FindNextMatchingOp(HloInstruction* user,
@@ -411,6 +412,9 @@ OutlinedInfo HloMatcher::OutlineExpressionFromComputation(
   annotations_.fusion_map[nested_computation] = outlined.at(old);
 
   call->set_metadata(old->metadata());
+  if (old->has_sharding()) {
+    call->set_sharding(old->sharding());
+  }
 
   TF_CHECK_OK(root->ReplaceAllUsesWith(call));
 

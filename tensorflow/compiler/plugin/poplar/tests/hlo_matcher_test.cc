@@ -214,6 +214,8 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoining) {
   md.set_op_name("long/bc");
   b1->set_metadata(md);
 
+  b1->set_sharding(HloSharding::AssignDevice(1));
+
   auto computation = builder.Build();
 
   auto hlo_module = CreateNewModule();
@@ -236,6 +238,8 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoining) {
   EXPECT_EQ("fuse", call_inst->to_apply()->name());
 
   EXPECT_EQ("long/bc", call_inst->metadata().op_name());
+  EXPECT_TRUE(call_inst->has_sharding());
+  EXPECT_EQ(1, call_inst->sharding().UniqueDevice());
 }
 
 TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoiningOnMultipleMatchNode) {

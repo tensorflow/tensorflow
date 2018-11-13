@@ -205,10 +205,22 @@ StatusOr<bool> ExpressionOutliner::Run(HloModule* module) {
     }
 
     if (instructions_to_outline.size() > 1) {
+      HloSharding sharding(HloSharding::AssignDevice(0));
+      bool has_sharding = false;
+      if (instructions_to_outline[0]->has_sharding()) {
+        sharding = instructions_to_outline[0]->sharding();
+        has_sharding = true;
+      }
+
       std::reverse(instructions_to_outline.begin(),
                    instructions_to_outline.end());
-      comp->parent()->OutlineExpressionFromComputation(
+
+      auto* call = comp->parent()->OutlineExpressionFromComputation(
           instructions_to_outline, "__arithmetic_expression", comp);
+
+      if (has_sharding) {
+        call->set_sharding(sharding);
+      }
     }
   }
 

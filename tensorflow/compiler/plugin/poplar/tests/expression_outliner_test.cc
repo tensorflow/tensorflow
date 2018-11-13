@@ -57,6 +57,8 @@ TEST_F(ExpressionOutlinerTest, OutlineSimpleTree) {
       HloInstruction::CreateBinary(shape, HloOpcode::kMultiply, add, sub));
   builder.AddInstruction(HloInstruction::CreateTuple({mul}));
 
+  mul->set_sharding(HloSharding::AssignDevice(1));
+
   auto computation = builder.Build();
 
   auto hlo_module = CreateNewModule();
@@ -72,6 +74,8 @@ TEST_F(ExpressionOutlinerTest, OutlineSimpleTree) {
   EXPECT_THAT(comp->instruction_count(), 6);
   EXPECT_THAT(inst->operand(0)->opcode(), HloOpcode::kCall);
   EXPECT_THAT(inst->operand(0)->operand_count(), 4);
+  ASSERT_TRUE(inst->operand(0)->has_sharding());
+  EXPECT_THAT(inst->operand(0)->sharding().UniqueDevice(), 1);
 }
 
 // Shared inputs to outlined section (a+b+c)
