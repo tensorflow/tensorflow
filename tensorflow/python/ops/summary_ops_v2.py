@@ -43,8 +43,9 @@ from tensorflow.python.training import training_util
 from tensorflow.python.util import tf_contextlib
 
 
-# A global dictionary mapping graph keys to boolean values indicating whether
-# we should record summaries for this particular graph or not.
+# Dictionary mapping graph keys to a boolean Tensor (or callable returning
+# a boolean Tensor) indicating whether we should record summaries for the
+# graph identified by the key of the dictionary.
 _SHOULD_RECORD_SUMMARIES = {}
 
 # A global dictionary mapping graph keys to a list of summary writer init ops.
@@ -59,7 +60,8 @@ def should_record_summaries():
   """Returns boolean Tensor which is true if summaries should be recorded."""
   global _SHOULD_RECORD_SUMMARIES
   key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
-  return _SHOULD_RECORD_SUMMARIES.setdefault(key, False)
+  should = _SHOULD_RECORD_SUMMARIES.setdefault(key, False)
+  return should() if callable(should) else should
 
 
 # TODO(apassos) consider how to handle local step here.
@@ -73,7 +75,10 @@ def record_summaries_every_n_global_steps(n, global_step=None):
   old = _SHOULD_RECORD_SUMMARIES.setdefault(key, False)
   try:
     with ops.device("cpu:0"):
-      _SHOULD_RECORD_SUMMARIES[key] = math_ops.equal(global_step % n, 0)
+      should = lambda: math_ops.equal(global_step % n, 0)
+      if not context.executing_eagerly():
+        should = should()
+      _SHOULD_RECORD_SUMMARIES[key] = should
     yield
   finally:
     _SHOULD_RECORD_SUMMARIES[key] = old
