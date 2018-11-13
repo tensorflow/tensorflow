@@ -71,6 +71,33 @@ TEST_F(ReducePrecisionInsertionTest, BeforeUnaryInstruction) {
   EXPECT_THAT(b->operand(0), op::ReducePrecision(a));
 }
 
+TEST_F(ReducePrecisionInsertionTest, BeforeUnaryScalarInstruction) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {});
+
+  // Create a simple graph with a parameter feeding a unary cosine function.
+  HloInstruction* a =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "a"));
+  HloInstruction* b = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kCos, a));
+
+  auto module = CreateNewUnverifiedModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  // Confirm expected state before adding ops.
+  EXPECT_EQ(computation->root_instruction(), b);
+  EXPECT_EQ(b->operand(0), a);
+
+  EXPECT_TRUE(InsertOps(module.get(), HloReducePrecisionOptions::OP_INPUTS,
+                        [](const HloInstruction* instruction) {
+                          return instruction->opcode() == HloOpcode::kCos;
+                        }));
+
+  // Confirm expected graph after adding ops.
+  EXPECT_EQ(computation->root_instruction(), b);
+  EXPECT_THAT(b->operand(0), op::ReducePrecision(a));
+}
+
 TEST_F(ReducePrecisionInsertionTest, BeforeBinaryInstruction) {
   auto builder = HloComputation::Builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {4});
