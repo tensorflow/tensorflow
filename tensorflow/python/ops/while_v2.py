@@ -23,7 +23,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -245,7 +244,7 @@ def while_loop(cond,
         name=scope)
 
     _copy_handle_data(body_graph.outputs, outputs)
-    _maybe_set_lowering_attr(outputs[0].op)
+    util.maybe_set_lowering_attr(outputs[0].op)
     _maybe_set_maximum_iterations_attr(outputs[0].op, maximum_iterations)
 
     # Return identities for each output of the While op, rather than the output
@@ -343,8 +342,11 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       name="%s_grad" % op.name)
 
   _copy_handle_data(body_grad_graph.outputs, outputs)
-  _maybe_set_lowering_attr(outputs[0].op)
+  util.maybe_set_lowering_attr(outputs[0].op)
   _maybe_set_maximum_iterations_attr(outputs[0].op, maximum_iterations)
+
+  # See comment in while_loop.
+  outputs = [array_ops.identity(t) for t in outputs]
 
   # Set None as the output gradient for tensors with None input gradient
   # e.g. TensorArray handles.
@@ -790,29 +792,6 @@ def _check_num_inputs_outputs(cond_graph, body_graph, num_flattened_loop_vars):
 def _copy_handle_data(src_tensors, tgt_tensors):
   for src_t, tgt_t in zip(src_tensors, tgt_tensors):
     custom_gradient.copy_handle_data(src_t, tgt_t)
-
-
-# TODO(srbs): Move to common utils for cond_v2 and while_v2.
-def _maybe_set_lowering_attr(op):
-  """Sets the flag to enable lowering on the `While` op if necessary.
-
-  Lowering allows while_v2 to avoid some of the limitations of Functions,
-  allowing users to specify devices & colocation inside of while_v2
-  branches, and enabling non-strict evaluation & partial pruning of while_v2
-  branches. This brings while_v2 closer to feature parity with
-  tf.while_loop.
-
-  However, we do not lower `While` in the XLA context because it is easier
-  for XLA to apply its own optimizations when dealing with un-lowered
-  `While` operators than with low-level control flow primitives.
-
-  Args:
-    op: The While op.
-  """
-  if not control_flow_util.IsInXLAContext(op):
-    # pylint: disable=protected-access
-    op._set_attr("_lower_using_switch_merge", attr_value_pb2.AttrValue(b=True))
-    # pylint: enable=protected-access
 
 
 def _maybe_set_maximum_iterations_attr(op, maximum_iterations):
