@@ -19,8 +19,9 @@ import tempfile
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.lite.experimental.examples.lstm.tflite_lstm import TFLiteLSTMCell
 from tensorflow.examples.tutorials.mnist import input_data
+from tensorflow.lite.experimental.examples.lstm.tflite_lstm import TFLiteLSTMCell
+from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.tools import optimize_for_inference_lib
@@ -50,17 +51,17 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     # Batch size
     self.batch_size = 16
     # Lstm Units.
-    self.num_units = 64
+    self.num_units = 16
 
   def buildLstmLayer(self):
     return tf.nn.rnn_cell.MultiRNNCell([
         TFLiteLSTMCell(
             self.num_units, use_peepholes=True, forget_bias=0, name="rnn1"),
-        TFLiteLSTMCell(self.num_units, num_proj=64, forget_bias=0, name="rnn2"),
+        TFLiteLSTMCell(self.num_units, num_proj=8, forget_bias=0, name="rnn2"),
         TFLiteLSTMCell(
             self.num_units // 2,
             use_peepholes=True,
-            num_proj=64,
+            num_proj=8,
             forget_bias=0,
             name="rnn3"),
         TFLiteLSTMCell(self.num_units, forget_bias=0, name="rnn4")
@@ -150,7 +151,7 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     tf.import_graph_def(graph, name="", input_map={"INPUT_IMAGE": tflite_input})
     with tf.Session() as sess:
       curr = sess.graph_def
-      curr = tf.lite.convert_op_hints_to_stubs(graph_def=curr)
+      curr = convert_op_hints_to_stubs(graph_def=curr)
 
     curr = optimize_for_inference_lib.optimize_for_inference(
         curr, ["INPUT_IMAGE_LITE"], ["OUTPUT_CLASS"],
@@ -189,7 +190,7 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
         x, output_class, new_sess)
 
     result = self.tfliteInvoke(frozen_graph, test_inputs, output_class)
-    self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-3))
+    self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
 
   def testDynamicRnnMultiRnnCell(self):
     sess = tf.Session(config=CONFIG)
@@ -219,7 +220,7 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
         x, output_class, new_sess)
 
     result = self.tfliteInvoke(frozen_graph, test_inputs, output_class)
-    self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-3))
+    self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
 
 
 if __name__ == "__main__":

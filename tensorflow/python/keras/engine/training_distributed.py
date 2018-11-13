@@ -104,7 +104,7 @@ def fit_loop(
     # `_per_device_fit_function`.
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.call_for_each_replica(
-         _per_device_fit_function, model._grouped_model)
+         _per_device_fit_function, args=(model._grouped_model,))
     # Unwrap all the per device values returned from `call_for_each_replica`.
     # Unwrapping per device values gives you a list of values that can be
     # used to construct a new train function that is composed of update ops on
@@ -122,7 +122,7 @@ def fit_loop(
         current_strategy, targets)
 
     # Create a train function that is composed of all the parameters above.
-    distributed_fit_function = K.Function(
+    distributed_fit_function = K.function(
         all_inputs,
         all_outputs,
         updates=all_updates,
@@ -131,9 +131,9 @@ def fit_loop(
 
     # We need to set sample_weights to None since there are sample weight
     # placeholders that are created with default values.
-    sample_weights = [None for _ in range(len(model.outputs) *
-                                          current_strategy.num_replicas)]
-    if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
+    sample_weights = [None for _ in range(
+        len(model.outputs) * current_strategy.num_replicas_in_sync)]
+    if not isinstance(K.learning_phase(), int):
       ins = dataset_inputs + dataset_targets + sample_weights + [1]
     else:
       ins = dataset_inputs + dataset_targets
@@ -274,12 +274,12 @@ def _experimental_fit_loop(
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.call_for_each_replica(
-         _per_device_fit_function, model._grouped_model_train)
+         _per_device_fit_function, args=(model._grouped_model_train,))
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
          current_strategy, grouped_inputs, grouped_outputs,
          grouped_updates, grouped_session_args)
-    combined_fn = K.Function(
+    combined_fn = K.function(
         all_inputs,
         all_outputs,
         updates=all_updates,
@@ -447,7 +447,7 @@ def test_loop(model, iterator, verbose=0, steps=None):
   with current_strategy.scope():
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.call_for_each_replica(
-         _per_device_eval_function, model._grouped_model)
+         _per_device_eval_function, args=(model._grouped_model,))
 
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
@@ -459,7 +459,7 @@ def test_loop(model, iterator, verbose=0, steps=None):
     dataset_targets = distributed_training_utils.flatten_perdevice_values(
         current_strategy, targets)
 
-    distributed_test_function = K.Function(
+    distributed_test_function = K.function(
         all_inputs, all_outputs,
         updates=all_updates,
         name='distributed_test_function',
@@ -467,9 +467,9 @@ def test_loop(model, iterator, verbose=0, steps=None):
 
     # We need to set sample_weights to None since there are sample weight
     # placeholders that are created with default values.
-    sample_weights = [None for _ in range(len(model.outputs) *
-                                          current_strategy.num_replicas)]
-    if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
+    sample_weights = [None for _ in range(
+        len(model.outputs) * current_strategy.num_replicas_in_sync)]
+    if not isinstance(K.learning_phase(), int):
       ins = dataset_inputs + dataset_targets + sample_weights + [0]
     else:
       ins = dataset_inputs + dataset_targets
@@ -556,14 +556,14 @@ def _experimental_test_loop(model, iterator, verbose=0, steps=None,
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.call_for_each_replica(
-         _per_device_eval_function, model._grouped_model_test)
+         _per_device_eval_function, args=(model._grouped_model_test,))
 
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
          current_strategy, grouped_inputs, grouped_outputs, grouped_updates,
          grouped_session_args)
 
-    combined_fn = K.Function(
+    combined_fn = K.function(
         all_inputs, all_outputs,
         updates=all_updates,
         name='distributed_test_function',
@@ -661,7 +661,7 @@ def predict_loop(model, iterator, verbose=0, steps=None):
   with current_strategy.scope():
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.call_for_each_replica(
-         _per_device_predict_function, model._grouped_model)
+         _per_device_predict_function, args=(model._grouped_model,))
 
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
@@ -671,13 +671,13 @@ def predict_loop(model, iterator, verbose=0, steps=None):
     dataset_inputs = distributed_training_utils.flatten_perdevice_values(
         current_strategy, inputs)
 
-    distributed_predict_function = K.Function(
+    distributed_predict_function = K.function(
         all_inputs, all_outputs,
         updates=all_updates,
         name='distributed_predict_function',
         **all_session_args)
 
-    if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
+    if not isinstance(K.learning_phase(), int):
       ins = dataset_inputs + [0]
     else:
       ins = dataset_inputs
@@ -691,7 +691,7 @@ def predict_loop(model, iterator, verbose=0, steps=None):
     distributed_training_utils.set_weights(
         current_strategy, distributed_model, orig_model_weights)
 
-    num_towers = current_strategy.num_towers
+    num_replicas = current_strategy.num_replicas_in_sync
     # Since we do not know how many samples we will see, we cannot
     # pre-allocate the returned Numpy arrays. Instead, we store one array per
     # batch seen and concatenate them upon returning.
@@ -703,11 +703,12 @@ def predict_loop(model, iterator, verbose=0, steps=None):
         batch_outs = [batch_outs]
       if step == 0:
         # batch_outs gives you the number of model outputs. In the distributed
-        # case this will be number of model_outputs * num_towers.
+        # case this will be number of model_outputs * num_replicas.
         for _ in range(len(model.outputs)):
           unconcatenated_outs.append([])
       for i in range(len(model.outputs)):
-        nested_outs = batch_outs[i * num_towers:i * num_towers + num_towers]
+        nested_outs = batch_outs[i * num_replicas:
+                                 i * num_replicas + num_replicas]
         outs = nest.flatten(nested_outs)
         unconcatenated_outs[i].extend(outs)
       if verbose >= 1:
@@ -764,14 +765,14 @@ def _experimental_predict_loop(model, iterator, verbose=0, steps=None):
 
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.call_for_each_replica(
-         _per_device_predict_function, model._grouped_model_predict)
+         _per_device_predict_function, args=(model._grouped_model_predict,))
 
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
          current_strategy, grouped_inputs, grouped_outputs, grouped_updates,
          grouped_session_args)
 
-    combined_fn = K.Function(
+    combined_fn = K.function(
         all_inputs, all_outputs,
         updates=all_updates,
         name='distributed_predict_function',
@@ -877,7 +878,7 @@ def clone_model_on_replicas(model, strategy, make_callback_model=False,
   """Create a cloned model on each replica."""
   with strategy.scope():
     grouped_model = strategy.call_for_each_replica(
-        _clone_and_build_model, model, inputs, targets)
+        _clone_and_build_model, args=(model, inputs, targets))
     if mode is _Mode.TRAIN:
       model._grouped_model_train = grouped_model
     elif mode is _Mode.TEST:

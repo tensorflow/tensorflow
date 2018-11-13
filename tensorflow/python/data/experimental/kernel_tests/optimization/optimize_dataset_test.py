@@ -121,6 +121,19 @@ class OptimizeDatasetTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
+  def testOptimizationNonSerializableAsDirectInput(self):
+    """Tests that non-serializable dataset can be OptimizeDataset's input.
+    """
+    dataset = dataset_ops.Dataset.from_tensors(0)
+    dataset = dataset.apply(optimization.non_serializable())
+    dataset = dataset_ops._OptimizeDataset(dataset, ["noop_elimination"])
+    iterator = dataset.make_one_shot_iterator()
+    get_next = iterator.get_next()
+    with self.cached_session() as sess:
+      self.assertEquals(0, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
 
 if __name__ == "__main__":
   test.main()

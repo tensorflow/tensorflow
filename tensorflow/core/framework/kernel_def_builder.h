@@ -64,6 +64,9 @@ class KernelDefBuilder {
   // "_kernel" attr.  May only be specified once.  Returns *this.
   KernelDefBuilder& Label(const char* label);
 
+  // Specify a priority number for this kernel.
+  KernelDefBuilder& Priority(int32 priority);
+
   // Returns a pointer to a KernelDef with fields set based on the
   // above calls to this instance.
   // Caller takes ownership of the result.

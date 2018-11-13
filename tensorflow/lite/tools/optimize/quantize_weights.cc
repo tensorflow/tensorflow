@@ -182,8 +182,7 @@ std::vector<TensorInfo> GetQuantizableTensorsFromOperator(
     TensorT* tensor = subgraph->tensors[tensor_idx].get();
     // TODO(suharshs): Support shared weights, i.e. If two tensors share the
     // same weight array, things may break. (i.e. SSD object detection)
-    if (!eval_hybrid &&
-        CountTensorConsumers(model, subgraph, tensor_idx) != 1) {
+    if (CountTensorConsumers(model, subgraph, tensor_idx) != 1) {
       LOG(INFO) << "Skipping quantization of tensor " << tensor->name
                 << " that is shared between multiple multiple operations.";
       continue;

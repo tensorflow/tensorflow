@@ -781,8 +781,12 @@ class BaseSaverBuilder(object):
 
     with ops.name_scope(name, "save",
                         [saveable.op for saveable in saveables]) as name:
-      # Add the Constant string tensor for the filename.
-      filename_tensor = constant_op.constant(filename or "model")
+      # Add a placeholder string tensor for the filename.
+      filename_tensor = array_ops.placeholder_with_default(
+          filename or "model", shape=(), name="filename")
+      # Keep the name "Const" for backwards compatibility.
+      filename_tensor = array_ops.placeholder_with_default(
+          filename_tensor, shape=(), name="Const")
 
       # Add the save ops.
       if sharded:

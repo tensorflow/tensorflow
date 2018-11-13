@@ -82,10 +82,10 @@ class Embedding(Layer):
         (without it, the shape of the dense outputs cannot be computed).
 
   Input shape:
-      2D tensor with shape: `(batch_size, sequence_length)`.
+      2D tensor with shape: `(batch_size, input_length)`.
 
   Output shape:
-      3D tensor with shape: `(batch_size, sequence_length, output_dim)`.
+      3D tensor with shape: `(batch_size, input_length, output_dim)`.
 
   """
 

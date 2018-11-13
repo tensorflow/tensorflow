@@ -68,14 +68,21 @@ class IteratorResource : public ResourceBase {
     std::shared_ptr<IteratorBase> captured_iterator(iterator_);
     if (captured_iterator) {
       CHECK_NOTNULL(lib_);
-      ctx->set_lib(lib_);
-      return captured_iterator->GetNext(ctx, out_tensors, end_of_sequence);
+      IteratorContext::Params params(ctx);
+      params.lib = lib_;
+      return captured_iterator->GetNext(IteratorContext(std::move(params)),
+                                        out_tensors, end_of_sequence);
     } else {
       return errors::FailedPrecondition(
           "GetNext() failed because the iterator has not been initialized. "
           "Ensure that you have run the initializer operation for this "
           "iterator before getting the next element.");
     }
+  }
+
+  Status GetNext(IteratorContext&& ctx, std::vector<Tensor>* out_tensors,
+                 bool* end_of_sequence) {
+    return GetNext(&ctx, out_tensors, end_of_sequence);
   }
 
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) {
@@ -124,24 +131,21 @@ class IteratorResource : public ResourceBase {
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], &dataset));
 
     std::unique_ptr<IteratorBase> iterator;
-    IteratorContext iter_ctx(ctx);
-    iter_ctx.set_lib(lib);
-    TF_RETURN_IF_ERROR(
-        dataset->MakeIterator(std::move(iter_ctx), "Iterator", &iterator));
+    IteratorContext::Params params(ctx);
+    params.lib = lib;
+    TF_RETURN_IF_ERROR(dataset->MakeIterator(IteratorContext(std::move(params)),
+                                             "Iterator", &iterator));
     TF_RETURN_IF_ERROR(set_iterator(std::move(iterator)));
     std::shared_ptr<IteratorBase> captured_iterator(iterator_);
 
     if (captured_iterator) {
-      IteratorContext::Params params;
-      params.env = ctx->env();
-      params.runner = *(ctx->runner());
+      IteratorContext::Params params(ctx);
       params.lib = lib;
       DeviceBase* device = lib->device();
       params.allocator_getter = [device](AllocatorAttributes attrs) {
         return device->GetAllocator(attrs);
       };
       IteratorContext iter_ctx(std::move(params));
-
       TF_RETURN_IF_ERROR(captured_iterator->Restore(&iter_ctx, reader));
       mutex_lock l(mu_);
       device_mgr_ = std::move(device_mgr);
@@ -582,10 +586,10 @@ void MakeIteratorOp::Compute(OpKernelContext* ctx) {
   core::ScopedUnref unref(iterator_resource);
 
   std::unique_ptr<IteratorBase> iterator;
-  IteratorContext iter_ctx(ctx);
-  iter_ctx.set_lib(iterator_resource->function_library_runtime());
-  OP_REQUIRES_OK(
-      ctx, dataset->MakeIterator(std::move(iter_ctx), "Iterator", &iterator));
+  IteratorContext::Params params(ctx);
+  params.lib = iterator_resource->function_library_runtime();
+  OP_REQUIRES_OK(ctx, dataset->MakeIterator(IteratorContext(std::move(params)),
+                                            "Iterator", &iterator));
   OP_REQUIRES_OK(ctx, iterator_resource->set_iterator(std::move(iterator)));
 }
 
@@ -913,10 +917,10 @@ class OneShotIteratorOp : public AsyncOpKernel {
     DatasetBase* dataset;
     TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(return_values[0], &dataset));
     std::unique_ptr<IteratorBase> iter;
-    IteratorContext iter_ctx(ctx);
-    iter_ctx.set_lib(lib);
-    TF_RETURN_IF_ERROR(
-        dataset->MakeIterator(std::move(iter_ctx), "Iterator", &iter));
+    IteratorContext::Params params(ctx);
+    params.lib = lib;
+    TF_RETURN_IF_ERROR(dataset->MakeIterator(IteratorContext(std::move(params)),
+                                             "Iterator", &iter));
     TF_RETURN_IF_ERROR((*iterator)->set_iterator(std::move(iter)));
 
     (*iterator)->Ref();
@@ -972,17 +976,10 @@ void IteratorGetNextOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
         std::vector<Tensor> components;
         bool end_of_sequence = false;
 
-        IteratorContext::Params params;
-        params.env = ctx->env();
-        params.runner = *(ctx->runner());
+        IteratorContext::Params params(ctx);
         params.function_library = iterator->function_library();
-        DeviceBase* device = ctx->function_library()->device();
-        params.allocator_getter = [device](AllocatorAttributes attrs) {
-          return device->GetAllocator(attrs);
-        };
-        IteratorContext iter_ctx(std::move(params));
-
-        Status s = iterator->GetNext(&iter_ctx, &components, &end_of_sequence);
+        Status s = iterator->GetNext(IteratorContext(std::move(params)),
+                                     &components, &end_of_sequence);
         // NOTE(mrry): We must unref the iterator before calling `done()`, to
         // avoid destruction races.
         iterator->Unref();
@@ -1006,22 +1003,12 @@ void IteratorGetNextSyncOp::Compute(OpKernelContext* ctx) {
   IteratorResource* iterator;
   OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
   core::ScopedUnref unref_iterator(iterator);
-
   std::vector<Tensor> components;
   bool end_of_sequence = false;
-
-  IteratorContext::Params params;
-  params.env = ctx->env();
-  params.runner = *(ctx->runner());
+  IteratorContext::Params params(ctx);
   params.function_library = iterator->function_library();
-  DeviceBase* device = ctx->function_library()->device();
-  params.allocator_getter = [device](AllocatorAttributes attrs) {
-    return device->GetAllocator(attrs);
-  };
-  IteratorContext iter_ctx(std::move(params));
-
-  OP_REQUIRES_OK(ctx,
-                 iterator->GetNext(&iter_ctx, &components, &end_of_sequence));
+  OP_REQUIRES_OK(ctx, iterator->GetNext(IteratorContext(std::move(params)),
+                                        &components, &end_of_sequence));
   OP_REQUIRES(ctx, !end_of_sequence, errors::OutOfRange("End of sequence"));
 
   for (int i = 0; i < components.size(); ++i) {
@@ -1054,18 +1041,10 @@ class IteratorGetNextAsOptionalOp : public AsyncOpKernel {
           std::vector<Tensor> components;
           bool end_of_sequence = false;
 
-          IteratorContext::Params params;
-          params.env = ctx->env();
-          params.runner = *(ctx->runner());
+          IteratorContext::Params params(ctx);
           params.function_library = iterator->function_library();
-          DeviceBase* device = ctx->function_library()->device();
-          params.allocator_getter = [device](AllocatorAttributes attrs) {
-            return device->GetAllocator(attrs);
-          };
-          IteratorContext iter_ctx(std::move(params));
-
-          Status s =
-              iterator->GetNext(&iter_ctx, &components, &end_of_sequence);
+          Status s = iterator->GetNext(IteratorContext(std::move(params)),
+                                       &components, &end_of_sequence);
           // NOTE(mrry): We must unref the iterator before calling `done()`, to
           // avoid destruction races.
           iterator->Unref();

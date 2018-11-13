@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -30,7 +30,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class FlattenCallGraphTest : public HloVerifiedTestBase {
+class FlattenCallGraphTest : public HloTestBase {
  protected:
   // Build and return a trivial computation taking and returning a scalar.
   std::unique_ptr<HloComputation> MakeScalarComputation() {
@@ -108,7 +108,7 @@ TEST_F(FlattenCallGraphTest, ComplexGraph) {
   //    c
   //
   // Calls are made via kCall, kWhile, and kMap instructions.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* cond_computation =
       module->AddEmbeddedComputation(MakeConditionComputation());
   HloComputation* c_computation =
@@ -139,9 +139,9 @@ TEST_F(FlattenCallGraphTest, ComplexGraph) {
   }
 
   {
-    TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module));
+    TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
     EXPECT_TRUE(result);
-    std::unique_ptr<CallGraph> flat_call_graph = CallGraph::Build(module);
+    std::unique_ptr<CallGraph> flat_call_graph = CallGraph::Build(module.get());
     const CallGraphNode& c_node = flat_call_graph->GetNode(c_computation);
     EXPECT_EQ(1, c_node.caller_callsites().size());
   }
@@ -149,7 +149,7 @@ TEST_F(FlattenCallGraphTest, ComplexGraph) {
 
 // Test corner case of a computation used as a body and a loop condition.
 TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* cond_computation;
   {
     HloComputation::Builder builder(TestName() + ".cond");
@@ -176,15 +176,15 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
   }
 
   {
-    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
     const CallGraphNode& cond_node = call_graph->GetNode(cond_computation);
     EXPECT_EQ(2, cond_node.caller_callsites().size());
   }
 
   {
-    TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module));
+    TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
     EXPECT_TRUE(result);
-    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
     const CallGraphNode& cond_node = call_graph->GetNode(cond_computation);
     EXPECT_EQ(1, cond_node.caller_callsites().size());
   }
@@ -201,7 +201,7 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
 //     C
 //
 TEST_F(FlattenCallGraphTest, FlattenCalls) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* c_computation =
       module->AddEmbeddedComputation(MakeScalarComputation());
 
@@ -211,9 +211,9 @@ TEST_F(FlattenCallGraphTest, FlattenCalls) {
   module->AddEntryComputation(
       MakeCallingComputation(b_computation, /*callsites=*/2, ".Entry"));
 
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
   EXPECT_TRUE(result);
-  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   EXPECT_EQ(7, module->computation_count());
 
   const CallGraphNode& c_node = call_graph->GetNode(c_computation);
@@ -224,7 +224,7 @@ TEST_F(FlattenCallGraphTest, FlattenCalls) {
 }
 
 TEST_F(FlattenCallGraphTest, FlattenCallsInConditional) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* sub_computation =
       module->AddEmbeddedComputation(MakeScalarComputation());
 
@@ -243,9 +243,9 @@ TEST_F(FlattenCallGraphTest, FlattenCallsInConditional) {
   module->AddEntryComputation(builder.Build());
   EXPECT_EQ(2, module->computation_count());
 
-  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunFlattenCallGraph(module.get()));
   EXPECT_TRUE(result);
-  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   // The true and false computations must now be different.
   EXPECT_EQ(3, module->computation_count());
 

@@ -404,8 +404,7 @@ const char* TFE_TensorHandleDeviceName(TFE_TensorHandle* h, TF_Status* status) {
         "The passed in handle is a nullptr");
     return nullptr;
   }
-  tensorflow::Device* d = nullptr;
-  status->status = h->handle->OpDevice(&d);
+  tensorflow::Device* d = h->handle->op_device();
   return (d == nullptr) ? "/job:localhost/replica:0/task:0/device:CPU:0"
                         : d->name().c_str();
 }

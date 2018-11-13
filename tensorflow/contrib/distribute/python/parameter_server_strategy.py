@@ -64,7 +64,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   Operations that occur only on the first replica (such as incrementing the
   global step), will occur on the first replica *of every worker*.
 
-  It is expected to call `call_for_each_replica(fn, *args, **kwargs)` for any
+  It is expected to call `call_for_each_replica(fn, ...)` for any
   operations which potentially can be replicated across replicas (i.e. multiple
   GPUs) even if there is only CPU or one GPU. When defining the `fn`, extra
   caution needs to be taken:
@@ -223,7 +223,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
 
   def distribute_dataset(self, dataset_fn):
     """Distributes the dataset to each local GPU."""
-    return values.PerDeviceDataset(
+    return values.PerReplicaDataset(
         self._call_dataset_fn(dataset_fn), self._compute_devices, True)
 
   def _broadcast(self, tensor, destinations):
@@ -231,10 +231,13 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
       destinations = self._compute_devices
     return self._cross_tower_ops.broadcast(tensor, destinations)
 
+  def _allow_variable_partition(self):
+    return not context.executing_eagerly()
+
   # TODO(yuefengz): not all ops in device_setter.STANDARD_PS_OPS will go through
   # this creator, such as "MutableHashTable".
   def _create_variable(self, next_creator, *args, **kwargs):
-    if self.num_replicas > 1:
+    if self.num_replicas_in_sync > 1:
       aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
       if aggregation not in (
           vs.VariableAggregation.NONE,
@@ -288,9 +291,9 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
       with ops.device(self._variable_device):
         return var_creator(*args, **kwargs)
 
-  def _call_for_each_replica(self, fn, *args, **kwargs):
+  def _call_for_each_replica(self, fn, args, kwargs):
     # pylint: disable=protected-access
-    return mirrored_strategy._call_for_each_replica(self, fn, *args, **kwargs)
+    return mirrored_strategy._call_for_each_replica(self, fn, args, kwargs)
 
   def _verify_destinations_not_different_worker(self, destinations):
     if not self._cluster_spec:
@@ -336,9 +339,9 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
               "You cannot update variable with a Mirrored object with multiple "
               "components %r when using ParameterServerStrategy. You must "
               "specify a single value or a Mirrored with a single value." % x)
-      elif isinstance(x, values.PerDevice):
+      elif isinstance(x, values.PerReplica):
         raise ValueError(
-            "You cannot update variable with a PerDevice object %r when using "
+            "You cannot update variable with a PerReplica object %r when using "
             "ParameterServerStrategy. You must specify a single value or a "
             "Mirrored with a single value" % x)
       else:

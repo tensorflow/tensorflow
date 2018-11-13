@@ -25,8 +25,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.util import nest
 
@@ -40,10 +38,9 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
   # doing something that won't work with other DistributionStrategy
   # implementations?
 
-  def __init__(self, device, prefetch_on_device=None):
+  def __init__(self, device):
     super(OneDeviceStrategy, self).__init__()
     self._device = device
-    self._prefetch_on_device = prefetch_on_device
     self._default_device = device
 
   def _create_variable(self, next_creator, *args, **kwargs):
@@ -62,9 +59,8 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
       return next_creator(*args, **kwargs)
 
   def distribute_dataset(self, dataset_fn):
-    return values.PerDeviceDataset(
-        self._call_dataset_fn(dataset_fn), [self._device],
-        self._prefetch_on_device)
+    return values.PerReplicaDataset(
+        self._call_dataset_fn(dataset_fn), [self._device])
 
   def _broadcast(self, tensor, destinations):
     del destinations
@@ -117,29 +113,13 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     ctx._set_last_step_outputs(last_step_tensor_outputs_dict)  # pylint: disable=protected-access
     return ctx
 
-  def _call_for_each_replica(self, fn, *args, **kwargs):
-    # We don't run `fn` in multiple threads in OneDeviceStrategy.
-    kwargs.pop("run_concurrently", None)
+  def _call_for_each_replica(self, fn, args, kwargs):
     with ops.device(self._device), _OneDeviceReplicaContext(self):
       return fn(*args, **kwargs)
 
-  def map(self, map_over, fn, *args, **kwargs):
-    with ops.device(self._device):
-      return values.MapOutput([fn(m, *args, **kwargs) for m in map_over])
-
   def _reduce(self, aggregation, value, destinations):
-    del destinations
-    if not isinstance(value, values.MapOutput):
-      return value
-    l = value.get()
-    assert l
-    with ops.device(self._device):
-      if aggregation == vs.VariableAggregation.SUM:
-        return math_ops.add_n(l)
-      elif aggregation == vs.VariableAggregation.MEAN:
-        return math_ops.add_n(l) / len(l)
-      else:
-        assert False
+    del aggregation, destinations
+    return value
 
   def _update(self, var, options, fn, *args, **kwargs):
     # The implementations of _update() and _update_non_slot() are identical
@@ -172,6 +152,10 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     return 1
 
   @property
+  def num_replicas_in_sync(self):
+    return 1
+
+  @property
   def worker_devices(self):
     return [self._device]
 
@@ -188,6 +172,7 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
 
 
 class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):
+  """ReplicaContext for OneDeviceStrategy."""
 
   def __init__(self, distribution_strategy):
     distribute_lib.ReplicaContext.__init__(
@@ -195,4 +180,8 @@ class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):
 
   @property
   def device(self):
-    return self._distribution_strategy.worker_devices[0]
+    raise RuntimeError("Use .devices instead")
+
+  @property
+  def devices(self):
+    return [self._distribution_strategy.worker_devices[0]]

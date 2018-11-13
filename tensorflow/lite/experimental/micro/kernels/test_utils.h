@@ -89,7 +89,7 @@ inline void PopulateContext(TfLiteTensor* tensors, int tensors_size,
   context->ReportError = ReportOpError;
   context->AddTensors = nullptr;
   context->GetNodeAndRegistration = nullptr;
-  context->ReplaceSubgraphsWithDelegateKernels = nullptr;
+  context->ReplaceNodeSubsetsWithDelegateKernels = nullptr;
   context->recommended_num_threads = 1;
   context->GetExternalContext = nullptr;
   context->SetExternalContext = nullptr;

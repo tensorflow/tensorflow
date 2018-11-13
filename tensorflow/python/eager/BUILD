@@ -18,7 +18,7 @@ cc_library(
         "pywrap_tfe.h",
     ],
     visibility = [
-        "//learning/deepmind/courier:__pkg__",
+        "//learning/deepmind/courier:__subpackages__",
         "//tensorflow:internal",
     ],
     deps = [
@@ -114,9 +114,11 @@ cuda_py_test(
         ":backprop",
         ":context",
         ":test",
+        "//third_party/py/numpy",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:resource_variable_ops",
@@ -144,6 +146,35 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "function_argument_naming_test",
+    size = "medium",
+    srcs = ["function_argument_naming_test.py"],
+    additional_deps = [
+        ":backprop",
+        ":def_function",
+        ":function",
+        ":test",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:math_ops",
+    ],
+)
+
+cuda_py_test(
+    name = "function_defun_collection_test",
+    size = "medium",
+    srcs = ["function_defun_collection_test.py"],
+    additional_deps = [
+        ":backprop",
+        ":def_function",
+        ":function",
+        ":test",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+    ],
+)
+
+cuda_py_test(
     name = "function_test",
     size = "medium",
     srcs = ["function_test.py"],
@@ -152,7 +183,6 @@ cuda_py_test(
         ":context",
         ":def_function",
         ":function",
-        ":tape",
         ":test",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:test_ops",
@@ -408,13 +438,26 @@ py_library(
     deps = [
         ":context",
         ":function",
+        ":lift_to_graph",
         "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python/training/checkpointable:base",
+    ],
+)
+
+py_library(
+    name = "lift_to_graph",
+    srcs = ["lift_to_graph.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        "//tensorflow/python:framework_ops",
     ],
 )
 
@@ -438,6 +481,7 @@ py_library(
     deps = [
         ":context",
         ":function",
+        ":lift_to_graph",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:template",
         "//tensorflow/python:variable_scope",

@@ -56,6 +56,9 @@ struct TensorList {
   std::vector<Tensor> tensors;
   PartialTensorShape element_shape;
   DataType element_dtype;
+  // The maximum allowed size of `tensors`. Defaults to -1 meaning that the size
+  // of `tensors` is unbounded.
+  int max_num_elements = -1;
 };
 
 Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out);

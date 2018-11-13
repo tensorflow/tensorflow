@@ -503,7 +503,8 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
               "The two namedtuples don't have the same sequence type. Input "
               "structure has type %s, while shallow structure has type %s."
               % (type(input_tree), type(shallow_tree)))
-      else:
+      elif not (isinstance(shallow_tree, _collections.Mapping)
+                and isinstance(input_tree, _collections.Mapping)):
         raise TypeError(
             "The two structures don't have the same sequence type. Input "
             "structure has type %s, while shallow structure has type %s."

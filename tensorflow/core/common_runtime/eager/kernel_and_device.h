@@ -69,6 +69,8 @@ class KernelAndDevice {
              std::vector<Tensor>* outputs, NodeExecStats* stats,
              StepStats* step_stats, GraphCollector* graph_collector);
 
+  Device* OutputDevice(int idx) const;
+
   const OpKernel* kernel() const { return kernel_.get(); }
 
   Device* device() const { return device_; }

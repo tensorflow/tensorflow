@@ -17,9 +17,11 @@ limitations under the License.
 #include <fstream>
 #include <iostream>
 
+#include "absl/strings/escaping.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/join.h"
 #include "tensorflow/lite/testing/split.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tflite {
 namespace testing {
@@ -34,13 +36,38 @@ tensorflow::Tensor CreateTensor(const tensorflow::DataType type,
 }
 
 template <typename T>
-void FillTensorWithData(tensorflow::Tensor* tensor, const string& csv_values) {
-  auto data = tensor->flat<T>();
+int FillTensorWithData(tensorflow::Tensor* tensor,
+                       const string& values_as_string) {
+  const auto& values = testing::Split<T>(values_as_string, ",");
 
-  const auto& values = testing::Split<T>(csv_values, ",");
-  for (int i = 0; i < values.size(); i++) {
-    data(i) = values[i];
+  if (values.size() == tensor->NumElements()) {
+    auto data = tensor->flat<T>();
+    for (int i = 0; i < values.size(); i++) {
+      data(i) = values[i];
+    }
   }
+
+  return values.size();
+}
+
+// Assumes 'values_as_string' is a hex string that gets converted into a
+// TF Lite DynamicBuffer. Strings are then extracted and copied into the
+// TensorFlow tensor.
+int FillTensorWithTfLiteHexString(tensorflow::Tensor* tensor,
+                                  const string& values_as_string) {
+  string s = absl::HexStringToBytes(values_as_string);
+
+  int num_strings = values_as_string.empty() ? 0 : GetStringCount(s.data());
+
+  if (num_strings == tensor->NumElements()) {
+    auto data = tensor->flat<string>();
+    for (size_t i = 0; i < num_strings; ++i) {
+      auto ref = GetString(s.data(), i);
+      data(i).assign(ref.str, ref.len);
+    }
+  }
+
+  return num_strings;
 }
 
 template <typename T>
@@ -55,6 +82,22 @@ template <typename T>
 string TensorDataToCsvString(const tensorflow::Tensor& tensor) {
   const auto& data = tensor.flat<T>();
   return Join(data.data(), data.size(), ",");
+}
+
+string TensorDataToTfLiteHexString(const tensorflow::Tensor& tensor) {
+  DynamicBuffer dynamic_buffer;
+
+  auto data = tensor.flat<string>();
+  for (int i = 0; i < tensor.NumElements(); ++i) {
+    dynamic_buffer.AddString(data(i).data(), data(i).size());
+  }
+
+  char* char_buffer = nullptr;
+  size_t size = dynamic_buffer.WriteToBuffer(&char_buffer);
+  string s = absl::BytesToHexString({char_buffer, size});
+  free(char_buffer);
+
+  return s;
 }
 
 }  // namespace
@@ -107,28 +150,44 @@ void TfDriver::LoadModel(const string& bin_file_path) {
   }
 }
 
-void TfDriver::SetInput(int id, const string& csv_values) {
-  if (!IsValid()) return;
-
-  auto tensor = CreateTensor(input_types_[id], input_shapes_[id]);
-  switch (input_types_[id]) {
-    case tensorflow::DT_FLOAT: {
-      FillTensorWithData<float>(&tensor, csv_values);
+void TfDriver::SetInput(const string& values_as_string,
+                        tensorflow::Tensor* tensor) {
+  int num_values_available = 0;
+  switch (tensor->dtype()) {
+    case tensorflow::DT_FLOAT:
+      num_values_available =
+          FillTensorWithData<float>(tensor, values_as_string);
       break;
-    }
-    case tensorflow::DT_INT32: {
-      FillTensorWithData<int32_t>(&tensor, csv_values);
+    case tensorflow::DT_INT32:
+      num_values_available =
+          FillTensorWithData<int32_t>(tensor, values_as_string);
       break;
-    }
-    case tensorflow::DT_UINT8: {
-      FillTensorWithData<uint8_t>(&tensor, csv_values);
+    case tensorflow::DT_UINT8:
+      num_values_available =
+          FillTensorWithData<uint8_t>(tensor, values_as_string);
       break;
-    }
+    case tensorflow::DT_STRING:
+      num_values_available =
+          FillTensorWithTfLiteHexString(tensor, values_as_string);
+      break;
     default:
-      fprintf(stderr, "Unsupported type %d in SetInput\n", input_types_[id]);
-      Invalidate("Unsupported tensor data type");
+      Invalidate(absl::StrCat("Unsupported tensor type ",
+                              tensorflow::DataType_Name(tensor->dtype()),
+                              " in SetInput"));
       return;
   }
+
+  if (tensor->NumElements() != num_values_available) {
+    Invalidate(absl::StrCat("Needed ", tensor->NumElements(),
+                            " values for input tensor, but was given ",
+                            num_values_available, " instead."));
+  }
+}
+
+void TfDriver::SetInput(int id, const string& values_as_string) {
+  if (!IsValid()) return;
+  auto tensor = CreateTensor(input_types_[id], input_shapes_[id]);
+  SetInput(values_as_string, &tensor);
   input_tensors_[input_names_[id]] = tensor;
 }
 
@@ -145,33 +204,45 @@ void TfDriver::ResetTensor(int id) {
       break;
     }
     default:
-      fprintf(stderr, "Unsupported type %d in ResetTensor\n", input_types_[id]);
-      Invalidate("Unsupported tensor data type");
+      Invalidate(absl::StrCat("Unsupported tensor type ", input_types_[id],
+                              tensorflow::DataType_Name(input_types_[id]),
+                              " in ResetInput"));
       return;
   }
 }
 
-void TfDriver::ReshapeTensor(int id, const string& csv_values) {
-  input_shapes_[id] = Split<int64_t>(csv_values, ",");
+void TfDriver::ReshapeTensor(int id, const string& values_as_string) {
+  input_shapes_[id] = Split<int64_t>(values_as_string, ",");
   input_tensors_[input_names_[id]] =
       CreateTensor(input_types_[id], input_shapes_[id]);
   ResetTensor(id);
 }
 
-string TfDriver::ReadOutput(int id) {
-  if (!IsValid()) return "";
-  switch (output_tensors_[id].dtype()) {
+string TfDriver::ReadOutput(const tensorflow::Tensor& tensor) {
+  switch (tensor.dtype()) {
     case tensorflow::DT_FLOAT:
-      return TensorDataToCsvString<float>(output_tensors_[id]);
+      return TensorDataToCsvString<float>(tensor);
     case tensorflow::DT_INT32:
-      return TensorDataToCsvString<int32_t>(output_tensors_[id]);
+      return TensorDataToCsvString<int32_t>(tensor);
+    case tensorflow::DT_INT64:
+      return TensorDataToCsvString<tensorflow::int64>(tensor);
     case tensorflow::DT_UINT8:
-      return TensorDataToCsvString<uint8_t>(output_tensors_[id]);
+      return TensorDataToCsvString<uint8_t>(tensor);
+    case tensorflow::DT_STRING:
+      return TensorDataToTfLiteHexString(tensor);
+    case tensorflow::DT_BOOL:
+      return TensorDataToCsvString<bool>(tensor);
     default:
-      fprintf(stderr, "Unsupported type %d in ResetTensor\n", input_types_[id]);
-      Invalidate("Unsupported tensor data type");
+      Invalidate(absl::StrCat("Unsupported tensor type ",
+                              tensorflow::DataType_Name(tensor.dtype()),
+                              " in ReadOutput"));
       return "";
   }
+}
+
+string TfDriver::ReadOutput(int id) {
+  if (!IsValid()) return "";
+  return ReadOutput(output_tensors_[id]);
 }
 
 void TfDriver::Invoke() {
@@ -179,9 +250,8 @@ void TfDriver::Invoke() {
   auto status = session_->Run({input_tensors_.begin(), input_tensors_.end()},
                               output_names_, {}, &output_tensors_);
   if (!status.ok()) {
-    Invalidate(
-        "Failed to run input data on graph. Make sure the correct value is "
-        "defined for the input and output arrays.");
+    Invalidate(absl::StrCat("TensorFlow failed to run graph:",
+                            status.error_message()));
   }
 }
 

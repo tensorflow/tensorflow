@@ -225,7 +225,7 @@ def _safe_div(numerator, denominator, name):
     0 if `denominator` <= 0, else `numerator` / `denominator`
   """
   if compat.forward_compatible(2018, 11, 1):
-    return math_ops.div_no_nan(numerator, denominator)
+    return math_ops.div_no_nan(numerator, denominator, name=name)
   t = math_ops.truediv(numerator, denominator)
   zero = array_ops.zeros_like(t, dtype=denominator.dtype)
   condition = math_ops.greater(denominator, zero)

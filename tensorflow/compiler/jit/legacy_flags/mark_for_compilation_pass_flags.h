@@ -33,7 +33,7 @@ void AppendMarkForCompilationPassFlags(
 
 // The values of flags associated with the XLA bridge's
 // mark_for_compilation_pass module.
-typedef struct {
+struct MarkForCompilationPassFlags {
   int32 tf_xla_auto_jit;  // Control compilation of operators into XLA
                           // computations on CPU and GPU devices.  0 = use
                           // ConfigProto setting; -1 = off; 1 = on for things
@@ -55,7 +55,7 @@ typedef struct {
                             // is set to ON* and overrides its behavior. If
                             // true, enable fusion of element-wise operations
                             // only using XLA.
-} MarkForCompilationPassFlags;
+};
 
 // Return a pointer to the MarkForCompilationPassFlags struct;
 // repeated calls return the same pointer.

@@ -352,6 +352,7 @@ package_group(
         "//tensorflow/...",
         "//tensorflow_estimator/...",
         "//tensorflow_fold/llgtm/...",
+        "//tensorflow_text/...",
         "//third_party/py/tensor2tensor/...",
     ],
 )

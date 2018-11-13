@@ -31,7 +31,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras.engine import base_layer
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -324,9 +323,12 @@ class OptimizerV2(optimizer_v1.Optimizer):
                       "_" + var.op.name)
         with ops.name_scope("update" + scope_name), ops.colocate_with(var):
           update_ops.append(update_grad_to_var(grad, var))
-      with ops.colocate_with(self._iterations):
-        update_ops.append(self._iterations.assign_add(1))
-      return control_flow_ops.group(*update_ops)
+      # control dependencies does not work in per replica mode, please change
+      # this once b/118841692 is fixed.
+      # with ops.control_dependencies(update_ops):
+      #   apply_updates = self._iterations.assign_add(1).op
+      apply_updates = merge_update_step(update_ops, self.iteration)
+      return apply_updates
 
   def _set_hyper(self, name, value):
     """set hyper `name` to value. value can be callable, tensor, numeric."""
@@ -344,8 +346,26 @@ class OptimizerV2(optimizer_v1.Optimizer):
     value = self._hyper[name]
     return self._call_if_callable(value)
 
+  def __getattribute__(self, name):
+    """Overridden to support hyperparameter access."""
+    try:
+      return super(OptimizerV2, self).__getattribute__(name)
+    except AttributeError as e:
+      # Needed to avoid infinite recursion with __setattr__.
+      if name == "_hyper":
+        raise e
+      # Backwards compatibility with Keras optimizers.
+      if name == "lr":
+        name = "learning_rate"
+      if name in self._hyper:
+        return self._hyper[name]
+      raise e
+
   def __setattr__(self, name, value):
     """Override setattr to support dynamic hyperparameter setting."""
+    # Backwards compatibility with Keras optimizers.
+    if name == "lr":
+      name = "learning_rate"
     if hasattr(self, "_hyper") and name in self._hyper:
       self._set_hyper(name, value)
     else:
@@ -521,12 +541,27 @@ def _filter_grads(grads_and_vars):
   filtered = tuple(filtered)
   if not filtered:
     raise ValueError("No gradients provided for any variable: %s." %
-                     ([v.name for _, v in filtered],))
+                     ([v.name for _, v in grads_and_vars],))
   if vars_with_empty_grads:
     logging.warning(
         ("Gradients does not exist for variables %s when minimizing the loss."),
         ([v.name for v in vars_with_empty_grads]))
   return filtered
+
+
+def merge_update_step(update_ops, local_step):
+  """Merge local step counter update from different replicas."""
+
+  def merge_update_step_fn(strategy, update_ops, local_step):
+    merged_ops = []
+    for update_op in update_ops:
+      merged_ops.append(strategy.group(update_op))
+    with ops.control_dependencies(merged_ops):
+      incre_op = local_step.assign_add(1).op
+    return incre_op
+
+  return distribution_strategy_context.get_replica_context().merge_call(
+      merge_update_step_fn, update_ops, local_step)
 
 
 def merge_grads(grads_and_vars):
@@ -537,7 +572,7 @@ def merge_grads(grads_and_vars):
         variable_scope.VariableAggregation.MEAN, grads_and_vars)
     return reduced_grads
 
-  return distribution_strategy_context.get_tower_context().merge_call(
+  return distribution_strategy_context.get_replica_context().merge_call(
       merge_grad_fn, grads_and_vars)
 
 

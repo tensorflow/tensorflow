@@ -141,7 +141,11 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine.base_layer import Layer
+# TODO(b/118385027): Dependency on keras can be problematic if Keras moves out
+# of the main repo.
+from tensorflow.python.keras import utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -184,6 +188,7 @@ class StateManager(object):
                       shape,
                       dtype=None,
                       trainable=True,
+                      use_resource=True,
                       initializer=None):
     """Creates a new variable.
 
@@ -193,12 +198,14 @@ class StateManager(object):
       shape: variable shape.
       dtype: The type of the variable. Defaults to `self.dtype` or `float32`.
       trainable: Whether this variable is trainable or not.
+      use_resource: If true, we use resource variables. Otherwise we use
+        RefVariable.
       initializer: initializer instance (callable).
 
     Returns:
       The created variable.
     """
-    del feature_column, name, shape, dtype, trainable, initializer
+    del feature_column, name, shape, dtype, trainable, use_resource, initializer
     raise NotImplementedError('StateManager.create_variable')
 
   def add_variable(self, feature_column, var):
@@ -270,6 +277,7 @@ class _StateManagerImpl(StateManager):
                       shape,
                       dtype=None,
                       trainable=True,
+                      use_resource=True,
                       initializer=None):
     if name in self._cols_to_vars_map[feature_column]:
       raise ValueError('Variable already exists.')
@@ -280,7 +288,7 @@ class _StateManagerImpl(StateManager):
         dtype=dtype,
         initializer=initializer,
         trainable=self._trainable and trainable,
-        use_resource=True,
+        use_resource=use_resource,
         # TODO(rohanj): Get rid of this hack once we have a mechanism for
         # specifying a default partitioner for an entire layer. In that case,
         # the default getter for Layers should work.
@@ -412,7 +420,102 @@ class FeatureLayer(Layer):
     return (input_shape[0], total_elements)
 
 
-class LinearModel(Layer):
+class _LinearModelLayer(Layer):
+  """Layer that contains logic for `LinearModel`."""
+
+  def __init__(self,
+               feature_columns,
+               units=1,
+               sparse_combiner='sum',
+               trainable=True,
+               name=None,
+               **kwargs):
+    super(_LinearModelLayer, self).__init__(
+        name=name, trainable=trainable, **kwargs)
+
+    self._feature_columns = _normalize_feature_columns(feature_columns)
+    self._feature_columns = sorted(self._feature_columns, key=lambda x: x.name)
+    for column in self._feature_columns:
+      if not isinstance(column, (DenseColumn, CategoricalColumn)):
+        raise ValueError(
+            'Items of feature_columns must be either a '
+            'DenseColumn or CategoricalColumn. Given: {}'.format(column))
+
+    self._units = units
+    self._sparse_combiner = sparse_combiner
+
+    self._state_manager = _StateManagerImpl(self, self.trainable)
+    self.bias = None
+
+  def build(self, _):
+    # We need variable scopes for now because we want the variable partitioning
+    # information to percolate down. We also use _pure_variable_scope's here
+    # since we want to open up a name_scope in the `call` method while creating
+    # the ops.
+    with variable_scope._pure_variable_scope(self.name):  # pylint: disable=protected-access
+      for column in self._feature_columns:
+        with variable_scope._pure_variable_scope(column.name):  # pylint: disable=protected-access
+          # Create the state for each feature column
+          column.create_state(self._state_manager)
+
+          # Create a weight variable for each column.
+          if isinstance(column, CategoricalColumn):
+            first_dim = column.num_buckets
+          else:
+            first_dim = column.variable_shape.num_elements()
+          self._state_manager.create_variable(
+              column,
+              name='weights',
+              dtype=dtypes.float32,
+              shape=(first_dim, self._units),
+              initializer=init_ops.zeros_initializer(),
+              trainable=self.trainable)
+
+      # Create a bias variable.
+      self.bias = self.add_variable(
+          name='bias_weights',
+          dtype=dtypes.float32,
+          shape=[self._units],
+          initializer=init_ops.zeros_initializer(),
+          trainable=self.trainable,
+          use_resource=True,
+          # TODO(rohanj): Get rid of this hack once we have a mechanism for
+          # specifying a default partitioner for an entire layer. In that case,
+          # the default getter for Layers should work.
+          getter=variable_scope.get_variable)
+
+    super(_LinearModelLayer, self).build(None)
+
+  def call(self, features):
+    if not isinstance(features, dict):
+      raise ValueError('We expected a dictionary here. Instead we got: {}'
+                       .format(features))
+    with ops.name_scope(self.name):
+      transformation_cache = FeatureTransformationCache(features)
+      weighted_sums = []
+      for column in self._feature_columns:
+        with ops.name_scope(column.name):
+          # All the weights used in the linear model are owned by the state
+          # manager associated with this Linear Model.
+          weight_var = self._state_manager.get_variable(column, 'weights')
+
+          weighted_sum = _create_weighted_sum(
+              column=column,
+              transformation_cache=transformation_cache,
+              state_manager=self._state_manager,
+              sparse_combiner=self._sparse_combiner,
+              weight_var=weight_var)
+          weighted_sums.append(weighted_sum)
+
+      _verify_static_batch_size_equality(weighted_sums, self._feature_columns)
+      predictions_no_bias = math_ops.add_n(
+          weighted_sums, name='weighted_sum_no_bias')
+      predictions = nn_ops.bias_add(
+          predictions_no_bias, self.bias, name='weighted_sum')
+      return predictions
+
+
+class LinearModel(training.Model):
   """Produces a linear prediction `Tensor` based on given `feature_columns`.
 
   This layer generates a weighted sum based on output dimension `units`.
@@ -514,60 +617,15 @@ class LinearModel(Layer):
       ValueError: if an item in `feature_columns` is neither a `DenseColumn`
         nor `CategoricalColumn`.
     """
-    super(LinearModel, self).__init__(name=name, trainable=trainable, **kwargs)
 
-    self._feature_columns = _normalize_feature_columns(feature_columns)
-    self._feature_columns = sorted(self._feature_columns, key=lambda x: x.name)
-    for column in self._feature_columns:
-      if not isinstance(column, (DenseColumn, CategoricalColumn)):
-        raise ValueError(
-            'Items of feature_columns must be either a '
-            'DenseColumn or CategoricalColumn. Given: {}'.format(column))
-
-    self._units = units
-    self._sparse_combiner = sparse_combiner
-
-    self._state_manager = _StateManagerImpl(self, self.trainable)
-    self._bias_variable = None
-
-  def build(self, _):
-    # We need variable scopes for now because we want the variable partitioning
-    # information to percolate down. We also use _pure_variable_scope's here
-    # since we want to open up a name_scope in the `call` method while creating
-    # the ops.
-    with variable_scope._pure_variable_scope(self.name):  # pylint: disable=protected-access
-      for column in self._feature_columns:
-        with variable_scope._pure_variable_scope(column.name):  # pylint: disable=protected-access
-          # Create the state for each feature column
-          column.create_state(self._state_manager)
-
-          # Create a weight variable for each column.
-          if isinstance(column, CategoricalColumn):
-            first_dim = column.num_buckets
-          else:
-            first_dim = column.variable_shape.num_elements()
-          self._state_manager.create_variable(
-              column,
-              name='weights',
-              dtype=dtypes.float32,
-              shape=(first_dim, self._units),
-              initializer=init_ops.zeros_initializer(),
-              trainable=self.trainable)
-
-      # Create a bias variable.
-      self._bias_variable = self.add_variable(
-          name='bias_weights',
-          dtype=dtypes.float32,
-          shape=[self._units],
-          initializer=init_ops.zeros_initializer(),
-          trainable=self.trainable,
-          use_resource=True,
-          # TODO(rohanj): Get rid of this hack once we have a mechanism for
-          # specifying a default partitioner for an entire layer. In that case,
-          # the default getter for Layers should work.
-          getter=variable_scope.get_variable)
-
-    super(LinearModel, self).build(None)
+    super(LinearModel, self).__init__(name=name, **kwargs)
+    self.layer = _LinearModelLayer(
+        feature_columns,
+        units,
+        sparse_combiner,
+        trainable,
+        name=self.name,
+        **kwargs)
 
   def call(self, features):
     """Returns a `Tensor` the represents the predictions of a linear model.
@@ -585,36 +643,11 @@ class LinearModel(Layer):
     Raises:
       ValueError: If features are not a dictionary.
     """
-    if not isinstance(features, dict):
-      raise ValueError('We expected a dictionary here. Instead we got: ',
-                       features)
-    with ops.name_scope(self.name):
-      transformation_cache = FeatureTransformationCache(features)
-      weighted_sums = []
-      for column in self._feature_columns:
-        with ops.name_scope(column.name):
-          # All the weights used in the linear model are owned by the state
-          # manager associated with this Linear Model.
-          weight_var = self._state_manager.get_variable(column, 'weights')
-
-          weighted_sum = _create_weighted_sum(
-              column=column,
-              transformation_cache=transformation_cache,
-              state_manager=self._state_manager,
-              sparse_combiner=self._sparse_combiner,
-              weight_var=weight_var)
-          weighted_sums.append(weighted_sum)
-
-      _verify_static_batch_size_equality(weighted_sums, self._feature_columns)
-      predictions_no_bias = math_ops.add_n(
-          weighted_sums, name='weighted_sum_no_bias')
-      predictions = nn_ops.bias_add(
-          predictions_no_bias, self._bias_variable, name='weighted_sum')
-      return predictions
+    return self.layer(features)
 
   @property
-  def bias_variable(self):
-    return self._bias_variable
+  def bias(self):
+    return self.layer.bias
 
 
 def _transform_features(features, feature_columns, state_manager):
@@ -1839,6 +1872,101 @@ class FeatureColumn(object):
     """
     pass
 
+  @abc.abstractproperty
+  def parents(self):
+    """Returns a list of immediate raw feature and FeatureColumn dependencies.
+
+    For example:
+    # For the following feature columns
+    a = numeric_column('f1')
+    c = crossed_column(a, 'f2')
+    # The expected parents are:
+    a.parents = ['f1']
+    c.parents = [a, 'f2']
+    """
+    pass
+
+  @abc.abstractmethod
+  def _get_config(self):
+    """Returns the config of the feature column.
+
+    A FeatureColumn config is a Python dictionary (serializable) containing the
+    configuration of a FeatureColumn. The same FeatureColumn can be
+    reinstantiated later from this configuration.
+
+    The config of a feature column does not include information about feature
+    columns depending on it nor the FeatureColumn class name.
+
+    Example with (de)serialization practices followed in this file:
+    ```python
+    class SerializationExampleFeatureColumn(
+        FeatureColumn, collections.namedtuple(
+            'SerializationExampleFeatureColumn',
+            ('dimension', 'parent', 'dtype', 'normalizer_fn'))):
+
+      def _get_config(self):
+        # Create a dict from the namedtuple.
+        # Python attribute literals can be directly copied from / to the config.
+        # For example 'dimension', assuming it is an integer literal.
+        config = dict(zip(self._fields, self))
+
+        # (De)serialization of parent FeatureColumns should use the provided
+        # (de)serialize_feature_column() methods that take care of de-duping.
+        config['parent'] = serialize_feature_column(self.parent)
+
+        # Many objects provide custom (de)serialization e.g: for tf.DType
+        # tf.DType.name, tf.as_dtype() can be used.
+        config['dtype'] = self.dtype.name
+
+        # Non-trivial dependencies should be Keras-(de)serializable.
+        config['normalizer_fn'] = utils.serialize_keras_object(
+            self.normalizer_fn)
+
+        return config
+
+      @classmethod
+      def _from_config(cls, config, custom_objects=None, columns_by_name=None):
+        # This should do the inverse transform from `_get_config` and construct
+        # the namedtuple.
+        kwargs = config.copy()
+        kwargs['parent'] = deserialize_feature_column(
+            config['parent'], custom_objects, columns_by_name)
+        kwargs['dtype'] = dtypes.as_dtype(config['dtype'])
+        kwargs['normalizer_fn'] = utils.deserialize_keras_object(
+          config['normalizer_fn'], custom_objects=custom_objects)
+        return cls(**kwargs)
+
+    ```
+    Returns:
+      A serializable Dict that can be used to deserialize the object with
+      from_config.
+    """
+    pass
+
+  @classmethod
+  def _from_config(cls, config, custom_objects=None, columns_by_name=None):
+    """Creates a FeatureColumn from its config.
+
+    This method should be the reverse of `_get_config`, capable of instantiating
+    the same FeatureColumn from the config dictionary. See `_get_config` for an
+    example of common (de)serialization practices followed in this file.
+
+    TODO(b/118939620): This is a private method until consensus is reached on
+    supporting object deserialization deduping within Keras.
+
+    Args:
+      config: A Dict config acquired with `_get_config`.
+      custom_objects: Optional dictionary mapping names (strings) to custom
+        classes or functions to be considered during deserialization.
+      columns_by_name: A Dict[String, FeatureColumn] of existing columns in
+        order to avoid duplication. Should be passed to any calls to
+        deserialize_feature_column().
+
+    Returns:
+      A FeatureColumn for the input config.
+    """
+    pass
+
 
 class DenseColumn(FeatureColumn):
   """Represents a column which can be represented as `Tensor`.
@@ -2345,6 +2473,32 @@ class NumericColumn(
     del trainable
     return inputs.get(self)
 
+  @property
+  def parents(self):
+    """See 'FeatureColumn` base class."""
+    return [self.key]
+
+  def _get_config(self):
+    """See 'FeatureColumn` base class."""
+    config = dict(zip(self._fields, self))
+    config['normalizer_fn'] = utils.serialize_keras_object(self.normalizer_fn)
+    config['dtype'] = self.dtype.name
+    return config
+
+  @classmethod
+  def _from_config(cls, config, custom_objects=None, columns_by_name=None):
+    """See 'FeatureColumn` base class."""
+    _check_config_keys(config, cls._fields)
+    kwargs = config.copy()
+    # TODO(b/118820158): Simplify if deserialize_keras_object supports None.
+    if config['normalizer_fn']:
+      kwargs['normalizer_fn'] = utils.deserialize_keras_object(
+          config['normalizer_fn'], custom_objects=custom_objects)
+    else:
+      kwargs['normalizer_fn'] = None
+    kwargs['dtype'] = dtypes.as_dtype(config['dtype'])
+    return cls(**kwargs)
+
 
 class BucketizedColumn(
     DenseColumn,
@@ -2477,6 +2631,26 @@ class BucketizedColumn(
     input_tensor = inputs.get(self)
     return self._get_sparse_tensors_for_input_tensor(input_tensor)
 
+  @property
+  def parents(self):
+    """See 'FeatureColumn` base class."""
+    return [self.source_column]
+
+  def _get_config(self):
+    """See 'FeatureColumn` base class."""
+    config = dict(zip(self._fields, self))
+    config['source_column'] = serialize_feature_column(self.source_column)
+    return config
+
+  @classmethod
+  def _from_config(cls, config, custom_objects=None, columns_by_name=None):
+    """See 'FeatureColumn` base class."""
+    _check_config_keys(config, cls._fields)
+    kwargs = config.copy()
+    kwargs['source_column'] = deserialize_feature_column(
+        config['source_column'], custom_objects, columns_by_name)
+    return cls(**kwargs)
+
 
 class EmbeddingColumn(
     DenseColumn,
@@ -2539,6 +2713,8 @@ class EmbeddingColumn(
         shape=embedding_shape,
         dtype=dtypes.float32,
         trainable=self.trainable,
+        # TODO(rohanj): Make this True when b/118500434 is fixed.
+        use_resource=False,
         initializer=self.initializer)
 
   def _get_dense_tensor_internal_helper(self, sparse_tensors,
@@ -2681,6 +2857,34 @@ class EmbeddingColumn(
         sparse_tensors.id_tensor)
     return SequenceDenseColumn.TensorSequenceLengthPair(
         dense_tensor=dense_tensor, sequence_length=sequence_length)
+
+  @property
+  def parents(self):
+    """See 'FeatureColumn` base class."""
+    return [self.categorical_column]
+
+  def _get_config(self):
+    """See 'FeatureColumn` base class."""
+    config = dict(zip(self._fields, self))
+    config['categorical_column'] = serialize_feature_column(
+        self.categorical_column)
+    config['initializer'] = utils.serialize_keras_object(self.initializer)
+    return config
+
+  @classmethod
+  def _from_config(cls, config, custom_objects=None, columns_by_name=None):
+    """See 'FeatureColumn` base class."""
+    _check_config_keys(config, cls._fields)
+    kwargs = config.copy()
+    kwargs['categorical_column'] = deserialize_feature_column(
+        config['categorical_column'], custom_objects, columns_by_name)
+    # TODO(b/118820158): Simplify if deserialize_keras_object supports None.
+    if config['initializer']:
+      kwargs['initializer'] = utils.deserialize_keras_object(
+          config['initializer'], custom_objects=custom_objects)
+    else:
+      kwargs['initializer'] = None
+    return cls(**kwargs)
 
 
 def _raise_shared_embedding_column_error():
@@ -2847,6 +3051,20 @@ class SharedEmbeddingColumn(
                                  weight_collections=None,
                                  trainable=None):
     return _raise_shared_embedding_column_error()
+
+  @property
+  def parents(self):
+    """See 'FeatureColumn` base class."""
+    return [self.categorical_column]
+
+  def _get_config(self):
+    """See 'FeatureColumn` base class."""
+    raise NotImplementedError()
+
+  @classmethod
+  def _from_config(cls, config, custom_objects=None, columns_by_name=None):
+    """See 'FeatureColumn` base class."""
+    raise NotImplementedError()
 
 
 def _create_tuple(shape, value):
@@ -3042,6 +3260,25 @@ class HashedCategoricalColumn(
     del trainable
     return CategoricalColumn.IdWeightPair(inputs.get(self), None)
 
+  @property
+  def parents(self):
+    """See 'FeatureColumn` base class."""
+    return [self.key]
+
+  def _get_config(self):
+    """See 'FeatureColumn` base class."""
+    config = dict(zip(self._fields, self))
+    config['dtype'] = self.dtype.name
+    return config
+
+  @classmethod
+  def _from_config(cls, config, custom_objects=None, columns_by_name=None):
+    """See 'FeatureColumn` base class."""
+    _check_config_keys(config, cls._fields)
+    kwargs = config.copy()
+    kwargs['dtype'] = dtypes.as_dtype(config['dtype'])
+    return cls(**kwargs)
+
 
 class VocabularyFileCategoricalColumn(
     CategoricalColumn,
@@ -3134,6 +3371,25 @@ class VocabularyFileCategoricalColumn(
     del trainable
     return CategoricalColumn.IdWeightPair(inputs.get(self), None)
 
+  @property
+  def parents(self):
+    """See 'FeatureColumn` base class."""
+    return [self.key]
+
+  def _get_config(self):
+    """See 'FeatureColumn` base class."""
+    config = dict(zip(self._fields, self))
+    config['dtype'] = self.dtype.name
+    return config
+
+  @classmethod
+  def _from_config(cls, config, custom_objects=None, columns_by_name=None):
+    """See 'FeatureColumn` base class."""
+    _check_config_keys(config, cls._fields)
+    kwargs = config.copy()
+    kwargs['dtype'] = dtypes.as_dtype(config['dtype'])
+    return cls(**kwargs)
+
 
 class VocabularyListCategoricalColumn(
     CategoricalColumn,
@@ -3225,6 +3481,25 @@ class VocabularyListCategoricalColumn(
     del weight_collections
     del trainable
     return CategoricalColumn.IdWeightPair(inputs.get(self), None)
+
+  @property
+  def parents(self):
+    """See 'FeatureColumn` base class."""
+    return [self.key]
+
+  def _get_config(self):
+    """See 'FeatureColumn` base class."""
+    config = dict(zip(self._fields, self))
+    config['dtype'] = self.dtype.name
+    return config
+
+  @classmethod
+  def _from_config(cls, config, custom_objects=None, columns_by_name=None):
+    """See 'FeatureColumn` base class."""
+    _check_config_keys(config, cls._fields)
+    kwargs = config.copy()
+    kwargs['dtype'] = dtypes.as_dtype(config['dtype'])
+    return cls(**kwargs)
 
 
 class IdentityCategoricalColumn(
@@ -3327,6 +3602,21 @@ class IdentityCategoricalColumn(
     del trainable
     return CategoricalColumn.IdWeightPair(inputs.get(self), None)
 
+  @property
+  def parents(self):
+    """See 'FeatureColumn` base class."""
+    return [self.key]
+
+  def _get_config(self):
+    """See 'FeatureColumn` base class."""
+    return dict(zip(self._fields, self))
+
+  @classmethod
+  def _from_config(cls, config, custom_objects=None, columns_by_name=None):
+    """See 'FeatureColumn` base class."""
+    _check_config_keys(config, cls._fields)
+    return cls(**config)
+
 
 class WeightedCategoricalColumn(
     CategoricalColumn,
@@ -3424,6 +3714,29 @@ class WeightedCategoricalColumn(
     del trainable
     tensors = inputs.get(self)
     return CategoricalColumn.IdWeightPair(tensors[0], tensors[1])
+
+  @property
+  def parents(self):
+    """See 'FeatureColumn` base class."""
+    return [self.categorical_column, self.weight_feature_key]
+
+  def _get_config(self):
+    """See 'FeatureColumn` base class."""
+    config = dict(zip(self._fields, self))
+    config['categorical_column'] = serialize_feature_column(
+        self.categorical_column)
+    config['dtype'] = self.dtype.name
+    return config
+
+  @classmethod
+  def _from_config(cls, config, custom_objects=None, columns_by_name=None):
+    """See 'FeatureColumn` base class."""
+    _check_config_keys(config, cls._fields)
+    kwargs = config.copy()
+    kwargs['categorical_column'] = deserialize_feature_column(
+        config['categorical_column'], custom_objects, columns_by_name)
+    kwargs['dtype'] = dtypes.as_dtype(config['dtype'])
+    return cls(**kwargs)
 
 
 class CrossedColumn(
@@ -3543,6 +3856,28 @@ class CrossedColumn(
     del weight_collections
     del trainable
     return CategoricalColumn.IdWeightPair(inputs.get(self), None)
+
+  @property
+  def parents(self):
+    """See 'FeatureColumn` base class."""
+    return list(self.keys)
+
+  def _get_config(self):
+    """See 'FeatureColumn` base class."""
+    config = dict(zip(self._fields, self))
+    config['keys'] = tuple([serialize_feature_column(fc) for fc in self.keys])
+    return config
+
+  @classmethod
+  def _from_config(cls, config, custom_objects=None, columns_by_name=None):
+    """See 'FeatureColumn` base class."""
+    _check_config_keys(config, cls._fields)
+    kwargs = config.copy()
+    kwargs['keys'] = tuple([
+        deserialize_feature_column(c, custom_objects, columns_by_name)
+        for c in config['keys']
+    ])
+    return cls(**kwargs)
 
 
 def _collect_leaf_level_keys(cross):
@@ -3922,6 +4257,27 @@ class IndicatorColumn(
     return SequenceDenseColumn.TensorSequenceLengthPair(
         dense_tensor=dense_tensor, sequence_length=sequence_length)
 
+  @property
+  def parents(self):
+    """See 'FeatureColumn` base class."""
+    return [self.categorical_column]
+
+  def _get_config(self):
+    """See 'FeatureColumn` base class."""
+    config = dict(zip(self._fields, self))
+    config['categorical_column'] = serialize_feature_column(
+        self.categorical_column)
+    return config
+
+  @classmethod
+  def _from_config(cls, config, custom_objects=None, columns_by_name=None):
+    """See 'FeatureColumn` base class."""
+    _check_config_keys(config, cls._fields)
+    kwargs = config.copy()
+    kwargs['categorical_column'] = deserialize_feature_column(
+        config['categorical_column'], custom_objects, columns_by_name)
+    return cls(**kwargs)
+
 
 def _verify_static_batch_size_equality(tensors, columns):
   """Verify equality between static batch sizes.
@@ -4044,3 +4400,186 @@ class SequenceCategoricalColumn(
                           trainable=None):
     sparse_tensors = self.categorical_column._get_sparse_tensors(inputs)  # pylint: disable=protected-access
     return self._get_sparse_tensors_helper(sparse_tensors)
+
+  @property
+  def parents(self):
+    """See 'FeatureColumn` base class."""
+    return [self.categorical_column]
+
+  def _get_config(self):
+    """See 'FeatureColumn` base class."""
+    config = dict(zip(self._fields, self))
+    config['categorical_column'] = serialize_feature_column(
+        self.categorical_column)
+    return config
+
+  @classmethod
+  def _from_config(cls, config, custom_objects=None, columns_by_name=None):
+    """See 'FeatureColumn` base class."""
+    _check_config_keys(config, cls._fields)
+    kwargs = config.copy()
+    kwargs['categorical_column'] = deserialize_feature_column(
+        config['categorical_column'], custom_objects, columns_by_name)
+    return cls(**kwargs)
+
+
+# FeatureColumn serialization, deserialization logic.
+
+
+def _check_config_keys(config, expected_keys):
+  """Checks that a config has all expected_keys."""
+  if set(config.keys()) != set(expected_keys):
+    raise ValueError('Invalid config: {}, expected keys: {}'.format(
+        config, expected_keys))
+
+
+def serialize_feature_column(fc):
+  """Serializes a FeatureColumn or a raw string key.
+
+  This method should only be used to serialize parent FeatureColumns when
+  implementing FeatureColumn._get_config(), else serialize_feature_columns()
+  is preferable.
+
+  This serialization also keeps information of the FeatureColumn class, so
+  deserialization is possible without knowing the class type. For example:
+
+  a = numeric_column('x')
+  a._get_config() gives:
+  {
+      'key': 'price',
+      'shape': (1,),
+      'default_value': None,
+      'dtype': 'float32',
+      'normalizer_fn': None
+  }
+  While serialize_feature_column(a) gives:
+  {
+      'class_name': 'NumericColumn',
+      'config': {
+          'key': 'price',
+          'shape': (1,),
+          'default_value': None,
+          'dtype': 'float32',
+          'normalizer_fn': None
+      }
+  }
+
+  Args:
+    fc: A FeatureColumn or raw feature key string.
+
+  Returns:
+    Keras serialization for FeatureColumns, leaves string keys unaffected.
+
+  Raises:
+    ValueError if called with input that is not string or FeatureColumn.
+  """
+  if isinstance(fc, six.string_types):
+    return fc
+  elif isinstance(fc, FeatureColumn):
+    return utils.serialize_keras_class_and_config(fc.__class__.__name__,
+                                                  fc._get_config())
+  else:
+    raise ValueError('Instance: {} is not a FeatureColumn'.format(fc))
+
+
+def deserialize_feature_column(config,
+                               custom_objects=None,
+                               columns_by_name=None):
+  """Deserializes a `config` generated with `serialize_feature_column`.
+
+  This method should only be used to deserialize parent FeatureColumns when
+  implementing FeatureColumn._from_config(), else deserialize_feature_columns()
+  is preferable. Returns a FeatureColumn for this config.
+  TODO(b/118939620): Simplify code if Keras utils support object deduping.
+
+  Args:
+    config: A Dict with the serialization of feature columns acquired by
+      `serialize_feature_column`, or a string representing a raw column.
+    custom_objects: A Dict from custom_object name to the associated keras
+      serializable objects (FeatureColumns, classes or functions).
+    columns_by_name: A Dict[String, FeatureColumn] of existing columns in order
+      to avoid duplication.
+
+  Raises:
+    ValueError if `config` has invalid format (e.g: expected keys missing,
+    or refers to unknown classes).
+
+  Returns:
+    A FeatureColumn corresponding to the input `config`.
+  """
+  if isinstance(config, six.string_types):
+    return config
+  # A dict from class_name to class for all FeatureColumns in this module.
+  # FeatureColumns not part of the module can be passed as custom_objects.
+  module_feature_column_classes = {
+      cls.__name__: cls for cls in [
+          BucketizedColumn, EmbeddingColumn, HashedCategoricalColumn,
+          IdentityCategoricalColumn, IndicatorColumn, NumericColumn,
+          SequenceCategoricalColumn, SequenceDenseColumn, SharedEmbeddingColumn,
+          VocabularyFileCategoricalColumn, VocabularyListCategoricalColumn,
+          WeightedCategoricalColumn
+      ]
+  }
+  if columns_by_name is None:
+    columns_by_name = {}
+
+  (cls, cls_config) = utils.class_and_config_for_serialized_keras_object(
+      config,
+      module_objects=module_feature_column_classes,
+      custom_objects=custom_objects,
+      printable_module_name='feature_column_v2')
+
+  if not issubclass(cls, FeatureColumn):
+    raise ValueError(
+        'Expected FeatureColumn class, instead found: {}'.format(cls))
+
+  # Always deserialize the FeatureColumn, in order to get the name.
+  new_instance = cls._from_config(cls_config, columns_by_name=columns_by_name)  # pylint: disable=protected-access
+
+  # If the name already exists, re-use the column from columns_by_name,
+  # (new_instance remains unused).
+  return columns_by_name.setdefault(new_instance.name, new_instance)
+
+
+def serialize_feature_columns(feature_columns):
+  """Serializes a list of FeatureColumns.
+
+  Returns a list of Keras-style config dicts that represent the input
+  FeatureColumns and can be used with `deserialize_feature_columns` for
+  reconstructing the original columns.
+
+  Args:
+    feature_columns: A list of FeatureColumns.
+
+  Returns:
+    Keras serialization for the list of FeatureColumns.
+
+  Raises:
+    ValueError if called with input that is not a list of FeatureColumns.
+  """
+  return [serialize_feature_column(fc) for fc in feature_columns]
+
+
+def deserialize_feature_columns(configs, custom_objects=None):
+  """Deserializes a list of FeatureColumns configs.
+
+  Returns a list of FeatureColumns given a list of config dicts acquired by
+  `serialize_feature_columns`.
+
+  Args:
+    configs: A list of Dicts with the serialization of feature columns acquired
+      by `serialize_feature_columns`.
+    custom_objects: A Dict from custom_object name to the associated keras
+      serializable objects (FeatureColumns, classes or functions).
+
+  Returns:
+    FeatureColumn objects corresponding to the input configs.
+
+  Raises:
+    ValueError if called with input that is not a list of FeatureColumns.
+  """
+  columns_by_name = {}
+  return [
+      deserialize_feature_column(c, custom_objects, columns_by_name)
+      for c in configs
+  ]

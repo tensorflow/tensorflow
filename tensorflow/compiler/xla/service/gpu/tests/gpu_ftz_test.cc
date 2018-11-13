@@ -39,7 +39,7 @@ class GpuFtzTest : public GpuCodegenTest {
         /* parameter_number=*/1, param_shape, "y"));
     builder.AddInstruction(HloInstruction::CreateBinary(param_shape, op, x, y));
 
-    auto hlo_module = CreateNewModuleWithFTZ(ftz_);
+    auto hlo_module = CreateNewUnverifiedModuleWithFTZ(ftz_);
     hlo_module->AddEntryComputation(builder.Build());
     return hlo_module;
   }
@@ -54,7 +54,7 @@ class GpuFtzTest : public GpuCodegenTest {
         /* parameter_number=*/0, param_shape, "x"));
     builder.AddInstruction(HloInstruction::CreateUnary(param_shape, op, x));
 
-    auto hlo_module = CreateNewModuleWithFTZ(ftz_);
+    auto hlo_module = CreateNewUnverifiedModuleWithFTZ(ftz_);
     hlo_module->AddEntryComputation(builder.Build());
     return hlo_module;
   }

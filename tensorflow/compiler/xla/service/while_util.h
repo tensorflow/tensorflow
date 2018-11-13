@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_WHILE_UTIL_H_
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
@@ -85,6 +87,13 @@ class WhileUtil {
   // Assumes `while_body` is the body computation of the while loop in question.
   static std::vector<HloInstruction*> GetInvariantGTEsForWhileBody(
       const HloComputation& while_body);
+
+  // Returns a map of index to GetTupleElement instructions in
+  // `while_conditional` that access elements in the parameter tuple. Assumes
+  // `while_conditional` is the conditional computation of the while loop in
+  // question.
+  static absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>>
+  GetGTEsMapForWhileConditional(const HloComputation& while_conditional);
 };
 }  // namespace xla
 

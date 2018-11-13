@@ -450,11 +450,6 @@ class Network(base_layer.Layer):
           'and variables properties.')
 
   @property
-  def uses_learning_phase(self):
-    return any(
-        [getattr(x, '_uses_learning_phase', False) for x in self.outputs])
-
-  @property
   def stateful(self):
     return any([(hasattr(layer, 'stateful') and layer.stateful)
                 for layer in self.layers])

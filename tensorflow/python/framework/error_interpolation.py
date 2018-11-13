@@ -40,6 +40,7 @@ _ParseTag = collections.namedtuple("_ParseTag", ["type", "name"])
 
 _BAD_FILE_SUBSTRINGS = [
     os.path.join("tensorflow", "python"),
+    os.path.join("tensorflow", "contrib"),
     "<embedded",
 ]
 
@@ -267,8 +268,8 @@ def compute_field_dict(op):
 def interpolate(error_message, graph):
   """Interpolates an error message.
 
-  The error message can contain tags of the form ^^type:name^^ which will
-  be replaced.
+  The error message can contain tags of the form `{{type name}}` which will be
+  replaced.
 
   Args:
     error_message: A string to interpolate.

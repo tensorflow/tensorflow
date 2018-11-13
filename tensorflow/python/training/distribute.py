@@ -21,7 +21,6 @@ from __future__ import print_function
 import threading
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import context as eager_context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -88,8 +87,7 @@ def _require_cross_replica_context(distribution_strategy):
   if context.cross_replica_context is distribution_strategy: return
   # We have an error to report, figure out the right message.
   if context.distribution_strategy is not distribution_strategy:
-    if (context.distribution_strategy is
-        distribution_strategy_context._get_default_distribution_strategy()):  # pylint: disable=protected-access
+    if not distribution_strategy_context.has_distribution_strategy():
       raise RuntimeError(
           'Need to be inside "with distribution_strategy.scope()" for %s' %
           (distribution_strategy,))
@@ -122,8 +120,7 @@ def _require_distribution_strategy_scope(distribution_strategy):
   context = _get_per_thread_mode()
   if context.distribution_strategy is distribution_strategy: return
   # We have an error to report, figure out the right message.
-  if (context.distribution_strategy is
-      distribution_strategy_context._get_default_distribution_strategy()):  # pylint: disable=protected-access
+  if not distribution_strategy_context.has_distribution_strategy():
     raise RuntimeError(
         'Need to be inside "with distribution_strategy.scope()" for %s' %
         (distribution_strategy,))
@@ -265,7 +262,7 @@ class DistributionStrategy(object):
       iterator = my_distribution.distribute_dataset(
           dataset).make_one_shot_iterator()
       replica_train_ops = my_distribution.call_for_each_replica(
-          replica_fn, iterator.get_next())
+          replica_fn, args=(iterator.get_next(),))
       train_op = tf.group(my_distribution.unwrap(replica_train_ops))
     ```
 
@@ -293,11 +290,11 @@ class DistributionStrategy(object):
 
   * Wrapped values: In order to represent values parallel across devices
     (either replicas or the devices associated with a particular value), we
-    wrap them in a "PerDevice" or "Mirrored" object that contains a map
-    from device to values. "PerDevice" is used when the value may be
-    different across devices, and "Mirrored" when the value are the same.
+    wrap them in a "PerReplica" or "Mirrored" object that contains a map
+    from device to values. "PerReplica" is used when the value may be
+    different across replicas, and "Mirrored" when the value are the same.
   * Unwrapping and merging: Consider calling a function `fn` on
-    multiple devices, like `call_for_each_replica(fn, w)` with an
+    multiple replicas, like `call_for_each_replica(fn, args=[w])` with an
     argument `w` that is a wrapped value. This means `w` will have a
     map taking replica device `d0` to `w0`, replica device `d1` to `w1`,
     etc. `call_for_each_replica()` unwraps `w` before calling `fn`, so
@@ -340,7 +337,7 @@ class DistributionStrategy(object):
   called _locality_ that says what values are compatible with which
   APIs:
 
-  * T: different value for each replica (e.g. a PerDevice-wrapped value).
+  * T: different value for each replica (e.g. a PerReplica-wrapped value).
   * M: value is "mirrored" across replicas, i.e. there are copies with the
     same value on each replica (e.g. a Mirrored-wrapped value).
   * V(`v`): value is "mirrored" across all the devices which have a
@@ -418,9 +415,7 @@ class DistributionStrategy(object):
 
   You may use this API whether or not a `DistributionStrategy` is
   being used, since there is a default implementation of
-  `ReplicaContext` and `DistributionStrategy`. Or you can use the
-  `get_replica_context().is_single_replica` property to run different code
-  in the distributed vs. single replica cases.
+  `ReplicaContext` and `DistributionStrategy`.
   """
 
   # TODO(josh11b): Raise an exception if variable partitioning requested before
@@ -458,19 +453,22 @@ class DistributionStrategy(object):
       kwargs["use_resource"] = True
       return self._create_variable(*args, **kwargs)
 
-    def disable_partitioned_variables(getter, *args, **kwargs):
-      if kwargs.pop("partitioner", None) is not None:
-        tf_logging.log_first_n(
-            tf_logging.WARN, "Partitioned variables are disabled when using "
-            "DistributionStrategy.", 1)
+    def distributed_getter(getter, *args, **kwargs):
+      if not self._allow_variable_partition():
+        if kwargs.pop("partitioner", None) is not None:
+          tf_logging.log_first_n(
+              tf_logging.WARN, "Partitioned variables are disabled when using "
+              "current DistributionStrategy.", 1)
       return getter(*args, **kwargs)
 
     return _CurrentDistributionContext(
         self, variable_scope.variable_creator_scope(creator_with_resource_vars),
         variable_scope.variable_scope(
             variable_scope.get_variable_scope(),
-            custom_getter=disable_partitioned_variables),
-        self._default_device)
+            custom_getter=distributed_getter), self._default_device)
+
+  def _allow_variable_partition(self):
+    return False
 
   def _create_variable(self, next_creator, *args, **kwargs):
     # Note: should support "colocate_with" argument.
@@ -543,7 +541,7 @@ class DistributionStrategy(object):
           "DistributionStrategy.")
     return result
 
-  # TODO(josh11b): `PerDeviceDataset` currently only implements a few methods of
+  # TODO(josh11b): `PerReplicaDataset` currently only implements a few methods of
   # Dataset API such as make_one_shot_iterator and make_initializable_iterator.
   # Extend to implement more functionality of datasets.
   def distribute_dataset(self, dataset_fn):
@@ -559,14 +557,14 @@ class DistributionStrategy(object):
       distributed_dataset = distribution_strategy.distribute_dataset(dataset_fn)
       iterator = distributed_dataset.make_one_shot_iterator()
       replica_results = distribution_strategy.call_for_each_replica(
-          replica_fn, iterator.get_next())
+          replica_fn, args=(iterator.get_next(),))
     ```
 
     Args:
       dataset_fn: A function that returns a `tf.data.Dataset`.
 
     Returns:
-      A `PerDeviceDataset` that will produce data for each replica.
+      A `PerReplicaDataset` that will produce data for each replica.
     """
     raise NotImplementedError("must be implemented in descendants")
 
@@ -598,13 +596,9 @@ class DistributionStrategy(object):
     For example, TPU initialize_system ops.
 
     Returns:
-      In eager mode, returns `None`.
-      In graph mode, a list of ops to execute. Empty list if nothing to be done.
+      A list of ops to execute.
     """
-    if eager_context.executing_eagerly():
-      return
-    else:
-      return []
+    return []
 
   def finalize(self):
     """Any final actions to be done at the end of all computations.
@@ -615,13 +609,9 @@ class DistributionStrategy(object):
     For example, TPU shutdown ops.
 
     Returns:
-      In eager mode, returns `None`.
-      In graph mode, a list of ops to execute. Empty list if nothing to be done.
+      A list of ops to execute.
     """
-    if eager_context.executing_eagerly():
-      return
-    else:
-      return []
+    return []
 
   def run_steps_on_dataset(self, fn, iterator, iterations=1,
                            initial_loop_values=None):
@@ -697,83 +687,44 @@ class DistributionStrategy(object):
       replica_ctx = tf.get_replica_context()
       v = three + replica_ctx.replica_id
       # Computes the sum of the `v` values across all replicas.
-      s = replica_ctx.merge_call(merge_fn, v)
+      s = replica_ctx.merge_call(merge_fn, args=(v,))
       return s + v
 
     with distribution.scope():
       # in "cross-replica" context
       ...
-      merged_results = distribution.call_for_each_replica(fn, 3)
+      merged_results = distribution.call_for_each_replica(fn, args=[3])
       # merged_results has the values from every replica execution of `fn`.
       print(distribution.unwrap(merged_results))  # Prints a list
     ```
 
     Args:
       fn: function to run (will be run once per replica).
-      *args: positional arguments for `fn`
-      **kwargs: keyword arguments for `fn`.
-          `"run_concurrently"`: Boolean indicating whether executions of `fn`
-             can be run concurrently (under eager execution only), defaults to
-             `True`.
+      args: Tuple or list with positional arguments for `fn`.
+      kwargs: Dict with keyword arguments for `fn`.
 
     Returns:
       Merged return value of `fn` across all replicas.
     """
     _require_cross_replica_context(self)
-    return self._call_for_each_replica(fn, *args, **kwargs)
+    # Handle old *args, **kwargs, and new args=(...), kwargs={...}, to
+    # allow transition.
+    a = kwargs.pop("args", None)
+    if a is not None:
+      if args:
+        raise ValueError(
+            "Can't pass *args and args=... to call_for_each_replica")
+      args = a
+    k = kwargs.pop("kwargs", None)
+    if k is not None:
+      if kwargs:
+        raise ValueError(
+            "Can't pass **kwargs and kwargs=... to call_for_each_replica")
+      kwargs = k
+    kwargs.pop("run_concurrently", None)  # Ignore old option.
+    return self._call_for_each_replica(fn, args, kwargs)
 
-  def call_for_each_tower(self, fn, *args, **kwargs):
-    """Run `fn` once per replica. DEPRECATED.
-
-    DEPRECATED: Use `call_for_each_replica` instead.
-
-    `fn` may call `tf.get_replica_context()` to access methods such as
-    `replica_id()` and `merge_call()`.
-
-    `merge_call()` is used to communicate between the replicas and
-    re-enter the cross-replica context. All replicas pause their execution
-    having encountered a `merge_call()` call. After that the
-    `merge_fn`-function is executed. Its results are then unwrapped and
-    given back to each replica call. After that execution resumes until
-    `fn` is complete or encounters another `merge_call()`.  Example:
-
-    ```python
-    # Called once in "cross-replica" context.
-    def merge_fn(distribution, three_plus_replica_id):
-      # sum the values across replicas
-      return sum(distribution.unwrap(three_plus_replica_id))
-
-    # Called once per replica in `distribution`, in a "replica" context.
-    def fn(three):
-      replica_ctx = tf.get_replica_context()
-      v = three + replica_ctx.replica_id
-      # Computes the sum of the `v` values across all replicas.
-      s = replica_ctx.merge_call(merge_fn, v)
-      return s + v
-
-    with distribution.scope():
-      # in "cross-replica" context
-      ...
-      merged_results = distribution.call_for_each_replica(fn, 3)
-      # merged_results has the values from every replica execution of `fn`.
-      print(distribution.unwrap(merged_results))  # Prints a list
-    ```
-
-    Args:
-      fn: function to run (will be run once per replica).
-      *args: positional arguments for `fn`
-      **kwargs: keyword arguments for `fn`.
-          `"run_concurrently"`: Boolean indicating whether executions of `fn`
-             can be run concurrently (under eager execution only), defaults to
-             `True`.
-
-    Returns:
-      Merged return value of `fn` across all replicas.
-    """
-    _require_cross_replica_context(self)
-    return self._call_for_each_replica(fn, *args, **kwargs)
-
-  def _call_for_each_replica(self, fn, *args, **kwargs):
+  def _call_for_each_replica(self, fn, args, kwargs):
     raise NotImplementedError("must be implemented in descendants")
 
   def reduce(self, aggregation, value, destinations):
@@ -783,8 +734,8 @@ class DistributionStrategy(object):
       aggregation: Indicates how a variable will be aggregated. Accepted values
         are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`,
         `tf.VariableAggregation.ONLY_FIRST_REPLICA`.
-      value: A per-device value with one value per replica.
-      destinations: A mirrored variable, a per-device tensor, a device string,
+      value: A per-replica value with one value per replica.
+      destinations: A mirrored variable, a per-replica tensor, a device string,
         or list of device strings. The return value will be copied to all
         destination devices (or all the devices where the `destinations` value
         resides). To perform an all-reduction, pass `value` to `destinations`.
@@ -851,7 +802,7 @@ class DistributionStrategy(object):
 
     Otherwise this returns `fn(var, *args, **kwargs)` colocated with `var`.
 
-    Neither `*args` nor `**kwargs` may contain per-device values.
+    Neither `*args` nor `**kwargs` may contain per-replica values.
     If they contain mirrored values, they will be unwrapped before
     calling `fn`.
 
@@ -899,7 +850,7 @@ class DistributionStrategy(object):
     raise NotImplementedError("must be implemented in descendants")
 
   def unwrap(self, value):
-    """Returns the list of all per-device values contained in `value`.
+    """Returns the list of all per-replica values contained in `value`.
 
     Args:
       value: A value returned by `call_for_each_replica()` or a variable
@@ -912,7 +863,7 @@ class DistributionStrategy(object):
     return self._unwrap(value)
 
   def value_container(self, value):
-    """Returns the container that this per-device `value` belongs to.
+    """Returns the container that this per-replica `value` belongs to.
 
     Args:
       value: A value returned by `call_for_each_replica()` or a variable
@@ -947,16 +898,11 @@ class DistributionStrategy(object):
 
   @property
   def num_replicas(self):
-    """Returns number of replicas, for purposes of averaging across replicas."""
-    raise NotImplementedError("must be implemented in descendants")
-
-  @property
-  def num_towers(self):
     """Returns number of replicas, for purposes of averaging across replicas.
 
-    DEPRECATED: use `num_replicas` instead.
+    DEPRECATED: use `num_replicas_in_sync` instead.
     """
-    return self.num_replicas
+    raise NotImplementedError("must be implemented in descendants")
 
   @property
   def num_replicas_in_sync(self):
@@ -1070,17 +1016,11 @@ class DistributionStrategy(object):
 class ReplicaContext(object):
   """DistributionStrategy API inside a `call_for_each_replica()` call."""
 
-  def __init__(self, distribution_strategy, replica_id=None, tower_id=None):
-    """`tower_id` is deprecated, use `replica_id` instead."""
-    if tower_id is not None:
-      replica_id = tower_id
-    assert replica_id is not None
+  def __init__(self, distribution_strategy, replica_id):
     self._distribution_strategy = distribution_strategy
     self._thread_context = distribution_strategy_context._InReplicaThreadMode(  # pylint: disable=protected-access
         self)
     self._replica_id = replica_id
-    # We keep a copy in _tower_id to ease the replica->tower transition.
-    self._tower_id = replica_id  # DEPRECATED
 
   def __enter__(self):
     _push_per_thread_mode(self._thread_context)
@@ -1107,19 +1047,33 @@ class ReplicaContext(object):
 
     Args:
       merge_fn: function that joins arguments from threads that are given as
-        PerDevice. It accepts `DistributionStrategy` object as the first
+        PerReplica. It accepts `DistributionStrategy` object as the first
         argument.
-      *args: positional per-thread arguments for `merge_fn`
-      **kwargs: keyword per-thread arguments for `merge_fn`.
+      args: List or tuple with positional per-thread arguments for `merge_fn`
+      kwargs: Dict with keyword per-thread arguments for `merge_fn`.
 
     Returns:
-      The return value of `merge_fn`, except for `PerDevice` values which are
+      The return value of `merge_fn`, except for `PerReplica` values which are
       unpacked.
     """
     require_replica_context(self)
-    return self._merge_call(merge_fn, *args, **kwargs)
+    # Handle old *args, **kwargs, and new args=(...), kwargs={...}, to
+    # allow transition.
+    a = kwargs.pop("args", None)
+    if a is not None:
+      if args:
+        raise ValueError(
+            "Can't pass *args and args=... to merge_call")
+      args = a
+    k = kwargs.pop("kwargs", None)
+    if k is not None:
+      if kwargs:
+        raise ValueError(
+            "Can't pass **kwargs and kwargs=... to merge_call")
+      kwargs = k
+    return self._merge_call(merge_fn, args, kwargs)
 
-  def _merge_call(self, merge_fn, *args, **kwargs):
+  def _merge_call(self, merge_fn, args, kwargs):
     """Default implementation for single replica."""
     _push_per_thread_mode(  # thread-local, so not needed with multiple threads
         distribution_strategy_context._CrossReplicaThreadMode(  # pylint: disable=protected-access
@@ -1130,33 +1084,18 @@ class ReplicaContext(object):
       _pop_per_thread_mode()
 
   @property
-  def is_single_replica(self):
-    """Returns whether there is a single replica or multiple."""
-    require_replica_context(self)
-    return self._distribution_strategy.is_single_replica
-
-  @property
-  def num_towers(self):
-    """Returns number of replicas, for purposes of averaging across replicas.
-
-    DEPRECATED: use `num_replicas` instead.
-    """
-    return self._distribution_strategy.num_replicas
-
-  @property
   def num_replicas(self):
     """Returns number of replicas, for purposes of averaging across replicas."""
     return self._distribution_strategy.num_replicas
 
   @property
-  def replica_id(self):
-    """Which replica is being defined, a number from 0 to `num_replicas - 1`."""
-    require_replica_context(self)
-    return self._replica_id
+  def num_replicas_in_sync(self):
+    """Returns number of replicas over which gradients are aggregated."""
+    return self._distribution_strategy.num_replicas_in_sync
 
   @property
-  def tower_id(self):
-    """DEPRECATED: Use `replica_id` instead."""
+  def replica_id(self):
+    """Which replica is being defined, a number from 0 to `num_replicas - 1`."""
     require_replica_context(self)
     return self._replica_id
 
@@ -1167,9 +1106,14 @@ class ReplicaContext(object):
 
   @property
   def device(self):
-    """The device this replica is to be executed on, as a string."""
+    """BEING DELETED: use .devices instead."""
+    raise RuntimeError("Use .devices instead")
+
+  @property
+  def devices(self):
+    """The devices this replica is to be executed on, as a list of strings."""
     require_replica_context(self)
-    return device_util.current()
+    return [device_util.current()]
 
   # TODO(josh11b): Implement `start_all_reduce(method, t)` for efficient
   # all-reduce. It would return a function returning the result of reducing `t`
@@ -1213,9 +1157,7 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     else:
       raise NotImplementedError("TODO")
 
-  def _call_for_each_replica(self, fn, *args, **kwargs):
-    # We don't run `fn` in multiple threads in _DefaultDistributionStrategy.
-    kwargs.pop("run_concurrently", None)
+  def _call_for_each_replica(self, fn, args, kwargs):
     with ReplicaContext(self, replica_id=0):
       return fn(*args, **kwargs)
 

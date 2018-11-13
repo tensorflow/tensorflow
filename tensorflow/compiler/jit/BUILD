@@ -21,7 +21,6 @@ package(
 )
 
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
@@ -52,6 +51,7 @@ cc_library(
     deps = [
         ":jit_compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_ops",
+        "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/service:cpu_plugin",
     ],
@@ -65,6 +65,7 @@ cc_library(
         ":jit_compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/xla/service:gpu_plugin",
     ]),
     alwayslink = 1,
@@ -190,6 +191,7 @@ cc_library(
         "//tensorflow/core/kernels:resource_variable_ops",
         "//tensorflow/core/kernels:sendrecv_ops",
         "//tensorflow/core/kernels:shape_ops",
+        "//tensorflow/core/kernels:stack",
         "//tensorflow/core/kernels:variable_ops",
         "//tensorflow/core/kernels/data:generator_dataset_op",
         "//tensorflow/core/kernels/data:iterator_ops",
@@ -241,6 +243,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:variable_ops",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -253,6 +256,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/core:core_cpu",
@@ -263,6 +267,21 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:variable_ops",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_compilation_cache_test",
+    srcs = [
+        "xla_compilation_cache_test.cc",
+    ],
+    deps = [
+        ":xla_compilation_cache",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -500,6 +519,7 @@ cc_library(
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -522,25 +542,6 @@ cc_library(
 cc_library(
     name = "union_find",
     hdrs = ["union_find.h"],
-)
-
-cc_library(
-    name = "producer_consumer_queue",
-    hdrs = ["producer_consumer_queue.h"],
-    deps = ["//tensorflow/core:lib"],
-)
-
-tf_cc_test(
-    name = "producer_consumer_queue_test",
-    size = "small",
-    srcs = ["producer_consumer_queue_test.cc"],
-    deps = [
-        ":producer_consumer_queue",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
 )
 
 tf_cc_test(
@@ -606,6 +607,7 @@ tf_cc_test(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/cc:xla_jit_ops",
         "//tensorflow/compiler/tf2xla/cc:xla_ops",
+        "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -645,31 +647,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cc_test(
-    name = "xla_launch_util_test",
-    size = "small",
-    srcs = ["xla_launch_util_test.cc"],
-    deps = [
-        ":common",
-        ":xla_compilation_cache",
-        ":xla_launch_util",
-        ":xla_tensor",
-        "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:gpu_runtime",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core/kernels:variable_ops",
     ],
 )
 

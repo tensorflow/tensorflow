@@ -98,24 +98,13 @@ class IndexedSlicesUtilsTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(cross_tower_utils.contains_indexed_slices((t0, t1)))
 
   @test_util.run_in_graph_and_eager_modes
-  def testContainsIndexedSlices_PerDevice(self):
+  def testContainsIndexedSlices_PerReplica(self):
     t0 = math_ops._as_indexed_slices(
         constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
     t1 = math_ops._as_indexed_slices(
         constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
-    per_device = value_lib.PerDevice({"/gpu:0": t0, "/cpu:0": t1})
-    self.assertTrue(cross_tower_utils.contains_indexed_slices(per_device))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testContainsIndexedSlices_PerDeviceMapOutput(self):
-    t0 = math_ops._as_indexed_slices(
-        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
-    t1 = math_ops._as_indexed_slices(
-        constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
-    per_device = value_lib.PerDevice({
-        "/gpu:0": value_lib.MapOutput([t0]),
-        "/cpu:0": value_lib.MapOutput([t1])})
-    self.assertTrue(cross_tower_utils.contains_indexed_slices(per_device))
+    per_replica = value_lib.PerReplica({"/gpu:0": t0, "/cpu:0": t1})
+    self.assertTrue(cross_tower_utils.contains_indexed_slices(per_replica))
 
   @combinations.generate(combinations.combine(
       mode=["graph", "eager"],

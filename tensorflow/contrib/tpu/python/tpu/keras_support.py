@@ -1184,8 +1184,7 @@ class TPUFunction(object):
       # pipelined loop.
       return None, None
 
-    if (self.model.uses_learning_phase and
-        not isinstance(K.learning_phase(), int)):
+    if not isinstance(K.learning_phase(), int):
       # Remove the learning_phase flag at the end. We currently hard code the
       # learning_phase in TPUFunction.
       assert isinstance(inputs[-1], int), (
@@ -1651,7 +1650,7 @@ class KerasTPUModel(models.Model):
     self._make_train_function()
     sample_weights = sample_weights or []
     val_sample_weights = val_sample_weights or []
-    if self.uses_learning_phase and not isinstance(K.learning_phase(), int):
+    if not isinstance(K.learning_phase(), int):
       ins = inputs + targets + sample_weights + [1]
     else:
       ins = inputs + targets + sample_weights

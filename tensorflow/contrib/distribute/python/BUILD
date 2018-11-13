@@ -374,9 +374,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_pip",
-        # TODO(b/118820960): Re-enable this test in guitar.
-        "manual",
-        "noguitar",
     ],
 )
 
@@ -470,6 +467,7 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # http://b/119349471
         "no_pip",
     ],
 )
@@ -492,6 +490,7 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # http://b/119349471
         "no_pip",
     ],
 )
@@ -757,8 +756,6 @@ cuda_py_test(
         "no_oss",  # TODO(b/117919883): Fix python error.
         "no_pip",
         "no_windows_gpu",
-        # TODO(b/118815591): Re-enable this test in guitar.)
-        "noguitar",
         "notsan",
     ],
 )

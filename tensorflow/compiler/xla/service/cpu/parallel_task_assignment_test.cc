@@ -17,13 +17,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features_fake.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
 
-class ParallelTaskAssignmentTest : public HloVerifiedTestBase {
+class ParallelTaskAssignmentTest : public HloTestBase {
  protected:
   const HloCostAnalysis::ShapeSizeFunction shape_size_func_ =
       cpu::CpuExecutable::ShapeSizeBytes;
@@ -35,7 +35,7 @@ class ParallelTaskAssignmentTest : public HloVerifiedTestBase {
   cpu::TargetMachineFeaturesWithFakeAlignmentLogic target_machine_features_;
 
   ParallelTaskAssignmentTest()
-      : HloVerifiedTestBase(), target_machine_features_([](int64 shape_size) {
+      : HloTestBase(), target_machine_features_([](int64 shape_size) {
           return cpu::TargetMachineFeatures::kEigenExpectedTensorAlignment;
         }) {}
 
@@ -57,8 +57,9 @@ TEST_F(ParallelTaskAssignmentTest, DotOperationNotParallelized) {
     }
   )";
 
-  ParseAndVerifyModule(hlo_string);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(&module()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(m.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -84,8 +85,9 @@ TEST_F(ParallelTaskAssignmentTest,
     }
   )";
 
-  ParseAndVerifyModule(hlo_string);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(&module()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(m.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -100,8 +102,9 @@ TEST_F(ParallelTaskAssignmentTest, RngOperationNotParallelized) {
     }
   )";
 
-  ParseAndVerifyModule(hlo_string);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(&module()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(m.get()));
   EXPECT_FALSE(changed);
 }
 
@@ -116,8 +119,9 @@ TEST_F(ParallelTaskAssignmentTest, InfeedOutfeedOperationNotParallelized) {
     }
   )";
 
-  ParseAndVerifyModule(hlo_string);
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(&module()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(m.get()));
   EXPECT_FALSE(changed);
 }
 
