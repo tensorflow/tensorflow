@@ -30,7 +30,7 @@ namespace gpu {
 
 class StreamAssignmentTest : public HloTestBase {
  protected:
-  std::unique_ptr<HloModule> CreateNewUnverifiedModule() {
+  std::unique_ptr<HloModule> CreateNewVerifiedModule() {
     HloModuleConfig config;
     auto debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_disable_multi_streaming(false);
@@ -55,7 +55,7 @@ TEST_F(StreamAssignmentTest, SequentialMatMul) {
   HloInstruction* dot2 =
       builder.AddInstruction(CreateCanonicalDot(f32_2x2_, dot1, z));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build(dot2));
 
   std::unique_ptr<StreamAssignment> assignment = AssignStreams(*module);
@@ -76,7 +76,7 @@ TEST_F(StreamAssignmentTest, ConcurrentMatMul) {
   HloInstruction* add = builder.AddInstruction(
       HloInstruction::CreateBinary(f32_2x2_, HloOpcode::kAdd, dot1, dot2));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build(add));
 
   std::unique_ptr<StreamAssignment> assignment = AssignStreams(*module);
@@ -120,7 +120,7 @@ TEST_F(StreamAssignmentTest, LatticeMatMul) {
   HloInstruction* d40 =
       builder.AddInstruction(CreateCanonicalDot(f32_2x2_, d30, d31));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build(d40));
 
   std::unique_ptr<StreamAssignment> assignment = AssignStreams(*module);
