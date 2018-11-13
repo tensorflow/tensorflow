@@ -383,10 +383,12 @@ Allocator* cpu_allocator();
 // If 'enable' is true, the default CPU allocator implementation will collect
 // AllocatorStats. By default, it's disabled.
 void EnableCPUAllocatorStats(bool enable);
+bool CPUAllocatorStatsEnabled();
 
 // If 'enable' is true, the default CPU allocator implementation will collect
 // full statistics. By default, it's disabled.
 void EnableCPUAllocatorFullStats(bool enable);
+bool CPUAllocatorFullStatsEnabled();
 
 // An object that does the underlying suballoc/free of memory for a higher-level
 // allocator.  The expectation is that the higher-level allocator is doing some
