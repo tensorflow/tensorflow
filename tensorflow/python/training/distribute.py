@@ -541,6 +541,30 @@ class DistributionStrategy(object):
           "DistributionStrategy.")
     return result
 
+  def make_dataset_iterator(self, dataset):
+    """Makes an iterator for input provided via input_dataset.
+
+    Data from the given dataset will be distributed evenly across all the
+    compute replicas. We will assume that the input dataset is batched by the
+    global batch size. With this assumption, we will make a best effort to
+    divide each batch across all the replicas (one or more workers).
+    If this effort fails, an error will be thrown, and the user should instead
+    use `make_input_fn_iterator` which provides more control to the user, and
+    does not try to divide a batch across replicas.
+
+    The user could also use `make_input_fn_iterator` if they want to
+    customize which input is fed to which replica/worker etc.
+
+    Args:
+      dataset: `tf.data.Dataset` that will be distributed evenly across all
+        replicas.
+
+    Returns:
+      An `InputIterator` which returns inputs for each step of the computation.
+      User should call `initialize` on the returned iterator.
+    """
+    raise NotImplementedError("must be implemented in descendants")
+
   # TODO(josh11b): `PerReplicaDataset` currently only implements a few methods of
   # Dataset API such as make_one_shot_iterator and make_initializable_iterator.
   # Extend to implement more functionality of datasets.
@@ -1147,6 +1171,9 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     """Does not require `self.scope`."""
     _require_distribution_strategy_scope(self)
     return ops.colocate_with(colocate_with_variable)
+
+  def make_dataset_iterator(self, dataset):
+    return dataset.make_initializable_iterator()
 
   def distribute_dataset(self, dataset_fn):
     return self._call_dataset_fn(dataset_fn)
