@@ -52,7 +52,7 @@ def _fill_array(arr, seq, fillvalue=0):
   If length of seq is less than arr padded length, fillvalue used.
   Args:
     arr: Padded tensor of shape [batch_size, ..., max_padded_dim_len].
-    seq: Non-padded list of data sampels of shape
+    seq: Non-padded list of data samples of shape
       [batch_size, ..., padded_dim(None)]
     fillvalue: Default fillvalue to use.
   """
@@ -250,7 +250,7 @@ class _PandasFeedFn(object):
                num_epochs=None):
     if len(placeholders) != len(dataframe.columns) + 1:
       raise ValueError("Expected {} placeholders; got {}.".format(
-          len(dataframe.columns), len(placeholders)))
+          len(dataframe.columns) + 1, len(placeholders)))
     self._index_placeholder = placeholders[0]
     self._col_placeholders = placeholders[1:]
     self._dataframe = dataframe

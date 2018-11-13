@@ -23,11 +23,14 @@ import importlib
 
 import numpy as np
 
+from tensorflow.python.eager import backprop as tfe_backprop
+from tensorflow.python.eager import context as tfe_context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
-from tensorflow.python.ops import variables
 from tensorflow.python.ops.distributions import special_math
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -64,6 +67,16 @@ def _make_grid(dtype, grid_spec):
   return np.reshape(grid, grid_spec.shape)
 
 
+def _value_and_gradient(fn, *args):
+  """Calls `fn` and computes the gradient of the result wrt `arg`."""
+  if tfe_context.executing_eagerly():
+    v, g = tfe_backprop.val_and_grad_function(fn)(args)
+  else:
+    v = fn(*args)
+    g = gradients_impl.gradients(v, args)
+  return v, g
+
+
 GridSpec = collections.namedtuple("GridSpec", ["min", "max", "shape"])
 
 ErrorSpec = collections.namedtuple("ErrorSpec", ["rtol", "atol"])
@@ -71,11 +84,12 @@ ErrorSpec = collections.namedtuple("ErrorSpec", ["rtol", "atol"])
 
 class NdtriTest(test.TestCase):
 
-  def assertAllFinite(self, tensor):
-    is_finite = np.isfinite(tensor.eval())
+  def assertAllFinite(self, x):
+    is_finite = np.isfinite(x)
     all_true = np.ones_like(is_finite, dtype=np.bool)
     self.assertAllEqual(all_true, is_finite)
 
+  @test_util.run_in_graph_and_eager_modes
   def testNdtri(self):
     """Verifies that ndtri computation is correct."""
     with self.test_session():
@@ -89,7 +103,7 @@ class NdtriTest(test.TestCase):
                      np.exp(-2), 1. - np.exp(-2)))
       expected_x = special.ndtri(p)
       x = special_math.ndtri(p)
-      self.assertAllClose(expected_x, x.eval(), atol=0.)
+      self.assertAllClose(expected_x, self.evaluate(x), atol=0.)
 
   def testNdtriDynamicShape(self):
     """Verifies that ndtri computation is correct."""
@@ -108,27 +122,32 @@ class NdtriTest(test.TestCase):
 
   def _baseNdtriFiniteGradientTest(self, dtype):
     """Verifies that ndtri has finite gradients at interesting points."""
-    g = ops.Graph()
-    with g.as_default():
-      # Tests gradients at 0, 1, and piece-wise boundaries.
-      p = variables.Variable(
-          np.array([0.,
-                    np.exp(-32.), np.exp(-2.),
-                    1. - np.exp(-2.), 1. - np.exp(-32.),
-                    1.]).astype(dtype))
-    value = special_math.ndtri(p)
-    grads = gradients_impl.gradients(value, p)
-    with self.test_session(graph=g):
-      variables.global_variables_initializer().run()
-      self.assertAllFinite(grads[0])
+    # Tests gradients at 0, 1, and piece-wise boundaries.
+    p = constant_op.constant(
+        np.array([
+            0.,
+            np.exp(-32.),
+            np.exp(-2.),
+            1. - np.exp(-2.),
+            1. - np.exp(-32.),
+            1.,
+        ]).astype(dtype))
+    # Not having the lambda sanitzer means we'd get an `IndexError` whenever
+    # the user supplied function has default args.
+    _, grads = _value_and_gradient(
+        lambda x: special_math.ndtri(x), p)  # pylint: disable=unnecessary-lambda
+    self.assertAllFinite(self.evaluate(grads[0]))
 
+  @test_util.run_in_graph_and_eager_modes
   def testNdtriFiniteGradientFloat32(self):
     self._baseNdtriFiniteGradientTest(np.float32)
 
+  @test_util.run_in_graph_and_eager_modes
   def testNdtriFiniteGradientFloat64(self):
     self._baseNdtriFiniteGradientTest(np.float64)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class NdtrTest(test.TestCase):
   _use_log = False
   # Grid min/max chosen to ensure 0 < cdf(x) < 1.
@@ -147,55 +166,53 @@ class NdtrTest(test.TestCase):
     if not special:
       return
 
-    with self.test_session():
-      grid = _make_grid(dtype, grid_spec)
-      actual = sm.log_ndtr(grid).eval()
+    grid = _make_grid(dtype, grid_spec)
+    actual = self.evaluate(sm.log_ndtr(grid))
 
-      # Basic tests.
-      # isfinite checks for NaN and Inf.
-      self.assertTrue(np.isfinite(actual).all())
-      # On the grid, -inf < log_cdf(x) < 0.  In this case, we should be able
-      # to use a huge grid because we have used tricks to escape numerical
-      # difficulties.
-      self.assertTrue((actual < 0).all())
-      _check_strictly_increasing(actual)
+    # Basic tests.
+    # isfinite checks for NaN and Inf.
+    self.assertTrue(np.isfinite(actual).all())
+    # On the grid, -inf < log_cdf(x) < 0.  In this case, we should be able
+    # to use a huge grid because we have used tricks to escape numerical
+    # difficulties.
+    self.assertTrue((actual < 0).all())
+    _check_strictly_increasing(actual)
 
-      # Versus scipy.
-      expected = special.log_ndtr(grid)
-      # Scipy prematurely goes to zero at some places that we don't.  So don't
-      # include these in the comparison.
-      self.assertAllClose(
-          expected.astype(np.float64)[expected < 0],
-          actual.astype(np.float64)[expected < 0],
-          rtol=error_spec.rtol,
-          atol=error_spec.atol)
+    # Versus scipy.
+    expected = special.log_ndtr(grid)
+    # Scipy prematurely goes to zero at some places that we don't.  So don't
+    # include these in the comparison.
+    self.assertAllClose(
+        expected.astype(np.float64)[expected < 0],
+        actual.astype(np.float64)[expected < 0],
+        rtol=error_spec.rtol,
+        atol=error_spec.atol)
 
   def _test_grid_no_log(self, dtype, grid_spec, error_spec):
     if not special:
       return
 
-    with self.test_session():
-      grid = _make_grid(dtype, grid_spec)
-      actual = sm.ndtr(grid).eval()
+    grid = _make_grid(dtype, grid_spec)
+    actual = self.evaluate(sm.ndtr(grid))
 
-      # Basic tests.
-      # isfinite checks for NaN and Inf.
-      self.assertTrue(np.isfinite(actual).all())
-      # On the grid, 0 < cdf(x) < 1.  The grid cannot contain everything due
-      # to numerical limitations of cdf.
-      self.assertTrue((actual > 0).all())
-      self.assertTrue((actual < 1).all())
-      _check_strictly_increasing(actual)
+    # Basic tests.
+    # isfinite checks for NaN and Inf.
+    self.assertTrue(np.isfinite(actual).all())
+    # On the grid, 0 < cdf(x) < 1.  The grid cannot contain everything due
+    # to numerical limitations of cdf.
+    self.assertTrue((actual > 0).all())
+    self.assertTrue((actual < 1).all())
+    _check_strictly_increasing(actual)
 
-      # Versus scipy.
-      expected = special.ndtr(grid)
-      # Scipy prematurely goes to zero at some places that we don't.  So don't
-      # include these in the comparison.
-      self.assertAllClose(
-          expected.astype(np.float64)[expected < 0],
-          actual.astype(np.float64)[expected < 0],
-          rtol=error_spec.rtol,
-          atol=error_spec.atol)
+    # Versus scipy.
+    expected = special.ndtr(grid)
+    # Scipy prematurely goes to zero at some places that we don't.  So don't
+    # include these in the comparison.
+    self.assertAllClose(
+        expected.astype(np.float64)[expected < 0],
+        actual.astype(np.float64)[expected < 0],
+        rtol=error_spec.rtol,
+        atol=error_spec.atol)
 
   def test_float32(self):
     self._test_grid(np.float32, self._grid32, self._error32)
@@ -254,14 +271,17 @@ class NdtrGradientTest(test.TestCase):
     self.assertAllEqual(np.zeros_like(v, dtype=np.bool), v)
 
   def _test_grad_finite(self, dtype):
-    with self.test_session():
-      x = variables.Variable([-100., 0., 100.], dtype=dtype)
-      output = (sm.log_ndtr(x) if self._use_log else sm.ndtr(x))
-      grad_output = gradients_impl.gradients(output, x)
-      variables.global_variables_initializer().run()
-      # isfinite checks for NaN and Inf.
-      self.assert_all_true(np.isfinite(output.eval()))
-      self.assert_all_true(np.isfinite(grad_output[0].eval()))
+    x = constant_op.constant([-100., 0., 100.], dtype=dtype)
+    output = (sm.log_ndtr(x) if self._use_log else sm.ndtr(x))
+    fn = sm.log_ndtr if self._use_log else sm.ndtr
+    # Not having the lambda sanitzer means we'd get an `IndexError` whenever
+    # the user supplied function has default args.
+    output, grad_output = _value_and_gradient(
+        lambda x_: fn(x_), x)  # pylint: disable=unnecessary-lambda
+    # isfinite checks for NaN and Inf.
+    output_, grad_output_ = self.evaluate([output, grad_output])
+    self.assert_all_true(np.isfinite(output_))
+    self.assert_all_true(np.isfinite(grad_output_[0]))
 
   def _test_grad_accuracy(self, dtype, grid_spec, error_spec):
     raw_grid = _make_grid(dtype, grid_spec)
@@ -355,7 +375,6 @@ class ErfInvTest(test.TestCase):
       with self.assertRaises(TypeError):
         x = np.array([1, 2, 3]).astype(np.int64)
         special_math.erfinv(x)
-
 
 
 class LogCDFLaplaceTest(test.TestCase):

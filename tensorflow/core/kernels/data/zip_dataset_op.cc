@@ -38,11 +38,11 @@ class ZipDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx,
                      const std::vector<DatasetBase*>& inputs)
-        : GraphDatasetBase(ctx), inputs_(inputs) {
+        : DatasetBase(DatasetContext(ctx)), inputs_(inputs) {
       for (const auto& input : inputs_) {
         input->Ref();
         for (DataType dt : input->output_dtypes()) {
@@ -60,7 +60,7 @@ class ZipDatasetOp : public DatasetOpKernel {
       }
     }
 
-    std::unique_ptr<IteratorBase> MakeIterator(
+    std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
           new Iterator({this, strings::StrCat(prefix, "::Zip")}));
@@ -74,16 +74,17 @@ class ZipDatasetOp : public DatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() override { return "ZipDatasetOp::Dataset"; }
+    string DebugString() const override { return "ZipDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       std::vector<Node*> input_graph_nodes;
       input_graph_nodes.reserve(inputs_.size());
       for (const auto& input : inputs_) {
         Node* input_node;
-        TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input, &input_node));
+        TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &input_node));
         input_graph_nodes.emplace_back(input_node);
       }
       TF_RETURN_IF_ERROR(b->AddDataset(
@@ -95,13 +96,16 @@ class ZipDatasetOp : public DatasetOpKernel {
     class Iterator : public DatasetIterator<Dataset> {
      public:
       explicit Iterator(const Params& params)
-          : DatasetIterator<Dataset>(params) {
-        input_impls_.reserve(params.dataset->inputs_.size());
-        size_t idx = 0;
-        for (const auto& input : params.dataset->inputs_) {
-          input_impls_.emplace_back(input->MakeIterator(
-              strings::StrCat(params.prefix, "[", idx++, "]")));
+          : DatasetIterator<Dataset>(params) {}
+
+      Status Initialize(IteratorContext* ctx) override {
+        mutex_lock l(mu_);
+        input_impls_.resize(dataset()->inputs_.size());
+        for (size_t i = 0; i < input_impls_.size(); ++i) {
+          TF_RETURN_IF_ERROR(dataset()->inputs_[i]->MakeIterator(
+              ctx, strings::StrCat(prefix(), "[", i, "]"), &input_impls_[i]));
         }
+        return Status::OK();
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -139,7 +143,7 @@ class ZipDatasetOp : public DatasetOpKernel {
               writer->WriteScalar(full_name("input_impls_empty"), ""));
         } else {
           for (auto& input_impl : input_impls_)
-            TF_RETURN_IF_ERROR(SaveParent(writer, input_impl));
+            TF_RETURN_IF_ERROR(SaveInput(writer, input_impl));
         }
         return Status::OK();
       }
@@ -152,7 +156,7 @@ class ZipDatasetOp : public DatasetOpKernel {
         } else {
           DCHECK_EQ(input_impls_.size(), dataset()->inputs_.size());
           for (auto& input_impl : input_impls_)
-            TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl));
+            TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl));
         }
         return Status::OK();
       }

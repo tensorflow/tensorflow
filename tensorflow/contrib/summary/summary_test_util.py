@@ -24,10 +24,10 @@ import os
 
 import sqlite3
 
-from tensorflow.contrib.summary import summary_ops
 from tensorflow.core.util import event_pb2
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import tf_record
+from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.platform import gfile
 
 

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/graph/while_context.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
@@ -79,6 +80,10 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"Size", NC_METADATA},
         {"Shape", NC_METADATA},
         {"Rank", NC_METADATA},
+        {"_ScopedAllocator", NC_SCOPED_ALLOCATOR},
+        {"CollectiveReduce", NC_COLLECTIVE},
+        {"CollectiveBcastSend", NC_COLLECTIVE},
+        {"CollectiveBcastRecv", NC_COLLECTIVE},
     });
 
 #undef REF_CLASS
@@ -259,6 +264,28 @@ Status Node::input_node(int idx, const Node** const_n) const {
   TF_RETURN_IF_ERROR(input_node(idx, &n));
   *const_n = n;
   return Status::OK();
+}
+
+// InputTensor
+
+bool InputTensor::operator==(const InputTensor& other) const {
+  return node == other.node && index == other.index;
+}
+
+uint64 InputTensor::Hash::operator()(InputTensor const& s) const {
+  return Hash64Combine(std::hash<const Node*>()(s.node),
+                       std::hash<int>()(s.index));
+}
+
+// OutputTensor
+
+bool OutputTensor::operator==(const OutputTensor& other) const {
+  return node == other.node && index == other.index;
+}
+
+uint64 OutputTensor::Hash::operator()(OutputTensor const& s) const {
+  return Hash64Combine(std::hash<const Node*>()(s.node),
+                       std::hash<int>()(s.index));
 }
 
 // Graph
@@ -456,7 +483,7 @@ const Edge* Graph::AddControlEdge(Node* source, Node* dest,
 void Graph::RemoveControlEdge(const Edge* e) {
   if (!e->src_->IsSource() && !e->dst_->IsSink()) {
     e->dst_->MaybeCopyOnWrite();
-    std::string e_src_name = strings::StrCat("^", e->src_->name());
+    string e_src_name = strings::StrCat("^", e->src_->name());
     auto* inputs = e->dst_->props_->node_def.mutable_input();
     for (auto it = inputs->begin(); it != inputs->end(); ++it) {
       if (*it == e_src_name) {
@@ -467,6 +494,15 @@ void Graph::RemoveControlEdge(const Edge* e) {
   }
   RemoveEdge(e);
 }
+
+namespace {
+const Edge* FindEdge(const Node* dst, int index) {
+  for (const Edge* e : dst->in_edges()) {
+    if (e->dst_input() == index) return e;
+  }
+  return nullptr;
+}
+}  // namespace
 
 Status Graph::UpdateEdge(Node* new_src, int new_src_index, Node* dst,
                          int dst_index) {
@@ -483,17 +519,6 @@ Status Graph::UpdateEdge(Node* new_src, int new_src_index, Node* dst,
   (*dst->props_->node_def.mutable_input())[dst_index] =
       strings::StrCat(new_src->name(), ":", new_src_index);
   return Status::OK();
-}
-
-const Edge* Graph::FindEdge(const Node* dst, int index) {
-  for (const Edge* e : edges_) {
-    // edges_ will contain null edges if RemoveEdge() was called.
-    if (e == nullptr) continue;
-    if (e->dst() == dst && e->dst_input() == index) {
-      return e;
-    }
-  }
-  return nullptr;
 }
 
 Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
@@ -694,7 +719,7 @@ Status Graph::AddWhileContext(StringPiece frame_name,
                               std::vector<OutputTensor> body_outputs,
                               WhileContext** result) {
   auto pair = while_ctxs_.insert(std::pair<string, WhileContext>(
-      frame_name.ToString(),
+      string(frame_name),
       WhileContext(frame_name, std::move(enter_nodes), std::move(exit_nodes),
                    cond_output, std::move(body_inputs),
                    std::move(body_outputs))));

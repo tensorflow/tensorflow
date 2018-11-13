@@ -27,20 +27,20 @@ namespace label_image {
 
 TEST(LabelImageTest, GraceHopper) {
   std::string lena_file =
-      "tensorflow/contrib/lite/examples/label_image/testdata/grace_hopper.bmp";
+      "tensorflow/contrib/lite/examples/label_image/testdata/"
+      "grace_hopper.bmp";
   int height, width, channels;
   Settings s;
-  uint8_t *data;
-
-  data = read_bmp(lena_file, &width, &height, &channels, &s);
+  std::vector<uint8_t> input =
+      read_bmp(lena_file, &width, &height, &channels, &s);
   ASSERT_EQ(height, 606);
   ASSERT_EQ(width, 517);
   ASSERT_EQ(channels, 3);
 
-  uint8_t *out = new uint8_t[606 * 517 * 3];
-  downsize<uint8_t>(out, data, 606, 517, 3, 214, 214, 3, &s);
-  ASSERT_EQ(out[0], 0x15);
-  ASSERT_EQ(out[214 * 214 * 3 - 1], 0x12);
+  std::vector<uint8_t> output(606 * 517 * 3);
+  resize<uint8_t>(output.data(), input.data(), 606, 517, 3, 214, 214, 3, &s);
+  ASSERT_EQ(output[0], 0x15);
+  ASSERT_EQ(output[214 * 214 * 3 - 1], 0x11);
 }
 
 TEST(LabelImageTest, GetTopN) {

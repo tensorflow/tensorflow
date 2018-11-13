@@ -49,6 +49,7 @@ class ShardedMutableDenseHashTable(lookup.LookupInterface):
                default_value,
                empty_key,
                num_shards=1,
+               checkpoint=True,
                name='ShardedMutableHashTable'):
     with ops.name_scope(name, 'sharded_mutable_hash_table') as scope:
       super(ShardedMutableDenseHashTable, self).__init__(key_dtype,
@@ -61,6 +62,7 @@ class ShardedMutableDenseHashTable(lookup.LookupInterface):
                 value_dtype=value_dtype,
                 default_value=default_value,
                 empty_key=empty_key,
+                checkpoint=checkpoint,
                 name='%s-%d-of-%d' % (name, i + 1, num_shards)))
       self._table_shards = table_shards
       # TODO(andreasst): add a value_shape() method to LookupInterface

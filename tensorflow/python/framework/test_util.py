@@ -19,13 +19,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+from collections import OrderedDict
 import contextlib
 import gc
+import itertools
 import math
 import random
 import re
 import tempfile
 import threading
+import unittest
 
 import numpy as np
 import six
@@ -47,7 +51,6 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
-from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape  # pylint: disable=unused-import
 from tensorflow.python.framework import device as pydev
@@ -60,13 +63,14 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.protobuf import compare
 from tensorflow.python.util.tf_export import tf_export
 
@@ -320,32 +324,6 @@ def NCHWToNHWC(input_tensor):
     return [input_tensor[a] for a in new_axes[ndims]]
 
 
-# TODO(skyewm): remove this eventually
-# pylint: disable=protected-access
-def _use_c_api_wrapper(fn, use_c_api, *args, **kwargs):
-  prev_value = ops._USE_C_API
-  ops._USE_C_API = use_c_api
-  try:
-    # Reset the default graph so it has the C API enabled. We call
-    # reset_default_graph() instead of creating a new default Graph context to
-    # make this robust to tests that call reset_default_graph(), which requires
-    # that the current default graph isn't nested.
-    ops.reset_default_graph()
-    fn(*args, **kwargs)
-  finally:
-    ops._USE_C_API = prev_value
-    # Make sure default graph reflects prev_value in case next test doesn't call
-    # reset_default_graph().
-    ops.reset_default_graph()
-
-
-# pylint: disable=protected-access
-
-
-def c_api_and_cuda_enabled():
-  return ops._USE_C_API and IsGoogleCudaEnabled()
-
-
 def skip_if(condition):
   """Skips the decorated function if condition is or evaluates to True.
 
@@ -371,46 +349,6 @@ def skip_if(condition):
   return real_skip_if
 
 
-# TODO(skyewm): remove this eventually
-def disable_c_api(fn):
-  """Decorator for disabling the C API on a test.
-
-  Note this disables the C API after running the test class's setup/teardown
-  methods.
-
-  Args:
-    fn: the function to be wrapped
-
-  Returns:
-    The wrapped function
-  """
-
-  def wrapper(*args, **kwargs):
-    _use_c_api_wrapper(fn, False, *args, **kwargs)
-
-  return wrapper
-
-
-# TODO(skyewm): remove this eventually
-def enable_c_api(fn):
-  """Decorator for enabling the C API on a test.
-
-  Note this enables the C API after running the test class's setup/teardown
-  methods.
-
-  Args:
-    fn: the function to be wrapped
-
-  Returns:
-    The wrapped function
-  """
-
-  def wrapper(*args, **kwargs):
-    _use_c_api_wrapper(fn, True, *args, **kwargs)
-
-  return wrapper
-
-
 def enable_c_shapes(fn):
   """Decorator for enabling C shapes on a test.
 
@@ -424,27 +362,25 @@ def enable_c_shapes(fn):
     The wrapped function
   """
 
+  # pylint: disable=protected-access
   def wrapper(*args, **kwargs):
     prev_value = ops._USE_C_SHAPES
-    # Only use C shapes if the C API is already enabled.
-    ops._USE_C_SHAPES = ops._USE_C_API
+    ops._USE_C_SHAPES = True
     try:
       fn(*args, **kwargs)
     finally:
       ops._USE_C_SHAPES = prev_value
 
+  # pylint: enable=protected-access
+
   return wrapper
 
 
-# This decorator is a hacky way to run all the test methods in a decorated
-# class with and without C API enabled.
-# TODO(iga): Remove this and its uses once we switch to using C API by default.
-def with_c_api(cls):
-  """Adds methods that call original methods but with C API enabled.
+def with_c_shapes(cls):
+  """Adds methods that call original methods but with C API shapes enabled.
 
-  Note this enables the C API in new methods after running the test class's
-  setup method. This can be a problem if some objects are created in it
-  before the C API is enabled.
+  Note this enables C shapes in new methods after running the test class's
+  setup method.
 
   Args:
     cls: class to decorate
@@ -452,15 +388,62 @@ def with_c_api(cls):
   Returns:
     cls with new test methods added
   """
-  # If the C API is already enabled, don't do anything. Some tests break if the
-  # same test is run twice, so this allows us to turn on the C API by default
+  # If C shapes are already enabled, don't do anything. Some tests break if the
+  # same test is run twice, so this allows us to turn on the C shapes by default
   # without breaking these tests.
-  if ops._USE_C_API:
+  if ops._USE_C_SHAPES:
     return cls
 
   for name, value in cls.__dict__.copy().items():
     if callable(value) and name.startswith("test"):
-      setattr(cls, name + "WithCApi", enable_c_api(value))
+      setattr(cls, name + "WithCShapes", enable_c_shapes(value))
+  return cls
+
+
+def enable_cond_v2(fn):
+  """Decorator for enabling CondV2 on a test.
+
+  Note this enables using CondV2 after running the test class's setup/teardown
+  methods.
+
+  Args:
+    fn: the function to be wrapped
+
+  Returns:
+    The wrapped function
+  """
+
+  # pylint: disable=protected-access
+  def wrapper(*args, **kwargs):
+    prev_value = control_flow_ops._ENABLE_COND_V2
+    control_flow_ops._ENABLE_COND_V2 = True
+    try:
+      fn(*args, **kwargs)
+    finally:
+      control_flow_ops._ENABLE_COND_V2 = prev_value
+  # pylint: enable=protected-access
+
+  return wrapper
+
+
+def with_cond_v2(cls):
+  """Adds methods that call original methods but with CondV2 enabled.
+
+  Note this enables CondV2 in new methods after running the test class's
+  setup method.
+
+  Args:
+    cls: class to decorate
+
+  Returns:
+    cls with new test methods added
+  """
+  if control_flow_ops._ENABLE_COND_V2:
+    return cls
+
+  for name, value in cls.__dict__.copy().items():
+    if callable(value) and name.startswith("test"):
+      setattr(cls, name + "WithCondV2", enable_cond_v2(value))
   return cls
 
 
@@ -482,8 +465,31 @@ def assert_no_new_pyobjects_executing_eagerly(f):
       f(self, **kwargs)
       gc.collect()
       previous_count = len(gc.get_objects())
+      if ops.has_default_graph():
+        collection_sizes_before = {
+            collection: len(ops.get_collection(collection))
+            for collection in ops.get_default_graph().collections
+        }
       for _ in range(3):
         f(self, **kwargs)
+      # Note that gc.get_objects misses anything that isn't subject to garbage
+      # collection (C types). Collections are a common source of leaks, so we
+      # test for collection sizes explicitly.
+      if ops.has_default_graph():
+        for collection_key in ops.get_default_graph().collections:
+          collection = ops.get_collection(collection_key)
+          size_before = collection_sizes_before.get(collection_key, 0)
+          if len(collection) > size_before:
+            raise AssertionError(
+                ("Collection %s increased in size from "
+                 "%d to %d (current items %s).") %
+                (collection_key, size_before, len(collection), collection))
+          # Make sure our collection checks don't show up as leaked memory by
+          # removing references to temporary variables.
+          del collection
+          del collection_key
+          del size_before
+        del collection_sizes_before
       gc.collect()
       # There should be no new Python objects hanging around.
       new_count = len(gc.get_objects())
@@ -492,8 +498,8 @@ def assert_no_new_pyobjects_executing_eagerly(f):
       # Using plain assert because not all classes using this decorator
       # have assertLessEqual
       assert new_count <= previous_count, (
-          "new_count(%d) is not less than or equal to previous_count(%d)" % (
-              new_count, previous_count))
+          "new_count(%d) is not less than or equal to previous_count(%d)" %
+          (new_count, previous_count))
       gc.enable()
 
   return decorator
@@ -531,17 +537,19 @@ def assert_no_new_tensors(f):
 
     tensors_before = set(
         id(obj) for obj in gc.get_objects() if _is_tensorflow_object(obj))
-    outside_graph_key = ops.get_default_graph()._graph_key
-    with ops.Graph().as_default():
+    if context.executing_eagerly():
+      f(self, **kwargs)
+      ops.reset_default_graph()
+    else:
       # Run the test in a new graph so that collections get cleared when it's
       # done, but inherit the graph key so optimizers behave.
-      ops.get_default_graph()._graph_key = outside_graph_key
-      f(self, **kwargs)
+      outside_graph_key = ops.get_default_graph()._graph_key
+      with ops.Graph().as_default():
+        ops.get_default_graph()._graph_key = outside_graph_key
+        f(self, **kwargs)
     # Make an effort to clear caches, which would otherwise look like leaked
     # Tensors.
-    backprop._zeros_cache.flush()
-    context.get_default_context().ones_rank_cache().flush()
-    context.get_default_context().scalar_cache().clear()
+    context.context()._clear_caches()  # pylint: disable=protected-access
     gc.collect()
     tensors_after = [
         obj for obj in gc.get_objects()
@@ -591,10 +599,12 @@ def assert_no_garbage_created(f):
             return "<%s %d>" % (obj.__class__.__name__, id(obj))
 
           logging.error("  Object type: %s", _safe_object_str(obj))
-          logging.error("  Referrer types: %s", ", ".join(
-              [_safe_object_str(ref) for ref in gc.get_referrers(obj)]))
-          logging.error("  Referent types: %s", ", ".join(
-              [_safe_object_str(ref) for ref in gc.get_referents(obj)]))
+          logging.error(
+              "  Referrer types: %s", ", ".join(
+                  [_safe_object_str(ref) for ref in gc.get_referrers(obj)]))
+          logging.error(
+              "  Referent types: %s", ", ".join(
+                  [_safe_object_str(ref) for ref in gc.get_referents(obj)]))
           logging.error("  Object attribute names: %s", dir(obj))
           logging.error("  Object __str__:")
           logging.error(obj)
@@ -614,78 +624,189 @@ def assert_no_garbage_created(f):
   return decorator
 
 
-def run_in_graph_and_eager_modes(__unused__=None,
-                                 graph=None,
-                                 config=None,
-                                 use_gpu=False,
-                                 force_gpu=False,
-                                 reset_test=True,
-                                 assert_no_eager_garbage=False):
-  """Runs the test in both graph and eager modes.
+def _combine_named_parameters(**kwargs):
+  """Generate combinations based on its keyword arguments.
+
+  Two sets of returned combinations can be concatenated using +.  Their product
+  can be computed using `times()`.
 
   Args:
-    __unused__: Prevents sliently skipping tests.
-    graph: Optional graph to use during the returned session.
+    **kwargs: keyword arguments of form `option=[possibilities, ...]`
+         or `option=the_only_possibility`.
+
+  Returns:
+    a list of dictionaries for each combination. Keys in the dictionaries are
+    the keyword argument names.  Each key has one value - one of the
+    corresponding keyword argument values.
+  """
+  if not kwargs:
+    return [OrderedDict()]
+
+  sort_by_key = lambda k: k[0][0]
+  kwargs = OrderedDict(sorted(kwargs.items(), key=sort_by_key))
+  first = list(kwargs.items())[0]
+
+  rest = dict(list(kwargs.items())[1:])
+  rest_combined = _combine_named_parameters(**rest)
+
+  key = first[0]
+  values = first[1]
+  if not isinstance(values, list):
+    values = [values]
+
+  combinations = [
+      OrderedDict(sorted(list(combined.items()) + [(key, v)], key=sort_by_key))
+      for v in values
+      for combined in rest_combined
+  ]
+  return combinations
+
+
+def generate_combinations_with_testcase_name(**kwargs):
+  """Generate combinations based on its keyword arguments using combine().
+
+  This function calls combine() and appends a testcase name to the list of
+  dictionaries returned. The 'testcase_name' key is a required for named
+  parameterized tests.
+
+  Args:
+    **kwargs: keyword arguments of form `option=[possibilities, ...]`
+         or `option=the_only_possibility`.
+
+  Returns:
+    a list of dictionaries for each combination. Keys in the dictionaries are
+    the keyword argument names.  Each key has one value - one of the
+    corresponding keyword argument values.
+  """
+  combinations = _combine_named_parameters(**kwargs)
+  named_combinations = []
+  for combination in combinations:
+    assert isinstance(combination, OrderedDict)
+    name = "".join([
+        "_{}_{}".format("".join(filter(str.isalnum, key)), "".join(
+            filter(str.isalnum, str(value))))
+        for key, value in combination.items()
+    ])
+    named_combinations.append(
+        OrderedDict(
+            list(combination.items()) + [("testcase_name",
+                                          "_test{}".format(name))]))
+
+  return named_combinations
+
+
+def run_all_in_graph_and_eager_modes(cls):
+  """Execute all test methods in the given class with and without eager."""
+  base_decorator = run_in_graph_and_eager_modes
+  for name, value in cls.__dict__.copy().items():
+    if callable(value) and name.startswith("test"):
+      setattr(cls, name, base_decorator(value))
+  return cls
+
+
+def run_in_graph_and_eager_modes(func=None,
+                                 config=None,
+                                 use_gpu=True,
+                                 reset_test=True,
+                                 assert_no_eager_garbage=False):
+  """Execute the decorated test with and without enabling eager execution.
+
+  This function returns a decorator intended to be applied to test methods in
+  a `tf.test.TestCase` class. Doing so will cause the contents of the test
+  method to be executed twice - once normally, and once with eager execution
+  enabled. This allows unittests to confirm the equivalence between eager
+  and graph execution (see `tf.enable_eager_execution`).
+
+  For example, consider the following unittest:
+
+  ```python
+  class MyTests(tf.test.TestCase):
+
+    @run_in_graph_and_eager_modes
+    def test_foo(self):
+      x = tf.constant([1, 2])
+      y = tf.constant([3, 4])
+      z = tf.add(x, y)
+      self.assertAllEqual([4, 6], self.evaluate(z))
+
+  if __name__ == "__main__":
+    tf.test.main()
+  ```
+
+  This test validates that `tf.add()` has the same behavior when computed with
+  eager execution enabled as it does when constructing a TensorFlow graph and
+  executing the `z` tensor in a session.
+
+
+  Args:
+    func: function to be annotated. If `func` is None, this method returns a
+      decorator the can be applied to a function. If `func` is not None this
+      returns the decorator applied to `func`.
     config: An optional config_pb2.ConfigProto to use to configure the
-      session.
-    use_gpu: If True, attempt to run as many ops as possible on GPU.
-    force_gpu: If True, pin all ops to `/device:GPU:0`.
-    reset_test: If True, tearDown and SetUp the test case again.
+      session when executing graphs.
+    use_gpu: If True, attempt to run as many operations as possible on GPU.
+    reset_test: If True, tearDown and SetUp the test case between the two
+      executions of the test (once with and once without eager execution).
     assert_no_eager_garbage: If True, sets DEBUG_SAVEALL on the garbage
       collector and asserts that no extra garbage has been created when running
-      the test in eager mode. This will fail if there are reference cycles
-      (e.g. a = []; a.append(a)). Off by default because some tests may create
-      garbage for legitimate reasons (e.g. they define a class which inherits
-      from `object`), and because DEBUG_SAVEALL is sticky in some Python
-      interpreters (meaning that tests which rely on objects being collected
-      elsewhere in the unit test file will not work). Additionally, checks that
-      nothing still has a reference to Tensors that the test allocated.
+      the test with eager execution enabled. This will fail if there are
+      reference cycles (e.g. a = []; a.append(a)). Off by default because some
+      tests may create garbage for legitimate reasons (e.g. they define a class
+      which inherits from `object`), and because DEBUG_SAVEALL is sticky in some
+      Python interpreters (meaning that tests which rely on objects being
+      collected elsewhere in the unit test file will not work). Additionally,
+      checks that nothing still has a reference to Tensors that the test
+      allocated.
   Returns:
-    Returns a decorator that will run the decorated test function
-        using both a graph and using eager execution.
+    Returns a decorator that will run the decorated test method twice:
+    once by constructing and executing a graph in a session and once with
+    eager execution enabled.
   """
 
-  assert not __unused__, "Add () after run_in_graph_and_eager_modes."
-
   def decorator(f):
-    """Test method decorator."""
+    if tf_inspect.isclass(f):
+      raise ValueError(
+          "`run_test_in_graph_and_eager_modes` only supports test methods. "
+          "Did you mean to use `run_all_tests_in_graph_and_eager_modes`?")
 
     def decorated(self, **kwargs):
-      """Decorated the test method."""
-      with context.graph_mode():
-        with self.test_session(graph, config, use_gpu, force_gpu):
+      try:
+        with context.graph_mode():
+          with self.test_session(use_gpu=use_gpu, config=config):
+            f(self, **kwargs)
+      except unittest.case.SkipTest:
+        pass
+
+      def run_eagerly(self, **kwargs):
+        if not use_gpu:
+          with ops.device("/cpu:0"):
+            f(self, **kwargs)
+        else:
           f(self, **kwargs)
+
+      if assert_no_eager_garbage:
+        ops.reset_default_graph()
+        run_eagerly = assert_no_new_tensors(
+            assert_no_garbage_created(run_eagerly))
 
       if reset_test:
         # This decorator runs the wrapped test twice.
         # Reset the test environment between runs.
         self.tearDown()
         self._tempdir = None
-        self.setUp()
-
-      def run_eager_mode(self, **kwargs):
-        if force_gpu:
-          gpu_name = gpu_device_name()
-          if not gpu_name:
-            gpu_name = "/device:GPU:0"
-          with context.device(gpu_name):
-            f(self)
-        elif use_gpu:
-          # TODO(xpan): Support softplacement and gpu by default when available.
-          f(self, **kwargs)
-        else:
-          with context.device("/device:CPU:0"):
-            f(self, **kwargs)
-
-      if assert_no_eager_garbage:
-        run_eager_mode = assert_no_new_tensors(
-            assert_no_garbage_created(run_eager_mode))
-
-      with context.eager_mode():
-        with ops.Graph().as_default():
-          run_eager_mode(self, **kwargs)
+      # Create a new graph for the eagerly executed version of this test for
+      # better isolation.
+      graph_for_eager_test = ops.Graph()
+      with graph_for_eager_test.as_default(), context.eager_mode():
+        if reset_test:
+          self.setUp()
+        run_eagerly(self, **kwargs)
+      ops.dismantle_graph(graph_for_eager_test)
 
     return decorated
+
+  if func is not None:
+    return decorator(func)
 
   return decorator
 
@@ -745,6 +866,18 @@ def device(use_gpu):
     dev = "/device:CPU:0"
   with ops.device(dev):
     yield
+
+
+class ErrorLoggingSession(session.Session):
+  """Wrapper around a Session that logs errors in run().
+  """
+
+  def run(self, *args, **kwargs):
+    try:
+      return super(ErrorLoggingSession, self).run(*args, **kwargs)
+    except Exception as e:  # pylint: disable=broad-except
+      logging.error(str(e))
+      raise
 
 
 @tf_export("test.TestCase")
@@ -869,14 +1002,13 @@ class TensorFlowTestCase(googletest.TestCase):
   def _eval_tensor(self, tensor):
     if tensor is None:
       return None
-    elif isinstance(tensor, ops.EagerTensor):
-      return tensor.numpy()
-    elif isinstance(tensor, resource_variable_ops.ResourceVariable):
-      return tensor.read_value().numpy()
     elif callable(tensor):
       return self._eval_helper(tensor())
     else:
-      raise ValueError("Unsupported type %s." % type(tensor))
+      try:
+        return tensor.numpy()
+      except AttributeError as e:
+        six.raise_from(ValueError("Unsupported type %s." % type(tensor)), e)
 
   def _eval_helper(self, tensors):
     if tensors is None:
@@ -904,21 +1036,10 @@ class TensorFlowTestCase(googletest.TestCase):
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
-  def test_session(self,
-                   graph=None,
-                   config=None,
-                   use_gpu=False,
-                   force_gpu=False):
+  def session(self, graph=None, config=None, use_gpu=False, force_gpu=False):
     """Returns a TensorFlow Session for use in executing tests.
 
-    This method should be used for all functional tests.
-
-    This method behaves different than session.Session: for performance reasons
-    `test_session` will by default (if `graph` is None) reuse the same session
-    across tests. This means you may want to either call the function
-    `reset_default_graph()` before tests, or if creating an explicit new graph,
-    pass it here (simply setting it with `as_default()` won't do it), which will
-    trigger the creation of a new session.
+    Note that this will set this session and the graph as global defaults.
 
     Use the `use_gpu` and `force_gpu` options to control where ops are run. If
     `force_gpu` is True, all ops are pinned to `/device:GPU:0`. Otherwise, if
@@ -930,7 +1051,7 @@ class TensorFlowTestCase(googletest.TestCase):
     ```python
     class MyOperatorTest(test_util.TensorFlowTestCase):
       def testMyOperator(self):
-        with self.test_session(use_gpu=True):
+        with self.session(use_gpu=True):
           valid_input = [1.0, 2.0, 3.0, 4.0, 5.0]
           result = MyOperator(valid_input).eval()
           self.assertEqual(result, [1.0, 2.0, 3.0, 5.0, 8.0]
@@ -946,70 +1067,93 @@ class TensorFlowTestCase(googletest.TestCase):
       use_gpu: If True, attempt to run as many ops as possible on GPU.
       force_gpu: If True, pin all ops to `/device:GPU:0`.
 
-    Returns:
+    Yields:
       A Session object that should be used as a context manager to surround
       the graph building and execution code in a test case.
     """
+    if context.executing_eagerly():
+      yield None
+    else:
+      sess = self._create_session(graph, config, use_gpu, force_gpu)
+      with self._constrain_devices_and_set_default(
+          sess, use_gpu, force_gpu) as constrained_sess:
+        # We need to do this to make sure the session closes, otherwise, even
+        # if the user does with self.session():, it will not close the session.
+        with constrained_sess:
+          yield constrained_sess
+
+  @contextlib.contextmanager
+  def cached_session(self,
+                     graph=None,
+                     config=None,
+                     use_gpu=False,
+                     force_gpu=False):
+    """Returns a TensorFlow Session for use in executing tests.
+
+    This method behaves differently than self.session(): for performance reasons
+    `cached_session` will by default reuse the same session within the same
+    test. The session returned by this function will only be closed at the end
+    of the test (in the TearDown function).
+
+    Use the `use_gpu` and `force_gpu` options to control where ops are run. If
+    `force_gpu` is True, all ops are pinned to `/device:GPU:0`. Otherwise, if
+    `use_gpu` is True, TensorFlow tries to run as many ops on the GPU as
+    possible. If both `force_gpu and `use_gpu` are False, all ops are pinned to
+    the CPU.
+
+    Example:
+    ```python
+    class MyOperatorTest(test_util.TensorFlowTestCase):
+      def testMyOperator(self):
+        with self.cached_session(use_gpu=True) as sess:
+          valid_input = [1.0, 2.0, 3.0, 4.0, 5.0]
+          result = MyOperator(valid_input).eval()
+          self.assertEqual(result, [1.0, 2.0, 3.0, 5.0, 8.0]
+          invalid_input = [-1.0, 2.0, 7.0]
+          with self.assertRaisesOpError("negative input not supported"):
+            MyOperator(invalid_input).eval()
+    ```
+
+    Args:
+      graph: Optional graph to use during the returned session.
+      config: An optional config_pb2.ConfigProto to use to configure the
+        session.
+      use_gpu: If True, attempt to run as many ops as possible on GPU.
+      force_gpu: If True, pin all ops to `/device:GPU:0`.
+
+    Yields:
+      A Session object that should be used as a context manager to surround
+      the graph building and execution code in a test case.
+    """
+    if context.executing_eagerly():
+      yield None
+    else:
+      with self._get_cached_session(
+          graph, config, use_gpu, force_gpu,
+          crash_if_inconsistent_args=True) as sess:
+        yield sess
+
+  @contextlib.contextmanager
+  def test_session(self,
+                   graph=None,
+                   config=None,
+                   use_gpu=False,
+                   force_gpu=False):
+    """Use cached_session instead."""
     if self.id().endswith(".test_session"):
       self.skipTest("Not a test.")
 
-    def prepare_config(config):
-      """Returns a config for sessions.
-
-      Args:
-        config: An optional config_pb2.ConfigProto to use to configure the
-          session.
-      Returns:
-        A config_pb2.ConfigProto object.
-      """
-      if config is None:
-        config = config_pb2.ConfigProto()
-        config.allow_soft_placement = not force_gpu
-        config.gpu_options.per_process_gpu_memory_fraction = 0.3
-      elif force_gpu and config.allow_soft_placement:
-        config = config_pb2.ConfigProto().CopyFrom(config)
-        config.allow_soft_placement = False
-      # Don't perform optimizations for tests so we don't inadvertently run
-      # gpu ops on cpu
-      config.graph_options.optimizer_options.opt_level = -1
-      config.graph_options.rewrite_options.constant_folding = (
-          rewriter_config_pb2.RewriterConfig.OFF)
-      return config
-
-    if graph is None:
-      if self._cached_session is None:
-        self._cached_session = session.Session(
-            graph=None, config=prepare_config(config))
-      sess = self._cached_session
-      with sess.graph.as_default(), sess.as_default():
-        if force_gpu:
-          # Use the name of an actual device if one is detected, or '/device:GPU:0'
-          # otherwise
-          gpu_name = gpu_device_name()
-          if not gpu_name:
-            gpu_name = "/device:GPU:0"
-          with sess.graph.device(gpu_name):
-            yield sess
-        elif use_gpu:
-          yield sess
-        else:
-          with sess.graph.device("/cpu:0"):
-            yield sess
+    if context.executing_eagerly():
+      yield None
     else:
-      with session.Session(graph=graph, config=prepare_config(config)) as sess:
-        if force_gpu:
-          # Use the name of an actual device if one is detected, or '/device:GPU:0'
-          # otherwise
-          gpu_name = gpu_device_name()
-          if not gpu_name:
-            gpu_name = "/device:GPU:0"
-          with sess.graph.device(gpu_name):
-            yield sess
-        elif use_gpu:
+      if graph is None:
+        with self._get_cached_session(
+            graph, config, use_gpu, force_gpu,
+            crash_if_inconsistent_args=False) as sess:
           yield sess
-        else:
-          with sess.graph.device("/cpu:0"):
-            yield sess
+      else:
+        with self.session(graph, config, use_gpu, force_gpu) as sess:
+          yield sess
 
   # pylint: enable=g-doc-return-or-yield
 
@@ -1135,9 +1279,10 @@ class TensorFlowTestCase(googletest.TestCase):
       msg: An optional string message to append to the failure message.
     """
     # f1 == f2 is needed here as we might have: f1, f2 = inf, inf
-    self.assertTrue(f1 == f2 or math.fabs(f1 - f2) <= err,
-                    "%f != %f +/- %f%s" % (f1, f2, err, " (%s)" % msg
-                                           if msg is not None else ""))
+    self.assertTrue(
+        f1 == f2 or math.fabs(f1 - f2) <= err,
+        "%f != %f +/- %f%s" % (f1, f2, err, " (%s)" % msg
+                               if msg is not None else ""))
 
   def assertArrayNear(self, farray1, farray2, err, msg=None):
     """Asserts that two float arrays are near each other.
@@ -1170,15 +1315,22 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertTrue(self._NDArrayNear(ndarray1, ndarray2, err), msg=msg)
 
   def _GetNdArray(self, a):
+    # If a is a tensor then convert it to ndarray
+    if isinstance(a, ops.Tensor):
+      if isinstance(a, ops._EagerTensorBase):
+        return a.numpy()
+      else:
+        a = self.evaluate(a)
     if not isinstance(a, np.ndarray):
-      a = np.array(a)
+      return np.array(a)
     return a
 
   def _assertArrayLikeAllClose(self, a, b, rtol=1e-6, atol=1e-6, msg=None):
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
-    self.assertEqual(a.shape, b.shape, "Shape mismatch: expected %s, got %s." %
-                     (a.shape, b.shape))
+    self.assertEqual(
+        a.shape, b.shape,
+        "Shape mismatch: expected %s, got %s." % (a.shape, b.shape))
     if not np.allclose(a, b, rtol=rtol, atol=atol):
       # Prints more details than np.testing.assert_allclose.
       #
@@ -1225,8 +1377,8 @@ class TensorFlowTestCase(googletest.TestCase):
       a = a._asdict()
     if hasattr(b, "_asdict"):
       b = b._asdict()
-    a_is_dict = isinstance(a, dict)
-    if a_is_dict != isinstance(b, dict):
+    a_is_dict = isinstance(a, collections.Mapping)
+    if a_is_dict != isinstance(b, collections.Mapping):
       raise ValueError("Can't compare dict to non-dict, a%s vs b%s. %s" %
                        (path_str, path_str, msg))
     if a_is_dict:
@@ -1244,8 +1396,8 @@ class TensorFlowTestCase(googletest.TestCase):
       # Try to directly compare a, b as ndarrays; if not work, then traverse
       # through the sequence, which is more expensive.
       try:
-        a_as_ndarray = np.array(a)
-        b_as_ndarray = np.array(b)
+        a_as_ndarray = self._GetNdArray(a)
+        b_as_ndarray = self._GetNdArray(b)
         self._assertArrayLikeAllClose(
             a_as_ndarray,
             b_as_ndarray,
@@ -1271,25 +1423,27 @@ class TensorFlowTestCase(googletest.TestCase):
             b,
             rtol=rtol,
             atol=atol,
-            msg="Mismatched value: a%s is different from b%s." % (path_str,
-                                                                  path_str))
+            msg=("Mismatched value: a%s is different from b%s. %s" %
+                 (path_str, path_str, msg)))
       except TypeError as e:
-        msg = "Error: a%s has %s, but b%s has %s" % (path_str, type(a),
-                                                     path_str, type(b))
+        msg = ("Error: a%s has %s, but b%s has %s. %s" %
+               (path_str, type(a), path_str, type(b), msg))
         e.args = ((e.args[0] + " : " + msg,) + e.args[1:])
         raise
 
   def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6, msg=None):
-    """Asserts that two structures of numpy arrays, have near values.
+    """Asserts that two structures of numpy arrays or Tensors, have near values.
 
     `a` and `b` can be arbitrarily nested structures. A layer of a nested
     structure can be a `dict`, `namedtuple`, `tuple` or `list`.
 
     Args:
       a: The expected numpy `ndarray`, or anything that can be converted into a
-          numpy `ndarray`, or any arbitrarily nested of structure of these.
+         numpy `ndarray` (including Tensor), or any arbitrarily nested of
+         structure of these.
       b: The actual numpy `ndarray`, or anything that can be converted into a
-          numpy `ndarray`, or any arbitrarily nested of structure of these.
+         numpy `ndarray` (including Tensor), or any arbitrarily nested of
+         structure of these.
       rtol: relative tolerance.
       atol: absolute tolerance.
       msg: Optional message to report on failure.
@@ -1349,8 +1503,26 @@ class TensorFlowTestCase(googletest.TestCase):
 
     self.assertAllClose(a, b, rtol=rtol, atol=atol, msg=msg)
 
+  def assertNotAllClose(self, a, b, **kwargs):
+    """Assert that two numpy arrays, or or Tensors, do not have near values.
+
+    Args:
+      a: the first value to compare.
+      b: the second value to compare.
+      **kwargs: additional keyword arguments to be passed to the underlying
+        `assertAllClose` call.
+
+    Raises:
+      AssertionError: If `a` and `b` are unexpectedly close at all elements.
+    """
+    try:
+      self.assertAllClose(a, b, **kwargs)
+    except AssertionError:
+      return
+    raise AssertionError("The two values are close at all elements")
+
   def assertAllEqual(self, a, b, msg=None):
-    """Asserts that two numpy arrays have the same values.
+    """Asserts that two numpy arrays or Tensors have the same values.
 
     Args:
       a: the expected numpy ndarray or anything can be converted to one.
@@ -1360,11 +1532,14 @@ class TensorFlowTestCase(googletest.TestCase):
     msg = msg if msg else ""
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
-    self.assertEqual(a.shape, b.shape, "Shape mismatch: expected %s, got %s."
-                     " %s" % (a.shape, b.shape, msg))
+    self.assertEqual(
+        a.shape, b.shape, "Shape mismatch: expected %s, got %s."
+        " %s" % (a.shape, b.shape, msg))
     same = (a == b)
 
-    if a.dtype == np.float32 or a.dtype == np.float64:
+    if (a.dtype in [
+        np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype
+    ]):
       same = np.logical_or(same, np.logical_and(np.isnan(a), np.isnan(b)))
     if not np.all(same):
       # Prints more details than np.testing.assert_array_equal.
@@ -1379,6 +1554,174 @@ class TensorFlowTestCase(googletest.TestCase):
       print("not equal lhs = ", x)
       print("not equal rhs = ", y)
       np.testing.assert_array_equal(a, b, err_msg=msg)
+
+  def assertAllGreater(self, a, comparison_target):
+    """Assert element values are all greater than a target value.
+
+    Args:
+      a: The numpy `ndarray`, or anything that can be converted into a
+         numpy `ndarray` (including Tensor).
+      comparison_target: The target value of comparison.
+    """
+    a = self._GetNdArray(a)
+    self.assertGreater(np.min(a), comparison_target)
+
+  def assertAllLess(self, a, comparison_target):
+    """Assert element values are all greater than a target value.
+
+    Args:
+      a: The numpy `ndarray`, or anything that can be converted into a
+         numpy `ndarray` (including Tensor).
+      comparison_target: The target value of comparison.
+    """
+    a = self._GetNdArray(a)
+    self.assertLess(np.max(a), comparison_target)
+
+  def assertAllGreaterEqual(self, a, comparison_target):
+    """Assert element values are all greater than a target value.
+
+    Args:
+      a: The numpy `ndarray`, or anything that can be converted into a
+         numpy `ndarray` (including Tensor).
+      comparison_target: The target value of comparison.
+    """
+    a = self._GetNdArray(a)
+    self.assertGreaterEqual(np.min(a), comparison_target)
+
+  def assertAllLessEqual(self, a, comparison_target):
+    """Assert element values are all greater than a target value.
+
+    Args:
+      a: The numpy `ndarray`, or anything that can be converted into a
+         numpy `ndarray` (including Tensor).
+      comparison_target: The target value of comparison.
+    """
+    a = self._GetNdArray(a)
+    self.assertLessEqual(np.max(a), comparison_target)
+
+  def _format_subscripts(self, subscripts, value, limit=10, indent=2):
+    """Generate a summary of ndarray subscripts as a list of str.
+
+    If limit == N, this method will print up to the first N subscripts on
+    separate
+    lines. A line of ellipses (...) will be appended at the end if the number of
+    subscripts exceeds N.
+
+    Args:
+      subscripts: The tensor (np.ndarray) subscripts, of the same format as
+        np.where()'s return value, i.e., a tuple of arrays with each array
+        corresponding to a dimension. E.g., (array([1, 1]), array([0, 1])).
+      value: (np.ndarray) value of the tensor.
+      limit: (int) The maximum number of indices to print.
+      indent: (int) Number of characters to indent at the beginning of each
+        line.
+
+    Returns:
+      (list of str) the multi-line representation of the subscripts and values,
+        potentially with omission at the end.
+    """
+    lines = []
+    subscripts = np.transpose(subscripts)
+    prefix = " " * indent
+    for subscript in itertools.islice(subscripts, limit):
+      lines.append(prefix + str(subscript) + " : " +
+                   str(value[tuple(subscript)]))
+    if len(subscripts) > limit:
+      lines.append(prefix + "...")
+    return lines
+
+  def assertAllInRange(self,
+                       target,
+                       lower_bound,
+                       upper_bound,
+                       open_lower_bound=False,
+                       open_upper_bound=False):
+    """Assert that elements in a Tensor are all in a given range.
+
+    Args:
+      target: The numpy `ndarray`, or anything that can be converted into a
+         numpy `ndarray` (including Tensor).
+      lower_bound: lower bound of the range
+      upper_bound: upper bound of the range
+      open_lower_bound: (`bool`) whether the lower bound is open (i.e., > rather
+        than the default >=)
+      open_upper_bound: (`bool`) whether the upper bound is open (i.e., < rather
+        than the default <=)
+
+    Raises:
+      AssertionError:
+        if the value tensor does not have an ordered numeric type (float* or
+          int*), or
+        if there are nan values, or
+        if any of the elements do not fall in the specified range.
+    """
+    target = self._GetNdArray(target)
+    if not (np.issubdtype(target.dtype, np.float) or
+            np.issubdtype(target.dtype, np.integer)):
+      raise AssertionError(
+          "The value of %s does not have an ordered numeric type, instead it "
+          "has type: %s" % (target, target.dtype))
+
+    nan_subscripts = np.where(np.isnan(target))
+    if np.size(nan_subscripts):
+      raise AssertionError(
+          "%d of the %d element(s) are NaN. "
+          "Subscripts(s) and value(s) of the NaN element(s):\n" %
+          (len(nan_subscripts[0]), np.size(target)) +
+          "\n".join(self._format_subscripts(nan_subscripts, target)))
+
+    range_str = (("(" if open_lower_bound else "[") + str(lower_bound) + ", " +
+                 str(upper_bound) + (")" if open_upper_bound else "]"))
+
+    violations = (
+        np.less_equal(target, lower_bound)
+        if open_lower_bound else np.less(target, lower_bound))
+    violations = np.logical_or(
+        violations,
+        np.greater_equal(target, upper_bound)
+        if open_upper_bound else np.greater(target, upper_bound))
+    violation_subscripts = np.where(violations)
+    if np.size(violation_subscripts):
+      raise AssertionError(
+          "%d of the %d element(s) are outside the range %s. " %
+          (len(violation_subscripts[0]), np.size(target), range_str) +
+          "Subscript(s) and value(s) of the offending elements:\n" +
+          "\n".join(self._format_subscripts(violation_subscripts, target)))
+
+  def assertAllInSet(self, target, expected_set):
+    """Assert that elements of a Tensor are all in a given closed set.
+
+    Args:
+      target: The numpy `ndarray`, or anything that can be converted into a
+         numpy `ndarray` (including Tensor).
+      expected_set: (`list`, `tuple` or `set`) The closed set that the elements
+        of the value of `target` are expected to fall into.
+
+    Raises:
+      AssertionError:
+        if any of the elements do not fall into `expected_set`.
+    """
+    target = self._GetNdArray(target)
+
+    # Elements in target that are not in expected_set.
+    diff = np.setdiff1d(target.flatten(), list(expected_set))
+    if np.size(diff):
+      raise AssertionError("%d unique element(s) are not in the set %s: %s" %
+                           (np.size(diff), expected_set, diff))
+
+  def assertDTypeEqual(self, target, expected_dtype):
+    """Assert ndarray data type is equal to expected.
+
+    Args:
+      target: The numpy `ndarray`, or anything that can be converted into a
+         numpy `ndarray` (including Tensor).
+      expected_dtype: Expected data type.
+    """
+    target = self._GetNdArray(target)
+    if not isinstance(target, list):
+      arrays = [target]
+    for arr in arrays:
+      self.assertEqual(arr.dtype, expected_dtype)
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
@@ -1419,8 +1762,8 @@ class TensorFlowTestCase(googletest.TestCase):
       self.fail(exception_type.__name__ + " not raised")
     except Exception as e:  # pylint: disable=broad-except
       if not isinstance(e, exception_type) or not predicate(e):
-        raise AssertionError("Exception of type %s: %s" % (str(type(e)),
-                                                           str(e)))
+        raise AssertionError(
+            "Exception of type %s: %s" % (str(type(e)), str(e)))
 
   # pylint: enable=g-doc-return-or-yield
 
@@ -1456,8 +1799,9 @@ class TensorFlowTestCase(googletest.TestCase):
     """
     device1 = pydev.canonical_name(device1)
     device2 = pydev.canonical_name(device2)
-    self.assertEqual(device1, device2, "Devices %s and %s are not equal. %s" %
-                     (device1, device2, msg))
+    self.assertEqual(
+        device1, device2,
+        "Devices %s and %s are not equal. %s" % (device1, device2, msg))
 
   # Fix Python 3 compatibility issues
   if six.PY3:
@@ -1470,6 +1814,113 @@ class TensorFlowTestCase(googletest.TestCase):
     assertItemsEqual = googletest.TestCase.assertCountEqual
 
     # pylint: enable=invalid-name
+
+  @contextlib.contextmanager
+  def _constrain_devices_and_set_default(self, sess, use_gpu, force_gpu):
+    """Set the session and its graph to global default and constrain devices."""
+    if context.executing_eagerly():
+      yield None
+    else:
+      with sess.graph.as_default(), sess.as_default():
+        if force_gpu:
+          # Use the name of an actual device if one is detected, or
+          # '/device:GPU:0' otherwise
+          gpu_name = gpu_device_name()
+          if not gpu_name:
+            gpu_name = "/device:GPU:0"
+          with sess.graph.device(gpu_name):
+            yield sess
+        elif use_gpu:
+          yield sess
+        else:
+          with sess.graph.device("/cpu:0"):
+            yield sess
+
+  def _create_session(self, graph, config, use_gpu, force_gpu):
+    """See session() for details."""
+    if context.executing_eagerly():
+      return None
+    else:
+
+      def prepare_config(config):
+        """Returns a config for sessions.
+
+        Args:
+          config: An optional config_pb2.ConfigProto to use to configure the
+            session.
+        Returns:
+          A config_pb2.ConfigProto object.
+        """
+        if config is None:
+          config = config_pb2.ConfigProto()
+          config.allow_soft_placement = not force_gpu
+          config.gpu_options.per_process_gpu_memory_fraction = 0.3
+        elif force_gpu and config.allow_soft_placement:
+          config = config_pb2.ConfigProto().CopyFrom(config)
+          config.allow_soft_placement = False
+        # Don't perform optimizations for tests so we don't inadvertently run
+        # gpu ops on cpu
+        config.graph_options.optimizer_options.opt_level = -1
+        config.graph_options.rewrite_options.constant_folding = (
+            rewriter_config_pb2.RewriterConfig.OFF)
+        config.graph_options.rewrite_options.arithmetic_optimization = (
+            rewriter_config_pb2.RewriterConfig.OFF)
+        return config
+
+      return ErrorLoggingSession(graph=graph, config=prepare_config(config))
+
+  @contextlib.contextmanager
+  def _get_cached_session(self,
+                          graph=None,
+                          config=None,
+                          use_gpu=False,
+                          force_gpu=False,
+                          crash_if_inconsistent_args=True):
+    """See cached_session() for documentation."""
+    if context.executing_eagerly():
+      yield None
+    else:
+      if self._cached_session is None:
+        sess = self._create_session(
+            graph=graph, config=config, use_gpu=use_gpu, force_gpu=force_gpu)
+        self._cached_session = sess
+        self._cached_graph = graph
+        self._cached_config = config
+        self._cached_use_gpu = use_gpu
+        self._cached_force_gpu = force_gpu
+        with self._constrain_devices_and_set_default(
+            sess, use_gpu, force_gpu) as constrained_sess:
+          yield constrained_sess
+      else:
+        if crash_if_inconsistent_args and self._cached_graph is not graph:
+          raise ValueError("The graph used to get the cached session is "
+                           "different than the one that was used to create the "
+                           "session. Maybe create a new session with "
+                           "self.session()")
+        if crash_if_inconsistent_args and self._cached_config is not config:
+          raise ValueError("The config used to get the cached session is "
+                           "different than the one that was used to create the "
+                           "session. Maybe create a new session with "
+                           "self.session()")
+        if crash_if_inconsistent_args and self._cached_use_gpu is not use_gpu:
+          raise ValueError(
+              "The use_gpu value used to get the cached session is "
+              "different than the one that was used to create the "
+              "session. Maybe create a new session with "
+              "self.session()")
+        if crash_if_inconsistent_args and (self._cached_force_gpu is
+                                           not force_gpu):
+          raise ValueError(
+              "The force_gpu value used to get the cached session is "
+              "different than the one that was used to create the "
+              "session. Maybe create a new session with "
+              "self.session()")
+        # If you modify this logic, make sure to modify it in _create_session
+        # as well.
+        sess = self._cached_session
+        with self._constrain_devices_and_set_default(
+            sess, use_gpu, force_gpu) as constrained_sess:
+          yield constrained_sess
 
 
 @tf_export("test.create_local_cluster")

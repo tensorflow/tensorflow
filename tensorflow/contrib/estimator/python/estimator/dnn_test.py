@@ -38,7 +38,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer_cache
 
 
-def _dnn_estimator_fn(weight_column=None, label_dimension=1, *args, **kwargs):
+def _dnn_estimator_fn(weight_column=None, label_dimension=1, *args, **kwargs):  # pylint: disable=keyword-arg-before-vararg
   """Returns a DNNEstimator that uses regression_head."""
   return dnn.DNNEstimator(
       head=head_lib.regression_head(
@@ -46,6 +46,12 @@ def _dnn_estimator_fn(weight_column=None, label_dimension=1, *args, **kwargs):
           # Tests in core (from which this test inherits) test the sum loss.
           loss_reduction=losses.Reduction.SUM),
       *args, **kwargs)
+
+
+def _dnn_estimator_classifier_fn(n_classes=3, *args, **kwargs):  # pylint: disable=keyword-arg-before-vararg
+  """Returns a DNNEstimator that uses multi_class_head."""
+  return dnn.DNNEstimator(head=head_lib.multi_class_head(n_classes=n_classes),
+                          *args, **kwargs)
 
 
 class DNNEstimatorEvaluateTest(
@@ -73,6 +79,15 @@ class DNNEstimatorTrainTest(
     test.TestCase.__init__(self, methodName)
     dnn_testing_utils.BaseDNNRegressorTrainTest.__init__(
         self, _dnn_estimator_fn)
+
+
+class DNNEstimatorWarmStartingTest(dnn_testing_utils.BaseDNNWarmStartingTest,
+                                   test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    dnn_testing_utils.BaseDNNWarmStartingTest.__init__(
+        self, _dnn_estimator_classifier_fn, _dnn_estimator_fn)
 
 
 class DNNEstimatorIntegrationTest(test.TestCase):

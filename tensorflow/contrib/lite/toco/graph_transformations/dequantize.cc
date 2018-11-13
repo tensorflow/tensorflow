@@ -111,7 +111,7 @@ bool DequantizeArray(const string& array_name,
 
   auto* op_outputting_array = GetOpWithOutput(*model, array_name);
   if (op_outputting_array) {
-    if (op_outputting_array->type == OperatorType::kTensorFlowReshape) {
+    if (op_outputting_array->type == OperatorType::kReshape) {
       return true;
     }
   }
@@ -159,6 +159,7 @@ bool DequantizeArray(const string& array_name,
   new_array.GetOrCreateMinMax() = array->GetMinMax();
   fakequant_op->minmax.reset(new MinMax);
   *fakequant_op->minmax = array->GetMinMax();
+  fakequant_op->narrow_range = array->narrow_range;
   if (must_insert_fakequant_before) {
     for (const auto& op : model->operators) {
       for (string& output : op->outputs) {

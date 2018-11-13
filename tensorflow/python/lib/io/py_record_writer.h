@@ -43,7 +43,7 @@ class PyRecordWriter {
                              TF_Status* out_status);
   ~PyRecordWriter();
 
-  bool WriteRecord(tensorflow::StringPiece record);
+  void WriteRecord(tensorflow::StringPiece record, TF_Status* out_status);
   void Flush(TF_Status* out_status);
   void Close(TF_Status* out_status);
 

@@ -715,7 +715,9 @@ class EstimatorTest(test.TestCase):
     ckpt = checkpoint_state_pb2.CheckpointState()
     text_format.Merge(checkpoint_file_content, ckpt)
     self.assertEqual(ckpt.model_checkpoint_path, 'model.ckpt-5')
-    self.assertAllEqual(['model.ckpt-1', 'model.ckpt-5'],
+    # TODO(b/78461127): Please modify tests to not directly rely on names of
+    # checkpoints.
+    self.assertAllEqual(['model.ckpt-0', 'model.ckpt-5'],
                         ckpt.all_model_checkpoint_paths)
 
   def test_train_save_copy_reload(self):

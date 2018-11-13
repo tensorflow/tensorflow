@@ -22,13 +22,7 @@ py_library(
     deps = [
         "//tensorflow/contrib/data/python/ops:dataset_ops",
         "//tensorflow/contrib/data/python/ops:iterator_ops",
-        "//tensorflow/contrib/data/python/ops:prefetching_ops",
-        "//tensorflow/contrib/data/python/ops:readers",
-        "//tensorflow/contrib/data/python/ops:shuffle_ops",
-        "//tensorflow/contrib/data/python/ops:transformation_ops",
-        "//tensorflow/python:parsing_ops",
         "//tensorflow/python:util",
-        "//tensorflow/python/data/ops:iterator_ops",
     ],
 )
 
@@ -39,14 +33,22 @@ cc_library(
 
 tf_custom_op_library(
     name = "_dataset_ops.so",
-    srcs = ["ops/dataset_ops.cc"],
-    deps = ["//tensorflow/contrib/data/kernels:dataset_kernels"] +
-           if_static(
-               extra_deps = [":lib_proto_parsing_for_dataset_ops"],
-               otherwise = [],
-           ),
+    srcs = [
+        "ops/dataset_ops.cc",
+        "ops/indexed_dataset_ops.cc",
+    ],
+    deps = [
+        "//tensorflow/contrib/data/kernels:dataset_kernels",
+        "//tensorflow/contrib/data/kernels:indexed_dataset",
+    ] + if_static(
+        extra_deps = [":lib_proto_parsing_for_dataset_ops"],
+        otherwise = [],
+    ),
 )
 
 tf_gen_op_libs(
-    op_lib_names = ["dataset_ops"],
+    op_lib_names = [
+        "dataset_ops",
+        "indexed_dataset_ops",
+    ],
 )

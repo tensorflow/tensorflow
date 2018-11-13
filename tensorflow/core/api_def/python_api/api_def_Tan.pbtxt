@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Tan"
+  endpoint {
+    name: "math.tan"
+  }
+  endpoint {
+    name: "tan"
+    deprecated: true
+  }
+}

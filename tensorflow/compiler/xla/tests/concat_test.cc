@@ -19,8 +19,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -39,7 +39,7 @@ using ::testing::HasSubstr;
 // Concatenate expects at least one argument.
 XLA_TEST_F(ConcatTest, Concat_Nothing) {
   XlaBuilder builder(TestName());
-  builder.ConcatInDim({}, 0);
+  ConcatInDim(&builder, {}, 0);
   StatusOr<XlaComputation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
   EXPECT_THAT(computation_status.status().ToString(),
@@ -49,8 +49,8 @@ XLA_TEST_F(ConcatTest, Concat_Nothing) {
 // Concatenate with one argument works.
 XLA_TEST_F(ConcatTest, Concat_R1_With_Nothing) {
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR1<float>({42.0, 64.0});
-  builder.ConcatInDim({a}, 0);
+  auto a = ConstantR1<float>(&builder, {42.0, 64.0});
+  ConcatInDim(&builder, {a}, 0);
 
   std::vector<float> expected = {42, 64};
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
@@ -58,8 +58,8 @@ XLA_TEST_F(ConcatTest, Concat_R1_With_Nothing) {
 
 XLA_TEST_F(ConcatTest, Concat_R1_L0_With_Nothing) {
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR1<float>({});
-  builder.ConcatInDim({a}, 0);
+  auto a = ConstantR1<float>(&builder, {});
+  ConcatInDim(&builder, {a}, 0);
 
   std::vector<float> expected = {};
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
@@ -69,9 +69,9 @@ XLA_TEST_F(ConcatTest, Concat_R1_L0_With_Nothing) {
 // to concatenate on.
 XLA_TEST_F(ConcatTest, CannotConcatR0WithR0) {
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR0<float>(42.0);
-  auto b = builder.ConstantR0<float>(64.0);
-  builder.ConcatInDim({a, b}, 0);
+  auto a = ConstantR0<float>(&builder, 42.0);
+  auto b = ConstantR0<float>(&builder, 64.0);
+  ConcatInDim(&builder, {a, b}, 0);
   StatusOr<XlaComputation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
   EXPECT_THAT(computation_status.status().ToString(),
@@ -80,9 +80,9 @@ XLA_TEST_F(ConcatTest, CannotConcatR0WithR0) {
 
 XLA_TEST_F(ConcatTest, Concat_R1_L0_With_R1_L0) {
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR1<float>({});
-  auto b = builder.ConstantR1<float>({});
-  builder.ConcatInDim({a, b}, 0);
+  auto a = ConstantR1<float>(&builder, {});
+  auto b = ConstantR1<float>(&builder, {});
+  ConcatInDim(&builder, {a, b}, 0);
 
   std::vector<float> expected = {};
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
@@ -90,9 +90,9 @@ XLA_TEST_F(ConcatTest, Concat_R1_L0_With_R1_L0) {
 
 XLA_TEST_F(ConcatTest, Concat_R1_L0_With_R1_L1) {
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR1<float>({});
-  auto b = builder.ConstantR1<float>({256.0});
-  builder.ConcatInDim({a, b}, 0);
+  auto a = ConstantR1<float>(&builder, {});
+  auto b = ConstantR1<float>(&builder, {256.0});
+  ConcatInDim(&builder, {a, b}, 0);
 
   std::vector<float> expected = {256};
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
@@ -100,9 +100,9 @@ XLA_TEST_F(ConcatTest, Concat_R1_L0_With_R1_L1) {
 
 XLA_TEST_F(ConcatTest, Concat_R1_L2_With_R1_L0) {
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR1<float>({42.0, 64.0});
-  auto b = builder.ConstantR1<float>({});
-  builder.ConcatInDim({a, b}, 0);
+  auto a = ConstantR1<float>(&builder, {42.0, 64.0});
+  auto b = ConstantR1<float>(&builder, {});
+  ConcatInDim(&builder, {a, b}, 0);
 
   std::vector<float> expected = {42, 64};
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
@@ -110,9 +110,9 @@ XLA_TEST_F(ConcatTest, Concat_R1_L2_With_R1_L0) {
 
 XLA_TEST_F(ConcatTest, Concat_R1_L2_With_R1_L1) {
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR1<float>({42.0, 64.0});
-  auto b = builder.ConstantR1<float>({256.0});
-  builder.ConcatInDim({a, b}, 0);
+  auto a = ConstantR1<float>(&builder, {42.0, 64.0});
+  auto b = ConstantR1<float>(&builder, {256.0});
+  ConcatInDim(&builder, {a, b}, 0);
 
   std::vector<float> expected = {42, 64, 256};
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
@@ -130,9 +130,9 @@ XLA_TEST_F(ConcatTest, Concat_R1_L253_With_R1_L7) {
   }
 
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR1<float>(lhs);
-  auto b = builder.ConstantR1<float>(rhs);
-  builder.ConcatInDim({a, b}, 0);
+  auto a = ConstantR1<float>(&builder, lhs);
+  auto b = ConstantR1<float>(&builder, rhs);
+  ConcatInDim(&builder, {a, b}, 0);
 
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
 }
@@ -140,9 +140,9 @@ XLA_TEST_F(ConcatTest, Concat_R1_L253_With_R1_L7) {
 XLA_TEST_F(ConcatTest, Concat_0x0_With_0x0) {
   for (int dim : {0, 1}) {
     XlaBuilder builder(TestName());
-    auto a = builder.ConstantR2FromArray2D(Array2D<float>(0, 0));
-    auto b = builder.ConstantR2FromArray2D(Array2D<float>(0, 0));
-    builder.ConcatInDim({a, b}, dim);
+    auto a = ConstantR2FromArray2D(&builder, Array2D<float>(0, 0));
+    auto b = ConstantR2FromArray2D(&builder, Array2D<float>(0, 0));
+    ConcatInDim(&builder, {a, b}, dim);
 
     ComputeAndCompareR2<float>(&builder, Array2D<float>(0, 0), {},
                                ErrorSpec(0.0001));
@@ -153,9 +153,9 @@ XLA_TEST_F(ConcatTest, Concat_1x1_With_1x1_InDim0) {
   XlaBuilder builder(TestName());
   auto a_array = CreatePatternedMatrix(1, 1);
   auto b_array = CreatePatternedMatrix(1, 1, /*offset=*/64.0);
-  auto a = builder.ConstantR2FromArray2D(*a_array);
-  auto b = builder.ConstantR2FromArray2D(*b_array);
-  builder.ConcatInDim({a, b}, 0);
+  auto a = ConstantR2FromArray2D(&builder, *a_array);
+  auto b = ConstantR2FromArray2D(&builder, *b_array);
+  ConcatInDim(&builder, {a, b}, 0);
 
   Array2D<float> expected({
       {0},
@@ -168,9 +168,9 @@ XLA_TEST_F(ConcatTest, Concat_1x1_With_1x1_InDim1) {
   XlaBuilder builder(TestName());
   auto a_array = CreatePatternedMatrix(1, 1);
   auto b_array = CreatePatternedMatrix(1, 1, /*offset=*/64.0);
-  auto a = builder.ConstantR2FromArray2D(*a_array);
-  auto b = builder.ConstantR2FromArray2D(*b_array);
-  builder.ConcatInDim({a, b}, 1);
+  auto a = ConstantR2FromArray2D(&builder, *a_array);
+  auto b = ConstantR2FromArray2D(&builder, *b_array);
+  ConcatInDim(&builder, {a, b}, 1);
 
   Array2D<float> expected({
       {0, 64},
@@ -181,9 +181,9 @@ XLA_TEST_F(ConcatTest, Concat_1x1_With_1x1_InDim1) {
 XLA_TEST_F(ConcatTest, Concat2x0With2x5) {
   XlaBuilder builder(TestName());
   auto b_array = CreatePatternedMatrix(2, 5, /*offset=*/64.0);
-  auto a = builder.ConstantR2FromArray2D(Array2D<float>(2, 0));
-  auto b = builder.ConstantR2FromArray2D(*b_array);
-  builder.ConcatInDim({a, b}, 1);
+  auto a = ConstantR2FromArray2D(&builder, Array2D<float>(2, 0));
+  auto b = ConstantR2FromArray2D(&builder, *b_array);
+  ConcatInDim(&builder, {a, b}, 1);
 
   ComputeAndCompareR2<float>(&builder, *b_array, {}, ErrorSpec(0.0001));
 }
@@ -192,9 +192,9 @@ XLA_TEST_F(ConcatTest, Concat2x3With2x5) {
   XlaBuilder builder(TestName());
   auto a_array = CreatePatternedMatrix(2, 3);
   auto b_array = CreatePatternedMatrix(2, 5, /*offset=*/64.0);
-  auto a = builder.ConstantR2FromArray2D(*a_array);
-  auto b = builder.ConstantR2FromArray2D(*b_array);
-  builder.ConcatInDim({a, b}, 1);
+  auto a = ConstantR2FromArray2D(&builder, *a_array);
+  auto b = ConstantR2FromArray2D(&builder, *b_array);
+  ConcatInDim(&builder, {a, b}, 1);
 
   Array2D<float> expected({
       {0, 1, 2, 64, 65, 66, 67, 68},
@@ -206,9 +206,9 @@ XLA_TEST_F(ConcatTest, Concat2x3With2x5) {
 XLA_TEST_F(ConcatTest, Concat3x2With0x2) {
   XlaBuilder builder(TestName());
   auto a_array = CreatePatternedMatrix(3, 2);
-  auto a = builder.ConstantR2FromArray2D(*a_array);
-  auto b = builder.ConstantR2FromArray2D(Array2D<float>(0, 2));
-  builder.ConcatInDim({a, b}, 0);
+  auto a = ConstantR2FromArray2D(&builder, *a_array);
+  auto b = ConstantR2FromArray2D(&builder, Array2D<float>(0, 2));
+  ConcatInDim(&builder, {a, b}, 0);
 
   ComputeAndCompareR2<float>(&builder, *a_array, {}, ErrorSpec(0.0001));
 }
@@ -217,9 +217,9 @@ XLA_TEST_F(ConcatTest, Concat3x2With5x2) {
   XlaBuilder builder(TestName());
   auto a_array = CreatePatternedMatrix(3, 2);
   auto b_array = CreatePatternedMatrix(5, 2, /*offset=*/64.0);
-  auto a = builder.ConstantR2FromArray2D(*a_array);
-  auto b = builder.ConstantR2FromArray2D(*b_array);
-  builder.ConcatInDim({a, b}, 0);
+  auto a = ConstantR2FromArray2D(&builder, *a_array);
+  auto b = ConstantR2FromArray2D(&builder, *b_array);
+  ConcatInDim(&builder, {a, b}, 0);
 
   Array2D<float> expected({
       {0, 1},
@@ -236,9 +236,9 @@ XLA_TEST_F(ConcatTest, Concat3x2With5x2) {
 
 XLA_TEST_F(ConcatTest, Concat_R3_3x0x2_3x0x1) {
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR3FromArray3D(Array3D<float>(3, 0, 2));
-  auto b = builder.ConstantR3FromArray3D(Array3D<float>(3, 0, 1));
-  builder.ConcatInDim({a, b}, 2);
+  auto a = ConstantR3FromArray3D(&builder, Array3D<float>(3, 0, 2));
+  auto b = ConstantR3FromArray3D(&builder, Array3D<float>(3, 0, 1));
+  ConcatInDim(&builder, {a, b}, 2);
   ComputeAndCompareR3<float>(&builder, Array3D<float>(3, 0, 3), {},
                              ErrorSpec(0.0001));
 }
@@ -257,9 +257,9 @@ XLA_TEST_F(ConcatTest, Concat_R3_3x1x2_3x1x1) {
       {{7}},
       {{8}},
   });
-  auto a = builder.ConstantR3FromArray3D(a_array);
-  auto b = builder.ConstantR3FromArray3D(b_array);
-  builder.ConcatInDim({a, b}, 2);
+  auto a = ConstantR3FromArray3D(&builder, a_array);
+  auto b = ConstantR3FromArray3D(&builder, b_array);
+  ConcatInDim(&builder, {a, b}, 2);
 
   Array3D<float> expected({
       {{0, 1, 6}},
@@ -271,10 +271,10 @@ XLA_TEST_F(ConcatTest, Concat_R3_3x1x2_3x1x1) {
 
 XLA_TEST_F(ConcatTest, Concat_R1_1x1_1x1_1x1) {
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR1<float>({42.0});
-  auto b = builder.ConstantR1<float>({64.0});
-  auto c = builder.ConstantR1<float>({256.0});
-  builder.ConcatInDim({a, b, c}, 0);
+  auto a = ConstantR1<float>(&builder, {42.0});
+  auto b = ConstantR1<float>(&builder, {64.0});
+  auto c = ConstantR1<float>(&builder, {256.0});
+  ConcatInDim(&builder, {a, b, c}, 0);
 
   std::vector<float> expected = {42, 64, 256};
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
@@ -300,10 +300,10 @@ XLA_TEST_F(ConcatTest, Concat_R3_3x1x2_3x1x1_3x1x1) {
       {{7}},
       {{11}},
   });
-  auto a = builder.ConstantR3FromArray3D(a_array);
-  auto b = builder.ConstantR3FromArray3D(b_array);
-  auto c = builder.ConstantR3FromArray3D(c_array);
-  builder.ConcatInDim({a, b, c}, 2);
+  auto a = ConstantR3FromArray3D(&builder, a_array);
+  auto b = ConstantR3FromArray3D(&builder, b_array);
+  auto c = ConstantR3FromArray3D(&builder, c_array);
+  ConcatInDim(&builder, {a, b, c}, 2);
 
   Array3D<float> expected({
       {{0, 1, 2, 3}},
@@ -315,11 +315,11 @@ XLA_TEST_F(ConcatTest, Concat_R3_3x1x2_3x1x1_3x1x1) {
 
 XLA_TEST_F(ConcatTest, DoubleConcatLeftAssociative) {
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR1<float>({42.0});
-  auto b = builder.ConstantR1<float>({64.0});
-  auto c = builder.ConstantR1<float>({256.0});
+  auto a = ConstantR1<float>(&builder, {42.0});
+  auto b = ConstantR1<float>(&builder, {64.0});
+  auto c = ConstantR1<float>(&builder, {256.0});
   // concatenated = (a concat b) concat c
-  builder.ConcatInDim({builder.ConcatInDim({a, b}, 0), c}, 0);
+  ConcatInDim(&builder, {ConcatInDim(&builder, {a, b}, 0), c}, 0);
 
   std::vector<float> expected = {42, 64, 256};
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
@@ -327,11 +327,11 @@ XLA_TEST_F(ConcatTest, DoubleConcatLeftAssociative) {
 
 XLA_TEST_F(ConcatTest, DoubleConcatRightAssociative) {
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR1<float>({42.0});
-  auto b = builder.ConstantR1<float>({64.0});
-  auto c = builder.ConstantR1<float>({256.0});
+  auto a = ConstantR1<float>(&builder, {42.0});
+  auto b = ConstantR1<float>(&builder, {64.0});
+  auto c = ConstantR1<float>(&builder, {256.0});
   // concatenated = a concat (b concat c)
-  builder.ConcatInDim({a, builder.ConcatInDim({b, c}, 0)}, 0);
+  ConcatInDim(&builder, {a, ConcatInDim(&builder, {b, c}, 0)}, 0);
 
   std::vector<float> expected = {42, 64, 256};
   ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.0001));
@@ -346,9 +346,9 @@ XLA_TEST_F(ConcatTest, Concat_1x1024_With_1x1024_InDim0) {
   }
 
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR2FromArray2D<float>(lhs);
-  auto b = builder.ConstantR2FromArray2D<float>(rhs);
-  builder.ConcatInDim({a, b}, 0);
+  auto a = ConstantR2FromArray2D<float>(&builder, lhs);
+  auto b = ConstantR2FromArray2D<float>(&builder, rhs);
+  ConcatInDim(&builder, {a, b}, 0);
 
   Array2D<float> expected(2, 1024);
   for (int i = 0; i < 1024; ++i) {
@@ -367,9 +367,9 @@ XLA_TEST_F(ConcatTest, Concat_1x1024_With_1x1024_InDim1) {
   }
 
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR2FromArray2D<float>(lhs);
-  auto b = builder.ConstantR2FromArray2D<float>(rhs);
-  builder.ConcatInDim({a, b}, 1);
+  auto a = ConstantR2FromArray2D<float>(&builder, lhs);
+  auto b = ConstantR2FromArray2D<float>(&builder, rhs);
+  ConcatInDim(&builder, {a, b}, 1);
 
   Array2D<float> expected(1, 2048);
   for (int i = 0; i < 1024; ++i) {
@@ -392,9 +392,9 @@ XLA_TEST_F(ConcatTest, Concat_64x64_With_64x2) {
   }
 
   XlaBuilder builder(TestName());
-  auto a = builder.ConstantR2FromArray2D<float>(lhs);
-  auto b = builder.ConstantR2FromArray2D<float>(rhs);
-  builder.ConcatInDim({a, b}, 1);
+  auto a = ConstantR2FromArray2D<float>(&builder, lhs);
+  auto b = ConstantR2FromArray2D<float>(&builder, rhs);
+  ConcatInDim(&builder, {a, b}, 1);
 
   Array2D<float> expected(64, 66);
   for (int i0 = 0; i0 < 64; ++i0) {
@@ -410,22 +410,37 @@ XLA_TEST_F(ConcatTest, CannotConcatOpaques) {
   XlaBuilder builder(TestName());
   auto opaque_shape = ShapeUtil::MakeOpaqueShape();
   auto r1f32 = xla::ShapeUtil::MakeShape(xla::F32, {1});
-  auto x = builder.Parameter(0, r1f32, "x");
-  auto y = builder.Parameter(1, opaque_shape, "y");
-  builder.ConcatInDim({x, y}, 0);
+  auto x = Parameter(&builder, 0, r1f32, "x");
+  auto y = Parameter(&builder, 1, opaque_shape, "y");
+  ConcatInDim(&builder, {x, y}, 0);
   StatusOr<XlaComputation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
   EXPECT_THAT(
       computation_status.status().ToString(),
-      HasSubstr("Expected non-opaque argument for operand of concatenation"));
+      HasSubstr("Expected array argument for operand of concatenation"));
+}
+
+// Show that we can't concatenate with tokens.
+XLA_TEST_F(ConcatTest, CannotConcatTokens) {
+  XlaBuilder builder(TestName());
+  auto token_shape = ShapeUtil::MakeTokenShape();
+  auto r1f32 = xla::ShapeUtil::MakeShape(xla::F32, {1});
+  auto x = Parameter(&builder, 0, r1f32, "x");
+  auto y = Parameter(&builder, 1, token_shape, "y");
+  ConcatInDim(&builder, {x, y}, 0);
+  StatusOr<XlaComputation> computation_status = builder.Build();
+  ASSERT_FALSE(computation_status.ok());
+  EXPECT_THAT(
+      computation_status.status().ToString(),
+      HasSubstr("Expected array argument for operand of concatenation"));
 }
 
 XLA_TEST_F(ConcatTest, ConcatSeveralBoxedPredicates) {
   XlaBuilder builder(TestName());
-  auto p0 = builder.ConstantR1<bool>({true});
-  auto p1 = builder.ConstantR1<bool>({false});
-  auto p2 = builder.ConstantR1<bool>({true});
-  builder.ConcatInDim({p0, p1, p2}, 0);
+  auto p0 = ConstantR1<bool>(&builder, {true});
+  auto p1 = ConstantR1<bool>(&builder, {false});
+  auto p2 = ConstantR1<bool>(&builder, {true});
+  ConcatInDim(&builder, {p0, p1, p2}, 0);
 
   bool expected[] = {true, false, true};
   ComputeAndCompareR1<bool>(&builder, expected, {});
@@ -433,11 +448,11 @@ XLA_TEST_F(ConcatTest, ConcatSeveralBoxedPredicates) {
 
 XLA_TEST_F(ConcatTest, ConcatSeveralR1S32s) {
   XlaBuilder builder(TestName());
-  auto a0 = builder.ConstantR1<int32>({1});
-  auto a1 = builder.ConstantR1<int32>({2, 3});
-  auto a2 = builder.ConstantR1<int32>({4, 5, 6});
-  auto a3 = builder.ConstantR1<int32>({7, 8, 9, 10});
-  builder.ConcatInDim({a0, a1, a2, a3}, 0);
+  auto a0 = ConstantR1<int32>(&builder, {1});
+  auto a1 = ConstantR1<int32>(&builder, {2, 3});
+  auto a2 = ConstantR1<int32>(&builder, {4, 5, 6});
+  auto a3 = ConstantR1<int32>(&builder, {7, 8, 9, 10});
+  ConcatInDim(&builder, {a0, a1, a2, a3}, 0);
 
   std::vector<int32> expected(10);
   std::iota(expected.begin(), expected.end(), 1);
@@ -472,7 +487,7 @@ XLA_TEST_F(ConcatTest, ConcatR3WeirdDims) {
   auto p1 = CreateR3Parameter<float>(arr1, /*parameter_number=*/1, "p1",
                                      &builder, &h1);
 
-  builder.ConcatInDim({h0, h1}, 2);
+  ConcatInDim(&builder, {h0, h1}, 2);
 
   ComputeAndCompareR3<float>(&builder, expected, {p0.get(), p1.get()});
 }
@@ -499,9 +514,9 @@ TEST_P(ConcatR2BinaryTest, DoIt) {
   rhs.FillUnique(1000);
 
   XlaBuilder builder(TestName());
-  auto a0 = builder.ConstantR2FromArray2D<int32>(lhs);
-  auto a1 = builder.ConstantR2FromArray2D<int32>(rhs);
-  builder.ConcatInDim({a0, a1}, spec.concat_dimension);
+  auto a0 = ConstantR2FromArray2D<int32>(&builder, lhs);
+  auto a1 = ConstantR2FromArray2D<int32>(&builder, rhs);
+  ConcatInDim(&builder, {a0, a1}, spec.concat_dimension);
 
   std::unique_ptr<Array2D<int32>> expected =
       ReferenceUtil::Concat2D(lhs, rhs, spec.concat_dimension);
@@ -519,19 +534,19 @@ TEST_P(ConcatR2BinaryTest, DoIt) {
 //     concat
 XLA_TEST_F(ConcatTest, ConcatOperandsOfSameOperand) {
   auto f32_scalar = ShapeUtil::MakeShape(xla::F32, {});
-  auto x_literal = Literal::CreateR0<float>(2.f);
-  auto y_literal = Literal::CreateR0<float>(3.f);
+  auto x_literal = LiteralUtil::CreateR0<float>(2.f);
+  auto y_literal = LiteralUtil::CreateR0<float>(3.f);
   auto x_data = client_->TransferToServer(*x_literal).ConsumeValueOrDie();
   auto y_data = client_->TransferToServer(*y_literal).ConsumeValueOrDie();
 
   XlaBuilder builder(TestName());
-  auto x = builder.Parameter(0, f32_scalar, "x");
-  auto y = builder.Parameter(1, f32_scalar, "y");
-  auto mul = builder.Mul(x, y);
-  auto add1 = builder.Add(mul, builder.ConstantR1<float>({1.f, 2.f}));
-  auto add2 = builder.Add(mul, builder.ConstantR1<float>({3.f, 4.f}));
-  auto add3 = builder.Add(mul, builder.ConstantR1<float>({5.f, 6.f}));
-  builder.ConcatInDim({add1, add2, add3}, /*dimension=*/0);
+  auto x = Parameter(&builder, 0, f32_scalar, "x");
+  auto y = Parameter(&builder, 1, f32_scalar, "y");
+  auto mul = Mul(x, y);
+  auto add1 = Add(mul, ConstantR1<float>(&builder, {1.f, 2.f}));
+  auto add2 = Add(mul, ConstantR1<float>(&builder, {3.f, 4.f}));
+  auto add3 = Add(mul, ConstantR1<float>(&builder, {5.f, 6.f}));
+  ConcatInDim(&builder, {add1, add2, add3}, /*dimension=*/0);
 
   ComputeAndCompareR1<float>(&builder, {7., 8., 9., 10., 11., 12.},
                              {x_data.get(), y_data.get()}, ErrorSpec(1e-4));
@@ -541,21 +556,21 @@ XLA_TEST_F(ConcatTest, ConcatOperandsOfSameOperand) {
 // produces the correct result in rank 1.
 XLA_TEST_F(ConcatTest, ConcatBroadcastArgument) {
   auto f32_scalar = ShapeUtil::MakeShape(xla::F32, {});
-  auto x_literal = Literal::CreateR1<float>({2.0f, 3.0f, 5.0f, 6.0f});
-  auto y_literal = Literal::CreateR0<float>(1.5f);
-  auto z_literal = Literal::CreateR0<float>(5.5f);
+  auto x_literal = LiteralUtil::CreateR1<float>({2.0f, 3.0f, 5.0f, 6.0f});
+  auto y_literal = LiteralUtil::CreateR0<float>(1.5f);
+  auto z_literal = LiteralUtil::CreateR0<float>(5.5f);
   auto x_data = client_->TransferToServer(*x_literal).ConsumeValueOrDie();
   auto y_data = client_->TransferToServer(*y_literal).ConsumeValueOrDie();
   auto z_data = client_->TransferToServer(*z_literal).ConsumeValueOrDie();
 
   XlaBuilder builder(TestName());
-  auto x = builder.Parameter(0, x_literal->shape(), "x");
-  auto y = builder.Parameter(1, f32_scalar, "y");
-  auto z = builder.Parameter(2, f32_scalar, "z");
-  auto bcast = builder.Broadcast(y, {5});
-  auto bcast2 = builder.Broadcast(z, {3});
-  auto concat = builder.ConcatInDim({bcast, x}, /*dimension=*/0);
-  builder.ConcatInDim({concat, bcast2}, /*dimension=*/0);
+  auto x = Parameter(&builder, 0, x_literal->shape(), "x");
+  auto y = Parameter(&builder, 1, f32_scalar, "y");
+  auto z = Parameter(&builder, 2, f32_scalar, "z");
+  auto bcast = Broadcast(y, {5});
+  auto bcast2 = Broadcast(z, {3});
+  auto concat = ConcatInDim(&builder, {bcast, x}, /*dimension=*/0);
+  ConcatInDim(&builder, {concat, bcast2}, /*dimension=*/0);
 
   ComputeAndCompareR1<float>(
       &builder,
@@ -569,21 +584,21 @@ XLA_TEST_F(ConcatTest, ConcatBroadcastArgument) {
 XLA_TEST_F(ConcatTest, ConcatBroadcastArgumentR3) {
   auto f32_scalar = ShapeUtil::MakeShape(xla::F32, {});
   Array3D<float> x3d(3, 5, 7, 3.14f);
-  auto x_literal = Literal::CreateR3FromArray3D<float>(x3d);
-  auto y_literal = Literal::CreateR0<float>(1.5f);
-  auto z_literal = Literal::CreateR0<float>(5.5f);
+  auto x_literal = LiteralUtil::CreateR3FromArray3D<float>(x3d);
+  auto y_literal = LiteralUtil::CreateR0<float>(1.5f);
+  auto z_literal = LiteralUtil::CreateR0<float>(5.5f);
   auto x_data = client_->TransferToServer(*x_literal).ConsumeValueOrDie();
   auto y_data = client_->TransferToServer(*y_literal).ConsumeValueOrDie();
   auto z_data = client_->TransferToServer(*z_literal).ConsumeValueOrDie();
 
   XlaBuilder builder(TestName());
-  auto x = builder.Parameter(0, x_literal->shape(), "x");
-  auto y = builder.Parameter(1, f32_scalar, "y");
-  auto z = builder.Parameter(2, f32_scalar, "y");
-  auto y_bcast = builder.Broadcast(y, {1, 5, 7});
-  auto z_bcast = builder.Broadcast(z, {4, 1, 7});
-  auto concat = builder.ConcatInDim({y_bcast, x}, /*dimension=*/0);
-  builder.ConcatInDim({concat, z_bcast}, /*dimension=*/1);
+  auto x = Parameter(&builder, 0, x_literal->shape(), "x");
+  auto y = Parameter(&builder, 1, f32_scalar, "y");
+  auto z = Parameter(&builder, 2, f32_scalar, "y");
+  auto y_bcast = Broadcast(y, {1, 5, 7});
+  auto z_bcast = Broadcast(z, {4, 1, 7});
+  auto concat = ConcatInDim(&builder, {y_bcast, x}, /*dimension=*/0);
+  ConcatInDim(&builder, {concat, z_bcast}, /*dimension=*/1);
   Array3D<float> y_bcast3d(1, 5, 7, 1.5f);
   Array3D<float> z_bcast3d(4, 1, 7, 5.5f);
   auto concat0 = ReferenceUtil::Concat3D(y_bcast3d, x3d, 0);

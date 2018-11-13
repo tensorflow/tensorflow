@@ -22,8 +22,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 string PlatformKindString(PlatformKind kind) {
   switch (kind) {
@@ -135,5 +134,4 @@ port::Status Platform::EnablePeerAccess() {
   return port::Status::OK();
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

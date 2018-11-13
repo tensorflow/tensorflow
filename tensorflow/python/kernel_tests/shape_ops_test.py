@@ -642,6 +642,29 @@ class TileTest(test.TestCase):
       err = gradient_checker.compute_gradient_error(a, [4, 2], tiled, [4, 4])
     self.assertLess(err, 1e-3)
 
+  def testGradientWithSparseGradWithRank1(self):
+    inputs = constant_op.constant([1.0, 2.0, 3.0, 4.0],
+                                  dtype=dtypes.float32)
+    outputs = array_ops.gather(array_ops.tile(inputs, [3]),
+                               [1, 5, 9, 3, 7, 2, 2, 2])
+    with self.test_session():
+      error = gradient_checker.compute_gradient_error(
+          inputs, inputs.get_shape().as_list(),
+          outputs, outputs.get_shape().as_list())
+      self.assertLess(error, 1e-4)
+
+  def testGradientWithSparseGradWithRank3(self):
+    inputs = constant_op.constant([1.0, 2.0, 3.0, 4.0],
+                                  dtype=dtypes.float32)
+    inputs = array_ops.reshape(inputs, [-1, 1, 1])
+    outputs = array_ops.gather(array_ops.tile(inputs, [3, 4, 2]),
+                               [1, 5, 9, 3, 7, 2, 2, 2])
+    with self.test_session():
+      error = gradient_checker.compute_gradient_error(
+          inputs, inputs.get_shape().as_list(),
+          outputs, outputs.get_shape().as_list())
+      self.assertLess(error, 1e-4)
+
   def testShapeFunctionEdgeCases(self):
     # Unknown multiples shape.
     inp = constant_op.constant(0.0, shape=[4, 4, 4, 4])

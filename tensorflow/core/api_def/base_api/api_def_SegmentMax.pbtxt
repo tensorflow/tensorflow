@@ -16,8 +16,9 @@ END
   }
   summary: "Computes the maximum along segments of a tensor."
   description: <<END
-Read @{$math_ops#Segmentation$the section on segmentation} for an explanation of
-segments.
+Read
+[the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+for an explanation of segments.
 
 Computes a tensor such that
 \\(output_i = \max_j(data_j)\\) where `max` is over `j` such

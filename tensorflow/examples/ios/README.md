@@ -190,8 +190,5 @@ increase you see in your own app is similar, and if it's larger, look at the
 "Other Linker Flags" used in the Simple Xcode project settings to strip the
 executable.
 
-After that, you can manually look at modifying the list of kernels
-included in tensorflow/contrib/makefile/tf_op_files.txt to reduce the number of
-implementations to the ones you're actually using in your own model. We're
-hoping to automate this step in the future, but for now manually removing them
-is the best approach.
+For further optimization, please refer to the ["Optimization" section](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/makefile#optimization)
+of the makefile instructions.

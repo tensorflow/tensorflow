@@ -20,9 +20,15 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/util/rpc/call_container.h"
 #include "tensorflow/core/util/rpc/rpc_factory.h"
 
 namespace tensorflow {
+
+// Forward declaration of GrpcCall.
+namespace internal {
+class GrpcCall;
+}  // namespace internal
 
 class GrpcRPCFactory : public RPCFactory {
  public:
@@ -42,6 +48,18 @@ class GrpcRPCFactory : public RPCFactory {
   virtual ChannelPtr CreateChannelForAddress(const string& address);
 
  private:
+  // Creates a call and registers it with given `container`. The `index` is used
+  // to index into the tensor arguments.
+  void CreateCall(const Tensor& request_t, const bool try_rpc, int index,
+                  CallContainer<internal::GrpcCall>* container,
+                  Tensor* response_t, Tensor* status_code_t,
+                  Tensor* status_message_t);
+
+  // Asynchronously invokes the given `call`. The call completion is handled
+  // by the call container the call was previously registered with.
+  void StartCall(const Tensor& address_t, const Tensor& method_t,
+                 internal::GrpcCall* call);
+
   ::grpc::GenericStub* GetOrCreateStubForAddress(const string& address);
 
   bool fail_fast_;

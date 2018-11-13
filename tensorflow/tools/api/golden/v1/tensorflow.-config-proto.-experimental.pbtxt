@@ -1,0 +1,24 @@
+path: "tensorflow.ConfigProto.Experimental"
+tf_proto {
+  descriptor {
+    name: "Experimental"
+    field {
+      name: "collective_group_leader"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+    field {
+      name: "client_handles_error_formatting"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "executor_type"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_STRING
+    }
+  }
+}

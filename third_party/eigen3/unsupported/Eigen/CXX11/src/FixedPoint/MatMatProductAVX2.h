@@ -3,16 +3,492 @@
 //
 // Copyright (C) 2015 Benoit Steiner <benoit.steiner.goog@gmail.com>
 // Copyright (C) 2015 Matthew Sarett <msarett@google.com>
+// Copyright (C) 2016 Nishant Patil <nishantpatil@google.com>
 //
 // This Source Code Form is subject to the terms of the Mozilla
 // Public License v. 2.0. If a copy of the MPL was not distributed
 // with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-#ifndef EIGEN_CXX11_FIXED_POINT_MAT_MAT_PRODUCT_AVX2_H
-#define EIGEN_CXX11_FIXED_POINT_MAT_MAT_PRODUCT_AVX2_H
+#ifndef CXX11_SRC_FIXEDPOINT_MATMATPRODUCTAVX2_H_
+#define CXX11_SRC_FIXEDPOINT_MATMATPRODUCTAVX2_H_
 
 namespace Eigen {
 namespace internal {
+
+// AVX2 optimized implementation of Mat-Mat product.
+// LHS is encoded using signed 16-bit integers.
+// RHS is encoded using signed 16-bit integers.
+#ifdef EIGEN_USE_OPTIMIZED_INT16_INT16_MAT_MAT_PRODUCT
+
+// Define quantized traits
+template <bool _ConjLhs, bool _ConjRhs>
+class gebp_traits<QInt16, QInt16, _ConjLhs, _ConjRhs> {
+ public:
+  typedef QInt16 LhsScalar;
+  typedef QInt16 RhsScalar;
+  typedef QInt32 ResScalar;
+
+  enum {
+    // Define register blocking scheme.
+    nr = 16,
+    mr = 16,
+    kr = 4,
+    // Ignore progress tracking per loop iteration.
+    LhsProgress = -1,
+    RhsProgress = -1
+  };
+};
+
+// Specialized blocking for quantized implementations.
+// Used by TensorContractionThreadPool, inputs must have dimensions that are
+// multiples of 32.
+template <typename Index, int ShardingType>
+class TensorContractionBlocking<QInt16, QInt16, Index, ShardingType> {
+ public:
+  TensorContractionBlocking(Index k, Index m, Index n, Index num_threads = 1)
+      : kc_(((k + 15) / 16) * 16),
+        mc_(((m + 15) / 16) * 16),
+        nc_(((n + 15) / 16) * 16) {
+    eigen_assert(mc_ % 16 == 0);
+    eigen_assert(kc_ % 16 == 0);
+    if (!k || !m || !n) {
+      return;
+    }
+
+    if (ShardingType == ShardByCol) {
+      eigen_assert(nc_ % 16 == 0);
+      nc_ = (((nc_ / num_threads) + 15) / 16) * 16;
+    } else {
+      eigen_assert(nc_ % 16 == 0);
+      mc_ = (((mc_ / num_threads) + 15) / 16) * 16;
+    }
+  }
+
+  EIGEN_ALWAYS_INLINE Index kc() const { return kc_; }
+  EIGEN_ALWAYS_INLINE Index mc() const { return mc_; }
+  EIGEN_ALWAYS_INLINE Index nc() const { return nc_; }
+
+ private:
+  Index kc_;
+  Index mc_;
+  Index nc_;
+};
+
+// Specialized blocking for quantized implementations.
+// Used by TensorContraction and GeneralMatrixMatrix, inputs are padded to
+// multiples of 32.
+template <int MaxRows, int MaxCols, int MaxDepth, int KcFactor>
+class gemm_blocking_space<ColMajor, QInt16, QInt16, MaxRows, MaxCols, MaxDepth,
+                          KcFactor, false>
+    : public level3_blocking<QInt16, QInt16> {
+  DenseIndex m_sizeA;
+  DenseIndex m_sizeB;
+
+ public:
+  gemm_blocking_space(DenseIndex rows, DenseIndex cols, DenseIndex depth,
+                      DenseIndex /*num_threads*/, bool /*l3_blocking*/) {
+    this->m_mc = ((rows + 15) / 16) * 16;
+    this->m_nc = ((cols + 15) / 16) * 16;
+    this->m_kc = ((depth + 15) / 16) * 16;
+    m_sizeA = this->m_mc * this->m_kc;
+    m_sizeB = this->m_kc * this->m_nc;
+  }
+  void allocateA() {
+    if (this->m_blockA == 0) this->m_blockA = aligned_new<QInt16>(m_sizeA);
+  }
+  void allocateB() {
+    if (this->m_blockB == 0) this->m_blockB = aligned_new<QInt16>(m_sizeB);
+  }
+  void allocateAll() {
+    allocateA();
+    allocateB();
+  }
+  ~gemm_blocking_space() {
+    aligned_delete(this->m_blockA, m_sizeA);
+    aligned_delete(this->m_blockB, m_sizeB);
+  }
+};
+
+// Below are the fully optimized versions that are correct only for sizes that
+// are multiple of 16.  It is about a 10% performance benefit to keep these
+// implementations separate.
+
+// Arrange a block of the left input matrix in contiguous memory.
+//
+// Given column major input (A0 beside A1 in memory):
+// A0 B0 C0 D0 E0 F0 G0 H0 ...
+// A1 B1 C1 D1 E1 F1 G1 H1 ...
+// A2 B2 C2 D2 E2 F2 G2 H2 ...
+// A3 B3 C3 D3 E3 F3 G3 H3 ...
+// A4 B4 C4 D4 E4 F4 G4 H4 ...
+// A5 B5 C5 D5 E5 F5 G5 H5 ...
+// A6 B6 C6 D6 E6 F6 G6 H6 ...
+// A7 B7 C7 D7 E7 F7 G7 H7 ...
+// A8 ...
+// ...
+//
+// Packing with m = 8 yields row major output (A0 beside B0 in memory):
+// A0 B0
+// A1 B1
+// A2 B2
+// A3 B3
+// A4 B4
+// A5 B5
+// A6 B6
+// A7 B7
+// ...
+//
+// The purpose is to collect m rows of size k.  Two elements of the same
+// row are arranged contiguously because madd performs an adjacent addition
+// in the kernel.
+
+template <typename Index, typename DataMapper, int Pack1, int Pack2,
+          bool Conjugate, bool PanelMode>
+struct gemm_pack_lhs<QInt16, Index, DataMapper, Pack1, Pack2, ColMajor,
+                     Conjugate, PanelMode> {
+  EIGEN_DONT_INLINE void operator()(QInt16* blockA, const DataMapper& lhs,
+                                    Index depth, Index rows, Index stride = 0,
+                                    Index offset = 0);
+};
+
+template <typename Index, typename DataMapper, int Pack1, int Pack2,
+          bool Conjugate, bool PanelMode>
+EIGEN_DONT_INLINE void gemm_pack_lhs<QInt16, Index, DataMapper, Pack1, Pack2,
+                                     ColMajor, Conjugate, PanelMode>::
+operator()(QInt16* blockA, const DataMapper& lhs, Index depth, Index rows,
+           Index stride, Index offset) {
+  eigen_assert(stride == 0);
+  eigen_assert(offset == 0);
+
+  // Use alternate function for weird sizes
+  if (rows % 16 != 0 || depth % 16 != 0) {
+    assert(false &&
+           "only depths and rows that are a multiple of 16 are currently "
+           "supported");
+    // gemm_pack_lhs_any<QInt16, Index, DataMapper, Pack1, Pack2, ColMajor,
+    // Conjugate, PanelMode> lhs_pack;
+    // return lhs_pack(blockA, lhs, depth, rows, stride, offset);
+  }
+
+  // Get vector pointer
+  __m256i* blockA_256 = reinterpret_cast<__m256i*>(blockA);
+
+  // Pack rows in sets of 16
+  for (Index m = 0; m < rows; m += 16) {
+    // Pack depth in sets of 4
+    for (Index k = 0; k < depth; k += 4) {
+      // Load vectors
+      __m256i L_A = lhs.loadPacket(m, k);
+      __m256i L_B = lhs.loadPacket(m, k + 1);
+      __m256i L_C = lhs.loadPacket(m, k + 2);
+      __m256i L_D = lhs.loadPacket(m, k + 3);
+
+      // Rearrange the inputs as required by the kernel
+      __m256i L_AB0_AB7 = _mm256_unpacklo_epi16(L_A, L_B);
+      __m256i L_AB8_AB15 = _mm256_unpackhi_epi16(L_A, L_B);
+      __m256i L_CD0_CD7 = _mm256_unpacklo_epi16(L_C, L_D);
+      __m256i L_CD8_CD15 = _mm256_unpackhi_epi16(L_C, L_D);
+
+      __m256i L_AD0 = _mm256_permute2x128_si256(L_AB0_AB7, L_AB8_AB15, 0x20);
+      _mm256_store_si256(blockA_256++, L_AD0);
+      __m256i L_AD8 = _mm256_permute2x128_si256(L_CD0_CD7, L_CD8_CD15, 0x20);
+      _mm256_store_si256(blockA_256++, L_AD8);
+      __m256i L_AD16 = _mm256_permute2x128_si256(L_AB0_AB7, L_AB8_AB15, 0x31);
+      _mm256_store_si256(blockA_256++, L_AD16);
+      __m256i L_AD24 = _mm256_permute2x128_si256(L_CD0_CD7, L_CD8_CD15, 0x31);
+      _mm256_store_si256(blockA_256++, L_AD24);
+    }
+  }
+}
+
+// Arrange a block of the right input matrix in contiguous memory.
+//
+// Given column major input (A0 beside A1 in memory):
+// A0 B0 C0 D0 E0 F0 G0 H0 ...
+// A1 B1 C1 D1 E1 F1 G1 H1 ...
+// A2 B2 C2 D2 E2 F2 G2 H2 ...
+// A3 B3 C3 D3 E3 F3 G3 H3 ...
+// A4 B4 C4 D4 E4 F4 G4 H4 ...
+// A5 B5 C5 D5 E5 F5 G5 H5 ...
+// A6 B6 C6 D6 E6 F6 G6 H6 ...
+// A7 B7 C7 D7 E7 F7 G7 H7 ...
+// A8 ...
+// ...
+// Packing yields row major output (A0 beside A1 in memory):
+// A0 A1 A2 A3 A4 A5 A6 A7
+// B0 B1 B2 B3 B4 B5 B6 B7
+// ...
+//
+// At least two elements of the same col are arranged contiguously because
+// maddubs and madd both perform an adjacent addition in the kernel.  We can
+// save work by leaving 4 adjacent elements because kr = 4.
+// The purpose is to collect n cols of size k.  Two elements of the same
+// col are arranged contiguously because madd performs an adjacent addition
+// in the kernel.
+template <typename Index, typename DataMapper, int nr, bool Conjugate,
+          bool PanelMode>
+struct gemm_pack_rhs<QInt16, Index, DataMapper, nr, ColMajor, Conjugate,
+                     PanelMode> {
+  EIGEN_DONT_INLINE void operator()(QInt16* blockB, const DataMapper& rhs,
+                                    Index depth, Index cols, Index stride = 0,
+                                    Index offset = 0);
+};
+
+template <typename Index, typename DataMapper, int nr, bool Conjugate,
+          bool PanelMode>
+EIGEN_DONT_INLINE void
+gemm_pack_rhs<QInt16, Index, DataMapper, nr, ColMajor, Conjugate, PanelMode>::
+operator()(QInt16* blockB, const DataMapper& rhs, Index depth, Index cols,
+           Index stride, Index offset) {
+  eigen_assert(stride == 0);
+  eigen_assert(offset == 0);
+
+  // Use alternate function for weird sizes
+  if (cols % 16 != 0 || depth % 16 != 0) {
+    assert(false &&
+           "only depths and cols that are a multiple of 16 are currently "
+           "supported");
+    // gemm_pack_rhs_any<QInt16, Index, DataMapper, nr, ColMajor, Conjugate,
+    // PanelMode> rhs_pack;
+    // return rhs_pack(blockB, rhs, depth, cols, stride, offset);
+  }
+
+  // Get vector pointer
+  __m256i* blockB_256 = reinterpret_cast<__m256i*>(blockB);
+
+  // Perform a step of the packing for 4 columns
+  __m256i R_AB_L, R_AB_H, R_CD_L, R_CD_H, R_AD_0, R_AD_4, R_AD_8, R_AD_12;
+#define PACK_STEP                                            \
+  R_AB_L = _mm256_unpacklo_epi64(R_A, R_B);                  \
+  R_CD_L = _mm256_unpacklo_epi64(R_C, R_D);                  \
+  R_AB_H = _mm256_unpackhi_epi64(R_A, R_B);                  \
+  R_CD_H = _mm256_unpackhi_epi64(R_C, R_D);                  \
+  R_AD_0 = _mm256_permute2x128_si256(R_AB_L, R_CD_L, 0x20);  \
+  R_AD_8 = _mm256_permute2x128_si256(R_AB_L, R_CD_L, 0x31);  \
+  R_AD_4 = _mm256_permute2x128_si256(R_AB_H, R_CD_H, 0x20);  \
+  R_AD_12 = _mm256_permute2x128_si256(R_AB_H, R_CD_H, 0x31); \
+  _mm256_store_si256(blockB_256, R_AD_0);                    \
+  _mm256_store_si256(blockB_256 + 4, R_AD_4);                \
+  _mm256_store_si256(blockB_256 + 8, R_AD_8);                \
+  _mm256_store_si256(blockB_256 + 12, R_AD_12);              \
+  blockB_256++;
+
+  // Pack cols in sets of 16
+  for (Index n = 0; n < cols; n += 16) {
+    // Pack depth in sets of 16
+    for (Index k = 0; k < depth; k += 16) {
+      __m256i R_A = rhs.loadPacket(k, n);
+      __m256i R_B = rhs.loadPacket(k, n + 1);
+      __m256i R_C = rhs.loadPacket(k, n + 2);
+      __m256i R_D = rhs.loadPacket(k, n + 3);
+      PACK_STEP;
+
+      R_A = rhs.loadPacket(k, n + 4);
+      R_B = rhs.loadPacket(k, n + 5);
+      R_C = rhs.loadPacket(k, n + 6);
+      R_D = rhs.loadPacket(k, n + 7);
+      PACK_STEP;
+
+      R_A = rhs.loadPacket(k, n + 8);
+      R_B = rhs.loadPacket(k, n + 9);
+      R_C = rhs.loadPacket(k, n + 10);
+      R_D = rhs.loadPacket(k, n + 11);
+      PACK_STEP;
+
+      R_A = rhs.loadPacket(k, n + 12);
+      R_B = rhs.loadPacket(k, n + 13);
+      R_C = rhs.loadPacket(k, n + 14);
+      R_D = rhs.loadPacket(k, n + 15);
+      PACK_STEP;
+
+      blockB_256 += 12;
+    }
+  }
+#undef PACK_STEP
+}
+
+// Perform the actual multiplication on packed inputs
+template <typename Index, typename DataMapper, int mr, int nr,
+          bool ConjugateLhs, bool ConjugateRhs>
+struct gebp_kernel<QInt16, QInt16, Index, DataMapper, mr, nr, ConjugateLhs,
+                   ConjugateRhs> {
+  typedef typename DataMapper::LinearMapper LinearMapper;
+
+  EIGEN_DONT_INLINE
+  void operator()(const DataMapper& res, const QInt16* blockA,
+                  const QInt16* blockB, Index rows, Index depth, Index cols,
+                  QInt32 alpha, Index strideA = -1, Index strideB = -1,
+                  Index offsetA = 0, Index offsetB = 0);
+};
+
+template <typename Index, typename DataMapper, int mr, int nr,
+          bool ConjugateLhs, bool ConjugateRhs>
+EIGEN_DONT_INLINE void gebp_kernel<QInt16, QInt16, Index, DataMapper, mr, nr,
+                                   ConjugateLhs, ConjugateRhs>::
+operator()(const DataMapper& res, const QInt16* blockA, const QInt16* blockB,
+           Index rows, Index depth, Index cols, QInt32 alpha, Index strideA,
+           Index strideB, Index offsetA, Index offsetB) {
+  EIGEN_STATIC_ASSERT(!ConjugateLhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
+  EIGEN_STATIC_ASSERT(!ConjugateRhs, YOU_MADE_A_PROGRAMMING_MISTAKE);
+  eigen_assert(alpha.value == 1);
+  eigen_assert(strideA == -1);
+  eigen_assert(strideB == -1);
+  eigen_assert(offsetA == 0);
+  eigen_assert(offsetB == 0);
+  eigen_assert(rows > 0);
+  eigen_assert(cols > 0);
+  eigen_assert(depth > 0);
+  eigen_assert(blockA);
+  eigen_assert(blockB);
+
+  // Use alternate function for weird sizes
+  if (rows % 16 != 0 || cols % 16 != 0 || depth % 16 != 0) {
+    assert(false &&
+           "only depths, cols and rows that are a multiple of 16 are currently "
+           "supported");
+    // gebp_kernel_any<QInt16, QInt16, Index, DataMapper, mr, nr, ConjugateLhs,
+    // ConjugateRhs> gebp;
+    // return gebp(res, blockA, blockB, rows, depth, cols, alpha, strideA,
+    // strideB, offsetA, offsetB);
+  }
+
+  // Create result block
+  QInt32* blockO = aligned_new<QInt32>(16 * 16);
+  memset(blockO, 0, 16 * 16 * sizeof(QInt32));
+
+  // Get vectorized pointers
+  __m256i* blockO_256 = reinterpret_cast<__m256i*>(blockO);
+  const __m256i* blockA_256 = reinterpret_cast<const __m256i*>(blockA);
+  const __m256i* blockB_256 = reinterpret_cast<const __m256i*>(blockB);
+
+  // Loop over blocks of 16 columns
+  for (Index n = 0; n < cols; n += 16) {
+    // Reset index into blockA
+    Index indexL = 0;
+    // Loop over blocks of 16 rows
+    for (Index m = 0; m < rows; m += 16) {
+      // Reset index into blockB
+      Index indexR = n / 16 * depth;
+      // Loop over blocks of 4 on depth
+      for (Index k = 0; k < depth; k += 4) {
+        // Load inputs
+        __m256i L_AD0 = blockA_256[indexL++];
+        __m256i L_AD8 = blockA_256[indexL++];
+        __m256i L_EH0 = blockA_256[indexL++];
+        __m256i L_EH8 = blockA_256[indexL++];
+
+        __m256i R_AH0 = blockB_256[indexR++];
+        __m256i R_AH4 = blockB_256[indexR++];
+        __m256i R_AH8 = blockB_256[indexR++];
+        __m256i R_AH12 = blockB_256[indexR++];
+
+        // Declare variables used in COMPUTE_STEP
+        __m256i P_32_A, P_32_B, P_32;
+
+#define COMPUTE_STEP(R_INPUT_A, R_INPUT_B, OFFSET)                         \
+  P_32_A = _mm256_madd_epi16(R_INPUT_A, L_AD0);                            \
+  P_32_B = _mm256_madd_epi16(R_INPUT_B, L_AD8);                            \
+  P_32 = _mm256_add_epi32(P_32_A, P_32_B);                                 \
+  _mm256_store_si256(                                                      \
+      blockO_256 + 2 * OFFSET,                                             \
+      _mm256_add_epi32(_mm256_load_si256(blockO_256 + 2 * OFFSET), P_32)); \
+                                                                           \
+  P_32_A = _mm256_madd_epi16(R_INPUT_A, L_EH0);                            \
+  P_32_B = _mm256_madd_epi16(R_INPUT_B, L_EH8);                            \
+  P_32 = _mm256_add_epi32(P_32_A, P_32_B);                                 \
+  _mm256_store_si256(                                                      \
+      blockO_256 + 2 * OFFSET + 1,                                         \
+      _mm256_add_epi32(_mm256_load_si256(blockO_256 + 2 * OFFSET + 1), P_32));
+
+        // Permute and shuffle to copy a single value across the entire vector
+        // Then compute the multiplication
+        // Replicate lower 128-bits of R_AH0 across both lanes
+        __m256i R_AH0_ = _mm256_permute2x128_si256(R_AH0, R_AH0, 0x00);
+        // Copy first two elements of R_AH0 across entire vector
+        __m256i R_AD0 = _mm256_shuffle_epi32(R_AH0_, 0x00);
+        // Copy second two elements of R_AH0 across entire vector
+        __m256i R_EH0 = _mm256_shuffle_epi32(R_AH0_, 0x55);
+
+        COMPUTE_STEP(R_AD0, R_EH0, 0);
+        __m256i R_AD1 = _mm256_shuffle_epi32(R_AH0_, 0xAA);
+        __m256i R_EH1 = _mm256_shuffle_epi32(R_AH0_, 0xFF);
+        COMPUTE_STEP(R_AD1, R_EH1, 1);
+
+        // Replicate upper 128-bits of R_AH0 across both lanes
+        R_AH0_ = _mm256_permute2x128_si256(R_AH0, R_AH0, 0x11);
+        __m256i R_AD2 = _mm256_shuffle_epi32(R_AH0_, 0x00);
+        __m256i R_EH2 = _mm256_shuffle_epi32(R_AH0_, 0x55);
+        COMPUTE_STEP(R_AD2, R_EH2, 2);
+        __m256i R_AD3 = _mm256_shuffle_epi32(R_AH0_, 0xAA);
+        __m256i R_EH3 = _mm256_shuffle_epi32(R_AH0_, 0xFF);
+        COMPUTE_STEP(R_AD3, R_EH3, 3);
+
+        R_AH0_ = _mm256_permute2x128_si256(R_AH4, R_AH4, 0x00);
+        R_AD0 = _mm256_shuffle_epi32(R_AH0_, 0x00);
+        R_EH0 = _mm256_shuffle_epi32(R_AH0_, 0x55);
+        COMPUTE_STEP(R_AD0, R_EH0, 4);
+        R_AD1 = _mm256_shuffle_epi32(R_AH0_, 0xAA);
+        R_EH1 = _mm256_shuffle_epi32(R_AH0_, 0xFF);
+        COMPUTE_STEP(R_AD1, R_EH1, 5);
+        R_AH0_ = _mm256_permute2x128_si256(R_AH4, R_AH4, 0x11);
+        R_AD2 = _mm256_shuffle_epi32(R_AH0_, 0x00);
+        R_EH2 = _mm256_shuffle_epi32(R_AH0_, 0x55);
+        COMPUTE_STEP(R_AD2, R_EH2, 6);
+        R_AD3 = _mm256_shuffle_epi32(R_AH0_, 0xAA);
+        R_EH3 = _mm256_shuffle_epi32(R_AH0_, 0xFF);
+        COMPUTE_STEP(R_AD3, R_EH3, 7);
+
+        R_AH0_ = _mm256_permute2x128_si256(R_AH8, R_AH8, 0x00);
+        R_AD0 = _mm256_shuffle_epi32(R_AH0_, 0x00);
+        R_EH0 = _mm256_shuffle_epi32(R_AH0_, 0x55);
+        COMPUTE_STEP(R_AD0, R_EH0, 8);
+        R_AD1 = _mm256_shuffle_epi32(R_AH0_, 0xAA);
+        R_EH1 = _mm256_shuffle_epi32(R_AH0_, 0xFF);
+        COMPUTE_STEP(R_AD1, R_EH1, 9);
+        R_AH0_ = _mm256_permute2x128_si256(R_AH8, R_AH8, 0x11);
+        R_AD2 = _mm256_shuffle_epi32(R_AH0_, 0x00);
+        R_EH2 = _mm256_shuffle_epi32(R_AH0_, 0x55);
+        COMPUTE_STEP(R_AD2, R_EH2, 10);
+        R_AD3 = _mm256_shuffle_epi32(R_AH0_, 0xAA);
+        R_EH3 = _mm256_shuffle_epi32(R_AH0_, 0xFF);
+        COMPUTE_STEP(R_AD3, R_EH3, 11);
+
+        R_AH0_ = _mm256_permute2x128_si256(R_AH12, R_AH12, 0x00);
+        R_AD0 = _mm256_shuffle_epi32(R_AH0_, 0x00);
+        R_EH0 = _mm256_shuffle_epi32(R_AH0_, 0x55);
+        COMPUTE_STEP(R_AD0, R_EH0, 12);
+        R_AD1 = _mm256_shuffle_epi32(R_AH0_, 0xAA);
+        R_EH1 = _mm256_shuffle_epi32(R_AH0_, 0xFF);
+        COMPUTE_STEP(R_AD1, R_EH1, 13);
+        R_AH0_ = _mm256_permute2x128_si256(R_AH12, R_AH12, 0x11);
+        R_AD2 = _mm256_shuffle_epi32(R_AH0_, 0x00);
+        R_EH2 = _mm256_shuffle_epi32(R_AH0_, 0x55);
+        COMPUTE_STEP(R_AD2, R_EH2, 14);
+        R_AD3 = _mm256_shuffle_epi32(R_AH0_, 0xAA);
+        R_EH3 = _mm256_shuffle_epi32(R_AH0_, 0xFF);
+        COMPUTE_STEP(R_AD3, R_EH3, 15);
+
+#undef COMPUTE_STEP
+      }
+
+      // Transfer the results to the result matrix
+      Index i = 0;
+      for (Index j = n; j < n + 16; j++) {
+        LinearMapper r0 = res.getLinearMapper(m, j);
+        LinearMapper r1 = res.getLinearMapper(m + 8, j);
+
+        r0.storePacket(0, _mm256_add_epi32(blockO_256[i++], r0.loadPacket(0)));
+        r1.storePacket(0, _mm256_add_epi32(blockO_256[i++], r1.loadPacket(0)));
+      }
+
+      // Zero the result block so it can be reused
+      memset(blockO, 0, 16 * 16 * sizeof(QInt32));
+    }
+  }
+  aligned_delete(blockO, 16 * 16);
+}
+
+#endif
 
 // AVX2 optimized implementation of Mat-Mat product.
 // LHS is encoded using signed 8-bit integers.
@@ -1751,4 +2227,4 @@ void gebp_kernel<QInt8, QUInt8, Index, DataMapper, mr, nr, ConjugateLhs, Conjuga
 }  // namespace internal
 }  // namespace Eigen
 
-#endif  // EIGEN_CXX11_FIXED_POINT_MAT_MAT_PRODUCT_AVX2_H
+#endif  // CXX11_SRC_FIXEDPOINT_MATMATPRODUCTAVX2_H_

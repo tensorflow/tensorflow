@@ -16,9 +16,12 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -26,7 +29,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-class ModelPrunerTest : public ::testing::Test {};
+class ModelPrunerTest : public GrapplerTest {};
 
 TEST_F(ModelPrunerTest, NoPruning) {
   // This trivial graph is so basic there's nothing to prune.
@@ -86,6 +89,13 @@ TEST_F(ModelPrunerTest, StopGradientPruning) {
   EXPECT_EQ(NodeName(b.name()), new_e.input(0));
   EXPECT_EQ(1, new_d.input_size());
   EXPECT_EQ(NodeName(b.name()), new_d.input(0));
+
+  std::vector<string> fetch = {"e"};
+  auto expected_tensors = EvaluateNodes(item.graph, fetch);
+  auto actual_tensors = EvaluateNodes(output, fetch);
+  EXPECT_EQ(1, expected_tensors.size());
+  EXPECT_EQ(1, actual_tensors.size());
+  test::ExpectTensorEqual<float>(expected_tensors[0], actual_tensors[0]);
 }
 
 TEST_F(ModelPrunerTest, IdentityPruning) {
@@ -124,6 +134,13 @@ TEST_F(ModelPrunerTest, IdentityPruning) {
   EXPECT_EQ(NodeName(b.name()), new_d.input(0));
   EXPECT_EQ(1, new_c.input_size());
   EXPECT_EQ(NodeName(b.name()), new_c.input(0));
+
+  std::vector<string> fetch = {"e"};
+  auto expected_tensors = EvaluateNodes(item.graph, fetch);
+  auto actual_tensors = EvaluateNodes(output, fetch);
+  EXPECT_EQ(1, expected_tensors.size());
+  EXPECT_EQ(1, actual_tensors.size());
+  test::ExpectTensorEqual<float>(expected_tensors[0], actual_tensors[0]);
 }
 
 TEST_F(ModelPrunerTest, NoOpPruning) {
@@ -162,6 +179,13 @@ TEST_F(ModelPrunerTest, NoOpPruning) {
       EXPECT_EQ("a", new_node.input(0));
     }
   }
+
+  std::vector<string> fetch = {"e"};
+  auto expected_tensors = EvaluateNodes(item.graph, fetch);
+  auto actual_tensors = EvaluateNodes(output, fetch);
+  EXPECT_EQ(1, expected_tensors.size());
+  EXPECT_EQ(1, actual_tensors.size());
+  test::ExpectTensorEqual<float>(expected_tensors[0], actual_tensors[0]);
 }
 
 TEST_F(ModelPrunerTest, PreserveIdentities) {
@@ -192,6 +216,19 @@ TEST_F(ModelPrunerTest, PreserveIdentities) {
 
   TF_EXPECT_OK(status);
   EXPECT_EQ(item.graph.node_size(), output.node_size());
+
+  auto v_in_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({3}));
+  Tensor v_ctrl_t(DT_BOOL, TensorShape({}));
+  v_ctrl_t.flat<bool>()(0) = true;
+  auto expected_tensors = EvaluateNodes(
+      item.graph, {"merge", "id2"}, {{"v_in", v_in_t}, {"v_ctrl", v_ctrl_t}});
+  auto actual_tensors = EvaluateNodes(output, {"merge", "id2"},
+                                      {{"v_in", v_in_t}, {"v_ctrl", v_ctrl_t}});
+  EXPECT_EQ(2, expected_tensors.size());
+  EXPECT_EQ(2, actual_tensors.size());
+  for (int i = 0; i < expected_tensors.size(); i++) {
+    test::ExpectTensorEqual<float>(expected_tensors[i], actual_tensors[i]);
+  }
 }
 
 TEST_F(ModelPrunerTest, PruningSkipsRefOutputs) {
@@ -232,6 +269,14 @@ TEST_F(ModelPrunerTest, PruningSkipsRefOutputs) {
   EXPECT_EQ("b", new_c.input(0));
   EXPECT_EQ("b", new_d.input(0));
   EXPECT_EQ("b", new_e.input(0));
+
+  std::vector<string> fetch = {"e"};
+  auto a_t = GenerateRandomTensor<DT_INT64>(TensorShape({}));
+  auto expected_tensors = EvaluateNodes(item.graph, fetch, {{"a", a_t}});
+  auto actual_tensors = EvaluateNodes(output, fetch, {{"a", a_t}});
+  EXPECT_EQ(1, expected_tensors.size());
+  EXPECT_EQ(1, actual_tensors.size());
+  test::ExpectTensorEqual<int64>(expected_tensors[0], actual_tensors[0]);
 }
 
 // TODO(rmlarsen): Reenable this test when the issues with
@@ -307,6 +352,12 @@ TEST_F(ModelPrunerTest, PruningPerservesFetch) {
   EXPECT_EQ(NodeName(b.name()), new_b.name());
   const NodeDef& new_c = output.node(2);
   EXPECT_EQ(NodeName(c.name()), new_c.name());
+
+  auto expected_tensors = EvaluateNodes(item.graph, item.fetch);
+  auto actual_tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(1, expected_tensors.size());
+  EXPECT_EQ(1, actual_tensors.size());
+  test::ExpectTensorEqual<float>(expected_tensors[0], actual_tensors[0]);
 }
 
 TEST_F(ModelPrunerTest, PruningPerservesCrossDeviceIdentity) {
@@ -337,6 +388,16 @@ TEST_F(ModelPrunerTest, PruningPerservesCrossDeviceIdentity) {
       EXPECT_EQ("i1", node.input(0));
     } else if (node.name() == "a3" || node.name() == "a4") {
       EXPECT_EQ("c", node.input(0));
+    }
+  }
+  if (GetNumAvailableGPUs() > 0) {
+    auto expected_tensors = EvaluateNodes(item.graph, item.fetch);
+    auto actual_tensors = EvaluateNodes(output, item.fetch);
+    EXPECT_EQ(4, expected_tensors.size());
+    EXPECT_EQ(4, actual_tensors.size());
+    for (int i = 0; i < expected_tensors.size(); i++) {
+      test::ExpectTensorNear<float>(expected_tensors[i], actual_tensors[i],
+                                    1e-6);
     }
   }
 }

@@ -201,9 +201,11 @@ def _get_paths(base_dir, parser):
   raw_paths = gfile.ListDirectory(base_dir)
   paths = []
   for r in raw_paths:
-    p = parser(Path(os.path.join(compat.as_str_any(base_dir),
-                                 compat.as_str_any(r)),
-                    None))
+    # ListDirectory() return paths with "/" at the last if base_dir was GCS URL
+    r = compat.as_str_any(r)
+    if r[-1] == '/':
+      r = r[0:len(r)-1]
+    p = parser(Path(os.path.join(compat.as_str_any(base_dir), r), None))
     if p:
       paths.append(p)
   return sorted(paths)

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_COSTS_COST_ESTIMATOR_H_
-#define TENSORFLOW_GRAPPLER_COSTS_COST_ESTIMATOR_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ESTIMATOR_H_
+#define TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ESTIMATOR_H_
 
 #include <chrono>
 #include <unordered_map>
@@ -109,8 +109,16 @@ struct Costs {
   int64 max_per_op_buffers;    // Sum of all buffers used by the ops.
   int64 max_per_op_streaming;  // Ignore largest input buffer, assuming it
                                // streams from main memory.
+
+  // Number of ops included in this Costs in total.
+  // Default initialized to be one.
+  int64 num_ops_total = 1;
   // If the time estimation is inaccurate.
   bool inaccurate = false;
+  // Number of ops that are estimated with unknown shapes.
+  int64 num_ops_with_unknown_shapes = 0;
+  // TODO(pcma): include a counter for total inaccurate ops and counters for
+  // other reasons causing the inaccuracy
 
   // Max possible memory usage per device.
   std::unordered_map<string, uint64> estimated_max_memory_per_device;
@@ -180,4 +188,4 @@ class CostEstimator {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_COSTS_COST_ESTIMATOR_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ESTIMATOR_H_

@@ -155,7 +155,7 @@ class GdrRemoteRendezvous : public BaseRemoteRendezvous {
     }
 
     Device* dst_device;
-    Status s = sess->device_mgr->LookupDevice(parsed.dst_device, &dst_device);
+    Status s = sess->device_mgr()->LookupDevice(parsed.dst_device, &dst_device);
     if (!s.ok()) {
       sess->worker_cache->ReleaseWorker(src_worker, rwi);
       done(s, Args(), recv_args, Tensor{}, false);

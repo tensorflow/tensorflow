@@ -26,6 +26,7 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linalg_impl
 from tensorflow.python.platform import test as test_lib
 
 
@@ -173,10 +174,20 @@ if __name__ == '__main__':
         _AddTest(MatrixUnaryFunctorGradientTest, 'MatrixInverseGradient', name,
                  _GetMatrixUnaryFunctorGradientTest(linalg_ops.matrix_inverse,
                                                     dtype, shape))
+        _AddTest(MatrixUnaryFunctorGradientTest, 'MatrixExponentialGradient',
+                 name,
+                 _GetMatrixUnaryFunctorGradientTest(
+                     linalg_impl.matrix_exponential, dtype, shape))
         _AddTest(
             MatrixUnaryFunctorGradientTest, 'MatrixDeterminantGradient', name,
             _GetMatrixUnaryFunctorGradientTest(linalg_ops.matrix_determinant,
                                                dtype, shape))
+        _AddTest(
+            MatrixUnaryFunctorGradientTest, 'LogMatrixDeterminantGradient',
+            name,
+            _GetMatrixUnaryFunctorGradientTest(
+                lambda x: linalg_ops.log_matrix_determinant(x)[1],
+                dtype, shape))
 
   # Tests for gradients of matrix_solve_ls
   for dtype in np.float32, np.float64:

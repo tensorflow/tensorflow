@@ -285,8 +285,8 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
         c->allocate_temp(partition_count.dtype(), partition_count.shape(),
                          &cpu_tensor, alloc_attr),
         done);
-    perftools::gputools::DeviceMemoryBase wrapped(
-        partition_count.flat<int32>().data(), num_partitions_ * sizeof(int32));
+    se::DeviceMemoryBase wrapped(partition_count.flat<int32>().data(),
+                                 num_partitions_ * sizeof(int32));
     const bool status =
         stream
             ->ThenMemcpy(cpu_tensor.flat<int32>().data(), wrapped,

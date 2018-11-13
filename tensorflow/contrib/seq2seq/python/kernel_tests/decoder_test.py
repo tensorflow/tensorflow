@@ -92,14 +92,18 @@ class DynamicDecodeRNNTest(test.TestCase):
 
       # Mostly a smoke test
       time_steps = max_out
+      expected_length = sequence_length
       if maximum_iterations is not None:
         time_steps = min(max_out, maximum_iterations)
+        expected_length = [min(x, maximum_iterations) for x in expected_length]
       self.assertEqual(
           _t((batch_size, time_steps, cell_depth)),
           sess_results["final_outputs"].rnn_output.shape)
       self.assertEqual(
           _t((batch_size, time_steps)),
           sess_results["final_outputs"].sample_id.shape)
+      self.assertItemsEqual(expected_length,
+                            sess_results["final_sequence_length"])
 
   def testDynamicDecodeRNNBatchMajor(self):
     self._testDynamicDecodeRNN(time_major=False)

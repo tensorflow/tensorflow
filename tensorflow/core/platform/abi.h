@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_ABI_H_
-#define TENSORFLOW_PLATFORM_ABI_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_ABI_H_
+#define TENSORFLOW_CORE_PLATFORM_ABI_H_
 
 #include <string>
 
@@ -26,4 +26,4 @@ std::string MaybeAbiDemangle(const char* name);
 }  // namespace port
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_ABI_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_ABI_H_

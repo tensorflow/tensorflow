@@ -156,10 +156,10 @@ class AvgPoolingOp<GPUDevice, T> : public UnaryOp<T> {
     TensorShape output_shape = params.forward_output_shape();
 
     if (data_format_ == FORMAT_NCHW) {
-      DnnPoolingOp<T>::Compute(
-          context, perftools::gputools::dnn::PoolingMode::kAverage, ksize_,
-          stride_, padding_, data_format_, tensor_in, output_shape,
-          /*propagate_nans=*/false);
+      DnnPoolingOp<T>::Compute(context, se::dnn::PoolingMode::kAverage, ksize_,
+                               stride_, padding_, data_format_, tensor_in,
+                               output_shape,
+                               /*propagate_nans=*/false);
     } else {
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context,
@@ -417,10 +417,10 @@ class AvgPoolingGradOp<GPUDevice, T> : public OpKernel {
       output_shape.AddDim(shape_vec(i));
     }
 
-    DnnPoolingGradOp<T>::Compute(
-        context, perftools::gputools::dnn::PoolingMode::kAverage, ksize_,
-        stride_, padding_, data_format_, nullptr, nullptr, out_backprop,
-        output_shape, /*propagate_nans=*/false);
+    DnnPoolingGradOp<T>::Compute(context, se::dnn::PoolingMode::kAverage,
+                                 ksize_, stride_, padding_, data_format_,
+                                 nullptr, nullptr, out_backprop, output_shape,
+                                 /*propagate_nans=*/false);
   }
 
  private:
@@ -547,10 +547,10 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
                                 output->flat<T>().data(),       // bottom_diff
                                 context->eigen_gpu_device());   // d
     } else {
-      DnnPoolingGradOp<T>::Compute(
-          context, perftools::gputools::dnn::PoolingMode::kAverage, ksize_,
-          stride_, padding_, data_format_, nullptr, nullptr, out_backprop,
-          output_shape, /*propagate_nans=*/false);
+      DnnPoolingGradOp<T>::Compute(context, se::dnn::PoolingMode::kAverage,
+                                   ksize_, stride_, padding_, data_format_,
+                                   nullptr, nullptr, out_backprop, output_shape,
+                                   /*propagate_nans=*/false);
     }
   }
 

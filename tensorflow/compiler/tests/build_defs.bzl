@@ -56,7 +56,7 @@ def tf_xla_py_test(name, srcs=[], deps=[], tags=[], data=[], main=None,
     elif backend == "gpu":
       backend_args += [
           "--test_device=XLA_GPU",
-          "--types=DT_FLOAT,DT_DOUBLE,DT_INT32,DT_INT64,DT_BOOL,DT_COMPLEX64,DT_BFLOAT16"
+          "--types=DT_HALF,DT_FLOAT,DT_DOUBLE,DT_INT32,DT_INT64,DT_BOOL,DT_COMPLEX64,DT_BFLOAT16"
       ]
       backend_tags += ["requires-gpu-sm35"]
     elif backend in plugins:

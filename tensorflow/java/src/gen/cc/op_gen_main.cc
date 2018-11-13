@@ -36,49 +36,43 @@ const char kUsageHeader[] =
     "Operation wrappers are generated under the path specified by the "
     "'--output_dir' argument. This path can be absolute or relative to the\n"
     "current working directory and will be created if it does not exists.\n\n"
-    "The '--lib_name' argument is used to classify the set of operations. If "
-    "the chosen name contains more than one word, it must be provided in \n"
-    "snake_case. This value is declined into other meaningful names, such as "
-    "the group and package of the generated operations. For example,\n"
-    "'--lib_name=my_lib' generates the operations under the "
-    "'org.tensorflow.op.mylib' package and add them to the 'myLib()' operator\n"
-    "group.\n\n"
-    "Note that the operator group assigned to the generated wrappers is just "
-    "an annotation tag at this stage. Operations will not be available "
-    "through\n"
-    "the 'org.tensorflow.op.Ops' API as a group until the generated classes "
-    "are compiled using an appropriate annotation processor.\n\n"
-    "Finally, the '--base_package' overrides the default parent package "
-    "under which the generated subpackage and classes are to be located.\n\n";
+    "Note that the operations will not be available through the "
+    "'org.tensorflow.op.Ops' API until the generated classes are compiled\n"
+    "using an appropriate annotation processor.\n\n"
+    "The '--base_package' overrides the default parent package under which "
+    "the generated subpackage and classes are to be located.\n\n"
+    "Finally, the `--api_dirs` argument takes a list of comma-separated "
+    "directories of API definitions can be provided to override default\n"
+    "values found in the ops definitions. Directories are ordered by priority "
+    "(the last having precedence over the first).\n\n";
 
 }  // namespace java
 }  // namespace tensorflow
 
 int main(int argc, char* argv[]) {
-  tensorflow::string lib_name;
   tensorflow::string output_dir;
   tensorflow::string base_package = "org.tensorflow.op";
+  tensorflow::string api_dirs_str;
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("output_dir", &output_dir,
                        "Root directory into which output files are generated"),
       tensorflow::Flag(
-          "lib_name", &lib_name,
-          "A name, in snake_case, used to classify this set of operations"),
-      tensorflow::Flag(
           "base_package", &base_package,
-          "Package parent to the generated subpackage and classes")};
+          "Package parent to the generated subpackage and classes"),
+      tensorflow::Flag(
+          "api_dirs", &api_dirs_str,
+          "List of directories that contains the ops api definitions")};
   tensorflow::string usage = tensorflow::java::kUsageHeader;
   usage += tensorflow::Flags::Usage(argv[0], flag_list);
   bool parsed_flags_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
   tensorflow::port::InitMain(usage.c_str(), &argc, &argv);
-  QCHECK(parsed_flags_ok && !lib_name.empty() && !output_dir.empty()) << usage;
-
-  tensorflow::java::OpGenerator generator;
+  QCHECK(parsed_flags_ok && !output_dir.empty()) << usage;
+  std::vector<tensorflow::string> api_dirs = tensorflow::str_util::Split(
+      api_dirs_str, ",", tensorflow::str_util::SkipEmpty());
+  tensorflow::java::OpGenerator generator(api_dirs);
   tensorflow::OpList ops;
-  tensorflow::OpRegistry::Global()->Export(true, &ops);
-  tensorflow::Status status =
-      generator.Run(ops, lib_name, base_package, output_dir);
-  TF_QCHECK_OK(status);
+  tensorflow::OpRegistry::Global()->Export(false, &ops);
+  TF_CHECK_OK(generator.Run(ops, base_package, output_dir));
 
   return 0;
 }

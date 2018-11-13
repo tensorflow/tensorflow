@@ -286,6 +286,59 @@ class TPUEstimatorStoppingSignalsWithPaddingTest(test.TestCase):
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(sliced_features)
 
+  def test_slice_with_multi_invocations_per_step(self):
+    num_samples = 3
+    batch_size = 2
+
+    params = {'batch_size': batch_size}
+    input_fn, (a, b) = make_input_fn(num_samples=num_samples)
+
+    with ops.Graph().as_default():
+      dataset = input_fn(params)
+      inputs = tpu_estimator._InputsWithStoppingSignals(
+          dataset, batch_size, add_padding=True, num_invocations_per_step=2)
+      hook = inputs.dataset_initializer_hook()
+      features, _ = inputs.features_and_labels()
+      signals = inputs.signals()
+
+      sliced_features = (
+          tpu_estimator._PaddingSignals.slice_tensor_or_dict(features, signals))
+
+      with session.Session() as sess:
+        hook.begin()
+        hook.after_create_session(sess, coord=None)
+
+        result, evaluated_signals = sess.run([sliced_features, signals])
+        self.assertAllEqual(a[:batch_size], result['a'])
+        self.assertAllEqual(b[:batch_size], result['b'])
+        self.assertAllEqual([[0.]] * batch_size, evaluated_signals['stopping'])
+
+        # This is the final partial batch.
+        result, evaluated_signals = sess.run([sliced_features, signals])
+        self.assertEqual(1, len(result['a']))
+        self.assertAllEqual(a[batch_size:num_samples], result['a'])
+        self.assertAllEqual(b[batch_size:num_samples], result['b'])
+        self.assertAllEqual([[0.]] * batch_size, evaluated_signals['stopping'])
+
+        # We should see 3 continuous batches with STOP ('1') as signals and all
+        # of them have mask 1.
+        _, evaluated_signals = sess.run([sliced_features, signals])
+        self.assertAllEqual([[1.]] * batch_size, evaluated_signals['stopping'])
+        self.assertAllEqual([1.] * batch_size,
+                            evaluated_signals['padding_mask'])
+
+        _, evaluated_signals = sess.run([sliced_features, signals])
+        self.assertAllEqual([[1.]] * batch_size, evaluated_signals['stopping'])
+        self.assertAllEqual([1.] * batch_size,
+                            evaluated_signals['padding_mask'])
+
+        _, evaluated_signals = sess.run([sliced_features, signals])
+        self.assertAllEqual([[1.]] * batch_size, evaluated_signals['stopping'])
+        self.assertAllEqual([1.] * batch_size,
+                            evaluated_signals['padding_mask'])
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(sliced_features)
+
 
 if __name__ == '__main__':
   test.main()

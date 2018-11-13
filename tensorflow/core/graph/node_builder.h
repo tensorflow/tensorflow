@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPH_NODE_BUILDER_H_
-#define TENSORFLOW_GRAPH_NODE_BUILDER_H_
+#ifndef TENSORFLOW_CORE_GRAPH_NODE_BUILDER_H_
+#define TENSORFLOW_CORE_GRAPH_NODE_BUILDER_H_
 
 #include <vector>
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -160,4 +160,4 @@ NodeBuilder& NodeBuilder::Attr(StringPiece attr_name,
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_NODE_BUILDER_H_
+#endif  // TENSORFLOW_CORE_GRAPH_NODE_BUILDER_H_

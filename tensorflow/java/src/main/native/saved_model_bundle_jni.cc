@@ -22,12 +22,25 @@ limitations under the License.
 
 JNIEXPORT jobject JNICALL Java_org_tensorflow_SavedModelBundle_load(
     JNIEnv* env, jclass clazz, jstring export_dir, jobjectArray tags,
-    jbyteArray run_options) {
+    jbyteArray config, jbyteArray run_options) {
   TF_Status* status = TF_NewStatus();
   jobject bundle = nullptr;
 
   // allocate parameters for TF_LoadSessionFromSavedModel
   TF_SessionOptions* opts = TF_NewSessionOptions();
+  if (config != nullptr) {
+    size_t sz = env->GetArrayLength(config);
+    if (sz > 0) {
+      jbyte* config_data = env->GetByteArrayElements(config, nullptr);
+      TF_SetConfig(opts, static_cast<void*>(config_data), sz, status);
+      env->ReleaseByteArrayElements(config, config_data, JNI_ABORT);
+      if (!throwExceptionIfNotOK(env, status)) {
+        TF_DeleteSessionOptions(opts);
+        TF_DeleteStatus(status);
+        return nullptr;
+      }
+    }
+  }
   TF_Buffer* crun_options = nullptr;
   if (run_options != nullptr) {
     size_t sz = env->GetArrayLength(run_options);

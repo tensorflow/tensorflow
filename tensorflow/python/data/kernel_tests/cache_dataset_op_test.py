@@ -34,7 +34,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-class FilesystemCacheDatasetTest(test.TestCase):
+class FileCacheDatasetTest(test.TestCase):
 
   def setUp(self):
     self.tmp_dir = tempfile.mkdtemp()

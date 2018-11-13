@@ -60,7 +60,7 @@ class SimpleSaveTest(test.TestCase):
 
     # Initialize input and output variables and save a prediction graph using
     # the default parameters.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       var_x = self._init_and_validate_variable(sess, "var_x", 1)
       var_y = self._init_and_validate_variable(sess, "var_y", 2)
       inputs = {"x": var_x}
@@ -69,7 +69,7 @@ class SimpleSaveTest(test.TestCase):
 
     # Restore the graph with a valid tag and check the global variables and
     # signature def map.
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       graph = loader.load(sess, [tag_constants.SERVING], export_dir)
       collection_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
 

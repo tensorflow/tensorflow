@@ -459,6 +459,9 @@ class Dimension(object):
     else:
       return self._value >= other.value
 
+  def __reduce__(self):
+    return Dimension, (self._value,)
+
 
 def as_dimension(value):
   """Converts the given value to a Dimension.
@@ -495,9 +498,10 @@ class TensorShape(object):
 
   If a tensor is produced by an operation of type `"Foo"`, its shape
   may be inferred if there is a registered shape function for
-  `"Foo"`. See @{$adding_an_op#shape-functions-in-c$`Shape functions in C++`}
+  `"Foo"`. See [Shape
+  functions](https://tensorflow.org/extend/adding_an_op#shape_functions_in_c)
   for details of shape functions and how to register them. Alternatively,
-  the shape may be set explicitly using @{tf.Tensor.set_shape}.
+  the shape may be set explicitly using `tf.Tensor.set_shape`.
   """
 
   def __init__(self, dims):
@@ -931,6 +935,9 @@ class TensorShape(object):
       return True
     return self._dims != other.dims
 
+  def __reduce__(self):
+    return TensorShape, (self._dims,)
+
 
 def as_shape(shape):
   """Converts the given object to a TensorShape."""
@@ -955,9 +962,12 @@ def unknown_shape(ndims=None):
     return TensorShape([Dimension(None)] * ndims)
 
 
+_SCALAR_SHAPE = TensorShape([])
+
+
 def scalar():
   """Returns a shape representing a scalar."""
-  return TensorShape([])
+  return _SCALAR_SHAPE
 
 
 def vector(length):

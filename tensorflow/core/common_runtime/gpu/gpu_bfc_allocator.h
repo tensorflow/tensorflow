@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_GPU_GPU_BFC_ALLOCATOR_H_
-#define TENSORFLOW_COMMON_RUNTIME_GPU_GPU_BFC_ALLOCATOR_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_BFC_ALLOCATOR_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_BFC_ALLOCATOR_H_
 
 #include <memory>
 #include <string>
@@ -28,8 +28,6 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-
-namespace gpu = ::perftools::gputools;
 
 namespace tensorflow {
 
@@ -52,8 +50,9 @@ class GPUBFCAllocator : public BFCAllocator {
 class GPUMemAllocator : public SubAllocator {
  public:
   // Note: stream_exec cannot be null.
-  explicit GPUMemAllocator(perftools::gputools::StreamExecutor* stream_exec)
-      : stream_exec_(stream_exec) {
+  explicit GPUMemAllocator(se::StreamExecutor* stream_exec,
+                           bool use_unified_memory)
+      : stream_exec_(stream_exec), use_unified_memory_(use_unified_memory) {
     CHECK(stream_exec_ != nullptr);
   }
   ~GPUMemAllocator() override {}
@@ -61,24 +60,33 @@ class GPUMemAllocator : public SubAllocator {
   void* Alloc(size_t alignment, size_t num_bytes) override {
     void* ptr = nullptr;
     if (num_bytes > 0) {
-      ptr = stream_exec_->AllocateArray<char>(num_bytes).opaque();
+      if (use_unified_memory_) {
+        ptr = stream_exec_->UnifiedMemoryAllocate(num_bytes);
+      } else {
+        ptr = stream_exec_->AllocateArray<char>(num_bytes).opaque();
+      }
     }
     return ptr;
   }
 
   void Free(void* ptr, size_t num_bytes) override {
     if (ptr != nullptr) {
-      gpu::DeviceMemoryBase gpu_ptr(ptr);
-      stream_exec_->Deallocate(&gpu_ptr);
+      if (use_unified_memory_) {
+        stream_exec_->UnifiedMemoryDeallocate(ptr);
+      } else {
+        se::DeviceMemoryBase gpu_ptr(ptr);
+        stream_exec_->Deallocate(&gpu_ptr);
+      }
     }
   }
 
  private:
-  perftools::gputools::StreamExecutor* stream_exec_;  // not owned, non-null
+  se::StreamExecutor* stream_exec_;  // not owned, non-null
+  const bool use_unified_memory_ = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GPUMemAllocator);
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_GPU_GPU_BFC_ALLOCATOR_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_BFC_ALLOCATOR_H_

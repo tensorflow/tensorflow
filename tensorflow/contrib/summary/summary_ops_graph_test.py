@@ -16,27 +16,220 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import tempfile
+import time
 
 import six
 
-from tensorflow.contrib.summary import summary_ops
 from tensorflow.contrib.summary import summary_test_util
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import summary_ops_v2 as summary_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.training import training_util
 
 get_all = summary_test_util.get_all
 
 
-class DbTest(summary_test_util.SummaryDbTest):
+class GraphFileTest(test_util.TensorFlowTestCase):
+
+  def testSummaryOps(self):
+    logdir = self.get_temp_dir()
+    writer = summary_ops.create_file_writer(logdir, max_queue=0)
+    with writer.as_default(), summary_ops.always_record_summaries():
+      summary_ops.generic('tensor', 1, step=1)
+      summary_ops.scalar('scalar', 2.0, step=1)
+      summary_ops.histogram('histogram', [1.0], step=1)
+      summary_ops.image('image', [[[[1.0]]]], step=1)
+      summary_ops.audio('audio', [[1.0]], 1.0, 1, step=1)
+    with self.test_session() as sess:
+      sess.run(summary_ops.summary_writer_initializer_op())
+      sess.run(summary_ops.all_summary_ops())
+    # The working condition of the ops is tested in the C++ test so we just
+    # test here that we're calling them correctly.
+    self.assertTrue(gfile.Exists(logdir))
+
+  def testSummaryName(self):
+    logdir = self.get_temp_dir()
+    writer = summary_ops.create_file_writer(logdir, max_queue=0)
+    with writer.as_default(), summary_ops.always_record_summaries():
+      summary_ops.scalar('scalar', 2.0, step=1)
+    with self.test_session() as sess:
+      sess.run(summary_ops.summary_writer_initializer_op())
+      sess.run(summary_ops.all_summary_ops())
+    events = summary_test_util.events_from_logdir(logdir)
+    self.assertEqual(2, len(events))
+    self.assertEqual('scalar', events[1].summary.value[0].tag)
+
+  def testSummaryNameScope(self):
+    logdir = self.get_temp_dir()
+    writer = summary_ops.create_file_writer(logdir, max_queue=0)
+    with writer.as_default(), summary_ops.always_record_summaries():
+      with ops.name_scope('scope'):
+        summary_ops.scalar('scalar', 2.0, step=1)
+    with self.test_session() as sess:
+      sess.run(summary_ops.summary_writer_initializer_op())
+      sess.run(summary_ops.all_summary_ops())
+    events = summary_test_util.events_from_logdir(logdir)
+    self.assertEqual(2, len(events))
+    self.assertEqual('scope/scalar', events[1].summary.value[0].tag)
+
+  def testSummaryGlobalStep(self):
+    training_util.get_or_create_global_step()
+    logdir = self.get_temp_dir()
+    writer = summary_ops.create_file_writer(logdir, max_queue=0)
+    with writer.as_default(), summary_ops.always_record_summaries():
+      summary_ops.scalar('scalar', 2.0)
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      sess.run(summary_ops.summary_writer_initializer_op())
+      step, _ = sess.run(
+          [training_util.get_global_step(), summary_ops.all_summary_ops()])
+    events = summary_test_util.events_from_logdir(logdir)
+    self.assertEqual(2, len(events))
+    self.assertEqual(step, events[1].step)
+
+  def testMaxQueue(self):
+    logdir = self.get_temp_dir()
+    writer = summary_ops.create_file_writer(
+        logdir, max_queue=1, flush_millis=999999)
+    with writer.as_default(), summary_ops.always_record_summaries():
+      summary_ops.scalar('scalar', 2.0, step=1)
+    with self.test_session() as sess:
+      sess.run(summary_ops.summary_writer_initializer_op())
+      get_total = lambda: len(summary_test_util.events_from_logdir(logdir))
+      # Note: First tf.Event is always file_version.
+      self.assertEqual(1, get_total())
+      sess.run(summary_ops.all_summary_ops())
+      self.assertEqual(1, get_total())
+      # Should flush after second summary since max_queue = 1
+      sess.run(summary_ops.all_summary_ops())
+      self.assertEqual(3, get_total())
+
+  def testFlushFunction(self):
+    logdir = self.get_temp_dir()
+    writer = summary_ops.create_file_writer(
+        logdir, max_queue=999999, flush_millis=999999)
+    with writer.as_default(), summary_ops.always_record_summaries():
+      summary_ops.scalar('scalar', 2.0, step=1)
+      flush_op = summary_ops.flush()
+    with self.test_session() as sess:
+      sess.run(summary_ops.summary_writer_initializer_op())
+      get_total = lambda: len(summary_test_util.events_from_logdir(logdir))
+      # Note: First tf.Event is always file_version.
+      self.assertEqual(1, get_total())
+      sess.run(summary_ops.all_summary_ops())
+      self.assertEqual(1, get_total())
+      sess.run(flush_op)
+      self.assertEqual(2, get_total())
+      # Test "writer" parameter
+      sess.run(summary_ops.all_summary_ops())
+      sess.run(summary_ops.flush(writer=writer))
+      self.assertEqual(3, get_total())
+      sess.run(summary_ops.all_summary_ops())
+      sess.run(summary_ops.flush(writer=writer._resource))  # pylint:disable=protected-access
+      self.assertEqual(4, get_total())
+
+  def testSharedName(self):
+    logdir = self.get_temp_dir()
+    with summary_ops.always_record_summaries():
+      # Create with default shared name (should match logdir)
+      writer1 = summary_ops.create_file_writer(logdir)
+      with writer1.as_default():
+        summary_ops.scalar('one', 1.0, step=1)
+      # Create with explicit logdir shared name (should be same resource/file)
+      shared_name = 'logdir:' + logdir
+      writer2 = summary_ops.create_file_writer(logdir, name=shared_name)
+      with writer2.as_default():
+        summary_ops.scalar('two', 2.0, step=2)
+      # Create with different shared name (should be separate resource/file)
+      writer3 = summary_ops.create_file_writer(logdir, name='other')
+      with writer3.as_default():
+        summary_ops.scalar('three', 3.0, step=3)
+
+    with self.test_session() as sess:
+      # Run init ops across writers sequentially to avoid race condition.
+      # TODO(nickfelt): fix race condition in resource manager lookup or create
+      sess.run(writer1.init())
+      sess.run(writer2.init())
+      time.sleep(1.1)  # Ensure filename has a different timestamp
+      sess.run(writer3.init())
+      sess.run(summary_ops.all_summary_ops())
+      sess.run([writer1.flush(), writer2.flush(), writer3.flush()])
+
+    event_files = iter(sorted(gfile.Glob(os.path.join(logdir, '*tfevents*'))))
+
+    # First file has tags "one" and "two"
+    events = summary_test_util.events_from_file(next(event_files))
+    self.assertEqual('brain.Event:2', events[0].file_version)
+    tags = [e.summary.value[0].tag for e in events[1:]]
+    self.assertItemsEqual(['one', 'two'], tags)
+
+    # Second file has tag "three"
+    events = summary_test_util.events_from_file(next(event_files))
+    self.assertEqual('brain.Event:2', events[0].file_version)
+    tags = [e.summary.value[0].tag for e in events[1:]]
+    self.assertItemsEqual(['three'], tags)
+
+    # No more files
+    self.assertRaises(StopIteration, lambda: next(event_files))
+
+  def testWriterInitAndClose(self):
+    logdir = self.get_temp_dir()
+    with summary_ops.always_record_summaries():
+      writer = summary_ops.create_file_writer(
+          logdir, max_queue=100, flush_millis=1000000)
+      with writer.as_default():
+        summary_ops.scalar('one', 1.0, step=1)
+    with self.test_session() as sess:
+      sess.run(summary_ops.summary_writer_initializer_op())
+      get_total = lambda: len(summary_test_util.events_from_logdir(logdir))
+      self.assertEqual(1, get_total())  # file_version Event
+      # Running init() again while writer is open has no effect
+      sess.run(writer.init())
+      self.assertEqual(1, get_total())
+      sess.run(summary_ops.all_summary_ops())
+      self.assertEqual(1, get_total())
+      # Running close() should do an implicit flush
+      sess.run(writer.close())
+      self.assertEqual(2, get_total())
+      # Running init() on a closed writer should start a new file
+      time.sleep(1.1)  # Ensure filename has a different timestamp
+      sess.run(writer.init())
+      sess.run(summary_ops.all_summary_ops())
+      sess.run(writer.close())
+      files = sorted(gfile.Glob(os.path.join(logdir, '*tfevents*')))
+      self.assertEqual(2, len(files))
+      self.assertEqual(2, len(summary_test_util.events_from_file(files[1])))
+
+  def testWriterFlush(self):
+    logdir = self.get_temp_dir()
+    with summary_ops.always_record_summaries():
+      writer = summary_ops.create_file_writer(
+          logdir, max_queue=100, flush_millis=1000000)
+      with writer.as_default():
+        summary_ops.scalar('one', 1.0, step=1)
+    with self.test_session() as sess:
+      sess.run(summary_ops.summary_writer_initializer_op())
+      get_total = lambda: len(summary_test_util.events_from_logdir(logdir))
+      self.assertEqual(1, get_total())  # file_version Event
+      sess.run(summary_ops.all_summary_ops())
+      self.assertEqual(1, get_total())
+      sess.run(writer.flush())
+      self.assertEqual(2, get_total())
+
+
+class GraphDbTest(summary_test_util.SummaryDbTest):
 
   def testGraphPassedToGraph_isForbiddenForThineOwnSafety(self):
     with self.assertRaises(TypeError):

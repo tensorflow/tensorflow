@@ -40,23 +40,18 @@ class AdamOptimizer(optimizer_v2.OptimizerV2):
 
     Initialization:
 
-    ```
-    m_0 <- 0 (Initialize initial 1st moment vector)
-    v_0 <- 0 (Initialize initial 2nd moment vector)
-    t <- 0 (Initialize timestep)
-    ```
-
+    $$m_0 := 0 \text{(Initialize initial 1st moment vector)}$$
+    $$v_0 := 0 \text{(Initialize initial 2nd moment vector)}$$
+    $$t := 0 \text{(Initialize timestep)}$$
     The update rule for `variable` with gradient `g` uses an optimization
     described at the end of section2 of the paper:
 
-    ```
-    t <- t + 1
-    lr_t <- learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
+    $$t := t + 1$$
+    $$lr_t := \text{learning\_rate} * \sqrt{1 - beta_2^t} / (1 - beta_1^t)$$
 
-    m_t <- beta1 * m_{t-1} + (1 - beta1) * g
-    v_t <- beta2 * v_{t-1} + (1 - beta2) * g * g
-    variable <- variable - lr_t * m_t / (sqrt(v_t) + epsilon)
-    ```
+    $$m_t := beta_1 * m_{t-1} + (1 - beta_1) * g$$
+    $$v_t := beta_2 * v_{t-1} + (1 - beta_2) * g * g$$
+    $$variable := variable - lr_t * m_t / (\sqrt{v_t} + \epsilon)$$
 
     The default value of 1e-8 for epsilon might not be a good default in
     general. For example, when training an Inception network on ImageNet a
@@ -107,9 +102,9 @@ class AdamOptimizer(optimizer_v2.OptimizerV2):
 
   def _create_vars(self, var_list, state):
     # Non-slot variables end up on the same device(s).
-    state.create_non_slot(initial_value=state.get_hyper("beta1"),
+    state.create_non_slot(initial_value=lambda: state.get_hyper("beta1"),
                           name="beta1_power")
-    state.create_non_slot(initial_value=state.get_hyper("beta2"),
+    state.create_non_slot(initial_value=lambda: state.get_hyper("beta2"),
                           name="beta2_power")
 
     # Create slots for the first and second moments.

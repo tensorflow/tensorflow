@@ -22,6 +22,7 @@ import os
 import tarfile
 import tempfile
 
+from absl.testing import parameterized
 import numpy as np
 from scipy import linalg as scp_linalg
 
@@ -182,13 +183,20 @@ def _run_with_mock(function, *args, **kwargs):
     return function(*args, **kwargs)
 
 
-class ClassifierMetricsTest(test.TestCase):
+class ClassifierMetricsTest(test.TestCase, parameterized.TestCase):
 
-  def test_run_inception_graph(self):
+  @parameterized.named_parameters(
+      ('GraphDef', False),
+      ('DefaultGraphDefFn', True))
+  def test_run_inception_graph(self, use_default_graph_def):
     """Test `run_inception` graph construction."""
     batch_size = 7
     img = array_ops.ones([batch_size, 299, 299, 3])
-    logits = _run_with_mock(classifier_metrics.run_inception, img)
+
+    if use_default_graph_def:
+      logits = _run_with_mock(classifier_metrics.run_inception, img)
+    else:
+      logits = classifier_metrics.run_inception(img, _get_dummy_graphdef())
 
     self.assertTrue(isinstance(logits, ops.Tensor))
     logits.shape.assert_is_compatible_with([batch_size, 1001])
@@ -196,14 +204,23 @@ class ClassifierMetricsTest(test.TestCase):
     # Check that none of the model variables are trainable.
     self.assertListEqual([], variables.trainable_variables())
 
-  def test_run_inception_graph_pool_output(self):
+  @parameterized.named_parameters(
+      ('GraphDef', False),
+      ('DefaultGraphDefFn', True))
+  def test_run_inception_graph_pool_output(self, use_default_graph_def):
     """Test `run_inception` graph construction with pool output."""
     batch_size = 3
     img = array_ops.ones([batch_size, 299, 299, 3])
-    pool = _run_with_mock(
-        classifier_metrics.run_inception,
-        img,
-        output_tensor=classifier_metrics.INCEPTION_FINAL_POOL)
+
+    if use_default_graph_def:
+      pool = _run_with_mock(
+          classifier_metrics.run_inception,
+          img,
+          output_tensor=classifier_metrics.INCEPTION_FINAL_POOL)
+    else:
+      pool = classifier_metrics.run_inception(
+          img, _get_dummy_graphdef(),
+          output_tensor=classifier_metrics.INCEPTION_FINAL_POOL)
 
     self.assertTrue(isinstance(pool, ops.Tensor))
     pool.shape.assert_is_compatible_with([batch_size, 2048])
@@ -318,7 +335,7 @@ class ClassifierMetricsTest(test.TestCase):
     mofid_op = classifier_metrics.mean_only_frechet_classifier_distance_from_activations(  # pylint: disable=line-too-long
         tf_pool_real_a, tf_pool_gen_a)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       actual_mofid = sess.run(mofid_op)
 
     expected_mofid = _expected_mean_only_fid(pool_real_a, pool_gen_a)
@@ -338,7 +355,7 @@ class ClassifierMetricsTest(test.TestCase):
     dofid_op = classifier_metrics.diagonal_only_frechet_classifier_distance_from_activations(  # pylint: disable=line-too-long
         tf_pool_real_a, tf_pool_gen_a)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       actual_dofid = sess.run(dofid_op)
 
     expected_dofid = _expected_diagonal_only_fid(pool_real_a, pool_gen_a)
@@ -360,7 +377,7 @@ class ClassifierMetricsTest(test.TestCase):
         test_pool_gen_a,
         classifier_fn=lambda x: x)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       actual_fid = sess.run(fid_op)
 
     expected_fid = _expected_fid(test_pool_real_a, test_pool_gen_a)
@@ -387,7 +404,7 @@ class ClassifierMetricsTest(test.TestCase):
           classifier_fn=lambda x: x))
 
     fids = []
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for fid_op in fid_ops:
         fids.append(sess.run(fid_op))
 
@@ -409,7 +426,7 @@ class ClassifierMetricsTest(test.TestCase):
     trace_sqrt_prod_op = _run_with_mock(classifier_metrics.trace_sqrt_product,
                                         cov_real, cov_gen)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # trace_sqrt_product: tsp
       actual_tsp = sess.run(trace_sqrt_prod_op)
 

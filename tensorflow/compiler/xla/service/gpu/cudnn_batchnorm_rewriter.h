@@ -54,9 +54,7 @@ namespace gpu {
 // BatchNormRewriter.
 class CudnnBatchNormRewriter : public HloPassInterface {
  public:
-  tensorflow::StringPiece name() const override {
-    return "cudnn_batchnorm_rewriter";
-  }
+  absl::string_view name() const override { return "cudnn_batchnorm_rewriter"; }
   StatusOr<bool> Run(HloModule* module) override;
 };
 

@@ -18,74 +18,83 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.autograph.converters import converter_test_base
 from tensorflow.contrib.autograph.converters import name_scopes
+from tensorflow.contrib.autograph.core import converter_testing
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 
 
-class FunctionNameScopeTransformer(converter_test_base.TestCase):
+class FunctionNameScopeTransformer(converter_testing.TestCase):
 
-  def test_basic_name(self):
+  def test_basic(self):
 
     def test_fn(l):
-      a = 5
+      """This should stay here."""
+      a = 1
       l += a
       return l
 
-    node = self.parse_and_analyze(test_fn, {})
-    node = name_scopes.transform(node, self.ctx)
-
-    with self.compiled(node, ops.name_scope) as result:
-      result_op = result.test_fn(constant_op.constant([1, 2, 3]))
+    with self.converted(test_fn, name_scopes, {}, ops.name_scope) as result:
+      result_op = result.test_fn(constant_op.constant(1))
       self.assertIn('test_fn/', result_op.op.name)
+      self.assertEqual('This should stay here.', result.test_fn.__doc__)
 
-  def test_nested_name(self):
+  def test_long_docstring(self):
+
+    def test_fn(l):
+      """Multi-line docstring.
+
+      Args:
+        l: A thing.
+      Returns:
+        l
+      """
+      return l + 1
+
+    with self.converted(test_fn, name_scopes, {}, ops.name_scope) as result:
+      result_op = result.test_fn(constant_op.constant(1))
+      self.assertIn('test_fn/', result_op.op.name)
+      self.assertIn('Multi-line docstring.', result.test_fn.__doc__)
+      self.assertIn('Returns:', result.test_fn.__doc__)
+
+  def test_nested_functions(self):
 
     def test_fn(l):
 
-      def body(i):
-        return i**2
+      def inner_fn(i):
+        return i + 1
 
-      l += [4]
-      return body(l)
+      l += 1
+      return l, inner_fn(l)
 
-    node = self.parse_and_analyze(test_fn, {})
-    node = name_scopes.transform(node, self.ctx)
+    with self.converted(test_fn, name_scopes, {}, ops.name_scope) as result:
+      first, second = result.test_fn(constant_op.constant(1))
+      self.assertIn('test_fn/', first.op.name)
+      self.assertNotIn('inner_fn', first.op.name)
+      self.assertIn('test_fn/inner_fn/', second.op.name)
 
-    with self.compiled(node, ops.name_scope) as result:
-      result_op = result.test_fn(constant_op.constant([1, 2, 3]))
-      first_result_input_name = result_op.op.inputs[0].name
-      second_result_input_name = result_op.op.inputs[1].name
-      self.assertIn('test_fn/', first_result_input_name)
-      self.assertNotIn('body/', first_result_input_name)
-      self.assertIn('test_fn/body/', second_result_input_name)
-
-  def test_class_name(self):
+  def test_method(self):
 
     class TestClass(object):
 
       def test_fn(self, l):
 
-        def body(i):
-          return i**2
+        def inner_fn(i):
+          return i + 1
 
-        l += [4]
-        return body(l)
+        l += 1
+        return l, inner_fn(l)
 
-    # Note that 'TestClass' was needed in the namespace here.
-    node = self.parse_and_analyze(
-        TestClass, {'TestClass': TestClass}, owner_type=TestClass)
-    node = name_scopes.transform(node, self.ctx)
+    ns = {'TestClass': TestClass}
+    node, ctx = self.prepare(TestClass, ns, owner_type=TestClass)
+    node = name_scopes.transform(node, ctx)
 
-    with self.compiled(node, ops.name_scope) as result:
-      result_op = result.TestClass().test_fn(constant_op.constant([1, 2, 3]))
-      first_result_input_name = result_op.op.inputs[0].name
-      second_result_input_name = result_op.op.inputs[1].name
-      self.assertIn('TestClass/test_fn/', first_result_input_name)
-      self.assertNotIn('body/', first_result_input_name)
-      self.assertIn('TestClass/test_fn/body/', second_result_input_name)
+    with self.compiled(node, {}, ops.name_scope) as result:
+      first, second = result.TestClass().test_fn(constant_op.constant(1))
+      self.assertIn('TestClass/test_fn/', first.op.name)
+      self.assertNotIn('inner_fn', first.op.name)
+      self.assertIn('TestClass/test_fn/inner_fn/', second.op.name)
 
 
 if __name__ == '__main__':

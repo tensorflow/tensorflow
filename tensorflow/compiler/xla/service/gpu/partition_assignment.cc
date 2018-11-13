@@ -18,37 +18,38 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/bits.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
-
-namespace se = ::perftools::gputools;
 
 namespace xla {
 namespace gpu {
 
 std::ostream& operator<<(std::ostream& out,
                          const LaunchDimensions& launch_dims) {
-  out << tensorflow::strings::Printf("[block: %lld, thread: %lld]",
-                                     launch_dims.block_count(),
-                                     launch_dims.threads_per_block());
+  out << absl::StrFormat("[block: %d, thread: %d]", launch_dims.block_count(),
+                         launch_dims.threads_per_block());
   return out;
 }
 
 // Calculates the launch dimensions used to invoke `hlo`.
 LaunchDimensions CalculateLaunchDimensions(
-    const Shape& shape, const se::DeviceDescription& device_desc) {
+    const Shape& shape, const se::DeviceDescription& device_desc,
+    int unroll_factor) {
   int64 num_elements = ShapeUtil::ElementsIn(shape);
   if (num_elements <= 1) {
     return LaunchDimensions();
   }
+
+  CHECK_EQ(num_elements % unroll_factor, 0);
+  num_elements = num_elements / unroll_factor;
 
   // Since we don't do any inter-warp communication, we're free to choose any
   // block size we want, subject to hardware constraints.  We choose the
@@ -89,9 +90,9 @@ LaunchDimensions CalculateLaunchDimensions(
   }
 
   int64 block_count = CeilOfRatio(num_elements, threads_per_block);
-  VLOG(2) << tensorflow::strings::Printf(
+  VLOG(2) << absl::StrFormat(
       "Initialized the block count to ceil(# of elements / threads per "
-      "block) = ceil(%lld/%lld) = %lld",
+      "block) = ceil(%d/%d) = %d",
       num_elements, threads_per_block, block_count);
 
   return LaunchDimensions(block_count, threads_per_block);

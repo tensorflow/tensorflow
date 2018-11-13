@@ -536,6 +536,10 @@ TF_Function* TF_GraphToFunction(const TF_Graph* fn_body, const char* fn_name,
   return tf_function;
 }
 
+const char* TF_FunctionName(TF_Function* func) {
+  return func->fdef.signature().name().c_str();
+}
+
 void TF_GraphCopyFunction(TF_Graph* g, const TF_Function* func,
                           const TF_Function* grad, TF_Status* status) {
   if (func == nullptr) {

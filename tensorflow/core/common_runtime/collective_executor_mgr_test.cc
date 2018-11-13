@@ -40,10 +40,13 @@ class CollectiveExecutorMgrTest : public ::testing::Test {
     device_count->insert({"CPU", NUM_DEVS});
     TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices_));
     device_mgr_.reset(new DeviceMgr(devices_));
-    DeviceResolverLocal* drl = new DeviceResolverLocal(device_mgr_.get());
-    cme_.reset(new CollectiveExecutorMgr(
-        cp, device_mgr_.get(), drl,
-        new CollectiveParamResolverLocal(device_mgr_.get(), drl, task_name)));
+    std::unique_ptr<DeviceResolverInterface> drl(
+        new DeviceResolverLocal(device_mgr_.get()));
+    std::unique_ptr<ParamResolverInterface> prl(
+        new CollectiveParamResolverLocal(device_mgr_.get(), drl.get(),
+                                         task_name));
+    cme_.reset(new CollectiveExecutorMgr(cp, device_mgr_.get(), std::move(drl),
+                                         std::move(prl)));
   }
 
   std::unique_ptr<CollectiveExecutorMgr> cme_;

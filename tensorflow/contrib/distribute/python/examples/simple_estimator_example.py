@@ -59,7 +59,8 @@ def build_model_fn_optimizer():
 def main(_):
   distribution = tf.contrib.distribute.MirroredStrategy(
       ["/device:GPU:0", "/device:GPU:1"])
-  config = tf.estimator.RunConfig(train_distribute=distribution)
+  config = tf.estimator.RunConfig(train_distribute=distribution,
+                                  eval_distribute=distribution)
 
   def input_fn():
     features = tf.data.Dataset.from_tensors([[1.]]).repeat(10)
@@ -70,7 +71,7 @@ def main(_):
       model_fn=build_model_fn_optimizer(), config=config)
   estimator.train(input_fn=input_fn, steps=10)
 
-  eval_result = estimator.evaluate(input_fn=input_fn)
+  eval_result = estimator.evaluate(input_fn=input_fn, steps=10)
   print("Eval result: {}".format(eval_result))
 
   def predict_input_fn():

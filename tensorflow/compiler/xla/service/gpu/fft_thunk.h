@@ -16,15 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FFT_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FFT_THUNK_H_
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
@@ -34,24 +35,22 @@ namespace gpu {
 // released on destruction.
 //
 // Not thread-safe in that AllocateBytes, destructor are not locked.
-class FftScratchAllocator : public perftools::gputools::ScratchAllocator {
+class FftScratchAllocator : public se::ScratchAllocator {
  public:
   FftScratchAllocator(int device_ordinal,
                       DeviceMemoryAllocator* memory_allocator);
 
-  ~FftScratchAllocator() override;
-
-  int64 GetMemoryLimitInBytes(perftools::gputools::Stream* stream) override;
+  int64 GetMemoryLimitInBytes(se::Stream* stream) override;
 
   int64 TotalAllocatedBytes() { return total_allocated_bytes_; }
 
-  perftools::gputools::port::StatusOr<perftools::gputools::DeviceMemory<uint8>>
-  AllocateBytes(perftools::gputools::Stream* stream, int64 byte_size) override;
+  se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
+      se::Stream* stream, int64 byte_size) override;
 
  private:
   const int device_ordinal_;
   DeviceMemoryAllocator* memory_allocator_;
-  std::vector<perftools::gputools::DeviceMemoryBase> allocated_buffers_;
+  std::vector<OwningDeviceMemory> allocated_buffers_;
   int64 total_allocated_bytes_ = 0;
 };
 
@@ -63,7 +62,7 @@ class FftThunk : public Thunk {
  public:
   // Constructs a thunk for launching an FFT on a stream.
   // Semantics of null hlo_instruction argument are as in Thunk.
-  FftThunk(FftType fft_type, tensorflow::gtl::ArraySlice<int64> fft_length,
+  FftThunk(FftType fft_type, absl::Span<const int64> fft_length,
            const BufferAllocation::Slice& input_buffer,
            const BufferAllocation::Slice& output_buffer,
            const Shape& input_shape, const Shape& output_shape,
@@ -73,17 +72,17 @@ class FftThunk : public Thunk {
   FftThunk& operator=(const FftThunk&) = delete;  // Cannot share fft_plan_
 
   // Does the FFT for the thunk on "stream".
-  tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations,
-      perftools::gputools::Stream* stream) override;
+  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                         se::Stream* stream,
+                         HloExecutionProfiler* profiler) override;
 
  private:
-  const perftools::gputools::fft::Type fft_type_;
+  const se::fft::Type fft_type_;
   const std::vector<int64> fft_length_;
 
   float scale_factor_;
 
-  std::unique_ptr<perftools::gputools::fft::Plan> fft_plan_;
+  std::unique_ptr<se::fft::Plan> fft_plan_;
 
   const BufferAllocation::Slice input_buffer_;
   const BufferAllocation::Slice output_buffer_;

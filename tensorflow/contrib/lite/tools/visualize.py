@@ -28,11 +28,24 @@ import json
 import os
 import sys
 
+from tensorflow.python.platform import resource_loader
+
 # Schema to use for flatbuffers
 _SCHEMA = "third_party/tensorflow/contrib/lite/schema/schema.fbs"
 
-# Where the binary will be once built in for the flatc converter
-_BINARY = "third_party/flatbuffers/flatc"
+# TODO(angerson): fix later when rules are simplified..
+_SCHEMA = resource_loader.get_path_to_datafile("../schema/schema.fbs")
+_BINARY = resource_loader.get_path_to_datafile("../../../../flatbuffers/flatc")
+# Account for different package positioning internal vs. external.
+if not os.path.exists(_BINARY):
+  _BINARY = resource_loader.get_path_to_datafile(
+      "../../../../../flatbuffers/flatc")
+
+if not os.path.exists(_SCHEMA):
+  raise RuntimeError("Sorry, schema file cannot be found at %r" % _SCHEMA)
+if not os.path.exists(_BINARY):
+  raise RuntimeError("Sorry, flatc is not available at %r" % _BINARY)
+
 
 # A CSS description for making the visualizer
 _CSS = """
@@ -321,7 +334,7 @@ def CreateHtmlFile(tflite_input, html_output):
   for key, mapping in toplevel_stuff:
     if not mapping:
       mapping = lambda x: x
-    html += "<tr><th>%s</th><td>%s</td></tr>\n" % (key, mapping(data[key]))
+    html += "<tr><th>%s</th><td>%s</td></tr>\n" % (key, mapping(data.get(key)))
   html += "</table>\n"
 
   # Spec on what keys to display

@@ -42,7 +42,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
@@ -76,13 +76,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteSpaceToDepthParams*>(node->builtin_data);
 
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-#define TF_LITE_SPACE_TO_DEPTH(type, scalar)                                  \
-  type::SpaceToDepth<scalar>(                                                 \
-      GetTensorData<scalar>(input), GetTensorDims(input), params->block_size, \
-      GetTensorData<scalar>(output), GetTensorDims(output))
+#define TF_LITE_SPACE_TO_DEPTH(type, scalar)                               \
+  tflite::SpaceToDepthParams op_params;                                    \
+  op_params.block_size = params->block_size;                               \
+  type::SpaceToDepth(op_params, GetTensorShape(input),                     \
+                     GetTensorData<scalar>(input), GetTensorShape(output), \
+                     GetTensorData<scalar>(output))
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
       if (kernel_type == kReference) {
@@ -113,7 +115,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       }
       break;
     default:
-      context->ReportError(context, "Type not currently supported.");
+      context->ReportError(context, "Type %d not currently supported.",
+                           input->type);
       return kTfLiteError;
   }
 #undef TF_LITE_SPACE_TO_DEPTH

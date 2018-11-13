@@ -187,14 +187,14 @@ struct LaunchLRN<GPUDevice, T> {
     const int cols = static_cast<int>(in.dim_size(2));
     const int depth = static_cast<int>(in.dim_size(3));
 
-    perftools::gputools::dnn::BatchDescriptor dimensions_desc;
+    se::dnn::BatchDescriptor dimensions_desc;
     dimensions_desc.set_count(batch)
         .set_height(rows)
         .set_width(cols)
         .set_feature_map_count(depth)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchYXDepth);
+        .set_layout(se::dnn::DataLayout::kBatchYXDepth);
 
-    perftools::gputools::dnn::NormalizeDescriptor normalize_desc;
+    se::dnn::NormalizeDescriptor normalize_desc;
     normalize_desc.set_bias(bias_)
         .set_range(depth_radius_)
         .set_alpha(alpha_)
@@ -404,14 +404,14 @@ struct LaunchLRNGrad<GPUDevice, T> {
     const int64 cols = in_grads.dim_size(2);
     const int64 depth = in_grads.dim_size(3);
 
-    perftools::gputools::dnn::BatchDescriptor dimensions_desc;
+    se::dnn::BatchDescriptor dimensions_desc;
     dimensions_desc.set_count(batch)
         .set_height(rows)
         .set_width(cols)
         .set_feature_map_count(depth)
-        .set_layout(perftools::gputools::dnn::DataLayout::kBatchYXDepth);
+        .set_layout(se::dnn::DataLayout::kBatchYXDepth);
 
-    perftools::gputools::dnn::NormalizeDescriptor normalize_desc;
+    se::dnn::NormalizeDescriptor normalize_desc;
     normalize_desc.set_bias(bias_)
         .set_range(depth_radius_)
         .set_alpha(alpha_)

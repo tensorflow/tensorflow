@@ -19,13 +19,20 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.autograph.converters import break_statements
-from tensorflow.contrib.autograph.converters import converter_test_base
+from tensorflow.contrib.autograph.core import converter_testing
+from tensorflow.python.eager import context as tfe_ctx
+from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
 
 
-class BreakCanonicalizationTest(converter_test_base.TestCase):
+class BreakCanonicalizationTest(converter_testing.TestCase):
 
-  def test_basic_break(self):
+  def assertTransformedEquivalent(self, test_fn, *inputs):
+    with self.converted(test_fn, break_statements, {},
+                        constant_op.constant) as result:
+      self.assertEqual(test_fn(*inputs), result.test_fn(*inputs))
+
+  def test_while_loop(self):
 
     def test_fn(x):
       v = []
@@ -36,17 +43,12 @@ class BreakCanonicalizationTest(converter_test_base.TestCase):
         v.append(x)
       return v
 
-    node = self.parse_and_analyze(test_fn, {})
-    node = break_statements.transform(node, self.ctx)
+    with tfe_ctx.eager_mode():
+      self.assertTransformedEquivalent(test_fn, 0)
+      self.assertTransformedEquivalent(test_fn, 1)
+      self.assertTransformedEquivalent(test_fn, 4)
 
-    with self.compiled(node) as result:
-      self.assertEqual(test_fn(0), result.test_fn(0))
-      self.assertEqual(test_fn(1), result.test_fn(1))
-      self.assertEqual(test_fn(2), result.test_fn(2))
-      self.assertEqual(test_fn(3), result.test_fn(3))
-      self.assertEqual(test_fn(4), result.test_fn(4))
-
-  def test_basic_break_for_loop(self):
+  def test_for_loop(self):
 
     def test_fn(a):
       v = []
@@ -57,30 +59,13 @@ class BreakCanonicalizationTest(converter_test_base.TestCase):
         v.append(x)
       return v
 
-    # The break is incompletely canonicalized for for loops. Everything is
-    # in place except for the condition verification.
-    def test_equiv_fn(a):
-      v = []
-      for x in a:
-        x -= 1
-        if x % 2 == 0:
-          continue
-        v.append(x)
-      return v
+    with self.converted(test_fn, break_statements, {},
+                        constant_op.constant) as result:
+      # The break is incompletely canonicalized. The loop will not interrupt,
+      # but the section following the break will be skipped.
+      self.assertEqual([3], result.test_fn([5, 4]))
 
-    node = self.parse_and_analyze(test_fn, {})
-    node = break_statements.transform(node, self.ctx)
-
-    with self.compiled(node) as result:
-      # The break is incompletely canonicalized. Everything is in place, but
-      # the loop does not break.
-      self.assertEqual(test_equiv_fn([]), result.test_fn([]))
-      self.assertEqual(test_equiv_fn([1]), result.test_fn([1]))
-      self.assertEqual(test_equiv_fn([2]), result.test_fn([2]))
-      self.assertEqual(
-          test_equiv_fn([1, 2, 3, 4]), result.test_fn([1, 2, 3, 4]))
-
-  def test_continue_deeply_nested(self):
+  def test_nested(self):
 
     def test_fn(x):
       v = []
@@ -93,19 +78,59 @@ class BreakCanonicalizationTest(converter_test_base.TestCase):
             u.append(x)
           else:
             w.append(x)
-            continue
+            break
         v.append(x)
       return v, u, w
 
-    node = self.parse_and_analyze(test_fn, {})
-    node = break_statements.transform(node, self.ctx)
+    with tfe_ctx.eager_mode():
+      self.assertTransformedEquivalent(test_fn, 0)
+      self.assertTransformedEquivalent(test_fn, 3)
+      self.assertTransformedEquivalent(test_fn, 11)
 
-    with self.compiled(node) as result:
-      self.assertEqual(test_fn(0), result.test_fn(0))
-      self.assertEqual(test_fn(1), result.test_fn(1))
-      self.assertEqual(test_fn(2), result.test_fn(2))
-      self.assertEqual(test_fn(3), result.test_fn(3))
-      self.assertEqual(test_fn(4), result.test_fn(4))
+  def test_nested_loops(self):
+
+    def test_fn(x):
+      v = []
+      u = []
+      while x > 0:
+        x -= 1
+        y = x
+        while y > 0:
+          y -= 1
+          if y % 2 == 0:
+            break
+          u.append(y)
+        if x == 0:
+          break
+        v.append(x)
+      return v, u
+
+    with tfe_ctx.eager_mode():
+      self.assertTransformedEquivalent(test_fn, 0)
+      self.assertTransformedEquivalent(test_fn, 2)
+      self.assertTransformedEquivalent(test_fn, 3)
+      self.assertTransformedEquivalent(test_fn, 5)
+
+  def test_loop_orelse(self):
+
+    def test_fn(x):
+      v = []
+      u = []
+      while x > 0:
+        x -= 1
+        y = x
+        while y > 1:
+          break
+        else:
+          u.append(y)
+          break
+        v.append(x)
+      return v, u
+
+    with tfe_ctx.eager_mode():
+      self.assertTransformedEquivalent(test_fn, 0)
+      self.assertTransformedEquivalent(test_fn, 2)
+      self.assertTransformedEquivalent(test_fn, 3)
 
 
 if __name__ == '__main__':

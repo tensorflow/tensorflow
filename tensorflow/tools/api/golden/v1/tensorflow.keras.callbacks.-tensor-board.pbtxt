@@ -1,0 +1,42 @@
+path: "tensorflow.keras.callbacks.TensorBoard"
+tf_class {
+  is_instance: "<class \'tensorflow.python.keras.callbacks.TensorBoard\'>"
+  is_instance: "<class \'tensorflow.python.keras.callbacks.Callback\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'log_dir\', \'histogram_freq\', \'batch_size\', \'write_graph\', \'write_grads\', \'write_images\', \'embeddings_freq\', \'embeddings_layer_names\', \'embeddings_metadata\', \'embeddings_data\'], varargs=None, keywords=None, defaults=[\'./logs\', \'0\', \'32\', \'True\', \'False\', \'False\', \'0\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "on_batch_begin"
+    argspec: "args=[\'self\', \'batch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_batch_end"
+    argspec: "args=[\'self\', \'batch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_epoch_begin"
+    argspec: "args=[\'self\', \'epoch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_epoch_end"
+    argspec: "args=[\'self\', \'epoch\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_train_begin"
+    argspec: "args=[\'self\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "on_train_end"
+    argspec: "args=[\'self\', \'logs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "set_model"
+    argspec: "args=[\'self\', \'model\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_params"
+    argspec: "args=[\'self\', \'params\'], varargs=None, keywords=None, defaults=None"
+  }
+}

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.kernels.bcast_ops."""
+"""Tests for tensorflow.kernels.functional_ops."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -34,10 +35,12 @@ from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
+from tensorflow.python.util import compat
 
 
 # pylint: disable=invalid-name
@@ -54,7 +57,7 @@ def simple_scoped_fn(a, x):
 
 class FunctionalOpsTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testFoldl_Simple(self):
     with self.test_session():
       elems = constant_op.constant([1, 2, 3, 4, 5, 6], name="data")
@@ -69,6 +72,26 @@ class FunctionalOpsTest(test.TestCase):
           elems,
           initializer=10)
       self.assertAllEqual(880, self.evaluate(r))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFoldl_SingleInputMultiOutput(self):
+    with self.test_session():
+      elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+      initializer = np.array([1, -1.0])
+      r = functional_ops.foldl(lambda a, x: a + x, elems, initializer)
+      r_value = self.evaluate(r)
+
+      self.assertAllEqual(22, r_value[0])
+      self.assertAllEqual(20, r_value[1])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFoldl_MultiInputSingleOutput(self):
+    with self.test_session():
+      elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+      initializer = np.array(1.0)
+      r = functional_ops.foldl(lambda a, x: a + x[0] + x[1], (elems, -elems),
+                               initializer)
+      self.assertAllEqual(1, self.evaluate(r))
 
   def testFoldl_Scoped(self):
     with self.test_session() as sess:
@@ -89,7 +112,7 @@ class FunctionalOpsTest(test.TestCase):
         self.assertEqual(len(variables.trainable_variables()), 1)
         self.assertAllEqual(880, self.evaluate(r))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testFoldr_Simple(self):
     with self.test_session():
       elems = constant_op.constant([1, 2, 3, 4, 5, 6], name="data")
@@ -104,6 +127,26 @@ class FunctionalOpsTest(test.TestCase):
           elems,
           initializer=10)
       self.assertAllEqual(1282, self.evaluate(r))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFoldr_SingleInputMultiOutput(self):
+    with self.test_session():
+      elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+      initializer = np.array([1, -1.0])
+      r = functional_ops.foldr(lambda a, x: a + x, elems, initializer)
+      r_value = self.evaluate(r)
+
+      self.assertAllEqual(22, r_value[0])
+      self.assertAllEqual(20, r_value[1])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFoldr_MultiInputSingleOutput(self):
+    with self.test_session():
+      elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+      initializer = np.array(1.0)
+      r = functional_ops.foldr(lambda a, x: a + x[0] + x[1], (elems, -elems),
+                               initializer)
+      self.assertAllEqual(1, self.evaluate(r))
 
   def testFoldr_Scoped(self):
     with self.test_session() as sess:
@@ -140,7 +183,7 @@ class FunctionalOpsTest(test.TestCase):
       self.assertAllEqual(720.0, self.evaluate(r))
   # pylint: enable=unnecessary-lambda
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMap_Simple(self):
     with self.test_session():
       nums = [1, 2, 3, 4, 5, 6]
@@ -160,7 +203,7 @@ class FunctionalOpsTest(test.TestCase):
                 values=constant_op.constant([0, 1, 2]),
                 dense_shape=[2, 2]))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMapOverScalarErrors(self):
     with self.assertRaisesRegexp(ValueError, "not scalars"):
       functional_ops.map_fn(lambda x: x, [1, 2])
@@ -209,7 +252,7 @@ class FunctionalOpsTest(test.TestCase):
       r = gradients_impl.gradients(y, elems)[0]
       self.assertAllEqual([4.0, 8.0, 12.0, 16.0, 20.0, 24.0], self.evaluate(r))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMap_SimpleNotTensor(self):
     with self.test_session():
       nums = np.array([1, 2, 3, 4, 5, 6])
@@ -218,7 +261,7 @@ class FunctionalOpsTest(test.TestCase):
       self.assertAllEqual(
           np.array([(x + 3) * 2 for x in nums]), self.evaluate(r))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMap_SingleInputMultiOutput(self):
     with self.test_session():
       nums = np.array([1, 2, 3, 4, 5, 6])
@@ -233,7 +276,7 @@ class FunctionalOpsTest(test.TestCase):
       self.assertAllEqual((nums + 3) * 2, received[0])
       self.assertAllEqual(-(nums + 3) * 2, received[1])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMap_MultiOutputMismatchedDtype(self):
     with self.test_session():
       nums = np.array([1, 2, 3, 4, 5, 6])
@@ -245,7 +288,7 @@ class FunctionalOpsTest(test.TestCase):
             nums,
             dtype=[dtypes.int64, dtypes.int64])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMap_MultiInputSingleOutput(self):
     with self.test_session():
       nums = np.array([1, 2, 3, 4, 5, 6])
@@ -256,7 +299,7 @@ class FunctionalOpsTest(test.TestCase):
       received = self.evaluate(r)
       self.assertAllEqual(nums * nums + (-nums), received)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMap_MultiInputSameStructureOutput(self):
     with self.test_session():
       nums = np.array([1, 2, 3, 4, 5, 6])
@@ -271,7 +314,7 @@ class FunctionalOpsTest(test.TestCase):
       self.assertAllEqual(-nums, received[1])
       self.assertAllEqual(nums, received[2])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScan_Simple(self):
     with self.test_session():
       elems = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="data")
@@ -286,7 +329,24 @@ class FunctionalOpsTest(test.TestCase):
       self.assertAllEqual([2., 4., 12., 48., 240., 1440.], self.evaluate(r))
       # pylint: enable=unnecessary-lambda
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
+  def testScan_Reverse(self):
+    with self.test_session():
+      elems = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="data")
+      v = constant_op.constant(2.0, name="v")
+
+      # pylint: disable=unnecessary-lambda
+      r = functional_ops.scan(lambda a, x: math_ops.multiply(a, x), elems,
+                              reverse=True)
+      self.assertAllEqual([720., 720., 360., 120., 30., 6.], self.evaluate(r))
+      r = functional_ops.scan(
+          lambda a, x: math_ops.multiply(a, x), elems, initializer=v,
+          reverse=True)
+      self.assertAllEqual([1440., 1440., 720., 240., 60., 12.],
+                          self.evaluate(r))
+      # pylint: enable=unnecessary-lambda
+
+  @test_util.run_in_graph_and_eager_modes
   def testScan_SingleInputMultiOutput(self):
     with self.test_session():
       elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
@@ -298,7 +358,7 @@ class FunctionalOpsTest(test.TestCase):
       self.assertAllEqual([1.0, 2.0, 6.0, 24.0, 120.0, 720.0], r_value[0])
       self.assertAllEqual([1.0, -2.0, 6.0, -24.0, 120.0, -720.0], r_value[1])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScan_MultiInputSingleOutput(self):
     with self.test_session():
       elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
@@ -308,7 +368,7 @@ class FunctionalOpsTest(test.TestCase):
                               (elems + 1, -elems), initializer)
       self.assertAllEqual([1.0, 1.0, 1.0, 1.0, 1.0, 1.0], self.evaluate(r))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScan_MultiInputSameTypeOutput(self):
     with self.test_session():
       elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
@@ -318,7 +378,7 @@ class FunctionalOpsTest(test.TestCase):
       self.assertAllEqual(np.cumsum(elems), r_value[0])
       self.assertAllEqual(np.cumsum(-elems), r_value[1])
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScan_MultiOutputMismatchedInitializer(self):
     with self.test_session():
       elems = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
@@ -349,7 +409,7 @@ class FunctionalOpsTest(test.TestCase):
         results = np.array([6, 16, 38, 84, 178, 368])
         self.assertAllEqual(results, self.evaluate(r))
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScanFoldl_Nested(self):
     with self.test_session():
       elems = constant_op.constant([1.0, 2.0, 3.0, 4.0], name="data")
@@ -408,7 +468,7 @@ class FunctionalOpsTest(test.TestCase):
       variables.global_variables_initializer().run()
       sess.run(grad)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testFoldShape(self):
     with self.test_session():
       x = constant_op.constant([[1, 2, 3], [4, 5, 6]])
@@ -420,7 +480,7 @@ class FunctionalOpsTest(test.TestCase):
       y = functional_ops.foldl(fn, x, initializer=initializer)
       self.assertAllEqual(y.get_shape(), self.evaluate(y).shape)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMapShape(self):
     with self.test_session():
       x = constant_op.constant([[1, 2, 3], [4, 5, 6]])
@@ -432,7 +492,7 @@ class FunctionalOpsTest(test.TestCase):
     y = functional_ops.map_fn(lambda e: e, x)
     self.assertIs(None, y.get_shape().dims)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testMapEmptyScalar(self):
     with self.test_session():
       map_return = functional_ops.map_fn(lambda x: 1, constant_op.constant([]))
@@ -448,7 +508,7 @@ class FunctionalOpsTest(test.TestCase):
       self.assertAllEqual([0, 3, 2], map_return.get_shape().dims)
       self.assertAllEqual([0, 3, 2], self.evaluate(map_return).shape)
 
-  @test_util.run_in_graph_and_eager_modes()
+  @test_util.run_in_graph_and_eager_modes
   def testScanShape(self):
     with self.test_session():
       x = constant_op.constant([[1, 2, 3], [4, 5, 6]])
@@ -545,6 +605,25 @@ class FunctionalOpsTest(test.TestCase):
       mul = sess.run(remote_op)
       self.assertEqual(mul, [6])
 
+  def testRemoteFunctionSameDeviceDirectSession(self):
+
+    @function.Defun(dtypes.int32, dtypes.int32)
+    def _remote_fn(a, b):
+      return math_ops.multiply(a, b)
+
+    with ops.device("/cpu:0"):
+      a = variables.Variable(2, dtype=dtypes.int32)
+      b = variables.Variable(3, dtype=dtypes.int32)
+
+    with ops.device("/cpu:0"):
+      remote_op = functional_ops.remote_call(
+          args=[a, b], Tout=[dtypes.int32], f=_remote_fn, target="/cpu:0")
+
+    with self.test_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      mul = sess.run(remote_op)
+      self.assertEqual(mul, [6])
+
   def testRemoteFunctionCPUGPU(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -593,6 +672,24 @@ class FunctionalOpsTest(test.TestCase):
       mul = sess.run(remote_op)
       self.assertEqual(mul, 9.0)
 
+  def testRemoteFunctionGPUCPUStrings(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    @function.Defun(dtypes.string)
+    def _remote_fn(inp):
+      return array_ops.identity(inp)
+
+    a = array_ops.constant("a")
+
+    with ops.device("/gpu:0"):
+      remote_op = functional_ops.remote_call(
+          args=[a], Tout=[dtypes.string], f=_remote_fn, target="/cpu:0")
+
+    with self.test_session() as sess:
+      ret = sess.run(remote_op)
+      self.assertAllEqual(ret, [b"a"])
+
   def testRemoteFunctionCrossProcess(self):
     workers, _ = test_util.create_local_cluster(2, 1)
 
@@ -628,117 +725,117 @@ class FunctionalOpsTest(test.TestCase):
 
     with self.test_session(use_gpu=False) as sess:
 
-      def Run(x):
-        return sess.run(
-            functional_ops.If(math_ops.greater(x, 0), [x], Twice, Thrice))[0]
+      x = array_ops.placeholder(dtypes.float32)
+      ret = functional_ops.If(math_ops.greater(x, 0), [x], Twice, Thrice)[0]
 
-      self.assertAllEqual(Run(9.), 18.)
-      self.assertAllEqual(Run(-8.), -23.)
-      self.assertAllEqual(Run(0.), 1.)
+      self.assertAllEqual(sess.run(ret, feed_dict={x: 9.}), 18.)
+      self.assertAllEqual(sess.run(ret, feed_dict={x: -8.}), -23.)
+      self.assertAllEqual(sess.run(ret, feed_dict={x: 0.}), 1.)
 
   def testWhile(self):
 
-    @function.Defun(*[dtypes.float32] * 2)
-    def Cond(n, unused_x):
-      return n > 0
+    for use_gpu in (True, False):
+      with ops.Graph().as_default() as g:
 
-    @function.Defun(*[dtypes.float32] * 2)
-    def Body(n, x):
-      return n - 1, x + n
+        @function.Defun(*[dtypes.float32] * 2)
+        def Cond(n, unused_x):
+          return n > 0
 
-    # TODO(b/65752372): Set `use_gpu=False` because
-    # `functional_ops.While()` does not reliably work on GPU (apparently
-    # because the result of evaluating the condition may be in device
-    # memory, but it is read on the host).
-    with self.test_session(use_gpu=False) as sess:
+        @function.Defun(*[dtypes.float32] * 2)
+        def Body(n, x):
+          return n - 1, x + n
 
-      def Run(n):
-        return sess.run(functional_ops.While([n, 0.], Cond, Body))[1]
+        def Run(sess, n):
+          return sess.run(functional_ops.While([n, 0.], Cond, Body))[1]
 
-      self.assertAllEqual(Run(20.), 210.)
-      self.assertAllEqual(Run(100.), 5050.)
+        with self.test_session(graph=g, use_gpu=use_gpu) as sess:
+          self.assertAllEqual(Run(sess, 20.), 210.)
+          self.assertAllEqual(Run(sess, 100.), 5050.)
 
   def testWhileError(self):
+    for use_gpu in (True, False):
+      with ops.Graph().as_default() as g:
 
-    @function.Defun(*[dtypes.float32] * 2)
-    def Cond(n, unused_x):
-      return n > 0
+        @function.Defun(*[dtypes.float32] * 2)
+        def Cond(n, unused_x):
+          return n > 0
 
-    @function.Defun(*[dtypes.float32] * 2)
-    def CondReturnsTooManyArgs(n, x):
-      return n > 0, x
+        @function.Defun(*[dtypes.float32] * 2)
+        def CondReturnsTooManyArgs(n, x):
+          return n > 0, x
 
-    @function.Defun(*[dtypes.float32] * 2)
-    def Body(n, x):
-      return n - 1, x + n
+        @function.Defun(*[dtypes.float32] * 2)
+        def Body(n, x):
+          return n - 1, x + n
 
-    @function.Defun(*[dtypes.float32] * 2)
-    def BodyReturnsTooManyArgs(n, x):
-      return n - 1, x + n, x
+        @function.Defun(*[dtypes.float32] * 2)
+        def BodyReturnsTooManyArgs(n, x):
+          return n - 1, x + n, x
 
-    # TODO(b/65752372): Set `use_gpu=False` because
-    # `functional_ops.While()` does not reliably work on GPU (apparently
-    # because the result of evaluating the condition may be in device
-    # memory, but it is read on the host).
-    with self.test_session(use_gpu=False):
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "Expected a single scalar.*got 2 tensors."):
-        functional_ops.While([5., 0.], CondReturnsTooManyArgs, Body)[0].eval()
-      with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          "While loop body returned 3 arguments. Expected: 2"):
-        functional_ops.While([5., 0.], Cond, BodyReturnsTooManyArgs)[0].eval()
+        with self.test_session(graph=g, use_gpu=use_gpu):
+          with self.assertRaisesRegexp(
+              errors.InvalidArgumentError,
+              "Expected a single scalar.*got 2 tensors."):
+            functional_ops.While([5., 0.], CondReturnsTooManyArgs,
+                                 Body)[0].eval()
+          with self.assertRaisesRegexp(
+              errors.InvalidArgumentError,
+              "While loop body returned 3 arguments. Expected: 2"):
+            functional_ops.While([5., 0.], Cond,
+                                 BodyReturnsTooManyArgs)[0].eval()
 
   def testWhileInMultipleSubgraphs(self):
 
-    @function.Defun(* [dtypes.float32] * 2)
-    def Cond(n, x):  # pylint: disable=unused-argument
-      return n > 0
+    for use_gpu in (True, False):
+      with ops.Graph().as_default() as g:
 
-    @function.Defun(* [dtypes.float32] * 2)
-    def Body(n, x):
-      return n - 1, x + n
+        @function.Defun(*[dtypes.float32] * 2)
+        def Cond(n, x):  # pylint: disable=unused-argument
+          return n > 0
 
-    # TODO(b/65752372): Set `use_gpu=False` because
-    # `functional_ops.While()` does not reliably work on GPU (apparently
-    # because the result of evaluating the condition may be in device
-    # memory, but it is read on the host).
-    with self.test_session(use_gpu=False) as sess:
-      n = array_ops.placeholder(dtypes.float32)
-      _, result = functional_ops.While([n, 0.], Cond, Body)
-      c = constant_op.constant(37.)
+        @function.Defun(*[dtypes.float32] * 2)
+        def Body(n, x):
+          return n - 1, x + n
 
-      self.assertAllEqual(210., sess.run(result, feed_dict={n: 20.}))
-      self.assertAllEqual(5050., sess.run(result, feed_dict={n: 100.}))
-      # Test that the result is the same when we run a different subgraph.
-      self.assertAllEqual(5050., sess.run([result, c], feed_dict={n: 100.})[0])
+        with self.test_session(graph=g, use_gpu=use_gpu) as sess:
+          n = array_ops.placeholder(dtypes.float32)
+          _, result = functional_ops.While([n, 0.], Cond, Body)
+          c = constant_op.constant(37.)
 
-  def _tfSum(self, rewrite_with_while):
-    # On GPU, don't rewrite using a while loop.
-    use_gpu = not rewrite_with_while
-    with self.test_session(use_gpu=use_gpu) as sess:
+          self.assertAllEqual(210., sess.run(result, feed_dict={n: 20.}))
+          self.assertAllEqual(5050., sess.run(result, feed_dict={n: 100.}))
+          # Test that the result is the same when we run a different subgraph.
+          self.assertAllEqual(5050.,
+                              sess.run([result, c], feed_dict={n: 100.})[0])
 
-      @function.Defun(dtypes.int32, dtypes.float32)
-      def Body(n, x):
-        return x + math_ops.to_float(n)
+  def _tfSum(self, use_gpu, rewrite_with_while):
+    with ops.Graph().as_default() as g:
+      with self.test_session(graph=g, use_gpu=use_gpu) as sess:
 
-      xs = [
-          # 1 + 2  + ... + 20
-          functional_ops.For(
-              1, 21, 1, [0.], Body, rewrite_with_while=rewrite_with_while)[0],
-          # 100 + 99 + ... + 1
-          functional_ops.For(
-              100, 0, -1, [0.], Body, rewrite_with_while=rewrite_with_while)[0],
-      ]
-      xvals = sess.run(xs)
-    self.assertAllEqual(210, xvals[0])
-    self.assertAllEqual(5050, xvals[1])
+        @function.Defun(dtypes.int32, dtypes.float32)
+        def Body(n, x):
+          return x + math_ops.to_float(n)
+
+        xs = [
+            # 1 + 2  + ... + 20
+            functional_ops.For(
+                1, 21, 1, [0.], Body, rewrite_with_while=rewrite_with_while)[0],
+            # 100 + 99 + ... + 1
+            functional_ops.For(
+                100, 0, -1, [0.], Body, rewrite_with_while=rewrite_with_while)
+            [0],
+        ]
+        xvals = sess.run(xs)
+      self.assertAllEqual(210, xvals[0])
+      self.assertAllEqual(5050, xvals[1])
 
   def testFor(self):
-    self._tfSum(False)
+    for use_gpu in (True, False):
+      self._tfSum(use_gpu, False)
 
   def testForWithWhile(self):
-    self._tfSum(True)
+    for use_gpu in (True, False):
+      self._tfSum(use_gpu, True)
 
   def testForWithWhileNaming(self):
     g = ops.Graph()
@@ -774,10 +871,6 @@ class FunctionalOpsTest(test.TestCase):
       return x + math_ops.to_float(n) + v, x2 + v
 
     for rewrite_with_while in (True, False):
-      # TODO(b/65752372): Set `use_gpu=False` because
-      # `functional_ops.While()` does not reliably work on GPU (apparently
-      # because the result of evaluating the condition may be in device
-      # memory, but it is read on the host).
       use_gpu = not rewrite_with_while
       with self.test_session(use_gpu=use_gpu) as sess:
         result_nullary = functional_ops.For(
@@ -883,6 +976,162 @@ class FunctionalOpsTest(test.TestCase):
       bvals = [Poly(b), Grad(b)]
       self.assertAllEqual(sess.run(avals), [8., 4.])
       self.assertAllEqual(sess.run(bvals), [17., 16.])
+
+
+# TODO(akshayka): Replace `function.Defun` with tf.contrib.eager.defun` in the
+# below test cases.
+class PartitionedCallTest(test.TestCase):
+
+  def testBasicSingleDevice(self):
+
+    @function.Defun(*[dtypes.float32] * 2)
+    def Body(x, y):
+      with ops.device("/cpu:0"):
+        a = x + x
+        b = y + y
+        return a + b
+
+    output, = self.evaluate(
+        functional_ops.partitioned_call(
+            args=[constant_op.constant(1.),
+                  constant_op.constant(2.)], f=Body))
+    self.assertEqual(output, 6.)
+
+  def testBasicMultiDevice(self):
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
+
+    @function.Defun(*[dtypes.float32] * 2)
+    def Body(x, y):
+      # if x = 1, y = 2, ...
+      with ops.device("/cpu:0"):
+        # a:= 1 + 1 = 2
+        a = x + x
+      with ops.device("/cpu:1"):
+        # b:= 2 + 2 = 4
+        b = a + y
+      with ops.device("/cpu:2"):
+        # c:= 2 + 4 = 6
+        c = a + b
+      # a + b + c = 2 + 4 + 6 = 12
+      return a + b + c
+
+    with self.test_session(config=config):
+      output, = functional_ops.partitioned_call(
+          args=[constant_op.constant(1.),
+                constant_op.constant(2.)], f=Body)
+      self.assertEqual(output.eval(), 12.)
+
+  def testBasicMultiDeviceGPU(self):
+    if not test_util.is_gpu_available():
+      return
+
+    @function.Defun(*[dtypes.float32] * 2)
+    def Body(x, y):
+      with ops.device("/gpu:0"):
+        a = x + x
+        b = y + y
+      with ops.device("/cpu:0"):
+        c = a + b
+        return c
+
+    output, = self.evaluate(
+        functional_ops.partitioned_call(
+            args=[constant_op.constant(1.),
+                  constant_op.constant(2.)], f=Body))
+    self.assertEqual(output, 6.)
+
+  def testBasicNoDeviceAnnotations(self):
+
+    @function.Defun(*[dtypes.float32] * 2)
+    def Body(x, y):
+      a = x + x
+      b = y + y
+      return a + b
+
+    output, = self.evaluate(
+        functional_ops.partitioned_call(
+            args=[constant_op.constant(1.),
+                  constant_op.constant(2.)], f=Body))
+    self.assertEqual(output, 6.)
+
+  def testShardsRunOnRequestedDevices(self):
+    config = config_pb2.ConfigProto(device_count={"CPU": 4})
+
+    @function.Defun()
+    def Body():
+      # Serialize DT_RESOURCE handles as DT_STRINGs, which encode the device on
+      # which the resource was created, so that we can verify that ops were
+      # actually run on the requested devices.
+      #
+      # TODO(akshayka): Provide a cleaner, more idiomatic API for obtaining the
+      # name of the device on which a resource lives / for determining the
+      # device on which an op ran.
+      with ops.device("/cpu:0"):
+        s1 = iterator_ops.Iterator.from_structure(
+            (dtypes.float32,)).string_handle()
+      with ops.device("/cpu:1"):
+        s2 = iterator_ops.Iterator.from_structure(
+            (dtypes.float32,)).string_handle()
+      with ops.device("/cpu:2"):
+        s3 = iterator_ops.Iterator.from_structure(
+            (dtypes.float32,)).string_handle()
+      return s1, s2, s3
+
+    with self.test_session(config=config, use_gpu=True) as sess:
+      outputs = sess.run(functional_ops.partitioned_call(args=[], f=Body))
+    self.assertIn(compat.as_bytes("CPU:0"), outputs[0])
+    self.assertIn(compat.as_bytes("CPU:1"), outputs[1])
+    self.assertIn(compat.as_bytes("CPU:2"), outputs[2])
+
+  def testAssignAddResourceVariable(self):
+
+    v = resource_variable_ops.ResourceVariable(1.0)
+
+    @function.Defun()
+    def AssignAdd():
+      v.assign_add(1.0)
+
+    op = functional_ops.partitioned_call(
+        args=AssignAdd.captured_inputs, f=AssignAdd)
+    _ = self.evaluate(variables.global_variables_initializer())
+    _ = self.evaluate(op)
+    value = self.evaluate(v.read_value())
+    self.assertEqual(value, 2.0)
+
+  def testFunctionWithResourcesOnDifferentDevices(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPUs available.")
+
+    with ops.device("/cpu:0"):
+      v_cpu_zero = resource_variable_ops.ResourceVariable(
+          [0.0, 1.0, 2.0], name="v_cpu_zero")
+
+    with ops.device("/cpu:1"):
+      v_cpu_one = resource_variable_ops.ResourceVariable(
+          [0.0, 1.0, 2.0], name="v_cpu_one")
+
+    with ops.device("/gpu:0"):
+      v_gpu = resource_variable_ops.ResourceVariable(
+          [0.0, 1.0, 2.0], name="v_gpu")
+
+    def sum_gather():
+      cpu_result = math_ops.reduce_sum(array_ops.gather(v_cpu_zero, [1, 2]))
+      also_cpu_result = math_ops.reduce_sum(array_ops.gather(v_cpu_one, [1, 2]))
+      gpu_result = math_ops.reduce_sum(array_ops.gather(v_gpu, [1, 2]))
+      return cpu_result, also_cpu_result, gpu_result
+
+    defined = function.Defun()(sum_gather)
+    with self.test_session(
+        config=config_pb2.ConfigProto(
+            allow_soft_placement=False,
+            log_device_placement=True,
+            device_count={"CPU": 2})) as sess:
+      sess.run(variables.global_variables_initializer())
+      expected = sess.run(sum_gather())
+      result = sess.run(
+          functional_ops.partitioned_call(
+              args=defined.captured_inputs, f=defined))
+      self.assertAllEqual(expected, result)
 
 
 if __name__ == "__main__":

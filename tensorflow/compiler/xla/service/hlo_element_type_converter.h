@@ -32,9 +32,7 @@ class HloElementTypeConverter : public HloPassInterface {
   HloElementTypeConverter(PrimitiveType eliminate_type,
                           PrimitiveType replace_with_type);
 
-  tensorflow::StringPiece name() const override {
-    return "element_type_converter";
-  }
+  absl::string_view name() const override { return "element_type_converter"; }
 
   // Returns the pass on the module and returns whether the module was modified.
   StatusOr<bool> Run(HloModule* module) override;

@@ -28,7 +28,7 @@ namespace toco {
 bool RemoveTensorFlowIdentity::Run(Model* model, std::size_t op_index) {
   const auto passthru_it = model->operators.begin() + op_index;
   const auto* passthru_op = passthru_it->get();
-  if (passthru_op->type != OperatorType::kTensorFlowIdentity) {
+  if (passthru_op->type != OperatorType::kIdentity) {
     return false;
   }
 

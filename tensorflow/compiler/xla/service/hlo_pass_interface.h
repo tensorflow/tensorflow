@@ -29,7 +29,7 @@ namespace xla {
 class HloPassInterface {
  public:
   virtual ~HloPassInterface() = default;
-  virtual tensorflow::StringPiece name() const = 0;
+  virtual absl::string_view name() const = 0;
 
   // Run the pass on the given HLO module.  Return whether it modified the
   // module.

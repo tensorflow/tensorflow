@@ -130,22 +130,22 @@ void RunSafeCastTests() {
 }
 
 TEST(QuantizationUtilTest, SafeCast) {
-  RunSafeCastTests<float, int8>();
-  RunSafeCastTests<double, int8>();
-  RunSafeCastTests<float, int16>();
-  RunSafeCastTests<double, int16>();
-  RunSafeCastTests<float, int32>();
-  RunSafeCastTests<double, int32>();
-  RunSafeCastTests<float, int64>();
-  RunSafeCastTests<double, int64>();
-  RunSafeCastTests<float, uint8>();
-  RunSafeCastTests<double, uint8>();
-  RunSafeCastTests<float, uint16>();
-  RunSafeCastTests<double, uint16>();
-  RunSafeCastTests<float, uint32>();
-  RunSafeCastTests<double, uint32>();
-  RunSafeCastTests<float, uint64>();
-  RunSafeCastTests<double, uint64>();
+  RunSafeCastTests<float, int8_t>();
+  RunSafeCastTests<double, int8_t>();
+  RunSafeCastTests<float, int16_t>();
+  RunSafeCastTests<double, int16_t>();
+  RunSafeCastTests<float, int32_t>();
+  RunSafeCastTests<double, int32_t>();
+  RunSafeCastTests<float, int64_t>();
+  RunSafeCastTests<double, int64_t>();
+  RunSafeCastTests<float, uint8_t>();
+  RunSafeCastTests<double, uint8_t>();
+  RunSafeCastTests<float, uint16_t>();
+  RunSafeCastTests<double, uint16_t>();
+  RunSafeCastTests<float, uint32_t>();
+  RunSafeCastTests<double, uint32_t>();
+  RunSafeCastTests<float, uint64_t>();
+  RunSafeCastTests<double, uint64_t>();
 }
 
 // Example taken from http://www.tensorflow.org/performance/quantization
@@ -167,6 +167,7 @@ TEST(QuantizationUtilTest, ChooseQuantizationParamsZeroPointOnMinBoundary) {
   EXPECT_EQ(qp.zero_point, 0);
 }
 
+#ifdef GTEST_HAS_DEATH_TEST
 TEST(QuantizationUtilTest, ChooseQuantizationParamsZeroNotInRange) {
   // Assumption is that zero is within the range.
   EXPECT_DEATH(ChooseQuantizationParams<uint8>(10.0, 30.0), "");
@@ -176,6 +177,7 @@ TEST(QuantizationUtilTest, ChooseQuantizationParamsEmptyRangePositive) {
   // Assumption is that zero is within the range.
   EXPECT_DEATH(ChooseQuantizationParams<uint8>(30.0, 30.0), "");
 }
+#endif  // GTEST_HAS_DEATH_TEST
 
 TEST(QuantizationUtilTest, ChooseQuantizationParamsEmptyRangeZero) {
   QuantizationParams qp = ChooseQuantizationParams<uint8>(0.0, 0.0);
@@ -189,25 +191,26 @@ TEST(QuantizationUtilTest, ChooseQuantizationParamsZeroPointOnMaxBoundary) {
   EXPECT_EQ(qp.zero_point, 255);
 }
 
+#ifdef GTEST_HAS_DEATH_TEST
 TEST(QuantizationUtilTest, ChooseQuantizationParamsInvalidRange) {
   EXPECT_DEATH(ChooseQuantizationParams<uint8>(10.0, -30.0), "");
 }
 
-TEST(QuantizationUtilTest, QuantizeMultiplierSmallerThanOne) {
+TEST(QuantizationUtilTest, QuantizeMultiplierSmallerThanOneExp) {
   auto quantize = [](double d) {
     int32_t q;
     int s;
-    QuantizeMultiplierSmallerThanOne(d, &q, &s);
+    QuantizeMultiplierSmallerThanOneExp(d, &q, &s);
     return std::pair<int32_t, int>{q, s};
   };
 
   EXPECT_DEATH(quantize(-0.1), "");
   EXPECT_DEATH(quantize(0.0), "");
-  EXPECT_THAT(quantize(0.25), Pair(1073741824, 1));
+  EXPECT_THAT(quantize(0.25), Pair(1073741824, -1));
 
   // Around 0.5 we can see the change in exponent and how we try hard to
   // void hitting max int32.
-  EXPECT_THAT(quantize(0.50 - 5e-9), Pair(2147483627, 1));
+  EXPECT_THAT(quantize(0.50 - 5e-9), Pair(2147483627, -1));
   EXPECT_THAT(quantize(0.50 - 1e-10), Pair(1073741824, 0));
   EXPECT_THAT(quantize(0.50), Pair(1073741824, 0));
 
@@ -261,6 +264,7 @@ TEST(QuantizationUtilTest, PreprocessSoftmaxScaling) {
   EXPECT_THAT(quantize(2.0, 16.0, 5), Pair(2147483647, 31));
   EXPECT_THAT(quantize(2.0, 8.0, 5), Pair(1073741824, 31));
 }
+#endif  // GTEST_HAS_DEATH_TEST
 
 TEST(QuantizationUtilTest, CalculateInputRadius) {
   EXPECT_EQ(CalculateInputRadius(4, 27), 15);

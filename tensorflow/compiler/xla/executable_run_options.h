@@ -16,26 +16,27 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_EXECUTABLE_RUN_OPTIONS_H_
 #define TENSORFLOW_COMPILER_XLA_EXECUTABLE_RUN_OPTIONS_H_
 
-// Intentionally forward declared so that ExecutableRunOptions can be linked
+// Pulls in the ::stream_executor -> ::xla::se namespace alias.
+#include "tensorflow/compiler/xla/types.h"
+
+// These classes are forward declared so that ExecutableRunOptions can be linked
 // into an XLA-compiled binary without having to link all of the pointed-to
 // objects (e.g., for an ahead-of-time compiled CPU binary, the gpu tools don't
 // need to be linked).
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 class Stream;
 class Platform;
-}
-}
+}  // namespace stream_executor
 
 namespace tensorflow {
 namespace thread {
 class ThreadPool;
-}
-}
+}  // namespace thread
+}  // namespace tensorflow
 
 namespace Eigen {
 struct ThreadPoolDevice;
-}
+}  // namespace Eigen
 
 namespace xla {
 
@@ -61,14 +62,8 @@ class ExecutableRunOptions {
   // If set, this is the stream to run the computation on. The platform of the
   // stream must match the platform the executable was built for.  A value of
   // nullptr indicates the option has not been set.
-  ExecutableRunOptions& set_stream(perftools::gputools::Stream* stream);
-  perftools::gputools::Stream* stream() const;
-
-  // Sets the thread pool on which to run parallel CPU backend
-  // computations. Does not take ownership.
-  ExecutableRunOptions& set_inter_op_thread_pool(
-      tensorflow::thread::ThreadPool* inter_op_thread_pool);
-  tensorflow::thread::ThreadPool* inter_op_thread_pool() const;
+  ExecutableRunOptions& set_stream(stream_executor::Stream* stream);
+  stream_executor::Stream* stream() const;
 
   // Sets the thread pool device on which to run Eigen subcomputations.
   // Does not take ownership.
@@ -91,8 +86,7 @@ class ExecutableRunOptions {
   DeviceMemoryAllocator* allocator_ = nullptr;
   int device_ordinal_ = -1;
   DeviceAssignment* device_assignment_ = nullptr;
-  perftools::gputools::Stream* stream_ = nullptr;
-  tensorflow::thread::ThreadPool* inter_op_thread_pool_ = nullptr;
+  stream_executor::Stream* stream_ = nullptr;
   const Eigen::ThreadPoolDevice* intra_op_thread_pool_ = nullptr;
   ExecutionProfile* execution_profile_ = nullptr;
   int rng_seed_ = 0;

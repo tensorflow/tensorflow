@@ -175,6 +175,8 @@ class DeviceAssignment(object):
     """Returns the physical topology coordinates of a logical core."""
     if logical_core is None:
       logical_core = np.array([0, 0, 0], np.int32)
+    else:
+      logical_core = np.asarray(logical_core)
 
     if any(logical_core < 0) or any(logical_core >= self.computation_shape):
       raise ValueError("Invalid core {}; computation shape is {}".format(

@@ -32,7 +32,7 @@ class SparseCrossOpTest(test.TestCase):
 
   def test_simple(self):
     """Tests a simple scenario."""
-    op = sparse_ops._sparse_cross([
+    op = sparse_ops.sparse_cross([
         self._sparse_tensor([['batch1-FC1-F1'],
                              ['batch2-FC1-F1', 'batch2-FC1-F2']]),
         self._sparse_tensor([['batch1-FC2-F1'],
@@ -47,7 +47,7 @@ class SparseCrossOpTest(test.TestCase):
 
   def test_dense(self):
     """Tests only dense inputs."""
-    op = sparse_ops._sparse_cross([
+    op = sparse_ops.sparse_cross([
         constant_op.constant([['batch1-FC1-F1', 'batch1-FC1-F2'],
                               ['batch2-FC1-F1', 'batch2-FC1-F2']],
                              dtypes.string),
@@ -67,7 +67,7 @@ class SparseCrossOpTest(test.TestCase):
 
   def test_integer_mixed_string_sparse(self):
     """Tests mixed type."""
-    op = sparse_ops._sparse_cross([
+    op = sparse_ops.sparse_cross([
         self._sparse_tensor([[11], [333, 55555]]),
         self._sparse_tensor([['batch1-FC2-F1'],
                              ['batch2-FC2-F1', 'batch2-FC2-F2']])
@@ -81,7 +81,7 @@ class SparseCrossOpTest(test.TestCase):
 
   def test_integer_mixed_string_dense(self):
     """Tests mixed dense inputs."""
-    op = sparse_ops._sparse_cross([
+    op = sparse_ops.sparse_cross([
         constant_op.constant([[11, 333], [55555, 999999]], dtypes.int64),
         constant_op.constant([['batch1-FC2-F1', 'batch1-FC2-F2'],
                               ['batch2-FC2-F1', 'batch2-FC2-F2']],
@@ -99,7 +99,7 @@ class SparseCrossOpTest(test.TestCase):
 
   def test_sparse_cross_dense(self):
     """Tests sparse and dense inputs."""
-    op = sparse_ops._sparse_cross([
+    op = sparse_ops.sparse_cross([
         self._sparse_tensor([['batch1-FC1-F1'],
                              ['batch2-FC1-F1', 'batch2-FC1-F2']]),
         constant_op.constant([['batch1-FC2-F1', 'batch1-FC2-F2'],
@@ -116,7 +116,7 @@ class SparseCrossOpTest(test.TestCase):
 
   def test_integer_sparse_input(self):
     """Tests mixed type sparse and dense inputs."""
-    op = sparse_ops._sparse_cross([
+    op = sparse_ops.sparse_cross([
         self._sparse_tensor([[11], [333, 5555]]),
         constant_op.constant([['batch1-FC2-F1', 'batch1-FC2-F2'],
                               ['batch2-FC2-F1', 'batch2-FC2-F2']],
@@ -132,7 +132,7 @@ class SparseCrossOpTest(test.TestCase):
 
   def test_permutation_3x3x3(self):
     """Tests 3x3x3 permutation."""
-    op = sparse_ops._sparse_cross([
+    op = sparse_ops.sparse_cross([
         self._sparse_tensor(
             [['batch1-FC1-F1', 'batch1-FC1-F2', 'batch1-FC1-F3']]),
         self._sparse_tensor(
@@ -174,7 +174,7 @@ class SparseCrossOpTest(test.TestCase):
 
   def test_permutation_3x1x2(self):
     """Tests 3x1x2 permutation."""
-    op = sparse_ops._sparse_cross([
+    op = sparse_ops.sparse_cross([
         self._sparse_tensor(
             [['batch1-FC1-F1', 'batch1-FC1-F2', 'batch1-FC1-F3']]),
         self._sparse_tensor([['batch1-FC2-F1']]),
@@ -203,8 +203,9 @@ class SparseCrossOpTest(test.TestCase):
       col2.append(['batch%d-FC2-F1' % b])
       col3.append(['batch%d-FC3-F1' % b, 'batch%d-FC3-F2' % b])
 
-    op = sparse_ops._sparse_cross([
-        self._sparse_tensor(col1), self._sparse_tensor(col2),
+    op = sparse_ops.sparse_cross([
+        self._sparse_tensor(col1),
+        self._sparse_tensor(col2),
         self._sparse_tensor(col3)
     ])
 
@@ -228,7 +229,7 @@ class SparseCrossOpTest(test.TestCase):
 
     The crossed tensor should be empty.
     """
-    op = sparse_ops._sparse_cross([
+    op = sparse_ops.sparse_cross([
         self._sparse_tensor([['batch1-FC1-F1', 'batch1-FC1-F2']]),
         self._sparse_tensor([], 1),
         self._sparse_tensor([['batch1-FC3-F1', 'batch1-FC3-F2']])
@@ -241,7 +242,7 @@ class SparseCrossOpTest(test.TestCase):
 
     Cross for the corresponding batch should be empty.
     """
-    op = sparse_ops._sparse_cross([
+    op = sparse_ops.sparse_cross([
         self._sparse_tensor([['batch1-FC1-F1', 'batch1-FC1-F2']], 2),
         self._sparse_tensor([['batch1-FC2-F1'], ['batch2-FC2-F1']], 2),
         self._sparse_tensor([['batch1-FC3-F1', 'batch1-FC3-F2']], 2)
@@ -260,27 +261,27 @@ class SparseCrossOpTest(test.TestCase):
 
     The crossed tensor should be empty.
     """
-    op = sparse_ops._sparse_cross([
-        self._sparse_tensor([]), self._sparse_tensor([]),
+    op = sparse_ops.sparse_cross([
+        self._sparse_tensor([]),
+        self._sparse_tensor([]),
         self._sparse_tensor([])
     ])
     with self.test_session() as sess:
       self._assert_sparse_tensor_empty(sess.run(op))
 
   def test_hashed_zero_bucket_no_hash_key(self):
-    op = sparse_ops._sparse_cross_hashed(
-        [
-            self._sparse_tensor([['batch1-FC1-F1']]),
-            self._sparse_tensor([['batch1-FC2-F1']]),
-            self._sparse_tensor([['batch1-FC3-F1']])
-        ])
+    op = sparse_ops.sparse_cross_hashed([
+        self._sparse_tensor([['batch1-FC1-F1']]),
+        self._sparse_tensor([['batch1-FC2-F1']]),
+        self._sparse_tensor([['batch1-FC3-F1']])
+    ])
     # Check actual hashed output to prevent unintentional hashing changes.
     expected_out = self._sparse_tensor([[1971693436396284976]])
     with self.test_session() as sess:
       self._assert_sparse_tensor_equals(expected_out, sess.run(op))
 
   def test_hashed_zero_bucket(self):
-    op = sparse_ops._sparse_cross_hashed(
+    op = sparse_ops.sparse_cross_hashed(
         [
             self._sparse_tensor([['batch1-FC1-F1']]),
             self._sparse_tensor([['batch1-FC2-F1']]),
@@ -294,7 +295,7 @@ class SparseCrossOpTest(test.TestCase):
 
   # TODO(sibyl-Aix6ihai): Add benchmark to compare Hashed vs Non-hashed.
   def test_hashed_no_hash_key(self):
-    op = sparse_ops._sparse_cross_hashed(
+    op = sparse_ops.sparse_cross_hashed(
         [
             self._sparse_tensor([['batch1-FC1-F1']]),
             self._sparse_tensor([['batch1-FC2-F1']]),
@@ -307,7 +308,7 @@ class SparseCrossOpTest(test.TestCase):
       self._assert_sparse_tensor_equals(expected_out, sess.run(op))
 
   def test_hashed_output(self):
-    op = sparse_ops._sparse_cross_hashed(
+    op = sparse_ops.sparse_cross_hashed(
         [
             self._sparse_tensor([['batch1-FC1-F1']]),
             self._sparse_tensor([['batch1-FC2-F1']]),
@@ -326,10 +327,8 @@ class SparseCrossOpTest(test.TestCase):
     # As a result, all the crosses shouldn't collide.
     t1 = constant_op.constant([[359], [359 + 1024]])
     t2 = constant_op.constant([list(range(10)), list(range(10))])
-    cross = sparse_ops._sparse_cross_hashed(
-        [t2, t1],
-        num_buckets=1024,
-        hash_key=sparse_ops._DEFAULT_HASH_KEY + 1)
+    cross = sparse_ops.sparse_cross_hashed(
+        [t2, t1], num_buckets=1024, hash_key=sparse_ops._DEFAULT_HASH_KEY + 1)
     cross_dense = sparse_ops.sparse_tensor_to_dense(cross)
     with session.Session():
       values = cross_dense.eval()
@@ -337,7 +336,7 @@ class SparseCrossOpTest(test.TestCase):
 
   def test_hashed_3x1x2(self):
     """Tests 3x1x2 permutation with hashed output."""
-    op = sparse_ops._sparse_cross_hashed(
+    op = sparse_ops.sparse_cross_hashed(
         [
             self._sparse_tensor(
                 [['batch1-FC1-F1', 'batch1-FC1-F2', 'batch1-FC1-F3']]),

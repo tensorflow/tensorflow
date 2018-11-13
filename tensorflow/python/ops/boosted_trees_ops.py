@@ -25,6 +25,8 @@ from tensorflow.python.ops import resources
 # Re-exporting ops used by other modules.
 # pylint: disable=unused-import
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_calculate_best_gains_per_feature as calculate_best_gains_per_feature
+from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_center_bias as center_bias
+from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_example_debug_outputs as example_debug_outputs
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_make_stats_summary as make_stats_summary
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_predict as predict
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_training_predict as training_predict
@@ -35,7 +37,18 @@ from tensorflow.python.training import saver
 
 
 class PruningMode(object):
+  """Class for working with Pruning modes."""
   NO_PRUNING, PRE_PRUNING, POST_PRUNING = range(0, 3)
+
+  _map = {'none': NO_PRUNING, 'pre': PRE_PRUNING, 'post': POST_PRUNING}
+
+  @classmethod
+  def from_str(cls, mode):
+    if mode in cls._map:
+      return cls._map[mode]
+    else:
+      raise ValueError('pruning_mode mode must be one of: {}'.format(', '.join(
+          sorted(cls._map))))
 
 
 class _TreeEnsembleSavable(saver.BaseSaverBuilder.SaveableObject):

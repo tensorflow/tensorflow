@@ -43,7 +43,7 @@ class LinearOperatorIdentityTest(
     # 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
 
-  def _operator_and_mat_and_feed_dict(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
     shape = list(build_info.shape)
     assert shape[-1] == shape[-2]
 
@@ -54,33 +54,27 @@ class LinearOperatorIdentityTest(
         num_rows, batch_shape=batch_shape, dtype=dtype)
     mat = linalg_ops.eye(num_rows, batch_shape=batch_shape, dtype=dtype)
 
-    # Nothing to feed since LinearOperatorIdentity takes no Tensor args.
-    if use_placeholder:
-      feed_dict = {}
-    else:
-      feed_dict = None
-
-    return operator, mat, feed_dict
+    return operator, mat
 
   def test_assert_positive_definite(self):
-    with self.test_session():
+    with self.cached_session():
       operator = linalg_lib.LinearOperatorIdentity(num_rows=2)
       operator.assert_positive_definite().run()  # Should not fail
 
   def test_assert_non_singular(self):
-    with self.test_session():
+    with self.cached_session():
       operator = linalg_lib.LinearOperatorIdentity(num_rows=2)
       operator.assert_non_singular().run()  # Should not fail
 
   def test_assert_self_adjoint(self):
-    with self.test_session():
+    with self.cached_session():
       operator = linalg_lib.LinearOperatorIdentity(num_rows=2)
       operator.assert_self_adjoint().run()  # Should not fail
 
   def test_float16_matmul(self):
     # float16 cannot be tested by base test class because tf.matrix_solve does
     # not work with float16.
-    with self.test_session():
+    with self.cached_session():
       operator = linalg_lib.LinearOperatorIdentity(
           num_rows=2, dtype=dtypes.float16)
       x = rng.randn(2, 3).astype(np.float16)
@@ -112,7 +106,7 @@ class LinearOperatorIdentityTest(
       linalg_lib.LinearOperatorIdentity(num_rows=2, batch_shape=[-2])
 
   def test_non_scalar_num_rows_raises_dynamic(self):
-    with self.test_session():
+    with self.cached_session():
       num_rows = array_ops.placeholder(dtypes.int32)
       operator = linalg_lib.LinearOperatorIdentity(
           num_rows, assert_proper_shapes=True)
@@ -120,7 +114,7 @@ class LinearOperatorIdentityTest(
         operator.to_dense().eval(feed_dict={num_rows: [2]})
 
   def test_negative_num_rows_raises_dynamic(self):
-    with self.test_session():
+    with self.cached_session():
       num_rows = array_ops.placeholder(dtypes.int32)
       operator = linalg_lib.LinearOperatorIdentity(
           num_rows, assert_proper_shapes=True)
@@ -128,7 +122,7 @@ class LinearOperatorIdentityTest(
         operator.to_dense().eval(feed_dict={num_rows: -2})
 
   def test_non_1d_batch_shape_raises_dynamic(self):
-    with self.test_session():
+    with self.cached_session():
       batch_shape = array_ops.placeholder(dtypes.int32)
       operator = linalg_lib.LinearOperatorIdentity(
           num_rows=2, batch_shape=batch_shape, assert_proper_shapes=True)
@@ -136,7 +130,7 @@ class LinearOperatorIdentityTest(
         operator.to_dense().eval(feed_dict={batch_shape: 2})
 
   def test_negative_batch_shape_raises_dynamic(self):
-    with self.test_session():
+    with self.cached_session():
       batch_shape = array_ops.placeholder(dtypes.int32)
       operator = linalg_lib.LinearOperatorIdentity(
           num_rows=2, batch_shape=batch_shape, assert_proper_shapes=True)
@@ -153,7 +147,7 @@ class LinearOperatorIdentityTest(
     num_rows = array_ops.placeholder(dtypes.int32)
     x = array_ops.placeholder(dtypes.float32)
 
-    with self.test_session():
+    with self.cached_session():
       operator = linalg_lib.LinearOperatorIdentity(
           num_rows, assert_proper_shapes=True)
       y = operator.matmul(x)
@@ -164,7 +158,7 @@ class LinearOperatorIdentityTest(
     # These cannot be done in the automated (base test class) tests since they
     # test shapes that tf.batch_matmul cannot handle.
     # In particular, tf.batch_matmul does not broadcast.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = random_ops.random_normal(shape=(1, 2, 3, 4))
       operator = linalg_lib.LinearOperatorIdentity(num_rows=3, dtype=x.dtype)
 
@@ -178,7 +172,7 @@ class LinearOperatorIdentityTest(
     # These cannot be done in the automated (base test class) tests since they
     # test shapes that tf.batch_matmul cannot handle.
     # In particular, tf.batch_matmul does not broadcast.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = array_ops.placeholder(dtypes.float32)
       operator = linalg_lib.LinearOperatorIdentity(num_rows=3, dtype=x.dtype)
 
@@ -194,7 +188,7 @@ class LinearOperatorIdentityTest(
     # These cannot be done in the automated (base test class) tests since they
     # test shapes that tf.batch_matmul cannot handle.
     # In particular, tf.batch_matmul does not broadcast.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Given this x and LinearOperatorIdentity shape of (2, 1, 3, 3), the
       # broadcast shape of operator and 'x' is (2, 2, 3, 4)
       x = random_ops.random_normal(shape=(1, 2, 3, 4))
@@ -215,7 +209,7 @@ class LinearOperatorIdentityTest(
     # These cannot be done in the automated (base test class) tests since they
     # test shapes that tf.batch_matmul cannot handle.
     # In particular, tf.batch_matmul does not broadcast.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Given this x and LinearOperatorIdentity shape of (2, 1, 3, 3), the
       # broadcast shape of operator and 'x' is (2, 2, 3, 4)
       x = array_ops.placeholder(dtypes.float32)
@@ -261,7 +255,7 @@ class LinearOperatorScaledIdentityTest(
     # 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
 
-  def _operator_and_mat_and_feed_dict(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
     shape = list(build_info.shape)
     assert shape[-1] == shape[-2]
 
@@ -274,59 +268,58 @@ class LinearOperatorScaledIdentityTest(
     multiplier = linear_operator_test_util.random_sign_uniform(
         shape=batch_shape, minval=1., maxval=2., dtype=dtype)
 
-    operator = linalg_lib.LinearOperatorScaledIdentity(num_rows, multiplier)
 
     # Nothing to feed since LinearOperatorScaledIdentity takes no Tensor args.
+    lin_op_multiplier = multiplier
+
     if use_placeholder:
-      multiplier_ph = array_ops.placeholder(dtype=dtype)
-      multiplier = multiplier.eval()
-      operator = linalg_lib.LinearOperatorScaledIdentity(
-          num_rows, multiplier_ph)
-      feed_dict = {multiplier_ph: multiplier}
-    else:
-      feed_dict = None
+      lin_op_multiplier = array_ops.placeholder_with_default(
+          multiplier, shape=None)
+
+    operator = linalg_lib.LinearOperatorScaledIdentity(
+        num_rows, lin_op_multiplier)
 
     multiplier_matrix = array_ops.expand_dims(
         array_ops.expand_dims(multiplier, -1), -1)
-    mat = multiplier_matrix * linalg_ops.eye(
+    matrix = multiplier_matrix * linalg_ops.eye(
         num_rows, batch_shape=batch_shape, dtype=dtype)
 
-    return operator, mat, feed_dict
+    return operator, matrix
 
   def test_assert_positive_definite_does_not_raise_when_positive(self):
-    with self.test_session():
+    with self.cached_session():
       operator = linalg_lib.LinearOperatorScaledIdentity(
           num_rows=2, multiplier=1.)
       operator.assert_positive_definite().run()  # Should not fail
 
   def test_assert_positive_definite_raises_when_negative(self):
-    with self.test_session():
+    with self.cached_session():
       operator = linalg_lib.LinearOperatorScaledIdentity(
           num_rows=2, multiplier=-1.)
       with self.assertRaisesOpError("not positive definite"):
         operator.assert_positive_definite().run()
 
   def test_assert_non_singular_does_not_raise_when_non_singular(self):
-    with self.test_session():
+    with self.cached_session():
       operator = linalg_lib.LinearOperatorScaledIdentity(
           num_rows=2, multiplier=[1., 2., 3.])
       operator.assert_non_singular().run()  # Should not fail
 
   def test_assert_non_singular_raises_when_singular(self):
-    with self.test_session():
+    with self.cached_session():
       operator = linalg_lib.LinearOperatorScaledIdentity(
           num_rows=2, multiplier=[1., 2., 0.])
       with self.assertRaisesOpError("was singular"):
         operator.assert_non_singular().run()
 
   def test_assert_self_adjoint_does_not_raise_when_self_adjoint(self):
-    with self.test_session():
+    with self.cached_session():
       operator = linalg_lib.LinearOperatorScaledIdentity(
           num_rows=2, multiplier=[1. + 0J])
       operator.assert_self_adjoint().run()  # Should not fail
 
   def test_assert_self_adjoint_raises_when_not_self_adjoint(self):
-    with self.test_session():
+    with self.cached_session():
       operator = linalg_lib.LinearOperatorScaledIdentity(
           num_rows=2, multiplier=[1. + 1J])
       with self.assertRaisesOpError("not self-adjoint"):
@@ -335,7 +328,7 @@ class LinearOperatorScaledIdentityTest(
   def test_float16_matmul(self):
     # float16 cannot be tested by base test class because tf.matrix_solve does
     # not work with float16.
-    with self.test_session():
+    with self.cached_session():
       multiplier = rng.rand(3).astype(np.float16)
       operator = linalg_lib.LinearOperatorScaledIdentity(
           num_rows=2, multiplier=multiplier)
@@ -360,7 +353,7 @@ class LinearOperatorScaledIdentityTest(
     num_rows = array_ops.placeholder(dtypes.int32)
     x = array_ops.placeholder(dtypes.float32)
 
-    with self.test_session():
+    with self.cached_session():
       operator = linalg_lib.LinearOperatorScaledIdentity(
           num_rows, multiplier=[1., 2], assert_proper_shapes=True)
       y = operator.matmul(x)
@@ -371,7 +364,7 @@ class LinearOperatorScaledIdentityTest(
     # These cannot be done in the automated (base test class) tests since they
     # test shapes that tf.batch_matmul cannot handle.
     # In particular, tf.batch_matmul does not broadcast.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Given this x and LinearOperatorScaledIdentity shape of (2, 1, 3, 3), the
       # broadcast shape of operator and 'x' is (2, 2, 3, 4)
       x = random_ops.random_normal(shape=(1, 2, 3, 4))
@@ -399,7 +392,7 @@ class LinearOperatorScaledIdentityTest(
     # These cannot be done in the automated (base test class) tests since they
     # test shapes that tf.batch_matmul cannot handle.
     # In particular, tf.batch_matmul does not broadcast.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Given this x and LinearOperatorScaledIdentity shape of (3, 3), the
       # broadcast shape of operator and 'x' is (1, 2, 3, 4), which is the same
       # shape as x.

@@ -59,14 +59,14 @@ class CompilerTest(test.TestCase):
                 value=gast.Str('c'))
         ])
 
+    source = compiler.ast_to_source(node, indentation='  ')
     self.assertEqual(
         textwrap.dedent("""
             if 1:
               a = b
             else:
               a = 'c'
-        """).strip(),
-        compiler.ast_to_source(node, indentation='  ').strip())
+        """).strip(), source.strip())
 
   def test_ast_to_object(self):
     node = gast.FunctionDef(

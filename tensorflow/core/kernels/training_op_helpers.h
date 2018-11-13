@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_TRAINING_OP_HELPERS_H_
-#define TENSORFLOW_KERNELS_TRAINING_OP_HELPERS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_TRAINING_OP_HELPERS_H_
+#define TENSORFLOW_CORE_KERNELS_TRAINING_OP_HELPERS_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
@@ -78,24 +78,11 @@ Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
                                   bool lock_held, bool sparse, Tensor* out) {
   if (ctx->input_dtype(input) == DT_RESOURCE) {
     Var* var;
-    if (LookupResource(ctx, HandleFromInput(ctx, input), &var).ok()) {
-      core::ScopedUnref unref_var(var);
-      if (lock_held) {
-        TF_RETURN_IF_ERROR(
-            PrepareToUpdateVariable<Device, T>(ctx, var->tensor()));
-        *out = *var->tensor();
-      } else {
-        mutex_lock ml(*var->mu());
-        if (!sparse) {
-          TF_RETURN_IF_ERROR(
-              PrepareToUpdateVariable<Device, T>(ctx, var->tensor()));
-        }
-        *out = *var->tensor();
-      }
-      return Status::OK();
-    } else {
-      return errors::Internal("Invalid variable reference.");
-    }
+    TF_RETURN_IF_ERROR(LookupResource(ctx, HandleFromInput(ctx, input), &var));
+    core::ScopedUnref unref_var(var);
+    TF_RETURN_IF_ERROR(PrepareToUpdateVariable<Device, T>(ctx, var->tensor()));
+    *out = *var->tensor();
+    return Status::OK();
   }
   *out = ctx->mutable_input(input, lock_held);
   return Status::OK();
@@ -103,4 +90,4 @@ Status GetInputTensorFromVariable(OpKernelContext* ctx, int input,
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_TRAINING_OP_HELPERS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_TRAINING_OP_HELPERS_H_

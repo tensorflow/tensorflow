@@ -15,8 +15,8 @@ limitations under the License.
 
 // Call graph for an HLO module.
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CALL_GRAPH_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CALL_GRAPH_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CALL_GRAPH_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CALL_GRAPH_H_
 
 #include <ostream>
 
@@ -272,4 +272,4 @@ class CallGraph {
 
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CALL_GRAPH_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CALL_GRAPH_H_

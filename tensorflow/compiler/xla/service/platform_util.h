@@ -34,29 +34,27 @@ class PlatformUtil {
   //
   // Note that, even if a platform is present with zero devices, if we *do* have
   // compilation support for it, it will be returned in this sequence.
-  static StatusOr<std::vector<perftools::gputools::Platform*>>
-  GetSupportedPlatforms();
+  static StatusOr<std::vector<se::Platform*>> GetSupportedPlatforms();
 
   // Convenience function which returns the default supported platform for
   // tests. If exactly one supported platform is present, then this platform is
   // the default platform. If exactly two platforms are present and one of them
   // is the interpreter platform, then the other platform is the default
   // platform. Otherwise returns an error.
-  static StatusOr<perftools::gputools::Platform*> GetDefaultPlatform();
+  static StatusOr<se::Platform*> GetDefaultPlatform();
 
   // Convenience function which returns the sole supported platform. If
   // exactly one supported platform is present, then this platform is the
   // default platform. Otherwise returns an error.
-  static StatusOr<perftools::gputools::Platform*> GetSolePlatform();
+  static StatusOr<se::Platform*> GetSolePlatform();
 
   // Returns the platform according to the given name. Returns error if there is
   // no such platform.
-  static StatusOr<perftools::gputools::Platform*> GetPlatform(
-      const string& platform_name);
+  static StatusOr<se::Platform*> GetPlatform(const string& platform_name);
 
   // Returns exactly one platform that does not have given name. Returns error
   // if there is no such platform, or there are multiple such platforms.
-  static StatusOr<perftools::gputools::Platform*> GetPlatformExceptFor(
+  static StatusOr<se::Platform*> GetPlatformExceptFor(
       const string& platform_name);
 
   // Returns a vector of StreamExecutors for the given platform. The vector is
@@ -64,8 +62,8 @@ class PlatformUtil {
   // element is nullptr, then the device is present by not supported by XLA.
   //
   // If the platform has no visible devices, a not-found error is returned.
-  static StatusOr<std::vector<perftools::gputools::StreamExecutor*>>
-  GetStreamExecutors(perftools::gputools::Platform* platform);
+  static StatusOr<std::vector<se::StreamExecutor*>> GetStreamExecutors(
+      se::Platform* platform);
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(PlatformUtil);

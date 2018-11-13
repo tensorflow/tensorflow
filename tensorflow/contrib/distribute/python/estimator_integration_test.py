@@ -29,6 +29,7 @@ from tensorflow.contrib.optimizer_v2 import adagrad
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import test
 from tensorflow.python.estimator import run_config
+from tensorflow.python.estimator import training
 from tensorflow.python.estimator.canned import dnn_linear_combined
 from tensorflow.python.estimator.canned import prediction_keys
 from tensorflow.python.estimator.export import export
@@ -61,9 +62,11 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase,
           mode=['graph'],
           distribution=[
               combinations.one_device_strategy,
-              combinations.mirrored_strategy_with_gpu_and_cpu
-          ]))
-  def test_complete_flow_with_mode(self, distribution):
+              combinations.mirrored_strategy_with_gpu_and_cpu,
+              combinations.mirrored_strategy_with_two_gpus
+          ],
+          use_train_and_evaluate=[True, False]))
+  def test_complete_flow_with_mode(self, distribution, use_train_and_evaluate):
     label_dimension = 2
     input_dimension = label_dimension
     batch_size = 10
@@ -74,8 +77,11 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase,
         y=data,
         batch_size=batch_size // len(distribution.worker_devices),
         shuffle=True)
-    eval_input_fn = numpy_io.numpy_input_fn(
-        x={'x': data}, y=data, batch_size=batch_size, shuffle=False)
+    eval_input_fn = self.dataset_input_fn(
+        x={'x': data},
+        y=data,
+        batch_size=batch_size // len(distribution.worker_devices),
+        shuffle=False)
     predict_input_fn = numpy_io.numpy_input_fn(
         x={'x': data}, batch_size=batch_size, shuffle=False)
 
@@ -95,12 +101,19 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase,
         # TODO(isaprykin): Work around the colocate_with error.
         dnn_optimizer=adagrad.AdagradOptimizer(0.001),
         linear_optimizer=adagrad.AdagradOptimizer(0.001),
-        config=run_config.RunConfig(train_distribute=distribution))
+        config=run_config.RunConfig(
+            train_distribute=distribution, eval_distribute=distribution))
 
     num_steps = 10
-    estimator.train(train_input_fn, steps=num_steps)
+    if use_train_and_evaluate:
+      scores, _ = training.train_and_evaluate(
+          estimator,
+          training.TrainSpec(train_input_fn, max_steps=num_steps),
+          training.EvalSpec(eval_input_fn))
+    else:
+      estimator.train(train_input_fn, steps=num_steps)
+      scores = estimator.evaluate(eval_input_fn)
 
-    scores = estimator.evaluate(eval_input_fn)
     self.assertEqual(num_steps, scores[ops.GraphKeys.GLOBAL_STEP])
     self.assertIn('loss', six.iterkeys(scores))
 

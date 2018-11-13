@@ -243,6 +243,10 @@ class InspectUtilsTest(test.TestCase):
       def bar(self):
         pass
 
+      @classmethod
+      def class_method(cls):
+        pass
+
     class Subclass(Superclass):
 
       def foo(self):
@@ -257,6 +261,16 @@ class InspectUtilsTest(test.TestCase):
         inspect_utils.getdefiningclass(Subclass.bar, Subclass) is Superclass)
     self.assertTrue(
         inspect_utils.getdefiningclass(Subclass.baz, Subclass) is Subclass)
+    self.assertTrue(
+        inspect_utils.getdefiningclass(Subclass.class_method, Subclass) is
+        Superclass)
+
+  def test_isbuiltin(self):
+    self.assertTrue(inspect_utils.isbuiltin(range))
+    self.assertTrue(inspect_utils.isbuiltin(float))
+    self.assertTrue(inspect_utils.isbuiltin(int))
+    self.assertTrue(inspect_utils.isbuiltin(len))
+    self.assertFalse(inspect_utils.isbuiltin(function_decorator))
 
 
 if __name__ == '__main__':

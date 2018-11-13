@@ -570,7 +570,7 @@ class MutualInformationPenaltyTest(test.TestCase, _PenaltyTest):
         'predicted_distributions': self._predicted_distributions,
     }
     self._expected_loss = 1.61610
-    self._expected_op_name = 'mutual_information_loss/mul'
+    self._expected_op_name = 'mutual_information_loss/mul_1'
     self._batch_size = 2
 
 

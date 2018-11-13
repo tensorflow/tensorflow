@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <complex>
+
 #include <gtest/gtest.h>
 #include "tensorflow/contrib/lite/interpreter.h"
 #include "tensorflow/contrib/lite/kernels/register.h"
@@ -55,6 +57,87 @@ TEST(CastOpModel, CastFloatToInt) {
   m.Invoke();
   EXPECT_THAT(m.ExtractVector<int>(m.output()),
               ElementsAreArray({100, 20, 3, 0, 0, 1}));
+}
+
+TEST(CastOpModel, CastFloatToBool) {
+  CastOpModel m({TensorType_FLOAT32, {3, 2}}, {TensorType_BOOL, {3, 2}});
+  m.PopulateTensor<float>(m.input(), {100.f, -1.0f, 0.f, 0.4f, 0.999f, 1.1f});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<bool>(m.output()),
+              ElementsAreArray({true, true, false, true, true, true}));
+}
+
+TEST(CastOpModel, CastBoolToFloat) {
+  CastOpModel m({TensorType_BOOL, {3, 2}}, {TensorType_FLOAT32, {3, 2}});
+  m.PopulateTensor<bool>(m.input(), {true, true, false, true, false, true});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray({1.f, 1.0f, 0.f, 1.0f, 0.0f, 1.0f}));
+}
+
+TEST(CastOpModel, CastComplex64ToFloat) {
+  CastOpModel m({TensorType_COMPLEX64, {2, 3}}, {TensorType_FLOAT32, {2, 3}});
+  m.PopulateTensor<std::complex<float>>(
+      m.input(),
+      {std::complex<float>(1.0f, 11.0f), std::complex<float>(2.0f, 12.0f),
+       std::complex<float>(3.0f, 13.0f), std::complex<float>(4.0f, 14.0f),
+       std::complex<float>(5.0f, 15.0f), std::complex<float>(6.0f, 16.0f)});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray({1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f}));
+}
+
+TEST(CastOpModel, CastFloatToComplex64) {
+  CastOpModel m({TensorType_FLOAT32, {2, 3}}, {TensorType_COMPLEX64, {2, 3}});
+  m.PopulateTensor<float>(m.input(), {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  m.Invoke();
+  EXPECT_THAT(
+      m.ExtractVector<std::complex<float>>(m.output()),
+      ElementsAreArray(
+          {std::complex<float>(1.0f, 0.0f), std::complex<float>(2.0f, 0.0f),
+           std::complex<float>(3.0f, 0.0f), std::complex<float>(4.0f, 0.0f),
+           std::complex<float>(5.0f, 0.0f), std::complex<float>(6.0f, 0.0f)}));
+}
+
+TEST(CastOpModel, CastComplex64ToInt) {
+  CastOpModel m({TensorType_COMPLEX64, {2, 3}}, {TensorType_INT32, {2, 3}});
+  m.PopulateTensor<std::complex<float>>(
+      m.input(),
+      {std::complex<float>(1.0f, 11.0f), std::complex<float>(2.0f, 12.0f),
+       std::complex<float>(3.0f, 13.0f), std::complex<float>(4.0f, 14.0f),
+       std::complex<float>(5.0f, 15.0f), std::complex<float>(6.0f, 16.0f)});
+  m.Invoke();
+  EXPECT_THAT(m.ExtractVector<int>(m.output()),
+              ElementsAreArray({1, 2, 3, 4, 5, 6}));
+}
+
+TEST(CastOpModel, CastIntToComplex64) {
+  CastOpModel m({TensorType_INT32, {2, 3}}, {TensorType_COMPLEX64, {2, 3}});
+  m.PopulateTensor<int>(m.input(), {1, 2, 3, 4, 5, 6});
+  m.Invoke();
+  EXPECT_THAT(
+      m.ExtractVector<std::complex<float>>(m.output()),
+      ElementsAreArray(
+          {std::complex<float>(1.0f, 0.0f), std::complex<float>(2.0f, 0.0f),
+           std::complex<float>(3.0f, 0.0f), std::complex<float>(4.0f, 0.0f),
+           std::complex<float>(5.0f, 0.0f), std::complex<float>(6.0f, 0.0f)}));
+}
+
+TEST(CastOpModel, CastComplex64ToComplex64) {
+  CastOpModel m({TensorType_COMPLEX64, {2, 3}}, {TensorType_COMPLEX64, {2, 3}});
+  m.PopulateTensor<std::complex<float>>(
+      m.input(),
+      {std::complex<float>(1.0f, 11.0f), std::complex<float>(2.0f, 12.0f),
+       std::complex<float>(3.0f, 13.0f), std::complex<float>(4.0f, 14.0f),
+       std::complex<float>(5.0f, 15.0f), std::complex<float>(6.0f, 16.0f)});
+  m.Invoke();
+  EXPECT_THAT(
+      m.ExtractVector<std::complex<float>>(m.output()),
+      ElementsAreArray(
+          {std::complex<float>(1.0f, 11.0f), std::complex<float>(2.0f, 12.0f),
+           std::complex<float>(3.0f, 13.0f), std::complex<float>(4.0f, 14.0f),
+           std::complex<float>(5.0f, 15.0f),
+           std::complex<float>(6.0f, 16.0f)}));
 }
 
 }  // namespace

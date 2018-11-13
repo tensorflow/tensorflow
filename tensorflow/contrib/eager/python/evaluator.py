@@ -22,12 +22,12 @@ import six
 
 from tensorflow.contrib.eager.python import datasets
 from tensorflow.contrib.eager.python import metrics
-from tensorflow.contrib.summary import summary_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import summary_ops_v2 as summary_ops
 
 
 class Evaluator(object):

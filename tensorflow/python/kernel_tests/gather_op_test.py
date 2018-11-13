@@ -27,7 +27,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.platform import test
 
-_TEST_TYPES = (dtypes.float32, dtypes.complex64, dtypes.complex128)
+_TEST_TYPES = (dtypes.int64, dtypes.float32,
+               dtypes.complex64, dtypes.complex128)
 
 
 class GatherTest(test.TestCase):
@@ -122,6 +123,9 @@ class GatherTest(test.TestCase):
                 gather, [tf_params, tf_indices, tf_axis], gather_grad)
             self.assertEqual(indices_grad, None)
             self.assertEqual(axis_grad, None)
+            if dtype.is_integer:
+              self.assertEqual(params_grad, None)
+              continue
             # For axis 0, we are able to create an efficient IndexedSlices for
             # the gradient.
             if axis == 0:
@@ -149,6 +153,15 @@ class GatherTest(test.TestCase):
       self.assertAllEqual([b"asdf", b"qwer"],
                           array_ops.gather(params, 0, axis=1).eval())
 
+  def testUInt32AndUInt64(self):
+    for unsigned_type in (dtypes.uint32, dtypes.uint64):
+      params = self._buildParams(
+          np.array([[1, 2, 3], [7, 8, 9]]), unsigned_type)
+      with self.test_session():
+        self.assertAllEqual([7, 8, 9],
+                            array_ops.gather(params, 1, axis=0).eval())
+        self.assertAllEqual([1, 7], array_ops.gather(params, 0, axis=1).eval())
+
   def testUnknownIndices(self):
     params = constant_op.constant([[0, 1, 2]])
     indices = array_ops.placeholder(dtypes.int32)
@@ -168,7 +181,19 @@ class GatherTest(test.TestCase):
     gather_t = array_ops.gather(params, indices, axis=axis)
     self.assertEqual(None, gather_t.shape)
 
-  def testBadIndices(self):
+  def testBadIndicesCPU(self):
+    with self.test_session(use_gpu=False):
+      params = [[0, 1, 2], [3, 4, 5]]
+      with self.assertRaisesOpError(r"indices\[0,0\] = 7 is not in \[0, 2\)"):
+        array_ops.gather(params, [[7]], axis=0).eval()
+      with self.assertRaisesOpError(r"indices\[0,0\] = 7 is not in \[0, 3\)"):
+        array_ops.gather(params, [[7]], axis=1).eval()
+
+  def _disabledTestBadIndicesGPU(self):
+    # TODO disabled due to different behavior on GPU and CPU
+    # On GPU the bad indices do not raise error but fetch 0 values
+    if not test.is_gpu_available():
+      return
     with self.test_session(use_gpu=True):
       params = [[0, 1, 2], [3, 4, 5]]
       with self.assertRaisesOpError(r"indices\[0,0\] = 7 is not in \[0, 2\)"):

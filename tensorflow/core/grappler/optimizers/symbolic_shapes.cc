@@ -49,6 +49,27 @@ bool ShapeIsSymbolicallyDefined(const OpInfo::TensorProperties& properties) {
   return ShapeIsSymbolicallyDefined(properties.shape());
 }
 
+int Rank(const TensorShapeProto& shape) {
+  if (shape.unknown_rank()) {
+    return -1;
+  }
+  return shape.dim_size();
+}
+
+int64 NumCoefficients(const TensorShapeProto& shape) {
+  if (shape.unknown_rank()) {
+    return -1;
+  }
+  int64 num_coefficients = 1;
+  for (const auto& dim : shape.dim()) {
+    if (dim.size() < 0) {
+      return -1;
+    }
+    num_coefficients *= dim.size();
+  }
+  return num_coefficients;
+}
+
 bool ShapesSymbolicallyEqual(const TensorShapeProto& left,
                              const TensorShapeProto& right) {
   if (left.unknown_rank() || right.unknown_rank() ||
@@ -83,6 +104,25 @@ bool ShapesBroadcastable(const TensorShapeProto& left,
 bool ShapesBroadcastable(const OpInfo::TensorProperties& left,
                          const OpInfo::TensorProperties& right) {
   return ShapesBroadcastable(left.shape(), right.shape());
+}
+
+bool ShapeAfterBroadcast(const TensorShapeProto& left,
+                         const TensorShapeProto& right,
+                         TensorShapeProto* output_shape) {
+  if (!ShapeIsSymbolicallyDefined(left) || !ShapeIsSymbolicallyDefined(right)) {
+    return false;
+  }
+  BCast bcast(ShapeDims(left), ShapeDims(right),
+              /*fewer_dims_optimization*/ false);
+  if (!bcast.IsValid()) {
+    return false;
+  }
+  output_shape->set_unknown_rank(false);
+  output_shape->clear_dim();
+  for (const auto& dim : bcast.output_shape()) {
+    output_shape->add_dim()->set_size(dim);
+  }
+  return true;
 }
 
 bool CompareSymbolicallyShapedTensorSizes(const TensorShapeProto& left,
@@ -171,6 +211,45 @@ bool CompareSymbolicallyShapedTensorSizes(
     const OpInfo::TensorProperties& left,
     const OpInfo::TensorProperties& right) {
   return CompareSymbolicallyShapedTensorSizes(left.shape(), right.shape());
+}
+
+int64 ComputeSizeRatio(const TensorShapeProto& numerator,
+                       const TensorShapeProto& denominator) {
+  if (numerator.unknown_rank() || denominator.unknown_rank()) {
+    return -1;
+  }
+  std::multiset<int> symbolic_dims;
+  int64 num = 1;
+  for (const auto& dim : numerator.dim()) {
+    if (dim.size() == -1) {
+      return -1;
+    } else if (dim.size() < -1) {
+      symbolic_dims.insert(dim.size());
+    } else {
+      num *= dim.size();
+    }
+  }
+  int64 denom = 1;
+  for (const auto& dim : denominator.dim()) {
+    if (dim.size() == -1) {
+      return -1;
+    } else if (dim.size() < -1) {
+      auto it = symbolic_dims.find(dim.size());
+      if (it == symbolic_dims.end()) {
+        return -1;
+      }
+      symbolic_dims.erase(it);
+    } else {
+      denom *= dim.size();
+    }
+  }
+  if (denom == 0) {
+    return -1;
+  }
+  if (!symbolic_dims.empty()) {
+    return -1;
+  }
+  return num / denom;
 }
 
 }  // end namespace grappler

@@ -29,8 +29,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/plugin.h"
 #include "tensorflow/stream_executor/trace_listener.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class StreamExecutor;
 
@@ -106,7 +105,7 @@ class Platform {
   namespace {                           \
   int plugin_id_value;                  \
   }                                     \
-  const perftools::gputools::Platform::Id ID_VAR_NAME = &plugin_id_value;
+  const ::stream_executor::Platform::Id ID_VAR_NAME = &plugin_id_value;
 
   // Returns a key uniquely identifying this platform.
   virtual Id id() const = 0;
@@ -205,7 +204,6 @@ class Platform {
   SE_DISALLOW_COPY_AND_ASSIGN(Platform);
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_PLATFORM_H_

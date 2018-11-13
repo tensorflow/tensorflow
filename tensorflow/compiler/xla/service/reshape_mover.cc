@@ -38,7 +38,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 
 #include <algorithm>
-#include "tensorflow/compiler/xla/literal_util.h"
+
+#include "absl/algorithm/container.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -374,7 +376,7 @@ StatusOr<bool> TryReshapeMoveOnCandidates(
 
     removed = false;
     for (auto operand : nontrivial_operands) {
-      if (c_any_of(operand->users(), [&](HloInstruction* user) {
+      if (absl::c_any_of(operand->users(), [&](HloInstruction* user) {
             return !reshape_candidates->count(user);
           })) {
         for (auto* user : operand->users()) {

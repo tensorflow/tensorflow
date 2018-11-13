@@ -56,7 +56,7 @@ class SimpleRendezvous : public Rendezvous {
     }
 
     mutex_lock l(mu_);
-    string edge_name = parsed.edge_name.ToString();
+    string edge_name = std::string(parsed.edge_name);
     if (table_.count(edge_name) > 0) {
       return errors::Internal("Send of an already sent tensor");
     }
@@ -69,7 +69,7 @@ class SimpleRendezvous : public Rendezvous {
     Tensor tensor;
     Status status = Status::OK();
     {
-      string key = parsed.edge_name.ToString();
+      string key = std::string(parsed.edge_name);
       mutex_lock l(mu_);
       if (table_.count(key) <= 0) {
         status = errors::Internal("Did not find key ", key);
@@ -176,6 +176,9 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   args.step_id = LogMemory::CONSTANT_FOLDING_STEP_ID;
   args.runner = runner;
   args.rendezvous = rendez;
+  // NOTE: Use of graph runner is limited to single-device executions
+  // so a CollectiveExecutor should never be required.
+  args.collective_executor = nullptr;
 
   // Run the graph.
   TF_RETURN_IF_ERROR(executor->Run(args));

@@ -52,6 +52,13 @@ class FloatAddOpModel : public BaseAddOpModel {
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
 };
 
+class IntegerAddOpModel : public BaseAddOpModel {
+ public:
+  using BaseAddOpModel::BaseAddOpModel;
+
+  std::vector<int32_t> GetOutput() { return ExtractVector<int32_t>(output_); }
+};
+
 class QuantizedAddOpModel : public BaseAddOpModel {
  public:
   using BaseAddOpModel::BaseAddOpModel;
@@ -60,11 +67,22 @@ class QuantizedAddOpModel : public BaseAddOpModel {
     return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
                                GetScale(output_), GetZeroPoint(output_));
   }
+
+  std::vector<float> GetDequantizedOutputInt16() {
+    return Dequantize<int16_t>(ExtractVector<int16_t>(output_),
+                               GetScale(output_), GetZeroPoint(output_));
+  }
 };
 
 // for quantized Add, the error shouldn't exceed 2*step
-float GetTolerance(int min, int max) {
+float GetTolerance(float min, float max) {
   float kQuantizedStep = (max - min) / 255.0;
+  float kQuantizedTolerance = 2.0 * kQuantizedStep;
+  return kQuantizedTolerance;
+}
+
+float GetToleranceInt16(float min, float max) {
+  float kQuantizedStep = (max - min) / 32767.f;
   float kQuantizedTolerance = 2.0 * kQuantizedStep;
   return kQuantizedTolerance;
 }
@@ -122,6 +140,57 @@ TEST(FloatAddOpModel, WithBroadcast) {
   }
 }
 
+TEST(IntegerAddOpModel, NoActivation) {
+  IntegerAddOpModel m({TensorType_INT32, {1, 2, 2, 1}},
+                      {TensorType_INT32, {1, 2, 2, 1}}, {TensorType_INT32, {}},
+                      ActivationFunctionType_NONE);
+  m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 7, 8});
+  m.PopulateTensor<int32_t>(m.input2(), {1, 2, 3, 5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-19, 4, 10, 13}));
+}
+
+TEST(IntegerAddOpModel, ActivationRELU_N1_TO_1) {
+  IntegerAddOpModel m({TensorType_INT32, {1, 2, 2, 1}},
+                      {TensorType_INT32, {1, 2, 2, 1}}, {TensorType_INT32, {}},
+                      ActivationFunctionType_RELU_N1_TO_1);
+  m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 7, 8});
+  m.PopulateTensor<int32_t>(m.input2(), {1, 2, 3, 5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1, 1, 1, 1}));
+}
+
+TEST(IntegerAddOpModel, VariousInputShapes) {
+  std::vector<std::initializer_list<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    IntegerAddOpModel m({TensorType_INT32, test_shapes[i]},
+                        {TensorType_INT32, test_shapes[i]},
+                        {TensorType_INT32, {}}, ActivationFunctionType_NONE);
+    m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 7, 8, 11, 20});
+    m.PopulateTensor<int32_t>(m.input2(), {1, 2, 3, 5, 11, 1});
+    m.Invoke();
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray({-19, 04, 10, 13, 22, 21}))
+        << "With shape number " << i;
+  }
+}
+
+TEST(IntegerAddOpModel, WithBroadcast) {
+  std::vector<std::initializer_list<int>> test_shapes = {
+      {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  for (int i = 0; i < test_shapes.size(); ++i) {
+    IntegerAddOpModel m({TensorType_INT32, test_shapes[i]},
+                        {TensorType_INT32, {}},  // always a scalar
+                        {TensorType_INT32, {}}, ActivationFunctionType_NONE);
+    m.PopulateTensor<int32_t>(m.input1(), {-20, 2, 7, 8, 11, 20});
+    m.PopulateTensor<int32_t>(m.input2(), {1});
+    m.Invoke();
+    EXPECT_THAT(m.GetOutput(),
+                ElementsAreArray(ArrayFloatNear({-19, 3, 8, 9, 12, 21})))
+        << "With shape number " << i;
+  }
+}
+
 TEST(QuantizedAddOpModel, QuantizedTestsNoActivation) {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
   std::vector<std::initializer_list<float>> inputs1 = {
@@ -140,6 +209,31 @@ TEST(QuantizedAddOpModel, QuantizedTestsNoActivation) {
     m.Invoke();
     EXPECT_THAT(m.GetDequantizedOutput(), ElementsAreArray(ArrayFloatNear(
                                               results[i], kQuantizedTolerance)))
+        << "With test number " << i;
+  }
+}
+
+TEST(QuantizedAddOpModel, QuantizedTestsNoActivationInt16) {
+  const float kMin = -1.f;
+  const float kMax = 32767.f / 32768.f;
+  float kQuantizedTolerance = GetToleranceInt16(kMin, kMax);
+  std::vector<std::initializer_list<float>> inputs1 = {
+      {0.1, 0.2, 0.3, 0.4}, {-0.8, 0.2, 0.4, 0.7}, {-0.8, 0.2, 0.7, 0.3}};
+  std::vector<std::initializer_list<float>> inputs2 = {
+      {0.6, 0.4, 0.3, 0.1}, {0.6, 0.4, 0.5, -0.8}, {0.6, 0.4, -0.8, 0.5}};
+  std::vector<std::initializer_list<float>> results = {
+      {0.7, 0.6, 0.6, 0.5}, {-0.2, 0.6, 0.9, -0.1}, {-0.2, 0.6, -0.1, 0.8}};
+  for (int i = 0; i < inputs1.size(); ++i) {
+    QuantizedAddOpModel m({TensorType_INT16, {1, 2, 2, 1}, kMin, kMax},
+                          {TensorType_INT16, {1, 2, 2, 1}, kMin, kMax},
+                          {TensorType_INT16, {}, kMin, kMax},
+                          ActivationFunctionType_NONE);
+    m.QuantizeAndPopulate<int16_t>(m.input1(), inputs1[i]);
+    m.QuantizeAndPopulate<int16_t>(m.input2(), inputs2[i]);
+    m.Invoke();
+    EXPECT_THAT(
+        m.GetDequantizedOutputInt16(),
+        ElementsAreArray(ArrayFloatNear(results[i], kQuantizedTolerance)))
         << "With test number " << i;
   }
 }

@@ -18,9 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import variable_scope
@@ -254,6 +256,25 @@ class ExponentialMovingAverageTest(test.TestCase):
       self.assertEqual(1, sess.run(v0))
       self.assertEqual([17.5], sess.run(v1_avg))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testBasicEager(self):
+    v0 = variables.Variable(1.0)
+    v1 = variables.Variable(2.0)
+
+    ema = moving_averages.ExponentialMovingAverage(0.25)
+    op = ema.apply([v0, v1])
+    if not context.executing_eagerly():
+      self.evaluate(variables.global_variables_initializer())
+      self.evaluate(op)
+
+    self.evaluate(v0.assign(2.0))
+    self.evaluate(v1.assign(4.0))
+
+    self.evaluate(ema.apply([v0, v1]))
+
+    self.assertAllEqual(self.evaluate(ema.average(v0)), 1.75)
+    self.assertAllEqual(self.evaluate(ema.average(v1)), 3.5)
+
   def averageVariablesNamesHelper(self, zero_debias):
     with self.test_session():
       v0 = variables.Variable(10.0, name="v0")
@@ -263,6 +284,7 @@ class ExponentialMovingAverageTest(test.TestCase):
       tensor2 = v0 + v1
       ema = moving_averages.ExponentialMovingAverage(
           0.25, zero_debias=zero_debias, name="foo")
+      self.assertEqual("foo", ema.name)
       self.assertEqual("v0/foo", ema.average_name(v0))
       self.assertEqual("v1/foo", ema.average_name(v1))
       self.assertEqual("add/foo", ema.average_name(tensor2))

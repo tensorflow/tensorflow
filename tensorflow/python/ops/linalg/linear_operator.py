@@ -42,7 +42,7 @@ __all__ = ["LinearOperator"]
 class LinearOperator(object):
   """Base class defining a [batch of] linear operator[s].
 
-  Subclasses of `LinearOperator` provide a access to common methods on a
+  Subclasses of `LinearOperator` provide access to common methods on a
   (batch) matrix, without the need to materialize the matrix.  This allows:
 
   * Matrix free computations
@@ -69,11 +69,11 @@ class LinearOperator(object):
 
   #### Shape compatibility
 
-  `LinearOperator` sub classes should operate on a [batch] matrix with
+  `LinearOperator` subclasses should operate on a [batch] matrix with
   compatible shape.  Class docstrings should define what is meant by compatible
-  shape.  Some sub-classes may not support batching.
+  shape.  Some subclasses may not support batching.
 
-  An example is:
+  Examples:
 
   `x` is a batch matrix with compatible shape for `matmul` if
 
@@ -699,9 +699,10 @@ class LinearOperator(object):
         "  Requires conversion to a dense matrix and O(N^3) operations.")
     rhs = linalg.adjoint(rhs) if adjoint_arg else rhs
     if self._can_use_cholesky():
-      return linalg_ops.cholesky_solve(
+      return linear_operator_util.cholesky_solve_with_broadcast(
           linalg_ops.cholesky(self.to_dense()), rhs)
-    return linalg_ops.matrix_solve(self.to_dense(), rhs, adjoint=adjoint)
+    return linear_operator_util.matrix_solve_with_broadcast(
+        self.to_dense(), rhs, adjoint=adjoint)
 
   def solve(self, rhs, adjoint=False, adjoint_arg=False, name="solve"):
     """Solve (exact or approx) `R` (batch) systems of equations: `A X = rhs`.

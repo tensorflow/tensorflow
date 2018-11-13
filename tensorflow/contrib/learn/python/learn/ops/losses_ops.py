@@ -40,7 +40,7 @@ def mean_squared_error_regressor(tensor_in, labels, weights, biases, name=None):
                       [tensor_in, labels]):
     predictions = nn.xw_plus_b(tensor_in, weights, biases)
     if len(labels.get_shape()) == 1 and len(predictions.get_shape()) == 2:
-      predictions = array_ops_.squeeze(predictions, squeeze_dims=[1])
+      predictions = array_ops_.squeeze(predictions, axis=[1])
     return predictions, losses.mean_squared_error(labels, predictions)
 
 

@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
-namespace {
 
 #define NUM_DEVS 3
 
@@ -90,10 +89,10 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsReduction1Task) {
           cps[i].instance.device_names[j]);
       EXPECT_TRUE(cps[i].task.is_local[j]);
     }
-    EXPECT_EQ(cps[i].subdiv_rank[0], i);
-    EXPECT_EQ(cps[i].subdiv_source_rank.size(), 0);
+    EXPECT_EQ(cps[i].instance.impl_details.subdiv_source_rank.size(), 0);
     EXPECT_FALSE(cps[i].is_source);
     EXPECT_EQ(cps[i].default_rank, i);
+    EXPECT_TRUE(cps[i].instance.same_num_devices_per_task);
   }
 }
 
@@ -136,16 +135,10 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcast1Task) {
           cps[i].instance.device_names[j]);
       EXPECT_TRUE(cps[i].task.is_local[j]);
     }
-    ASSERT_GT(cps[i].subdiv_rank.size(), 0);
-    EXPECT_EQ(cps[i].subdiv_rank[0], i);
-    ASSERT_GT(cps[i].subdiv_source_rank.size(), 0);
-    EXPECT_EQ(cps[i].subdiv_source_rank[0], 1);
     EXPECT_EQ(cps[i].is_source, (i == 1));
     EXPECT_EQ(cps[i].default_rank, i);
+    EXPECT_TRUE(cps[i].instance.same_num_devices_per_task);
   }
 }
 
-// TEST_F(CollectiveParamResolverLocalTest,
-
-}  // namespace
 }  // namespace tensorflow

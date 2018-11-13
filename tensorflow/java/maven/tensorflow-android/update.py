@@ -86,19 +86,10 @@ def read_template(path):
 def main():
   args = get_args()
 
-  # Artifacts are downloaded from the ci build. A SNAPSHOT release is
-  # associated with artifacts from the last successful nightly build. Otherwise,
-  # it comes from the officially blessed release artifacts.
-  if args.version.endswith('SNAPSHOT'):
-    info_url = ('https://ci.tensorflow.org/view/Nightly/job/nightly-android'
-                '/lastSuccessfulBuild/api/json')
-    aar_url = None
-    build_type = 'nightly-android'
-  else:
-    release_prefix = 'https://storage.googleapis.com/tensorflow/libtensorflow'
-    info_url = '%s/android_buildinfo-%s.json' % (release_prefix, args.version)
-    aar_url = '%s/tensorflow-%s.aar' % (release_prefix, args.version)
-    build_type = 'release-android'
+  release_prefix = 'https://storage.googleapis.com/tensorflow/libtensorflow'
+  info_url = '%s/android_buildinfo-%s.json' % (release_prefix, args.version)
+  aar_url = '%s/tensorflow-%s.aar' % (release_prefix, args.version)
+  build_type = 'release-android'
 
   # Retrieve build information
   build_info = get_json(info_url)

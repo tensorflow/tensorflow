@@ -62,10 +62,10 @@ struct UnaryClipOp<GPUDevice, T> {
                   typename TTypes<T>::Flat &out_flat) const {
     CudaLaunchConfig config = GetCudaLaunchConfig(in0_flat.size(), d);
 
-    UnaryClipCustomKernel<
-        T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        in0_flat.size(), in0_flat.data(), in1_flat.data(), in2_flat.data(),
-        out_flat.data());
+    UnaryClipCustomKernel<T>
+        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+            in0_flat.size(), in0_flat.data(), in1_flat.data(), in2_flat.data(),
+            out_flat.data());
   }
 };
 
@@ -78,10 +78,10 @@ struct BinaryRightClipOp<GPUDevice, T> {
                   typename TTypes<T>::Flat &out_flat) const {
     CudaLaunchConfig config = GetCudaLaunchConfig(in0_flat.size(), d);
 
-    BinaryRightClipCustomKernel<
-        T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        in0_flat.size(), in0_flat.data(), in1_flat.data(), in2_flat.data(),
-        out_flat.data());
+    BinaryRightClipCustomKernel<T>
+        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+            in0_flat.size(), in0_flat.data(), in1_flat.data(), in2_flat.data(),
+            out_flat.data());
   }
 };
 
@@ -94,10 +94,10 @@ struct BinaryLeftClipOp<GPUDevice, T> {
                   typename TTypes<T>::Flat &out_flat) const {
     CudaLaunchConfig config = GetCudaLaunchConfig(in0_flat.size(), d);
 
-    BinaryLeftClipCustomKernel<
-        T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        in0_flat.size(), in0_flat.data(), in1_flat.data(), in2_flat.data(),
-        out_flat.data());
+    BinaryLeftClipCustomKernel<T>
+        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+            in0_flat.size(), in0_flat.data(), in1_flat.data(), in2_flat.data(),
+            out_flat.data());
   }
 };
 

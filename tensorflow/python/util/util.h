@@ -47,6 +47,15 @@ bool IsSequence(PyObject* o);
 //   True if `instance` is a `namedtuple`.
 PyObject* IsNamedtuple(PyObject* o, bool strict);
 
+// Returns a true if its input is a collections.Mapping.
+//
+// Args:
+//   seq: the input to be checked.
+//
+// Returns:
+//   True if the sequence subclasses mapping.
+bool IsMapping(PyObject* o);
+
 // Implements the same interface as tensorflow.util.nest._same_namedtuples
 // Returns Py_True iff the two namedtuples have the same name and fields.
 // Raises RuntimeError if `o1` or `o2` don't look like namedtuples (don't have
@@ -97,7 +106,7 @@ PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types);
 // used instead. The same convention is followed in `pack_sequence_as`. This
 // correctly repacks dicts and `OrderedDict`s after they have been flattened,
 // and also allows flattening an `OrderedDict` and then repacking it back using
-// a correponding plain dict, or vice-versa.
+// a corresponding plain dict, or vice-versa.
 // Dictionaries with non-sortable keys cannot be flattened.
 //
 // Args:
@@ -118,6 +127,36 @@ PyObject* Flatten(PyObject* nested);
 // the type from the module. This approach also requires some trigger from
 // Python so that we know that Python interpreter had been initialzied.
 void RegisterSequenceClass(PyObject* sequence_class);
+// Like RegisterSequenceClass, but for collections.Mapping.
+void RegisterMappingClass(PyObject* mapping_class);
+// Similar to the above functions, except for the
+// sparse_tensor.SparseTensorValue class.
+void RegisterSparseTensorValueClass(PyObject* sparse_tensor_value_class);
+
+// The tensorflow.python.data package has its own nest utility that follows very
+// slightly different semantics for its functions than the tensorflow.python
+// nest utility. Returns a true if its input is a collections.Sequence (except
+// strings).
+//
+// Main differences are (this is copied from nest.py in the
+// tensorflow.data.util):
+//
+// 1. It removes support for lists as a level of nesting in nested structures.
+// 2. It adds support for `SparseTensorValue` as an atomic element.
+
+// IsSequence specialized for `tf.data`. Additional comments about
+// difference in functionality can be found in nest.py in
+// `tensorflow.python.data.util` and in the comments for Flatten above.
+bool IsSequenceForData(PyObject* o);
+
+// Flatten specialized for `tf.data`. Additional comments about
+// difference in functionality can be found in nest.py in
+// `tensorflow.python.data.util` and in the comments for Flatten above.
+PyObject* FlattenForData(PyObject* nested);
+
+// AssertSameStructure specialized for `tf.data`.
+PyObject* AssertSameStructureForData(PyObject* o1, PyObject* o2,
+                                     bool check_types);
 
 }  // namespace swig
 }  // namespace tensorflow

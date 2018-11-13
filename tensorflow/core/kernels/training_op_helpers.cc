@@ -21,6 +21,7 @@ mutex* GetTrainingVariableMutex(OpKernelContext* ctx, int input) {
   if (ctx->input_dtype(input) == DT_RESOURCE) {
     Var* var;
     if (LookupResource(ctx, HandleFromInput(ctx, input), &var).ok()) {
+      core::ScopedUnref scoped_unref(var);
       return var->mu();
     } else {
       ctx->CtxFailureWithWarning(
@@ -39,8 +40,15 @@ mutex* GetTrainingVariableMutex(OpKernelContext* ctx, int input) {
 // GetInputTensor which will signal a failure.
 std::vector<mutex_lock> MaybeLockVariableInputMutexesInOrder(
     OpKernelContext* ctx, bool do_lock, const std::vector<int>& input_ids) {
+  bool any_resource = false;
+  for (auto i : input_ids) {
+    if (ctx->input_dtype(i) == DT_RESOURCE) {
+      any_resource = true;
+      break;
+    }
+  }
   std::vector<mutex_lock> locks;
-  if (!do_lock) {
+  if (!do_lock && !any_resource) {
     return locks;
   }
   std::vector<mutex*> mutexes;

@@ -1,0 +1,23 @@
+path: "tensorflow.graph_util"
+tf_module {
+  member_method {
+    name: "convert_variables_to_constants"
+    argspec: "args=[\'sess\', \'input_graph_def\', \'output_node_names\', \'variable_names_whitelist\', \'variable_names_blacklist\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "extract_sub_graph"
+    argspec: "args=[\'graph_def\', \'dest_nodes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "must_run_on_cpu"
+    argspec: "args=[\'node\', \'pin_variables_on_cpu\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
+    name: "remove_training_nodes"
+    argspec: "args=[\'input_graph\', \'protected_nodes\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "tensor_shape_from_node_def_name"
+    argspec: "args=[\'graph\', \'input_name\'], varargs=None, keywords=None, defaults=None"
+  }
+}

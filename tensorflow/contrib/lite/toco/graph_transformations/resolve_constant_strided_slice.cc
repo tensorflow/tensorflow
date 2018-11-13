@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <vector>
 
+#include "tensorflow/contrib/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/contrib/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
@@ -22,40 +23,6 @@ limitations under the License.
 namespace toco {
 
 namespace {
-
-int StartForAxis(StridedSliceOperator const& op, Shape const& input_shape,
-                 int axis) {
-  int start;
-  if (op.begin_mask & 1 << axis) {
-    // If begin mask bit is set, use the first element
-    start = 0;
-  } else {
-    // Otherwise, use the specified element
-    start = op.start_indices[axis];
-    if (start < 0) {
-      // Handle negative indices
-      start += input_shape.dims(axis);
-    }
-  }
-  return start;
-}
-
-int StopForAxis(StridedSliceOperator const& op, Shape const& input_shape,
-                int axis) {
-  int stop;
-  if (op.end_mask & (1 << axis)) {
-    // If end mask bit set, use the last element
-    stop = input_shape.dims(axis);
-  } else {
-    // Otherwise, use the specified element
-    stop = op.stop_indices[axis];
-    if (stop < 0) {
-      // Handle negative indices
-      stop += input_shape.dims(axis);
-    }
-  }
-  return stop;
-}
 
 template <ArrayDataType Type>
 void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
@@ -71,11 +38,9 @@ void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
   CHECK_EQ(op.new_axis_mask, 0);
 
   int num_input_axes = op.start_indices.size();
+  CHECK_EQ(num_input_axes, op.start_indices.size());
   CHECK_EQ(num_input_axes, op.stop_indices.size());
   CHECK_EQ(num_input_axes, op.strides.size());
-  for (int i = 0; i < op.strides.size(); i++) {
-    CHECK_GE(op.strides[i], 0) << "Negative strides usupported";
-  }
 
   // Create a buffer for the output array
   std::vector<DataType<Type>>& output_data =
@@ -85,9 +50,16 @@ void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
   // Initialize source coordinate
   Shape const& input_shape = input_array.shape();
   Buffer<Type> const& input_buffer = input_array.GetBuffer<Type>();
-  std::vector<int> src_coord(op.start_indices.size());
+  std::vector<int> src_coord(num_input_axes);
+  std::vector<int> stop_for_axis(num_input_axes);
   for (int axis = 0; axis < num_input_axes; axis++) {
-    src_coord[axis] = StartForAxis(op, input_shape, axis);
+    int start = tflite::strided_slice::StartForAxis(
+        op.begin_mask, op.start_indices, op.strides, input_shape.dims().data(),
+        axis);
+    src_coord[axis] = start;
+    stop_for_axis[axis] = tflite::strided_slice::StopForAxis(
+        op.end_mask, op.shrink_axis_mask, op.stop_indices, op.strides,
+        input_shape.dims().data(), axis, start);
   }
 
   // In order to handle any number (N) of dimensions, we copy elements one by
@@ -103,15 +75,19 @@ void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
     // Compute next source input coordinates.
     bool carry = true;
     for (int axis = 0; axis < num_input_axes; axis++) {
+      int stride = op.strides[axis];
       // Increment this axis if we carried from the previous one
       if (carry) {
-        src_coord[axis] += op.strides[axis];
+        src_coord[axis] += stride;
       }
 
       // Check if we've overflowed.
-      if (src_coord[axis] >= StopForAxis(op, input_shape, axis)) {
+      int stop = stop_for_axis[axis];
+      if (tflite::strided_slice::LoopCondition(src_coord[axis], stop, stride)) {
         // Reset axis and set carry
-        src_coord[axis] = StartForAxis(op, input_shape, axis);
+        src_coord[axis] = tflite::strided_slice::StartForAxis(
+            op.begin_mask, op.start_indices, op.strides,
+            input_shape.dims().data(), axis);
         carry = true;
       } else {
         carry = false;
@@ -183,14 +159,7 @@ bool ResolveConstantStridedSlice::Run(Model* model, std::size_t op_index) {
       break;
   }
 
-  // Erase input array if no longer used
-  if (IsDiscardableArray(*model, op->inputs[0]) &&
-      CountOpsWithInput(*model, op->inputs[0]) == 1) {
-    model->EraseArray(op->inputs[0]);
-  }
-
-  // Erase the operator
-  model->operators.erase(it);
+  DeleteOpAndArraysIfUnused(model, it->get());
 
   return true;
 }

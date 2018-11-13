@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/dataset_stateful_op_whitelist.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -27,6 +28,8 @@ REGISTER_OP("Assert")
     .Attr("summarize: int = 3")
     .SetShapeFn(shape_inference::NoOutputs);
 
+WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("Assert");
+
 REGISTER_OP("Print")
     .Input("input: T")
     .Input("data: U")
@@ -38,6 +41,8 @@ REGISTER_OP("Print")
     .Attr("first_n: int = -1")
     .Attr("summarize: int = 3")
     .SetShapeFn(shape_inference::UnchangedShape);
+
+WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("Print");
 
 // ----------------------------------------------------------------------------
 // Operators that deal with SummaryProtos (encoded as DT_STRING tensors) as
@@ -115,5 +120,7 @@ REGISTER_OP("Timestamp")
     .Output("ts: float64")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape);
+
+WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("Timestamp");
 
 }  // end namespace tensorflow

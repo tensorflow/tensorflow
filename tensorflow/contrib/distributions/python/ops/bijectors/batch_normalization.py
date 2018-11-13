@@ -27,6 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -34,6 +35,14 @@ __all__ = [
 ]
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _undo_batch_normalization(x,
                               mean,
                               variance,
@@ -128,6 +137,14 @@ class BatchNormalization(bijector.Bijector):
        Processing Systems_, 2017. https://arxiv.org/abs/1705.07057
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                batchnorm_layer=None,
                training=True,
@@ -157,7 +174,12 @@ class BatchNormalization(bijector.Bijector):
         gamma_constraint=g_constraint)
     self._validate_bn_layer(self.batchnorm)
     self._training = training
+    if isinstance(self.batchnorm.axis, int):
+      forward_min_event_ndims = 1
+    else:
+      forward_min_event_ndims = len(self.batchnorm.axis)
     super(BatchNormalization, self).__init__(
+        forward_min_event_ndims=forward_min_event_ndims,
         validate_args=validate_args, name=name)
 
   def _validate_bn_layer(self, layer):
@@ -186,7 +208,6 @@ class BatchNormalization(bijector.Bijector):
     input_shape = np.int32(x.shape.as_list())
 
     ndims = len(input_shape)
-    # event_dims = self._compute_event_dims(x)
     reduction_axes = [i for i in range(ndims) if i not in self.batchnorm.axis]
     # Broadcasting only necessary for single-axis batch norm where the axis is
     # not the last dimension

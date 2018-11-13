@@ -537,7 +537,7 @@ __device__ detail::ToTypeIfConvertible<U, T> CudaAtomicSub(T* ptr, U value) {
   return atomicSub(ptr, value);
 }
 
-// Specializations of substraction which add the negative value.
+// Specializations of subtraction which add the negative value.
 __device__ inline float CudaAtomicSub(float* ptr, float value) {
   return CudaAtomicAdd(ptr, -value);
 }

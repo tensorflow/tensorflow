@@ -12,22 +12,25 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef _THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_PYTHON_TOCO_PYTHON_API_H_
-#define _THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_PYTHON_TOCO_PYTHON_API_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TOCO_PYTHON_TOCO_PYTHON_API_H_
+#define TENSORFLOW_CONTRIB_LITE_TOCO_PYTHON_TOCO_PYTHON_API_H_
 
-#include <string>
 #include <Python.h>
+#include <string>
 
 namespace toco {
 
 // Convert a model represented in `input_contents`. `model_flags_proto`
 // describes model parameters. `toco_flags_proto` describes conversion
 // parameters (see relevant .protos for more information). Returns a string
-// representing the contents of the converted model.
+// representing the contents of the converted model. When extended_return
+// flag is set to true returns a dictionary that contains string representation
+// of the converted model and some statitics like arithmetic ops count.
 PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
                       PyObject* toco_flags_proto_txt_raw,
-                      PyObject* input_contents_txt_raw);
+                      PyObject* input_contents_txt_raw,
+                      bool extended_return = false);
 
 }  // namespace toco
 
-#endif  // _THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_PYTHON_TOCO_PYTHON_API_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TOCO_PYTHON_TOCO_PYTHON_API_H_

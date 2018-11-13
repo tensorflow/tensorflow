@@ -1,5 +1,5 @@
 load_model: "speech_asr_lm_model.tflite"
-init_state: "21,22,42,43,63,64"
+init_state: "20,21,40,41,60,61"
 invoke {
   id: 3
   input: "63982"
@@ -18,7 +18,7 @@ invoke {
   input: "63981"
   output: "-0.314846"
 }
-init_state: "21,22,42,43,63,64"
+init_state: "20,21,40,41,60,61"
 invoke {
   id: 6
   input: "63982"
@@ -31,7 +31,7 @@ invoke {
   input: "3082"
   output: "-3.63721"
 }
-init_state: "21,22,42,43,63,64"
+init_state: "20,21,40,41,60,61"
 invoke {
   id: 8
   input: "63982"
@@ -44,7 +44,7 @@ invoke {
   input: "18965"
   output: "-6.93985"
 }
-init_state: "21,22,42,43,63,64"
+init_state: "20,21,40,41,60,61"
 invoke {
   id: 13
   input: "63982"
@@ -63,7 +63,7 @@ invoke {
   input: "63981"
   output: "-3.82091"
 }
-init_state: "21,22,42,43,63,64"
+init_state: "20,21,40,41,60,61"
 invoke {
   id: 19
   input: "63982"
@@ -88,7 +88,7 @@ invoke {
   input: "63981"
   output: "-0.677399"
 }
-init_state: "21,22,42,43,63,64"
+init_state: "20,21,40,41,60,61"
 invoke {
   id: 26
   input: "63982"
@@ -113,7 +113,7 @@ invoke {
   input: "63981"
   output: "0.415889"
 }
-init_state: "21,22,42,43,63,64"
+init_state: "20,21,40,41,60,61"
 invoke {
   id: 30
   input: "63982"
@@ -131,7 +131,7 @@ invoke {
   input: "51923"
   output: "-14.1147"
 }
-init_state: "21,22,42,43,63,64"
+init_state: "20,21,40,41,60,61"
 invoke {
   id: 34
   input: "63982"
@@ -144,7 +144,7 @@ invoke {
   input: "16318"
   output: "-1.54815"
 }
-init_state: "21,22,42,43,63,64"
+init_state: "20,21,40,41,60,61"
 invoke {
   id: 36
   input: "63982"
@@ -157,7 +157,7 @@ invoke {
   input: "28303"
   output: "-14.0947"
 }
-init_state: "21,22,42,43,63,64"
+init_state: "20,21,40,41,60,61"
 invoke {
   id: 38
   input: "63982"

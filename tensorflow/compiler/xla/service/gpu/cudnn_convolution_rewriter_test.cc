@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -32,10 +32,13 @@ namespace gpu {
 namespace {
 
 namespace op = xla::testing::opcode_matchers;
+using ::testing::_;
 
-class CudnnConvolutionRewriterTest : public HloTestBase {
+class CudnnConvolutionRewriterTest : public HloVerifiedTestBase {
  public:
-  CudnnConvolutionRewriterTest() {
+  CudnnConvolutionRewriterTest()
+      : HloVerifiedTestBase(/*layout_sensitive=*/true,
+                            /*allow_mixed_precision=*/false) {
     for (int i = 0; i < 2; ++i) {
       WindowDimension* window_dim = default_conv_window_.add_dimensions();
       window_dim->set_size(1);
@@ -114,7 +117,7 @@ TEST_F(CudnnConvolutionRewriterTest, BackwardFilterConvolve) {
   auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_TRUE(RunPass(module));
   EXPECT_THAT(entry_computation->root_instruction(),
               op::GetTupleElement(
                   op::CustomCall(kCudnnConvBackwardFilterCallTarget), 0));
@@ -142,7 +145,7 @@ TEST_F(CudnnConvolutionRewriterTest,
   auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_TRUE(RunPass(module));
   EXPECT_THAT(entry_computation->root_instruction(),
               op::GetTupleElement(
                   op::CustomCall(kCudnnConvBackwardFilterCallTarget), 0));
@@ -172,7 +175,7 @@ TEST_F(CudnnConvolutionRewriterTest,
   auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_TRUE(RunPass(module));
   EXPECT_THAT(entry_computation->root_instruction(),
               op::GetTupleElement(
                   op::CustomCall(kCudnnConvBackwardFilterCallTarget), 0));
@@ -202,7 +205,7 @@ TEST_F(CudnnConvolutionRewriterTest,
   auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_TRUE(RunPass(module));
   EXPECT_THAT(entry_computation->root_instruction(),
               op::GetTupleElement(
                   op::CustomCall(kCudnnConvBackwardFilterCallTarget), 0));
@@ -230,7 +233,7 @@ TEST_F(CudnnConvolutionRewriterTest, BackwardFilterConvolveWithUnevenPadding) {
   auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_TRUE(RunPass(module));
   EXPECT_THAT(entry_computation->root_instruction(),
               op::GetTupleElement(
                   op::CustomCall(kCudnnConvBackwardFilterCallTarget), 0));
@@ -280,7 +283,7 @@ TEST_F(CudnnConvolutionRewriterTest, BackwardInputConvolveEvenPadding) {
   auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_TRUE(RunPass(module));
 
   ASSERT_THAT(entry_computation->root_instruction(),
               op::GetTupleElement(
@@ -325,7 +328,7 @@ TEST_F(CudnnConvolutionRewriterTest, BackwardInputConvolve1x1Filter) {
   auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_TRUE(RunPass(module));
   EXPECT_THAT(entry_computation->root_instruction(),
               op::GetTupleElement(
                   op::CustomCall(kCudnnConvBackwardInputCallTarget), 0));
@@ -357,7 +360,7 @@ TEST_F(CudnnConvolutionRewriterTest,
   auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_TRUE(RunPass(module));
   EXPECT_THAT(
       entry_computation->root_instruction(),
       op::GetTupleElement(op::CustomCall(kCudnnConvForwardCallTarget), 0));
@@ -410,7 +413,7 @@ TEST_F(CudnnConvolutionRewriterTest,
   auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_TRUE(RunPass(module));
   ASSERT_THAT(entry_computation->root_instruction(),
               op::GetTupleElement(
                   op::CustomCall(kCudnnConvBackwardInputCallTarget), 0));
@@ -457,7 +460,7 @@ TEST_F(CudnnConvolutionRewriterTest, BackwardInputConvolveLowPaddingTooLarge) {
   auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_TRUE(RunPass(module));
   EXPECT_THAT(
       entry_computation->root_instruction(),
       op::GetTupleElement(op::CustomCall(kCudnnConvForwardCallTarget), 0));
@@ -510,7 +513,7 @@ TEST_F(CudnnConvolutionRewriterTest,
   auto module = CreateNewModule();
   const HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_TRUE(RunPass(module));
   ASSERT_THAT(entry_computation->root_instruction(),
               op::GetTupleElement(
                   op::CustomCall(kCudnnConvBackwardInputCallTarget), 0));
@@ -562,10 +565,36 @@ TEST_F(CudnnConvolutionRewriterTest,
   auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_TRUE(RunPass(module));
   EXPECT_THAT(
       entry_computation->root_instruction(),
       op::GetTupleElement(op::CustomCall(kCudnnConvForwardCallTarget), 0));
+}
+
+// Check that we will materialize a reversed version of a constant in order to
+// pattern-match a backwards input convolution.
+TEST_F(CudnnConvolutionRewriterTest, BackwardInputConvolveConstantFilter) {
+  Array4D<float> constant_arr(4, 4, 2, 2);
+  constant_arr.FillIota(0);
+  string constant_str =
+      LiteralUtil::CreateR4FromArray4D(constant_arr)->ToString();
+  ParseAndVerifyModule(absl::StrFormat(R"(
+    HloModule test
+
+    ENTRY entry_computation {
+      param0 = f32[128,2,16,16]{3,2,1,0} parameter(0)
+      constant = f32[4,4,2,2]{3,2,1,0} constant(%s)
+      ROOT convolution = f32[128,2,32,32]{3,2,1,0} convolution(param0, constant),
+          window={size=4x4 pad=2_2x2_2 lhs_dilate=2x2},
+          dim_labels=bf01_01oi->bf01, feature_group_count=1
+    })",
+                                       constant_str));
+  EXPECT_TRUE(RunPass(&module()));
+  EXPECT_THAT(
+      module().entry_computation()->root_instruction(),
+      op::GetTupleElement(op::CustomCall(kCudnnConvBackwardInputCallTarget, _,
+                                         op::Reverse(op::Constant())),
+                          0));
 }
 
 }  // anonymous namespace

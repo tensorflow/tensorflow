@@ -21,6 +21,7 @@ from __future__ import print_function
 import json
 
 from tensorflow.contrib.tpu.python.tpu import tpu_config as tpu_config_lib
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.platform import test
 
@@ -33,6 +34,46 @@ def _set_tf_config_env_variable(tf_config):
 
 class TPURunConfigTest(test.TestCase):
 
+  def test_no_session_config_set_in_local_case(self):
+    run_config = tpu_config_lib.RunConfig()
+    self.assertIsNone(run_config.session_config)
+
+  def test_no_session_config_overwrite_in_local_case(self):
+    session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+    run_config = tpu_config_lib.RunConfig(session_config=session_config)
+    self.assertEqual(session_config, run_config.session_config)
+
+  def test_no_session_config_set_with_cluster_spec(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.CHIEF: ['host3:3'],
+            run_config_lib.TaskType.WORKER: ['host3:4']
+        },
+        'task': {
+            'type': run_config_lib.TaskType.CHIEF,
+            'index': 0
+        }
+    }
+    with _set_tf_config_env_variable(tf_config):
+      run_config = tpu_config_lib.RunConfig()
+      self.assertIsNone(run_config.session_config)
+
+  def test_no_session_config_overwrite_with_cluster_spec(self):
+    tf_config = {
+        'cluster': {
+            run_config_lib.TaskType.CHIEF: ['host3:3'],
+            run_config_lib.TaskType.WORKER: ['host3:4']
+        },
+        'task': {
+            'type': run_config_lib.TaskType.CHIEF,
+            'index': 0
+        }
+    }
+    with _set_tf_config_env_variable(tf_config):
+      session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+      run_config = tpu_config_lib.RunConfig(session_config=session_config)
+      self.assertEqual(session_config, run_config.session_config)
+
   def test_fail_with_invalid_num_shards(self):
     with self.assertRaisesRegexp(ValueError, 'must be positive'):
       tpu_config_lib.RunConfig(
@@ -43,15 +84,11 @@ class TPURunConfigTest(test.TestCase):
       tpu_config_lib.RunConfig(
           tpu_config=tpu_config_lib.TPUConfig(iterations_per_loop=0))
 
-  def test_fail_with_invalid_computation_shape(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'computation_shape must be a list with length'
-                                 ' 3 or None'):
-      tpu_config_lib.TPUConfig(computation_shape=[2, 1])
-
-    with self.assertRaisesRegexp(ValueError,
-                                 'computation_shape elements can only be'):
-      tpu_config_lib.TPUConfig(computation_shape=[1, 3, 1])
+  def test_fail_with_invalid_num_cores_per_replica(self):
+    with self.assertRaisesRegexp(
+        ValueError, 'num_cores_per_replica must be 1, 2, 4, or 8;'
+        ' got 7'):
+      tpu_config_lib.TPUConfig(num_cores_per_replica=7)
 
 
 class TPURunConfigMasterTest(test.TestCase):

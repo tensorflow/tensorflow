@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Asin"
+  endpoint {
+    name: "math.asin"
+  }
+  endpoint {
+    name: "asin"
+    deprecated: true
+  }
+}

@@ -19,8 +19,6 @@ from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
-from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -150,11 +148,11 @@ class ParallelInterleaveDataset(dataset_ops.InterleaveDataset):
         self._buffer_output_elements,
         self._prefetch_input_elements,
         f=self._map_func,
-        output_types=nest.flatten(
-            sparse.as_dense_types(self.output_types, self.output_classes)),
-        output_shapes=nest.flatten(
-            sparse.as_dense_shapes(self.output_shapes, self.output_classes)))
+        **dataset_ops.flat_structure(self))
     # pylint: enable=protected-access
+
+  def _transformation_name(self):
+    return "tf.contrib.data.parallel_interleave()"
 
 
 @tf_export("data.TFRecordDataset")
@@ -197,6 +195,11 @@ class TFRecordDataset(dataset_ops.Dataset):
       filenames = array_ops.reshape(filenames, [-1], name="flat_filenames")
       filenames = dataset_ops.Dataset.from_tensor_slices(filenames)
 
+    self._filenames = filenames
+    self._compression_type = compression_type
+    self._buffer_size = buffer_size
+    self._num_parallel_reads = num_parallel_reads
+
     def read_one_file(filename):
       return _TFRecordDataset(filename, compression_type, buffer_size)
 
@@ -207,6 +210,16 @@ class TFRecordDataset(dataset_ops.Dataset):
           filenames, read_one_file, cycle_length=num_parallel_reads,
           block_length=1, sloppy=False, buffer_output_elements=None,
           prefetch_input_elements=None)
+
+  def _clone(self,
+             filenames=None,
+             compression_type=None,
+             buffer_size=None,
+             num_parallel_reads=None):
+    return TFRecordDataset(filenames or self._filenames,
+                           compression_type or self._compression_type,
+                           buffer_size or self._buffer_size,
+                           num_parallel_reads or self._num_parallel_reads)
 
   def _as_variant_tensor(self):
     return self._impl._as_variant_tensor()  # pylint: disable=protected-access

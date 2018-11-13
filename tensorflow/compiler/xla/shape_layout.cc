@@ -22,24 +22,24 @@ limitations under the License.
 
 namespace xla {
 
-tensorflow::Status ShapeLayout::CopyLayoutFromShape(const Shape& other_shape) {
+Status ShapeLayout::CopyLayoutFromShape(const Shape& other_shape) {
   if (!ShapeUtil::Compatible(other_shape, shape_)) {
     return InvalidArgument("Shape %s is not compatible with shape %s",
-                           ShapeUtil::HumanString(other_shape).c_str(),
-                           ShapeUtil::HumanString(shape()).c_str());
+                           ShapeUtil::HumanString(other_shape),
+                           ShapeUtil::HumanString(shape()));
   }
   shape_ = other_shape;
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status ShapeLayout::AssignLayoutToShape(Shape* to_shape) const {
+Status ShapeLayout::AssignLayoutToShape(Shape* to_shape) const {
   if (!ShapeUtil::Compatible(*to_shape, shape_)) {
     return InvalidArgument("Shape %s is not compatible with shape %s",
-                           ShapeUtil::HumanString(*to_shape).c_str(),
-                           ShapeUtil::HumanString(shape()).c_str());
+                           ShapeUtil::HumanString(*to_shape),
+                           ShapeUtil::HumanString(shape()));
   }
   *to_shape = shape_;
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 void ShapeLayout::SetToDefaultLayout() {
@@ -64,6 +64,14 @@ void ShapeLayout::ResetLayout(const Layout& layout) {
   CHECK(!ShapeUtil::IsTuple(shape_));
   CHECK(!ShapeUtil::IsOpaque(shape_));
   *shape_.mutable_layout() = layout;
+  TF_CHECK_OK(ShapeUtil::ValidateShape(shape_));
+}
+
+void ShapeLayout::ResetLayout(const Layout& layout,
+                              ShapeIndexView shape_index) {
+  CHECK(ShapeUtil::IsTuple(shape_));
+  *ShapeUtil::GetMutableSubshape(&shape_, shape_index)->mutable_layout() =
+      layout;
   TF_CHECK_OK(ShapeUtil::ValidateShape(shape_));
 }
 

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/call_graph.h"
 
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -82,7 +82,7 @@ class CallGraphTest : public HloTestBase {
     HloInstruction* param0 = builder.AddInstruction(
         HloInstruction::CreateParameter(0, kScalarShape, "param0"));
     HloInstruction* zero = builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
     builder.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGt, param0, zero));
     return builder.Build();
@@ -247,11 +247,11 @@ TEST_F(CallGraphTest, ComputationWithConditional) {
 
   HloComputation::Builder builder(TestName());
   HloInstruction* pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
   HloInstruction* const1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(56.4f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(56.4f)));
   HloInstruction* const2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(12.6f)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(12.6f)));
   HloInstruction* conditional =
       builder.AddInstruction(HloInstruction::CreateConditional(
           kScalarShape, pred, const1, true_computation, const2,

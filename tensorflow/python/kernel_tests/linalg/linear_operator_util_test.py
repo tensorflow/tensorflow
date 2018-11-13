@@ -36,7 +36,7 @@ class AssertZeroImagPartTest(test.TestCase):
 
   def test_real_tensor_doesnt_raise(self):
     x = ops.convert_to_tensor([0., 2, 3])
-    with self.test_session():
+    with self.cached_session():
       # Should not raise.
       linear_operator_util.assert_zero_imag_part(x, message="ABC123").run()
 
@@ -44,7 +44,7 @@ class AssertZeroImagPartTest(test.TestCase):
     x = ops.convert_to_tensor([1., 0, 3])
     y = ops.convert_to_tensor([0., 0, 0])
     z = math_ops.complex(x, y)
-    with self.test_session():
+    with self.cached_session():
       # Should not raise.
       linear_operator_util.assert_zero_imag_part(z, message="ABC123").run()
 
@@ -52,7 +52,7 @@ class AssertZeroImagPartTest(test.TestCase):
     x = ops.convert_to_tensor([1., 2, 0])
     y = ops.convert_to_tensor([1., 2, 0])
     z = math_ops.complex(x, y)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("ABC123"):
         linear_operator_util.assert_zero_imag_part(z, message="ABC123").run()
 
@@ -61,7 +61,7 @@ class AssertNoEntriesWithModulusZeroTest(test.TestCase):
 
   def test_nonzero_real_tensor_doesnt_raise(self):
     x = ops.convert_to_tensor([1., 2, 3])
-    with self.test_session():
+    with self.cached_session():
       # Should not raise.
       linear_operator_util.assert_no_entries_with_modulus_zero(
           x, message="ABC123").run()
@@ -70,14 +70,14 @@ class AssertNoEntriesWithModulusZeroTest(test.TestCase):
     x = ops.convert_to_tensor([1., 0, 3])
     y = ops.convert_to_tensor([1., 2, 0])
     z = math_ops.complex(x, y)
-    with self.test_session():
+    with self.cached_session():
       # Should not raise.
       linear_operator_util.assert_no_entries_with_modulus_zero(
           z, message="ABC123").run()
 
   def test_zero_real_tensor_raises(self):
     x = ops.convert_to_tensor([1., 0, 3])
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("ABC123"):
         linear_operator_util.assert_no_entries_with_modulus_zero(
             x, message="ABC123").run()
@@ -86,7 +86,7 @@ class AssertNoEntriesWithModulusZeroTest(test.TestCase):
     x = ops.convert_to_tensor([1., 2, 0])
     y = ops.convert_to_tensor([1., 2, 0])
     z = math_ops.complex(x, y)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("ABC123"):
         linear_operator_util.assert_no_entries_with_modulus_zero(
             z, message="ABC123").run()
@@ -103,7 +103,7 @@ class BroadcastMatrixBatchDimsTest(test.TestCase):
     tensor, = linear_operator_util.broadcast_matrix_batch_dims([arr])
     self.assertTrue(isinstance(tensor, ops.Tensor))
 
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(arr, tensor.eval())
 
   def test_static_dims_broadcast(self):
@@ -118,7 +118,7 @@ class BroadcastMatrixBatchDimsTest(test.TestCase):
 
     x_bc, y_bc = linear_operator_util.broadcast_matrix_batch_dims([x, y])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual(x_bc_expected.shape, x_bc.get_shape())
       self.assertAllEqual(y_bc_expected.shape, y_bc.get_shape())
       x_bc_, y_bc_ = sess.run([x_bc, y_bc])
@@ -137,7 +137,7 @@ class BroadcastMatrixBatchDimsTest(test.TestCase):
 
     x_bc, y_bc = linear_operator_util.broadcast_matrix_batch_dims([x, y])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertAllEqual(x_bc_expected.shape, x_bc.get_shape())
       self.assertAllEqual(y_bc_expected.shape, y_bc.get_shape())
       x_bc_, y_bc_ = sess.run([x_bc, y_bc])
@@ -159,7 +159,7 @@ class BroadcastMatrixBatchDimsTest(test.TestCase):
 
     x_bc, y_bc = linear_operator_util.broadcast_matrix_batch_dims([x_ph, y_ph])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x_bc_, y_bc_ = sess.run([x_bc, y_bc], feed_dict={x_ph: x, y_ph: y})
       self.assertAllClose(x_bc_expected, x_bc_)
       self.assertAllClose(y_bc_expected, y_bc_)
@@ -179,7 +179,7 @@ class BroadcastMatrixBatchDimsTest(test.TestCase):
 
     x_bc, y_bc = linear_operator_util.broadcast_matrix_batch_dims([x_ph, y_ph])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x_bc_, y_bc_ = sess.run([x_bc, y_bc], feed_dict={x_ph: x, y_ph: y})
       self.assertAllClose(x_bc_expected, x_bc_)
       self.assertAllClose(y_bc_expected, y_bc_)
@@ -203,7 +203,7 @@ class CholeskySolveWithBroadcastTest(test.TestCase):
     rhs = rng.rand(2, 3, 7)
     chol_broadcast = chol + np.zeros((2, 1, 1))
 
-    with self.test_session():
+    with self.cached_session():
       result = linear_operator_util.cholesky_solve_with_broadcast(chol, rhs)
       self.assertAllEqual((2, 3, 7), result.get_shape())
       expected = linalg_ops.cholesky_solve(chol_broadcast, rhs)
@@ -219,7 +219,7 @@ class CholeskySolveWithBroadcastTest(test.TestCase):
     chol_ph = array_ops.placeholder(dtypes.float64)
     rhs_ph = array_ops.placeholder(dtypes.float64)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       result, expected = sess.run(
           [
               linear_operator_util.cholesky_solve_with_broadcast(
@@ -242,7 +242,7 @@ class MatmulWithBroadcastTest(test.TestCase):
     y = rng.rand(3, 7)
     y_broadcast = y + np.zeros((2, 1, 1))
 
-    with self.test_session():
+    with self.cached_session():
       result = linear_operator_util.matmul_with_broadcast(x, y)
       self.assertAllEqual((2, 1, 7), result.get_shape())
       expected = math_ops.matmul(x, y_broadcast)
@@ -258,7 +258,7 @@ class MatmulWithBroadcastTest(test.TestCase):
     x_ph = array_ops.placeholder(dtypes.float64)
     y_ph = array_ops.placeholder(dtypes.float64)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       result, expected = sess.run(
           [
               linear_operator_util.matmul_with_broadcast(x_ph, y_ph),
@@ -279,7 +279,7 @@ class MatrixSolveWithBroadcastTest(test.TestCase):
     rhs = rng.rand(2, 3, 7)
     matrix_broadcast = matrix + np.zeros((2, 1, 1))
 
-    with self.test_session():
+    with self.cached_session():
       result = linear_operator_util.matrix_solve_with_broadcast(matrix, rhs)
       self.assertAllEqual((2, 3, 7), result.get_shape())
       expected = linalg_ops.matrix_solve(matrix_broadcast, rhs)
@@ -295,7 +295,7 @@ class MatrixSolveWithBroadcastTest(test.TestCase):
     matrix_ph = array_ops.placeholder(dtypes.float64)
     rhs_ph = array_ops.placeholder(dtypes.float64)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       result, expected = sess.run(
           [
               linear_operator_util.matrix_solve_with_broadcast(
@@ -317,7 +317,7 @@ class MatrixTriangularSolveWithBroadcastTest(test.TestCase):
     rhs = rng.rand(3, 7)
     rhs_broadcast = rhs + np.zeros((2, 1, 1))
 
-    with self.test_session():
+    with self.cached_session():
       result = linear_operator_util.matrix_triangular_solve_with_broadcast(
           matrix, rhs)
       self.assertAllEqual((2, 3, 7), result.get_shape())
@@ -333,7 +333,7 @@ class MatrixTriangularSolveWithBroadcastTest(test.TestCase):
     matrix_ph = array_ops.placeholder(dtypes.float64)
     rhs_ph = array_ops.placeholder(dtypes.float64)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       result, expected = sess.run(
           [
               linear_operator_util.matrix_triangular_solve_with_broadcast(
@@ -359,7 +359,7 @@ class DomainDimensionStubOperator(object):
 class AssertCompatibleMatrixDimensionsTest(test.TestCase):
 
   def test_compatible_dimensions_do_not_raise(self):
-    with self.test_session():
+    with self.cached_session():
       x = ops.convert_to_tensor(rng.rand(2, 3, 4))
       operator = DomainDimensionStubOperator(3)
       # Should not raise
@@ -367,7 +367,7 @@ class AssertCompatibleMatrixDimensionsTest(test.TestCase):
           operator, x).run()  # pyformat: disable
 
   def test_incompatible_dimensions_raise(self):
-    with self.test_session():
+    with self.cached_session():
       x = ops.convert_to_tensor(rng.rand(2, 4, 4))
       operator = DomainDimensionStubOperator(3)
       with self.assertRaisesOpError("Incompatible matrix dimensions"):

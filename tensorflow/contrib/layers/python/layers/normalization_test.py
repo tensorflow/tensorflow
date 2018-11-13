@@ -293,8 +293,13 @@ class GroupNormTest(test.TestCase):
       train_np, eval_np = sess.run([output_train, output_eval])
       self.assertAllClose(train_np, eval_np)
 
-  def doOutputTest(self, input_shape, channels_axis=None, reduction_axes=None,
-                   groups=2, tol=1e-2):
+  def doOutputTest(self,
+                   input_shape,
+                   channels_axis=None,
+                   reduction_axes=None,
+                   mean_close_to_zero=False,
+                   groups=2,
+                   tol=1e-2):
     # Select the axis for the channel and the dimensions along which statistics
     # are accumulated.
     if channels_axis < 0:
@@ -322,17 +327,28 @@ class GroupNormTest(test.TestCase):
       if i not in reduced_axes:
         reduced_shape.append(a)
 
-    for mu in (0.0, 1e2):
-      for sigma in (1.0, 0.1):
+    if mean_close_to_zero:
+      mu_tuple = (1e-4, 1e-2, 1.0)
+      sigma_tuple = (1e-2, 0.1, 1.0)
+    else:
+      mu_tuple = (1.0, 1e2)
+      sigma_tuple = (1.0, 0.1)
+
+    for mu in mu_tuple:
+      for sigma in sigma_tuple:
         # Determine shape of Tensor after normalization.
         expected_mean = np.zeros(reduced_shape)
         expected_var = np.ones(reduced_shape)
 
-        inputs = random_ops.random_uniform(input_shape, seed=0) * sigma + mu
+        inputs = random_ops.random_normal(input_shape, seed=0) * sigma + mu
         output_op = normalization.group_norm(
-            inputs, groups=groups, center=False, scale=False,
+            inputs,
+            groups=groups,
+            center=False,
+            scale=False,
             channels_axis=channels_axis,
-            reduction_axes=reduction_axes)
+            reduction_axes=reduction_axes,
+            mean_close_to_zero=mean_close_to_zero)
         with self.test_session() as sess:
           sess.run(variables.global_variables_initializer())
           outputs = sess.run(output_op)
@@ -347,12 +363,32 @@ class GroupNormTest(test.TestCase):
           self.assertAllClose(expected_mean, mean, rtol=tol, atol=tol)
           self.assertAllClose(expected_var, var, rtol=tol, atol=tol)
 
+  def doOutputTestForMeanCloseToZero(self,
+                                     input_shape,
+                                     channels_axis=None,
+                                     reduction_axes=None,
+                                     groups=2,
+                                     tol=5e-2):
+    self.doOutputTest(
+        input_shape,
+        channels_axis=channels_axis,
+        reduction_axes=reduction_axes,
+        groups=groups,
+        tol=tol,
+        mean_close_to_zero=True)
+
   def testOutputSmallInput4D_NHWC(self):
     input_shape = [10, 10, 10, 30]
     # Specify axes with positive values.
     self.doOutputTest(input_shape, channels_axis=3, reduction_axes=[1, 2])
     # Specify axes with negative values.
     self.doOutputTest(input_shape, channels_axis=-1, reduction_axes=[-3, -2])
+    # Specify axes with positive values.
+    self.doOutputTestForMeanCloseToZero(
+        input_shape, channels_axis=3, reduction_axes=[1, 2])
+    # Specify axes with negative values.
+    self.doOutputTestForMeanCloseToZero(
+        input_shape, channels_axis=-1, reduction_axes=[-3, -2])
 
   def testOutputSmallInput3D_NHWC(self):
     input_shape = [10, 10, 30]
@@ -360,6 +396,12 @@ class GroupNormTest(test.TestCase):
     self.doOutputTest(input_shape, channels_axis=2, reduction_axes=[0, 1])
     # Specify axes with negative values.
     self.doOutputTest(input_shape, channels_axis=-1, reduction_axes=[-3, -2])
+    # Specify axes with positive values.
+    self.doOutputTestForMeanCloseToZero(
+        input_shape, channels_axis=2, reduction_axes=[0, 1])
+    # Specify axes with negative values.
+    self.doOutputTestForMeanCloseToZero(
+        input_shape, channels_axis=-1, reduction_axes=[-3, -2])
 
   def testOutputSmallInput4D_NCHW(self):
     input_shape = [10, 10, 10, 30]
@@ -367,6 +409,12 @@ class GroupNormTest(test.TestCase):
     self.doOutputTest(input_shape, channels_axis=1, reduction_axes=[2, 3])
     # Specify axes with negative values.
     self.doOutputTest(input_shape, channels_axis=-3, reduction_axes=[-2, -1])
+    # Specify axes with positive values.
+    self.doOutputTestForMeanCloseToZero(
+        input_shape, channels_axis=1, reduction_axes=[2, 3])
+    # Specify axes with negative values.
+    self.doOutputTestForMeanCloseToZero(
+        input_shape, channels_axis=-3, reduction_axes=[-2, -1])
 
   def testOutputSmallInput3D_NCHW(self):
     input_shape = [10, 10, 30]
@@ -374,23 +422,43 @@ class GroupNormTest(test.TestCase):
     self.doOutputTest(input_shape, channels_axis=0, reduction_axes=[1, 2])
     # Specify axes with negative values.
     self.doOutputTest(input_shape, channels_axis=-3, reduction_axes=[-2, -1])
+    # Specify axes with positive values.
+    self.doOutputTestForMeanCloseToZero(
+        input_shape, channels_axis=0, reduction_axes=[1, 2])
+    # Specify axes with negative values.
+    self.doOutputTestForMeanCloseToZero(
+        input_shape, channels_axis=-3, reduction_axes=[-2, -1])
 
   def testOutputBigInput4D_NHWC(self):
-    self.doOutputTest([5, 100, 100, 1], channels_axis=3, reduction_axes=[1, 2],
-                      groups=1)
+    self.doOutputTest(
+        [5, 100, 100, 1], channels_axis=3, reduction_axes=[1, 2], groups=1)
+    self.doOutputTestForMeanCloseToZero(
+        [5, 100, 100, 1], channels_axis=3, reduction_axes=[1, 2], groups=1)
 
   def testOutputBigInput4D_NCHW(self):
-    self.doOutputTest([1, 100, 100, 4], channels_axis=1, reduction_axes=[2, 3],
-                      groups=4)
+    self.doOutputTest(
+        [1, 100, 100, 4], channels_axis=1, reduction_axes=[2, 3], groups=4)
+    self.doOutputTestForMeanCloseToZero(
+        [1, 100, 100, 4], channels_axis=1, reduction_axes=[2, 3], groups=4)
 
   def testOutputSmallInput2D_NC(self):
-    self.doOutputTest([10, 7*100], channels_axis=1, reduction_axes=[], groups=7)
+    self.doOutputTest(
+        [10, 7 * 100], channels_axis=1, reduction_axes=[], groups=7)
+    self.doOutputTestForMeanCloseToZero(
+        [10, 7 * 100], channels_axis=1, reduction_axes=[], groups=7)
 
   def testOutputSmallInput5D_NCXXX(self):
-    self.doOutputTest([10, 10, 20, 40, 5],
-                      channels_axis=1,
-                      reduction_axes=[2, 3, 4],
-                      groups=5)
+    self.doOutputTest(
+        [10, 10, 20, 40, 5],
+        channels_axis=1,
+        reduction_axes=[2, 3, 4],
+        groups=5)
+    self.doOutputTestForMeanCloseToZero(
+        [10, 10, 20, 40, 5],
+        channels_axis=1,
+        reduction_axes=[2, 3, 4],
+        groups=5)
+
 
 if __name__ == '__main__':
   test.main()

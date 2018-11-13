@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 
@@ -29,6 +30,16 @@ bool CpuOpFilter(KernelDef* kdef) {
     attr_constraint->mutable_allowed_values()->mutable_list()->add_type(
         DT_FLOAT);
     return true;
+  }
+  // TODO(b/26783907): The CPU backend currently does not implement sort.
+  if (kdef->op() == "XlaSort" || kdef->op() == "TopKV2") {
+    return false;
+  }
+  if (kdef->op() == "Const") {
+    AddDtypeToKernalDefConstraint("dtype", DT_STRING, kdef);
+  }
+  if (kdef->op() == "Assert") {
+    AddDtypeToKernalDefConstraint("T", DT_STRING, kdef);
   }
   return true;
 }

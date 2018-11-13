@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -24,35 +26,33 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class PrefetchDatasetTest(test.TestCase):
+class PrefetchDatasetTest(test.TestCase, parameterized.TestCase):
 
-  def testBufferSize(self):
-    buffer_size = array_ops.placeholder(dtypes.int64, shape=[])
+  @parameterized.parameters((-1), (0), (5))
+  def testBufferSize(self, buffer_size):
+    buffer_size_t = array_ops.placeholder(dtypes.int64, shape=[])
     iterator = dataset_ops.Dataset.range(10).prefetch(
-        buffer_size=buffer_size).make_initializable_iterator()
+        buffer_size=buffer_size_t).make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
     with self.test_session() as sess:
-      sess.run(init_op, feed_dict={buffer_size: 5})
+      sess.run(init_op, feed_dict={buffer_size_t: buffer_size})
       for m in range(10):
         self.assertEqual(m, sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-  def testInvalidBufferSize(self):
-    buffer_size = array_ops.placeholder(dtypes.int64, shape=[])
+  @parameterized.parameters((-2), (-42))
+  def testInvalidBufferSize(self, buffer_size):
+    buffer_size_t = array_ops.placeholder(dtypes.int64, shape=[])
     iterator = dataset_ops.Dataset.range(10).prefetch(
-        buffer_size=buffer_size).make_initializable_iterator()
+        buffer_size=buffer_size_t).make_initializable_iterator()
     init_op = iterator.initializer
 
     with self.assertRaisesRegexp(errors.InvalidArgumentError, "buffer_size"):
       with self.test_session() as sess:
-        sess.run(init_op, feed_dict={buffer_size: 0})
-
-    with self.assertRaisesRegexp(errors.InvalidArgumentError, "buffer_size"):
-      with self.test_session() as sess:
-        sess.run(init_op, feed_dict={buffer_size: -5})
+        sess.run(init_op, feed_dict={buffer_size_t: buffer_size})
 
 
 if __name__ == "__main__":

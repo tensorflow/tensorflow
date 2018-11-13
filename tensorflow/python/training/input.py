@@ -15,7 +15,8 @@
 
 """Input pipeline.
 
-Please see the @{$reading_data$reading data how-to}
+Please see the [reading data
+how-to](https://tensorflow.org/api_guides/python/reading_data)
 for context.
 """
 

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import itertools
 
 
 class Pattern(object):
@@ -33,7 +34,7 @@ class Pattern(object):
 class OpTypePattern(Pattern):
   """A tree pattern that matches TF expressions with certain op types."""
 
-  def __init__(self, op_type, name=None, inputs=None):
+  def __init__(self, op_type, name=None, inputs=None, ordered_inputs=True):
     """Initializes an OpTypePattern.
 
     Args:
@@ -48,16 +49,25 @@ class OpTypePattern(Pattern):
       inputs: Optional list of `Pattern`s or strings that specify the
         patterns for the inputs of a matching op. If None, this pattern accepts
         any inputs of a matching op.
+      ordered_inputs: Defaults to True. If False, will match any op that
+        matches a permutation of the inputs.
+
+    Raises:
+      ValueError: if too many inputs are provided when order_inputs is False.
     """
     self._op_type = op_type
     self._name = name
     if inputs is None:
       inputs = []
+    if len(inputs) > 8:
+      raise ValueError(
+          'Only < 8 inputs are allowed when ordered_inputs is False.')
     self._inputs = [
         input_pattern
         if isinstance(input_pattern, Pattern) else OpTypePattern(input_pattern)
         for input_pattern in inputs
     ]
+    self._ordered_inputs = ordered_inputs
 
   @property
   def name(self):
@@ -78,12 +88,23 @@ class OpTypePattern(Pattern):
     if len(op.inputs) != len(self._inputs):
       return None
 
-    for input_tensor, input_pattern in zip(op.inputs, self._inputs):
-      input_match_result = input_pattern.match(input_tensor.op, input_tensor)
-      if input_match_result is None:
-        return None
-      match_result.merge_from(input_match_result)
-    return match_result
+    input_patterns_list = [self._inputs]
+    # If order doesn't matter for the inputs, then make sure we match at least
+    # one permutation of the inputs.
+    if not self._ordered_inputs:
+      input_patterns_list = list(itertools.permutations(self._inputs))
+
+    for input_patterns in input_patterns_list:
+      match_failed = False
+      for input_tensor, input_pattern in zip(op.inputs, input_patterns):
+        input_match_result = input_pattern.match(input_tensor.op, input_tensor)
+        if input_match_result is None:
+          match_failed = True
+          break
+        match_result.merge_from(input_match_result)
+      if not match_failed:
+        return match_result
+    return None
 
 
 class OneofPattern(Pattern):

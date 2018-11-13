@@ -1,0 +1,58 @@
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+"""Experimental API for optimizing `tf.data` pipelines."""
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import gen_dataset_ops
+
+
+def map_defun(fn, elems, output_dtypes, output_shapes):
+  """Map a function on the list of tensors unpacked from `elems` on dimension 0.
+
+  Args:
+    fn: A function (`function.Defun`) that takes a list of tensors and returns
+      another list of tensors. The output list has the same types as
+      output_dtypes. The elements of the output list have the same dimension 0
+      as `elems`, and the remaining dimensions correspond to those of
+      `fn_output_shapes`.
+    elems: A list of tensors.
+    output_dtypes: A list of dtypes corresponding to the output types of the
+      function.
+    output_shapes: A list of `TensorShape`s corresponding to the output
+      shapes from each invocation of the function on slices of inputs.
+
+  Raises:
+    ValueError: if any of the inputs are malformed.
+
+  Returns:
+    A list of `Tensor` objects with the same types as `output_dtypes`.
+  """
+  if not isinstance(elems, list):
+    raise ValueError("`elems` must be a list of tensors.")
+  if not isinstance(output_dtypes, list):
+    raise ValueError("`output_dtypes` must be a list of tensors.")
+  if not isinstance(output_shapes, list):
+    raise ValueError("`output_shapes` must be a list of tensors.")
+
+  elems = [ops.convert_to_tensor(e) for e in elems]
+  output_shapes = [tensor_shape.TensorShape(s) for s in output_shapes]
+  if not all(s.is_fully_defined() for s in output_shapes):
+    raise ValueError("All fn output shapes must be fully defined.")
+  return gen_dataset_ops.map_defun(elems, output_dtypes, output_shapes, fn)

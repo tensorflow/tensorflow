@@ -18,8 +18,51 @@ limitations under the License.
 
 %{
 #define SWIG_FILE_WITH_INIT
+#include "tensorflow/contrib/lite/interpreter.h"
+#include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/python/interpreter_wrapper/interpreter_wrapper.h"
 %}
 
 
 %include "tensorflow/contrib/lite/python/interpreter_wrapper/interpreter_wrapper.h"
+
+namespace tflite {
+namespace interpreter_wrapper {
+%extend InterpreterWrapper {
+
+  // Version of the constructor that handles producing Python exceptions
+  // that propagate strings.
+  static PyObject* CreateWrapperCPPFromFile(const char* model_path) {
+    std::string error;
+    if(tflite::interpreter_wrapper::InterpreterWrapper* ptr =
+        tflite::interpreter_wrapper::InterpreterWrapper
+            ::CreateWrapperCPPFromFile(
+        model_path, &error)) {
+      return SWIG_NewPointerObj(
+          ptr, SWIGTYPE_p_tflite__interpreter_wrapper__InterpreterWrapper, 1);
+    } else {
+      PyErr_SetString(PyExc_ValueError, error.c_str());
+      return nullptr;
+    }
+  }
+
+  // Version of the constructor that handles producing Python exceptions
+  // that propagate strings.
+  static PyObject* CreateWrapperCPPFromBuffer(
+      PyObject* data) {
+    std::string error;
+    if(tflite::interpreter_wrapper::InterpreterWrapper* ptr =
+        tflite::interpreter_wrapper::InterpreterWrapper
+            ::CreateWrapperCPPFromBuffer(
+        data, &error)) {
+      return SWIG_NewPointerObj(
+          ptr, SWIGTYPE_p_tflite__interpreter_wrapper__InterpreterWrapper, 1);
+    } else {
+      PyErr_SetString(PyExc_ValueError, error.c_str());
+      return nullptr;
+    }
+  }
+}
+
+}  // namespace interpreter_wrapper
+}  // namespace tflite

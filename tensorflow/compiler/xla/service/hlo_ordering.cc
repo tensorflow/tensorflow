@@ -18,16 +18,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/liveness_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -170,10 +169,10 @@ bool HloOrdering::UseIsBeforeValueDefinition(
   // is before the def if the instruction allows buffer sharing (in place
   // computation).
   if (use.instruction == value.defining_instruction() &&
-      CanShareOperandBufferWithUser(
+      dataflow.CanShareOperandBufferWithUser(
           use.instruction->mutable_operand(use.operand_number),
           use.operand_index, value.defining_instruction(),
-          value.defining_index(), dataflow)) {
+          value.defining_index())) {
     VLOG(4) << "  use is value def, and instruction can share use buffer";
     return true;
   }
@@ -233,6 +232,11 @@ bool HloOrdering::UseIsBeforeValueDefinition(
               << " and def is in FALSE computation";
       return true;
     }
+    if (value.defining_instruction() == use.instruction) {
+      VLOG(4) << "  use is conditional " << use << " and def is "
+              << value.ToShortString();
+      return true;
+    }
   }
 
   VLOG(4) << "  use is not before value";
@@ -250,6 +254,10 @@ bool HloOrdering::LiveRangeStrictlyBefore(
   }
   // All uses of 'a' must be before 'b' is defined.
   for (const HloUse& use : a.uses()) {
+    if (dataflow.DoesNotUseOperandBuffer(a.instruction(), a.index(),
+                                         use.instruction)) {
+      continue;
+    }
     if (!UseIsBeforeValueDefinition(use, b, dataflow)) {
       VLOG(4) << "use of " << a << " (" << use << ") not before " << b
               << " is defined";
@@ -298,22 +306,20 @@ string PredecessorHloOrdering::ToStringHelper(const string& name) const {
   std::vector<string> pieces;
   pieces.push_back(name);
   for (auto* computation : module_->MakeNonfusionComputations()) {
-    pieces.push_back(tensorflow::strings::Printf("computation %s:",
-                                                 computation->name().c_str()));
+    pieces.push_back(absl::StrFormat("computation %s:", computation->name()));
     const auto all = computation->MakeInstructionPostOrder();
     for (auto instruction : all) {
-      pieces.push_back(tensorflow::strings::Printf(
-          "  %s predecessors:", instruction->name().c_str()));
+      pieces.push_back(
+          absl::StrFormat("  %s predecessors:", instruction->name()));
       for (auto predecessor : all) {
         if (predecessors_.at(computation)
                 ->IsReachable(predecessor, instruction)) {
-          pieces.push_back(
-              tensorflow::strings::Printf("  %s", predecessor->name().c_str()));
+          pieces.push_back(absl::StrFormat("  %s", predecessor->name()));
         }
       }
     }
   }
-  return tensorflow::str_util::Join(pieces, "\n");
+  return absl::StrJoin(pieces, "\n");
 }
 
 DependencyHloOrdering::DependencyHloOrdering(const HloModule* module)
@@ -364,8 +370,8 @@ string SequentialHloOrdering::ToString() const {
   std::vector<string> pieces;
   pieces.push_back("SequentialHloOrdering");
   for (auto* computation : module_->computations()) {
-    pieces.push_back(tensorflow::strings::Printf("computation %s order:",
-                                                 computation->name().c_str()));
+    pieces.push_back(
+        absl::StrFormat("computation %s order:", computation->name()));
     // Gather all instructions in the module sequence for this computation and
     // sort them by their position.
     std::vector<const HloInstruction*> instructions;
@@ -380,11 +386,10 @@ string SequentialHloOrdering::ToString() const {
                 return order_position_.at(a) < order_position_.at(b);
               });
     for (auto instruction : instructions) {
-      pieces.push_back(
-          tensorflow::strings::Printf("  %s", instruction->name().c_str()));
+      pieces.push_back(absl::StrFormat("  %s", instruction->name()));
     }
   }
-  return tensorflow::str_util::Join(pieces, "\n");
+  return absl::StrJoin(pieces, "\n");
 }
 
 std::ostream& operator<<(

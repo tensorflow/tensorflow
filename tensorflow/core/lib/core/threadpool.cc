@@ -59,10 +59,9 @@ struct EigenEnvironment {
 
   Task CreateTask(std::function<void()> f) {
     uint64 id = 0;
-    if (port::Tracing::IsActive()) {
-      id = port::Tracing::UniqueId();
-      port::Tracing::RecordEvent(port::Tracing::EventCategory::kScheduleClosure,
-                                 id);
+    if (tracing::EventCollector::IsEnabled()) {
+      id = tracing::GetUniqueArg();
+      tracing::RecordEvent(tracing::EventCategory::kScheduleClosure, id);
     }
     return Task{
         std::unique_ptr<TaskImpl>(new TaskImpl{
@@ -75,13 +74,9 @@ struct EigenEnvironment {
 
   void ExecuteTask(const Task& t) {
     WithContext wc(t.f->context);
-    if (t.f->trace_id != 0) {
-      port::Tracing::ScopedActivity region(
-          port::Tracing::EventCategory::kRunClosure, t.f->trace_id);
-      t.f->f();
-    } else {
-      t.f->f();
-    }
+    tracing::ScopedRegion region(tracing::EventCategory::kRunClosure,
+                                 t.f->trace_id);
+    t.f->f();
   }
 };
 

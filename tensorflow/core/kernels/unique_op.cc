@@ -69,7 +69,7 @@ class UniqueOp : public OpKernel {
                      axis_tensor.dtype() == DT_INT64),
                     errors::InvalidArgument(
                         "axis tensor should be int32 or int64, but got ",
-                        axis_tensor.dtype()));
+                        DataTypeString(axis_tensor.dtype())));
         if (axis_tensor.dtype() == DT_INT32) {
           axis = internal::SubtleMustCopy(axis_tensor.scalar<int32>()());
         } else {

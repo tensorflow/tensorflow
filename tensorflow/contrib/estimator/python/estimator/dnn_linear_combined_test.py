@@ -100,7 +100,8 @@ def _linear_only_estimator_fn(
     weight_column=None,
     optimizer='Ftrl',
     config=None,
-    partitioner=None):
+    partitioner=None,
+    sparse_combiner='sum'):
   return dnn_linear_combined.DNNLinearCombinedEstimator(
       head=head_lib.regression_head(
           weight_column=weight_column, label_dimension=label_dimension,
@@ -110,7 +111,8 @@ def _linear_only_estimator_fn(
       linear_feature_columns=feature_columns,
       linear_optimizer=optimizer,
       input_layer_partitioner=partitioner,
-      config=config)
+      config=config,
+      linear_sparse_combiner=sparse_combiner)
 
 
 class LinearOnlyEstimatorEvaluateTest(

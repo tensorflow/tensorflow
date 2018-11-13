@@ -15,8 +15,8 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -30,13 +30,13 @@ namespace {
 class QueryInferredShapeTest : public ClientLibraryTestBase {};
 
 TEST_F(QueryInferredShapeTest, OnePlusOneShape) {
-  ComputationBuilder builder(client_, "one_plus_one");
-  auto one = builder.ConstantR0<float>(1.0);
-  auto result = builder.Add(one, one);
-  StatusOr<std::unique_ptr<Shape>> shape_status = builder.GetShape(result);
+  XlaBuilder builder("one_plus_one");
+  auto one = ConstantR0<float>(&builder, 1.0);
+  auto result = Add(one, one);
+  StatusOr<Shape> shape_status = builder.GetShape(result);
   ASSERT_IS_OK(shape_status.status());
   auto shape = shape_status.ConsumeValueOrDie();
-  ASSERT_TRUE(ShapeUtil::Equal(*shape, ShapeUtil::MakeShape(F32, {})));
+  ASSERT_TRUE(ShapeUtil::Equal(shape, ShapeUtil::MakeShape(F32, {})));
 }
 
 }  // namespace

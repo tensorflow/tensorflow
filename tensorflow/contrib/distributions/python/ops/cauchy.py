@@ -29,6 +29,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.util import deprecation
 
 __all__ = [
     "Cauchy",
@@ -92,6 +93,14 @@ class Cauchy(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self,
                loc,
                scale,
@@ -120,8 +129,8 @@ class Cauchy(distribution.Distribution):
     Raises:
       TypeError: if `loc` and `scale` have different `dtype`.
     """
-    parameters = locals()
-    with ops.name_scope(name, values=[loc, scale]):
+    parameters = dict(locals())
+    with ops.name_scope(name, values=[loc, scale]) as name:
       with ops.control_dependencies([check_ops.assert_positive(scale)]
                                     if validate_args else []):
         self._loc = array_ops.identity(loc, name="loc")

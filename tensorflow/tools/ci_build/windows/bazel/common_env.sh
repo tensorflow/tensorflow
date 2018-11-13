@@ -26,7 +26,8 @@
 # * Bazel windows executable copied as "bazel.exe" and included in PATH.
 
 # Use a temporary directory with a short name.
-export TMPDIR="C:/tmp"
+export TMPDIR=${TMPDIR:-"C:/tmp"}
+export TMPDIR=$(cygpath -m "$TMPDIR")
 mkdir -p "$TMPDIR"
 
 # Set bash path
@@ -50,7 +51,14 @@ export PATH="/c/Program Files/Git/cmd:$PATH"
 # Make sure we have pip in PATH
 export PATH="/c/${PYTHON_BASE_PATH}/Scripts:$PATH"
 
+# Setting default values to CUDA related environment variables
+export TF_CUDA_VERSION=${TF_CUDA_VERSION:-9.0}
+export TF_CUDNN_VERSION=${TF_CUDNN_VERSION:-7.0}
+export TF_CUDA_COMPUTE_CAPABILITIES=${TF_CUDA_COMPUTE_CAPABILITIES:-3.7}
+export CUDA_TOOLKIT_PATH=${CUDA_TOOLKIT_PATH:-"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v${TF_CUDA_VERSION}"}
+export CUDNN_INSTALL_PATH=${CUDNN_INSTALL_PATH:-"C:/tools/cuda"}
+
 # Add Cuda and Cudnn dll directories into PATH
-export PATH="/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v9.0/bin:$PATH"
-export PATH="/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v9.0/extras/CUPTI/libx64:$PATH"
-export PATH="/c/tools/cuda/bin:$PATH"
+export PATH="$(cygpath -u "${CUDA_TOOLKIT_PATH}")/bin:$PATH"
+export PATH="$(cygpath -u "${CUDA_TOOLKIT_PATH}")/extras/CUPTI/libx64:$PATH"
+export PATH="$(cygpath -u "${CUDNN_INSTALL_PATH}")/bin:$PATH"

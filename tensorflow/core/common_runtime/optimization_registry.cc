@@ -36,12 +36,31 @@ Status OptimizationPassRegistry::RunGrouping(
     for (auto& phase : group->second) {
       VLOG(1) << "Running optimization phase " << phase.first;
       for (auto& pass : phase.second) {
+        VLOG(1) << "Running optimization pass: " << pass->name();
         Status s = pass->Run(options);
         if (!s.ok()) return s;
       }
     }
   }
   return Status::OK();
+}
+
+void OptimizationPassRegistry::LogGrouping(Grouping grouping, int vlog_level) {
+  auto group = groups_.find(grouping);
+  if (group != groups_.end()) {
+    for (auto& phase : group->second) {
+      for (auto& pass : phase.second) {
+        VLOG(vlog_level) << "Registered optimization pass grouping " << grouping
+                         << " phase " << phase.first << ": " << pass->name();
+      }
+    }
+  }
+}
+
+void OptimizationPassRegistry::LogAllGroupings(int vlog_level) {
+  for (auto group = groups_.begin(); group != groups_.end(); ++group) {
+    LogGrouping(group->first, vlog_level);
+  }
 }
 
 }  // namespace tensorflow

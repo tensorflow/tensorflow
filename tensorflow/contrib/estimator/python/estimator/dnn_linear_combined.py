@@ -53,12 +53,19 @@ class DNNLinearCombinedEstimator(estimator.Estimator):
       dnn_hidden_units=[1000, 500, 100],
       dnn_optimizer=tf.train.ProximalAdagradOptimizer(...))
 
-  # To apply L1 and L2 regularization, you can set optimizers as follows:
+  # To apply L1 and L2 regularization, you can set dnn_optimizer to:
   tf.train.ProximalAdagradOptimizer(
       learning_rate=0.1,
       l1_regularization_strength=0.001,
       l2_regularization_strength=0.001)
-  # It is same for FtrlOptimizer.
+  # To apply learning rate decay, you can set dnn_optimizer to a callable:
+  lambda: tf.AdamOptimizer(
+      learning_rate=tf.exponential_decay(
+          learning_rate=0.1,
+          global_step=tf.get_global_step(),
+          decay_steps=10000,
+          decay_rate=0.96)
+  # It is the same for linear_optimizer.
 
   # Input builders
   def input_fn_train: # returns x, y
@@ -103,7 +110,8 @@ class DNNLinearCombinedEstimator(estimator.Estimator):
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
                input_layer_partitioner=None,
-               config=None):
+               config=None,
+               linear_sparse_combiner='sum'):
     """Initializes a DNNLinearCombinedEstimator instance.
 
     Args:
@@ -116,12 +124,16 @@ class DNNLinearCombinedEstimator(estimator.Estimator):
         used by linear part of the model. All items in the set must be
         instances of classes derived from `FeatureColumn`.
       linear_optimizer: An instance of `tf.Optimizer` used to apply gradients to
-        the linear part of the model. Defaults to FTRL optimizer.
+        the linear part of the model. Can also be a string (one of 'Adagrad',
+        'Adam', 'Ftrl', 'RMSProp', 'SGD'), or callable. Defaults to FTRL
+        optimizer.
       dnn_feature_columns: An iterable containing all the feature columns used
         by deep part of the model. All items in the set must be instances of
         classes derived from `FeatureColumn`.
       dnn_optimizer: An instance of `tf.Optimizer` used to apply gradients to
-        the deep part of the model. Defaults to Adagrad optimizer.
+        the deep part of the model. Can also be a string (one of 'Adagrad',
+        'Adam', 'Ftrl', 'RMSProp', 'SGD'), or callable. Defaults to Adagrad
+        optimizer.
       dnn_hidden_units: List of hidden units per layer. All layers are fully
         connected.
       dnn_activation_fn: Activation function applied to each layer. If None,
@@ -131,6 +143,11 @@ class DNNLinearCombinedEstimator(estimator.Estimator):
       input_layer_partitioner: Partitioner for input layer. Defaults to
         `min_max_variable_partitioner` with `min_slice_size` 64 << 20.
       config: RunConfig object to configure the runtime settings.
+      linear_sparse_combiner: A string specifying how to reduce the linear model
+        if a categorical column is multivalent.  One of "mean", "sqrtn", and
+        "sum" -- these are effectively different ways to do example-level
+        normalization, which can be useful for bag-of-words features.  For more
+        details, see `tf.feature_column.linear_model`.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -158,7 +175,8 @@ class DNNLinearCombinedEstimator(estimator.Estimator):
           dnn_activation_fn=dnn_activation_fn,
           dnn_dropout=dnn_dropout,
           input_layer_partitioner=input_layer_partitioner,
-          config=config)
+          config=config,
+          linear_sparse_combiner=linear_sparse_combiner)
 
     super(DNNLinearCombinedEstimator, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config)

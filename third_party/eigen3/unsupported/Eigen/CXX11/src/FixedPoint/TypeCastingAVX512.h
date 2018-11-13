@@ -1,5 +1,5 @@
-#ifndef EIGEN3_UNSUPPORTED_EIGEN_CXX11_SRC_FIXEDPOINT_TYPECASTINGAVX512_H_
-#define EIGEN3_UNSUPPORTED_EIGEN_CXX11_SRC_FIXEDPOINT_TYPECASTINGAVX512_H_
+#ifndef CXX11_SRC_FIXEDPOINT_TYPECASTINGAVX512_H_
+#define CXX11_SRC_FIXEDPOINT_TYPECASTINGAVX512_H_
 
 namespace Eigen {
 namespace internal {
@@ -132,8 +132,15 @@ pcast<Packet16q32i, Packet64q8i>(const Packet16q32i& a,
                                  const Packet16q32i& b,
                                  const Packet16q32i& c,
                                  const Packet16q32i& d) {
-  __m512i converted = _mm512_packs_epi16(_mm512_packs_epi32(a.val, b.val),
-                                         _mm512_packs_epi32(c.val, d.val));
+  __m128i a_part = _mm512_cvtsepi32_epi8(a);
+  __m128i b_part = _mm512_cvtsepi32_epi8(b);
+  __m128i c_part = _mm512_cvtsepi32_epi8(c);
+  __m128i d_part = _mm512_cvtsepi32_epi8(d);
+  __m256i ab =
+      _mm256_inserti128_si256(_mm256_castsi128_si256(a_part), b_part, 1);
+  __m256i cd =
+      _mm256_inserti128_si256(_mm256_castsi128_si256(c_part), d_part, 1);
+  __m512i converted = _mm512_inserti64x4(_mm512_castsi256_si512(ab), cd, 1);
   return converted;
 }
 
@@ -141,7 +148,10 @@ template <>
 EIGEN_STRONG_INLINE Packet32q16i
 pcast<Packet16q32i, Packet32q16i>(const Packet16q32i& a,
                                   const Packet16q32i& b) {
-  __m512i converted = _mm512_packs_epi32(a.val, b.val);
+  __m256i a_part = _mm512_cvtsepi32_epi16(a);
+  __m256i b_part = _mm512_cvtsepi32_epi16(b);
+  __m512i converted =
+      _mm512_inserti64x4(_mm512_castsi256_si512(a_part), b_part, 1);
   return converted;
 }
 
@@ -154,22 +164,45 @@ template <>
 EIGEN_STRONG_INLINE Packet64q8u
 pcast<Packet16q32i, Packet64q8u>(const Packet16q32i& a, const Packet16q32i& b,
                                  const Packet16q32i& c, const Packet16q32i& d) {
-  const __m512i converted = _mm512_packus_epi16(
-      _mm512_packus_epi32(a.val, b.val), _mm512_packus_epi32(c.val, d.val));
+  // Brute-force saturation since there isn't a pack operation for unsigned
+  // numbers that keeps the elements in order.
+  __m128i a_part = _mm512_cvtepi32_epi8(_mm512_max_epi32(
+      _mm512_min_epi32(a, _mm512_set1_epi32(255)), _mm512_setzero_si512()));
+  __m128i b_part = _mm512_cvtepi32_epi8(_mm512_max_epi32(
+      _mm512_min_epi32(b, _mm512_set1_epi32(255)), _mm512_setzero_si512()));
+  __m128i c_part = _mm512_cvtepi32_epi8(_mm512_max_epi32(
+      _mm512_min_epi32(c, _mm512_set1_epi32(255)), _mm512_setzero_si512()));
+  __m128i d_part = _mm512_cvtepi32_epi8(_mm512_max_epi32(
+      _mm512_min_epi32(d, _mm512_set1_epi32(255)), _mm512_setzero_si512()));
+  __m256i ab =
+      _mm256_inserti128_si256(_mm256_castsi128_si256(a_part), b_part, 1);
+  __m256i cd =
+      _mm256_inserti128_si256(_mm256_castsi128_si256(c_part), d_part, 1);
+  __m512i converted = _mm512_inserti64x4(_mm512_castsi256_si512(ab), cd, 1);
   return converted;
 }
 
+#if 0
+// The type Packet32q16u does not exist for AVX-512 yet
 template <>
 struct type_casting_traits<QInt32, QUInt16> {
   enum { VectorizedCast = 1, SrcCoeffRatio = 2, TgtCoeffRatio = 1 };
 };
 
-#if 0
 template <>
 EIGEN_STRONG_INLINE Packet32q16u
 pcast<Packet16q32i, Packet32q16u>(const Packet16q32i& a,
                                   const Packet16q32i& b) {
-  const __m512i converted = _mm512_packus_epi32(a.val, b.val);
+  // Brute-force saturation since there isn't a pack operation for unsigned
+  // numbers that keeps the elements in order.
+  __m256i a_part =
+      _mm512_cvtepi32_epi16(_mm512_max_epi32(
+        _mm512_min_epi32(a, _mm512_set1_epi32(65535)), _mm512_setzero_si512()));
+  __m256i b_part = _mm512_cvtepi32_epi16(
+    _mm512_max_epi32(_mm512_min_epi32(b, _mm512_set1_epi32(65535)),
+                     _mm512_setzero_si512()));
+  __m512i converted =
+      _mm512_inserti64x4(_mm512_castsi256_si512(a_part), b_part, 1);
   return converted;
 }
 #endif
@@ -177,4 +210,4 @@ pcast<Packet16q32i, Packet32q16u>(const Packet16q32i& a,
 }  // end namespace internal
 }  // end namespace Eigen
 
-#endif  // EIGEN3_UNSUPPORTED_EIGEN_CXX11_SRC_FIXEDPOINT_TYPECASTINGAVX512_H_
+#endif  // CXX11_SRC_FIXEDPOINT_TYPECASTINGAVX512_H_

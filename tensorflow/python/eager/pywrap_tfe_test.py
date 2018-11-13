@@ -23,6 +23,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -71,6 +72,25 @@ class Tests(test.TestCase):
 
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
+  def testFastpathExecute_MixedPrecisionVariableMatMulCorrectResponse(self):
+    ctx = context.context()
+    a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
+    a_2_by_2_fp16 = math_ops.cast(a_2_by_2, dtype=dtypes.float16)
+    m = resource_variable_ops.ResourceVariable(a_2_by_2)
+    m = resource_variable_ops._MixedPrecisionVariable(
+        m, read_dtype=dtypes.float16)
+    x = pywrap_tensorflow.TFE_Py_FastPathExecute(
+        ctx._handle, ctx.device_name, "MatMul", None, None, m, m, "transpose_a",
+        False, "transpose_b", False)
+    y = pywrap_tensorflow.TFE_Py_FastPathExecute(
+        ctx._handle, ctx.device_name, "MatMul", None, None, a_2_by_2_fp16,
+        a_2_by_2_fp16, "transpose_a", False, "transpose_b", False)
+
+    self.assertEqual(x.dtype, dtypes.float16)
+    self.assertAllEqual(x, y)
+
+  @test_util.assert_no_new_tensors
+  @test_util.assert_no_garbage_created
   def testFastpathExecute_TapeWrite(self):
     ctx = context.context()
     with backprop.GradientTape(persistent=True) as tape:
@@ -97,6 +117,29 @@ class Tests(test.TestCase):
     dz_dy = tape.gradient(z, [m])[0]
     self.assertAllEqual(dz_dy.numpy(),
                         constant_op.constant(4.0, shape=[2, 2]).numpy())
+
+  @test_util.assert_no_new_tensors
+  @test_util.assert_no_garbage_created
+  def testFastpathExecute_MixedPrecisionVariableTapeWrite(self):
+    ctx = context.context()
+    with backprop.GradientTape(persistent=True) as tape:
+      a_2_by_2 = constant_op.constant(
+          [[1.0, 2.0], [3.0, 4.0]], dtype=dtypes.float32)
+      a_2_by_2_fp16 = math_ops.cast(a_2_by_2, dtype=dtypes.float16)
+      m1 = resource_variable_ops.ResourceVariable(a_2_by_2)
+      m2 = resource_variable_ops._MixedPrecisionVariable(
+          m1, read_dtype=dtypes.float16)
+      tape.watch(m2)
+      z = pywrap_tensorflow.TFE_Py_FastPathExecute(
+          ctx._handle, ctx.device_name, "MatMul", None, None, a_2_by_2_fp16, m2,
+          "transpose_a", False, "transpose_b", False)
+    dz_dy = tape.gradient(z, [m2])[0]
+    self.assertEqual(dz_dy.dtype, dtypes.float16)
+
+    expected_grads = math_ops.matmul(
+        array_ops.transpose(a_2_by_2_fp16),
+        constant_op.constant(1., shape=[2, 2], dtype=dtypes.float16)).numpy()
+    self.assertAllEqual(dz_dy.numpy(), expected_grads)
 
   # Tests homogeneous list op
   @test_util.assert_no_new_tensors

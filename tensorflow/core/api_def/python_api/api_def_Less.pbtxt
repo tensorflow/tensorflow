@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "Less"
+  endpoint {
+    name: "math.less"
+  }
+  endpoint {
+    name: "less"
+    deprecated: true
+  }
+}

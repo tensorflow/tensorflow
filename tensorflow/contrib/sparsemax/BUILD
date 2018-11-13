@@ -38,7 +38,7 @@ py_library(
 
 cuda_py_tests(
     name = "sparsemax_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/sparsemax_test.py"],
     additional_deps = [
         ":sparsemax_py",

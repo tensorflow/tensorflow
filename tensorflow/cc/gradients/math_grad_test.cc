@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/grad_op_registry.h"
 #include "tensorflow/cc/framework/gradient_checker.h"
+#include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/framework/testutil.h"
 #include "tensorflow/cc/gradients/grad_testutil.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -31,7 +33,7 @@ using ops::AddN;
 using ops::BatchMatMul;
 using ops::Const;
 using ops::Div;
-using ops::Greater;
+using ops::DivNoNan;
 using ops::MatMul;
 using ops::Max;
 using ops::Maximum;
@@ -43,10 +45,10 @@ using ops::Placeholder;
 using ops::Pow;
 using ops::Prod;
 using ops::RealDiv;
+using ops::SegmentSum;
 using ops::SquaredDifference;
 using ops::Sub;
 using ops::Sum;
-using ops::Where3;
 
 // TODO(andydavis) Test gradient function against numeric gradients output.
 // TODO(andydavis) As more gradients are added move common test functions
@@ -477,11 +479,7 @@ TEST_F(CWiseUnaryGradTest, Tan_Complex) {
   auto x_fn = [this](const int i) {
     return CRV({{1, 0}, {0, 1}, {2, -1}, {1, 2}, {3, 4}});
   };
-  // TODO(kbsriram)
-  // Enable when tan kernel supports complex inputs
-  if (false) {
-    TestCWiseGrad<complex64, complex64>(TAN, x_fn);
-  }
+  TestCWiseGrad<complex64, complex64>(TAN, x_fn);
 }
 
 TEST_F(CWiseUnaryGradTest, Atan) {
@@ -856,6 +854,36 @@ TEST_F(NaryGradTest, RealDiv) {
   RunTest({x}, {x_shape}, {y}, {x_shape});
 }
 
+TEST_F(NaryGradTest, DivNoNan) {
+  {
+    TensorShape x_shape({3, 2, 5});
+    const auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+    // Test x / (1 + |x|) rather than x_1 / x_2 to avoid triggering large
+    // division errors in the numeric estimator used by the gradient checker.
+    const auto y = DivNoNan(
+        scope_, x, Add(scope_, Const<float>(scope_, 1), Abs(scope_, x)));
+    RunTest({x}, {x_shape}, {y}, {x_shape});
+  }
+  {
+    // Return 0 gradient (rather than NaN) for division by zero.
+    const auto x = Placeholder(scope_, DT_FLOAT);
+    const auto zero = Const<float>(scope_, 0.0);
+    const auto y = DivNoNan(scope_, x, zero);
+
+    std::vector<Output> grad_outputs;
+    TF_EXPECT_OK(AddSymbolicGradients(scope_, {y}, {x}, &grad_outputs));
+    ClientSession session(scope_);
+    std::vector<Tensor> grad_result;
+    TF_EXPECT_OK(
+        session.Run({{x, {-3.0f, 0.0f, 3.0f}}}, grad_outputs, &grad_result));
+    EXPECT_EQ(grad_result.size(), 1);
+    EXPECT_EQ(grad_result[0].NumElements(), 3);
+    EXPECT_EQ(grad_result[0].flat<float>()(0), 0.0f);
+    EXPECT_EQ(grad_result[0].flat<float>()(1), 0.0f);
+    EXPECT_EQ(grad_result[0].flat<float>()(2), 0.0f);
+  }
+}
+
 TEST_F(NaryGradTest, SquaredDifference) {
   TensorShape x1_shape({3, 2, 5});
   TensorShape x2_shape({2, 5});
@@ -901,6 +929,15 @@ TEST_F(NaryGradTest, Prod) {
   auto y = Prod(scope_, x, {1});
   // y's shape is the result of reducing x along axes 1
   TensorShape y_shape({2, 1, 2});
+  RunTest({x}, {x_shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, SegmentSum) {
+  TensorShape x_shape({3, 4});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
+  auto y = SegmentSum(scope_, x, {0, 0, 1});
+  // the sum is always on the first dimension
+  TensorShape y_shape({2, 4});
   RunTest({x}, {x_shape}, {y}, {y_shape});
 }
 

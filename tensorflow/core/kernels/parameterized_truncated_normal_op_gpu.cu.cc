@@ -190,7 +190,7 @@ __global__ void __launch_bounds__(1024)
 // Partial specialization for GPU
 template <typename T>
 struct TruncatedNormalFunctor<GPUDevice, T> {
-  static const int kMaxIterations = 100;
+  static const int kMaxIterations = 1000;
 
   void operator()(OpKernelContext* ctx, const GPUDevice& d, int64 num_batches,
                   int64 samples_per_batch, int64 num_elements,

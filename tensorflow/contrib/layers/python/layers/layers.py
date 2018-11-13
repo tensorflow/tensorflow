@@ -55,12 +55,12 @@ from tensorflow.python.training import moving_averages
 # TODO(b/28426988): Replace legacy_* fns migrated from slim.
 # TODO(b/28426988): Remove legacy_* when all uses have migrated to new API.
 __all__ = [
-    'avg_pool2d', 'avg_pool3d', 'batch_norm', 'bias_add', 'conv2d', 'conv3d',
-    'conv2d_in_plane', 'conv2d_transpose', 'conv3d_transpose', 'convolution',
-    'convolution2d', 'convolution2d_in_plane', 'convolution2d_transpose',
-    'convolution3d', 'convolution3d_transpose', 'dense_to_sparse',
-    'dropout', 'elu', 'flatten', 'fully_connected', 'GDN', 'gdn',
-    'images_to_sequence', 'layer_norm', 'linear', 'pool', 'max_pool2d',
+    'avg_pool2d', 'avg_pool3d', 'batch_norm', 'bias_add', 'conv1d', 'conv2d',
+    'conv3d', 'conv2d_in_plane', 'conv2d_transpose', 'conv3d_transpose',
+    'convolution', 'convolution1d', 'convolution2d', 'convolution2d_in_plane',
+    'convolution2d_transpose', 'convolution3d', 'convolution3d_transpose',
+    'dense_to_sparse', 'dropout', 'elu', 'flatten', 'fully_connected', 'GDN',
+    'gdn', 'images_to_sequence', 'layer_norm', 'linear', 'pool', 'max_pool2d',
     'max_pool3d', 'one_hot_encoding', 'relu', 'relu6', 'repeat',
     'scale_gradient', 'separable_conv2d', 'separable_convolution2d',
     'sequence_to_images', 'softmax', 'spatial_softmax', 'stack', 'unit_norm',
@@ -932,7 +932,8 @@ def convolution(inputs,
                 variables_collections=None,
                 outputs_collections=None,
                 trainable=True,
-                scope=None):
+                scope=None,
+                conv_dims=None):
   """Adds an N-D convolution followed by an optional batch_norm layer.
 
   It is required that 1 <= N <= 3.
@@ -993,6 +994,10 @@ def convolution(inputs,
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     scope: Optional scope for `variable_scope`.
+    conv_dims: Optional convolution dimensionality, when set it would use the
+      corresponding convolution (e.g. 2 for Conv 2D, 3 for Conv 3D, ..). When
+      leaved to None it would select the convolution dimensionality based on
+      the input rank (i.e. Conv ND, with N = input_rank - 2).
 
   Returns:
     A tensor representing the output of the operation.
@@ -1015,6 +1020,9 @@ def convolution(inputs,
     inputs = ops.convert_to_tensor(inputs)
     input_rank = inputs.get_shape().ndims
 
+    if conv_dims is not None and conv_dims + 2 != input_rank:
+      raise ValueError('Convolution expects input with rank %d, got %d' %
+                       (conv_dims + 2, input_rank))
     if input_rank == 3:
       layer_class = convolutional_layers.Convolution1D
     elif input_rank == 4:
@@ -1061,10 +1069,134 @@ def convolution(inputs,
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
+@add_arg_scope
+def convolution1d(inputs,
+                  num_outputs,
+                  kernel_size,
+                  stride=1,
+                  padding='SAME',
+                  data_format=None,
+                  rate=1,
+                  activation_fn=nn.relu,
+                  normalizer_fn=None,
+                  normalizer_params=None,
+                  weights_initializer=initializers.xavier_initializer(),
+                  weights_regularizer=None,
+                  biases_initializer=init_ops.zeros_initializer(),
+                  biases_regularizer=None,
+                  reuse=None,
+                  variables_collections=None,
+                  outputs_collections=None,
+                  trainable=True,
+                  scope=None):
+  return convolution(inputs,
+                     num_outputs,
+                     kernel_size,
+                     stride,
+                     padding,
+                     data_format,
+                     rate,
+                     activation_fn,
+                     normalizer_fn,
+                     normalizer_params,
+                     weights_initializer,
+                     weights_regularizer,
+                     biases_initializer,
+                     biases_regularizer,
+                     reuse,
+                     variables_collections,
+                     outputs_collections,
+                     trainable,
+                     scope,
+                     conv_dims=1)
 
-convolution2d = convolution
-convolution3d = convolution
+convolution1d.__doc__ = convolution.__doc__
 
+@add_arg_scope
+def convolution2d(inputs,
+                  num_outputs,
+                  kernel_size,
+                  stride=1,
+                  padding='SAME',
+                  data_format=None,
+                  rate=1,
+                  activation_fn=nn.relu,
+                  normalizer_fn=None,
+                  normalizer_params=None,
+                  weights_initializer=initializers.xavier_initializer(),
+                  weights_regularizer=None,
+                  biases_initializer=init_ops.zeros_initializer(),
+                  biases_regularizer=None,
+                  reuse=None,
+                  variables_collections=None,
+                  outputs_collections=None,
+                  trainable=True,
+                  scope=None):
+  return convolution(inputs,
+                     num_outputs,
+                     kernel_size,
+                     stride,
+                     padding,
+                     data_format,
+                     rate,
+                     activation_fn,
+                     normalizer_fn,
+                     normalizer_params,
+                     weights_initializer,
+                     weights_regularizer,
+                     biases_initializer,
+                     biases_regularizer,
+                     reuse,
+                     variables_collections,
+                     outputs_collections,
+                     trainable,
+                     scope,
+                     conv_dims=2)
+
+convolution2d.__doc__ = convolution.__doc__
+
+@add_arg_scope
+def convolution3d(inputs,
+                  num_outputs,
+                  kernel_size,
+                  stride=1,
+                  padding='SAME',
+                  data_format=None,
+                  rate=1,
+                  activation_fn=nn.relu,
+                  normalizer_fn=None,
+                  normalizer_params=None,
+                  weights_initializer=initializers.xavier_initializer(),
+                  weights_regularizer=None,
+                  biases_initializer=init_ops.zeros_initializer(),
+                  biases_regularizer=None,
+                  reuse=None,
+                  variables_collections=None,
+                  outputs_collections=None,
+                  trainable=True,
+                  scope=None):
+  return convolution(inputs,
+                     num_outputs,
+                     kernel_size,
+                     stride,
+                     padding,
+                     data_format,
+                     rate,
+                     activation_fn,
+                     normalizer_fn,
+                     normalizer_params,
+                     weights_initializer,
+                     weights_regularizer,
+                     biases_initializer,
+                     biases_regularizer,
+                     reuse,
+                     variables_collections,
+                     outputs_collections,
+                     trainable,
+                     scope,
+                     conv_dims=3)
+
+convolution3d.__doc__ = convolution.__doc__
 
 @add_arg_scope
 def convolution2d_in_plane(
@@ -1404,13 +1536,14 @@ def convolution3d_transpose(
 @add_arg_scope
 def dense_to_sparse(tensor, eos_token=0, outputs_collections=None, scope=None):
   """Converts a dense tensor into a sparse tensor.
+
   An example use would be to convert dense labels to sparse ones
   so that they can be fed to the ctc_loss.
 
   Args:
      tensor: An `int` `Tensor` to be converted to a `Sparse`.
      eos_token: An integer.
-       It is part of the target label that signfies the end of a sentence.
+       It is part of the target label that signifies the end of a sentence.
      outputs_collections: Collection to add the outputs.
      scope: Optional scope for name_scope.
   """
@@ -1451,7 +1584,7 @@ def dropout(inputs,
     outputs_collections: Collection to add the outputs.
     scope: Optional scope for name_scope.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed} for behavior.
+      `tf.set_random_seed` for behavior.
 
   Returns:
     A tensor representing the output of the operation.
@@ -1554,7 +1687,7 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
     output_collections: Collection to which the outputs will be added.
     scope: Optional scope for `name_scope`.
   Returns:
-    A `Tensor` or `SparseTensor` conataining the same values as `inputs`, but
+    A `Tensor` or `SparseTensor` containing the same values as `inputs`, but
     with innermost dimensions flattened to obtain rank `new_rank`.
 
   Raises:
@@ -1569,19 +1702,22 @@ def _inner_flatten(inputs, new_rank, output_collections=None, scope=None):
   return utils.collect_named_outputs(output_collections, sc, flattened)
 
 
-def _model_variable_getter(getter,
-                           name,
-                           shape=None,
-                           dtype=None,
-                           initializer=None,
-                           regularizer=None,
-                           trainable=True,
-                           collections=None,
-                           caching_device=None,
-                           partitioner=None,
-                           rename=None,
-                           use_resource=None,
-                           **_):
+def _model_variable_getter(
+    getter,
+    name,
+    shape=None,
+    dtype=None,
+    initializer=None,
+    regularizer=None,
+    trainable=True,
+    collections=None,
+    caching_device=None,
+    partitioner=None,
+    rename=None,
+    use_resource=None,
+    synchronization=tf_variables.VariableSynchronization.AUTO,
+    aggregation=tf_variables.VariableAggregation.NONE,
+    **_):
   """Getter that uses model_variable for compatibility with core layers."""
   short_name = name.split('/')[-1]
   if rename and short_name in rename:
@@ -1599,7 +1735,9 @@ def _model_variable_getter(getter,
       caching_device=caching_device,
       partitioner=partitioner,
       custom_getter=getter,
-      use_resource=use_resource)
+      use_resource=use_resource,
+      synchronization=synchronization,
+      aggregation=aggregation)
 
 
 def _build_variable_getter(rename=None):
@@ -1889,6 +2027,7 @@ class GDN(base.Layer):
 
     def beta_initializer(shape, dtype=None, partition_info=None):
       del partition_info  # unused
+      pedestal = array_ops.constant(self._reparam_offset**2, dtype=self.dtype)
       return math_ops.sqrt(array_ops.ones(shape, dtype=dtype) + pedestal)
 
     def gamma_initializer(shape, dtype=None, partition_info=None):
@@ -1896,6 +2035,7 @@ class GDN(base.Layer):
       assert len(shape) == 2
       assert shape[0] == shape[1]
       eye = linalg_ops.eye(shape[0], dtype=dtype)
+      pedestal = array_ops.constant(self._reparam_offset**2, dtype=self.dtype)
       return math_ops.sqrt(self._gamma_init * eye + pedestal)
 
     beta = self.add_variable(
@@ -2191,11 +2331,16 @@ def images_to_sequence(inputs,
                        outputs_collections=None,
                        scope=None):
   """Convert a batch of images into a batch of sequences.
+
   Args:
     inputs: a (num_images, height, width, depth) tensor
     data_format: A string. `NHWC` (default) and `NCHW` are supported.
     outputs_collections: The collections to which the outputs are added.
     scope: Optional scope for name_scope.
+
+  Raises:
+     ValueError: If `data_format` is not either NCHW or NHWC.
+
   Returns:
     (width, num_images*height, depth) sequence tensor
   """
@@ -2515,7 +2660,7 @@ def separable_convolution2d(
     inputs,
     num_outputs,
     kernel_size,
-    depth_multiplier,
+    depth_multiplier=1,
     stride=1,
     padding='SAME',
     data_format=DATA_FORMAT_NHWC,
@@ -2524,6 +2669,7 @@ def separable_convolution2d(
     normalizer_fn=None,
     normalizer_params=None,
     weights_initializer=initializers.xavier_initializer(),
+    pointwise_initializer=None,
     weights_regularizer=None,
     biases_initializer=init_ops.zeros_initializer(),
     biases_regularizer=None,
@@ -2565,7 +2711,9 @@ def separable_convolution2d(
       `biases_regularizer` are ignored and `biases` are not created nor added.
       default set to None for no normalizer function
     normalizer_params: Normalization function parameters.
-    weights_initializer: An initializer for the weights.
+    weights_initializer: An initializer for the depthwise weights.
+    pointwise_initializer: An initializer for the pointwise weights.
+      default set to None, means use weights_initializer.
     weights_regularizer: Optional regularizer for the weights.
     biases_initializer: An initializer for the biases. If None skip biases.
     biases_regularizer: Optional regularizer for the biases.
@@ -2597,6 +2745,9 @@ def separable_convolution2d(
       custom_getter=layer_variable_getter) as sc:
     inputs = ops.convert_to_tensor(inputs)
 
+    if pointwise_initializer is None:
+      pointwise_initializer = weights_initializer
+
     df = ('channels_first'
           if data_format and data_format.startswith('NC') else 'channels_last')
     if num_outputs is not None:
@@ -2612,7 +2763,7 @@ def separable_convolution2d(
           depth_multiplier=depth_multiplier,
           use_bias=not normalizer_fn and biases_initializer,
           depthwise_initializer=weights_initializer,
-          pointwise_initializer=weights_initializer,
+          pointwise_initializer=pointwise_initializer,
           bias_initializer=biases_initializer,
           depthwise_regularizer=weights_regularizer,
           pointwise_regularizer=weights_regularizer,
@@ -2701,6 +2852,7 @@ def sequence_to_images(inputs,
                        outputs_collections=None,
                        scope=None):
   """Convert a batch of sequences into a batch of images.
+
   Args:
     inputs: (num_steps, num_batches, depth) sequence tensor
     height: the height of the images
@@ -2708,6 +2860,7 @@ def sequence_to_images(inputs,
       Currently supports `'channels_first'` and `'channels_last'`.
     outputs_collections: The collections to which the outputs are added.
     scope: Optional scope for name_scope.
+
   Returns:
     A tensor representing the output of the operation.
   """
@@ -2717,7 +2870,7 @@ def sequence_to_images(inputs,
     if num_batches is None:
       num_batches = -1
     else:
-      num_batches = num_batches // height
+      num_batches //= height
     reshaped = array_ops.reshape(inputs,
                                  [width, num_batches, height, depth])
     if output_data_format == 'channels_first':
@@ -3167,6 +3320,7 @@ relu6 = functools.partial(fully_connected, activation_fn=nn.relu6)
 linear = functools.partial(fully_connected, activation_fn=None)
 
 # Simple alias.
+conv1d = convolution1d
 conv2d = convolution2d
 conv3d = convolution3d
 conv2d_transpose = convolution2d_transpose

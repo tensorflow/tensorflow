@@ -28,11 +28,12 @@ py_library(
         "tensor_list.py",
         "testing.py",
         "type_check.py",
-        "type_hints.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
+        "//tensorflow/contrib/autograph/pyct",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:list_ops",
         "//tensorflow/python:script_ops",
         "//tensorflow/python/data/ops:dataset_ops",

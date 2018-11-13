@@ -28,7 +28,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.distributions import bijector as bijector_lib
+from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.util import deprecation
 
 
 __all__ = [
@@ -36,15 +37,31 @@ __all__ = [
 ]
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _static_ndims_from_shape(shape):
   return shape.shape.with_rank_at_least(1)[0].value
 
 
+@deprecation.deprecated(
+    "2018-10-01",
+    "The TensorFlow Distributions library has moved to "
+    "TensorFlow Probability "
+    "(https://github.com/tensorflow/probability). You "
+    "should update all references to use `tfp.distributions` "
+    "instead of `tf.contrib.distributions`.",
+    warn_once=True)
 def _ndims_from_shape(shape):
   return array_ops.shape(shape)[0]
 
 
-class Reshape(bijector_lib.Bijector):
+class Reshape(bijector.Bijector):
   """Reshapes the `event_shape` of a `Tensor`.
 
   The semantics generally follow that of `tf.reshape()`, with
@@ -86,6 +103,14 @@ class Reshape(bijector_lib.Bijector):
 
   """
 
+  @deprecation.deprecated(
+      "2018-10-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.contrib.distributions`.",
+      warn_once=True)
   def __init__(self, event_shape_out, event_shape_in=(-1,),
                validate_args=False, name=None):
     """Creates a `Reshape` bijector.
@@ -128,15 +153,17 @@ class Reshape(bijector_lib.Bijector):
       self._event_shape_in = event_shape_in
       self._event_shape_out = event_shape_out
 
-      super(Reshape, self).__init__(is_constant_jacobian=True,
-                                    validate_args=validate_args,
-                                    name=name or "reshape")
+      super(Reshape, self).__init__(
+          forward_min_event_ndims=0,
+          is_constant_jacobian=True,
+          validate_args=validate_args,
+          name=name or "reshape")
 
   def _maybe_check_valid_shape(self, shape, validate_args):
     """Check that a shape Tensor is int-type and otherwise sane."""
     if not shape.dtype.is_integer:
       raise TypeError("{} dtype ({}) should be `int`-like.".format(
-          shape.op.name, shape.dtype.name))
+          shape, shape.dtype.name))
 
     assertions = []
 
@@ -144,10 +171,10 @@ class Reshape(bijector_lib.Bijector):
     ndims_ = tensor_util.constant_value(ndims)
     if ndims_ is not None and ndims_ > 1:
       raise ValueError("`{}` rank ({}) should be <= 1.".format(
-          shape.op.name, ndims_))
+          shape, ndims_))
     elif validate_args:
       assertions.append(check_ops.assert_less_equal(
-          ndims, 1, message="`{}` rank should be <= 1.".format(shape.op.name)))
+          ndims, 1, message="`{}` rank should be <= 1.".format(shape)))
 
     shape_ = tensor_util.constant_value_as_shape(shape)
     if shape_.is_fully_defined():
@@ -155,12 +182,12 @@ class Reshape(bijector_lib.Bijector):
       if sum(es == -1) > 1:
         raise ValueError(
             "`{}` must have at most one `-1` (given {})"
-            .format(shape.op.name, es))
+            .format(shape, es))
       if np.any(es < -1):
         raise ValueError(
             "`{}` elements must be either positive integers or `-1`"
             "(given {})."
-            .format(shape.op.name, es))
+            .format(shape, es))
     elif validate_args:
       assertions.extend([
           check_ops.assert_less_equal(
@@ -168,11 +195,11 @@ class Reshape(bijector_lib.Bijector):
                   math_ops.cast(math_ops.equal(shape, -1), dtypes.int32)),
               1,
               message="`{}` elements must have at most one `-1`."
-              .format(shape.op.name)),
+              .format(shape)),
           check_ops.assert_greater_equal(
               shape, -1,
               message="`{}` elements must be either positive integers or `-1`."
-              .format(shape.op.name)),
+              .format(shape)),
       ])
     return assertions
 

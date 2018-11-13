@@ -50,7 +50,7 @@ bool ResolveBatchToSpaceNDAttributes::Run(Model* model, std::size_t op_index) {
     // will delete this op.
     return false;
   }
-  std::vector<int> crops_buffer =
+  const std::vector<int>& crops_buffer =
       crops_array.GetBuffer<ArrayDataType::kInt32>().data;
   for (int i = 0; i < crops_dims[0]; ++i) {
     op->before_crops.push_back(crops_buffer[i * 2]);
@@ -62,7 +62,7 @@ bool ResolveBatchToSpaceNDAttributes::Run(Model* model, std::size_t op_index) {
   if (!block_shape_array.has_shape()) return false;
   const std::vector<int>& block_shape_dims = block_shape_array.shape().dims();
   CHECK_EQ(block_shape_dims.size(), 1);
-  std::vector<int> block_shape_buffer =
+  const std::vector<int>& block_shape_buffer =
       block_shape_array.GetBuffer<ArrayDataType::kInt32>().data;
   for (int i = 0; i < block_shape_dims[0]; ++i) {
     op->block_shape.push_back(block_shape_buffer[i]);

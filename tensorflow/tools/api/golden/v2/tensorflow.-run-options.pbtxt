@@ -1,0 +1,83 @@
+path: "tensorflow.RunOptions"
+tf_proto {
+  descriptor {
+    name: "RunOptions"
+    field {
+      name: "trace_level"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_ENUM
+      type_name: ".tensorflow.RunOptions.TraceLevel"
+    }
+    field {
+      name: "timeout_in_ms"
+      number: 2
+      label: LABEL_OPTIONAL
+      type: TYPE_INT64
+    }
+    field {
+      name: "inter_op_thread_pool"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_INT32
+    }
+    field {
+      name: "output_partition_graphs"
+      number: 5
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "debug_options"
+      number: 6
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.DebugOptions"
+    }
+    field {
+      name: "report_tensor_allocations_upon_oom"
+      number: 7
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
+      name: "experimental"
+      number: 8
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.RunOptions.Experimental"
+    }
+    nested_type {
+      name: "Experimental"
+      field {
+        name: "collective_graph_key"
+        number: 1
+        label: LABEL_OPTIONAL
+        type: TYPE_INT64
+      }
+    }
+    enum_type {
+      name: "TraceLevel"
+      value {
+        name: "NO_TRACE"
+        number: 0
+      }
+      value {
+        name: "SOFTWARE_TRACE"
+        number: 1
+      }
+      value {
+        name: "HARDWARE_TRACE"
+        number: 2
+      }
+      value {
+        name: "FULL_TRACE"
+        number: 3
+      }
+    }
+    reserved_range {
+      start: 4
+      end: 5
+    }
+  }
+}

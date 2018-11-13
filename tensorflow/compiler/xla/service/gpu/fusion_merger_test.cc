@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 
 namespace xla {
 namespace gpu {
@@ -40,7 +40,7 @@ class FusionMergerTest : public HloTestBase {};
 //                   Tuple
 //
 TEST_F(FusionMergerTest, MergeSharedFusionInstruction) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
 HloModule MergeSharedFusionInstruction
 
 comp.3 {
@@ -104,7 +104,7 @@ ENTRY MergeSharedFusionInstruction.Computation0 {
 //
 // Fusion2 is not merged because it exceeds the threshold flops-to-bytes ratio.
 TEST_F(FusionMergerTest, FlopsToBytesRatioThresholdExceeded) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
 HloModule FlopsToBytesRatioThresholdExceeded
 
 comp.2 {
@@ -162,7 +162,7 @@ ENTRY FlopsToBytesRatioThresholdExceeded.Computation1 {
 // is merged into Fusion0 and Fusion1) would exceed the bytes transferred
 // threshold.
 TEST_F(FusionMergerTest, BytesTransferredThresholdExeceeded) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
 HloModule BytesTransferredThresholdExeceeded
 
 comp.2 {
@@ -210,7 +210,7 @@ ENTRY BytesTransferredThresholdExeceeded.Computation2 {
 // Fusion2 is reduced for this test which makes the merge operation into its
 // operand below the bytes transferred threshold.
 TEST_F(FusionMergerTest, BytesTransferredThresholdNotExeceeded) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
 HloModule BytesTransferredThresholdNotExeceeded
 
 comp.2 {
@@ -253,7 +253,7 @@ ENTRY BytesTransferredThresholdNotExeceeded.Computation2 {
 // Check that we're willing to merge f1_computation into f2_computation, even
 // though f2 is an input fusion node.
 TEST_F(FusionMergerTest, WillMergeIntoInputFusion) {
-  auto module = tools::Parse(R"(
+  auto module = ParseHloString(R"(
     HloModule m
 
     f1_computation {
@@ -284,6 +284,39 @@ TEST_F(FusionMergerTest, WillMergeIntoInputFusion) {
   EXPECT_TRUE(FusionMerger().Run(module.get()).ValueOrDie());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Fusion(op::Parameter()));
+}
+
+TEST_F(FusionMergerTest, WillNotMergeReduceUnfriendlyLayouts) {
+  auto module = ParseHloString(R"(
+    HloModule m
+
+    f1_computation {
+      f1_p0 = f32[16,16,256]{0,1,2} parameter(0)
+      add = f32[16,16,256]{0,1,2} add(f1_p0, f1_p0)
+      // Note that the copy changes the layout from {0,1,2} to {2,1,0}.
+      ROOT f1_root = f32[16,16,256]{2,1,0} copy(add)
+    }
+
+    add_computation {
+      add_lhs = f32[] parameter(0)
+      add_rhs = f32[] parameter(1)
+      ROOT add_root = f32[] add(add_lhs, add_rhs)
+    }
+
+    f2_computation {
+      f2_p0 = f32[16,16,256]{2,1,0} parameter(0)
+      f2_zero = f32[] constant(0)
+      ROOT f2_root = f32[] reduce(f2_p0, f2_zero), dimensions={0,1,2},
+             to_apply=add_computation
+    }
+
+    ENTRY entry {
+      p0 = f32[16,16,256]{0,1,2} parameter(0)
+      f1 = f32[16,16,256]{2,1,0} fusion(p0), kind=kLoop, calls=f1_computation
+      ROOT f2 = f32[] fusion(f1), kind=kInput, calls=f2_computation
+    })")
+                    .ValueOrDie();
+  EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());
 }
 
 }  // namespace

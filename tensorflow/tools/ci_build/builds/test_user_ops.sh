@@ -213,27 +213,35 @@ USER_OP=$(echo "${USER_OP_SO}" | sed -e 's/\.so//')
 echo "Invoking user op ${USER_OP} defined in file ${USER_OP_SO} "\
 "via pip installation"
 
-ORIG_OUTPUT=$("${PYTHON_BIN_PATH}" -c "import tensorflow as tf; print(tf.Session('').run(tf.load_op_library('./${USER_OP_SO}').${USER_OP}(${OP_INPUT})))")
+function run_op() {
+  local ORIG_OUTPUT=$1
+  local ADDITIONAL_LOG=$2
 
-# Format OUTPUT for analysis
-if [[ -z $(echo "${ORIG_OUTPUT}" | grep -o ',') ]]; then
-  if [[ ${IS_MAC} == "1" ]]; then
-    OUTPUT=$(echo "${ORIG_OUTPUT}" | sed -E -e 's/[ \t]+/,/g')
+  # Format OUTPUT for analysis
+  if [[ -z $(echo "${ORIG_OUTPUT}" | grep -o ',') ]]; then
+    if [[ ${IS_MAC} == "1" ]]; then
+      local OUTPUT=$(echo "${ORIG_OUTPUT}" | sed -E -e 's/[ \t]+/,/g')
+    else
+      local OUTPUT=$(echo "${ORIG_OUTPUT}" | sed -r -e 's/[ \t]+/,/g')
+    fi
   else
-    OUTPUT=$(echo "${ORIG_OUTPUT}" | sed -r -e 's/[ \t]+/,/g')
+    local OUTPUT="${ORIG_OUTPUT}"
   fi
-else
-  OUTPUT="${ORIG_OUTPUT}"
-fi
 
-EQUALS_EXPECTED=$("${PYTHON_BIN_PATH}" -c "print(${OUTPUT} == ${EXPECTED_OUTPUT})")
+  local EQUALS_EXPECTED=$("${PYTHON_BIN_PATH}" -c "print(${OUTPUT} == ${EXPECTED_OUTPUT})")
 
-if [[ "${EQUALS_EXPECTED}" != "True" ]]; then
-  die "FAILED: Output from user op (${OUTPUT}) does not match expected "\
-"output ${EXPECTED_OUTPUT}"
-else
-  echo "Output from user op (${OUTPUT}) matches expected output"
-fi
+  if [[ "${EQUALS_EXPECTED}" != "True" ]]; then
+    local ERROR="FAILED: Output from user op (${OUTPUT}) does not match expected "\
+  "output ${EXPECTED_OUTPUT}"${ADDITIONAL_LOG}
+    die ${ERROR}
+  else
+    echo "Output from user op (${OUTPUT}) matches expected output"
+  fi
+}
+
+run_op "$("${PYTHON_BIN_PATH}" -c "import tensorflow as tf; print(tf.Session('').run(tf.load_op_library('./${USER_OP_SO}').${USER_OP}(${OP_INPUT})))")"
+run_op "$("${PYTHON_BIN_PATH}" -c "import tensorflow as tf; tf.enable_eager_execution(); print(tf.load_op_library('./${USER_OP_SO}').${USER_OP}(${OP_INPUT}).numpy())")" " in eager mode"
+
 
 popd
 

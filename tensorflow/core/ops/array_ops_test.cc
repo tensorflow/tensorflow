@@ -27,6 +27,21 @@ limitations under the License.
 
 namespace tensorflow {
 
+TEST(ArrayOpsTest, UnravelIndex_ShapeFn) {
+  ShapeInferenceTestOp op("UnravelIndex");
+
+  INFER_OK(op, "?;?", "?");
+
+  INFER_OK(op, "[];[?]", "[d1_0]");
+
+  INFER_OK(op, "[4,5];[?]", "[d1_0,20]");
+  INFER_OK(op, "[2,3,4];[?]", "[d1_0,24]");
+  INFER_OK(op, "?;[?]", "?");
+  INFER_OK(op, "[?];[?]", "[d1_0,?]");
+
+  INFER_ERROR("Shape must be rank 1 but is rank 2", op, "?;[1,1]");
+}
+
 TEST(ArrayOpsTest, Pack_ShapeFn) {
   ShapeInferenceTestOp op("Pack");
   auto set_axis = [&op](int axis) {
@@ -1603,6 +1618,24 @@ TEST(ArrayOpsTest, Slice_ShapeFn) {
   begin = test::AsTensor<int32>({0, 1, 2, 5});
   sizes = test::AsTensor<int32>({-1, -1, -1, -2});
   INFER_ERROR("cannot be < -1", op, "[2,3,4,5];[4];[4]");
+}
+
+TEST(ArrayOpsTest, StridedSlice_ShapeFn) {
+  ShapeInferenceTestOp op("StridedSlice");
+  TF_ASSERT_OK(NodeDefBuilder("test", "StridedSlice")
+                   .Input("input", 0, DT_FLOAT)
+                   .Input("begin", 1, DT_INT32)
+                   .Input("end", 2, DT_INT32)
+                   .Input("strides", 3, DT_INT32)
+                   .Attr("shrink_axis_mask", 1)
+                   .Finalize(&op.node_def));
+  op.input_tensors.resize(4);
+  Tensor strides = test::AsTensor<int32>({1});
+  op.input_tensors[3] = &strides;
+  // Slicing on the 0-th dimension.
+  INFER_OK(op, "[2,3,4,5];[1];[1];[1]", "[3,4,5]");
+  // Slicing on the 0-th dimension. This time some of the result dimension is 0.
+  INFER_OK(op, "[2,0,3,4];[1];[1];[1]", "[0,3,4]");
 }
 
 TEST(ArrayOpsTest, StridedSliceGrad_ShapeFn) {

@@ -15,7 +15,9 @@
 
 """Ops for building neural network seq2seq decoders and losses.
 
-See the @{$python/contrib.seq2seq} guide.
+See the
+[Contrib Seq2seq](https://tensorflow.org/api_guides/python/contrib.seq2seq)
+guide.
 """
 
 from __future__ import absolute_import

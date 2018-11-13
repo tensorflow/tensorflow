@@ -33,7 +33,7 @@ class KernelUtilTest : public ::testing::Test {
     tensor1_.allocation_type = kTfLiteMmapRo;
     tensor2_.allocation_type = kTfLiteMmapRo;
   }
-  ~KernelUtilTest() {
+  ~KernelUtilTest() override {
     TfLiteTensorFree(&tensor1_);
     TfLiteTensorFree(&tensor2_);
   }

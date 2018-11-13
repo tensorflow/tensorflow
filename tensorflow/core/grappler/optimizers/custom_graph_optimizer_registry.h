@@ -33,7 +33,7 @@ class CustomGraphOptimizerRegistry {
   static std::vector<string> GetRegisteredOptimizers();
 
   typedef std::function<CustomGraphOptimizer*()> Creator;
-  // Regsiter graph optimizer which can be called during program initialization.
+  // Register graph optimizer which can be called during program initialization.
   // This class is not thread-safe.
   static void RegisterOptimizerOrDie(const Creator& optimizer_creator,
                                      const string& name);
@@ -50,7 +50,7 @@ class CustomGraphOptimizerRegistrar {
 
 #define REGISTER_GRAPH_OPTIMIZER_AS(MyCustomGraphOptimizerClass, name) \
   namespace {                                                          \
-  static CustomGraphOptimizerRegistrar                                 \
+  static ::tensorflow::grappler::CustomGraphOptimizerRegistrar         \
       MyCustomGraphOptimizerClass##_registrar(                         \
           []() { return new MyCustomGraphOptimizerClass; }, (name));   \
   }  // namespace

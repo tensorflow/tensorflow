@@ -21,9 +21,9 @@ from __future__ import print_function
 import gast
 
 from tensorflow.contrib.autograph.pyct import anno
-from tensorflow.contrib.autograph.pyct import context
 from tensorflow.contrib.autograph.pyct import parser
 from tensorflow.contrib.autograph.pyct import qual_names
+from tensorflow.contrib.autograph.pyct import transformer
 from tensorflow.contrib.autograph.pyct.qual_names import QN
 from tensorflow.contrib.autograph.pyct.static_analysis import activity
 from tensorflow.contrib.autograph.pyct.static_analysis.annos import NodeAnno
@@ -52,18 +52,18 @@ class ScopeTest(test.TestCase):
     other = activity.Scope(None)
     other.copy_from(scope)
 
-    self.assertTrue(QN('foo') in other.created)
+    self.assertTrue(QN('foo') in other.modified)
 
     scope.mark_write(QN('bar'))
     scope.copy_from(other)
 
-    self.assertFalse(QN('bar') in scope.created)
+    self.assertFalse(QN('bar') in scope.modified)
 
     scope.mark_write(QN('bar'))
     scope.merge_from(other)
 
-    self.assertTrue(QN('bar') in scope.created)
-    self.assertFalse(QN('bar') in other.created)
+    self.assertTrue(QN('bar') in scope.modified)
+    self.assertFalse(QN('bar') in other.modified)
 
   def test_copy_of(self):
     scope = activity.Scope(None)
@@ -108,22 +108,20 @@ class ScopeTest(test.TestCase):
     self.assertFalse(QN('a') in child.referenced)
 
 
-class ActivityAnalizerTest(test.TestCase):
+class ActivityAnalyzerTest(test.TestCase):
 
   def _parse_and_analyze(self, test_fn):
     node, source = parser.parse_entity(test_fn)
-    ctx = context.EntityContext(
-        namer=None,
+    entity_info = transformer.EntityInfo(
         source_code=source,
         source_file=None,
         namespace={},
         arg_values=None,
         arg_types=None,
-        owner_type=None,
-        recursive=True)
+        owner_type=None)
     node = qual_names.resolve(node)
-    node = activity.resolve(node, ctx)
-    return node
+    node = activity.resolve(node, entity_info)
+    return node, entity_info
 
   def test_local_markers(self):
 
@@ -133,7 +131,7 @@ class ActivityAnalizerTest(test.TestCase):
         b -= 1
       return b
 
-    node = self._parse_and_analyze(test_fn)
+    node, _ = self._parse_and_analyze(test_fn)
     self.assertFalse(
         anno.getanno(node.body[0].body[0].value,
                      NodeAnno.IS_LOCAL))  # c in b = c
@@ -144,10 +142,23 @@ class ActivityAnalizerTest(test.TestCase):
         anno.getanno(node.body[0].body[2].value,
                      NodeAnno.IS_LOCAL))  # b in return b
 
+  def assertSymbolSetsAre(self, expected, actual, name):
+    expected = set(expected)
+    actual = set(str(s) for s in actual)
+    self.assertSetEqual(
+        expected, actual, 'for symbol set: %s\n'
+        '  Expected: %s\n'
+        '  Got:      %s\n'
+        '  Missing:  %s\n'
+        '  Extra:    %s\n' % (name.upper(), expected, actual,
+                              expected - actual, actual - expected))
+
   def assertScopeIsRmc(self, scope, used, modified, created):
-    self.assertItemsEqual(used, tuple(str(s) for s in scope.used))
-    self.assertItemsEqual(modified, tuple(str(s) for s in scope.modified))
-    self.assertItemsEqual(created, tuple(str(s) for s in scope.created))
+    """Assert the scope contains specific used, modified & created variables."""
+    self.assertSymbolSetsAre(used, scope.used, 'read')
+    self.assertSymbolSetsAre(modified, scope.modified, 'modified')
+    # Created is deprecated, we're no longer verifying it.
+    # self.assertSymbolSetsAre(created, scope.created, 'created')
 
   def test_print_statement(self):
 
@@ -157,7 +168,7 @@ class ActivityAnalizerTest(test.TestCase):
       print(a, b)
       return c
 
-    node = self._parse_and_analyze(test_fn)
+    node, _ = self._parse_and_analyze(test_fn)
     print_node = node.body[0].body[2]
     if isinstance(print_node, gast.Print):
       # Python 2
@@ -172,7 +183,7 @@ class ActivityAnalizerTest(test.TestCase):
     # arguments.
     self.assertScopeIsRmc(print_args_scope, ('a', 'b'), (), ())
 
-  def test_call(self):
+  def test_call_args(self):
 
     def test_fn(a):
       b = 0
@@ -180,12 +191,51 @@ class ActivityAnalizerTest(test.TestCase):
       foo(a, b)  # pylint:disable=undefined-variable
       return c
 
-    node = self._parse_and_analyze(test_fn)
+    node, _ = self._parse_and_analyze(test_fn)
     call_node = node.body[0].body[2].value
     # We basically need to detect which variables are captured by the call
     # arguments.
     self.assertScopeIsRmc(
         anno.getanno(call_node, NodeAnno.ARGS_SCOPE), ('a', 'b'), (), ())
+
+  def test_call_args_attributes(self):
+
+    def foo(*_):
+      pass
+
+    def test_fn(a):
+      a.c = 0
+      foo(a.b, a.c)
+      return a.d
+
+    node, _ = self._parse_and_analyze(test_fn)
+    call_node = node.body[0].body[1].value
+    self.assertScopeIsRmc(
+        anno.getanno(call_node, NodeAnno.ARGS_SCOPE),
+        ('a', 'a.b', 'a.c'),
+        (),
+        (),
+    )
+
+  def test_call_args_subscripts(self):
+
+    def foo(*_):
+      pass
+
+    def test_fn(a):
+      b = 1
+      c = 2
+      foo(a[0], a[b])
+      return a[c]
+
+    node, _ = self._parse_and_analyze(test_fn)
+    call_node = node.body[0].body[2].value
+    self.assertScopeIsRmc(
+        anno.getanno(call_node, NodeAnno.ARGS_SCOPE),
+        ('a', 'a[0]', 'a[b]', 'b'),
+        (),
+        (),
+    )
 
   def test_while(self):
 
@@ -196,7 +246,7 @@ class ActivityAnalizerTest(test.TestCase):
         b -= 1
       return b, c
 
-    node = self._parse_and_analyze(test_fn)
+    node, _ = self._parse_and_analyze(test_fn)
     while_node = node.body[0].body[1]
     self.assertScopeIsRmc(
         anno.getanno(while_node, NodeAnno.BODY_SCOPE), ('b',), ('b', 'c'),
@@ -216,7 +266,7 @@ class ActivityAnalizerTest(test.TestCase):
         b -= 1
       return b, c
 
-    node = self._parse_and_analyze(test_fn)
+    node, _ = self._parse_and_analyze(test_fn)
     for_node = node.body[0].body[1]
     self.assertScopeIsRmc(
         anno.getanno(for_node, NodeAnno.BODY_SCOPE), ('b',), ('b', 'c'), ('c',))
@@ -237,7 +287,7 @@ class ActivityAnalizerTest(test.TestCase):
         u = -y
       return z, u
 
-    node = self._parse_and_analyze(test_fn)
+    node, _ = self._parse_and_analyze(test_fn)
     if_node = node.body[0].body[0]
     self.assertScopeIsRmc(
         anno.getanno(if_node, NodeAnno.BODY_SCOPE), ('x', 'y'), ('x', 'y', 'z'),
@@ -253,7 +303,72 @@ class ActivityAnalizerTest(test.TestCase):
         anno.getanno(if_node, NodeAnno.ORELSE_SCOPE).parent, ('x', 'z', 'u'),
         ('x', 'y', 'z', 'u'), ('x', 'y', 'z', 'u'))
 
-  def test_nested_if_else_creation(self):
+  def test_if_attributes(self):
+
+    def test_fn(a):
+      if a > 0:
+        a.b = -a.c
+        d = 2 * a
+      else:
+        a.b = a.c
+        d = 1
+      return d
+
+    node, _ = self._parse_and_analyze(test_fn)
+    if_node = node.body[0].body[0]
+    self.assertScopeIsRmc(
+        anno.getanno(if_node, NodeAnno.BODY_SCOPE),
+        ('a', 'a.c'),
+        ('a.b', 'd'),
+        ('d',),
+    )
+    self.assertScopeIsRmc(
+        anno.getanno(if_node, NodeAnno.ORELSE_SCOPE),
+        ('a', 'a.c'),
+        ('a.b', 'd'),
+        ('d',),
+    )
+    self.assertScopeIsRmc(
+        anno.getanno(if_node, NodeAnno.BODY_SCOPE).parent,
+        ('a', 'a.c', 'd'),
+        ('a.b', 'd'),
+        ('a', 'd'),
+    )
+
+  def test_if_subscripts(self):
+
+    def test_fn(a, b, c, e):
+      if a > 0:
+        a[b] = -a[c]
+        d = 2 * a
+      else:
+        a[0] = e
+        d = 1
+      return d
+
+    node, _ = self._parse_and_analyze(test_fn)
+    if_node = node.body[0].body[0]
+    self.assertScopeIsRmc(
+        anno.getanno(if_node, NodeAnno.BODY_SCOPE),
+        ('a', 'b', 'c', 'a[c]'),
+        ('a[b]', 'd'),
+        ('d',),
+    )
+    # TODO(mdan): Should subscript writes (a[0] = 1) be considered to read "a"?
+    self.assertScopeIsRmc(
+        anno.getanno(if_node, NodeAnno.ORELSE_SCOPE),
+        ('a', 'e'),
+        ('a[0]', 'd'),
+        ('d',),
+    )
+    self.assertScopeIsRmc(
+        anno.getanno(if_node, NodeAnno.ORELSE_SCOPE).parent,
+        ('a', 'b', 'c', 'd', 'e', 'a[c]'),
+        ('d', 'a[b]', 'a[0]'),
+        ('a', 'b', 'c', 'd', 'e'),
+    )
+
+  def test_nested_if(self):
 
     def test_fn(b):
       if b > 0:
@@ -263,7 +378,7 @@ class ActivityAnalizerTest(test.TestCase):
           a = b * b
       return a
 
-    node = self._parse_and_analyze(test_fn)
+    node, _ = self._parse_and_analyze(test_fn)
     inner_if_node = node.body[0].body[0].body[0]
     self.assertScopeIsRmc(
         anno.getanno(inner_if_node, NodeAnno.BODY_SCOPE), ('b',), ('a',),
@@ -272,7 +387,7 @@ class ActivityAnalizerTest(test.TestCase):
         anno.getanno(inner_if_node, NodeAnno.ORELSE_SCOPE), ('b',), ('a',),
         ('a',))
 
-  def test_function_def(self):
+  def test_nested_function(self):
 
     def test_fn(a):
 
@@ -286,45 +401,107 @@ class ActivityAnalizerTest(test.TestCase):
         b -= f(i)
       return b, c
 
-    node = self._parse_and_analyze(test_fn)
-    fndef_node = node.body[0].body[0]
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_def_node = node.body[0].body[0]
 
     self.assertScopeIsRmc(
-        anno.getanno(fndef_node,
-                     NodeAnno.BODY_SCOPE).parent, ('b', 'i', 'f', 'c', 'a'),
-        ('f', 'b', 'c', 'i'), ('f', 'a', 'b', 'c', 'i'))
-    self.assertScopeIsRmc(
-        anno.getanno(fndef_node, NodeAnno.BODY_SCOPE), ('x', 'y'), ('y',), (
+        anno.getanno(fn_def_node, NodeAnno.BODY_SCOPE), ('x', 'y'), ('y',), (
             'x',
             'y',
         ))
 
-  def test_call_with_composite_names(self):
+  def test_constructor_attributes(self):
 
-    def foo(*_):
-      pass
+    class TestClass(object):
+
+      def __init__(self, a):
+        self.b = a
+        self.b.c = 1
+
+    node, _ = self._parse_and_analyze(TestClass)
+    init_node = node.body[0].body[0]
+    self.assertScopeIsRmc(
+        anno.getanno(init_node, NodeAnno.BODY_SCOPE),
+        ('self', 'a', 'self.b'),
+        ('self', 'self.b', 'self.b.c'),
+        ('self', 'a', 'self.b'),
+    )
+
+  def test_aug_assign_subscripts(self):
 
     def test_fn(a):
-      foo(a.b, a.c)
-      if a > 0:
-        a.b = 2
-      else:
-        d = 2
-        d.e = a.c
-        f = d.e + 1
-        a.c = f
+      a[0] += 1
 
-    node = self._parse_and_analyze(test_fn)
-    call_node = node.body[0].body[0].value
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node.body[0]
     self.assertScopeIsRmc(
-        anno.getanno(call_node, NodeAnno.ARGS_SCOPE), ('a', 'a.b', 'a.c'), (),
-        ())
-    if_node = node.body[0].body[1]
+        anno.getanno(fn_node, NodeAnno.BODY_SCOPE),
+        ('a', 'a[0]'),
+        ('a[0]',),
+        ('a',),
+    )
+
+  def test_return_vars_are_read(self):
+
+    def test_fn(a, b, c):  # pylint: disable=unused-argument
+      return c
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node.body[0]
     self.assertScopeIsRmc(
-        anno.getanno(if_node, NodeAnno.BODY_SCOPE), ('a',), ('a.b',), ())
+        anno.getanno(fn_node, NodeAnno.BODY_SCOPE),
+        ('c',),
+        (),
+        (
+            'a',
+            'b',
+            'c',
+        ),
+    )
+
+  def test_aug_assign(self):
+
+    def test_fn(a, b):
+      a += b
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node.body[0]
     self.assertScopeIsRmc(
-        anno.getanno(if_node, NodeAnno.ORELSE_SCOPE),
-        ('a', 'a.c', 'd', 'd.e', 'f'), ('a.c', 'd', 'd.e', 'f'), ('d', 'f'))
+        anno.getanno(fn_node, NodeAnno.BODY_SCOPE),
+        ('a', 'b'),
+        ('a'),
+        ('a', 'b'),
+    )
+
+  def test_aug_assign_rvalues(self):
+
+    a = dict(bar=3)
+
+    def foo():
+      return a
+
+    def test_fn(x):
+      foo()['bar'] += x
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node.body[0]
+    self.assertScopeIsRmc(
+        anno.getanno(fn_node, NodeAnno.BODY_SCOPE),
+        ('foo', 'x'),
+        (),
+        ('x',),
+    )
+
+  def test_params_created(self):
+
+    def test_fn(a, b):  # pylint: disable=unused-argument
+      return b
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node.body[0]
+    self.assertScopeIsRmc(
+        anno.getanno(fn_node, NodeAnno.BODY_SCOPE), ('b',), (('')),
+        (('a', 'b')))
 
 
 if __name__ == '__main__':

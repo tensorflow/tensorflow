@@ -60,19 +60,15 @@ void XlaArgMinMaxOp::Compile(XlaOpKernelContext* ctx) {
                               input_shape.DebugString()));
 
   DataType index_type = output_type(0);
+  xla::PrimitiveType index_xla_type;
+  OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(index_type, &index_xla_type));
 
-  xla::ComputationBuilder* b = ctx->builder();
-  xla::ComputationDataHandle input = ctx->Input(0);
-
-  xla::ComputationDataHandle output;
+  xla::XlaOp input = ctx->Input(0);
+  xla::XlaOp output;
   if (is_min_) {
-    OP_REQUIRES_OK(ctx,
-                   XlaHelpers::ArgMin(b, ctx, input, input_shape, input_type(0),
-                                      index_type, axis, &output));
+    output = XlaHelpers::ArgMin(input, index_xla_type, axis);
   } else {
-    OP_REQUIRES_OK(ctx,
-                   XlaHelpers::ArgMax(b, ctx, input, input_shape, input_type(0),
-                                      index_type, axis, &output));
+    output = XlaHelpers::ArgMax(input, index_xla_type, axis);
   }
 
   ctx->SetOutput(0, output);

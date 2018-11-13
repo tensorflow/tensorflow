@@ -93,14 +93,14 @@ class DrawBoundingBoxesOp : public OpKernel {
         int64 color_index = bb % color_table_length;
         const int64 min_box_row =
             static_cast<float>(tboxes(b, bb, 0)) * (height - 1);
-        const int64 min_box_row_clamp = std::max<int64>(min_box_row, 0);
+        const int64 min_box_row_clamp = std::max<int64>(min_box_row, int64{0});
         const int64 max_box_row =
             static_cast<float>(tboxes(b, bb, 2)) * (height - 1);
         const int64 max_box_row_clamp =
             std::min<int64>(max_box_row, height - 1);
         const int64 min_box_col =
             static_cast<float>(tboxes(b, bb, 1)) * (width - 1);
-        const int64 min_box_col_clamp = std::max<int64>(min_box_col, 0);
+        const int64 min_box_col_clamp = std::max<int64>(min_box_col, int64{0});
         const int64 max_box_col =
             static_cast<float>(tboxes(b, bb, 3)) * (width - 1);
         const int64 max_box_col_clamp = std::min<int64>(max_box_col, width - 1);

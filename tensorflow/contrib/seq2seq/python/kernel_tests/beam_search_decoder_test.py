@@ -66,7 +66,7 @@ class TestGatherTree(test.TestCase):
         max_sequence_lengths=max_sequence_lengths,
         end_token=11)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       res_ = sess.run(res)
 
     self.assertAllEqual(expected_result, res_)
@@ -115,7 +115,7 @@ class TestGatherTree(test.TestCase):
     sorted_array = beam_search_decoder.gather_tree_from_array(
         array, parent_ids, sequence_length)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sorted_array = sess.run(sorted_array)
       expected_array = sess.run(expected_array)
       self.assertAllEqual(expected_array, sorted_array)
@@ -132,6 +132,48 @@ class TestGatherTree(test.TestCase):
   def test_gather_tree_from_array_2d(self):
     self._test_gather_tree_from_array(depth_ndims=2)
 
+  def test_gather_tree_from_array_complex_trajectory(self):
+    # Max. time = 7, batch = 1, beam = 5.
+    array = np.expand_dims(np.array(
+        [[[25, 12, 114, 89, 97]],
+         [[9, 91, 64, 11, 162]],
+         [[34, 34, 34, 34, 34]],
+         [[2, 4, 2, 2, 4]],
+         [[2, 3, 6, 2, 2]],
+         [[2, 2, 2, 3, 2]],
+         [[2, 2, 2, 2, 2]]]), -1)
+    parent_ids = np.array(
+        [[[0, 0, 0, 0, 0]],
+         [[0, 0, 0, 0, 0]],
+         [[0, 1, 2, 3, 4]],
+         [[0, 0, 1, 2, 1]],
+         [[0, 1, 1, 2, 3]],
+         [[0, 1, 3, 1, 2]],
+         [[0, 1, 2, 3, 4]]])
+    expected_array = np.expand_dims(np.array(
+        [[[25, 25, 25, 25, 25]],
+         [[9, 9, 91, 9, 9]],
+         [[34, 34, 34, 34, 34]],
+         [[2, 4, 2, 4, 4]],
+         [[2, 3, 6, 3, 6]],
+         [[2, 2, 2, 3, 2]],
+         [[2, 2, 2, 2, 2]]]), -1)
+    sequence_length = [[4, 6, 4, 7, 6]]
+
+    array = ops.convert_to_tensor(
+        array, dtype=dtypes.float32)
+    parent_ids = ops.convert_to_tensor(
+        parent_ids, dtype=dtypes.int32)
+    expected_array = ops.convert_to_tensor(
+        expected_array, dtype=dtypes.float32)
+
+    sorted_array = beam_search_decoder.gather_tree_from_array(
+        array, parent_ids, sequence_length)
+
+    with self.cached_session() as sess:
+      sorted_array, expected_array = sess.run([sorted_array, expected_array])
+      self.assertAllEqual(expected_array, sorted_array)
+
 
 class TestArrayShapeChecks(test.TestCase):
 
@@ -144,7 +186,7 @@ class TestArrayShapeChecks(test.TestCase):
     batch_size = array_ops.constant(batch_size)
     check_op = beam_search_decoder._check_batch_beam(t, batch_size, beam_width)  # pylint: disable=protected-access
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       if is_valid:
         sess.run(check_op)
       else:
@@ -178,7 +220,7 @@ class TestEosMasking(test.TestCase):
     masked = beam_search_decoder._mask_probs(probs, eos_token,
                                              previously_finished)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       probs = sess.run(probs)
       masked = sess.run(masked)
 
@@ -241,7 +283,7 @@ class TestBeamStep(test.TestCase):
         end_token=self.end_token,
         length_penalty_weight=self.length_penalty_weight)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       outputs_, next_state_, state_, log_probs_ = sess.run(
           [outputs, next_beam_state, beam_state, log_probs])
 
@@ -296,7 +338,7 @@ class TestBeamStep(test.TestCase):
         end_token=self.end_token,
         length_penalty_weight=self.length_penalty_weight)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       outputs_, next_state_, state_, log_probs_ = sess.run(
           [outputs, next_beam_state, beam_state, log_probs])
 
@@ -394,7 +436,7 @@ class TestLargeBeamStep(test.TestCase):
         end_token=self.end_token,
         length_penalty_weight=self.length_penalty_weight)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       outputs_, next_state_, _, _ = sess.run(
           [outputs, next_beam_state, beam_state, log_probs])
 
@@ -429,7 +471,7 @@ class BeamSearchDecoderTest(test.TestCase):
     output_layer = layers_core.Dense(vocab_size, use_bias=True, activation=None)
     beam_width = 3
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       batch_size_tensor = constant_op.constant(batch_size)
       embedding = np.random.randn(vocab_size, embedding_dim).astype(np.float32)
       cell = rnn_cell.LSTMCell(cell_depth)

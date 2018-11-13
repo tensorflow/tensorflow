@@ -21,8 +21,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/mathutil.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 static const uint64 kUninitializedUint64 = -1ULL;
 /* static */ const char *DeviceDescription::kUndefinedString = "<undefined>";
@@ -234,6 +233,4 @@ uint64 CalculateRegisterLimitForTargetOccupancy(
   return 0;
 }
 
-
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

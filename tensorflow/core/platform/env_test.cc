@@ -86,7 +86,7 @@ TEST_F(DefaultEnvTest, IncompleteReadOutOfRange) {
 
 TEST_F(DefaultEnvTest, ReadFileToString) {
   for (const int length : {0, 1, 1212, 2553, 4928, 8196, 9000, (1 << 20) - 1,
-                           1 << 20, (1 << 20) + 1}) {
+                           1 << 20, (1 << 20) + 1, (256 << 20) + 100}) {
     const string filename = strings::StrCat(BaseDir(), "/bar/..//file", length);
 
     // Write a file with the given length
@@ -357,7 +357,7 @@ TEST_F(DefaultEnvTest, LocalTempFilename) {
   CHECK_EQ(error::OUT_OF_RANGE,
            file_to_read->Read(0 /* offset */, 1024 /* n */, &content, scratch)
                .code());
-  EXPECT_EQ("Null", content.ToString());
+  EXPECT_EQ("Null", content);
 
   // Delete the temporary file.
   TF_CHECK_OK(env->DeleteFile(filename));

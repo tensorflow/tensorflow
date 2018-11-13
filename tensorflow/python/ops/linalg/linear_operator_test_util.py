@@ -32,6 +32,7 @@ from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.linalg import linalg_impl as linalg
+from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.platform import test
 
 
@@ -101,7 +102,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     raise NotImplementedError("operator_build_infos has not been implemented.")
 
   @abc.abstractmethod
-  def _operator_and_mat_and_feed_dict(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
     """Build a batch matrix and an Operator that should have similar behavior.
 
     Every operator acts like a (batch) matrix.  This method returns both
@@ -117,22 +118,22 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     Returns:
       operator:  `LinearOperator` subclass instance.
       mat:  `Tensor` representing operator.
-      feed_dict:  Dictionary.
-        If placholder is True, this must contains everything needed to be fed
-          to sess.run calls at runtime to make the operator work.
     """
     # Create a matrix as a numpy array with desired shape/dtype.
     # Create a LinearOperator that should have the same behavior as the matrix.
     raise NotImplementedError("Not implemented yet.")
 
   @abc.abstractmethod
-  def _make_rhs(self, operator, adjoint):
+  def _make_rhs(self, operator, adjoint, with_batch=True):
     """Make a rhs appropriate for calling operator.solve(rhs).
 
     Args:
       operator:  A `LinearOperator`
       adjoint:  Python `bool`.  If `True`, we are making a 'rhs' value for the
         adjoint operator.
+      with_batch: Python `bool`. If `True`, create `rhs` with the same batch
+        shape as operator, and otherwise create a matrix without any batch
+        shape.
 
     Returns:
       A `Tensor`
@@ -140,13 +141,15 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     raise NotImplementedError("_make_rhs is not defined.")
 
   @abc.abstractmethod
-  def _make_x(self, operator, adjoint):
+  def _make_x(self, operator, adjoint, with_batch=True):
     """Make an 'x' appropriate for calling operator.matmul(x).
 
     Args:
       operator:  A `LinearOperator`
       adjoint:  Python `bool`.  If `True`, we are making an 'x' value for the
         adjoint operator.
+      with_batch: Python `bool`. If `True`, create `x` with the same batch shape
+        as operator, and otherwise create a matrix without any batch shape.
 
     Returns:
       A `Tensor`
@@ -172,7 +175,9 @@ class LinearOperatorDerivedClassTest(test.TestCase):
       SkipTest Exception, if test_name is in self._tests_to_skip.
     """
     if test_name in self._tests_to_skip:
-      self.skipTest("%s skipped because it was added to self._tests_to_skip.")
+      self.skipTest(
+          "{} skipped because it was added to self._tests_to_skip.".format(
+              test_name))
 
   def test_to_dense(self):
     self._skip_if_tests_to_skip_contains("to_dense")
@@ -181,12 +186,12 @@ class LinearOperatorDerivedClassTest(test.TestCase):
         for dtype in self._dtypes_to_test:
           with self.test_session(graph=ops.Graph()) as sess:
             sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
-            operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+            operator, mat = self._operator_and_matrix(
                 build_info, dtype, use_placeholder=use_placeholder)
             op_dense = operator.to_dense()
             if not use_placeholder:
               self.assertAllEqual(build_info.shape, op_dense.get_shape())
-            op_dense_v, mat_v = sess.run([op_dense, mat], feed_dict=feed_dict)
+            op_dense_v, mat_v = sess.run([op_dense, mat])
             self.assertAC(op_dense_v, mat_v)
 
   def test_det(self):
@@ -196,14 +201,13 @@ class LinearOperatorDerivedClassTest(test.TestCase):
         for dtype in self._dtypes_to_test:
           with self.test_session(graph=ops.Graph()) as sess:
             sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
-            operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+            operator, mat = self._operator_and_matrix(
                 build_info, dtype, use_placeholder=use_placeholder)
             op_det = operator.determinant()
             if not use_placeholder:
               self.assertAllEqual(build_info.shape[:-2], op_det.get_shape())
             op_det_v, mat_det_v = sess.run(
-                [op_det, linalg_ops.matrix_determinant(mat)],
-                feed_dict=feed_dict)
+                [op_det, linalg_ops.matrix_determinant(mat)])
             self.assertAC(op_det_v, mat_det_v)
 
   def test_log_abs_det(self):
@@ -213,7 +217,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
         for dtype in self._dtypes_to_test:
           with self.test_session(graph=ops.Graph()) as sess:
             sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
-            operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+            operator, mat = self._operator_and_matrix(
                 build_info, dtype, use_placeholder=use_placeholder)
             op_log_abs_det = operator.log_abs_determinant()
             _, mat_log_abs_det = linalg.slogdet(mat)
@@ -221,21 +225,27 @@ class LinearOperatorDerivedClassTest(test.TestCase):
               self.assertAllEqual(
                   build_info.shape[:-2], op_log_abs_det.get_shape())
             op_log_abs_det_v, mat_log_abs_det_v = sess.run(
-                [op_log_abs_det, mat_log_abs_det], feed_dict=feed_dict)
+                [op_log_abs_det, mat_log_abs_det])
             self.assertAC(op_log_abs_det_v, mat_log_abs_det_v)
 
-  def test_matmul(self):
-    self._skip_if_tests_to_skip_contains("matmul")
+  def _test_matmul(self, with_batch):
     for use_placeholder in self._use_placeholder_options:
       for build_info in self._operator_build_infos:
+        # If batch dimensions are omitted, but there are
+        # no batch dimensions for the linear operator, then
+        # skip the test case. This is already checked with
+        # with_batch=True.
+        if not with_batch and len(build_info.shape) <= 2:
+          continue
         for dtype in self._dtypes_to_test:
           for adjoint in self._adjoint_options:
             for adjoint_arg in self._adjoint_arg_options:
               with self.test_session(graph=ops.Graph()) as sess:
                 sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
-                operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+                operator, mat = self._operator_and_matrix(
                     build_info, dtype, use_placeholder=use_placeholder)
-                x = self._make_x(operator, adjoint=adjoint)
+                x = self._make_x(
+                    operator, adjoint=adjoint, with_batch=with_batch)
                 # If adjoint_arg, compute A X^H^H = A X.
                 if adjoint_arg:
                   op_matmul = operator.matmul(
@@ -244,26 +254,41 @@ class LinearOperatorDerivedClassTest(test.TestCase):
                       adjoint_arg=adjoint_arg)
                 else:
                   op_matmul = operator.matmul(x, adjoint=adjoint)
-                mat_matmul = math_ops.matmul(mat, x, adjoint_a=adjoint)
+                mat_matmul = linear_operator_util.matmul_with_broadcast(
+                    mat, x, adjoint_a=adjoint)
                 if not use_placeholder:
                   self.assertAllEqual(op_matmul.get_shape(),
                                       mat_matmul.get_shape())
                 op_matmul_v, mat_matmul_v = sess.run(
-                    [op_matmul, mat_matmul], feed_dict=feed_dict)
+                    [op_matmul, mat_matmul])
                 self.assertAC(op_matmul_v, mat_matmul_v)
 
-  def test_solve(self):
-    self._skip_if_tests_to_skip_contains("solve")
+  def test_matmul(self):
+    self._skip_if_tests_to_skip_contains("matmul")
+    self._test_matmul(with_batch=True)
+
+  def test_matmul_with_broadcast(self):
+    self._skip_if_tests_to_skip_contains("matmul_with_broadcast")
+    self._test_matmul(with_batch=False)
+
+  def _test_solve(self, with_batch):
     for use_placeholder in self._use_placeholder_options:
       for build_info in self._operator_build_infos:
+        # If batch dimensions are omitted, but there are
+        # no batch dimensions for the linear operator, then
+        # skip the test case. This is already checked with
+        # with_batch=True.
+        if not with_batch and len(build_info.shape) <= 2:
+          continue
         for dtype in self._dtypes_to_test:
           for adjoint in self._adjoint_options:
             for adjoint_arg in self._adjoint_arg_options:
               with self.test_session(graph=ops.Graph()) as sess:
                 sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
-                operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+                operator, mat = self._operator_and_matrix(
                     build_info, dtype, use_placeholder=use_placeholder)
-                rhs = self._make_rhs(operator, adjoint=adjoint)
+                rhs = self._make_rhs(
+                    operator, adjoint=adjoint, with_batch=with_batch)
                 # If adjoint_arg, solve A X = (rhs^H)^H = rhs.
                 if adjoint_arg:
                   op_solve = operator.solve(
@@ -273,13 +298,21 @@ class LinearOperatorDerivedClassTest(test.TestCase):
                 else:
                   op_solve = operator.solve(
                       rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
-                mat_solve = linalg_ops.matrix_solve(mat, rhs, adjoint=adjoint)
+                mat_solve = linear_operator_util.matrix_solve_with_broadcast(
+                    mat, rhs, adjoint=adjoint)
                 if not use_placeholder:
                   self.assertAllEqual(op_solve.get_shape(),
                                       mat_solve.get_shape())
-                op_solve_v, mat_solve_v = sess.run(
-                    [op_solve, mat_solve], feed_dict=feed_dict)
+                op_solve_v, mat_solve_v = sess.run([op_solve, mat_solve])
                 self.assertAC(op_solve_v, mat_solve_v)
+
+  def test_solve(self):
+    self._skip_if_tests_to_skip_contains("solve")
+    self._test_solve(with_batch=True)
+
+  def test_solve_with_broadcast(self):
+    self._skip_if_tests_to_skip_contains("solve_with_broadcast")
+    self._test_solve(with_batch=False)
 
   def test_trace(self):
     self._skip_if_tests_to_skip_contains("trace")
@@ -288,14 +321,13 @@ class LinearOperatorDerivedClassTest(test.TestCase):
         for dtype in self._dtypes_to_test:
           with self.test_session(graph=ops.Graph()) as sess:
             sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
-            operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+            operator, mat = self._operator_and_matrix(
                 build_info, dtype, use_placeholder=use_placeholder)
             op_trace = operator.trace()
             mat_trace = math_ops.trace(mat)
             if not use_placeholder:
               self.assertAllEqual(op_trace.get_shape(), mat_trace.get_shape())
-            op_trace_v, mat_trace_v = sess.run(
-                [op_trace, mat_trace], feed_dict=feed_dict)
+            op_trace_v, mat_trace_v = sess.run([op_trace, mat_trace])
             self.assertAC(op_trace_v, mat_trace_v)
 
   def test_add_to_tensor(self):
@@ -305,15 +337,14 @@ class LinearOperatorDerivedClassTest(test.TestCase):
         for dtype in self._dtypes_to_test:
           with self.test_session(graph=ops.Graph()) as sess:
             sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
-            operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+            operator, mat = self._operator_and_matrix(
                 build_info, dtype, use_placeholder=use_placeholder)
             op_plus_2mat = operator.add_to_tensor(2 * mat)
 
             if not use_placeholder:
               self.assertAllEqual(build_info.shape, op_plus_2mat.get_shape())
 
-            op_plus_2mat_v, mat_v = sess.run(
-                [op_plus_2mat, mat], feed_dict=feed_dict)
+            op_plus_2mat_v, mat_v = sess.run([op_plus_2mat, mat])
 
             self.assertAC(op_plus_2mat_v, 3 * mat_v)
 
@@ -324,7 +355,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
         for dtype in self._dtypes_to_test:
           with self.test_session(graph=ops.Graph()) as sess:
             sess.graph.seed = random_seed.DEFAULT_GRAPH_SEED
-            operator, mat, feed_dict = self._operator_and_mat_and_feed_dict(
+            operator, mat = self._operator_and_matrix(
                 build_info, dtype, use_placeholder=use_placeholder)
             op_diag_part = operator.diag_part()
             mat_diag_part = array_ops.matrix_diag_part(mat)
@@ -334,7 +365,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
                                   op_diag_part.get_shape())
 
             op_diag_part_, mat_diag_part_ = sess.run(
-                [op_diag_part, mat_diag_part], feed_dict=feed_dict)
+                [op_diag_part, mat_diag_part])
 
             self.assertAC(op_diag_part_, mat_diag_part_)
 
@@ -358,13 +389,13 @@ class SquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
         build_info((3, 4, 4)),
         build_info((2, 1, 4, 4))]
 
-  def _make_rhs(self, operator, adjoint):
+  def _make_rhs(self, operator, adjoint, with_batch=True):
     # This operator is square, so rhs and x will have same shape.
     # adjoint value makes no difference because the operator shape doesn't
     # change since it is square, but be pedantic.
-    return self._make_x(operator, adjoint=not adjoint)
+    return self._make_x(operator, adjoint=not adjoint, with_batch=with_batch)
 
-  def _make_x(self, operator, adjoint):
+  def _make_x(self, operator, adjoint, with_batch=True):
     # Value of adjoint makes no difference because the operator is square.
     # Return the number of systems to solve, R, equal to 1 or 2.
     r = self._get_num_systems(operator)
@@ -373,11 +404,17 @@ class SquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
     if operator.shape.is_fully_defined():
       batch_shape = operator.batch_shape.as_list()
       n = operator.domain_dimension.value
-      x_shape = batch_shape + [n, r]
+      if with_batch:
+        x_shape = batch_shape + [n, r]
+      else:
+        x_shape = [n, r]
     else:
       batch_shape = operator.batch_shape_tensor()
       n = operator.domain_dimension_tensor()
-      x_shape = array_ops.concat((batch_shape, [n, r]), 0)
+      if with_batch:
+        x_shape = array_ops.concat((batch_shape, [n, r]), 0)
+      else:
+        x_shape = [n, r]
 
     return random_normal(x_shape, dtype=operator.dtype)
 
@@ -404,7 +441,7 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
   @property
   def _tests_to_skip(self):
     """List of test names to skip."""
-    return ["solve", "det", "log_abs_det"]
+    return ["solve", "solve_with_broadcast", "det", "log_abs_det"]
 
   @property
   def _operator_build_infos(self):
@@ -417,12 +454,12 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
         build_info((3, 3, 4)),
         build_info((2, 1, 2, 4))]
 
-  def _make_rhs(self, operator, adjoint):
+  def _make_rhs(self, operator, adjoint, with_batch=True):
     # TODO(langmore) Add once we're testing solve_ls.
     raise NotImplementedError(
         "_make_rhs not implemented because we don't test solve")
 
-  def _make_x(self, operator, adjoint):
+  def _make_x(self, operator, adjoint, with_batch=True):
     # Return the number of systems for the argument 'x' for .matmul(x)
     r = self._get_num_systems(operator)
     # If operator.shape = [B1,...,Bb, M, N] this returns a random matrix of
@@ -433,14 +470,20 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
         n = operator.range_dimension.value
       else:
         n = operator.domain_dimension.value
-      x_shape = batch_shape + [n, r]
+      if with_batch:
+        x_shape = batch_shape + [n, r]
+      else:
+        x_shape = [n, r]
     else:
       batch_shape = operator.batch_shape_tensor()
       if adjoint:
         n = operator.range_dimension_tensor()
       else:
         n = operator.domain_dimension_tensor()
-      x_shape = array_ops.concat((batch_shape, [n, r]), 0)
+      if with_batch:
+        x_shape = array_ops.concat((batch_shape, [n, r]), 0)
+      else:
+        x_shape = [n, r]
 
     return random_normal(x_shape, dtype=operator.dtype)
 

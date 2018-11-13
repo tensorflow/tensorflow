@@ -80,6 +80,18 @@ TEST(AdaptiveSharedBatchSchedulerTest, BadOptions) {
   options = Scheduler::Options();
   options.batches_to_average_over = -5;
   EXPECT_FALSE(Scheduler::Create(options, &scheduler).ok());
+  options = Scheduler::Options();
+  options.min_in_flight_batches_limit = 0;
+  EXPECT_FALSE(Scheduler::Create(options, &scheduler).ok());
+  options = Scheduler::Options();
+  options.min_in_flight_batches_limit = 5;
+  options.num_batch_threads = 3;
+  EXPECT_FALSE(Scheduler::Create(options, &scheduler).ok());
+  options = Scheduler::Options();
+  options.initial_in_flight_batches_limit = 1;
+  options.min_in_flight_batches_limit = 2;
+  options.num_batch_threads = 3;
+  EXPECT_FALSE(Scheduler::Create(options, &scheduler).ok());
 }
 
 TEST(AdaptiveSharedBatchSchedulerTest, InFlightBatchesLimit) {

@@ -80,6 +80,16 @@ inline std::vector<uint8_t> Split(const string& s, const string& delimiter) {
   return fields;
 }
 
+template <>
+inline std::vector<bool> Split(const string& s, const string& delimiter) {
+  std::vector<bool> fields;
+  for (const auto& p : SplitToPos(s, delimiter)) {
+    fields.push_back(
+        static_cast<bool>(strtol(s.data() + p.first, nullptr, 10)));
+  }
+  return fields;
+}
+
 }  // namespace testing
 }  // namespace tflite
 

@@ -29,6 +29,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import util
 from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util.deprecation import deprecated_argument_lookup
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -189,8 +190,13 @@ def compute_weighted_loss(
     When calculating the gradient of a weighted loss contributions from
     both `losses` and `weights` are considered. If your `weights` depend
     on some model parameters but you do not want this to affect the loss
-    gradient, you need to apply @{tf.stop_gradient} to `weights` before
+    gradient, you need to apply `tf.stop_gradient` to `weights` before
     passing them to `compute_weighted_loss`.
+
+  @compatibility(eager)
+  The `loss_collection` argument is ignored when executing eagerly. Consider
+  holding on to the return value or collecting losses via a `tf.keras.Model`.
+  @end_compatibility
   """
   Reduction.validate(reduction)
   with ops.name_scope(scope, "weighted_loss", (losses, weights)):
@@ -259,6 +265,11 @@ def absolute_difference(
     ValueError: If the shape of `predictions` doesn't match that of
       `labels` or if the shape of `weights` is invalid or if `labels`
       or `predictions` is None.
+
+  @compatibility(eager)
+  The `loss_collection` argument is ignored when executing eagerly. Consider
+  holding on to the return value or collecting losses via a `tf.keras.Model`.
+  @end_compatibility
   """
   if labels is None:
     raise ValueError("labels must not be None.")
@@ -305,12 +316,14 @@ def cosine_distance(
   Raises:
     ValueError: If `predictions` shape doesn't match `labels` shape, or
       `axis`, `labels`, `predictions` or `weights` is `None`.
+
+  @compatibility(eager)
+  The `loss_collection` argument is ignored when executing eagerly. Consider
+  holding on to the return value or collecting losses via a `tf.keras.Model`.
+  @end_compatibility
   """
-  if dim is not None:
-    if axis is not None:
-      raise ValueError("Cannot specify both 'axis' and 'dim'")
-    axis = dim
-  if axis is None and dim is None:
+  axis = deprecated_argument_lookup("axis", axis, "dim", dim)
+  if axis is None:
     raise ValueError("You must specify 'axis'.")
   if labels is None:
     raise ValueError("labels must not be None.")
@@ -336,8 +349,11 @@ def hinge_loss(labels, logits, weights=1.0, scope=None,
 
   Args:
     labels: The ground truth output tensor. Its shape should match the shape of
-      logits. The values of the tensor are expected to be 0.0 or 1.0.
-    logits: The logits, a float tensor.
+      logits. The values of the tensor are expected to be 0.0 or 1.0. Internally
+      the {0,1} labels are converted to {-1,1} when calculating the hinge loss.
+    logits: The logits, a float tensor. Note that logits are assumed to be
+      unbounded and 0-centered. A value > 0 (resp. < 0) is considered a positive
+      (resp. negative) binary prediction.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
       be either `1`, or the same as the corresponding `losses` dimension).
@@ -352,6 +368,11 @@ def hinge_loss(labels, logits, weights=1.0, scope=None,
   Raises:
     ValueError: If the shapes of `logits` and `labels` don't match or
       if `labels` or `logits` is None.
+
+  @compatibility(eager)
+  The `loss_collection` argument is ignored when executing eagerly. Consider
+  holding on to the return value or collecting losses via a `tf.keras.Model`.
+  @end_compatibility
   """
   if labels is None:
     raise ValueError("labels must not be None.")
@@ -415,6 +436,11 @@ def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
       if the shape of `weights` is invalid.  Also if `labels` or
      `predictions` is None.
+
+  @compatibility(eager)
+  The `loss_collection` argument is ignored when executing eagerly. Consider
+  holding on to the return value or collecting losses via a `tf.keras.Model`.
+  @end_compatibility
   """
   if labels is None:
     raise ValueError("labels must not be None.")
@@ -476,6 +502,11 @@ def log_loss(labels, predictions, weights=1.0, epsilon=1e-7, scope=None,
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
       if the shape of `weights` is invalid.  Also if `labels` or `predictions`
       is None.
+
+  @compatibility(eager)
+  The `loss_collection` argument is ignored when executing eagerly. Consider
+  holding on to the return value or collecting losses via a `tf.keras.Model`.
+  @end_compatibility
   """
   if labels is None:
     raise ValueError("labels must not be None.")
@@ -539,6 +570,11 @@ def mean_pairwise_squared_error(
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
       if the shape of `weights` is invalid.  Also if `labels` or `predictions`
       is None.
+
+  @compatibility(eager)
+  The `loss_collection` argument is ignored when executing eagerly. Consider
+  holding on to the return value or collecting losses via a `tf.keras.Model`.
+  @end_compatibility
   """
   if labels is None:
     raise ValueError("labels must not be None.")
@@ -617,6 +653,11 @@ def mean_squared_error(
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
       if the shape of `weights` is invalid.  Also if `labels` or `predictions`
       is None.
+
+  @compatibility(eager)
+  The `loss_collection` argument is ignored when executing eagerly. Consider
+  holding on to the return value or collecting losses via a `tf.keras.Model`.
+  @end_compatibility
   """
   if labels is None:
     raise ValueError("labels must not be None.")
@@ -669,6 +710,11 @@ def sigmoid_cross_entropy(
     ValueError: If the shape of `logits` doesn't match that of
       `multi_class_labels` or if the shape of `weights` is invalid, or if
       `weights` is None.  Also if `multi_class_labels` or `logits` is None.
+
+  @compatibility(eager)
+  The `loss_collection` argument is ignored when executing eagerly. Consider
+  holding on to the return value or collecting losses via a `tf.keras.Model`.
+  @end_compatibility
   """
   if multi_class_labels is None:
     raise ValueError("multi_class_labels must not be None.")
@@ -696,7 +742,7 @@ def softmax_cross_entropy(
     onehot_labels, logits, weights=1.0, label_smoothing=0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
     reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
-  """Creates a cross-entropy loss using tf.nn.softmax_cross_entropy_with_logits.
+  """Creates a cross-entropy loss using tf.nn.softmax_cross_entropy_with_logits_v2.
 
   `weights` acts as a coefficient for the loss. If a scalar is provided,
   then the loss is simply scaled by the given value. If `weights` is a
@@ -707,11 +753,16 @@ def softmax_cross_entropy(
       new_onehot_labels = onehot_labels * (1 - label_smoothing)
                           + label_smoothing / num_classes
 
+  Note that `onehot_labels` and `logits` must have the same shape,
+  e.g. `[batch_size, num_classes]`. The shape of `weights` must be
+  broadcastable to loss, whose shape is decided by the shape of `logits`.
+  In case the shape of `logits` is `[batch_size, num_classes]`, loss is
+  a `Tensor` of shape `[batch_size]`.
+
   Args:
-    onehot_labels: `[batch_size, num_classes]` target one-hot-encoded labels.
-    logits: `[batch_size, num_classes]` logits outputs of the network .
-    weights: Optional `Tensor` whose rank is either 0, or rank 1 and is
-      broadcastable to the loss which is a `Tensor` of shape `[batch_size]`.
+    onehot_labels: One-hot-encoded labels.
+    logits: Logits outputs of the network.
+    weights: Optional `Tensor` that is broadcastable to loss.
     label_smoothing: If greater than 0 then smooth the labels.
     scope: the scope for the operations performed in computing the loss.
     loss_collection: collection to which the loss will be added.
@@ -725,6 +776,11 @@ def softmax_cross_entropy(
     ValueError: If the shape of `logits` doesn't match that of `onehot_labels`
       or if the shape of `weights` is invalid or if `weights` is None.  Also if
       `onehot_labels` or `logits` is None.
+
+  @compatibility(eager)
+  The `loss_collection` argument is ignored when executing eagerly. Consider
+  holding on to the return value or collecting losses via a `tf.keras.Model`.
+  @end_compatibility
   """
   if onehot_labels is None:
     raise ValueError("onehot_labels must not be None.")
@@ -822,7 +878,8 @@ def sparse_softmax_cross_entropy(
       exception when this op is run on CPU, and return `NaN` for corresponding
       loss and gradient rows on GPU.
     logits: Unscaled log probabilities of shape
-      `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float32` or `float64`.
+      `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float16`, `float32` or
+      `float64`.
     weights: Coefficients for the loss. This must be scalar or broadcastable to
       `labels` (i.e. same rank and each dimension is either 1 or the same).
     scope: the scope for the operations performed in computing the loss.
@@ -836,6 +893,11 @@ def sparse_softmax_cross_entropy(
   Raises:
     ValueError: If the shapes of `logits`, `labels`, and `weights` are
       incompatible, or if any of them are None.
+
+  @compatibility(eager)
+  The `loss_collection` argument is ignored when executing eagerly. Consider
+  holding on to the return value or collecting losses via a `tf.keras.Model`.
+  @end_compatibility
   """
   if labels is None:
     raise ValueError("labels must not be None.")

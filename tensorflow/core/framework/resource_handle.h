@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_RESOURCE_HANDLE_H_
 #define TENSORFLOW_FRAMEWORK_RESOURCE_HANDLE_H_
 
+#include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -76,6 +77,14 @@ class ResourceHandle {
 
 // For backwards compatibility for when this was a proto
 string ProtoDebugString(const ResourceHandle& handle);
+
+// Encodes a list of ResourceHandle protos in the given StringListEncoder.
+void EncodeResourceHandleList(const ResourceHandle* p, int64 n,
+                              std::unique_ptr<port::StringListEncoder> e);
+
+// Decodes a list of ResourceHandle protos from the given StringListDecoder.
+bool DecodeResourceHandleList(std::unique_ptr<port::StringListDecoder> d,
+                              ResourceHandle* ps, int64 n);
 
 }  // namespace tensorflow
 

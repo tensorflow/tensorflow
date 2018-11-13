@@ -190,13 +190,13 @@ class StateSpaceEquivalenceTests(test.TestCase):
         estimator.build_raw_serving_input_receiver_fn())
     with ops.Graph().as_default() as graph:
       random_model.initialize_graph()
-      with self.test_session(graph=graph) as session:
+      with self.session(graph=graph) as session:
         variables.global_variables_initializer().run()
         evaled_start_state = session.run(random_model.get_start_state())
     evaled_start_state = [
         state_element[None, ...] for state_element in evaled_start_state]
     with ops.Graph().as_default() as graph:
-      with self.test_session(graph=graph) as session:
+      with self.session(graph=graph) as session:
         signatures = loader.load(
             session, [tag_constants.SERVING], export_location)
         first_split_filtering = saved_model_utils.filter_continuation(

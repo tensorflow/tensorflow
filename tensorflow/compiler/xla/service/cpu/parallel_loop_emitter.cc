@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/parallel_loop_emitter.h"
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace xla {
 namespace cpu {
@@ -25,18 +25,21 @@ namespace cpu {
 ParallelLoopEmitter::ParallelLoopEmitter(
     const llvm_ir::ElementGenerator& target_element_generator,
     const llvm_ir::IrArray& target_array,
-    const DynamicLoopBounds* dynamic_loop_bounds, llvm::IRBuilder<>* ir_builder)
-    : LoopEmitter(target_element_generator, target_array, ir_builder),
+    const DynamicLoopBounds* dynamic_loop_bounds, llvm::IRBuilder<>* b)
+    : LoopEmitter(target_element_generator, target_array, b),
       dynamic_loop_bounds_(dynamic_loop_bounds) {}
 
-llvm_ir::IrArray::Index ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
-    tensorflow::StringPiece loop_name) {
+std::vector<llvm_ir::IrArray::Index>
+ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
+                                                   llvm::Type* index_type) {
+  CHECK_NE(index_type, nullptr);
+
   CHECK(!ShapeUtil::IsTuple(shape_));
   CHECK(!ShapeUtil::IsScalar(shape_));
 
-  llvm_ir::ForLoopNest loop_nest(loop_name, ir_builder_);
+  llvm_ir::ForLoopNest loop_nest(loop_name, b_);
   const int64 num_dims = shape_.dimensions_size();
-  llvm_ir::IrArray::Index array_index(num_dims);
+  llvm_ir::IrArray::Index array_index(index_type, num_dims);
 
   // Add loops from outer-most to inner-most dimensions.
   for (int i = LayoutUtil::MinorToMajor(shape_).size() - 1; i >= 0; --i) {
@@ -49,27 +52,26 @@ llvm_ir::IrArray::Index ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
       llvm::Value* end_index = (*dynamic_loop_bounds_)[bounds_index].second;
 
       std::unique_ptr<llvm_ir::ForLoop> loop = loop_nest.AddLoop(
-          /*suffix=*/tensorflow::strings::Printf("dim.%lld", dimension),
-          start_index, end_index);
+          /*suffix=*/absl::StrFormat("dim.%d", dimension), start_index,
+          end_index);
       array_index[dimension] = loop->GetIndVarValue();
     } else {
       // Emit static loop bounds for this dimension.
       std::unique_ptr<llvm_ir::ForLoop> loop = loop_nest.AddLoop(
           /*start_index=*/0,
           /*end_index=*/shape_.dimensions(dimension),
-          /*suffix=*/tensorflow::strings::Printf("dim.%lld", dimension));
+          /*suffix=*/absl::StrFormat("dim.%d", dimension));
       array_index[dimension] = loop->GetIndVarValue();
     }
   }
   // Point IR builder at inner loop BB.
-  llvm_ir::SetToFirstInsertPoint(loop_nest.GetInnerLoopBodyBasicBlock(),
-                                 ir_builder_);
+  llvm_ir::SetToFirstInsertPoint(loop_nest.GetInnerLoopBodyBasicBlock(), b_);
 
   // Set exit_bb_ to the exit block of the loop nest.
   exit_bb_ = loop_nest.GetOuterLoopExitBasicBlock();
   CHECK(exit_bb_ != nullptr);
 
-  return array_index;
+  return {array_index};
 }
 
 }  // namespace cpu

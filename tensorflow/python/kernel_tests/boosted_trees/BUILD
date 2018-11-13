@@ -52,7 +52,7 @@ tf_py_test(
 
 tf_py_test(
     name = "stats_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["stats_ops_test.py"],
     additional_deps = [
         "//tensorflow/python:boosted_trees_ops",

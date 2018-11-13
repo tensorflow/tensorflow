@@ -59,6 +59,10 @@ class FlatSet {
 
   FlatSet(const FlatSet& src) : rep_(src.rep_) {}
 
+  // Move constructor leaves src in a valid but unspecified state (same as
+  // std::unordered_set).
+  FlatSet(FlatSet&& src) : rep_(std::move(src.rep_)) {}
+
   template <typename InputIter>
   FlatSet(InputIter first, InputIter last, size_t N = 1,
           const Hash& hf = Hash(), const Eq& eq = Eq())
@@ -72,6 +76,13 @@ class FlatSet {
 
   FlatSet& operator=(const FlatSet& src) {
     rep_.CopyFrom(src.rep_);
+    return *this;
+  }
+
+  // Move-assignment operator leaves src in a valid but unspecified state (same
+  // as std::unordered_set).
+  FlatSet& operator=(FlatSet&& src) {
+    rep_.MoveFrom(std::move(src.rep_));
     return *this;
   }
 
@@ -169,6 +180,7 @@ class FlatSet {
   }
 
   std::pair<iterator, bool> insert(const Key& k) { return Insert(k); }
+  std::pair<iterator, bool> insert(Key&& k) { return Insert(std::move(k)); }
   template <typename InputIter>
   void insert(InputIter first, InputIter last) {
     for (; first != last; ++first) {
@@ -265,9 +277,10 @@ class FlatSet {
     }
   };
 
-  std::pair<iterator, bool> Insert(const Key& k) {
+  template <typename K>
+  std::pair<iterator, bool> Insert(K&& k) {
     rep_.MaybeResize();
-    auto r = rep_.FindOrInsert(k);
+    auto r = rep_.FindOrInsert(std::forward<K>(k));
     const bool inserted = !r.found;
     return {iterator(r.b, rep_.limit(), r.index), inserted};
   }

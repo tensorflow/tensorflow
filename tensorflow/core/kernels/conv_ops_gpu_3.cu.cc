@@ -247,7 +247,13 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
   constexpr int ReadRowPerPass = NumThreads / TileSizeJ;
   constexpr int WriteRowPerPass = NumThreads / TileSizeI;
   // One extra line in the inner dimension to avoid share memory bank conflict.
-  __shared__ T shared_memory_tile[TileSizeI][TileSizeJ + 1];
+  // This is to mimic the following, but no constructor of T can be invoked.
+  //     __shared__ T shared_memory_tile[TileSizeI][TileSizeJ + 1];
+  __shared__ __align__(
+      alignof(T)) char shared_mem_raw[TileSizeI * (TileSizeJ + 1) * sizeof(T)];
+  typedef T(*SharedMemoryTile)[TileSizeJ + 1];
+  SharedMemoryTile shared_memory_tile =
+      reinterpret_cast<SharedMemoryTile>(shared_mem_raw);
 
   int x = threadIdx.x;
 
@@ -595,7 +601,7 @@ constexpr bool TileSizeOnNonLongSideFrontier(int TileLongSide,
   // For a tile size combination (longside, shortside), lying on the frontier
   // implies that (longside, shortside) is on or within the frontier but
   // (longside*2, shortside) or (longside, shortside+1) is not. With the above
-  // critereon, we simply need to use !TileSizeOnLongSideFrontier to ensure that
+  // criterion, we simply need to use !TileSizeOnLongSideFrontier to ensure that
   // it is not on the long side frontier.
   return !TileSizeOutsideFrontier(TileLongSide, TileShortSide, size_of_t) &&
          (TileSizeOutsideFrontier(TileLongSide * 2, TileShortSide, size_of_t) ||
@@ -1027,6 +1033,7 @@ template struct functor::SwapDimension1And2InTensor3<GPUDevice, float2,
                                                      /*conjugate=*/true>;
 template struct functor::SwapDimension1And2InTensor3<GPUDevice, double2,
                                                      /*conjugate=*/true>;
+template struct functor::SwapDimension1And2InTensor3<GPUDevice, Eigen::half>;
 
 template struct functor::SwapDimension0And2InTensor3<GPUDevice, uint8>;
 template struct functor::SwapDimension0And2InTensor3<GPUDevice, uint16>;

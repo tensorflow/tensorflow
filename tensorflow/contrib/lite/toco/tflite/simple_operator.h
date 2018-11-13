@@ -41,6 +41,8 @@ class SimpleOperator : public BaseOperator {
       const CustomOptions* custom_options) const override {
     return std::unique_ptr<Operator>(new T);
   }
+
+  int GetVersion(const Operator& op) const override { return 1; }
 };
 
 }  // namespace tflite

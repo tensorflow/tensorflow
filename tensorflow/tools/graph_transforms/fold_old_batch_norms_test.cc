@@ -191,7 +191,7 @@ class FoldOldBatchNormsTest : public ::testing::Test {
     std::vector<Tensor> fused_outputs;
     TF_ASSERT_OK(fused_session->Run({}, {"output"}, {}, &fused_outputs));
 
-    test::ExpectTensorNear<float>(original_outputs[0], fused_outputs[0], 1e-5);
+    test::ExpectTensorNear<float>(original_outputs[0], fused_outputs[0], 2e-5);
 
     for (const NodeDef& node : fused_graph_def.node()) {
       EXPECT_NE("FusedBatchNorm", node.op());

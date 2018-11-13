@@ -30,8 +30,8 @@ limitations under the License.
 // RunGraph on workers.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service.h"
 
-#include "grpc++/alarm.h"
-#include "grpc++/server_builder.h"
+#include "grpcpp/alarm.h"
+#include "grpcpp/server_builder.h"
 
 #include "tensorflow/core/distributed_runtime/master.h"
 #include "tensorflow/core/distributed_runtime/rpc/async_service_interface.h"
@@ -285,7 +285,7 @@ class GrpcMasterService : public AsyncServiceInterface {
 #undef ENQUEUE_REQUEST
 
   // Start tracing, including the ID attached to the RPC.
-  port::Tracing::TraceMe* TraceRpc(
+  tracing::ScopedActivity* TraceRpc(
       StringPiece name,
       const std::multimap<::grpc::string_ref, ::grpc::string_ref>& metadata) {
     StringPiece id;
@@ -293,7 +293,7 @@ class GrpcMasterService : public AsyncServiceInterface {
     if (it != metadata.end()) {
       id = StringPiece(it->second.data(), it->second.size());
     }
-    return new port::Tracing::TraceMe(name, id);
+    return new tracing::ScopedActivity(name, id);
   }
 
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcMasterService);

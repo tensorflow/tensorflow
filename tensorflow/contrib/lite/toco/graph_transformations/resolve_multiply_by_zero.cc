@@ -60,6 +60,11 @@ bool ResolveMultiplyByZero::Run(Model* model, std::size_t op_index) {
   const auto& output_array_name = mul_op->outputs[0];
   auto& output_array = model->GetArray(output_array_name);
 
+  if (output_array.data_type == ArrayDataType::kNone) {
+    // Yield until the output type has been set by PropagateArrayDataTypes
+    return false;
+  }
+
   // Yield if the output shape is not known yet.
   if (!output_array.has_shape()) {
     return false;

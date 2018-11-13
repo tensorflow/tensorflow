@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <string.h>
 #include <algorithm>
+#include <complex>
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"
@@ -32,7 +33,7 @@ constexpr int kOutputTensor = 0;
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // TODO(ahentz): these two checks would make the new implementation
@@ -53,6 +54,20 @@ void copyCast(const FromT* in, ToT* out, int num_elements) {
                  [](FromT a) { return static_cast<ToT>(a); });
 }
 
+template <typename ToT>
+void copyCast(const std::complex<float>* in, ToT* out, int num_elements) {
+  std::transform(in, in + num_elements, out, [](std::complex<float> a) {
+    return static_cast<ToT>(std::real(a));
+  });
+}
+
+template <>
+void copyCast(const std::complex<float>* in, std::complex<float>* out,
+              int num_elements) {
+  std::transform(in, in + num_elements, out,
+                 [](std::complex<float> a) { return a; });
+}
+
 template <typename FromT>
 TfLiteStatus copyToTensor(const FromT* in, TfLiteTensor* out,
                           int num_elements) {
@@ -69,6 +84,13 @@ TfLiteStatus copyToTensor(const FromT* in, TfLiteTensor* out,
     case kTfLiteFloat32:
       copyCast(in, out->data.f, num_elements);
       break;
+    case kTfLiteBool:
+      copyCast(in, out->data.b, num_elements);
+      break;
+    case kTfLiteComplex64:
+      copyCast(in, reinterpret_cast<std::complex<float>*>(out->data.c64),
+               num_elements);
+      break;
     default:
       // Unsupported type.
       return kTfLiteError;
@@ -77,7 +99,7 @@ TfLiteStatus copyToTensor(const FromT* in, TfLiteTensor* out,
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   const int num_elements = NumElements(input);
   TF_LITE_ENSURE_EQ(context, num_elements, NumElements(output));
@@ -90,6 +112,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return copyToTensor(input->data.uint8, output, num_elements);
     case kTfLiteFloat32:
       return copyToTensor(input->data.f, output, num_elements);
+    case kTfLiteBool:
+      return copyToTensor(input->data.b, output, num_elements);
+    case kTfLiteComplex64:
+      return copyToTensor(
+          reinterpret_cast<std::complex<float>*>(input->data.c64), output,
+          num_elements);
     default:
       // Unsupported type.
       return kTfLiteError;

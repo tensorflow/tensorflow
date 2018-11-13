@@ -19,17 +19,18 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.bzl", "if_not_windows_cuda")
 
 tf_custom_op_library(
     name = "python/ops/_nccl_ops.so",
     srcs = [
         "ops/nccl_ops.cc",
     ],
-    gpu_srcs = [
+    gpu_srcs = if_not_windows_cuda([
         "kernels/nccl_manager.cc",
         "kernels/nccl_manager.h",
         "kernels/nccl_ops.cc",
-    ],
+    ]),
     deps = if_cuda([
         "@local_config_nccl//:nccl",
         "//tensorflow/core:gpu_headers_lib",
@@ -97,18 +98,19 @@ tf_gen_op_wrapper_py(
     deps = [":nccl_ops_op_lib"],
 )
 
+# Test only nccl ops lib without dso to test behavior when NCCL lib is not
+# installed. See nccl_dependency_test for more details.
+#
+# Users should use the public nccl_py lib that also adds the dso.
 tf_custom_op_py_library(
-    name = "nccl_py",
+    name = "nccl_ops_lib_without_dso",
     srcs = [
         "__init__.py",
         "python/ops/nccl_ops.py",
     ],
-    dso = [":python/ops/_nccl_ops.so"],
     kernels = if_cuda([":nccl_kernels"]) + [
         ":nccl_ops_op_lib",
     ],
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
     deps = [
         ":nccl_ops",
         "//tensorflow/contrib/util:util_py",
@@ -117,6 +119,15 @@ tf_custom_op_py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
+    ],
+)
+
+tf_custom_op_py_library(
+    name = "nccl_py",
+    dso = [":python/ops/_nccl_ops.so"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":nccl_ops_lib_without_dso",
     ],
 )
 
@@ -137,6 +148,28 @@ cuda_py_test(
         "manual",
         "multi_gpu",
         "no_oss",
+        "noguitar",
+        "notap",
+    ],
+)
+
+cuda_py_test(
+    name = "nccl_dependency_test",
+    size = "small",
+    srcs = ["python/ops/nccl_dependency_test.py"],
+    additional_deps = [
+        ":nccl_ops_lib_without_dso",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform_test",
+    ],
+    # Disable this test internally as static linking is used internally and only
+    # run for OSS to verify that NCCL is an optional dynamic dependency.
+    tags = [
+        "manual",
         "noguitar",
         "notap",
     ],

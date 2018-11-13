@@ -35,6 +35,11 @@ class WorkerFreeListCache : public WorkerCacheInterface {
     wrapped_->ListWorkers(workers);
   }
 
+  void ListWorkersInJob(const string& job_name,
+                        std::vector<string>* workers) const override {
+    wrapped_->ListWorkersInJob(job_name, workers);
+  }
+
   WorkerInterface* CreateWorker(const string& target) override {
     mutex_lock l(mu_);
     auto p = workers_.find(target);
@@ -95,8 +100,43 @@ WorkerSession::WorkerSession(const string& session_name,
     : session_name(session_name),
       worker_name(worker_name),
       worker_cache(new WorkerFreeListCache(std::move(worker_cache))),
-      device_mgr(std::move(device_mgr)),
       graph_mgr(std::move(graph_mgr)),
-      cluster_flr(new ClusterFunctionLibraryRuntime(this)) {}
+      cluster_flr(
+          new ClusterFunctionLibraryRuntime(this, !session_name.empty())),
+      device_mgr_(std::move(device_mgr)),
+      borrowed_device_mgr_(nullptr) {}
+
+/* static */
+std::shared_ptr<WorkerSession> WorkerSession::CreateWithBorrowedDeviceMgr(
+    const string& session_name, const string& worker_name,
+    std::unique_ptr<WorkerCacheInterface> worker_cache,
+    DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr) {
+  return std::shared_ptr<WorkerSession>(
+      new WorkerSession(session_name, worker_name, std::move(worker_cache),
+                        borrowed_device_mgr, std::move(graph_mgr)));
+}
+
+WorkerSession::WorkerSession(const string& session_name,
+                             const string& worker_name,
+                             std::unique_ptr<WorkerCacheInterface> worker_cache,
+                             DeviceMgr* borrowed_device_mgr,
+                             std::unique_ptr<GraphMgr> graph_mgr)
+    : session_name(session_name),
+      worker_name(worker_name),
+      worker_cache(new WorkerFreeListCache(std::move(worker_cache))),
+      graph_mgr(std::move(graph_mgr)),
+      cluster_flr(
+          new ClusterFunctionLibraryRuntime(this, !session_name.empty())),
+      device_mgr_(nullptr),
+      borrowed_device_mgr_(borrowed_device_mgr) {}
+
+WorkerSession::~WorkerSession() {
+  if (graph_mgr) {
+    Status s = graph_mgr->DeregisterAll();
+    if (!s.ok()) {
+      LOG(WARNING) << "Error during worker session deletion: " << s;
+    }
+  }
+}
 
 }  // namespace tensorflow

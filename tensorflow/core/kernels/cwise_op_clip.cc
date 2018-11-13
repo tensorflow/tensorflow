@@ -33,51 +33,41 @@ class ClipOp : public OpKernel {
     const Tensor& in0 = ctx->input(0);
     const Tensor& in1 = ctx->input(1);
     const Tensor& in2 = ctx->input(2);
-
-    auto in0_flat = in0.flat<T>();
-    auto in1_flat = in1.flat<T>();
-    auto in2_flat = in2.flat<T>();
-    const Device& d = ctx->eigen_device<Device>();
+    OP_REQUIRES(ctx, (in0.shape() == in1.shape() ||
+                      TensorShapeUtils::IsScalar(in1.shape())) &&
+                     (in0.shape() == in2.shape() ||
+                      TensorShapeUtils::IsScalar(in2.shape())),
+                errors::InvalidArgument(
+                    "clip_value_min and clip_value_max must be either of "
+                    "the same shape as input, or a scalar. ",
+                    "input shape: ", in0.shape().DebugString(),
+                    "clip_value_min shape: ", in1.shape().DebugString(),
+                    "clip_value_max shape: ", in2.shape().DebugString()));
 
     Tensor* out = nullptr;
     OP_REQUIRES_OK(
         ctx, ctx->forward_input_or_allocate_output({0}, 0, in0.shape(), &out));
+    if (out->NumElements() == 0) return;  // Nothing to do for empty output
+
+    auto in0_flat = in0.flat<T>();
+    auto in1_flat = in1.flat<T>();
+    auto in2_flat = in2.flat<T>();
     auto out_flat = out->flat<T>();
+    const Device& d = ctx->eigen_device<Device>();
+
     if (in1.shape() == in2.shape()) {
       if (in0.shape() == in1.shape()) {
         functor::TernaryClipOp<Device, T>()(d, in0_flat, in1_flat, in2_flat,
                                             out_flat);
       } else {
-        OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(in1.shape()),
-                    errors::InvalidArgument(
-                        "clip_value_min and clip_value_max must be either of "
-                        "the same shape as input, or a scalar. ",
-                        "input shape: ", in0.shape().DebugString(),
-                        "clip_value_min shape: ", in1.shape().DebugString(),
-                        "clip_value_max shape: ", in2.shape().DebugString()));
         functor::UnaryClipOp<Device, T>()(d, in0_flat, in1_flat, in2_flat,
                                           out_flat);
       }
     } else {
       if (in0.shape() == in1.shape()) {
-        OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(in2.shape()),
-                    errors::InvalidArgument(
-                        "clip_value_min and clip_value_max must be either of "
-                        "the same shape as input, or a scalar. ",
-                        "input shape: ", in0.shape().DebugString(),
-                        "clip_value_min shape: ", in1.shape().DebugString(),
-                        "clip_value_max shape: ", in2.shape().DebugString()));
         functor::BinaryLeftClipOp<Device, T>()(d, in0_flat, in1_flat, in2_flat,
                                                out_flat);
       } else {
-        OP_REQUIRES(ctx, (in0.shape() == in2.shape() &&
-                          TensorShapeUtils::IsScalar(in1.shape())),
-                    errors::InvalidArgument(
-                        "clip_value_min and clip_value_max must be either of "
-                        "the same shape as input, or a scalar. ",
-                        "input shape: ", in0.shape().DebugString(),
-                        "clip_value_min shape: ", in1.shape().DebugString(),
-                        "clip_value_max shape: ", in2.shape().DebugString()));
         functor::BinaryRightClipOp<Device, T>()(d, in0_flat, in1_flat, in2_flat,
                                                 out_flat);
       }
@@ -90,12 +80,12 @@ namespace functor {
 template <typename T>
 struct UnaryClipFunc {
   UnaryClipFunc(const T& value_min, const T& value_max)
-      : value_min_(value_min), value_max_(value_max) {}
+      : value_min(value_min), value_max(value_max) {}
   const T operator()(const T& value) const {
-    return std::max(std::min(value, value_max_), value_min_);
+    return std::max(std::min(value, value_max), value_min);
   }
-  T value_min_;
-  T value_max_;
+  T value_min;
+  T value_max;
 };
 template <typename T>
 struct UnaryClipOp<CPUDevice, T> {
@@ -110,11 +100,11 @@ struct UnaryClipOp<CPUDevice, T> {
 // Binary functor for clip [Tensor, Scalar, Tensor]
 template <typename T>
 struct BinaryRightClipFunc {
-  BinaryRightClipFunc(const T& value_min) : value_min_(value_min) {}
+  explicit BinaryRightClipFunc(const T& value_min) : value_min(value_min) {}
   const T operator()(const T& value, const T& value_max) const {
-    return std::max(std::min(value, value_max), value_min_);
+    return std::max(std::min(value, value_max), value_min);
   }
-  T value_min_;
+  T value_min;
 };
 template <typename T>
 struct BinaryRightClipOp<CPUDevice, T> {
@@ -130,11 +120,11 @@ struct BinaryRightClipOp<CPUDevice, T> {
 // Binary functor for clip [Tensor, Tensor, Scalar]
 template <typename T>
 struct BinaryLeftClipFunc {
-  BinaryLeftClipFunc(const T& value_max) : value_max_(value_max) {}
+  explicit BinaryLeftClipFunc(const T& value_max) : value_max(value_max) {}
   const T operator()(const T& value, const T& value_min) const {
-    return std::max(std::min(value, value_max_), value_min);
+    return std::max(std::min(value, value_max), value_min);
   }
-  T value_max_;
+  T value_max;
 };
 template <typename T>
 struct BinaryLeftClipOp<CPUDevice, T> {

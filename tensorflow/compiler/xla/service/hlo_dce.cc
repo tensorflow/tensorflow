@@ -41,20 +41,13 @@ StatusOr<bool> HloDCE::Run(HloModule* module) {
   XLA_VLOG_LINES(2, module->ToString());
 
   for (auto* computation : module->MakeComputationPostOrder()) {
-    std::unordered_set<HloInstruction*> live_instructions;
-    TF_RETURN_IF_ERROR(computation->root_instruction()->Accept(
-        [&live_instructions](HloInstruction* instruction) {
-          live_instructions.insert(instruction);
-          return Status::OK();
-        }));
-
     // Remove any dead roots and their dead transitive operands. Collect them
     // into a separate list first to avoid problems with iterating through the
     // computation's instruction while simultaneously removing instructions.
     std::vector<HloInstruction*> dead_roots;
     for (auto* instruction : computation->instructions()) {
-      if (instruction->user_count() == 0 &&
-          live_instructions.count(instruction) == 0 &&
+      if (instruction != computation->root_instruction() &&
+          instruction->user_count() == 0 &&
           computation->IsRemovable(instruction) &&
           !instruction->HasSideEffect()) {
         dead_roots.push_back(instruction);
@@ -85,8 +78,7 @@ StatusOr<bool> HloDCE::Run(HloModule* module) {
   }
 
   // Remove dead computations.
-  std::list<HloComputation*> computations = module->MakeComputationPostOrder();
-  for (auto* computation : computations) {
+  for (auto* computation : module->MakeComputationPostOrder()) {
     if (live_computations.count(computation) == 0) {
       TF_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(computation));
       changed = true;

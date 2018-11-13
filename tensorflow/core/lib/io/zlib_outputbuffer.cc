@@ -203,10 +203,12 @@ Status ZlibOutputBuffer::Sync() {
 }
 
 Status ZlibOutputBuffer::Close() {
-  TF_RETURN_IF_ERROR(DeflateBuffered(true));
-  TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
-  deflateEnd(z_stream_.get());
-  z_stream_.reset(nullptr);
+  if (z_stream_) {
+    TF_RETURN_IF_ERROR(DeflateBuffered(true));
+    TF_RETURN_IF_ERROR(FlushOutputBufferToFile());
+    deflateEnd(z_stream_.get());
+    z_stream_.reset(nullptr);
+  }
   return Status::OK();
 }
 

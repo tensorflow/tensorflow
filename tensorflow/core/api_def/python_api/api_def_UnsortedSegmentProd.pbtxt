@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "UnsortedSegmentProd"
+  endpoint {
+    name: "math.unsorted_segment_prod"
+  }
+  endpoint {
+    name: "unsorted_segment_prod"
+    deprecated: true
+  }
+}

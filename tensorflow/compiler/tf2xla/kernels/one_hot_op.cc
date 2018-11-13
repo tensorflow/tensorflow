@@ -62,7 +62,7 @@ class OneHotOp : public XlaOpKernel {
         ctx, depth >= 0,
         errors::InvalidArgument("depth must be non-negative, got: ", depth));
 
-    xla::ComputationDataHandle one_hot;
+    xla::XlaOp one_hot;
     OP_REQUIRES_OK(
         ctx, XlaHelpers::OneHot(ctx->builder(), depth, axis, input_type(0),
                                 indices_shape, ctx->Input(0), ctx->Input(2),

@@ -18,13 +18,13 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/c/eager/runtime.h"
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
@@ -107,8 +107,8 @@ void BM_KernelAndDeviceInit(int iters) {
   KernelAndDevice k(nullptr);
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
-    TF_CHECK_OK(
-        KernelAndDevice::Init(ndef, env.function_library_runtime(), &k));
+    TF_CHECK_OK(KernelAndDevice::Init(ndef, env.function_library_runtime(),
+                                      nullptr, &k));
   }
 }
 BENCHMARK(BM_KernelAndDeviceInit);
@@ -128,8 +128,8 @@ void BM_KernelAndDeviceRun(int iters) {
                    .BuildNodeDef());
   TestEnv env;
   KernelAndDevice kernel(nullptr);
-  TF_CHECK_OK(
-      KernelAndDevice::Init(ndef, env.function_library_runtime(), &kernel));
+  TF_CHECK_OK(KernelAndDevice::Init(ndef, env.function_library_runtime(),
+                                    nullptr, &kernel));
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
     TF_CHECK_OK(kernel.Run(&inputs, &outputs, nullptr));

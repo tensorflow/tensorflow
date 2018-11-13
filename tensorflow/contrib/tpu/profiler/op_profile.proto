@@ -8,6 +8,8 @@ message Profile {
   Node by_category = 1;
   // Root of a profile broken down by program structure.
   Node by_program_structure = 2;
+  // Per program profile, indexed by hlo module name of the program.
+  map<string, Node> per_program = 3;
 }
 
 // An entry in the profile tree. (An instruction, or set of instructions).
@@ -60,6 +62,11 @@ message Metrics {
   //  - it does not reveal the peak core FLOPS of the hardware
   double flops = 2;
 
+  // The VMEM bandwidth used to load operands from HBM, as a fraction of
+  // thereotical VMEM bandwidth on the specific hardware.
+  double memory_bandwidth = 3;
+
   double raw_time = 11;   // Elapsed core-time in picoseconds.
   double raw_flops = 12;  // Total floating-point operations performed.
+  double raw_bytes_accessed = 13;  // Total bytes accessed (include read/write).
 }

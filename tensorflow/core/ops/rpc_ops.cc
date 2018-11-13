@@ -18,7 +18,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-using tensorflow::shape_inference::DimensionHandle;
 using tensorflow::shape_inference::InferenceContext;
 using tensorflow::shape_inference::ShapeHandle;
 

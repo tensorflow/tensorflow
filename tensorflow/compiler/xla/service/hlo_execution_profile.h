@@ -88,7 +88,7 @@ std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
 // down how much time each HLO took.
 class HloExecutionProfile {
  public:
-  using DeviceDescription = perftools::gputools::DeviceDescription;
+  using DeviceDescription = se::DeviceDescription;
 
   HloExecutionProfile(const HloProfilePrinterData* hlo_profile_printer_data,
                       const HloProfileIndexMap* hlo_profile_index_map);

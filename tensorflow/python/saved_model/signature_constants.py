@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.util.all_util import remove_undocumented
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -95,19 +94,9 @@ tf_export("saved_model.signature_constants.REGRESS_OUTPUTS").export_constant(
     __name__, "REGRESS_OUTPUTS")
 
 ################################################################################
+# Train/Eval API constants.
+# Not exported while export_all_saved_models is in contrib.
 
+SUPERVISED_TRAIN_METHOD_NAME = "tensorflow/supervised/training"
 
-_allowed_symbols = [
-    "DEFAULT_SERVING_SIGNATURE_DEF_KEY",
-    "CLASSIFY_INPUTS",
-    "CLASSIFY_METHOD_NAME",
-    "CLASSIFY_OUTPUT_CLASSES",
-    "CLASSIFY_OUTPUT_SCORES",
-    "PREDICT_INPUTS",
-    "PREDICT_METHOD_NAME",
-    "PREDICT_OUTPUTS",
-    "REGRESS_INPUTS",
-    "REGRESS_METHOD_NAME",
-    "REGRESS_OUTPUTS",
-]
-remove_undocumented(__name__, _allowed_symbols)
+SUPERVISED_EVAL_METHOD_NAME = "tensorflow/supervised/eval"

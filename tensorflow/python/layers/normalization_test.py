@@ -72,7 +72,7 @@ class BNTest(test.TestCase):
              dtype=dtypes.float32):
     ops.reset_default_graph()
     graph = ops.get_default_graph()
-    with self.test_session(graph=graph, use_gpu=use_gpu) as sess:
+    with self.session(graph=graph, use_gpu=use_gpu) as sess:
       image = array_ops.placeholder(dtype=dtype, shape=shape)
       loss, train_op, saver = self._simple_model(image, is_fused, freeze_mode)
       if restore:
@@ -94,7 +94,7 @@ class BNTest(test.TestCase):
     dtype = image_val.dtype
     ops.reset_default_graph()
     graph = ops.get_default_graph()
-    with self.test_session(graph=graph, use_gpu=use_gpu) as sess:
+    with self.session(graph=graph, use_gpu=use_gpu) as sess:
       image = array_ops.placeholder(dtype=dtype, shape=shape)
       loss, _, saver = self._simple_model(image, is_fused, True)
       saver.restore(sess, checkpoint_path)
@@ -319,7 +319,7 @@ class BNTest(test.TestCase):
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
       sess.run(variables.global_variables_initializer())
 
@@ -361,7 +361,7 @@ class BNTest(test.TestCase):
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
       sess.run(variables.global_variables_initializer())
       np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
@@ -442,7 +442,7 @@ class BNTest(test.TestCase):
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
       sess.run(variables.global_variables_initializer())
       np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
@@ -482,7 +482,7 @@ class BNTest(test.TestCase):
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
       sess.run(variables.global_variables_initializer())
       np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
@@ -522,7 +522,7 @@ class BNTest(test.TestCase):
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
       sess.run(variables.global_variables_initializer())
       np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
@@ -563,7 +563,7 @@ class BNTest(test.TestCase):
       training = array_ops.placeholder(dtype='bool')
       outputs = bn.apply(inputs, training=training)
 
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         # Test training with placeholder learning phase.
         sess.run(variables.global_variables_initializer())
         np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
@@ -603,7 +603,7 @@ class BNTest(test.TestCase):
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
       sess.run(variables.global_variables_initializer())
       np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
@@ -644,7 +644,7 @@ class BNTest(test.TestCase):
     outputs_training = bn.apply(inputs, training=True)
     outputs_infer = bn.apply(inputs, training=False)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
       sess.run(variables.global_variables_initializer())
       np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
@@ -694,7 +694,7 @@ class BNTest(test.TestCase):
     beta = all_vars['bn/beta:0']
     gamma = all_vars['bn/gamma:0']
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
       sess.run(variables.global_variables_initializer())
       np_gamma, np_beta = sess.run([gamma, beta])
@@ -756,7 +756,7 @@ class BNTest(test.TestCase):
     beta = all_vars['bn/beta:0']
     gamma = all_vars['bn/gamma:0']
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
       sess.run(variables.global_variables_initializer())
       for _ in range(100):
@@ -1254,7 +1254,7 @@ class BNTest(test.TestCase):
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
       sess.run(variables.global_variables_initializer())
 
@@ -1294,7 +1294,7 @@ class BNTest(test.TestCase):
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
       sess.run(variables.global_variables_initializer())
 

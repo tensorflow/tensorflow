@@ -127,6 +127,30 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "serial_device_batch_scheduler",
+    hdrs = ["serial_device_batch_scheduler.h"],
+    deps = [
+        ":batch_scheduler",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "serial_device_batch_scheduler_test",
+    srcs = ["serial_device_batch_scheduler_test.cc"],
+    tags = [
+        "notap",  # b/110374108
+    ],
+    deps = [
+        ":fake_clock_env",
+        ":serial_device_batch_scheduler",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "basic_batch_scheduler",
     hdrs = ["basic_batch_scheduler.h"],
     deps = [

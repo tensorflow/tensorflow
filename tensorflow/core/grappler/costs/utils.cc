@@ -44,7 +44,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -99,7 +99,7 @@ static void ExtractExtraProperties(
       continue;
     }
     TensorId input_tensor_id = ParseTensorName(input_name);
-    const string input_node_name = input_tensor_id.first.ToString();
+    const string input_node_name(input_tensor_id.first);
 
     auto iter = name_to_node.find(input_node_name);
     if (iter == name_to_node.end()) continue;
@@ -172,7 +172,7 @@ std::vector<OpInfo::TensorProperties> FindInputFeatures(
   for (const auto& input_name : node.input()) {
     CHECK(!input_name.empty());
     TensorId input_tensor_id = ParseTensorName(input_name);
-    const string input_node_name = input_tensor_id.first.ToString();
+    const string input_node_name(input_tensor_id.first);
     const int output_index = input_tensor_id.second;
 
     // Skip control inputs.

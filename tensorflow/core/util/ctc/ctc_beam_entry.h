@@ -1,3 +1,4 @@
+// LINT.IfChange
 /* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -145,3 +146,4 @@ class BeamComparer {
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_ENTRY_H_
+// LINT.ThenChange(//tensorflow/contrib/lite/experimental/kernels/ctc_beam_entry.h)

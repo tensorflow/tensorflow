@@ -16,16 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CONVOLUTION_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CONVOLUTION_THUNK_H_
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
@@ -66,23 +67,22 @@ class ConvolutionThunk : public Thunk {
 
   // Does the convolution for the thunk on "stream".
   Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         perftools::gputools::Stream* stream) override;
+                         se::Stream* stream,
+                         HloExecutionProfiler* profiler) override;
 
  private:
   class ScratchAllocator;
 
-  Status Convolve(
-      const perftools::gputools::dnn::BatchDescriptor& input_descriptor,
-      perftools::gputools::DeviceMemory<float> input_data,
-      const perftools::gputools::dnn::FilterDescriptor& filter_descriptor,
-      perftools::gputools::DeviceMemory<float> filter_data,
-      const perftools::gputools::dnn::BatchDescriptor& output_descriptor,
-      perftools::gputools::DeviceMemory<float> output_data,
-      const perftools::gputools::dnn::ConvolutionDescriptor&
-          convolution_descriptor,
-      const perftools::gputools::dnn::AlgorithmConfig& algorithm_config,
-      perftools::gputools::Stream* stream, ScratchAllocator* scratch_allocator,
-      perftools::gputools::dnn::ProfileResult* profile_result);
+  Status Convolve(const se::dnn::BatchDescriptor& input_descriptor,
+                  se::DeviceMemory<float> input_data,
+                  const se::dnn::FilterDescriptor& filter_descriptor,
+                  se::DeviceMemory<float> filter_data,
+                  const se::dnn::BatchDescriptor& output_descriptor,
+                  se::DeviceMemory<float> output_data,
+                  const se::dnn::ConvolutionDescriptor& convolution_descriptor,
+                  const se::dnn::AlgorithmConfig& algorithm_config,
+                  se::Stream* stream, ScratchAllocator* scratch_allocator,
+                  se::dnn::ProfileResult* profile_result);
 
   const CudnnConvKind convolution_kind_;
 

@@ -58,11 +58,6 @@ class RenamedDevice : public Device {
     return underlying_->GetAllocator(attr);
   }
 
-  Allocator* GetStepAllocator(AllocatorAttributes attr,
-                              ResourceMgr* step_resource_manager) override {
-    return underlying_->GetStepAllocator(attr, step_resource_manager);
-  }
-
   const Eigen::ThreadPoolDevice* eigen_cpu_device() override {
     return underlying_->eigen_cpu_device();
   }

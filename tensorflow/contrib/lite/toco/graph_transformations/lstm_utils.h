@@ -47,14 +47,18 @@ enum ExtendedLstmCellInputs {
   kOutputGateBiasTensor = 15,
   kProjectionWeightsTensor = 16,  // Optional
   kProjectionBiasTensor = 17,     // Optional
-  kExtendedLstmInputCount = 18
+  kInputActivationStateTensor = 18,
+  // The op can handle 18 inputs or 20 inputs.
+  kInputCellStateTensor = 19,
+  kExtendedLstmInputCount = 20,
 };
 
 enum ExtendedLstmCellOutputs {
-  kScratchBufferTensor = 0,
-  kOutputStateTensor = 1,
-  kCellStateTensor = 2,
-  kOutputTensor = 3
+  // TODO(ycling): Make the 2 output state tensors optional.
+  kOutputStateTensor = 0,
+  kCellStateTensor = 1,
+  kOutputTensor = 2,
+  kExtendedLstmOutputCount = 3
 };
 
 // Create optional array used for optional tensor in ExtendedLstmCell inputs.

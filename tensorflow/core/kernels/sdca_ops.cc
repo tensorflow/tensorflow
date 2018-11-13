@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/hinge-loss.h"
 #include "tensorflow/core/kernels/logistic-loss.h"
 #include "tensorflow/core/kernels/loss.h"
+#include "tensorflow/core/kernels/poisson-loss.h"
 #include "tensorflow/core/kernels/sdca_internal.h"
 #include "tensorflow/core/kernels/smooth-hinge-loss.h"
 #include "tensorflow/core/kernels/squared-loss.h"
@@ -75,6 +76,8 @@ struct ComputeOptions {
       loss_updater.reset(new HingeLossUpdater);
     } else if (loss_type == "smooth_hinge_loss") {
       loss_updater.reset(new SmoothHingeLossUpdater);
+    } else if (loss_type == "poisson_loss") {
+      loss_updater.reset(new PoissonLossUpdater);
     } else {
       OP_REQUIRES(
           context, false,
@@ -156,8 +159,10 @@ void DoCompute(const ComputeOptions& options, OpKernelContext* const context) {
   } else {
     examples.RandomShuffle();
   }
-  mutex mu;
-  Status train_step_status GUARDED_BY(mu);
+  struct {
+    mutex mu;
+    Status value GUARDED_BY(mu);
+  } train_step_status;
   std::atomic<std::int64_t> atomic_index(-1);
   auto train_step = [&](const int64 begin, const int64 end) {
     // The static_cast here is safe since begin and end can be at most
@@ -171,8 +176,8 @@ void DoCompute(const ComputeOptions& options, OpKernelContext* const context) {
       const Status conversion_status =
           options.loss_updater->ConvertLabel(&example_label);
       if (!conversion_status.ok()) {
-        mutex_lock l(mu);
-        train_step_status = conversion_status;
+        mutex_lock l(train_step_status.mu);
+        train_step_status.value = conversion_status;
         // Return from this worker thread - the calling thread is
         // responsible for checking context status and returning on error.
         return;
@@ -217,7 +222,8 @@ void DoCompute(const ComputeOptions& options, OpKernelContext* const context) {
 
   Shard(worker_threads.num_threads, worker_threads.workers,
         examples.num_examples(), kCostPerUnit, train_step);
-  OP_REQUIRES_OK(context, train_step_status);
+  mutex_lock l(train_step_status.mu);
+  OP_REQUIRES_OK(context, train_step_status.value);
 }
 
 }  // namespace

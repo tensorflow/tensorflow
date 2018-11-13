@@ -28,8 +28,8 @@ namespace {
 
 tensorflow::Tensor CreateTensor(const tensorflow::DataType type,
                                 const std::vector<int64_t>& dim) {
-  tensorflow::TensorShape shape{gtl::ArraySlice<int64>{
-      reinterpret_cast<const int64*>(dim.data()), dim.size()}};
+  tensorflow::TensorShape shape{tensorflow::gtl::ArraySlice<tensorflow::int64>{
+      reinterpret_cast<const tensorflow::int64*>(dim.data()), dim.size()}};
   return {type, shape};
 }
 
@@ -87,10 +87,9 @@ TfDriver::TfDriver(const std::vector<string>& input_layer,
 
 void TfDriver::LoadModel(const string& bin_file_path) {
   if (!IsValid()) return;
-  std::cout << std::endl << "Loading model: " << bin_file_path << std::endl;
   std::ifstream model(bin_file_path);
   if (model.fail()) {
-    Invalidate("Failed to find the model");
+    Invalidate("Failed to find the model " + bin_file_path);
     return;
   }
 
@@ -104,7 +103,7 @@ void TfDriver::LoadModel(const string& bin_file_path) {
   session_.reset(tensorflow::NewSession(options));
   auto status = session_->Create(graphdef);
   if (!status.ok()) {
-    Invalidate("Failed to create session");
+    Invalidate("Failed to create session. " + status.error_message());
   }
 }
 
@@ -119,6 +118,10 @@ void TfDriver::SetInput(int id, const string& csv_values) {
     }
     case tensorflow::DT_INT32: {
       FillTensorWithData<int32_t>(&tensor, csv_values);
+      break;
+    }
+    case tensorflow::DT_UINT8: {
+      FillTensorWithData<uint8_t>(&tensor, csv_values);
       break;
     }
     default:
@@ -162,6 +165,8 @@ string TfDriver::ReadOutput(int id) {
       return TensorDataToCsvString<float>(output_tensors_[id]);
     case tensorflow::DT_INT32:
       return TensorDataToCsvString<int32_t>(output_tensors_[id]);
+    case tensorflow::DT_UINT8:
+      return TensorDataToCsvString<uint8_t>(output_tensors_[id]);
     default:
       fprintf(stderr, "Unsupported type %d in ResetTensor\n", input_types_[id]);
       Invalidate("Unsupported tensor data type");
@@ -174,7 +179,9 @@ void TfDriver::Invoke() {
   auto status = session_->Run({input_tensors_.begin(), input_tensors_.end()},
                               output_names_, {}, &output_tensors_);
   if (!status.ok()) {
-    Invalidate("Failed to invoke interpreter");
+    Invalidate(
+        "Failed to run input data on graph. Make sure the correct value is "
+        "defined for the input and output arrays.");
   }
 }
 

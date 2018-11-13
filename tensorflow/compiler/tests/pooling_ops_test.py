@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -69,7 +69,7 @@ def GetTestConfigs():
   return test_configs
 
 
-class PoolingTest(XLATestCase):
+class PoolingTest(xla_test.XLATestCase):
 
   def _VerifyOneTest(self, pool_func, input_sizes, ksize, strides, padding,
                      data_format, expected):
@@ -89,7 +89,7 @@ class PoolingTest(XLATestCase):
     # numbers from 1.
     x = np.array([f * 1.0 for f in range(1, total_size + 1)], dtype=np.float32)
     x = x.reshape(input_sizes)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.test_scope():
         inputs = array_ops.placeholder(dtypes.float32)
         t = inputs
@@ -288,7 +288,7 @@ class PoolingTest(XLATestCase):
         expected=expected_output)
 
 
-class PoolGradTest(XLATestCase):
+class PoolGradTest(xla_test.XLATestCase):
 
   CPU_DEVICE = "/job:localhost/replica:0/task:0/cpu:0"
 
@@ -324,7 +324,7 @@ class PoolGradTest(XLATestCase):
     # TODO(b/74222344): Fix nan handling for max pool grad.
     # x[np.random.choice(total_size)] = np.nan
     x = x.reshape(input_sizes)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Use the forward pool function to compute some corresponding outputs
       # (needed for the CPU device, and we need the shape in both cases).
       with ops.device(self.CPU_DEVICE):

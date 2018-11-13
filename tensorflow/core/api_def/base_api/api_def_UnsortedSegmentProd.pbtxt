@@ -16,8 +16,9 @@ END
   }
   summary: "Computes the product along segments of a tensor."
   description: <<END
-Read @{$math_ops#segmentation$the section on segmentation} for an explanation of
-segments.
+Read
+[the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#segmentation)
+for an explanation of segments.
 
 This operator is similar to the unsorted segment sum operator found
 [(here)](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).

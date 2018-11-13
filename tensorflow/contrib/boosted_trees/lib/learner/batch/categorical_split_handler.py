@@ -19,10 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.boosted_trees.lib.learner.batch import base_split_handler
+from tensorflow.contrib.boosted_trees.proto import learner_pb2
 from tensorflow.contrib.boosted_trees.python.ops import split_handler_ops
 from tensorflow.contrib.boosted_trees.python.ops import stats_accumulator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -44,6 +46,8 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
                hessian_shape,
                multiclass_strategy,
                init_stamp_token=0,
+               loss_uses_sum_reduction=False,
+               weak_learner_type=learner_pb2.LearnerConfig.NORMAL_DECISION_TREE,
                name=None):
     """Initialize the internal state for this split handler.
 
@@ -62,6 +66,9 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
       multiclass_strategy: Strategy describing how to treat multiclass problems.
       init_stamp_token: A tensor containing an scalar for initial stamp of the
          stamped objects.
+      loss_uses_sum_reduction: A scalar boolean tensor that specifies whether
+          SUM or MEAN reduction was used for the loss.
+      weak_learner_type: Specifies the type of weak learner to use.
       name: An optional handler name.
     """
     super(EqualitySplitHandler, self).__init__(
@@ -73,6 +80,7 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
         gradient_shape=gradient_shape,
         hessian_shape=hessian_shape,
         multiclass_strategy=multiclass_strategy,
+        loss_uses_sum_reduction=loss_uses_sum_reduction,
         name=name)
     self._stats_accumulator = stats_accumulator_ops.StatsAccumulator(
         init_stamp_token,
@@ -80,6 +88,7 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
         hessian_shape,
         name="StatsAccumulator/{}".format(self._name))
     self._sparse_int_column = sparse_int_column
+    self._weak_learner_type = weak_learner_type
 
   def update_stats(self, stamp_token, example_partition_ids, gradients,
                    hessians, empty_gradients, empty_hessians, weights,
@@ -173,6 +182,11 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
     # pair.
     num_minibatches, partition_ids, feature_ids, gradients, hessians = (
         self._stats_accumulator.flush(stamp_token, next_stamp_token))
+    # For sum_reduction, we don't need to divide by number of minibatches.
+
+    num_minibatches = control_flow_ops.cond(
+        ops.convert_to_tensor(self._loss_uses_sum_reduction),
+        lambda: math_ops.to_int64(1), lambda: num_minibatches)
     partition_ids, gains, split_infos = (
         split_handler_ops.build_categorical_equality_splits(
             num_minibatches=num_minibatches,
@@ -187,8 +201,13 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
             tree_complexity_regularization=self._tree_complexity_regularization,
             min_node_weight=self._min_node_weight,
             bias_feature_id=_BIAS_FEATURE_ID,
-            multiclass_strategy=self._multiclass_strategy,))
+            multiclass_strategy=self._multiclass_strategy,
+            weak_learner_type=self._weak_learner_type))
     # There are no warm-up rounds needed in the equality column handler. So we
     # always return ready.
     are_splits_ready = constant_op.constant(True)
     return (are_splits_ready, partition_ids, gains, split_infos)
+
+  def reset(self, stamp_token, next_stamp_token):
+    reset = self._stats_accumulator.flush(stamp_token, next_stamp_token)
+    return reset

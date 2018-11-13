@@ -61,8 +61,8 @@ class MomentumOptimizer(optimizer.Optimizer):
         variable(s) track the values called `theta_t + mu*v_t` in the paper.
 
     @compatibility(eager)
-    When eager execution is enabled, learning_rate and momentum can each be a
-    callable that takes no arguments and returns the actual value to use. This
+    When eager execution is enabled, `learning_rate` and `momentum` can each be
+    a callable that takes no arguments and returns the actual value to use. This
     can be useful for changing these values across different invocations of
     optimizer functions.
     @end_compatibility

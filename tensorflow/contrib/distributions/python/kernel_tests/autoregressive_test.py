@@ -53,7 +53,7 @@ class AutogressiveTest(test_util.VectorDistributionTestHelpers, test.TestCase):
   def testSampleAndLogProbConsistency(self):
     batch_shape = []
     event_size = 2
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       batch_event_shape = np.concatenate([batch_shape, [event_size]], axis=0)
       sample0 = array_ops.zeros(batch_event_shape)
       affine = Affine(scale_tril=self._random_scale_tril(event_size))
@@ -67,7 +67,7 @@ class AutogressiveTest(test_util.VectorDistributionTestHelpers, test.TestCase):
     sample_shape = np.int32([4, 5])
     batch_shape = np.int32([])
     event_size = np.int32(2)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       batch_event_shape = np.concatenate([batch_shape, [event_size]], axis=0)
       sample0 = array_ops.zeros(batch_event_shape)
       affine = Affine(scale_tril=self._random_scale_tril(event_size))

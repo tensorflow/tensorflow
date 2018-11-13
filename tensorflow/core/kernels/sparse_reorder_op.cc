@@ -60,16 +60,21 @@ class SparseReorderOp : public OpKernel {
     std::iota(std_order.begin(), std_order.end(), 0);
 
     // Check if the sparse tensor is already ordered correctly
-    sparse::SparseTensor input_sp(input_ind, input_val, input_shape, std_order);
+    sparse::SparseTensor input_sp;
+    OP_REQUIRES_OK(
+        context, sparse::SparseTensor::Create(input_ind, input_val, input_shape,
+                                              std_order, &input_sp));
 
     if (input_sp.IndicesValid().ok()) {
       context->set_output(0, input_sp.indices());
       context->set_output(1, input_sp.values());
     } else {
       // Deep-copy the input Tensors, then reorder in-place
-      sparse::SparseTensor reordered_sp(tensor::DeepCopy(input_ind),
-                                        tensor::DeepCopy(input_val),
-                                        input_shape);
+      sparse::SparseTensor reordered_sp;
+      OP_REQUIRES_OK(context,
+                     sparse::SparseTensor::Create(tensor::DeepCopy(input_ind),
+                                                  tensor::DeepCopy(input_val),
+                                                  input_shape, &reordered_sp));
       reordered_sp.Reorder<T>(std_order);
       context->set_output(0, reordered_sp.indices());
       context->set_output(1, reordered_sp.values());

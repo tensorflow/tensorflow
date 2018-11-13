@@ -24,7 +24,7 @@ namespace xla {
 // one arbitrarily to use and delete the others.
 class HloSubcomputationUnification : public HloPassInterface {
  public:
-  tensorflow::StringPiece name() const override {
+  absl::string_view name() const override {
     return "subcomputation-unification";
   }
 
