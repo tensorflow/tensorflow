@@ -255,6 +255,9 @@ Status OpKernelConstruction::allocate_persistent(
 
 // OpKernelContext -----------------------------------------------------------
 
+const int OpKernelContext::Params::kNeverForward;
+const int OpKernelContext::Params::kNoReservation;
+
 OpKernelContext::OpKernelContext(Params* params)
     : OpKernelContext(
           params, static_cast<int>(params->op_kernel->output_types().size())) {}
