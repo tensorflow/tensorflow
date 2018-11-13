@@ -893,7 +893,7 @@ class Model(Network):
       x_shape = first_x_value.shape
       if batch_size is None:
         batch_size = distributed_training_utils.get_batch_size(
-            self._distribution_strategy.num_replicas_in_sync, x_shape[0], steps)
+            self._distribution_strategy, x_shape[0], steps)
       # We need to use the drop_remainder argument to allow for a static
       # input shape which is required for TPUs.
       drop_remainder = self._distribution_strategy.require_static_shapes
@@ -932,13 +932,12 @@ class Model(Network):
         x = x.batch(batch_size, drop_remainder=drop_remainder)
 
     assert isinstance(x, dataset_ops.Dataset)
+    if self._distribution_strategy.__class__.__name__ == 'TPUStrategy':
+      iterator = self._distribution_strategy.make_dataset_iterator(x)
+    else:
+      dataset = self._distribution_strategy.distribute_dataset(lambda: x)
+      iterator = dataset.make_initializable_iterator()
 
-    # TODO(anjalisridhar): We want distribute_dataset() to accept a Dataset or a
-    # function which returns a Dataset. Currently distribute_dataset() only
-    # accepts a function that returns a Dataset. Once we add support for being
-    # able to clone a Dataset on multiple workers we can remove this lambda.
-    result = self._distribution_strategy.distribute_dataset(lambda: x)
-    iterator = result.make_initializable_iterator()
     with self._distribution_strategy.scope():
       K.get_session().run(iterator.initializer)
 

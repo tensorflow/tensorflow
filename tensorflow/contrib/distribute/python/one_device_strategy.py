@@ -58,6 +58,11 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     with ops.colocate_with(colocate_with):
       return next_creator(*args, **kwargs)
 
+  def make_dataset_iterator(self, dataset):
+    distributed_dataset = values.PerReplicaDataset(dataset, [self._device])
+    # TODO(priyag): Return distribution strategy specific InputIterator
+    return distributed_dataset.make_initializable_iterator()
+
   def distribute_dataset(self, dataset_fn):
     return values.PerReplicaDataset(
         self._call_dataset_fn(dataset_fn), [self._device])
