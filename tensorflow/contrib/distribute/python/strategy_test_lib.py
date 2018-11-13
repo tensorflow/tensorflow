@@ -189,15 +189,6 @@ class DistributionTestBase(test.TestCase):
       # Error should go down
       self.assertLess(error_after, error_before)
 
-  def _test_map_reduce(self, d, in_graph=None):
-    with d.scope():
-      map_in = [constant_op.constant(i) for i in range(10)]
-      map_out = d.map(map_in, lambda x, y: x * y, 2)
-      observed = d.reduce(variable_scope.VariableAggregation.SUM, map_out,
-                          "/device:CPU:0")
-      expected = 90  # 2 * (0 + 1 + ... + 9)
-      self.assertEqual(expected, observed.numpy())
-
   def _test_device_index(self, d):
     with d.scope():
       expected_devices = [False] * len(d.worker_devices)

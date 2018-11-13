@@ -1287,16 +1287,6 @@ class MultiWorkerDataset(object):
     return MultiWorkerDataIterator(iterators, self._worker_device_pairs)
 
 
-class MapOutput(object):
-  """Map can result in multiple outputs per device."""
-
-  def __init__(self, l):
-    self._l = l
-
-  def get(self):
-    return self._l
-
-
 class MultiStepContext(object):
   """A context object that can be used to capture things when running steps.
 

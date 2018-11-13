@@ -25,8 +25,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.util import nest
 
@@ -119,23 +117,9 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     with ops.device(self._device), _OneDeviceReplicaContext(self):
       return fn(*args, **kwargs)
 
-  def map(self, map_over, fn, *args, **kwargs):
-    with ops.device(self._device):
-      return values.MapOutput([fn(m, *args, **kwargs) for m in map_over])
-
   def _reduce(self, aggregation, value, destinations):
-    del destinations
-    if not isinstance(value, values.MapOutput):
-      return value
-    l = value.get()
-    assert l
-    with ops.device(self._device):
-      if aggregation == vs.VariableAggregation.SUM:
-        return math_ops.add_n(l)
-      elif aggregation == vs.VariableAggregation.MEAN:
-        return math_ops.add_n(l) / len(l)
-      else:
-        assert False
+    del aggregation, destinations
+    return value
 
   def _update(self, var, options, fn, *args, **kwargs):
     # The implementations of _update() and _update_non_slot() are identical

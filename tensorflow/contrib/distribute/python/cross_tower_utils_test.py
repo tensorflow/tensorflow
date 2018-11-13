@@ -106,17 +106,6 @@ class IndexedSlicesUtilsTest(test.TestCase, parameterized.TestCase):
     per_replica = value_lib.PerReplica({"/gpu:0": t0, "/cpu:0": t1})
     self.assertTrue(cross_tower_utils.contains_indexed_slices(per_replica))
 
-  @test_util.run_in_graph_and_eager_modes
-  def testContainsIndexedSlices_PerReplicaMapOutput(self):
-    t0 = math_ops._as_indexed_slices(
-        constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
-    t1 = math_ops._as_indexed_slices(
-        constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
-    per_replica = value_lib.PerReplica({
-        "/gpu:0": value_lib.MapOutput([t0]),
-        "/cpu:0": value_lib.MapOutput([t1])})
-    self.assertTrue(cross_tower_utils.contains_indexed_slices(per_replica))
-
   @combinations.generate(combinations.combine(
       mode=["graph", "eager"],
       required_gpus=1))

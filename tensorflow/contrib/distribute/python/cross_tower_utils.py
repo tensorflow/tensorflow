@@ -667,7 +667,5 @@ def contains_indexed_slices(value):
     return any(contains_indexed_slices(v) for v in value)
   elif isinstance(value, value_lib.DistributedValues):
     return contains_indexed_slices(list(value._index.values()))  # pylint: disable=protected-access
-  elif isinstance(value, value_lib.MapOutput):
-    return contains_indexed_slices(value.get())
   else:
     return False
