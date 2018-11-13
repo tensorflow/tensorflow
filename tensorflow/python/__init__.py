@@ -125,6 +125,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 # Eager execution
 from tensorflow.python.eager.context import executing_eagerly
+from tensorflow.python.eager.def_function import function
 from tensorflow.python.framework.ops import enable_eager_execution
 
 # Necessary for the symbols in this module to be taken into account by
