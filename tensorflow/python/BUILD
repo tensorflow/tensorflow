@@ -2093,7 +2093,9 @@ py_library(
     srcs = ["ops/control_flow_util_v2.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "framework_ops",
+        ":control_flow_util",
+        ":framework_ops",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
     ],
@@ -2118,7 +2120,6 @@ py_library(
         ":graph_to_function_def",
         ":pywrap_tensorflow",
         ":util",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:function",
     ],
 )
@@ -2145,7 +2146,6 @@ py_library(
         ":tensor_shape",
         ":tensor_util",
         ":util",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:function",
     ],
 )
