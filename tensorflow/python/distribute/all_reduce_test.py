@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.contrib.all_reduce.python..all_reduce."""
+"""Tests for all_reduce."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,8 +22,8 @@ import time
 
 import numpy as np
 
-from tensorflow.contrib.all_reduce.python import all_reduce as ar
 from tensorflow.core.framework import types_pb2
+from tensorflow.python.distribute import all_reduce as ar
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape

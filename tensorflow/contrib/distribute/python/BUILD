@@ -623,7 +623,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":values",
-        "//tensorflow/contrib/all_reduce:all_reduce_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
         "//tensorflow/python:device",
@@ -632,6 +631,7 @@ py_library(
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nccl_ops",
+        "//tensorflow/python/distribute:all_reduce",
     ],
 )
 
