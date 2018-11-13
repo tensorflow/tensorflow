@@ -828,7 +828,7 @@ class BaseSession(SessionInterface):
     nested list, tuple, namedtuple, dict, or OrderedDict containing graph
     elements at its leaves.  A graph element can be one of the following types:
 
-    * An `tf.Operation`.
+    * A `tf.Operation`.
       The corresponding fetched value will be `None`.
     * A `tf.Tensor`.
       The corresponding fetched value will be a numpy ndarray containing the
