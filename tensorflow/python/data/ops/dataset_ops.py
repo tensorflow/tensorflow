@@ -61,6 +61,7 @@ class Dataset(object):
   collection of elements (nested structures of tensors) and a "logical
   plan" of transformations that act on those elements.
   """
+
   def __init__(self):
     pass
 
@@ -201,6 +202,7 @@ class Dataset(object):
     # a 0-argument function.
     @function.Defun(capture_by_value=True)
     def _make_dataset():
+      """Factory function for a dataset."""
       # NOTE(mrry): `Defun` does not capture the graph-level seed from the
       # enclosing graph, so if a graph-level seed is present we set the local
       # graph seed based on a combination of the graph- and op-level seeds.
@@ -1777,7 +1779,8 @@ class StructuredFunctionWrapper(object):
                input_shapes=None,
                input_types=None,
                add_to_graph=True,
-               experimental_nested_dataset_support=False):
+               experimental_nested_dataset_support=False,
+               defun_kwargs=None):
     """Creates a new `StructuredFunctionWrapper` for the given function.
 
     Args:
@@ -1798,6 +1801,9 @@ class StructuredFunctionWrapper(object):
         default graph.
       experimental_nested_dataset_support: (Optional.) If `True`, the function
         will support `tf.data.Dataset` objects as arguments and return values.
+      defun_kwargs: (Optional.) A dictionary mapping string argument names to
+        values. If supplied, will be passed to `function.Defun()` as keyword
+        arguments.
 
     Raises:
       ValueError: If an invalid combination of `dataset`, `input_classes`,
@@ -1832,7 +1838,11 @@ class StructuredFunctionWrapper(object):
     # TODO(b/110122868): Enable this support for all `tf.data` functions.
     self._nested_dataset_support = experimental_nested_dataset_support
 
-    @function.Defun(*self._defun_args(), func_name=self._func_name)
+    if defun_kwargs is None:
+      defun_kwargs = {}
+
+    @function.Defun(
+        *self._defun_args(), func_name=self._func_name, **defun_kwargs)
     def tf_data_structured_function_wrapper(*args):
       """Wrapper for passing nested structures to and from tf.data functions."""
       flat_args = []

@@ -28,7 +28,9 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
+from tensorflow.python.util import compat as util_compat
 
 
 class CopyToDeviceTest(test_base.DatasetTestBase):
@@ -291,6 +293,42 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       sess.run(iterator.initializer)
       for i in range(10):
         self.assertEqual(i, sess.run(next_element))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
+
+  def testCopyToDeviceGpuWithMap(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    def generator():
+      for i in range(10):
+        yield i, float(i), str(i)
+
+    host_dataset = dataset_ops.Dataset.from_generator(
+        generator, output_types=(dtypes.int32, dtypes.float32, dtypes.string))
+    device_dataset = host_dataset.apply(
+        prefetching_ops.copy_to_device("/gpu:0"))
+
+    def gpu_map_func(x, y, z):
+      return math_ops.square(x), math_ops.square(y), z
+
+    device_dataset = device_dataset.apply(
+        prefetching_ops.map_on_gpu(gpu_map_func))
+    options = dataset_ops.Options()
+    options.experimental_autotune = False
+    device_dataset = device_dataset.with_options(options)
+
+    with ops.device("/gpu:0"):
+      iterator = device_dataset.make_initializable_iterator()
+      next_element = iterator.get_next()
+
+    with self.cached_session() as sess:
+      sess.run(iterator.initializer)
+      for i in range(10):
+        x, y, z = sess.run(next_element)
+        self.assertEqual(i**2, x)
+        self.assertEqual(float(i**2), y)
+        self.assertEqual(util_compat.as_bytes(str(i)), z)
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
