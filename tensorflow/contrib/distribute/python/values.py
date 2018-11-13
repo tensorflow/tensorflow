@@ -395,6 +395,10 @@ class MirroredVariable(DistributedVariable, Mirrored,
     return self._assign_func(f=assign_fn, *args, **kwargs)
 
   @property
+  def op(self):
+    return self._primary_var.op
+
+  @property
   def aggregation(self):
     return self._aggregation
 
