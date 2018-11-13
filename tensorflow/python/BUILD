@@ -3423,6 +3423,8 @@ py_library(
             # file):
             "training/basic_session_run_hooks.py",
             "training/checkpoint_management.py",
+            "training/distribute.py",
+            "training/distribution_strategy_context.py",
             "training/saveable_object.py",
             "training/saver.py",
             "training/session_run_hook.py",
@@ -3440,6 +3442,7 @@ py_library(
         ":control_flow_ops",
         ":data_flow_ops",
         ":device",
+        ":distribute",
         ":errors",
         ":framework",
         ":framework_for_generated_wrappers",
