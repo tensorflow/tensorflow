@@ -964,6 +964,22 @@ class AstToCfgTest(test.TestCase):
         ),
     )
 
+  def test_lambda_basic(self):
+
+    def test_fn(a):
+      a = lambda b: a + b
+      return a
+
+    graph, = self._build_cfg(test_fn).values()
+
+    self.assertGraphMatches(
+        graph,
+        (
+            ('a', 'a = lambda b: a + b', 'return a'),
+            ('a = lambda b: a + b', 'return a', None),
+        ),
+    )
+
 
 if __name__ == '__main__':
   test.main()

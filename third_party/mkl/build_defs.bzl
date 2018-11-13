@@ -92,7 +92,7 @@ def if_enable_mkl(if_true, if_false = []):
       A select evaluating to either if_true or if_false as appropriate.
     """
     return select({
-        "//third_party/mkl:enable_mkl": if_true,
+        str(Label("//third_party/mkl:enable_mkl")): if_true,
         "//conditions:default": if_false,
     })
 

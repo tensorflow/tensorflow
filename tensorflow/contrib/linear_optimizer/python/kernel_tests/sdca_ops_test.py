@@ -125,7 +125,7 @@ def make_random_examples_and_variables_dicts(num_examples, dim, num_non_zero):
       ],
       example_ids=[str(i) for i in range(num_examples)])
 
-  weights = variables_lib.Variable(
+  weights = variables_lib.VariableV1(
       array_ops.zeros([dim], dtype=dtypes.float32))
   variables_dict = dict(
       sparse_features_weights=[weights],
@@ -184,7 +184,7 @@ def make_dense_examples_and_variables_dicts(dense_features_values, weights,
     dense_tensors.append(dense_tensor)
     # Add variables of shape [feature_column_dimension].
     dense_weights.append(
-        variables_lib.Variable(
+        variables_lib.VariableV1(
             array_ops.zeros(
                 [dense_tensor.get_shape().as_list()[1]], dtype=dtypes.float32)))
 
@@ -341,7 +341,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
         examples = make_example_dict(example_protos, example_weights)
         # Explicitly make age a [1]-shaped Variable (which cannot be
         # partitioned), while making gender a PartitionedVariable.
-        age_weights = variables_lib.Variable(
+        age_weights = variables_lib.VariableV1(
             array_ops.zeros([1], dtype=dtypes.float32))
         with variable_scope.variable_scope(
             name_or_scope=('variables/shard_{}'.format(num_shards)
@@ -801,7 +801,7 @@ class SdcaWithLogisticLossTest(SdcaModelTest):
           labels=[1.0, 0.0])
       # Replace with a variable of size 1 instead of 2.
       variables['dense_features_weights'] = [
-          variables_lib.Variable(array_ops.zeros(
+          variables_lib.VariableV1(array_ops.zeros(
               [1], dtype=dtypes.float32))
       ]
       options = dict(

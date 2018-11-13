@@ -30,6 +30,10 @@ except ImportError:
   _GOOGLE_API_CLIENT_INSTALLED = False
 
 
+def _format_master_url(master, rpc_layer=None):
+  return '%s://%s' % (rpc_layer, master) if rpc_layer else master
+
+
 class GceClusterResolver(ClusterResolver):
   """Cluster Resolver for Google Compute Engine.
 
@@ -45,7 +49,10 @@ class GceClusterResolver(ClusterResolver):
                zone,
                instance_group,
                port,
-               job_name='worker',
+               task_type='worker',
+               task_index=0,
+               rpc_layer='grpc',
+               num_accelerators_per_worker=0,
                credentials='default',
                service=None):
     """Creates a new GceClusterResolver object.
@@ -55,13 +62,22 @@ class GceClusterResolver(ClusterResolver):
     each instance in the instance group.
 
     Args:
-      project: Name of the GCE project
-      zone: Zone of the GCE instance group
-      instance_group: Name of the GCE instance group
+      project: Name of the GCE project.
+      zone: Zone of the GCE instance group.
+      instance_group: Name of the GCE instance group.
       port: Port of the listening TensorFlow server (default: 8470)
-      job_name: Name of the TensorFlow job this set of instances belongs to
+      task_type: Name of the TensorFlow job this GCE instance group of VM
+        instances belong to.
+      task_index: The task index for this particular VM, within the GCE
+        instance group. In particular, every single instance should be assigned
+        a unique ordinal index within an instance group manually so that they
+        can be distinguished from each other.
+      rpc_layer: The RPC layer TensorFlow should use to communicate across
+        instances.
+      num_accelerators_per_worker: Number of accelerators (GPUs) present per
+        instance.
       credentials: GCE Credentials. If nothing is specified, this defaults to
-        GoogleCredentials.get_application_default()
+        GoogleCredentials.get_application_default().
       service: The GCE API object returned by the googleapiclient.discovery
         function. (Default: discovery.build('compute', 'v1')). If you specify a
         custom service object, then the credentials parameter will be ignored.
@@ -72,7 +88,9 @@ class GceClusterResolver(ClusterResolver):
     self._project = project
     self._zone = zone
     self._instance_group = instance_group
-    self._job_name = job_name
+    self._task_type = task_type
+    self._task_index = task_index
+    self._rpc_layer = rpc_layer
     self._port = port
     self._credentials = credentials
 
@@ -133,7 +151,58 @@ class GceClusterResolver(ClusterResolver):
           previous_response=response)
 
     worker_list.sort()
-    return ClusterSpec({self._job_name: worker_list})
+    return ClusterSpec({self._task_type: worker_list})
 
-  def master(self):
+  def master(self, task_type=None, task_index=None, rpc_layer=None):
+    task_type = task_type if task_type is not None else self._task_type
+    task_index = task_index if task_index is not None else self._task_index
+
+    if task_type is not None and task_index is not None:
+      master = self.cluster_spec().task_address(task_type, task_index)
+      if rpc_layer or self._rpc_layer:
+        return '%s://%s' % (rpc_layer or self._rpc_layer, master)
+      else:
+        return master
+
     return ''
+
+  @property
+  def task_type(self):
+    return self._task_type
+
+  @property
+  def task_index(self):
+    return self._task_index
+
+  @task_type.setter
+  def task_type(self, task_type):
+    raise RuntimeError(
+        'You cannot reset the task_type of the GceClusterResolver after it has '
+        'been created.')
+
+  @task_index.setter
+  def task_index(self, task_index):
+    self._task_index = task_index
+
+  @property
+  def environment(self):
+    """Returns the current environment which TensorFlow is running in.
+
+    For users in the GCE environment, the environment property is always an
+    empty string, and Google users will not use this ClusterResolver for running
+    on internal systems.
+    """
+    return ''
+
+  @property
+  def rpc_layer(self):
+    return self._rpc_layer
+
+  @rpc_layer.setter
+  def rpc_layer(self, rpc_layer):
+    self._rpc_layer = rpc_layer
+
+  def num_accelerators_per_worker(self, session_config=None):
+    del session_config  # Unused, since this is set manually in __init__.
+    return self._num_accelerators_per_worker
+

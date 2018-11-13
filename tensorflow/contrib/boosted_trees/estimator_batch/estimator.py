@@ -418,21 +418,26 @@ class GradientBoostedDecisionTreeRanker(estimator.Estimator):
 # The estimators below use new core Estimator interface and must be used with
 # new feature columns and heads.
 
+
 # For multiclass classification, use the following head since it uses loss
 # that is twice differentiable.
-def core_multiclass_head(n_classes):
+def core_multiclass_head(
+    n_classes,
+    weight_column=None,
+    loss_reduction=core_losses.Reduction.SUM_OVER_NONZERO_WEIGHTS):
   """Core head for multiclass problems."""
 
   def loss_fn(labels, logits):
     result = losses.per_example_maxent_loss(
-        labels=labels, logits=logits, weights=None, num_classes=n_classes)
+        labels=labels,
+        logits=logits,
+        weights=weight_column,
+        num_classes=n_classes)
     return result[0]
 
   # pylint:disable=protected-access
   head_fn = core_head_lib._multi_class_head_with_softmax_cross_entropy_loss(
-      n_classes=n_classes,
-      loss_fn=loss_fn,
-      loss_reduction=core_losses.Reduction.SUM_OVER_NONZERO_WEIGHTS)
+      n_classes=n_classes, loss_fn=loss_fn, loss_reduction=loss_reduction)
   # pylint:enable=protected-access
 
   return head_fn

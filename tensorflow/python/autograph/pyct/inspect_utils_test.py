@@ -19,10 +19,15 @@ from __future__ import division
 from __future__ import print_function
 
 from functools import wraps
+import imp
+import types
+import weakref
 
 import six
 
+from tensorflow.python import lib
 from tensorflow.python.autograph.pyct import inspect_utils
+from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
 
 
@@ -127,6 +132,32 @@ class InspectUtilsTest(test.TestCase):
     self.assertEqual(ns['closed_over_primitive'], closed_over_primitive)
     self.assertTrue('local_var' not in ns)
 
+  def test_getqualifiedname(self):
+    foo = object()
+    qux = imp.new_module('quxmodule')
+    bar = imp.new_module('barmodule')
+    baz = object()
+    bar.baz = baz
+
+    ns = {
+        'foo': foo,
+        'bar': bar,
+        'qux': qux,
+    }
+
+    self.assertIsNone(inspect_utils.getqualifiedname(ns, inspect_utils))
+    self.assertEqual(inspect_utils.getqualifiedname(ns, foo), 'foo')
+    self.assertEqual(inspect_utils.getqualifiedname(ns, bar), 'bar')
+    self.assertEqual(inspect_utils.getqualifiedname(ns, baz), 'bar.baz')
+
+  def test_getqualifiedname_finds_via_parent_module(self):
+    # TODO(mdan): This test is vulnerable to change in the lib module.
+    # A better way to forge modules should be found.
+    self.assertEqual(
+        inspect_utils.getqualifiedname(
+            lib.__dict__, lib.io.file_io.FileIO, max_depth=1),
+        'io.file_io.FileIO')
+
   def test_getmethodclass(self):
 
     self.assertEqual(
@@ -156,16 +187,16 @@ class InspectUtilsTest(test.TestCase):
     test_obj = TestClass()
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.member_function),
-        TestClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.decorated_member),
-        TestClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.fn_decorated_member),
-        TestClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.wrap_decorated_member),
-        TestClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.static_method),
         TestClass)
@@ -214,16 +245,16 @@ class InspectUtilsTest(test.TestCase):
     test_obj = LocalClass()
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.member_function),
-        LocalClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.decorated_member),
-        LocalClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.fn_decorated_member),
-        LocalClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.wrap_decorated_member),
-        LocalClass)
+        test_obj)
 
   def test_getmethodclass_callables(self):
     class TestCallable(object):
@@ -233,6 +264,25 @@ class InspectUtilsTest(test.TestCase):
 
     c = TestCallable()
     self.assertEqual(inspect_utils.getmethodclass(c), TestCallable)
+
+  def test_getmethodclass_weakref_mechanism(self):
+    test_obj = TestClass()
+
+    class WeakrefWrapper(object):
+
+      def __init__(self):
+        self.ag_self_weakref__ = weakref.ref(test_obj)
+
+    def test_fn(self):
+      return self
+
+    bound_method = types.MethodType(test_fn, WeakrefWrapper())
+    self.assertEqual(inspect_utils.getmethodclass(bound_method), test_obj)
+
+  def test_getmethodclass_no_bool_conversion(self):
+
+    tensor = constant_op.constant([1])
+    self.assertEqual(inspect_utils.getmethodclass(tensor.get_shape), tensor)
 
   def test_getdefiningclass(self):
     class Superclass(object):
@@ -271,6 +321,38 @@ class InspectUtilsTest(test.TestCase):
     self.assertTrue(inspect_utils.isbuiltin(int))
     self.assertTrue(inspect_utils.isbuiltin(len))
     self.assertFalse(inspect_utils.isbuiltin(function_decorator))
+
+  def test_super_wrapper_for_dynamic_attrs(self):
+
+    a = object()
+    b = object()
+
+    class Base(object):
+
+      def __init__(self):
+        self.a = a
+
+    class Subclass(Base):
+
+      def __init__(self):
+        super(Subclass, self).__init__()
+        self.b = b
+
+    base = Base()
+    sub = Subclass()
+
+    sub_super = super(Subclass, sub)
+    sub_super_wrapped = inspect_utils.SuperWrapperForDynamicAttrs(sub_super)
+
+    self.assertIs(base.a, a)
+    self.assertIs(sub.a, a)
+
+    self.assertFalse(hasattr(sub_super, 'a'))
+    self.assertIs(sub_super_wrapped.a, a)
+
+    # TODO(mdan): Is this side effect harmful? Can it be avoided?
+    # Note that `b` was set in `Subclass.__init__`.
+    self.assertIs(sub_super_wrapped.b, b)
 
 
 if __name__ == '__main__':

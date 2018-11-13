@@ -102,10 +102,10 @@ class AdamOptimizer(optimizer_v2.OptimizerV2):
 
   def _create_vars(self, var_list, state):
     # Non-slot variables end up on the same device(s).
-    state.create_non_slot(initial_value=lambda: state.get_hyper("beta1"),
-                          name="beta1_power")
-    state.create_non_slot(initial_value=lambda: state.get_hyper("beta2"),
-                          name="beta2_power")
+    state.create_non_slot(
+        initial_value=lambda: state.get_hyper("beta1"), name="beta1_power")
+    state.create_non_slot(
+        initial_value=lambda: state.get_hyper("beta2"), name="beta2_power")
 
     # Create slots for the first and second moments.
     for v in var_list:
@@ -117,28 +117,34 @@ class AdamOptimizer(optimizer_v2.OptimizerV2):
     v = state.get_slot(var, "v")
     beta1_power, beta2_power = self._get_beta_accumulators(state)
     return training_ops.apply_adam(
-        var, m, v,
+        var,
+        m,
+        v,
         math_ops.cast(beta1_power, var.dtype.base_dtype),
         math_ops.cast(beta2_power, var.dtype.base_dtype),
         state.get_hyper("learning_rate", var.dtype.base_dtype),
         state.get_hyper("beta1", var.dtype.base_dtype),
         state.get_hyper("beta2", var.dtype.base_dtype),
         state.get_hyper("epsilon", var.dtype.base_dtype),
-        grad, use_locking=self._use_locking).op
+        grad,
+        use_locking=self._use_locking).op
 
   def _resource_apply_dense(self, grad, var, state):
     m = state.get_slot(var, "m")
     v = state.get_slot(var, "v")
     beta1_power, beta2_power = self._get_beta_accumulators(state)
     return training_ops.resource_apply_adam(
-        var.handle, m.handle, v.handle,
+        var.handle,
+        m.handle,
+        v.handle,
         math_ops.cast(beta1_power, grad.dtype.base_dtype),
         math_ops.cast(beta2_power, grad.dtype.base_dtype),
         state.get_hyper("learning_rate", grad.dtype.base_dtype),
         state.get_hyper("beta1", grad.dtype.base_dtype),
         state.get_hyper("beta2", grad.dtype.base_dtype),
         state.get_hyper("epsilon", grad.dtype.base_dtype),
-        grad, use_locking=self._use_locking)
+        grad,
+        use_locking=self._use_locking)
 
   def _apply_sparse_shared(self, grad, var, indices, scatter_add, state):
     beta1_power, beta2_power = self._get_beta_accumulators(state)
@@ -152,8 +158,7 @@ class AdamOptimizer(optimizer_v2.OptimizerV2):
     # m_t = beta1 * m + (1 - beta1) * g_t
     m = state.get_slot(var, "m")
     m_scaled_g_values = grad * (1 - beta1_t)
-    m_t = state_ops.assign(m, m * beta1_t,
-                           use_locking=self._use_locking)
+    m_t = state_ops.assign(m, m * beta1_t, use_locking=self._use_locking)
     with ops.control_dependencies([m_t]):
       m_t = scatter_add(m, indices, m_scaled_g_values)
     # v_t = beta2 * v + (1 - beta2) * (g_t * g_t)
@@ -163,9 +168,8 @@ class AdamOptimizer(optimizer_v2.OptimizerV2):
     with ops.control_dependencies([v_t]):
       v_t = scatter_add(v, indices, v_scaled_g_values)
     v_sqrt = math_ops.sqrt(v_t)
-    var_update = state_ops.assign_sub(var,
-                                      lr * m_t / (v_sqrt + epsilon_t),
-                                      use_locking=self._use_locking)
+    var_update = state_ops.assign_sub(
+        var, lr * m_t / (v_sqrt + epsilon_t), use_locking=self._use_locking)
     return control_flow_ops.group(*[var_update, m_t, v_t])
 
   def _apply_sparse(self, grad, var, state):
@@ -177,21 +181,18 @@ class AdamOptimizer(optimizer_v2.OptimizerV2):
 
   def _resource_scatter_add(self, x, i, v):
     with ops.control_dependencies(
-        [resource_variable_ops.resource_scatter_add(
-            x.handle, i, v)]):
+        [resource_variable_ops.resource_scatter_add(x.handle, i, v)]):
       return x.value()
 
   def _resource_apply_sparse(self, grad, var, indices, state):
-    return self._apply_sparse_shared(
-        grad, var, indices, self._resource_scatter_add, state)
+    return self._apply_sparse_shared(grad, var, indices,
+                                     self._resource_scatter_add, state)
 
   def _finish(self, state):
     # Update the power accumulators.
     beta1_power, beta2_power = self._get_beta_accumulators(state)
     update_beta1 = beta1_power.assign(
-        beta1_power * state.get_hyper("beta1"),
-        use_locking=self._use_locking)
+        beta1_power * state.get_hyper("beta1"), use_locking=self._use_locking)
     update_beta2 = beta2_power.assign(
-        beta2_power * state.get_hyper("beta2"),
-        use_locking=self._use_locking)
+        beta2_power * state.get_hyper("beta2"), use_locking=self._use_locking)
     return control_flow_ops.group(update_beta1, update_beta2)

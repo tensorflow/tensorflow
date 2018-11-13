@@ -20,8 +20,8 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "tensorflow/compiler/tf2xla/xla_expression.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -46,9 +46,8 @@ class XlaContext : public ResourceBase {
   // Creates a new XlaContext. See the documentation on the class data fields
   // for descriptions of the arguments.
   XlaContext(XlaCompiler* compiler, xla::XlaBuilder* builder,
-             bool allow_cpu_custom_calls, bool resolve_compile_time_constants,
-             bool is_entry_computation,
-             const std::function<xla::StatusOr<TensorShape>(
+             bool allow_cpu_custom_calls,
+             const std::function<xla::StatusOr<xla::Shape>(
                  const TensorShape&, DataType)>* shape_representation_fn);
 
   // Virtual method defined by ResourceBase.
@@ -57,40 +56,19 @@ class XlaContext : public ResourceBase {
   XlaCompiler* compiler() const { return compiler_; }
 
   // Returns the XlaBuilder that Ops use for compiling new expressions.
-  xla::XlaBuilder* builder();
+  xla::XlaBuilder* builder() { return builder_; }
 
   bool allow_cpu_custom_calls() const { return allow_cpu_custom_calls_; }
-
-  bool resolve_compile_time_constants() const {
-    return resolve_compile_time_constants_;
-  }
-  bool is_entry_computation() const { return is_entry_computation_; }
 
   const std::vector<XlaExpression>& args() const { return args_; }
   void set_args(std::vector<XlaExpression> args);
 
-  struct Retval {
-    DataType type;
-    TensorShape shape;
-    // An XlaExpression representing the Retval's value.
-    XlaExpression expression;
-  };
-  const std::vector<Retval>& retvals() { return retvals_; }
+  const std::vector<XlaExpression>& retvals() { return retvals_; }
 
-  // This is called by the Retval Op to associate a computed value
-  // with a specific return value of the subgraph.
-  void AddRetval(int retval_index, DataType type, const TensorShape& shape,
-                 const xla::XlaOp& handle);
-
-  // As for Retval, but for return values that are compile-time constants.
-  Status AddConstRetval(int retval_index, DataType dtype,
-                        const xla::LiteralSlice& literal);
-
-  // As for Retval, but for return values that are resource handles.
-  Status AddResourceRetval(int retval_index, XlaResource* resource);
-
-  // As for Retval, but for return values that are XLA tokens.
-  Status AppendTokenRetval(const xla::XlaOp& token);
+  // Sets a return value.
+  // Since we do not always know in advance how many return values there are,
+  // grows the return values vector to size index+1 if it is smaller.
+  void SetRetval(int index, const XlaExpression& expression);
 
   // Creates a resource with resource `kind` and initial value `handle`. `name`
   // is a descriptive name for use in error messages. See the `XlaResource`
@@ -108,8 +86,8 @@ class XlaContext : public ResourceBase {
 
   // Returns the XLA shape to be used to represent a variable of TF `shape`
   // and `type`, or of an argument or return value of a top-level computation.
-  xla::StatusOr<TensorShape> RepresentationShape(const TensorShape& shape,
-                                                 DataType type) const;
+  xla::StatusOr<xla::Shape> RepresentationShape(const TensorShape& shape,
+                                                DataType type) const;
 
   // Get an XLA lambda to compute Max. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
@@ -143,31 +121,19 @@ class XlaContext : public ResourceBase {
   // Allow ops to emit CustomCall operations for CPU.
   const bool allow_cpu_custom_calls_;
 
-  // If true, constant return values are returned as Tensors instead of
-  // run-time computation outputs.
-  const bool resolve_compile_time_constants_;
-
   // Arguments to the Tensorflow graph, indexed by _Arg index.
   // Includes both compile-time constant arguments and runtime parameters.
   std::vector<XlaExpression> args_;
 
   // Return values of the Tensorflow graph, indexed by _Retval index.
-  std::vector<Retval> retvals_;
+  std::vector<XlaExpression> retvals_;
 
   // Holds ownership of resources. The resources are not ordered.
   std::vector<std::unique_ptr<XlaResource>> resources_;
 
-  // Is this a top-level computation, or an inner computation (e.g., a while
-  // body)?
-  const bool is_entry_computation_;
-
-  // A function that describes how the shapes of
-  // a) argument and return value, for entry computations
-  // b) variables, for all computations,
-  // should be represented in XLA. Parameters/return values will be shaped
-  // according to this function, and reshaped back to/from their declared shapes
-  // for computations. Must be non-null.
-  const std::function<xla::StatusOr<TensorShape>(const TensorShape&, DataType)>*
+  // Describes the on-host shapes of parameters and return values. Also see:
+  // XlaDevice::Options::shape_representation_fn.
+  const std::function<xla::StatusOr<xla::Shape>(const TensorShape&, DataType)>*
       shape_representation_fn_;
 
   // Cache of prebuilt computations indexed by their type.

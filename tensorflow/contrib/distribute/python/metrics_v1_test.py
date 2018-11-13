@@ -20,6 +20,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.contrib.distribute.python import combinations
+from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import test
 from tensorflow.python.framework import ops
@@ -35,7 +36,8 @@ def _labeled_dataset_fn():
   #  8: 3, 2 -> False;  9: 4, 0 -> False; 10: 0, 1 -> False; 11: 1, 2 -> False
   # 12: 2, 0 -> False; 13: 3, 1 -> False; 14: 4, 2 -> False; 15: 0, 0 -> True
   return dataset_ops.Dataset.range(1000).map(
-      lambda x: {"labels": x % 5, "predictions": x % 3}).batch(4)
+      lambda x: {"labels": x % 5, "predictions": x % 3}).batch(
+          4, drop_remainder=True)
 
 
 def _boolean_dataset_fn():
@@ -47,7 +49,8 @@ def _boolean_dataset_fn():
   #   F, T -> FP;  T, F -> FN;   F, F -> TN
   return dataset_ops.Dataset.from_tensor_slices({
       "labels": [True, False, True, False],
-      "predictions": [True, True, False, False]}).repeat().batch(3)
+      "predictions": [True, True, False, False]}).repeat().batch(
+          3, drop_remainder=True)
 
 
 def _threshold_dataset_fn():
@@ -59,7 +62,8 @@ def _threshold_dataset_fn():
   #  False, .75 -> FP;   True, .25 -> FN;  False, 0.0 -> TN
   return dataset_ops.Dataset.from_tensor_slices({
       "labels": [True, False, True, False],
-      "predictions": [1.0, 0.75, 0.25, 0.]}).repeat().batch(3)
+      "predictions": [1.0, 0.75, 0.25, 0.]}).repeat().batch(
+          3, drop_remainder=True)
 
 
 def _regression_dataset_fn():
@@ -69,7 +73,7 @@ def _regression_dataset_fn():
 
 
 # TODO(priyag): Add TPU Strategy to this once metrics aggregate correctly using
-# TowerLocalVariables on TPUs. Submit http://cl/208914352.
+# ReplicaLocalVariables on TPUs. Submit http://cl/208914352.
 def all_combinations():
   return combinations.combine(
       distribution=[combinations.default_strategy,
@@ -77,6 +81,12 @@ def all_combinations():
                     combinations.mirrored_strategy_with_gpu_and_cpu,
                     combinations.mirrored_strategy_with_two_gpus],
       mode=["graph"])
+
+
+def tpu_combinations():
+  return combinations.combine(distribution=[combinations.tpu_strategy_one_step,
+                                            combinations.tpu_strategy],
+                              mode=["graph"])
 
 
 # TODO(josh11b): Test metrics.recall_at_top_k, metrics.average_precision_at_k,
@@ -87,43 +97,51 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
     with ops.Graph().as_default(), distribution.scope():
       iterator = distribution.distribute_dataset(
           dataset_fn).make_initializable_iterator()
-      value, update = distribution.call_for_each_tower(
-          metric_fn, iterator.get_next())
-      update = distribution.group(update)
+      if isinstance(distribution, tpu_strategy.TPUStrategy):
+        def step_fn(ctx, inputs):
+          value, update = distribution.call_for_each_replica(
+              metric_fn, args=[inputs])
+          ctx.set_non_tensor_output(name="value", output=value)
+          return distribution.group(update)
+
+        ctx = distribution.run_steps_on_dataset(
+            step_fn, iterator, iterations=distribution.steps_per_run)
+        update = ctx.run_op
+        value = ctx.non_tensor_outputs["value"]
+        # In each run, we run multiple steps, and each steps consumes as many
+        # batches as number of replicas.
+        batches_per_update = (
+            distribution.num_replicas_in_sync * distribution.steps_per_run)
+      else:
+        value, update = distribution.call_for_each_replica(
+            metric_fn, iterator.get_next())
+        update = distribution.group(update)
+        # TODO(josh11b): Once we switch to using a global batch size for input,
+        # replace "distribution.num_replicas_in_sync" with "1".
+        batches_per_update = distribution.num_replicas_in_sync
+
       self.evaluate(iterator.initializer)
+      self.evaluate(distribution.initialize())
       self.evaluate(variables.local_variables_initializer())
-      # TODO(josh11b): Once we switch to using a global batch size for input,
-      # replace "distribution.num_towers" with "1".
-      batches_per_update = distribution.num_towers
 
-      # Update variables using the first `num_towers` batches.
-      self.evaluate(update)
-      self.assertAllClose(expected_fn(batches_per_update), self.evaluate(value),
-                          0.001, msg="After first update")
-
-      # Update variables using the second `num_towers` batches.
-      self.evaluate(update)
-      self.assertAllClose(expected_fn(2 * batches_per_update),
-                          self.evaluate(value),
-                          0.001,
-                          msg="After second update")
-
-      if batches_per_update == 1:  # Consume 4 input batches
+      batches_consumed = 0
+      for i in range(4):
         self.evaluate(update)
-        self.assertAllClose(expected_fn(3 * batches_per_update),
+        batches_consumed += batches_per_update
+        self.assertAllClose(expected_fn(batches_consumed),
                             self.evaluate(value),
                             0.001,
-                            msg="After third update")
-        self.evaluate(update)
-        self.assertAllClose(expected_fn(4 * batches_per_update),
-                            self.evaluate(value),
-                            0.001,
-                            msg="After fourth update")
+                            msg="After update #" + str(i+1))
+        if batches_consumed >= 4:  # Consume 4 input batches in total.
+          break
 
-  @combinations.generate(all_combinations())
+      self.evaluate(distribution.finalize())
+
+  @combinations.generate(all_combinations() + tpu_combinations())
   def testMean(self, distribution):
     def _dataset_fn():
-      return dataset_ops.Dataset.range(1000).map(math_ops.to_float).batch(4)
+      return dataset_ops.Dataset.range(1000).map(math_ops.to_float).batch(
+          4, drop_remainder=True)
 
     def _expected_fn(num_batches):
       # Mean(0..3) = 1.5, Mean(0..7) = 3.5, Mean(0..11) = 5.5, etc.
@@ -131,7 +149,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
 
     self._test_metric(distribution, _dataset_fn, metrics.mean, _expected_fn)
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(all_combinations() + tpu_combinations())
   def testAccuracy(self, distribution):
     def _metric_fn(x):
       labels = x["labels"]
@@ -144,6 +162,8 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
     self._test_metric(
         distribution, _labeled_dataset_fn, _metric_fn, _expected_fn)
 
+  # TODO(priyag, jhseu): Enable TPU for this test once scatter_add is added
+  # for TPUMirroredVariable.
   @combinations.generate(all_combinations())
   def testMeanPerClassAccuracy(self, distribution):
     def _metric_fn(x):
@@ -162,6 +182,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
     self._test_metric(
         distribution, _labeled_dataset_fn, _metric_fn, _expected_fn)
 
+  # NOTE(priyag): This metric doesn't work on TPUs yet.
   @combinations.generate(all_combinations())
   def testMeanIOU(self, distribution):
     def _metric_fn(x):
@@ -180,7 +201,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
     self._test_metric(
         distribution, _labeled_dataset_fn, _metric_fn, _expected_fn)
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(all_combinations() + tpu_combinations())
   def testMeanTensor(self, distribution):
     def _dataset_fn():
       dataset = dataset_ops.Dataset.range(1000).map(math_ops.to_float)
@@ -199,7 +220,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
     self._test_metric(
         distribution, _dataset_fn, metrics.mean_tensor, _expected_fn)
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(all_combinations() + tpu_combinations())
   def testAUCROC(self, distribution):
     def _metric_fn(x):
       labels = x["labels"]
@@ -213,7 +234,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
     self._test_metric(
         distribution, _threshold_dataset_fn, _metric_fn, _expected_fn)
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(all_combinations() + tpu_combinations())
   def testAUCPR(self, distribution):
     def _metric_fn(x):
       labels = x["labels"]
@@ -227,7 +248,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
     self._test_metric(
         distribution, _threshold_dataset_fn, _metric_fn, _expected_fn)
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(all_combinations() + tpu_combinations())
   def testFalseNegatives(self, distribution):
     def _metric_fn(x):
       labels = x["labels"]
@@ -240,7 +261,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
     self._test_metric(
         distribution, _boolean_dataset_fn, _metric_fn, _expected_fn)
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(all_combinations() + tpu_combinations())
   def testFalseNegativesAtThresholds(self, distribution):
     def _metric_fn(x):
       labels = x["labels"]
@@ -253,7 +274,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
     self._test_metric(
         distribution, _threshold_dataset_fn, _metric_fn, _expected_fn)
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(all_combinations() + tpu_combinations())
   def testTrueNegatives(self, distribution):
     def _metric_fn(x):
       labels = x["labels"]
@@ -266,7 +287,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
     self._test_metric(
         distribution, _boolean_dataset_fn, _metric_fn, _expected_fn)
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(all_combinations() + tpu_combinations())
   def testTrueNegativesAtThresholds(self, distribution):
     def _metric_fn(x):
       labels = x["labels"]
@@ -279,7 +300,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
     self._test_metric(
         distribution, _threshold_dataset_fn, _metric_fn, _expected_fn)
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(all_combinations() + tpu_combinations())
   def testFalsePositives(self, distribution):
     def _metric_fn(x):
       labels = x["labels"]
@@ -292,7 +313,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
     self._test_metric(
         distribution, _boolean_dataset_fn, _metric_fn, _expected_fn)
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(all_combinations() + tpu_combinations())
   def testFalsePositivesAtThresholds(self, distribution):
     def _metric_fn(x):
       labels = x["labels"]
@@ -305,7 +326,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
     self._test_metric(
         distribution, _threshold_dataset_fn, _metric_fn, _expected_fn)
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(all_combinations() + tpu_combinations())
   def testTruePositives(self, distribution):
     def _metric_fn(x):
       labels = x["labels"]
@@ -318,7 +339,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
     self._test_metric(
         distribution, _boolean_dataset_fn, _metric_fn, _expected_fn)
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(all_combinations() + tpu_combinations())
   def testTruePositivesAtThresholds(self, distribution):
     def _metric_fn(x):
       labels = x["labels"]
@@ -331,7 +352,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
     self._test_metric(
         distribution, _threshold_dataset_fn, _metric_fn, _expected_fn)
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(all_combinations() + tpu_combinations())
   def testPrecision(self, distribution):
     def _metric_fn(x):
       labels = x["labels"]
@@ -344,7 +365,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
     self._test_metric(
         distribution, _boolean_dataset_fn, _metric_fn, _expected_fn)
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(all_combinations() + tpu_combinations())
   def testPrecisionAtThreshold(self, distribution):
     def _metric_fn(x):
       labels = x["labels"]
@@ -357,7 +378,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
     self._test_metric(
         distribution, _threshold_dataset_fn, _metric_fn, _expected_fn)
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(all_combinations() + tpu_combinations())
   def testRecall(self, distribution):
     def _metric_fn(x):
       labels = x["labels"]
@@ -370,7 +391,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
     self._test_metric(
         distribution, _boolean_dataset_fn, _metric_fn, _expected_fn)
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(all_combinations() + tpu_combinations())
   def testRecallAtThreshold(self, distribution):
     def _metric_fn(x):
       labels = x["labels"]
@@ -383,7 +404,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
     self._test_metric(
         distribution, _threshold_dataset_fn, _metric_fn, _expected_fn)
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(all_combinations() + tpu_combinations())
   def testMeanSquaredError(self, distribution):
     def _metric_fn(x):
       labels = x["labels"]
@@ -396,7 +417,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
     self._test_metric(
         distribution, _regression_dataset_fn, _metric_fn, _expected_fn)
 
-  @combinations.generate(all_combinations())
+  @combinations.generate(all_combinations() + tpu_combinations())
   def testRootMeanSquaredError(self, distribution):
     def _metric_fn(x):
       labels = x["labels"]

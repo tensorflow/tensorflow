@@ -13,10 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 # Tests for this file live in python/kernel_tests/array_ops_test.py
-"""Support for manipulating tensors.
-
-See the [Array Ops](https://tensorflow.org/api_guides/python/array_ops) guide.
-"""
+"""Support for manipulating tensors."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -123,7 +120,7 @@ def expand_dims(input, axis=None, name=None, dim=None):
     axis: 0-D (scalar). Specifies the dimension index at which to
       expand the shape of `input`. Must be in the range
       `[-rank(input) - 1, rank(input)]`.
-    name: The name of the output `Tensor`.
+    name: The name of the output `Tensor` (optional).
     dim: 0-D (scalar). Equivalent to `axis`, to be deprecated.
 
   Returns:
@@ -131,9 +128,11 @@ def expand_dims(input, axis=None, name=None, dim=None):
     dimension of size 1 added.
 
   Raises:
-    ValueError: if both `dim` and `axis` are specified.
+    ValueError: if either both or neither of `dim` and `axis` are specified.
   """
   axis = deprecation.deprecated_argument_lookup("axis", axis, "dim", dim)
+  if axis is None:
+    raise ValueError("Must specify an axis argument to tf.expand_dims()")
   return gen_array_ops.expand_dims(input, axis, name)
 
 
@@ -156,7 +155,11 @@ listdiff.__doc__ = gen_array_ops.list_diff.__doc__ + "\n" + listdiff.__doc__
 
 
 # pylint: disable=undefined-variable
-@tf_export("setdiff1d")
+@deprecation.deprecated(
+    "2018-11-30",
+    "This op will be removed after the deprecation date. "
+    "Please switch to tf.sets.difference().")
+@tf_export(v1=["setdiff1d"])
 def setdiff1d(x, y, index_dtype=dtypes.int32, name=None):
   return gen_array_ops.list_diff(x, y, index_dtype, name)
 
@@ -166,7 +169,18 @@ setdiff1d.__doc__ = gen_array_ops.list_diff.__doc__
 
 @tf_export("broadcast_dynamic_shape")
 def broadcast_dynamic_shape(shape_x, shape_y):
-  """Returns the broadcasted dynamic shape between `shape_x` and `shape_y`.
+  """Computes the shape of a broadcast given symbolic shapes.
+
+  When shape_x and shape_y are Tensors representing shapes (i.e. the result of
+  calling tf.shape on another Tensor) this computes a Tensor which is the shape
+  of the result of a broadcasting op applied in tensors of shapes shape_x and
+  shape_y.
+
+  For example, if shape_x is [1, 2, 3] and shape_y is [5, 1, 3], the result is a
+  Tensor whose value is [5, 2, 3].
+
+  This is useful when validating the result of a broadcasting operation when the
+  tensors do not have statically known shapes.
 
   Args:
     shape_x: A rank 1 integer `Tensor`, representing the shape of x.
@@ -180,7 +194,17 @@ def broadcast_dynamic_shape(shape_x, shape_y):
 
 @tf_export("broadcast_static_shape")
 def broadcast_static_shape(shape_x, shape_y):
-  """Returns the broadcasted static shape between `shape_x` and `shape_y`.
+  """Computes the shape of a broadcast given known shapes.
+
+  When shape_x and shape_y are fully known TensorShapes this computes a
+  TensorShape which is the shape of the result of a broadcasting op applied in
+  tensors of shapes shape_x and shape_y.
+
+  For example, if shape_x is [1, 2, 3] and shape_y is [5, 1, 3], the result is a
+  TensorShape whose value is [5, 2, 3].
+
+  This is useful when validating the result of a broadcasting operation when the
+  tensors have statically known shapes.
 
   Args:
     shape_x: A `TensorShape`
@@ -392,6 +416,36 @@ def rank_internal(input, name=None, optimize=True):
       return gen_array_ops.rank(input, name=name)
 
 
+_SLICE_TYPE_ERROR = (
+    "Only integers, slices (`:`), ellipsis (`...`), "
+    "tf.newaxis (`None`) and scalar tf.int32/tf.int64 tensors are valid "
+    "indices")
+
+_SUPPORTED_SLICE_DTYPES = (
+    dtypes.int32,
+    dtypes.int32_ref,
+    dtypes.int64,
+    dtypes.int64_ref
+)
+
+
+def _check_index(idx):
+  """Check if a given value is a valid index into a tensor."""
+  if isinstance(idx, (int, tensor_shape.Dimension)):
+    return
+
+  # Optimistic check. Assumptions:
+  # * any object with a dtype is supported
+  # * any object with a dtype has a sizeable shape attribute.
+  dtype = getattr(idx, "dtype", None)
+  if (dtype is None or
+      dtypes.as_dtype(dtype) not in _SUPPORTED_SLICE_DTYPES or
+      idx.shape and len(idx.shape) == 1):
+    # TODO(slebedev): IndexError seems more appropriate here, but it
+    # will break `_slice_helper` contract.
+    raise TypeError(_SLICE_TYPE_ERROR + ", got {!r}".format(idx))
+
+
 def _slice_helper(tensor, slice_spec, var=None):
   """Overload for Tensor.__getitem__.
 
@@ -445,7 +499,8 @@ def _slice_helper(tensor, slice_spec, var=None):
 
   Raises:
     ValueError: If a slice range is negative size.
-    TypeError: If the slice indices aren't int, slice, or Ellipsis.
+    TypeError: If the slice indices aren't int, slice, ellipsis,
+      tf.newaxis or scalar int32/int64 tensors.
   """
 
   if not isinstance(slice_spec, (list, tuple)):
@@ -463,16 +518,19 @@ def _slice_helper(tensor, slice_spec, var=None):
       # for example a[:] gives slice(None,sys.maxsize,None)
       # whereas a[::1] gives slice(None,None,None)
       if s.start is not None and s.start is not sys.maxsize:
+        _check_index(s.start)
         begin.append(s.start)
       else:
         begin.append(0)
         begin_mask |= (1 << index)
       if s.stop is not None and s.stop != sys.maxsize:
+        _check_index(s.stop)
         end.append(s.stop)
       else:
         end.append(0)
         end_mask |= (1 << index)
       if s.step is not None:
+        _check_index(s.step)
         strides.append(s.step)
       else:
         strides.append(1)
@@ -487,6 +545,7 @@ def _slice_helper(tensor, slice_spec, var=None):
       strides.append(1)
       new_axis_mask |= (1 << index)
     else:
+      _check_index(s)
       begin.append(s)
       end.append(s + 1)
       strides.append(1)
@@ -756,7 +815,8 @@ def _SliceHelperVar(var, slice_spec):
 
   Raises:
     ValueError: If a slice range is negative size.
-    TypeError: If the slice indices aren't int, slice, or Ellipsis.
+    TypeError: TypeError: If the slice indices aren't int, slice,
+      ellipsis, tf.newaxis or int32/int64 tensors.
 
   """
 
@@ -1021,7 +1081,7 @@ def unstack(value, num=None, axis=0, name="unstack"):
       if axis < -value_shape.ndims or axis >= value_shape.ndims:
         raise ValueError("axis = %d not in [%d, %d)" %
                          (axis, -value_shape.ndims, value_shape.ndims))
-      num = value_shape[axis].value
+      num = value_shape.dims[axis].value
   if num is None:
     raise ValueError("Cannot infer num from shape %s" % value_shape)
   return gen_array_ops.unpack(value, num=num, axis=axis, name=name)
@@ -1124,7 +1184,7 @@ def concat(values, axis, name="concat"):
   return gen_array_ops.concat_v2(values=values, axis=axis, name=name)
 
 
-@tf_export("boolean_mask")
+@tf_export(v1=["boolean_mask"])
 def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
   """Apply boolean mask to tensor.  Numpy equivalent is `tensor[mask]`.
 
@@ -1204,7 +1264,56 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
     return _apply_mask_1d(tensor, mask, axis)
 
 
-@tf_export("sparse_mask")
+@tf_export("boolean_mask", v1=[])
+def boolean_mask_v2(tensor, mask, axis=None, name="boolean_mask"):
+  """Apply boolean mask to tensor.
+
+  Numpy equivalent is `tensor[mask]`.
+
+  ```python
+  # 1-D example
+  tensor = [0, 1, 2, 3]
+  mask = np.array([True, False, True, False])
+  boolean_mask(tensor, mask)  # [0, 2]
+  ```
+
+  In general, `0 < dim(mask) = K <= dim(tensor)`, and `mask`'s shape must match
+  the first K dimensions of `tensor`'s shape.  We then have:
+    `boolean_mask(tensor, mask)[i, j1,...,jd] = tensor[i1,...,iK,j1,...,jd]`
+  where `(i1,...,iK)` is the ith `True` entry of `mask` (row-major order).
+  The `axis` could be used with `mask` to indicate the axis to mask from.
+  In that case, `axis + dim(mask) <= dim(tensor)` and `mask`'s shape must match
+  the first `axis + dim(mask)` dimensions of `tensor`'s shape.
+
+  Args:
+    tensor:  N-D tensor.
+    mask:  K-D boolean tensor, K <= N and K must be known statically.
+    axis:  A 0-D int Tensor representing the axis in `tensor` to mask from. By
+      default, axis is 0 which will mask from the first dimension. Otherwise K +
+      axis <= N.
+    name:  A name for this operation (optional).
+
+  Returns:
+    (N-K+1)-dimensional tensor populated by entries in `tensor` corresponding
+    to `True` values in `mask`.
+
+  Raises:
+    ValueError:  If shapes do not conform.
+
+  Examples:
+
+  ```python
+  # 2-D example
+  tensor = [[1, 2], [3, 4], [5, 6]]
+  mask = np.array([True, False, True])
+  boolean_mask(tensor, mask)  # [[1, 2], [5, 6]]
+  ```
+  """
+  return boolean_mask(tensor, mask, name, axis)
+
+
+@tf_export("sparse.mask", v1=["sparse.mask", "sparse_mask"])
+@deprecation.deprecated_endpoints("sparse_mask")
 def sparse_mask(a, mask_indices, name=None):
   """Masks elements of `IndexedSlices`.
 
@@ -1226,7 +1335,7 @@ def sparse_mask(a, mask_indices, name=None):
   # `b` will be the subset of `a` slices at its second and third indices, so
   # we want to mask its first and last indices (which are at absolute
   # indices 12, 45)
-  b = tf.sparse_mask(a, [12, 45])
+  b = tf.sparse.mask(a, [12, 45])
 
   b.indices  # [26, 37]
   tf.shape(b.values)  # [2, 10]
@@ -1382,7 +1491,7 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
                     [10, 11, 12]]])
 
   # Take the transpose of the matrices in dimension-0
-  # (this common operation has a shorthand `matrix_transpose`)
+  # (this common operation has a shorthand `linalg.transpose`)
   tf.transpose(x, perm=[0, 2, 1])  # [[[1,  4],
                                    #   [2,  5],
                                    #   [3,  6]],
@@ -1406,8 +1515,13 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
         gen_array_ops.conjugate_transpose
         if (conjugate and a.dtype.is_complex) else gen_array_ops.transpose)
     if perm is None:
-      rank = gen_array_ops.rank(a)
-      perm = (rank - 1) - gen_math_ops._range(0, rank, 1)
+      a = ops.convert_to_tensor(a, name="a")
+      if not a.get_shape().ndims:
+        rank = gen_array_ops.rank(a)
+        perm = (rank - 1) - gen_math_ops._range(0, rank, 1)
+      else:
+        rank = a.get_shape().ndims
+        perm = (rank - 1) - np.arange(rank)
       ret = transpose_fn(a, perm, name=name)
       # NOTE(mrry): Setting the shape explicitly because
       #   reverse is not handled by the shape function.
@@ -1421,7 +1535,8 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
 
 
 # pylint: disable=invalid-name
-@tf_export("matrix_transpose", "linalg.transpose")
+@tf_export("linalg.transpose", v1=["linalg.transpose", "matrix_transpose"])
+@deprecation.deprecated_endpoints("matrix_transpose")
 def matrix_transpose(a, name="matrix_transpose", conjugate=False):
   """Transposes last two dimensions of tensor `a`.
 
@@ -1429,19 +1544,19 @@ def matrix_transpose(a, name="matrix_transpose", conjugate=False):
 
   ```python
   x = tf.constant([[1, 2, 3], [4, 5, 6]])
-  tf.matrix_transpose(x)  # [[1, 4],
+  tf.linalg.transpose(x)  # [[1, 4],
                           #  [2, 5],
                           #  [3, 6]]
 
   x = tf.constant([[1 + 1j, 2 + 2j, 3 + 3j],
                    [4 + 4j, 5 + 5j, 6 + 6j]])
-  tf.matrix_transpose(x, conjugate=True)  # [[1 - 1j, 4 - 4j],
+  tf.linalg.transpose(x, conjugate=True)  # [[1 - 1j, 4 - 4j],
                                           #  [2 - 2j, 5 - 5j],
                                           #  [3 - 3j, 6 - 6j]]
 
   # Matrix with two batch dimensions.
   # x.shape is [1, 2, 3, 4]
-  # tf.matrix_transpose(x) is shape [1, 2, 4, 3]
+  # tf.linalg.transpose(x) is shape [1, 2, 4, 3]
   ```
 
   Note that `tf.matmul` provides kwargs allowing for transpose of arguments.
@@ -1452,14 +1567,14 @@ def matrix_transpose(a, name="matrix_transpose", conjugate=False):
   tf.matmul(matrix, b, transpose_b=True)
 
   # Inefficient!
-  tf.matmul(matrix, tf.matrix_transpose(b))
+  tf.matmul(matrix, tf.linalg.transpose(b))
   ```
 
   @compatibility(numpy)
   In `numpy` transposes are memory-efficient constant time operations as they
   simply return a new view of the same data with adjusted `strides`.
 
-  TensorFlow does not support strides, `matrix_transposes` return a new tensor
+  TensorFlow does not support strides, `linalg.transposes` return a new tensor
   with the items permuted.
   @end_compatibility
 
@@ -1467,7 +1582,7 @@ def matrix_transpose(a, name="matrix_transpose", conjugate=False):
     a: A `Tensor` with `rank >= 2`.
     name: A name for the operation (optional).
     conjugate: Optional bool. Setting it to `True` is mathematically equivalent
-      to tf.conj(tf.matrix_transpose(input)).
+      to tf.conj(tf.linalg.transpose(input)).
 
   Returns:
     A transposed batch matrix `Tensor`.
@@ -1700,7 +1815,7 @@ def ones(shape, dtype=dtypes.float32, name=None):
   return output
 
 
-@tf_export("placeholder")
+@tf_export(v1=["placeholder"])
 def placeholder(dtype, shape=None, name=None):
   """Inserts a placeholder for a tensor that will be always fed.
 
@@ -1745,6 +1860,22 @@ def placeholder(dtype, shape=None, name=None):
   return gen_array_ops.placeholder(dtype=dtype, shape=shape, name=name)
 
 
+@tf_export(v1=["placeholder_with_default"])
+def placeholder_with_default(input, shape, name=None):  # pylint: disable=redefined-builtin
+  """A placeholder op that passes through `input` when its output is not fed.
+
+  Args:
+    input: A `Tensor`. The default value to produce when output is not fed.
+    shape: A `tf.TensorShape` or list of `int`s. The (possibly partial) shape
+      of the tensor.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `input`.
+  """
+  return gen_array_ops.placeholder_with_default(input, shape, name)
+
+
 # pylint: disable=redefined-outer-name
 def _normalize_sparse_shape(shape, name):
   """Returns a tuple of (Tensor or None, rank or None)."""
@@ -1756,7 +1887,8 @@ def _normalize_sparse_shape(shape, name):
   return (ops.convert_to_tensor(shape, dtype=dtypes.int64, name=name), rank)
 
 
-@tf_export("sparse_placeholder")
+@tf_export(v1=["sparse.placeholder", "sparse_placeholder"])
+@deprecation.deprecated_endpoints("sparse_placeholder")
 def sparse_placeholder(dtype, shape=None, name=None):
   """Inserts a placeholder for a sparse tensor that will be always fed.
 
@@ -1767,8 +1899,8 @@ def sparse_placeholder(dtype, shape=None, name=None):
   For example:
 
   ```python
-  x = tf.sparse_placeholder(tf.float32)
-  y = tf.sparse_reduce_sum(x)
+  x = tf.sparse.placeholder(tf.float32)
+  y = tf.sparse.reduce_sum(x)
 
   with tf.Session() as sess:
     print(sess.run(y))  # ERROR: will fail because x was not fed.
@@ -2213,7 +2345,7 @@ def required_space_to_batch_paddings(input_shape,
 
     block_shape.get_shape().assert_is_fully_defined()
     block_shape.get_shape().assert_has_rank(1)
-    num_block_dims = block_shape.get_shape()[0].value
+    num_block_dims = block_shape.get_shape().dims[0].value
     if num_block_dims == 0:
       return zeros([0, 2], dtypes.int32), zeros([0, 2], dtypes.int32)
 
@@ -2250,7 +2382,8 @@ def required_space_to_batch_paddings(input_shape,
     return result_paddings, result_crops
 
 
-@tf_export("space_to_batch")
+@tf_export("nn.space_to_batch", v1=["nn.space_to_batch", "space_to_batch"])
+@deprecation.deprecated_endpoints("space_to_batch")
 def space_to_batch(input, paddings, block_size, name=None):  # pylint: disable=redefined-builtin
   result = space_to_batch_nd(
       input,
@@ -2264,7 +2397,8 @@ def space_to_batch(input, paddings, block_size, name=None):  # pylint: disable=r
 space_to_batch.__doc__ = gen_array_ops.space_to_batch.__doc__
 
 
-@tf_export("space_to_depth")
+@tf_export("nn.space_to_depth", v1=["nn.space_to_depth", "space_to_depth"])
+@deprecation.deprecated_endpoints("space_to_depth")
 def space_to_depth(input, block_size, name=None, data_format="NHWC"):  # pylint: disable=redefined-builtin
   return gen_array_ops.space_to_depth(input, block_size, data_format, name=name)
 
@@ -2272,7 +2406,8 @@ def space_to_depth(input, block_size, name=None, data_format="NHWC"):  # pylint:
 space_to_depth.__doc__ = gen_array_ops.space_to_depth.__doc__
 
 
-@tf_export("depth_to_space")
+@tf_export("nn.depth_to_space", v1=["nn.depth_to_space", "depth_to_space"])
+@deprecation.deprecated_endpoints("depth_to_space")
 def depth_to_space(input, block_size, name=None, data_format="NHWC"):  # pylint: disable=redefined-builtin
   return gen_array_ops.depth_to_space(input, block_size, data_format, name=name)
 
@@ -2447,7 +2582,7 @@ def _all_dimensions(x):
         np.arange(x.get_shape().ndims), dtype=dtypes.int32)
   if (isinstance(x, sparse_tensor.SparseTensor) and
       x.dense_shape.get_shape().is_fully_defined()):
-    r = x.dense_shape.get_shape()[0].value  # sparse.dense_shape is 1-D.
+    r = x.dense_shape.get_shape().dims[0].value  # sparse.dense_shape is 1-D.
     return constant_op.constant(np.arange(r), dtype=dtypes.int32)
 
   # Otherwise, we rely on `range` and `rank` to do the right thing at runtime.
@@ -2710,16 +2845,22 @@ def batch_gather(params, indices, name=None):
     params = ops.convert_to_tensor(params, name="params")
     indices_shape = shape(indices)
     params_shape = shape(params)
+
     ndims = indices.shape.ndims
     if ndims is None:
       raise ValueError("batch_gather does not allow indices with unknown "
                        "shape.")
     batch_indices = indices
-    accum_dim_value = 1
+    indices_dtype = indices.dtype.base_dtype
+    accum_dim_value = ones((), dtype=indices_dtype)
+    # Use correct type for offset index computation
+    casted_params_shape = gen_math_ops.cast(params_shape, indices_dtype)
     for dim in range(ndims-1, 0, -1):
-      dim_value = params_shape[dim-1]
-      accum_dim_value *= params_shape[dim]
-      dim_indices = gen_math_ops._range(0, dim_value, 1)
+      dim_value = casted_params_shape[dim-1]
+      accum_dim_value *= casted_params_shape[dim]
+      start = zeros((), dtype=indices_dtype)
+      step = ones((), dtype=indices_dtype)
+      dim_indices = gen_math_ops._range(start, dim_value, step)
       dim_indices *= accum_dim_value
       dim_shape = stack([1] * (dim - 1) + [dim_value] + [1] * (ndims - dim),
                         axis=0)
@@ -2736,7 +2877,7 @@ def batch_gather(params, indices, name=None):
     result = reshape(flat_result, concat([indices_shape, outer_shape], axis=0))
     final_shape = indices.get_shape()[:ndims-1].merge_with(
         params.get_shape()[:ndims -1])
-    final_shape = final_shape.concatenate(indices.get_shape()[ndims-1])
+    final_shape = final_shape.concatenate(indices.get_shape().dims[ndims-1])
     final_shape = final_shape.concatenate(params.get_shape()[ndims:])
     result.set_shape(final_shape)
     return result
@@ -2747,7 +2888,8 @@ def batch_gather(params, indices, name=None):
 @tf_export("quantize_v2")
 @deprecation.deprecated(
     "2017-10-25",
-    "`tf.quantize_v2` is deprecated, please use `tf.quantize` instead.")
+    "`tf.quantize_v2` is deprecated, please use `tf.quantization.quantize` "
+    "instead.")  # pylint: disable=missing-docstring
 def quantize_v2(input,  # pylint: disable=redefined-builtin
                 min_range,
                 max_range,
@@ -2769,7 +2911,8 @@ quantize_v2.__doc__ = """Please use `tf.quantize` instead."""
 
 # We want to expose tf.quantize instead of tf.quantize_v2; we can deprecate
 # tf.quantize_v2 in next version of TensorFlow.
-@tf_export("quantize")
+@tf_export("quantization.quantize", v1=["quantization.quantize", "quantize"])
+@deprecation.deprecated_endpoints("quantize")
 def quantize(input,  # pylint: disable=redefined-builtin
              min_range,
              max_range,

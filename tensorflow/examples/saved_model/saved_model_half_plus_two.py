@@ -153,11 +153,14 @@ def _generate_saved_model_for_half_plus_two(export_dir,
         tf_example = tf.parse_example(serialized_tf_example, feature_configs)
       # Use tf.identity() to assign name
       x = tf.identity(tf_example["x"], name="x")
-      y = tf.add(tf.multiply(a, x), b, name="y")
-      y2 = tf.add(tf.multiply(a, x), c, name="y2")
+      y = tf.add(tf.multiply(a, x), b)
+      y = tf.identity(y, name="y")
+      y2 = tf.add(tf.multiply(a, x), c)
+      y2 = tf.identity(y2, name="y2")
 
       x2 = tf.identity(tf_example["x2"], name="x2")
-      y3 = tf.add(tf.multiply(a, x2), c, name="y3")
+      y3 = tf.add(tf.multiply(a, x2), c)
+      y3 = tf.identity(y3, name="y3")
 
     # Create an assets file that can be saved and restored as part of the
     # SavedModel.
@@ -215,7 +218,7 @@ def _generate_saved_model_for_half_plus_two(export_dir,
           sess, [tf.saved_model.tag_constants.SERVING],
           signature_def_map=signature_def_map,
           assets_collection=tf.get_collection(tf.GraphKeys.ASSET_FILEPATHS),
-          legacy_init_op=tf.group(assign_filename_op))
+          main_op=tf.group(assign_filename_op))
   builder.save(as_text)
 
 

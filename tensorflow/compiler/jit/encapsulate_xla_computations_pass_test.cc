@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
-#include "tensorflow/compiler/tf2xla/cc/ops/xla_jit_op.h"
+#include "tensorflow/compiler/tf2xla/cc/ops/xla_jit_ops.h"
 #include "tensorflow/compiler/tf2xla/test_util.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -55,6 +55,7 @@ static std::unique_ptr<Graph> MakeOuterGraph(
           .Input(u.node()->name(), 0, DT_RESOURCE)
           .Input(v.node()->name(), 0, DT_RESOURCE)
           .Input(w.node()->name(), 0, DT_RESOURCE)
+          .Device("/gpu:0")
           .Attr(EncapsulateXlaComputationsPass::kXlaClusterAttr, "launch0")
           .Attr("_variable_start_index", 4)
           .Finalize(&def));
@@ -107,10 +108,11 @@ static std::unique_ptr<Graph> MakeBodyGraph() {
 
   auto add_attrs = [](Node* node) {
     node->AddAttr(EncapsulateXlaComputationsPass::kXlaClusterAttr, "launch0");
+    node->set_requested_device("/gpu:0");
   };
 
   auto b_identity = ops::Identity(scope.WithOpName("B_identity"), arg1);
-
+  add_attrs(b_identity.node());
   auto read_u = ops::ReadVariableOp(scope.WithOpName("ReadU"), arg4, DT_FLOAT);
   add_attrs(read_u.node());
   auto read_v = ops::ReadVariableOp(scope.WithOpName("ReadV"), arg5, DT_FLOAT);
@@ -215,6 +217,7 @@ TEST(EncapsulateXlaComputations, Encapsulate) {
 
     auto add_attrs = [](Node* node) {
       node->AddAttr(EncapsulateXlaComputationsPass::kXlaClusterAttr, "launch0");
+      node->set_requested_device("/gpu:0");
     };
 
     auto b_identity = ops::Identity(scope.WithOpName("B_identity"), b);
@@ -253,7 +256,7 @@ TEST(EncapsulateXlaComputations, Encapsulate) {
 
   TF_ASSERT_OK(EncapsulateXlaComputationsPass::Encapsulate(&graph, &flib_def));
 
-  std::unordered_map<string, Node*> index = BuildNodeIndex(*graph);
+  std::unordered_map<string, Node*> index = graph->BuildNodeNameIndex();
   string function = index.at("launch0")->type_string();
 
   // Tests the outer graph is as expected.
@@ -288,7 +291,8 @@ TEST(EncapsulateXlaComputations, Encapsulate) {
   // function. Encapsulation should be deterministic to avoid recompilation.
   TF_ASSERT_OK(
       EncapsulateXlaComputationsPass::Encapsulate(&graph_copy, &flib_def));
-  std::unordered_map<string, Node*> index_copy = BuildNodeIndex(*graph_copy);
+  std::unordered_map<string, Node*> index_copy =
+      graph_copy->BuildNodeNameIndex();
   string function_copy = index_copy.at("launch0")->type_string();
   EXPECT_EQ(function, function_copy);
 }
@@ -317,8 +321,8 @@ TEST(EncapsulateXlaComputations, BuildXlaLaunchOp) {
   NameAttrList function;
   function.set_name("launch0");
   auto launch = ops::XlaLaunch(
-      scope.WithOpName("launch0"), std::initializer_list<Input>{},
-      std::initializer_list<Input>{a, b, c, d},
+      scope.WithOpName("launch0").WithDevice("/gpu:0"),
+      std::initializer_list<Input>{}, std::initializer_list<Input>{a, b, c, d},
       std::initializer_list<Input>{u, v, w},
       DataTypeVector{DT_FLOAT, DT_INT32, DT_FLOAT, DT_FLOAT}, function);
 

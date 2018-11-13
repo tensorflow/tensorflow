@@ -34,7 +34,7 @@ tf_export('foo', 'bar.foo')(foo)
 Exporting a constant
 ```python
 foo = 1
-tf_export("consts.foo").export_constant(__name__, 'foo')
+tf_export('consts.foo').export_constant(__name__, 'foo')
 ```
 """
 from __future__ import absolute_import
@@ -217,5 +217,4 @@ class api_export(object):  # pylint: disable=invalid-name
 
 
 tf_export = functools.partial(api_export, api_name=TENSORFLOW_API_NAME)
-estimator_export = functools.partial(
-    api_export, api_name=ESTIMATOR_API_NAME, allow_multiple_exports=True)
+estimator_export = functools.partial(api_export, api_name=ESTIMATOR_API_NAME)

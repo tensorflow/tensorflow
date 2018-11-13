@@ -19,6 +19,8 @@ from __future__ import print_function
 
 import abc
 
+import six
+
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -26,12 +28,13 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
 
 
+@six.add_metaclass(abc.ABCMeta)
 class Optional(object):
   """Wraps a nested structure of tensors that may/may not be present at runtime.
 
   An `Optional` can represent the result of an operation that may fail as a
   value, rather than raising an exception and halting execution. For example,
-  `tf.contrib.data.get_next_as_optional` returns an `Optional` that either
+  `tf.data.experimental.get_next_as_optional` returns an `Optional` that either
   contains the next value from a `tf.data.Iterator` if one exists, or a "none"
   value that indicates the end of the sequence has been reached.
   """
@@ -111,7 +114,7 @@ class Optional(object):
 
 
 class _OptionalImpl(Optional):
-  """Concrete implementation of `tf.contrib.data.Optional`.
+  """Concrete implementation of `tf.data.experimental.Optional`.
 
   NOTE(mrry): This implementation is kept private, to avoid defining
   `Optional.__init__()` in the public API.
@@ -169,12 +172,30 @@ class OptionalStructure(structure.Structure):
         not flat_value[0].shape.is_compatible_with(tensor_shape.scalar())):
       raise ValueError(
           "OptionalStructure corresponds to a single tf.variant scalar.")
+    return self._from_compatible_tensor_list(flat_value)
+
+  def _from_compatible_tensor_list(self, flat_value):
     # pylint: disable=protected-access
     return _OptionalImpl(flat_value[0], self._value_structure)
 
   @staticmethod
   def from_value(value):
     return OptionalStructure(value.value_structure)
+
+  def _to_legacy_output_types(self):
+    raise NotImplementedError("The `output_types` property is not supported on "
+                              "structured objects containing an `Optional`. "
+                              "Use the corresponding `structure` property.")
+
+  def _to_legacy_output_shapes(self):
+    raise NotImplementedError("The `output_shapes` property is not supported on"
+                              " structured objects containing an `Optional`. "
+                              "Use the corresponding `structure` property.")
+
+  def _to_legacy_output_classes(self):
+    raise NotImplementedError("The `output_classes` property is not supported "
+                              "on structured objects containing an `Optional`. "
+                              "Use the corresponding `structure` property.")
 
 
 # pylint: disable=protected-access

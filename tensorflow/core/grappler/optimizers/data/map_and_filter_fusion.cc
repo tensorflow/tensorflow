@@ -37,23 +37,29 @@ NodeDef MakeFusedNode(const NodeDef& map_node,
                       const FunctionDef& fused_function,
                       MutableGraphView* graph) {
   NodeDef fused_node;
-  graph_utils::SetUniqueGraphNodeName("fused_map", graph->GetGraph(),
-                                      &fused_node);
-  fused_node.set_op("MapDataset");
-  fused_node.add_input(map_node.input(0));
+  graph_utils::SetUniqueGraphNodeName("fused_map", graph->graph(), &fused_node);
+  fused_node.set_op(map_node.op());
+
+  // Copy over inputs.
+  for (int i = 0; i < map_node.input_size(); ++i) {
+    fused_node.add_input(map_node.input(i));
+  }
 
   auto attr = map_node.attr().at("f");
   attr.mutable_func()->set_name(fused_function.signature().name());
   (*fused_node.mutable_attr())["f"] = std::move(attr);
 
-  graph_utils::CopyAttribute("Targuments", map_node, &fused_node);
-
-  for (auto key : {"output_shapes", "output_types"})
+  // Required attrs.
+  for (auto key : {"Targuments", "output_shapes", "output_types"}) {
     graph_utils::CopyAttribute(key, map_node, &fused_node);
+  }
 
-  if (const auto* attr =
-          gtl::FindOrNull(map_node.attr(), "use_inter_op_parallelism"))
-    (*fused_node.mutable_attr())["use_inter_op_parallelism"] = *attr;
+  // Optional attrs.
+  for (auto key : {"use_inter_op_parallelism", "sloppy"}) {
+    if (const auto* attr = gtl::FindOrNull(map_node.attr(), key)) {
+      graph_utils::CopyAttribute(key, map_node, &fused_node);
+    }
+  }
 
   // Add the predicate output attributes.
   (*fused_node.mutable_attr())["output_types"]
@@ -72,8 +78,8 @@ NodeDef MakeFilterByLastComponentNode(const NodeDef& fused_map_node,
                                       const NodeDef& filter_node,
                                       MutableGraphView* graph) {
   NodeDef filter_by_component;
-  graph_utils::SetUniqueGraphNodeName("FilterByLastComponent",
-                                      graph->GetGraph(), &filter_by_component);
+  graph_utils::SetUniqueGraphNodeName("FilterByLastComponent", graph->graph(),
+                                      &filter_by_component);
   filter_by_component.set_op("FilterByLastComponentDataset");
   filter_by_component.add_input(fused_map_node.name());
 
@@ -98,7 +104,9 @@ Status MapAndFilterFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item.graph.library());
   auto get_map_node = [](const NodeDef& node) -> const NodeDef* {
-    if (node.op() == "MapDataset") return &node;
+    if (node.op() == "MapDataset" || node.op() == "ParallelMapDataset") {
+      return &node;
+    }
     return nullptr;
   };
 
@@ -146,7 +154,7 @@ Status MapAndFilterFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     const auto* filter_by_component = graph.AddNode(
         MakeFilterByLastComponentNode(*fused_maps, *filter_node, &graph));
 
-    graph.ReplaceInput(*filter_node, *filter_by_component);
+    graph.UpdateFanouts(filter_node->name(), filter_by_component->name());
     TF_RETURN_IF_ERROR(function_library.AddFunctionDef(*fused_function));
 
     // TODO(prazek): we could also remove functions from library if they are not

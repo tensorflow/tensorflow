@@ -145,6 +145,7 @@ class BatchNormalization(Layer):
                **kwargs):
     super(BatchNormalization, self).__init__(
         name=name, trainable=trainable, **kwargs)
+    self._can_use_graph_functions = True
     if isinstance(axis, list):
       self.axis = axis[:]
     else:
@@ -251,7 +252,7 @@ class BatchNormalization(Layer):
     else:
       param_dtype = self.dtype or dtypes.float32
 
-    axis_to_dim = {x: input_shape[x].value for x in self.axis}
+    axis_to_dim = {x: input_shape.dims[x].value for x in self.axis}
     for x in axis_to_dim:
       if axis_to_dim[x] is None:
         raise ValueError('Input has undefined `axis` dimension. Input shape: ',
@@ -492,7 +493,6 @@ class BatchNormalization(Layer):
     return (r, d, new_mean, new_variance)
 
   def call(self, inputs, training=None):
-    original_training_value = training
     if training is None:
       training = K.learning_phase()
 
@@ -516,8 +516,6 @@ class BatchNormalization(Layer):
         # Currently never reaches here since fused_batch_norm does not support
         # virtual batching
         outputs = undo_virtual_batching(outputs)
-      if not context.executing_eagerly() and original_training_value is None:
-        outputs._uses_learning_phase = True  # pylint: disable=protected-access
       return outputs
 
     # Compute the axes along which to reduce the mean / variance
@@ -530,7 +528,7 @@ class BatchNormalization(Layer):
     # Broadcasting only necessary for single-axis batch norm where the axis is
     # not the last dimension
     broadcast_shape = [1] * ndims
-    broadcast_shape[self.axis[0]] = input_shape[self.axis[0]].value
+    broadcast_shape[self.axis[0]] = input_shape.dims[self.axis[0]].value
     def _broadcast(v):
       if (v is not None and
           len(v.get_shape()) != ndims and
@@ -634,8 +632,6 @@ class BatchNormalization(Layer):
 
     if self.virtual_batch_size is not None:
       outputs = undo_virtual_batching(outputs)
-    if not context.executing_eagerly() and original_training_value is None:
-      outputs._uses_learning_phase = True  # pylint: disable=protected-access
     return outputs
 
   def compute_output_shape(self, input_shape):

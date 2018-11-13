@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -167,7 +167,7 @@ void HloValue::SetPositionsAndComputeUses(
   positions_.insert(positions_.end(), positions.begin(), positions.end());
 
   // Gather the computation roots at which this value appears.
-  tensorflow::gtl::FlatSet<HloInstruction*> root_positions;
+  absl::flat_hash_set<HloInstruction*> root_positions;
   for (const HloPosition& position : positions_) {
     if (position.instruction ==
         position.instruction->parent()->root_instruction()) {

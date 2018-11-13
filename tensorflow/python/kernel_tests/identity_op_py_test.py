@@ -61,7 +61,7 @@ class IdentityOpTest(test.TestCase):
   def testRefIdentityShape(self):
     with self.cached_session():
       shape = [2, 3]
-      tensor = variables.Variable(
+      tensor = variables.VariableV1(
           constant_op.constant(
               [[1, 2, 3], [6, 5, 4]], dtype=dtypes.int32))
       self.assertEquals(shape, tensor.get_shape())

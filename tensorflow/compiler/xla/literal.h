@@ -979,9 +979,8 @@ inline void MutableLiteralBase::PopulateR1(absl::Span<const NativeT> values) {
   CHECK_EQ(ShapeUtil::ElementsIn(shape()), values.size());
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
-  for (int64 i = 0; i < values.size(); ++i) {
-    Set({i}, values[i]);
-  }
+  auto data_span = data<NativeT>();
+  std::copy(values.begin(), values.end(), data_span.begin());
 }
 
 template <typename NativeT>

@@ -20,19 +20,27 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import threading
 
 import numpy as np
 
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager.backprop import GradientTape
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks as cbks
+from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+
+
+# A lock for assigning polymorphic functions to models in a thread-safe way
+_graph_function_building_lock = threading.Lock()
 
 
 def _eager_loss_fn(outputs, targets, loss_fn, output_name):
@@ -41,7 +49,12 @@ def _eager_loss_fn(outputs, targets, loss_fn, output_name):
   return loss
 
 
-def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
+def _eager_metrics_fn(model,
+                      outputs,
+                      targets,
+                      sample_weights=None,
+                      masks=None,
+                      return_stateful_result=True):
   """Calculates the metrics for each output of the given model.
 
   Arguments:
@@ -50,6 +63,8 @@ def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
       targets: The predictions or targets of the given model.
       sample_weights: Optional list of sample weights for each output.
       masks: Optional list of masks for each output.
+      return_stateful_result: Boolean, indicates whether the stateful
+        (aggregated)/stateless metric result should be returned.
 
   Returns:
       Returns the metric results for each output of the model.
@@ -58,11 +73,20 @@ def _eager_metrics_fn(model, outputs, targets, sample_weights=None, masks=None):
   targets = generic_utils.to_list(targets)
   # TODO(psv): Consider supporting skip target indices in eager mode?
   metric_results = model._handle_metrics(
-      outputs, targets=targets, sample_weights=sample_weights, masks=masks)
+      outputs,
+      targets=targets,
+      sample_weights=sample_weights,
+      masks=masks,
+      return_stateful_result=return_stateful_result)
   return [backend.mean(t) for t in metric_results]
 
 
-def _model_loss(model, inputs, targets, sample_weights=None, training=False):
+def _model_loss(model,
+                inputs,
+                targets,
+                output_loss_metrics=None,
+                sample_weights=None,
+                training=False):
   """Calculates the loss for a given model.
 
   Arguments:
@@ -70,6 +94,8 @@ def _model_loss(model, inputs, targets, sample_weights=None, training=False):
       inputs: Either a dictionary of inputs to the model or a list of input
         arrays.
       targets: List of target arrays.
+      output_loss_metrics: List of metrics that are used to aggregated output
+        loss values.
       sample_weights: Optional list of sample weight arrays.
       training: Whether the model should be run in inference or training mode.
 
@@ -99,6 +125,7 @@ def _model_loss(model, inputs, targets, sample_weights=None, training=False):
   targets = generic_utils.to_list(targets)
 
   loss_metrics = []
+  aggregated_loss_metrics = []
   with backend.name_scope('loss'):
     for i, loss_fn in enumerate(model.loss_functions):
       if sample_weights:
@@ -118,6 +145,16 @@ def _model_loss(model, inputs, targets, sample_weights=None, training=False):
       if len(model.outputs) > 1:
         loss_metrics.append(backend.mean(output_loss))
 
+        if output_loss_metrics is not None:
+          # Keep track of the stateful loss result.
+          aggregated_loss_metrics.append(
+              training_utils.call_metric_function(
+                  output_loss_metrics[i],
+                  targets[i],
+                  outs[i],
+                  weights=weights,
+                  mask=mask))
+
       loss_weight = model.loss_weights_list[i]
       if total_loss is None:
         total_loss = loss_weight * output_loss
@@ -126,15 +163,62 @@ def _model_loss(model, inputs, targets, sample_weights=None, training=False):
 
     total_loss = backend.mean(total_loss)
     # Add regularization losses
-    custom_losses = []
-    for layer in model.layers:
-      if layer.losses:
-        custom_losses += layer.losses
-
+    custom_losses = model.losses
     if custom_losses:
-      total_loss += sum(custom_losses)
+      total_loss += math_ops.add_n(custom_losses)
+    model._clear_losses()
 
-  return outs, total_loss, loss_metrics, masks
+  return outs, total_loss, loss_metrics, aggregated_loss_metrics, masks
+
+
+def _maybe_build_graph_functions(model):
+  """Constructs polymorphic functions to use for fit, evaluate and predict."""
+  # We lock this function to ensure thread-safety in case users are
+  # hypothetically trying to call '.predict' on a model in multiple threads
+  # at once when the graph functions were never previously built.
+  with _graph_function_building_lock:
+    if not model._built_graph_functions:
+      model._eager_process_single_batch_graph_function = eager_function.defun(
+          _process_single_batch
+      )
+      model._eager_model_loss_graph_function = eager_function.defun(_model_loss)
+      model._eager_call_graph_function = eager_function.defun(model.call)
+      model._built_graph_functions = True
+
+
+def _maybe_graph_function_model_loss(model,
+                                     inputs,
+                                     targets,
+                                     output_loss_metrics=None,
+                                     sample_weights=None,
+                                     training=False):
+  """Compute model loss, using defun if the model supports it."""
+  if model._can_use_graph_functions:
+    _maybe_build_graph_functions(model)
+    return model._eager_model_loss_graph_function(
+        model,
+        inputs,
+        targets,
+        output_loss_metrics=output_loss_metrics,
+        sample_weights=sample_weights,
+        training=training)
+  else:
+    return _model_loss(
+        model,
+        inputs,
+        targets,
+        output_loss_metrics=output_loss_metrics,
+        sample_weights=sample_weights,
+        training=training)
+
+
+def _maybe_graph_function_model_call(model, *args, **kwargs):
+  """Compute model loss, using defun if the model supports it."""
+  if model._can_use_graph_functions:
+    _maybe_build_graph_functions(model)
+    return model._eager_call_graph_function(*args, **kwargs)
+  else:
+    return model.call(*args, **kwargs)
 
 
 def iterator_fit_loop(model,
@@ -150,7 +234,8 @@ def iterator_fit_loop(model,
                       callbacks=None,
                       validation_steps=None,
                       do_validation=False,
-                      batch_size=None):
+                      batch_size=None,
+                      output_loss_metrics=None):
   """Fit function for eager execution when input is given as dataset iterator.
 
   Updates the given epoch logs.
@@ -176,6 +261,8 @@ def iterator_fit_loop(model,
       do_validation: Boolean value indicating whether we should do validation.
       batch_size: int, val_inputs and val_targets will be evaled batch by
         batch with size batch_size if they are array.
+      output_loss_metrics: List of metrics that are used to aggregated output
+        loss values.
 
   Raises:
       ValueError: In case of mismatch between given number of inputs and
@@ -230,7 +317,7 @@ def iterator_fit_loop(model,
       for cbk in callbacks:
         if (isinstance(cbk, cbks.BaseLogger) or
             isinstance(cbk, cbks.ProgbarLogger)):
-          cbk.stateful_metrics = model.stateful_metric_names
+          cbk.stateful_metrics = model.metrics_names[1:]  # Exclude `loss`
 
     if step_index == 0 and not callbacks.params['metrics']:
       callback_metrics = copy.copy(model.metrics_names)
@@ -247,20 +334,26 @@ def iterator_fit_loop(model,
       })
 
     # Train model.
-    outs, loss, loss_metrics, masks = _process_single_batch(
-        model, x, y, sample_weights=sample_weights, training=True)
+    outs, loss, _, aggregated_loss_metrics, masks = \
+      _maybe_graph_function_process_single_batch(
+          model,
+          x,
+          y,
+          output_loss_metrics=output_loss_metrics,
+          sample_weights=sample_weights,
+          training=True)
     outs = generic_utils.to_list(outs)
 
     # Calculate metrics.
     for l, o in zip(model.metrics_names, outs):
       batch_logs[l] = o
-    # Required for eager execution
     metrics_results = _eager_metrics_fn(
         model, outs, y, sample_weights=sample_weights, masks=masks)
     batch_logs['loss'] = tensor_util.constant_value(backend.mean(loss))
 
-    for k, v in zip(model.metrics_names,
-                    [backend.mean(loss)] + loss_metrics + metrics_results):
+    for k, v in zip(
+        model.metrics_names,
+        [backend.mean(loss)] + aggregated_loss_metrics + metrics_results):
       batch_logs[k] = tensor_util.constant_value(v)
     callbacks.on_batch_end(step_index, batch_logs)
     if callbacks.model.stop_training:
@@ -310,6 +403,15 @@ def iterator_test_loop(model, inputs, steps, verbose=0):
     raise ValueError('Please provide either inputs and targets'
                      'or inputs, targets, and sample_weights')
   outs = []
+
+  # Create metric wrapper for the losses.
+  output_loss_metrics = []
+  for i in range(len(model.outputs)):
+    loss_fn = model.loss_functions[i]
+    mean_wrapped_loss = metrics_module.MeanMetricWrapper(
+        loss_fn, name=loss_fn.__name__)
+    output_loss_metrics.append(mean_wrapped_loss)
+
   num_samples = 0
   if verbose == 1:
     progbar = generic_utils.Progbar(target=steps)
@@ -350,21 +452,24 @@ def iterator_test_loop(model, inputs, steps, verbose=0):
       if hasattr(model, 'metrics'):
         for m in model.stateful_metric_functions:
           m.reset_states()
-        stateful_metric_indices = [
-            i for i, name in enumerate(model.metrics_names)
-            if str(name) in model.stateful_metric_names
-        ]
-      else:
-        stateful_metric_indices = []
+      for m in output_loss_metrics:
+        m.reset_states()
 
     # Calculate model output, loss values.
-    loss_outs, loss, loss_metrics, masks = _model_loss(
-        model, x, y, sample_weights=sample_weights, training=False)
+    loss_outs, loss, _, aggregated_loss_metrics, masks = \
+      _maybe_graph_function_model_loss(
+          model,
+          x,
+          y,
+          output_loss_metrics=output_loss_metrics,
+          sample_weights=sample_weights,
+          training=False)
     metrics_results = _eager_metrics_fn(
         model, loss_outs, y, sample_weights=sample_weights, masks=masks)
     batch_outs = []
-    for _, v in zip(model.metrics_names,
-                    [backend.mean(loss)] + loss_metrics + metrics_results):
+    for _, v in zip(
+        model.metrics_names,
+        [backend.mean(loss)] + aggregated_loss_metrics + metrics_results):
       batch_outs.append(tensor_util.constant_value(v))
 
     # Get current step size.
@@ -381,20 +486,15 @@ def iterator_test_loop(model, inputs, steps, verbose=0):
     if step_index == 0:
       for _ in enumerate(batch_outs):
         outs.append(0.)
-    for i, batch_out in enumerate(batch_outs):
-      if i in stateful_metric_indices:
-        outs[i] = batch_out
-      else:
-        outs[i] += batch_out * step_size
+    outs[0] += batch_outs[0] * step_size  # index 0 = 'loss'
+    outs[1:] = batch_outs[1:]
 
     # Calculate sample size.
     num_samples += step_size
     if verbose == 1:
       progbar.update(step_index + 1)
 
-  for i in range(len(outs)):
-    if i not in stateful_metric_indices:
-      outs[i] /= num_samples
+  outs[0] /= num_samples  # index 0 = 'loss'
   if len(outs) == 1:
     return outs[0]
   return outs
@@ -429,6 +529,7 @@ def iterator_predict_loop(model, inputs, steps, verbose=0):
   outs = []
   if verbose == 1:
     progbar = generic_utils.Progbar(target=steps)
+
   for step_index in range(steps):
     # Get data from the iterator.
     try:
@@ -452,9 +553,9 @@ def iterator_predict_loop(model, inputs, steps, verbose=0):
       x = x[0]
 
     if model._expects_training_arg:
-      batch_outs = model.call(x, training=False)
+      batch_outs = _maybe_graph_function_model_call(model, x, training=False)
     else:
-      batch_outs = model.call(x)
+      batch_outs = _maybe_graph_function_model_call(model, x)
     if not isinstance(batch_outs, list):
       batch_outs = [batch_outs]
 
@@ -479,6 +580,7 @@ def iterator_predict_loop(model, inputs, steps, verbose=0):
 def _process_single_batch(model,
                           inputs,
                           targets,
+                          output_loss_metrics=None,
                           sample_weights=None,
                           training=False):
   """Calculate the loss and gradient for one input batch.
@@ -489,6 +591,8 @@ def _process_single_batch(model,
       model: Model whose loss has to be calculated.
       inputs: List of input arrays.
       targets: List of target arrays.
+      output_loss_metrics: List of metrics that are used to aggregated output
+        loss values.
       sample_weights: Optional list of sample weight arrays.
       training: The boolean represents if the weights of the model are updated.
               'fit' methods will set this to True while 'evaluate' methods will
@@ -503,12 +607,14 @@ def _process_single_batch(model,
   """
   with backend.learning_phase_scope(1 if training else 0):
     with GradientTape() as tape:
-      outs, loss, loss_metrics, masks = _model_loss(
-          model,
-          inputs,
-          targets,
-          sample_weights=sample_weights,
-          training=training)
+      outs, loss, loss_metrics, aggregated_loss_metrics, masks\
+        = _model_loss(
+            model,
+            inputs,
+            targets,
+            output_loss_metrics=output_loss_metrics,
+            sample_weights=sample_weights,
+            training=training)
       if loss is None:
         raise ValueError('The model cannot be run '
                          'because it has no loss to optimize.')
@@ -521,7 +627,33 @@ def _process_single_batch(model,
         grads = tape.gradient(loss, model._collected_trainable_weights)
         model.optimizer.apply_gradients(zip(grads,
                                             model._collected_trainable_weights))
-    return outs, loss, loss_metrics, masks
+    return outs, loss, loss_metrics, aggregated_loss_metrics, masks
+
+
+def _maybe_graph_function_process_single_batch(model,
+                                               inputs,
+                                               targets,
+                                               output_loss_metrics=None,
+                                               sample_weights=None,
+                                               training=False):
+  """Process a single batch, using defun if the model supports it."""
+  if model._can_use_graph_functions:
+    _maybe_build_graph_functions(model)
+    return model._eager_process_single_batch_graph_function(
+        model,
+        inputs,
+        targets,
+        output_loss_metrics=output_loss_metrics,
+        sample_weights=sample_weights,
+        training=training)
+  else:
+    return _process_single_batch(
+        model,
+        inputs,
+        targets,
+        output_loss_metrics=output_loss_metrics,
+        sample_weights=sample_weights,
+        training=training)
 
 
 def train_on_batch(model, inputs, targets, sample_weights=None):
@@ -552,12 +684,18 @@ def train_on_batch(model, inputs, targets, sample_weights=None):
         if val is not None else None for val in sample_weights
     ]
 
-  outs, loss, loss_metrics, masks = _process_single_batch(
-      model, inputs, targets, sample_weights=sample_weights, training=True)
+  outs, loss, loss_metrics, _, masks = \
+    _maybe_graph_function_process_single_batch(
+        model, inputs, targets, sample_weights=sample_weights, training=True)
   if not isinstance(outs, list):
     outs = [outs]
   metrics_results = _eager_metrics_fn(
-      model, outs, targets, sample_weights=sample_weights, masks=masks)
+      model,
+      outs,
+      targets,
+      sample_weights=sample_weights,
+      masks=masks,
+      return_stateful_result=False)
   loss = generic_utils.to_list(loss)
 
   return [
@@ -593,12 +731,17 @@ def test_on_batch(model, inputs, targets, sample_weights=None):
         ops.convert_to_tensor(val, dtype=backend.floatx())
         if val is not None else None for val in sample_weights
     ]
-  outs, loss, loss_metrics, masks = _model_loss(
+  outs, loss, loss_metrics, _, masks = _maybe_graph_function_model_loss(
       model, inputs, targets, sample_weights=sample_weights, training=False)
   if not isinstance(outs, list):
     outs = [outs]
   metrics_results = _eager_metrics_fn(
-      model, outs, targets, sample_weights=sample_weights, masks=masks)
+      model,
+      outs,
+      targets,
+      sample_weights=sample_weights,
+      masks=masks,
+      return_stateful_result=False)
   loss = generic_utils.to_list(loss)
 
   return [
@@ -680,12 +823,24 @@ def fit_loop(model,
         validation_steps=validation_steps,
         verbose=verbose)
 
+    # Create metric wrapper for the losses.
+    output_loss_metrics = []
+    for i in range(len(model.outputs)):
+      loss_fn = model.loss_functions[i]
+      mean_wrapped_loss = metrics_module.MeanMetricWrapper(
+          loss_fn, name=loss_fn.__name__)
+      output_loss_metrics.append(mean_wrapped_loss)
+
     callbacks.on_train_begin()
     for epoch in range(initial_epoch, epochs):
       if model._is_compiled:  # Model may not be compiled the first time.
         # Reset stateful metrics
         for m in model.stateful_metric_functions:
           m.reset_states()
+
+      for m in output_loss_metrics:
+        m.reset_states()
+
       callbacks.on_epoch_begin(epoch)
       epoch_logs = {}
       iterator_fit_loop(
@@ -702,7 +857,8 @@ def fit_loop(model,
           callbacks=callbacks,
           validation_steps=validation_steps,
           do_validation=do_validation,
-          batch_size=batch_size)
+          batch_size=batch_size,
+          output_loss_metrics=output_loss_metrics)
       callbacks.on_epoch_end(epoch, epoch_logs)
       if callbacks.model.stop_training:
         break
@@ -739,7 +895,8 @@ def test_loop(model, inputs, targets,
       y=targets,
       sample_weights=sample_weights,
       batch_size=batch_size,
-      steps_per_epoch=steps)
+      steps_per_epoch=steps,
+      is_validation=True)
   with backend.learning_phase_scope(0):
     return iterator_test_loop(model, inputs, steps, verbose=verbose)
 

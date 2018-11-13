@@ -24,14 +24,16 @@ from __future__ import print_function
 # TODO(mdan): Bring only the relevant symbols to the top level.
 from tensorflow.python.autograph import operators
 from tensorflow.python.autograph import utils
+from tensorflow.python.autograph.core.converter import ConversionOptions
+from tensorflow.python.autograph.core.converter import Feature
+from tensorflow.python.autograph.core.converter import Verbosity
 from tensorflow.python.autograph.core.errors import GraphConstructionError
-from tensorflow.python.autograph.core.errors import TfRuntimeError
 from tensorflow.python.autograph.core.errors import improved_errors
-from tensorflow.python.autograph.impl.api import ConversionOptions
-from tensorflow.python.autograph.impl.api import RunMode
+from tensorflow.python.autograph.core.errors import TfRuntimeError
 from tensorflow.python.autograph.impl.api import convert
 from tensorflow.python.autograph.impl.api import converted_call
 from tensorflow.python.autograph.impl.api import do_not_convert
+from tensorflow.python.autograph.impl.api import RunMode
 from tensorflow.python.autograph.impl.api import to_code
 from tensorflow.python.autograph.impl.api import to_graph
 from tensorflow.python.autograph.lang.directives import set_element_type
@@ -44,6 +46,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 _allowed_symbols = [
     # Main API
     'ConversionOptions',
+    'Feature',
     'RunMode',
     'convert',
     'converted_call',
@@ -56,6 +59,7 @@ _allowed_symbols = [
     'improved_errors',
     'GraphConstructionError',
     'TfRuntimeError',
+    'Verbosity',
     # Python language "extensions"
     'set_element_type',
     'set_loop_options',

@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/graph_view.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/cc/ops/parsing_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -26,7 +28,7 @@ namespace {
 
 class GraphViewTest : public ::testing::Test {};
 
-TEST_F(GraphViewTest, OpOutputPortIdToArgIdShapeN) {
+TEST_F(GraphViewTest, OpPortIdToArgIdShapeN) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
   ops::ShapeN b(s.WithOpName("b"), {a, a, a});
@@ -45,9 +47,16 @@ TEST_F(GraphViewTest, OpOutputPortIdToArgIdShapeN) {
   EXPECT_TRUE(
       OpRegistry::Global()->LookUpOpDef(b_node_def.op(), &b_op_def).ok());
 
-  EXPECT_EQ(0, OpOutputPortIdToArgId(b_node_def, *a_op_def, 0));
-  EXPECT_EQ(-1, OpOutputPortIdToArgId(b_node_def, *a_op_def, 1));
+  // Const has 0 inputs, 1 output.
+  EXPECT_EQ(-1, OpInputPortIdToArgId(a_node_def, *a_op_def, 0));
+  EXPECT_EQ(0, OpOutputPortIdToArgId(a_node_def, *a_op_def, 0));
+  EXPECT_EQ(-1, OpOutputPortIdToArgId(a_node_def, *a_op_def, 1));
 
+  // ShapeN has N=3 inputs and outputs.
+  EXPECT_EQ(0, OpInputPortIdToArgId(b_node_def, *b_op_def, 0));
+  EXPECT_EQ(0, OpInputPortIdToArgId(b_node_def, *b_op_def, 1));
+  EXPECT_EQ(0, OpInputPortIdToArgId(b_node_def, *b_op_def, 2));
+  EXPECT_EQ(-1, OpInputPortIdToArgId(b_node_def, *b_op_def, 3));
   EXPECT_EQ(0, OpOutputPortIdToArgId(b_node_def, *b_op_def, 0));
   EXPECT_EQ(0, OpOutputPortIdToArgId(b_node_def, *b_op_def, 1));
   EXPECT_EQ(0, OpOutputPortIdToArgId(b_node_def, *b_op_def, 2));
@@ -55,7 +64,7 @@ TEST_F(GraphViewTest, OpOutputPortIdToArgIdShapeN) {
   EXPECT_EQ(-1, OpOutputPortIdToArgId(b_node_def, *b_op_def, 4));
 }
 
-TEST_F(GraphViewTest, OpOutputPortIdToArgIdSparseSplit) {
+TEST_F(GraphViewTest, OpPortIdToArgIdSparseSplit) {
   for (int num_splits : {1, 2}) {
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
     Output a = ops::Const<int64>(s.WithOpName("a"), 1, {10, 10});
@@ -69,6 +78,13 @@ TEST_F(GraphViewTest, OpOutputPortIdToArgIdSparseSplit) {
     const OpDef* b_op_def = nullptr;
     EXPECT_TRUE(
         OpRegistry::Global()->LookUpOpDef(b_node_def.op(), &b_op_def).ok());
+
+    // We have 4 inputs.
+    EXPECT_EQ(0, OpInputPortIdToArgId(b_node_def, *b_op_def, 0));
+    EXPECT_EQ(1, OpInputPortIdToArgId(b_node_def, *b_op_def, 1));
+    EXPECT_EQ(2, OpInputPortIdToArgId(b_node_def, *b_op_def, 2));
+    EXPECT_EQ(3, OpInputPortIdToArgId(b_node_def, *b_op_def, 3));
+    EXPECT_EQ(-1, OpInputPortIdToArgId(b_node_def, *b_op_def, 4));
 
     for (int port_id = 0; port_id <= num_splits * 3; ++port_id) {
       int arg_id = -1;
@@ -144,19 +160,22 @@ TEST_F(GraphViewTest, BasicGraph) {
 
   const NodeDef* add_node = graph.GetNode("AddN");
   EXPECT_NE(nullptr, add_node);
-  string fanouts;
-  for (const auto& fo : graph.GetFanouts(*add_node, false)) {
-    strings::StrAppend(&fanouts,
-                       strings::StrCat(fo.node->name(), ":", fo.port_id, " "));
-  }
-  EXPECT_EQ("AddN_2:0 AddN_3:0 ", fanouts);
 
-  string fanins;
-  for (const auto& fi : graph.GetFanins(*add_node, false)) {
-    strings::StrAppend(&fanins,
-                       strings::StrCat(fi.node->name(), ":", fi.port_id, " "));
+  absl::flat_hash_set<string> fanouts;
+  absl::flat_hash_set<string> expected_fanouts = {"AddN_2:0", "AddN_3:0"};
+  for (const auto& fo : graph.GetFanouts(*add_node, false)) {
+    fanouts.insert(absl::StrCat(fo.node->name(), ":", fo.port_id));
   }
-  EXPECT_EQ("Square_1:0 Square:0 ", fanins);
+  EXPECT_EQ(graph.NumFanouts(*add_node, false), 2);
+  EXPECT_EQ(fanouts, expected_fanouts);
+
+  absl::flat_hash_set<string> fanins;
+  absl::flat_hash_set<string> expected_fanins = {"Square_1:0", "Square:0"};
+  for (const auto& fi : graph.GetFanins(*add_node, false)) {
+    fanins.insert(absl::StrCat(fi.node->name(), ":", fi.port_id));
+  }
+  EXPECT_EQ(graph.NumFanins(*add_node, false), 2);
+  EXPECT_EQ(fanins, expected_fanins);
 }
 
 TEST_F(GraphViewTest, ControlDependencies) {

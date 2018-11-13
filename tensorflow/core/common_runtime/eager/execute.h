@@ -46,7 +46,9 @@ Status EagerExecute(
 Status EagerExecute(EagerContext* ctx, Device* device,
                     const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
                     KernelAndDevice* kernel, NodeExecStats* maybe_stats,
-                    TensorHandle** retvals, int num_retvals);
+                    StepStats* maybe_step_stats,
+                    GraphCollector* graph_collector, TensorHandle** retvals,
+                    int num_retvals);
 
 // Low-level utility to copy a tensor handle from one device to another.
 Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,

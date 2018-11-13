@@ -22,6 +22,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
@@ -283,9 +283,14 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
   if (!proto.has_shape()) {
     return InvalidArgument("LiteralProto has no shape");
   }
+  if (ShapeUtil::HasPrimitiveType(proto.shape(), OPAQUE)) {
+    return InvalidArgument("Literal shape cannot include OPAQUE sub-shape");
+  }
   if (!LayoutUtil::HasLayout(proto.shape())) {
     return InvalidArgument("LiteralProto has no layout");
   }
+
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(proto.shape()));
 
   Literal literal(proto.shape());
 
@@ -725,16 +730,34 @@ Literal LiteralBase::Slice(absl::Span<const int64> start_indices,
       ShapeUtil::MakeShapeWithLayout(shape().element_type(), result_dimensions,
                                      LayoutUtil::MinorToMajor(shape()));
   switch (result_shape.element_type()) {
-    case F32:
-      return SliceInternal<float>(result_shape, start_indices);
-    case BF16:
-      return SliceInternal<bfloat16>(result_shape, start_indices);
-    case C64:
-      return SliceInternal<complex64>(result_shape, start_indices);
-    case S32:
-      return SliceInternal<int32>(result_shape, start_indices);
+    case PRED:
+      return SliceInternal<bool>(result_shape, start_indices);
+    case U8:
+      return SliceInternal<uint8>(result_shape, start_indices);
+    case U16:
+      return SliceInternal<uint16>(result_shape, start_indices);
     case U32:
       return SliceInternal<uint32>(result_shape, start_indices);
+    case U64:
+      return SliceInternal<uint64>(result_shape, start_indices);
+    case S8:
+      return SliceInternal<int8>(result_shape, start_indices);
+    case S16:
+      return SliceInternal<int16>(result_shape, start_indices);
+    case S32:
+      return SliceInternal<int32>(result_shape, start_indices);
+    case S64:
+      return SliceInternal<int64>(result_shape, start_indices);
+    case F16:
+      return SliceInternal<half>(result_shape, start_indices);
+    case BF16:
+      return SliceInternal<bfloat16>(result_shape, start_indices);
+    case F32:
+      return SliceInternal<float>(result_shape, start_indices);
+    case F64:
+      return SliceInternal<double>(result_shape, start_indices);
+    case C64:
+      return SliceInternal<complex64>(result_shape, start_indices);
     default:
       LOG(FATAL) << "not yet implemented: "
                  << PrimitiveType_Name(result_shape.element_type());
@@ -1052,12 +1075,11 @@ void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
 
   auto element_to_string = [&](absl::Span<const int64> indices) -> string {
     PrimitiveType element_type = subshape.element_type();
-    if (element_type == PRED) {
-      // We display predicates in a densely packed form.
-      return literal.Get<bool>(indices, shape_index) ? "1" : "0";
-    }
-    return ((!indices.empty() && indices.back() > 0) ? ", " : "") +
-           literal.GetAsString(indices, shape_index);
+    // We display predicates as 0s and 1s so that the string is more dense.
+    string elem = element_type == PRED
+                      ? literal.Get<bool>(indices, shape_index) ? "1" : "0"
+                      : literal.GetAsString(indices, shape_index);
+    return ((!indices.empty() && indices.back() > 0) ? ", " : "") + elem;
   };
 
   if (ShapeUtil::Rank(subshape) == 0) {
@@ -1210,7 +1232,7 @@ typename std::enable_if<(sizeof(NativeSrcT) == sizeof(NativeDestT)),
                         Literal>::type
 BitcastBetweenNativeTypes(const LiteralBase& src_literal) {
   auto converter = [](NativeSrcT src) {
-    return tensorflow::bit_cast<NativeDestT>(src);
+    return absl::bit_cast<NativeDestT>(src);
   };
   return ConvertBetweenNativeTypesWithConverter<NativeSrcT, NativeDestT>(
       src_literal, converter);
@@ -1412,10 +1434,14 @@ bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
       return EqualElementsInternal<bool>(other, &multi_index);
     case U8:
       return EqualElementsInternal<uint8>(other, &multi_index);
+    case S16:
+      return EqualElementsInternal<int16>(other, &multi_index);
     case S32:
       return EqualElementsInternal<int32>(other, &multi_index);
     case S64:
       return EqualElementsInternal<int64>(other, &multi_index);
+    case U16:
+      return EqualElementsInternal<uint16>(other, &multi_index);
     case U32:
       return EqualElementsInternal<uint32>(other, &multi_index);
     case U64:
@@ -1484,6 +1510,11 @@ bool LiteralBase::IsAll(int8 value) const {
             return AllElementsEqualValue<uint8>(piece.data<uint8>(), value);
           }
           return false;
+        case U16:
+          if (value >= 0) {
+            return AllElementsEqualValue<uint16>(piece.data<uint16>(), value);
+          }
+          return false;
         case U32:
           if (value >= 0) {
             return AllElementsEqualValue<uint32>(piece.data<uint32>(), value);
@@ -1496,6 +1527,8 @@ bool LiteralBase::IsAll(int8 value) const {
           return false;
         case S8:
           return AllElementsEqualValue<int8>(piece.data<int8>(), value);
+        case S16:
+          return AllElementsEqualValue<int16>(piece.data<int16>(), value);
         case S32:
           return AllElementsEqualValue<int32>(piece.data<int32>(), value);
         case S64:
@@ -1717,12 +1750,16 @@ bool LiteralBase::IsZero(absl::Span<const int64> indices) const {
   switch (shape().element_type()) {
     case U8:
       return Get<uint8>(indices) == 0;
+    case U16:
+      return Get<uint16>(indices) == 0;
     case U32:
       return Get<uint32>(indices) == 0;
     case U64:
       return Get<uint64>(indices) == 0;
     case S8:
       return Get<int8>(indices) == 0;
+    case S16:
+      return Get<int16>(indices) == 0;
     case S32:
       return Get<int32>(indices) == 0;
     case S64:
@@ -1779,6 +1816,20 @@ void LiteralBase::Piece::WriteToProto(LiteralProto* proto) const {
       break;
     case S64:
       CopyToRepeatedField(proto->mutable_s64s(), data<int64>());
+      break;
+    case U16:
+      *proto->mutable_u16s() = string(
+          reinterpret_cast<const char*>(data<uint16_t>().data()), size_bytes());
+      if (!kLittleEndian) {
+        ConvertEndianShort(proto->mutable_u16s());
+      }
+      break;
+    case S16:
+      *proto->mutable_s16s() = string(
+          reinterpret_cast<const char*>(data<int16_t>().data()), size_bytes());
+      if (!kLittleEndian) {
+        ConvertEndianShort(proto->mutable_s16s());
+      }
       break;
     case F16:
       *proto->mutable_f16s() = string(
@@ -1850,6 +1901,24 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
   TF_RET_CHECK(LayoutUtil::HasLayout(proto.shape()));
   TF_RET_CHECK(ShapeUtil::Equal(proto.shape(), subshape()));
 
+  if (LayoutUtil::IsSparseArray(subshape())) {
+    // Compute the number of elements (indices) in the sparse shape and reserve
+    // the necessary space in spare_indices.
+    TF_RET_CHECK(ShapeUtil::Rank(subshape()) != 0)
+        << "Scalar shapes cannot be sparse";
+    TF_RET_CHECK(proto.sparse_indices_size() % ShapeUtil::Rank(subshape()) == 0)
+        << "Unexpected number of indices in proto ("
+        << proto.sparse_indices_size() << ") for shape of rank "
+        << ShapeUtil::Rank(subshape());
+    const int64 index_count =
+        proto.sparse_indices_size() / ShapeUtil::Rank(subshape());
+    sparse_indices()->Resize(index_count);
+
+    // Copy the indices from the proto into the SparseIndexArray object.
+    TF_RETURN_IF_ERROR(CopyFromRepeatedField(sparse_indices()->mutable_data(),
+                                             proto.sparse_indices()));
+  }
+
   switch (subshape().element_type()) {
     case PRED:
       TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<bool>(), proto.preds()));
@@ -1876,6 +1945,22 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
     case U64:
       TF_RETURN_IF_ERROR(CopyFromRepeatedField(data<uint64>(), proto.u64s()));
       break;
+    case S16: {
+      const string& s(proto.s16s());
+      TF_RET_CHECK(data<int16_t>().size() * sizeof(int16_t) == s.size());
+      memcpy(untyped_data(), s.data(), s.size());
+      if (!kLittleEndian) {
+        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
+      }
+    } break;
+    case U16: {
+      const string& s(proto.u16s());
+      TF_RET_CHECK(data<uint16_t>().size() * sizeof(uint16_t) == s.size());
+      memcpy(untyped_data(), s.data(), s.size());
+      if (!kLittleEndian) {
+        ConvertEndianShort(reinterpret_cast<char*>(untyped_data()), s.size());
+      }
+    } break;
     case F16: {
       const string& s(proto.f16s());
       TF_RET_CHECK(data<half>().size() * sizeof(half) == s.size());
@@ -1907,11 +1992,11 @@ Status LiteralBase::Piece::CopyFromProto(const LiteralProto& proto) {
       }
     } break;
     case TUPLE:
-      LOG(FATAL) << "Should not be called on tuple shapes: "
-                 << ShapeUtil::HumanString(subshape());
-      break;
+      return InvalidArgument("Should not be called on tuple shapes: %s",
+                             ShapeUtil::HumanString(subshape()));
     default:
-      LOG(FATAL) << "Unhandled primitive type " << subshape().element_type();
+      return InvalidArgument("Is called on unsupported shape: %s",
+                             ShapeUtil::HumanString(subshape()));
   }
   return Status::OK();
 }
@@ -1954,7 +2039,7 @@ string LiteralBase::GetR1U8AsString() const {
   CHECK(ShapeUtil::IsArray(shape()));
   CHECK_EQ(ShapeUtil::Rank(shape()), 1);
   CHECK_EQ(shape().element_type(), U8);
-  return string(tensorflow::bit_cast<const char*>(data<uint8>().data()),
+  return string(absl::bit_cast<const char*>(data<uint8>().data()),
                 ShapeUtil::ElementsIn(shape()));
 }
 

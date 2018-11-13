@@ -251,6 +251,7 @@ class MklCPUAllocator : public Allocator {
     // max_alloc_size from large_size_allocator would be the maximum
     // size allocated by MklCPUAllocator.
     stats->max_alloc_size = l_stats.max_alloc_size;
+    stats->bytes_limit = std::max(s_stats.bytes_limit, l_stats.bytes_limit);
   }
 
   void ClearStats() override {

@@ -107,7 +107,7 @@ def _init_sampler(tc, init, num):
 class ConstantInitializersTest(test.TestCase):
 
   def testZerosInitializer(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       shape = [2, 3]
       x = variable_scope.get_variable(
           "x", shape=shape, initializer=init_ops.zeros_initializer())
@@ -115,7 +115,7 @@ class ConstantInitializersTest(test.TestCase):
       self.assertAllEqual(x.eval(), np.zeros(shape))
 
   def testOnesInitializer(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       shape = [2, 3]
       x = variable_scope.get_variable(
           "x", shape=shape, initializer=init_ops.ones_initializer())
@@ -123,7 +123,7 @@ class ConstantInitializersTest(test.TestCase):
       self.assertAllEqual(x.eval(), np.ones(shape))
 
   def testConstantZeroInitializer(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       shape = [2, 3]
       x = variable_scope.get_variable(
           "x", shape=shape, initializer=init_ops.constant_initializer(0.0))
@@ -131,7 +131,7 @@ class ConstantInitializersTest(test.TestCase):
       self.assertAllEqual(x.eval(), np.zeros(shape))
 
   def testConstantOneInitializer(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       shape = [2, 3]
       x = variable_scope.get_variable(
           "x", shape=shape, initializer=init_ops.constant_initializer(1.0))
@@ -139,7 +139,7 @@ class ConstantInitializersTest(test.TestCase):
       self.assertAllEqual(x.eval(), np.ones(shape))
 
   def testConstantIntInitializer(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       shape = [2, 3]
       x = variable_scope.get_variable(
           "x",
@@ -151,7 +151,7 @@ class ConstantInitializersTest(test.TestCase):
       self.assertAllEqual(x.eval(), 7 * np.ones(shape, dtype=np.int32))
 
   def testConstantTupleInitializer(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       shape = [3]
       x = variable_scope.get_variable(
           "x",
@@ -163,7 +163,7 @@ class ConstantInitializersTest(test.TestCase):
       self.assertAllEqual(x.eval(), [10, 20, 30])
 
   def _testNDimConstantInitializer(self, name, value, shape, expected):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       init = init_ops.constant_initializer(value, dtype=dtypes.int32)
       x = variable_scope.get_variable(name, shape=shape, initializer=init)
       x.initializer.run()
@@ -187,7 +187,7 @@ class ConstantInitializersTest(test.TestCase):
 
   def _testNDimConstantInitializerLessValues(self, name, value, shape,
                                              expected):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       init = init_ops.constant_initializer(value, dtype=dtypes.int32)
       x = variable_scope.get_variable(name, shape=shape, initializer=init)
       x.initializer.run()
@@ -213,7 +213,7 @@ class ConstantInitializersTest(test.TestCase):
 
   def _testNDimConstantInitializerMoreValues(self, value, shape):
     ops.reset_default_graph()
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       init = init_ops.constant_initializer(value, dtype=dtypes.int32)
       self.assertRaises(
           ValueError,
@@ -371,7 +371,7 @@ class VarianceScalingInitializationTest(test.TestCase):
     init = init_ops.variance_scaling_initializer(
         distribution='truncated_normal')
 
-    with self.test_session(use_gpu=True), \
+    with self.session(use_gpu=True), \
       test.mock.patch.object(
           random_ops, 'truncated_normal', wraps=random_ops.truncated_normal) \
           as mock_truncated_normal:
@@ -387,7 +387,7 @@ class VarianceScalingInitializationTest(test.TestCase):
     expect_var = 1. / shape[0]
     init = init_ops.variance_scaling_initializer(distribution='normal')
 
-    with self.test_session(use_gpu=True), \
+    with self.session(use_gpu=True), \
       test.mock.patch.object(
           random_ops, 'truncated_normal', wraps=random_ops.truncated_normal) \
           as mock_truncated_normal:
@@ -404,7 +404,7 @@ class VarianceScalingInitializationTest(test.TestCase):
     init = init_ops.variance_scaling_initializer(
         distribution='untruncated_normal')
 
-    with self.test_session(use_gpu=True), \
+    with self.session(use_gpu=True), \
       test.mock.patch.object(
           random_ops, 'random_normal', wraps=random_ops.random_normal) \
           as mock_random_normal:
@@ -420,7 +420,7 @@ class VarianceScalingInitializationTest(test.TestCase):
     expect_var = 1. / shape[0]
     init = init_ops.variance_scaling_initializer(distribution='uniform')
 
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       x = init(shape).eval()
 
     self.assertNear(np.mean(x), expect_mean, err=1e-2)
@@ -431,7 +431,7 @@ class VarianceScalingInitializationTest(test.TestCase):
 class RangeTest(test.TestCase):
 
   def _Range(self, start, limit, delta):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       tf_ans = math_ops.range(start, limit, delta, name="range")
       self.assertEqual([len(np.arange(start, limit, delta))],
                        tf_ans.get_shape())
@@ -450,7 +450,7 @@ class RangeTest(test.TestCase):
     self.assertEqual(math_ops.range(0, 5, 1).dtype, dtypes.int32)
 
   def testLimitOnly(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       self.assertAllEqual(np.arange(5), math_ops.range(5).eval())
 
   def testEmpty(self):
@@ -520,7 +520,6 @@ class LinSpaceTest(test.TestCase):
       return [False]
 
   def _LinSpace(self, start, stop, num):
-    # NOTE(touts): Needs to pass a graph to get a new session each time.
     with ops.Graph().as_default() as graph:
       with self.session(graph=graph, force_gpu=self.force_gpu):
         tf_ans = math_ops.linspace(start, stop, num, name="linspace")
@@ -704,7 +703,7 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
         outputs_2norm = linalg_ops.norm(outputs)
         ratio = outputs_2norm / inputs_2norm
         my_ops = variables.global_variables_initializer()
-        with self.test_session(use_gpu=True) as sess:
+        with self.session(use_gpu=True) as sess:
           sess.run(my_ops)
           # Check the shape of the outputs
           t = outputs.eval()
@@ -719,7 +718,7 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
     shape = [3, 3, 10, 10]
     count = 70
     tol = 1e-5
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       for i in range(count):
         x = variable_scope.get_variable("{}".format(i), shape=shape,
                                         initializer=
@@ -783,7 +782,7 @@ class ConvolutionOrthogonal1dInitializerTest(test.TestCase):
     shape = [3, 10, 10]
     count = 70
     tol = 1e-5
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       for i in range(count):
         x = variable_scope.get_variable("{}".format(i), shape=shape,
                                         initializer=
@@ -843,7 +842,7 @@ class ConvolutionOrthogonal1dInitializerTest(test.TestCase):
       outputs_2norm = linalg_ops.norm(outputs)
       ratio = outputs_2norm / inputs_2norm
       my_ops = variables.global_variables_initializer()
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         sess.run(my_ops)
         # Check the shape of the outputs
         t = outputs.eval()
@@ -938,7 +937,7 @@ class ConvolutionOrthogonal2dInitializerTest(test.TestCase):
       outputs_2norm = linalg_ops.norm(outputs)
       ratio = outputs_2norm / inputs_2norm
       my_ops = variables.global_variables_initializer()
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         sess.run(my_ops)
         # Check the shape of the outputs
         t = outputs.eval()
@@ -992,7 +991,7 @@ class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
     shape = [3, 3, 3, 5, 5]
     count = 20
     tol = 1e-5
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       for i in range(count):
         x = variable_scope.get_variable("{}".format(i), shape=shape,
                                         initializer=
@@ -1063,7 +1062,7 @@ class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
       outputs_2norm = linalg_ops.norm(outputs)
       ratio = outputs_2norm / inputs_2norm
       my_ops = variables.global_variables_initializer()
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         sess.run(my_ops)
         # Check the shape of the outputs
         t = outputs.eval()

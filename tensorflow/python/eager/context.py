@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Experimental API for TensorFlow's "Eager" mode of execution."""
+"""State management for eager execution."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -25,7 +25,9 @@ import random
 import threading
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import tf2
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.util import compat
@@ -36,8 +38,7 @@ from tensorflow.python.util.tf_export import tf_export
 GRAPH_MODE = 0
 EAGER_MODE = 1
 
-# Default execution mode.
-default_execution_mode = GRAPH_MODE
+default_execution_mode = EAGER_MODE if tf2.enabled() else GRAPH_MODE
 
 # Cache from (old_device_name, partial_new_device_name) -> (new_device_name,
 # new_device_spec).
@@ -80,11 +81,62 @@ class _EagerTensorCache(object):
     self._data = {}
 
 
+class FunctionCallOptions(object):
+  """Options applied at call sites of eager functions.
+  Eager functions are functions decorated with tf.contrib.eager.defun.
+  """
+
+  def __init__(self, executor_type=None, rewriter_config=None):
+    """Constructor.
+
+    Args:
+      executor_type: (optional) name of the executor to be used to execute the
+        eager function. If None or an empty string, the default Tensorflow
+        executor will be used.
+      rewriter_config: (optional) a rewriter_config_pb2.RewriterConfig proto or
+        a serialized string of that proto.
+        The config used by Grappler when optimizing the function graph.
+        Each concrete function is optimized the first time is called. Changing
+        rewriter_config after the first call has no effect.
+        If rewriter_config is None, an empty RewriterConfig will be used.
+    """
+    self.rewriter_config_serialized = rewriter_config
+    self.executor_type = executor_type
+
+  @property
+  def executor_type(self):
+    return self._executor_type
+
+  @executor_type.setter
+  def executor_type(self, executor_type):
+    self._executor_type = executor_type
+
+  @property
+  def rewriter_config_serialized(self):
+    return self._rewriter_config_serialized
+
+  @rewriter_config_serialized.setter
+  def rewriter_config_serialized(self, config):
+    if isinstance(config, rewriter_config_pb2.RewriterConfig):
+      self._rewriter_config_serialized = config.SerializeToString()
+    elif isinstance(config, str):
+      self._rewriter_config_serialized = config
+    elif config is None:
+      self._rewriter_config_serialized = rewriter_config_pb2.RewriterConfig(
+      ).SerializeToString()
+    else:
+      raise ValueError(
+          "the rewriter config must be either a "
+          "rewriter_config_pb2.RewriterConfig, or a serialized string of that "
+          "proto or None. got: {}"
+          .format(type(config)))
+
+
 # TODO(agarwal): better name ?
 class _EagerContext(threading.local):
   """Thread local eager context."""
 
-  def __init__(self):
+  def __init__(self, config=None):
     super(_EagerContext, self).__init__()
     self.device_spec = pydev.DeviceSpec.from_string("")
     self.device_name = self.device_spec.to_string()
@@ -97,6 +149,17 @@ class _EagerContext(threading.local):
     self.ones_rank_cache = _EagerTensorCache()
     self.zeros_cache = _EagerTensorCache()
     self.execution_mode = None
+
+    # Default rewriter config corresponds to turning all default grappler
+    # optimizations on.
+    base_config = rewriter_config_pb2.RewriterConfig()
+
+    if config is not None and config.HasField(
+        "graph_options") and config.graph_options.HasField("rewrite_options"):
+      base_config.Merge(config.graph_options.rewrite_options)
+
+    self.function_call_options = FunctionCallOptions(
+        rewriter_config=base_config)
 
 
 ContextSwitch = collections.namedtuple(
@@ -191,7 +254,7 @@ class Context(object):
     Raises:
      ValueError: If execution_mode is not valid.
     """
-    self._eager_context = _EagerContext()
+    self._eager_context = _EagerContext(config)
     self._context_switches = _ContextSwitchStack(self.executing_eagerly())
     self._context_handle = None
     self._context_devices = None
@@ -420,6 +483,10 @@ class Context(object):
     Raises:
       ValueError: If name is not a string or is an invalid device name.
     """
+    devices = self._context_devices
+    if devices is None:
+      self._initialize_handle_and_devices()
+      devices = self._context_devices
     eager_context = self._eager_context
     old_device_name = eager_context.device_name
     old_device_spec = eager_context.device_spec
@@ -440,8 +507,7 @@ class Context(object):
         if old_device_name:
           new_device_spec = copy.copy(old_device_spec)
         else:
-          new_device_spec = pydev.DeviceSpec.from_string(
-              "/job:localhost/replica:0/task:0/device:CPU:0")
+          new_device_spec = pydev.DeviceSpec.from_string(devices[0])
         new_device_spec.merge_from(device_spec)
       else:
         new_device_spec = pydev.DeviceSpec.from_string("")
@@ -485,6 +551,35 @@ class Context(object):
       yield
     finally:
       self.set_execution_mode(old_mode)
+
+  def get_function_call_options(self):
+    """Returns function call options for current thread.
+
+    Note that the returned object is still referenced by the eager context.
+
+    Returns: the FunctionCallOptions for current thread.
+    """
+    return self._eager_context.function_call_options
+
+  @tf_contextlib.contextmanager
+  def function_call_options(self, set_options_func):
+    """Context manager for setting function call options of current thread.
+
+    Args:
+      set_options_func: A callable that takes one argument of type
+        FunctionCallOptions. It should set the properties of that
+        FunctionCallOptions.
+
+    Yields:
+      Nothing.
+    """
+    current_options = self.get_function_call_options()
+    old_options = copy.copy(current_options)
+    try:
+      set_options_func(current_options)
+      yield
+    finally:
+      self._eager_context.function_call_options = old_options
 
   def async_wait(self):
     """Waits for ops dispatched in ASYNC mode to finish."""
@@ -738,6 +833,25 @@ def execution_mode(mode):
   return context().execution_mode(mode)
 
 
+@tf_export("experimental.function_executor_type")
+def function_executor_type(executor_type):
+  """Context manager for setting the executor of eagar defined functions.
+
+  Eager defined functions are functions decorated by tf.contrib.eager.defun.
+
+  Args:
+    executor_type: a string for the name of the executor to be used
+    to execute functions defined by tf.contrib.eager.defun.
+
+  Returns:
+    Context manager for setting the executor of eager defined functions.
+  """
+  def _set_options_func(options):
+    options.executor_type = executor_type
+
+  return context().function_call_options(_set_options_func)
+
+
 def async_wait():
   """Waits for ops dispatched in ASYNC mode to finish."""
   return context().async_wait()
@@ -783,8 +897,32 @@ def export_run_metadata():
   return context().export_run_metadata()
 
 
+def function_rewriter_config(rewriter_config):
+  """Context manager for setting the grappler rewrite config.
+
+  This config is used by Grappler when optimizing the function graph.
+
+  Args:
+    rewriter_config: a rewriter_config_pb2.RewriterConfig proto or
+      a serialized string of that proto or None. If None, the default instance
+      of rewriter_config_pb2.RewriterConfig will be used.
+
+  Returns:
+    A context manager.
+  """
+  def _set_options_func(options):
+    options.rewriter_config_serialized = rewriter_config
+
+  return context().function_call_options(_set_options_func)
+
+
 def set_server_def(server_def):
   context().set_server_def(server_def)
+
+
+def add_function(fdef):
+  """Add a function definition to the context."""
+  context().add_function(fdef)
 
 
 # Not every user creates a Context via context.context()

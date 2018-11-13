@@ -111,8 +111,8 @@ class FusedConv2DBiasActivationOp : public OpKernel {
         context,
         (GetTensorDim(strides, data_format_, 'N') == 1 &&
          GetTensorDim(strides, data_format_, 'C') == 1),
-        errors::InvalidArgument("Convolutional strides are not supported in "
-                                "the batch or depth dimensions."));
+        errors::Unimplemented("Convolutional strides are not supported in "
+                              "the batch and depth dimensions."));
 
     // Assuming qint8 <--> NCHW_VECT_C, OIHW_VECT_I (int8x4) here.
     constexpr bool is_int8x4 = std::is_same<T, qint8>::value;

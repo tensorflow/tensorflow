@@ -30,6 +30,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import warm_starting_util as ws_util
 
@@ -71,6 +72,22 @@ class WarmStartingUtilTest(test.TestCase):
           var = var._get_variable_list()
         return var, sess.run(var)
 
+  def _create_prev_run_vars(self,
+                            var_names,
+                            shapes,
+                            initializers):
+    with ops.Graph().as_default() as g:
+      with self.session(graph=g) as sess:
+        all_vars = []
+        for var_name, shape, initializer in zip(var_names, shapes,
+                                                initializers):
+          all_vars.append(variable_scope.get_variable(
+              var_name,
+              shape=shape,
+              initializer=initializer))
+        self._write_checkpoint(sess)
+        return [sess.run(var) for var in all_vars]
+
   def _create_dummy_inputs(self):
     return {
         "sc_int": array_ops.sparse_placeholder(dtypes.int32),
@@ -105,7 +122,9 @@ class WarmStartingUtilTest(test.TestCase):
       with self.session(graph=g) as sess:
         fruit_weights = variable_scope.get_variable(
             "fruit_weights", initializer=[[0.], [0.], [0.], [0.]])
-        ws_util._warm_start_var(fruit_weights, self.get_temp_dir())
+        prev_tensor_name, var = ws_util._get_var_info(fruit_weights)
+        checkpoint_utils.init_from_checkpoint(self.get_temp_dir(),
+                                              {prev_tensor_name: var})
         sess.run(variables.global_variables_initializer())
         self.assertAllClose(prev_val, fruit_weights.eval(sess))
 
@@ -121,7 +140,9 @@ class WarmStartingUtilTest(test.TestCase):
       with self.session(graph=g) as sess:
         fruit_weights = variable_scope.get_variable(
             "fruit_weights", initializer=[[0.], [0.], [0.], [0.]])
-        ws_util._warm_start_var(fruit_weights, self.get_temp_dir())
+        prev_tensor_name, var = ws_util._get_var_info(fruit_weights)
+        checkpoint_utils.init_from_checkpoint(self.get_temp_dir(),
+                                              {prev_tensor_name: var})
         sess.run(variables.global_variables_initializer())
         self.assertAllClose(prev_val, fruit_weights.eval(sess))
 
@@ -138,7 +159,9 @@ class WarmStartingUtilTest(test.TestCase):
             partitioner=lambda shape, dtype: [2, 1])
         self.assertTrue(
             isinstance(fruit_weights, variables.PartitionedVariable))
-        ws_util._warm_start_var(fruit_weights, self.get_temp_dir())
+        prev_tensor_name, var = ws_util._get_var_info(fruit_weights)
+        checkpoint_utils.init_from_checkpoint(self.get_temp_dir(),
+                                              {prev_tensor_name: var})
         sess.run(variables.global_variables_initializer())
         fruit_weights = fruit_weights._get_variable_list()
         new_val = np.concatenate(
@@ -162,10 +185,10 @@ class WarmStartingUtilTest(test.TestCase):
             partitioner=lambda shape, dtype: [2, 1])
         self.assertTrue(
             isinstance(fruit_weights, variables.PartitionedVariable))
-        ws_util._warm_start_var(
-            fruit_weights,
-            self.get_temp_dir(),
-            prev_tensor_name="old_scope/fruit_weights")
+        prev_tensor_name, var = ws_util._get_var_info(
+            fruit_weights, prev_tensor_name="old_scope/fruit_weights")
+        checkpoint_utils.init_from_checkpoint(self.get_temp_dir(),
+                                              {prev_tensor_name: var})
         sess.run(variables.global_variables_initializer())
         fruit_weights = fruit_weights._get_variable_list()
         new_val = np.concatenate(
@@ -463,6 +486,46 @@ class WarmStartingUtilTest(test.TestCase):
         sess.run(variables.global_variables_initializer())
         # Verify weights were correctly warm-started (init overridden to ones).
         self.assertAllEqual(var.eval(), prev_int_val)
+
+  def testWarmStart_ListOfRegexes(self):
+    # Save checkpoint from which to warm-start.
+    [prev_v1_val, prev_v1_momentum_val,
+     prev_v2_val, _] = self._create_prev_run_vars(
+         var_names=["v1", "v1/Momentum", "v2", "v2/Momentum"],
+         shapes=[[10, 1]] * 4,
+         initializers=[ones()] * 4)
+
+    # New graph, new session with warm-starting.
+    with ops.Graph().as_default() as g:
+      with self.session(graph=g) as sess:
+        # Initialize with zeros.
+        v1 = variable_scope.get_variable(
+            "v1",
+            shape=[10, 1],
+            initializer=zeros())
+        v1_momentum = variable_scope.get_variable(
+            "v1/Momentum",
+            shape=[10, 1],
+            initializer=zeros())
+        v2 = variable_scope.get_variable(
+            "v2",
+            shape=[10, 1],
+            initializer=zeros())
+        v2_momentum = variable_scope.get_variable(
+            "v2/Momentum",
+            shape=[10, 1],
+            initializer=zeros())
+        ws_util.warm_start(self.get_temp_dir(),
+                           # This warm-starts both v1 and v1/Momentum, but only
+                           # v2 (and not v2/Momentum).
+                           vars_to_warm_start=["v1", "v2[^/]"])
+        sess.run(variables.global_variables_initializer())
+        # Verify the selection of weights were correctly warm-started (init
+        # overridden to ones).
+        self.assertAllEqual(v1.eval(), prev_v1_val)
+        self.assertAllEqual(v1_momentum.eval(), prev_v1_momentum_val)
+        self.assertAllEqual(v2.eval(), prev_v2_val)
+        self.assertAllEqual(v2_momentum.eval(), np.zeros([10, 1]))
 
   def testWarmStart_SparseColumnIntegerized(self):
     # Create feature column.
@@ -807,7 +870,7 @@ class WarmStartingUtilTest(test.TestCase):
     def _partitioner(shape, dtype):  # pylint:disable=unused-argument
       # Partition each var into 2 equal slices.
       partitions = [1] * len(shape)
-      partitions[0] = min(2, shape[0].value)
+      partitions[0] = min(2, shape.dims[0].value)
       return partitions
 
     # New graph, new session with warm-starting.
@@ -933,7 +996,7 @@ class WarmStartingUtilTest(test.TestCase):
     def _partitioner(shape, dtype):  # pylint:disable=unused-argument
       # Partition each var into 2 equal slices.
       partitions = [1] * len(shape)
-      partitions[0] = min(2, shape[0].value)
+      partitions[0] = min(2, shape.dims[0].value)
       return partitions
 
     # New graph, new session with warm-starting.
@@ -993,7 +1056,7 @@ class WarmStartingUtilTest(test.TestCase):
     def _partitioner(shape, dtype):  # pylint:disable=unused-argument
       # Partition each var into 2 equal slices.
       partitions = [1] * len(shape)
-      partitions[0] = min(2, shape[0].value)
+      partitions[0] = min(2, shape.dims[0].value)
       return partitions
 
     # Create feature columns.
@@ -1063,7 +1126,7 @@ class WarmStartingUtilTest(test.TestCase):
     def _partitioner(shape, dtype):  # pylint:disable=unused-argument
       # Partition each var into 2 equal slices.
       partitions = [1] * len(shape)
-      partitions[0] = min(2, shape[0].value)
+      partitions[0] = min(2, shape.dims[0].value)
       return partitions
 
     # Create feature columns.

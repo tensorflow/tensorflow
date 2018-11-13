@@ -24,6 +24,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -37,7 +38,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-class BatchDatasetTest(test.TestCase, parameterized.TestCase):
+class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @parameterized.named_parameters(
       ('even', 28, 14, False),
@@ -114,11 +115,6 @@ class BatchDatasetTest(test.TestCase, parameterized.TestCase):
     with self.cached_session() as sess:
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(get_next)
-
-  def assertSparseValuesEqual(self, a, b):
-    self.assertAllEqual(a.indices, b.indices)
-    self.assertAllEqual(a.values, b.values)
-    self.assertAllEqual(a.dense_shape, b.dense_shape)
 
   def testBatchSparse(self):
 
@@ -227,7 +223,7 @@ def _random_seq_lens(count):
   return np.random.randint(20, size=(count,)).astype(np.int32)
 
 
-class PaddedBatchDatasetTest(test.TestCase, parameterized.TestCase):
+class PaddedBatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @parameterized.named_parameters(
       ('default_padding', _random_seq_lens(32), 4, [-1], False),
@@ -457,7 +453,8 @@ class PaddedBatchDatasetTest(test.TestCase, parameterized.TestCase):
           5, padded_shapes=shape_as_tensor)
 
     with self.assertRaisesRegexp(
-        ValueError, r'The padded shape \(\?, \?\) is not compatible with the '
+        ValueError,
+        r'The padded shape \((\?|None), (\?|None)\) is not compatible with the '
         r'corresponding input component shape \(\).'):
       shape_as_tensor = array_ops.placeholder(dtypes.int64, shape=[2])
       _ = dataset_ops.Dataset.range(10).padded_batch(

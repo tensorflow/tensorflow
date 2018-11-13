@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -56,7 +57,7 @@ class ReluTest(test.TestCase):
 
   def _testRelu(self, np_features, use_gpu=False):
     np_relu = self._npRelu(np_features)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       relu = nn_ops.relu(np_features)
       tf_relu = relu.eval()
     self.assertAllClose(np_relu, tf_relu)
@@ -76,7 +77,7 @@ class ReluTest(test.TestCase):
     if not test.is_gpu_available(cuda_only=True):
       return
     np_relu = self._npRelu(np_inputs)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       relu = nn_ops.relu(constant_op.constant(np_inputs, dtypes.qint8))
       if np_inputs.size % 4 == 0:
         tf_relu = relu.eval()
@@ -123,7 +124,7 @@ class ReluTest(test.TestCase):
   # Instead of relying on compute_gradient_error, we compare the fp16 analytical
   # gradient against their fp32 counterpart.
   def testGradientFloat16(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       # Randomly construct a 1D shape from [1, 40)
       shape = random_ops.random_uniform(
           [1], minval=1, maxval=40, dtype=dtypes.int32)
@@ -229,7 +230,7 @@ class Relu6Test(test.TestCase):
 
   def _testRelu6(self, np_features, use_gpu=False):
     np_relu6 = self._npRelu6(np_features)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       relu6 = nn_ops.relu6(np_features)
       tf_relu6 = relu6.eval()
     self.assertAllClose(np_relu6, tf_relu6)
@@ -282,6 +283,125 @@ class Relu6Test(test.TestCase):
     self.assertLess(err, 1e-10)
 
 
+class LeakyReluTest(test.TestCase):
+
+  def _npLeakyRelu(self, np_features, alpha=0.1):
+    return np.maximum(np_features, alpha * np_features)
+
+  def testNpLeakyRelu(self):
+    self.assertAllClose(
+        np.array([[-0.09, 0.7, -0.05, 0.3, -0.01],
+                  [0.1, -0.03, 0.5, -0.07, 0.9]]),
+        self._npLeakyRelu(
+            np.array([[-0.9, 0.7, -0.5, 0.3, -0.1], [0.1, -0.3, 0.5, -0.7,
+                                                     0.9]]),
+            alpha=0.1))
+
+  def _testLeakyRelu(self, np_features, alpha, use_gpu=False):
+    np_leaky_relu = self._npLeakyRelu(np_features, alpha)
+    with self.test_session(use_gpu=use_gpu):
+      leaky_relu = nn_ops.leaky_relu(np_features, alpha)
+      tf_leaky_relu = leaky_relu.eval()
+    self.assertAllClose(np_leaky_relu, tf_leaky_relu)
+    self.assertShapeEqual(np_leaky_relu, leaky_relu)
+
+  def testNumbers(self):
+    for t in [np.int32, np.int64, np.float16, np.float32, np.float64]:
+      self._testLeakyRelu(
+          np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
+          alpha=0.2,
+          use_gpu=False)
+      if t in [np.float16, np.float32, np.float64]:
+        self._testLeakyRelu(
+            np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
+            alpha=0.1,
+            use_gpu=True)
+
+  # The gradient test for Leaky ReLU is a bit tricky as the derivative is not
+  # well defined at around zero and we want to avoid that in terms of input
+  # values.
+  def testGradientFloat32(self):
+    with self.test_session():
+      x = constant_op.constant(
+          [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
+          shape=[2, 5],
+          name="x")
+      y = nn_ops.leaky_relu(x, alpha=0.1, name="leaky_relu")
+      x_init = np.asarray(
+          [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
+          dtype=np.float32,
+          order="F")
+      err = gradient_checker.compute_gradient_error(
+          x, [2, 5], y, [2, 5], x_init_value=x_init)
+    print("leaky_relu (float32) gradient err = ", err)
+    self.assertLess(err, 1e-4)
+
+  def testGradientFloat64(self):
+    with self.test_session():
+      x = constant_op.constant(
+          [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
+          shape=[2, 5],
+          dtype=dtypes.float64,
+          name="x")
+      y = nn_ops.leaky_relu(x, alpha=0.2, name="leaky_relu")
+      x_init = np.asarray(
+          [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
+          dtype=np.float64,
+          order="F")
+      err = gradient_checker.compute_gradient_error(
+          x, [2, 5], y, [2, 5], x_init_value=x_init)
+    print("leaky_relu (float64) gradient err = ", err)
+    self.assertLess(err, 1e-10)
+
+  def testGradGradFloat32(self):
+    with compat.forward_compatibility_horizon(2018, 11, 2):
+      with self.test_session():
+        x = constant_op.constant(
+            [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
+            shape=[2, 5],
+            name="x")
+        y = nn_ops.leaky_relu(x, alpha=0.1, name="leaky_relu")
+        z = gradients_impl.gradients(y, x)
+        x_init = np.asarray(
+            [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
+            dtype=np.float32,
+            order="F")
+        err = gradient_checker.compute_gradient_error(
+            x, [2, 5], z[0], [2, 5], x_init_value=x_init)
+      print("leaky_relu (float32) gradient of gradient err = ", err)
+      self.assertLess(err, 1e-4)
+
+  def testGradGradFloat64(self):
+    with compat.forward_compatibility_horizon(2018, 11, 2):
+      with self.test_session():
+        x = constant_op.constant(
+            [-0.9, -0.7, -0.5, -0.3, -0.1, 0.1, 0.3, 0.5, 0.7, 0.9],
+            shape=[2, 5],
+            dtype=dtypes.float64,
+            name="x")
+        y = nn_ops.leaky_relu(x, alpha=0.02, name="leaky_relu")
+        z = gradients_impl.gradients(y, x)
+        x_init = np.asarray(
+            [[-0.9, -0.7, -0.5, -0.3, -0.1], [0.1, 0.3, 0.5, 0.7, 0.9]],
+            dtype=np.float64,
+            order="F")
+        err = gradient_checker.compute_gradient_error(
+            x, [2, 5], z[0], [2, 5], x_init_value=x_init)
+      print("leaky_relu (float64) gradient of gradient err = ", err)
+      self.assertLess(err, 1e-10)
+
+  def testGradientScalar(self):
+    with self.test_session() as sess:
+      x = variables.Variable(-100.)
+      y = nn_ops.leaky_relu(x, 0.05)
+      loss = y**2
+      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.2)
+      train_op = optimizer.minimize(loss)
+      sess.run(variables.global_variables_initializer())
+      sess.run(train_op)
+      self.assertAllClose(x.eval(), -99.9)
+
+
 class EluTest(test.TestCase):
 
   def _npElu(self, np_features):
@@ -297,7 +417,7 @@ class EluTest(test.TestCase):
 
   def _testElu(self, np_features, use_gpu=False):
     np_elu = self._npElu(np_features)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       elu = nn_ops.elu(np_features)
       tf_elu = elu.eval()
     self.assertAllClose(np_elu, tf_elu)
@@ -399,7 +519,7 @@ class SeluTest(test.TestCase):
 
   def _testSelu(self, np_features, use_gpu=False):
     np_selu = self._npSelu(np_features)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       selu = nn_ops.selu(np_features)
       tf_selu = selu.eval()
     self.assertAllClose(np_selu, tf_selu)
@@ -485,7 +605,7 @@ class CreluTest(test.TestCase):
     np_crelu = np.concatenate((np_relu, np_neg_relu),
                               len(np_features.shape) - 1)
 
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       crelu = nn_ops.crelu(np_features)
       tf_relu = crelu.eval()
 

@@ -102,12 +102,12 @@ class FlatPredictionModel(training.Model):
       [batch size, output window size, num_features], where num_features is the
       same as the constructor argument.
     """
-    if input_window_features.shape[1].value == 0:
+    if input_window_features.shape.dims[1].value == 0:
       # TODO(allenl): Make reshape()'s static shape information work on
       # zero-size Tensors? Currently this special case is required because
       # otherwise the Dense layers get unknown last dimensions.
       activation = self._output_flatten(output_window_features)
-    elif output_window_features.shape[2].value == 0:
+    elif output_window_features.shape.dims[2].value == 0:
       activation = self._input_flatten(input_window_features)
     else:
       activation = array_ops.concat(
@@ -438,7 +438,7 @@ class ARModel(model.TimeSeriesModel):
       output_window_features = array_ops.zeros(
           [batch_size, self.output_window_size, 0],
           dtype=self.dtype)
-    static_batch_size = times.get_shape()[0].value
+    static_batch_size = times.get_shape().dims[0].value
     input_window_features.set_shape(
         [static_batch_size, self.input_window_size, input_feature_size])
     output_window_features.set_shape(
@@ -772,7 +772,7 @@ class ARModel(model.TimeSeriesModel):
       # windows matching self.window_size (as with training), but this looping
       # allows easy plotting of "in-sample" predictions.
       times.get_shape().assert_has_rank(2)
-      static_window_size = times.get_shape()[1].value
+      static_window_size = times.get_shape().dims[1].value
       if (static_window_size is not None
           and static_window_size < self.window_size):
         raise ValueError(

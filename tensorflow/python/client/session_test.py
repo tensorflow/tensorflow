@@ -120,11 +120,17 @@ class SessionTest(test_util.TensorFlowTestCase):
       inp = constant_op.constant(10.0, name='W1')
       self.assertAllEqual(inp.eval(), 10.0)
 
-      devices = sess.list_devices()
-      self.assertEqual(2, len(devices))
-      for device in devices:
-        self.assertEqual('CPU', framework_device_lib.DeviceSpec.from_string(
-            device.name).device_type)
+      num_cpu_devices = 0
+      num_gpu_devices = 0
+      for device in sess.list_devices():
+        device_type = framework_device_lib.DeviceSpec.from_string(
+            device.name).device_type
+        if device_type == 'CPU':
+          num_cpu_devices += 1
+        elif device_type == 'GPU':
+          num_gpu_devices += 1
+      self.assertEqual(2, num_cpu_devices)
+      self.assertEqual(0, num_gpu_devices)
 
   def testPerSessionThreads(self):
     with session.Session(
@@ -1022,7 +1028,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     with session.Session():
       a = constant_op.constant(1.0, shape=[1, 2])
       b = constant_op.constant(2.0, shape=[1, 2], name='b')
-      v = variables.Variable(a, a.dtype)
+      v = variables.VariableV1(a, a.dtype)
       assign_a_to_v = state_ops.assign(v, a)
 
       assign_a_to_v.eval()

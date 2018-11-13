@@ -204,13 +204,13 @@ def get_pruning_hparams():
       begin_pruning_step=0,
       end_pruning_step=-1,
       weight_sparsity_map=[''],
-      threshold_decay=0.9,
+      threshold_decay=0.0,
       pruning_frequency=10,
       nbins=256,
       block_height=1,
       block_width=1,
       block_pooling_function='AVG',
-      initial_sparsity=0,
+      initial_sparsity=0.0,
       target_sparsity=0.5,
       sparsity_function_begin_step=0,
       sparsity_function_end_step=100,
@@ -247,7 +247,8 @@ class Pruning(object):
 
     # Stores the tensorflow sparsity variable.
     # Built using self._setup_sparsity() or provided externally
-    self._sparsity = sparsity if sparsity else self._setup_sparsity()
+    self._sparsity = (sparsity
+                      if sparsity is not None else self._setup_sparsity())
 
     # List of tensorflow assignments ops for new masks and thresholds
     self._assign_ops = []
@@ -455,13 +456,14 @@ class Pruning(object):
 
       pool_window = [self._block_dim[0], self._block_dim[1]]
       pool_fn = pruning_utils.factorized_pool
-
+      squeeze_axis = None
       if not self._spec.use_tpu:
         pool_fn = nn_ops.pool
         abs_weights = array_ops.reshape(
             abs_weights,
             [1, abs_weights.get_shape()[0],
              abs_weights.get_shape()[1], 1])
+        squeeze_axis = [0, 3]
 
       pooled_weights = pool_fn(
           abs_weights,
@@ -472,7 +474,7 @@ class Pruning(object):
           name=weights.op.name + '_pooled')
 
       if pooled_weights.get_shape().ndims != 2:
-        pooled_weights = array_ops.squeeze(pooled_weights)
+        pooled_weights = array_ops.squeeze(pooled_weights, axis=squeeze_axis)
 
       smoothed_threshold, new_mask = self._update_mask(pooled_weights,
                                                        threshold)

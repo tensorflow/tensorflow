@@ -57,6 +57,107 @@ class UnionClusterResolverTest(test.TestCase):
     actual_cluster_spec = union_resolver.cluster_spec()
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
 
+  def testInitSimpleClusterResolver(self):
+    base_cluster_spec = server_lib.ClusterSpec({
+        "ps": ["ps0:2222", "ps1:2222"],
+        "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
+    })
+
+    simple_resolver = SimpleClusterResolver(base_cluster_spec, task_type="ps",
+                                            task_index=1, environment="cloud",
+                                            num_accelerators_per_worker=8,
+                                            rpc_layer="grpc")
+
+    self.assertEqual(simple_resolver.task_type, "ps")
+    self.assertEqual(simple_resolver.task_index, 1)
+    self.assertEqual(simple_resolver.environment, "cloud")
+    self.assertEqual(simple_resolver.num_accelerators_per_worker(), 8)
+    self.assertEqual(simple_resolver.rpc_layer, "grpc")
+
+  def testOverrideSimpleClusterResolver(self):
+    base_cluster_spec = server_lib.ClusterSpec({
+        "ps": ["ps0:2222", "ps1:2222"],
+        "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
+    })
+
+    simple_resolver = SimpleClusterResolver(base_cluster_spec, task_type="ps",
+                                            task_index=1, environment="cloud",
+                                            num_accelerators_per_worker=8,
+                                            rpc_layer="grpc")
+
+    simple_resolver.task_type = "worker"
+    simple_resolver.task_index = 2
+    simple_resolver.rpc_layer = "http"
+
+    self.assertEqual(simple_resolver.task_type, "worker")
+    self.assertEqual(simple_resolver.task_index, 2)
+    self.assertEqual(simple_resolver.rpc_layer, "http")
+
+  def testSimpleOverrideMasterWithTaskIndexZero(self):
+    base_cluster_spec = server_lib.ClusterSpec({
+        "ps": ["ps0:2222", "ps1:2222"],
+        "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
+    })
+
+    simple_resolver = SimpleClusterResolver(base_cluster_spec)
+    actual_master = simple_resolver.master("worker", 0, rpc_layer="grpc")
+    self.assertEqual(actual_master, "grpc://worker0:2222")
+
+  def testSimpleOverrideMasterWithRpcLayer(self):
+    base_cluster_spec = server_lib.ClusterSpec({
+        "ps": ["ps0:2222", "ps1:2222"],
+        "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
+    })
+
+    simple_resolver = SimpleClusterResolver(base_cluster_spec)
+    actual_master = simple_resolver.master("worker", 2, rpc_layer="grpc")
+    self.assertEqual(actual_master, "grpc://worker2:2222")
+
+  def testSimpleOverrideMaster(self):
+    base_cluster_spec = server_lib.ClusterSpec({
+        "ps": ["ps0:2222", "ps1:2222"],
+        "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
+    })
+
+    simple_resolver = SimpleClusterResolver(base_cluster_spec)
+    actual_master = simple_resolver.master("worker", 2)
+    self.assertEqual(actual_master, "worker2:2222")
+
+  def testUnionClusterResolverGetProperties(self):
+    cluster_spec_1 = server_lib.ClusterSpec({
+        "ps": ["ps0:2222", "ps1:2222"],
+        "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
+    })
+    resolver1 = SimpleClusterResolver(cluster_spec_1, task_type="ps",
+                                      task_index=1, environment="cloud",
+                                      num_accelerators_per_worker=8,
+                                      rpc_layer="grpc")
+
+    cluster_spec_2 = server_lib.ClusterSpec({
+        "ps": ["ps2:2222", "ps3:2222"],
+        "worker": ["worker3:2222", "worker4:2222", "worker5:2222"]
+    })
+    resolver2 = SimpleClusterResolver(cluster_spec_2, task_type="worker",
+                                      task_index=2, environment="local",
+                                      num_accelerators_per_worker=16,
+                                      rpc_layer="http")
+
+    union_resolver = UnionClusterResolver(resolver1, resolver2)
+
+    self.assertEqual(union_resolver.task_type, "ps")
+    self.assertEqual(union_resolver.task_index, 1)
+    self.assertEqual(union_resolver.environment, "cloud")
+    self.assertEqual(union_resolver.num_accelerators_per_worker(), 8)
+    self.assertEqual(union_resolver.rpc_layer, "grpc")
+
+    union_resolver.task_type = "worker"
+    union_resolver.task_index = 2
+    union_resolver.rpc_layer = "http"
+
+    self.assertEqual(union_resolver.task_type, "worker")
+    self.assertEqual(union_resolver.task_index, 2)
+    self.assertEqual(union_resolver.rpc_layer, "http")
+
   def testTwoNonOverlappingJobMergedClusterResolver(self):
     cluster_spec_1 = server_lib.ClusterSpec({
         "ps": [
@@ -85,6 +186,34 @@ class UnionClusterResolverTest(test.TestCase):
                          tasks { key: 2 value: 'worker2:2222' } }
     """
     self._verifyClusterSpecEquality(cluster_spec, expected_proto)
+
+  def testMergedClusterResolverMaster(self):
+    cluster_spec_1 = server_lib.ClusterSpec({
+        "ps": [
+            "ps0:2222",
+            "ps1:2222"
+        ]
+    })
+    cluster_spec_2 = server_lib.ClusterSpec({
+        "worker": [
+            "worker0:2222",
+            "worker1:2222",
+            "worker2:2222"
+        ]
+    })
+    cluster_resolver_1 = SimpleClusterResolver(cluster_spec_1)
+    cluster_resolver_2 = SimpleClusterResolver(cluster_spec_2)
+
+    union_cluster = UnionClusterResolver(cluster_resolver_1, cluster_resolver_2)
+
+    unspecified_master = union_cluster.master()
+    self.assertEqual(unspecified_master, "")
+
+    specified_master = union_cluster.master("worker", 1)
+    self.assertEqual(specified_master, "worker1:2222")
+
+    rpc_master = union_cluster.master("worker", 1, rpc_layer="grpc")
+    self.assertEqual(rpc_master, "grpc://worker1:2222")
 
   def testOverlappingJobMergedClusterResolver(self):
     cluster_spec_1 = server_lib.ClusterSpec({

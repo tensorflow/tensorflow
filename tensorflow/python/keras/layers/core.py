@@ -81,6 +81,7 @@ class Masking(Layer):
     super(Masking, self).__init__(**kwargs)
     self.supports_masking = True
     self.mask_value = mask_value
+    self._can_use_graph_functions = True
 
   def compute_mask(self, inputs, mask=None):
     return K.any(math_ops.not_equal(inputs, self.mask_value), axis=-1)
@@ -124,6 +125,7 @@ class Dropout(Layer):
     self.noise_shape = noise_shape
     self.seed = seed
     self.supports_masking = True
+    self._can_use_graph_functions = True
 
   def _get_noise_shape(self, inputs):
     # Subclasses of `Dropout` may implement `_get_noise_shape(self, inputs)`,
@@ -134,7 +136,6 @@ class Dropout(Layer):
     return nn_ops._get_noise_shape(inputs, self.noise_shape)  # pylint: disable=protected-access
 
   def call(self, inputs, training=None):
-    original_training_value = training
     if training is None:
       training = K.learning_phase()
 
@@ -145,9 +146,6 @@ class Dropout(Layer):
     output = tf_utils.smart_cond(training,
                                  dropped_inputs,
                                  lambda: array_ops.identity(inputs))
-    # EagerTensor object has no attribute _uses_learning_phase
-    if not context.executing_eagerly() and original_training_value is None:
-      output._uses_learning_phase = True  # pylint: disable=protected-access
     return output
 
   def compute_output_shape(self, input_shape):
@@ -328,6 +326,7 @@ class Activation(Layer):
     super(Activation, self).__init__(**kwargs)
     self.supports_masking = True
     self.activation = activations.get(activation)
+    self._can_use_graph_functions = True
 
   def call(self, inputs):
     return self.activation(inputs)
@@ -380,6 +379,7 @@ class Reshape(Layer):
   def __init__(self, target_shape, **kwargs):
     super(Reshape, self).__init__(**kwargs)
     self.target_shape = tuple(target_shape)
+    self._can_use_graph_functions = True
 
   def _fix_unknown_dimension(self, input_shape, output_shape):
     """Find and replace a missing dimension in an output shape.
@@ -488,6 +488,7 @@ class Permute(Layer):
           'The set of indices in `dims` must be consecutive and start from 1.' %
           (dims,))
     self.input_spec = InputSpec(ndim=len(self.dims) + 1)
+    self._can_use_graph_functions = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -539,6 +540,7 @@ class Flatten(Layer):
     super(Flatten, self).__init__(**kwargs)
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.input_spec = InputSpec(min_ndim=2)
+    self._can_use_graph_functions = True
 
   def call(self, inputs):
     if self.data_format == 'channels_first':
@@ -598,6 +600,7 @@ class RepeatVector(Layer):
     super(RepeatVector, self).__init__(**kwargs)
     self.n = n
     self.input_spec = InputSpec(ndim=2)
+    self._can_use_graph_functions = True
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -671,22 +674,34 @@ class Lambda(Layer):
     if mask is not None:
       self.supports_masking = True
     self.mask = mask
-    if output_shape is None:
-      self._output_shape = None
-    elif isinstance(output_shape, (tuple, list)):
-      self._output_shape = tuple(output_shape)
-    else:
-      if not callable(output_shape):
-        raise TypeError('In Lambda, `output_shape` '
-                        'must be a list, a tuple, or a function.')
-      self._output_shape = output_shape
+    if (output_shape is not None and not isinstance(output_shape,
+                                                    (tuple, list)) and
+        not callable(output_shape)):
+      raise TypeError('In Lambda, `output_shape` '
+                      'must be a list, a tuple, or a function.')
+    # Convert a list representing a single shape into a tuple.
+    if (isinstance(output_shape, list) and isinstance(output_shape[0],
+                                                      (int, type(None)))):
+      output_shape = tuple(output_shape)
+    self._output_shape = output_shape
 
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     if self._output_shape is None:
       if context.executing_eagerly():
-        raise NotImplementedError
-      x = K.placeholder(shape=input_shape)
+        # Make use of existing autocomputation for Eager mode but provide
+        # Lambda-specific error message.
+        try:
+          return super(Lambda, self).compute_output_shape(input_shape)
+        except NotImplementedError:
+          raise NotImplementedError('We could not automatically infer '
+                                    'the static shape of the Lambda\'s output.'
+                                    ' Please specify the `output_shape` for'
+                                    ' this Lambda.')
+      if isinstance(input_shape, list):
+        x = [K.placeholder(shape=shape) for shape in input_shape]
+      else:
+        x = K.placeholder(shape=input_shape)
       x = self.call(x)
       if isinstance(x, list):
         return [tensor_shape.TensorShape(K.int_shape(x_elem)) for x_elem in x]
@@ -697,16 +712,27 @@ class Lambda(Layer):
         num_samples = input_shape[0][0]
       else:
         num_samples = input_shape[0] if input_shape else None
-      return tensor_shape.TensorShape((num_samples,) +
-                                      tuple(self._output_shape))
+      # List here represents multiple outputs.
+      if isinstance(self._output_shape, list):
+        return [
+            tensor_shape.TensorShape((num_samples,) + tuple(single_shape))
+            for single_shape in self._output_shape
+        ]
+      return tensor_shape.TensorShape((num_samples,) + self._output_shape)
     else:
       shape = self._output_shape(input_shape)
       if not isinstance(shape, (list, tuple)):
         raise ValueError(
             '`output_shape` function must return a tuple or a list of tuples.')
+      # List here can represent multiple outputs or single output.
       if isinstance(shape, list):
-        if isinstance(shape[0], int) or shape[0] is None:
+        # Convert list representing single output into a tuple.
+        if isinstance(shape[0], (int, type(None))):
           shape = tuple(shape)
+        else:
+          return [
+              tensor_shape.TensorShape(single_shape) for single_shape in shape
+          ]
       return tensor_shape.TensorShape(shape)
 
   def call(self, inputs, mask=None):
@@ -903,17 +929,19 @@ class Dense(Layer):
 
     self.supports_masking = True
     self.input_spec = InputSpec(min_ndim=2)
+    self._can_use_graph_functions = True
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
-    if input_shape[-1].value is None:
+    if tensor_shape.dimension_value(input_shape[-1]) is None:
       raise ValueError('The last dimension of the inputs to `Dense` '
                        'should be defined. Found `None`.')
+    last_dim = tensor_shape.dimension_value(input_shape[-1])
     self.input_spec = InputSpec(min_ndim=2,
-                                axes={-1: input_shape[-1].value})
+                                axes={-1: last_dim})
     self.kernel = self.add_weight(
         'kernel',
-        shape=[input_shape[-1].value, self.units],
+        shape=[last_dim, self.units],
         initializer=self.kernel_initializer,
         regularizer=self.kernel_regularizer,
         constraint=self.kernel_constraint,
@@ -933,7 +961,7 @@ class Dense(Layer):
     self.built = True
 
   def call(self, inputs):
-    inputs = ops.convert_to_tensor(inputs, dtype=self.dtype)
+    inputs = ops.convert_to_tensor(inputs)
     rank = common_shapes.rank(inputs)
     if rank > 2:
       # Broadcasting is required for the inputs.
@@ -954,7 +982,7 @@ class Dense(Layer):
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     input_shape = input_shape.with_rank_at_least(2)
-    if input_shape[-1].value is None:
+    if tensor_shape.dimension_value(input_shape[-1]) is None:
       raise ValueError(
           'The innermost dimension of input_shape must be defined, but saw: %s'
           % input_shape)
@@ -1001,6 +1029,7 @@ class ActivityRegularization(Layer):
     self.supports_masking = True
     self.l1 = l1
     self.l2 = l2
+    self._can_use_graph_functions = True
 
   def compute_output_shape(self, input_shape):
     return input_shape

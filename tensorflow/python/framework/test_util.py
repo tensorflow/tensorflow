@@ -24,8 +24,8 @@ from collections import OrderedDict
 import contextlib
 import gc
 import itertools
-import os
 import math
+import os
 import random
 import re
 import tempfile
@@ -53,7 +53,7 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape  # pylint: disable=unused-import
+from tensorflow.python.eager import tape
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -61,6 +61,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
@@ -70,6 +71,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -402,11 +404,14 @@ def with_c_shapes(cls):
   return cls
 
 
-def enable_cond_v2(fn):
-  """Decorator for enabling CondV2 on a test.
+def enable_control_flow_v2(fn):
+  """Decorator for enabling CondV2 and WhileV2 on a test.
 
-  Note this enables using CondV2 after running the test class's setup/teardown
-  methods.
+  Note this enables using CondV2 and WhileV2 after running the test class's
+  setup/teardown methods.
+
+  In addition to this, callers must import the while_v2 module in order to set
+  the _while_v2 module in control_flow_ops.
 
   Args:
     fn: the function to be wrapped
@@ -416,21 +421,56 @@ def enable_cond_v2(fn):
   """
 
   def wrapper(*args, **kwargs):
-    prev_value = control_flow_ops.ENABLE_COND_V2
+    enable_cond_v2_old = control_flow_ops.ENABLE_COND_V2
+    enable_while_v2_old = control_flow_ops.ENABLE_WHILE_V2
     control_flow_ops.ENABLE_COND_V2 = True
+    control_flow_ops.ENABLE_WHILE_V2 = True
     try:
       fn(*args, **kwargs)
     finally:
-      control_flow_ops.ENABLE_COND_V2 = prev_value
+      control_flow_ops.ENABLE_COND_V2 = enable_cond_v2_old
+      control_flow_ops.ENABLE_WHILE_V2 = enable_while_v2_old
 
   return wrapper
 
 
-def with_cond_v2(cls):
-  """Adds methods that call original methods but with CondV2 enabled.
+def with_control_flow_v2(cls):
+  """Adds methods that call original methods with WhileV2 and CondV2 enabled.
 
-  Note this enables CondV2 in new methods after running the test class's
-  setup method.
+  Note this enables CondV2 and WhileV2 in new methods after running the test
+  class's setup method.
+
+  In addition to this, callers must import the while_v2 module in order to set
+  the _while_v2 module in control_flow_ops.
+
+  If a test function has _disable_control_flow_v2 attr set to True (using the
+  @disable_control_flow_v2 decorator), the v2 function is not generated for it.
+
+  Example:
+
+  @test_util.with_control_flow_v2
+  class ControlFlowTest(test.TestCase):
+
+    def testEnabledForV2(self):
+      ...
+
+    @test_util.disable_control_flow_v2("b/xyzabc")
+    def testDisabledForV2(self):
+      ...
+
+  Generated class:
+  class ControlFlowTest(test.TestCase):
+
+    def testEnabledForV2(self):
+      ...
+
+    def testEnabledForV2WithControlFlowV2(self):
+      // Enable V2 flags.
+      testEnabledForV2(self)
+      // Restore V2 flags.
+
+    def testDisabledForV2(self):
+      ...
 
   Args:
     cls: class to decorate
@@ -438,21 +478,39 @@ def with_cond_v2(cls):
   Returns:
     cls with new test methods added
   """
-  if control_flow_ops.ENABLE_COND_V2:
+  if control_flow_ops.ENABLE_WHILE_V2 and control_flow_ops.ENABLE_COND_V2:
     return cls
 
   for name, value in cls.__dict__.copy().items():
-    if callable(value) and name.startswith("test"):
-      setattr(cls, name + "WithCondV2", enable_cond_v2(value))
+    if (callable(value) and name.startswith("test") and
+        not getattr(value, "_disable_control_flow_v2", False)):
+      setattr(cls, name + "WithControlFlowV2", enable_control_flow_v2(value))
   return cls
+
+
+def disable_control_flow_v2(unused_msg):
+  """Decorator for a function in a with_control_flow_v2 enabled test class.
+
+  Blocks the function from being run with v2 control flow ops.
+
+  Args:
+    unused_msg: Reason for disabling.
+
+  Returns:
+    The wrapped function with _disable_control_flow_v2 attr set to True.
+  """
+  def wrapper(func):
+    func._disable_control_flow_v2 = True
+    return func
+  return wrapper
 
 
 def assert_no_new_pyobjects_executing_eagerly(f):
   """Decorator for asserting that no new Python objects persist after a test.
 
-  Runs the test multiple times executing eagerly, first as a warmup and then
-  several times to let objects accumulate. The warmup helps ignore caches which
-  do not grow as the test is run repeatedly.
+  Runs the test multiple times executing eagerly, first as a warmup and then to
+  let objects accumulate. The warmup helps ignore caches which do not grow as
+  the test is run repeatedly.
 
   Useful for checking that there are no missing Py_DECREFs in the C exercised by
   a bit of Python.
@@ -462,7 +520,14 @@ def assert_no_new_pyobjects_executing_eagerly(f):
     """Warms up, gets an object count, runs the test, checks for new objects."""
     with context.eager_mode():
       gc.disable()
-      f(self, **kwargs)
+      # Run the test 2 times as warmup, in an attempt to fill up caches, which
+      # should not grow as the test is run repeatedly below.
+      #
+      # TODO(b/117156879): Running warmup twice is black magic; we have seen
+      # tests that fail with 1 warmup run, and pass with 2, on various versions
+      # of python2.7.x.
+      for _ in range(2):
+        f(self, **kwargs)
       gc.collect()
       previous_count = len(gc.get_objects())
       if ops.has_default_graph():
@@ -565,6 +630,109 @@ def assert_no_new_tensors(f):
   return decorator
 
 
+def _find_reference_cycle(objects, idx):
+
+  def get_ignore_reason(obj, blacklist):
+    """Tests whether an object should be omitted from the dependency graph."""
+    if len(blacklist) > 100:
+      return "<depth limit>"
+    if tf_inspect.isframe(obj):
+      if "test_util.py" in tf_inspect.getframeinfo(obj)[0]:
+        return "<test code>"
+    for b in blacklist:
+      if b is obj:
+        return "<test code>"
+    if obj is blacklist:
+      return "<test code>"
+    return None
+
+  # Note: this function is meant to help with diagnostics. Its output is purely
+  # a human readable representation, so you may freely modify it to suit your
+  # needs.
+  def describe(obj, blacklist, leaves_only=False):
+    """Returns a custom human-readable summary of obj.
+
+    Args:
+      obj: the value to describe.
+      blacklist: same as blacklist in get_ignore_reason.
+      leaves_only: boolean flag used when calling describe recursively. Useful
+        for summarizing collections.
+    """
+    if get_ignore_reason(obj, blacklist):
+      return "{}{}".format(get_ignore_reason(obj, blacklist), type(obj))
+    if tf_inspect.isframe(obj):
+      return "frame: {}".format(tf_inspect.getframeinfo(obj))
+    elif tf_inspect.ismodule(obj):
+      return "module: {}".format(obj.__name__)
+    else:
+      if leaves_only:
+        return "{}, {}".format(type(obj), id(obj))
+      elif isinstance(obj, list):
+        return "list({}): {}".format(
+            id(obj), [describe(e, blacklist, leaves_only=True) for e in obj])
+      elif isinstance(obj, tuple):
+        return "tuple({}): {}".format(
+            id(obj), [describe(e, blacklist, leaves_only=True) for e in obj])
+      elif isinstance(obj, dict):
+        return "dict({}): {} keys".format(id(obj), len(obj.keys()))
+      elif tf_inspect.isfunction(obj):
+        return "function({}) {}; globals ID: {}".format(
+            id(obj), obj.__name__, id(obj.__globals__))
+      else:
+        return "{}, {}".format(type(obj), id(obj))
+
+  def build_ref_graph(obj, graph, reprs, blacklist):
+    """Builds a reference graph as <referrer> -> <list of refferents>.
+
+    Args:
+      obj: The object to start from. The graph will be built by recursively
+        adding its referrers.
+      graph: Dict holding the graph to be built. To avoid creating extra
+        references, the graph holds object IDs rather than actual objects.
+      reprs: Auxiliary structure that maps object IDs to their human-readable
+        description.
+      blacklist: List of objects to ignore.
+    """
+    referrers = gc.get_referrers(obj)
+    blacklist = blacklist + (referrers,)
+
+    obj_id = id(obj)
+    for r in referrers:
+      if get_ignore_reason(r, blacklist) is None:
+        r_id = id(r)
+        if r_id not in graph:
+          graph[r_id] = []
+        if obj_id not in graph[r_id]:
+          graph[r_id].append(obj_id)
+          build_ref_graph(r, graph, reprs, blacklist)
+          reprs[r_id] = describe(r, blacklist)
+
+  def find_cycle(el, graph, reprs, path):
+    """Finds and prints a single cycle in the dependency graph."""
+    if el not in graph:
+      return
+    for r in graph[el]:
+      if r in path:
+        logging.error("Reference cycle sample:")
+        for p in path + (r,):
+          logging.error(reprs.get(p, "unknown object " + str(p)))
+        return True
+      else:
+        if find_cycle(r, graph, reprs, path + (r,)):
+          return True
+    return False
+
+  obj = objects[idx]
+  graph = {}  # referrer ID -> object ID
+  reprs = {}  # object ID -> description
+  build_ref_graph(obj, graph, reprs, (objects, graph, reprs, get_ignore_reason,
+                                      describe, build_ref_graph, find_cycle))
+  for k in graph:
+    if find_cycle(k, graph, reprs, ()):
+      return True
+  return False
+
+
 def assert_no_garbage_created(f):
   """Test method decorator to assert that no garbage has been created.
 
@@ -580,6 +748,10 @@ def assert_no_garbage_created(f):
 
   def decorator(self, **kwargs):
     """Sets DEBUG_SAVEALL, runs the test, and checks for new garbage."""
+    # Force-load `distribution_strategy_context` to prevent GC at
+    # test time when using eager. Remove once b/117329403 is resolved.
+    tape.distribution_strategy_context.get_distribution_strategy()
+
     gc.disable()
     previous_debug_flags = gc.get_debug()
     gc.set_debug(gc.DEBUG_SAVEALL)
@@ -587,7 +759,8 @@ def assert_no_garbage_created(f):
     previous_garbage = len(gc.garbage)
     f(self, **kwargs)
     gc.collect()
-    if len(gc.garbage) > previous_garbage:
+    new_garbage = len(gc.garbage)
+    if new_garbage > previous_garbage:
       logging.error(
           "The decorated test created work for Python's garbage collector, "
           "likely due to a reference cycle. New objects in cycle(s):")
@@ -611,11 +784,19 @@ def assert_no_garbage_created(f):
           logging.error(obj)
           logging.error("  Object __repr__:")
           logging.error(repr(obj))
-        except Exception:
+        except Exception:  # pylint: disable=broad-except
           logging.error("(Exception while printing object)")
+
+    # When garbage is created, this call can help identify reference cycles,
+    # which are typically the cause of such garbage.
+    if new_garbage > previous_garbage:
+      for i in range(previous_garbage, new_garbage):
+        if _find_reference_cycle(gc.garbage, i):
+          break
+
     # This will fail if any garbage has been created, typically because of a
     # reference cycle.
-    self.assertEqual(previous_garbage, len(gc.garbage))
+    self.assertEqual(previous_garbage, new_garbage)
     # TODO(allenl): Figure out why this debug flag reset doesn't work. It would
     # be nice to be able to decorate arbitrary tests in a large test suite and
     # not hold on to every object in other tests.
@@ -700,7 +881,8 @@ def run_all_in_graph_and_eager_modes(cls):
   """Execute all test methods in the given class with and without eager."""
   base_decorator = run_in_graph_and_eager_modes
   for name, value in cls.__dict__.copy().items():
-    if callable(value) and name.startswith("test"):
+    if callable(value) and name.startswith(
+        "test") and not name.startswith("testSkipEager"):
       setattr(cls, name, base_decorator(value))
   return cls
 
@@ -768,22 +950,22 @@ def run_in_graph_and_eager_modes(func=None,
     if tf_inspect.isclass(f):
       raise ValueError(
           "`run_test_in_graph_and_eager_modes` only supports test methods. "
-          "Did you mean to use `run_all_tests_in_graph_and_eager_modes`?")
+          "Did you mean to use `run_all_in_graph_and_eager_modes`?")
 
-    def decorated(self, **kwargs):
+    def decorated(self, *args, **kwargs):
       try:
         with context.graph_mode():
           with self.test_session(use_gpu=use_gpu, config=config):
-            f(self, **kwargs)
+            f(self, *args, **kwargs)
       except unittest.case.SkipTest:
         pass
 
       def run_eagerly(self, **kwargs):
         if not use_gpu:
           with ops.device("/device:CPU:0"):
-            f(self, **kwargs)
+            f(self, *args, **kwargs)
         else:
-          f(self, **kwargs)
+          f(self, *args, **kwargs)
 
       if assert_no_eager_garbage:
         ops.reset_default_graph()
@@ -1070,6 +1252,9 @@ class TensorFlowTestCase(googletest.TestCase):
       return self._eval_helper(tensor())
     else:
       try:
+        if sparse_tensor.is_sparse(tensor):
+          return sparse_tensor.SparseTensorValue(tensor.indices, tensor.values,
+                                                 tensor.dense_shape)
         return tensor.numpy()
       except AttributeError as e:
         six.raise_from(ValueError("Unsupported type %s." % type(tensor)), e)
@@ -1195,6 +1380,8 @@ class TensorFlowTestCase(googletest.TestCase):
         yield cached
 
   @contextlib.contextmanager
+  @deprecation.deprecated(None, "Use `self.session()` or "
+                          "`self.cached_session()` instead.")
   def test_session(self,
                    graph=None,
                    config=None,
@@ -1603,9 +1790,16 @@ class TensorFlowTestCase(googletest.TestCase):
     msg = msg if msg else ""
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
-    self.assertEqual(
-        a.shape, b.shape, "Shape mismatch: expected %s, got %s."
-        " %s" % (a.shape, b.shape, msg))
+    # Arbitrary bounds so that we don't print giant tensors.
+    if (b.ndim <= 3 or b.size < 500):
+      self.assertEqual(
+          a.shape, b.shape, "Shape mismatch: expected %s, got %s."
+          " Contents: %s. \n%s." % (a.shape, b.shape, b, msg))
+    else:
+      self.assertEqual(
+          a.shape, b.shape, "Shape mismatch: expected %s, got %s."
+          " %s" % (a.shape, b.shape, msg))
+
     same = (a == b)
 
     if (a.dtype in [
@@ -1639,7 +1833,7 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertGreater(np.min(a), comparison_target)
 
   def assertAllLess(self, a, comparison_target):
-    """Assert element values are all greater than a target value.
+    """Assert element values are all less than a target value.
 
     Args:
       a: The numpy `ndarray`, or anything that can be converted into a
@@ -1650,7 +1844,7 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertLess(np.max(a), comparison_target)
 
   def assertAllGreaterEqual(self, a, comparison_target):
-    """Assert element values are all greater than a target value.
+    """Assert element values are all greater than or equal to a target value.
 
     Args:
       a: The numpy `ndarray`, or anything that can be converted into a
@@ -1661,7 +1855,7 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertGreaterEqual(np.min(a), comparison_target)
 
   def assertAllLessEqual(self, a, comparison_target):
-    """Assert element values are all greater than a target value.
+    """Assert element values are all less than or equal to a target value.
 
     Args:
       a: The numpy `ndarray`, or anything that can be converted into a
@@ -1936,9 +2130,11 @@ class TensorFlowTestCase(googletest.TestCase):
       # Don't perform optimizations for tests so we don't inadvertently run
       # gpu ops on cpu
       config.graph_options.optimizer_options.opt_level = -1
+      # Disable Grappler constant folding since some tests & benchmarks
+      # use constant input and become meaningless after constant folding.
+      # DO NOT DISABLE GRAPPLER OPTIMIZERS WITHOUT CONSULTING WITH THE
+      # GRAPPLER TEAM.
       config.graph_options.rewrite_options.constant_folding = (
-          rewriter_config_pb2.RewriterConfig.OFF)
-      config.graph_options.rewrite_options.arithmetic_optimization = (
           rewriter_config_pb2.RewriterConfig.OFF)
       config.graph_options.rewrite_options.pin_to_host_optimization = (
           rewriter_config_pb2.RewriterConfig.OFF)

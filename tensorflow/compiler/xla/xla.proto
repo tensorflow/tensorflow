@@ -316,12 +316,40 @@ message CreateChannelHandleResponse {
 }
 
 message UnregisterRequest {
-  GlobalDataHandle data = 1;
+  repeated GlobalDataHandle data = 1;
 }
 
 message UnregisterResponse {
 }
 
+message CompileRequest {
+  // The graph to be compiled.
+  HloModuleProto computation = 1;
+
+  // Options that affect how XLA compiles code to service this request.
+  ExecutionOptions execution_options = 2;
+
+  // The layouts of the input arguments. If not set, the default layout will be
+  // used. Although the real arguments are not needed in compilation, the
+  // layouts of the arguments can affect the compilation.
+  repeated Shape input_shape_with_layout = 3;
+}
+
+message CompileResponse {
+  // The handle to the executable.
+  ExecutionHandle handle = 1;
+}
+
+message ExecuteRequest {
+  ExecutionHandle handle = 1;
+
+  // The shape and layout of the arguments must be the same as the those of the
+  // executable's parameters.
+  repeated GlobalDataHandle arguments = 2;
+}
+
+// TODO(b/118493728): Remove this and ExecuteGraphParallelRequest and replace
+// the uses with calls to Compile and Execute.
 message ExecuteGraphRequest {
   HloModuleProto computation = 1;
   repeated GlobalDataHandle arguments = 2;

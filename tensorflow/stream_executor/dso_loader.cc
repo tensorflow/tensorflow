@@ -23,17 +23,18 @@ limitations under the License.
 #include <initializer_list>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/path.h"
 #include "tensorflow/stream_executor/lib/str_util.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 #if !defined(PLATFORM_GOOGLE)
+#include "absl/strings/string_view.h"
 #include "cuda/cuda_config.h"
 #endif
 
@@ -119,12 +120,12 @@ static mutex& GetRpathMutex() {
   return *mu;
 }
 
-/* static */ void DsoLoader::RegisterRpath(port::StringPiece path) {
+/* static */ void DsoLoader::RegisterRpath(absl::string_view path) {
   mutex_lock lock{GetRpathMutex()};
   GetRpaths()->emplace_back(path);
 }
 
-/* static */ port::Status DsoLoader::GetDsoHandle(port::StringPiece path,
+/* static */ port::Status DsoLoader::GetDsoHandle(absl::string_view path,
                                                   void** dso_handle,
                                                   LoadKind load_kind) {
   if (load_kind != LoadKind::kLocal) {
@@ -145,7 +146,7 @@ static mutex& GetRpathMutex() {
 #endif
     ;
     return port::Status(port::error::FAILED_PRECONDITION,
-                        port::StrCat("could not dlopen DSO: ", path,
+                        absl::StrCat("could not dlopen DSO: ", path,
                                      "; dlerror: ", s.error_message()));
   }
   LOG(INFO) << "successfully opened CUDA library " << path << " locally";
@@ -190,13 +191,13 @@ static std::vector<string>* CreatePrimordialRpaths() {
 #endif
 }
 
-/* static */ string DsoLoader::FindDsoPath(port::StringPiece library_name,
-                                           port::StringPiece runfiles_relpath) {
+/* static */ string DsoLoader::FindDsoPath(absl::string_view library_name,
+                                           absl::string_view runfiles_relpath) {
   // Keep a record of the paths we attempted so we can dump out meaningful
   // diagnostics if no path is found.
   std::vector<string> attempted;
 
-  using StringPieces = std::vector<port::StringPiece>;
+  using StringPieces = std::vector<absl::string_view>;
   string candidate;
 
   // Otherwise, try binary-plus-rpath locations.

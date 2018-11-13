@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
 import time
 import unittest
 
@@ -283,7 +284,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
   def testReverse0DimAuto(self):
     x_np = 4
     for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu):
+      with self.cached_session(use_gpu=use_gpu):
         x_tf = array_ops.reverse_v2(x_np, []).eval()
         self.assertAllEqual(x_tf, x_np)
 
@@ -292,7 +293,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
 
     for use_gpu in [False, True]:
       for axis_dtype in [dtypes.int32, dtypes.int64]:
-        with self.test_session(use_gpu=use_gpu):
+        with self.cached_session(use_gpu=use_gpu):
           x_tf = array_ops.reverse_v2(x_np,
                                       constant_op.constant(
                                           [0], dtype=axis_dtype)).eval()
@@ -304,7 +305,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
     for reverse_f in [array_ops.reverse_v2, array_ops.reverse]:
       for use_gpu in [False, True]:
         for axis_dtype in [dtypes.int32, dtypes.int64]:
-          with self.test_session(use_gpu=use_gpu):
+          with self.cached_session(use_gpu=use_gpu):
             x_tf_1 = reverse_f(x_np, constant_op.constant(
                 [0], dtype=axis_dtype)).eval()
             x_tf_2 = reverse_f(x_np, constant_op.constant(
@@ -391,7 +392,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
 
   def testReverseRowsOf3Channels(self):
     """Tests optimized code for reversing rows with last dim size = 3."""
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       for reverse_f in [array_ops.reverse_v2, array_ops.reverse]:
         for outer_size in (1, 2):
           for middle_size in list(range(50)) + [100000]:
@@ -403,7 +404,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
             self.assertAllEqual(x_tf, np_answer)
 
   def testReverseRowsOf4Channels(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       for reverse_f in [array_ops.reverse_v2, array_ops.reverse]:
         for outer_size in (1, 2):
           for middle_size in list(range(50)) + [100000]:
@@ -415,7 +416,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
             self.assertAllEqual(x_tf, np_answer)
 
   def testReverseColumnsOf3Channels(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       for reverse_f in [array_ops.reverse_v2, array_ops.reverse]:
         for outer_size in list(range(50)) + [100000]:
           for middle_size in (1, 2):
@@ -433,7 +434,7 @@ class MeshgridTest(test_util.TensorFlowTestCase):
     for index in ("ij", "xy"):
       numpy_out = np.meshgrid(x, y, indexing=index)
       tf_out = array_ops.meshgrid(x, y, indexing=index)
-      with self.test_session(use_gpu=use_gpu):
+      with self.cached_session(use_gpu=use_gpu):
         for xx, yy in zip(numpy_out, tf_out):
           self.assertAllEqual(xx, yy.eval())
 
@@ -446,7 +447,7 @@ class MeshgridTest(test_util.TensorFlowTestCase):
           x += 1j
         inputs.append(x)
       numpy_out = np.meshgrid(*inputs, indexing=index)
-      with self.test_session(use_gpu=use_gpu):
+      with self.cached_session(use_gpu=use_gpu):
         tf_out = array_ops.meshgrid(*inputs, indexing=index)
         for x_np, x_tf in zip(numpy_out, tf_out):
           self.assertAllEqual(x_np, x_tf.eval())
@@ -474,6 +475,8 @@ class StridedSliceChecker(object):
 
   def __init__(self, test, x, tensor_type=dtypes.int32, check_type_infer=True):
     self.x_np = np.array(x).astype(tensor_type.as_numpy_dtype)
+    if tensor_type.is_bool:
+      self.x_np = np.array(x % 3).astype(np.bool)
     # Give the value a non-zero imaginary component for complex types.
     if tensor_type.is_complex:
       self.x_np -= 1j * self.x_np
@@ -514,7 +517,7 @@ class StridedSliceChecker(object):
 
 STRIDED_SLICE_TYPES = [
     dtypes.int32, dtypes.int64, dtypes.int16, dtypes.int8, dtypes.float32,
-    dtypes.float64, dtypes.complex64, dtypes.complex128
+    dtypes.float64, dtypes.complex64, dtypes.complex128, dtypes.bool
 ]
 
 
@@ -523,7 +526,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
 
   def test_basic_slice(self):
     for tensor_type in STRIDED_SLICE_TYPES:
-      with self.test_session(use_gpu=not tensor_type.is_integer):
+      with self.cached_session(use_gpu=True):
         checker = StridedSliceChecker(
             self, StridedSliceChecker.REF_TENSOR, tensor_type=tensor_type)
         _ = checker[:, :, :]
@@ -551,7 +554,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
   def testInt64GPU(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
-    with self.test_session(use_gpu=True, force_gpu=True):
+    with self.session(use_gpu=True, force_gpu=True):
       x = constant_op.constant([1., 2., 3.])
       begin = constant_op.constant([2], dtype=dtypes.int64)
       end = constant_op.constant([3], dtype=dtypes.int64)
@@ -576,7 +579,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       v[0]  # pylint: disable=pointless-statement
 
   def testDegenerateSlices(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       checker = StridedSliceChecker(self, StridedSliceChecker.REF_TENSOR)
       # degenerate by offering a forward interval with a negative stride
       _ = checker[0:-1:-1, :, :]
@@ -586,7 +589,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       _ = checker[-1:0, 2:2, 2:3:-1]
 
   def testEllipsis(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       raw = [[[[[1, 2], [3, 4], [5, 6]]], [[[7, 8], [9, 10], [11, 12]]]]]
       checker = StridedSliceChecker(self, raw)
 
@@ -606,7 +609,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
         _ = checker[..., :, ...].eval()
 
   def testShrink(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       raw = [[[[[1, 2, 4, 5], [5, 6, 7, 8], [9, 10, 11, 12]]],
               [[[13, 14, 15, 16], [17, 18, 19, 20], [21, 22, 23, 24]]]]]
       checker = StridedSliceChecker(self, raw)
@@ -615,8 +618,16 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       _ = checker[:, 0]
       _ = checker[:, :, 0]
 
+  def testBothNewAxisAndShrink(self):
+    with self.session(use_gpu=True):
+      ones = array_ops.placeholder(shape=[2, 2], dtype=dtypes.int16)
+      self.assertAllEqual(
+          ones[array_ops.newaxis, :, 0].eval(
+              feed_dict={ones: [[1, 1], [1, 1]]}),
+          [[1, 1]])
+
   def testTensorIndexing(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       raw = [[[[[1, 2, 4, 5], [5, 6, 7, 8], [9, 10, 11, 12]]],
               [[[13, 14, 15, 16], [17, 18, 19, 20], [21, 22, 23, 24]]]]]
       checker = StridedSliceChecker(self, raw, check_type_infer=False)
@@ -624,15 +635,23 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       bar2 = constant_op.constant(3)
       _ = checker[..., bar:bar2]
       _ = checker[..., bar]
-      with self.assertRaisesRegexp(
-          TypeError,
-          "Value passed to parameter 'begin' has DataType float32 not in "
-          "list of allowed values"):
-        _ = checker[..., 3.0]
       _ = checker[..., 3]
 
+  def testTensorIndexingTypeError(self):
+    with self.session(use_gpu=True):
+      checker = StridedSliceChecker(self, StridedSliceChecker.REF_TENSOR)
+      expected = re.escape(array_ops._SLICE_TYPE_ERROR)
+      with self.assertRaisesRegexp(TypeError, expected):
+        _ = checker["foo"]
+      with self.assertRaisesRegexp(TypeError, expected):
+        _ = checker[constant_op.constant("foo")]
+      with self.assertRaisesRegexp(TypeError, expected):
+        _ = checker[0.0]
+      with self.assertRaisesRegexp(TypeError, expected):
+        _ = checker[constant_op.constant(0.0)]
+
   def testExpand(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       raw = [[[[[1, 2, 4, 5], [5, 6, 7, 8], [9, 10, 11, 12]]],
               [[[13, 14, 15, 16], [17, 18, 19, 20], [21, 22, 23, 24]]]]]
       checker = StridedSliceChecker(self, raw)
@@ -649,7 +668,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       _ = checker[np.newaxis, ..., np.newaxis]
 
   def testExpandVariable(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       x = variables.Variable(7, dtype=dtypes.int32)
       x.initializer.run()
       y = x[None].eval()
@@ -657,7 +676,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(y, (7,))
 
   def testOptimizedCases(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       checker = StridedSliceChecker(self,
                                     StridedSliceChecker.REF_TENSOR_ALIGNED)
       # Identity
@@ -686,7 +705,7 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
   """Test the shape inference of StridedSliceShapes."""
 
   def testUnknown(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       uncertain_tensor = array_ops.placeholder(dtypes.float32)
       a = StridedSliceShapeChecker(uncertain_tensor)
       a_slice_shape = a[...]
@@ -697,7 +716,7 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
     self.assertEqual(x.as_list(), y.as_list())
 
   def testTensorShapeUncertain(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       uncertain_tensor = array_ops.placeholder(
           dtypes.float32, shape=(5, None, 7))
       a = StridedSliceShapeChecker(uncertain_tensor)
@@ -720,7 +739,7 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
                             tensor_shape.TensorShape([5, None, 1, 4]))
 
   def testTensorValuedIndexShape(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       defined_shape_tensor = array_ops.placeholder(
           dtypes.float32, shape=(5, 3, 7))
       index_value = array_ops.placeholder(dtypes.int32, shape=())
@@ -776,7 +795,7 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
   """Test that strided slice's custom gradient produces correct gradients."""
 
   def testGradient(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       var = variables.Variable(
           array_ops.reshape(
               math_ops.range(1, 97, 1, dtype=dtypes.float32), shape=(6, 4, 4)))
@@ -797,7 +816,7 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
         _ = grad[:, 200, :]
 
   def testGradientZero(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       var = variables.Variable(8.)
       init = variables.global_variables_initializer()
       sess.run(init)
@@ -805,7 +824,7 @@ class StridedSliceGradTest(test_util.TensorFlowTestCase):
       _ = grad[tuple()]
 
   def testInt64Indices(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       a = math_ops.range(3, dtype=dtypes.float32)
       index = constant_op.constant(1, dtype=dtypes.int64)
       b = 2. * a[index]
@@ -817,7 +836,7 @@ class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
   """Test varied index types and host located memory."""
 
   def testHostVsDevice(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       var2 = variables.Variable(
           array_ops.reshape(
               math_ops.cast(math_ops.range(1, 5, 1), dtypes.float32),
@@ -831,7 +850,7 @@ class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
       sess.run(foo)
 
   def testInt64Shape(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       original_dy = array_ops.reshape(
           math_ops.cast(math_ops.range(1, 5, 1), dtypes.float32),
           shape=(4, 1, 1))
@@ -845,7 +864,7 @@ class StridedSliceGradTypeTest(test_util.TensorFlowTestCase):
       sess.run(dx)
 
   def testMixedIndexTypes(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       original_dy = array_ops.reshape(
           math_ops.cast(math_ops.range(1, 5, 1), dtypes.float32),
           shape=(4, 1, 1))
@@ -934,8 +953,7 @@ class StridedSliceAssignChecker(object):
     if self.tensor_type.is_complex:
       value -= 1j * value
 
-    with self.test.test_session(
-        use_gpu=not self.tensor_type.is_integer) as sess:
+    with self.test.test_session(use_gpu=True) as sess:
       if self._use_resource:
         var = resource_variable_ops.ResourceVariable(self.x)
       else:
@@ -1001,14 +1019,14 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
         errors.FailedPreconditionError,
         "Attempting to use uninitialized value Variable"):
       with self.cached_session() as sess:
-        v = variables.Variable([1, 2])
+        v = variables.VariableV1([1, 2])
         sess.run(v[:].assign([1, 2]))
 
   def testTypeError(self):
     init_val = constant_op.constant([1, 2], dtype=dtypes.int32)
     too_small_val = constant_op.constant([3, 4], dtype=dtypes.int8)
     too_large_val = constant_op.constant([3, 4], dtype=dtypes.int64)
-    v = variables.Variable(init_val)
+    v = variables.VariableV1(init_val)
     with self.assertRaises(TypeError):
       v[:].assign(too_small_val)
     with self.assertRaises(TypeError):
@@ -1204,7 +1222,7 @@ class InvertPermutationTest(test_util.TensorFlowTestCase):
 
   def testInvertPermutation(self):
     for dtype in [dtypes.int32, dtypes.int64]:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         x = constant_op.constant([3, 4, 0, 2, 1], dtype=dtype)
         y = array_ops.invert_permutation(x)
         self.assertAllEqual(y.get_shape(), [5])
@@ -1270,7 +1288,7 @@ class SnapshotOpTest(test_util.TensorFlowTestCase):
 
   def testInvertPermutation(self):
     for dtype in [dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64]:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         x = constant_op.constant([0, 1, 2, 3], dtype=dtype)
         y = gen_array_ops.snapshot(x)
         self.assertAllEqual(y.eval(), [0, 1, 2, 3])

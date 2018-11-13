@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -133,7 +133,7 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
 
 TEST_F(LiteralUtilTest, LiteralVectorToString) {
   auto pred_vec = LiteralUtil::CreateR1<bool>({true, false, true});
-  EXPECT_EQ("{101}", pred_vec.ToString());
+  EXPECT_EQ("{1, 0, 1}", pred_vec.ToString());
 }
 
 TEST_F(LiteralUtilTest, R2ToString) {
@@ -224,6 +224,16 @@ TEST_F(LiteralUtilTest, CreateSparse) {
             absl::Span<const int64>(expected_indices.data(),
                                     expected_indices.num_elements()));
   EXPECT_EQ(literal.data<int64>(), absl::Span<const int64>(expected_values));
+
+  // Serialize then deserialize and verify the resulting literal.
+  TF_ASSERT_OK_AND_ASSIGN(Literal literal_from_proto,
+                          Literal::CreateFromProto(literal.ToProto()));
+
+  EXPECT_EQ(literal_from_proto.sparse_indices()->data(),
+            absl::Span<const int64>(expected_indices.data(),
+                                    expected_indices.num_elements()));
+  EXPECT_EQ(literal_from_proto.data<int64>(),
+            absl::Span<const int64>(expected_values));
 }
 
 TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
@@ -1302,11 +1312,10 @@ TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
 
 TEST_F(LiteralUtilTest, BitcastConvert) {
   auto original = LiteralUtil::CreateR1<uint32>(
-      {tensorflow::bit_cast<uint32>(2.5f),
-       tensorflow::bit_cast<uint32>(-42.25f),
-       tensorflow::bit_cast<uint32>(100.f), 0xbeef});
+      {absl::bit_cast<uint32>(2.5f), absl::bit_cast<uint32>(-42.25f),
+       absl::bit_cast<uint32>(100.f), 0xbeef});
   auto expected = LiteralUtil::CreateR1<float>(
-      {2.5f, -42.25f, 100.0f, tensorflow::bit_cast<float>(0xbeef)});
+      {2.5f, -42.25f, 100.0f, absl::bit_cast<float>(0xbeef)});
   TF_ASSERT_OK_AND_ASSIGN(Literal converted, original.BitcastConvert(F32));
 }
 
@@ -1383,6 +1392,28 @@ TEST_F(LiteralUtilTest, CopyFromProto_f16) {
   EXPECT_EQ(h2, r[1]);
   EXPECT_EQ(h2, r[2]);
   EXPECT_EQ(h1, r[3]);
+}
+
+TEST_F(LiteralUtilTest, CopyFromProto_u16) {
+  uint16 u1(0xabcd);
+  uint16 u2(0x1234);
+
+  const unsigned char uint16_vals[8] = {0xcd, 0xab, 0x34, 0x12,
+                                        0x34, 0x12, 0xcd, 0xab};
+  LiteralProto p;
+  p.mutable_shape()->set_element_type(U16);
+  p.mutable_shape()->clear_dimensions();
+  p.mutable_shape()->add_dimensions(4);
+  LayoutUtil::SetToDefaultLayout(p.mutable_shape());
+  p.clear_u16s();
+  p.set_u16s(uint16_vals, 8);
+  TF_ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(p));
+  auto r = literal.data<uint16>();
+  ASSERT_EQ(4, r.size());
+  EXPECT_EQ(u1, r[0]);
+  EXPECT_EQ(u2, r[1]);
+  EXPECT_EQ(u2, r[2]);
+  EXPECT_EQ(u1, r[3]);
 }
 
 TEST_F(LiteralUtilTest, LiteralSliceTest) {

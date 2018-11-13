@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 
 #include "tensorflow/core/common_runtime/device_factory.h"
-#include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -136,6 +135,22 @@ void AttrBuilder::FillAttrValueMap(AttrValueMap* m,
       m->insert(*it);
     }
   }
+  // For any attr-value pairs that exist in the op def (from op registry) but
+  // not `m`, fill them into `m`, so that we can run a TFE_Op without having to
+  // specify all the default attr values (e.g. for matmul, the `transpose_a`
+  // attr defaults to false).
+  const OpDef* op_def = nullptr;
+  Status s = OpDefForOp(op_name_.c_str(), &op_def);
+  // This is expected, if this op is a custom function, and is therefore not
+  // present in the op registry.
+  if (!s.ok()) return;
+
+  DCHECK(op_def);
+  for (const auto& attr_def : op_def->attr()) {
+    if (attr_def.has_default_value() && !m->count(attr_def.name())) {
+      SetInAttrValueMap(m, attr_def.name(), attr_def.default_value());
+    }
+  }
 }
 
 const NodeDef& AttrBuilder::BuildNodeDef() {
@@ -169,7 +184,7 @@ namespace {
 inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
                                                const tensorflow::Fprint128& b) {
   return {tensorflow::FingerprintCat64(a.low64, b.low64),
-          tensorflow::FingerprintCat64(a.low64, b.low64)};
+          tensorflow::FingerprintCat64(a.high64, b.high64)};
 }
 
 void CombineUnordered(const tensorflow::Fprint128& a,

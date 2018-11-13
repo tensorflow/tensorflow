@@ -404,8 +404,7 @@ const char* TFE_TensorHandleDeviceName(TFE_TensorHandle* h, TF_Status* status) {
         "The passed in handle is a nullptr");
     return nullptr;
   }
-  tensorflow::Device* d = nullptr;
-  status->status = h->handle->OpDevice(&d);
+  tensorflow::Device* d = h->handle->op_device();
   return (d == nullptr) ? "/job:localhost/replica:0/task:0/device:CPU:0"
                         : d->name().c_str();
 }
@@ -575,6 +574,14 @@ void TFE_OpSetAttrFunction(TFE_Op* op, const char* attr_name,
   tensorflow::NameAttrList* func = attr_value.mutable_func();
   func->set_name(value->operation.Name());
   value->operation.Attrs().FillAttrValueMap(func->mutable_attr());
+  op->operation.MutableAttrs()->Set(attr_name, attr_value);
+}
+
+void TFE_OpSetAttrFunctionName(TFE_Op* op, const char* attr_name,
+                               const char* data, size_t length) {
+  tensorflow::AttrValue attr_value;
+  tensorflow::NameAttrList* func = attr_value.mutable_func();
+  func->set_name(data, length);
   op->operation.MutableAttrs()->Set(attr_name, attr_value);
 }
 

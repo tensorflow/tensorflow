@@ -45,7 +45,6 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops.distributions import distribution as ds
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
 from tensorflow.python.training import session_run_hook
@@ -1264,10 +1263,6 @@ def _validate_distributions(distributions_l, noise_l):
   if not isinstance(distributions_l, (tuple, list)):
     raise ValueError('`predicted_distributions` must be a list. Instead, found '
                      '%s.' % type(distributions_l))
-  for dist in distributions_l:
-    if not isinstance(dist, ds.Distribution):
-      raise ValueError('Every element in `predicted_distributions` must be a '
-                       '`tf.Distribution`. Instead, found %s.' % type(dist))
   if len(distributions_l) != len(noise_l):
     raise ValueError('Length of `predicted_distributions` %i must be the same '
                      'as the length of structured noise %i.' %

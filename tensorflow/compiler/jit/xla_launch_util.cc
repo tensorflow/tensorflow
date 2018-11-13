@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
@@ -41,22 +42,127 @@ using xla::ScopedShapedBuffer;
 using xla::ShapedBuffer;
 }  // anonymous namespace
 
-std::map<int, OptionalTensor> SnapshotResourceVariables(
-    OpKernelContext* ctx, absl::Span<const int> variables) {
-  std::map<int, OptionalTensor> snapshot;
-  for (int i : variables) {
-    Var* variable = nullptr;
-    ResourceHandle handle = HandleFromInput(ctx, i);
-    OptionalTensor& tensor = snapshot[i];
-    if (LookupResource(ctx, handle, &variable).ok()) {
-      core::ScopedUnref scoped_unref(variable);
-      tf_shared_lock lock(*variable->mu());
-      tensor.name = handle.name();
+VariableInfo::VariableInfo(int index, Var* var) : index_(index), var_(var) {}
+VariableInfo::VariableInfo(VariableInfo&& other)
+    : index_(other.index_), var_(other.var_), lock_held_(other.lock_held_) {
+  other.index_ = -1;
+  other.var_ = nullptr;
+}
+
+VariableInfo& VariableInfo::operator=(VariableInfo&& other) {
+  index_ = other.index_;
+  var_ = other.var_;
+  lock_held_ = other.lock_held_;
+
+  other.index_ = -1;
+  other.var_ = nullptr;
+
+  return *this;
+}
+
+VariableInfo::~VariableInfo() {
+  // Release the variable's lock if we hold it. Ensures that the lock is
+  // released even on error.  It does not matter in what order we release the
+  // locks.
+  if (var()) {
+    if (lock_held()) {
+      var()->mu()->unlock();
+    }
+
+    // Unref the variable so it can be released by ResourceManager.
+    var()->Unref();
+  }
+}
+
+// Returns a vector of VaribleInfo instances for the resource variable inputs to
+// the kernel with context `ctx`.  The input indices for the resource variable
+// inputs are in `variable_indices`.
+static Status GetVariableInfosFromCtxInputs(
+    OpKernelContext* ctx, absl::Span<const int> variable_indices,
+    std::vector<VariableInfo>* result) {
+  std::vector<const ResourceHandle*> resource_handles;
+  absl::c_transform(
+      variable_indices, std::back_inserter(resource_handles),
+      [&](int variable_idx) { return &HandleFromInput(ctx, variable_idx); });
+
+  std::vector<std::unique_ptr<Var, core::RefCountDeleter>> variables;
+  TF_RETURN_IF_ERROR(LookupResources(ctx, resource_handles, &variables));
+
+  result->clear();
+  result->reserve(variable_indices.size());
+  for (int i = 0; i < variable_indices.size(); i++) {
+    // *Release* the variable because we're going to unref it later in
+    // ~VariableInfo.
+    Var* variable = variables[i].release();
+    result->emplace_back(variable_indices[i], variable);
+  }
+
+  return Status::OK();
+}
+
+Status LockVariables(absl::Span<VariableInfo> variables) {
+  std::vector<int> lock_order(variables.size());
+  std::iota(lock_order.begin(), lock_order.end(), 0);
+
+  // VariableInfoComparator orders all empty VariableInfo instances as
+  // equivalent so it looks like we may want to stable sort these to maintain a
+  // deterministic order between the empty VariableInfo instances.  However
+  // since we're sorting by pointer value the sort is pretty non-deterministic
+  // anyway so we don't bother using std::stable_sort for now.
+  absl::c_sort(lock_order, [&](int a, int b) {
+    if (variables[a].var() && variables[b].var()) {
+      return variables[a].var()->mu() < variables[b].var()->mu();
+    }
+
+    // Move all the empty VariableInfo instances to the end.
+    return variables[a].var() != nullptr;
+  });
+
+  mutex* prev = nullptr;
+  for (int i : lock_order) {
+    Var* variable = variables[i].var();
+    if (variable == nullptr) {
+      // All empty VariableInfo instances are at the end of the order
+      // so we're done.
+      break;
+    }
+    mutex* mu = variable->mu();
+    if (prev == mu) {
+      // It is an error to pass the same variable handle twice to the same XLA
+      // cluster because we would not handle variable updates correctly.  Any
+      // locks we have already acquired will be released when the VariableInfo
+      // objects are destroyed.
+      return errors::Internal("Duplicate variable passed to XLA cluster");
+    }
+    VLOG(4) << "Acquiring lock for variable "
+            << reinterpret_cast<void*>(variable);
+    mu->lock();
+    variables[i].set_lock_held();
+    prev = mu;
+  }
+  VLOG(4) << "Finished acquiring variable locks.";
+  return Status::OK();
+}
+
+Status SnapshotResourceVariables(OpKernelContext* ctx,
+                                 absl::Span<const int> variable_indices,
+                                 std::map<int, OptionalTensor>* result) {
+  std::vector<VariableInfo> variable_infos;
+  TF_RETURN_IF_ERROR(
+      GetVariableInfosFromCtxInputs(ctx, variable_indices, &variable_infos));
+  TF_RETURN_IF_ERROR(LockVariables(absl::MakeSpan(variable_infos)));
+
+  for (int i = 0; i < variable_indices.size(); i++) {
+    if (variable_infos[i].var()) {
+      OptionalTensor& tensor = (*result)[variable_indices[i]];
+      tensor.name = HandleFromInput(ctx, variable_indices[i]).name();
       tensor.present = true;
-      tensor.value = *variable->tensor();
+      tensor.value = *variable_infos[i].var()->tensor();
+    } else {
+      (*result)[variable_indices[i]] = OptionalTensor();
     }
   }
-  return snapshot;
+  return Status::OK();
 }
 
 XlaAllocator::XlaAllocator(const se::Platform* platform, Allocator* wrapped)
@@ -84,40 +190,6 @@ Status XlaAllocator::Deallocate(int device_ordinal, se::DeviceMemoryBase mem) {
   wrapped_->DeallocateRaw(mem.opaque());
   return Status::OK();
 }
-
-namespace internal {
-// Return the 'index''th subtree of the given ShapedBuffer as a
-// ScopedShapedBuffer. The returned ScopedShapedBuffer takes ownership of the
-// subtree, and sets the input's buffer pointers to nullptr for the subtree.
-ScopedShapedBuffer ExtractSubShapedBuffer(
-    ShapedBuffer* shaped_buffer, int index,
-    xla::DeviceMemoryAllocator* allocator) {
-  const xla::Shape& on_host_shape = xla::ShapeUtil::GetTupleElementShape(
-      shaped_buffer->on_host_shape(), index);
-  const xla::Shape& on_device_shape = xla::ShapeUtil::GetTupleElementShape(
-      shaped_buffer->on_device_shape(), index);
-
-  ShapedBuffer sub_shaped_buffer(on_host_shape, on_device_shape,
-                                 shaped_buffer->platform(),
-                                 shaped_buffer->device_ordinal());
-
-  auto& shape_tree = shaped_buffer->buffers();
-  auto& sub_shape_tree = sub_shaped_buffer.buffers();
-  sub_shape_tree.CopySubtreeFrom(shape_tree,
-                                 /*source_base_index=*/{index},
-                                 /*target_base_index=*/{});
-  shape_tree.ForEachMutableElement(
-      [index](const xla::ShapeIndex& shape_index,
-              tensorflow::se::DeviceMemoryBase* data) {
-        // shape_index is empty for the root node. Ignore that.
-        if (!shape_index.empty() && shape_index[0] == index) {
-          *data = tensorflow::se::DeviceMemoryBase(nullptr, 0);
-        }
-      });
-  return ScopedShapedBuffer(std::move(sub_shaped_buffer), allocator);
-}
-}  // namespace internal
-using internal::ExtractSubShapedBuffer;
 
 XlaComputationLaunchContext::XlaComputationLaunchContext(
     xla::LocalClient* client, xla::DeviceMemoryAllocator* xla_allocator,
@@ -160,10 +232,7 @@ void XlaComputationLaunchContext::PopulateInputs(
       CHECK(stream) << "Must have a stream available when using XLA tensors!";
       XlaTensor* xla_tensor = XlaTensor::FromTensor(t);
       CHECK(xla_tensor);
-      if (se::Event* event = xla_tensor->GetDefinitionEvent(stream)) {
-        stream->ThenWaitFor(event);
-        xla_tensor->SetDefinedOn(stream);
-      }
+      xla_tensor->WaitForDefinitionEventOnStream(stream);
     }
 
     const xla::Shape on_device_shape =
@@ -288,10 +357,9 @@ Status XlaComputationLaunchContext::PopulateOutputs(
           TF_RETURN_IF_ERROR(ctx->allocate_output(i, shape, &output_tensor));
           XlaTensor* xla_tensor = XlaTensor::FromTensor(output_tensor);
           if (xla_tensor) {
-            xla_tensor->set_shaped_buffer(ScopedShapedBuffer(
-                ExtractSubShapedBuffer(&output, output_num, xla_allocator_)));
+            xla_tensor->set_shaped_buffer(output.TakeSubTree({output_num}));
             if (use_multiple_streams_) {
-              xla_tensor->SetDefinedOn(stream, definition_event);
+              xla_tensor->ResetDefinitionEvent(definition_event, stream);
             }
           } else {
             // xla_tensor wasn't valid, which must mean this is a zero-element
@@ -315,30 +383,35 @@ Status XlaComputationLaunchContext::PopulateOutputs(
 
   // Apply variable updates, if any.
   VLOG(2) << "Applying variable updates";
+  std::vector<VariableInfo> variable_infos;
+  variable_infos.reserve(kernel->resource_updates.size());
+
   for (int i = 0; i < kernel->resource_updates.size(); ++i) {
-    Allocator* allocator = ctx->device()->GetAllocator({});
     const XlaCompiler::ResourceUpdate& write = kernel->resource_updates[i];
     int actual_input_index = write.input_index - missing_ctx_input_prefix;
     if (actual_input_index < 0 || actual_input_index >= ctx->num_inputs()) {
       return errors::Internal("Invalid input index for variable write.");
     }
 
-    se::DeviceMemoryBase buffer = output.buffer({output_num});
-
-    Var* variable = nullptr;
     // TODO(b/35625933): tensorflow::Var should contain a PersistentTensor,
     // not a Tensor.
+    Var* variable = nullptr;
     TF_RETURN_IF_ERROR(LookupOrCreateResource<Var>(
         ctx, HandleFromInput(ctx, actual_input_index), &variable,
         [&write](Var** ptr) {
           *ptr = new Var(write.type);
           return Status::OK();
         }));
+    variable_infos.emplace_back(actual_input_index, variable);
+  }
 
-    core::ScopedUnref s(variable);
+  TF_RETURN_IF_ERROR(LockVariables(absl::MakeSpan(variable_infos)));
 
-    mutex_lock ml(*variable->mu());
-    if (variable->tensor()->dtype() != write.type) {
+  for (int i = 0; i < kernel->resource_updates.size(); ++i) {
+    Allocator* allocator = ctx->device()->GetAllocator({});
+    const XlaCompiler::ResourceUpdate& write = kernel->resource_updates[i];
+
+    if (variable_infos[i].var()->tensor()->dtype() != write.type) {
       return errors::Internal("Mismatched type in variable write");
     }
 
@@ -346,22 +419,80 @@ Status XlaComputationLaunchContext::PopulateOutputs(
       Tensor output_tensor;
       TF_RETURN_IF_ERROR(
           ctx->allocate_temp(write.type, write.shape, &output_tensor));
-      XlaTensor* xla_tensor = XlaTensor::FromTensor(&output_tensor);
-      CHECK(xla_tensor);
-      xla_tensor->set_shaped_buffer(
-          ExtractSubShapedBuffer(&output, output_num, xla_allocator_));
-      if (use_multiple_streams_) {
-        xla_tensor->SetDefinedOn(stream, definition_event);
+      if (write.shape.num_elements() > 0) {
+        XlaTensor* xla_tensor = XlaTensor::FromTensor(&output_tensor);
+        CHECK(xla_tensor);
+        xla_tensor->set_shaped_buffer(output.TakeSubTree({output_num}));
+        if (use_multiple_streams_) {
+          xla_tensor->ResetDefinitionEvent(definition_event, stream);
+        }
       }
-      *variable->tensor() = output_tensor;
+      *variable_infos[i].var()->tensor() = output_tensor;
     } else {
+      se::DeviceMemoryBase buffer = output.buffer({output_num});
+      output.set_buffer(xla::OwningDeviceMemory(), {output_num});
       Tensor output_tensor = XlaTensorBuffer::MakeTensor(
           write.type, write.shape, buffer, allocator);
-      output.set_buffer(xla::OwningDeviceMemory(), {output_num});
-      *variable->tensor() = output_tensor;
+      *variable_infos[i].var()->tensor() = output_tensor;
     }
     ++output_num;
   }
+  return Status::OK();
+}
+
+Status XlaComputationLaunchContext::BuildXlaCompilerArguments(
+    const std::map<int, Tensor>& constant_args,
+    const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
+    std::vector<XlaCompiler::Argument>* args) {
+  args->resize(ctx->num_inputs());
+
+  for (int64 input_num = 0; input_num < ctx->num_inputs(); ++input_num) {
+    XlaCompiler::Argument& arg = (*args)[input_num];
+    if (constant_args.count(input_num) > 0) {
+      // Handles compile-time constants.
+      const Tensor& input = constant_args.at(input_num);
+      TF_RET_CHECK(input.dtype() != DT_RESOURCE);
+      arg.kind = XlaCompiler::Argument::kConstant;
+      arg.type = input.dtype();
+      arg.shape = input.shape();
+      arg.constant_value = input;
+    } else if (variable_args.count(input_num) == 0) {
+      // Handles the non-constant arguments.
+      const Tensor& input = ctx->input(input_num);
+      TF_RET_CHECK(input.dtype() != DT_RESOURCE);
+      if (input.NumElements() > 0) {
+        arg.kind = XlaCompiler::Argument::kParameter;
+      } else {
+        arg.kind = XlaCompiler::Argument::kConstant;
+        arg.constant_value = input;
+      }
+      arg.type = input.dtype();
+      arg.shape = input.shape();
+    } else {
+      // Handles resource variables.
+      const Tensor& input = ctx->input(input_num);
+      TF_RET_CHECK(input.dtype() == DT_RESOURCE);
+      const OptionalTensor& variable = variable_args.at(input_num);
+      arg.name = variable.name;
+      arg.kind = XlaCompiler::Argument::kResource;
+      arg.resource_kind = XlaResource::kVariable;
+      if (variable.present) {
+        const Tensor& value = variable.value;
+        arg.type = value.dtype();
+        arg.shape = value.shape();
+        arg.initialized = true;
+      } else {
+        // The values of uninitialized variables are not passed as inputs, since
+        // they are meaningless. However, it is legal to assign to a resource
+        // variable for the first time inside the XLA computation, so we do
+        // permit uninitialized variables.
+        arg.initialized = false;
+        arg.type = DT_INVALID;
+        arg.shape = TensorShape();
+      }
+    }
+  }
+
   return Status::OK();
 }
 
