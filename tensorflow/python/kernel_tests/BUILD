@@ -1155,6 +1155,18 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "unicode_decode_op_test",
+    size = "small",
+    srcs = ["unicode_decode_op_test.py"],
+    additional_deps = [
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:string_ops",
+    ],
+)
+
+tf_py_test(
     name = "unique_op_test",
     size = "small",
     srcs = ["unique_op_test.py"],
