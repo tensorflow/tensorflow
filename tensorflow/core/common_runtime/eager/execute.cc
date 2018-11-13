@@ -192,7 +192,7 @@ Status ValidateInputTypeAndPlacement(EagerContext* ctx, Device* op_device,
 }
 
 Status SelectDevice(const NodeDef& ndef, EagerContext* ctx, Device** device) {
-  DeviceTypeVector final_devices;
+  PrioritizedDeviceTypeVector final_devices;
   TF_RETURN_IF_ERROR(SupportedDeviceTypesForNode(
       ctx->prioritized_device_type_list(), ndef, &final_devices));
   if (final_devices.empty()) {
@@ -202,7 +202,7 @@ Status SelectDevice(const NodeDef& ndef, EagerContext* ctx, Device** device) {
                             " :\n", KernelsRegisteredForOp(ndef.op()));
   }
   for (Device* d : *ctx->devices()) {
-    if (d->device_type() == final_devices[0].type_string()) {
+    if (d->device_type() == final_devices[0].first.type_string()) {
       *device = d;
       return Status::OK();
     }
