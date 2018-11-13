@@ -58,18 +58,17 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
                                    const TensorMap& tensor_map);
 
 StatusOr<poplar::Tensor> AddConstantTensor(poplar::Graph& graph,
+                                           poplar::program::Sequence& seq,
                                            const TensorSource& src,
                                            const xla::Shape& shape,
                                            const xla::Literal& literal,
                                            CompilerResources& resources,
                                            const TensorMap& tensor_map);
 
-StatusOr<poplar::Tensor> AddIotaTensor(poplar::Graph& graph,
-                                       const TensorSource& src,
-                                       const xla::Shape& shape,
-                                       int64 iota_dimension,
-                                       CompilerResources& resources,
-                                       const TensorMap& tensor_map);
+StatusOr<poplar::Tensor> AddIotaTensor(
+    poplar::Graph& graph, poplar::program::Sequence& sequence,
+    const TensorSource& src, const xla::Shape& shape, int64 iota_dimension,
+    CompilerResources& resources, const TensorMap& tensor_map);
 
 template <typename T>
 poplar::Tensor TileTensor(const T& multiples, const poplar::Tensor& in);

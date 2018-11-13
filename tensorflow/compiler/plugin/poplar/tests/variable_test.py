@@ -185,16 +185,50 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         self.assertAllClose(r, 10.0)
 
   def testRandomNormalInitalizer(self):
+    with ops.device('cpu'):
+     report = gen_ipu_ops.ipu_event_trace()
     with ops.device("/device:IPU:0"):
-      with session_lib.Session() as sess:
-        with variable_scope.variable_scope("vs", use_resource=True):
-          i = init_ops.random_normal_initializer(mean=2.0, stddev=0.01)
-          z = variable_scope.get_variable(
-              "z1", shape=[], dtype=np.float32, initializer=i)
+      with variable_scope.variable_scope("vs", use_resource=True):
+        i = init_ops.random_normal_initializer(mean=2.0, stddev=0.01)
+        z = variable_scope.get_variable(
+            "z1", shape=[], dtype=np.float32, initializer=i)
+    with tu.ipu_session() as sess:
+      # Clean existing reports
+      sess.run(report)
+      sess.run(variables.global_variables_initializer())
+      r = sess.run(report)
 
-        sess.run(variables.global_variables_initializer())
-        o = sess.run(z)
-        self.assertAllClose(o, 2.0, 0.2, 0.2)
+      o = sess.run(z)
+      self.assertAllClose(o, 2.0, 0.2, 0.2)
+
+      s = tu.extract_all_strings_from_event_trace(r)
+      cs_list = tu.get_compute_sets_from_report(s)
+      ok = ['progIdCopy',
+            'vs/z1/Initializer/random_normal/RandomStandardNormal/call/Normal']
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
+
+  def testRandomNormalNonScalarInitalizer(self):
+    with ops.device('cpu'):
+     report = gen_ipu_ops.ipu_event_trace()
+    with ops.device("/device:IPU:0"):
+      with variable_scope.variable_scope("vs", use_resource=True):
+        i = init_ops.random_normal_initializer(mean=2.0, stddev=0.01)
+        z = variable_scope.get_variable(
+            "z1", shape=[2], dtype=np.float32, initializer=i)
+    with tu.ipu_session() as sess:
+      # Clean existing reports
+      sess.run(report)
+      sess.run(variables.global_variables_initializer())
+      r = sess.run(report)
+
+      o = sess.run(z)
+      self.assertAllClose(o, [2.0, 2.0], 0.2, 0.2)
+
+      s = tu.extract_all_strings_from_event_trace(r)
+      cs_list = tu.get_compute_sets_from_report(s)
+      ok = ['progIdCopy',
+            'vs/z1/Initializer/random_normal/RandomStandardNormal/call/Normal']
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testDefaultRandomNormalInitalizer(self):
     with ops.device("/device:IPU:0"):
@@ -267,6 +301,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
+            'Copy_<const>_to_wide_constant/OnTileCopy',
             'z1/Initializer/truncated_normal/TruncatedNormal/call',
             'z1/Initializer/truncated_normal/mul',
             'z1/Initializer/truncated_normal/add.*/AddTo']
@@ -329,16 +364,51 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testUniformRandomInitalizer(self):
+    with ops.device('cpu'):
+     report = gen_ipu_ops.ipu_event_trace()
     with ops.device("/device:IPU:0"):
-      with session_lib.Session() as sess:
-        with variable_scope.variable_scope("vs", use_resource=True):
-          i = init_ops.random_uniform_initializer(minval=-2.0, maxval=2.0)
-          z = variable_scope.get_variable(
-              "z1", shape=[], dtype=np.float32, initializer=i)
+      with variable_scope.variable_scope("vs", use_resource=True):
+        i = init_ops.random_uniform_initializer(minval=-2.0, maxval=2.0)
+        z = variable_scope.get_variable(
+            "z1", shape=[], dtype=np.float32, initializer=i)
+    with tu.ipu_session() as sess:
+      # Clean existing reports
+      sess.run(report)
+      sess.run(variables.global_variables_initializer())
+      r = sess.run(report)
 
-        sess.run(variables.global_variables_initializer())
-        o = sess.run(z)
-        self.assertAllClose(o, 0.0, 2.0, 2.0)
+      o = sess.run(z)
+      self.assertAllClose(o, 0.0, 2.0, 2.0)
+
+      s = tu.extract_all_strings_from_event_trace(r)
+      cs_list = tu.get_compute_sets_from_report(s)
+      ok = ['progIdCopy',
+            'vs/z1/Initializer/random_uniform/RandomUniform/call/Uniform']
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
+
+  def testUniformRandomNonScalarInitalizer(self):
+    with ops.device('cpu'):
+     report = gen_ipu_ops.ipu_event_trace()
+    with ops.device("/device:IPU:0"):
+      with variable_scope.variable_scope("vs", use_resource=True):
+        i = init_ops.random_uniform_initializer(minval=-2.0, maxval=2.0)
+        z = variable_scope.get_variable(
+            "z1", shape=[2], dtype=np.float32, initializer=i)
+    with tu.ipu_session() as sess:
+      # Clean existing reports
+      sess.run(report)
+      sess.run(variables.global_variables_initializer())
+      r = sess.run(report)
+
+      o = sess.run(z)
+      self.assertAllClose(o, [0.0, 0.0] , 2.0, 2.0)
+
+      s = tu.extract_all_strings_from_event_trace(r)
+      cs_list = tu.get_compute_sets_from_report(s)
+      ok = ['progIdCopy',
+            'vs/z1/Initializer/random_uniform/RandomUniform/call/Uniform']
+      self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
+
 
   def testDefaultUniformRandomInitalizer(self):
     with ops.device("/device:IPU:0"):

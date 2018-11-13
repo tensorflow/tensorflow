@@ -142,7 +142,7 @@ tf_py_test(
 tf_py_test(
     name = "multi_ipu_test",
     size = "medium",
-    srcs = ["python/multi_ipu_test.py"],
+    srcs = ["python/tests/multi_ipu_test.py"],
     additional_deps = [
         ":ipu",
         "//tensorflow:tensorflow_py",

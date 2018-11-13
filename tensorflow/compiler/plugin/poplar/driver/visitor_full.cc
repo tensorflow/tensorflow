@@ -284,8 +284,9 @@ Status FullVisitor::HandleIota(HloInstruction* inst) {
   auto* iota = Cast<HloIotaInstruction>(inst);
   poplar::Tensor t;
   TF_ASSIGN_OR_RETURN(
-      t, AddIotaTensor(graph, std::make_pair(inst, 0), GetOutputShape(inst),
-                       iota->iota_dimension(), resources_, tensor_map));
+      t, AddIotaTensor(graph, sequence, std::make_pair(inst, 0),
+                       GetOutputShape(inst), iota->iota_dimension(), resources_,
+                       tensor_map));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, t));
   return Status::OK();
 }

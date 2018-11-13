@@ -40,7 +40,9 @@ static const std::vector<FusedGraphInfo> fuse_info = {
     {"biasadd", 0, InplaceUtil::InplaceHloInstructionDescription({0})},
     {"zero_pad", 0},
     {"norm_scale_add", 4},
+    {"norm_scale_add", 6},
     {"uniform_scale_add", 4},
+    {"uniform_scale_add", 6},
     {"avg_pool", 1},
     {"avg_pool", 1},
     {"avg_pool", 1},
@@ -173,12 +175,34 @@ static const std::vector<HloMatcherPattern> patterns = {
      {HloOpcode::kConstant, true, 0, nullptr, {}},
      {HloOpcode::kConstant, true, 0, nullptr, {}}},
 
+    // Random normal with broadcasted post scale and add
+    {{HloOpcode::kAdd, true, 0, nullptr, {3, 1}},
+     {HloOpcode::kBroadcast, true, 0, nullptr, {2}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}},
+     {HloOpcode::kMultiply, true, 0, nullptr, {6, 4}},
+     {HloOpcode::kBroadcast, true, 0, nullptr, {5}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}},
+     {HloOpcode::kRng, true, 0, IsRandomNormal, {7, 8}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}}},
+
     // Random uniform with post scale and add
     {{HloOpcode::kAdd, true, 0, nullptr, {2, 1}},
      {HloOpcode::kConstant, true, 0, nullptr, {}},
      {HloOpcode::kMultiply, true, 0, nullptr, {4, 3}},
      {HloOpcode::kConstant, true, 0, nullptr, {}},
      {HloOpcode::kRng, true, 0, IsRandomUniform, {5, 6}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}}},
+
+    // Random uniform with broadcasted post scale and add
+    {{HloOpcode::kAdd, true, 0, nullptr, {3, 1}},
+     {HloOpcode::kBroadcast, true, 0, nullptr, {2}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}},
+     {HloOpcode::kMultiply, true, 0, nullptr, {6, 4}},
+     {HloOpcode::kBroadcast, true, 0, nullptr, {5}},
+     {HloOpcode::kConstant, true, 0, nullptr, {}},
+     {HloOpcode::kRng, true, 0, IsRandomUniform, {7, 8}},
      {HloOpcode::kConstant, true, 0, nullptr, {}},
      {HloOpcode::kConstant, true, 0, nullptr, {}}},
 

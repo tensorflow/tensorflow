@@ -122,6 +122,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
             'Cast/convert.*/Cast',
+            'Copy_<const>_to_wide_constant/OnTileCopy',
             'add/add.*/AddTo',
             'Cast_1/convert.*/Cast']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))

@@ -40,6 +40,9 @@ limitations under the License.
 #include <poplar/OptionFlags.hpp>
 #include <poputil/TileMapping.hpp>
 
+#include <functional>
+#include <numeric>
+
 using ::absl::StrCat;
 using ::tensorflow::str_util::Join;
 
@@ -416,7 +419,6 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
   if (target != resources.annotations.tensor_allocation_map.end()) {
     const auto* tgt = target->second.tgt;
     auto tshape = tgt->operand(target->second.input_index)->shape();
-
     switch (tgt->opcode()) {
       case HloOpcode::kConvolution: {
         switch (target->second.input_index) {
@@ -540,8 +542,44 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
   return out;
 }
 
+static poplar::Tensor BroadcastToWideConstant(
+    poplar::Graph& graph, poplar::program::Sequence& sequence,
+    const poplar::Tensor& scalar_const, const xla::Shape& shape) {
+  // Don't widen scalar constants.
+  const auto poplar_shape = PoplarShapeFromXlaShape(shape);
+  if (poplar_shape.size() == 0) {
+    return scalar_const;
+  }
+
+  // To create a wide constant with a shape `target_shape` given a scalar
+  // constant tensor:
+  // 1. Broadcast the scalar_const tensor along the major dimension.
+  // 2. Create a new allocated tensor with shape {major dimension} and map it
+  // linearly.
+  // 3. Copy the broadcasted constant into the allocated tensor.
+  // 4. Broadcast and reshape the allocated tensor to a required shape.
+  const auto minor_to_major = LayoutUtil::MinorToMajor(shape);
+  const auto major_dimension =
+      minor_to_major.size() ? minor_to_major.back() : poplar_shape.size() - 1;
+  const auto major_dimension_size = poplar_shape[major_dimension];
+  poplar::Tensor const_tensor = scalar_const.reshape({1});
+  poplar::Tensor bcast_const = const_tensor.broadcast(major_dimension_size, 0);
+  poplar::Tensor wide_const = graph.addVariable(
+      scalar_const.elementType(), {major_dimension_size}, "wide_constant");
+  poputil::mapTensorLinearly(graph, wide_const);
+  sequence.add(poplar::program::Copy(bcast_const, wide_const));
+  const auto num_broadcasts =
+      std::accumulate(poplar_shape.begin(), poplar_shape.end(), 1,
+                      std::multiplies<std::size_t>()) /
+      major_dimension_size;
+  poplar::Tensor bcast_wide_const = wide_const.broadcast(num_broadcasts, 0);
+  return bcast_wide_const.reshape(poplar_shape);
+}
+
 template <typename TYPE>
-static void AddConstantTensor(poplar::Graph& graph, const xla::Literal& literal,
+static void AddConstantTensor(poplar::Graph& graph,
+                              poplar::program::Sequence& sequence,
+                              const xla::Literal& literal,
                               const xla::Shape& shape, const poplar::Type& type,
                               poplar::Tensor& tensor) {
   int64 num_elements(ShapeUtil::ElementsIn(literal.shape()));
@@ -551,7 +589,8 @@ static void AddConstantTensor(poplar::Graph& graph, const xla::Literal& literal,
   if (num_elements == 0) {
     tensor = graph.addConstant(type, {0}, (TYPE)0);
   } else if (num_elements == 1) {
-    tensor = graph.addConstant(type, dim, data[0]);
+    poplar::Tensor scalar_const = graph.addConstant(type, {}, data[0]);
+    tensor = BroadcastToWideConstant(graph, sequence, scalar_const, shape);
   } else {
     tensor = graph.addConstant(type, dim, data);
   }
@@ -560,6 +599,7 @@ static void AddConstantTensor(poplar::Graph& graph, const xla::Literal& literal,
 }
 
 static void AddFp16ConstantTensor(poplar::Graph& graph,
+                                  poplar::program::Sequence& sequence,
                                   const xla::Literal& literal,
                                   const xla::Shape& shape,
                                   const poplar::Type& type,
@@ -571,7 +611,8 @@ static void AddFp16ConstantTensor(poplar::Graph& graph,
   if (num_elements == 0) {
     tensor = graph.addConstantHalf(type, {0}, (uint16_t)0);
   } else if (num_elements == 1) {
-    tensor = graph.addConstantHalf(type, dim, data[0]);
+    poplar::Tensor scalar_const = graph.addConstantHalf(type, {}, data[0]);
+    tensor = BroadcastToWideConstant(graph, sequence, scalar_const, shape);
   } else {
     tensor = graph.addConstantHalf(type, dim, (uint16_t*)data);
   }
@@ -580,6 +621,7 @@ static void AddFp16ConstantTensor(poplar::Graph& graph,
 }
 
 static void Add64BitConstantTensor(poplar::Graph& graph,
+                                   poplar::program::Sequence& sequence,
                                    const xla::Literal& literal,
                                    const xla::Shape& shape,
                                    const poplar::Type& type,
@@ -596,7 +638,8 @@ static void Add64BitConstantTensor(poplar::Graph& graph,
   if (num_elements == 0) {
     tensor = graph.addConstant(type, {0}, (int32)0);
   } else if (num_elements == 1) {
-    tensor = graph.addConstant(type, dim, data32[0]);
+    poplar::Tensor scalar_const = graph.addConstant(type, {}, data32[0]);
+    tensor = BroadcastToWideConstant(graph, sequence, scalar_const, shape);
   } else {
     tensor = graph.addConstant(type, dim, data32);
   }
@@ -634,6 +677,7 @@ static void Set64BitInitialTensorValue(poplar::Graph& graph,
 }
 
 StatusOr<poplar::Tensor> AddConstantTensor(poplar::Graph& graph,
+                                           poplar::program::Sequence& sequence,
                                            const TensorSource& src,
                                            const xla::Shape& shape,
                                            const xla::Literal& literal,
@@ -673,21 +717,21 @@ StatusOr<poplar::Tensor> AddConstantTensor(poplar::Graph& graph,
   } else {
     switch (literal.shape().element_type()) {
       case PRED:
-        AddConstantTensor<bool>(graph, literal, shape, type, tensor);
+        AddConstantTensor<bool>(graph, sequence, literal, shape, type, tensor);
         break;
       case S32:
       case U32:
-        AddConstantTensor<int>(graph, literal, shape, type, tensor);
+        AddConstantTensor<int>(graph, sequence, literal, shape, type, tensor);
         break;
       case U64:
       case S64:
-        Add64BitConstantTensor(graph, literal, shape, type, tensor);
+        Add64BitConstantTensor(graph, sequence, literal, shape, type, tensor);
         break;
       case F16:
-        AddFp16ConstantTensor(graph, literal, shape, type, tensor);
+        AddFp16ConstantTensor(graph, sequence, literal, shape, type, tensor);
         break;
       case F32:
-        AddConstantTensor<float>(graph, literal, shape, type, tensor);
+        AddConstantTensor<float>(graph, sequence, literal, shape, type, tensor);
         break;
       default:
         // The unsupported cases were caught in the call to PoplarDataType above
@@ -706,12 +750,10 @@ static Literal GetIotaLiteral(int64 len) {
   return LiteralUtil::CreateR1<TYPE>(data);
 }
 
-StatusOr<poplar::Tensor> AddIotaTensor(poplar::Graph& graph,
-                                       const TensorSource& src,
-                                       const xla::Shape& shape,
-                                       int64 iota_dimension,
-                                       CompilerResources& resources,
-                                       const TensorMap& tensor_map) {
+StatusOr<poplar::Tensor> AddIotaTensor(
+    poplar::Graph& graph, poplar::program::Sequence& sequence,
+    const TensorSource& src, const xla::Shape& shape, int64 iota_dimension,
+    CompilerResources& resources, const TensorMap& tensor_map) {
   poplar::Type type;
   TF_ASSIGN_OR_RETURN(type, PoplarDataType(shape));
 
@@ -735,8 +777,8 @@ StatusOr<poplar::Tensor> AddIotaTensor(poplar::Graph& graph,
   poplar::Tensor t;
   auto iota_shape = ShapeUtil::MakeShape(shape.element_type(),
                                          {shape.dimensions(iota_dimension)});
-  TF_ASSIGN_OR_RETURN(t, AddConstantTensor(graph, src, iota_shape, literal,
-                                           resources, tensor_map));
+  TF_ASSIGN_OR_RETURN(t, AddConstantTensor(graph, sequence, src, iota_shape,
+                                           literal, resources, tensor_map));
   return BroadcastTensor(t, shape, {iota_dimension});
 }
 

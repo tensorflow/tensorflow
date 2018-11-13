@@ -10,6 +10,11 @@ using tensorflow::strings::StrCat;
 
 namespace xla {
 namespace poplarplugin {
+namespace {
+inline const HloInstruction* LookThroughBroadcast(const HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kBroadcast ? inst->operand(0) : inst;
+}
+}
 
 static StatusOr<double> DoubleValueOfScalarLiteral(const xla::Literal& lit) {
   if (ShapeUtil::ElementsIn(lit.shape()) != 1) {
@@ -46,10 +51,15 @@ StatusOr<poplar::program::Program> RandomNormalScale(
   poplar::Graph& graph = GetGraph(res, inst);
 
   const HloInstruction* root = inst->to_apply()->root_instruction();
-  const HloInstruction* mean1 = root->operand(1);
-  const HloInstruction* sd1 = root->operand(0)->operand(1);
+  const HloInstruction* mean1 = LookThroughBroadcast(root->operand(1));
+  CHECK_EQ(mean1->opcode(), HloOpcode::kConstant);
+  const HloInstruction* sd1 =
+      LookThroughBroadcast(root->operand(0)->operand(1));
+  CHECK_EQ(sd1->opcode(), HloOpcode::kConstant);
   const HloInstruction* mean2 = root->operand(0)->operand(0)->operand(0);
+  CHECK_EQ(mean2->opcode(), HloOpcode::kConstant);
   const HloInstruction* sd2 = root->operand(0)->operand(0)->operand(1);
+  CHECK_EQ(sd2->opcode(), HloOpcode::kConstant);
 
   double mean1_val;
   TF_ASSIGN_OR_RETURN(mean1_val, DoubleValueOfScalarLiteral(mean1->literal()));
@@ -78,10 +88,15 @@ StatusOr<poplar::program::Program> RandomUniformScale(
   poplar::Graph& graph = GetGraph(res, inst);
 
   const HloInstruction* root = inst->to_apply()->root_instruction();
-  const HloInstruction* shift = root->operand(1);
-  const HloInstruction* scale = root->operand(0)->operand(1);
+  const HloInstruction* shift = LookThroughBroadcast(root->operand(1));
+  CHECK_EQ(shift->opcode(), HloOpcode::kConstant);
+  const HloInstruction* scale =
+      LookThroughBroadcast(root->operand(0)->operand(1));
+  CHECK_EQ(scale->opcode(), HloOpcode::kConstant);
   const HloInstruction* lower = root->operand(0)->operand(0)->operand(0);
+  CHECK_EQ(lower->opcode(), HloOpcode::kConstant);
   const HloInstruction* upper = root->operand(0)->operand(0)->operand(1);
+  CHECK_EQ(upper->opcode(), HloOpcode::kConstant);
 
   double shift_val;
   TF_ASSIGN_OR_RETURN(shift_val, DoubleValueOfScalarLiteral(shift->literal()));

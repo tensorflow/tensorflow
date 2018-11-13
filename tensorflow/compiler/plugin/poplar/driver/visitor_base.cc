@@ -232,8 +232,9 @@ Status BaseVisitor::HandleConstant(HloInstruction* inst) {
 
   poplar::Tensor t;
   TF_ASSIGN_OR_RETURN(
-      t, AddConstantTensor(graph, std::make_pair(inst, 0), GetOutputShape(inst),
-                           inst->literal(), resources_, tensor_map));
+      t, AddConstantTensor(graph, sequence, std::make_pair(inst, 0),
+                           GetOutputShape(inst), inst->literal(), resources_,
+                           tensor_map));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, t));
   return Status::OK();
 }
