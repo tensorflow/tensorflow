@@ -104,7 +104,7 @@ class DistributionTestBase(test.TestCase):
       def step():
         """Perform one optimization step."""
         # Run forward & backward to get gradients, variables list.
-        g_v = d.call_for_each_replica(grad_fn, one, run_concurrently=l.built)
+        g_v = d.call_for_each_replica(grad_fn, args=(one,))
 
         # Update the variables using the gradients and the update() function.
         before_list = []
@@ -160,7 +160,7 @@ class DistributionTestBase(test.TestCase):
       def step():
         """Perform one optimization step."""
         # Run forward & backward to get gradients, variables list.
-        g_v = d.call_for_each_replica(grad_fn, one)
+        g_v = d.call_for_each_replica(grad_fn, args=(one,))
 
         # Update the variables using the gradients and the update() function.
         before_list = []
@@ -189,15 +189,6 @@ class DistributionTestBase(test.TestCase):
       # Error should go down
       self.assertLess(error_after, error_before)
 
-  def _test_map_reduce(self, d, in_graph=None):
-    with d.scope():
-      map_in = [constant_op.constant(i) for i in range(10)]
-      map_out = d.map(map_in, lambda x, y: x * y, 2)
-      observed = d.reduce(variable_scope.VariableAggregation.SUM, map_out,
-                          "/device:CPU:0")
-      expected = 90  # 2 * (0 + 1 + ... + 9)
-      self.assertEqual(expected, observed.numpy())
-
   def _test_device_index(self, d):
     with d.scope():
       expected_devices = [False] * len(d.worker_devices)
@@ -207,7 +198,7 @@ class DistributionTestBase(test.TestCase):
         self.assertFalse(expected_devices[device_id])
         expected_devices[device_id] = True
 
-      d.call_for_each_replica(mark_devices_fn, d.worker_device_index)
+      d.call_for_each_replica(mark_devices_fn, args=(d.worker_device_index,))
       self.assertAllEqual(expected_devices, [True] * len(d.worker_devices))
 
   def _test_replica_id(self, d):

@@ -64,8 +64,4 @@ tf_module {
     name: "lecun_uniform"
     argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
-  member_method {
-    name: "tables_initializer"
-    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'init_all_tables\'], "
-  }
 }

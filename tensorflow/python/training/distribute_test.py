@@ -40,7 +40,7 @@ def _get_test_variable(name, synchronization, aggregation):
 
 class _TestStrategy(distribute.DistributionStrategy):
 
-  def _call_for_each_replica(self, fn, *args, **kwargs):
+  def _call_for_each_replica(self, fn, args, kwargs):
     with _TestReplicaContext(self, replica_id=0):
       return fn(*args, **kwargs)
 

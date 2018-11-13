@@ -164,13 +164,14 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
           SessionLog(
               status=SessionLog.CHECKPOINT, checkpoint_path=self._save_path),
           step)
+
+      for l in self._listeners:
+        l.after_save(session, step)
+
       end_time = time.time()
       logging.info("Checkpoint actual writing time: (%.3f sec)",
                    end_time - start_time)
       logging.info("Checkpoint finished for %d into %s.", step, self._save_path)
-
-    for l in self._listeners:
-      l.before_save(session, step)
 
     if not asynchronous:
       _save_fn()

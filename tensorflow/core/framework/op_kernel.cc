@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 
-#include <mutex>
+#include <mutex>  // NOLINT
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -286,6 +286,13 @@ OpKernelContext::~OpKernelContext() {
     }
   }
   if (params_->record_tensor_accesses) referenced_tensors_.Destroy();
+  if (params_->track_allocations && !wrapped_allocators_.empty()) {
+    LOG(WARNING) << "OpKernelContext is tracking allocations but they are not "
+                 << "being consumed by the StepStatsCollector.";
+    for (auto& wrapped_alloator : wrapped_allocators_) {
+      wrapped_alloator.second->GetRecordsAndUnRef();
+    }
+  }
 }
 
 Allocator* OpKernelContext::get_allocator(AllocatorAttributes attr) {
@@ -914,11 +921,12 @@ void OpKernelContext::clear_recorded_memory() {
 
 struct KernelRegistration {
   KernelRegistration(const KernelDef& d, StringPiece c,
-                     kernel_factory::OpKernelRegistrar::Factory f)
-      : def(d), kernel_class_name(c), factory(f) {}
+                     std::unique_ptr<kernel_factory::OpKernelFactory> f)
+      : def(d), kernel_class_name(c), factory(std::move(f)) {}
+
   const KernelDef def;
   const string kernel_class_name;
-  const kernel_factory::OpKernelRegistrar::Factory factory;
+  std::unique_ptr<kernel_factory::OpKernelFactory> factory;
 };
 
 // This maps from 'op_type' + DeviceType to the set of KernelDefs and
@@ -985,7 +993,7 @@ namespace kernel_factory {
 
 void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
                                      StringPiece kernel_class_name,
-                                     Factory factory) {
+                                     std::unique_ptr<OpKernelFactory> factory) {
   // See comments in register_kernel::Name in header for info on _no_register.
   if (kernel_def->op() != "_no_register") {
     const string key =
@@ -1000,8 +1008,8 @@ void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
     // program flakily. Until we get rid of static initializers in kernel
     // registration mechanism, we have this workaround here.
     reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry())
-        ->insert(std::make_pair(
-            key, KernelRegistration(*kernel_def, kernel_class_name, factory)));
+        ->emplace(key, KernelRegistration(*kernel_def, kernel_class_name,
+                                          std::move(factory)));
   }
   delete kernel_def;
 }
@@ -1083,7 +1091,7 @@ Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
 
 Status SupportedDeviceTypesForNode(
     const std::vector<DeviceType>& prioritized_types, const NodeDef& def,
-    DeviceTypeVector* device_types) {
+    PrioritizedDeviceTypeVector* prioritized_device_types) {
   // TODO(zhifengc): Changes the callers (SimplePlacer and
   // DynamicPlacer) to consider the possibility that 'def' is call to
   // a user-defined function and only calls this
@@ -1096,12 +1104,21 @@ Status SupportedDeviceTypesForNode(
       bool was_attr_mismatch;
       TF_RETURN_IF_ERROR(
           FindKernelRegistration(device_type, def, &reg, &was_attr_mismatch));
-      if (reg != nullptr) device_types->push_back(device_type);
+      if (reg != nullptr) {
+        int32 priority = reg->def.priority();
+        prioritized_device_types->emplace_back(device_type, priority);
+      }
     }
+    std::sort(prioritized_device_types->begin(),
+              prioritized_device_types->end(),
+              [](const std::pair<DeviceType, int32>& a,
+                 const std::pair<DeviceType, int32>& b) {
+                return a.second > b.second;
+              });
   } else {
     // Assumes that all device types support this node.
     for (const DeviceType& device_type : prioritized_types) {
-      device_types->push_back(device_type);
+      prioritized_device_types->push_back(std::make_pair(device_type, 0));
     }
   }
   return Status::OK();
@@ -1225,7 +1242,7 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
   OpKernelConstruction context(
       device_type, device, allocator, &node_def, op_def, flib, inputs,
       input_memory_types, outputs, output_memory_types, graph_def_version, &s);
-  *kernel = (*registration->factory)(&context);
+  *kernel = registration->factory->Create(&context);
   if (!s.ok()) {
     delete *kernel;
     *kernel = nullptr;

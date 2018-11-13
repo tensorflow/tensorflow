@@ -127,7 +127,8 @@ InductionVarInfo CreateInductionVariable(const Scope& root,
   Output loop_cond =
       ops::LoopCond(root.WithOpName(prefix + "/cond"), loop_cond_expr);
   ops::Switch latch(root.WithOpName(prefix + "/latch"), iv.output, loop_cond);
-  ops::internal::Exit exit(root.WithOpName(prefix + "/exit"), iv.output);
+  ops::internal::Exit exit(root.WithOpName(prefix + "/exit"),
+                           latch.output_false);
   Output iv_next = ops::Add(root.WithOpName(prefix + "/ivnext"),
                             latch.output_true, increment_by);
   Output next_iteration =
@@ -191,7 +192,8 @@ DependentInductionVar CreateDependentLoopInvariantValue(
                                             value, frame_name);
   ops::Merge iv(root.WithOpName(prefix + "/iv"), {enter_value, enter_value});
   ops::Switch latch(root.WithOpName(prefix + "/latch"), iv.output, loop_cond);
-  ops::internal::Exit exit(root.WithOpName(prefix + "/exit"), iv.output);
+  ops::internal::Exit exit(root.WithOpName(prefix + "/exit"),
+                           latch.output_false);
   Output next_iteration = ops::NextIteration(
       root.WithOpName(prefix + "/next_iteration"), latch.output_true);
   CHECK(root.graph()

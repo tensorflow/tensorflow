@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/time/clock.h"
 #include "tensorflow/core/common_runtime/build_graph_options.h"
 #include "tensorflow/core/common_runtime/constant_folding.h"
 #include "tensorflow/core/common_runtime/debugger_state_interface.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/rendezvous_util.h"
@@ -386,6 +388,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                             MutableRunGraphResponseWrapper* response,
                             CancellationManager* cancellation_manager,
                             const NamedTensors& in, StatusCallback done) {
+  const absl::Time start_time = absl::Now();
   // Lookup an item. Holds one ref while executing.
   Item* item = nullptr;
   {
@@ -443,14 +446,16 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
     return;
   }
 
-  StartParallelExecutors(handle, step_id, item, rendezvous, ce_handle,
-                         collector, cost_graph, cancellation_manager,
-                         [item, rendezvous, ce_handle, done](const Status& s) {
-                           done(s);
-                           rendezvous->Unref();
-                           item->Unref();
-                           delete ce_handle;
-                         });
+  StartParallelExecutors(
+      handle, step_id, item, rendezvous, ce_handle, collector, cost_graph,
+      cancellation_manager,
+      [item, rendezvous, ce_handle, done, start_time](const Status& s) {
+        done(s);
+        UpdateGraphExecutionTime(absl::Now() - start_time);
+        rendezvous->Unref();
+        item->Unref();
+        delete ce_handle;
+      });
 }
 
 void GraphMgr::StartParallelExecutors(const string& handle, int64 step_id,

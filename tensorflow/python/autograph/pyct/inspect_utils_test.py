@@ -20,11 +20,14 @@ from __future__ import print_function
 
 from functools import wraps
 import imp
+import types
+import weakref
 
 import six
 
 from tensorflow.python import lib
 from tensorflow.python.autograph.pyct import inspect_utils
+from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
 
 
@@ -184,16 +187,16 @@ class InspectUtilsTest(test.TestCase):
     test_obj = TestClass()
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.member_function),
-        TestClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.decorated_member),
-        TestClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.fn_decorated_member),
-        TestClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.wrap_decorated_member),
-        TestClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.static_method),
         TestClass)
@@ -242,16 +245,16 @@ class InspectUtilsTest(test.TestCase):
     test_obj = LocalClass()
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.member_function),
-        LocalClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.decorated_member),
-        LocalClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.fn_decorated_member),
-        LocalClass)
+        test_obj)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.wrap_decorated_member),
-        LocalClass)
+        test_obj)
 
   def test_getmethodclass_callables(self):
     class TestCallable(object):
@@ -261,6 +264,25 @@ class InspectUtilsTest(test.TestCase):
 
     c = TestCallable()
     self.assertEqual(inspect_utils.getmethodclass(c), TestCallable)
+
+  def test_getmethodclass_weakref_mechanism(self):
+    test_obj = TestClass()
+
+    class WeakrefWrapper(object):
+
+      def __init__(self):
+        self.ag_self_weakref__ = weakref.ref(test_obj)
+
+    def test_fn(self):
+      return self
+
+    bound_method = types.MethodType(test_fn, WeakrefWrapper())
+    self.assertEqual(inspect_utils.getmethodclass(bound_method), test_obj)
+
+  def test_getmethodclass_no_bool_conversion(self):
+
+    tensor = constant_op.constant([1])
+    self.assertEqual(inspect_utils.getmethodclass(tensor.get_shape), tensor)
 
   def test_getdefiningclass(self):
     class Superclass(object):

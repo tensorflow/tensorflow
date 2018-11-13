@@ -17,7 +17,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR/../../../../.."
+cd "$SCRIPT_DIR/../../../.."
 
 # Build library for supported architectures and packs them in a fat binary.
 make_library() {

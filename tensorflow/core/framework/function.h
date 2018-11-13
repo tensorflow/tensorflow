@@ -379,6 +379,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Ops created for function arguments bear the name given by `kArgOp`; those
   // created for return values bear the name given by `kRetOp`.
   static constexpr const char* const kArgOp = "_Arg";
+  static constexpr const char* const kDeviceArgOp = "_DeviceArg";
   static constexpr const char* const kRetOp = "_Retval";
   static constexpr const char* const kDeviceRetOp = "_DeviceRetval";
 

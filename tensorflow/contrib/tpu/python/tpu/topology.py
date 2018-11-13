@@ -189,12 +189,13 @@ class Topology(object):
   def cpu_device_name_at_coordinates(self, device_coordinates, job=None):
     """Returns the CPU device attached to a logical core."""
     return _tpu_host_device_name(
-        job, self._topology_tasks[device_coordinates])
+        job, self._topology_tasks[tuple(device_coordinates)])
 
   def tpu_device_name_at_coordinates(self, device_coordinates, job=None):
     """Returns the name of the TPU device assigned to a logical core."""
-    return _tpu_device_name(job, self._topology_tasks[device_coordinates],
-                            self._topology_devices[device_coordinates])
+    return _tpu_device_name(job,
+                            self._topology_tasks[tuple(device_coordinates)],
+                            self._topology_devices[tuple(device_coordinates)])
 
   @property
   def num_tasks(self):

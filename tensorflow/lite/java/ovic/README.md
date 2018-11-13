@@ -97,9 +97,17 @@ filegroup(
     ...
 ```
 
-* Modify `OvicClassifierTest.java` and `OvicDetectorTest.java` to test your model.
+* For classification models, modify `OvicClassifierTest.java`:
+  * change `TEST_IMAGE_PATH` to `my_test_image.jpg`.
 
-Change `TEST_IMAGE_PATH` to `my_test_image.jpg`. Change either `FLOAT_MODEL_PATH` or `QUANTIZED_MODEL_PATH` to `my_model.lite` depending on whether your model runs inference in float or [8-bit](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/quantize).
+  * change either `FLOAT_MODEL_PATH` or `QUANTIZED_MODEL_PATH` to `my_model.lite` depending on whether your model runs inference in float or [8-bit](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/quantize).
+
+  * change `TEST_IMAGE_GROUNDTRUTH` (ImageNet class ID) to be consistent with your test image.
+
+* For detection models, modify `OvicDetectorTest.java`:
+  * change `TEST_IMAGE_PATH` to `my_test_image.jpg`.
+  * change `MODEL_PATH` to `my_model.lite`.
+  * change `GROUNDTRUTH` (COCO class ID) to be consistent with your test image.
 
 Now you can run the bazel tests to catch any runtime issues with the submission.
 
@@ -115,12 +123,17 @@ Make sure that you have followed instructions in [Test your submissions](#test-y
 
 Modify `tensorflow/lite/java/ovic/demo/app/OvicBenchmarkerActivity.java`:
 
-* Add your model to the benchmarker apk by changing `MODEL_PATH` and `TEST_IMAGE_PATH` below to your submission and test image.
+* Add your model to the benchmarker apk by changing `modelPath` and `testImagePath` to your submission and test image.
 
 ```
-  private static final String TEST_IMAGE_PATH = "my_test_image.jpg";
-  private static final String MODEL_PATH = "my_model.lite";
+  if (benchmarkClassification) {
+    ...
+    testImagePath = "my_test_image.jpg";
+    modelPath = "my_model.lite";
+  } else {  // Benchmarking detection.
+  ...
 ```
+If you are adding a detection model, simply modify `modelPath` and `testImagePath` in the else block above.
 
 * Adjust the benchmark parameters when needed:
 

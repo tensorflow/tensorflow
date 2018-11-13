@@ -452,16 +452,13 @@ class BidirectionalTest(test.TestCase):
       wrapped = keras.layers.Bidirectional(
           rnn(units, dropout=0.2, recurrent_dropout=0.2), merge_mode=merge_mode)
       outputs = _to_list(wrapped(inputs, training=True))
-      assert all(not getattr(x, '_uses_learning_phase') for x in outputs)
 
       inputs = keras.Input((timesteps, dim))
       wrapped = keras.layers.Bidirectional(
           rnn(units, dropout=0.2, return_state=True), merge_mode=merge_mode)
       outputs = _to_list(wrapped(inputs))
-      assert all(x._uses_learning_phase for x in outputs)
 
       model = keras.Model(inputs, outputs)
-      assert model.uses_learning_phase
       y1 = _to_list(model.predict(x))
       y2 = _to_list(model.predict(x))
       for x1, x2 in zip(y1, y2):

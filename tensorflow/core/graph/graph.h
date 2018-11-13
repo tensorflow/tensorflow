@@ -425,9 +425,9 @@ class Graph {
   // Constructs a graph with a single SOURCE (always id kSourceId) and a
   // single SINK (always id kSinkId) node, and an edge from SOURCE->SINK.
   //
-  // The graph can hold ops found in registry. `registry`s lifetime must be at
+  // The graph can hold ops found in the registry. `ops`s lifetime must be at
   // least that of the constructed graph's.
-  explicit Graph(const OpRegistryInterface* registry);
+  explicit Graph(const OpRegistryInterface* ops);
 
   // Constructs a graph with a single SOURCE (always id kSourceId) and a
   // single SINK (always id kSinkId) node, and an edge from SOURCE->SINK.

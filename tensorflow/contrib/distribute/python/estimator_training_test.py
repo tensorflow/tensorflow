@@ -300,10 +300,8 @@ class DistributeCoordinatorIntegrationTest(test.TestCase,
           required_gpus=[0, 1]))
   def test_complete_flow_standalone_client(self, train_distribute_cls,
                                            eval_distribute_cls):
-    try:
-      train_distribute = train_distribute_cls(num_gpus=context.num_gpus())
-    except TypeError:
-      train_distribute = train_distribute_cls(num_gpus_per_worker=2)
+    train_distribute = train_distribute_cls(
+        num_gpus_per_worker=context.num_gpus())
 
     if eval_distribute_cls:
       eval_distribute = eval_distribute_cls(

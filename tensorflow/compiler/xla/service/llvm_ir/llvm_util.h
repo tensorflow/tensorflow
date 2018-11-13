@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
@@ -101,10 +102,9 @@ string SanitizeFunctionName(string function_name);
 // intrinsics (for example, "minnum") must include a type in overloaded_types
 // for each overloaded type. Typically, overloaded intrinsics have only a single
 // overloaded type.
-llvm::Value* EmitCallToIntrinsic(llvm::Intrinsic::ID intrinsic_id,
-                                 absl::Span<llvm::Value* const> operands,
-                                 absl::Span<llvm::Type* const> overloaded_types,
-                                 llvm::IRBuilder<>* b);
+llvm::CallInst* EmitCallToIntrinsic(
+    llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
+    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b);
 
 // Emit float max. Emit maxnum intrinsic is fast math is disabled, or
 // fcmp+select otherwise
@@ -154,6 +154,11 @@ StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
 // values at IR emission time.
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
                                            llvm::Module* module);
+
+// Allocates a tile of shared memory.
+llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
+                                               llvm::Type* tile_type,
+                                               absl::string_view name);
 
 // Inserts an allocate of the requested type at the entry point of the
 // function that the builder is currently building. The insert point

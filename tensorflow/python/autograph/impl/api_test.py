@@ -28,6 +28,9 @@ from tensorflow.python.autograph.impl import api
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.framework import constant_op
+from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.layers import core
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
 
@@ -318,6 +321,63 @@ class ApiTest(test.TestCase):
     x = api.converted_call(len, None, opts, constant_op.constant([0]))
     # The constant has static shape so the result is a primitive not a Tensor.
     self.assertEqual(x, 1)
+
+  def test_converted_call_whitelisted_method(self):
+
+    opts = converter.ConversionOptions()
+
+    model = sequential.Sequential([
+        core.Dense(2)
+    ])
+
+    x = api.converted_call(model.call, None, opts,
+                           constant_op.constant([[0.0]]), training=True)
+
+    with self.cached_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      self.assertAllEqual([[0.0, 0.0]], sess.run(x))
+
+  def test_converted_call_whitelisted_method_extra_self(self):
+
+    opts = converter.ConversionOptions()
+
+    model = sequential.Sequential([
+        core.Dense(2)
+    ])
+
+    x = api.converted_call(model.call, None, opts,
+                           model, constant_op.constant([[0.0]]), training=True)
+
+    with self.cached_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      self.assertAllEqual([[0.0, 0.0]], sess.run(x))
+
+  def test_converted_call_whitelisted_method_via_owner(self):
+
+    opts = converter.ConversionOptions()
+
+    model = sequential.Sequential([
+        core.Dense(2)
+    ])
+
+    x = api.converted_call('call', model, opts,
+                           constant_op.constant([[0.0]]), training=True)
+
+    with self.cached_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      self.assertAllEqual([[0.0, 0.0]], sess.run(x))
+
+  def test_converted_call_lambda(self):
+
+    opts = converter.ConversionOptions()
+
+    l = lambda x: x == 0
+
+    x = api.converted_call(l, None, opts, constant_op.constant(0))
+
+    with self.cached_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      self.assertAllEqual(True, sess.run(x))
 
   def test_to_graph_basic(self):
 

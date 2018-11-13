@@ -792,7 +792,6 @@ class Layer(checkpointable.CheckpointableBase):
                              '(layer: ' + self.name + ').')
           self._handle_activity_regularization(inputs, outputs)
           self._set_mask_metadata(inputs, outputs, previous_mask)
-          self._set_learning_phase_metadata(inputs, outputs)
           if have_all_keras_metadata(inputs):
             inputs, outputs = self._set_connectivity_metadata_(
                 inputs, outputs, args, kwargs)
@@ -830,23 +829,6 @@ class Layer(checkpointable.CheckpointableBase):
       Output tensor(s).
     """
     return self.__call__(inputs, *args, **kwargs)
-
-  def _set_learning_phase_metadata(self, inputs, outputs):
-    # Update learning phase info. To work with subclassed models,
-    # this should be done even if Keras metadata is absent.
-    output_tensors = generic_utils.to_list(outputs)
-    uses_lp = any(
-        [getattr(x, '_uses_learning_phase', False)
-         for x in generic_utils.to_list(inputs)])
-    uses_lp = getattr(self, 'uses_learning_phase', False) or uses_lp
-    for i in range(len(output_tensors)):
-      try:
-        output_tensors[i]._uses_learning_phase = getattr(
-            output_tensors[i], '_uses_learning_phase', False) or uses_lp
-      except AttributeError:
-        # An output element happens to be a C type (such as tuple or dict).
-        # We don't track learning phase info in such edge cases.
-        pass
 
   def _set_mask_metadata(self, inputs, outputs, previous_mask):
     # In some cases the mask of the outputs has already been computed by

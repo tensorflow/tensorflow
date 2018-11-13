@@ -194,7 +194,7 @@ TEST(DetectionPostprocessOpTest, QuantizedTest) {
       {TensorType_FLOAT32, {}}, {TensorType_FLOAT32, {}},
       {TensorType_FLOAT32, {}});
   // six boxes in center-size encoding
-  std::vector<std::initializer_list<float>> inputs1 = {{
+  std::vector<std::vector<float>> inputs1 = {{
       0.0, 0.0,  0.0, 0.0,  // box #1
       0.0, 1.0,  0.0, 0.0,  // box #2
       0.0, -1.0, 0.0, 0.0,  // box #3
@@ -204,12 +204,12 @@ TEST(DetectionPostprocessOpTest, QuantizedTest) {
   }};
   m.QuantizeAndPopulate<uint8_t>(m.input1(), inputs1[0]);
   // class scores - two classes with background
-  std::vector<std::initializer_list<float>> inputs2 = {
-      {0., .9, .8, 0., .75, .72, 0., .6, .5, 0., .93, .95, 0., .5, .4, 0., .3,
-       .2}};
+  std::vector<std::vector<float>> inputs2 = {{0., .9, .8, 0., .75, .72, 0., .6,
+                                              .5, 0., .93, .95, 0., .5, .4, 0.,
+                                              .3, .2}};
   m.QuantizeAndPopulate<uint8_t>(m.input2(), inputs2[0]);
   // six anchors in center-size encoding
-  std::vector<std::initializer_list<float>> inputs3 = {{
+  std::vector<std::vector<float>> inputs3 = {{
       0.5, 0.5,   1.0, 1.0,  // anchor #1
       0.5, 0.5,   1.0, 1.0,  // anchor #2
       0.5, 0.5,   1.0, 1.0,  // anchor #3
@@ -405,7 +405,7 @@ TEST(DetectionPostprocessOpTest, QuantizedTestFastNMS) {
       {TensorType_FLOAT32, {}}, {TensorType_FLOAT32, {}},
       {TensorType_FLOAT32, {}}, false);
   // six boxes in center-size encoding
-  std::vector<std::initializer_list<float>> inputs1 = {{
+  std::vector<std::vector<float>> inputs1 = {{
       0.0, 0.0,  0.0, 0.0,  // box #1
       0.0, 1.0,  0.0, 0.0,  // box #2
       0.0, -1.0, 0.0, 0.0,  // box #3
@@ -415,12 +415,12 @@ TEST(DetectionPostprocessOpTest, QuantizedTestFastNMS) {
   }};
   m.QuantizeAndPopulate<uint8_t>(m.input1(), inputs1[0]);
   // class scores - two classes with background
-  std::vector<std::initializer_list<float>> inputs2 = {
-      {0., .9, .8, 0., .75, .72, 0., .6, .5, 0., .93, .95, 0., .5, .4, 0., .3,
-       .2}};
+  std::vector<std::vector<float>> inputs2 = {{0., .9, .8, 0., .75, .72, 0., .6,
+                                              .5, 0., .93, .95, 0., .5, .4, 0.,
+                                              .3, .2}};
   m.QuantizeAndPopulate<uint8_t>(m.input2(), inputs2[0]);
   // six anchors in center-size encoding
-  std::vector<std::initializer_list<float>> inputs3 = {{
+  std::vector<std::vector<float>> inputs3 = {{
       0.5, 0.5,   1.0, 1.0,  // anchor #1
       0.5, 0.5,   1.0, 1.0,  // anchor #2
       0.5, 0.5,   1.0, 1.0,  // anchor #3
@@ -517,7 +517,7 @@ TEST(DetectionPostprocessOpTest, QuantizedTestRegularNMS) {
       {TensorType_FLOAT32, {}}, {TensorType_FLOAT32, {}},
       {TensorType_FLOAT32, {}}, true);
   // six boxes in center-size encoding
-  std::vector<std::initializer_list<float>> inputs1 = {{
+  std::vector<std::vector<float>> inputs1 = {{
       0.0, 0.0,  0.0, 0.0,  // box #1
       0.0, 1.0,  0.0, 0.0,  // box #2
       0.0, -1.0, 0.0, 0.0,  // box #3
@@ -527,12 +527,12 @@ TEST(DetectionPostprocessOpTest, QuantizedTestRegularNMS) {
   }};
   m.QuantizeAndPopulate<uint8_t>(m.input1(), inputs1[0]);
   // class scores - two classes with background
-  std::vector<std::initializer_list<float>> inputs2 = {
-      {0., .9, .8, 0., .75, .72, 0., .6, .5, 0., .93, .95, 0., .5, .4, 0., .3,
-       .2}};
+  std::vector<std::vector<float>> inputs2 = {{0., .9, .8, 0., .75, .72, 0., .6,
+                                              .5, 0., .93, .95, 0., .5, .4, 0.,
+                                              .3, .2}};
   m.QuantizeAndPopulate<uint8_t>(m.input2(), inputs2[0]);
   // six anchors in center-size encoding
-  std::vector<std::initializer_list<float>> inputs3 = {{
+  std::vector<std::vector<float>> inputs3 = {{
       0.5, 0.5,   1.0, 1.0,  // anchor #1
       0.5, 0.5,   1.0, 1.0,  // anchor #2
       0.5, 0.5,   1.0, 1.0,  // anchor #3

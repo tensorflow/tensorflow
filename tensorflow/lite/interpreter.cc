@@ -154,7 +154,7 @@ Interpreter::~Interpreter() {
     node.builtin_data = nullptr;
   }
 
-  for (int i = 0; i < context_.tensors_size; i++) {
+  for (size_t i = 0; i < context_.tensors_size; i++) {
     TfLiteTensor* tensor = &context_.tensors[i];
     if (tensor->buffer_handle != kTfLiteNullBufferHandle &&
         tensor->delegate->FreeBufferHandle != nullptr) {
@@ -165,12 +165,12 @@ Interpreter::~Interpreter() {
   }
 }
 
-TfLiteStatus Interpreter::ReplaceSubgraphsWithDelegateKernels(
+TfLiteStatus Interpreter::ReplaceNodeSubsetsWithDelegateKernels(
     TfLiteContext* context, TfLiteRegistration registration,
     const TfLiteIntArray* nodes_to_replace, TfLiteDelegate* delegate) {
   return static_cast<Interpreter*>(context->impl_)
-      ->ReplaceSubgraphsWithDelegateKernels(registration, nodes_to_replace,
-                                            delegate);
+      ->ReplaceNodeSubsetsWithDelegateKernels(registration, nodes_to_replace,
+                                              delegate);
 }
 
 namespace {
@@ -203,20 +203,20 @@ void CopyVectorToTfLiteIntArray(const std::vector<int>& vec,
 // | TfLiteIntArray (variable size)    |<-------/
 // +-----------------------------------+
 TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
-                                           const Subgraph& subgraph) {
+                                           const NodeSubset& node_subset) {
   // Step 1: Calculate the allocation size.
   int allocation_size = sizeof(TfLiteDelegateParams);
 
   int nodes_to_replace_size =
-      TfLiteIntArrayGetSizeInBytes(subgraph.nodes.size());
+      TfLiteIntArrayGetSizeInBytes(node_subset.nodes.size());
   allocation_size += nodes_to_replace_size;
 
   int input_tensors_size =
-      TfLiteIntArrayGetSizeInBytes(subgraph.input_tensors.size());
+      TfLiteIntArrayGetSizeInBytes(node_subset.input_tensors.size());
   allocation_size += input_tensors_size;
 
   int output_tensors_size =
-      TfLiteIntArrayGetSizeInBytes(subgraph.output_tensors.size());
+      TfLiteIntArrayGetSizeInBytes(node_subset.output_tensors.size());
   allocation_size += output_tensors_size;
 
   // Step 2: Allocate the memory.
@@ -230,15 +230,16 @@ TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
   allocation += sizeof(TfLiteDelegateParams);
 
   params->nodes_to_replace = reinterpret_cast<TfLiteIntArray*>(allocation);
-  CopyVectorToTfLiteIntArray(subgraph.nodes, params->nodes_to_replace);
+  CopyVectorToTfLiteIntArray(node_subset.nodes, params->nodes_to_replace);
   allocation += nodes_to_replace_size;
 
   params->input_tensors = reinterpret_cast<TfLiteIntArray*>(allocation);
-  CopyVectorToTfLiteIntArray(subgraph.input_tensors, params->input_tensors);
+  CopyVectorToTfLiteIntArray(node_subset.input_tensors, params->input_tensors);
   allocation += input_tensors_size;
 
   params->output_tensors = reinterpret_cast<TfLiteIntArray*>(allocation);
-  CopyVectorToTfLiteIntArray(subgraph.output_tensors, params->output_tensors);
+  CopyVectorToTfLiteIntArray(node_subset.output_tensors,
+                             params->output_tensors);
   allocation += output_tensors_size;
 
   return params;
@@ -246,40 +247,42 @@ TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
 
 }  // namespace
 
-TfLiteStatus Interpreter::ReplaceSubgraphsWithDelegateKernels(
+TfLiteStatus Interpreter::ReplaceNodeSubsetsWithDelegateKernels(
     TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace,
     TfLiteDelegate* delegate) {
   // Annotate the registration as DELEGATE op.
   registration.builtin_code = BuiltinOperator_DELEGATE;
 
-  // Analyze the graph to find all independent subgraphs that are either
+  // Analyze the graph to find all independent node_subsets that are either
   // fully not-this-delegate or this-delegate computation.
   InterpreterInfo info(this);
-  std::vector<Subgraph> subgraphs;
-  PartitionGraphIntoIndependentSubgraphs(&info, nodes_to_replace, &subgraphs);
+  std::vector<NodeSubset> node_subsets;
+  PartitionGraphIntoIndependentNodeSubsets(&info, nodes_to_replace,
+                                           &node_subsets);
 
   execution_plan_.clear();
-  for (auto& subgraph : subgraphs) {
-    // Subgraphs calimed by the delegate should have a "macro" op created, the
-    // other subgraphs (kTfNonPartition) just have their nodes added back to
+  for (auto& node_subset : node_subsets) {
+    // Subsets calimed by the delegate should have a "macro" op created, the
+    // other node_subsets (kTfNonPartition) just have their nodes added back to
     // the execution plan.
-    switch (subgraph.type) {
-      case Subgraph::kTfNonPartition:
-        for (auto it = subgraph.nodes.begin(); it != subgraph.nodes.end();
+    switch (node_subset.type) {
+      case NodeSubset::kTfNonPartition:
+        for (auto it = node_subset.nodes.begin(); it != node_subset.nodes.end();
              ++it) {
           execution_plan_.push_back(*it);
         }
         break;
-      case Subgraph::kTfPartition: {
+      case NodeSubset::kTfPartition: {
         int node_index;
 
-        TfLiteDelegateParams* params = CreateDelegateParams(delegate, subgraph);
+        TfLiteDelegateParams* params =
+            CreateDelegateParams(delegate, node_subset);
         TF_LITE_ENSURE_STATUS(AddNodeWithParameters(
-            subgraph.input_tensors, subgraph.output_tensors, nullptr, 0, params,
-            &registration, &node_index));
+            node_subset.input_tensors, node_subset.output_tensors, nullptr, 0,
+            params, &registration, &node_index));
 
         // Initialize the output tensors's delegate-related fields.
-        for (int tensor_index : subgraph.output_tensors) {
+        for (int tensor_index : node_subset.output_tensors) {
           TfLiteTensor* tensor = &tensors_[tensor_index];
           TF_LITE_ENSURE(&context_, tensor->delegate == nullptr ||
                                         tensor->delegate == delegate);
@@ -290,7 +293,7 @@ TfLiteStatus Interpreter::ReplaceSubgraphsWithDelegateKernels(
         TfLiteNode* node = &nodes_and_registration_[node_index].first;
         node->delegate = delegate;
       } break;
-      case Subgraph::kTfUnexplored:
+      case NodeSubset::kTfUnexplored:
         return kTfLiteError;
         break;
     }
@@ -525,7 +528,7 @@ TfLiteStatus Interpreter::AddNodeWithParameters(
 
   node.builtin_data = builtin_data_deleter.release();
   // TODO(ycling): Filling `custom_initial_data` and `custom_initial_data_size`
-  // properly for nodes generated by ReplaceSubgraphsWithDelegateKernels.
+  // properly for nodes generated by ReplaceNodeSubsetsWithDelegateKernels.
 
   if (registration->builtin_code == BuiltinOperator_CUSTOM) {
     // When it's a CUSTOM op, the `custom_options` field in the Flatbuffer
@@ -646,9 +649,6 @@ TfLiteStatus Interpreter::Invoke() {
   // Note that calling Invoke repeatedly will cause the original memory plan to
   // be reused, unless either ResizeInputTensor() or AllocateTensors() has been
   // called.
-  // TODO(b/71913981): we should force recalculation in the presence of dynamic
-  // tensors, because they may have new value which in turn may affect shapes
-  // and allocations.
   for (int execution_plan_index = 0;
        execution_plan_index < execution_plan_.size(); execution_plan_index++) {
     if (execution_plan_index == next_execution_plan_index_to_prepare_) {
@@ -729,10 +729,10 @@ void Interpreter::ReportError(TfLiteContext* context, const char* format, ...) {
 
 TfLiteStatus Interpreter::AddTensors(int tensors_to_add,
                                      int* first_new_tensor_index) {
-  int base_index = tensors_.size();
+  const size_t base_index = tensors_.size();
   if (first_new_tensor_index) *first_new_tensor_index = base_index;
   tensors_.resize(tensors_.size() + tensors_to_add);
-  for (int i = base_index; i < tensors_.size(); i++) {
+  for (size_t i = base_index; i < tensors_.size(); i++) {
     memset(&tensors_[i], 0, sizeof(tensors_[i]));
     tensors_[i].buffer_handle = kTfLiteNullBufferHandle;
   }
@@ -752,7 +752,8 @@ TfLiteStatus Interpreter::AddTensors(TfLiteContext* context, int tensors_to_add,
 
 TfLiteStatus Interpreter::GetNodeAndRegistration(
     int node_index, TfLiteNode** node, TfLiteRegistration** registration) {
-  TF_LITE_ENSURE(&context_, node_index < nodes_size() && node_index >= 0);
+  TF_LITE_ENSURE(&context_, node_index >= 0);
+  TF_LITE_ENSURE(&context_, static_cast<size_t>(node_index) < nodes_size());
   TF_LITE_ENSURE(&context_, node != nullptr && registration != nullptr);
   *node = &nodes_and_registration_[node_index].first;
   *registration = &nodes_and_registration_[node_index].second;
@@ -922,14 +923,14 @@ void Interpreter::SetNumThreads(int num_threads) {
 
 void Interpreter::SwitchToDelegateContext() {
   context_.GetNodeAndRegistration = GetNodeAndRegistration;
-  context_.ReplaceSubgraphsWithDelegateKernels =
-      ReplaceSubgraphsWithDelegateKernels;
+  context_.ReplaceNodeSubsetsWithDelegateKernels =
+      ReplaceNodeSubsetsWithDelegateKernels;
   context_.GetExecutionPlan = GetExecutionPlan;
 }
 
 void Interpreter::SwitchToKernelContext() {
   SetForbiddenContextFunction(&context_.GetNodeAndRegistration);
-  SetForbiddenContextFunction(&context_.ReplaceSubgraphsWithDelegateKernels);
+  SetForbiddenContextFunction(&context_.ReplaceNodeSubsetsWithDelegateKernels);
   SetForbiddenContextFunction(&context_.GetExecutionPlan);
 }
 

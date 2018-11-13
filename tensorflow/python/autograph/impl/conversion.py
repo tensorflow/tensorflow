@@ -45,6 +45,7 @@ from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import errors
 from tensorflow.python.autograph.core import function_wrapping
+from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import inspect_utils
@@ -108,21 +109,13 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
   Raises:
     ValueError: if the entity type is not supported.
   """
-  if program_ctx.options.verbose:
+  if program_ctx.options.verbose == converter.Verbosity.VERBOSE:
     logging.info('Converting {}'.format(o))
 
   if tf_inspect.isclass(o):
     node, name, ns = class_to_graph(o, program_ctx)
   elif tf_inspect.isfunction(o):
-    # TODO(mdan): This is not a reliable mechanism.
-    # The most reliable way is to check the source code, the AST will contain
-    # a Lambda node instead of a FunctionDef
-    if o.__name__ == '<lambda>':
-      raise NotImplementedError(
-          'lambda functions are not yet supported; declare the function'
-          ' using def instead: %s' % o)
-    else:
-      node, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
+    node, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
   elif tf_inspect.ismethod(o):
     node, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
   # TODO(mdan,yashkatariya): Remove when object conversion is implemented.
@@ -151,7 +144,7 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
 
   program_ctx.add_to_cache(o, node)
 
-  if program_ctx.options.verbose:
+  if program_ctx.options.verbose == converter.Verbosity.VERBOSE:
     logging.info('Compiled output of {}:\n\n{}\n'.format(
         o, compiler.ast_to_source(node)))
 
@@ -192,8 +185,7 @@ def class_to_graph(c, program_ctx):
         program_ctx=program_ctx,
         arg_values={},
         arg_types={'self': (c.__name__, c)},
-        owner_type=c,
-        rewrite_errors=False)
+        owner_type=c)
     if class_namespace is None:
       class_namespace = namespace
     else:
@@ -273,6 +265,7 @@ def _add_self_references(namespace, autograph_module):
     # TODO(mdan): Add safeguards against name clashes.
     # We don't want to create a submodule because we want the operators to be
     # accessible as ag__.<operator>
+    ag_internal.__dict__.update(special_functions.__dict__)
     ag_internal.__dict__.update(operators.__dict__)
 
   _add_reserved_symbol(namespace, 'ag__', ag_internal)
@@ -282,12 +275,33 @@ def function_to_graph(f,
                       program_ctx,
                       arg_values,
                       arg_types,
-                      owner_type=None,
-                      rewrite_errors=True):
+                      owner_type=None):
   """Specialization of `entity_to_graph` for callable functions."""
 
   node, source = parser.parse_entity(f)
   node = node.body[0]
+
+  # In general, the output of inspect.getsource is inexact because it uses crude
+  # regex matching methods to search the source file. This is particularly
+  # problematic for lambda functions, where the entire containing lines are
+  # returned. Certain distributions of CPython may also return the enclosing
+  # function for local functions.
+  nodes = ast_util.find_matching_definitions(node, f)
+  if len(nodes) != 1:
+    if f.__name__ == '<lambda>':
+      raise ValueError(
+          'Unable to identify source code of lambda function {}. It was'
+          ' defined on this line: {}, which must contain a single lambda with'
+          ' matching signature. To avoid ambiguity, define each lambda'
+          ' in a separate expression.'.format(f, source))
+    else:
+      raise ValueError(
+          'Unable to identify source code of function {}. The source code'
+          ' reported by Python did not include exactly one matching signature:'
+          '\n{}\nTo avoid ambiguity, use a unique name for each'
+          ' function.'.format(f, source))
+  node, = nodes
+
   # TODO(znado): Place inside standard_analysis.
   origin_info.resolve(node, source, f)
   namespace = inspect_utils.getnamespace(f)
@@ -302,15 +316,22 @@ def function_to_graph(f,
       arg_types=arg_types,
       owner_type=owner_type)
   context = converter.EntityContext(namer, entity_info, program_ctx)
-  node = node_to_graph(node, context, rewrite_errors=rewrite_errors)
+  node = node_to_graph(node, context)
 
-  # TODO(mdan): This somewhat duplicates the call rename logic in call_trees.py
-  new_name, did_rename = namer.compiled_function_name(f.__name__, f, owner_type)
-  if not did_rename:
-    new_name = f.__name__
-    if node.name != f.__name__:
-      raise NotImplementedError('Strange corner case. Send us offending code!')
-  node.name = new_name
+  if isinstance(node, gast.Lambda):
+    new_name = namer.new_symbol('tf__lambda', ())
+    node = gast.Assign(
+        targets=[gast.Name(new_name, gast.Store(), None)], value=node)
+
+  else:
+    # TODO(mdan): This somewhat duplicates the renaming logic in call_trees.py
+    new_name, did_rename = namer.compiled_function_name(f.__name__, f,
+                                                        owner_type)
+    if did_rename:
+      node.name = new_name
+    else:
+      new_name = f.__name__
+      assert node.name == new_name
 
   program_ctx.update_name_map(namer)
   # TODO(mdan): Use this at compilation.
@@ -318,13 +339,12 @@ def function_to_graph(f,
   return [node], new_name, namespace
 
 
-def node_to_graph(node, context, rewrite_errors=True):
+def node_to_graph(node, context):
   """Convert Python code to equivalent TF graph mode code.
 
   Args:
     node: AST, the code to convert.
     context: converter.EntityContext
-    rewrite_errors: Boolean, whether or not to rewrite the error traceback.
 
   Returns:
     A tuple (node, deps):
@@ -361,7 +381,9 @@ def node_to_graph(node, context, rewrite_errors=True):
   node = converter.apply_(node, context, logical_expressions)
   if context.program.options.uses(converter.Feature.AUTO_CONTROL_DEPS):
     node = converter.apply_(node, context, side_effect_guards)
-  node = converter.apply_(node, context, function_scopes)
-  if rewrite_errors:
+  # TODO(mdan): If function scopes ever does more, the toggle will need moving.
+  if context.program.options.uses(converter.Feature.NAME_SCOPES):
+    node = converter.apply_(node, context, function_scopes)
+  if context.program.options.uses(converter.Feature.ERROR_REWRITING):
     node = converter.apply_(node, context, error_handlers)
   return node

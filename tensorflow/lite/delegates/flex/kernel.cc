@@ -251,7 +251,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   for (auto tensor_index : op_data->subgraph_inputs) {
     TfLiteTensor* tensor = &context->tensors[tensor_index];
     if (!IsConstantTensor(tensor)) {
-      buffer_map->SetFromTfLite(tensor_index, tensor);
+      // If this tensor is part of an earlier TF subgraph we should not add it
+      // to the BufferMap again, because TF already knows about it and its
+      // contents are kept automatically up-to-date.
+      if (!buffer_map->IsTensorFlowTensor(tensor_index)) {
+        buffer_map->SetFromTfLite(tensor_index, tensor);
+      }
     }
   }
 

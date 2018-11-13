@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
 
@@ -400,10 +401,7 @@ REGISTER_OP("BoostedTreesMakeQuantileSummaries")
       for (int i = 0; i < num_features; ++i) {
         ShapeHandle feature_shape;
         DimensionHandle unused_dim;
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 2, &feature_shape));
-        TF_RETURN_IF_ERROR(c->Merge(c->Dim(feature_shape, 0),
-                                    c->Dim(example_weights_shape, 0),
-                                    &unused_dim));
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &feature_shape));
         // the columns are value, weight, min_rank, max_rank.
         c->set_output(i, c->MakeShape({c->UnknownDim(), 4}));
       }
@@ -428,6 +426,17 @@ REGISTER_OP("BoostedTreesQuantileStreamResourceAddSummaries")
       for (int i = 1; i < num_features + 1; i++) {
         TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 2, &unused_input));
       }
+      return Status::OK();
+    });
+
+REGISTER_OP("BoostedTreesQuantileStreamResourceDeserialize")
+    .Attr("num_streams: int")
+    .Input("quantile_stream_resource_handle: resource")
+    .Input("bucket_boundaries: num_streams * float")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused_input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused_input));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused_input));
       return Status::OK();
     });
 
@@ -470,13 +479,13 @@ REGISTER_OP("BoostedTreesBucketize")
       ShapeHandle feature_shape;
       DimensionHandle unused_dim;
       for (int i = 0; i < num_features; i++) {
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 2, &feature_shape));
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &feature_shape));
         TF_RETURN_IF_ERROR(c->Merge(c->Dim(feature_shape, 0),
                                     c->Dim(c->input(0), 0), &unused_dim));
       }
       // Bucketized result should have same dimension as input.
       for (int i = 0; i < num_features; i++) {
-        c->set_output(i, c->MakeShape({c->Dim(c->input(i), 0), 1}));
+        c->set_output(i, c->MakeShape({c->Dim(c->input(i), 0)}));
       }
       return Status::OK();
     });

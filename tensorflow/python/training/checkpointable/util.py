@@ -821,7 +821,7 @@ def capture_dependencies(template):
     """
     def _call_next_creator_renaming_initializer(initializer, **inner_kwargs):
       inner_kwargs.pop("name")  # Ignored; this is the scope-stripped name which
-                                # we don't want to propagate.
+      # we don't want to propagate.
       return next_creator(
           initial_value=initializer,
           name=name,
@@ -982,6 +982,12 @@ class CheckpointLoadStatus(_LoadStatus):
         raise AssertionError(
             "Object not assigned a value from checkpoint: %s" % (node,))
     for checkpointable_object in list_objects(self._root_checkpointable):
+      # Remove data structures that do not contain any variables from
+      # restoration checks.
+      if (isinstance(checkpointable_object,
+                     data_structures.CheckpointableDataStructure) and
+          not checkpointable_object._checkpoint_dependencies):
+        continue
       self._checkpoint.all_python_objects.add(checkpointable_object)
     unused_python_objects = (
         _ObjectIdentitySet(self._checkpoint.all_python_objects)

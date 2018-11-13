@@ -1167,6 +1167,11 @@ def tf_kernel_library(
         copts = []
     textual_hdrs = []
     copts = copts + tf_copts(is_external = is_external)
+
+    # Override EIGEN_STRONG_INLINE to inline when
+    # --define=override_eigen_strong_inline=true to avoid long compiling time.
+    # See https://github.com/tensorflow/tensorflow/issues/10521
+    copts = copts + if_override_eigen_strong_inline(["/DEIGEN_STRONG_INLINE=inline"])
     if prefix:
         if native.glob([prefix + "*.cu.cc"], exclude = ["*test*"]):
             if not gpu_srcs:

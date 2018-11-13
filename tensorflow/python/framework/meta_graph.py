@@ -462,7 +462,7 @@ def _is_default_attr_value(op_def, attr_name, attr_value):
   return False
 
 
-def _strip_graph_default_valued_attrs(meta_graph_def):
+def strip_graph_default_valued_attrs(meta_graph_def):
   """Strips default valued attributes for node defs in given MetaGraphDef.
 
   This method also sets `meta_info_def.stripped_default_attrs` in the given
@@ -587,7 +587,7 @@ def create_meta_graph_def(meta_info_def=None,
 
   # Strip default valued attributes in graph_def.
   if strip_default_attrs:
-    _strip_graph_default_valued_attrs(meta_graph_def)
+    strip_graph_default_valued_attrs(meta_graph_def)
 
   # Adds saver_def.
   if saver_def:

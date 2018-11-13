@@ -1552,6 +1552,7 @@ tensorflow::Status ConvertPlugin(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   // prepare input
   std::vector<nvinfer1::ITensor*> all_inputs;
+  all_inputs.reserve(inputs.size());
   for (auto input : inputs) {
     all_inputs.emplace_back(const_cast<nvinfer1::ITensor*>(input.tensor()));
   }
