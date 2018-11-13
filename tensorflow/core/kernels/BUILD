@@ -195,15 +195,27 @@ cc_library(
     deps = ["//third_party/eigen3"],
 )
 
-cc_library(
+tf_kernel_library(
     name = "conv_2d",
     hdrs = ["conv_2d.h"],
+    gpu_srcs = [
+        "conv_2d_gpu.cu.cc",
+        "conv_2d.h",
+    ],
     deps = [
         ":eigen_helpers",
+        ":fill_functor",
         ":gpu_util_hdrs",
+        ":image_resizer_state",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1673,14 +1685,14 @@ tf_kernel_library(
     ],
     visibility = [":friends"],
     deps = [
-        ":conv_ops",
+        ":conv_2d",
         ":ops_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//third_party/eigen3",
     ],
-    alwayslink = 0,
+    alwayslink = 1,
 )
 
 tf_cc_test(

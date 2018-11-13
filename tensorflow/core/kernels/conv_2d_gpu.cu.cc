@@ -433,7 +433,7 @@ struct TransformFilter<GPUDevice, T, int, NDIMS> {
     combined_dims[2] = in.dimension(NDIMS - 1);  // output filters
     CudaLaunchConfig config = GetCudaLaunchConfig(out.size(), d);
 
-    CHECK(dst_filter_format == FORMAT_OIHW)
+    DCHECK(dst_filter_format == FORMAT_OIHW)
         << "Unsupported output layout: " << ToString(dst_filter_format);
 
     ShuffleInTensor3Simple<T, 2, 1, 0>
@@ -998,78 +998,77 @@ struct NCHWToNHWC<GPUDevice, T, NDIMS> {
   }
 };
 
-}  // namespace functor
+template struct ShuffleAndReverse<Eigen::GpuDevice, float, 4, int>;
+template struct ShuffleAndReverse<Eigen::GpuDevice, Eigen::half, 4, int>;
 
-template struct functor::ShuffleAndReverse<GPUDevice, float, 4, int>;
-template struct functor::ShuffleAndReverse<GPUDevice, Eigen::half, 4, int>;
+template struct ShuffleAndReverse<Eigen::GpuDevice, float, 4,
+                                  Eigen::DenseIndex>;
+template struct ShuffleAndReverse<Eigen::GpuDevice, Eigen::half, 4,
+                                  Eigen::DenseIndex>;
 
-template struct functor::ShuffleAndReverse<GPUDevice, float, 4,
-                                           Eigen::DenseIndex>;
-template struct functor::ShuffleAndReverse<GPUDevice, Eigen::half, 4,
-                                           Eigen::DenseIndex>;
+template struct TransformDepth<Eigen::GpuDevice, float, int>;
+template struct TransformDepth<Eigen::GpuDevice, Eigen::half, int>;
 
-template struct functor::TransformDepth<GPUDevice, float, int>;
-template struct functor::TransformDepth<GPUDevice, Eigen::half, int>;
+template struct SwapDimension1And2InTensor3<Eigen::GpuDevice, uint8>;
+template struct SwapDimension1And2InTensor3<Eigen::GpuDevice, uint16>;
+template struct SwapDimension1And2InTensor3<Eigen::GpuDevice, uint32>;
+template struct SwapDimension1And2InTensor3<Eigen::GpuDevice, uint64>;
+template struct SwapDimension1And2InTensor3<Eigen::GpuDevice, float4>;
+template struct SwapDimension1And2InTensor3<Eigen::GpuDevice, float2,
+                                            /*conjugate=*/true>;
+template struct SwapDimension1And2InTensor3<Eigen::GpuDevice, double2,
+                                            /*conjugate=*/true>;
+template struct SwapDimension1And2InTensor3<Eigen::GpuDevice, Eigen::half>;
 
-template struct functor::SwapDimension1And2InTensor3<GPUDevice, uint8>;
-template struct functor::SwapDimension1And2InTensor3<GPUDevice, uint16>;
-template struct functor::SwapDimension1And2InTensor3<GPUDevice, uint32>;
-template struct functor::SwapDimension1And2InTensor3<GPUDevice, uint64>;
-template struct functor::SwapDimension1And2InTensor3<GPUDevice, float4>;
-template struct functor::SwapDimension1And2InTensor3<GPUDevice, float2,
-                                                     /*conjugate=*/true>;
-template struct functor::SwapDimension1And2InTensor3<GPUDevice, double2,
-                                                     /*conjugate=*/true>;
-template struct functor::SwapDimension1And2InTensor3<GPUDevice, Eigen::half>;
-
-template struct functor::SwapDimension0And2InTensor3<GPUDevice, uint8>;
-template struct functor::SwapDimension0And2InTensor3<GPUDevice, uint16>;
-template struct functor::SwapDimension0And2InTensor3<GPUDevice, uint32>;
-template struct functor::SwapDimension0And2InTensor3<GPUDevice, uint64>;
-template struct functor::SwapDimension0And2InTensor3<GPUDevice, float4>;
-template struct functor::SwapDimension0And2InTensor3<GPUDevice, float2,
-                                                     /*conjugate=*/true>;
-template struct functor::SwapDimension0And2InTensor3<GPUDevice, double2,
-                                                     /*conjugate=*/true>;
+template struct SwapDimension0And2InTensor3<Eigen::GpuDevice, uint8>;
+template struct SwapDimension0And2InTensor3<Eigen::GpuDevice, uint16>;
+template struct SwapDimension0And2InTensor3<Eigen::GpuDevice, uint32>;
+template struct SwapDimension0And2InTensor3<Eigen::GpuDevice, uint64>;
+template struct SwapDimension0And2InTensor3<Eigen::GpuDevice, float4>;
+template struct SwapDimension0And2InTensor3<Eigen::GpuDevice, float2,
+                                            /*conjugate=*/true>;
+template struct SwapDimension0And2InTensor3<Eigen::GpuDevice, double2,
+                                            /*conjugate=*/true>;
 
 // For 2d ops.
-template struct functor::TransformFilter<GPUDevice, double, int, 4>;
-template struct functor::TransformFilter<GPUDevice, float, int, 4>;
-template struct functor::TransformFilter<GPUDevice, Eigen::half, int, 4>;
+template struct TransformFilter<Eigen::GpuDevice, double, int, 4>;
+template struct TransformFilter<Eigen::GpuDevice, float, int, 4>;
+template struct TransformFilter<Eigen::GpuDevice, Eigen::half, int, 4>;
 
-template struct functor::ReverseTransformFilter<GPUDevice, double, 4>;
-template struct functor::ReverseTransformFilter<GPUDevice, float, 4>;
-template struct functor::ReverseTransformFilter<GPUDevice, Eigen::half, 4>;
+template struct ReverseTransformFilter<Eigen::GpuDevice, double, 4>;
+template struct ReverseTransformFilter<Eigen::GpuDevice, float, 4>;
+template struct ReverseTransformFilter<Eigen::GpuDevice, Eigen::half, 4>;
 
-template struct functor::NHWCToNCHW<GPUDevice, double, 4>;
-template struct functor::NHWCToNCHW<GPUDevice, float, 4>;
-template struct functor::NHWCToNCHW<GPUDevice, Eigen::half, 4>;
+template struct NHWCToNCHW<Eigen::GpuDevice, double, 4>;
+template struct NHWCToNCHW<Eigen::GpuDevice, float, 4>;
+template struct NHWCToNCHW<Eigen::GpuDevice, Eigen::half, 4>;
 
-template struct functor::NCHWToNHWC<GPUDevice, double, 4>;
-template struct functor::NCHWToNHWC<GPUDevice, float, 4>;
-template struct functor::NCHWToNHWC<GPUDevice, Eigen::half, 4>;
+template struct NCHWToNHWC<Eigen::GpuDevice, double, 4>;
+template struct NCHWToNHWC<Eigen::GpuDevice, float, 4>;
+template struct NCHWToNHWC<Eigen::GpuDevice, Eigen::half, 4>;
 
-template struct functor::PadInput<GPUDevice, int, int, 4>;
-template struct functor::PadInput<GPUDevice, double, int, 4>;
-template struct functor::PadInput<GPUDevice, float, int, 4>;
-template struct functor::PadInput<GPUDevice, Eigen::half, int, 4>;
+template struct PadInput<Eigen::GpuDevice, int, int, 4>;
+template struct PadInput<Eigen::GpuDevice, double, int, 4>;
+template struct PadInput<Eigen::GpuDevice, float, int, 4>;
+template struct PadInput<Eigen::GpuDevice, Eigen::half, int, 4>;
 
 // For 3d ops.
-template struct functor::TransformFilter<GPUDevice, float, int, 5>;
-template struct functor::TransformFilter<GPUDevice, Eigen::half, int, 5>;
+template struct TransformFilter<Eigen::GpuDevice, float, int, 5>;
+template struct TransformFilter<Eigen::GpuDevice, Eigen::half, int, 5>;
 
-template struct functor::ReverseTransformFilter<GPUDevice, float, 5>;
-template struct functor::ReverseTransformFilter<GPUDevice, Eigen::half, 5>;
+template struct ReverseTransformFilter<Eigen::GpuDevice, float, 5>;
+template struct ReverseTransformFilter<Eigen::GpuDevice, Eigen::half, 5>;
 
-template struct functor::NHWCToNCHW<GPUDevice, float, 5>;
-template struct functor::NHWCToNCHW<GPUDevice, Eigen::half, 5>;
+template struct NHWCToNCHW<Eigen::GpuDevice, float, 5>;
+template struct NHWCToNCHW<Eigen::GpuDevice, Eigen::half, 5>;
 
-template struct functor::NCHWToNHWC<GPUDevice, float, 5>;
-template struct functor::NCHWToNHWC<GPUDevice, Eigen::half, 5>;
+template struct NCHWToNHWC<Eigen::GpuDevice, float, 5>;
+template struct NCHWToNHWC<Eigen::GpuDevice, Eigen::half, 5>;
 
-template struct functor::PadInput<GPUDevice, float, int, 5>;
-template struct functor::PadInput<GPUDevice, Eigen::half, int, 5>;
+template struct PadInput<Eigen::GpuDevice, float, int, 5>;
+template struct PadInput<Eigen::GpuDevice, Eigen::half, int, 5>;
 
+}  // namespace functor
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA
