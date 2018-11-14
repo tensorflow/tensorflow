@@ -329,10 +329,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "profiler"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "pywrap_tensorflow"
     mtype: "<type \'module\'>"
   }

@@ -137,10 +137,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "ProfilerHook"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "ProximalAdagradOptimizer"
     mtype: "<type \'type\'>"
   }
@@ -225,10 +221,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member_method {
-    name: "NewCheckpointReader"
-    argspec: "args=[\'filepattern\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "cosine_decay"
     argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'alpha\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'None\'], "
   }
@@ -243,10 +235,6 @@ tf_module {
   member_method {
     name: "get_checkpoint_state"
     argspec: "args=[\'checkpoint_dir\', \'latest_filename\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "init_from_checkpoint"
-    argspec: "args=[\'ckpt_dir_or_file\', \'assignment_map\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "inverse_time_decay"
@@ -287,10 +275,6 @@ tf_module {
   member_method {
     name: "polynomial_decay"
     argspec: "args=[\'learning_rate\', \'global_step\', \'decay_steps\', \'end_learning_rate\', \'power\', \'cycle\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'1.0\', \'False\', \'None\'], "
-  }
-  member_method {
-    name: "replica_device_setter"
-    argspec: "args=[\'ps_tasks\', \'ps_device\', \'worker_device\', \'merge_devices\', \'cluster\', \'ps_ops\', \'ps_strategy\'], varargs=None, keywords=None, defaults=[\'0\', \'/job:ps\', \'/job:worker\', \'True\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "sdca_fprint"
