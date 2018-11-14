@@ -1567,9 +1567,6 @@ class Model(Network):
           shuffle=shuffle,
           initial_epoch=initial_epoch)
 
-    # Backwards compatibility
-    if batch_size is None and steps_per_epoch is None:
-      batch_size = 32
     # Legacy support
     if 'nb_epoch' in kwargs:
       logging.warning(
@@ -1590,6 +1587,10 @@ class Model(Network):
       if not steps_per_epoch and isinstance(first_x_value, np.ndarray):
         steps_per_epoch = distributed_training_utils.get_input_batch_params(
             first_x_value, batch_size, self._distribution_strategy)
+
+    # Backwards compatibility
+    if batch_size is None and steps_per_epoch is None:
+      batch_size = 32
 
     x, y, sample_weights = self._standardize_user_data(
         x,
@@ -1798,10 +1799,6 @@ class Model(Network):
           workers=workers,
           use_multiprocessing=use_multiprocessing)
 
-    # Backwards compatibility.
-    if batch_size is None and steps is None:
-      batch_size = 32
-
     # Validate and standardize user data.
     if self._distribution_strategy:
       distributed_training_utils.validate_inputs(
@@ -1810,6 +1807,10 @@ class Model(Network):
       if isinstance(first_x_value, np.ndarray) and not steps:
         steps = distributed_training_utils.get_input_batch_params(
             first_x_value, batch_size, self._distribution_strategy)
+
+    # Backwards compatibility.
+    if batch_size is None and steps is None:
+      batch_size = 32
 
     x, y, sample_weights = self._standardize_user_data(
         x,
@@ -1909,10 +1910,6 @@ class Model(Network):
           workers=workers,
           use_multiprocessing=use_multiprocessing)
 
-    # Backwards compatibility.
-    if batch_size is None and steps is None:
-      batch_size = 32
-
     if self._distribution_strategy:
       distributed_training_utils.validate_inputs(
           x, None, self._distribution_strategy)
@@ -1920,6 +1917,10 @@ class Model(Network):
       if isinstance(first_x_value, np.ndarray) and not steps:
         steps = distributed_training_utils.get_input_batch_params(
             first_x_value, batch_size, self._distribution_strategy)
+    # Backwards compatibility.
+    if batch_size is None and steps is None:
+      batch_size = 32
+
     # Validate and standardize user data.
     # TODO(anjalisridhar): We don't pass batch_size here for some reason. This
     # means that we end up calculating it twice which we should avoid.
