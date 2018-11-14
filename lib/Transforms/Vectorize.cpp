@@ -36,6 +36,8 @@
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -48,10 +50,30 @@ using namespace mlir;
 /// level. This is implemented by:
 ///   1. matching arbitrarily nested loop patterns that are vectorizable;
 ///   2. analyzing those patterns for profitability;
-///   3. applying those patterns iteratively by coarsening the loops, inserting
-///      a single explicit vector element AllocOp and an unaligned load/store
-///      operation. The full semantics of this unaligned load/store is still
-///      TBD.
+///   3. applying those patterns iteratively by coarsening the loops and turning
+///      load/store operations into opaque vector_transfer_read/write ops that
+///      will be lowered in a subsequent pass (either into finer-grained MLIR
+///      ops or in the lower-level emitters);
+///   4. traversing the use-def chains to propagate the vector types to ops.
+///
+/// Vector granularity:
+/// ===================
+/// This pass is designed to perform vectorization at the granularity of
+/// super-vectors. For a particular target, a notion of minimal n-d vector size
+/// will be specified and early vectorization targets a multiple of those.
+/// Some particular sizes of interest include:
+///   - CPU: (HW vector size), (core count x HW vector size),
+///          (socket count x core count x HW vector size);
+///   - GPU: warp size, (warp x float2, float4, 4x4x4 tensor core) sizes.
+/// Loops, load/stores and operations are emitted that operate on super-vector
+/// shapes. A later lowering pass will materialize to actual HW vector sizes.
+/// This lowering may be occur at different times:
+///   1. at the MLIR level into DmaStartOp + DmaWaitOp + vectorized operations
+///      for data transformations and shuffle; thus opening opportunities for
+///      unrolling and pipelining; or
+///   2. later in the a target-specific lowering pass, achieving full separation
+///      of concerns; or
+///   3. a partial mix of both.
 ///
 /// Loop transformation:
 //  ====================
@@ -59,41 +81,45 @@ using namespace mlir;
 /// is still subject to exploratory tradeoffs. In particular, say we want to
 /// vectorize by a factor 128, we want to transform the following input:
 ///     for %i = %M to %N {
-///       %a = load(f(i))
+///       %a = load A[%i] : memref<?xf32>
+///     }
 ///
 ///   Traditionally, one would vectorize late (after scheduling, tiling,
 ///   memory promotion etc) say after stripmining (and potentially unrolling in
 ///   the case of LLVM's SLP vectorizer):
 ///     for %i = floor(%M, 128) to ceil(%N, 128) {
 ///       for %ii = max(%M, 128 * %i) to min(%N, 128*%i + 127) {
-///         load/store(f(ii))
+///         %a = load A[%ii] : memref<?xf32>
 ///
-///   We seek to vectorize early and freeze vector types before scheduling, so
-///   we want to generate a pattern that resembles:
+///   Instead, we seek to vectorize early and freeze vector types before
+///   scheduling, so we want to generate a pattern that resembles:
 ///     for %i = ? to ? step ? {
-///       unaligned_load/unaligned_store(g(i))
+///       %v_a = "vector_transfer_read" (A, %i) : (memref<?xf32>, index) ->
+///       vector<128xf32>
 ///
 ///   i. simply dividing the lower / upper bounds by 128 creates issues
-///   with representing expressions such as ii + 1 because now we only
-///   have access to original values that have been divided. Additional
-///   information is needed to specify accesses at below 128 granularity;
+///      when representing expressions such as ii + 1 because now we only
+///      have access to original values that have been divided. Additional
+///      information is needed to specify accesses at below-128 granularity;
 ///   ii. another alternative is to coarsen the loop step but this may have
-///   consequences on dependence analysis and fusability of loops: fusable
-///   loops probably need to have the same step (because we don't want to
-///   stripmine/unroll to enable fusion).
+///      consequences on dependence analysis and fusability of loops: fusable
+///      loops probably need to have the same step (because we don't want to
+///      stripmine/unroll to enable fusion).
 /// As a consequence, we choose to represent the coarsening using the loop
 /// step for now and reevaluate in the future. Note that we can renormalize
 /// loop steps later if/when we have evidence that they are problematic.
 ///
 /// For the simple strawman example above, vectorizing for a 1-D vector
 /// abstraction of size 128 returns code similar to:
-///   %c0 = constant 0 : index
-///   for %i = %M to %N + 127 step 128 {
-///     %a = alloc() : memref<1xvector<128xf32>>
-///     %r = "n_d_unaligned_load"(%tensor, %i, %a, %c0)
-///     %16 = load %a[%c0] : memref<1xvector<128xf32>>
+///   for %i = %M to %N step 128 {
+///     %v_a = "vector_transfer_read" (A, %i) : (memref<?xf32>, index) ->
+///     vector<128xf32>
 ///
 /// Note this is still work in progress and not yet functional.
+/// It is the reponsibility of the implementation of the vector_transfer_read
+/// implementation's responsibility to turn scalar memrefs into vector
+/// registers. This is target dependent. In the future, these operations will
+/// expose a contract to constrain early vectorization.
 
 #define DEBUG_TYPE "early-vect"
 
@@ -213,6 +239,7 @@ char Vectorize::passID = 0;
 namespace {
 
 struct Strategy {
+  ArrayRef<int> vectorSizes;
   DenseMap<ForStmt *, unsigned> loopToVectorDim;
 };
 
@@ -238,24 +265,15 @@ static bool analyzeProfitability(MLFunctionMatches matches,
                                  Strategy *strategy) {
   for (auto m : matches) {
     auto *loop = cast<ForStmt>(m.first);
-    LLVM_DEBUG(dbgs() << "[early-vect][profitability] patternDepth: "
-                      << patternDepth << " depthInPattern: " << depthInPattern
-                      << " loop ");
-    LLVM_DEBUG(loop->print(dbgs()));
-    LLVM_DEBUG(dbgs() << "\n");
     bool fail = analyzeProfitability(m.second, depthInPattern + 1, patternDepth,
                                      strategy);
     if (fail) {
       return fail;
     }
     assert(patternDepth > depthInPattern);
-    if (patternDepth - depthInPattern <= clVirtualVectorSize.size()) {
+    if (patternDepth - depthInPattern <= strategy->vectorSizes.size()) {
       strategy->loopToVectorDim[loop] =
-          clVirtualVectorSize.size() - (patternDepth - depthInPattern);
-      LLVM_DEBUG(dbgs() << "[early-vect][profitability] vectorize @ "
-                        << strategy->loopToVectorDim[loop] << " loop ");
-      LLVM_DEBUG(loop->print(dbgs()));
-      LLVM_DEBUG(dbgs() << "\n");
+          strategy->vectorSizes.size() - (patternDepth - depthInPattern);
     } else {
       // Don't vectorize
       strategy->loopToVectorDim[loop] = -1;
@@ -265,41 +283,85 @@ static bool analyzeProfitability(MLFunctionMatches matches,
 }
 ///// end TODO(ntv): Hoist to a VectorizationStrategy.cpp when appropriate /////
 
-////// TODO(ntv): Hoist to a VectorizationMaterialize.cpp when appropriate. ////
-/// Gets a MemRefType of 1 vector with the same elemental type as `tmpl` and
-/// sizes specified by vectorSize. The MemRef lives in the same memory space as
-/// tmpl. The MemRef should be promoted to a closer memory address space in a
-/// later pass.
-static MemRefType getVectorizedMemRefType(MemRefType tmpl,
-                                          ArrayRef<int> vectorSizes) {
-  auto elementType = tmpl.getElementType();
-  assert(!elementType.dyn_cast<VectorType>() &&
-         "Can't vectorize an already vector type");
-  assert(tmpl.getAffineMaps().empty() &&
-         "Unsupported non-implicit identity map");
-  return MemRefType::get({1}, VectorType::get(vectorSizes, elementType), {},
-                         tmpl.getMemorySpace());
+namespace {
+
+struct VectorizationState {
+  /// Adds an entry of pre/post vectorization statements in the state.
+  void registerReplacement(OperationStmt *key, OperationStmt *value);
+  /// When the current vectorization pattern is successful, this erases the
+  /// instructions that were marked for erasure in the proper order and resets
+  /// the internal state for the next pattern.
+  void finishVectorizationPattern();
+
+  // In-order tracking of original OperationStmt that have been vectorized.
+  // Erase in reverse order.
+  SmallVector<OperationStmt *, 16> toErase;
+  // Set of OperationStmt that have been vectorized (the values in the
+  // vectorizationMap for hashed access)
+  DenseSet<OperationStmt *> vectorizedSet;
+  // Map of old unvectorized OperationStmt to new vectorized OperationStmt.
+  DenseMap<OperationStmt *, OperationStmt *> vectorizationMap;
+  // Map of old unvectorized MLValue to new vectorized MLValue.
+  DenseMap<const MLValue *, MLValue *> replacementMap;
+  // Enclosing loops are pushed, popped as the vectorization algorithm recurses.
+  SmallVector<ForStmt *, 8> enclosingLoops;
+  // The strategy drives which loop to vectorize by which amount.
+  const Strategy *strategy;
+
+  void enterLoop(ForStmt *loop) { enclosingLoops.push_back(loop); }
+  void exitLoop(ForStmt *loop) {
+    auto *poppedLoop = enclosingLoops.pop_back_val();
+    (void)poppedLoop;
+    assert(poppedLoop == loop && "Not the same loop");
+  }
+
+private:
+  void registerReplacement(const SSAValue *key, SSAValue *value);
+};
+
+} // end namespace
+
+void VectorizationState::registerReplacement(OperationStmt *key,
+                                             OperationStmt *value) {
+  LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ vectorize op: ");
+  LLVM_DEBUG(key->print(dbgs()));
+  LLVM_DEBUG(dbgs() << "  into  ");
+  LLVM_DEBUG(value->print(dbgs()));
+  assert(key->getNumResults() == 1);
+  assert(value->getNumResults() == 1);
+  assert(vectorizedSet.count(value) == 0);
+  assert(vectorizationMap.count(key) == 0);
+  toErase.push_back(key);
+  vectorizedSet.insert(value);
+  vectorizationMap.insert(std::make_pair(key, value));
+  registerReplacement(key->getResult(0), value->getResult(0));
 }
 
-/// Creates an unaligned load with the following semantics:
-///   1. TODO(ntv): apply a `srcMap` to a `srcIndex` to represent a `srcMemRef`
-///   slice + permutations for loading from non-fastest varying dimensions.
-///   Note that generally, the fastest varying dimension should be part of the
-///   map otherwise global layout changes are likely needed to obtain an
-///   efficient load. This is an orthogonal cost model consideration;
-///   2. load from the `srcMemRef` resulting from 1.;
-///   3. store into a `dstMemRef` starting at offset `dstIndex`;
-///   4. copy sizeof(dstMemRef) bytes with adjustements for boundaries;
-///   5. TODO(ntv): broadcast along `broadcastMap` inside the `dstMemRef` to
-///   support patterns like scalar-to-vector and N-k dim MemRef slice
-/// The copy may overflow on the src side but not on the dst side. If the copy
-/// overflows on the src side, the `dstMemRef` will be padded with enough values
-/// to fill it completely.
+void VectorizationState::finishVectorizationPattern() {
+  while (!toErase.empty()) {
+    auto *stmt = toErase.pop_back_val();
+    stmt->erase();
+  }
+  vectorizationMap.clear();
+  replacementMap.clear();
+}
+
+void VectorizationState::registerReplacement(const SSAValue *key,
+                                             SSAValue *value) {
+  assert(replacementMap.count(cast<MLValue>(key)) == 0);
+  replacementMap.insert(
+      std::make_pair(cast<MLValue>(key), cast<MLValue>(value)));
+}
+
+////// TODO(ntv): Hoist to a VectorizationMaterialize.cpp when appropriate. ////
+
+/// Creates a vector_transfer_read that loads a scalar MemRef into a
+/// super-vector register.
 ///
 /// Usage:
-///   This n_d_unaligned_load op will be implemented as a PseudoOp for different
-///   backends. In its current form it is only used to load into a <1xvector>;
-///   where the vector may have any shape that is some multiple of the
+///   This vector_transfer_read op will be implemented as a PseudoOp for
+///   different backends. In its current form it is only used to load into a
+///   vector; where the vector may have any shape that is some multiple of the
 ///   hardware-specific vector size used to implement the PseudoOp efficiently.
 ///   This is used to implement "non-effecting padding" for early vectorization
 ///   and allows higher-level passes in the codegen to not worry about
@@ -314,47 +376,34 @@ static MemRefType getVectorizedMemRefType(MemRefType tmpl,
 ///
 /// TODO(andydavis,bondhugula,ntv):
 ///   1. generalize to support padding semantics and offsets within vector type.
-static void createUnalignedLoad(MLFuncBuilder *b, Location loc,
-                                SSAValue *srcMemRef,
-                                ArrayRef<SSAValue *> srcIndices,
-                                SSAValue *dstMemRef,
-                                ArrayRef<SSAValue *> dstIndices) {
+static OperationStmt *
+createVectorTransferRead(MLFuncBuilder *b, Location loc, VectorType vectorType,
+                         SSAValue *srcMemRef, ArrayRef<SSAValue *> srcIndices) {
   SmallVector<SSAValue *, 8> operands;
-  operands.reserve(1 + srcIndices.size() + 1 + dstIndices.size());
+  operands.reserve(1 + srcIndices.size());
   operands.insert(operands.end(), srcMemRef);
   operands.insert(operands.end(), srcIndices.begin(), srcIndices.end());
-  operands.insert(operands.end(), dstMemRef);
-  operands.insert(operands.end(), dstIndices.begin(), dstIndices.end());
-  using functional::map;
-  std::function<Type(SSAValue *)> getType = [](SSAValue *v) -> Type {
-    return v->getType();
-  };
-  auto types = map(getType, operands);
-  OperationState opState(b->getContext(), loc, "n_d_unaligned_load", operands,
-                         types);
-  b->createOperation(opState);
+  OperationState opState(b->getContext(), loc, kVectorTransferReadOpName,
+                         operands, vectorType);
+  return b->createOperation(opState);
 }
 
-/// Creates an unaligned store with the following semantics:
-///   1. TODO(ntv): apply a `srcMap` to a `srcIndex` to represent a `srcMemRef`
-///   slice to support patterns like vector-to-scalar and N-k dim MemRef slice.
-///   This is used as the counterpart to the broadcast map in the UnalignedLoad;
-///   2. load from the `srcMemRef` resulting from 1.;
-///   3. store into a `dstMemRef` starting at offset `dstIndex`;
-///   4. TODO(ntv): apply a `dstMap` to a `dstIndex` to represent a `dstMemRef`
-///   slice + permutations for storing into non-fastest varying dimensions.
-///   Note that generally, the fastest varying dimension should be part of the
-///   map otherwise global layout changes are likely needed to obtain an
-///   efficient store. This is an orthogonal cost model consideration;
-///   5. copy sizeof(srcMemRef) bytes with adjustements for boundaries;
-/// The copy may overflow on the dst side but not on the dst side. If the copy
-/// overflows on the dst side, the underlying implementation needs to resolve
-/// potential races.
+/// Creates a vector_transfer_write writes a super-vector register into a scalar
+/// MemRef.
 ///
 /// Usage:
-///   This n_d_unaligned_store op will be implemented as a PseudoOp for
+///   This vector_transfer_read op will be implemented as a PseudoOp for
+///   different backends. In its current form it is only used to load into a
+///   vector; where the vector may have any shape that is some multiple of the
+///   hardware-specific vector size used to implement the PseudoOp efficiently.
+///   This is used to implement "non-effecting padding" for early vectorization
+///   and allows higher-level passes in the codegen to not worry about
+///   hardware-specific implementation details.
+///
+/// Usage:
+///   This vector_transfer_write op will be implemented as a PseudoOp for
 ///   different backends. In its current form it is only used to store from a
-///   <1xvector>; where the vector may have any shape that is some multiple of
+///   vector; where the vector may have any shape that is some multiple of
 ///   the hardware-specific vector size used to implement the PseudoOp
 ///   efficiently. This is used to implement "non-effecting padding" for early
 ///   vectorization and allows higher-level passes in the codegen to not worry
@@ -366,40 +415,49 @@ static void createUnalignedLoad(MLFuncBuilder *b, Location loc,
 ///   3. support input map for counterpart of broadcast (point 1 above);
 ///   4. support dstMap for writing back in non-contiguous memory regions
 ///   (point 4 above).
-static void createUnalignedStore(MLFuncBuilder *b, Location loc,
-                                 SSAValue *srcMemRef,
-                                 ArrayRef<SSAValue *> srcIndices,
-                                 SSAValue *dstMemRef,
-                                 ArrayRef<SSAValue *> dstIndices) {
+static OperationStmt *
+createVectorTransferWrite(MLFuncBuilder *b, Location loc, VectorType vectorType,
+                          OperationStmt *storeOp,
+                          ArrayRef<SSAValue *> dstIndices) {
+  auto store = storeOp->cast<StoreOp>();
   SmallVector<SSAValue *, 8> operands;
-  operands.reserve(1 + srcIndices.size() + 1 + dstIndices.size());
-  operands.insert(operands.end(), srcMemRef);
-  operands.insert(operands.end(), srcIndices.begin(), srcIndices.end());
-  operands.insert(operands.end(), dstMemRef);
-  operands.insert(operands.end(), dstIndices.begin(), dstIndices.end());
-  using functional::map;
-  std::function<Type(SSAValue *)> getType = [](SSAValue *v) -> Type {
-    return v->getType();
-  };
-  auto types = map(getType, operands);
-  OperationState opState(b->getContext(), loc, "n_d_unaligned_store", operands,
-                         types);
-  b->createOperation(opState);
-}
-
-/// The current implementation of vectorization materializes an AllocOp of
-/// MemRef<1 x vector_type> + a custom unaligned load/store pseudoop.
-/// The vector load/store accessing this MemRef always accesses element 0, so we
-/// just memoize a single 0 SSAValue, once upon function entry to avoid clutter.
-/// We create one such SSAValue per function.
-static SSAValue *insertZeroIndex(MLFunction *f) {
-  static thread_local DenseMap<MLFunction *, SSAValue *> zeros;
-  if (zeros.find(f) == zeros.end()) {
-    MLFuncBuilder b(f);
-    auto zero = b.create<ConstantIndexOp>(b.getUnknownLoc(), 0);
-    zeros.insert(std::make_pair(f, zero));
+  operands.reserve(1 + 1 + dstIndices.size());
+  // If the value to store is:
+  // 1. a vector == vectorType, we just insert the value;
+  // 2. a scalar constant, we splat it into the vectorType;
+  // 3. a scalar of non-index type, we insert the value, it will be turned into
+  //    a vector when traversing the use-def chains;
+  // 4. a non-constant scalar of index type: unsupported, it may be loop
+  //    dependent and broadcasting into a vector requires additional machinery.
+  //    TODO(ntv): support non-constant loop-variant scalars.
+  // 5. a vector != vectorType, this is unsupported atm.
+  //    TODO(ntv): support broadcasting if the types are comformable.
+  auto *value = store->getValueToStore();
+  if (value->getType() == vectorType) {
+    operands.insert(operands.end(), value);
+  } else if (VectorType::isValidElementType(value->getType())) {
+    if (auto constant = value->getDefiningStmt()->dyn_cast<ConstantOp>()) {
+      assert(constant && "NYI: non-constant scalar broadcast");
+      auto attr = SplatElementsAttr::get(vectorType, constant->getValue());
+      auto *constantOpStmt = cast<OperationStmt>(constant->getOperation());
+      SmallString<16> name(constantOpStmt->getName().getStringRef());
+      OperationState opState(b->getContext(), loc, name, {}, {vectorType});
+      auto *splat = cast<OperationStmt>(b->createOperation(opState));
+      splat->setAttr(Identifier::get("value", b->getContext()), attr);
+      operands.insert(operands.end(), cast<OperationStmt>(splat)->getResult(0));
+    } else if (!value->getType().isa<IndexType>()) {
+      operands.insert(operands.end(), value);
+    } else {
+      assert(false && "NYI: cannot vectorize index, it may be loop dependent");
+    }
+  } else {
+    assert(false && "NYI: cannot vectorize an invalid element type");
   }
-  return zeros.lookup(f);
+  operands.insert(operands.end(), store->getMemRef());
+  operands.insert(operands.end(), dstIndices.begin(), dstIndices.end());
+  OperationState opState(b->getContext(), loc, kVectorTransferWriteOpName,
+                         operands, {});
+  return b->createOperation(opState);
 }
 
 /// Unwraps a pointer type to another type (possibly the same).
@@ -410,132 +468,88 @@ static std::function<ToType *(T *)> unwrapPtr() {
   return [](T *val) { return dyn_cast<ToType>(val); };
 }
 
-/// Materializes the n-D vector into an unpromoted temporary storage and
-/// explicitly copy into it. Materialization occurs in a MemRef containing 1
-/// vector that lives in the same memory space as the base MemRef. Later passes
-/// should make the decision to promote this materialization to a faster address
-/// space.
+/// Materializes the n-D vector into an explicit vector type.
 template <typename LoadOrStoreOpPointer>
-static MLValue *materializeVector(MLValue *iv, LoadOrStoreOpPointer memoryOp,
-                                  ArrayRef<int> vectorSize) {
+static OperationStmt *materializeVector(MLValue *iv,
+                                        LoadOrStoreOpPointer memoryOp,
+                                        VectorizationState *state) {
   auto memRefType =
       memoryOp->getMemRef()->getType().template cast<MemRefType>();
-  auto vectorMemRefType = getVectorizedMemRefType(memRefType, vectorSize);
+
+  auto elementType = memRefType.getElementType();
+  assert(VectorType::isValidElementType(elementType) &&
+         "Can't vectorize an already vector type");
+  auto vectorType = VectorType::get(state->strategy->vectorSizes, elementType);
 
   // Materialize a MemRef with 1 vector.
   auto *opStmt = cast<OperationStmt>(memoryOp->getOperation());
   MLFuncBuilder b(opStmt);
-  // Create an AllocOp to apply the new shape.
-  auto allocOp = b.create<AllocOp>(opStmt->getLoc(), vectorMemRefType,
-                                   ArrayRef<SSAValue *>{});
-  auto *allocMemRef = memoryOp->getMemRef();
-  using namespace functional;
+  OperationStmt *res;
+  // For now, vector_transfers must be aligned, operate only on indices with an
+  // identity subset of AffineMap and do not change layout.
+  // TODO(ntv): increase the expressiveness power of vector_transfer operations
+  // as needed by various targets.
   if (opStmt->template isa<LoadOp>()) {
-    createUnalignedLoad(&b, opStmt->getLoc(), allocMemRef,
-                        map(unwrapPtr<SSAValue>(), memoryOp->getIndices()),
-                        allocOp->getResult(),
-                        {insertZeroIndex(iv->getFunction())});
+    res = createVectorTransferRead(
+        &b, opStmt->getLoc(), vectorType, memoryOp->getMemRef(),
+        functional::map(unwrapPtr<SSAValue>(), memoryOp->getIndices()));
   } else {
-    createUnalignedStore(&b, opStmt->getLoc(), allocOp->getResult(),
-                         {insertZeroIndex(iv->getFunction())}, allocMemRef,
-                         map(unwrapPtr<SSAValue>(), memoryOp->getIndices()));
+    res = createVectorTransferWrite(
+        &b, opStmt->getLoc(), vectorType, opStmt,
+        functional::map(unwrapPtr<SSAValue>(), memoryOp->getIndices()));
   }
 
-  return cast<MLValue>(allocOp->getResult());
+  return res;
 }
 /// end TODO(ntv): Hoist to a VectorizationMaterialize.cpp when appropriate. ///
 
-namespace {
-
-struct VectorizationState {
-  // `vectorizedByThisPattern` keeps track of statements that have already been
-  // vectorized by this pattern. This allows distinguishing between
-  DenseSet<OperationStmt *> vectorizedByThisPattern;
-  DenseSet<ForStmt *> vectorized;
-  const Strategy *strategy;
-};
-} // end anonymous namespace
-
-/// Terminal template function for creating a LoadOp.
-static OpPointer<LoadOp> createLoad(MLFuncBuilder *b, Location loc,
-                                    MLValue *memRef) {
-  return b->create<LoadOp>(
-      loc, memRef,
-      ArrayRef<SSAValue *>{insertZeroIndex(memRef->getFunction())});
-}
-
-/// Terminal template function for creating a StoreOp.
-static OpPointer<StoreOp> createStore(MLFuncBuilder *b, Location loc,
-                                      MLValue *memRef,
-                                      OpPointer<StoreOp> store) {
-  return b->create<StoreOp>(
-      loc, store->getValueToStore(), memRef,
-      ArrayRef<SSAValue *>{insertZeroIndex(memRef->getFunction())});
-}
-
-/// Vectorizes the `memoryOp` of type LoadOp or StoreOp along loop `iv` by
-/// factor `vectorSize`.
-/// In a first implementation, this triggers materialization of a vector Alloc.
-// TODO(ntv): this could be a view that changes the underlying element type.
-// Materialization of this view may or may not happen before legalization.
-template <typename LoadOrStoreOpPointer>
-static bool vectorize(MLValue *iv, LoadOrStoreOpPointer memoryOp,
-                      ArrayRef<int> vectorSize, VectorizationState *state) {
-  auto *materializedMemRef = materializeVector(iv, memoryOp, vectorSize);
-  auto *opStmt = cast<OperationStmt>(memoryOp->getOperation());
-  MLFuncBuilder b(opStmt);
-  Operation *resultOperation;
-  if (auto load = opStmt->template dyn_cast<LoadOp>()) {
-    auto res = createLoad(&b, opStmt->getLoc(), materializedMemRef);
-    resultOperation = res->getOperation();
-  } else {
-    auto store = opStmt->template dyn_cast<StoreOp>();
-    auto res = createStore(&b, opStmt->getLoc(), materializedMemRef, store);
-    resultOperation = res->getOperation();
-  }
-  state->vectorizedByThisPattern.insert(cast<OperationStmt>(resultOperation));
+/// Vectorizes the `store` along loop `iv` according to `state`.
+static bool vectorizeStore(MLValue *iv, OpPointer<StoreOp> store,
+                           VectorizationState *state) {
+  materializeVector(iv, store, state);
+  // Stores define no result and do not need to be registered for replacements,
+  // we can immediately delete them.
+  store->erase();
   return false;
 }
 
-// result == true => failure, TO
-// (ntv): Status enum
-static bool vectorizeForStmt(ForStmt *loop, AffineMap upperBound,
-                             ArrayRef<int> vectorSize, int64_t step,
-                             VectorizationState *state) {
-  LLVM_DEBUG(dbgs() << "[early-vect] vectorize loop ");
-  LLVM_DEBUG(loop->print(dbgs()));
-  LLVM_DEBUG(dbgs() << "\n");
+/// Vectorizes the `load` along loop `iv` accordingto `state`.
+static bool vectorizeLoad(MLValue *iv, OpPointer<LoadOp> load,
+                          VectorizationState *state) {
+  auto *vectorizedLoad = materializeVector(iv, load, state);
+  MLFuncBuilder b(cast<OperationStmt>(load->getOperation()));
+  state->registerReplacement(cast<OperationStmt>(load->getOperation()),
+                             vectorizedLoad);
+  return false;
+}
 
+// Coarsens the loops bounds and transforms all remaining load and store
+// operations into the appropriate vector_transfer.
+static bool vectorizeForStmt(ForStmt *loop, int64_t step,
+                             VectorizationState *state) {
   using namespace functional;
-  loop->setUpperBound(map(unwrapPtr<MLValue>(), loop->getUpperBoundOperands()),
-                      upperBound);
   loop->setStep(step);
 
-  FilterFunctionType notVectorizedThisRound = [state](const Statement &stmt) {
+  FilterFunctionType notVectorizedThisPattern = [state](const Statement &stmt) {
     if (!matcher::isLoadOrStore(stmt)) {
       return false;
     }
-    return state->vectorizedByThisPattern.count(cast<OperationStmt>(&stmt)) ==
-           0;
+    auto *opStmt = cast<OperationStmt>(&stmt);
+    return state->vectorizationMap.count(opStmt) == 0 &&
+           state->vectorizedSet.count(opStmt) == 0;
   };
-  auto loadAndStores = matcher::Op(notVectorizedThisRound);
+  auto loadAndStores = matcher::Op(notVectorizedThisPattern);
   auto matches = loadAndStores.match(loop);
   for (auto ls : matches) {
     auto *opStmt = cast<OperationStmt>(ls.first);
     auto load = opStmt->dyn_cast<LoadOp>();
     auto store = opStmt->dyn_cast<StoreOp>();
-    LLVM_DEBUG(dbgs() << "[early-vect] vectorize op: ");
     LLVM_DEBUG(opStmt->print(dbgs()));
-    LLVM_DEBUG(dbgs() << "\n");
-    bool vectorizationFails = load ? vectorize(loop, load, vectorSize, state)
-                                   : vectorize(loop, store, vectorSize, state);
-    LLVM_DEBUG(dbgs() << "fail: " << vectorizationFails << "\n");
-    if (vectorizationFails) {
-      // Early exit and trigger RAII cleanups at the root.
-      return true;
+    auto fail = load ? vectorizeLoad(loop, load, state)
+                     : vectorizeStore(loop, store, state);
+    if (fail) {
+      return fail;
     }
-    // Erase the original op.
-    opStmt->erase();
   }
   return false;
 }
@@ -562,13 +576,18 @@ static bool vectorizeNonRoot(MLFunctionMatches matches,
 /// Apply vectorization of `loop` according to `state`. This is only triggered
 /// if all vectorizations in `childrenMatches` have already succeeded
 /// recursively in DFS post-order.
-static bool doVectorize(ForStmt *loop, MLFunctionMatches childrenMatches,
+static bool doVectorize(MLFunctionMatches::EntryType oneMatch,
                         VectorizationState *state) {
+  ForStmt *loop = cast<ForStmt>(oneMatch.first);
+  state->enterLoop(loop);
+  functional::ScopeGuard sg([state, loop]() { state->exitLoop(loop); });
+  MLFunctionMatches childrenMatches = oneMatch.second;
+
   // 1. DFS postorder recursion, if any of my children fails, I fail too.
   auto fail = vectorizeNonRoot(childrenMatches, state);
   if (fail) {
     // Early exit and trigger RAII cleanups at the root.
-    return true;
+    return fail;
   }
 
   // 2. This loop may have been omitted from vectorization for various reasons
@@ -583,24 +602,18 @@ static bool doVectorize(ForStmt *loop, MLFunctionMatches childrenMatches,
   }
 
   // 3. Actual post-order transformation.
-  assert(vectorDim < clVirtualVectorSize.size() && "vector dim overflow");
+  assert(vectorDim < state->strategy->vectorSizes.size() &&
+         "vector dim overflow");
   //   a. get actual vector size
-  auto vectorSize = clVirtualVectorSize[vectorDim];
+  auto vectorSize = state->strategy->vectorSizes[vectorDim];
   //   b. loop transformation for early vectorization is still subject to
-  //     exploratory tradeoffs (see top of the file).
-  auto ubMap = loop->getUpperBoundMap();
-  assert(ubMap.getRangeSizes().empty());
-  //   c. apply coarsening, i.e.:
-  //        | ub -> ub = vectorSize - 1
+  //     exploratory tradeoffs (see top of the file). Apply coarsening, i.e.:
+  //        | ub -> ub
   //        | step -> step * vectorSize
-  std::function<AffineExpr(AffineExpr)> coarsenUb =
-      [vectorSize](AffineExpr expr) { return expr + vectorSize - 1; };
-  auto newUbs = functional::map(coarsenUb, ubMap.getResults());
-  //   d. recurse
-  return vectorizeForStmt(
-      loop,
-      AffineMap::get(ubMap.getNumDims(), ubMap.getNumSymbols(), newUbs, {}),
-      clVirtualVectorSize, loop->getStep() * vectorSize, state);
+  LLVM_DEBUG(dbgs() << "\n[early-vect] vectorizeForStmt by " << vectorSize
+                    << " : ");
+  LLVM_DEBUG(loop->print(dbgs()));
+  return vectorizeForStmt(loop, loop->getStep() * vectorSize, state);
 }
 
 /// Non-root pattern iterates over the matches at this level, calls doVectorize
@@ -608,10 +621,114 @@ static bool doVectorize(ForStmt *loop, MLFunctionMatches childrenMatches,
 static bool vectorizeNonRoot(MLFunctionMatches matches,
                              VectorizationState *state) {
   for (auto m : matches) {
-    auto fail = doVectorize(cast<ForStmt>(m.first), m.second, state);
+    auto fail = doVectorize(m, state);
     if (fail) {
       // Early exit and trigger RAII cleanups at the root.
-      return true;
+      return fail;
+    }
+  }
+  return false;
+}
+
+/// Iterates over the OperationStmt in the loop and rewrites them using their
+/// vectorized counterpart by:
+///   1. iteratively building a worklist of uses of the OperationStmt vectorized
+///   so far by this pattern;
+///   2. for each OperationStmt in the worklist, create the vector form of this
+///   operation and replace all its uses by the vectorized form. For this step,
+///   the worklist must be traversed in order;
+///   3. verify that all operands of the newly vectorized operation have been
+///   vectorized by this pattern.
+/// TODO(ntv): step 3. can be relaxed with simple broadcast.
+static bool vectorizeOperations(ForStmt *loop, VectorizationState *state) {
+  LLVM_DEBUG(dbgs() << "\n[early-vect] vectorizeOperations in: ");
+  LLVM_DEBUG(loop->print(dbgs()));
+
+  // 1. create initial worklist.
+  SetVector<OperationStmt *> worklist;
+  auto insertUsesOf = [&worklist, state](Operation *vectorized) {
+    for (auto *r : cast<OperationStmt>(vectorized)->getResults())
+      for (auto &u : r->getUses()) {
+        auto *stmt = cast<OperationStmt>(u.getOwner());
+        // Ignore vector_transfer_write from worklist, they do not create uses.
+        if (stmt->getName().getStringRef() == kVectorTransferWriteOpName ||
+            state->vectorizedSet.count(stmt) > 0 ||
+            state->vectorizationMap.count(stmt) > 0) {
+          continue;
+        }
+        worklist.insert(stmt);
+      }
+  };
+  auto getDefiningOperation = [](const MLValue *val) {
+    return const_cast<MLValue *>(val)->getDefiningOperation();
+  };
+  using IterTy = decltype(*(state->replacementMap.begin()));
+  auto getKey = [](IterTy it) { return it.first; };
+  // 1.b. do it.
+  using namespace functional;
+  apply(insertUsesOf,
+        map(getDefiningOperation, map(getKey, state->replacementMap)));
+
+  // Note: Worklist size increases iteratively. At each round we evaluate the
+  // size again. By construction, the order of elements in the worklist is
+  // consistent across iterations.
+  for (unsigned i = 0; i < worklist.size(); ++i) {
+    auto *stmt = worklist[i];
+    bool alreadyFixed = state->vectorizationMap.count(stmt) > 0;
+    if (!alreadyFixed) {
+      // 2. Create vectorized form of the statement.
+      // Insert it just before stmt, on success register stmt as replaced.
+      MLFuncBuilder b(stmt);
+      std::function<Type(SSAValue *)> getVectorType =
+          [state](SSAValue *v) -> VectorType {
+        return VectorType::get(state->strategy->vectorSizes, v->getType());
+      };
+      auto types = map(getVectorType, stmt->getResults());
+      std::function<SSAValue *(SSAValue *)> vectorizeOperands =
+          [state](SSAValue *v) -> SSAValue * {
+        return state->replacementMap.lookup(cast<MLValue>(v));
+      };
+      auto operands = map(vectorizeOperands, stmt->getOperands());
+      // TODO(ntv): The following assumes there is always an op with a fixed
+      // name works both in scalar mode and vector mode.
+      // TODO(ntv): Is it worth considering an OperationStmt.clone operation
+      // which changes the type so we can promote an OperationStmt with less
+      // boilerplate?
+      SmallString<16> name(stmt->getName().getStringRef());
+      OperationState opState(b.getContext(), stmt->getLoc(), name, operands,
+                             types);
+      auto *vectorizedStmt = cast<OperationStmt>(b.createOperation(opState));
+      assert(stmt->getNumResults() == 1);
+      assert(vectorizedStmt->getNumResults() == 1);
+
+      // 3. Replace all uses of the old statement by the new statement.
+      // TODO(ntv): use implicit conversion of result to SSAValue once we have
+      // an actual Op for vector_transfer.
+      state->registerReplacement(cast<OperationStmt>(stmt), vectorizedStmt);
+      stmt->getResult(0)->replaceAllUsesWith(vectorizedStmt->getResult(0));
+
+      // 4. Augment the worklist with uses of the statement we just vectorized.
+      // This preserves the proper order in the worklist.
+      functional::apply(insertUsesOf, ArrayRef<Operation *>{vectorizedStmt});
+
+      // 5. Check if all operands have been vectorized, if any remains it means
+      // we need extra processing that we do not support atm.
+      // TODO(ntv): such a non-vectorized operand should come from outside the
+      // current vectorization pattern and a broadcast will be necessary.
+      // Intuitively it seems it seems such a case is always a simple
+      // broadcast. This is further complicated by loop-invariant scalars vs
+      // scalars involving loops. This is left for future work for now.
+      for (auto *operand : vectorizedStmt->getOperands()) {
+        auto *def = cast<OperationStmt>(operand->getDefiningOperation());
+        if (state->vectorizedSet.count(def) == 0 &&
+            state->vectorizationMap.count(def) == 0) {
+          LLVM_DEBUG(
+              dbgs()
+              << "\n[early-vect] Def needs transitive vectorization -> fail");
+          LLVM_DEBUG(def->print(dbgs()));
+          return true;
+        }
+      }
     }
   }
   return false;
@@ -636,16 +753,26 @@ static bool vectorizeRoot(MLFunctionMatches matches,
     if (!isVectorizableLoop(*loop)) {
       continue;
     }
+    MLFuncBuilder builder(loop); // builder to insert in place of loop
     DenseMap<const MLValue *, MLValue *> nomap;
-    MLFuncBuilder builder(loop->getFunction());
     ForStmt *clonedLoop = cast<ForStmt>(builder.clone(*loop, nomap));
-    auto fail = doVectorize(loop, m.second, state);
-    if (!fail) {
-      LLVM_DEBUG(dbgs() << "[early-vect] success vectorizing loop: ");
-      LLVM_DEBUG(loop->print(dbgs()));
-      LLVM_DEBUG(dbgs() << "\n");
+    auto fail = doVectorize(m, state);
+    functional::ScopeGuard sg2([&fail, loop, clonedLoop]() {
+      fail ? loop->erase() : clonedLoop->erase();
+    });
+    if (fail) {
+      LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ failed root doVectorize");
+      continue;
     }
-    fail ? loop->erase() : clonedLoop->erase();
+
+    fail |= vectorizeOperations(loop, state);
+    if (fail) {
+      LLVM_DEBUG(
+          dbgs() << "\n[early-vect]+++++ failed root vectorizeOperations");
+      continue;
+    }
+
+    state->finishVectorizationPattern();
   }
   return false;
 }
@@ -653,24 +780,25 @@ static bool vectorizeRoot(MLFunctionMatches matches,
 /// Applies vectorization to the current MLFunction by searching over a bunch of
 /// predetermined patterns.
 PassResult Vectorize::runOnMLFunction(MLFunction *f) {
-  /// Build a zero at the entry of the function to avoid clutter in every single
-  /// vectorized loop.
-  insertZeroIndex(f);
-
   for (auto pat : makePatterns()) {
-    LLVM_DEBUG(dbgs() << "\n[early-vect] Input function is now:\n");
+    LLVM_DEBUG(dbgs() << "\n******************************************");
+    LLVM_DEBUG(dbgs() << "\n******************************************");
+    LLVM_DEBUG(dbgs() << "\n[early-vect] new pattern on MLFunction\n");
     LLVM_DEBUG(f->print(dbgs()));
-    LLVM_DEBUG(dbgs() << "\n[early-vect] match:\n");
     auto matches = pat.match(f);
     Strategy strategy;
+    // TODO(ntv): depending on profitability, elect to reduce the vector size.
+    strategy.vectorSizes = clVirtualVectorSize;
     auto fail = analyzeProfitability(matches, 0, pat.getDepth(), &strategy);
-    assert(!fail);
+    if (fail) {
+      continue;
+    }
     VectorizationState state;
     state.strategy = &strategy;
-    fail = vectorizeRoot(matches, &state);
-    assert(!fail);
+    // TODO(ntv): if pattern does not apply, report it; alter the cost/benefit.
+    vectorizeRoot(matches, &state);
   }
-
+  LLVM_DEBUG(dbgs() << "\n");
   return PassResult::Success;
 }
 

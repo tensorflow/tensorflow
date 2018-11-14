@@ -51,8 +51,7 @@ struct MLFunctionMatcherStorage {
   ///  void match(Statement *elem) {
   ///    for (auto &c : getChildrenMLFunctionMatchers()) {
   ///      MLFunctionMatcher childMLFunctionMatcher(...);
-  ///                                             ^~~~ Needs off-by-one
-  ///                                             traversal.
+  ///                                                ^~~~ Needs off-by-one skip.
   ///
   Statement *skip;
 };

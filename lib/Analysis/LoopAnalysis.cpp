@@ -30,6 +30,7 @@
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/MathExtras.h"
+#include "llvm/ADT/SmallString.h"
 
 using namespace mlir;
 
@@ -189,6 +190,14 @@ static bool isVectorElement(LoadOrStoreOpPointer memoryOp) {
   return memRefType.getElementType().template isa<VectorType>();
 }
 
+// TODO(ntv): make the following into MLIR instructions, then use isa<>.
+static bool isVectorTransferReadOrWrite(const Statement &stmt) {
+  const auto *opStmt = cast<OperationStmt>(&stmt);
+  llvm::SmallString<16> name(opStmt->getName().getStringRef());
+  return name == kVectorTransferReadOpName ||
+         name == kVectorTransferWriteOpName;
+}
+
 using VectorizableStmtFun =
     std::function<bool(const ForStmt &, const OperationStmt &)>;
 
@@ -203,6 +212,12 @@ static bool isVectorizableLoopWithCond(const ForStmt &loop,
   auto *forStmt = const_cast<ForStmt *>(&loop);
   auto conditionalsMatched = conditionals.match(forStmt);
   if (!conditionalsMatched.empty()) {
+    return false;
+  }
+
+  auto vectorTransfers = matcher::Op(isVectorTransferReadOrWrite);
+  auto vectorTransfersMatched = vectorTransfers.match(forStmt);
+  if (!vectorTransfersMatched.empty()) {
     return false;
   }
 

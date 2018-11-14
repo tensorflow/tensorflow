@@ -36,10 +36,9 @@ namespace functional {
 template <typename Fun, typename IterType>
 auto map(Fun fun, IterType begin, IterType end)
     -> llvm::SmallVector<typename std::result_of<Fun(decltype(*begin))>::type,
-                         4> {
+                         8> {
   using R = typename std::result_of<Fun(decltype(*begin))>::type;
-  llvm::SmallVector<R, 4> res;
-  res.reserve(end - begin);
+  llvm::SmallVector<R, 8> res;
   // auto i works with both pointer types and value types with an operator*.
   // auto *i only works for pointer types.
   for (auto i = begin; i != end; ++i) {
@@ -54,6 +53,32 @@ auto map(Fun fun, ContainerType input)
     -> decltype(map(fun, std::begin(input), std::end(input))) {
   return map(fun, std::begin(input), std::end(input));
 }
+
+/// Apply with iterators.
+template <typename Fun, typename IterType>
+void apply(Fun fun, IterType begin, IterType end) {
+  // auto i works with both pointer types and value types with an operator*.
+  // auto *i only works for pointer types.
+  for (auto i = begin; i != end; ++i) {
+    fun(*i);
+  }
+}
+
+/// Map with templated container.
+template <typename Fun, typename ContainerType>
+void apply(Fun fun, ContainerType input) {
+  return apply(fun, std::begin(input), std::end(input));
+}
+
+/// Simple ScopeGuard.
+struct ScopeGuard {
+  explicit ScopeGuard(std::function<void(void)> destruct)
+      : destruct(destruct) {}
+  ~ScopeGuard() { destruct(); }
+
+private:
+  std::function<void(void)> destruct;
+};
 
 } // namespace functional
 } // namespace mlir

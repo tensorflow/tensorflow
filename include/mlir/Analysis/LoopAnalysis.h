@@ -32,6 +32,10 @@ class ForStmt;
 class MemRefType;
 class MLValue;
 
+// TODO(ntv): Drop this once we have proper Ops.
+static constexpr auto kVectorTransferReadOpName = "vector_transfer_read";
+static constexpr auto kVectorTransferWriteOpName = "vector_transfer_write";
+
 /// Returns the trip count of the loop as an affine expression if the latter is
 /// expressible as an affine expression, and nullptr otherwise. The trip count
 /// expression is simplified before returning.
