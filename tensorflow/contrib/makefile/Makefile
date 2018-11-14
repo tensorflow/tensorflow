@@ -1,3 +1,4 @@
+tensorflow/core/util/cuda_kernel_helper_test.cu.cc
 # This Makefile compiles a library containing the C++ runtime for the TensorFlow
 # library. It's designed for use on platforms with limited resources where
 # running a full Bazel build would be prohibitive, or for cross-compilation onto
@@ -679,6 +680,7 @@ $(wildcard tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.*) \
 $(wildcard tensorflow/core/grappler/inputs/file_input_yielder.*) \
 $(wildcard tensorflow/core/grappler/clusters/single_machine.*) \
 $(wildcard tensorflow/contrib/image/kernels/ops/*.cc) \
+$(wildcard tensorflow/contrib/image/ops/*.cc) \
 tensorflow/core/util/cuda_kernel_helper_test.cu.cc
 
 CORE_CC_EXCLUDE_SRCS := \
