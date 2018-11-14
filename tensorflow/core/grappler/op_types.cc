@@ -214,6 +214,11 @@ bool IsFloorDiv(const NodeDef& node) { return node.op() == "FloorDiv"; }
 
 bool IsFloorMod(const NodeDef& node) { return node.op() == "FloorMod"; }
 
+bool IsFusedBatchNorm(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "FusedBatchNorm" || op == "FusedBatchNormV2";
+}
+
 bool IsFusedBatchNormGrad(const NodeDef& node) {
   const auto& op = node.op();
   return op == "FusedBatchNormGrad" || op == "FusedBatchNormGradV2";
@@ -358,6 +363,8 @@ bool IsReduction(const NodeDef& node) {
   return op == "Sum" || op == "Prod" || op == "Min" || op == "Max" ||
          op == "Mean" || op == "Any" || op == "All";
 }
+
+bool IsRelu(const NodeDef& node) { return node.op() == "Relu"; }
 
 bool IsReluGrad(const NodeDef& node) { return node.op() == "ReluGrad"; }
 

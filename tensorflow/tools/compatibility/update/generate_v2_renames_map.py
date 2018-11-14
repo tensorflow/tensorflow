@@ -120,6 +120,7 @@ def collect_function_renames():
   # Set of rename lines to write to output file in the form:
   #   'tf.deprecated_name': 'tf.canonical_name'
   renames = set()
+  v2_names = set()  # All op names in TensorFlow 2.0
 
   def visit(unused_path, unused_parent, children):
     """Visitor that collects rename strings to add to rename_line_set."""
@@ -132,11 +133,19 @@ def collect_function_renames():
       deprecated_api_names = set(api_names_v1) - set(api_names_v2)
       for name in deprecated_api_names:
         renames.add((name, get_canonical_name(api_names_v2, name)))
+      for name in api_names_v2:
+        v2_names.add(name)
 
   visitor = public_api.PublicAPIVisitor(visit)
   visitor.do_not_descend_map['tf'].append('contrib')
   visitor.do_not_descend_map['tf.compat'] = ['v1', 'v2']
   traverse.traverse(tf, visitor)
+
+  # It is possible that a different function is exported with the
+  # same name. For e.g. when creating a different function to
+  # rename arguments. Exclude it from renames in this case.
+  renames = {name: new_name for name, new_name in renames.items()
+             if name not in v2_names}
   return renames
 
 

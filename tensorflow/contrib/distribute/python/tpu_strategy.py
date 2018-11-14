@@ -29,10 +29,13 @@ from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.contrib.tpu.python.tpu import training_loop
+from tensorflow.python.data.experimental.ops import batching
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -145,7 +148,7 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     self._host_device = self.get_host_cpu_device(0)
     self._tpu_devices = sorted(device_map.keys())
     # Only create variables for the number of replicas we're running.
-    self._tpu_devices = self._tpu_devices[:self.num_replicas]
+    self._tpu_devices = self._tpu_devices[:self.num_replicas_in_sync]
 
     # TODO(sourabhbajaj): Remove this once performance of running one step
     # at a time is comparable to multiple steps.
@@ -214,6 +217,59 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
 
     return enqueue_op_per_host
 
+  def make_dataset_iterator(self, dataset):
+    """Make iterators for each of the TPU hosts.
+
+    We first unbatch the users input dataset and then rebatch it with the
+    per replica batch size that is calculated using
+    `global_batch_size // num_replicas_in_sync`. The currently supported cases
+    are as follows:
+    `dataset.batch()` is the last operation on the dataset.
+    `dataset.apply(map_and_batch)` is the last operation on the dataset.
+    `dataset.batch().prefetch()` are the last 2 operations on the dataset.
+    `dataset.apply(map_and_batch).prefetch()` are the last 2 operations.
+
+    Args:
+      dataset: The `tf.data` dataset passed by the user.
+
+    Returns:
+      iterator: InputIterator created for each of the host machines.
+    """
+    # TODO(sourabhbajaj): Remove this in lieu of distributed datasets
+    def _get_dataset_batch_size(dataset):
+      """Get the global batch size from the dataset object."""
+      # pylint: disable=protected-access
+      if isinstance(dataset, dataset_ops.BatchDataset):
+        return tensor_util.constant_value(dataset._batch_size)
+      elif isinstance(dataset, batching._MapAndBatchDataset):
+        return dataset._batch_size
+      elif isinstance(dataset, dataset_ops.PrefetchDataset):
+        return _get_dataset_batch_size(dataset._input_dataset)
+      # pylint: enable=protected-access
+      raise ValueError(
+          "Unable to fetch the batch size from the input dataset. `batch` "
+          "`map_and_batch` need to be the last operations on the dataset. "
+          "The batch operations can be followed by a prefetch.")
+
+    global_batch_size = _get_dataset_batch_size(dataset)
+    if global_batch_size % self.num_replicas_in_sync:
+      raise ValueError(
+          "Batch size %s cannot be sharded evenly across replicas %s" % (
+              global_batch_size, self.num_replicas_in_sync))
+    per_replica_batch_size = global_batch_size // self.num_replicas_in_sync
+    dataset = dataset.apply(batching.unbatch())
+    dataset = dataset.batch(per_replica_batch_size, drop_remainder=True)
+
+    worker_devices = [
+        (self.get_host(hid), [self.get_host_cpu_device(hid)])
+        for hid in range(self.num_hosts)
+    ]
+    distributed_dataset = values.MultiWorkerDataset(
+        functools.partial(self._call_dataset_fn, lambda: dataset),
+        worker_devices)
+    # TODO(priyag): Return distribution strategy specific InputIterator
+    return distributed_dataset.make_initializable_iterator()
+
   def distribute_dataset(self, dataset_fn):
     worker_devices = [
         (self.get_host(hid), [self.get_host_cpu_device(hid)])
@@ -279,7 +335,7 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     self._outer_control_flow_context = (
         ops.get_default_graph()._get_control_flow_context())  # pylint: disable=protected-access
 
-    replicate_inputs = [[]] * self.num_replicas
+    replicate_inputs = [[]] * self.num_replicas_in_sync
     replicate_outputs = tpu.replicate(iterate_on_tpu, replicate_inputs)
     del self._outer_control_flow_context
     ctx.run_op = control_flow_ops.group(replicate_outputs, enqueue_ops)
@@ -317,10 +373,9 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
 
     return ctx
 
-  def _call_for_each_replica(self, fn, *args, **kwargs):
+  def _call_for_each_replica(self, fn, args, kwargs):
     # TODO(jhseu): Consider making it so call_for_each_replica implies that
     # we're in a tpu.rewrite(), and update TPUMirroredVariable accordingly.
-    kwargs.pop("run_concurrently", None)
     with _TPUReplicaContext(self):
       return fn(*args, **kwargs)
 
@@ -388,7 +443,7 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
       if aggregation == vs.VariableAggregation.MEAN:
         # TODO(jhseu):  Revisit once we support model-parallelism.
-        value *= (1. / self.num_replicas)
+        value *= (1. / self.num_replicas_in_sync)
       elif aggregation != vs.VariableAggregation.SUM:
         raise NotImplementedError(
             "Currently only support sum & mean in TPUStrategy.")
@@ -459,10 +514,6 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     return tensor
 
   @property
-  def num_replicas(self):
-    return self._num_cores_override or self._tpu_metadata.num_cores
-
-  @property
   def num_hosts(self):
     return self._tpu_metadata.num_hosts
 
@@ -472,7 +523,7 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
 
   @property
   def num_replicas_in_sync(self):
-    return self.num_replicas
+    return self._num_cores_override or self._tpu_metadata.num_cores
 
   @property
   def between_graph(self):
@@ -545,5 +596,9 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
 
   @property
   def device(self):
+    raise RuntimeError("Use .devices instead")
+
+  @property
+  def devices(self):
     distribute_lib.require_replica_context(self)
-    return self._distribution_strategy.worker_devices[self._replica_id]
+    return [self._distribution_strategy.worker_devices[self._replica_id]]

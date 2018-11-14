@@ -255,6 +255,9 @@ Status OpKernelConstruction::allocate_persistent(
 
 // OpKernelContext -----------------------------------------------------------
 
+const int OpKernelContext::Params::kNeverForward;
+const int OpKernelContext::Params::kNoReservation;
+
 OpKernelContext::OpKernelContext(Params* params)
     : OpKernelContext(
           params, static_cast<int>(params->op_kernel->output_types().size())) {}
@@ -1091,7 +1094,7 @@ Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
 
 Status SupportedDeviceTypesForNode(
     const std::vector<DeviceType>& prioritized_types, const NodeDef& def,
-    DeviceTypeVector* device_types) {
+    PrioritizedDeviceTypeVector* prioritized_device_types) {
   // TODO(zhifengc): Changes the callers (SimplePlacer and
   // DynamicPlacer) to consider the possibility that 'def' is call to
   // a user-defined function and only calls this
@@ -1104,12 +1107,21 @@ Status SupportedDeviceTypesForNode(
       bool was_attr_mismatch;
       TF_RETURN_IF_ERROR(
           FindKernelRegistration(device_type, def, &reg, &was_attr_mismatch));
-      if (reg != nullptr) device_types->push_back(device_type);
+      if (reg != nullptr) {
+        int32 priority = reg->def.priority();
+        prioritized_device_types->emplace_back(device_type, priority);
+      }
     }
+    std::sort(prioritized_device_types->begin(),
+              prioritized_device_types->end(),
+              [](const std::pair<DeviceType, int32>& a,
+                 const std::pair<DeviceType, int32>& b) {
+                return a.second > b.second;
+              });
   } else {
     // Assumes that all device types support this node.
     for (const DeviceType& device_type : prioritized_types) {
-      device_types->push_back(device_type);
+      prioritized_device_types->push_back(std::make_pair(device_type, 0));
     }
   }
   return Status::OK();

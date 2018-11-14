@@ -25,7 +25,7 @@ import six
 from tensorflow.python.training.server_lib import ClusterSpec
 
 
-def _format_master_url(master, rpc_layer=None):
+def format_master_url(master, rpc_layer=None):
   if rpc_layer:
     return '%s://%s' % (rpc_layer, master)
   else:
@@ -128,7 +128,7 @@ class SimpleClusterResolver(ClusterResolver):
     else:
       master = self._master
 
-    return _format_master_url(master, rpc_layer or self._rpc_layer)
+    return format_master_url(master, rpc_layer=rpc_layer or self._rpc_layer)
 
   @property
   def task_type(self):
@@ -307,7 +307,7 @@ class UnionClusterResolver(ClusterResolver):
     """
     if task_type is not None and task_index is not None:
       master = self.cluster_spec().task_address(task_type, task_index)
-      return _format_master_url(master, rpc_layer or self._rpc_layer)
+      return format_master_url(master, rpc_layer or self._rpc_layer)
 
     return self._cluster_resolvers[0].master(rpc_layer=rpc_layer)
 

@@ -54,6 +54,7 @@ import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver
 from tensorflow.python.training import training
+from tensorflow.python.util import nest
 
 
 class Plus1RNNCell(rnn_cell_impl.RNNCell):
@@ -471,6 +472,8 @@ class RNNTest(test.TestCase):
       outputs, state = rnn.dynamic_rnn(
           cell, inputs, dtype=dtypes.float32)
       self.assertEqual(outputs.shape.as_list(), [None, timestep, output_shape])
+      self.assertEqual(len(state), 2)
+      state = nest.flatten(state)
       self.assertEqual(len(state), 4)
       self.assertEqual(state[0].shape.as_list(), [None, 2 * output_shape])
       self.assertEqual(state[1].shape.as_list(), [None, 2 * output_shape])

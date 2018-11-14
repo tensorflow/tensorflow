@@ -363,29 +363,6 @@ class TestSequentialEagerIntegration(test.TestCase):
     model.fit(x, y, epochs=1)
 
   @tf_test_util.run_in_graph_and_eager_modes
-  def test_sequential_can_use_graph_functions(self):
-    model = testing_utils.get_small_sequential_mlp(4, 3)
-    self.assertTrue(model._can_use_graph_functions)
-    inner_model = testing_utils.get_small_sequential_mlp(4, 5)
-    model.add(inner_model)
-
-    self.assertTrue(model._can_use_graph_functions)
-
-    inner_model_two = testing_utils.get_small_sequential_mlp(5, 7)
-    self.assertTrue(inner_model_two._can_use_graph_functions)
-
-    layer = keras.layers.Lambda(lambda x: x)
-    layer._can_use_graph_functions = False
-    inner_model_two.add(layer)
-    self.assertFalse(inner_model_two._can_use_graph_functions)
-
-    model.add(inner_model_two)
-    self.assertFalse(model._can_use_graph_functions)
-
-    model.pop()
-    self.assertTrue(model._can_use_graph_functions)
-
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_sequential_model_fails_with_dict_inputs(self):
     num_classes = 5
     model = testing_utils.get_small_sequential_mlp(

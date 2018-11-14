@@ -120,7 +120,7 @@ class RNNTest(test.TestCase):
              MinimalRNNCell(16, 8),
              MinimalRNNCell(32, 16)]
     layer = keras.layers.RNN(cells)
-    self.assertEqual(layer.cell.state_size, (8, 8, 16, 16, 32, 32))
+    self.assertEqual(layer.cell.state_size, ((8, 8), (16, 16), (32, 32)))
     self.assertEqual(layer.cell.output_size, 32)
     y = layer(x)
     model = keras.models.Model(x, y)

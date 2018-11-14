@@ -70,7 +70,7 @@ def _set_doc(doc):
 
 
 # pylint: disable=redefined-builtin
-@tf_export("math.argmax", "argmax")
+@tf_export(v1=["math.argmax", "argmax"])
 @deprecation.deprecated_args(None, "Use the `axis` argument instead",
                              "dimension")
 @_set_doc(
@@ -85,10 +85,37 @@ def argmax(input,
       "axis", axis, "dimension", dimension)
   if axis is None:
     axis = 0
+  return argmax_v2(input, axis, output_type, name)
+
+
+@tf_export("math.argmax", "argmax", v1=[])
+def argmax_v2(input,
+              axis=None,
+              output_type=dtypes.int64,
+              name=None):
+  """Returns the index with the largest value across axes of a tensor.
+
+  Note that in case of ties the identity of the return value is not guaranteed.
+
+  Args:
+    input: A `Tensor`. Must be one of the following types: `float32`, `float64`,
+    `int32`, `uint8`, `int16`, `int8`, `complex64`, `int64`, `qint8`, `quint8`,
+    `qint32`, `bfloat16`, `uint16`, `complex128`, `half`, `uint32`, `uint64`.
+    axis: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+      int32 or int64, must be in the range `-rank(input), rank(input))`.
+      Describes which axis of the input Tensor to reduce across. For vectors,
+      use axis = 0.
+    output_type: An optional `tf.DType` from: `tf.int32, tf.int64`.
+      Defaults to `tf.int64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `output_type`.
+  """
   return gen_math_ops.arg_max(input, axis, name=name, output_type=output_type)
 
 
-@tf_export("math.argmin", "argmin")
+@tf_export(v1=["math.argmin", "argmin"])
 @deprecation.deprecated_args(None, "Use the `axis` argument instead",
                              "dimension")
 @_set_doc(
@@ -103,6 +130,33 @@ def argmin(input,
       "axis", axis, "dimension", dimension)
   if axis is None:
     axis = 0
+  return argmin_v2(input, axis, output_type, name)
+
+
+@tf_export("math.argmin", "argmin", v1=[])
+def argmin_v2(input,
+              axis=None,
+              output_type=dtypes.int64,
+              name=None):
+  """Returns the index with the smallest value across axes of a tensor.
+
+  Note that in case of ties the identity of the return value is not guaranteed.
+
+  Args:
+    input: A `Tensor`. Must be one of the following types: `float32`, `float64`,
+    `int32`, `uint8`, `int16`, `int8`, `complex64`, `int64`, `qint8`, `quint8`,
+    `qint32`, `bfloat16`, `uint16`, `complex128`, `half`, `uint32`, `uint64`.
+    axis: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+      int32 or int64, must be in the range `-rank(input), rank(input))`.
+      Describes which axis of the input Tensor to reduce across. For vectors,
+      use axis = 0.
+    output_type: An optional `tf.DType` from: `tf.int32, tf.int64`.
+      Defaults to `tf.int64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `output_type`.
+  """
   return gen_math_ops.arg_min(input, axis, name=name, output_type=output_type)
 
 
@@ -1037,7 +1091,10 @@ def truediv(x, y, name=None):
   return _truediv_python3(x, y, name)
 
 
-@tf_export("div")
+@deprecation.deprecated(
+    date=None,
+    instructions="Deprecated in favor of operator or tf.math.divide.")
+@tf_export(v1=["div"])
 def div(x, y, name=None):
   """Divides x / y elementwise (using Python 2 division operator semantics).
 
@@ -2258,7 +2315,7 @@ def matvec(a,
 _OverrideBinaryOperatorHelper(matmul, "matmul")
 
 sparse_matmul = gen_math_ops.sparse_mat_mul
-tf_export("sparse_matmul")(sparse_matmul)
+tf_export(v1=["sparse_matmul"])(sparse_matmul)
 
 
 @ops.RegisterStatistics("MatMul", "flops")

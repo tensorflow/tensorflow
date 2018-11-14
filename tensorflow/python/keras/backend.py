@@ -376,27 +376,22 @@ def learning_phase():
   Returns:
       Learning phase (scalar integer tensor or Python integer).
   """
-  with ops.init_scope():
-    # We always check & set the learning phase inside the init_scope,
-    # otherwise the wrong default_graph will be used to look up the learning
-    # phase inside of functions & defuns.
-    #
-    # This is because functions & defuns (both in graph & in eager mode)
-    # will always execute non-eagerly using a function-specific default
-    # subgraph.
-    if context.executing_eagerly():
-      if _DUMMY_EAGER_GRAPH not in _GRAPH_LEARNING_PHASES:
-        # Fallback to inference mode as default.
-        return 0
-      return _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
+  if context.executing_eagerly():
+    if _DUMMY_EAGER_GRAPH not in _GRAPH_LEARNING_PHASES:
+      # Fallback to inference mode as default.
+      return 0
+    return _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
+  return symbolic_learning_phase()
 
-    graph = get_graph()
-    with graph.as_default():
-      if graph not in _GRAPH_LEARNING_PHASES:
-        phase = array_ops.placeholder_with_default(
-            False, shape=(), name='keras_learning_phase')
-        _GRAPH_LEARNING_PHASES[graph] = phase
-      return _GRAPH_LEARNING_PHASES[graph]
+
+def symbolic_learning_phase():
+  graph = get_graph()
+  with graph.as_default():
+    if graph not in _GRAPH_LEARNING_PHASES:
+      phase = array_ops.placeholder_with_default(
+          False, shape=(), name='keras_learning_phase')
+      _GRAPH_LEARNING_PHASES[graph] = phase
+    return _GRAPH_LEARNING_PHASES[graph]
 
 
 @tf_export('keras.backend.set_learning_phase')
@@ -3123,20 +3118,20 @@ class EagerExecutionFunction(object):
             updates_ops.append(update)
 
       # We set the update ops to run at the end by conditioning it on output[0]
-      if updates and not outputs:
+      if updates and not self.outputs:
         # Edge case; never happens in practice
         raise ValueError('Cannot create a Keras backend function with updates'
                          ' but no outputs during eager execution.')
       with ops.control_dependencies(updates_ops):
-        outputs[0] = array_ops.identity(outputs[0])
+        self.outputs[0] = array_ops.identity(self.outputs[0])
 
     # Prepare graph function
     # TODO(fchollet): can we restrict `captures` to variables actually used in
     # the relevant subgraph?
-    graph.inputs = inputs + list(graph.captures.values())
-    graph.outputs = outputs
+    graph.inputs = self.inputs + list(graph.captures.values())
+    graph.outputs = self.outputs
     graph_fn = eager_function.Function(graph)
-    graph_fn._num_positional_args = len(inputs)
+    graph_fn._num_positional_args = len(self.inputs)
     graph_fn._arg_keywords = []
     self._graph_fn = graph_fn
 
@@ -3543,6 +3538,7 @@ def rnn(step_function,
         flat_output = nest.flatten(output)
         output_ta_t = tuple(
             ta.write(time, out) for ta, out in zip(output_ta_t, flat_output))
+        new_states = nest.pack_sequence_as(initial_states, flat_new_state)
         return (time + 1, output_ta_t) + tuple(new_states)
 
       final_outputs = control_flow_ops.while_loop(

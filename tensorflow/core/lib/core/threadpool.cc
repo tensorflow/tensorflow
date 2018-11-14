@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/denormal.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
@@ -54,6 +55,9 @@ struct EigenEnvironment {
       port::ScopedFlushDenormal flush;
       // Set the processor rounding mode to ROUND TO NEAREST.
       port::ScopedSetRound round(FE_TONEAREST);
+      if (thread_options_.numa_node != port::kNUMANoAffinity) {
+        port::NUMASetThreadNodeAffinity(thread_options_.numa_node);
+      }
       f();
     });
   }
@@ -83,35 +87,38 @@ struct EigenEnvironment {
 
 struct ThreadPool::Impl : Eigen::ThreadPoolTempl<EigenEnvironment> {
   Impl(Env* env, const ThreadOptions& thread_options, const string& name,
-       int num_threads, bool low_latency_hint)
+       int num_threads, bool low_latency_hint, Eigen::Allocator* allocator)
       : Eigen::ThreadPoolTempl<EigenEnvironment>(
             num_threads, low_latency_hint,
-            EigenEnvironment(env, thread_options, name)) {}
+            EigenEnvironment(env, thread_options, name)),
+        allocator_(allocator) {}
 
   void ParallelFor(int64 total, int64 cost_per_unit,
                    std::function<void(int64, int64)> fn) {
     CHECK_GE(total, 0);
     CHECK_EQ(total, (int64)(Eigen::Index)total);
-    Eigen::ThreadPoolDevice device(this, this->NumThreads());
+    Eigen::ThreadPoolDevice device(this, this->NumThreads(), allocator_);
     device.parallelFor(
         total, Eigen::TensorOpCost(0, 0, cost_per_unit),
         [&fn](Eigen::Index first, Eigen::Index last) { fn(first, last); });
   }
+
+  Eigen::Allocator* allocator_;
 };
 
 ThreadPool::ThreadPool(Env* env, const string& name, int num_threads)
-    : ThreadPool(env, ThreadOptions(), name, num_threads, true) {}
+    : ThreadPool(env, ThreadOptions(), name, num_threads, true, nullptr) {}
 
 ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
                        const string& name, int num_threads)
-    : ThreadPool(env, thread_options, name, num_threads, true) {}
+    : ThreadPool(env, thread_options, name, num_threads, true, nullptr) {}
 
 ThreadPool::ThreadPool(Env* env, const ThreadOptions& thread_options,
                        const string& name, int num_threads,
-                       bool low_latency_hint) {
+                       bool low_latency_hint, Eigen::Allocator* allocator) {
   CHECK_GE(num_threads, 1);
   impl_.reset(new ThreadPool::Impl(env, thread_options, "tf_" + name,
-                                   num_threads, low_latency_hint));
+                                   num_threads, low_latency_hint, allocator));
 }
 
 ThreadPool::~ThreadPool() {}
@@ -192,5 +199,14 @@ int ThreadPool::NumThreads() const { return impl_->NumThreads(); }
 
 int ThreadPool::CurrentThreadId() const { return impl_->CurrentThreadId(); }
 
+void ThreadPool::ScheduleWithHint(std::function<void()> fn, int start,
+                                  int limit) {
+  impl_->ScheduleWithHint(std::move(fn), start, limit);
+}
+
+void ThreadPool::SetStealPartitions(
+    const std::vector<std::pair<unsigned, unsigned>>& partitions) {
+  impl_->SetStealPartitions(partitions);
+}
 }  // namespace thread
 }  // namespace tensorflow

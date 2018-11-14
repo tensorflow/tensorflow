@@ -155,6 +155,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kTanh:
     case HloOpcode::kTrace:
     case HloOpcode::kWhile:
+    case HloOpcode::kGetDimensionSize:
       return true;
   }
 

@@ -224,6 +224,18 @@ class MicroBenchmarks(test.Benchmark):
     self._benchmark_create_tensor(
         np.array([[3]], dtype=np.int32), dtypes.int32.as_datatype_enum, GPU)
 
+  def benchmark_index_tensor_with_literal(self):
+    func = lambda: constant_op.constant([3.0])[0]
+    self._run(func, 30000)
+
+  def benchmark_index_tensor_with_tensor(self):
+    func = lambda idx=constant_op.constant(0): constant_op.constant([3.0])[idx]
+    self._run(func, 30000)
+
+  def benchmark_index_tensor_with_np_array(self):
+    func = lambda idx=np.array(0): constant_op.constant([3.0])[idx]
+    self._run(func, 30000)
+
   def _benchmark_np_multiply(self, m, num_iters):
     a = m.cpu().numpy()
     func = lambda: a * a

@@ -87,7 +87,11 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
 
     // Initialize a name to node map for processing device stats.
     for (Node* n : client_graph_before_register_->graph.nodes()) {
-      name_to_node_.insert({n->name(), n});
+      name_to_node_details_.emplace(
+          n->name(),
+          NodeDetails(n->type_string(),
+                      strings::StrCat(
+                          "(", str_util::Join(n->requested_inputs(), ", "))));
     }
   }
 
@@ -217,19 +221,6 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
                       const RunState* run_state,
                       GraphExecutionState* execution_state);
 
-  string DetailText(const Node& node, const NodeExecStats& ns) {
-    int64 tot = 0;
-    for (auto& no : ns.output()) {
-      tot += no.tensor_description().allocation_description().requested_bytes();
-    }
-    string bytes;
-    if (tot >= 0.1 * 1048576.0) {
-      bytes = strings::Printf("[%.1fMB] ", tot / 1048576.0);
-    }
-    return strings::StrCat(bytes, node.name(), " = ", node.type_string(), "(",
-                           str_util::Join(node.requested_inputs(), ", "), ")");
-  }
-
  private:
   const string session_handle_;
   const BuildGraphOptions bg_opts_;
@@ -240,7 +231,16 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   const bool is_partial_;
   const CallableOptions callable_opts_;
   WorkerCacheInterface* const worker_cache_;  // Not owned.
-  std::unordered_map<StringPiece, Node*, StringPieceHasher> name_to_node_;
+
+  struct NodeDetails {
+    explicit NodeDetails(string type_string, string detail_text)
+        : type_string(std::move(type_string)),
+          detail_text(std::move(detail_text)) {}
+    const string type_string;
+    const string detail_text;
+  };
+  std::unordered_map<string, NodeDetails> name_to_node_details_;
+
   const bool should_deregister_;
   const int64 collective_graph_key_;
   std::atomic<int64> execution_count_ = {0};
@@ -282,6 +282,19 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   Status init_result_ GUARDED_BY(mu_);
 
   std::unique_ptr<StatsPublisherInterface> stats_publisher_;
+
+  string DetailText(const NodeDetails& details, const NodeExecStats& stats) {
+    int64 tot = 0;
+    for (auto& no : stats.output()) {
+      tot += no.tensor_description().allocation_description().requested_bytes();
+    }
+    string bytes;
+    if (tot >= 0.1 * 1048576.0) {
+      bytes = strings::Printf("[%.1fMB] ", tot / 1048576.0);
+    }
+    return strings::StrCat(bytes, stats.node_name(), " = ",
+                           details.type_string, details.detail_text);
+  }
 
   // Send/Recv nodes that are the result of client-added
   // feeds and fetches must be tracked so that the tensors
@@ -926,8 +939,8 @@ void MasterSession::ReffedClientGraph::ProcessDeviceStats(
       ph->RecordOneOp(dev_name, ns, true /*is_copy*/, "", ns.node_name(),
                       ns.timeline_label());
     } else {
-      const Node* node = name_to_node_[ns.node_name()];
-      const bool found_node_in_graph = node != nullptr;
+      auto iter = name_to_node_details_.find(ns.node_name());
+      const bool found_node_in_graph = iter != name_to_node_details_.end();
       if (!found_node_in_graph && ns.timeline_label().empty()) {
         // The counter incrementing is not thread-safe. But we don't really
         // care.
@@ -941,13 +954,13 @@ void MasterSession::ReffedClientGraph::ProcessDeviceStats(
         }
         continue;
       }
-      string optype =
-          found_node_in_graph ? node->type_string() : ns.node_name();
+      const string& optype =
+          found_node_in_graph ? iter->second.type_string : ns.node_name();
       string details;
       if (!ns.timeline_label().empty()) {
         details = ns.timeline_label();
       } else if (found_node_in_graph) {
-        details = DetailText(*node, ns);
+        details = DetailText(iter->second, ns);
       } else {
         // Leave details string empty
       }

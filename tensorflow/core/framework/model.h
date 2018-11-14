@@ -332,8 +332,8 @@ class Model {
   Model() = default;
 
   // Adds a node with the given name and given output.
-  void AddNode(Node::Factory factory, const string& name,
-               const string& output_name) LOCKS_EXCLUDED(mu_);
+  std::shared_ptr<Node> AddNode(Node::Factory factory, const string& name,
+                                const string& output_name) LOCKS_EXCLUDED(mu_);
 
   // Increments the processing time for the given node..
   void AddProcessingTime(const string& name, int64 delta) LOCKS_EXCLUDED(mu_);

@@ -195,15 +195,27 @@ cc_library(
     deps = ["//third_party/eigen3"],
 )
 
-cc_library(
+tf_kernel_library(
     name = "conv_2d",
     hdrs = ["conv_2d.h"],
+    gpu_srcs = [
+        "conv_2d_gpu.cu.cc",
+        "conv_2d.h",
+    ],
     deps = [
         ":eigen_helpers",
+        ":fill_functor",
         ":gpu_util_hdrs",
+        ":image_resizer_state",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1673,14 +1685,14 @@ tf_kernel_library(
     ],
     visibility = [":friends"],
     deps = [
-        ":conv_ops",
+        ":conv_2d",
         ":ops_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//third_party/eigen3",
     ],
-    alwayslink = 0,
+    alwayslink = 1,
 )
 
 tf_cc_test(
@@ -3664,7 +3676,7 @@ NN_DEPS = [
     "//tensorflow/core:nn_grad",
     "//tensorflow/core:nn_ops_op_lib",
     "//third_party/eigen3",
-]
+] + if_mkl(["//tensorflow/core:mkl_nn_ops_op_lib"])
 
 tf_kernel_library(
     name = "batch_norm_op",
@@ -6494,6 +6506,10 @@ tf_cc_test(
 
 tf_mkl_kernel_library(
     name = "mkl_conv_op",
+    hdrs = [
+        "mkl_quantized_conv_ops.h",
+        "no_op.h",
+    ],
     prefix = "mkl_conv",
     deps = [
         ":bounds_check",
@@ -6503,6 +6519,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:mkl_nn_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
     ] + mkl_deps(),
 )
@@ -6537,6 +6554,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:mkl_nn_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
     ] + mkl_deps(),
 )
@@ -6552,6 +6570,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:mkl_nn_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
     ] + mkl_deps(),
 )
@@ -6571,6 +6590,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:mkl_nn_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
     ] + mkl_deps(),
 )
@@ -6585,6 +6605,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:mkl_nn_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
     ] + mkl_deps(),
@@ -6600,6 +6621,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:mkl_nn_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
     ] + mkl_deps(),
@@ -6620,7 +6642,7 @@ tf_mkl_kernel_library(
 tf_mkl_kernel_library(
     name = "mkl_concat_op",
     prefix = "mkl_concat_op",
-    deps = ARRAY_DEPS + mkl_deps(),
+    deps = [":quantization_utils"] + ARRAY_DEPS + mkl_deps(),
 )
 
 tf_mkl_kernel_library(

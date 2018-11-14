@@ -121,11 +121,8 @@ class Model(Network):
     # initializing _distribution_strategy here since it is possible to call
     # predict on a model without compiling it.
     self._distribution_strategy = None
-    # This flag must be disabled upon model mutation, such as changing the model
-    # layers or recompiling the model to use a different optimizer. New function
-    # definitions are generated whenever this flag is disabled, ensuring that
-    # internal graph functions are always using the current model structure.
-    self._built_graph_functions = False
+
+    self.run_eagerly = None
 
   def _set_sample_weight_attributes(self, sample_weight_mode,
                                     skip_target_weighing_indices):
@@ -264,9 +261,9 @@ class Model(Network):
           # If the given metric fn is stateful, call the fn and return result.
           metric_result = _call_stateful_fn(metric_fn)
           metric_results.append(metric_result)
-          if not context.executing_eagerly():
+          if not self.run_eagerly:
             _track_metric_tensors(metric_result, metric_result)
-        elif context.executing_eagerly():
+        elif self.run_eagerly:
           # In eager mode, if the given metric fn is not stateful, we invoke the
           # given fn or its stateful version based on the given flag.
           if return_stateful_result:
@@ -330,6 +327,40 @@ class Model(Network):
                 return_stateful_result=return_stateful_result))
     return metric_results
 
+  @property
+  def run_eagerly(self):
+    """Settable attribute indicating whether the model should run eagerly.
+
+    Running eagerly means that your model will be run step by step,
+    like Python code. Your model might run slower, but it should become easier
+    for you to debug it by stepping into individual layer calls.
+
+    By default, we will attempt to compile your model to a static graph to
+    deliver the best execution performance.
+
+    Returns:
+      Boolean, whether the model should run eagerly.
+    """
+    if self._run_eagerly is True and not context.executing_eagerly():
+      raise ValueError('You can only set `run_eagerly=True` if eager execution '
+                       'is enabled.')
+    if self._static_graph_friendly:
+      if self._run_eagerly is None:
+        return False
+      else:
+        return self._run_eagerly
+    else:
+      if self._run_eagerly is False:
+        # TODO(fchollet): consider using py_func to enable this.
+        raise ValueError('Your model contains layers that can only be '
+                         'successfully run in eager execution. '
+                         'You cannot set `run_eagerly=False`.')
+      return context.executing_eagerly()
+
+  @run_eagerly.setter
+  def run_eagerly(self, value):
+    self._run_eagerly = value
+
   @checkpointable.no_automatic_dependency_tracking
   def compile(self,
               optimizer,
@@ -391,9 +422,8 @@ class Model(Network):
         ValueError: In case of invalid arguments for
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
-    # The correct graph function may have changed,
-    # already-built ones must be updated
-    self._built_graph_functions = False
+    run_eagerly = kwargs.pop('run_eagerly', None)
+    self._run_eagerly = run_eagerly
 
     # Validate that arguments passed by the user to `compile` are supported by
     # DistributionStrategy.
@@ -403,9 +433,9 @@ class Model(Network):
         raise NotImplementedError(
             'optimizer must be an instance of '
             'tf.train.Optimizer, not a %s' % type(optimizer))
-      if context.executing_eagerly():
+      if self.run_eagerly:
         raise NotImplementedError('DistributionStrategy is not supported '
-                                  'when eager execution is enabled.')
+                                  'when running a model eagerly.')
       if sample_weight_mode:
         raise NotImplementedError('sample_weight_mode is not supported with '
                                   'DistributionStrategy.')
@@ -417,11 +447,12 @@ class Model(Network):
                          'DistributionStrategy.')
 
     loss = loss or {}
-    if context.executing_eagerly() and not isinstance(
+    if self.run_eagerly and not isinstance(
         optimizer, (tf_optimizer_module.Optimizer, optimizers.TFOptimizer)):
       raise ValueError(
-          'optimizer must be an instance of tf.train.Optimizer, not '
-          'a %s' % type(optimizer))
+          'When running a model in eager execution, the optimizer must be an '
+          'instance of tf.train.Optimizer. Received: '
+          '%s' % optimizer)
 
     self.optimizer = optimizers.get(optimizer)
     # We've disabled automatic dependency tracking for this method, but do want
@@ -434,8 +465,10 @@ class Model(Network):
     self.loss_weights = loss_weights
     self.sample_weight_mode = sample_weight_mode
     self.weighted_metrics = weighted_metrics
-    if context.executing_eagerly() and target_tensors is not None:
-      raise ValueError('target_tensors is not supported in Eager mode.')
+    if self.run_eagerly and target_tensors is not None:
+      raise ValueError(
+          'target_tensors argument is not supported when '
+          'running a model eagerly.')
     self.target_tensors = target_tensors
 
     # Set DistributionStrategy specific parameters.
@@ -445,6 +478,8 @@ class Model(Network):
     if self._distribution_strategy is not None:
       distributed_training_utils.configure_and_create_session(
           self._distribution_strategy)
+    # Initialize model metric attributes.
+    self._init_metric_attributes()
     if not self.built:
       # Model is not compilable because it does not know its number of inputs
       # and outputs, nor their shapes and names. We will compile after the first
@@ -493,7 +528,7 @@ class Model(Network):
         skip_target_weighing_indices.append(i)
 
     # Prepare output masks.
-    if not context.executing_eagerly():
+    if not self.run_eagerly:
       masks = [getattr(x, '_keras_mask', None) for x in self.outputs]
       if not isinstance(masks, list):
         masks = [masks]
@@ -524,11 +559,8 @@ class Model(Network):
                       str(loss_weights) + ' - expected a list of dicts.')
     self.loss_weights_list = loss_weights_list
 
-    # Initialize model metric attributes.
-    self._init_metric_attributes()
-
     # Initialization for Eager mode execution.
-    if context.executing_eagerly():
+    if self.run_eagerly:
       # Prepare sample weights.
       self._set_sample_weight_attributes(sample_weight_mode,
                                          skip_target_weighing_indices)
@@ -555,145 +587,146 @@ class Model(Network):
       self._collected_trainable_weights = self.trainable_weights
       return
 
-    # Prepare targets of model.
-    self.targets = []
-    self._feed_targets = []
-    if target_tensors not in (None, []):
-      if isinstance(target_tensors, list):
-        if len(target_tensors) != len(self.outputs):
-          raise ValueError(
-              'When passing a list as `target_tensors`, '
-              'it should have one entry per model output. '
-              'The model has ' + str(len(self.outputs)) +
-              ' outputs, but you passed target_tensors=' + str(target_tensors))
-      elif isinstance(target_tensors, dict):
-        for name in target_tensors:
-          if name not in self.output_names:
+    with K.get_graph().as_default():
+      # Prepare targets of model.
+      self.targets = []
+      self._feed_targets = []
+      if target_tensors not in (None, []):
+        if isinstance(target_tensors, list):
+          if len(target_tensors) != len(self.outputs):
             raise ValueError(
-                'Unknown entry in `target_tensors` '
-                'dictionary: "' + name + '". '
-                'Only expected the following keys: ' + str(self.output_names))
-        tmp_target_tensors = []
-        for name in self.output_names:
-          tmp_target_tensors.append(target_tensors.get(name, None))
-        target_tensors = tmp_target_tensors
-      elif tensor_util.is_tensor(target_tensors):
-        target_tensors = [target_tensors]
-      else:
-        raise TypeError('Expected `target_tensors` to be a list or tuple or '
-                        'dict or a single tensor, but got:', target_tensors)
-
-    for i in range(len(self.outputs)):
-      if i in skip_target_indices:
-        self.targets.append(None)
-      else:
-        shape = K.int_shape(self.outputs[i])
-        name = self.output_names[i]
-        if target_tensors not in (None, []):
-          target = target_tensors[i]
+                'When passing a list as `target_tensors`, '
+                'it should have one entry per model output. '
+                'The model has %s outputs, but you passed target_tensors=%s' %
+                (len(self.outputs), target_tensors))
+        elif isinstance(target_tensors, dict):
+          for name in target_tensors:
+            if name not in self.output_names:
+              raise ValueError(
+                  'Unknown entry in `target_tensors` '
+                  'dictionary: "' + name + '". '
+                  'Only expected the following keys: ' + str(self.output_names))
+          tmp_target_tensors = []
+          for name in self.output_names:
+            tmp_target_tensors.append(target_tensors.get(name, None))
+          target_tensors = tmp_target_tensors
+        elif tensor_util.is_tensor(target_tensors):
+          target_tensors = [target_tensors]
         else:
-          target = None
-        if target is None or K.is_placeholder(target):
-          if target is None:
-            target = K.placeholder(
-                ndim=len(shape),
-                name=name + '_target',
-                sparse=K.is_sparse(self.outputs[i]),
-                dtype=K.dtype(self.outputs[i]))
-          self._feed_targets.append(target)
-          self._feed_outputs.append(self.outputs[i])
-          self._feed_output_names.append(name)
-          self._feed_output_shapes.append(shape)
-          self._feed_loss_fns.append(self.loss_functions[i])
-        else:
-          skip_target_weighing_indices.append(i)
-        self.targets.append(target)
+          raise TypeError('Expected `target_tensors` to be a list or tuple or '
+                          'dict or a single tensor, but got:', target_tensors)
 
-    # Prepare sample weights.
-    self._set_sample_weight_attributes(sample_weight_mode,
-                                       skip_target_weighing_indices)
-    # Save all metric attributes per output of the model.
-    self._cache_output_metric_attributes(metrics, weighted_metrics)
-
-    # Compute total loss.
-    total_loss = None
-    with K.name_scope('loss'):
       for i in range(len(self.outputs)):
         if i in skip_target_indices:
-          continue
-        y_true = self.targets[i]
-        y_pred = self.outputs[i]
-        loss_fn = loss_functions[i]
-        sample_weight = self.sample_weights[i]
-        mask = masks[i]
-        loss_weight = loss_weights_list[i]
-        with K.name_scope(self.output_names[i] + '_loss'):
-          weighted_loss = training_utils.weighted_masked_objective(loss_fn)
-          output_loss = weighted_loss(y_true, y_pred, sample_weight, mask)
+          self.targets.append(None)
+        else:
+          shape = K.int_shape(self.outputs[i])
+          name = self.output_names[i]
+          if target_tensors not in (None, []):
+            target = target_tensors[i]
+          else:
+            target = None
+          if target is None or K.is_placeholder(target):
+            if target is None:
+              target = K.placeholder(
+                  ndim=len(shape),
+                  name=name + '_target',
+                  sparse=K.is_sparse(self.outputs[i]),
+                  dtype=K.dtype(self.outputs[i]))
+            self._feed_targets.append(target)
+            self._feed_outputs.append(self.outputs[i])
+            self._feed_output_names.append(name)
+            self._feed_output_shapes.append(shape)
+            self._feed_loss_fns.append(self.loss_functions[i])
+          else:
+            skip_target_weighing_indices.append(i)
+          self.targets.append(target)
 
-        if len(self.outputs) > 1:
-          # Keep track of the un-aggregated loss result tensor.
-          self.metrics_tensors.append(output_loss)
+      # Prepare sample weights.
+      self._set_sample_weight_attributes(sample_weight_mode,
+                                         skip_target_weighing_indices)
+      # Save all metric attributes per output of the model.
+      self._cache_output_metric_attributes(metrics, weighted_metrics)
 
-          # Keep track of stateful result tensor and function for the loss.
-          mean_wrapped_loss = metrics_module.MeanMetricWrapper(
-              loss_fn, name=loss_fn.__name__)
-          result_tensor = training_utils.call_metric_function(
-              mean_wrapped_loss,
-              y_true,
-              y_pred,
-              weights=sample_weight,
-              mask=mask)
-          self._stateful_metrics_tensors.append(result_tensor)
-          self.stateful_metric_functions.append(mean_wrapped_loss)
+      # Compute total loss.
+      total_loss = None
+      with K.name_scope('loss'):
+        for i in range(len(self.outputs)):
+          if i in skip_target_indices:
+            continue
+          y_true = self.targets[i]
+          y_pred = self.outputs[i]
+          loss_fn = loss_functions[i]
+          sample_weight = self.sample_weights[i]
+          mask = masks[i]
+          loss_weight = loss_weights_list[i]
+          with K.name_scope(self.output_names[i] + '_loss'):
+            weighted_loss = training_utils.weighted_masked_objective(loss_fn)
+            output_loss = weighted_loss(y_true, y_pred, sample_weight, mask)
 
-          self.metrics_names.append(self.output_names[i] + '_loss')
+          if len(self.outputs) > 1:
+            # Keep track of the un-aggregated loss result tensor.
+            self.metrics_tensors.append(output_loss)
+
+            # Keep track of stateful result tensor and function for the loss.
+            mean_wrapped_loss = metrics_module.MeanMetricWrapper(
+                loss_fn, name=loss_fn.__name__)
+            result_tensor = training_utils.call_metric_function(
+                mean_wrapped_loss,
+                y_true,
+                y_pred,
+                weights=sample_weight,
+                mask=mask)
+            self._stateful_metrics_tensors.append(result_tensor)
+            self.stateful_metric_functions.append(mean_wrapped_loss)
+
+            self.metrics_names.append(self.output_names[i] + '_loss')
+          if total_loss is None:
+            total_loss = loss_weight * output_loss
+          else:
+            total_loss += loss_weight * output_loss
         if total_loss is None:
-          total_loss = loss_weight * output_loss
-        else:
-          total_loss += loss_weight * output_loss
-      if total_loss is None:
-        if not self.losses:
-          raise ValueError('The model cannot be compiled '
-                           'because it has no loss to optimize.')
-        else:
-          total_loss = 0.
+          if not self.losses:
+            raise ValueError('The model cannot be compiled '
+                             'because it has no loss to optimize.')
+          else:
+            total_loss = 0.
 
-      # Add regularization penalties
-      # and other layer-specific losses.
-      for loss_tensor in self.losses:
-        total_loss += loss_tensor
+        # Add regularization penalties
+        # and other layer-specific losses.
+        for loss_tensor in self.losses:
+          total_loss += loss_tensor
 
-    # Set metric attributes on model.
-    self._set_metric_attributes(
-        self.outputs,
-        skip_target_indices=skip_target_indices,
-    )
-    # Invoke metric functions for all the outputs.
-    self._handle_metrics(
-        self.outputs,
-        masks=masks,
-        targets=self.targets,
-        skip_target_indices=skip_target_indices,
-        sample_weights=self.sample_weights)
+      # Set metric attributes on model.
+      self._set_metric_attributes(
+          self.outputs,
+          skip_target_indices=skip_target_indices,
+      )
+      # Invoke metric functions for all the outputs.
+      self._handle_metrics(
+          self.outputs,
+          masks=masks,
+          targets=self.targets,
+          skip_target_indices=skip_target_indices,
+          sample_weights=self.sample_weights)
 
-    # Prepare gradient updates and state updates.
-    self.total_loss = total_loss
+      # Prepare gradient updates and state updates.
+      self.total_loss = total_loss
 
-    # Functions for train, test and predict will
-    # be compiled lazily when required.
-    # This saves time when the user is not using all functions.
-    self._function_kwargs = kwargs
+      # Functions for train, test and predict will
+      # be compiled lazily when required.
+      # This saves time when the user is not using all functions.
+      self._function_kwargs = kwargs
 
-    self._fit_function = None
-    self._eval_function = None
-    self.train_function = None
-    self.test_function = None
-    self.predict_function = None
+      self._fit_function = None
+      self._eval_function = None
+      self.train_function = None
+      self.test_function = None
+      self.predict_function = None
 
-    # Collected trainable weights, sorted in topological order.
-    trainable_weights = self.trainable_weights
-    self._collected_trainable_weights = trainable_weights
+      # Collected trainable weights, sorted in topological order.
+      trainable_weights = self.trainable_weights
+      self._collected_trainable_weights = trainable_weights
 
   def _check_trainable_weights_consistency(self):
     """Check trainable weights count consistency.
@@ -721,21 +754,24 @@ class Model(Network):
       inputs = (self._feed_inputs +
                 self._feed_targets +
                 self._feed_sample_weights)
-      if not isinstance(K.learning_phase(), int):
-        inputs += [K.learning_phase()]
+      if not isinstance(K.symbolic_learning_phase(), int):
+        inputs += [K.symbolic_learning_phase()]
+
+      with K.get_graph().as_default():
+        with K.name_scope('training'):
+          with K.name_scope(self.optimizer.__class__.__name__):
+            # Training updates
+            updates = self.optimizer.get_updates(
+                params=self._collected_trainable_weights, loss=self.total_loss)
+      # Unconditional updates
+      updates += self.get_updates_for(None)
+      # Conditional updates relevant to this model
+      updates += self.get_updates_for(self.inputs)
+      # Add stateful metrics updates.
+      if metric_updates is not None:
+        updates += metric_updates
 
       with K.name_scope('training'):
-        with K.name_scope(self.optimizer.__class__.__name__):
-          # Training updates
-          updates = self.optimizer.get_updates(
-              params=self._collected_trainable_weights, loss=self.total_loss)
-        # Unconditional updates
-        updates += self.get_updates_for(None)
-        # Conditional updates relevant to this model
-        updates += self.get_updates_for(self.inputs)
-        # Add stateful metrics updates.
-        if metric_updates is not None:
-          updates += metric_updates
         # Gets loss and metrics. Updates weights at each call.
         fn = K.function(
             inputs,
@@ -766,21 +802,23 @@ class Model(Network):
       inputs = (self._feed_inputs +
                 self._feed_targets +
                 self._feed_sample_weights)
-      if not isinstance(K.learning_phase(), int):
-        inputs += [K.learning_phase()]
-      updates = self.state_updates
-      # Add stateful metrics updates.
-      if metric_updates is not None:
-        updates += metric_updates
-      # Return loss and metrics, no gradient updates.
-      # Does update the network states.
-      fn = K.function(
-          inputs,
-          outputs,
-          updates=updates,
-          name='test_function',
-          **self._function_kwargs)
-      setattr(self, fn_name, fn)
+      if not isinstance(K.symbolic_learning_phase(), int):
+        inputs += [K.symbolic_learning_phase()]
+
+      with K.name_scope('evaluation'):
+        updates = self.state_updates
+        # Add stateful metrics updates.
+        if metric_updates is not None:
+          updates += metric_updates
+        # Return loss and metrics, no gradient updates.
+        # Does update the network states.
+        fn = K.function(
+            inputs,
+            outputs,
+            updates=updates,
+            name='test_function',
+            **self._function_kwargs)
+        setattr(self, fn_name, fn)
 
   def _make_test_function(self):
     self._make_test_function_helper('test_function',
@@ -794,19 +832,20 @@ class Model(Network):
     if not hasattr(self, 'predict_function'):
       self.predict_function = None
     if self.predict_function is None:
-      if not isinstance(K.learning_phase(), int):
-        inputs = self._feed_inputs + [K.learning_phase()]
+      if not isinstance(K.symbolic_learning_phase(), int):
+        inputs = self._feed_inputs + [K.symbolic_learning_phase()]
       else:
         inputs = self._feed_inputs
       # Gets network outputs. Does not update weights.
       # Does update the network states.
       kwargs = getattr(self, '_function_kwargs', {})
-      self.predict_function = K.function(
-          inputs,
-          self.outputs,
-          updates=self.state_updates,
-          name='predict_function',
-          **kwargs)
+      with K.name_scope('predict'):
+        self.predict_function = K.function(
+            inputs,
+            self.outputs,
+            updates=self.state_updates,
+            name='predict_function',
+            **kwargs)
 
   def _get_execution_function(self, mode):
     if mode == 'train':
@@ -893,7 +932,7 @@ class Model(Network):
       x_shape = first_x_value.shape
       if batch_size is None:
         batch_size = distributed_training_utils.get_batch_size(
-            self._distribution_strategy.num_replicas_in_sync, x_shape[0], steps)
+            self._distribution_strategy, x_shape[0], steps)
       # We need to use the drop_remainder argument to allow for a static
       # input shape which is required for TPUs.
       drop_remainder = self._distribution_strategy.require_static_shapes
@@ -932,13 +971,12 @@ class Model(Network):
         x = x.batch(batch_size, drop_remainder=drop_remainder)
 
     assert isinstance(x, dataset_ops.Dataset)
+    if self._distribution_strategy.__class__.__name__ == 'TPUStrategy':
+      iterator = self._distribution_strategy.make_dataset_iterator(x)
+    else:
+      dataset = self._distribution_strategy.distribute_dataset(lambda: x)
+      iterator = dataset.make_initializable_iterator()
 
-    # TODO(anjalisridhar): We want distribute_dataset() to accept a Dataset or a
-    # function which returns a Dataset. Currently distribute_dataset() only
-    # accepts a function that returns a Dataset. Once we add support for being
-    # able to clone a Dataset on multiple workers we can remove this lambda.
-    result = self._distribution_strategy.distribute_dataset(lambda: x)
-    iterator = result.make_initializable_iterator()
     with self._distribution_strategy.scope():
       K.get_session().run(iterator.initializer)
 
@@ -1044,6 +1082,9 @@ class Model(Network):
     is_x_eager_iterator = isinstance(x, iterator_ops.EagerIterator)
     is_x_iterator = isinstance(x, iterator_ops.Iterator)
 
+    if is_x_eager_iterator:
+      self._run_eagerly = True  # TODO(fchollet): support using graph functions
+
     # Validate user inputs when data is given as a dataset or dataset iterator.
     if is_x_iterator or is_x_eager_iterator:
       training_utils.validate_iterator_input(x, y, sample_weight,
@@ -1052,7 +1093,7 @@ class Model(Network):
     # For eager iterators, when we have to process multiple batches of samples,
     # we will standardize the data when we actually loop over iterator and get
     # the batches. For now, we just return the iterator as is.
-    if is_x_eager_iterator and steps is not None:
+    if is_x_eager_iterator:
       return x, y, sample_weight
 
     # If input data is a dataset iterator in graph mode or if it is an eager
@@ -1158,7 +1199,7 @@ class Model(Network):
                              'TensorFlow tensors. '
                              'You passed: x=' + str(x) + '; y=' + str(y))
 
-        if context.executing_eagerly():
+        if self.run_eagerly:
           target_tensors = None
         else:
           # Handle target tensors if any passed.
@@ -1170,7 +1211,8 @@ class Model(Network):
                      loss=self.loss,
                      metrics=self.metrics,
                      loss_weights=self.loss_weights,
-                     target_tensors=target_tensors)
+                     target_tensors=target_tensors,
+                     run_eagerly=self.run_eagerly)
 
     # In graph mode, if we had just set inputs and targets as symbolic tensors
     # by invoking build and compile on the model respectively, we do not have to
@@ -1178,7 +1220,7 @@ class Model(Network):
     # part of the graph.
     # Note: in this case, `any` and `all` are equivalent since we disallow
     # mixed symbolic/value inputs.
-    if (not context.executing_eagerly() and is_build_called and
+    if (not self.run_eagerly and is_build_called and
         is_compile_called and
         any(tensor_util.is_tensor(v) for v in all_inputs)):
       return [], [], []
@@ -1186,7 +1228,7 @@ class Model(Network):
     # What follows is input validation and standardization to list format,
     # in the case where all inputs are value arrays.
 
-    if context.executing_eagerly():
+    if self.run_eagerly:
       # In eager mode, do not do shape validation
       # since the network has no input nodes (placeholders) to be fed.
       feed_input_names = self.input_names
@@ -1260,7 +1302,7 @@ class Model(Network):
       # Check that all arrays have the same length.
       if not self._distribution_strategy:
         training_utils.check_array_lengths(x, y, sample_weights)
-        if self._is_graph_network and not context.executing_eagerly():
+        if self._is_graph_network and not self.run_eagerly:
           # Additional checks to avoid users mistakenly using improper loss fns.
           training_utils.check_loss_and_target_compatibility(
               y, self._feed_loss_fns, feed_output_shapes)
@@ -1348,8 +1390,7 @@ class Model(Network):
 
     if outputs is None:
       # Obtain symbolic outputs by calling the model.
-      graph = K.get_graph()
-      with graph.as_default():
+      with K.get_graph().as_default():
         if self._expects_training_arg:
           outputs = self.call(inputs, training=training)
         else:
@@ -1509,7 +1550,6 @@ class Model(Network):
     """
     # TODO(fchollet): this method may be creating reference cycles, which would
     # lead to accumulating garbage in memory when called in a loop. Investigate.
-
     if data_utils.is_generator_or_sequence(x):
       training_utils.check_generator_arguments(y, sample_weight)
       return self.fit_generator(
@@ -1622,7 +1662,7 @@ class Model(Network):
       val_y = None
       val_sample_weights = None
 
-    if context.executing_eagerly():
+    if self.run_eagerly:
       return training_eager.fit_loop(
           self,
           inputs=x,
@@ -1780,7 +1820,7 @@ class Model(Network):
         steps_name='steps',
         steps=steps)
 
-    if context.executing_eagerly():
+    if self.run_eagerly:
       return training_eager.test_loop(
           self,
           inputs=x,
@@ -1880,14 +1920,13 @@ class Model(Network):
       if isinstance(first_x_value, np.ndarray) and not steps:
         steps = distributed_training_utils.get_input_batch_params(
             first_x_value, batch_size, self._distribution_strategy)
-
     # Validate and standardize user data.
     # TODO(anjalisridhar): We don't pass batch_size here for some reason. This
     # means that we end up calculating it twice which we should avoid.
     x, _, _ = self._standardize_user_data(
         x, check_steps=True, steps_name='steps', steps=steps)
 
-    if context.executing_eagerly():
+    if self.run_eagerly:
       return training_eager.predict_loop(
           self, x, batch_size=batch_size, verbose=verbose, steps=steps)
     elif self._distribution_strategy:
@@ -1944,12 +1983,12 @@ class Model(Network):
     x, y, sample_weights = self._standardize_user_data(
         x, y, sample_weight=sample_weight, class_weight=class_weight)
 
-    if context.executing_eagerly():
+    if self.run_eagerly:
       outputs = training_eager.train_on_batch(
           self, x, y, sample_weights=sample_weights)
     else:
-      if not isinstance(K.learning_phase(), int):
-        ins = x + y + sample_weights + [1]
+      if not isinstance(K.symbolic_learning_phase(), int):
+        ins = x + y + sample_weights + [True]
       else:
         ins = x + y + sample_weights
 
@@ -2003,12 +2042,12 @@ class Model(Network):
     x, y, sample_weights = self._standardize_user_data(
         x, y, sample_weight=sample_weight)
 
-    if context.executing_eagerly():
+    if self.run_eagerly:
       outputs = training_eager.test_on_batch(
           self, x, y, sample_weights=sample_weights)
     else:
-      if not isinstance(K.learning_phase(), int):
-        ins = x + y + sample_weights + [0]
+      if not isinstance(K.symbolic_learning_phase(), int):
+        ins = x + y + sample_weights + [False]
       else:
         ins = x + y + sample_weights
       self._make_test_function()
@@ -2041,9 +2080,9 @@ class Model(Network):
                                 'models compiled with DistributionStrategy.')
     # Validate and standardize user data.
     inputs, _, _ = self._standardize_user_data(x)
-    if context.executing_eagerly():
+    if self.run_eagerly:
       if (isinstance(x, iterator_ops.EagerIterator) or
-          (isinstance(x, dataset_ops.Dataset) and context.executing_eagerly())):
+          (isinstance(x, dataset_ops.Dataset))):
         inputs = training_utils.cast_if_floating_dtype(inputs)
       else:
         inputs = [
@@ -2051,18 +2090,17 @@ class Model(Network):
         ]
       return self(inputs)  # pylint: disable=not-callable
 
-    if not context.executing_eagerly():
-      if not isinstance(K.learning_phase(), int):
-        ins = inputs + [0]
-      else:
-        ins = inputs
+    if not isinstance(K.symbolic_learning_phase(), int):
+      ins = inputs + [False]
+    else:
+      ins = inputs
 
-      self._make_predict_function()
-      outputs = self.predict_function(ins)
+    self._make_predict_function()
+    outputs = self.predict_function(ins)
 
-      if len(outputs) == 1:
-        return outputs[0]
-      return outputs
+    if len(outputs) == 1:
+      return outputs[0]
+    return outputs
 
   def fit_generator(self,
                     generator,
@@ -2172,11 +2210,6 @@ class Model(Network):
     if self._distribution_strategy:
       raise NotImplementedError('`fit_generator` is not supported for '
                                 'models compiled with DistributionStrategy.')
-
-    if not self.built and not self._is_graph_network:
-      raise NotImplementedError(
-          '`fit_generator` is not yet enabled for unbuilt Model subclasses')
-
     return training_generator.fit_generator(
         self,
         generator,
@@ -2243,12 +2276,6 @@ class Model(Network):
     if self._distribution_strategy:
       raise NotImplementedError('`evaluate_generator` is not supported for '
                                 'models compiled with DistributionStrategy.')
-
-    if not self.built and not self._is_graph_network:
-      raise NotImplementedError(
-          '`evaluate_generator` is not yet enabled for '
-          'unbuilt Model subclasses')
-
     return training_generator.evaluate_generator(
         self,
         generator,
@@ -2300,11 +2327,6 @@ class Model(Network):
     if self._distribution_strategy:
       raise NotImplementedError('`predict_generator` is not supported for '
                                 'models compiled with DistributionStrategy.')
-
-    if not self.built and not self._is_graph_network:
-      raise NotImplementedError(
-          '`predict_generator` is not yet enabled for unbuilt Model subclasses')
-
     return training_generator.predict_generator(
         self,
         generator,

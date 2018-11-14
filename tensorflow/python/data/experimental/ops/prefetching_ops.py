@@ -540,3 +540,71 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
   @property
   def output_classes(self):
     return self._input_dataset.output_classes
+
+
+class _MapOnGpuDataset(dataset_ops.UnaryDataset):
+  """A `Dataset` that maps a function over elements in its using a GPU."""
+
+  def __init__(self, input_dataset, map_func, use_inter_op_parallelism=True):
+    """See `Dataset.map()` for details."""
+    super(_MapOnGpuDataset, self).__init__(input_dataset)
+    self._input_dataset = input_dataset
+    self._use_inter_op_parallelism = use_inter_op_parallelism
+
+    wrapped_func = dataset_ops.StructuredFunctionWrapper(
+        map_func,
+        self._transformation_name(),
+        dataset=input_dataset,
+        defun_kwargs={"experimental_ints_on_device": True})
+    self._output_classes = wrapped_func.output_classes
+    self._output_shapes = wrapped_func.output_shapes
+    self._output_types = wrapped_func.output_types
+    self._map_func = wrapped_func.function
+
+  def _as_variant_tensor(self):
+    input_t = self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access
+    return ged_ops.experimental_map_dataset(
+        input_t,
+        self._map_func.captured_inputs,
+        f=self._map_func,
+        use_inter_op_parallelism=self._use_inter_op_parallelism,
+        **dataset_ops.flat_structure(self))
+
+  @property
+  def output_classes(self):
+    return self._output_classes
+
+  @property
+  def output_shapes(self):
+    return self._output_shapes
+
+  @property
+  def output_types(self):
+    return self._output_types
+
+  def _transformation_name(self):
+    return "map_on_gpu()"
+
+
+def map_on_gpu(map_func):
+  """Maps `map_func` across the elements of this dataset.
+
+  NOTE: This is a highly experimental version of `tf.data.Dataset.map` that runs
+  `map_func` on GPU. It must be used after applying the
+  `tf.data.experimental.copy_to_device` transformation with a GPU device
+  argument.
+
+  Args:
+    map_func: A function mapping a nested structure of tensors (having shapes
+      and types defined by `self.output_shapes` and `self.output_types`) to
+      another nested structure of tensors.
+
+  Returns:
+    A `Dataset` transformation function, which can be passed to
+    `tf.data.Dataset.apply`.
+  """
+
+  def _apply_fn(dataset):
+    return _MapOnGpuDataset(dataset, map_func)
+
+  return _apply_fn

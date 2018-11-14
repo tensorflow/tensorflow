@@ -19,10 +19,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.func_graph import FuncGraph
+from tensorflow.python.ops import control_flow_util
 
 
 class CondBranchFuncGraph(FuncGraph):
@@ -90,3 +92,25 @@ def unique_fn_name(scope, name):
 
 def unique_grad_fn_name(forward_name):
   return "%s_grad_%s" % (forward_name, ops.uid())
+
+
+def maybe_set_lowering_attr(op):
+  """Sets the flag to enable lowering on `op` if necessary.
+
+  Lowering allows cond_v2 and while_v2 to avoid some of the limitations of
+  Functions, allowing users to specify devices & colocation inside of cond_v2
+  and while_v2 input functions, and enabling non-strict evaluation & partial
+  pruning. This brings v2 control flow closer to feature parity with v1 control
+  flow.
+
+  However, we do not lower `If` and `While` ops in the XLA context because it is
+  easier for XLA to apply its own optimizations when dealing with un-lowered
+  control flow operators than with low-level control flow primitives.
+
+  Args:
+    op: An `If` or `While` Operation.
+  """
+  if not control_flow_util.IsInXLAContext(op):
+    # pylint: disable=protected-access
+    op._set_attr("_lower_using_switch_merge", attr_value_pb2.AttrValue(b=True))
+    # pylint: enable=protected-access

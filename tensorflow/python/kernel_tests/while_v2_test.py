@@ -262,7 +262,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
     # Gradient pass.
     grad = gradients_impl.gradients(ret[1], y)
-    grad_while_op = grad[0].op
+    grad_while_op = grad[0].op.inputs[0].op
     # Get the TensorList output of gradient While op containing the accumulated
     # values of grad_y.
     # grad_while_op.inputs:

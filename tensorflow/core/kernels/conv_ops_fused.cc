@@ -30,9 +30,11 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/conv_ops.h"
 #include "tensorflow/core/kernels/gemm_functors.h"
 #include "tensorflow/core/kernels/image_resizer_state.h"
+#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/util/mirror_pad_mode.h"
 #include "tensorflow/core/util/padding.h"
@@ -897,5 +899,290 @@ TF_CALL_double(REGISTER_FUSED);
 TF_CALL_half(REGISTER_PAD_ONLY_FUSED);
 TF_CALL_float(REGISTER_PAD_ONLY_FUSED);
 TF_CALL_double(REGISTER_PAD_ONLY_FUSED);
+
+// Support for fusing computationally cheap, but memory bandwidth expensive
+// computations into the output of convolution to reduce the overall latency.
+//
+// Example: Fuse Conv2D+BiasAdd+Relu.
+
+namespace {
+
+typedef Eigen::ThreadPoolDevice CPUDevice;
+
+// Type aliases for the unaligned tensors (tensor maps) used in output kernels.
+template <typename T>
+struct OutputTypes {
+  // There is no guarantee that the output block passed to the output kernel
+  // will be aligned.
+
+  using Tensor =
+      Eigen::TensorMap<Eigen::Tensor<T, 1, Eigen::RowMajor, Eigen::DenseIndex>,
+                       Eigen::Unaligned>;
+
+  using ConstTensor = Eigen::TensorMap<
+      Eigen::Tensor<const T, 1, Eigen::RowMajor, Eigen::DenseIndex>,
+      Eigen::Unaligned>;
+};
+
+// Type alias for the tensor contraction output mapper.
+template <typename Scalar, typename Index>
+using ContractionOutputMapper =
+    Eigen::internal::blas_data_mapper<Scalar, Index, Eigen::ColMajor>;
+
+// Output kernel that fused BiasAdd operation into the output of tensor
+// contraction.
+template <typename T>
+struct BiasAddOutputKernel {
+  explicit BiasAddOutputKernel(const T* bias_data) : bias_data(bias_data) {}
+
+  template <typename Index, typename Scalar>
+  EIGEN_ALWAYS_INLINE void operator()(
+      const ContractionOutputMapper<Scalar, Index>& output_mapper,
+      const Eigen::TensorContractionParams& params, Index i, Index j,
+      Index num_rows, Index num_cols) const {
+    DCHECK(params.swapped_arguments);
+
+    const T* bias_base = bias_data + i;
+
+    // TODO(ezhulenev): Use Eigen::Array with strides after upgrading Eigen.
+    for (int col = 0; col < num_cols; ++col) {
+      T* output_base = &output_mapper(0, col);
+      typename OutputTypes<T>::Tensor output(output_base, num_rows);
+      typename OutputTypes<T>::ConstTensor bias(bias_base, num_rows);
+      output = output + bias;
+    }
+  }
+
+ private:
+  const T* bias_data;
+};
+
+// Output kernel that fused BiasAdd and Relu operations into the output of
+// tensor contraction.
+template <typename T>
+struct BiasAddWithReluOutputKernel {
+  explicit BiasAddWithReluOutputKernel(const T* bias_data)
+      : bias_data(bias_data) {}
+
+  template <typename Index, typename Scalar>
+  EIGEN_ALWAYS_INLINE void operator()(
+      const ContractionOutputMapper<Scalar, Index>& output_mapper,
+      const Eigen::TensorContractionParams& params, Index i, Index j,
+      Index num_rows, Index num_cols) const {
+    DCHECK(params.swapped_arguments);
+
+    const T* bias_base = bias_data + i;
+
+    // TODO(ezhulenev): Use Eigen::Array with strides after upgrading Eigen.
+    for (int col = 0; col < num_cols; ++col) {
+      T* output_base = &output_mapper(0, col);
+      typename OutputTypes<T>::Tensor output(output_base, num_rows);
+      typename OutputTypes<T>::ConstTensor bias(bias_base, num_rows);
+      output = (output + bias).cwiseMax(static_cast<T>(0));
+    }
+  }
+
+ private:
+  const T* bias_data;
+};
+
+// Type aliases for the output kernels, purely for the sake of better launch
+// dispatching code readability.
+template <typename T>
+using WithBiasAdd = BiasAddOutputKernel<T>;
+template <typename T>
+using WithBiasAddAndRelu = BiasAddWithReluOutputKernel<T>;
+
+// Dispatch 2D convolution to the appropriate primitive operation:
+//   (1) MatMul for the case of 1x1 convolution.
+//   (2) MatMul for the case when filter size equals to the input size.
+//   (3) General spatial 2D convolution for all other cases.
+template <typename T, typename OutputKernel>
+struct LaunchConv2DWithOutputKernel {
+  void operator()(OpKernelContext* ctx, const Tensor& input,
+                  const Tensor& filter, int row_stride, int col_stride,
+                  int row_dilation, int col_dilation, const Padding& padding,
+                  const OutputKernel& output_kernel, Tensor* output,
+                  TensorFormat data_format) {
+    if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 && row_stride == 1 &&
+        col_stride == 1) {
+      int conv_width = 1;  // Width for the convolution step.
+      for (int i = 0; i < 3; ++i) {
+        conv_width *= output->dim_size(i);
+      }
+
+      Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
+      dim_pair[0] = Eigen::IndexPair<Eigen::DenseIndex>(1, 0);
+      functor::MatMulConvFunctor<CPUDevice, T, OutputKernel>()(
+          ctx->eigen_device<CPUDevice>(),
+          output->shaped<T, 2>({conv_width, filter.dim_size(3)}),
+          input.shaped<T, 2>({conv_width, filter.dim_size(2)}),
+          filter.shaped<T, 2>({filter.dim_size(2), filter.dim_size(3)}),
+          dim_pair, output_kernel);
+
+    } else if (filter.dim_size(0) == input.dim_size(1) &&
+               filter.dim_size(1) == input.dim_size(2) && row_dilation == 1 &&
+               col_dilation == 1 && padding == VALID) {
+      // If the input data and filter have the same height/width,
+      // reduce the 2D convolution to matrix multiplication.
+      const auto k =  // Length of reduction dimension.
+          filter.dim_size(0) * filter.dim_size(1) * filter.dim_size(2);
+
+      Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
+      dim_pair[0] = Eigen::IndexPair<Eigen::DenseIndex>(1, 0);
+      functor::MatMulConvFunctor<CPUDevice, T, OutputKernel>()(
+          ctx->eigen_device<CPUDevice>(),
+          output->shaped<T, 2>({input.dim_size(0), filter.dim_size(3)}),
+          input.shaped<T, 2>({input.dim_size(0), k}),
+          filter.shaped<T, 2>({k, filter.dim_size(3)}), dim_pair,
+          output_kernel);
+
+    } else {
+      functor::SpatialConvolution<CPUDevice, T, OutputKernel>()(
+          ctx->eigen_device<CPUDevice>(), output->tensor<T, 4>(),
+          input.tensor<T, 4>(), filter.tensor<T, 4>(), row_stride, col_stride,
+          row_dilation, col_dilation, BrainPadding2EigenPadding(padding),
+          output_kernel);
+    }
+  }
+};
+
+}  // namespace
+
+// Conv2D op with fused output kernels. Supports only CPUDevice.
+template <typename T>
+class FusedConv2DOp : public OpKernel {
+ public:
+  explicit FusedConv2DOp(OpKernelConstruction* context) : OpKernel(context) {
+    OP_REQUIRES_OK(context, InitConv2DParameters(context, &params_));
+
+    // 'fused_ops' and 'num_args' attributes are specified by the Grappler
+    // Remapper optimizer.
+
+    std::vector<string> fused_ops;
+    OP_REQUIRES_OK(context, context->GetAttr("fused_ops", &fused_ops));
+    OP_REQUIRES(context, !fused_ops.empty(),
+                errors::InvalidArgument(
+                    "Fused Conv2D must have at least one fused op."));
+
+    // Right now we always expect to have just one extra argument that is an
+    // input to the BiasAdd. In future we might fuse other types of computations
+    // taking additional arguments.
+
+    int num_args;
+    OP_REQUIRES_OK(context, context->GetAttr("num_args", &num_args));
+    OP_REQUIRES(context, num_args == 1,
+                errors::InvalidArgument(
+                    "Fused Conv2D must have one extra argument with a bias."));
+
+    // TODO(ezhulenev): Add support for fusion element-wise op chains defined
+    // at runtime, e.g. Relu+Sqrt+Tanh+etc...
+
+    if (FusedOpsMatches(fused_ops, {"BiasAdd"})) {
+      fused_computation_ = FusedComputationType::kBiasAdd;
+    } else if (FusedOpsMatches(fused_ops, {"BiasAdd", "Relu"})) {
+      fused_computation_ = FusedComputationType::kBiasAddWithRelu;
+    } else {
+      OP_REQUIRES(context, false,
+                  errors::Unimplemented("Fusion is not implemented: ",
+                                        str_util::Join(fused_ops, ",")));
+    }
+  }
+
+  void Compute(OpKernelContext* context) override {
+    // Input tensor is of the following dimensions:
+    // [ batch, in_rows, in_cols, in_depth ]
+    const Tensor& input = context->input(0);
+
+    // Input filter is of the following dimensions:
+    // [ filter_rows, filter_cols, in_depth, out_depth]
+    const Tensor& filter = context->input(1);
+
+    // Bias of the following dimensions:
+    // [ output_depth ]
+    const Tensor& bias = context->input(2);
+
+    Conv2DDimensions dimensions;
+    OP_REQUIRES_OK(context,
+                   ComputeConv2DDimension(params_, input, filter, &dimensions));
+
+    TensorShape out_shape = ShapeFromFormat(
+        params_.data_format, dimensions.batch, dimensions.out_rows,
+        dimensions.out_cols, dimensions.out_depth);
+
+    // Output tensor is of the following dimensions:
+    // [ in_batch, out_rows, out_cols, out_depth ]
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
+
+    VLOG(2) << "FusedConv2DWithBias: in_depth = " << dimensions.in_depth
+            << ", patch_depth = " << dimensions.patch_depth
+            << ", input_cols = " << dimensions.input_cols
+            << ", filter_cols = " << dimensions.filter_cols
+            << ", input_rows = " << dimensions.input_rows
+            << ", filter_rows = " << dimensions.filter_rows
+            << ", stride_rows = " << dimensions.stride_rows
+            << ", stride_cols = " << dimensions.stride_cols
+            << ", dilation_rows = " << dimensions.dilation_rows
+            << ", dilation_cols = " << dimensions.dilation_cols
+            << ", out_depth = " << dimensions.out_depth;
+
+    // If there is nothing to compute, return.
+    if (out_shape.num_elements() == 0) {
+      return;
+    }
+
+    OP_REQUIRES(context, params_.data_format == FORMAT_NHWC,
+                errors::Unimplemented("Fused conv implementation only supports "
+                                      "NHWC tensor format for now."));
+    OP_REQUIRES(context, dimensions.in_depth == filter.dim_size(2),
+                errors::Unimplemented("Fused conv implementation does not "
+                                      "support grouped convolutions for now."));
+
+    auto bias_data = reinterpret_cast<const T*>(bias.tensor_data().data());
+
+#define LAUNCH_CONV2D(KERNEL)                                                 \
+  LaunchConv2DWithOutputKernel<T, KERNEL>()(                                  \
+      context, input, filter, dimensions.stride_rows, dimensions.stride_cols, \
+      dimensions.dilation_rows, dimensions.dilation_cols, params_.padding,    \
+      KERNEL(bias_data), output, params_.data_format);                        \
+  break
+
+    switch (fused_computation_) {
+      case FusedComputationType::kBiasAdd:
+        LAUNCH_CONV2D(WithBiasAdd<T>);
+      case FusedComputationType::kBiasAddWithRelu:
+        LAUNCH_CONV2D(WithBiasAddAndRelu<T>);
+    }
+  }
+#undef LAUNCH_CONV2D
+
+ private:
+  bool FusedOpsMatches(const std::vector<string>& fused_ops,
+                       const std::vector<string>& expected) const {
+    return fused_ops == expected;
+  }
+
+  // Element-wise ops applied to the result of Conv2D.
+  // TODO(ezhulenev): Add support for runtime-defined op chains.
+  enum class FusedComputationType { kBiasAdd, kBiasAddWithRelu };
+
+  Conv2DParameters params_;
+  FusedComputationType fused_computation_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(FusedConv2DOp);
+};
+
+#define REGISTER_FUSED_CONV2D(T)                                      \
+  REGISTER_KERNEL_BUILDER(                                            \
+      Name("_FusedConv2D").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      FusedConv2DOp<T>);
+
+// If we're using the alternative GEMM-based implementation of Conv2D for the
+// CPU implementation, don't register this EigenTensor-based version.
+#if !defined(USE_GEMM_FOR_CONV)
+TF_CALL_float(REGISTER_FUSED_CONV2D);
+TF_CALL_double(REGISTER_FUSED_CONV2D);
+#endif  // !USE_GEMM_FOR_CONV
 
 }  // namespace tensorflow

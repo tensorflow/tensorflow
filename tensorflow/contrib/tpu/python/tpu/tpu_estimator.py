@@ -109,6 +109,15 @@ ops.register_proto_function(
     from_proto=resource_variable_ops._from_proto_fn)  # pylint: disable=protected-access
 
 
+def _is_iterable(obj):
+  """A Python 2 and 3 compatible util to check whether `obj` is iterable."""
+  try:
+    iter(obj)
+    return True
+  except TypeError:
+    return False
+
+
 def _create_global_step(graph):
   graph = graph or ops.get_default_graph()
   if training.get_global_step(graph) is not None:
@@ -2257,8 +2266,7 @@ class TPUEstimator(estimator_lib.Estimator):
         # Only fetching `tpu_tensors_on_cpu` does not trigger
         # TPU computation and blocks, so we add the control dependency here.
         control_inputs = (
-            tpu_tensors_on_cpu if isinstance(tpu_tensors_on_cpu,
-                                             (list, tuple)) else
+            tpu_tensors_on_cpu if _is_iterable(tpu_tensors_on_cpu) else
             (tpu_tensors_on_cpu,))
         with ops.control_dependencies(control_inputs):
           new_tensors.append(array_ops.identity(t))

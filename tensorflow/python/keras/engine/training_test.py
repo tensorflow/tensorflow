@@ -18,9 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import io
 import logging
+import sys
 
 import numpy as np
+import six
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
@@ -1791,9 +1794,6 @@ class TestTrainingWithDatasetIterators(test.TestCase):
     model.fit(iterator, epochs=1, steps_per_epoch=2, verbose=1)
     model.evaluate(iterator, steps=2, verbose=1)
     model.predict(iterator, steps=2)
-    model.train_on_batch(iterator)
-    model.test_on_batch(iterator)
-    model.predict_on_batch(iterator)
 
     # Test with validation data
     model.fit(iterator,
@@ -1920,8 +1920,6 @@ class TestTrainingWithDataset(test.TestCase):
     model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
     model.evaluate(dataset, steps=2, verbose=1)
     model.predict(dataset, steps=2)
-    model.train_on_batch(dataset)
-    model.predict_on_batch(dataset)
 
     # Test with validation data
     model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
@@ -1982,8 +1980,6 @@ class TestTrainingWithDataset(test.TestCase):
     model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
     model.evaluate(dataset, steps=2, verbose=1)
     model.predict(dataset, steps=2)
-    model.train_on_batch(dataset)
-    model.predict_on_batch(dataset)
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_dataset_with_sparse_labels(self):
@@ -2221,6 +2217,19 @@ class TestTrainingWithMetrics(test.TestCase):
       w = np.array([3, 2, 4])
       scores = model.train_on_batch(x, y, sample_weight=w)
       self.assertArrayNear(scores, [0.2, 0.8], 0.1)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_logging(self):
+    mock_stdout = io.BytesIO() if six.PY2 else io.StringIO()
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(10, activation='relu'))
+    model.add(keras.layers.Dense(1, activation='sigmoid'))
+    model.compile(
+        RMSPropOptimizer(learning_rate=0.001), loss='binary_crossentropy')
+    with test.mock.patch.object(sys, 'stdout', mock_stdout):
+      model.fit(
+          np.ones((10, 10), 'float32'), np.ones((10, 1), 'float32'), epochs=10)
+    self.assertTrue('Epoch 5/10' in mock_stdout.getvalue())
 
   def test_losses_in_defun(self):
     with context.eager_mode():
