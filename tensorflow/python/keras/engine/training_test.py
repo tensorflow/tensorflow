@@ -1794,9 +1794,6 @@ class TestTrainingWithDatasetIterators(test.TestCase):
     model.fit(iterator, epochs=1, steps_per_epoch=2, verbose=1)
     model.evaluate(iterator, steps=2, verbose=1)
     model.predict(iterator, steps=2)
-    model.train_on_batch(iterator)
-    model.test_on_batch(iterator)
-    model.predict_on_batch(iterator)
 
     # Test with validation data
     model.fit(iterator,
@@ -1923,8 +1920,6 @@ class TestTrainingWithDataset(test.TestCase):
     model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
     model.evaluate(dataset, steps=2, verbose=1)
     model.predict(dataset, steps=2)
-    model.train_on_batch(dataset)
-    model.predict_on_batch(dataset)
 
     # Test with validation data
     model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
@@ -1985,8 +1980,6 @@ class TestTrainingWithDataset(test.TestCase):
     model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
     model.evaluate(dataset, steps=2, verbose=1)
     model.predict(dataset, steps=2)
-    model.train_on_batch(dataset)
-    model.predict_on_batch(dataset)
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_dataset_with_sparse_labels(self):
