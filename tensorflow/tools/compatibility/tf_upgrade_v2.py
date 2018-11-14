@@ -31,6 +31,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Maps from a function name to a dictionary that describes how to
     # map from an old argument keyword to the new argument keyword.
     self.function_keyword_renames = {
+        "tf.expand_dims": {
+            "dim": "axis",
+        },
         "tf.convert_to_tensor": {
             "preferred_dtype": "dtype_hint"
         },

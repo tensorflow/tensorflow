@@ -135,10 +135,10 @@ LogMessage::~LogMessage() {
 int64 LogMessage::MinVLogLevel() {
   // We don't want to print logs during fuzzing as that would slow fuzzing down
   // by almost 2x. So, if we are in fuzzing mode (not just running a test), we
-  // return maximum value so that nothing is actually printed
+  // return minimum value so that nothing is actually printed
   // See also http://llvm.org/docs/LibFuzzer.html#fuzzer-friendly-build-mode
 #ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
-  return tensorflow::NUM_SEVERITIES;
+  return 0;
 #else
   static int64 min_vlog_level = MinVLogLevelFromEnv();
   return min_vlog_level;

@@ -189,18 +189,6 @@ class DistributionTestBase(test.TestCase):
       # Error should go down
       self.assertLess(error_after, error_before)
 
-  def _test_device_index(self, d):
-    with d.scope():
-      expected_devices = [False] * len(d.worker_devices)
-
-      def mark_devices_fn(device_id):
-        self.assertLess(device_id, len(d.worker_devices))
-        self.assertFalse(expected_devices[device_id])
-        expected_devices[device_id] = True
-
-      d.call_for_each_replica(mark_devices_fn, args=(d.worker_device_index,))
-      self.assertAllEqual(expected_devices, [True] * len(d.worker_devices))
-
   def _test_replica_id(self, d):
     with d.scope():
       expected_devices = [False] * len(d.worker_devices)
