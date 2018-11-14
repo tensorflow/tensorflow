@@ -155,3 +155,11 @@ py_library(
         "//tensorflow/python:training",
     ],
 )
+
+py_library(
+    name = "reduce_util",
+    srcs = [
+        "reduce_util.py",
+    ],
+    deps = [],
+)

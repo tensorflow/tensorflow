@@ -3590,6 +3590,7 @@ py_library(
         ":util",
         ":variable_scope",
         "//tensorflow/python/data",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/ops/losses",
     ],
 )

@@ -85,6 +85,7 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
     ],
@@ -105,6 +106,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:context",
     ],
 )
@@ -151,6 +153,7 @@ py_library(
         "//tensorflow/python:distribute",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
     ],
@@ -343,6 +346,7 @@ py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
+        "//tensorflow/python/distribute:reduce_util",
     ],
 )
 
@@ -669,6 +673,7 @@ py_library(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
     ],

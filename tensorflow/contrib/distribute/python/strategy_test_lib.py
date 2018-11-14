@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
@@ -26,7 +27,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import optimizer
@@ -114,8 +114,7 @@ class DistributionTestBase(test.TestCase):
           before_list.append(fetched)
           # control_dependencies irrelevant but harmless in eager execution
           with ops.control_dependencies([fetched]):
-            g = d.reduce(
-                variable_scope.VariableAggregation.SUM, g, destinations=v)
+            g = d.reduce(reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(d.update(
                 v, update, g, grouped=False)):
               after_list.append(d.read_var(v))
@@ -169,8 +168,7 @@ class DistributionTestBase(test.TestCase):
           fetched = d.read_var(v)
           before_list.append(fetched)
           with ops.control_dependencies([fetched]):
-            g = d.reduce(
-                variable_scope.VariableAggregation.SUM, g, destinations=v)
+            g = d.reduce(reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(d.update(
                 v, update, g, grouped=False)):
               after_list.append(d.read_var(v))

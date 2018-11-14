@@ -27,6 +27,7 @@ from tensorflow.contrib.distribute.python import cross_tower_utils
 from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import keras
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -128,7 +129,7 @@ class CollectiveAllReduceStrategyTestBase(
           with ops.control_dependencies([fetched]):
             # TODO(yuefengz): support non-Mirrored variable as destinations.
             g = d.reduce(
-                variable_scope.VariableAggregation.SUM, g, destinations=v)
+                reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(
                 d.update(v, update, g, grouped=False)):
               after_list.append(d.read_var(v))
@@ -224,7 +225,7 @@ class CollectiveAllReduceStrategyTestBase(
       x = distribution.call_for_each_replica(model_fn)
       reduced_x = distribution.unwrap(
           distribution.reduce(
-              variable_scope.VariableAggregation.MEAN, x,
+              reduce_util.ReduceOp.MEAN, x,
               destinations='/cpu:0'))[0]
       x = distribution.unwrap(x)[0]
 

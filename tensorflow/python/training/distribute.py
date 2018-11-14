@@ -21,6 +21,7 @@ from __future__ import print_function
 import threading
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -755,9 +756,13 @@ class DistributionStrategy(object):
     """Combine (via e.g. sum or mean) values across replicas.
 
     Args:
-      aggregation: Indicates how a variable will be aggregated. Accepted values
-        are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`,
+      aggregation: Reduction type, an instance of `tf.distribute.ReduceOp` enum.
+        DEPRECATED but still accepted values:
+        `tf.VariableAggregation.SUM`,
+        `tf.VariableAggregation.MEAN`,
         `tf.VariableAggregation.ONLY_FIRST_REPLICA`.
+        # TODO(priyag): Rename this argument when moving the method to
+        # DSExtended.
       value: A per-replica value with one value per replica.
       destinations: A mirrored variable, a per-replica tensor, a device string,
         or list of device strings. The return value will be copied to all
@@ -771,23 +776,32 @@ class DistributionStrategy(object):
     # TODO(josh11b): Return an unwrapped value if colocate_with is a
     # single device.
     _require_cross_replica_context(self)
-    assert aggregation in [
-        variable_scope.VariableAggregation.SUM,
-        variable_scope.VariableAggregation.MEAN,
-        variable_scope.VariableAggregation.ONLY_FIRST_REPLICA
-    ]
-    return self._reduce(aggregation, value, destinations)
 
-  def _reduce(self, aggregation, value, destinations):
+    # TODO(priyag): Remove this when all callers have been updated.
+    reduce_op = aggregation
+    if isinstance(aggregation, variable_scope.VariableAggregation):
+      assert aggregation in [
+          variable_scope.VariableAggregation.SUM,
+          variable_scope.VariableAggregation.MEAN,
+          variable_scope.VariableAggregation.ONLY_FIRST_REPLICA
+      ]
+      reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
+    return self._reduce(reduce_op, value, destinations)
+
+  def _reduce(self, reduce_op, value, destinations):
     raise NotImplementedError("must be implemented in descendants")
 
   def batch_reduce(self, aggregation, value_destination_pairs):
     """Combine multiple `reduce` calls into one for faster execution.
 
     Args:
-      aggregation: Indicates how a variable will be aggregated. Accepted values
-        are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`,
+      aggregation: Reduction type, an instance of `tf.distribute.ReduceOp` enum.
+        DEPRECATED but still accepted values:
+        `tf.VariableAggregation.SUM`,
+        `tf.VariableAggregation.MEAN`,
         `tf.VariableAggregation.ONLY_FIRST_REPLICA`.
+        # TODO(priyag): Rename this argument when moving the method to
+        # DSExtended.
       value_destination_pairs: A sequence of (value, destinations)
         pairs. See `reduce()` for a description.
 
@@ -796,16 +810,21 @@ class DistributionStrategy(object):
     """
     # TODO(josh11b): More docstring
     _require_cross_replica_context(self)
-    assert aggregation in [
-        variable_scope.VariableAggregation.SUM,
-        variable_scope.VariableAggregation.MEAN,
-        variable_scope.VariableAggregation.ONLY_FIRST_REPLICA
-    ]
-    return self._batch_reduce(aggregation, value_destination_pairs)
 
-  def _batch_reduce(self, aggregation, value_destination_pairs):
+    # TODO(priyag): Remove this when all callers have been updated.
+    reduce_op = aggregation
+    if isinstance(aggregation, variable_scope.VariableAggregation):
+      assert aggregation in [
+          variable_scope.VariableAggregation.SUM,
+          variable_scope.VariableAggregation.MEAN,
+          variable_scope.VariableAggregation.ONLY_FIRST_REPLICA
+      ]
+      reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
+    return self._batch_reduce(reduce_op, value_destination_pairs)
+
+  def _batch_reduce(self, reduce_op, value_destination_pairs):
     return [
-        self.reduce(aggregation, t, destinations=v)
+        self.reduce(reduce_op, t, destinations=v)
         for t, v in value_destination_pairs
     ]
 
@@ -1154,9 +1173,9 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     with ReplicaContext(self, replica_id=0):
       return fn(*args, **kwargs)
 
-  def _reduce(self, aggregation, value, destinations):
+  def _reduce(self, reduce_op, value, destinations):
     # TODO(josh11b): Use destinations?
-    del aggregation, destinations
+    del reduce_op, destinations
     return value
 
   def _update(self, var, options, fn, *args, **kwargs):

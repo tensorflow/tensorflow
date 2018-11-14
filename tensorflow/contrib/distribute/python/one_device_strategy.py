@@ -122,8 +122,8 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     with ops.device(self._device), _OneDeviceReplicaContext(self):
       return fn(*args, **kwargs)
 
-  def _reduce(self, aggregation, value, destinations):
-    del aggregation, destinations
+  def _reduce(self, reduce_op, value, destinations):
+    del reduce_op, destinations
     return value
 
   def _update(self, var, options, fn, *args, **kwargs):

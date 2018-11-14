@@ -28,6 +28,7 @@ from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.contrib.distribute.python import values
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
@@ -117,7 +118,7 @@ class MirroredTwoDeviceDistributionTest(strategy_test_lib.DistributionTestBase):
     with dist.scope():
       result = dist.call_for_each_replica(_replica_id)
       reduced = dist.reduce(
-          variable_scope.VariableAggregation.SUM,
+          reduce_util.ReduceOp.SUM,
           result,
           destinations="/device:CPU:0")
       unwrapped = dist.unwrap(reduced)
@@ -137,7 +138,7 @@ class MirroredTwoDeviceDistributionTest(strategy_test_lib.DistributionTestBase):
     with dist.scope():
       result = dist.call_for_each_replica(run_fn)
       reduced = dist.reduce(
-          variable_scope.VariableAggregation.ONLY_FIRST_REPLICA,
+          reduce_util.ReduceOp.ONLY_FIRST_REPLICA,
           result,
           destinations="/device:CPU:0")
       unwrapped = dist.unwrap(reduced)
@@ -157,7 +158,7 @@ class MirroredTwoDeviceDistributionTest(strategy_test_lib.DistributionTestBase):
     dist = mirrored_strategy.MirroredStrategy(devices)
     with dist.scope():
       reduced = dist.reduce(
-          variable_scope.VariableAggregation.SUM,
+          reduce_util.ReduceOp.SUM,
           1.0,
           destinations=["/device:CPU:0", "/device:GPU:0"])
       unwrapped = dist.unwrap(reduced)
@@ -912,7 +913,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
       with self.assertRaisesRegexp(
           ValueError, "A non-DistributedValues value 5.0 cannot be reduced "
-          "with the given aggregation VariableAggregation.SUM."):
+          "with the given reduce op ReduceOp.SUM."):
         self.evaluate(dist.unwrap(dist.call_for_each_replica(model_fn)))
 
   @test_util.run_in_graph_and_eager_modes(config=config)

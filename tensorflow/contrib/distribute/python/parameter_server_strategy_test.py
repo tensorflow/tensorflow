@@ -28,6 +28,7 @@ from tensorflow.contrib.distribute.python import parameter_server_strategy
 from tensorflow.contrib.distribute.python import values
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import run_config
@@ -473,7 +474,7 @@ class ParameterServerStrategyTestBase(
           with ops.control_dependencies([fetched]):
             # TODO(yuefengz): support non-Mirrored variable as destinations.
             g = d.reduce(
-                variable_scope.VariableAggregation.SUM, g, destinations=v)
+                reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(
                 d.update(v, update, g, grouped=False)):
               after_list.append(d.read_var(v))
