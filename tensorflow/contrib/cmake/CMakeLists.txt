@@ -108,7 +108,7 @@ if (NOT WIN32)
 
   # Options for linking other libraries
   option(systemlib_ZLIB "Use the system installed library as shared objects instead of downloading ZLIB and statically linking to it: ZLIB" OFF)
-  option(systemlib_ABSEIL_CPP "Use the system installed library as shared objects instead of downloading ABSEIL_CPP and statically linking to it: ABSEIL_CPP" OFF)
+  option(systemlib_ABSEIL_CPP "Use the system installed library as shared objects instead of downloading ABSEIL_CPP and statically linking to it: ABSEIL_CPP" ON)
 
   option(systemlib_ALL "Turn on every possible systemlib_* options" OFF)
   if (systemlib_ALL)
