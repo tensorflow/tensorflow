@@ -611,8 +611,8 @@ TEST_F(BufferLivenessTest, DependentTupleElements) {
 class FusedDynamicUpdateSliceLivenessTest : public BufferLivenessTest {
  protected:
   // Builds and runs a computation (see test case computation graphs below).
-  std::unique_ptr<HloModule> BuildModule(const bool update_uses_tuple_element1,
-                                         const bool fuse_gte0) {
+  std::unique_ptr<VerifiedHloModule> BuildModule(
+      const bool update_uses_tuple_element1, const bool fuse_gte0) {
     auto builder = HloComputation::Builder(TestName());
     // Create param0 Tuple.
     Shape data_shape = ShapeUtil::MakeShape(F32, {8});
