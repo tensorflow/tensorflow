@@ -2630,6 +2630,7 @@ cuda_py_test(
     name = "dct_ops_test",
     srcs = ["dct_ops_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
