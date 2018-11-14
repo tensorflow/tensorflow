@@ -60,7 +60,7 @@ def gen_api_init_files(
         root_init_template_flag = "--root_init_template=$(location " + root_init_template + ")"
 
     primary_package = packages[0]
-    api_gen_binary_target = ("create_" + primary_package + "_api_%d") % api_version
+    api_gen_binary_target = ("create_" + primary_package + "_api_%d_%s") % (api_version, name)
     native.py_binary(
         name = api_gen_binary_target,
         srcs = ["//tensorflow/python/tools/api/generator:create_python_api.py"],

@@ -45,10 +45,10 @@ _GENERATED_FILE_HEADER = """# This file is MACHINE GENERATED! Do not edit.
 \"\"\"%s
 \"\"\"
 
-from __future__ import print_function
+from __future__ import print_function as _print_function
 
 """
-_GENERATED_FILE_FOOTER = '\n\ndel print_function\n'
+_GENERATED_FILE_FOOTER = '\n\ndel _print_function\n'
 
 
 class SymbolExposedTwiceError(Exception):
