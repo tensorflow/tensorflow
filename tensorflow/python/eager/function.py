@@ -724,7 +724,7 @@ class PolymorphicFunction(object):
                name,
                input_signature=None,
                attributes=None,
-               autograph=False):
+               autograph=True):
     """Initializes a polymorphic function.
 
     Args:
@@ -1137,7 +1137,7 @@ def validate_signature(signature):
                     "a possibly nested sequence of TensorSpec objects.")
 
 
-def defun(func=None, input_signature=None, autograph=False):
+def defun(func=None, input_signature=None, autograph=True):
   """Compiles a Python function into a callable TensorFlow graph.
 
   `defun` (short for "define function") trace-compiles a Python function
@@ -1470,7 +1470,7 @@ def defun(func=None, input_signature=None, autograph=False):
 def defun_with_attributes(func=None,
                           input_signature=None,
                           attributes=None,
-                          autograph=False):
+                          autograph=True):
   """Compiles a Python function into a callable TensorFlow graph.
 
   This function supports adding extra function attributes. See detailed
