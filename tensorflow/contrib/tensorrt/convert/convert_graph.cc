@@ -435,7 +435,8 @@ tensorflow::Status GetEngineInfo(
                  << "but this shouldn't have happened";
     info->device = *segment_devices.begin();
   } else {
-    LOG(ERROR) << "Can't find a device placement for the op!";
+    VLOG(1) << "No device is assigned to the segment. "
+            << "A device will be assigned during graph execution (inference).";
   }
   return Status::OK();
 }
@@ -875,10 +876,8 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
       // need to check the input edges.
       [](const Edge* edge) { return true; }, OutputEdgeValidator(),
       segment_options, &initial_segments));
-  if (initial_segments.size() > 1) {
-    VLOG(0) << "MULTIPLE tensorrt candidate conversion: "
-            << initial_segments.size();
-  }
+  VLOG(0) << "Number of TensorRT candidate segments: "
+    << initial_segments.size();
 
   // Get the EngineInfo for each segment.
   std::unordered_map<string, tensorflow::Node*> node_map;
@@ -910,7 +909,7 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
              : EngineInfo::EngineType::TRTStatic);
     curr_engine.cached_engine_batches = params.cached_engine_batches;
     curr_engine.maximum_cached_engines = params.max_cached_engines;
-    StrAppend(&curr_engine.engine_name, "my_trt_op_", t);
+    StrAppend(&curr_engine.engine_name, "TRTEngineOp_", t);
     status = RegisterSegmentFunctionToFunctionLibrary(
         &graph, curr_engine.segment_graph_def, curr_engine.engine_name);
     if (!status.ok()) {
@@ -971,7 +970,7 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
                                 &graph, alloc.get(), &engine_nodes);
     // If status is ok, we successfully added the node to the graph and can
     // remove segment ops. Otherwise graph is not modified.
-    string msg = StrCat("Engine ", engine.engine_name, " creation for segment ",
+    string msg = StrCat("Adding TensorRT node ", engine.engine_name, " for segment ",
                         i, ", composed of ",
                         converted_segments.at(i).first.size(), " nodes");
     if (VLOG_IS_ON(1)) {

@@ -2982,7 +2982,7 @@ tensorflow::Status ConvertSegmentToGraphDef(
     }
   }
   *common_scope = local_scope;
-  VLOG(0) << "Segment @scope '" << local_scope << "', converted to graph";
+  VLOG(1) << "Converted TensorRT candidate segment @scope '" << local_scope << "' to a GraphDef";
   return tensorflow::Status::OK();
 }
 

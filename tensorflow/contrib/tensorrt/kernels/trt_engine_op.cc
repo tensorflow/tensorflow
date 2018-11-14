@@ -491,8 +491,8 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
     }
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     bool convert_successfully = false;
-    VLOG(0) << name() << " Constructing a new engine with batch size "
-            << batch_size;
+    VLOG(0) << "Building a new TensorRT engine for " << name()
+            << " with batch size " << batch_size;
     // Up to this point, calibrator_ can never be empty, since otherwise it
     // means calibration_mode_ is true and this path won't get executed.
     auto status = convert::ConvertGraphDefToEngine(
