@@ -20,14 +20,12 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.platform import test
 
 
-random_seed.set_random_seed(23)
 rng = np.random.RandomState(2016)
 
 

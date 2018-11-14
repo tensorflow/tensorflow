@@ -131,6 +131,8 @@ TF_CAPI_EXPORT extern void TF_EnqueueNamedTensor(TF_Session* session,
                                                  int tensor_id,
                                                  TF_Tensor* tensor,
                                                  TF_Status* status);
+// Create a serialized tensorflow.ServerDef proto.
+TF_Buffer* TFE_GetServerDef(const char* text_proto, TF_Status* status);
 
 // TODO: remove this API in favor of the next one.
 TF_CAPI_EXPORT extern TFE_Context* TFE_NewContextFromSession(
@@ -178,10 +180,34 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_DequeueVariantTensor(
 TF_CAPI_EXPORT extern void TFE_TensorHandlePrintDebugString(
     TFE_TensorHandle* handle);
 
-// Returns a const scalar tensor.
-// Caller owns both the input and the output tensor handles.
-// TODO: Remove this API with hard-coded tensor computation.
-TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_RunConstOp(TFE_Context* ctx);
+TF_CAPI_EXPORT extern void TF_MakeInternalErrorStatus(TF_Status* status,
+                                                      const char* errMsg);
+
+// TF_NewAttrBuilder() returns an object that you can set attributes on as
+// though it were an op. This allows querying properties of that op for
+// type-checking purposes like if the op will run on a particular device type.
+typedef struct TF_AttrBuilder TF_AttrBuilder;
+TF_CAPI_EXPORT extern TF_AttrBuilder* TF_NewAttrBuilder(const char* op_name);
+TF_CAPI_EXPORT extern void TF_DeleteAttrBuilder(TF_AttrBuilder* builder);
+TF_CAPI_EXPORT extern void TF_AttrBuilderSetType(TF_AttrBuilder* builder,
+                                                 const char* attr_name,
+                                                 TF_DataType value);
+TF_CAPI_EXPORT extern void TF_AttrBuilderSetTypeList(TF_AttrBuilder* builder,
+                                                     const char* attr_name,
+                                                     const TF_DataType* values,
+                                                     int num_values);
+
+// Checks the tensorflow::NodeDef built via the methods above to see if it can
+// run on device_type.
+TF_CAPI_EXPORT extern void TF_AttrBuilderCheckCanRunOnDevice(
+    TF_AttrBuilder* builder, const char* device_type, TF_Status* status);
+
+// For argument number input_index, fetch the corresponding number_attr that
+// needs to be updated with the argument length of the input list.
+// Returns nullptr if there is any problem like op_name is not found, or the
+// argument does not support this attribute type.
+TF_CAPI_EXPORT extern const char* TF_GetNumberAttrForOpListInput(
+    const char* op_name, int input_index, TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

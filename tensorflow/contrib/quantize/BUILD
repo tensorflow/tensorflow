@@ -20,9 +20,13 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":common",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
         "//tensorflow/python:variable_scope",
@@ -134,7 +138,6 @@ py_library(
     srcs = ["python/quant_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
@@ -202,6 +205,10 @@ py_test(
     size = "large",
     srcs = ["python/quantize_parameterized_test.py"],
     srcs_version = "PY2AND3",
+    # TODO(b/118839526): Re-enable msan test.
+    tags = [
+        "nomsan",
+    ],
     deps = [
         ":fold_batch_norms",
         ":quantize",

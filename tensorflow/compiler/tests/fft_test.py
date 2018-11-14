@@ -24,10 +24,10 @@ import numpy as np
 import scipy.signal as sps
 
 from tensorflow.compiler.tests import xla_test
-from tensorflow.contrib.signal.python.ops import spectral_ops as signal
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import signal
 from tensorflow.python.ops import spectral_ops
 from tensorflow.python.platform import googletest
 

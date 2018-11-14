@@ -252,12 +252,12 @@ class GradientDescentOptimizerTest(test.TestCase):
       optimizer = gradient_descent.GradientDescentOptimizer(1.0)
 
       def step():
-        v = resource_variable_ops.ResourceVariable(1.0)
+        self.v = resource_variable_ops.ResourceVariable(1.0)
         with backprop.GradientTape() as tape:
-          loss = v ** 2
-        grad = tape.gradient(loss, v)
-        optimizer.apply_gradients([(grad, v)])
-        return v.read_value()
+          loss = self.v ** 2
+        grad = tape.gradient(loss, self.v)
+        optimizer.apply_gradients([(grad, self.v)])
+        return self.v.read_value()
 
       compiled_step = function.defun(step)
 

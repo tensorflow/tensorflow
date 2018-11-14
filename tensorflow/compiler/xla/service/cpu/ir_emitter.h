@@ -23,6 +23,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/Triple.h"
@@ -47,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -59,6 +59,9 @@ namespace cpu {
 class IrEmitter : public DfsHloVisitorWithDefault,
                   public IrBuilderMixin<IrEmitter> {
  public:
+  using GeneratorForOperandIrArrays =
+      std::function<std::vector<llvm_ir::IrArray>()>;
+
   // Create a new LLVM IR emitter.
   //
   // hlo_module: the HLO module we are emitting IR for.
@@ -163,6 +166,12 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status Preprocess(HloInstruction* hlo) override;
   Status Postprocess(HloInstruction* hlo) override;
 
+  // A convenient helper for calling BufferAssignment::GetUniqueSlice.
+  BufferAllocation::Slice GetAllocationSlice(
+      const HloInstruction& hlo, const ShapeIndex& index = {}) const {
+    return assignment_.GetUniqueSlice(&hlo, index).ConsumeValueOrDie();
+  }
+
  private:
   // Private helper to initialize an IR function for the computation.
   void InitializeIrFunction(const string& function_name);
@@ -201,6 +210,11 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Gets a list of IrArrays, one for each of hlo's operands.
   std::vector<llvm_ir::IrArray> GetIrArraysForOperandsOf(
       const HloInstruction* hlo);
+
+  GeneratorForOperandIrArrays GetGeneratorForOperandIrArrays(
+      HloInstruction* unnested_hlo) {
+    return [=]() { return GetIrArraysForOperandsOf(unnested_hlo); };
+  }
 
   // Augments IrArray with aliasing information.
   void AddAliasingInformationToIrArray(const HloInstruction& hlo,
@@ -421,7 +435,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Maps the buffer allocation slices for the parameters to the computation
   // being compiled to their parameter numbers.  Only relevant for thread local
   // computations.
-  tensorflow::gtl::FlatMap<BufferAllocation::Index, int64>
+  absl::flat_hash_map<BufferAllocation::Index, int64>
       computation_parameter_allocations_;
 
   // Maps HLO instructions to their index into the profile counter array.
@@ -561,11 +575,11 @@ class IrEmitter : public DfsHloVisitorWithDefault,
     }
   };
 
-  tensorflow::gtl::FlatMap<const Literal*, llvm::Constant*,
-                           LiteralPtrHashFunctor, LiteralPtrEqualityFunctor>
+  absl::flat_hash_map<const Literal*, llvm::Constant*, LiteralPtrHashFunctor,
+                      LiteralPtrEqualityFunctor>
       emitted_literals_;
 
-  tensorflow::gtl::FlatMap<BufferAllocation::Index, llvm::Constant*>
+  absl::flat_hash_map<BufferAllocation::Index, llvm::Constant*>
       constant_buffer_to_global_;
 
   std::vector<const HloComputation*> thread_local_computations_;

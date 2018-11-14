@@ -87,7 +87,8 @@ class MultivariateNormalDiagPlusLowRank(
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   # Initialize a single 3-variate Gaussian with covariance `cov = S @ S.T`,
   # `S = diag(d) + U @ diag(m) @ U.T`. The perturbation, `U @ diag(m) @ U.T`, is

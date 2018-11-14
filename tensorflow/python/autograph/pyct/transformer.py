@@ -26,6 +26,7 @@ import six
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import pretty_printer
+from tensorflow.python.autograph.pyct import templates
 
 
 class AutographParseError(SyntaxError):
@@ -92,7 +93,8 @@ class _StateStack(object):
     # the superclass' setattr.
     object.__setattr__(self, 'type', type_)
     object.__setattr__(self, '_stack', [])
-    self.enter()
+    if not hasattr(type_, 'no_root'):
+      self.enter()
 
   def enter(self):
     self._stack.append(self.type())
@@ -107,6 +109,9 @@ class _StateStack(object):
   @property
   def value(self):
     return self._stack[-1]
+
+  def __iter__(self):
+    return iter(self._stack)
 
   def __getattr__(self, key):
     return getattr(self._stack[-1], key)
@@ -199,8 +204,10 @@ class Base(gast.NodeTransformer):
     Args:
       entity_info: An EntityInfo object.
     """
+    self._current_origin = None
     self._lineno = 0
     self._col_offset = 0
+    # TODO(znado): remove this from the constructor of all Transformers.
     self.entity_info = entity_info
     self._enclosing_entities = []
 
@@ -274,6 +281,12 @@ class Base(gast.NodeTransformer):
       print(pretty_printer.fmt(node))
     return node
 
+  def create_assignment(self, target, expression):
+    template = """
+      target = expression
+    """
+    return templates.replace(template, target=target, expression=expression)
+
   def visit_block(self, nodes, before_visit=None, after_visit=None):
     """A more powerful version of generic_visit for statement blocks.
 
@@ -308,19 +321,23 @@ class Base(gast.NodeTransformer):
             return node, None
 
     Args:
-      nodes: enumerable of AST node objects
+      nodes: enumerable of AST node objects. If None, the function returns None.
       before_visit: optional callable that is called before visiting each item
-          in nodes
-      after_visit: optional callable that takes in an AST node and
-          returns a tuple (new_node, new_destination). It is called after
-          visiting each item in nodes. Is used in the same was as the
+        in nodes
+      after_visit: optional callable that takes in an AST node and returns a
+        tuple (new_node, new_destination). It is called after visiting each item
+        in nodes. Is used in the same was as the
           visit_* methods: new_node will replace the node; if not None,
-          new_destination must be a list, and subsequent nodes will be placed
-          in this list instead of the list returned by visit_block.
+            new_destination must be a list, and subsequent nodes will be placed
+            in this list instead of the list returned by visit_block.
+
     Returns:
       A list of AST node objects containing the transformed items fron nodes,
       except those nodes that have been relocated using after_visit.
     """
+    if nodes is None:
+      return None
+
     results = []
     node_destination = results
     for node in nodes:
@@ -417,13 +434,12 @@ class Base(gast.NodeTransformer):
           ' visit lists of nodes, use "visit_block" instead').format(type(node))
       raise ValueError(msg)
 
-    source_code = self.entity_info.source_code
-    source_file = self.entity_info.source_file
     did_enter_function = False
     local_scope_size_at_entry = len(self._local_scope_state)
     processing_expr_node = False
 
     try:
+      parent_origin = self._current_origin
       if isinstance(node, (gast.FunctionDef, gast.ClassDef, gast.Lambda)):
         did_enter_function = True
       elif isinstance(node, gast.Expr):
@@ -432,15 +448,15 @@ class Base(gast.NodeTransformer):
       if did_enter_function:
         self._enclosing_entities.append(node)
 
-      if source_code and hasattr(node, 'lineno'):
-        self._lineno = node.lineno
-        self._col_offset = node.col_offset
+      if anno.hasanno(node, anno.Basic.ORIGIN):
+        self._current_origin = anno.getanno(node, anno.Basic.ORIGIN)
 
       if processing_expr_node:
         entry_expr_value = node.value
 
       if not anno.hasanno(node, anno.Basic.SKIP_PROCESSING):
         result = super(Base, self).visit(node)
+      self._current_origin = parent_origin
 
       # Adjust for consistency: replacing the value of an Expr with
       # an Assign node removes the need for the Expr node.
@@ -462,26 +478,26 @@ class Base(gast.NodeTransformer):
             'Inconsistent local scope stack. Before entering node %s, the'
             ' stack had length %d, after exit it has length %d. This'
             ' indicates enter_local_scope and exit_local_scope are not'
-            ' well paired.' % (
-                node,
-                local_scope_size_at_entry,
-                len(self._local_scope_state)
-            ))
+            ' well paired.' % (node, local_scope_size_at_entry,
+                               len(self._local_scope_state)))
       return result
 
     except (ValueError, AttributeError, KeyError, NotImplementedError) as e:
-      msg = '%s: %s\nOffending source:\n%s\n\nOccurred at node:\n%s' % (
-          e.__class__.__name__, str(e), self._get_source(node),
-          pretty_printer.fmt(node, color=False))
-      if source_code:
-        line = source_code.splitlines()[self._lineno - 1]
-      else:
-        line = '<no source available>'
+      if not self._current_origin:
+        raise e
+      original_file_path = self._current_origin.loc.filename
+      original_line_number = self._current_origin.loc.lineno
+      original_col_offset = self._current_origin.loc.col_offset
+      original_source_line = self._current_origin.source_code_line
+      msg = '%s: %s.' % (e.__class__.__name__, str(e))
+
       # TODO(mdan): Avoid the printing of the original exception.
       # In other words, we need to find how to suppress the "During handling
       # of the above exception, another exception occurred" message.
-      six.reraise(AutographParseError,
-                  AutographParseError(
-                      msg,
-                      (source_file, self._lineno, self._col_offset + 1, line)),
-                  sys.exc_info()[2])
+      six.reraise(
+          AutographParseError,
+          AutographParseError(msg, (original_file_path, original_line_number,
+                                    original_col_offset, original_source_line)),
+          sys.exc_info()[2])
+    finally:
+      self._current_origin = parent_origin

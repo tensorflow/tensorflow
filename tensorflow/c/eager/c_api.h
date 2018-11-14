@@ -163,6 +163,8 @@ TF_CAPI_EXPORT extern TF_DataType TFE_TensorHandleDataType(TFE_TensorHandle* h);
 // This function will block till the operation that produces `h` has completed.
 TF_CAPI_EXPORT extern int TFE_TensorHandleNumDims(TFE_TensorHandle* h,
                                                   TF_Status* status);
+TF_CAPI_EXPORT extern int64_t TFE_TensorHandleNumElements(TFE_TensorHandle* h,
+                                                          TF_Status* status);
 // This function will block till the operation that produces `h` has completed.
 TF_CAPI_EXPORT extern int64_t TFE_TensorHandleDim(TFE_TensorHandle* h,
                                                   int dim_index,
@@ -310,6 +312,9 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrShape(TFE_Op* op, const char* attr_name,
 TF_CAPI_EXPORT extern void TFE_OpSetAttrFunction(TFE_Op* op,
                                                  const char* attr_name,
                                                  const TFE_Op* value);
+
+TF_CAPI_EXPORT void TFE_OpSetAttrFunctionName(TFE_Op* op, const char* attr_name,
+                                              const char* data, size_t length);
 
 TF_CAPI_EXPORT extern void TFE_OpSetAttrTensor(TFE_Op* op,
                                                const char* attr_name,

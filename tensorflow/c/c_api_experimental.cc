@@ -17,12 +17,14 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/compiler/jit/legacy_flags/mark_for_compilation_pass_flags.h"
+#include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 using tensorflow::FunctionDef;
 using tensorflow::Node;
@@ -8508,6 +8510,20 @@ void TF_EnqueueNamedTensor(TF_Session* session, int tensor_id,
   VLOG(1) << "Enqueuing is done.";
 }
 
+TF_Buffer* TFE_GetServerDef(const char* text_proto, TF_Status* status) {
+  tensorflow::ServerDef server_def;
+  if (!tensorflow::protobuf::TextFormat::ParseFromString(text_proto,
+                                                         &server_def)) {
+    status->status = tensorflow::errors::Internal(
+        "Invalid text proto for ServerDef: ", text_proto);
+    return nullptr;
+  }
+  status->status = tensorflow::Status();
+  TF_Buffer* ret = TF_NewBuffer();
+  TF_CHECK_OK(MessageToBuffer(server_def, ret));
+  return ret;
+}
+
 TFE_Context* TFE_CreateContextFromSession(TF_Session* session,
                                           TF_Status* status) {
   auto* opts = TFE_NewContextOptions();
@@ -8723,35 +8739,64 @@ void TFE_TensorHandlePrintDebugString(TFE_TensorHandle* handle) {
   TF_DeleteStatus(status);
 }
 
-TFE_TensorHandle* TFE_RunConstOp(TFE_Context* ctx) {
-  // Intentionally LOG into INFO below for ease of debugging.
-  VLOG(1) << "TFE_RunConstOp called";
+TF_CAPI_EXPORT extern void TF_MakeInternalErrorStatus(TF_Status* status,
+                                                      const char* errMsg) {
+  status->status = tensorflow::errors::Internal(errMsg);
+}
 
-  auto* status = TF_NewStatus();
-  auto* op = TFE_NewOp(ctx, "Const", status);
-  CheckOk(status);
-  TFE_OpSetAttrType(op, "dtype", TF_FLOAT);
+// This builder is used in the eager API to build a NodeDef.
+struct TF_AttrBuilder : public tensorflow::AttrBuilder {
+  using tensorflow::AttrBuilder::AttrBuilder;
+};
 
-  auto* tensor =
-      TF_AllocateTensor(TF_FLOAT, /*shape.data()*/ nullptr, /*shape.size()*/ 0,
-                        TF_DataTypeSize(TF_FLOAT) * 1);
-  auto* ptr = reinterpret_cast<char*>(TF_TensorData(tensor));
-  *reinterpret_cast<float*>(ptr) = 17.0;
+TF_AttrBuilder* TF_NewAttrBuilder(const char* op_name) {
+  return new TF_AttrBuilder(op_name);
+}
 
-  TFE_OpSetAttrTensor(op, "value", tensor, status);
-  CheckOk(status);
-  TF_DeleteTensor(tensor);
-  VLOG(1) << "New op created";
+void TF_DeleteAttrBuilder(TF_AttrBuilder* builder) { delete builder; }
 
-  TFE_TensorHandle* retval;
-  int num_retvals = 1;
-  TFE_Execute(op, &retval, &num_retvals, status);
-  CheckOk(status);
-  CHECK_EQ(num_retvals, 1);
-  VLOG(1) << "Op executed";
+void TF_AttrBuilderSetType(TF_AttrBuilder* builder, const char* attr_name,
+                           TF_DataType value) {
+  builder->Set(attr_name, static_cast<tensorflow::DataType>(value));
+}
 
-  TFE_DeleteOp(op);
-  TF_DeleteStatus(status);
+void TF_AttrBuilderSetTypeList(TF_AttrBuilder* builder, const char* attr_name,
+                               const TF_DataType* values, int num_values) {
+  builder->Set(
+      attr_name,
+      tensorflow::gtl::ArraySlice<const tensorflow::DataType>(
+          reinterpret_cast<const tensorflow::DataType*>(values), num_values));
+}
 
-  return retval;
+void TF_AttrBuilderCheckCanRunOnDevice(TF_AttrBuilder* builder,
+                                       const char* device_type,
+                                       TF_Status* status) {
+  status->status = tensorflow::FindKernelDef(
+      tensorflow::DeviceType(device_type), builder->BuildNodeDef(),
+      /* def = */ nullptr, /* kernel_class_name = */ nullptr);
+}
+
+const char* TF_GetNumberAttrForOpListInput(const char* op_name, int input_index,
+                                           TF_Status* status) {
+  const tensorflow::OpDef* op_def = nullptr;
+  status->status =
+      tensorflow::OpRegistry::Global()->LookUpOpDef(op_name, &op_def);
+  if (!status->status.ok()) return nullptr;
+
+  if (input_index >= op_def->input_arg_size() || input_index < 0) {
+    status->status = tensorflow::errors::InvalidArgument(
+        input_index, " out of range for ", op_name);
+    return nullptr;
+  }
+
+  const tensorflow::OpDef_ArgDef& input_arg = op_def->input_arg()[input_index];
+
+  if (input_arg.number_attr().empty()) {
+    status->status = tensorflow::errors::NotFound(
+        op_name, " does not have number_attr() defined.");
+    return nullptr;
+  }
+
+  // The returned string is owned by OpRegistry, so liveness is not a concern.
+  return input_arg.number_attr().c_str();
 }

@@ -69,7 +69,9 @@ void RetvalOp::Compute(OpKernelContext* ctx) {
 }
 
 REGISTER_SYSTEM_KERNEL_BUILDER(Name(kArgOp).Device(DEVICE_CPU), ArgOp);
+REGISTER_SYSTEM_KERNEL_BUILDER(Name(kDeviceArgOp).Device(DEVICE_CPU), ArgOp);
 REGISTER_SYSTEM_KERNEL_BUILDER(Name(kRetOp).Device(DEVICE_CPU), RetvalOp);
+REGISTER_SYSTEM_KERNEL_BUILDER(Name(kDeviceRetOp).Device(DEVICE_CPU), RetvalOp);
 
 #if TENSORFLOW_USE_SYCL
 #define REGISTER(type)     \
@@ -98,11 +100,14 @@ TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kRetOp)
   REGISTER_KERNEL_BUILDER( \
       Name(kArgOp).Device(DEVICE_GPU).TypeConstraint<type>("T"), ArgOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
+TF_CALL_QUANTIZED_TYPES(REGISTER)
 TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kArgOp)
                                                    .Device(DEVICE_GPU)
                                                    .HostMemory("output")
                                                    .TypeConstraint<int32>("T"),
                                                ArgOp);
+REGISTER_KERNEL_BUILDER(
+    Name(kDeviceArgOp).Device(DEVICE_GPU).TypeConstraint<int32>("T"), ArgOp);
 #undef REGISTER
 
 REGISTER_KERNEL_BUILDER(Name(kArgOp)
@@ -121,11 +126,14 @@ REGISTER_KERNEL_BUILDER(Name(kArgOp)
   REGISTER_KERNEL_BUILDER( \
       Name(kRetOp).Device(DEVICE_GPU).TypeConstraint<type>("T"), RetvalOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER)
+TF_CALL_QUANTIZED_TYPES(REGISTER)
 TF_CALL_bool(REGISTER) REGISTER_KERNEL_BUILDER(Name(kRetOp)
                                                    .Device(DEVICE_GPU)
                                                    .HostMemory("input")
                                                    .TypeConstraint<int32>("T"),
                                                RetvalOp);
+REGISTER_KERNEL_BUILDER(
+    Name(kDeviceRetOp).Device(DEVICE_GPU).TypeConstraint<int32>("T"), RetvalOp);
 REGISTER_KERNEL_BUILDER(Name(kRetOp)
                             .Device(DEVICE_GPU)
                             .TypeConstraint<ResourceHandle>("T")

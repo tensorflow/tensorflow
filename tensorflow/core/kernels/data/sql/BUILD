@@ -21,7 +21,6 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/kernels/data:dataset",
         "//tensorflow/core/lib/db:sqlite",
     ],
 )

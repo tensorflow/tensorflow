@@ -19,7 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/jit/legacy_flags/xla_device_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/parse_flags_from_env.h"
+#include "tensorflow/compiler/xla/parse_flags_from_env.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
@@ -41,7 +41,7 @@ static void AllocateFlags() {
            "Switch a device into 'on-demand' mode, where instead of "
            "autoclustering ops are compiled one by one just-in-time."),
   });
-  xla::legacy_flags::ParseFlagsFromEnv(*flag_list);
+  xla::ParseFlagsFromEnv(*flag_list);
 }
 
 // Return a pointer to the XlaDeviceFlags struct;

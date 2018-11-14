@@ -51,7 +51,7 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndex) {
   builder.AddInstruction(HloInstruction::CreateBinary(
       ShapeUtil::MakeShape(PRED, {5, 7, 2}), HloOpcode::kGe, param_x, param_y));
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
 
   // Check the optimized IR as the unoptimized IR contains dead udiv and urem.

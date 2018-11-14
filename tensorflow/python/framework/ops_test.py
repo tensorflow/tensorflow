@@ -254,6 +254,12 @@ class OperationTest(test_util.TensorFlowTestCase):
     input:'myop1' input:'myop2:1' input:'myop2:1'
     """, op3.node_def)
 
+  def testDeviceFromNodeDef(self):
+    op = ops.Operation(
+        ops._NodeDef("None", "myop", device="/job:goo/device:GPU:0"),
+        ops.Graph(), [], [])
+    self.assertEqual("/job:goo/device:GPU:0", op.device)
+
   def testDeviceObject(self):
     op = ops.Operation(ops._NodeDef("None", "myop"), ops.Graph(), [], [])
     op._set_device("/job:goo/device:GPU:0")
@@ -695,7 +701,6 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(g.get_operation_by_name("myop"), op)
     self.assertEqual(g.get_tensor_by_name("myop:0"), op.outputs[0])
 
-  @test_util.enable_c_shapes
   def testShape(self):
     g = ops.Graph()
     with g.as_default():
@@ -1634,8 +1639,8 @@ class CollectionTest(test_util.TensorFlowTestCase):
 
         self.assertEqual(ops.get_collection("int"), [1])
         three = inner_defun()
-        self.assertEqual(ops.get_collection("int"), [1, 2])
-        self.assertEqual(ops.get_collection("foo"), ["bar"])
+        self.assertEqual(ops.get_collection("int"), [1])
+        self.assertEqual(ops.get_collection("foo"), [])
         return three
 
       three = defun()
@@ -2142,8 +2147,8 @@ class InitScopeTest(test_util.TensorFlowTestCase):
 
     def function_with_variables():
       with ops.init_scope():
-        v = resource_variable_ops.ResourceVariable(3)
-      return v.assign_add(1)
+        self.v = resource_variable_ops.ResourceVariable(3)
+      return self.v.assign_add(1)
 
     with context.eager_mode():
       # Each invocation of function_with_variables recreates a variable.
@@ -2188,13 +2193,13 @@ class InitScopeTest(test_util.TensorFlowTestCase):
 
     def inner_function():
       with ops.init_scope():
-        v = resource_variable_ops.ResourceVariable(1)
-      return v.assign_add(2)
+        self.v = resource_variable_ops.ResourceVariable(1)
+      return self.v.assign_add(2)
 
     def outer_function(inner=None):
       with ops.init_scope():
-        v0 = resource_variable_ops.ResourceVariable(0)
-      return v0.assign_add(1) + inner()
+        self.v0 = resource_variable_ops.ResourceVariable(0)
+      return self.v0.assign_add(1) + inner()
 
     with context.eager_mode():
       # Each invocation of outer_function recreates variables.
@@ -2285,6 +2290,19 @@ class InitScopeTest(test_util.TensorFlowTestCase):
       foo_compiled = eager_function.defun(foo)
       foo_compiled()
       self.assertEqual(ops.get_name_scope(), "")
+
+  def testExecutingEagerlyOutsideFunctions(self):
+
+    @eager_function.defun
+    def f():
+      return ops.executing_eagerly_outside_functions()
+
+    with context.eager_mode():
+      self.assertTrue(ops.executing_eagerly_outside_functions())
+      self.assertTrue(f())
+      g = ops.Graph()
+      with g.as_default():
+        self.assertFalse(ops.executing_eagerly_outside_functions())
 
 
 class GraphTest(test_util.TensorFlowTestCase):

@@ -1,0 +1,25 @@
+path: "tensorflow.data.experimental.StatsOptions"
+tf_class {
+  is_instance: "<class \'tensorflow.python.data.experimental.ops.stats_options.StatsOptions\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "aggregator"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "counter_prefix"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "latency_all_edges"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "prefix"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'aggregator\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

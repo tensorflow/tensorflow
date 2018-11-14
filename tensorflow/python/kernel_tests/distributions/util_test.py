@@ -879,7 +879,7 @@ class SoftplusTest(test.TestCase):
   def _testSoftplus(self, np_features, use_gpu=False):
     np_features = np.asarray(np_features)
     np_softplus = self._npSoftplus(np_features)
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.session(use_gpu=use_gpu) as sess:
       softplus = nn_ops.softplus(np_features)
       softplus_inverse = du.softplus_inverse(softplus)
       [tf_softplus, tf_softplus_inverse] = sess.run([

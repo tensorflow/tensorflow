@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -402,7 +403,7 @@ class _WithSpaceToBatch(object):
     if not dilation_rate.get_shape().is_fully_defined():
       raise ValueError("rate must have known shape")
 
-    num_spatial_dims = rate_shape[0].value
+    num_spatial_dims = rate_shape.dims[0].value
 
     if data_format is not None and data_format.startswith("NC"):
       starting_spatial_dim = 2
@@ -427,8 +428,8 @@ class _WithSpaceToBatch(object):
     try:
       input_shape.with_rank_at_least(expected_input_rank)
     except ValueError:
-      ValueError("input tensor must have rank %d at least" %
-                 (expected_input_rank))
+      raise ValueError(
+          "input tensor must have rank %d at least" % (expected_input_rank))
 
     const_rate = tensor_util.constant_value(dilation_rate)
     rate_or_const_rate = dilation_rate
@@ -510,7 +511,7 @@ class _WithSpaceToBatch(object):
 
     # Recover channel information for output shape if channels are not last.
     if self.data_format is not None and self.data_format.startswith("NC"):
-      if not result_converted.shape[1].value and filter is not None:
+      if not result_converted.shape.dims[1].value and filter is not None:
         output_shape = result_converted.shape.as_list()
         output_shape[1] = filter.shape[-1]
         result_converted.set_shape(output_shape)
@@ -711,12 +712,12 @@ def convolution(
   It is required that 1 <= N <= 3.
 
   Args:
-    input: An N-D `Tensor` of type `T`, of shape
+    input: An (N+2)-D `Tensor` of type `T`, of shape
       `[batch_size] + input_spatial_shape + [in_channels]` if data_format does
       not start with "NC" (default), or
       `[batch_size, in_channels] + input_spatial_shape` if data_format starts
       with "NC".
-    filter: An N-D `Tensor` with the same type as `input` and shape
+    filter: An (N+2)-D `Tensor` with the same type as `input` and shape
       `spatial_filter_shape + [in_channels, out_channels]`.
     padding: A string, either `"VALID"` or `"SAME"`. The padding algorithm.
     strides: Optional.  Sequence of N ints >= 1.  Specifies the output stride.
@@ -818,18 +819,21 @@ class Convolution(object):
     try:
       input_shape.with_rank(num_spatial_dims + 2)
     except ValueError:
-      ValueError("input tensor must have rank %d" % (num_spatial_dims + 2))
+      raise ValueError(
+          "input tensor must have rank %d" % (num_spatial_dims + 2))
 
     try:
       filter_shape.with_rank(num_spatial_dims + 2)
     except ValueError:
-      ValueError("filter tensor must have rank %d" % (num_spatial_dims + 2))
+      raise ValueError(
+          "filter tensor must have rank %d" % (num_spatial_dims + 2))
 
     if data_format is None or not data_format.startswith("NC"):
-      input_channels_dim = input_shape[num_spatial_dims + 1]
+      input_channels_dim = tensor_shape.dimension_at_index(
+          input_shape, num_spatial_dims + 1)
       spatial_dims = range(1, num_spatial_dims + 1)
     else:
-      input_channels_dim = input_shape[1]
+      input_channels_dim = tensor_shape.dimension_at_index(input_shape, 1)
       spatial_dims = range(2, num_spatial_dims + 2)
 
     if not input_channels_dim.is_compatible_with(
@@ -1223,7 +1227,8 @@ def conv2d_transpose(
     value = ops.convert_to_tensor(value, name="value")
     filter = ops.convert_to_tensor(filter, name="filter")  # pylint: disable=redefined-builtin
     axis = 3 if data_format == "NHWC" else 1
-    if not value.get_shape()[axis].is_compatible_with(filter.get_shape()[3]):
+    if not value.get_shape().dims[axis].is_compatible_with(
+        filter.get_shape()[3]):
       raise ValueError("input channels does not match filter's input channels, "
                        "{} != {}".format(value.get_shape()[axis],
                                          filter.get_shape()[3]))
@@ -1235,7 +1240,8 @@ def conv2d_transpose(
 
     if isinstance(output_shape, (list, np.ndarray)):
       # output_shape's shape should be == [4] if reached this point.
-      if not filter.get_shape()[2].is_compatible_with(output_shape[axis]):
+      if not filter.get_shape().dims[2].is_compatible_with(
+          output_shape[axis]):
         raise ValueError(
             "output_shape does not match filter's output channels, "
             "{} != {}".format(output_shape[axis],
@@ -1302,7 +1308,7 @@ def atrous_conv2d_transpose(value,
                       [value, filters, output_shape]) as name:
     value = ops.convert_to_tensor(value, name="value")
     filters = ops.convert_to_tensor(filters, name="filters")
-    if not value.get_shape()[3].is_compatible_with(filters.get_shape()[3]):
+    if not value.get_shape().dims[3].is_compatible_with(filters.get_shape()[3]):
       raise ValueError(
           "value's input channels does not match filters' input channels, "
           "{} != {}".format(value.get_shape()[3],
@@ -1326,7 +1332,7 @@ def atrous_conv2d_transpose(value,
 
     if isinstance(output_shape, (list, np.ndarray)):
       # output_shape's shape should be == [4] if reached this point.
-      if not filters.get_shape()[2].is_compatible_with(output_shape[3]):
+      if not filters.get_shape().dims[2].is_compatible_with(output_shape[3]):
         raise ValueError(
             "output_shape does not match filter's output channels, "
             "{} != {}".format(output_shape[3],
@@ -1447,7 +1453,8 @@ def conv3d_transpose(
     value = ops.convert_to_tensor(value, name="value")
     filter = ops.convert_to_tensor(filter, name="filter")  # pylint: disable=redefined-builtin
     axis = 1 if data_format == "NCDHW" else 4
-    if not value.get_shape()[axis].is_compatible_with(filter.get_shape()[4]):
+    if not value.get_shape().dims[axis].is_compatible_with(
+        filter.get_shape()[4]):
       raise ValueError("input channels does not match filter's input channels, "
                        "{} != {}".format(value.get_shape()[axis],
                                          filter.get_shape()[4]))
@@ -1459,7 +1466,8 @@ def conv3d_transpose(
 
     if isinstance(output_shape, (list, np.ndarray)):
       # output_shape's shape should be == [5] if reached this point.
-      if not filter.get_shape()[3].is_compatible_with(output_shape[axis]):
+      if not filter.get_shape().dims[3].is_compatible_with(
+          output_shape[axis]):
         raise ValueError(
             "output_shape does not match filter's output channels, "
             "{} != {}".format(output_shape[axis],
@@ -1601,6 +1609,10 @@ def leaky_relu(features, alpha=0.2, name=None):
     features = ops.convert_to_tensor(features, name="features")
     if features.dtype.is_integer:
       features = math_ops.to_float(features)
+    if compat.forward_compatible(2018, 11, 1):
+      if isinstance(alpha, np.ndarray):
+        alpha = np.asscalar(alpha)
+      return gen_nn_ops.leaky_relu(features, alpha=alpha, name=name)
     alpha = ops.convert_to_tensor(alpha, dtype=features.dtype, name="alpha")
     return math_ops.maximum(alpha * features, features, name=name)
 
@@ -1670,53 +1682,40 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   shape = logits.get_shape()
   is_last_dim = (dim is -1) or (dim == shape.ndims - 1)
 
-  # TODO(phawkins): remove after 2018/8/27 and simplify this code.
-  softmax_accepts_r1_or_greater = compat.forward_compatible(2018, 8, 27)
-  reshape_required = (not softmax_accepts_r1_or_greater) and shape.ndims != 2
   if is_last_dim:
-    if reshape_required:
-      # If dim is the last dimension, simply reshape the logits to a matrix and
-      # apply the internal softmax.
-      input_shape = array_ops.shape(logits)
-      logits = _flatten_outer_dims(logits)
-      output = compute_op(logits)
-      output = array_ops.reshape(output, input_shape, name=name)
-      return output
     return compute_op(logits, name=name)
 
-  # If dim is not the last dimension, we have to do a reshape and transpose so
-  # that we can still perform softmax on its last dimension.
+  dim_val = dim
+  if isinstance(dim, ops.Tensor):
+    dim_val = tensor_util.constant_value(dim)
+  if dim_val is not None and (dim_val < -shape.ndims or dim_val >= shape.ndims):
+    raise errors_impl.InvalidArgumentError(
+        None, None,
+        "Dimension (%d) must be in the range [%d, %d) where %d is the number of"
+        " dimensions in the input." % (dim_val, -shape.ndims, shape.ndims,
+                                       shape.ndims))
+
+  # If dim is not the last dimension, we have to do a transpose so that we can
+  # still perform softmax on its last dimension.
 
   # Swap logits' dimension of dim and its last dimension.
   input_rank = array_ops.rank(logits)
   dim_axis = dim % shape.ndims
   logits = _swap_axis(logits, dim_axis, math_ops.subtract(input_rank, 1))
-  shape_after_swap = array_ops.shape(logits)
 
-  if reshape_required:
-    # Reshape logits into a matrix.
-    logits = _flatten_outer_dims(logits)
-
-    # Do the actual softmax on its last dimension.
-    output = compute_op(logits)
-
-    # Transform back the output tensor.
-    output = array_ops.reshape(output, shape_after_swap)
-  else:
-    # Do the actual softmax on its last dimension.
-    output = compute_op(logits)
+  # Do the actual softmax on its last dimension.
+  output = compute_op(logits)
 
   output = _swap_axis(
       output, dim_axis, math_ops.subtract(input_rank, 1), name=name)
 
-  # Make shape inference work since reshape and transpose may erase its static
-  # shape.
+  # Make shape inference work since transpose may erase its static shape.
   output.set_shape(shape)
 
   return output
 
 
-@tf_export("nn.softmax")
+@tf_export("nn.softmax", "math.softmax")
 @deprecation.deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def softmax(logits, axis=None, name=None, dim=None):
   """Computes softmax activations.
@@ -1746,7 +1745,7 @@ def softmax(logits, axis=None, name=None, dim=None):
   return _softmax(logits, gen_nn_ops.softmax, axis, name)
 
 
-@tf_export("nn.log_softmax")
+@tf_export("nn.log_softmax", "math.log_softmax")
 @deprecation.deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def log_softmax(logits, axis=None, name=None, dim=None):
   """Computes log softmax activations.
@@ -1785,13 +1784,9 @@ def _ensure_xent_args(name, sentinel, labels, logits):
     raise ValueError("Both labels and logits must be provided.")
 
 
-@tf_export("nn.softmax_cross_entropy_with_logits_v2")
-def softmax_cross_entropy_with_logits_v2(
-    _sentinel=None,  # pylint: disable=invalid-name
-    labels=None,
-    logits=None,
-    dim=-1,
-    name=None):
+@tf_export("nn.softmax_cross_entropy_with_logits",
+           v1=["nn.softmax_cross_entropy_with_logits_v2"])
+def softmax_cross_entropy_with_logits_v2(labels, logits, dim=-1, name=None):
   """Computes softmax cross entropy between `logits` and `labels`.
 
   Measures the probability error in discrete classification tasks in which the
@@ -1826,7 +1821,6 @@ def softmax_cross_entropy_with_logits_v2(
   this function.**
 
   Args:
-    _sentinel: Used to prevent positional parameters. Internal, do not use.
     labels: Each vector along the class dimension should hold a valid
       probability distribution e.g. for the case in which labels are of shape
       `[batch_size, num_classes]`, each row of `labels[i]` must be a valid
@@ -1840,9 +1834,6 @@ def softmax_cross_entropy_with_logits_v2(
     same as `logits` and its shape is the same as `labels` except that it does
     not have the last dimension of `labels`.
   """
-  _ensure_xent_args("softmax_cross_entropy_with_logits", _sentinel, labels,
-                    logits)
-
   # TODO(pcmurray) Raise an error when the labels do not sum to 1. Note: This
   # could break users who call this with bad labels, but disregard the bad
   # results.
@@ -1914,7 +1905,7 @@ See `tf.nn.softmax_cross_entropy_with_logits_v2`.
 """
 
 
-@tf_export("nn.softmax_cross_entropy_with_logits")
+@tf_export(v1=["nn.softmax_cross_entropy_with_logits"])
 @deprecation.deprecated(date=None, instructions=_XENT_DEPRECATION)
 def softmax_cross_entropy_with_logits(
     _sentinel=None,  # pylint: disable=invalid-name
@@ -2353,7 +2344,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
     return ret
 
 
-@tf_export("nn.top_k")
+@tf_export("math.top_k", "nn.top_k")
 def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-builtin
   """Finds values and indices of the `k` largest entries for the last dimension.
 
@@ -2551,14 +2542,16 @@ def conv1d_transpose(
     else:
       raise ValueError("data_format must be \"NWC\" or \"NCW\".")
 
-    if not value.get_shape()[axis].is_compatible_with(filter.get_shape()[2]):
+    if not value.get_shape().dims[axis].is_compatible_with(
+        filter.get_shape()[2]):
       raise ValueError("input channels does not match filter's input channels, "
                        "{} != {}".format(value.get_shape()[axis],
                                          filter.get_shape()[2]))
 
     if isinstance(output_shape, (list, np.ndarray)):
       # output_shape's shape should be == [3] if reached this point.
-      if not filter.get_shape()[1].is_compatible_with(output_shape[axis]):
+      if not filter.get_shape().dims[1].is_compatible_with(
+          output_shape[axis]):
         raise ValueError(
             "output_shape does not match filter's output channels, "
             "{} != {}".format(output_shape[axis],
@@ -2668,7 +2661,7 @@ def erosion2d(value, kernel, strides, rates, padding, name=None):
             name=name))
 
 
-@tf_export("nn.in_top_k")
+@tf_export("math.in_top_k", "nn.in_top_k")
 def in_top_k(predictions, targets, k, name=None):
   r"""Says whether the targets are in the top `K` predictions.
 

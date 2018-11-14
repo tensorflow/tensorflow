@@ -62,11 +62,8 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/autograph:autograph",
     "//tensorflow/contrib/boosted_trees:boosted_trees_pip",
     "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
+    "//tensorflow/contrib/compiler:xla",
     "//tensorflow/contrib/constrained_optimization:constrained_optimization_pip",
-    "//tensorflow/contrib/data/python/kernel_tests/serialization:dataset_serialization_test_base",
-    "//tensorflow/contrib/data/python/kernel_tests:stats_dataset_test_base",
-    "//tensorflow/contrib/data/python/kernel_tests:test_utils",
-    "//tensorflow/contrib/data/python/ops:contrib_op_loader",
     "//tensorflow/contrib/eager/python/examples:examples_pip",
     "//tensorflow/contrib/eager/python:evaluator",
     "//tensorflow/contrib/gan:gan",
@@ -81,7 +78,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/rpc:rpc_pip",
     "//tensorflow/contrib/session_bundle:session_bundle_pip",
     "//tensorflow/contrib/signal:signal_py",
-    "//tensorflow/contrib/signal:test_util",
     "//tensorflow/contrib/slim:slim",
     "//tensorflow/contrib/slim/python/slim/data:data_pip",
     "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
@@ -107,13 +103,18 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python:meta_graph_testdata",
     "//tensorflow/python:spectral_ops_test_util",
     "//tensorflow/python:util_example_parser_configuration",
+    "//tensorflow/python/data/experimental/kernel_tests/serialization:dataset_serialization_test_base",
+    "//tensorflow/python/data/experimental/kernel_tests:stats_dataset_test_base",
+    "//tensorflow/python/data/kernel_tests:test_base",
     "//tensorflow/python/debug:debug_pip",
     "//tensorflow/python/eager:eager_pip",
+    "//tensorflow/python/kernel_tests/signal:test_util",
     "//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files",
     "//tensorflow/python/saved_model:saved_model",
     "//tensorflow/python/tools:tools_pip",
     "//tensorflow/python/tools/api/generator:create_python_api",
     "//tensorflow/python:test_ops",
+    "//tensorflow/python:while_v2",
     "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
 ]
 
@@ -150,7 +151,9 @@ filegroup(
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
         "@highwayhash//:LICENSE",
+        "@icu//:icu4c/LICENSE",
         "@jpeg//:LICENSE.md",
+        "@keras_applications_archive//:LICENSE",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nasm//:LICENSE",
@@ -165,29 +168,33 @@ filegroup(
         "@zlib_archive//:zlib.h",
         "@org_python_pypi_backports_weakref//:LICENSE",
     ] + select({
-        "//tensorflow:with_aws_support": [
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_aws_support": [],
+        "//conditions:default": [
             "@aws//:LICENSE",
         ],
-        "//conditions:default": [],
     }) + select({
-        "//tensorflow:with_gcp_support": [
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_gcp_support": [],
+        "//conditions:default": [
             "@com_github_googleapis_googleapis//:LICENSE",
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
-        "//conditions:default": [],
     }) + select({
-        "//tensorflow:with_jemalloc_linux_x86_64": [
-            "@jemalloc//:COPYING",
-        ],
-        "//tensorflow:with_jemalloc_linux_ppc64le": [
-            "@jemalloc//:COPYING",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_kafka_support": [
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_kafka_support": [],
+        "//conditions:default": [
             "@kafka//:LICENSE",
         ],
-        "//conditions:default": [],
     }) + select({
         "//tensorflow/core/kernels:xsmm": [
             "@libxsmm_archive//:LICENSE.md",
@@ -210,6 +217,7 @@ filegroup(
         "@ngraph//:LICENSE",
         "@ngraph_tf//:LICENSE",
         "@nlohmann_json_lib//:LICENSE.MIT",
+        "@tbb//:LICENSE",
     ]) + tf_additional_license_deps(),
 )
 
@@ -219,15 +227,15 @@ sh_binary(
     data = select({
         "//tensorflow:windows": [
             ":simple_console_for_windows",
-            "//tensorflow/contrib/lite/python:interpreter_test_data",
-            "//tensorflow/contrib/lite/python:tflite_convert",
-            "//tensorflow/contrib/lite/toco/python:toco_from_protos",
+            "//tensorflow/lite/python:interpreter_test_data",
+            "//tensorflow/lite/python:tflite_convert",
+            "//tensorflow/lite/toco/python:toco_from_protos",
         ],
         "//conditions:default": COMMON_PIP_DEPS + [
             ":simple_console",
-            "//tensorflow/contrib/lite/python:interpreter_test_data",
-            "//tensorflow/contrib/lite/python:tflite_convert",
-            "//tensorflow/contrib/lite/toco/python:toco_from_protos",
+            "//tensorflow/lite/python:interpreter_test_data",
+            "//tensorflow/lite/python:tflite_convert",
+            "//tensorflow/lite/toco/python:toco_from_protos",
         ],
     }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
 )

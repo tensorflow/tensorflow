@@ -222,17 +222,17 @@ endforeach(python_module)
 
 add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory
-    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite")
+    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/lite")
 add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory
-    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite/python")
+    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/lite/python")
 add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
     COMMAND ${CMAKE_COMMAND} -E touch
-    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite/python/__init__.py")
+    "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/lite/python/__init__.py")
 add_custom_command(
     TARGET tf_python_copy_scripts_to_destination PRE_BUILD
     COMMAND ${CMAKE_COMMAND} -E touch
-    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/lite/python/lite.py)
+    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/lite/python/lite.py)
 
 # Generate the tensorflow.python.platform.build_info module.
 set(BUILD_INFO_PY "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/platform/build_info.py")
@@ -373,8 +373,6 @@ GENERATE_PYTHON_OP_LIB("contrib_boosted_trees_stats_accumulator_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/boosted_trees/python/ops/gen_stats_accumulator_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_coder_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/coder/python/ops/gen_coder_ops.py)
-GENERATE_PYTHON_OP_LIB("contrib_data_dataset_ops"
-  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/data/python/ops/gen_dataset_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_factorization_clustering_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/factorization/python/ops/gen_clustering_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_factorization_factorization_ops"

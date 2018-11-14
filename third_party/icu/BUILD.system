@@ -1,0 +1,25 @@
+licenses(["notice"])  # Apache 2.0
+
+filegroup(
+    name = "icu4c/LICENSE",
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "icu4j/main/shared/licenses/LICENSE",
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "common",
+    deps = [
+        ":icuuc",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "icuuc",
+    linkopts = ["-licuuc"],
+    visibility = ["//visibility:private"],
+)

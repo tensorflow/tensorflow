@@ -308,7 +308,7 @@ static PyObject* TF_GetSupportedDevices(GCluster cluster, GItem item) {
 
 static double TF_EstimatePerformance(const tensorflow::NamedDevice& device) {
   tensorflow::grappler::OpLevelCostEstimator estimator;
-  tensorflow::grappler::OpLevelCostEstimator::DeviceInfo info =
+  tensorflow::grappler::DeviceInfo info =
       estimator.GetDeviceInfo(device.properties());
   return info.gigaops;
 }

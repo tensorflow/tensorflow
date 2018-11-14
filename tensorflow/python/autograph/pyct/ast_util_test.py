@@ -22,6 +22,8 @@ import ast
 import collections
 import textwrap
 
+import gast
+
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import compiler
@@ -190,6 +192,107 @@ class AstUtilTest(test.TestCase):
     with self.assertRaises(ValueError):
       for _ in ast_util.parallel_walk(node_1, node_3):
         pass
+
+  def assertLambdaNodes(self, matching_nodes, expected_bodies):
+    self.assertEqual(len(matching_nodes), len(expected_bodies))
+    for node in matching_nodes:
+      self.assertIsInstance(node, gast.Lambda)
+      self.assertIn(compiler.ast_to_source(node.body).strip(), expected_bodies)
+
+  def test_find_matching_definitions_lambda(self):
+    node = parser.parse_str(
+        textwrap.dedent("""
+      f = lambda x: 1
+    """))
+    f = lambda x: x
+    nodes = ast_util.find_matching_definitions(node, f)
+    self.assertLambdaNodes(nodes, ('(1)',))
+
+  def test_find_matching_definitions_lambda_multiple_matches(self):
+    node = parser.parse_str(
+        textwrap.dedent("""
+      f = lambda x: 1, lambda x: 2
+    """))
+    f = lambda x: x
+    nodes = ast_util.find_matching_definitions(node, f)
+    self.assertLambdaNodes(nodes, ('(1)', '(2)'))
+
+  def test_find_matching_definitions_lambda_uses_arg_names(self):
+    node = parser.parse_str(
+        textwrap.dedent("""
+      f = lambda x: 1, lambda y: 2
+    """))
+    f = lambda x: x
+    nodes = ast_util.find_matching_definitions(node, f)
+    self.assertLambdaNodes(nodes, ('(1)',))
+
+    f = lambda y: y
+    nodes = ast_util.find_matching_definitions(node, f)
+    self.assertLambdaNodes(nodes, ('(2)',))
+
+  def assertFunctionDefNodes(self, matching_nodes, expected_bodies):
+    self.assertEqual(len(matching_nodes), len(expected_bodies))
+    for node in matching_nodes:
+      self.assertIsInstance(node, gast.FunctionDef)
+      self.assertIn(compiler.ast_to_source(node.body).strip(), expected_bodies)
+
+  def test_find_matching_definitions_function(self):
+    node = parser.parse_str(
+        textwrap.dedent("""
+      def f(x):
+        return 1
+    """))
+
+    def f(x):
+      return x
+
+    nodes = ast_util.find_matching_definitions(node, f)
+    self.assertFunctionDefNodes(nodes, ('return 1',))
+
+  def test_find_matching_definitions_nested_functions_same_name(self):
+    node = parser.parse_str(
+        textwrap.dedent("""
+      def f(x, *args, **kwargs):
+        def f(x, y):
+          return 1
+        return 2
+    """))
+
+    def f(x, y):
+      return x + y
+
+    nodes = ast_util.find_matching_definitions(node, f)
+    self.assertFunctionDefNodes(nodes, ('return 1',))
+
+  def test_find_matching_definitions_nested_functions_same_args(self):
+    node = parser.parse_str(
+        textwrap.dedent("""
+      def g(x):
+        def f(x):
+          return 1
+        return 2
+    """))
+
+    def f(x):
+      return x
+
+    nodes = ast_util.find_matching_definitions(node, f)
+    self.assertFunctionDefNodes(nodes, ('return 1',))
+
+  def test_find_matching_definitions_multiple_matches(self):
+    node = parser.parse_str(
+        textwrap.dedent("""
+      def f(x):
+        return 1
+      def f(x):
+        return 2
+    """))
+
+    def f(x):
+      return x
+
+    nodes = ast_util.find_matching_definitions(node, f)
+    self.assertFunctionDefNodes(nodes, ('return 1', 'return 2'))
 
 
 if __name__ == '__main__':

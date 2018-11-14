@@ -132,7 +132,7 @@ void BM_KernelAndDeviceRun(int iters) {
                                     nullptr, &kernel));
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
-    TF_CHECK_OK(kernel.Run(&inputs, &outputs, nullptr));
+    TF_CHECK_OK(kernel.Run(&inputs, &outputs, nullptr, nullptr, nullptr));
   }
 }
 BENCHMARK(BM_KernelAndDeviceRun);

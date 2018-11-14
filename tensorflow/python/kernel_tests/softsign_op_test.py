@@ -21,7 +21,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import errors
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
@@ -35,7 +34,7 @@ class SoftsignTest(test.TestCase):
 
   def _testSoftsign(self, np_features, use_gpu=False):
     np_softsign = self._npSoftsign(np_features)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       softsign = nn_ops.softsign(np_features)
       tf_softsign = softsign.eval()
     self.assertAllClose(np_softsign, tf_softsign)
@@ -69,8 +68,8 @@ class SoftsignTest(test.TestCase):
   def testNoInts(self):
     with self.cached_session():
       with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          "No OpKernel was registered to support Op 'Softsign'"):
+          TypeError,
+          "'features' has DataType int32 not in list of allowed values"):
         nn_ops.softsign(constant_op.constant(7)).eval()
 
 

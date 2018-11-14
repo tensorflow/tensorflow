@@ -28,10 +28,10 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <tuple>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
@@ -50,7 +50,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/iterator_range.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -80,6 +79,7 @@ class HloPrintOptions {
         print_backend_config_(true),
         compact_operands_(false),
         print_operand_shape_(true),
+        print_operand_names_(true),
         print_program_shape_(true),
         print_percent_(true),
         print_control_dependencies_(true),
@@ -107,6 +107,7 @@ class HloPrintOptions {
         .set_print_metadata(false)
         .set_print_backend_config(false)
         .set_compact_operands(true)
+        .set_print_operand_names(false)
         .set_print_operand_shape(true)
         .set_print_program_shape(false)
         .set_print_percent(false)
@@ -144,6 +145,12 @@ class HloPrintOptions {
     return *this;
   }
 
+  // If true, the operand names will be printed.
+  HloPrintOptions& set_print_operand_names(bool value) {
+    print_operand_names_ = value;
+    return *this;
+  }
+
   // If true, program shape of hlo computations will be printed.
   HloPrintOptions& set_print_program_shape(bool value) {
     print_program_shape_ = value;
@@ -162,8 +169,8 @@ class HloPrintOptions {
     return *this;
   }
 
-  // If true, only a part of operands will be printed out, and their names will
-  // be omitted (note that in this case the text will not be parsable).
+  // If true, only a part of operands will be printed out (note that in this
+  // case the text will not be parsable).
   HloPrintOptions& set_compact_operands(bool value) {
     compact_operands_ = value;
     return *this;
@@ -197,6 +204,7 @@ class HloPrintOptions {
   bool print_backend_config() const { return print_backend_config_; }
   bool compact_operands() const { return compact_operands_; }
   bool print_operand_shape() const { return print_operand_shape_; }
+  bool print_operand_names() const { return print_operand_names_; }
   bool print_program_shape() const { return print_program_shape_; }
   bool print_percent() const { return print_percent_; }
   bool print_control_dependencies() const {
@@ -215,6 +223,7 @@ class HloPrintOptions {
   bool print_backend_config_;
   bool compact_operands_;
   bool print_operand_shape_;
+  bool print_operand_names_;
   bool print_program_shape_;
   bool print_percent_;
   bool print_control_dependencies_;
@@ -247,7 +256,7 @@ class CanonicalNameMap {
 
  private:
   int64 index;
-  tensorflow::gtl::FlatMap<string, string> canonical_name_map;
+  absl::flat_hash_map<string, string> canonical_name_map;
 };
 
 // HLO instructions are the atomic unit of the high-level compiler's IR.
@@ -350,8 +359,8 @@ class HloInstruction {
   //     calls.
   static StatusOr<std::unique_ptr<HloInstruction>> CreateFromProto(
       const HloInstructionProto& proto,
-      const tensorflow::gtl::FlatMap<int64, HloInstruction*>& instruction_map,
-      const tensorflow::gtl::FlatMap<int64, HloComputation*>& computation_map);
+      const absl::flat_hash_map<int64, HloInstruction*>& instruction_map,
+      const absl::flat_hash_map<int64, HloComputation*>& computation_map);
 
   // Creates a parameter-retrieving instruction.
   static std::unique_ptr<HloInstruction> CreateParameter(int64 parameter_number,
@@ -454,7 +463,7 @@ class HloInstruction {
   // the same all_reduce_id, they will be 'Allreduce'd. If empty, Allreduce will
   // not be applied cross modules.
   //
-  // TODO(b/79737069): Rename this to AllReduce.
+  // TODO(b/117564385): Rename this to AllReduce.
   static std::unique_ptr<HloInstruction> CreateCrossReplicaSum(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
@@ -660,10 +669,10 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       absl::Span<const int64> dimensions);
 
-  // Creates a sort op, with a keys operand, and an optional values operand.
+  // Creates a sort op, with a keys operand, and optional values operands.
   static std::unique_ptr<HloInstruction> CreateSort(
       const Shape& shape, int64 dimension, HloInstruction* keys,
-      HloInstruction* values = nullptr);
+      absl::Span<HloInstruction* const> values = {});
 
   // Creates a while instruction, given a condition computation, a body
   // computation, and the initial value for the input of the computations. For
@@ -718,10 +727,21 @@ class HloInstruction {
       HloComputation* computation);
 
   // Creates a custom call instruction that applies the given custom call target
-  // to the given operands. "shape" is the resultant shape.
+  // to the given operands. "opaque" can be an arbitrary string with a
+  // backend-specific interpretation. "shape" is the resultant shape.
   static std::unique_ptr<HloInstruction> CreateCustomCall(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      absl::string_view custom_call_target);
+      absl::string_view custom_call_target, absl::string_view opaque = "");
+
+  // Overload which constrains the layouts of the operand and result. 'shape'
+  // and 'operand_shapes_with_layout' must have layouts.
+  // 'operand_shapes_with_layout' must have a compatible element for each
+  // operand.
+  static std::unique_ptr<HloInstruction> CreateCustomCall(
+      const Shape& shape, absl::Span<HloInstruction* const> operands,
+      absl::string_view custom_call_target,
+      absl::Span<const Shape> operand_shapes_with_layout,
+      absl::string_view opaque = "");
 
   // Creates a tuple instruction with the given elements. This is a convenience
   // wrapper around CreateVariadic.
@@ -746,6 +766,9 @@ class HloInstruction {
   // TODO(b/110532604): Remove this capability of creating a token from nothing
   // when we plumb a primordial token from the entry computation.
   static std::unique_ptr<HloInstruction> CreateToken();
+
+  static std::unique_ptr<HloInstruction> CreateGetDimensionSize(
+      const Shape& shape, HloInstruction* operand, int64 dimension);
 
   // Returns the opcode for this instruction.
   HloOpcode opcode() const { return opcode_; }
@@ -860,11 +883,15 @@ class HloInstruction {
       return false;
     }
 
-    // Use an explicit loop rather than ContainerEquals, because copying around
-    // std::functions may be too expensive in some cases.
-    for (size_t i = 0; i < operands().size(); ++i) {
-      if (!eq_operands(operand(i), other.operand(i))) {
-        return false;
+    // Two AllReduces are Identical if they have the same all_reduce_id.
+    // Their operands don't have to be Identical.
+    if (!this->IsCrossModuleAllReduce()) {
+      // Use an explicit loop rather than ContainerEquals, because copying
+      // around std::functions may be too expensive in some cases.
+      for (size_t i = 0; i < operands().size(); ++i) {
+        if (!eq_operands(operand(i), other.operand(i))) {
+          return false;
+        }
       }
     }
 
@@ -934,16 +961,6 @@ class HloInstruction {
   Status Accept(
       const std::function<Status(const HloInstruction*)>& visitor_func) const;
 
-  // Visits all instructions rooted at this instruction using the given visitor
-  // in the given order. 'order' must contain at least the set of instructions
-  // rooted at this node (ie, those accessible from a DFS traversal from this
-  // instruction). Instructions contained in 'order' which are not in the set of
-  // instructions rooted at this node are ignored. 'order' must also be a valid
-  // topological sort of these instructions (defs appear before uses) though
-  // need not be a DFS post-order.
-  Status AcceptOrdered(DfsHloVisitor* visitor,
-                       const std::vector<const HloInstruction*>& order);
-
   // Visit this instruction and only this instruction with the given visitor.
   template <typename HloInstructionPtr>
   Status Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor);
@@ -983,6 +1000,8 @@ class HloInstruction {
   HloComputation* while_body() const;
   void set_while_condition(HloComputation* while_condition);
   void set_while_body(HloComputation* while_body);
+
+  HloInstruction* while_init() const;
 
   // Gets/sets the true and false HloComputation for Conditional. The setters
   // should only be called by HloModule or HloComputation methods.
@@ -1319,9 +1338,6 @@ class HloInstruction {
   int64 slice_strides(int64 dimension) const;
   const std::vector<int64>& slice_strides() const;
 
-  // Delegates to HloSliceInstruction::IsInPlaceSlice.
-  bool IsInPlaceSlice() const;
-
   // Returns the literal associated with this instruction.
   const Literal& literal() const;
 
@@ -1425,6 +1441,7 @@ class HloInstruction {
 
   // Delegates to HloAllReduceInstruction::all_reduce_id.
   absl::optional<int64> all_reduce_id() const;
+  void set_all_reduce_id(const absl::optional<int64>& all_reduce_id);
 
   // Returns data on the window in a windowed operation such as
   // convolution.
@@ -1616,6 +1633,10 @@ class HloInstruction {
   InstructionVector operands_;
 
   // The set of control predecessors of this instruction.
+  // Note that the order of the instructions in the vector influences the order
+  // computed in HloComputation::ComputeInstructionPostOrder, which may
+  // influence the result of the compilation by changing the scheduling. We are
+  // not sure if it matters.
   std::vector<HloInstruction*> control_predecessors_;
 
   // The users of this instruction. Users are HLOs where this instruction is an
@@ -1623,7 +1644,7 @@ class HloInstruction {
   // members. The set enables fast membership testing and the vector enables
   // fast, stable iteration.
   std::vector<HloInstruction*> users_;
-  std::unordered_set<const HloInstruction*> user_set_;
+  absl::flat_hash_set<const HloInstruction*> user_set_;
 
   // The set of control successors of this instruction.
   std::vector<HloInstruction*> control_successors_;
@@ -1689,21 +1710,9 @@ std::ostream& operator<<(std::ostream& os, HloInstruction::FusionKind kind);
 // To make the iteration order over the map deterministic, the comparator
 // should not be using the pointer values, but rather an intrinsic property of
 // the hlo. Exception: null pointer values compare less than non-null.
-//
-// Note that this cannot be used for HLO instructions across multiple modules
-// since the id of HLO instructions are only unique within each HLO module.
 struct HloPtrComparator {
   bool operator()(const HloInstruction* const& lhs,
-                  const HloInstruction* const& rhs) const {
-    if (rhs == nullptr) {
-      // Nothing compares less than nullptr.
-      return false;
-    }
-    if (lhs == nullptr) {
-      return true;
-    }
-    return lhs->unique_id() < rhs->unique_id();
-  }
+                  const HloInstruction* const& rhs) const;
 };
 
 template <typename ValueT>

@@ -66,7 +66,7 @@ class Conv2DBackpropFilterGradTest(test.TestCase):
 
   def testGradientDilatedConv(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         for padding in ["SAME", "VALID"]:
           for stride in [1, 2]:
             np.random.seed(1)

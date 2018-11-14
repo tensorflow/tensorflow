@@ -24,10 +24,14 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("verify_tensor_all_finite")
+@tf_export(
+    "debugging.assert_all_finite",
+    v1=["debugging.assert_all_finite", "verify_tensor_all_finite"])
+@deprecation.deprecated_endpoints("verify_tensor_all_finite")
 def verify_tensor_all_finite(t, msg, name=None):
   """Assert that the tensor does not contain any NaN's or Inf's.
 
@@ -47,7 +51,7 @@ def verify_tensor_all_finite(t, msg, name=None):
   return out
 
 
-@tf_export("add_check_numerics_ops")
+@tf_export(v1=["add_check_numerics_ops"])
 def add_check_numerics_ops():
   """Connect a `check_numerics` to every floating point tensor.
 

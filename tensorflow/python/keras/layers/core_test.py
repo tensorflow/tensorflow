@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import math_ops
@@ -252,6 +253,49 @@ class CoreLayersTest(test.TestCase):
       l(keras.backend.variable(np.ones((1, 1))))
       self.assertEqual('lambda', l.get_config()['output_shape_type'])
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_lambda_output_shape_autocalculate_multiple_inputs(self):
+
+    def lambda_fn(x):
+      return math_ops.matmul(x[0], x[1])
+
+    l = keras.layers.Lambda(lambda_fn)
+    output_shape = l.compute_output_shape([(10, 10), (10, 20)])
+    self.assertAllEqual((10, 20), output_shape)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_lambda_output_shape_list_multiple_outputs(self):
+
+    def lambda_fn(x):
+      return x
+
+    l = keras.layers.Lambda(lambda_fn, output_shape=[(10,), (20,)])
+    output_shape = l.compute_output_shape([(10, 10), (10, 20)])
+    self.assertAllEqual([(10, 10), (10, 20)], output_shape)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_lambda_output_shape_tuple_with_none(self):
+
+    def lambda_fn(x):
+      return x
+
+    l = keras.layers.Lambda(lambda_fn, output_shape=(None, 10))
+    output_shape = l.compute_output_shape((5, 10, 20))
+    self.assertAllEqual([5, None, 10], output_shape.as_list())
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_lambda_output_shape_function_multiple_outputs(self):
+
+    def lambda_fn(x):
+      return x
+
+    def output_shape_fn(input_shape):
+      return input_shape
+
+    l = keras.layers.Lambda(lambda_fn, output_shape=output_shape_fn)
+    output_shape = l.compute_output_shape([(10, 10), (10, 20)])
+    self.assertAllEqual([(10, 10), (10, 20)], output_shape)
+
   def test_lambda_config_serialization(self):
     with self.cached_session():
       # test serialization with output_shape and output_shape_type
@@ -264,6 +308,18 @@ class CoreLayersTest(test.TestCase):
       })
 
       layer = keras.layers.Lambda.from_config(config)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_numpy_inputs(self):
+    if context.executing_eagerly():
+      layer = keras.layers.RepeatVector(2)
+      x = np.ones((10, 10))
+      self.assertAllEqual(np.ones((10, 2, 10)), layer(x))
+
+      layer = keras.layers.Concatenate()
+      x, y = np.ones((10, 10)), np.ones((10, 10))
+      self.assertAllEqual(np.ones((10, 20)), layer([x, y]))
+
 
 if __name__ == '__main__':
   test.main()

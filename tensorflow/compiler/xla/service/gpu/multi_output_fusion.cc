@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
@@ -31,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -101,7 +101,7 @@ bool GpuMultiOutputFusion::IsFusible(HloInstruction* instr) {
 
 int64 GpuMultiOutputFusion::GetProfit(HloInstruction* instr1,
                                       HloInstruction* instr2) {
-  tensorflow::gtl::FlatSet<HloInstruction*> in_list;
+  absl::flat_hash_set<HloInstruction*> in_list;
   for (auto instr : instr1->operands()) {
     if (!IsProfitableOperand(instr)) {
       continue;
@@ -140,6 +140,18 @@ bool GpuMultiOutputFusion::LegalToFuse(HloInstruction* instr1,
     return false;
   }
 
+  // The emitter only supports in-place DUS for fusions with a single DUS at the
+  // root. Don't sibling fuse DUS for now.
+  // TODO(b/119178699): Multi-output fusing DUS can improve performance if we
+  // share the input and output buffers and add support to the emitter.
+  if (instr1->fused_expression_root()->opcode() ==
+          HloOpcode::kDynamicUpdateSlice ||
+      (instr2->opcode() == HloOpcode::kFusion &&
+       instr2->fused_expression_root()->opcode() ==
+           HloOpcode::kDynamicUpdateSlice)) {
+    return false;
+  }
+
   // Do this check last, as it may be expensive.
   return !GpuInstructionFusion::FusionWouldBeTooLarge(instr1, instr2);
 }
@@ -148,7 +160,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
   bool changed = false;
   RecomputeReachability();
 
-  tensorflow::gtl::FlatSet<HloInstruction*> to_fuse;
+  absl::flat_hash_set<HloInstruction*> to_fuse;
   // Keep a list of the instructions to fuse after making all the fusion
   // decisions. We first aggressively add instructions to potential_fusion_list,
   // then filter out instructions that will be no longer fusible because of
@@ -178,6 +190,12 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
       HloInstruction* producer = consumer_operands[i];
       if (!producer->IsFusible()) {
         VLOG(3) << producer->name() << " is not fusible.";
+        continue;
+      }
+      // Never multi-output fuse constants.  To the extent that we want to fuse
+      // constants, that should be handled by the regular fusion pass.
+      if (producer->opcode() == HloOpcode::kConstant) {
+        VLOG(3) << producer->name() << " is a constant.";
         continue;
       }
       const bool is_loop_fusion =

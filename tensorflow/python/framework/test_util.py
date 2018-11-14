@@ -25,6 +25,7 @@ import contextlib
 import gc
 import itertools
 import math
+import os
 import random
 import re
 import tempfile
@@ -52,7 +53,7 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape  # pylint: disable=unused-import
+from tensorflow.python.eager import tape
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -60,6 +61,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
@@ -69,6 +71,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import memory
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -111,8 +114,28 @@ def assert_ops_in_graph(expected_ops, graph):
   return actual_ops
 
 
-@tf_export("test.assert_equal_graph_def")
-def assert_equal_graph_def(actual, expected, checkpoint_v2=False):
+@tf_export("test.assert_equal_graph_def", v1=[])
+def assert_equal_graph_def_v2(actual, expected):
+  """Asserts that two `GraphDef`s are (mostly) the same.
+
+  Compares two `GraphDef` protos for equality, ignoring versions and ordering of
+  nodes, attrs, and control inputs.  Node names are used to match up nodes
+  between the graphs, so the naming of nodes must be consistent. This function
+  ignores randomized attribute values that may appear in V2 checkpoints.
+
+  Args:
+    actual: The `GraphDef` we have.
+    expected: The `GraphDef` we expected.
+
+  Raises:
+    AssertionError: If the `GraphDef`s do not match.
+    TypeError: If either argument is not a `GraphDef`.
+  """
+  assert_equal_graph_def(actual, expected, checkpoint_v2=True)
+
+
+@tf_export(v1=["test.assert_equal_graph_def"])
+def assert_equal_graph_def_v1(actual, expected, checkpoint_v2=False):
   """Asserts that two `GraphDef`s are (mostly) the same.
 
   Compares two `GraphDef` protos for equality, ignoring versions and ordering of
@@ -129,6 +152,10 @@ def assert_equal_graph_def(actual, expected, checkpoint_v2=False):
     AssertionError: If the `GraphDef`s do not match.
     TypeError: If either argument is not a `GraphDef`.
   """
+  assert_equal_graph_def(actual, expected, checkpoint_v2)
+
+
+def assert_equal_graph_def(actual, expected, checkpoint_v2=False):
   if not isinstance(actual, graph_pb2.GraphDef):
     raise TypeError(
         "Expected tf.GraphDef for actual, got %s" % type(actual).__name__)
@@ -401,11 +428,14 @@ def with_c_shapes(cls):
   return cls
 
 
-def enable_cond_v2(fn):
-  """Decorator for enabling CondV2 on a test.
+def enable_control_flow_v2(fn):
+  """Decorator for enabling CondV2 and WhileV2 on a test.
 
-  Note this enables using CondV2 after running the test class's setup/teardown
-  methods.
+  Note this enables using CondV2 and WhileV2 after running the test class's
+  setup/teardown methods.
+
+  In addition to this, callers must import the while_v2 module in order to set
+  the _while_v2 module in control_flow_ops.
 
   Args:
     fn: the function to be wrapped
@@ -415,21 +445,56 @@ def enable_cond_v2(fn):
   """
 
   def wrapper(*args, **kwargs):
-    prev_value = control_flow_ops.ENABLE_COND_V2
+    enable_cond_v2_old = control_flow_ops.ENABLE_COND_V2
+    enable_while_v2_old = control_flow_ops.ENABLE_WHILE_V2
     control_flow_ops.ENABLE_COND_V2 = True
+    control_flow_ops.ENABLE_WHILE_V2 = True
     try:
       fn(*args, **kwargs)
     finally:
-      control_flow_ops.ENABLE_COND_V2 = prev_value
+      control_flow_ops.ENABLE_COND_V2 = enable_cond_v2_old
+      control_flow_ops.ENABLE_WHILE_V2 = enable_while_v2_old
 
   return wrapper
 
 
-def with_cond_v2(cls):
-  """Adds methods that call original methods but with CondV2 enabled.
+def with_control_flow_v2(cls):
+  """Adds methods that call original methods with WhileV2 and CondV2 enabled.
 
-  Note this enables CondV2 in new methods after running the test class's
-  setup method.
+  Note this enables CondV2 and WhileV2 in new methods after running the test
+  class's setup method.
+
+  In addition to this, callers must import the while_v2 module in order to set
+  the _while_v2 module in control_flow_ops.
+
+  If a test function has _disable_control_flow_v2 attr set to True (using the
+  @disable_control_flow_v2 decorator), the v2 function is not generated for it.
+
+  Example:
+
+  @test_util.with_control_flow_v2
+  class ControlFlowTest(test.TestCase):
+
+    def testEnabledForV2(self):
+      ...
+
+    @test_util.disable_control_flow_v2("b/xyzabc")
+    def testDisabledForV2(self):
+      ...
+
+  Generated class:
+  class ControlFlowTest(test.TestCase):
+
+    def testEnabledForV2(self):
+      ...
+
+    def testEnabledForV2WithControlFlowV2(self):
+      // Enable V2 flags.
+      testEnabledForV2(self)
+      // Restore V2 flags.
+
+    def testDisabledForV2(self):
+      ...
 
   Args:
     cls: class to decorate
@@ -437,21 +502,39 @@ def with_cond_v2(cls):
   Returns:
     cls with new test methods added
   """
-  if control_flow_ops.ENABLE_COND_V2:
+  if control_flow_ops.ENABLE_WHILE_V2 and control_flow_ops.ENABLE_COND_V2:
     return cls
 
   for name, value in cls.__dict__.copy().items():
-    if callable(value) and name.startswith("test"):
-      setattr(cls, name + "WithCondV2", enable_cond_v2(value))
+    if (callable(value) and name.startswith("test") and
+        not getattr(value, "_disable_control_flow_v2", False)):
+      setattr(cls, name + "WithControlFlowV2", enable_control_flow_v2(value))
   return cls
+
+
+def disable_control_flow_v2(unused_msg):
+  """Decorator for a function in a with_control_flow_v2 enabled test class.
+
+  Blocks the function from being run with v2 control flow ops.
+
+  Args:
+    unused_msg: Reason for disabling.
+
+  Returns:
+    The wrapped function with _disable_control_flow_v2 attr set to True.
+  """
+  def wrapper(func):
+    func._disable_control_flow_v2 = True
+    return func
+  return wrapper
 
 
 def assert_no_new_pyobjects_executing_eagerly(f):
   """Decorator for asserting that no new Python objects persist after a test.
 
-  Runs the test multiple times executing eagerly, first as a warmup and then
-  several times to let objects accumulate. The warmup helps ignore caches which
-  do not grow as the test is run repeatedly.
+  Runs the test multiple times executing eagerly, first as a warmup and then to
+  let objects accumulate. The warmup helps ignore caches which do not grow as
+  the test is run repeatedly.
 
   Useful for checking that there are no missing Py_DECREFs in the C exercised by
   a bit of Python.
@@ -461,7 +544,14 @@ def assert_no_new_pyobjects_executing_eagerly(f):
     """Warms up, gets an object count, runs the test, checks for new objects."""
     with context.eager_mode():
       gc.disable()
-      f(self, **kwargs)
+      # Run the test 2 times as warmup, in an attempt to fill up caches, which
+      # should not grow as the test is run repeatedly below.
+      #
+      # TODO(b/117156879): Running warmup twice is black magic; we have seen
+      # tests that fail with 1 warmup run, and pass with 2, on various versions
+      # of python2.7.x.
+      for _ in range(2):
+        f(self, **kwargs)
       gc.collect()
       previous_count = len(gc.get_objects())
       if ops.has_default_graph():
@@ -564,6 +654,109 @@ def assert_no_new_tensors(f):
   return decorator
 
 
+def _find_reference_cycle(objects, idx):
+
+  def get_ignore_reason(obj, blacklist):
+    """Tests whether an object should be omitted from the dependency graph."""
+    if len(blacklist) > 100:
+      return "<depth limit>"
+    if tf_inspect.isframe(obj):
+      if "test_util.py" in tf_inspect.getframeinfo(obj)[0]:
+        return "<test code>"
+    for b in blacklist:
+      if b is obj:
+        return "<test code>"
+    if obj is blacklist:
+      return "<test code>"
+    return None
+
+  # Note: this function is meant to help with diagnostics. Its output is purely
+  # a human readable representation, so you may freely modify it to suit your
+  # needs.
+  def describe(obj, blacklist, leaves_only=False):
+    """Returns a custom human-readable summary of obj.
+
+    Args:
+      obj: the value to describe.
+      blacklist: same as blacklist in get_ignore_reason.
+      leaves_only: boolean flag used when calling describe recursively. Useful
+        for summarizing collections.
+    """
+    if get_ignore_reason(obj, blacklist):
+      return "{}{}".format(get_ignore_reason(obj, blacklist), type(obj))
+    if tf_inspect.isframe(obj):
+      return "frame: {}".format(tf_inspect.getframeinfo(obj))
+    elif tf_inspect.ismodule(obj):
+      return "module: {}".format(obj.__name__)
+    else:
+      if leaves_only:
+        return "{}, {}".format(type(obj), id(obj))
+      elif isinstance(obj, list):
+        return "list({}): {}".format(
+            id(obj), [describe(e, blacklist, leaves_only=True) for e in obj])
+      elif isinstance(obj, tuple):
+        return "tuple({}): {}".format(
+            id(obj), [describe(e, blacklist, leaves_only=True) for e in obj])
+      elif isinstance(obj, dict):
+        return "dict({}): {} keys".format(id(obj), len(obj.keys()))
+      elif tf_inspect.isfunction(obj):
+        return "function({}) {}; globals ID: {}".format(
+            id(obj), obj.__name__, id(obj.__globals__))
+      else:
+        return "{}, {}".format(type(obj), id(obj))
+
+  def build_ref_graph(obj, graph, reprs, blacklist):
+    """Builds a reference graph as <referrer> -> <list of refferents>.
+
+    Args:
+      obj: The object to start from. The graph will be built by recursively
+        adding its referrers.
+      graph: Dict holding the graph to be built. To avoid creating extra
+        references, the graph holds object IDs rather than actual objects.
+      reprs: Auxiliary structure that maps object IDs to their human-readable
+        description.
+      blacklist: List of objects to ignore.
+    """
+    referrers = gc.get_referrers(obj)
+    blacklist = blacklist + (referrers,)
+
+    obj_id = id(obj)
+    for r in referrers:
+      if get_ignore_reason(r, blacklist) is None:
+        r_id = id(r)
+        if r_id not in graph:
+          graph[r_id] = []
+        if obj_id not in graph[r_id]:
+          graph[r_id].append(obj_id)
+          build_ref_graph(r, graph, reprs, blacklist)
+          reprs[r_id] = describe(r, blacklist)
+
+  def find_cycle(el, graph, reprs, path):
+    """Finds and prints a single cycle in the dependency graph."""
+    if el not in graph:
+      return
+    for r in graph[el]:
+      if r in path:
+        logging.error("Reference cycle sample:")
+        for p in path + (r,):
+          logging.error(reprs.get(p, "unknown object " + str(p)))
+        return True
+      else:
+        if find_cycle(r, graph, reprs, path + (r,)):
+          return True
+    return False
+
+  obj = objects[idx]
+  graph = {}  # referrer ID -> object ID
+  reprs = {}  # object ID -> description
+  build_ref_graph(obj, graph, reprs, (objects, graph, reprs, get_ignore_reason,
+                                      describe, build_ref_graph, find_cycle))
+  for k in graph:
+    if find_cycle(k, graph, reprs, ()):
+      return True
+  return False
+
+
 def assert_no_garbage_created(f):
   """Test method decorator to assert that no garbage has been created.
 
@@ -579,6 +772,10 @@ def assert_no_garbage_created(f):
 
   def decorator(self, **kwargs):
     """Sets DEBUG_SAVEALL, runs the test, and checks for new garbage."""
+    # Force-load `distribution_strategy_context` to prevent GC at
+    # test time when using eager. Remove once b/117329403 is resolved.
+    tape.distribution_strategy_context.get_distribution_strategy()
+
     gc.disable()
     previous_debug_flags = gc.get_debug()
     gc.set_debug(gc.DEBUG_SAVEALL)
@@ -586,7 +783,8 @@ def assert_no_garbage_created(f):
     previous_garbage = len(gc.garbage)
     f(self, **kwargs)
     gc.collect()
-    if len(gc.garbage) > previous_garbage:
+    new_garbage = len(gc.garbage)
+    if new_garbage > previous_garbage:
       logging.error(
           "The decorated test created work for Python's garbage collector, "
           "likely due to a reference cycle. New objects in cycle(s):")
@@ -610,11 +808,19 @@ def assert_no_garbage_created(f):
           logging.error(obj)
           logging.error("  Object __repr__:")
           logging.error(repr(obj))
-        except Exception:
+        except Exception:  # pylint: disable=broad-except
           logging.error("(Exception while printing object)")
+
+    # When garbage is created, this call can help identify reference cycles,
+    # which are typically the cause of such garbage.
+    if new_garbage > previous_garbage:
+      for i in range(previous_garbage, new_garbage):
+        if _find_reference_cycle(gc.garbage, i):
+          break
+
     # This will fail if any garbage has been created, typically because of a
     # reference cycle.
-    self.assertEqual(previous_garbage, len(gc.garbage))
+    self.assertEqual(previous_garbage, new_garbage)
     # TODO(allenl): Figure out why this debug flag reset doesn't work. It would
     # be nice to be able to decorate arbitrary tests in a large test suite and
     # not hold on to every object in other tests.
@@ -699,7 +905,8 @@ def run_all_in_graph_and_eager_modes(cls):
   """Execute all test methods in the given class with and without eager."""
   base_decorator = run_in_graph_and_eager_modes
   for name, value in cls.__dict__.copy().items():
-    if callable(value) and name.startswith("test"):
+    if callable(value) and name.startswith(
+        "test") and not name.startswith("testSkipEager"):
       setattr(cls, name, base_decorator(value))
   return cls
 
@@ -767,22 +974,22 @@ def run_in_graph_and_eager_modes(func=None,
     if tf_inspect.isclass(f):
       raise ValueError(
           "`run_test_in_graph_and_eager_modes` only supports test methods. "
-          "Did you mean to use `run_all_tests_in_graph_and_eager_modes`?")
+          "Did you mean to use `run_all_in_graph_and_eager_modes`?")
 
-    def decorated(self, **kwargs):
+    def decorated(self, *args, **kwargs):
       try:
         with context.graph_mode():
           with self.test_session(use_gpu=use_gpu, config=config):
-            f(self, **kwargs)
+            f(self, *args, **kwargs)
       except unittest.case.SkipTest:
         pass
 
       def run_eagerly(self, **kwargs):
         if not use_gpu:
           with ops.device("/device:CPU:0"):
-            f(self, **kwargs)
+            f(self, *args, **kwargs)
         else:
-          f(self, **kwargs)
+          f(self, *args, **kwargs)
 
       if assert_no_eager_garbage:
         ops.reset_default_graph()
@@ -868,6 +1075,19 @@ def device(use_gpu):
     yield
 
 
+class CapturedWrites(object):
+  """A utility class to load the captured writes made to a stream."""
+
+  def __init__(self, capture_location):
+    self.capture_location = capture_location
+
+  def contents(self):
+    """Get the captured writes as a single string."""
+    with open(self.capture_location) as tmp_file:
+      output_data = "".join(tmp_file.readlines())
+    return output_data
+
+
 class ErrorLoggingSession(session.Session):
   """Wrapper around a Session that logs errors in run().
   """
@@ -876,7 +1096,11 @@ class ErrorLoggingSession(session.Session):
     try:
       return super(ErrorLoggingSession, self).run(*args, **kwargs)
     except Exception as e:  # pylint: disable=broad-except
-      logging.error(str(e))
+      # Note: disable the logging for OutOfRangeError, which makes the output
+      # of tf.data tests hard to read, because OutOfRangeError is used as the
+      # signal completion
+      if not isinstance(e, errors.OutOfRangeError):
+        logging.error(str(e))
       raise
 
 
@@ -933,6 +1157,52 @@ class TensorFlowTestCase(googletest.TestCase):
     if not self._tempdir:
       self._tempdir = tempfile.mkdtemp(dir=googletest.GetTempDir())
     return self._tempdir
+
+  @contextlib.contextmanager
+  def captureWritesToStream(self, stream):
+    """A context manager that captures the writes to a given stream.
+
+    This context manager captures all writes to a given stream inside of a
+    `CapturedWrites` object. When this context manager is created, it yields
+    the `CapturedWrites` object. The captured contents can be accessed  by
+    calling `.contents()` on the `CapturedWrites`.
+
+    For this function to work, the stream must have a file descriptor that
+    can be modified using `os.dup` and `os.dup2`, and the stream must support
+    a `.flush()` method. The default python sys.stdout and sys.stderr are
+    examples of this. Note that this does not work in Colab or Jupyter
+    notebooks, because those use alternate stdout streams.
+
+    Example:
+    ```python
+    class MyOperatorTest(test_util.TensorFlowTestCase):
+      def testMyOperator(self):
+        input = [1.0, 2.0, 3.0, 4.0, 5.0]
+        with self.captureWritesToStream(sys.stdout) as captured:
+          result = MyOperator(input).eval()
+        self.assertStartsWith(captured.contents(), "This was printed.")
+    ```
+
+    Args:
+      stream: The stream whose writes should be captured. This
+        stream must have a file descriptor, support writing via using that
+        file descriptor, and must have a `.flush()` method.
+
+    Yields:
+      A `CapturedWrites` object that contains all writes to the specified stream
+      made during this context.
+    """
+    stream.flush()
+    fd = stream.fileno()
+    tmp_file_path = tempfile.mktemp(dir=self.get_temp_dir())
+    tmp_file = open(tmp_file_path, "w")
+    orig_fd = os.dup(fd)
+    os.dup2(tmp_file.fileno(), fd)
+    try:
+      yield CapturedWrites(tmp_file_path)
+    finally:
+      tmp_file.close()
+      os.dup2(orig_fd, fd)
 
   def _AssertProtoEquals(self, a, b, msg=None):
     """Asserts that a and b are the same proto.
@@ -1006,6 +1276,9 @@ class TensorFlowTestCase(googletest.TestCase):
       return self._eval_helper(tensor())
     else:
       try:
+        if sparse_tensor.is_sparse(tensor):
+          return sparse_tensor.SparseTensorValue(tensor.indices, tensor.values,
+                                                 tensor.dense_shape)
         return tensor.numpy()
       except AttributeError as e:
         six.raise_from(ValueError("Unsupported type %s." % type(tensor)), e)
@@ -1131,6 +1404,8 @@ class TensorFlowTestCase(googletest.TestCase):
         yield cached
 
   @contextlib.contextmanager
+  @deprecation.deprecated(None, "Use `self.session()` or "
+                          "`self.cached_session()` instead.")
   def test_session(self,
                    graph=None,
                    config=None,
@@ -1337,35 +1612,36 @@ class TensorFlowTestCase(googletest.TestCase):
                                                                      b.shape)
     self.assertEqual(a.shape, b.shape, shape_mismatch_msg)
 
+    msgs = [msg]
     if not np.allclose(a, b, rtol=rtol, atol=atol):
-      # Prints more details than np.testing.assert_allclose.
+      # Adds more details to np.testing.assert_allclose.
       #
       # NOTE: numpy.allclose (and numpy.testing.assert_allclose)
       # checks whether two arrays are element-wise equal within a
       # tolerance. The relative difference (rtol * abs(b)) and the
       # absolute difference atol are added together to compare against
       # the absolute difference between a and b.  Here, we want to
-      # print out which elements violate such conditions.
+      # tell user which elements violate such conditions.
       cond = np.logical_or(
           np.abs(a - b) > atol + rtol * np.abs(b),
           np.isnan(a) != np.isnan(b))
       if a.ndim:
         x = a[np.where(cond)]
         y = b[np.where(cond)]
-        print("not close where = ", np.where(cond))
+        msgs.append("not close where = {}".format(np.where(cond)))
       else:
         # np.where is broken for scalars
         x, y = a, b
-      print("not close lhs = ", x)
-      print("not close rhs = ", y)
-      print("not close dif = ", np.abs(x - y))
-      print("not close tol = ", atol + rtol * np.abs(y))
-      print("dtype = %s, shape = %s" % (a.dtype, a.shape))
+      msgs.append("not close lhs = {}".format(x))
+      msgs.append("not close rhs = {}".format(y))
+      msgs.append("not close dif = {}".format(np.abs(x - y)))
+      msgs.append("not close tol = {}".format(atol + rtol * np.abs(y)))
+      msgs.append("dtype = {}, shape = {}".format(a.dtype, a.shape))
       # TODO(xpan): There seems to be a bug:
       # tensorflow/compiler/tests:binary_ops_test pass with float32
       # nan even though the equal_nan is False by default internally.
       np.testing.assert_allclose(
-          a, b, rtol=rtol, atol=atol, err_msg=msg, equal_nan=True)
+          a, b, rtol=rtol, atol=atol, err_msg="\n".join(msgs), equal_nan=True)
 
   def _assertAllCloseRecursive(self,
                                a,
@@ -1538,28 +1814,36 @@ class TensorFlowTestCase(googletest.TestCase):
     msg = msg if msg else ""
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
-    self.assertEqual(
-        a.shape, b.shape, "Shape mismatch: expected %s, got %s."
-        " %s" % (a.shape, b.shape, msg))
+    # Arbitrary bounds so that we don't print giant tensors.
+    if (b.ndim <= 3 or b.size < 500):
+      self.assertEqual(
+          a.shape, b.shape, "Shape mismatch: expected %s, got %s."
+          " Contents: %s. \n%s." % (a.shape, b.shape, b, msg))
+    else:
+      self.assertEqual(
+          a.shape, b.shape, "Shape mismatch: expected %s, got %s."
+          " %s" % (a.shape, b.shape, msg))
+
     same = (a == b)
 
     if (a.dtype in [
         np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype
     ]):
       same = np.logical_or(same, np.logical_and(np.isnan(a), np.isnan(b)))
+    msgs = [msg]
     if not np.all(same):
-      # Prints more details than np.testing.assert_array_equal.
+      # Adds more details to np.testing.assert_array_equal.
       diff = np.logical_not(same)
       if a.ndim:
         x = a[np.where(diff)]
         y = b[np.where(diff)]
-        print("not equal where = ", np.where(diff))
+        msgs.append("not equal where = {}".format(np.where(diff)))
       else:
         # np.where is broken for scalars
         x, y = a, b
-      print("not equal lhs = ", x)
-      print("not equal rhs = ", y)
-      np.testing.assert_array_equal(a, b, err_msg=msg)
+      msgs.append("not equal lhs = {}".format(x))
+      msgs.append("not equal rhs = {}".format(y))
+      np.testing.assert_array_equal(a, b, err_msg="\n".join(msgs))
 
   def assertAllGreater(self, a, comparison_target):
     """Assert element values are all greater than a target value.
@@ -1573,7 +1857,7 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertGreater(np.min(a), comparison_target)
 
   def assertAllLess(self, a, comparison_target):
-    """Assert element values are all greater than a target value.
+    """Assert element values are all less than a target value.
 
     Args:
       a: The numpy `ndarray`, or anything that can be converted into a
@@ -1584,7 +1868,7 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertLess(np.max(a), comparison_target)
 
   def assertAllGreaterEqual(self, a, comparison_target):
-    """Assert element values are all greater than a target value.
+    """Assert element values are all greater than or equal to a target value.
 
     Args:
       a: The numpy `ndarray`, or anything that can be converted into a
@@ -1595,7 +1879,7 @@ class TensorFlowTestCase(googletest.TestCase):
     self.assertGreaterEqual(np.min(a), comparison_target)
 
   def assertAllLessEqual(self, a, comparison_target):
-    """Assert element values are all greater than a target value.
+    """Assert element values are all less than or equal to a target value.
 
     Args:
       a: The numpy `ndarray`, or anything that can be converted into a
@@ -1870,9 +2154,13 @@ class TensorFlowTestCase(googletest.TestCase):
       # Don't perform optimizations for tests so we don't inadvertently run
       # gpu ops on cpu
       config.graph_options.optimizer_options.opt_level = -1
+      # Disable Grappler constant folding since some tests & benchmarks
+      # use constant input and become meaningless after constant folding.
+      # DO NOT DISABLE GRAPPLER OPTIMIZERS WITHOUT CONSULTING WITH THE
+      # GRAPPLER TEAM.
       config.graph_options.rewrite_options.constant_folding = (
           rewriter_config_pb2.RewriterConfig.OFF)
-      config.graph_options.rewrite_options.arithmetic_optimization = (
+      config.graph_options.rewrite_options.pin_to_host_optimization = (
           rewriter_config_pb2.RewriterConfig.OFF)
       return config
 

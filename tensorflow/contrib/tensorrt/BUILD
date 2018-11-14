@@ -312,16 +312,53 @@ tf_cuda_cc_test(
     ],
     deps = [
         ":trt_conversion",
+        "@com_google_googletest//:gtest",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ] + if_tensorrt([
+        "@local_config_tensorrt//:nv_infer",
+    ]),
+)
+
+tf_cuda_cc_test(
+    name = "convert_nodes_test",
+    size = "medium",
+    srcs = ["convert/convert_nodes_test.cc"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_windows",
+        "nomac",
+    ],
+    deps = [
+        ":trt_logging",
+        ":trt_conversion",
+        ":trt_plugins",
+        "@com_google_googletest//:gtest",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ] + if_tensorrt([
+        "@local_config_cuda//cuda:cuda_headers",
         "@local_config_tensorrt//:nv_infer",
     ]),
 )
@@ -444,6 +481,7 @@ cuda_py_test(
 cuda_py_tests(
     name = "tf_trt_integration_test",
     srcs = [
+        "test/base_test.py",
         "test/batch_matmul_test.py",
         "test/biasadd_matmul_test.py",
         "test/binary_tensor_weight_broadcast_test.py",
@@ -454,7 +492,7 @@ cuda_py_tests(
         "test/multi_connection_neighbor_engine_test.py",
         "test/neighboring_engine_test.py",
         "test/rank_two_test.py",
-        "test/unary_test.py",
+        "test/reshape_transpose_test.py",
         "test/vgg_block_nchw_test.py",
         "test/vgg_block_test.py",
     ],
@@ -471,9 +509,9 @@ cuda_py_tests(
 )
 
 cuda_py_tests(
-    name = "base_test",
+    name = "tf_trt_integration_test_no_oss",
     srcs = [
-        "test/base_test.py",
+        "test/unary_test.py",
     ],
     additional_deps = [
         ":tf_trt_integration_test_base",
@@ -481,12 +519,11 @@ cuda_py_tests(
         "//tensorflow/python:framework_test_lib",
     ],
     tags = [
-        "manual",
         "no_cuda_on_cpu_tap",
-        "no_gpu",
+        "no_oss",  # TODO(b/117274186): re-enable in OSS after crash fixed
+        "no_pip",  # TODO(b/117274186): re-enable in OSS after crash fixed
         "no_windows",
         "nomac",
-        "notap",
     ],
 )
 

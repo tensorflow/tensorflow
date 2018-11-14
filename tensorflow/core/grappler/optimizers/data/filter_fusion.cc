@@ -37,25 +37,20 @@ NodeDef MakeFusedFilterNode(const NodeDef& first_filter_node,
                             const FunctionDef& fused_function,
                             MutableGraphView* graph) {
   NodeDef fused_node;
-  graph_utils::SetUniqueGraphNodeName("fused_filter", graph->GetGraph(),
+  graph_utils::SetUniqueGraphNodeName("fused_filter", graph->graph(),
                                       &fused_node);
 
   fused_node.set_op("FilterDataset");
   fused_node.add_input(first_filter_node.input(0));
 
-  auto copy_attribute = [](const string& attribute_name, const NodeDef& from,
-                           NodeDef* to) {
-    (*to->mutable_attr())[attribute_name] = from.attr().at(attribute_name);
-  };
-
   auto attr = first_filter_node.attr().at("predicate");
   *attr.mutable_func()->mutable_name() = fused_function.signature().name();
   (*fused_node.mutable_attr())["predicate"] = std::move(attr);
 
-  copy_attribute("Targuments", first_filter_node, &fused_node);
+  graph_utils::CopyAttribute("Targuments", first_filter_node, &fused_node);
 
   for (auto key : {"output_shapes", "output_types"})
-    copy_attribute(key, second_filter_node, &fused_node);
+    graph_utils::CopyAttribute(key, second_filter_node, &fused_node);
 
   return fused_node;
 }
@@ -114,14 +109,14 @@ Status FilterFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     const auto* fused_filter_node = graph.AddNode(MakeFusedFilterNode(
         *first_filter_node, *second_filter_node, *fused_predicate, &graph));
 
-    graph.ReplaceInput(*second_filter_node, *fused_filter_node);
+    graph.UpdateFanouts(second_filter_node->name(), fused_filter_node->name());
 
     // TODO(prazek): we should run some optimizations on the fused filter
     // functions, or make sure that optimization passes run after filter
     // fusion.
     TF_RETURN_IF_ERROR(function_library.AddFunctionDef(*fused_predicate));
-    // TODO(prazek): we could also remove map functions from library if they
-    // are not used anymore.
+    // TODO(b/116285210): we could also remove map functions from library if
+    // they are not used anymore.
     nodes_to_delete.insert(first_filter_node->name());
     nodes_to_delete.insert(second_filter_node->name());
   }

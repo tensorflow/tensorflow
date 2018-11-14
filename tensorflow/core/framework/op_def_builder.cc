@@ -526,32 +526,32 @@ void FinalizeDoc(const string& text, OpDef* op_def,
 
 }  // namespace
 
-OpDefBuilder::OpDefBuilder(StringPiece op_name) {
-  op_def()->set_name(string(op_name));  // NOLINT
+OpDefBuilder::OpDefBuilder(string op_name) {
+  op_def()->set_name(std::move(op_name));
 }
 
-OpDefBuilder& OpDefBuilder::Attr(StringPiece spec) {
-  attrs_.emplace_back(spec.data(), spec.size());
+OpDefBuilder& OpDefBuilder::Attr(string spec) {
+  attrs_.push_back(std::move(spec));
   return *this;
 }
 
-OpDefBuilder& OpDefBuilder::Input(StringPiece spec) {
-  inputs_.emplace_back(spec.data(), spec.size());
+OpDefBuilder& OpDefBuilder::Input(string spec) {
+  inputs_.push_back(std::move(spec));
   return *this;
 }
 
-OpDefBuilder& OpDefBuilder::Output(StringPiece spec) {
-  outputs_.emplace_back(spec.data(), spec.size());
+OpDefBuilder& OpDefBuilder::Output(string spec) {
+  outputs_.push_back(std::move(spec));
   return *this;
 }
 
 #ifndef TF_LEAN_BINARY
-OpDefBuilder& OpDefBuilder::Doc(StringPiece text) {
+OpDefBuilder& OpDefBuilder::Doc(string text) {
   if (!doc_.empty()) {
     errors_.push_back(
         strings::StrCat("Extra call to Doc() for Op ", op_def()->name()));
   } else {
-    doc_.assign(text.data(), text.size());
+    doc_ = std::move(text);
   }
   return *this;
 }
@@ -577,14 +577,14 @@ OpDefBuilder& OpDefBuilder::SetAllowsUninitializedInput() {
   return *this;
 }
 
-OpDefBuilder& OpDefBuilder::Deprecated(int version, StringPiece explanation) {
+OpDefBuilder& OpDefBuilder::Deprecated(int version, string explanation) {
   if (op_def()->has_deprecation()) {
     errors_.push_back(
         strings::StrCat("Deprecated called twice for Op ", op_def()->name()));
   } else {
     OpDeprecation* deprecation = op_def()->mutable_deprecation();
     deprecation->set_version(version);
-    deprecation->set_explanation(string(explanation));
+    deprecation->set_explanation(std::move(explanation));
   }
   return *this;
 }

@@ -173,7 +173,7 @@ def main(_):
     input_fn = tf.estimator.export.build_raw_serving_input_receiver_fn({
         "image": inputs
     })
-    revnet_estimator.export_savedmodel(FLAGS.model_dir, input_fn)
+    revnet_estimator.export_saved_model(FLAGS.model_dir, input_fn)
 
 
 if __name__ == "__main__":

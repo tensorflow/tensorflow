@@ -194,6 +194,7 @@ class _DeepEmbeddingLookupArguments(
   pass
 
 
+@six.add_metaclass(abc.ABCMeta)
 class _FeatureColumn(object):
   """Represents a feature column abstraction.
 
@@ -205,7 +206,6 @@ class _FeatureColumn(object):
   Following classes (_SparseColumn, _RealValuedColumn, ...) are concrete
   instances.
   """
-  __metaclass__ = abc.ABCMeta
 
   @abc.abstractproperty
   @deprecation.deprecated(

@@ -42,7 +42,7 @@ class BreakTransformer(converter.Base):
     var_name = self.state[_Break].control_var_name
     # TODO(mdan): This will fail when expanded inside a top-level else block.
     template = """
-      var_name = tf.constant(True)
+      var_name = True
       continue
     """
     return templates.replace(template, var_name=var_name)
@@ -85,7 +85,7 @@ class BreakTransformer(converter.Base):
       guarded_orelse = self._guard_if_present(node.orelse, break_var)
 
       template = """
-        var_name = tf.constant(False)
+        var_name = False
         while test and not var_name:
           body
         else:
@@ -122,7 +122,7 @@ class BreakTransformer(converter.Base):
       # the control variable is marked as used.
       # TODO(mdan): Use a marker instead, e.g. ag__.condition_loop_on(var_name)
       template = """
-        var_name = tf.constant(False)
+        var_name = False
         for target in iter_:
           (var_name,)
           body

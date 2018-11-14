@@ -18,13 +18,14 @@ limitations under the License.
 #include <list>
 #include <memory>
 #include <string>
-#include <thread>  // (b/114492873): move this include into core/platform
+// TODO(b/114492873): Move this include into core/platform.
+#include <thread>  // NOLINT
 #include <utility>
 #include <vector>
 
-#include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
@@ -33,48 +34,83 @@ namespace tensorflow {
 namespace data {
 namespace model {
 
-class Model;
-class Node;
+// Represents thread-safe state that can be shared between an input pipeline and
+// the performance model.
+struct SharedState {
+ public:
+  SharedState(int64 value, std::shared_ptr<mutex> mu,
+              std::shared_ptr<condition_variable> cond_var)
+      : value(value), mu(std::move(mu)), cond_var(std::move(cond_var)) {}
+
+  int64 value;
+  std::shared_ptr<mutex> mu;
+  std::shared_ptr<condition_variable> cond_var;
+  bool tunable = false;
+};
+
+// Represents a parameter.
+struct Parameter {
+  Parameter(const string& name, std::shared_ptr<SharedState> state, int64 min,
+            int64 max)
+      : name(name),
+        value(state->value),
+        min(min),
+        max(max),
+        state(std::move(state)) {}
+
+  // Human-readable name of the parameter.
+  string name;
+
+  // Identifies the model value of the parameter. This can be different from
+  // the actual value (e.g. during optimization search).
+  int64 value;
+
+  // Identifies the minimum value of the parameter.
+  int64 min;
+
+  // Identifies the maximum value of the parameter.
+  int64 max;
+
+  // Shared state of the parameter.
+  std::shared_ptr<SharedState> state;
+};
+
+std::shared_ptr<Parameter> MakeParameter(const string& name,
+                                         std::shared_ptr<SharedState> state,
+                                         int64 min, int64 max);
 
 // Abstract representation of a TensorFlow input pipeline node. It collects
 // information about inputs to this node, processing time spent executing the
 // node logic, number of elements produced by the node, various other
 // information (e.g. batch size or execution parallelism).
 //
-// Developers of tf.data transformations are not expected to interact with this
-// class directly. Boiler plate code for creating the abstract representation of
-// the input pipeline and collecting common information has been added to the
-// implementation of `DatasetBase` and `DatasetBaseIterator` respectively.
+// Developers of tf.data transformations are not expected to interact with
+// this class directly. Boiler plate code for creating the abstract
+// representation of the input pipeline and collecting common information has
+// been added to the implementation of `DatasetBase` and `DatasetBaseIterator`
+// respectively.
 //
 // In addition, `DatasetBaseIterator` provides wrappers that can be used for
-// transformation-specific information collection. The `SetMetadata` wrapper can
-// be used to pass arbitrary metadata to the modeling framework, while the
+// transformation-specific information collection. The `SetMetadata` wrapper
+// can be used to pass arbitrary metadata to the modeling framework, while the
 // `StartWork` and `StopWork` wrappers should be used to correctly account for
 // processing time of multi-threaded transformation that yield the CPU; such
 // transformations should invoke `StartWork()` when a transformation thread
 // starts executing (e.g. when created or woken up) and `StopWork()` when a
 // transformation thread stops executing (e.g. when returning or waiting).
-//
-// TODO(jsimsa): Create an API to capture the abstract semantics of each
-// tf.data transformation and replace switch-case blocks with inheritance.
 class Node {
  public:
-  Node(int64 id, std::shared_ptr<Node> output) : id_(id), output_(output) {}
+  // Arguments for `Node` constructor.
+  struct Args {
+    int64 id;
+    string name;
+    std::shared_ptr<Node> output;
+  };
 
-  explicit Node(const proto::Node& node_proto) : id_(node_proto.id()) {
-    name_ = node_proto.name();
-    type_ = TypeFromName(node_proto.name());
-    processing_time_ = node_proto.processing_time();
-    num_elements_ = node_proto.num_elements();
-    metadata_.insert(node_proto.metadata().begin(),
-                     node_proto.metadata().end());
-  }
+  using Factory = std::function<std::shared_ptr<Node>(Args)>;
 
-  // Records that the node produced an element.
-  void add_element() LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
-    num_elements_++;
-  }
+  explicit Node(Args args)
+      : id_(args.id), name_(args.name), output_(args.output.get()) {}
 
   // Adds an input.
   void add_input(std::shared_ptr<Node> node) LOCKS_EXCLUDED(mu_) {
@@ -89,30 +125,56 @@ class Node {
   }
 
   // Returns the unique node ID.
-  int64 id() LOCKS_EXCLUDED(mu_) { return id_; }
+  int64 id() const LOCKS_EXCLUDED(mu_) { return id_; }
+
+  // Returns the node name.
+  const string& name() const { return name_; }
 
   // Returns the node inputs.
-  std::list<std::shared_ptr<Node>> inputs() LOCKS_EXCLUDED(mu_) {
+  std::list<std::shared_ptr<Node>> inputs() const LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return inputs_;
   }
 
-  // Returns the node name.
-  const string& name() LOCKS_EXCLUDED(mu_) {
-    tf_shared_lock l(mu_);
-    return name_;
-  }
-
   // Returns the number of elements produced by the node.
-  int64 num_elements() LOCKS_EXCLUDED(mu_) {
+  int64 num_elements() const LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return num_elements_;
   }
 
   // Returns the node output.
-  std::shared_ptr<Node> output() LOCKS_EXCLUDED(mu_) {
+  Node* output() const { return output_; }
+
+  // Returns the aggregate processing time.
+  int64 processing_time() const LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
-    return output_;
+    return processing_time_;
+  }
+
+  // Records that the node produced an element.
+  void record_element() LOCKS_EXCLUDED(mu_) {
+    mutex_lock l(mu_);
+    num_elements_++;
+  }
+
+  // Records that a node thread has started executing.
+  void record_start(int64 time_nanos) LOCKS_EXCLUDED(mu_) {
+    mutex_lock l(mu_);
+    work_start_[std::this_thread::get_id()] = time_nanos;
+  }
+
+  // Records that a node thread has stopped executing.
+  void record_stop(int64 time_nanos) LOCKS_EXCLUDED(mu_) {
+    mutex_lock l(mu_);
+    std::thread::id tid = std::this_thread::get_id();
+    auto iter = work_start_.find(tid);
+    if (iter != work_start_.end()) {
+      processing_time_ += time_nanos - iter->second;
+      work_start_.erase(iter);
+    } else {
+      LOG(WARNING)
+          << "Encountered a stop event that was not preceded by a start event.";
+    }
   }
 
   // Removes an input.
@@ -121,268 +183,192 @@ class Node {
     inputs_.remove(input);
   }
 
-  // Adds the given key-value pair to the node metadata.
-  void set_metadata(const string& key, int64 value) LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
-    metadata_[key] = value;
-  }
-
-  // Sets the node name.
-  void set_name(const string& name) LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
-    name_ = name;
-    type_ = TypeFromName(name);
-  }
-
-  // Set the node output.
-  void set_output(std::shared_ptr<Node> output) LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
-    output_ = output;
-  }
-
-  // Records that a node thread has started work.
-  void start_work() LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
-    work_start_[std::this_thread::get_id()] = Env::Default()->NowNanos();
-  }
-
-  // Records that a node thread has stopped work.
-  void stop_work() LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
-    auto iter = work_start_.find(std::this_thread::get_id());
-    CHECK(work_start_.end() != iter)
-        << "Encountered a stop event that was not preceded by a start event.";
-    processing_time_ += Env::Default()->NowNanos() - iter->second;
-    work_start_.erase(iter);
-  }
-
- private:
-  // Represents a performance knob.
-  struct Knob {
-    Node* node;
-    int64 processing_time;
-    int64 value;
-  };
-
-  enum class Type {
-    BATCH = 0,
-    CACHE,
-    CONCATENATE,
-    FILTER,
-    FLAT_MAP,
-    INTERLEAVE,
-    MAP,
-    MAP_AND_BATCH,
-    PADDED_BATCH,
-    PARALLEL_INTERLEAVE,
-    PARALLEL_INTERLEAVE_V2,
-    PARALLEL_MAP,
-    PREFETCH,
-    REPEAT,
-    SHUFFLE,
-    SKIP,
-    TAKE,
-    ZIP,
-    UNKNOWN,
-  };
-
-  // Collects performance knobs in the subtree rooted in this node.
-  void CollectKnobs(std::vector<Node::Knob>* knobs) LOCKS_EXCLUDED(mu_);
-
-  // Returns the per-element processing time spent in this node.
-  int64 NanosPerElement() LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
-    return NanosPerElementLocked();
-  }
-
-  int64 NanosPerElementLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    if (num_elements_ == 0) {
-      return 0;
+  // Collects tunable parameters in the subtree rooted in this node.
+  void CollectTunableParameters(
+      std::vector<std::shared_ptr<Parameter>>* parameters) LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock l(mu_);
+    for (auto& pair : parameters_) {
+      if (pair.second->state->tunable) {
+        parameters->push_back(pair.second);
+      }
     }
-    return (int64)((double)processing_time_ / (double)num_elements_);
+    for (auto& input : inputs_) {
+      input->CollectTunableParameters(parameters);
+    }
   }
 
   // Returns the per-element output time for this node.
-  int64 OutputTime(std::vector<int64>* input_times) LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
+  int64 OutputTime(std::vector<int64>* input_times) const LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock l(mu_);
     return OutputTimeLocked(input_times);
   }
 
-  int64 OutputTimeLocked(std::vector<int64>* input_times)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Returns the per-element processing time spent in the subtree rooted in
+  // this node.
+  int64 ProcessingTime() const LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock l(mu_);
+    return ProcessingTimeLocked();
+  }
 
-  int64 OutputTimeForInputs(std::vector<int64>* input_times)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  // Returns a copy of this node, making a deep copy of its inputs and a
+  // shallow copy of its tunable parameters.
+  //
+  // The purpose for this method is to allow the model optimization logic to
+  // operate over immutable state while allowing concurrent model updates.
+  std::shared_ptr<Node> Snapshot(std::shared_ptr<Node> output)
+      LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock l(mu_);
+    std::shared_ptr<Node> result = Clone(output);
+    result->processing_time_ = processing_time_;
+    result->num_elements_ = num_elements_;
+    result->parameters_ = parameters_;
+    for (auto& input : inputs_) {
+      result->add_input(input->Snapshot(result));
+    }
+    return result;
+  }
+
+ protected:
+  // Creates a clone of this node.
+  virtual std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const
+      SHARED_LOCKS_REQUIRED(mu_) = 0;
+
+  // Returns the per-element processing time spent in this node.
+  int64 NanosPerElementLocked() const SHARED_LOCKS_REQUIRED(mu_) {
+    if (num_elements_ == 0) {
+      return 0;
+    }
+    return static_cast<int64>(static_cast<double>(processing_time_) /
+                              static_cast<double>(num_elements_));
+  }
+
+  // Returns the sum of per-element output time for the inputs of this node.
+  int64 OutputTimeForInputs(std::vector<int64>* input_times) const
+      SHARED_LOCKS_REQUIRED(mu_) {
     int64 sum = 0;
-    for (auto input : inputs_) {
+    for (auto& input : inputs_) {
       sum += input->OutputTime(input_times);
     }
     return sum;
   }
 
-  // Returns the per-element processing time spent in the subtree rooted in this
-  // node.
-  int64 ProcessingTime() LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
-    return ProcessingTimeLocked();
-  }
+  // Returns the per-element output time for this node.
+  virtual int64 OutputTimeLocked(std::vector<int64>* input_times) const
+      SHARED_LOCKS_REQUIRED(mu_) = 0;
 
-  int64 ProcessingTimeLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // Returns the per-element processing time spent in the inputs of this node.
-  int64 ProcessingTimeForInputs() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  // Returns the sum of per-element processing time for the inputs of this node.
+  //
+  // TODO(jsimsa): use processing time history as a prior for future inputs
+  int64 ProcessingTimeForInputs() const SHARED_LOCKS_REQUIRED(mu_) {
     int64 sum = 0;
-    for (auto input : inputs_) {
-      sum += input->ProcessingTimeLocked();
+    for (auto& input : inputs_) {
+      sum += input->ProcessingTime();
     }
     return sum;
   }
 
-  // Serializes the node state into the given proto.
-  void ToProto(proto::Node* node_proto) LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
-    node_proto->set_id(id_);
-    node_proto->set_name(name_);
-    node_proto->set_num_elements(num_elements_);
-    node_proto->set_processing_time(processing_time_);
-    for (const std::shared_ptr<Node>& input : inputs_) {
-      node_proto->add_input(input->id());
-    }
-    if (output_) {
-      node_proto->set_output(output_->id());
-    }
-    node_proto->mutable_metadata()->insert(metadata_.begin(), metadata_.end());
-  }
+  // Returns the per-element processing time spent in the subtree rooted in
+  // this node.
+  virtual int64 ProcessingTimeLocked() const SHARED_LOCKS_REQUIRED(mu_) = 0;
 
-  Type TypeFromName(const string& name) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    if (name_ == "Batch") {
-      return Type::BATCH;
-    }
-    if (str_util::EndsWith(name_, "Cache")) {
-      return Type::CACHE;
-    }
-    if (name_ == "Concatenate") {
-      return Type::CONCATENATE;
-    }
-    if (name_ == "Filter") {
-      return Type::FILTER;
-    }
-    if (name_ == "FlatMap") {
-      return Type::FLAT_MAP;
-    }
-    if (name_ == "Interleave") {
-      return Type::INTERLEAVE;
-    }
-    if (name_ == "Map") {
-      return Type::MAP;
-    }
-    if (name_ == "MapAndBatch") {
-      return Type::MAP_AND_BATCH;
-    }
-    if (name_ == "PaddedBatch") {
-      return Type::PADDED_BATCH;
-    }
-    if (name_ == "ParallelInterleave") {
-      return Type::PARALLEL_INTERLEAVE;
-    }
-    if (name_ == "ParallelInterleaveV2") {
-      return Type::PARALLEL_INTERLEAVE_V2;
-    }
-    if (name_ == "ParallelMap") {
-      return Type::PARALLEL_MAP;
-    }
-    if (name_ == "Prefetch") {
-      return Type::PREFETCH;
-    }
-    if (str_util::EndsWith(name_, "Repeat")) {
-      return Type::REPEAT;
-    }
-    if (name_ == "Shuffle") {
-      return Type::SHUFFLE;
-    }
-    if (str_util::EndsWith(name_, "Skip")) {
-      return Type::SKIP;
-    }
-    if (str_util::EndsWith(name_, "Take")) {
-      return Type::TAKE;
-    }
-    if (name_ == "Zip") {
-      return Type::ZIP;
-    }
-    return Type::UNKNOWN;
-  }
-
-  mutex mu_;
+  mutable mutex mu_;
   const int64 id_;
-  Type type_ GUARDED_BY(mu_);
-  string name_ GUARDED_BY(mu_);
+  const string name_;
   int64 processing_time_ GUARDED_BY(mu_) = 0;
   int64 num_elements_ GUARDED_BY(mu_) = 0;
   std::map<std::thread::id, int64> work_start_ GUARDED_BY(mu_);
-  std::map<string, int64> metadata_ GUARDED_BY(mu_);
+  std::map<string, std::shared_ptr<Parameter>> parameters_ GUARDED_BY(mu_);
   std::list<std::shared_ptr<Node>> inputs_ GUARDED_BY(mu_);
-  std::shared_ptr<Node> output_ GUARDED_BY(mu_);
 
-  friend class Model;
+  // The reference to the output node is not owned so that that deletion of a
+  // node results in recursive deletion of the subtree rooted in the node.
+  Node* const output_;
 };
+
+// InterleaveMany is used to model datasets whose inputs are used to create
+// datasets whose elements are then interleaved.
+std::shared_ptr<Node> MakeInterleaveManyNode(Node::Args args);
+
+// AsyncInterleaveMany nodes are the asynchronous version of InterleaveMany
+// nodes.
+std::shared_ptr<Node> MakeAsyncInterleaveManyNode(
+    Node::Args args, std::vector<std::shared_ptr<Parameter>> parameters);
+
+// KnownMany nodes model datasets that synchronously consume known number of
+// input element per output element.
+std::shared_ptr<Node> MakeKnownRatioNode(Node::Args args, double ratio);
+
+// AsyncKnownRatio nodes are the asynchronous version of KnownRate nodes.
+std::shared_ptr<Node> MakeAsyncKnownRatioNode(
+    Node::Args args, double ratio,
+    std::vector<std::shared_ptr<Parameter>> parameters);
+
+// Source nodes represent data sources.
+std::shared_ptr<Node> MakeSourceNode(Node::Args args);
+
+// UnknownMany nodes represent datasets that synchronously consume an
+// unknown number of input elements per output.
+//
+// Unlike KnownRatio nodes which expect the ratio between inputs and outputs is
+// specified as a parameter, UnknownRatio estimates the ratio empirically.
+std::shared_ptr<Node> MakeUnknownRatioNode(Node::Args args);
+
+// Unknown nodes represent datasets for which we do not have a model. It acts
+// as pass-through between inputs and output.
+std::shared_ptr<Node> MakeUnknownNode(Node::Args args);
 
 // Abstract representation of a TensorFlow input pipeline that can be used
 // for collecting runtime information and optimizing performance. It collects
 // runtime information about execution of the input pipeline that is used to
 // create a performance model, which is in turn used to identify optimal values
-// of performance knobs.
+// of tunable parameters.
 //
 // Developers of tf.data transformations are not expected to interact with this
 // class directly. Boiler plate code for creating the abstract representation of
 // the input pipeline and collecting runtime information has been added to the
 // implementation of `DatasetBase` and `DatasetBaseIterator` respectively.
-//
-// TODO(jsimsa): Add a mechanism for feeding the result of the optimization
-// into the input pipeline.
 class Model {
  public:
   Model() = default;
-  explicit Model(const proto::Model& model_proto);
 
-  ~Model() {}
+  // Adds a node with the given name and given output.
+  std::shared_ptr<Node> AddNode(Node::Factory factory, const string& name,
+                                const string& output_name) LOCKS_EXCLUDED(mu_);
 
-  // Returns the model output node.
-  std::shared_ptr<Node> output() LOCKS_EXCLUDED(mu_) {
-    tf_shared_lock l(mu_);
-    return output_;
-  }
-
-  // Adds a node with the given name and given output (identified by name).
-  std::shared_ptr<Node> AddNode(const string& name, const string& output_name)
-      LOCKS_EXCLUDED(mu_);
-
-  // Looks up the node using the given name.
-  std::shared_ptr<Node> LookupNode(const string& name) LOCKS_EXCLUDED(mu_);
+  // Increments the processing time for the given node..
+  void AddProcessingTime(const string& name, int64 delta) LOCKS_EXCLUDED(mu_);
 
   // Runs optimization.
-  void Optimize() LOCKS_EXCLUDED(mu_);
+  void Optimize(int64 cpu_budget) LOCKS_EXCLUDED(mu_);
 
-  // Outputs the state of a model to a file.
-  //
-  // TODO(jsimsa): Remove this method once the optimization loop is closed.
-  void OutputToFile() LOCKS_EXCLUDED(mu_);
+  // Records that a node has produced an element.
+  void RecordElement(const string& name) LOCKS_EXCLUDED(mu_);
 
-  // Removes the node identified by the given name.
-  void RemoveNode(const string& prefix) LOCKS_EXCLUDED(mu_);
+  // Records that the given node has started work. If `stop_output` is set, it
+  // also records that the output of the given node has stopped work.
+  void RecordStart(const string& name, bool stop_output) LOCKS_EXCLUDED(mu_);
 
-  // Serializes the model state to the given proto.
-  void ToProto(proto::Model* model_proto) LOCKS_EXCLUDED(mu_);
+  // Records that the given node has stopped work. If `stop_output` is set, it
+  // also records that the output of the given node has started work.
+  void RecordStop(const string& name, bool start_output) LOCKS_EXCLUDED(mu_);
+
+  // Removes the given node.
+  void RemoveNode(const string& name) LOCKS_EXCLUDED(mu_);
 
  private:
-  static void AddNodeToProto(const std::shared_ptr<Node>& node,
-                             proto::Model* model_proto);
+  // Collects tunable parameters in the tree rooted in the given node.
+  std::vector<std::shared_ptr<Parameter>> CollectTunableParameters(
+      std::shared_ptr<Node> node);
 
-  std::vector<Node::Knob> CollectKnobs() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Collects the output time for the given node.
+  int64 OutputTime(std::shared_ptr<Node> node);
 
-  int64 OutputTime() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Collects the processing time for the given node.
+  int64 ProcessingTime(std::shared_ptr<Node> node);
 
-  int64 ProcessingTime() EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
+  // Used for coordination between different input pipeline threads. Exclusive
+  // access is required only when adding or removing nodes. Concurrent access to
+  // existing nodes is protected by a node mutex.
   mutex mu_;
   int64 id_counter_ GUARDED_BY(mu_) = 1;
   std::shared_ptr<Node> output_ GUARDED_BY(mu_);

@@ -356,7 +356,8 @@ class _CudnnRNN(base_layer.Layer):
             "Partitioner is not supported for Cudnn RNN layer variables, using "
             "it will create forward-compatibility issues with future "
             "CUDA/CuDNN generations.")
-      # Initialize opaque params with a tensor.
+      # Initialize opaque params with a tensor with unknown shape, thus couldn't
+      # use self.add_variable(name, shape, initializer, ...)
       self.kernel = vs.get_variable(
           "opaque_kernel", dtype=self._plain_dtype,
           initializer=opaque_params_t, validate_shape=False)
@@ -387,11 +388,11 @@ class _CudnnRNN(base_layer.Layer):
       output_states: a tuple of tensor(s) of the same shape and structure as
         `initial_state`.
     Raises:
-      ValueError: initial_state is not a tuple.
+      TypeError: initial_state is not a tuple.
     """
     if initial_state is not None and not isinstance(initial_state, tuple):
-      raise ValueError("Invalid initial_state type: %s, expecting tuple.",
-                       type(initial_state))
+      raise TypeError("Invalid initial_state type: %s, expecting tuple." %
+                      initial_state)
     dtype = self.dtype
     inputs = ops.convert_to_tensor(inputs, dtype=dtype)
 

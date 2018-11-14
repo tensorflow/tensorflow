@@ -86,7 +86,8 @@ class GraphConstructor {
           return_nodes(in.return_nodes),
           importing(true),
           validate_colocation_constraints(in.validate_colocation_constraints),
-          validate_shape(in.validate_shape) {}
+          validate_shape(in.validate_shape),
+          default_device(in.default_device) {}
 
     bool allow_internal_ops;
     bool expect_device_spec;
@@ -111,6 +112,8 @@ class GraphConstructor {
     bool importing;
     bool validate_colocation_constraints;
     bool validate_shape = true;
+
+    string default_device;
   };
 
   typedef gtl::ArraySlice<const NodeDef*> NodeDefSlice;
@@ -963,6 +966,10 @@ Status GraphConstructor::Convert() {
         // Note that input_already_exists can grow here
         AddControlDependencies(&imported_node_def, &input_already_exists);
       }
+      if (!opts_.default_device.empty() && imported_node_def.device().empty()) {
+        imported_node_def.set_device(opts_.default_device);
+      }
+
       node_def = &imported_node_def;
     } else {
       node_def = &original_node_def;
@@ -1162,7 +1169,9 @@ Status GraphConstructor::PopulateMissingUnusedInputMapKeys() {
     const NodeDef* node_def = node_defs_[pair->second.gdef_index];
     const OpDef* op_def;
     TF_RETURN_IF_ERROR(g_->op_registry()->LookUpOpDef(node_def->op(), &op_def));
-    if (key.second >= op_def->output_arg_size()) {
+    int num_outputs;
+    TF_RETURN_IF_ERROR(NumOutputsForNode(*node_def, *op_def, &num_outputs));
+    if (key.second >= num_outputs) {
       // key's index out of bounds
       missing_unused_input_map_keys_->push_back(key);
     }

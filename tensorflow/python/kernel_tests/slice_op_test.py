@@ -35,7 +35,7 @@ class SliceTest(test.TestCase):
   def testEmpty(self):
     inp = np.random.rand(4, 4).astype("f")
     for k in xrange(4):
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         a = constant_op.constant(inp, shape=[4, 4], dtype=dtypes.float32)
         slice_t = a[2, k:k]
         slice_val = slice_t.eval()
@@ -44,15 +44,15 @@ class SliceTest(test.TestCase):
   def testInt32(self):
     inp = np.random.rand(4, 4).astype("i")
     for k in xrange(4):
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         a = constant_op.constant(inp, shape=[4, 4], dtype=dtypes.int32)
         slice_t = a[2, k:k]
         slice_val = slice_t.eval()
       self.assertAllEqual(slice_val, inp[2, k:k])
 
-  def testInt64Slicing(self):
-    with self.test_session(use_gpu=True):
-      a = constant_op.constant([0, 1, 2], dtype=dtypes.int64)
+  def testSlicingWithInt64Index(self):
+    with self.cached_session(force_gpu=test.is_gpu_available()):
+      a = constant_op.constant([0, 1, 2], dtype=dtypes.int32)
 
       # Slice using int64 Tensor.
       i = constant_op.constant(1, dtype=dtypes.int64)
@@ -72,9 +72,49 @@ class SliceTest(test.TestCase):
       slice_val = slice_t.eval()
       self.assertAllEqual([1], slice_val)
 
+      a_int32 = constant_op.constant([0, 1, 2], dtype=dtypes.int32)
+      slice_t = array_ops.slice(a_int32,
+                                np.asarray([1]).astype(np.int64),
+                                np.asarray([2]).astype(np.int64))
+      slice_val = slice_t.eval()
+      self.assertAllEqual([1, 2], slice_val)
+
+      a_float32 = constant_op.constant([0, 1, 2], dtype=dtypes.float32)
+      slice_t = array_ops.slice(a_float32,
+                                np.asarray([1]).astype(np.int64),
+                                np.asarray([2]).astype(np.int64))
+      slice_val = slice_t.eval()
+      self.assertAllEqual([1, 2], slice_val)
+
+  def testSlicingInt64Tensor(self):
+    with self.cached_session(force_gpu=test.is_gpu_available()):
+      a = constant_op.constant([0, 1, 2], dtype=dtypes.int64)
+
+      # Slice using int32 Tensor.
+      i = constant_op.constant(1, dtype=dtypes.int32)
+      slice_t = a[i]
+      slice_val = slice_t.eval()
+      self.assertAllEqual(1, slice_val)
+      slice_t = a[i:i + 1]
+      slice_val = slice_t.eval()
+      self.assertAllEqual([1], slice_val)
+
+      # Slice using int32 integer.
+      i = np.asarray(1).astype(np.int32)
+      slice_t = a[i]
+      slice_val = slice_t.eval()
+      self.assertAllEqual(1, slice_val)
+      slice_t = a[i:i + 1]
+      slice_val = slice_t.eval()
+      self.assertAllEqual([1], slice_val)
+
+      slice_t = array_ops.slice(a, [1], [2])
+      slice_val = slice_t.eval()
+      self.assertAllEqual([1, 2], slice_val)
+
   def testSelectAll(self):
     for _ in range(10):
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         inp = np.random.rand(4, 4, 4, 4).astype("f")
         a = constant_op.constant(inp, shape=[4, 4, 4, 4], dtype=dtypes.float32)
 
@@ -88,7 +128,7 @@ class SliceTest(test.TestCase):
 
   def testSingleDimension(self):
     for _ in range(10):
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         inp = np.random.rand(10).astype("f")
         a = constant_op.constant(inp, shape=[10], dtype=dtypes.float32)
 
@@ -134,7 +174,7 @@ class SliceTest(test.TestCase):
         sess.run([slice_t], feed_dict={input_t: input_val})
 
   def _testSliceMatrixDim0(self, x, begin, size):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       tf_ans = array_ops.slice(x, [begin, 0], [size, x.shape[1]]).eval()
     np_ans = x[begin:begin + size, :]
     self.assertAllEqual(tf_ans, np_ans)
@@ -149,7 +189,7 @@ class SliceTest(test.TestCase):
 
   def testSingleElementAll(self):
     for _ in range(10):
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         inp = np.random.rand(4, 4).astype("f")
         a = constant_op.constant(inp, shape=[4, 4], dtype=dtypes.float32)
 
@@ -159,7 +199,7 @@ class SliceTest(test.TestCase):
       self.assertAllEqual(slice_val, inp[x, 0:y])
 
   def testSimple(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       inp = np.random.rand(4, 4).astype("f")
       a = constant_op.constant(
           [float(x) for x in inp.ravel(order="C")],
@@ -174,7 +214,7 @@ class SliceTest(test.TestCase):
     self.assertEqual(slice2_val.shape, slice2_t.get_shape())
 
   def testComplex(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       inp = np.random.rand(4, 10, 10, 4).astype("f")
       a = constant_op.constant(inp, dtype=dtypes.float32)
 
@@ -191,7 +231,7 @@ class SliceTest(test.TestCase):
     # Random dims of rank 6
     input_shape = np.random.randint(0, 20, size=6)
     inp = np.random.rand(*input_shape).astype("f")
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       a = constant_op.constant(
           [float(x) for x in inp.ravel(order="C")],
           shape=input_shape,
@@ -230,7 +270,7 @@ class SliceTest(test.TestCase):
 
 
   def _testGradientSlice(self, input_shape, slice_begin, slice_size):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       num_inputs = np.prod(input_shape)
       num_grads = np.prod(slice_size)
       inp = np.random.rand(num_inputs).astype("f").reshape(input_shape)
@@ -255,7 +295,7 @@ class SliceTest(test.TestCase):
     self.assertAllClose(np_ans, result)
 
   def _testGradientVariableSize(self):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       inp = constant_op.constant([1.0, 2.0, 3.0], name="in")
       out = array_ops.slice(inp, [1], [-1])
       grad_actual = gradients_impl.gradients(out, inp)[0].eval()
@@ -265,7 +305,7 @@ class SliceTest(test.TestCase):
     # Regression test for bug in slice. A low-level bug in Eigen was causing
     # incorrect results for negative indices in multi-dimensional tensors.
     # See b/114318298.
-    with self.test_session(use_gpu=True) as sess:
+    with self.cached_session(use_gpu=True) as sess:
       x = constant_op.constant([[1., 2., 3.], [4., 5., 6.], [7., 8., 7]])
       loss1 = math_ops.reduce_sum(x[:-1, :-1] * 1.0)
       loss2 = math_ops.reduce_sum(x[:-1][:, :-1])
@@ -322,7 +362,7 @@ class SliceTest(test.TestCase):
     self.assertEqual([None, 2], c.get_shape().as_list())
 
   def testSliceOfSlice(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       a = constant_op.constant([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12]])
       b = a[1:, :]
       c = b[:-1, :]

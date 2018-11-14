@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
 from tensorflow.python.framework import dtypes
@@ -32,7 +33,7 @@ _DEFAULT_READER_BUFFER_SIZE_BYTES = 256 * 1024  # 256 KB
 
 
 @tf_export("data.TextLineDataset")
-class TextLineDataset(dataset_ops.Dataset):
+class TextLineDataset(dataset_ops.DatasetSource):
   """A `Dataset` comprising lines from one or more text files."""
 
   def __init__(self, filenames, compression_type=None, buffer_size=None):
@@ -74,7 +75,7 @@ class TextLineDataset(dataset_ops.Dataset):
     return dtypes.string
 
 
-class _TFRecordDataset(dataset_ops.Dataset):
+class _TFRecordDataset(dataset_ops.DatasetSource):
   """A `Dataset` comprising records from one or more TFRecord files."""
 
   def __init__(self, filenames, compression_type=None, buffer_size=None):
@@ -123,7 +124,7 @@ class ParallelInterleaveDataset(dataset_ops.InterleaveDataset):
 
   def __init__(self, input_dataset, map_func, cycle_length, block_length,
                sloppy, buffer_output_elements, prefetch_input_elements):
-    """See `tf.contrib.data.parallel_interleave()` for details."""
+    """See `tf.data.experimental.parallel_interleave()` for details."""
     super(ParallelInterleaveDataset, self).__init__(input_dataset, map_func,
                                                     cycle_length, block_length)
     self._sloppy = ops.convert_to_tensor(
@@ -152,7 +153,7 @@ class ParallelInterleaveDataset(dataset_ops.InterleaveDataset):
     # pylint: enable=protected-access
 
   def _transformation_name(self):
-    return "tf.contrib.data.parallel_interleave()"
+    return "tf.data.experimental.parallel_interleave()"
 
 
 @tf_export("data.TFRecordDataset")
@@ -224,6 +225,9 @@ class TFRecordDataset(dataset_ops.Dataset):
   def _as_variant_tensor(self):
     return self._impl._as_variant_tensor()  # pylint: disable=protected-access
 
+  def _inputs(self):
+    return self._impl._inputs()  # pylint: disable=protected-access
+
   @property
   def output_classes(self):
     return self._impl.output_classes
@@ -238,7 +242,7 @@ class TFRecordDataset(dataset_ops.Dataset):
 
 
 @tf_export("data.FixedLengthRecordDataset")
-class FixedLengthRecordDataset(dataset_ops.Dataset):
+class FixedLengthRecordDataset(dataset_ops.DatasetSource):
   """A `Dataset` of fixed-length records from one or more binary files."""
 
   def __init__(self,
@@ -246,7 +250,8 @@ class FixedLengthRecordDataset(dataset_ops.Dataset):
                record_bytes,
                header_bytes=None,
                footer_bytes=None,
-               buffer_size=None):
+               buffer_size=None,
+               compression_type=None):
     """Creates a `FixedLengthRecordDataset`.
 
     Args:
@@ -259,6 +264,8 @@ class FixedLengthRecordDataset(dataset_ops.Dataset):
         bytes to ignore at the end of a file.
       buffer_size: (Optional.) A `tf.int64` scalar representing the number of
         bytes to buffer when reading.
+      compression_type: (Optional.) A `tf.string` scalar evaluating to one of
+        `""` (no compression), `"ZLIB"`, or `"GZIP"`.
     """
     super(FixedLengthRecordDataset, self).__init__()
     self._filenames = ops.convert_to_tensor(
@@ -272,11 +279,23 @@ class FixedLengthRecordDataset(dataset_ops.Dataset):
         "footer_bytes", footer_bytes)
     self._buffer_size = convert.optional_param_to_tensor(
         "buffer_size", buffer_size, _DEFAULT_READER_BUFFER_SIZE_BYTES)
+    self._compression_type = convert.optional_param_to_tensor(
+        "compression_type",
+        compression_type,
+        argument_default="",
+        argument_dtype=dtypes.string)
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.fixed_length_record_dataset(
-        self._filenames, self._header_bytes, self._record_bytes,
-        self._footer_bytes, self._buffer_size)
+    if (self._compression_type is not None or
+        compat.forward_compatible(2018, 11, 30)):
+      return gen_dataset_ops.fixed_length_record_dataset_v2(
+          self._filenames, self._header_bytes, self._record_bytes,
+          self._footer_bytes, self._buffer_size, self._compression_type)
+    else:
+      return gen_dataset_ops.fixed_length_record_dataset(
+          self._filenames, self._header_bytes, self._record_bytes,
+          self._footer_bytes, self._buffer_size)
+
 
   @property
   def output_classes(self):

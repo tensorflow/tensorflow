@@ -215,7 +215,7 @@ class DirectSession : public Session {
   // if not already initialized.
   Status MaybeInitializeExecutionState(const GraphDef& graph,
                                        bool* out_already_initialized)
-      EXCLUSIVE_LOCKS_REQUIRED(graph_def_lock_);
+      EXCLUSIVE_LOCKS_REQUIRED(graph_state_lock_);
 
   // Retrieves an already existing set of executors to run 'inputs' and
   // 'outputs', or creates and caches them for future use.
@@ -247,8 +247,11 @@ class DirectSession : public Session {
                                    ExecutorsAndKeys* executors_and_keys,
                                    RunMetadata* run_metadata);
 
+  // Returns whether inter-op execution uses a global pool.
+  bool ShouldUseRunHandlerPool() const;
+
   ::tensorflow::Status ExtendLocked(const GraphDef& graph)
-      EXCLUSIVE_LOCKS_REQUIRED(graph_def_lock_);
+      EXCLUSIVE_LOCKS_REQUIRED(graph_state_lock_);
 
   ::tensorflow::Status ResourceHandleToInputTensor(
       const Tensor& resource_tensor, Tensor* retrieved_tensor);
@@ -289,7 +292,7 @@ class DirectSession : public Session {
   }
 
   ::tensorflow::Status CheckGraphCreated(const char* method) {
-    mutex_lock l(graph_def_lock_);
+    mutex_lock l(graph_state_lock_);
     if (!graph_created_) {
       return errors::InvalidArgument(
           "Session was not created with a graph before ", method, "!");
@@ -313,10 +316,8 @@ class DirectSession : public Session {
   DeviceSet device_set_;
 
   string session_handle_;
-  bool graph_created_ GUARDED_BY(graph_def_lock_) = false;
-
-  mutex graph_def_lock_;
-  GraphDef graph_def_ GUARDED_BY(graph_def_lock_);
+  mutex graph_state_lock_;
+  bool graph_created_ GUARDED_BY(graph_state_lock_) = false;
 
   // The thread-pools to use for running ops, with a bool indicating if the pool
   // is owned.
@@ -367,11 +368,11 @@ class DirectSession : public Session {
   // nodes can not be moved to a different device.  Maps node names to
   // device names.
   std::unordered_map<string, string> stateful_placements_
-      GUARDED_BY(graph_def_lock_);
+      GUARDED_BY(graph_state_lock_);
 
   // Execution_state; used when placing the entire graph.
   std::unique_ptr<GraphExecutionState> execution_state_
-      GUARDED_BY(graph_def_lock_);
+      GUARDED_BY(graph_state_lock_);
 
   // The function library, before any rewrites or optimizations have been
   // performed. In particular, CreateGraphs() may need to modify the function
@@ -386,7 +387,7 @@ class DirectSession : public Session {
   std::atomic<int64> edge_name_counter_ = {0};
   std::atomic<int64> handle_name_counter_ = {0};
 
-  // For generating step ids that are unique across all sessions.
+  // For generating step ids that are unique across this sessions.
   static std::atomic_int_fast64_t step_id_counter_;
 
   // Global timeout for all blocking operations in this session.
@@ -394,8 +395,6 @@ class DirectSession : public Session {
 
   // Manages all the cost models for the graphs executed in this session.
   CostModelManager cost_model_manager_;
-
-  Executor::Args::NodeOutputsCallback node_outputs_callback_ = nullptr;
 
   // For testing collective graph key generation.
   mutex collective_graph_key_lock_;

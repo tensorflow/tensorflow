@@ -214,7 +214,7 @@ class TransformTest(test.TestCase):
 
   def test_graph_replace_gradients(self):
     ops.reset_default_graph()
-    w = variables.Variable(0.0, name="w")
+    w = variables.VariableV1(0.0, name="w")
     y = math_ops.multiply(math_ops.multiply(w, w, name="mul1"), w, name="mul2")
     g = gradients_impl.gradients(y, w, name="grad")[0]
 

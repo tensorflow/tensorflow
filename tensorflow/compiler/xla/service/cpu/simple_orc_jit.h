@@ -44,9 +44,9 @@ namespace cpu {
 // it's added to the JIT.
 class SimpleOrcJIT {
  public:
-  using ObjLayerT = llvm::orc::RTDyldObjectLinkingLayer;
+  using ObjLayerT = llvm::orc::LegacyRTDyldObjectLinkingLayer;
   using CompileFtor = std::function<ObjLayerT::ObjectPtr(llvm::Module&)>;
-  using CompileLayerT = llvm::orc::IRCompileLayer<ObjLayerT, CompileFtor>;
+  using CompileLayerT = llvm::orc::LegacyIRCompileLayer<ObjLayerT, CompileFtor>;
   using VModuleKeyT = llvm::orc::VModuleKey;
 
   // Create a new JIT, targeting the host architecture.

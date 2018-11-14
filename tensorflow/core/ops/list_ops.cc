@@ -22,6 +22,7 @@ namespace {
 
 REGISTER_OP("EmptyTensorList")
     .Input("element_shape: shape_type")
+    .Input("max_num_elements: int32")
     .Output("handle: variant")
     .Attr("element_dtype: type")
     .Attr("shape_type: {int32, int64}")

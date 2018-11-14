@@ -35,14 +35,8 @@ class OneDeviceStrategyTest(strategy_test_lib.DistributionTestBase):
   def testMinimizeLossGraph(self):
     self._test_minimize_loss_graph(self._get_distribution_strategy())
 
-  def testMapReduce(self):
-    self._test_map_reduce(self._get_distribution_strategy())
-
-  def testDeviceIndex(self):
-    self._test_device_index(self._get_distribution_strategy())
-
-  def testTowerId(self):
-    self._test_tower_id(self._get_distribution_strategy())
+  def testReplicaId(self):
+    self._test_replica_id(self._get_distribution_strategy())
 
   @test_util.run_in_graph_and_eager_modes
   def testCallAndMergeExceptions(self):

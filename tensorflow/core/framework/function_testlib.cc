@@ -93,7 +93,6 @@ FunctionDef IsZero() {
 
 FunctionDef RandomUniform() {
   const Tensor kZero = test::AsScalar<int64>(0);
-  const Tensor kTen = test::AsScalar<int64>(10);
 
   return FDH::Define(
       // Name
@@ -108,19 +107,11 @@ FunctionDef RandomUniform() {
         "Const",
         {},
         {{"value", kZero}, {"dtype", DT_INT64}}},
-       {{"random_uniform/min"},
-        "Const",
-        {},
-        {{"value", kZero}, {"dtype", DT_INT64}}},
-       {{"random_uniform/max"},
-        "Const",
-        {},
-        {{"value", kTen}, {"dtype", DT_INT64}}},
        {{"random_uniform"},
-        "RandomUniformInt",
-        {},
-        {{"T", DT_INT64},
-         {"Tout", DT_INT64},
+        "RandomUniform",
+        {"random_uniform/shape"},
+        {{"T", DT_INT32},
+         {"Tout", DT_FLOAT},
          {"seed", 87654321},
          {"seed2", 42}}}});
 }

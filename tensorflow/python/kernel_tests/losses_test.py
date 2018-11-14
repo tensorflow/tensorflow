@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -34,23 +33,9 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
-from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.ops.losses import util
 from tensorflow.python.platform import test
 from tensorflow.python.training import momentum as momentum_lib
-
-
-safe_div = losses_impl._safe_div  # pylint: disable=protected-access
-
-
-class SafeDivTest(test.TestCase):
-
-  def testEager(self):
-    with context.eager_mode():
-      self.assertAllEqual(safe_div(constant_op.constant(1.0),
-                                   constant_op.constant(0.0)), 0.0)
-      self.assertAllEqual(safe_div(constant_op.constant(1.0),
-                                   0.0), 0.0)
 
 
 class AbsoluteDifferenceLossTest(test.TestCase):
@@ -1363,7 +1348,7 @@ class ComputeWeightedLossTest(test.TestCase):
                 raw_losses, weights=np.ones(self._shape), reduction=reduction)
         )
         self.assertEqual(9, len(util.get_losses()))
-        with self.test_session(g):
+        with self.session(g):
           for unweighted_loss in unweighted_losses:
             if reduction == losses.Reduction.NONE:
               self.assertAllClose(self._raw_losses, unweighted_loss.eval())
@@ -1390,7 +1375,7 @@ class ComputeWeightedLossTest(test.TestCase):
                 raw_losses, weights=np.ones((1, 1, 4)), reduction=reduction),
         )
         self.assertEqual(3, len(util.get_losses()))
-        with self.test_session(g):
+        with self.session(g):
           for unweighted_loss in unweighted_losses:
             if reduction == losses.Reduction.NONE:
               self.assertAllClose(
@@ -1481,7 +1466,7 @@ class ComputeWeightedLossTest(test.TestCase):
         weighted_loss = losses.compute_weighted_loss(
             self._raw_losses, weights=weights, reduction=reduction)
         self.assertEqual(1, len(util.get_losses()))
-        with self.test_session(g):
+        with self.session(g):
           weighted_losses = weights * self._raw_losses
           weighted_sum = np.sum(weighted_losses)
           if reduction == losses.Reduction.NONE:

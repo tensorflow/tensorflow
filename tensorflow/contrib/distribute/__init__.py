@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Prototype of a distributed computation library for TF."""
+"""A distributed computation library for TF.
+
+See [tensorflow/contrib/distribute/README.md](
+https://www.tensorflow.org/code/tensorflow/contrib/distribute/README.md)
+for overview and examples.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -36,27 +41,28 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 
 _allowed_symbols = [
-    'AllReduceCrossTowerOps',
+    'AllReduceCrossDeviceOps',
     'CollectiveAllReduceStrategy',
-    'CrossTowerOps',
+    'CrossDeviceOps',
     'DistributeConfig',
     'DistributionStrategy',
     'MirroredStrategy',
     'Monitor',
+    'MultiWorkerAllReduce',
     'OneDeviceStrategy',
     'ParameterServerStrategy',
-    'ReductionToOneDeviceCrossTowerOps',
+    'ReductionToOneDeviceCrossDeviceOps',
     'Step',
     'StandardInputStep',
     'StandardSingleLossStep',
-    'TowerContext',
+    'ReplicaContext',
     'TPUStrategy',
-    'get_cross_tower_context',
+    'get_cross_replica_context',
     'get_distribution_strategy',
     'get_loss_reduction',
-    'get_tower_context',
+    'get_replica_context',
     'has_distribution_strategy',
-    'require_tower_context',
+    'require_replica_context',
     'run_standard_tensorflow_server',
     'UpdateContext',
 ]

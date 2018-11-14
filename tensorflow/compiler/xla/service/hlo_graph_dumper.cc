@@ -1043,6 +1043,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kDomain:
     case HloOpcode::kFusion:
     case HloOpcode::kMap:
+    case HloOpcode::kGetDimensionSize:
       return kGray;
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kAllToAll:
@@ -1110,7 +1111,7 @@ string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
                               instr->metadata().source_line()));
   }
 
-  return StrJoin(lines, "<br/>");
+  return StrJoin(lines, "\n");
 }
 
 string HloDotDumper::GetInstructionNodeBackendConfig(

@@ -24,7 +24,7 @@ limitations under the License.
 // NOTE(skal): we don't '#include <setjmp.h>' before png.h as it otherwise
 // provokes a compile error. We instead let png.h include what is needed.
 
-#include "tensorflow/core/lib/core/casts.h"
+#include "absl/base/casts.h"
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/logging.h"
@@ -76,7 +76,8 @@ static void Convert8to16(const uint8* p8, int num_comps, int p8_row_bytes,
 #undef CPTR_INC
 
 void ErrorHandler(png_structp png_ptr, png_const_charp msg) {
-  DecodeContext* const ctx = bit_cast<DecodeContext*>(png_get_io_ptr(png_ptr));
+  DecodeContext* const ctx =
+      absl::bit_cast<DecodeContext*>(png_get_io_ptr(png_ptr));
   ctx->error_condition = true;
   // To prevent log spam, errors are logged as VLOG(1) instead of ERROR.
   VLOG(1) << "PNG error: " << msg;
@@ -88,9 +89,14 @@ void WarningHandler(png_structp png_ptr, png_const_charp msg) {
 }
 
 void StringReader(png_structp png_ptr, png_bytep data, png_size_t length) {
-  DecodeContext* const ctx = bit_cast<DecodeContext*>(png_get_io_ptr(png_ptr));
+  DecodeContext* const ctx =
+      absl::bit_cast<DecodeContext*>(png_get_io_ptr(png_ptr));
   if (static_cast<png_size_t>(ctx->data_left) < length) {
-    memset(data, 0, length);
+    // Don't zero out the data buffer as it has been lazily allocated (copy on
+    // write) and zeroing it out here can produce an OOM. Since the buffer is
+    // only used for reading data from the image, this doesn't result in any
+    // data leak, so it is safe to just leave the buffer be as it is and just
+    // exit with error.
     png_error(png_ptr, "More bytes requested to read than available");
   } else {
     memcpy(data, ctx->data, length);
@@ -100,8 +106,8 @@ void StringReader(png_structp png_ptr, png_bytep data, png_size_t length) {
 }
 
 void StringWriter(png_structp png_ptr, png_bytep data, png_size_t length) {
-  string* const s = bit_cast<string*>(png_get_io_ptr(png_ptr));
-  s->append(bit_cast<const char*>(data), length);
+  string* const s = absl::bit_cast<string*>(png_get_io_ptr(png_ptr));
+  s->append(absl::bit_cast<const char*>(data), length);
 }
 
 void StringWriterFlush(png_structp png_ptr) {}
@@ -215,7 +221,7 @@ bool CommonInitDecode(StringPiece png_string, int desired_channels,
     CommonFreeDecode(context);
     return false;
   }
-  context->data = bit_cast<const uint8*>(png_string.data());
+  context->data = absl::bit_cast<const uint8*>(png_string.data());
   context->data_left = png_string.size();
   png_set_read_fn(context->png_ptr, context, StringReader);
   png_read_info(context->png_ptr, context->info_ptr);
@@ -328,8 +334,8 @@ bool CommonFinishDecode(png_bytep data, int row_bytes, DecodeContext* context) {
 
   // Synthesize 16 bits from 8 if requested.
   if (context->need_to_synthesize_16)
-    Convert8to16(bit_cast<uint8*>(data), context->channels, row_bytes,
-                 context->width, context->height, bit_cast<uint16*>(data),
+    Convert8to16(absl::bit_cast<uint8*>(data), context->channels, row_bytes,
+                 context->width, context->height, absl::bit_cast<uint16*>(data),
                  row_bytes);
   return ok;
 }
