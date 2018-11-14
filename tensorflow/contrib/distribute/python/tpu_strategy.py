@@ -31,6 +31,7 @@ from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_
 from tensorflow.contrib.tpu.python.tpu import training_loop
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
@@ -439,12 +440,12 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     return _create_tpu_mirrored_variable(devices, _real_mirrored_creator, *args,
                                          **kwargs)
 
-  def _reduce(self, aggregation, value, destinations):
+  def _reduce(self, reduce_op, value, destinations):
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
-      if aggregation == vs.VariableAggregation.MEAN:
+      if reduce_op == reduce_util.ReduceOp.MEAN:
         # TODO(jhseu):  Revisit once we support model-parallelism.
         value *= (1. / self.num_replicas_in_sync)
-      elif aggregation != vs.VariableAggregation.SUM:
+      elif reduce_op != reduce_util.ReduceOp.SUM:
         raise NotImplementedError(
             "Currently only support sum & mean in TPUStrategy.")
       return tpu_ops.cross_replica_sum(value)
@@ -459,10 +460,10 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     else:
       raise ValueError("Multiple devices are not supported for TPUStrategy")
 
-    if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+    if reduce_op == reduce_util.ReduceOp.ONLY_FIRST_REPLICA:
       return value[0]
     output = math_ops.add_n(value)
-    if aggregation == vs.VariableAggregation.MEAN:
+    if reduce_op == reduce_util.ReduceOp.MEAN:
       return output * (1. / len(value))
     return output
 

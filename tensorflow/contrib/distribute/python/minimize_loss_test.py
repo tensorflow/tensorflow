@@ -25,6 +25,7 @@ from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python.single_loss_example import batchnorm_example
 from tensorflow.contrib.distribute.python.single_loss_example import minimize_loss_example
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -484,7 +485,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(distribution.num_replicas_in_sync,
                        len(distribution.unwrap(loss_output)))
       loss_output = distribution.reduce(
-          aggregation=variables_lib.VariableAggregation.MEAN,
+          aggregation=reduce_util.ReduceOp.MEAN,
           value=loss_output, destinations="/device:CPU:0")
 
     unwrapped_output = distribution.unwrap(loss_output)

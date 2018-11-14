@@ -30,6 +30,7 @@ import six
 from tensorflow.contrib.distribute.python import input_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import device as tf_device
@@ -373,12 +374,13 @@ class MirroredVariable(DistributedVariable, Mirrored,
       if self._aggregation == vs.VariableAggregation.NONE:
         raise ValueError("You must specify an aggregation method to update a "
                          "MirroredVariable in Replica Context.")
+      reduce_op = reduce_util.ReduceOp.from_variable_aggregation(
+          self._aggregation)
 
       def merge_fn(strategy, value, *other_args, **other_kwargs):
         return strategy.update(
             self, f,
-            strategy.reduce(
-                aggregation=self._aggregation, value=value, destinations=self),
+            strategy.reduce(reduce_op, value=value, destinations=self),
             *other_args, **other_kwargs)
 
       return distribution_strategy_context.get_replica_context().merge_call(
@@ -614,12 +616,13 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
       if self._aggregation == vs.VariableAggregation.NONE:
         raise ValueError("You must specify an aggregation method to update a "
                          "TPUMirroredVariable in Replica Context.")
+      reduce_op = reduce_util.ReduceOp.from_variable_aggregation(
+          self._aggregation)
 
       def merge_fn(strategy, value, *other_args, **other_kwargs):
         return strategy.update(
             self, f,
-            strategy.reduce(
-                aggregation=self._aggregation, value=value, destinations=self),
+            strategy.reduce(reduce_op, value=value, destinations=self),
             *other_args, **other_kwargs)
 
       return distribution_strategy_context.get_replica_context().merge_call(
@@ -1549,6 +1552,7 @@ class MultiStepContext(object):
         The aggregation method is also recorded in a dictionary
         `_last_step_outputs_aggregations` for later interpreting of the
         outputs as already reduced or not.
+        # TODO(priyag): Change aggregation type used here.
 
     """
     if distribution_strategy_context.get_cross_replica_context():
@@ -1650,12 +1654,13 @@ class AggregatingVariable(checkpointable.CheckpointableBase):
       if self._aggregation == vs.VariableAggregation.NONE:
         raise ValueError("You must specify an aggregation method to update a "
                          "a variable in Replica Context.")
+      reduce_op = reduce_util.ReduceOp.from_variable_aggregation(
+          self._aggregation)
 
       def merge_fn(strategy, value, *other_args, **other_kwargs):
         return strategy.update(
             self, f,
-            strategy.reduce(
-                aggregation=self._aggregation, value=value, destinations=self),
+            strategy.reduce(reduce_op, value=value, destinations=self),
             *other_args, **other_kwargs)
 
       return distribution_strategy_context.get_replica_context().merge_call(
