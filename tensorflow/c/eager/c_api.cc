@@ -20,7 +20,6 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <vector>
-#include <utility>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/c/c_api.h"
@@ -239,8 +238,18 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
 tensorflow::Status OpInferSingleInputAttrs(TFE_Op* op,
                                            TFE_TensorHandle* input) {
   TFE_OpInferenceContext* ictx = op->inference_ctx.get();
-  const std::string& type_attr =
-      ictx->op_def->input_arg(ictx->input_arg_idx++).type_attr();
+  const auto& input_def = ictx->op_def->input_arg(ictx->input_arg_idx++);
+  if (!input_def.number_attr().empty() || !input_def.type_list_attr().empty()) {
+    // Some clients that are still setting their input attributes manually are
+    // adding input list to their op by calling `TFE_OpAddInput` for each of
+    // its elements instead of calling `TFE_OpAddInputList`. When this happens,
+    // we cannot detect the end of such list, thus lose track of the input
+    // arguments in the op definition. To guarantee backward compatibility with
+    // those clients, disable automatic inference in this case.
+    op->inference_ctx.release();
+    return tensorflow::Status::OK();
+  }
+  const std::string& type_attr = input_def.type_attr();
   if (!type_attr.empty() && ictx->attrs.find(type_attr) == ictx->attrs.cend()) {
     op->operation.MutableAttrs()->Set(type_attr, input->handle->dtype);
     ictx->attrs.insert(type_attr);
@@ -561,8 +570,10 @@ TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
   if (!is_function) {
     const tensorflow::OpDef* op_def;
     status->status = tensorflow::OpDefForOp(op_or_function_name, &op_def);
-    TF_RETURN_IF_ERROR(status->status);
-    return new TFE_Op(ctx, name, is_function, types,
+    if (!status->status.ok()) {
+      return nullptr;
+    }
+    return new TFE_Op(ctx, name, false, types,
                       new TFE_OpInferenceContext(op_def));
   }
   if (!ctx->context.FindFunctionByName(name)) {
@@ -575,7 +586,7 @@ TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
         "registered in the binary running in this process.");
     return nullptr;
   }
-  return new TFE_Op(ctx, name, is_function, types, nullptr);
+  return new TFE_Op(ctx, name, true, types, nullptr);
 }
 
 void TFE_DeleteOp(TFE_Op* op) {

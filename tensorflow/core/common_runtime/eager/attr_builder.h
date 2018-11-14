@@ -129,14 +129,19 @@ class AttrBuilder {
     // Copied from NodeDefBuilder::Attr
     const AttrValue* found = AttrSlice(m).Find(attr_name);
     AttrValue attr_value;
+    SetAttrValue(value, &attr_value);
     if (found == nullptr) {
-      SetAttrValue(value, &attr_value);
       m->insert(AttrValueMap::value_type(attr_name, attr_value));
     } else {
-      // TODO(ashankar): Do what is done in
-      // NodeDefBuilder::CheckInconsistency(attr_name, *found, attr_value);
-      SetAttrValue(std::forward<T>(value), &attr_value);
-      (*m)[attr_name] = attr_value;
+      // TODO(klessard): remove this validation once automatic input attributes
+      // inference of the C API is used by all clients, or at least Python.
+      // We use it only to verify that attributes inferred have the same values
+      // as those currently added manually (see
+      // github.com/tensorflow/tensorflow/pull/23468#issuecomment-438484058).
+      CHECK_EQ(found->i(), attr_value.i()) << " Number attribute \""
+          << attr_name << "\" was set multiple times with different values";
+      CHECK_EQ(found->type(), attr_value.type()) << " Type attribute \""
+          << attr_name << "\" was set multiple times with different values";
     }
   }
 
