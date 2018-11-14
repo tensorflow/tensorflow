@@ -297,7 +297,7 @@ limitations under the License.
 #undef TF_PLAT_STR_LIST___x86_64__
 #define TF_PLAT_STR_LIST___x86_64__()
 #endif
-#if !defined(__powerpc64__)
+#if !defined(__powerpc64__) && !defined(__powerpc__)
 #undef TF_PLAT_STR_LIST___powerpc64__
 #define TF_PLAT_STR_LIST___powerpc64__()
 #endif
