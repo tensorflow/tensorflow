@@ -2,6 +2,11 @@
 
 load("//third_party:repo.bzl", "third_party_http_archive")
 
+# Sanitize a dependency so that it works correctly from code that includes
+# TensorFlow as a submodule.
+def clean_dep(dep):
+    return str(Label(dep))
+
 def repo():
     third_party_http_archive(
         name = "icu",
@@ -13,4 +18,5 @@ def repo():
         ],
         build_file = "//third_party/icu:BUILD.bazel",
         system_build_file = "//third_party/icu:BUILD.system",
+        patch_file = clean_dep("//third_party/icu:udata.patch"),
     )
