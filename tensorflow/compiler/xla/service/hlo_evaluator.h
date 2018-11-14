@@ -221,12 +221,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
       const Literal& operand_literal) {
     const auto shape = instruction->shape();
     const auto* operand = instruction->operand(0);
-
-    if (!ShapeUtil::SameDimensions(shape, operand->shape())) {
-      return Unimplemented("Shape Mismatch: %s vs %s",
-                           ShapeUtil::HumanString(shape),
-                           ShapeUtil::HumanString(operand->shape()));
-    }
+    TF_RET_CHECK(ShapeUtil::SameDimensions(shape, operand->shape()));
 
     Literal result(shape);
     TF_RETURN_IF_ERROR(
