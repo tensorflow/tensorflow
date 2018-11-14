@@ -186,11 +186,11 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            ":c_api_internal",
+            ":c_api",
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
-            ":c_api_internal",
+            ":c_api",
             "//tensorflow/core:framework",
         ],
     }),
