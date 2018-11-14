@@ -174,6 +174,28 @@ tf_cuda_library(
     ],
 )
 
+tf_cuda_library(
+    name = "kernels",
+    srcs = [
+        "kernels.cc",
+    ],
+    hdrs = [
+        "kernels.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = select({
+        "//tensorflow:android": [
+            ":c_api_internal",
+            "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            ":c_api_internal",
+            "//tensorflow/core:framework",
+        ],
+    }),
+)
+
 # -----------------------------------------------------------------------------
 # Tests
 
@@ -302,6 +324,30 @@ tf_kernel_library(
         "//tensorflow/core:lib",
     ],
     alwayslink = 1,
+)
+
+tf_cuda_cc_test(
+    name = "kernels_test",
+    size = "small",
+    srcs = ["kernels_test.cc"],
+    linkopts = select({
+        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
+    tags = ["noasan"],
+    # We must ensure that the dependencies can be dynamically linked since
+    # the shared library must be able to use core:framework.
+    # linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":c_api",
+        ":kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:proto_text",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 # -----------------------------------------------------------------------------
