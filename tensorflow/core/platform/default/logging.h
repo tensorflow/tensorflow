@@ -187,12 +187,6 @@ string* MakeCheckOpString(const T1& v1, const T2& v2, const char* exprtext) {
   return comb.NewString();
 }
 
-// for MSVC build, the max and min function maybe defined in other macros
-#ifdef _WIN32
-#undef max
-#undef min
-#endif
-
 // Helper functions for CHECK_OP macro.
 // The (int, int) specialization works around the issue that the compiler
 // will not instantiate the template version of the function on values of
