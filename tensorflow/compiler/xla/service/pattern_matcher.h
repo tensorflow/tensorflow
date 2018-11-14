@@ -90,8 +90,8 @@ namespace xla {
 // are provided below.
 //
 // Example nullary instruction:
-//   Param()                        == Op().WithOpcode(HloOpcode::kParam)
-//   Param(&a)                      == Op(&a).WithOpcode(HloOpcode::kParam)
+//   Parameter()                    == Op().WithOpcode(HloOpcode::kParameter)
+//   Parameter(&a)                  == Op(&a).WithOpcode(HloOpcode::kParameter)
 //
 // Example unary instruction:
 //   Abs()                             == Op().WithOpcode(HloOpcode::kAbs)
