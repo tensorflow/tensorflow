@@ -28,7 +28,7 @@ Since it's difficult to add these fake quantization operations to all the
 required locations in the model, there's a function available that rewrites the
 training graph. To create a fake quantized training graph:
 
-```
+```python
 # Build forward pass of model.
 loss = tf.losses.get_total_loss()
 
@@ -51,7 +51,7 @@ The rewritten *eval graph* is non-trivially different from the *training graph*
 since the quantization ops affect the batch normalization step. Because of this,
 we've added a separate rewrite for the *eval graph*:
 
-```
+```python
 # Build eval model
 logits = tf.nn.softmax_cross_entropy_with_logits_v2(...)
 
