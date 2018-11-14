@@ -44,7 +44,7 @@ pip install tensorflow-gpu
 *See [Installing TensorFlow](https://www.tensorflow.org/install) for detailed
 instructions, and how to build from source.*
 
-People who are a little more adventurous can also try our nightly binaries:
+Adventurous people can try our nightly binaries:
 
 **Nightly pip packages**
 * We are pleased to announce that TensorFlow now offers nightly pip packages
