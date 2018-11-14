@@ -3,6 +3,7 @@ licenses(["notice"])  # Apache 2.0
 package(default_visibility = ["//tensorflow:internal"])
 
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 
 py_library(
     name = "xla_client",
@@ -66,6 +67,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:math",
+        "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xrt:xrt_proto",
         "//tensorflow/compiler/xrt/cc:xrt_ops",
@@ -81,6 +83,7 @@ tf_py_wrap_cc(
     srcs = ["xla.i"],
     swig_includes = [
         "local_computation_builder.i",
+        "//tensorflow/python:platform/base.i",
     ],
     deps = [
         ":local_computation_builder",
@@ -89,5 +92,7 @@ tf_py_wrap_cc(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:cpu_plugin",
-    ],
+    ] + if_cuda_is_configured([
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+    ]),
 )

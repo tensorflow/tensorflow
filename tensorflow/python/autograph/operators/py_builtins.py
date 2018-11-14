@@ -216,10 +216,10 @@ def _py_range(start_or_stop, stop, step):
   return range(start_or_stop)
 
 
-SUPPORTED_BUILTINS = set((abs, float, int, len, print, range))
+SUPPORTED_BUILTINS = (abs, float, int, len, print, range)
 
 if six.PY2:
-  SUPPORTED_BUILTINS.add(xrange)
+  SUPPORTED_BUILTINS += (xrange,)
 
 BUILTIN_FUINCTIONS_MAP = {
     'abs': abs_,

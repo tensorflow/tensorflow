@@ -1058,6 +1058,7 @@ tf_gen_op_libs(
         "logging_ops",
         "manip_ops",
         "math_ops",
+        "mkl_nn_ops",
         "nccl_ops",
         "nn_ops",
         "no_op",
@@ -1230,7 +1231,7 @@ cc_library(
         ":training_ops_op_lib",
         ":user_ops_op_lib",
         ":word2vec_ops",
-    ] + tf_additional_cloud_op_deps(),
+    ] + if_mkl([":mkl_nn_ops_op_lib"]) + tf_additional_cloud_op_deps(),
     alwayslink = 1,
 )
 
@@ -1286,7 +1287,9 @@ cc_library(
         ":framework",
         ":lib",
         ":nn_ops_op_lib",
-    ],
+    ] + if_mkl([
+        ":mkl_nn_ops_op_lib",
+    ]),
     alwayslink = 1,
 )
 
@@ -1669,6 +1672,7 @@ cc_library(
     name = "mobile_additional_lib_deps",
     deps = tf_additional_lib_deps() + [
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -2169,6 +2173,7 @@ cc_library(
             "lib/**/*.cc",
             "platform/*.cc",
             "platform/profile_utils/**/*.cc",
+        ] + [
             "framework/resource_handle.cc",
             "util/env_var.cc",
         ],
@@ -2812,7 +2817,6 @@ tf_cuda_library(
         ":functional_ops_op_lib",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/kernels:required",
-        ":core_cpu_impl",
     ]),
     alwayslink = 1,
 )
@@ -2999,6 +3003,16 @@ cc_library(
 )
 
 tf_cuda_library(
+    name = "metrics",
+    srcs = ["common_runtime/metrics.cc"],
+    hdrs = ["common_runtime/metrics.h"],
+    deps = [
+        ":lib",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+tf_cuda_library(
     name = "direct_session_internal",
     srcs = ["common_runtime/direct_session.cc"],
     hdrs = [
@@ -3014,10 +3028,12 @@ tf_cuda_library(
         ":graph",
         ":lib",
         ":lib_internal",
+        ":metrics",
         ":proto_text",
         ":protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
         "//tensorflow/core/kernels:function_ops",
+        "@com_google_absl//absl/time",
     ],
     alwayslink = 1,
 )
@@ -3049,7 +3065,9 @@ tf_cuda_library(
     ],
     copts = tf_copts(),
     cuda_deps = if_cuda_is_configured(tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps()),
-    visibility = ["//visibility:private"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
     deps = [
         ":core_cpu_internal",
         ":lib",

@@ -26,6 +26,7 @@ from tensorflow.python.autograph import operators
 from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.core.converter import ConversionOptions
 from tensorflow.python.autograph.core.converter import Feature
+from tensorflow.python.autograph.core.converter import Verbosity
 from tensorflow.python.autograph.core.errors import GraphConstructionError
 from tensorflow.python.autograph.core.errors import improved_errors
 from tensorflow.python.autograph.core.errors import TfRuntimeError
@@ -58,6 +59,7 @@ _allowed_symbols = [
     'improved_errors',
     'GraphConstructionError',
     'TfRuntimeError',
+    'Verbosity',
     # Python language "extensions"
     'set_element_type',
     'set_loop_options',

@@ -992,7 +992,7 @@ class GradientBoostedDecisionTreeModel(object):
 
         # Get accumulated steps and examples for the current layer.
         _, _, _, _, acc_examples, acc_steps = (
-            steps_accumulator.serialize())
+            steps_accumulator.saveable.serialize())
         acc_examples = math_ops.cast(acc_examples[0], dtypes.int64)
         acc_steps = math_ops.cast(acc_steps[0], dtypes.int64)
         ensemble_update_ops.append(

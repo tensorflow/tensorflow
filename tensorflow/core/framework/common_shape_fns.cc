@@ -1059,7 +1059,7 @@ Status UnknownShape(shape_inference::InferenceContext* c) {
 template <typename T>
 Status ReductionShapeHelper(const Tensor* reduction_indices_t,
                             const int32 input_rank,
-                            std::set<int64>& true_indices) {
+                            std::set<int64>* true_indices) {
   auto reduction_indices = reduction_indices_t->flat<T>();
   for (int i = 0; i < reduction_indices_t->NumElements(); ++i) {
     const T reduction_index = reduction_indices(i);
@@ -1074,7 +1074,7 @@ Status ReductionShapeHelper(const Tensor* reduction_indices_t,
       wrapped_index += input_rank;
     }
 
-    true_indices.insert(wrapped_index);
+    true_indices->insert(wrapped_index);
   }
   return Status::OK();
 }
@@ -1112,10 +1112,10 @@ Status ReductionShape(InferenceContext* c) {
   std::set<int64> true_indices;
   if (reduction_indices_t->dtype() == DataType::DT_INT32) {
     TF_RETURN_IF_ERROR(ReductionShapeHelper<int32>(reduction_indices_t,
-                                                   input_rank, true_indices));
+                                                   input_rank, &true_indices));
   } else if (reduction_indices_t->dtype() == DataType::DT_INT64) {
     TF_RETURN_IF_ERROR(ReductionShapeHelper<int64>(reduction_indices_t,
-                                                   input_rank, true_indices));
+                                                   input_rank, &true_indices));
   } else {
     return errors::InvalidArgument(
         "reduction_indices can only be int32 or int64");

@@ -11766,6 +11766,25 @@ op {
   is_stateful: true
 }
 op {
+  name: "BoostedTreesQuantileStreamResourceDeserialize"
+  input_arg {
+    name: "quantile_stream_resource_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "bucket_boundaries"
+    type: DT_FLOAT
+    number_attr: "num_streams"
+  }
+  attr {
+    name: "num_streams"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "BoostedTreesQuantileStreamResourceFlush"
   input_arg {
     name: "quantile_stream_resource_handle"
@@ -20924,6 +20943,10 @@ op {
     name: "element_shape"
     type_attr: "shape_type"
   }
+  input_arg {
+    name: "max_num_elements"
+    type: DT_INT32
+  }
   output_arg {
     name: "handle"
     type: DT_VARIANT
@@ -23497,6 +23520,38 @@ op {
   input_arg {
     name: "buffer_size"
     type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
+  name: "FixedLengthRecordDatasetV2"
+  input_arg {
+    name: "filenames"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "header_bytes"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "record_bytes"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "footer_bytes"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "buffer_size"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "compression_type"
+    type: DT_STRING
   }
   output_arg {
     name: "handle"
@@ -61534,17 +61589,6 @@ op {
         type: DT_COMPLEX128
       }
     }
-  }
-}
-op {
-  name: "SinkDataset"
-  input_arg {
-    name: "input_dataset"
-    type: DT_VARIANT
-  }
-  output_arg {
-    name: "handle"
-    type: DT_VARIANT
   }
 }
 op {

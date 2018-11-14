@@ -205,7 +205,7 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
   def distribute_dataset(self, dataset_fn):
     """Distributes the dataset to each local GPU."""
     # TODO(yuefengz): shard the dataset.
-    return values.PerDeviceDataset(
+    return values.PerReplicaDataset(
         self._call_dataset_fn(dataset_fn), self._devices, True)
 
   def configure(self,

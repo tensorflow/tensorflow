@@ -445,15 +445,16 @@ def linear_model(features,
             [0, 0]: "d"
             [1, 0]: "e"
             [1, 1]: "f"
-            [1, 2]: "g"
+            [1, 2]: "f"
         }
       ```
-      with `sparse_combiner` as "mean", the linear model outputs conceptly are:
+      with `sparse_combiner` as "mean", the linear model outputs consequently
+      are:
       ```
-        y_0 = 1.0 / 2.0 * ( w_a + w_ b) + w_c + b_0
-        y_1 = w_d + 1.0 / 3.0 * ( w_e + w_ f + w_g) + b_1
+        y_0 = 1.0 / 2.0 * ( w_a + w_b ) + w_d + b
+        y_1 = w_c + 1.0 / 3.0 * ( w_e + 2.0 * w_f ) + b
       ```
-      where `y_i` is the output, `b_i` is the bias, and `w_x` is the weight
+      where `y_i` is the output, `b` is the bias, and `w_x` is the weight
       assigned to the presence of `x` in the input features.
     weight_collections: A list of collection names to which the Variable will be
       added. Note that, variables will also be added to collections

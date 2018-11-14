@@ -1199,9 +1199,32 @@ TEST_F(PlacerTest, TestNonExistentDevice) {
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
   LOG(WARNING) << s.error_message();
   EXPECT_TRUE(str_util::StrContains(
-      s.error_message(),
-      "was explicitly assigned to /job:foo/replica:17 but available devices"));
+      s.error_message(), "was explicitly assigned to /job:foo/replica:17"));
+  EXPECT_TRUE(
+      str_util::StrContains(s.error_message(), "but available devices"));
 }
+
+#if !GOOGLE_CUDA
+// Test that we inform the user if they appear to be explicitly placing nodes
+// on a GPU when CUDA is not available
+TEST_F(PlacerTest, TestUseGpuWithNoCuda) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    ops::SourceOp("VariableGPU",
+                  b.opts().WithName("var").WithDevice("/device:gpu:0"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  SessionOptions options;
+  Status s = Place(&g, &options);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+  LOG(WARNING) << s.error_message();
+  EXPECT_TRUE(str_util::StrContains(
+      s.error_message(),
+      "The requested device appears to be a GPU, but CUDA is not enabled."));
+}
+#endif
 
 TEST_F(PlacerTest, TestUnsupportedDeviceAllowSoftPlacement) {
   Graph g(OpRegistry::Global());

@@ -57,13 +57,9 @@ TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
     return nullptr;
   }
 
-  tensorflow::Device* device;
-  status->status = handle->handle->Device(&device);
-  if (!status->status.ok()) {
-    return nullptr;
-  }
-
 #ifdef TENSORFLOW_EAGER_USE_XLA
+  tensorflow::Device* device = handle->handle->device();
+
   // If tensor resides on an XLA device, use XLA device's PaddedShapeFn.
   tensorflow::XlaDevice* xla_device =
       dynamic_cast<tensorflow::XlaDevice*>(device);

@@ -2031,6 +2031,16 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   return operand_shape;
 }
 
+/* static */ StatusOr<Shape> ShapeInference::InferGetDimensionSizeShape(
+    const Shape& shape, int64 dimension) {
+  if (dimension < 0 || dimension >= ShapeUtil::Rank(shape)) {
+    return InvalidArgument("GetDimensionSize dimension out of bounds: %d.",
+                           dimension);
+  }
+
+  return ShapeUtil::MakeShape(S64, {});
+}
+
 /* static */ StatusOr<Shape> ShapeInference::InferSliceShape(
     const Shape& arg, absl::Span<const int64> starts,
     absl::Span<const int64> limits, absl::Span<const int64> strides) {
@@ -2831,6 +2841,15 @@ Status ValidateScatterDimensionNumbers(
           "%d), got: %d.",
           operand_shape.dimensions_size(), inserted_dim);
     }
+  }
+
+  // Validate window size.
+  auto window_size = dim_numbers.update_window_dims_size() +
+                     dim_numbers.inserted_window_dims_size();
+  if (window_size != ShapeUtil::Rank(operand_shape)) {
+    return InvalidArgument(
+        "Scatter op has window of size %d; doesn't match operand of rank %d.",
+        window_size, ShapeUtil::Rank(operand_shape));
   }
 
   // Validate scatter_dims_to_operand_dims in ScatterDimensionNumbers.

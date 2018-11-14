@@ -64,6 +64,20 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, "tf.math.rsqrt(tf.math.log_sigmoid(3.8))\n")
 
+  def testRenameConstant(self):
+    text = "tf.MONOLITHIC_BUILD\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, "tf.sysconfig.MONOLITHIC_BUILD\n")
+    text = "some_call(tf.MONOLITHIC_BUILD)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, "some_call(tf.sysconfig.MONOLITHIC_BUILD)\n")
+
+  def testReorder(self):
+    text = "tf.boolean_mask(a, b, c, d)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text,
+                     "tf.boolean_mask(tensor=a, mask=b, name=c, axis=d)\n")
+
   def testLearningRateDecay(self):
     for decay in ["tf.train.exponential_decay", "tf.train.piecewise_constant",
                   "tf.train.polynomial_decay", "tf.train.natural_exp_decay",
@@ -77,6 +91,14 @@ class TestUpgrade(test_util.TensorFlowTestCase):
       self.assertEqual(text, new_text)
       self.assertEqual(errors, ["test.py:1: %s requires manual check." % decay])
       self.assertIn("%s has been changed" % decay, report)
+
+  def testEstimatorLossReductionChangege(self):
+    text = "tf.estimator.LinearClassifier(a, b)\n"
+    _, report, errors, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+    self.assertEqual(errors, ["test.py:1: %s requires manual check."
+                              % "tf.estimator.LinearClassifier"])
+    self.assertIn("loss_reduction has been changed", report)
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
+#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -1018,9 +1019,11 @@ TEST_F(XlaCompilerTest, VariableRepresentationShapeFunction) {
 
   // Compiles the graph.
   XlaCompiler::Options options = DefaultOptions();
-  options.shape_representation_fn = [](const TensorShape& shape,
-                                       DataType type) {
-    return TensorShape({shape.num_elements()});
+  options.shape_representation_fn =
+      [](const TensorShape& shape, DataType type) -> xla::StatusOr<xla::Shape> {
+    xla::PrimitiveType ptype;
+    TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(type, &ptype));
+    return xla::ShapeUtil::MakeShape(ptype, {shape.num_elements()});
   };
   XlaCompiler compiler(options);
 
@@ -1086,9 +1089,11 @@ TEST_F(XlaCompilerTest, ArgRetvalShapeRepresentationFunction) {
 
   // Compiles the graph.
   XlaCompiler::Options options = DefaultOptions();
-  options.shape_representation_fn = [](const TensorShape& shape,
-                                       DataType type) {
-    return TensorShape({shape.num_elements()});
+  options.shape_representation_fn =
+      [](const TensorShape& shape, DataType type) -> xla::StatusOr<xla::Shape> {
+    xla::PrimitiveType ptype;
+    TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(type, &ptype));
+    return xla::ShapeUtil::MakeShape(ptype, {shape.num_elements()});
   };
   XlaCompiler compiler(options);
 

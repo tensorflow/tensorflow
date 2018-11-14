@@ -112,6 +112,12 @@ class XlaDevice : public LocalDevice {
     // compute, host-to-device, and device-to-host communication.
     bool use_multiple_streams = false;
 
+    // A function that describes how the on-host shapes of
+    // a) argument and return value, for entry computations
+    // b) variables, for all computations,
+    // should be represented in XLA. Parameters/return values will be shaped
+    // according to this function, and reshaped back to/from their declared
+    // shapes for computations. Must be non-null.
     XlaCompiler::ShapeRepresentationFn shape_representation_fn;
 
     // If padded_shape_fn is empty, a default implementation that returns

@@ -65,9 +65,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
   Status Initialize(IteratorContext* ctx) override {
     mutex_lock l(*mu_);
     if (num_parallel_calls_->value == kAutoTune) {
-      // TODO(jsimsa): Surface the number of threads used by `ctx->runner()` and
-      // use it here for the default.
-      num_parallel_calls_->value = port::NumSchedulableCPUs();
+      num_parallel_calls_->value = ctx->runner_threadpool_size();
       num_parallel_calls_->tunable = true;
     }
     TF_RETURN_IF_ERROR(
@@ -103,7 +101,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
         std::move(args),
         /*ratio=*/1,
         {model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
-                              /*max=*/port::NumSchedulableCPUs())});
+                              /*max=*/ctx->runner_threadpool_size())});
   }
 
   Status SaveInternal(IteratorStateWriter* writer) override {

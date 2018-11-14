@@ -591,6 +591,7 @@ cc_test(
 cc_test(
     name = "depthwiseconv_quantized_test",
     srcs = ["depthwiseconv_quantized_test.cc"],
+    shard_count = 2,
     tags = [
         "no_oss",
         "tflite_not_portable_ios",

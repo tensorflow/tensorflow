@@ -95,6 +95,7 @@ tf_cuda_library(
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
+            "//tensorflow/core/distributed_runtime:server_lib",
         ],
     }) + select({
         "//tensorflow:with_xla_support": [
@@ -199,7 +200,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["c_api_test.cc"],
     data = [
-        ":test_op.so",
+        ":test_op1.so",
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     kernels = [":test_op_kernel"],
@@ -218,6 +219,7 @@ tf_cuda_cc_test(
         "//tensorflow/cc:grad_ops",
         "//tensorflow/cc/saved_model:signature_constants",
         "//tensorflow/cc/saved_model:tag_constants",
+        "//tensorflow/compiler/jit",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
@@ -284,8 +286,8 @@ tf_cc_test(
 )
 
 tf_custom_op_library(
-    name = "test_op.so",
-    srcs = ["test_op.cc"],
+    name = "test_op1.so",
+    srcs = ["test_op1.cc"],
 )
 
 tf_kernel_library(

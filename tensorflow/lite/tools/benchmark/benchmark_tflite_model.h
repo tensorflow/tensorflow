@@ -27,7 +27,7 @@ limitations under the License.
 namespace tflite {
 namespace benchmark {
 
-// Dumps profiling events if profiling is enabled
+// Dumps profiling events if profiling is enabled.
 class ProfilingListener : public BenchmarkListener {
  public:
   explicit ProfilingListener() : interpreter_(nullptr), has_profiles_(false) {}
@@ -47,11 +47,21 @@ class ProfilingListener : public BenchmarkListener {
   bool has_profiles_;
 };
 
+// Dumps gemmlowp profiling events if gemmlowp profiling is enabled.
+class GemmlowpProfilingListener : public BenchmarkListener {
+ public:
+  virtual ~GemmlowpProfilingListener() {}
+
+  void OnBenchmarkStart(const BenchmarkParams& params) override;
+
+  void OnBenchmarkEnd(const BenchmarkResults& results) override;
+};
+
 // Benchmarks a TFLite model by running tflite interpreter.
 class BenchmarkTfLiteModel : public BenchmarkModel {
  public:
   BenchmarkTfLiteModel();
-  BenchmarkTfLiteModel(BenchmarkParams params);
+  explicit BenchmarkTfLiteModel(BenchmarkParams params);
   virtual ~BenchmarkTfLiteModel() {}
 
   std::vector<Flag> GetFlags() override;
@@ -74,6 +84,7 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   std::unique_ptr<tflite::Interpreter> interpreter;
   std::vector<InputLayerInfo> inputs;
   ProfilingListener profiling_listener_;
+  GemmlowpProfilingListener gemmlowp_profiling_listener_;
 };
 
 }  // namespace benchmark

@@ -342,6 +342,14 @@ class GraphView
   }
 };
 
+// Returns true if node has one (or zero) fanout nodes at given port.
+bool HasSingleFanoutNode(const GraphView& graph_view, const NodeDef* node,
+                         int port = 0);
+
+bool NoControlFanin(const GraphView& graph_view, const NodeDef* node);
+bool NoControlFanout(const GraphView& graph_view, const NodeDef* node);
+bool NoControlFaninOrFanout(const GraphView& graph_view, const NodeDef* node);
+
 }  // end namespace grappler
 }  // end namespace tensorflow
 

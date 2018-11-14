@@ -16,12 +16,12 @@ limitations under the License.
 #include <ctype.h>
 
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 
 namespace xla {
 namespace {
-class IndexedArrayAnalysisTest : public HloVerifiedTestBase {
+class IndexedArrayAnalysisTest : public HloTestBase {
  protected:
   void AssertArrayForRootExpressionIs(const string& hlo_text,
                                       const string& root_expression) {
@@ -61,12 +61,12 @@ class IndexedArrayAnalysisTest : public HloVerifiedTestBase {
                                           const string& root_expression,
                                           bool print_constants) {
     IndexedArrayAnalysis indexed_tensor_analysis;
-    ParseAndVerifyModule(hlo_text);
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                            ParseAndReturnVerifiedModule(hlo_text));
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        IndexedArrayAnalysis::Array* const array_result,
-        indexed_tensor_analysis.GetArrayFor(
-            module().entry_computation()->root_instruction()));
+    TF_ASSERT_OK_AND_ASSIGN(IndexedArrayAnalysis::Array* const array_result,
+                            indexed_tensor_analysis.GetArrayFor(
+                                m->entry_computation()->root_instruction()));
     string string_result = CanonicalizeWhitespace(
         indexed_tensor_analysis.ToString(array_result, print_constants));
     LOG(INFO) << string_result;

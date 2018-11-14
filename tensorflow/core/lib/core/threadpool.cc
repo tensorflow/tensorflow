@@ -192,5 +192,14 @@ int ThreadPool::NumThreads() const { return impl_->NumThreads(); }
 
 int ThreadPool::CurrentThreadId() const { return impl_->CurrentThreadId(); }
 
+void ThreadPool::ScheduleWithHint(std::function<void()> fn, int start,
+                                  int limit) {
+  impl_->ScheduleWithHint(std::move(fn), start, limit);
+}
+
+void ThreadPool::SetStealPartitions(
+    const std::vector<std::pair<unsigned, unsigned>>& partitions) {
+  impl_->SetStealPartitions(partitions);
+}
 }  // namespace thread
 }  // namespace tensorflow

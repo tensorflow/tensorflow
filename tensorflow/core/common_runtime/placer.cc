@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/util/port.h"
 
 namespace tensorflow {
 
@@ -378,11 +379,20 @@ class ColocationGraph {
             }
             std::sort(device_names.begin(), device_names.end());
 
+            string gpu_msg = "";
+            if (!IsGoogleCudaEnabled() &&
+                str_util::Lowercase(specified_device_name.type) == "gpu") {
+              gpu_msg =
+                  " The requested device appears to be a GPU, but CUDA is not "
+                  "enabled.";
+            }
+
             return errors::InvalidArgument(
-                "Operation was explicitly assigned to ",
-                node->requested_device(), " but available devices are [ ",
+                errors::FormatNodeNameForError(node->name()),
+                "was explicitly assigned to ", node->requested_device(),
+                " but available devices are [ ",
                 str_util::Join(device_names, ", "), " ]. Make sure ",
-                "the device specification refers to a valid device.");
+                "the device specification refers to a valid device.", gpu_msg);
           } else if (specified_device_name.has_type) {
             return errors::InvalidArgument(
                 "Could not satisfy explicit device specification '",

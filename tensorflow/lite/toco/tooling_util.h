@@ -338,8 +338,9 @@ tensorflow::Status NumElements(const std::vector<T>& shape, U* num_elements) {
       return tensorflow::errors::InvalidArgument(
           "Tensor shape should not include negative values");
     }
-    if (static_cast<uint64_t>(dim) >
-        std::numeric_limits<U>::max() / *num_elements) {
+    if (*num_elements != 0 &&
+        static_cast<uint64_t>(dim) >
+            std::numeric_limits<U>::max() / *num_elements) {
       *num_elements = 0;
       return tensorflow::errors::InvalidArgument("Tensor shape is too large");
     }

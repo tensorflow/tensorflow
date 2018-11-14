@@ -198,6 +198,13 @@ class Annotator(transformer.Base):
     node = self._block_statement_live_out(node)
     return self._block_statement_live_in(node, node.test)
 
+  def visit_Expr(self, node):
+    node = self.generic_visit(node)
+    cfg_node = self.current_analyzer.graph.index[node]
+    anno.setanno(node, anno.Static.LIVE_VARS_OUT,
+                 frozenset(self.current_analyzer.out[cfg_node]))
+    return node
+
 
 def resolve(node, source_info, graphs):
   """Resolves the live symbols at the exit of control flow statements.

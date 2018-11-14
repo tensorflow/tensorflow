@@ -20,6 +20,7 @@ if (systemlib_ABSEIL_CPP)
                absl_dynamic_annotations
                absl_malloc_internal
                absl_throw_delegate
+               absl_int128
                absl_strings
                str_format_internal
                absl_bad_optional_access)
@@ -50,6 +51,7 @@ else (systemlib_ABSEIL_CPP)
           ${abseil_cpp_BUILD}/absl/base/Release/absl_dynamic_annotations.lib
           ${abseil_cpp_BUILD}/absl/base/Release/absl_malloc_internal.lib
           ${abseil_cpp_BUILD}/absl/base/Release/absl_throw_delegate.lib
+          ${abseil_cpp_BUILD}/absl/numeric/Release/absl_int128.lib
           ${abseil_cpp_BUILD}/absl/strings/Release/absl_strings.lib
           ${abseil_cpp_BUILD}/absl/strings/Release/str_format_internal.lib
           ${abseil_cpp_BUILD}/absl/types/Release/absl_bad_optional_access.lib)
@@ -60,6 +62,7 @@ else (systemlib_ABSEIL_CPP)
           ${abseil_cpp_BUILD}/absl/base/absl_dynamic_annotations.lib
           ${abseil_cpp_BUILD}/absl/base/absl_malloc_internal.lib
           ${abseil_cpp_BUILD}/absl/base/absl_throw_delegate.lib
+          ${abseil_cpp_BUILD}/absl/numeric/absl_int128.lib
           ${abseil_cpp_BUILD}/absl/strings/absl_strings.lib
           ${abseil_cpp_BUILD}/absl/strings/str_format_internal.lib
           ${abseil_cpp_BUILD}/absl/types/absl_bad_optional_access.lib)
@@ -71,6 +74,7 @@ else (systemlib_ABSEIL_CPP)
         ${abseil_cpp_BUILD}/absl/base/libabsl_dynamic_annotations.a
         ${abseil_cpp_BUILD}/absl/base/libabsl_malloc_internal.a
         ${abseil_cpp_BUILD}/absl/base/libabsl_throw_delegate.a
+        ${abseil_cpp_BUILD}/absl/numeric/libabsl_int128.a
         ${abseil_cpp_BUILD}/absl/strings/libabsl_strings.a
         ${abseil_cpp_BUILD}/absl/strings/libstr_format_internal.a
         ${abseil_cpp_BUILD}/absl/types/libabsl_bad_optional_access.a)

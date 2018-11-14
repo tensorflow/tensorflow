@@ -446,7 +446,7 @@ XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
   // Any op assigned to the device that isn't rewritten by the graph rewriter
   // gets executed by a n XlaCompileOnDemandOp, which compiles it and executes
   // it just-in-time.
-  kernel_factory::OpKernelRegistrar::Factory factory =
+  OpKernel* (*factory)(OpKernelConstruction*) =
       [](OpKernelConstruction* context) -> OpKernel* {
     return new XlaCompileOnDemandOp(context);
   };

@@ -448,7 +448,6 @@ ConvolutionDescriptor::ConvolutionDescriptor(int ndims)
     : zero_padding_(ndims, 0),
       filter_strides_(ndims, 1),
       dilation_rates_(ndims, 1),
-      pad_alignment_(PadAlignment::kDefault),
       group_count_(1),
       ndims_(ndims) {}
 
@@ -470,7 +469,7 @@ string ConvolutionDescriptor::ToString() const {
   return port::Printf(
       "{zero_padding: %s pad_alignment: %s filter_strides: %s dilation_rates: "
       "%s}",
-      padding.c_str(), PadAlignmentString(pad_alignment_).c_str(),
+      padding.c_str(), PadAlignmentString(pad_alignment()).c_str(),
       strides.c_str(), dilations.c_str());
 }
 

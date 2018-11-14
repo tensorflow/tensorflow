@@ -113,6 +113,10 @@ tf_module {
     argspec: "args=[\'sp_input\', \'name\', \'out_type\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'string\'>\"], "
   }
   member_method {
+    name: "serialize_tensor"
+    argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "tf_record_iterator"
     argspec: "args=[\'path\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
