@@ -21,7 +21,7 @@ organization conceived TensorFlow for the purposes of conducting machine learnin
 networks research.  The system is general enough to be applicable in a
 variety of other domains.
 
-TensorFlow provides stable Python and C APIs as well as without API backwards compatibility guarantee like C++, Go, Java, JavaScript and Swift.
+TensorFlow provides stable Python and C APIs without API backwards compatibility guarantee like C++, Go, Java, JavaScript and Swift.
 
 Keep up to date with release announcements and security updates by
 subscribing to
