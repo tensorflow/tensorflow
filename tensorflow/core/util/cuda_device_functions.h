@@ -30,22 +30,8 @@ limitations under the License.
 #include <complex>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
-#ifdef _WIN32
-#include "cuda.h"
-#include "device_functions.h"
-#else
 #include "cuda/include/cuda.h"
-#include "cuda/include/device_functions.h"
-#endif
 #include "tensorflow/core/platform/types.h"
-
-#if CUDA_VERSION >= 7050
-#ifdef _WIN32
-#include "cuda_fp16.h"
-#else
-#include "cuda/include/cuda_fp16.h"
-#endif
-#endif  // CUDA_VERSION >= 7050
 
 namespace tensorflow {
 
