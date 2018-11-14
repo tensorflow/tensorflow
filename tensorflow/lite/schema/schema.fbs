@@ -39,16 +39,34 @@ enum TensorType : byte {
   BOOL = 6,
   INT16 = 7,
   COMPLEX64 = 8,
+  INT8 = 9,
 }
 
-// Parameters for converting a quantized tensor back to float. Given a
-// quantized value q, the corresponding float value f should be:
-//   f = scale * (q - zero_point)
+// Custom quantization parameters for experimenting with new quantization
+// techniques.
+table CustomQuantization {
+  custom:[byte];
+}
+
+// Represents a specific quantization technique's parameters.
+union QuantizationDetails {
+  CustomQuantization,
+}
+
+// Parameters for converting a quantized tensor back to float.
 table QuantizationParameters {
+  // These four parameters are the asymmetric linear quantization parameters.
+  // Given a quantized value q, the corresponding float value f should be:
+  //   f = scale * (q - zero_point)
+  // For other quantization types, the QuantizationDetails below is used.
   min:[float];  // For importing back into tensorflow.
   max:[float];  // For importing back into tensorflow.
   scale:[float];  // For dequantizing the tensor's values.
   zero_point:[long];
+
+  // If this is not none, the quantization parameters above are ignored and the
+  // value of the QuantizationDetails union below should be used.
+  details:QuantizationDetails;
 }
 
 table Tensor {

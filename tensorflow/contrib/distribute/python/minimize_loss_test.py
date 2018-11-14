@@ -66,8 +66,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       def step_fn(ctx, *inputs):
         del ctx  # Unused
         return distribution.group(
-            distribution.call_for_each_replica(
-                model_fn, *inputs, run_concurrently=layer.built))
+            distribution.call_for_each_replica(model_fn, args=inputs))
 
       iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
 
@@ -110,7 +109,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       def run_step():
         return distribution.group(
             distribution.call_for_each_replica(
-                model_fn, iterator.get_next(), run_concurrently=layer.built))
+                model_fn, args=(iterator.get_next(),)))
 
       if not context.executing_eagerly():
         with self.cached_session() as sess:
@@ -161,8 +160,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       def step_fn(ctx, *inputs):
         del ctx  # Unused
         return distribution.group(
-            distribution.call_for_each_replica(
-                model_fn, *inputs, run_concurrently=layer.built))
+            distribution.call_for_each_replica(model_fn, args=inputs))
 
       iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
 
@@ -231,8 +229,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       def step_fn(ctx, *inputs):
         del ctx  # Unused
         fetches = distribution.unwrap(
-            distribution.call_for_each_replica(
-                model_fn, *inputs, run_concurrently=batchnorm.built))
+            distribution.call_for_each_replica(model_fn, args=inputs))
         if update_ops_in_cross_replica_mode:
           fetches += ops.get_collection(ops.GraphKeys.UPDATE_OPS)
         return control_flow_ops.group(fetches)
@@ -327,8 +324,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       def step_fn(ctx, x, y):
         del ctx  # Unused
         return distribution.group(
-            distribution.call_for_each_replica(
-                model_fn, x, y, run_concurrently=False))
+            distribution.call_for_each_replica(model_fn, args=(x, y)))
 
       iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
 
@@ -414,7 +410,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
       def step_fn(output_context, *inputs):
         (train_op, loss) = distribution.call_for_each_replica(
-            model_fn, output_context, *inputs, run_concurrently=False)
+            model_fn, args=(output_context,) + inputs)
         output_context.set_last_step_output(
             name="cross_replica_loss_agg",
             output=loss,

@@ -64,7 +64,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   Operations that occur only on the first replica (such as incrementing the
   global step), will occur on the first replica *of every worker*.
 
-  It is expected to call `call_for_each_replica(fn, *args, **kwargs)` for any
+  It is expected to call `call_for_each_replica(fn, ...)` for any
   operations which potentially can be replicated across replicas (i.e. multiple
   GPUs) even if there is only CPU or one GPU. When defining the `fn`, extra
   caution needs to be taken:
@@ -291,9 +291,9 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
       with ops.device(self._variable_device):
         return var_creator(*args, **kwargs)
 
-  def _call_for_each_replica(self, fn, *args, **kwargs):
+  def _call_for_each_replica(self, fn, args, kwargs):
     # pylint: disable=protected-access
-    return mirrored_strategy._call_for_each_replica(self, fn, *args, **kwargs)
+    return mirrored_strategy._call_for_each_replica(self, fn, args, kwargs)
 
   def _verify_destinations_not_different_worker(self, destinations):
     if not self._cluster_spec:
@@ -448,10 +448,6 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     del session_config.device_filters[:]
     session_config.device_filters.extend(
         ["/job:%s/task:%d" % (self._task_type, self._task_id), "/job:ps"])
-
-  @property
-  def num_replicas(self):
-    return len(self._compute_devices)
 
   @property
   def num_replicas_in_sync(self):

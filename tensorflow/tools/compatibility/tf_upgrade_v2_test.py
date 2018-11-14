@@ -72,6 +72,12 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, "some_call(tf.sysconfig.MONOLITHIC_BUILD)\n")
 
+  def testReorder(self):
+    text = "tf.boolean_mask(a, b, c, d)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text,
+                     "tf.boolean_mask(tensor=a, mask=b, name=c, axis=d)\n")
+
   def testLearningRateDecay(self):
     for decay in ["tf.train.exponential_decay", "tf.train.piecewise_constant",
                   "tf.train.polynomial_decay", "tf.train.natural_exp_decay",

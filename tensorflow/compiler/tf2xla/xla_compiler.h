@@ -21,8 +21,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
+#include "tensorflow/compiler/tf2xla/xla_expression.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -415,7 +417,8 @@ class XlaCompiler {
   Status BuildArguments(const Graph& graph,
                         const std::vector<XlaCompiler::Argument>& args,
                         bool use_tuple_arg, xla::XlaBuilder* builder,
-                        XlaContext* context, std::vector<int>* arg_cores,
+                        XlaContext* context,
+                        const std::map<int, int>& arg_cores,
                         std::vector<XlaExpression>* arg_expressions,
                         std::vector<int>* input_mapping,
                         std::vector<xla::Shape>* input_shapes,

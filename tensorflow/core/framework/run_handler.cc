@@ -92,6 +92,27 @@ class RunHandlerPool::Impl {
       handlers_.emplace_back(new RunHandler::Impl(this));
       free_handlers_.push_back(handlers_.back().get());
     }
+    // Set steal partitions to a fixed size steal domain of size 6 = 2 *
+    // kMinThreadsPerRequest.
+    std::vector<std::pair<unsigned, unsigned>> steal_partitions(
+        num_inter_op_threads);
+    int kStealDomainSize = std::min(6, num_inter_op_threads);
+    unsigned steal_start = 0, steal_end = kStealDomainSize;
+    for (int i = 0; i < num_inter_op_threads; ++i) {
+      if (i > steal_start) {
+        if (steal_end + kStealDomainSize < num_inter_op_threads) {
+          steal_start = steal_end;
+          steal_end += kStealDomainSize;
+        } else {
+          steal_end = num_inter_op_threads;
+          steal_start = steal_end - kStealDomainSize;
+        }
+      }
+      steal_partitions[i] = std::make_pair(steal_start, steal_end);
+      VLOG(1) << "Steal partition i: " << i << " steal_start: " << steal_start
+              << " steal_end: " << steal_end;
+    }
+    inter_op_thread_pool_->SetStealPartitions(steal_partitions);
   }
 
   ~Impl() {
@@ -223,7 +244,9 @@ void RunHandlerPool::Impl::RecomputePoolStatsLocked() {
 void RunHandler::Impl::ScheduleInterOpClosure(std::function<void()> fn) {
   std::uint_fast32_t start = 0, limit = 0;
   DecodePartition(inter_op_scheduling_range(), &start, &limit);
-  pool_impl_->inter_op_thread_pool()->Schedule(std::move(fn));
+  DCHECK_LT(start, limit);
+  pool_impl_->inter_op_thread_pool()->ScheduleWithHint(std::move(fn), start,
+                                                       limit);
 }
 
 void RunHandler::Impl::Reset() {

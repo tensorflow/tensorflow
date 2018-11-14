@@ -3,9 +3,9 @@
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
-
 package(default_visibility = ["//visibility:public"])
+
+exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
@@ -318,7 +318,7 @@ py_test(
 
 py_test(
     name = "advanced_activations_test",
-    size = "small",
+    size = "medium",
     srcs = ["layers/advanced_activations_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -369,7 +369,7 @@ cuda_py_test(
 
 py_test(
     name = "pooling_test",
-    size = "medium",
+    size = "large",
     srcs = ["layers/pooling_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -496,7 +496,7 @@ py_test(
 
 py_test(
     name = "recurrent_test",
-    size = "medium",
+    size = "large",
     srcs = ["layers/recurrent_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -763,6 +763,7 @@ py_test(
     name = "model_subclassing_test",
     size = "medium",
     srcs = ["model_subclassing_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [

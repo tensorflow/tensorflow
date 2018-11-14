@@ -218,7 +218,10 @@ def get_correctness_test_inputs(use_numpy, with_distribution,
   global_batch_size = 64
   batch_size = global_batch_size
   # TODO(b/118776054): Use global batch size for Keras/DS support.
-  if with_distribution:
+  use_per_core_batch_size = (
+      with_distribution and
+      with_distribution.__class__.__name__ != 'TPUStrategy')
+  if use_per_core_batch_size:
     batch_size //= with_distribution.num_replicas_in_sync
 
   if use_numpy:
@@ -234,11 +237,19 @@ def get_correctness_test_inputs(use_numpy, with_distribution,
         'x': x_train,
         'y': y_train,
     }
+    # TODO(b/119318587): We should not require batch_size when distribution
+    # is enabled.
+    if with_distribution:
+      if use_per_core_batch_size:
+        predict_batch_size = (
+            len(x_predict) // with_distribution.num_replicas_in_sync)
+      else:
+        predict_batch_size = len(x_predict)
+    else:
+      predict_batch_size = None
+
     predict_inputs = {
-        # TODO(b/119318587): We should not require batch_size when distribution
-        # is enabled.
-        'batch_size': (len(x_predict) // with_distribution.num_replicas_in_sync
-                       if with_distribution else None),
+        'batch_size': predict_batch_size,
         'x': np.array(x_predict, dtype=np.float32),
     }
   else:
@@ -263,7 +274,7 @@ def get_correctness_test_inputs(use_numpy, with_distribution,
         'steps': 20,
     }
     predict_batch_size = len(x_predict)
-    if with_distribution:
+    if use_per_core_batch_size:
       predict_batch_size //= with_distribution.num_replicas_in_sync
     predict_dataset = dataset_ops.Dataset.from_tensor_slices(x_predict)
     predict_dataset = batch_wrapper(predict_dataset,
@@ -877,7 +888,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       predict_dataset = dataset_ops.Dataset.from_tensor_slices(inputs)
       predict_dataset = predict_dataset.repeat().batch(5)
       output = model.predict(predict_dataset, steps=10)
-      # `predict` runs for 10 steps and in each step you process 100 samples.
+      # `predict` runs for 10 steps and in each step you process 10 samples.
       ref_output = np.ones((100, 1), dtype=np.float32)
       self.assertArrayNear(output, ref_output, 1e-1)
 

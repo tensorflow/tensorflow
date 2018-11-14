@@ -500,6 +500,11 @@ std::ostream& operator<<(std::ostream& str, dnn::PadAlignment alignment);
 //   cells between each filter element in the "y dimension".
 // - horizontal_dilation_rate: there will be (horizontal_dilation_rate - 1)
 //   skipped cells between each filter element in the "x dimension".
+// - convolution_not_crosscor: By default (convolution_not_crosscor == false),
+//   we perform cross correlation rather than convolution. With the flag set,
+//   we perform convolution. Convolution and cross correlation are related by
+//   rotating the filter by 180 degrees (or equivalently flipping all spatial
+//   dimensions).
 class ConvolutionDescriptor {
  public:
   // By default construction, there is no zero-padding and the filter stride is
@@ -552,6 +557,10 @@ class ConvolutionDescriptor {
     group_count_ = group_count;
     return *this;
   }
+  ConvolutionDescriptor& set_convolution_not_crosscorr(bool conv) {
+    convolution_not_crosscorr_ = conv;
+    return *this;
+  }
   int64 zero_padding_height() const {
     return GetDim(zero_padding_, DimIndex::Y);
   }
@@ -579,6 +588,7 @@ class ConvolutionDescriptor {
   PadAlignment pad_alignment() const { return PadAlignment::kDefault; }
   int group_count() const { return group_count_; }
   int ndims() const { return ndims_; }
+  bool convolution_not_crosscorr() const { return convolution_not_crosscorr_; }
 
   absl::Span<const int64> strides() const { return filter_strides_; }
   absl::Span<const int64> dilations() const { return dilation_rates_; }
@@ -591,6 +601,7 @@ class ConvolutionDescriptor {
   std::vector<int64> dilation_rates_;
   int group_count_;
   int ndims_;
+  bool convolution_not_crosscorr_;
   // TODO(leary) cudnn provides these fields, but need to characterize what
   // their effect is -- they may be boolean rather than integral.
   // int64 upscale_input_x;

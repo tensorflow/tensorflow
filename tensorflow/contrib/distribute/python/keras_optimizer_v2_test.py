@@ -157,7 +157,7 @@ class MirroredStrategyOptimizerV2Test(test.TestCase):
     dist = mirrored_strategy.MirroredStrategy(devices)
     with dist.scope():
       (var, m, v, op, counter) = dist.call_for_each_replica(
-          create_fn, dist.worker_device_index, run_concurrently=False)
+          create_fn, args=[dist.worker_device_index])
       self.evaluate(variables.global_variables_initializer())
       var_val = [2.0, 2.0, 2.0]
       self.assertAllClose(

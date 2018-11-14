@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import importlib
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.ops import spectral_ops
@@ -38,6 +39,20 @@ def try_import(name):  # pylint: disable=invalid-name
 
 
 fftpack = try_import("scipy.fftpack")
+
+
+def _np_dct1(signals, norm=None):
+  """Computes the DCT-I manually with NumPy."""
+  # X_k = (x_0 + (-1)**k * x_{N-1} +
+  #       2 * sum_{n=0}^{N-2} x_n * cos(\frac{pi}{N-1} * n * k)  k=0,...,N-1
+  del norm
+  dct_size = signals.shape[-1]
+  dct = np.zeros_like(signals)
+  for k in range(dct_size):
+    phi = np.cos(np.pi * np.arange(1, dct_size - 1) * k / (dct_size - 1))
+    dct[..., k] = 2 * np.sum(signals[..., 1:-1] * phi, axis=-1) + (
+        signals[..., 0] + (-1) ** k * signals[..., -1])
+  return dct
 
 
 def _np_dct2(signals, norm=None):
@@ -81,11 +96,11 @@ def _np_dct3(signals, norm=None):
   return dct
 
 
-NP_DCT = {2: _np_dct2, 3: _np_dct3}
-NP_IDCT = {2: _np_dct3, 3: _np_dct2}
+NP_DCT = {1: _np_dct1, 2: _np_dct2, 3: _np_dct3}
+NP_IDCT = {1: _np_dct1, 2: _np_dct3, 3: _np_dct2}
 
 
-class DCTOpsTest(test.TestCase):
+class DCTOpsTest(parameterized.TestCase, test.TestCase):
 
   def _compare(self, signals, norm, dct_type, atol=5e-4, rtol=5e-4):
     """Compares (I)DCT to SciPy (if available) and a NumPy implementation."""
@@ -106,26 +121,39 @@ class DCTOpsTest(test.TestCase):
     tf_dct_idct = spectral_ops.dct(
         tf_idct, type=dct_type, norm=norm).eval()
     if norm is None:
-      tf_idct_dct *= 0.5 / signals.shape[-1]
-      tf_dct_idct *= 0.5 / signals.shape[-1]
+      if dct_type == 1:
+        tf_idct_dct *= 0.5 / (signals.shape[-1] - 1)
+        tf_dct_idct *= 0.5 / (signals.shape[-1] - 1)
+      else:
+        tf_idct_dct *= 0.5 / signals.shape[-1]
+        tf_dct_idct *= 0.5 / signals.shape[-1]
     self.assertAllClose(signals, tf_idct_dct, atol=atol, rtol=rtol)
     self.assertAllClose(signals, tf_dct_idct, atol=atol, rtol=rtol)
 
-  def test_random(self):
+  @parameterized.parameters([
+      [[2]], [[3]], [[10]], [[2, 20]], [[2, 3, 25]]])
+  def test_random(self, shape):
     """Test randomly generated batches of data."""
     with spectral_ops_test_util.fft_kernel_label_map():
       with self.session(use_gpu=True):
-        for shape in ([1], [2], [3], [10], [2, 20], [2, 3, 25]):
-          signals = np.random.rand(*shape).astype(np.float32)
-          for norm in (None, "ortho"):
-            self._compare(signals, norm, 2)
-            self._compare(signals, norm, 3)
+        signals = np.random.rand(*shape).astype(np.float32)
+        # Normalization not implemented for orthonormal.
+        self._compare(signals, norm=None, dct_type=1)
+        for norm in (None, "ortho"):
+          self._compare(signals, norm, 2)
+          self._compare(signals, norm, 3)
 
   def test_error(self):
     signals = np.random.rand(10)
     # Unsupported type.
     with self.assertRaises(ValueError):
-      spectral_ops.dct(signals, type=1)
+      spectral_ops.dct(signals, type=5)
+    # DCT-I normalization not implemented.
+    with self.assertRaises(ValueError):
+      spectral_ops.dct(signals, type=1, norm="ortho")
+    # DCT-I requires at least two inputs.
+    with self.assertRaises(ValueError):
+      spectral_ops.dct(np.random.rand(1), type=1)
     # Unknown normalization.
     with self.assertRaises(ValueError):
       spectral_ops.dct(signals, norm="bad")

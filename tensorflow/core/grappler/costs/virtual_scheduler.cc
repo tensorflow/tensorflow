@@ -1022,7 +1022,8 @@ Costs VirtualScheduler::Summary() const {
       bool is_cost_accurate;
       std::tie(cost, is_cost_accurate) = op_costs_.at(item.first);
       VLOG(2) << "Node: " << item.first << ", Count: " << item.second
-              << ", Individual Cost: " << (is_cost_accurate ? "" : "~") << cost;
+              << ", Individual Cost: " << (is_cost_accurate ? "" : "~") << cost
+              << " us";
     }
   }
 

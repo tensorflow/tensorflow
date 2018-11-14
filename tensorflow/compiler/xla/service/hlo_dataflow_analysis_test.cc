@@ -43,7 +43,7 @@ using ::testing::UnorderedElementsAre;
 class HloDataflowAnalysisTest : public HloTestBase,
                                 public ::testing::WithParamInterface<bool> {
  protected:
-  HloDataflowAnalysisTest() : module_(CreateNewUnverifiedModule()) {}
+  HloDataflowAnalysisTest() : module_(CreateNewVerifiedModule()) {}
 
   // Run dataflow analysis on the member module. For convenience returns a
   // reference to the generated analysis stored in analysis_.

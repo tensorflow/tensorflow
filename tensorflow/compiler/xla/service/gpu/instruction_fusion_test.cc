@@ -117,7 +117,7 @@ TEST_F(InstructionFusionTest, PotentialBitcastReshapeOfDotUnfused) {
   auto reshape2 = builder.AddInstruction(HloInstruction::CreateReshape(
       ShapeUtil::MakeShape(S32, {1, 1, 1}), dot1));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(reshape2, computation->root_instruction());
   EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
@@ -134,7 +134,7 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfDotUnfused) {
   auto transpose2 = builder.AddInstruction(HloInstruction::CreateTranspose(
       ShapeUtil::MakeShape(S32, {1, 1}), dot1, {0, 1}));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(transpose2, computation->root_instruction());
   EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
@@ -723,7 +723,7 @@ TEST_F(InstructionFusionTest, AvoidsLargeFusion) {
     sum = b.AddInstruction(
         HloInstruction::CreateBinary(shape, HloOpcode::kAdd, sum, param));
   }
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(b.Build());
   EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
                   .Run(module.get())
@@ -803,6 +803,27 @@ TEST_F(InstructionFusionTest, NonscalarConstantsNotFused) {
   ASSERT_THAT(root, op::Fusion());
   EXPECT_THAT(root->fused_instructions_computation()->root_instruction(),
               op::Reduce(op::Broadcast(op::Parameter()), op::Constant()));
+}
+
+TEST_F(InstructionFusionTest, FuseReverse) {
+  auto module = ParseHloString(R"(
+    HloModule test_module
+
+    ENTRY Reverse {
+      p0 = f32[50,96,1024]{2,1,0} parameter(0)
+      add = f32[50,96,1024]{2,1,0} add(p0, p0)
+      ROOT reverse = f32[50,96,1024] reverse(add), dimensions={0}
+    })")
+                    .ValueOrDie();
+
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/true)
+                  .Run(module.get())
+                  .ValueOrDie());
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, op::Fusion());
+  EXPECT_THAT(root->fused_expression_root(),
+              op::Reverse(op::Add(op::Parameter(), op::Parameter())));
 }
 
 }  // namespace gpu

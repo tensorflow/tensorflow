@@ -84,10 +84,9 @@ string DumpModuleToString(const llvm::Module& module) {
   return AsString(buffer_string);
 }
 
-llvm::Value* EmitCallToIntrinsic(llvm::Intrinsic::ID intrinsic_id,
-                                 absl::Span<llvm::Value* const> operands,
-                                 absl::Span<llvm::Type* const> overloaded_types,
-                                 llvm::IRBuilder<>* b) {
+llvm::CallInst* EmitCallToIntrinsic(
+    llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
+    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b) {
   llvm::Module* module = ModuleFromIRBuilder(b);
   llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
       module, intrinsic_id, AsArrayRef(overloaded_types));

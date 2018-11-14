@@ -994,6 +994,9 @@ class TensorContractionSubMapper<
 // *) nr - number of registers along the 'n' dimension.
 //    See GeneralBlockPanelKernel.h and "Anatomy of High-Performance Matrix
 //    Multiplication" paper.
+//
+// TODO(ezhulenev): Add support for squeezing reads along two innermost
+// dimensions (see eigen_spatial_convolutions).
 template <typename NewDimension, Index Planes, Index Rows, Index Cols,
           typename ArgType, typename Device, typename Scalar, typename Index,
           typename nocontract_t, typename contract_t, int packet_size,
@@ -1173,6 +1176,9 @@ struct gemm_pack_rhs<
 
 // Template specialization for packet_size = 2. We must special-case packet
 // blocks with nr > packet_size, e.g. PacketBlock<Packet2d, 4>.
+//
+// TODO(ezhulenev): Add support for squeezing reads along two innermost
+// dimensions (see eigen_spatial_convolutions).
 template <typename NewDimension, Index Planes, Index Rows, Index Cols,
           typename ArgType, typename Device, typename Scalar, typename Index,
           typename nocontract_t, typename contract_t, bool inner_dim_contiguous,

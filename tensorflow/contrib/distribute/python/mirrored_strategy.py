@@ -73,17 +73,14 @@ class _RequestedStop(Exception):
 
 # TODO(yuefengz): maybe create a common class for those who need to call this
 # _call_for_each_replica.
-def _call_for_each_replica(distribution, fn, *args, **kwargs):
+def _call_for_each_replica(distribution, fn, args, kwargs):
   """Run `fn` in separate threads, once per replica/worker device.
 
   Args:
     distribution: the DistributionStrategy object.
     fn: function to run (will be run once per device, each in its own thread).
-    *args: positional arguments for `fn`
-    **kwargs: keyword arguments for `fn`.
-        `"run_concurrently"`: Boolean indicating whether executions of `fn`
-           can be run concurrently (under eager execution only), defaults to
-           `True`.
+    args: positional arguments for `fn`
+    kwargs: keyword arguments for `fn`.
 
   Returns:
     Merged return value of `fn` across all replicas.
@@ -92,16 +89,12 @@ def _call_for_each_replica(distribution, fn, *args, **kwargs):
     RuntimeError: If fn() calls get_replica_context().merge_call() a different
         number of times from the available devices.
   """
-  run_concurrently = kwargs.pop("run_concurrently", True)
+  # TODO(josh11b): Add this option once we add synchronization to variable
+  # creation. Until then, this is pretty unsafe to use.
+  run_concurrently = False
   if not context.executing_eagerly():
-    # Lots of TF library code isn't thread-safe in graph mode, and
-    # there is little to be gained by turning on multithreading when
-    # constructing a graph.
-    run_concurrently = False
     # Needed for per-thread device, etc. contexts in graph mode.
     ops.get_default_graph().switch_to_thread_local()
-  elif run_concurrently is None:
-    run_concurrently = True
 
   coord = coordinator.Coordinator(clean_stop_exception_types=(_RequestedStop,))
 
@@ -558,23 +551,8 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     return self._get_cross_tower_ops().broadcast(tensor, destinations or
                                                  self._devices)
 
-  def _call_for_each_replica(self, fn, *args, **kwargs):
-    return _call_for_each_replica(self, fn, *args, **kwargs)
-
-  def map(self, map_over, fn, *args, **kwargs):
-    # TODO(josh11b): In eager mode, use one thread per device.
-    index = {}
-    for i, m in enumerate(map_over):
-      d = self._devices[i % len(self._devices)]
-      with ops.device(d):
-        l = index.get(d, [])
-        l.append(fn(m,
-                    *values.select_device_mirrored(d, args),
-                    **values.select_device_mirrored(d, kwargs)))
-        index[d] = l
-    # TODO(josh11b): Need a values.regroup equivalent that handles MapOutput
-    # in addition to PerReplica data.
-    return values.PerReplica({k: values.MapOutput(v) for k, v in index.items()})
+  def _call_for_each_replica(self, fn, args, kwargs):
+    return _call_for_each_replica(self, fn, args, kwargs)
 
   def configure(self,
                 session_config=None,
@@ -679,10 +657,6 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
 
   def value_container(self, val):
     return values.value_container(val)
-
-  @property
-  def num_replicas(self):
-    return len(self._devices)
 
   @property
   def num_replicas_in_sync(self):
@@ -815,7 +789,7 @@ class MirroredReplicaContext(distribute_lib.ReplicaContext):
   `MirroredStrategy.call_for_each_replica()`).
   """
 
-  def _merge_call(self, fn, *args, **kwargs):
+  def _merge_call(self, fn, args, kwargs):
     """Delegate to the main thread to actually perform merge_call()."""
     t = threading.current_thread()  # a _MirroredReplicaThread
     t.merge_fn = fn
@@ -834,5 +808,9 @@ class MirroredReplicaContext(distribute_lib.ReplicaContext):
 
   @property
   def device(self):
+    raise RuntimeError("Use .devices instead")
+
+  @property
+  def devices(self):
     distribute_lib.require_replica_context(self)
-    return self._distribution_strategy.worker_devices[self._replica_id]
+    return [self._distribution_strategy.worker_devices[self._replica_id]]

@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
 import time
 import unittest
 
@@ -634,12 +635,21 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       bar2 = constant_op.constant(3)
       _ = checker[..., bar:bar2]
       _ = checker[..., bar]
-      with self.assertRaisesRegexp(
-          TypeError,
-          "Value passed to parameter 'begin' has DataType float32 not in "
-          "list of allowed values"):
-        _ = checker[..., 3.0]
       _ = checker[..., 3]
+      _ = checker[..., 2 ** 64 // 2**63]  # Test longs in Python 2
+
+  def testTensorIndexingTypeError(self):
+    with self.session(use_gpu=True):
+      checker = StridedSliceChecker(self, StridedSliceChecker.REF_TENSOR)
+      expected = re.escape(array_ops._SLICE_TYPE_ERROR)
+      with self.assertRaisesRegexp(TypeError, expected):
+        _ = checker["foo"]
+      with self.assertRaisesRegexp(TypeError, expected):
+        _ = checker[constant_op.constant("foo")]
+      with self.assertRaisesRegexp(TypeError, expected):
+        _ = checker[0.0]
+      with self.assertRaisesRegexp(TypeError, expected):
+        _ = checker[constant_op.constant(0.0)]
 
   def testExpand(self):
     with self.session(use_gpu=True):
@@ -1088,7 +1098,6 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           [[True, False, False, False, False], [True, True, True, False, False],
            [True, True, False, False, False]])
 
-  @test_util.enable_c_shapes
   def testOneDimensionalDtypeWithoutMaxlen(self):
     with self.cached_session():
       # test dtype and default maxlen:
@@ -1099,7 +1108,6 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           res.eval(),
           [[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]])
 
-  @test_util.enable_c_shapes
   def testOneDimensionalWithoutMaxlen(self):
     with self.cached_session():
       res = array_ops.sequence_mask(
@@ -1111,7 +1119,6 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
            [True, False, False, False],
            [True, True, True, True]])
 
-  @test_util.enable_c_shapes
   def testTwoDimensional(self):
     with self.cached_session():
       res = array_ops.sequence_mask(constant_op.constant([[1, 3, 2]]), 5)

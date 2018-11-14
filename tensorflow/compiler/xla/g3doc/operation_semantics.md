@@ -1339,6 +1339,22 @@ the semantics for `tf.gather_nd`.
 index `X` in the gather indices array picks an entire row and the result is the
 concatenation of all these rows.
 
+## GetDimensionSize
+
+See also
+[`XlaBuilder::GetDimensionSize`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Returns the size of the given dimension of the operand. The operand must be
+array shaped.
+
+<b> `GetDimensionSize(operand, dimension)` </b>
+
+| Arguments   | Type    | Semantics                                           |
+| ----------- | ------- | --------------------------------------------------- |
+| `operand`   | `XlaOp` | n dimensional input array                           |
+| `dimension` | `int64` | A value in the interval `[0, n)` that specifies the |
+:             :         : dimension                                           :
+
 ## GetTupleElement
 
 See also

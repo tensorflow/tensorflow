@@ -449,7 +449,8 @@ ConvolutionDescriptor::ConvolutionDescriptor(int ndims)
       filter_strides_(ndims, 1),
       dilation_rates_(ndims, 1),
       group_count_(1),
-      ndims_(ndims) {}
+      ndims_(ndims),
+      convolution_not_crosscorr_(false) {}
 
 ConvolutionDescriptor::ConvolutionDescriptor()
     : ConvolutionDescriptor(/*ndims=*/2) {}
