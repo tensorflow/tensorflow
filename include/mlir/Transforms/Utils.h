@@ -28,13 +28,16 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 
 namespace mlir {
 
+class CFGFunction;
 class ForStmt;
 class FuncBuilder;
 class Location;
 class MLValue;
+class Module;
 class OperationStmt;
 class SSAValue;
 
@@ -100,6 +103,21 @@ void forwardSubstitute(OpPointer<AffineApplyOp> affineApplyOp);
 /// Folds the lower and upper bounds of a 'for' stmt to constants if possible.
 /// Returns false if the folding happens for at least one bound, true otherwise.
 bool constantFoldBounds(ForStmt *forStmt);
+
+/// Replaces (potentially nested) function attributes in the operation "op"
+/// with those specified in "remappingTable".
+void remapFunctionAttrs(
+    Operation &op, const DenseMap<Attribute, FunctionAttr> &remappingTable);
+
+/// Replaces (potentially nested) function attributes all operations of the
+/// Function "fn" with those specified in "remappingTable".
+void remapFunctionAttrs(
+    Function &fn, const DenseMap<Attribute, FunctionAttr> &remappingTable);
+
+/// Replaces (potentially nested) function attributes in the entire module
+/// with those specified in "remappingTable".  Ignores external functions.
+void remapFunctionAttrs(
+    Module &module, const DenseMap<Attribute, FunctionAttr> &remappingTable);
 
 } // end namespace mlir
 

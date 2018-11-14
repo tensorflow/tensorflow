@@ -31,6 +31,39 @@ bool Attribute::isOrContainsFunction() const {
   return attr->isOrContainsFunctionCache;
 }
 
+// Given an attribute that could refer to a function attribute in the remapping
+// table, walk it and rewrite it to use the mapped function.  If it doesn't
+// refer to anything in the table, then it is returned unmodified.
+Attribute Attribute::remapFunctionAttrs(
+    const llvm::DenseMap<Attribute, FunctionAttr> &remappingTable,
+    MLIRContext *context) const {
+  // Most attributes are trivially unrelated to function attributes, skip them
+  // rapidly.
+  if (!isOrContainsFunction())
+    return *this;
+
+  // If we have a function attribute, remap it.
+  if (auto fnAttr = this->dyn_cast<FunctionAttr>()) {
+    auto it = remappingTable.find(fnAttr);
+    return it != remappingTable.end() ? it->second : *this;
+  }
+
+  // Otherwise, we must have an array attribute, remap the elements.
+  auto arrayAttr = this->cast<ArrayAttr>();
+  SmallVector<Attribute, 8> remappedElts;
+  bool anyChange = false;
+  for (auto elt : arrayAttr.getValue()) {
+    auto newElt = elt.remapFunctionAttrs(remappingTable, context);
+    remappedElts.push_back(newElt);
+    anyChange |= (elt != newElt);
+  }
+
+  if (!anyChange)
+    return *this;
+
+  return ArrayAttr::get(remappedElts, context);
+}
+
 BoolAttr::BoolAttr(Attribute::ImplType *ptr) : Attribute(ptr) {}
 
 bool BoolAttr::getValue() const { return static_cast<ImplType *>(attr)->value; }

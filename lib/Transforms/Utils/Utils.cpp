@@ -25,6 +25,8 @@
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Module.h"
+#include "mlir/IR/StmtVisitor.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/DenseMap.h"
@@ -393,4 +395,58 @@ bool mlir::constantFoldBounds(ForStmt *forStmt) {
   bool ret = foldLowerOrUpperBound(/*lower=*/true);
   ret &= foldLowerOrUpperBound(/*lower=*/false);
   return ret;
+}
+
+void mlir::remapFunctionAttrs(
+    Operation &op, const DenseMap<Attribute, FunctionAttr> &remappingTable) {
+  for (auto attr : op.getAttrs()) {
+    // Do the remapping, if we got the same thing back, then it must contain
+    // functions that aren't getting remapped.
+    auto newVal =
+        attr.second.remapFunctionAttrs(remappingTable, op.getContext());
+    if (newVal == attr.second)
+      continue;
+
+    // Otherwise, replace the existing attribute with the new one.  It is safe
+    // to mutate the attribute list while we walk it because underlying
+    // attribute lists are uniqued and immortal.
+    op.setAttr(attr.first, newVal);
+  }
+}
+
+void mlir::remapFunctionAttrs(
+    Function &fn, const DenseMap<Attribute, FunctionAttr> &remappingTable) {
+  // Look at all instructions in a CFGFunction.
+  if (auto *cfgFn = dyn_cast<CFGFunction>(&fn)) {
+    for (auto &bb : *cfgFn) {
+      for (auto &inst : bb) {
+        remapFunctionAttrs(inst, remappingTable);
+      }
+    }
+    return;
+  }
+
+  // Otherwise, look at MLFunctions.  We ignore ExtFunctions.
+  auto *mlFn = dyn_cast<MLFunction>(&fn);
+  if (!mlFn)
+    return;
+
+  struct MLFnWalker : public StmtWalker<MLFnWalker> {
+    MLFnWalker(const DenseMap<Attribute, FunctionAttr> &remappingTable)
+        : remappingTable(remappingTable) {}
+    void visitOperationStmt(OperationStmt *opStmt) {
+      remapFunctionAttrs(*opStmt, remappingTable);
+    }
+
+    const DenseMap<Attribute, FunctionAttr> &remappingTable;
+  };
+
+  MLFnWalker(remappingTable).walk(mlFn);
+}
+
+void mlir::remapFunctionAttrs(
+    Module &module, const DenseMap<Attribute, FunctionAttr> &remappingTable) {
+  for (auto &fn : module) {
+    remapFunctionAttrs(fn, remappingTable);
+  }
 }

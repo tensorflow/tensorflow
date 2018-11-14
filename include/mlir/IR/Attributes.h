@@ -20,11 +20,12 @@
 
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/APFloat.h"
-#include "llvm/ADT/DenseMapInfo.h"
+#include "llvm/ADT/DenseMap.h"
 
 namespace mlir {
 class AffineMap;
 class Function;
+class FunctionAttr;
 class FunctionType;
 class IntegerSet;
 class MLIRContext;
@@ -109,6 +110,14 @@ public:
 
   /// Return true if this field is, or contains, a function attribute.
   bool isOrContainsFunction() const;
+
+  /// Replace a function attribute or function attributes nested in an array
+  /// attribute with another function attribute as defined by the provided
+  /// remapping table.  Return the original attribute if it (or any of nested
+  /// attributes) is not present in the table.
+  Attribute remapFunctionAttrs(
+      const llvm::DenseMap<Attribute, FunctionAttr> &remappingTable,
+      MLIRContext *context) const;
 
   /// Print the attribute.
   void print(raw_ostream &os) const;

@@ -53,6 +53,18 @@ bb0:
   return
 }
 
+cfgfunc @nested_attributes() {
+bb0:
+  %0 = constant 0 : index
+// CHECK: call @body(%c0) {attr1: [@simple_loop : () -> (), @simple_loop : () -> ()]} : (index) -> ()
+  call @body(%0) {attr1: [@simple_loop : () -> (), @simple_loop : () -> ()]} : (index) -> ()
+// Note: the {{\[}} construct is necessary to prevent FileCheck from
+// interpreting [[ as the start of its variable in the pattern below.
+// CHECK: call @body(%c0) {attr2: {{\[}}{{\[}}{{\[}}@simple_loop : () -> ()]], [@simple_loop : () -> ()]]} : (index) -> ()
+  call @body(%0) {attr2: [[[@simple_loop : () -> ()]], [@simple_loop : () -> ()]]} : (index) -> ()
+  return
+}
+
 // CHECK-LABEL: cfgfunc @ml_caller() {
 mlfunc @ml_caller() {
 // Direct calls inside ML functions are renamed if asked (given that the

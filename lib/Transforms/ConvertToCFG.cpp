@@ -30,6 +30,7 @@
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Transforms/Passes.h"
+#include "mlir/Transforms/Utils.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/CommandLine.h"
 using namespace mlir;
@@ -380,21 +381,29 @@ CFGFunction *ModuleConverter::convert(MLFunction *mlFunc) {
 // removed anyway.  However, it is necessary to replace the references in the
 // converted CFGFunctions that have not been added to the module yet.
 void ModuleConverter::replaceReferences() {
-  for (Function &fn : *module) {
-    switch (fn.getKind()) {
-    case Function::Kind::CFGFunc:
-      replaceReferences(&cast<CFGFunction>(fn));
-      break;
-    case Function::Kind::MLFunc:
-      // ML functions must have been converted already and will be removed.
-      break;
-    case Function::Kind::ExtFunc:
-      // nothing to do for external functions
-      break;
-    }
+  // Build the remapping between function attributes pointing to ML functions
+  // and the newly created function attributes pointing to the converted CFG
+  // functions.
+  llvm::DenseMap<Attribute, FunctionAttr> remappingTable;
+  for (const Function &fn : *module) {
+    const auto *mlFunc = dyn_cast<MLFunction>(&fn);
+    if (!mlFunc)
+      continue;
+    CFGFunction *convertedFunc = generatedFuncs.lookup(mlFunc);
+    assert(convertedFunc && "ML function was not converted");
+
+    MLIRContext *context = module->getContext();
+    auto mlFuncAttr = FunctionAttr::get(mlFunc, context);
+    auto cfgFuncAttr = FunctionAttr::get(convertedFunc, module->getContext());
+    remappingTable.insert({mlFuncAttr, cfgFuncAttr});
   }
+
+  // Remap in existing functions.
+  remapFunctionAttrs(*module, remappingTable);
+
+  // Remap in generated functions.
   for (auto pair : generatedFuncs) {
-    replaceReferences(pair.second);
+    remapFunctionAttrs(*pair.second, remappingTable);
   }
 }
 
@@ -411,27 +420,6 @@ static inline void replaceMLFunctionAttr(
   Builder b(op.getContext());
   auto cfgFunc = generatedFuncs.lookup(mlFunc);
   op.setAttr(name, b.getFunctionAttr(cfgFunc));
-}
-
-// Replace references to MLFunctions with the references to the converted
-// CFGFunctions.  References to MLFunctions can potentially appear in any
-// function attribute (in particular, they are known to appear in the  "callee"
-// attribute of a direct call and the "value" attribute of a constant).  Replace
-// the values of these attributes to point to the converted functions.
-void ModuleConverter::replaceReferences(CFGFunction *func) {
-  for (auto &bb : *func) {
-    for (auto &inst : bb) {
-      for (auto &attr : inst.getAttrs()) {
-        // TODO(zinenko): handle nested attributes, e.g. array attributes
-        // containing functions.
-        auto functionAttr = attr.second.dyn_cast<FunctionAttr>();
-        if (!functionAttr)
-          continue;
-        replaceMLFunctionAttr(inst, attr.first, functionAttr.getValue(),
-                              generatedFuncs);
-      }
-    }
-  }
 }
 
 // The CFG and ML functions have the same name.  First, erase the MLFunction.

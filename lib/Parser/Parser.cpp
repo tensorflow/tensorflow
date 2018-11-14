@@ -35,6 +35,7 @@
 #include "mlir/IR/StmtVisitor.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/STLExtras.h"
+#include "mlir/Transforms/Utils.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -3411,59 +3412,6 @@ ParseResult ModuleParser::parseMLFunc() {
   return parser.parseFunctionBody();
 }
 
-/// Given an attribute that could refer to a function attribute in the
-/// remapping table, walk it and rewrite it to use the mapped function.  If it
-/// doesn't refer to anything in the table, then it is returned unmodified.
-static Attribute
-remapFunctionAttrs(Attribute input,
-                   DenseMap<Attribute, FunctionAttr> &remappingTable,
-                   MLIRContext *context) {
-  // Most attributes are trivially unrelated to function attributes, skip them
-  // rapidly.
-  if (!input.isOrContainsFunction())
-    return input;
-
-  // If we have a function attribute, remap it.
-  if (auto fnAttr = input.dyn_cast<FunctionAttr>()) {
-    auto it = remappingTable.find(fnAttr);
-    return it != remappingTable.end() ? it->second : input;
-  }
-
-  // Otherwise, we must have an array attribute, remap the elements.
-  auto arrayAttr = input.cast<ArrayAttr>();
-  SmallVector<Attribute, 8> remappedElts;
-  bool anyChange = false;
-  for (auto elt : arrayAttr.getValue()) {
-    auto newElt = remapFunctionAttrs(elt, remappingTable, context);
-    remappedElts.push_back(newElt);
-    anyChange |= (elt != newElt);
-  }
-
-  if (!anyChange)
-    return input;
-
-  return ArrayAttr::get(remappedElts, context);
-}
-
-/// Remap function attributes to resolve forward references to their actual
-/// definition.
-static void remapFunctionAttrsInOperation(
-    Operation *op, DenseMap<Attribute, FunctionAttr> &remappingTable) {
-  for (auto attr : op->getAttrs()) {
-    // Do the remapping, if we got the same thing back, then it must contain
-    // functions that aren't getting remapped.
-    auto newVal =
-        remapFunctionAttrs(attr.second, remappingTable, op->getContext());
-    if (newVal == attr.second)
-      continue;
-
-    // Otherwise, replace the existing attribute with the new one.  It is safe
-    // to mutate the attribute list while we walk it because underlying
-    // attribute lists are uniqued and immortal.
-    op->setAttr(attr.first, newVal);
-  }
-}
-
 /// Finish the end of module parsing - when the result is valid, do final
 /// checking.
 ParseResult ModuleParser::finalizeModule() {
@@ -3491,32 +3439,7 @@ ParseResult ModuleParser::finalizeModule() {
 
   // Otherwise, walk the entire module replacing uses of one attribute set
   // with the correct ones.
-  for (auto &fn : *getModule()) {
-    if (auto *cfgFn = dyn_cast<CFGFunction>(&fn)) {
-      for (auto &bb : *cfgFn) {
-        for (auto &inst : bb) {
-          remapFunctionAttrsInOperation(&inst, remappingTable);
-        }
-      }
-    }
-
-    // Otherwise, look at MLFunctions.  We ignore ExtFunctions.
-    auto *mlFn = dyn_cast<MLFunction>(&fn);
-    if (!mlFn)
-      continue;
-
-    struct MLFnWalker : public StmtWalker<MLFnWalker> {
-      MLFnWalker(DenseMap<Attribute, FunctionAttr> &remappingTable)
-          : remappingTable(remappingTable) {}
-      void visitOperationStmt(OperationStmt *opStmt) {
-        remapFunctionAttrsInOperation(opStmt, remappingTable);
-      }
-
-      DenseMap<Attribute, FunctionAttr> &remappingTable;
-    };
-
-    MLFnWalker(remappingTable).walk(mlFn);
-  }
+  remapFunctionAttrs(*getModule(), remappingTable);
 
   // Now that all references to the forward definition placeholders are
   // resolved, we can deallocate the placeholders.
