@@ -17,10 +17,10 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "tensorflow/contrib/reduce_slice_ops/kernels/reduce_slice_ops.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/contrib/reduce_slice_ops/kernels/reduce_slice_ops.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 
 namespace tensorflow {
@@ -29,14 +29,19 @@ using GPUDevice = Eigen::GpuDevice;
 
 namespace functor {
 
+#define Sum(a, b) ((a) + (b))
+#define Prod(a, b) ((a) * (b))
+#define Max(a, b) ((a) > (b) ? (a) : (b))
+#define Min(a, b) ((a) < (b) ? (a) : (b))
+
 #define GPUReduceSliceFunctorReduceop(reduceop, beginning)                     \
   template <typename T, typename Index>                                        \
   __global__ void ReduceSliceDeviceKernel##reduceop(                           \
       Cuda3DLaunchConfig config, Index indices_width, Index bound,             \
       const T begin, const Index *indices, const T *input, T *out) {           \
-    CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count, x) {                 \
-      CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count, y) {               \
-        CUDA_AXIS_KERNEL_LOOP(z, config.virtual_thread_count, z) {             \
+    CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count.x, X) {               \
+      CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count.y, Y) {             \
+        CUDA_AXIS_KERNEL_LOOP(z, config.virtual_thread_count.z, Z) {           \
           Index outidx = x * config.virtual_thread_count.y *                   \
                              config.virtual_thread_count.z +                   \
                          y * config.virtual_thread_count.z + z;                \
@@ -68,8 +73,9 @@ namespace functor {
       if (sizex * sizey * sizez == 0) {                                        \
         return;                                                                \
       }                                                                        \
-      Cuda3DLaunchConfig config = GetCuda3DLaunchConfig(sizex, sizey, sizez, d,\
-          ReduceSliceDeviceKernel##reduceop<T, Index>, 0, 0);                  \
+      Cuda3DLaunchConfig config = GetCuda3DLaunchConfig(                       \
+          sizex, sizey, sizez, d, ReduceSliceDeviceKernel##reduceop<T, Index>, \
+          0, 0);                                                               \
                                                                                \
       ReduceSliceDeviceKernel##reduceop<T, Index>                              \
           <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(    \
@@ -92,6 +98,11 @@ TF_CALL_REAL_NUMBER_TYPES(DEFINE_GPU_SPECS)
 
 #undef DEFINE_GPU_REDUCEOP_SPECS_INDEX
 #undef DEFINE_GPU_SPECS
+
+#undef Sum
+#undef Prod
+#undef Min
+#undef Max
 
 }  // namespace functor
 }  // namespace tensorflow

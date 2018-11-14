@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_FUNCTION_H_
-#define TENSORFLOW_FRAMEWORK_FUNCTION_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_FUNCTION_H_
+#define TENSORFLOW_CORE_FRAMEWORK_FUNCTION_H_
 
 #include <vector>
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -28,17 +28,20 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
 
 class CancellationManager;
+class CollectiveExecutor;
 class GraphDef;
 class OpKernel;
+class ProcessFunctionLibraryRuntime;
 class ResourceMgr;
 class Rendezvous;
 class ScopedStepContainer;
-class StepStatsCollector;
+class StepStatsCollectorInterface;
 class Node;
 
 // FunctionDefHelper::Create is a convenient helper to construct a
@@ -229,14 +232,21 @@ string DebugStringWhole(const GraphDef& gdef);
 // of NodeDefs doesn't matter.
 bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2);
 
-// Returns a canonicalized string for the instantiation of the
-// function of the given "name" and attributes "attrs".
-//
-// The returned string is guaranteed to be stable within one address
-// space. But it may be change as the implementation
-// evolves. Therefore, it should not be persisted or compared across
-// address spaces.
-string Canonicalize(const string& funcname, AttrSlice attrs);
+// Return a hash of `fdef` that is consistent with FunctionDefsEqual method.
+// In other words, if two fdefs compare equal, their hash values will be the
+// same.
+uint64 FunctionDefHash(const FunctionDef& fdef);
+
+class CallFrameInterface {
+ public:
+  virtual ~CallFrameInterface() {}
+
+  virtual size_t num_args() const = 0;
+  virtual size_t num_retvals() const = 0;
+
+  virtual Status GetArg(int index, Tensor* val) const = 0;
+  virtual Status SetRetval(int index, const Tensor& val) = 0;
+};
 
 // Represents a function call frame. I.e., the data structure used to
 // pass arguments to a function and retrieve its results.
@@ -244,7 +254,7 @@ string Canonicalize(const string& funcname, AttrSlice attrs);
 // Runtime must arrange accesses to one FunctionCallFrame s.t.
 //   1. SetArgs() happens before any GetArg();
 //   2. GetRetvals happens after all SetRetval();
-class FunctionCallFrame {
+class FunctionCallFrame : public CallFrameInterface {
  public:
   FunctionCallFrame(DataTypeSlice arg_types, DataTypeSlice ret_types);
   ~FunctionCallFrame();
@@ -252,11 +262,17 @@ class FunctionCallFrame {
   // Caller methods.
   Status SetArgs(gtl::ArraySlice<Tensor> args);
   Status GetRetvals(std::vector<Tensor>* rets) const;
-  Status ConsumeRetvals(std::vector<Tensor>* rets);
+
+  // Moves the return values from the frame to rets. If allow_dead_tensors is
+  // false it will fail if any of the retvals do not have a value.
+  Status ConsumeRetvals(std::vector<Tensor>* rets, bool allow_dead_tensors);
+
+  size_t num_args() const override { return arg_types_.size(); }
+  size_t num_retvals() const override { return ret_types_.size(); }
 
   // Callee methods.
-  Status GetArg(int index, Tensor* val) const;
-  Status SetRetval(int index, const Tensor& val);
+  Status GetArg(int index, Tensor* val) const override;
+  Status SetRetval(int index, const Tensor& val) override;
 
  private:
   DataTypeVector arg_types_;
@@ -273,9 +289,12 @@ class FunctionCallFrame {
 
 // Helper to maintain a map between function names in a given
 // FunctionDefLibrary and function definitions.
+//
+// This class is thread-safe.
 class FunctionLibraryDefinition : public OpRegistryInterface {
  public:
-  explicit FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
+  // Note: This constructor grabs `lib_def`'s lock in shared mode.
+  FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
   FunctionLibraryDefinition(const OpRegistryInterface* default_registry,
                             const FunctionDefLibrary& lib_def);
   ~FunctionLibraryDefinition() override;
@@ -283,9 +302,15 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   FunctionLibraryDefinition& operator=(const FunctionLibraryDefinition&) =
       delete;
 
+  // Returns True if the library contains `func`, False otherwise.
+  bool Contains(const string& func) const;
+
   // Returns nullptr if "func" is not defined in "lib_def". Otherwise,
   // returns its definition proto.
-  const FunctionDef* Find(const string& func) const;
+  //
+  // NB: This function returns a borrowed pointer, which can be invalidated by a
+  // subsequent call to `ReplaceFunction()` with the given name.
+  const FunctionDef* Find(const string& func) const LOCKS_EXCLUDED(mu_);
 
   // Adds function definition 'fdef' to this function library.
   // Returns status 'ok' on success, or error otherwise. This is a no-op if
@@ -293,37 +318,70 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // If 'fdef' is successfully added to the library, it will be accessible
   // from 'LookUp' and included in the proto returned by 'ToProto'.
   // This operation is atomic.
-  Status AddFunctionDef(const FunctionDef& fdef);
+  Status AddFunctionDef(const FunctionDef& fdef) LOCKS_EXCLUDED(mu_);
 
   // Adds gradient definition 'grad' to this function library.
   // This is a no-op if 'grad' already exists in this function library.
   // If 'grad' is successfully added, it will be accessible via 'FindGradient'
   // and included in the proto returned by 'ToProto'.
   // This operation is atomic.
-  Status AddGradientDef(const GradientDef& grad);
+  Status AddGradientDef(const GradientDef& grad) LOCKS_EXCLUDED(mu_);
+
+  // Replaces the function corresponding to `func` with `fdef`. Returns
+  // a non-OK status if "func" was not found in the library, OK otherwise.
+  // Please be careful when replacing function: make sure all previous pointers
+  // returned by `Find()` are no longer in use.
+  Status ReplaceFunction(const string& func, const FunctionDef& fdef);
+
+  // Replaces the gradient corresponding to `grad.function_name()`. Returns
+  // a non-OK status if "grad.function_name()" was not found in the library, OK
+  // otherwise.
+  Status ReplaceGradient(const GradientDef& grad);
+
+  // Removes the function corresponding to 'func'. Returns a non-OK status if
+  // 'func' was not found in the library, OK otherwise.
+  // Please be careful when removing function: make sure there are no other
+  // nodes using the function, and all previous pointers returned by `Find()`
+  // are no longer in use.
+  Status RemoveFunction(const string& func);
 
   // Adds the functions and gradients in 'other' to this function library.
   // Duplicate functions and gradients are ignored.
   // This operation is atomic.
-  Status AddLibrary(const FunctionLibraryDefinition& other);
+  Status AddLibrary(const FunctionLibraryDefinition& other) LOCKS_EXCLUDED(mu_);
 
   // Adds the functions and gradients in 'lib_def' to this function library.
   // Duplicate functions and gradients are ignored.
   // This operation is atomic.
-  Status AddLibrary(const FunctionDefLibrary& lib_def);
+  Status AddLibrary(const FunctionDefLibrary& lib_def) LOCKS_EXCLUDED(mu_);
 
   // If the gradient function for 'func' is specified explicitly in
   // the library, returns the gradient function name.  Otherwise,
   // returns an empty string.
-  string FindGradient(const string& func) const;
+  string FindGradient(const string& func) const LOCKS_EXCLUDED(mu_);
 
   // OpRegistryInterface method. Useful for constructing a Graph.
   //
   // If "op" is defined in the library, returns its signature.
   // Otherwise, assume "op" is a primitive op and returns its op
   // signature and shape inference function.
+  //
+  // NB: This function outputs a borrowed pointer, which can be invalidated by a
+  // subsequent call to `ReplaceFunction()` with the given name.
   Status LookUp(const string& op_type_name,
-                const OpRegistrationData** op_reg_data) const override;
+                const OpRegistrationData** op_reg_data) const override
+      LOCKS_EXCLUDED(mu_);
+
+  // Generates new function name with the specified prefix that is unique
+  // across this library.
+  string UniqueFunctionName(StringPiece prefix) const LOCKS_EXCLUDED(mu_);
+
+  // Ops created for function arguments bear the name given by `kArgOp`; those
+  // created for return values bear the name given by `kRetOp`.
+  static constexpr const char* const kArgOp = "_Arg";
+  static constexpr const char* const kDeviceArgOp = "_DeviceArg";
+  static constexpr const char* const kRetOp = "_Retval";
+  static constexpr const char* const kDeviceRetOp = "_DeviceRetval";
 
   static constexpr const char* const kGradientOp = "SymbolicGradient";
   static constexpr const char* const kFuncAttr = "f";
@@ -342,14 +400,20 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   Status GetAttr(const Node& node, const string& attr, T* value) const;
 
   // Returns a proto representation of the state of this function library.
-  FunctionDefLibrary ToProto() const;
+  FunctionDefLibrary ToProto() const LOCKS_EXCLUDED(mu_);
+
+  size_t num_functions() const {
+    tf_shared_lock l(mu_);
+    return function_defs_.size();
+  }
 
   const OpRegistryInterface* default_registry() const {
     return default_registry_;
   }
 
  private:
-  // TODO(cwhipkey): support shape functions in FunctionDefLibrary.
+  // Shape inference for functions is handled separately by ShapeRefiner.
+
   struct FunctionDefAndOpRegistration {
     FunctionDefAndOpRegistration(const FunctionDef& fdef_in);
 
@@ -357,31 +421,42 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
     OpRegistrationData op_registration_data;
   };
 
+  const FunctionDef* FindHelper(const string& func) const
+      SHARED_LOCKS_REQUIRED(mu_);
+  string FindGradientHelper(const string& func) const
+      SHARED_LOCKS_REQUIRED(mu_);
+
   // Same as AddFunctionDef/AddGradientDef except these methods set
   // `added` to true if the `fdef`/`grad` were actually added to this.
-  Status AddFunctionDefHelper(const FunctionDef& fdef, bool* added);
-  Status AddGradientDefHelper(const GradientDef& grad, bool* added);
+  Status AddFunctionDefHelper(const FunctionDef& fdef, bool* added)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status AddGradientDefHelper(const GradientDef& grad, bool* added)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
+  mutable mutex mu_;
   const OpRegistryInterface* const default_registry_;
   gtl::FlatMap<string, std::unique_ptr<FunctionDefAndOpRegistration>>
-      function_defs_;
-  gtl::FlatMap<string, string> func_grad_;
+      function_defs_ GUARDED_BY(mu_);
+  gtl::FlatMap<string, string> func_grad_ GUARDED_BY(mu_);
 
   // Helper function for GetAttr. Returns the FunctionDef* to get the
   // attr from.
-  const FunctionDef* GetAttrImpl(const NodeDef& ndef) const;
+  const FunctionDef* GetAttrImpl(const NodeDef& ndef) const LOCKS_EXCLUDED(mu_);
 
-  // Remove function `func` from the library. `func` must be in the library.
-  void RemoveFunction(const string& func);
-
-  // Remove gradient of function `func` from the library. `func` must have
-  // a gradient.
-  void RemoveGradient(const string& func);
-
-  // Remove all functions in `funcs` and all gradients of
-  // functions in `funcs_with_grads` from this library.
+  // Remove all functions in `funcs` and all gradients of functions in
+  // `funcs_with_grads` from this library.
   void Remove(const std::vector<string>& funcs,
-              const std::vector<string>& funcs_with_grads);
+              const std::vector<string>& funcs_with_grads)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Remove `func` from the library. Returns non-OK Status unless `func` is in
+  // the library. This should only be called when there is a guarantee that the
+  // function being removed hasn't been retrieved with `Find`.
+  Status RemoveFunctionHelper(const string& func) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Remove gradient of function `func` from the library. Returns non-OK Status
+  // unless `func` has a gradient.
+  Status RemoveGradient(const string& func) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 };
 
 // Forward declare. Defined in common_runtime/function.h
@@ -389,6 +464,8 @@ struct FunctionBody;
 
 // Forward declare. Defined in common_runtime/device.h
 class Device;
+// Forward declare. Defined in common_runtime/device_mgr.h
+class DeviceMgr;
 
 class FunctionLibraryRuntime {
  public:
@@ -398,9 +475,58 @@ class FunctionLibraryRuntime {
   //
   // Returns OK and fills in "handle" if the instantiation succeeds.
   // Otherwise returns an error and "handle" is undefined.
+  struct InstantiateOptions {
+    // The canonical device name of the device on which the function
+    // should be instantiated. If empty, the function will be
+    // instantiated on the local device.
+    string target;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // If non-null, the runtime will use `overlay_lib` to resolve
+    // function(s) named in `function_name` and `attrs`. Otherwise,
+    // the runtime will use its internal library.
+    // NOTE(mrry): If provided, all functions defined in `overlay_lib`
+    // must be self-contained, and cannot refer to functions defined
+    // in other libraries.
+    // TODO(mrry): Provide a mechanism for sharing core functions
+    // between a set of libraries (e.g. by allowing a
+    // `FunctionLibraryDefinition` to store an `outer_scope` pointer
+    // and implementing name resolution across libraries).
+    const FunctionLibraryDefinition* overlay_lib = nullptr;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // If non-empty, the runtime will use `state_handle` to identify
+    // cached state related the instantiated function. Two functions
+    // of the same name and attrs, instantiated with the same
+    // `state_handle` will have the same handle and share the same
+    // state (in stateful kernels); and two functions with different
+    // values for `state_handle` will have independent state.
+    string state_handle;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // Instantiates the function using an executor of the given type. If empty,
+    // the default TensorFlow executor will be used.
+    string executor_type;
+
+    // If true, the runtime will attempt to create kernels for the function at
+    // instantiation time, rather than on the first run. This can be used to
+    // surface errors earlier.
+    bool create_kernels_eagerly = false;
+  };
   typedef uint64 Handle;
   virtual Status Instantiate(const string& function_name, AttrSlice attrs,
+                             const InstantiateOptions& options,
                              Handle* handle) = 0;
+  Status Instantiate(const string& function_name, AttrSlice attrs,
+                     Handle* handle) {
+    return Instantiate(function_name, attrs, {}, handle);
+  }
+
+  // Releases state associated with the handle.
+  virtual Status ReleaseHandle(Handle handle) = 0;
 
   // Returns the function body for the instantiated function given its
   // handle 'h'. Returns nullptr if "h" is not found.
@@ -417,24 +543,42 @@ class FunctionLibraryRuntime {
   // "done" is called with an error status.
   //
   // Does not take ownership of "rets".
+  // In the cross-process scenario, runner isn't used for making the Async
+  // RPC calls.
   struct Options {
     // The id of the step that is calling this function.
     int64 step_id = 0;
     Rendezvous* rendezvous = nullptr;
     CancellationManager* cancellation_manager = nullptr;
+    CollectiveExecutor* collective_executor = nullptr;
     ScopedStepContainer* step_container = nullptr;
-    StepStatsCollector* stats_collector = nullptr;
+    StepStatsCollectorInterface* stats_collector = nullptr;
 
     std::function<void(std::function<void()>)>* runner = nullptr;
 
     // Parameters for remote function execution.
     bool remote_execution = false;
     string source_device = "";  // Fully specified device name.
+
+    // Allocator attributes specifying where the args are / rets should be put.
+    // These should either be {} or match the length of args / retvals. If {},
+    // the default allocator attributes will be assumed for all args / retvals.
+    std::vector<AllocatorAttributes> args_alloc_attrs;
+    std::vector<AllocatorAttributes> rets_alloc_attrs;
+
+    // If true, we create a new IntraProcessRendezvous, else use the existing
+    // one.
+    bool create_rendezvous = false;
+
+    // If True, allow returning dead tensors.
+    bool allow_dead_tensors = false;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void Run(const Options& opts, Handle handle,
                    gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
                    DoneCallback done) = 0;
+  virtual void Run(const Options& opts, Handle handle,
+                   CallFrameInterface* call_frame, DoneCallback done) = 0;
 
   // Creates a "kernel" for the given node def "ndef".
   //
@@ -442,13 +586,22 @@ class FunctionLibraryRuntime {
   // returned "*kernel". Otherwise, returns an error.
   virtual Status CreateKernel(const NodeDef& ndef, OpKernel** kernel) = 0;
 
-  // Returns true iff 'function' is stateful.
+  // Returns true iff the function named `function_name` is stateful.
+  // NOTE(mrry): This method assumes that the runtime is associated with a
+  // default function library, and looks up `function_name` in that library.
+  // It does not support overlay libraries.
   virtual bool IsStateful(const string& function_name) = 0;
 
   // Returns the device on which the function executes.
   virtual Device* device() = 0;
 
+  // Get the DeviceMgr from which the device was obtained.
+  virtual const DeviceMgr* device_mgr() const = 0;
+
   // Returns the function library definition that backs this runtime.
+  // NOTE(mrry): The returned library definition is the default function library
+  // for this runtime. The runtime may instantiate functions from separate
+  // overlay libraries, which are not returned by this function.
   virtual const FunctionLibraryDefinition* GetFunctionLibraryDefinition()
       const = 0;
 
@@ -463,13 +616,72 @@ class FunctionLibraryRuntime {
   virtual int graph_def_version() = 0;
 
   typedef uint64 LocalHandle;
+
+  virtual Status Clone(std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
+                       std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
+                       FunctionLibraryRuntime** out_flr) = 0;
+
+  // Returns the name of the executor class (in the sense of
+  // `ExecutorFactory::GetFactory()`) that will be used based on the given
+  // dynamic `options` and static `attrs`. If none is specified, this method
+  // will return an empty string, which leaves the decision up to the runtime.
+  static string ExecutorType(const InstantiateOptions& options,
+                             AttrSlice attrs);
 };
+
+// Returns a canonicalized string for the instantiation of the
+// function of the given "name", attributes "attrs", and "options".
+//
+// The returned string is guaranteed to be stable within one address
+// space. But it may be change as the implementation
+// evolves. Therefore, it should not be persisted or compared across
+// address spaces.
+string Canonicalize(const string& funcname, AttrSlice attrs,
+                    const FunctionLibraryRuntime::InstantiateOptions& options);
+inline string Canonicalize(const string& funcname, AttrSlice attrs) {
+  return Canonicalize(funcname, attrs, {});
+}
 
 const FunctionLibraryRuntime::Handle kInvalidHandle = -1;
 const FunctionLibraryRuntime::LocalHandle kInvalidLocalHandle = -1;
 typedef std::function<Status(FunctionLibraryRuntime*, const NodeDef&,
                              std::unique_ptr<OpKernel>*)>
     CustomKernelCreator;
+
+// Used to instantiate and run functions in a distributed system.
+class DistributedFunctionLibraryRuntime {
+ public:
+  virtual ~DistributedFunctionLibraryRuntime() {}
+
+  // The _target attr in attrs determines where the function is instantiated.
+  virtual Status Instantiate(
+      const string& function_name, const FunctionLibraryDefinition& lib_def,
+      AttrSlice attrs,
+      const FunctionLibraryRuntime::InstantiateOptions& options,
+      FunctionLibraryRuntime::LocalHandle* handle) = 0;
+
+  // opts.runner isn't used for execution.
+  virtual void Run(const FunctionLibraryRuntime::Options& opts,
+                   FunctionLibraryRuntime::LocalHandle handle,
+                   gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
+                   FunctionLibraryRuntime::DoneCallback done) = 0;
+};
+
+// Extracts the actual type from "attr_values" based on its definition
+// "arg_def".
+//
+// If "arg_def" is a N*T type, *is_type_list is set to false, and
+// *dtypes is set to be a vector of size N and each element is T.
+//
+// If "arg_def" is a list(type), *is_type_list is set to true, and
+// *dtypes is set to be a vector of types specified in attrs for
+// arg_def.
+//
+// Otherwise (arg_def is a simple type T), *is_type_list is set to
+// false, and *dtypes is set to a single element vector, whose only
+// element is T.
+Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
+                  bool* is_type_list, DataTypeVector* dtypes);
 
 // To register a gradient function for a builtin op, one should use
 //   REGISTER_OP_GRADIENT(<op_name>, <c++ grad factory>);
@@ -525,9 +737,10 @@ typedef std::function<Status(FunctionLibraryRuntime*, const NodeDef&,
 #define REGISTER_OP_GRADIENT_UNIQ_HELPER(ctr, name, fn) \
   REGISTER_OP_GRADIENT_UNIQ(ctr, name, fn)
 
-#define REGISTER_OP_GRADIENT_UNIQ(ctr, name, fn)                 \
-  static bool unused_grad_##ctr = SHOULD_REGISTER_OP_GRADIENT && \
-                                  ::tensorflow::gradient::RegisterOp(name, fn)
+#define REGISTER_OP_GRADIENT_UNIQ(ctr, name, fn)      \
+  static bool unused_grad_##ctr TF_ATTRIBUTE_UNUSED = \
+      SHOULD_REGISTER_OP_GRADIENT &&                  \
+      ::tensorflow::gradient::RegisterOp(name, fn)
 
 namespace gradient {
 // Register a gradient creator for the "op".
@@ -537,7 +750,7 @@ bool RegisterOp(const string& op, Creator func);
 // Returns OK the gradient creator for the "op" is found (may be
 // nullptr if REGISTER_OP_NO_GRADIENT is used.
 Status GetOpGradientCreator(const string& op, Creator* creator);
-};
+};  // namespace gradient
 
 // Declare explicit instantiations of GetAttr
 #define GET_ATTR(T)                                          \
@@ -551,4 +764,4 @@ GET_ATTR(bool)
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_FUNCTION_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_FUNCTION_H_

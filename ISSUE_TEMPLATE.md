@@ -4,7 +4,7 @@ https://stackoverflow.com/questions/tagged/tensorflow
 
 If you open a GitHub issue, here is our policy:
 
-1. It must be a bug or a feature request.
+1. It must be a bug, a feature request, or a significant problem with documentation (for small docs fixes please send a PR instead).
 2. The form below must be filled out.
 3. It shouldn't be a TensorBoard issue. Those go [here](https://github.com/tensorflow/tensorboard/issues).
 
@@ -15,10 +15,12 @@ If you open a GitHub issue, here is our policy:
 ### System information
 - **Have I written custom code (as opposed to using a stock example script provided in TensorFlow)**:
 - **OS Platform and Distribution (e.g., Linux Ubuntu 16.04)**:
+- **Mobile device (e.g. iPhone 8, Pixel 2, Samsung Galaxy) if the issue happens on mobile device**:
 - **TensorFlow installed from (source or binary)**:
 - **TensorFlow version (use command below)**:
-- **Python version**: 
+- **Python version**:
 - **Bazel version (if compiling from source)**:
+- **GCC/Compiler version (if compiling from source)**:
 - **CUDA/cuDNN version**:
 - **GPU model and memory**:
 - **Exact command to reproduce**:
@@ -27,9 +29,11 @@ You can collect some of this information using our environment capture script:
 
 https://github.com/tensorflow/tensorflow/tree/master/tools/tf_env_collect.sh
 
-You can obtain the TensorFlow version with
+You can obtain the TensorFlow version with:
 
+```bash
 python -c "import tensorflow as tf; print(tf.GIT_VERSION, tf.VERSION)"
+```
 
 ### Describe the problem
 Describe the problem clearly here. Be sure to convey here why it's a bug in TensorFlow or a feature request.

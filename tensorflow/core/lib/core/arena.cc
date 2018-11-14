@@ -28,6 +28,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
@@ -113,24 +114,11 @@ void Arena::MakeNewBlock(const uint32 alignment) {
   CHECK(SatisfyAlignment(alignment));
 }
 
-// The following simple numeric routines also exist in util/math/mathutil.h
-// but we don't want to depend on that library.
-
-// Euclid's algorithm for Greatest Common Denominator.
-static uint32 GCD(uint32 x, uint32 y) {
-  while (y != 0) {
-    uint32 r = x % y;
-    x = y;
-    y = r;
-  }
-  return x;
-}
-
 static uint32 LeastCommonMultiple(uint32 a, uint32 b) {
   if (a > b) {
-    return (a / GCD(a, b)) * b;
+    return (a / MathUtil::GCD<uint32>(a, b)) * b;
   } else if (a < b) {
-    return (b / GCD(b, a)) * a;
+    return (b / MathUtil::GCD<uint32>(b, a)) * a;
   } else {
     return a;
   }

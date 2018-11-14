@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_COST_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_COST_ANALYSIS_H_
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -23,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -34,7 +34,7 @@ namespace xla {
 // the computation cost of the instruction, and the values are accumulated
 // during the traversal for the entire graph. We treat normal floating point
 // operations separately from transcendental operations.
-class HloCostAnalysis : public DfsHloVisitor {
+class HloCostAnalysis : public ConstDfsHloVisitor {
  public:
   // Each HLO is associated to a vector of properties with the indices given
   // below. Sub-classes can add further properties.
@@ -42,90 +42,76 @@ class HloCostAnalysis : public DfsHloVisitor {
   static constexpr char kFlopsKey[] = "flops";
   static constexpr char kTranscendentalsKey[] = "transcendentals";
   static constexpr char kBytesAccessedKey[] = "bytes accessed";
-  static constexpr char kSecondsKey[] = "seconds";
+  static constexpr char kOptimalSecondsKey[] = "optimal_seconds";
 
   // shape_size is a function which returns the size in bytes of the top-level
   // buffer of a shape.
   using ShapeSizeFunction = std::function<int64(const Shape&)>;
   explicit HloCostAnalysis(const ShapeSizeFunction& shape_size);
 
-  Status HandleElementwiseUnary(HloInstruction* hlo) override;
-  Status HandleElementwiseBinary(HloInstruction* hlo) override;
-  Status HandleConstant(HloInstruction* constant,
-                        const Literal& literal) override;
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element,
-                               HloInstruction* operand) override;
-  Status HandleSelect(HloInstruction* select, HloInstruction* pred,
-                      HloInstruction* on_true,
-                      HloInstruction* on_false) override;
-  Status HandleCompare(HloInstruction* compare, HloOpcode opcode,
-                       HloInstruction* lhs, HloInstruction* rhs) override;
-  Status HandleClamp(HloInstruction* clamp, HloInstruction* min,
-                     HloInstruction* arg, HloInstruction* max) override;
-  Status HandleReducePrecision(HloInstruction* hlo) override;
-  Status HandleConcatenate(
-      HloInstruction* concatenate,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
-  Status HandleSend(HloInstruction* send) override;
-  Status HandleRecv(HloInstruction* recv) override;
-  Status HandleConvert(HloInstruction* convert) override;
-  Status HandleCopy(HloInstruction* copy) override;
-  Status HandleDot(HloInstruction* dot, HloInstruction* lhs,
-                   HloInstruction* rhs) override;
-  Status HandleConvolution(HloInstruction* convolution, HloInstruction* lhs,
-                           HloInstruction* rhs, const Window& window) override;
-  Status HandleCrossReplicaSum(HloInstruction* crs) override;
-  Status HandleInfeed(HloInstruction* infeed) override;
-  Status HandleOutfeed(HloInstruction* outfeed) override;
-  Status HandleRng(HloInstruction* random,
-                   RandomDistribution distribution) override;
-  Status HandleReverse(HloInstruction* reverse,
-                       HloInstruction* operand) override;
-  Status HandleSort(HloInstruction* sort, HloInstruction* operand) override;
-  Status HandleParameter(HloInstruction* parameter) override;
-  Status HandleReduce(HloInstruction* reduce, HloInstruction* arg,
-                      HloInstruction* init_value,
-                      tensorflow::gtl::ArraySlice<int64> dimensions,
-                      HloComputation* function_handle) override;
-  Status HandleBatchNormTraining(HloInstruction* batch_norm_training) override;
+  Status HandleElementwiseUnary(const HloInstruction* hlo) override;
+  Status HandleElementwiseBinary(const HloInstruction* hlo) override;
+  Status HandleConstant(const HloInstruction* constant) override;
+  Status HandleIota(const HloInstruction* iota) override;
+  Status HandleGetTupleElement(
+      const HloInstruction* get_tuple_element) override;
+  Status HandleSelect(const HloInstruction* hlo) override;
+  Status HandleTupleSelect(const HloInstruction* hlo) override;
+  Status HandleCompare(const HloInstruction* compare) override;
+  Status HandleClamp(const HloInstruction* clamp) override;
+  Status HandleReducePrecision(const HloInstruction* hlo) override;
+  Status HandleConcatenate(const HloInstruction* concatenate) override;
+  Status HandleSend(const HloInstruction* send) override;
+  Status HandleSendDone(const HloInstruction* send_done) override;
+  Status HandleRecv(const HloInstruction* recv) override;
+  Status HandleRecvDone(const HloInstruction* recv_done) override;
+  Status HandleConvert(const HloInstruction* convert) override;
+  Status HandleCopy(const HloInstruction* copy) override;
+  Status HandleDomain(const HloInstruction* domain) override;
+  Status HandleDot(const HloInstruction* dot) override;
+  Status HandleConvolution(const HloInstruction* convolution) override;
+  Status HandleFft(const HloInstruction* fft) override;
+  Status HandleCrossReplicaSum(const HloInstruction* crs) override;
+  Status HandleAllToAll(const HloInstruction* hlo) override;
+  Status HandleCollectivePermute(const HloInstruction* hlo) override;
+  Status HandleInfeed(const HloInstruction* infeed) override;
+  Status HandleOutfeed(const HloInstruction* outfeed) override;
+  Status HandleRng(const HloInstruction* random) override;
+  Status HandleReverse(const HloInstruction* reverse) override;
+  Status HandleSort(const HloInstruction* sort) override;
+  Status HandleParameter(const HloInstruction* parameter) override;
+  Status HandleReduce(const HloInstruction* reduce) override;
+  Status HandleBatchNormTraining(
+      const HloInstruction* batch_norm_training) override;
   Status HandleBatchNormInference(
-      HloInstruction* batch_norm_inference) override;
-  Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override;
-  Status HandleFusion(HloInstruction* fusion) override;
-  Status HandleCall(HloInstruction* call) override;
-  Status HandleCustomCall(HloInstruction* custom_call,
-                          tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-                          tensorflow::StringPiece custom_call_target) override;
-  Status HandleSlice(HloInstruction* slice, HloInstruction* operand) override;
-  Status HandleDynamicSlice(HloInstruction* dynamic_slice,
-                            HloInstruction* operand,
-                            HloInstruction* start_indices) override;
-  Status HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
-                                  HloInstruction* operand,
-                                  HloInstruction* update,
-                                  HloInstruction* start_indices) override;
-  Status HandleTuple(
-      HloInstruction* tuple,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
-  Status HandleMap(
-      HloInstruction* map,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      HloComputation* function,
-      tensorflow::gtl::ArraySlice<HloInstruction*> static_operands) override;
-  Status HandleReduceWindow(HloInstruction* reduce_window,
-                            HloInstruction* operand, const Window& window,
-                            HloComputation* function) override;
-  Status HandleSelectAndScatter(HloInstruction* instruction) override;
-  Status HandleBitcast(HloInstruction* bitcast) override;
-  Status HandleBroadcast(HloInstruction* broadcast) override;
-  Status HandlePad(HloInstruction* pad) override;
-  Status HandleReshape(HloInstruction* reshape) override;
-  Status HandleTranspose(HloInstruction* transpose) override;
-  Status HandleWhile(HloInstruction* xla_while) override;
-  Status FinishVisit(HloInstruction* root) override;
+      const HloInstruction* batch_norm_inference) override;
+  Status HandleBatchNormGrad(const HloInstruction* batch_norm_grad) override;
+  Status HandleFusion(const HloInstruction* fusion) override;
+  Status HandleCall(const HloInstruction* call) override;
+  Status HandleCustomCall(const HloInstruction* custom_call) override;
+  Status HandleSlice(const HloInstruction* slice) override;
+  Status HandleDynamicSlice(const HloInstruction* dynamic_slice) override;
+  Status HandleDynamicUpdateSlice(
+      const HloInstruction* dynamic_update_slice) override;
+  Status HandleTuple(const HloInstruction* tuple) override;
+  Status HandleMap(const HloInstruction* map) override;
+  Status HandleReduceWindow(const HloInstruction* reduce_window) override;
+  Status HandleSelectAndScatter(const HloInstruction* instruction) override;
+  Status HandleBitcast(const HloInstruction* bitcast) override;
+  Status HandleBroadcast(const HloInstruction* broadcast) override;
+  Status HandlePad(const HloInstruction* pad) override;
+  Status HandleReshape(const HloInstruction* reshape) override;
+  Status HandleAfterAll(const HloInstruction* token) override;
+  Status HandleTranspose(const HloInstruction* transpose) override;
+  Status HandleWhile(const HloInstruction* xla_while) override;
+  Status HandleConditional(const HloInstruction* conditional) override;
+  Status HandleGather(const HloInstruction* gather) override;
+  Status HandleScatter(const HloInstruction* scatter) override;
+  Status HandleGetDimensionSize(const HloInstruction* get_size) override;
+  Status FinishVisit(const HloInstruction* root) override;
 
-  Status Preprocess(HloInstruction* hlo) override;
-  Status Postprocess(HloInstruction* hlo) override;
+  Status Preprocess(const HloInstruction* hlo) override;
+  Status Postprocess(const HloInstruction* hlo) override;
 
   // Set the rates used to calculate the time taken by the computation. These
   // need to be set before visiting starts.
@@ -143,14 +129,14 @@ class HloCostAnalysis : public DfsHloVisitor {
   float flop_count() const;
   float transcendental_count() const;
   float bytes_accessed() const;
-  float seconds() const;
+  float optimal_seconds() const;
 
   // Returns the respective cost computed for a particular HLO instruction, or 0
   // if the HLO was not found to have a cost in the analysis.
   int64 flop_count(const HloInstruction& hlo) const;
   int64 transcendental_count(const HloInstruction& hlo) const;
   int64 bytes_accessed(const HloInstruction& hlo) const;
-  float seconds(const HloInstruction& hlo) const;
+  float optimal_seconds(const HloInstruction& hlo) const;
 
   const Properties& properties() const { return properties_sum_; }
   const float property(const string& key) const {
@@ -167,14 +153,28 @@ class HloCostAnalysis : public DfsHloVisitor {
                   const Properties& per_second_rates);
 
   // Returns the properties computed from visiting the computation rooted at the
-  // given hlo. Uses shape_size_ to calculate shape sizes if shape_size is null,
-  // otherwise uses shape_size_.
-  StatusOr<Properties> ProcessSubcomputation(
-      HloComputation* computation,
-      const ShapeSizeFunction* shape_size = nullptr);
+  // given hlo.
+  //
+  // The difference between ProcessNestedSubcomputation and
+  // ProcessUnnestedSubcomputation is that we expect to get profile results for
+  // an unnested subcomputation's individual instructions, while we expect that
+  // a nested subcomputation is completely subsumed by its parent.
+  //
+  // For example, subcomputations inside kFusion and kMap are considered nested,
+  // while subcomputations inside kWhile and kConditional are considered
+  // unnested.
+  //
+  // Another way of thinking of this is, kFusion is implemented on the GPU
+  // backend using just one GPU kernel, while kWhile's body is implemented as a
+  // sequence of kernels, one for each HLO therein.  Backends don't necessarily
+  // need to follow this same implementation strategy, but we assume they do for
+  // the purposes of this platform-generic cost analysis.
+  StatusOr<Properties> ProcessNestedSubcomputation(HloComputation* computation);
+  StatusOr<Properties> ProcessUnnestedSubcomputation(
+      HloComputation* computation);
 
   // Utility function to handle all element-wise operations.
-  Status HandleElementwiseOp(HloInstruction* hlo_instruction);
+  Status HandleElementwiseOp(const HloInstruction* hlo_instruction);
 
   // Returns the default value if the key is not present in the
   // properties. Otherwise, returns the value that the key maps to from the
@@ -187,6 +187,10 @@ class HloCostAnalysis : public DfsHloVisitor {
   // the key maps to in the properties of the given hlo.
   static float GetPropertyForHlo(const HloInstruction& hlo, const string& key,
                                  const HloToProperties& hlo_to_properties);
+
+  // Decorates shape_size_ by returning 0 immediately if the shape does not have
+  // a layout.
+  int64 GetShapeSize(const Shape& shape) const;
 
   // Function which computes the size of the top-level of a given shape (not
   // including nested elements, if any). If null then bytes_accessed methods

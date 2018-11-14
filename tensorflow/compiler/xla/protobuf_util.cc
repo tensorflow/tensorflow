@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
@@ -37,34 +38,51 @@ bool ProtobufEquals(const tensorflow::protobuf::Message& m1,
   return (serialized1 == serialized2);
 }
 
-StatusOr<string> ToJson(const tensorflow::protobuf::Message& message) {
-  string json_output;
-  tensorflow::protobuf::util::JsonPrintOptions json_options;
-  json_options.add_whitespace = true;
-  json_options.always_print_primitive_fields = true;
-  auto status = tensorflow::protobuf::util::MessageToJsonString(
-      message, &json_output, json_options);
-  if (!status.ok()) {
-    return InternalError("MessageToJsonString failed: %s",
-                         status.error_message().data());
-  }
-  return json_output;
-}
+namespace {
 
-Status DumpJsonToDirectory(const tensorflow::protobuf::Message& message,
-                           const string& directory, const string& file_name) {
-  TF_ASSIGN_OR_RETURN(const string json_output, ToJson(message));
-
-  tensorflow::Env* env = tensorflow::Env::Default();
-  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory));
-  string safe_file_name = file_name + ".json";
+string SanitizeFilename(const string& file_name) {
+  string safe_file_name = file_name;
   for (char& c : safe_file_name) {
     if (c == '/' || c == '\\') {
       c = '_';
     }
   }
-  const string path = tensorflow::io::JoinPath(directory, safe_file_name);
-  return tensorflow::WriteStringToFile(env, path, json_output);
+  return safe_file_name;
+}
+
+std::pair<tensorflow::mutex*, std::vector<std::function<string(string)>>*>
+GetDirectoryExpanders() {
+  static auto* mutex = new tensorflow::mutex;
+  static auto* singleton = new std::vector<std::function<string(string)>>;
+  return {mutex, singleton};
+}
+
+// Runs all the directory expanders over x and returns the result.
+string Expand(string x) {
+  auto pair = GetDirectoryExpanders();
+  tensorflow::mutex_lock lock(*pair.first);
+  for (const auto& f : *pair.second) {
+    x = f(x);
+  }
+  return x;
+}
+
+}  // namespace
+
+Status DumpProtoToDirectory(const tensorflow::protobuf::Message& message,
+                            const string& directory, const string& file_name) {
+  tensorflow::Env* env = tensorflow::Env::Default();
+  string expanded_dir = Expand(directory);
+  TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(expanded_dir));
+  string safe_file_name = SanitizeFileName(file_name) + ".pb";
+  const string path = tensorflow::io::JoinPath(expanded_dir, safe_file_name);
+  return tensorflow::WriteBinaryProto(env, path, message);
+}
+
+void RegisterDirectoryExpander(const std::function<string(string)>& expander) {
+  auto pair = GetDirectoryExpanders();
+  tensorflow::mutex_lock lock(*pair.first);
+  pair.second->push_back(expander);
 }
 
 }  // namespace protobuf_util

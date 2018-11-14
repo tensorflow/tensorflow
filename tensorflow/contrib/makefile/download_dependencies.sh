@@ -19,13 +19,33 @@ set -e
 DOWNLOADS_DIR=tensorflow/contrib/makefile/downloads
 BZL_FILE_PATH=tensorflow/workspace.bzl
 
-EIGEN_URL="$(grep -o 'http.*bitbucket.org/eigen/eigen/get/.*tar\.gz' "${BZL_FILE_PATH}" | grep -v bazel-mirror | head -n1)"
-GEMMLOWP_URL="$(grep -o 'http://mirror.bazel.build/github.com/google/gemmlowp/.*zip' "${BZL_FILE_PATH}" | head -n1)"
+# Ensure it is being run from repo root
+if [ ! -f $BZL_FILE_PATH ]; then
+  echo "Could not find ${BZL_FILE_PATH}":
+  echo "Likely you are not running this from the root directory of the repository.";
+  exit 1;
+fi
+
+EIGEN_URL="$(grep -o 'http.*bitbucket.org/eigen/eigen/get/.*tar\.gz' "${BZL_FILE_PATH}" | grep -v mirror.bazel | head -n1)"
+GEMMLOWP_URL="$(grep -o 'https://mirror.bazel.build/github.com/google/gemmlowp/.*zip' "${BZL_FILE_PATH}" | head -n1)"
 GOOGLETEST_URL="https://github.com/google/googletest/archive/release-1.8.0.tar.gz"
-NSYNC_URL="$(grep -o 'http://mirror.bazel.build/github.com/google/nsync/.*tar\.gz' "${BZL_FILE_PATH}" | head -n1)"
-PROTOBUF_URL="$(grep -o 'http://mirror.bazel.build/github.com/google/protobuf/.*tar\.gz' "${BZL_FILE_PATH}" | head -n1)"
-RE2_URL="$(grep -o 'http://mirror.bazel.build/github.com/google/re2/.*tar\.gz' "${BZL_FILE_PATH}" | head -n1)"
+NSYNC_URL="$(grep -o 'https://mirror.bazel.build/github.com/google/nsync/.*tar\.gz' "${BZL_FILE_PATH}" | head -n1)"
+# Note: The Protobuf source in `tensorflow/workspace.bzl` in TensorFlow
+# 1.10 branch does not work. `make distclean` fails and blocks the build
+# process. For now we're hardcoding to the version which is used by
+# TensorFlow 1.9.
+PROTOBUF_URL="https://mirror.bazel.build/github.com/google/protobuf/archive/396336eb961b75f03b25824fe86cf6490fb75e3a.tar.gz"
+# TODO (yongtang): Replace the following with 'https://mirror.bazel.build/github.com/google/re2/.*tar\.gz' once
+# the archive has been propagated in mirror.bazel.build.
+RE2_URL="$(grep -o 'https://github.com/google/re2/.*tar\.gz' "${BZL_FILE_PATH}" | head -n1)"
 FFT2D_URL="$(grep -o 'http.*fft\.tgz' "${BZL_FILE_PATH}" | grep -v bazel-mirror | head -n1)"
+DOUBLE_CONVERSION_URL="$(grep -o "https.*google/double-conversion.*\.zip" "${BZL_FILE_PATH}" | head -n1)"
+ABSL_URL="$(grep -o 'https://github.com/abseil/abseil-cpp/.*tar.gz' "${BZL_FILE_PATH}" | head -n1)"
+CUB_URL="$(grep -o 'https.*cub/archive.*zip' "${BZL_FILE_PATH}" | grep -v mirror.bazel | head -n1)"
+
+# Required for TensorFlow Lite Flex runtime.
+FARMHASH_URL="https://mirror.bazel.build/github.com/google/farmhash/archive/816a4ae622e964763ca0862d9dbd19324a1eaf45.tar.gz"
+FLATBUFFERS_URL="https://github.com/google/flatbuffers/archive/1f5eae5d6a135ff6811724f6c57f911d1f46bb15.tar.gz"
 
 # TODO(petewarden): Some new code in Eigen triggers a clang bug with iOS arm64,
 #                   so work around it by patching the source.
@@ -54,12 +74,17 @@ download_and_extract() {
   elif [[ "${url}" == *zip ]]; then
     tempdir=$(mktemp -d)
     tempdir2=$(mktemp -d)
-    wget ${url} -P ${tempdir}
-    unzip ${tempdir}/* -d ${tempdir2}
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      # macOS (AKA darwin) doesn't have wget.
+      (cd "${tempdir}"; curl --remote-name --silent --location "${url}")
+    else
+      wget -P "${tempdir}" "${url}"
+    fi
+    unzip "${tempdir}"/* -d "${tempdir2}"
     # unzip has no strip components, so unzip to a temp dir, and move the files
     # we want from the tempdir to destination.
-    cp -R ${tempdir2}/*/* ${dir}/
-    rm -rf ${tempdir2} ${tempdir}
+    cp -R "${tempdir2}"/*/* "${dir}"/
+    rm -rf "${tempdir2}" "${tempdir}"
   fi
 
   # Delete any potential BUILD files, which would interfere with Bazel builds.
@@ -73,6 +98,13 @@ download_and_extract "${NSYNC_URL}" "${DOWNLOADS_DIR}/nsync"
 download_and_extract "${PROTOBUF_URL}" "${DOWNLOADS_DIR}/protobuf"
 download_and_extract "${RE2_URL}" "${DOWNLOADS_DIR}/re2"
 download_and_extract "${FFT2D_URL}" "${DOWNLOADS_DIR}/fft2d"
+download_and_extract "${DOUBLE_CONVERSION_URL}" "${DOWNLOADS_DIR}/double_conversion"
+download_and_extract "${ABSL_URL}" "${DOWNLOADS_DIR}/absl"
+download_and_extract "${CUB_URL}" "${DOWNLOADS_DIR}/cub/external/cub_archive"
+
+# Required for TensorFlow Lite Flex runtime.
+download_and_extract "${FARMHASH_URL}" "${DOWNLOADS_DIR}/farmhash"
+download_and_extract "${FLATBUFFERS_URL}" "${DOWNLOADS_DIR}/flatbuffers"
 
 replace_by_sed 's#static uint32x4_t p4ui_CONJ_XOR = vld1q_u32( conj_XOR_DATA );#static uint32x4_t p4ui_CONJ_XOR; // = vld1q_u32( conj_XOR_DATA ); - Removed by script#' \
   "${DOWNLOADS_DIR}/eigen/Eigen/src/Core/arch/NEON/Complex.h"

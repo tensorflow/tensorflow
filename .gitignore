@@ -6,7 +6,7 @@ node_modules
 /bazel-*
 /bazel_pip
 /tools/python_bin_path.sh
-/tools/git/gen
+/tensorflow/tools/git/gen
 /pip_test
 /_python_build
 *.pyc
@@ -14,6 +14,28 @@ __pycache__
 *.swp
 .vscode/
 cmake_build/
+tensorflow/contrib/cmake/_build/
 .idea/**
 /build/
+[Bb]uild/
 /tensorflow/core/util/version_info.cc
+/tensorflow/python/framework/fast_tensor_util.cpp
+Pods
+Podfile.lock
+*.pbxproj
+*.xcworkspacedata
+/tensorflow/lite/downloads/**
+/tensorflow/lite/gen/**
+/tensorflow/lite/examples/ios/simple/data/*.txt
+/tensorflow/lite/examples/ios/simple/data/*.tflite
+xcuserdata/**
+/api_init_files_list.txt
+/estimator_api_init_files_list.txt
+*.whl
+
+# Android
+.gradle
+.idea
+*.iml
+local.properties
+gradleBuild

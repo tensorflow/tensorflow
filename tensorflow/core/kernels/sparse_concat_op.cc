@@ -124,9 +124,12 @@ class SparseConcatOp : public OpKernel {
     std::vector<sparse::SparseTensor> sp_inputs;
     for (int i = 0; i < N; ++i) {
       const TensorShape current_shape(shapes[i].vec<int64>());
-      sp_inputs.emplace_back(tensor::DeepCopy(inds[i]),
-                             tensor::DeepCopy(vals[i]), current_shape,
-                             std_order);
+      sparse::SparseTensor tensor;
+      OP_REQUIRES_OK(context,
+                     sparse::SparseTensor::Create(
+                         tensor::DeepCopy(inds[i]), tensor::DeepCopy(vals[i]),
+                         current_shape, std_order, &tensor));
+      sp_inputs.push_back(std::move(tensor));
       sp_inputs[i].Reorder<T>(concat_order);
     }
 

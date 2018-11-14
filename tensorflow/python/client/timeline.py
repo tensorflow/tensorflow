@@ -275,7 +275,7 @@ class _TensorTracker(object):
       name:  The name of the Tensor as a string.
       object_id:  Chrome Trace object identifier assigned for this Tensor.
       timestamp:  The creation timestamp of this event as a long integer.
-      pid:  Process identifier of the assicaiated device, as an integer.
+      pid:  Process identifier of the associated device, as an integer.
       allocator:  Name of the allocator used to create the Tensor.
       num_bytes:  Number of bytes allocated (long integer).
 
@@ -588,7 +588,8 @@ class Timeline(object):
       alloc_tensor_set = set()
       alloc_maxes[allocator] = AllocationMaximum(
           timestamp=0, num_bytes=0, tensors=set())
-      for time, num_bytes, name in alloc_list:
+      for time, num_bytes, name in sorted(
+          alloc_list, key=lambda allocation: allocation[0]):
         total_bytes += num_bytes
         if num_bytes < 0:
           alloc_tensor_set.discard(name)

@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_tensor_coding.h"
 
-#include "grpc++/support/byte_buffer.h"
-#include "grpc++/support/slice.h"
+#include "grpcpp/support/byte_buffer.h"
+#include "grpcpp/support/slice.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"

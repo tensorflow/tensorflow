@@ -28,6 +28,7 @@ if [[ "$1" != "" ]] && [[ "$1" != "--without_cmake" ]]; then
 fi
 
 # Install dependencies from ubuntu deb repository.
+apt-key adv --keyserver keyserver.ubuntu.com --recv 084ECFC5828AB726
 apt-get update
 
 if [[ "$ubuntu_version" == "14" ]]; then
@@ -37,15 +38,18 @@ if [[ "$ubuntu_version" == "14" ]]; then
   apt-get dist-upgrade -y
 fi
 
+## TODO(yifeif) remove ffmpeg once ffmpeg is removed from contrib
 apt-get install -y --no-install-recommends \
     autoconf \
     automake \
     build-essential \
+    clang-format-3.8 \
     curl \
     ffmpeg \
     git \
     libcurl4-openssl-dev \
     libtool \
+    libssl-dev \
     mlocate \
     openjdk-8-jdk \
     openjdk-8-jre-headless \
@@ -57,12 +61,18 @@ apt-get install -y --no-install-recommends \
     python3-setuptools \
     rsync \
     sudo \
-    subversion \
     swig \
     unzip \
+    vim \
     wget \
     zip \
     zlib1g-dev
+
+apt-get update && \
+  apt-get install nvinfer-runtime-trt-repo-ubuntu1604-4.0.1-ga-cuda9.0 && \
+  apt-get update && \
+  apt-get install libnvinfer4=4.1.2-1+cuda9.0 && \
+  apt-get install libnvinfer-dev=4.1.2-1+cuda9.0
 
 # populate the database
 updatedb

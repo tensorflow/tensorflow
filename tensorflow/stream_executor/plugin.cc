@@ -15,8 +15,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/plugin.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 // Mostly-arbitrary ID only used as a sentinel "not otherwise initialized"
 // value. This value should never [need to] be specified aside by initialization
@@ -51,5 +50,4 @@ PluginConfig& PluginConfig::SetRng(PluginId rng) {
   return *this;
 }
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

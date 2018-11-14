@@ -20,15 +20,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_buffer.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace xla {
@@ -38,7 +40,10 @@ class HloAliasAnalysis {
  public:
   // The callgraph of the given HloModule must be flattened
   // (xla::FlattenCallGraph) prior to running the analysis.
-  static StatusOr<std::unique_ptr<HloAliasAnalysis>> Run(HloModule* module);
+  static StatusOr<std::unique_ptr<HloAliasAnalysis>> Run(
+      HloModule* module,
+      const HloDataflowAnalysis::FusionCanShareBufferFunction&
+          fusion_can_share_buffer);
 
   string ToString() const;
 
@@ -90,10 +95,9 @@ class HloAliasAnalysis {
   // output of the given instruction.
   bool InstructionBuffersAreDistinct(const HloInstruction* instruction) const;
 
-  // Compare the dataflow analysis against a clean recomputation of the
-  // analysis. Returns an error status if there is a mismatch. Useful for
-  // verifying the correctness after updates to the analysis.
-  Status VerifyAgainstReference() const;
+  // Returns true if any HLO values in the module have interfering live ranges
+  // assuming the given ordering.
+  bool HasLiveRangeInterference(const HloOrdering& ordering) const;
 
  protected:
   explicit HloAliasAnalysis(HloModule* module);
@@ -107,7 +111,7 @@ class HloAliasAnalysis {
   std::unique_ptr<HloDataflowAnalysis> dataflow_analysis_;
 
   // A map indicating which buffer a value is contained in.
-  tensorflow::gtl::FlatMap<const HloValue*, HloBuffer*> value_to_buffer_;
+  absl::flat_hash_map<const HloValue*, HloBuffer*> value_to_buffer_;
 
   // A lazily constructed vector containing all HloBuffers sorted by
   // HloBuffer::Id.

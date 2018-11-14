@@ -19,7 +19,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/jit/legacy_flags/mark_for_compilation_pass_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/parse_flags_from_env.h"
+#include "tensorflow/compiler/xla/parse_flags_from_env.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
@@ -39,22 +40,43 @@ static void AllocateFlags() {
   flags->tf_xla_min_cluster_size = 2;
   flags->tf_xla_max_cluster_size = std::numeric_limits<int32>::max();
   flags->tf_xla_clustering_debug = false;
-  flag_list = new std::vector<Flag>({
-      Flag("tf_xla_auto_jit", &flags->tf_xla_auto_jit,
-           "Control compilation of operators into XLA computations on CPU and "
-           "GPU devices.  0 = use ConfigProto setting; -1 = off; 1 = on for "
-           "things very likely to be improved; 2 = on for everything.  "
-           "Experimental."),
-      Flag("tf_xla_min_cluster_size", &flags->tf_xla_min_cluster_size,
-           "Minimum number of operators in an XLA compilation. Ignored for "
-           "operators placed on an XLA device or operators explicitly marked "
-           "for compilation."),
-      Flag("tf_xla_max_cluster_size", &flags->tf_xla_max_cluster_size,
-           "Maximum number of operators in an XLA compilation."),
-      Flag("tf_xla_clustering_debug", &flags->tf_xla_clustering_debug,
-           "Dump graphs during XLA compilation."),
-  });
-  xla::legacy_flags::ParseFlagsFromEnv(*flag_list);
+  flags->tf_xla_cpu_global_jit = false;
+  flags->tf_xla_clustering_fuel = std::numeric_limits<int64>::max();
+  flags->tf_xla_fusion_only = false;
+  flag_list = new std::vector<Flag>(
+      {Flag("tf_xla_auto_jit", &flags->tf_xla_auto_jit,
+            "Control compilation of operators into XLA computations on CPU and "
+            "GPU devices.  0 = use ConfigProto setting; -1 = off; 1 = on for "
+            "things very likely to be improved; 2 = on for everything.  "
+            "Experimental."),
+       Flag("tf_xla_min_cluster_size", &flags->tf_xla_min_cluster_size,
+            "Minimum number of operators in an XLA compilation. Ignored for "
+            "operators placed on an XLA device or operators explicitly marked "
+            "for compilation."),
+       Flag("tf_xla_max_cluster_size", &flags->tf_xla_max_cluster_size,
+            "Maximum number of operators in an XLA compilation."),
+       Flag("tf_xla_clustering_debug", &flags->tf_xla_clustering_debug,
+            "Dump graphs during XLA compilation."),
+       Flag("tf_xla_cpu_global_jit", &flags->tf_xla_cpu_global_jit,
+            "Enables global JIT compilation for CPU via SessionOptions."),
+       Flag("tf_xla_clustering_fuel", &flags->tf_xla_clustering_fuel,
+            "Places an artificial limit on the number of ops marked as "
+            "eligible for clustering."),
+       Flag("tf_xla_fusion_only", &flags->tf_xla_fusion_only,
+            "enable fusion of element-wise operations only using XLA when "
+            "global_jit_level is ON*.")});
+  xla::ParseFlagsFromEnv(*flag_list);
+
+  if (VLOG_IS_ON(1)) {
+    VLOG(1) << "Parsed MarkForCompilationPassFlags:";
+    VLOG(1) << "  tf_xla_auto_jit = " << flags->tf_xla_auto_jit;
+    VLOG(1) << "  tf_xla_min_cluster_size = " << flags->tf_xla_min_cluster_size;
+    VLOG(1) << "  tf_xla_max_cluster_size = " << flags->tf_xla_max_cluster_size;
+    VLOG(1) << "  tf_xla_clustering_debug = " << flags->tf_xla_clustering_debug;
+    VLOG(1) << "  tf_xla_cpu_global_jit = " << flags->tf_xla_cpu_global_jit;
+    VLOG(1) << "  tf_xla_clustering_fuel = " << flags->tf_xla_clustering_fuel;
+    VLOG(1) << "  tf_xla_fusion_only = " << flags->tf_xla_fusion_only;
+  }
 }
 
 // Append to *append_to flag definitions associated with the XLA bridge's

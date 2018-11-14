@@ -5,19 +5,25 @@
   * HOST_CXX_COMPILER:  The host C++ compiler
   * HOST_C_COMPILER:    The host C compiler
   * COMPUTECPP_TOOLKIT_PATH: The path to the ComputeCpp toolkit.
+  * TRISYCL_INCLUDE_DIR: The path to the include directory of triSYCL.
+                         (if using triSYCL instead of ComputeCPP)
   * PYTHON_LIB_PATH: The path to the python lib
 """
 
 _HOST_CXX_COMPILER = "HOST_CXX_COMPILER"
 _HOST_C_COMPILER= "HOST_C_COMPILER"
 _COMPUTECPP_TOOLKIT_PATH = "COMPUTECPP_TOOLKIT_PATH"
+_TRISYCL_INCLUDE_DIR = "TRISYCL_INCLUDE_DIR"
 _PYTHON_LIB_PATH = "PYTHON_LIB_PATH"
 
 def _enable_sycl(repository_ctx):
-  if "TF_NEED_OPENCL" in repository_ctx.os.environ:
-    enable_sycl = repository_ctx.os.environ["TF_NEED_OPENCL"].strip()
+  if "TF_NEED_OPENCL_SYCL" in repository_ctx.os.environ:
+    enable_sycl = repository_ctx.os.environ["TF_NEED_OPENCL_SYCL"].strip()
     return enable_sycl == "1"
   return False
+
+def _enable_compute_cpp(repository_ctx):
+  return _COMPUTECPP_TOOLKIT_PATH in repository_ctx.os.environ
 
 def auto_configure_fail(msg):
   """Output failure message when auto configuration fails."""
@@ -58,6 +64,14 @@ def find_computecpp_root(repository_ctx):
   if sycl_name.startswith("/"):
     return sycl_name
   fail("Cannot find SYCL compiler, please correct your path")
+
+def find_trisycl_include_dir(repository_ctx):
+  """Find triSYCL include directory. """
+  if _TRISYCL_INCLUDE_DIR in repository_ctx.os.environ:
+    sycl_name = repository_ctx.os.environ[_TRISYCL_INCLUDE_DIR].strip()
+    if sycl_name.startswith("/"):
+      return sycl_name
+  fail( "Cannot find triSYCL include directory, please correct your path")
 
 def find_python_lib(repository_ctx):
   """Returns python path."""
@@ -171,26 +185,53 @@ def _sycl_autoconf_imp(repository_ctx):
     _tpl(repository_ctx, "sycl:platform.bzl")
     _tpl(repository_ctx, "crosstool:BUILD")
     _file(repository_ctx, "sycl:LICENSE.text")
-    _tpl(repository_ctx, "crosstool:computecpp",
-    {
-      "%{host_cxx_compiler}" : find_cc(repository_ctx),
-      "%{host_c_compiler}" : find_c(repository_ctx),
-    })
 
-    computecpp_root = find_computecpp_root(repository_ctx)
-    _check_dir(repository_ctx, computecpp_root)
+    if _enable_compute_cpp(repository_ctx):
+      _tpl(repository_ctx, "crosstool:computecpp",
+      {
+        "%{host_cxx_compiler}" : find_cc(repository_ctx),
+        "%{host_c_compiler}" : find_c(repository_ctx)
+      })
 
-    _tpl(repository_ctx, "crosstool:CROSSTOOL",
-    {
-      "%{computecpp_toolkit_path}" : computecpp_root,
-      "%{python_lib_path}" : find_python_lib(repository_ctx),
-    })
+      computecpp_root = find_computecpp_root(repository_ctx);
+      _check_dir(repository_ctx, computecpp_root)
 
-    # symlink libraries
-    _check_lib(repository_ctx, computecpp_root+"/lib", "libComputeCpp.so" )
-    _symlink_dir(repository_ctx, computecpp_root + "/lib", "sycl/lib")
-    _symlink_dir(repository_ctx, computecpp_root + "/include", "sycl/include")
-    _symlink_dir(repository_ctx, computecpp_root + "/bin", "sycl/bin")
+      _tpl(repository_ctx, "crosstool:CROSSTOOL",
+      {
+        "%{sycl_include_dir}" : computecpp_root,
+        "%{sycl_impl}" : "computecpp",
+        "%{c++_std}" : "-std=c++11",
+        "%{python_lib_path}" : find_python_lib(repository_ctx),
+      })
+
+      # symlink libraries
+      _check_lib(repository_ctx, computecpp_root+"/lib", "libComputeCpp.so" )
+      _symlink_dir(repository_ctx, computecpp_root + "/lib", "sycl/lib")
+      _symlink_dir(repository_ctx, computecpp_root + "/include", "sycl/include")
+      _symlink_dir(repository_ctx, computecpp_root + "/bin", "sycl/bin")
+    else:
+
+      trisycl_include_dir = find_trisycl_include_dir(repository_ctx);
+      _check_dir(repository_ctx, trisycl_include_dir)
+
+      _tpl(repository_ctx, "crosstool:trisycl",
+      {
+        "%{host_cxx_compiler}" : find_cc(repository_ctx),
+        "%{host_c_compiler}" : find_c(repository_ctx),
+        "%{trisycl_include_dir}" : trisycl_include_dir
+      })
+
+
+      _tpl(repository_ctx, "crosstool:CROSSTOOL",
+      {
+        "%{sycl_include_dir}" : trisycl_include_dir,
+        "%{sycl_impl}" : "trisycl",
+        "%{c++_std}" : "-std=c++1y",
+        "%{python_lib_path}" : find_python_lib(repository_ctx),
+      })
+
+      _symlink_dir(repository_ctx, trisycl_include_dir, "sycl/include")
+
 
 sycl_configure = repository_rule(
   implementation = _sycl_autoconf_imp,

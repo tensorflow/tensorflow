@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -34,6 +35,14 @@ void GPUDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
                                              Device* device, Tensor* cpu_tensor,
                                              StatusCallback done) {
   GPUUtil::CopyGPUTensorToCPU(device, this, device_tensor, cpu_tensor, done);
+}
+
+Status GPUDeviceContext::ThenExecute(Device* device, se::Stream* stream,
+                                     std::function<void()> func) {
+  const DeviceBase::GpuDeviceInfo* gpu_info =
+      device->tensorflow_gpu_device_info();
+  gpu_info->event_mgr->ThenExecute(stream, func);
+  return Status::OK();
 }
 
 }  // namespace tensorflow

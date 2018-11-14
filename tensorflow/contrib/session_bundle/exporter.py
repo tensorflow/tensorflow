@@ -281,11 +281,12 @@ class Exporter(object):
     tmp_export_dir = compat.as_text(export_dir) + "-tmp"
     gfile.MakeDirs(tmp_export_dir)
 
-    self._saver.save(sess,
-                     os.path.join(
-                         compat.as_text(tmp_export_dir),
-                         compat.as_text(constants.EXPORT_BASE_NAME)),
-                     meta_graph_suffix=constants.EXPORT_SUFFIX_NAME)
+    self._saver.save(
+        sess,
+        os.path.join(
+            compat.as_text(tmp_export_dir),
+            compat.as_text(constants.EXPORT_BASE_NAME)),
+        meta_graph_suffix=constants.EXPORT_SUFFIX_NAME)
 
     # Run the asset callback.
     if self._assets_callback and self._assets_to_copy:
@@ -301,12 +302,12 @@ class Exporter(object):
     if exports_to_keep:
       # create a simple parser that pulls the export_version from the directory.
       def parser(path):
-        if os.name == 'nt':
-          match = re.match("^" + export_dir_base.replace('\\','/') + "/(\\d{8})$",
-                           path.path.replace('\\','/'))
+        if os.name == "nt":
+          match = re.match(
+              "^" + export_dir_base.replace("\\", "/") + "/(\\d{8})$",
+              path.path.replace("\\", "/"))
         else:
-          match = re.match("^" + export_dir_base + "/(\\d{8})$",
-                           path.path)
+          match = re.match("^" + export_dir_base + "/(\\d{8})$", path.path)
         if not match:
           return None
         return path._replace(export_version=int(match.group(1)))

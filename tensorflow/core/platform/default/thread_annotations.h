@@ -32,8 +32,8 @@ limitations under the License.
 // (e.g. &MyClass::mutex_) to refer to a mutex in some (unknown) object.
 //
 
-#ifndef TENSORFLOW_PLATFORM_DEFAULT_THREAD_ANNOTATIONS_H_
-#define TENSORFLOW_PLATFORM_DEFAULT_THREAD_ANNOTATIONS_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_DEFAULT_THREAD_ANNOTATIONS_H_
+#define TENSORFLOW_CORE_PLATFORM_DEFAULT_THREAD_ANNOTATIONS_H_
 
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/thread_annotations.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/thread_annotations.h
@@ -50,7 +50,7 @@ limitations under the License.
 // a shared variable is guarded by some unspecified mutex, for use in rare
 // cases where a valid mutex expression cannot be specified.
 #define GUARDED_BY(x) THREAD_ANNOTATION_ATTRIBUTE__(guarded_by(x))
-#define GUARDED_VAR THREAD_ANNOTATION_ATTRIBUTE__(guarded)
+#define GUARDED_VAR  // no-op
 
 // Document if the memory location pointed to by a pointer should be guarded
 // by a mutex when dereferencing the pointer.  PT_GUARDED_VAR is analogous to
@@ -60,7 +60,7 @@ limitations under the License.
 // guarded by mu2, q should be annotated as follows:
 //     int *q GUARDED_BY(mu1) PT_GUARDED_BY(mu2);
 #define PT_GUARDED_BY(x) THREAD_ANNOTATION_ATTRIBUTE__(pt_guarded_by(x))
-#define PT_GUARDED_VAR THREAD_ANNOTATION_ATTRIBUTE__(pt_guarded)
+#define PT_GUARDED_VAR  // no-op
 
 // Document the acquisition order between locks that can be held
 // simultaneously by a thread. For any two locks that need to be annotated
@@ -174,4 +174,4 @@ inline T& ts_unchecked_read(T& v) NO_THREAD_SAFETY_ANALYSIS {
 }  // namespace thread_safety_analysis
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_DEFAULT_THREAD_ANNOTATIONS_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_DEFAULT_THREAD_ANNOTATIONS_H_

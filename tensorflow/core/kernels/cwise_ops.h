@@ -13,12 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_CWISE_OPS_H_
-#define TENSORFLOW_KERNELS_CWISE_OPS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_CWISE_OPS_H_
+#define TENSORFLOW_CORE_KERNELS_CWISE_OPS_H_
 
 #include <cmath>
 #include <functional>
+#include <type_traits>
+
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
@@ -26,28 +29,15 @@ limitations under the License.
 namespace Eigen {
 namespace internal {
 
-// TODO(rmlarsen): Get rid of fmod2 once fmod is upstreamed to Eigen.
-template <typename T>
-struct scalar_fmod2_op {
-  EIGEN_EMPTY_STRUCT_CTOR(scalar_fmod2_op)
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a,
-                                                           const T& b) const {
-    return std::fmod(a, b);
-  }
-};
-template <typename T>
-struct functor_traits<scalar_fmod2_op<T>> {
-  enum {
-    Cost = 13,  // Reciprocal throughput of FPREM on Haswell.
-    PacketAccess = false,
-  };
-};
-
 template <typename T>
 struct scalar_asinh_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_asinh_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
+#if EIGEN_HAS_CXX11_MATH
+    return numext::asinh(a);
+#else
     return std::asinh(a);
+#endif  // EIGEN_HAS_CXX11_MATH
   }
 };
 template <typename T>
@@ -59,7 +49,11 @@ template <typename T>
 struct scalar_acosh_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_acosh_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
+#if EIGEN_HAS_CXX11_MATH
+    return numext::acosh(a);
+#else
     return std::acosh(a);
+#endif  // EIGEN_HAS_CXX11_MATH
   }
 };
 template <typename T>
@@ -71,7 +65,11 @@ template <typename T>
 struct scalar_atanh_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_atanh_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
+#if EIGEN_HAS_CXX11_MATH
+    return numext::atanh(a);
+#else
     return std::atanh(a);
+#endif  // EIGEN_HAS_CXX11_MATH
   }
 };
 template <typename T>
@@ -94,6 +92,35 @@ struct scalar_binary_pow_op_google {
 
 template <typename Scalar, typename Exponent>
 struct functor_traits<scalar_binary_pow_op_google<Scalar, Exponent>> {
+  enum { Cost = 5 * NumTraits<Scalar>::MulCost, PacketAccess = false };
+};
+
+template <typename Scalar, typename Exponent>
+struct safe_scalar_binary_pow_op {
+  static_assert(std::is_integral<Scalar>::value, "Integer type expected");
+  static_assert(std::is_integral<Exponent>::value &&
+                    std::is_signed<Exponent>::value,
+                "Signed integer type expected");
+
+  bool* const error;
+
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE safe_scalar_binary_pow_op(bool* error)
+      : error(error) {}
+
+  EIGEN_DEVICE_FUNC inline Scalar operator()(const Scalar& a,
+                                             const Exponent& b) const {
+    const Exponent safe_b = tensorflow::internal::SubtleMustCopy(b);
+    if (TF_PREDICT_TRUE(safe_b >= 0)) {
+      return numext::pow(a, safe_b);
+    } else {
+      *error = true;
+      return 0;
+    }
+  }
+};
+
+template <typename Scalar, typename Exponent>
+struct functor_traits<safe_scalar_binary_pow_op<Scalar, Exponent>> {
   enum { Cost = 5 * NumTraits<Scalar>::MulCost, PacketAccess = false };
 };
 
@@ -122,6 +149,27 @@ template <typename T, typename DivOrMod>
 struct functor_traits<safe_div_or_mod_op<T, DivOrMod>> {
   enum {
     Cost = functor_traits<DivOrMod>::Cost + NumTraits<T>::AddCost,
+    PacketAccess = false,
+  };
+};
+
+template <typename T>
+struct div_no_nan_op {
+  EIGEN_EMPTY_STRUCT_CTOR(div_no_nan_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a,
+                                                           const T& b) const {
+    if (b != 0) {
+      return scalar_quotient_op<T>()(a, b);
+    } else {
+      return 0;
+    }
+  }
+};
+
+template <typename T>
+struct functor_traits<div_no_nan_op<T>> {
+  enum {
+    Cost = functor_traits<scalar_quotient_op<T>>::Cost + NumTraits<T>::AddCost,
     PacketAccess = false,
   };
 };
@@ -423,6 +471,45 @@ struct functor_traits<bitwise_xor_op<Scalar>> {
   enum { Cost = Eigen::NumTraits<Scalar>::AddCost, PacketAccess = true };
 };
 
+// TODO(srvasude): Add packet versions of this operation.
+template <typename Scalar>
+struct xlogy_op {
+  EIGEN_EMPTY_STRUCT_CTOR(xlogy_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
+  operator()(const Scalar& x, const Scalar& y) const {
+    if (x == Scalar(0.)) {
+      return Scalar(0.);
+    }
+    return x * numext::log(y);
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<xlogy_op<Scalar>> {
+  enum {
+    Cost = (sizeof(Scalar) == 4 ? 40 : 85) + Eigen::NumTraits<Scalar>::MulCost,
+    PacketAccess = false
+  };
+};
+
+template <typename Scalar>
+// TODO(srvasude): Add packet versions of this operation.
+struct xdivy_op {
+  EIGEN_EMPTY_STRUCT_CTOR(xdivy_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
+  operator()(const Scalar& x, const Scalar& y) const {
+    if (x == Scalar(0.)) {
+      return Scalar(0.);
+    }
+    return x / y;
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<xdivy_op<Scalar>> {
+  enum { Cost = Eigen::NumTraits<Scalar>::MulCost, PacketAccess = false };
+};
+
 }  // end namespace internal
 }  // end namespace Eigen
 
@@ -569,7 +656,7 @@ template <typename T>
 struct erfc : base<T, Eigen::internal::scalar_erfc_op<T>> {};
 
 template <typename T>
-struct sigmoid : base<T, Eigen::internal::scalar_sigmoid_op<T>> {};
+struct sigmoid : base<T, Eigen::internal::scalar_logistic_op<T>> {};
 
 template <typename T>
 struct sin : base<T, Eigen::internal::scalar_sin_op<T>> {};
@@ -588,6 +675,12 @@ struct acos : base<T, Eigen::internal::scalar_acos_op<T>> {};
 
 template <typename T>
 struct atan : base<T, Eigen::internal::scalar_atan_op<T>> {};
+
+template <typename T>
+struct bessel_i0e : base<T, Eigen::internal::scalar_i0e_op<T>> {};
+
+template <typename T>
+struct bessel_i1e : base<T, Eigen::internal::scalar_i1e_op<T>> {};
 
 struct logical_not : base<bool, Eigen::internal::scalar_boolean_not_op<bool>> {
 };
@@ -674,7 +767,9 @@ struct sub : base<T, Eigen::internal::scalar_difference_op<T>> {
 };
 
 template <typename T>
-struct mul : base<T, Eigen::internal::scalar_product_op<T>> {};
+struct mul : base<T, Eigen::internal::scalar_product_op<T>> {
+  static const bool use_bcast_optimization = true;
+};
 
 template <typename T>
 struct div : base<T, Eigen::internal::scalar_quotient_op<T>> {};
@@ -686,7 +781,10 @@ struct safe_div : base<T, Eigen::internal::safe_div_or_mod_op<
 };
 
 template <typename T>
-struct fmod : base<T, Eigen::internal::scalar_fmod2_op<T>> {};
+struct div_no_nan : base<T, Eigen::internal::div_no_nan_op<T>> {};
+
+template <typename T>
+struct fmod : base<T, Eigen::internal::scalar_fmod_op<T>> {};
 
 template <typename T>
 struct mod : base<T, Eigen::internal::scalar_mod2_op<T>> {};
@@ -722,6 +820,11 @@ template <typename T>
 struct pow : base<T, Eigen::internal::scalar_binary_pow_op_google<T, T>> {};
 
 template <typename T>
+struct safe_pow : base<T, Eigen::internal::safe_scalar_binary_pow_op<T, T>> {
+  static const bool has_errors = true;
+};
+
+template <typename T>
 struct maximum : base<T, Eigen::internal::scalar_max_op<T>> {};
 
 template <typename T>
@@ -729,6 +832,10 @@ struct minimum : base<T, Eigen::internal::scalar_min_op<T>> {};
 
 template <typename T>
 struct igamma : base<T, Eigen::internal::scalar_igamma_op<T>> {};
+
+template <typename T>
+struct random_gamma_grad
+    : base<T, Eigen::internal::scalar_gamma_sample_der_alpha_op<T>> {};
 
 template <typename T>
 struct igammac : base<T, Eigen::internal::scalar_igammac_op<T>> {};
@@ -760,6 +867,12 @@ struct squared_difference
     : base<T, Eigen::internal::scalar_compose_op<
                   T, Eigen::internal::scalar_square_op<T>,
                   Eigen::internal::scalar_difference_op<T>>> {};
+
+template <typename T>
+struct xdivy : base<T, Eigen::internal::xdivy_op<T>> {};
+
+template <typename T>
+struct xlogy : base<T, Eigen::internal::xlogy_op<T>> {};
 
 template <typename T>
 struct less : base<T, Eigen::internal::less<T>, bool> {};
@@ -809,6 +922,50 @@ struct bitwise_or : base<T, bitwise_or_op<T>> {};
 
 template <typename T>
 struct bitwise_xor : base<T, Eigen::internal::bitwise_xor_op<T>> {};
+
+template <typename T>
+struct left_shift_op {
+  EIGEN_EMPTY_STRUCT_CTOR(left_shift_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
+                                                           const T& y) const {
+    // Avoids UB: don't shift by larger than the bitwidth of T, and
+    // performs left shifts as unsigned shifts.
+    T y_clamped = y;
+    if (y_clamped < 0) {
+      y_clamped = 0;
+    } else if (y_clamped > sizeof(T) * CHAR_BIT - 1) {
+      y_clamped = sizeof(T) * CHAR_BIT - 1;
+    }
+    using U = typename std::make_unsigned<T>::type;
+    return static_cast<T>(static_cast<U>(x) << static_cast<U>(y_clamped));
+  }
+};
+
+template <typename T>
+struct right_shift_op {
+  EIGEN_EMPTY_STRUCT_CTOR(right_shift_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
+                                                           const T& y) const {
+    // Avoids UB: don't shift by larger than the bitwidth of T.
+    T y_clamped = y;
+    if (y_clamped < 0) {
+      y_clamped = 0;
+    } else if (y_clamped > sizeof(T) * CHAR_BIT - 1) {
+      y_clamped = sizeof(T) * CHAR_BIT - 1;
+    }
+    // Technically right shifts of signed integers are not necessarily
+    // arithmetic shifts according to the C++ standard. However in practice most
+    // implementations are arithmetic shifts. If this proves to be a problem in
+    // practice, we may need to use an alternative implementation.
+    return x >> y_clamped;
+  }
+};
+
+template <typename T>
+struct left_shift : base<T, left_shift_op<T>> {};
+
+template <typename T>
+struct right_shift : base<T, right_shift_op<T>> {};
 
 template <typename T>
 struct make_complex_func {
@@ -924,4 +1081,4 @@ struct BatchSelectFunctor {
 }  // end namespace functor
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_CWISE_OPS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_CWISE_OPS_H_

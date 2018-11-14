@@ -19,17 +19,21 @@ limitations under the License.
 // IWYU pragma: private, include "third_party/tensorflow/core/platform/protobuf.h"
 // IWYU pragma: friend third_party/tensorflow/core/platform/protobuf.h
 
-#include "google/protobuf/arena.h"
-#include "google/protobuf/compiler/importer.h"
+#ifndef TENSORFLOW_LITE_PROTOS
 #include "google/protobuf/descriptor.h"
+#include "google/protobuf/descriptor.pb.h"
+#include "google/protobuf/dynamic_message.h"
+#include "google/protobuf/text_format.h"
+#include "google/protobuf/util/json_util.h"
+#include "google/protobuf/util/type_resolver_util.h"
+#endif
+
+#include "google/protobuf/arena.h"
 #include "google/protobuf/io/coded_stream.h"
 #include "google/protobuf/io/zero_copy_stream.h"
 #include "google/protobuf/io/zero_copy_stream_impl_lite.h"
 #include "google/protobuf/map.h"
 #include "google/protobuf/repeated_field.h"
-#include "google/protobuf/text_format.h"
-#include "google/protobuf/util/json_util.h"
-#include "google/protobuf/util/type_resolver_util.h"
 
 namespace tensorflow {
 namespace protobuf = ::google::protobuf;

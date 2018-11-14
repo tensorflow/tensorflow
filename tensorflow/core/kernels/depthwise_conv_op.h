@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DEPTHWISE_CONV_OP_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DEPTHWISE_CONV_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_DEPTHWISE_CONV_OP_H_
+#define TENSORFLOW_CORE_KERNELS_DEPTHWISE_CONV_OP_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/types.h"
@@ -83,7 +83,7 @@ struct LaunchDepthwiseConvBackpropFilterOp {
 #if GOOGLE_CUDA
 template <typename T>
 struct LaunchDepthwiseConvOp<Eigen::GpuDevice, T> {
-  void operator()(OpKernelContext* ctx, const DepthwiseArgs args,
+  void operator()(OpKernelContext* ctx, const DepthwiseArgs& args,
                   const T* input, const T* filter, T* output,
                   TensorFormat data_format);
 };
@@ -158,7 +158,8 @@ struct DepthwiseFilterPadOp {
       }
       // Pad the remainder of output to vector-register boundary.
       for (int64 j = 0; j < pad_size; ++j) {
-        padded_filter[output_base + vectorized_size + scalar_size + j] = 0;
+        padded_filter[output_base + vectorized_size + scalar_size + j] =
+            static_cast<T>(0);
       }
     }
   }
@@ -266,7 +267,7 @@ struct DepthwiseInputCopyOp {
 
           // Pad the remainder of the output to vector register boundary.
           for (int64 d = 0; d < output_pad_size; ++d) {
-            in_buf[d] = 0;
+            in_buf[d] = static_cast<T>(0);
           }
           in_buf += output_pad_size;
 
@@ -283,4 +284,4 @@ struct DepthwiseInputCopyOp {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DEPTHWISE_CONV_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_DEPTHWISE_CONV_OP_H_

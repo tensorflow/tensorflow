@@ -25,17 +25,27 @@ namespace tensorflow {
 
 using GpuDevice = Eigen::GpuDevice;
 
-#define DEFINE_GPU_SPECS(T)                                \
-  template struct functor::MirrorPad<GpuDevice, T, 1>;     \
-  template struct functor::MirrorPad<GpuDevice, T, 2>;     \
-  template struct functor::MirrorPad<GpuDevice, T, 3>;     \
-  template struct functor::MirrorPad<GpuDevice, T, 4>;     \
-  template struct functor::MirrorPad<GpuDevice, T, 5>;     \
-  template struct functor::MirrorPadGrad<GpuDevice, T, 1>; \
-  template struct functor::MirrorPadGrad<GpuDevice, T, 2>; \
-  template struct functor::MirrorPadGrad<GpuDevice, T, 3>; \
-  template struct functor::MirrorPadGrad<GpuDevice, T, 4>; \
-  template struct functor::MirrorPadGrad<GpuDevice, T, 5>;
+#define DEFINE_GPU_SPECS(T)                                       \
+  template struct functor::MirrorPad<GpuDevice, T, int32, 1>;     \
+  template struct functor::MirrorPad<GpuDevice, T, int32, 2>;     \
+  template struct functor::MirrorPad<GpuDevice, T, int32, 3>;     \
+  template struct functor::MirrorPad<GpuDevice, T, int32, 4>;     \
+  template struct functor::MirrorPad<GpuDevice, T, int32, 5>;     \
+  template struct functor::MirrorPad<GpuDevice, T, int64, 1>;     \
+  template struct functor::MirrorPad<GpuDevice, T, int64, 2>;     \
+  template struct functor::MirrorPad<GpuDevice, T, int64, 3>;     \
+  template struct functor::MirrorPad<GpuDevice, T, int64, 4>;     \
+  template struct functor::MirrorPad<GpuDevice, T, int64, 5>;     \
+  template struct functor::MirrorPadGrad<GpuDevice, T, int32, 1>; \
+  template struct functor::MirrorPadGrad<GpuDevice, T, int32, 2>; \
+  template struct functor::MirrorPadGrad<GpuDevice, T, int32, 3>; \
+  template struct functor::MirrorPadGrad<GpuDevice, T, int32, 4>; \
+  template struct functor::MirrorPadGrad<GpuDevice, T, int32, 5>; \
+  template struct functor::MirrorPadGrad<GpuDevice, T, int64, 1>; \
+  template struct functor::MirrorPadGrad<GpuDevice, T, int64, 2>; \
+  template struct functor::MirrorPadGrad<GpuDevice, T, int64, 3>; \
+  template struct functor::MirrorPadGrad<GpuDevice, T, int64, 4>; \
+  template struct functor::MirrorPadGrad<GpuDevice, T, int64, 5>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
 #undef DEFINE_GPU_SPECS

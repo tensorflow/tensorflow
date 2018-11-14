@@ -24,6 +24,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -32,7 +33,10 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.linalg import linalg
+from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
@@ -70,7 +74,7 @@ def TriAngSolveCompositeGrad(l, grad):
   # we can ommit the conjugate transpose here.
   z_h = math_ops.conj(array_ops.matrix_transpose(l_inverse_middle))
   grad_a = linalg_ops.matrix_triangular_solve(l, z_h, adjoint=True)
-  grad_a += math_ops.conj(array_ops.matrix_transpose(grad_a))
+  grad_a += linalg.adjoint(grad_a)
   return grad_a * 0.5
 
 
@@ -107,7 +111,7 @@ class CholeskyOpTest(test.TestCase):
 
   def _verifyCholesky(self, x):
     # Verify that LL^T == x.
-    with self.test_session(use_gpu=True) as sess:
+    with self.cached_session(use_gpu=True) as sess:
       chol = linalg_ops.cholesky(x)
       verification = math_ops.matmul(chol, chol, adjoint_b=True)
       self._verifyCholeskyBase(sess, x, chol, verification)
@@ -158,8 +162,9 @@ class CholeskyOpTest(test.TestCase):
 
   def testNotInvertibleCPU(self):
     # The input should be invertible.
-    with self.test_session(use_gpu=False):
-      with self.assertRaisesOpError(
+    with self.session(use_gpu=True):
+      with self.assertRaisesRegexp(
+          errors_impl.InvalidArgumentError,
           "Cholesky decomposition was not successful. The"
           " input might not be valid."):
         # All rows of the matrix below add to zero
@@ -169,6 +174,17 @@ class CholeskyOpTest(test.TestCase):
   def testEmpty(self):
     self._verifyCholesky(np.empty([0, 2, 2]))
     self._verifyCholesky(np.empty([2, 0, 0]))
+
+  def testConcurrentExecutesWithoutError(self):
+    with self.session(use_gpu=True) as sess:
+      matrix1 = random_ops.random_normal([5, 5], seed=42)
+      matrix2 = random_ops.random_normal([5, 5], seed=42)
+      matrix1 = math_ops.matmul(matrix1, matrix1, adjoint_a=True)
+      matrix2 = math_ops.matmul(matrix2, matrix2, adjoint_a=True)
+      c1 = linalg_ops.cholesky(matrix1)
+      c2 = linalg_ops.cholesky(matrix2)
+      c1_val, c2_val = sess.run([c1, c2])
+      self.assertAllEqual(c1_val, c2_val)
 
 
 class CholeskyGradTest(test.TestCase):
@@ -227,7 +243,7 @@ class CholeskyGradTest(test.TestCase):
     data = np.matmul(data, data.T)
     grad_data = np.random.randn(*data.shape).astype(np.float32)
 
-    with ops.Graph().as_default(), self.test_session(use_gpu=False) as s:
+    with ops.Graph().as_default(), self.session(use_gpu=False) as s:
       x = constant_op.constant(data, dtypes_lib.float32)
       chol = linalg_ops.cholesky(x)
       composite_grad = gradients_impl.gradients(chol, x, grad_data)[0]
@@ -240,7 +256,7 @@ class CholeskyGradTest(test.TestCase):
                            dtypes=(dtypes_lib.float32, dtypes_lib.float64,
                                    dtypes_lib.complex64, dtypes_lib.complex128),
                            scalarTest=False):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       for shape in shapes:
         for batch in False, True:
           for dtype in dtypes:
@@ -312,7 +328,7 @@ class CholeskyBenchmark(test.Benchmark):
   def benchmarkCholeskyOp(self):
     for shape in self.shapes:
       with ops.Graph().as_default(), \
-          session.Session() as sess, \
+          session.Session(config=benchmark.benchmark_config()) as sess, \
           ops.device("/cpu:0"):
         matrix = variables.Variable(self._GenerateMatrix(shape))
         l = linalg_ops.cholesky(matrix)
@@ -326,7 +342,7 @@ class CholeskyBenchmark(test.Benchmark):
 
       if test.is_gpu_available(True):
         with ops.Graph().as_default(), \
-            session.Session() as sess, \
+            session.Session(config=benchmark.benchmark_config()) as sess, \
             ops.device("/device:GPU:0"):
           matrix = variables.Variable(self._GenerateMatrix(shape))
           l = linalg_ops.cholesky(matrix)
@@ -344,7 +360,7 @@ class CholeskyBenchmark(test.Benchmark):
       for shape in self.shapes:
         matrix = self._GenerateMatrix(shape)
         with ops.Graph().as_default(), \
-            session.Session() as sess, \
+            session.Session(config=benchmark.benchmark_config()) as sess, \
             ops.device(device):
           l = variables.Variable(np.linalg.cholesky(matrix))
           grad_matrix = variables.Variable(

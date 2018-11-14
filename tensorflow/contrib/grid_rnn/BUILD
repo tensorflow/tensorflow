@@ -31,27 +31,13 @@ cuda_py_tests(
     additional_deps = [
         ":grid_rnn_py",
         "//third_party/py/numpy",
-        "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:nn_ops",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python:rnn",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

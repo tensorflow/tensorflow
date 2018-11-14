@@ -32,6 +32,7 @@
 #include "tensorflow/core/lib/gtl/top_n.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -224,6 +225,58 @@ class KmeansPlusPlusInitializationOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("KmeansPlusPlusInitialization").Device(DEVICE_CPU),
                         KmeansPlusPlusInitializationOp);
 
+// Implementation of one single Markov Chain for the k-MC^2 algorithm
+class KMC2ChainInitializationOp : public OpKernel {
+ public:
+  explicit KMC2ChainInitializationOp(OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context,
+                   context->MatchSignature({DT_FLOAT, DT_INT64}, {DT_INT64}));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& distances_tensor = context->input(0);
+    const Tensor& seed_tensor = context->input(1);
+    OP_REQUIRES(context, TensorShapeUtils::IsVector(distances_tensor.shape()),
+                InvalidArgument("Input distances should be a vector."));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(seed_tensor.shape()),
+                InvalidArgument("Input seed should be a scalar."));
+    const int64 num_points = distances_tensor.dim_size(0);
+    const int64 seed = seed_tensor.scalar<int64>()();
+    OP_REQUIRES(context, num_points > 0,
+                InvalidArgument("Expected distances_tensor.size() > 0."));
+
+    random::PhiloxRandom random(seed);
+    random::SimplePhilox rng(&random);
+
+    auto distances = distances_tensor.flat<float>();
+    // Set the initial state of the Markov chain to be the first candidate.
+    int64 selected_index = 0;
+    float selected_distance = distances(selected_index);
+    // Build a Markov chain of length num_points.
+    for (int64 i = 1; i < num_points; ++i) {
+      const float candidate_distance = distances(i);
+      // Set the next state of the Markov chain to be the candidate with
+      // probability min(1, candidate_distance/selected_distance).
+      if (candidate_distance > rng.RandFloat() * selected_distance) {
+        selected_index = i;
+        selected_distance = candidate_distance;
+      }
+    }
+
+    Tensor* output_sampled_index_tensor;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, TensorShape({}),
+                                            &output_sampled_index_tensor));
+    auto output = output_sampled_index_tensor->scalar<int64>();
+    // Return the last state of the Markov chain as the new center.
+    output() = selected_index;
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("KMC2ChainInitialization").Device(DEVICE_CPU),
+                        KMC2ChainInitializationOp);
+
 // Operator for computing the nearest neighbors for a set of points.
 class NearestNeighborsOp : public OpKernel {
  public:
@@ -301,7 +354,7 @@ class NearestNeighborsOp : public OpKernel {
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
     const int64 num_threads = worker_threads.num_threads;
     // This kernel might be configured to use fewer than the total number of
-    // available CPUs on the host machine. To avoid descructive interference
+    // available CPUs on the host machine. To avoid destructive interference
     // with other jobs running on the host machine, we must only use a fraction
     // of total available L3 cache. Unfortunately, we cannot query the host
     // machine to get the number of physical CPUs. So, we use a fixed per-CPU

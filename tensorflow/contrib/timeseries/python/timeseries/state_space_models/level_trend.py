@@ -57,7 +57,9 @@ class AdderStateSpaceModel(state_space_model.StateSpaceModel):
         # TODO(allenl): Better support for multivariate series here.
         initial_value = array_ops.stack([
             math_ops.reduce_mean(
-                self._input_statistics.series_start_moments.mean), 0.
+                self._scale_data(
+                    self._input_statistics.series_start_moments.mean)),
+            0.
         ])
         return initial_value + variable_scope.get_variable(
             name="prior_state_mean",

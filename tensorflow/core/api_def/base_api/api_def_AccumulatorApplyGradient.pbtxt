@@ -1,0 +1,32 @@
+op {
+  graph_op_name: "AccumulatorApplyGradient"
+  in_arg {
+    name: "handle"
+    description: <<END
+The handle to a accumulator.
+END
+  }
+  in_arg {
+    name: "local_step"
+    description: <<END
+The local_step value at which the gradient was computed.
+END
+  }
+  in_arg {
+    name: "gradient"
+    description: <<END
+A tensor of the gradient to be accumulated.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+The data type of accumulated gradients. Needs to correspond to the type
+of the accumulator.
+END
+  }
+  summary: "Applies a gradient to a given accumulator."
+  description: <<END
+Does not add if local_step is lesser than the accumulator's global_step.
+END
+}

@@ -1,0 +1,33 @@
+op {
+  graph_op_name: "BiasAddGrad"
+  in_arg {
+    name: "out_backprop"
+    description: <<END
+Any number of dimensions.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+1-D with size the feature dimension of `out_backprop`.
+END
+  }
+  attr {
+    name: "data_format"
+    description: <<END
+Specify the data format of the input and output data. With the
+default format "NHWC", the bias tensor will be added to the last dimension
+of the value tensor.
+Alternatively, the format could be "NCHW", the data storage order of:
+    [batch, in_channels, in_height, in_width].
+The tensor will be added to "in_channels", the third-to-the-last
+    dimension.
+END
+  }
+  summary: "The backward operation for \"BiasAdd\" on the \"bias\" tensor."
+  description: <<END
+It accumulates all the values from out_backprop into the feature dimension.
+For NHWC data format, the feature dimension is the last. For NCHW data format,
+the feature dimension is the third-to-last.
+END
+}

@@ -57,7 +57,9 @@ from tensorflow.python.training import gradient_descent
 
 def no_rewrite_session_config():
   rewriter_config = rewriter_config_pb2.RewriterConfig(
-      disable_model_pruning=True)
+      disable_model_pruning=True,
+      arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+      dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF)
   graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
   return config_pb2.ConfigProto(graph_options=graph_options)
 
@@ -68,7 +70,7 @@ class _RNNCellForTest(rnn_cell_impl.RNNCell):
   def __init__(self, input_output_size, state_size):
     self._input_output_size = input_output_size
     self._state_size = state_size
-    self._w = variables.Variable(1.0, dtype=dtypes.float32, name="w")
+    self._w = variables.VariableV1(1.0, dtype=dtypes.float32, name="w")
 
   @property
   def output_size(self):
@@ -95,7 +97,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     else:
       cls._expected_partition_graph_count = 1
       cls._expected_num_devices = 1
-      cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
+      cls._main_device = "/job:localhost/replica:0/task:0/device:CPU:0"
 
   @classmethod
   def tearDownClass(cls):
@@ -180,9 +182,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       w_name = "w"
 
       u_init = constant_op.constant(u_init_val, shape=[2, 2])
-      u = variables.Variable(u_init, name=u_name)
+      u = variables.VariableV1(u_init, name=u_name)
       v_init = constant_op.constant(v_init_val, shape=[2, 1])
-      v = variables.Variable(v_init, name=v_name)
+      v = variables.VariableV1(v_init, name=v_name)
 
       w = math_ops.matmul(u, v, name=w_name)
 
@@ -219,8 +221,8 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
   def testCopyNodesHaveCorrectDebugOpsAndURLsAttributeValues(self):
     with session.Session() as sess:
-      u = variables.Variable(2.1, name="u")
-      v = variables.Variable(20.0, name="v")
+      u = variables.VariableV1(2.1, name="u")
+      v = variables.VariableV1(20.0, name="v")
       w = math_ops.multiply(u, v, name="w")
 
       sess.run(variables.global_variables_initializer())
@@ -322,8 +324,8 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       str1_name = "str1"
       str2_name = "str2"
-      str1 = variables.Variable(str1_init, name=str1_name)
-      str2 = variables.Variable(str2_init, name=str2_name)
+      str1 = variables.VariableV1(str1_init, name=str1_name)
+      str2 = variables.VariableV1(str2_init, name=str2_name)
       # Concatenate str1 and str2
       str_concat = math_ops.add(str1, str2, name="str_concat")
 
@@ -385,9 +387,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       s_name = "%s/s" % op_namespace
 
       u_init = constant_op.constant(u_init_val, shape=[2, 2])
-      u = variables.Variable(u_init, name=u_name)
+      u = variables.VariableV1(u_init, name=u_name)
       s_init = constant_op.constant(s_init_val)
-      s = variables.Variable(s_init, name=s_name)
+      s = variables.VariableV1(s_init, name=s_name)
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
       debug_urls = self._debug_urls()
@@ -437,7 +439,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       u_init_val = np.array(11.0)
       u_init = constant_op.constant(u_init_val)
-      u = variables.Variable(u_init, name=u_name)
+      u = variables.VariableV1(u_init, name=u_name)
 
       # "v" is the increment.
       v_name = "testDumpToFileWhileLoop/v"
@@ -445,7 +447,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       v_init_val = np.array(2.0)
       v_init = constant_op.constant(v_init_val)
-      v = variables.Variable(v_init, name=v_name)
+      v = variables.VariableV1(v_init, name=v_name)
 
       u.initializer.run()
       v.initializer.run()
@@ -603,8 +605,8 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
   def testDebugCondWatchingWholeGraphWorks(self):
     with session.Session() as sess:
-      x = variables.Variable(10.0, name="x")
-      y = variables.Variable(20.0, name="y")
+      x = variables.VariableV1(10.0, name="x")
+      y = variables.VariableV1(20.0, name="y")
       cond = control_flow_ops.cond(
           x > y, lambda: math_ops.add(x, 1), lambda: math_ops.add(y, 1))
 
@@ -626,9 +628,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       z_name = "testFindNodesWithBadTensorValues/z"
 
       u_init = constant_op.constant([2.0, 4.0])
-      u = variables.Variable(u_init, name=u_name)
+      u = variables.VariableV1(u_init, name=u_name)
       v_init = constant_op.constant([2.0, 1.0])
-      v = variables.Variable(v_init, name=v_name)
+      v = variables.VariableV1(v_init, name=v_name)
 
       # Expected output: [0.0, 3.0]
       w = math_ops.subtract(u, v, name=w_name)
@@ -667,6 +669,55 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertEqual(1, len(first_bad_datum))
       self.assertEqual(x_name, first_bad_datum[0].node_name)
 
+  def testFindInfOrNanWithOpNameExclusion(self):
+    with session.Session() as sess:
+      u_name = "testFindInfOrNanWithOpNameExclusion/u"
+      v_name = "testFindInfOrNanWithOpNameExclusion/v"
+      w_name = "testFindInfOrNanWithOpNameExclusion/w"
+      x_name = "testFindInfOrNanWithOpNameExclusion/x"
+      y_name = "testFindInfOrNanWithOpNameExclusion/y"
+      z_name = "testFindInfOrNanWithOpNameExclusion/z"
+
+      u_init = constant_op.constant([2.0, 4.0])
+      u = variables.VariableV1(u_init, name=u_name)
+      v_init = constant_op.constant([2.0, 1.0])
+      v = variables.VariableV1(v_init, name=v_name)
+
+      # Expected output: [0.0, 3.0]
+      w = math_ops.subtract(u, v, name=w_name)
+
+      # Expected output: [inf, 1.3333]
+      x = math_ops.div(u, w, name=x_name)
+
+      # Expected output: [nan, 4.0]
+      y = math_ops.multiply(w, x, name=y_name)
+
+      z = math_ops.multiply(y, y, name=z_name)
+
+      u.initializer.run()
+      v.initializer.run()
+
+      _, dump = self._debug_run_and_get_dump(
+          sess, z,
+          expected_partition_graph_count=self._expected_partition_graph_count)
+
+      # Find all "offending tensors".
+      bad_data = dump.find(debug_data.has_inf_or_nan,
+                           exclude_node_names=".*/x$")
+
+      # Verify that the nodes with bad values are caught through running find
+      # on the debug dump.
+      self.assertEqual(2, len(bad_data))
+      # Assert that the node `x` should have been excluded.
+      self.assertEqual(y_name, bad_data[0].node_name)
+      self.assertEqual(z_name, bad_data[1].node_name)
+
+      first_bad_datum = dump.find(
+          debug_data.has_inf_or_nan, first_n=1, exclude_node_names=".*/x$")
+
+      self.assertEqual(1, len(first_bad_datum))
+      self.assertEqual(y_name, first_bad_datum[0].node_name)
+
   def _session_run_for_graph_structure_lookup(self):
     with session.Session(config=no_rewrite_session_config()) as sess:
       u_name = "testDumpGraphStructureLookup/u"
@@ -674,7 +725,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       w_name = "testDumpGraphStructureLookup/w"
 
       u_init = constant_op.constant([2.0, 4.0])
-      u = variables.Variable(u_init, name=u_name)
+      u = variables.VariableV1(u_init, name=u_name)
       v = math_ops.add(u, u, name=v_name)
       w = math_ops.add(v, v, name=w_name)
 
@@ -808,9 +859,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
   def testGraphPathFindingOnControlEdgesWorks(self):
     with session.Session(config=no_rewrite_session_config()) as sess:
-      v1 = variables.Variable(1.0, name="v1")
-      v2 = variables.Variable(2.0, name="v2")
-      v3 = variables.Variable(3.0, name="v3")
+      v1 = variables.VariableV1(1.0, name="v1")
+      v2 = variables.VariableV1(2.0, name="v2")
+      v3 = variables.VariableV1(3.0, name="v3")
       a = math_ops.add(v1, v2, name="a")
       with ops.control_dependencies([a]):
         c = math_ops.subtract(v3, v3, name="c")
@@ -824,8 +875,8 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
   def testGraphPathFindingReverseRefEdgeWorks(self):
     with session.Session(config=no_rewrite_session_config()) as sess:
-      v = variables.Variable(10.0, name="v")
-      delta = variables.Variable(1.0, name="delta")
+      v = variables.VariableV1(10.0, name="v")
+      delta = variables.VariableV1(1.0, name="delta")
       inc_v = state_ops.assign_add(v, delta, name="inc_v")
 
       sess.run(variables.global_variables_initializer())
@@ -837,13 +888,13 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertIsNone(dump.find_some_path("delta", "v"))
 
   def testCausalityCheckOnDumpsDetectsWrongTemporalOrder(self):
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       u_name = "testDumpCausalityCheck/u"
       v_name = "testDumpCausalityCheck/v"
       w_name = "testDumpCausalityCheck/w"
 
       u_init = constant_op.constant([2.0, 4.0])
-      u = variables.Variable(u_init, name=u_name)
+      u = variables.VariableV1(u_init, name=u_name)
       v = math_ops.add(u, u, name=v_name)
       w = math_ops.add(v, v, name=w_name)
 
@@ -929,7 +980,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       w_name = "oneOfTwoSlots/w"
       y_name = "oneOfTwoSlots/y"
 
-      x = variables.Variable([1, 3, 3, 7], dtype=dtypes.int32, name=x_name)
+      x = variables.VariableV1([1, 3, 3, 7], dtype=dtypes.int32, name=x_name)
       sess.run(x.initializer)
 
       unique_x, indices, _ = array_ops.unique_with_counts(x, name=u_name)
@@ -962,7 +1013,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
   def testOutputSlotWithoutOutgoingEdgeCanBeWatched(self):
     """Test watching output slots not attached to any outgoing edges."""
 
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       u_init_val = np.array([[5.0, 3.0], [-1.0, 0.0]])
       u = constant_op.constant(u_init_val, shape=[2, 2], name="u")
 
@@ -986,11 +1037,11 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
   def testWatchingVariableUpdateOpsSeesUpdatedValues(self):
     """Watch output slots on Variable-updating ops, with no emitted edges."""
 
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       u_init = constant_op.constant(10.0)
-      u = variables.Variable(u_init, name="gdo/u")
+      u = variables.VariableV1(u_init, name="gdo/u")
       v_init = constant_op.constant(20.0)
-      v = variables.Variable(v_init, name="gdo/v")
+      v = variables.VariableV1(v_init, name="gdo/v")
 
       w = math_ops.multiply(u, v, name="gdo/w")
       # gdo stands for GradientDescentOptimizer.
@@ -1034,7 +1085,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
     with session.Session() as sess:
       x_init = constant_op.constant([2, 2, 3, 5, 5])
-      x = variables.Variable(x_init, name="unconnected/x")
+      x = variables.VariableV1(x_init, name="unconnected/x")
 
       # The UniqueOp (tf.unique) has two output slots. Use only slot 0 in the
       # graph. Let the debugger watch the unused slot 1.
@@ -1174,14 +1225,14 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
   def testDebugNumericSummaryOnInitializedTensorGivesCorrectResult(self):
     with session.Session(config=no_rewrite_session_config()) as sess:
-      a = variables.Variable(
+      a = variables.VariableV1(
           [
               np.nan, np.nan, 0.0, 0.0, 0.0, -1.0, -3.0, 3.0, 7.0, -np.inf,
               -np.inf, np.inf, np.inf, np.inf, np.inf, np.inf, np.nan, np.nan
           ],
           dtype=np.float32,
           name="numeric_summary/a")
-      b = variables.Variable(
+      b = variables.VariableV1(
           [0.0] * 18, dtype=np.float32, name="numeric_summary/b")
       c = math_ops.add(a, b, name="numeric_summary/c")
 
@@ -1198,7 +1249,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
   def testDebugNumericSummaryOnUninitializedTensorGivesCorrectResult(self):
     with session.Session() as sess:
-      a = variables.Variable(
+      a = variables.VariableV1(
           [42], dtype=np.float32, name="numeric_summary_uninit/a")
 
       _, dump = self._debug_run_and_get_dump(
@@ -1224,9 +1275,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
   def testDebugNumericSummaryFailureIsToleratedWhenOrdered(self):
     with session.Session() as sess:
-      a = variables.Variable("1", name="a")
-      b = variables.Variable("3", name="b")
-      c = variables.Variable("2", name="c")
+      a = variables.VariableV1("1", name="a")
+      b = variables.VariableV1("3", name="b")
+      c = variables.VariableV1("2", name="c")
 
       d = math_ops.add(a, b, name="d")
       e = math_ops.add(d, c, name="e")
@@ -1262,9 +1313,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
   def testDebugNumericSummaryInvalidAttributesStringAreCaught(self):
     with session.Session(config=no_rewrite_session_config()) as sess:
-      a = variables.Variable(10.0, name="a")
-      b = variables.Variable(0.0, name="b")
-      c = variables.Variable(0.0, name="c")
+      a = variables.VariableV1(10.0, name="a")
+      b = variables.VariableV1(0.0, name="b")
+      c = variables.VariableV1(0.0, name="c")
 
       x = math_ops.divide(a, b, name="x")
       y = math_ops.multiply(x, c, name="y")
@@ -1310,9 +1361,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
   def testDebugNumericSummaryMuteOnHealthyMutesOnlyHealthyTensorDumps(self):
     with session.Session(config=no_rewrite_session_config()) as sess:
-      a = variables.Variable(10.0, name="a")
-      b = variables.Variable(0.0, name="b")
-      c = variables.Variable(0.0, name="c")
+      a = variables.VariableV1(10.0, name="a")
+      b = variables.VariableV1(0.0, name="b")
+      c = variables.VariableV1(0.0, name="c")
 
       x = math_ops.divide(a, b, name="x")
       y = math_ops.multiply(x, c, name="y")
@@ -1345,8 +1396,8 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
   def testDebugNumericSummaryMuteOnHealthyAndCustomBoundsWork(self):
     with session.Session() as sess:
-      a = variables.Variable([10.0, 10.0], name="a")
-      b = variables.Variable([10.0, 2.0], name="b")
+      a = variables.VariableV1([10.0, 10.0], name="a")
+      b = variables.VariableV1([10.0, 2.0], name="b")
 
       x = math_ops.add(a, b, name="x")  # [20.0, 12.0]
       y = math_ops.divide(x, b, name="y")  # [2.0, 6.0]
@@ -1385,9 +1436,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
   def testLookUpNodePythonTracebackWorks(self):
     with session.Session() as sess:
       u_init = constant_op.constant(10.0)
-      u = variables.Variable(u_init, name="traceback/u")
+      u = variables.VariableV1(u_init, name="traceback/u")
       v_init = constant_op.constant(20.0)
-      v = variables.Variable(v_init, name="traceback/v")
+      v = variables.VariableV1(v_init, name="traceback/v")
 
       w = math_ops.multiply(u, v, name="traceback/w")
 
@@ -1436,7 +1487,7 @@ class DebugConcurrentRunCallsTest(test_util.TensorFlowTestCase):
       self.skipTest("No testing concurrent runs on a single GPU.")
 
     with session.Session() as sess:
-      v = variables.Variable(30.0, name="v")
+      v = variables.VariableV1(30.0, name="v")
       constants = []
       for i in xrange(self._num_concurrent_runs):
         constants.append(constant_op.constant(1.0, name="c%d" % i))

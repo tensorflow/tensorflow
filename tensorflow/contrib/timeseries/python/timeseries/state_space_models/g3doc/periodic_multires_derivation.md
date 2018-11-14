@@ -66,7 +66,7 @@ def make_eigval_mat_fn(to_power=1):
         if i == j:
             number = j // 2 + 1
             powersign = ((j + 1) % 2) * 2 - 1
-            return root_of_unity(matsize + 1, number=number, 
+            return root_of_unity(matsize + 1, number=number,
                                  to_power=powersign*to_power)
         else:
             return 0

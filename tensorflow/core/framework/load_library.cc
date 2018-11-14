@@ -45,7 +45,7 @@ struct Library {
 // perform initialization again, so the OpList would be empty.
 Status LoadLibrary(const char* library_filename, void** result,
                    const void** buf, size_t* len) {
-  static mutex mu;
+  static mutex mu(LINKER_INITIALIZED);
   static std::unordered_map<string, Library> loaded_libs;
   Env* env = Env::Default();
   Library library;

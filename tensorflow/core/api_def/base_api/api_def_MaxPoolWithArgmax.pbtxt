@@ -1,0 +1,51 @@
+op {
+  graph_op_name: "MaxPoolWithArgmax"
+  in_arg {
+    name: "input"
+    description: <<END
+4-D with shape `[batch, height, width, channels]`.  Input to pool over.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+The max pooled output tensor.
+END
+  }
+  out_arg {
+    name: "argmax"
+    description: <<END
+4-D.  The flattened indices of the max values chosen for each output.
+END
+  }
+  attr {
+    name: "ksize"
+    description: <<END
+The size of the window for each dimension of the input tensor.
+END
+  }
+  attr {
+    name: "strides"
+    description: <<END
+The stride of the sliding window for each dimension of the
+input tensor.
+END
+  }
+  attr {
+    name: "padding"
+    description: <<END
+The type of padding algorithm to use.
+END
+  }
+  summary: "Performs max pooling on the input and outputs both max values and indices."
+  description: <<END
+The indices in `argmax` are flattened, so that a maximum value at position
+`[b, y, x, c]` becomes flattened index
+`((b * height + y) * width + x) * channels + c`.
+
+The indices returned are always in `[0, height) x [0, width)` before flattening,
+even if padding is involved and the mathematically correct answer is outside
+(either negative or too large).  This is a bug, but fixing it is difficult to do
+in a safe backwards compatible way, especially due to flattening.
+END
+}

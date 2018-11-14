@@ -227,8 +227,10 @@ REGISTER_ADDN_CPU(Variant);
 #if GOOGLE_CUDA
 #define REGISTER_ADDN_GPU(type) REGISTER_ADDN(type, GPU)
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_ADDN_GPU);
+TF_CALL_int64(REGISTER_ADDN_GPU);
 TF_CALL_complex64(REGISTER_ADDN_GPU);
 TF_CALL_complex128(REGISTER_ADDN_GPU);
+TF_CALL_variant(REGISTER_ADDN_GPU);
 #undef REGISTER_ADDN_GPU
 
 // A special GPU kernel for int32.
@@ -240,15 +242,6 @@ REGISTER_KERNEL_BUILDER(Name("AddN")
                             .HostMemory("inputs")
                             .HostMemory("sum"),
                         AddNOp<CPUDevice, int32>);
-
-// TODO(ebrevdo): Once rendezvous has been properly set up for
-// Variants, we'll no longer need a HostMemory attribute for this case.
-REGISTER_KERNEL_BUILDER(Name("AddN")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<Variant>("T")
-                            .HostMemory("inputs")
-                            .HostMemory("sum"),
-                        AddNOp<GPUDevice, Variant>);
 
 #endif  // GOOGLE_CUDA
 

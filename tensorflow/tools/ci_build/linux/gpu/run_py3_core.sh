@@ -26,6 +26,7 @@ echo ""
 
 # Run configure.
 export PYTHON_BIN_PATH=`which python3`
+export CC_OPT_FLAGS='-mavx'
 
 export TF_NEED_CUDA=1
 export TF_CUDA_COMPUTE_CAPABILITIES=3.7
@@ -35,6 +36,7 @@ yes "" | $PYTHON_BIN_PATH configure.py
 # Run bazel test command. Double test timeouts to avoid flakes.
 bazel test --config=cuda --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-benchmark-test -k \
     --test_lang_filters=py --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 \
-    --build_tests_only --test_output=errors --local_test_jobs=8 \
+    --build_tests_only --test_output=errors --local_test_jobs=8 --config=opt \
+    --test_size_filters=small,medium \
     --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute -- \
     //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/...

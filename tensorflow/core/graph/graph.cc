@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/graph/while_context.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
@@ -33,7 +34,7 @@ namespace tensorflow {
 
 const int Graph::kControlSlot = -1;
 
-class NodeProperties {
+struct NodeProperties {
  public:
   NodeProperties(const OpDef* op_def, const NodeDef& node_def,
                  const DataTypeSlice inputs, const DataTypeSlice outputs)
@@ -79,6 +80,11 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"Size", NC_METADATA},
         {"Shape", NC_METADATA},
         {"Rank", NC_METADATA},
+        {"_ScopedAllocator", NC_SCOPED_ALLOCATOR},
+        {"CollectiveReduce", NC_COLLECTIVE},
+        {"CollectiveBcastSend", NC_COLLECTIVE},
+        {"CollectiveBcastRecv", NC_COLLECTIVE},
+        {"FakeParam", NC_FAKE_PARAM},
     });
 
 #undef REF_CLASS
@@ -137,6 +143,19 @@ void Node::Clear() {
   assigned_device_name_index_ = 0;
 }
 
+void Node::UpdateProperties() {
+  DataTypeVector inputs;
+  DataTypeVector outputs;
+  Status status =
+      InOutTypesForNode(props_->node_def, *(props_->op_def), &inputs, &outputs);
+  if (!status.ok()) {
+    LOG(ERROR) << "Failed at updating node: " << status;
+    return;
+  }
+  props_ = std::make_shared<NodeProperties>(props_->op_def, props_->node_def,
+                                            inputs, outputs);
+}
+
 const string& Node::name() const { return props_->node_def.name(); }
 const string& Node::type_string() const { return props_->node_def.op(); }
 const NodeDef& Node::def() const { return props_->node_def; }
@@ -185,6 +204,11 @@ AttrValue* Node::AddAttrHelper(const string& name) {
 void Node::ClearAttr(const string& name) {
   MaybeCopyOnWrite();
   (*props_->node_def.mutable_attr()).erase(name);
+}
+
+void Node::set_name(string name) {
+  MaybeCopyOnWrite();
+  props_->node_def.set_name(std::move(name));
 }
 
 void Node::set_requested_device(const string& device) {
@@ -261,6 +285,35 @@ Status Node::input_node(int idx, const Node** const_n) const {
   return Status::OK();
 }
 
+Status Node::input_tensor(int idx, OutputTensor* t) const {
+  const Edge* e;
+  TF_RETURN_IF_ERROR(input_edge(idx, &e));
+  DCHECK(e != nullptr);
+  *t = OutputTensor(e->src(), e->src_output());
+  return Status::OK();
+}
+
+// InputTensor
+
+bool InputTensor::operator==(const InputTensor& other) const {
+  return node == other.node && index == other.index;
+}
+
+uint64 InputTensor::Hash::operator()(InputTensor const& s) const {
+  return Hash64Combine(std::hash<const Node*>()(s.node),
+                       std::hash<int>()(s.index));
+}
+
+// OutputTensor
+
+bool OutputTensor::operator==(const OutputTensor& other) const {
+  return node == other.node && index == other.index;
+}
+
+uint64 OutputTensor::Hash::operator()(OutputTensor const& s) const {
+  return Hash64Combine(std::hash<const Node*>()(s.node),
+                       std::hash<int>()(s.index));
+}
 
 // Graph
 
@@ -294,6 +347,11 @@ Graph::Graph(const OpRegistryInterface* ops)
 
 Graph::Graph(const FunctionLibraryDefinition& flib_def)
     : Graph(flib_def.default_registry()) {
+  // Need a new-enough consumer to support the functions we add to the graph.
+  if (flib_def.ToProto().function_size() > 0 &&
+      versions_->min_consumer() < 12) {
+    versions_->set_min_consumer(12);
+  }
   Status s = ops_.AddLibrary(flib_def);
   CHECK(s.ok()) << s.error_message();
 }
@@ -335,7 +393,7 @@ Node* Graph::AddNode(const NodeDef& node_def, Status* status) {
   return node;
 }
 
-Node* Graph::CopyNode(Node* node) {
+Node* Graph::CopyNode(const Node* node) {
   DCHECK(!node->IsSource());
   DCHECK(!node->IsSink());
   Node* copy = AllocateNode(node->props_, node);
@@ -420,7 +478,81 @@ void Graph::RemoveEdge(const Edge* e) {
   --num_edges_;
 }
 
+const Edge* Graph::AddControlEdge(Node* source, Node* dest,
+                                  bool allow_duplicates) {
+  if (!allow_duplicates) {
+    for (const Edge* edge : dest->in_edges()) {
+      if (edge->IsControlEdge() && edge->src() == source) {
+        // The requested edge already exists.
+        return nullptr;
+      }
+    }
+  }
+  // Modify dest's NodeDef if necessary.
+  if (!source->IsSource() && !dest->IsSink() && !allow_duplicates) {
+    // Check if this input is already in dest's NodeDef.
+    const string new_input = strings::StrCat("^", source->name());
+    bool input_exists = false;
+    for (const string& input : dest->props_->node_def.input()) {
+      if (input == new_input) {
+        input_exists = true;
+        break;
+      }
+    }
+    if (!input_exists) {
+      dest->MaybeCopyOnWrite();
+      dest->props_->node_def.add_input(new_input);
+    }
+  }
+  return AddEdge(source, kControlSlot, dest, kControlSlot);
+}
+
+void Graph::RemoveControlEdge(const Edge* e) {
+  if (!e->src_->IsSource() && !e->dst_->IsSink()) {
+    e->dst_->MaybeCopyOnWrite();
+    string e_src_name = strings::StrCat("^", e->src_->name());
+    auto* inputs = e->dst_->props_->node_def.mutable_input();
+    for (auto it = inputs->begin(); it != inputs->end(); ++it) {
+      if (*it == e_src_name) {
+        inputs->erase(it);
+        break;
+      }
+    }
+  }
+  RemoveEdge(e);
+}
+
+namespace {
+const Edge* FindEdge(const Node* dst, int index) {
+  for (const Edge* e : dst->in_edges()) {
+    if (e->dst_input() == index) return e;
+  }
+  return nullptr;
+}
+}  // namespace
+
+Status Graph::UpdateEdge(Node* new_src, int new_src_index, Node* dst,
+                         int dst_index) {
+  TF_RETURN_IF_ERROR(IsValidOutputTensor(new_src, new_src_index));
+  TF_RETURN_IF_ERROR(IsValidInputTensor(dst, dst_index));
+  const Edge* e = FindEdge(dst, dst_index);
+  if (e == nullptr) {
+    return errors::InvalidArgument("Couldn't find edge to ",
+                                   FormatNodeForError(*dst));
+  }
+  RemoveEdge(e);
+  AddEdge(new_src, new_src_index, dst, dst_index);
+  dst->MaybeCopyOnWrite();
+  (*dst->props_->node_def.mutable_input())[dst_index] =
+      strings::StrCat(new_src->name(), ":", new_src_index);
+  return Status::OK();
+}
+
 Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
+  // Need a new-enough consumer to support the functions we add to the graph.
+  if (fdef_lib.function_size() > 0 && versions_->min_consumer() < 12) {
+    versions_->set_min_consumer(12);
+  }
   return ops_.AddLibrary(fdef_lib);
 }
 
@@ -440,6 +572,12 @@ void AddInput(NodeDef* dst, StringPiece src_name, int src_slot) {
 
 void Graph::ToGraphDef(GraphDef* graph_def) const {
   ToGraphDefSubRange(graph_def, 0);
+}
+
+GraphDef Graph::ToGraphDefDebug() const {
+  GraphDef ret;
+  ToGraphDef(&ret);
+  return ret;
 }
 
 void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
@@ -481,6 +619,11 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
         inputs[edge->dst_input()] = edge;
       }
     }
+    // Sort the control inputs for more predictable serialization.
+    std::sort(inputs.begin() + node->num_inputs(), inputs.end(),
+              [](const Edge* a, const Edge* b) -> bool {
+                return a->src()->name() < b->src()->name();
+              });
     node_def->clear_input();
     node_def->mutable_input()->Reserve(inputs.size());
 
@@ -527,22 +670,22 @@ Status Graph::IsValidNode(const Node* node) const {
 
 Status Graph::IsValidOutputTensor(const Node* node, int idx) const {
   TF_RETURN_IF_ERROR(IsValidNode(node));
-  if (idx >= node->num_outputs()) {
-    return errors::InvalidArgument("Node '", node->name(), "' (type: '",
-                                   node->op_def().name(),
-                                   "', num of outputs: ", node->num_outputs(),
-                                   ") does not have ", "output ", idx);
+  if (idx >= node->num_outputs() || idx < 0) {
+    return errors::OutOfRange("Node '", node->name(), "' (type: '",
+                              node->op_def().name(),
+                              "', num of outputs: ", node->num_outputs(),
+                              ") does not have ", "output ", idx);
   }
   return Status::OK();
 }
 
 Status Graph::IsValidInputTensor(const Node* node, int idx) const {
   TF_RETURN_IF_ERROR(IsValidNode(node));
-  if (idx >= node->num_inputs()) {
-    return errors::InvalidArgument("Node '", node->name(), "' (type: '",
-                                   node->op_def().name(),
-                                   "', num of inputs: ", node->num_inputs(),
-                                   ") does not have ", "input ", idx);
+  if (idx >= node->num_inputs() || idx < 0) {
+    return errors::OutOfRange("Node '", node->name(), "' (type: '",
+                              node->op_def().name(),
+                              "', num of inputs: ", node->num_inputs(),
+                              ") does not have ", "input ", idx);
   }
   return Status::OK();
 }
@@ -603,7 +746,7 @@ Status Graph::AddWhileContext(StringPiece frame_name,
                               std::vector<OutputTensor> body_outputs,
                               WhileContext** result) {
   auto pair = while_ctxs_.insert(std::pair<string, WhileContext>(
-      frame_name.ToString(),
+      string(frame_name),
       WhileContext(frame_name, std::move(enter_nodes), std::move(exit_nodes),
                    cond_output, std::move(body_inputs),
                    std::move(body_outputs))));
@@ -614,6 +757,14 @@ Status Graph::AddWhileContext(StringPiece frame_name,
   }
   *result = &pair.first->second;
   return Status::OK();
+}
+
+std::unordered_map<string, Node*> Graph::BuildNodeNameIndex() const {
+  std::unordered_map<string, Node*> result;
+  for (Node* n : nodes()) {
+    result[n->name()] = n;
+  }
+  return result;
 }
 
 string Edge::DebugString() const {

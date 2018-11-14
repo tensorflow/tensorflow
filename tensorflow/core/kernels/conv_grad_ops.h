@@ -175,15 +175,17 @@ template <typename Device, typename T>
 struct LaunchConv2DBackpropInputOp {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& out_backprop, const Tensor& filter,
-                  int row_stride, int col_stride, const Padding& padding,
-                  Tensor* in_backprop, TensorFormat data_format);
+                  int row_dilation, int col_dilation, int row_stride,
+                  int col_stride, const Padding& padding, Tensor* in_backprop,
+                  TensorFormat data_format);
 };
 
 template <typename Device, typename T>
 struct LaunchConv2DBackpropFilterOp {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& out_backprop, const Tensor& input,
-                  int row_stride, int col_stride, const Padding& padding,
+                  int row_dilation, int col_dilation, int row_stride,
+                  int col_stride, const Padding& padding,
                   Tensor* filter_backprop, TensorFormat data_format);
 };
 
@@ -191,8 +193,9 @@ struct LaunchConv2DBackpropFilterOp {
 template <typename T>
 struct LaunchConv2DBackpropInputOp<Eigen::GpuDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
-                  const Tensor& input, const Tensor& filter, int row_stride,
-                  int col_stride, const Padding& padding, Tensor* output,
+                  const Tensor& input, const Tensor& filter, int row_dilation,
+                  int col_dilation, int row_stride, int col_stride,
+                  const Padding& padding, Tensor* output,
                   TensorFormat data_format);
 };
 
@@ -200,7 +203,8 @@ template <typename T>
 struct LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& out_backprop, const Tensor& input,
-                  int row_stride, int col_stride, const Padding& padding,
+                  int row_dilation, int col_dilation, int row_stride,
+                  int col_stride, const Padding& padding,
                   Tensor* filter_backprop, TensorFormat data_format);
 };
 #endif  // GOOGLE_CUDA
@@ -212,6 +216,7 @@ struct ConvBackpropSpatialDimension {
   int64 filter_size;
   int64 output_size;
   int64 stride;
+  int64 dilation;
   int64 expanded_output_size;
 
   // Number of padding elements to be added before/after this dimension of
@@ -229,6 +234,16 @@ struct ConvBackpropDimensions {
 
   // Input and output feature depth.
   int64 in_depth, out_depth;
+
+  // Convenience access methods for spatial dimensions properties.
+  int64 input_size(int dim) const { return spatial_dims[dim].input_size; }
+  int64 filter_size(int dim) const { return spatial_dims[dim].filter_size; }
+  int64 output_size(int dim) const { return spatial_dims[dim].output_size; }
+  int64 stride(int dim) const { return spatial_dims[dim].stride; }
+  int64 dilation(int dim) const { return spatial_dims[dim].dilation; }
+
+  // Compute padding for the given spatial dimension.
+  int SpatialPadding(const Padding& padding, int dim) const;
 };
 
 // Common code between implementations of Conv?DBackpropInput and
@@ -242,6 +257,13 @@ Status ConvBackpropComputeDimensions(StringPiece label, int num_spatial_dims,
                                      Padding padding, TensorFormat data_format,
                                      ConvBackpropDimensions* dims);
 
+// The V2 version computes the same outputs with arbitrary dilation rate.
+// TODO(b/67112639): Merge V2 versions and the original versions eventually.
+Status ConvBackpropComputeDimensionsV2(
+    StringPiece label, int num_spatial_dims, const TensorShape& input_shape,
+    const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
+    const gtl::ArraySlice<int32>& dilations, const std::vector<int32>& strides,
+    Padding padding, TensorFormat data_format, ConvBackpropDimensions* dims);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_CONV_GRAD_OPS_H_

@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
+#include <vector>
+
 #include "tensorflow/contrib/boosted_trees/lib/utils/dropout_utils.h"
 #include "tensorflow/contrib/boosted_trees/proto/learner.pb.h"
 #include "tensorflow/contrib/boosted_trees/proto/split_info.pb.h"
+#include "tensorflow/contrib/boosted_trees/proto/tree_config.pb.h"
 #include "tensorflow/contrib/boosted_trees/resources/decision_tree_ensemble_resource.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -24,14 +27,14 @@ using tensorflow::boosted_trees::learner::LearningRateDropoutDrivenConfig;
 
 namespace boosted_trees {
 
-using boosted_trees::trees::DecisionTreeEnsembleConfig;
+namespace {
+
+using boosted_trees::learner::LearnerConfig;
+using boosted_trees::learner::LearningRateConfig;
+using boosted_trees::trees::Leaf;
 using boosted_trees::trees::TreeNode;
 using boosted_trees::trees::TreeNodeMetadata;
 using boosted_trees::utils::DropoutUtils;
-using boosted_trees::learner::LearningRateConfig;
-using boosted_trees::trees::Leaf;
-
-namespace {
 
 // SplitCandidate holds the split candidate node along with the stats.
 struct SplitCandidate {
@@ -43,6 +46,9 @@ struct SplitCandidate {
 
   // Split info.
   learner::SplitInfo split_info;
+
+  // Oblivious split info.
+  learner::ObliviousSplitInfo oblivious_split_info;
 };
 
 // Checks that the leaf is not empty.
@@ -187,12 +193,11 @@ class CenterTreeEnsembleBiasOp : public OpKernel {
 
   void Compute(OpKernelContext* const context) override {
     // Get decision tree ensemble.
-    boosted_trees::models::DecisionTreeEnsembleResource*
-        decision_tree_ensemble_resource;
+    boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
-                                           &decision_tree_ensemble_resource));
-    core::ScopedUnref unref_me(decision_tree_ensemble_resource);
-    mutex_lock l(*decision_tree_ensemble_resource->get_mutex());
+                                           &ensemble_resource));
+    core::ScopedUnref unref_me(ensemble_resource);
+    mutex_lock l(*ensemble_resource->get_mutex());
 
     // Get the stamp token.
     const Tensor* stamp_token_t;
@@ -201,7 +206,7 @@ class CenterTreeEnsembleBiasOp : public OpKernel {
 
     // Only the Chief should run this Op and it is guaranteed to be in
     // a consistent state so the stamps must always match.
-    CHECK(decision_tree_ensemble_resource->is_stamp_valid(stamp_token));
+    CHECK(ensemble_resource->is_stamp_valid(stamp_token));
 
     // Get the next stamp token.
     const Tensor* next_stamp_token_t;
@@ -210,28 +215,19 @@ class CenterTreeEnsembleBiasOp : public OpKernel {
     int64 next_stamp_token = next_stamp_token_t->scalar<int64>()();
     CHECK(stamp_token != next_stamp_token);
 
+    // Update the ensemble stamp.
+    ensemble_resource->set_stamp(next_stamp_token);
+
     // Get the delta updates.
     const Tensor* delta_updates_t;
     OP_REQUIRES_OK(context, context->input("delta_updates", &delta_updates_t));
-    OP_REQUIRES(
-        context,
-        delta_updates_t->dim_size(0) + 1 == learner_config_.num_classes(),
-        errors::InvalidArgument(
-            "Delta updates size must be consistent with label dimensions."));
     auto delta_updates = delta_updates_t->vec<float>();
-
-    // Update the ensemble stamp.
-    decision_tree_ensemble_resource->set_stamp(next_stamp_token);
+    const int64 logits_dimension = delta_updates_t->dim_size(0);
 
     // Get the bias.
-    boosted_trees::trees::Leaf* bias =
-        RetrieveBias(decision_tree_ensemble_resource);
+    boosted_trees::trees::Leaf* const bias =
+        RetrieveBias(ensemble_resource, logits_dimension);
     CHECK(bias->has_vector());
-    OP_REQUIRES(
-        context,
-        bias->vector().value_size() + 1 == learner_config_.num_classes(),
-        errors::InvalidArgument(
-            "Bias vector size must be consistent with label dimensions."));
 
     // Update the bias.
     float total_delta = 0;
@@ -248,6 +244,7 @@ class CenterTreeEnsembleBiasOp : public OpKernel {
       VLOG(1) << "Continuing to center bias, delta=" << total_delta;
     } else {
       VLOG(1) << "Done centering bias, delta=" << total_delta;
+      ensemble_resource->LastTreeMetadata()->set_is_finalized(true);
     }
     Tensor* continue_centering_t = nullptr;
     OP_REQUIRES_OK(
@@ -259,37 +256,28 @@ class CenterTreeEnsembleBiasOp : public OpKernel {
  private:
   // Helper method to retrieve the bias from the tree ensemble.
   boosted_trees::trees::Leaf* RetrieveBias(
-      boosted_trees::models::DecisionTreeEnsembleResource*
-          decision_tree_ensemble_resource) {
-    boosted_trees::trees::DecisionTreeEnsembleConfig* ensemble_config =
-        decision_tree_ensemble_resource->mutable_decision_tree_ensemble();
-    const auto num_trees = ensemble_config->trees_size();
-    CHECK(num_trees == ensemble_config->tree_metadata_size() &&
-          num_trees == ensemble_config->tree_weights_size());
+      boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource,
+      int64 logits_dimension) {
+    const int32 num_trees = ensemble_resource->num_trees();
     if (num_trees <= 0) {
-      ensemble_config->mutable_growing_metadata()->set_num_trees_attempted(1);
-      ensemble_config->mutable_growing_metadata()->set_num_layers_attempted(1);
       // Add a new bias leaf.
-      boosted_trees::trees::DecisionTreeConfig* tree_config =
-          ensemble_config->add_trees();
-      auto* leaf = tree_config->add_nodes()->mutable_leaf();
-      for (size_t idx = 0; idx + 1 < learner_config_.num_classes(); ++idx) {
-        leaf->mutable_vector()->add_value(0);
+      ensemble_resource->IncrementAttempts();
+      boosted_trees::trees::DecisionTreeConfig* const tree_config =
+          ensemble_resource->AddNewTree(1.0);
+      auto* const leaf = tree_config->add_nodes()->mutable_leaf();
+      for (size_t idx = 0; idx < logits_dimension; ++idx) {
+        leaf->mutable_vector()->add_value(0.0);
       }
-      ensemble_config->add_tree_weights(1.0);
-      boosted_trees::trees::DecisionTreeMetadata* tree_metadata =
-          ensemble_config->add_tree_metadata();
-      tree_metadata->set_num_layers_grown(1);
-      tree_metadata->set_is_finalized(true);
       return leaf;
     } else if (num_trees == 1) {
-      // Update the existing bias.
-      CHECK_EQ(ensemble_config->trees(0).nodes_size(), 1);
-      auto* node = ensemble_config->mutable_trees(0)->mutable_nodes(0);
-      CHECK(node->node_case() == TreeNode::kLeaf);
-      return node->mutable_leaf();
+      // Confirms that the only tree is a bias and returns its leaf.
+      boosted_trees::trees::DecisionTreeConfig* const tree_config =
+          ensemble_resource->LastTree();
+      CHECK_EQ(tree_config->nodes_size(), 1);
+      CHECK_EQ(tree_config->nodes(0).node_case(), TreeNode::kLeaf);
+      return tree_config->mutable_nodes(0)->mutable_leaf();
     } else {
-      CHECK(false) << "Unable to center bias on an already grown ensemble";
+      LOG(FATAL) << "Unable to center bias on an already grown ensemble";
     }
   }
 
@@ -331,12 +319,11 @@ class GrowTreeEnsembleOp : public OpKernel {
 
   void Compute(OpKernelContext* const context) override {
     // Get decision tree ensemble.
-    boosted_trees::models::DecisionTreeEnsembleResource*
-        decision_tree_ensemble_resource;
+    boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
-                                           &decision_tree_ensemble_resource));
-    core::ScopedUnref unref_me(decision_tree_ensemble_resource);
-    mutex_lock l(*decision_tree_ensemble_resource->get_mutex());
+                                           &ensemble_resource));
+    core::ScopedUnref unref_me(ensemble_resource);
+    mutex_lock l(*ensemble_resource->get_mutex());
 
     // Get the stamp token.
     const Tensor* stamp_token_t;
@@ -345,7 +332,7 @@ class GrowTreeEnsembleOp : public OpKernel {
 
     // Only the Chief should run this Op and it is guaranteed to be in
     // a consistent state so the stamps must always match.
-    CHECK(decision_tree_ensemble_resource->is_stamp_valid(stamp_token));
+    CHECK(ensemble_resource->is_stamp_valid(stamp_token));
 
     // Get the next stamp token.
     const Tensor* next_stamp_token_t;
@@ -356,14 +343,19 @@ class GrowTreeEnsembleOp : public OpKernel {
 
     // Update the ensemble stamp regardless of whether a layer
     // or tree is actually grown.
-    decision_tree_ensemble_resource->set_stamp(next_stamp_token);
+    ensemble_resource->set_stamp(next_stamp_token);
 
     // Read the learning_rate.
     const Tensor* learning_rate_t;
     OP_REQUIRES_OK(context, context->input("learning_rate", &learning_rate_t));
     float learning_rate = learning_rate_t->scalar<float>()();
 
-    // Read seed that was used for dropout.
+    // Read the weak learner type to use.
+    const Tensor* weak_learner_type_t;
+    OP_REQUIRES_OK(context,
+                   context->input("weak_learner_type", &weak_learner_type_t));
+    const int32 weak_learner_type = weak_learner_type_t->scalar<int32>()();
+
     const Tensor* seed_t;
     OP_REQUIRES_OK(context, context->input("dropout_seed", &seed_t));
     // Cast seed to uint64.
@@ -378,55 +370,67 @@ class GrowTreeEnsembleOp : public OpKernel {
     OP_REQUIRES_OK(context, context->input_list("gains", &gains_list));
     OP_REQUIRES_OK(context, context->input_list("splits", &splits_list));
 
-    boosted_trees::trees::DecisionTreeEnsembleConfig* ensemble_config =
-        decision_tree_ensemble_resource->mutable_decision_tree_ensemble();
-    ensemble_config->mutable_growing_metadata()->set_num_layers_attempted(
-        ensemble_config->growing_metadata().num_layers_attempted() + 1);
-    const int num_trees = ensemble_config->trees_size();
-    if (num_trees <= 0 ||
-        ensemble_config->tree_metadata(num_trees - 1).is_finalized()) {
-      ensemble_config->mutable_growing_metadata()->set_num_trees_attempted(
-          ensemble_config->growing_metadata().num_trees_attempted() + 1);
-    }
+    // Increment attempt stats.
+    ensemble_resource->IncrementAttempts();
 
     // Find best splits for each active partition.
     std::map<int32, SplitCandidate> best_splits;
-    FindBestSplitsPerPartition(context, partition_ids_list, gains_list,
-                               splits_list, &best_splits);
-
+    switch (weak_learner_type) {
+      case LearnerConfig::NORMAL_DECISION_TREE: {
+        FindBestSplitsPerPartitionNormal(context, partition_ids_list,
+                                         gains_list, splits_list, &best_splits);
+        break;
+      }
+      case LearnerConfig::OBLIVIOUS_DECISION_TREE: {
+        FindBestSplitOblivious(context, gains_list, splits_list, &best_splits);
+        break;
+      }
+    }
     // No-op if no new splits can be considered.
     if (best_splits.empty()) {
       LOG(WARNING) << "Not growing tree ensemble as no good splits were found.";
       return;
     }
 
-    // Update and retrieve the growable tree with its metadata.
-    boosted_trees::trees::DecisionTreeConfig* tree_config;
-    boosted_trees::trees::DecisionTreeMetadata* tree_metadata;
-
-    // Updates the tree. If the tree is fully built and dropout was applied, it
-    // also adjusts the weights of dropped and the last tree.
-    std::tie(tree_config, tree_metadata) = UpdateAndRetrieveGrowableTree(
-        decision_tree_ensemble_resource, learning_rate, dropout_seed);
-
+    // Get the max tree depth.
+    const Tensor* max_tree_depth_t;
+    OP_REQUIRES_OK(context,
+                   context->input("max_tree_depth", &max_tree_depth_t));
+    const int32 max_tree_depth = max_tree_depth_t->scalar<int32>()();
+    // Update and retrieve the growable tree.
+    // If the tree is fully built and dropout was applied, it also adjusts the
+    // weights of dropped and the last tree.
+    boosted_trees::trees::DecisionTreeConfig* const tree_config =
+        UpdateAndRetrieveGrowableTree(ensemble_resource, learning_rate,
+                                      dropout_seed, max_tree_depth,
+                                      weak_learner_type);
     // Split tree nodes.
-    for (auto& split_entry : best_splits) {
-      SplitTreeNode(split_entry.first, &split_entry.second, tree_config);
+    switch (weak_learner_type) {
+      case LearnerConfig::NORMAL_DECISION_TREE: {
+        for (auto& split_entry : best_splits) {
+          SplitTreeNode(split_entry.first, &split_entry.second, tree_config,
+                        ensemble_resource);
+        }
+        break;
+      }
+      case LearnerConfig::OBLIVIOUS_DECISION_TREE: {
+        SplitTreeLayer(&best_splits[0], tree_config, ensemble_resource);
+      }
     }
-
     // Post-prune finalized tree if needed.
     if (learner_config_.pruning_mode() ==
             boosted_trees::learner::LearnerConfig::POST_PRUNE &&
-        tree_metadata->is_finalized()) {
+        ensemble_resource->LastTreeMetadata()->is_finalized()) {
       VLOG(2) << "Post-pruning finalized tree.";
+      if (weak_learner_type == LearnerConfig::OBLIVIOUS_DECISION_TREE) {
+        LOG(FATAL) << "Post-prunning is not implemented for Oblivious trees.";
+      }
       PruneTree(tree_config);
 
       // If after post-pruning the whole tree has no gain, remove the tree
       // altogether from the ensemble.
       if (tree_config->nodes_size() <= 0) {
-        ensemble_config->mutable_trees()->RemoveLast();
-        ensemble_config->mutable_tree_weights()->RemoveLast();
-        ensemble_config->mutable_tree_metadata()->RemoveLast();
+        ensemble_resource->RemoveLastTree();
       }
     }
   }
@@ -434,7 +438,7 @@ class GrowTreeEnsembleOp : public OpKernel {
  private:
   // Helper method which effectively does a reduce over all split candidates
   // and finds the best split for each partition.
-  void FindBestSplitsPerPartition(
+  void FindBestSplitsPerPartitionNormal(
       OpKernelContext* const context, const OpInputList& partition_ids_list,
       const OpInputList& gains_list, const OpInputList& splits_list,
       std::map<int32, SplitCandidate>* best_splits) {
@@ -470,112 +474,172 @@ class GrowTreeEnsembleOp : public OpKernel {
     }
   }
 
-  void UpdateTreeWeightsIfDropout(
-      boosted_trees::trees::DecisionTreeEnsembleConfig* ensemble_config,
-      boosted_trees::trees::DecisionTreeMetadata* tree_metadata,
-      const uint64 dropout_seed) {
-    // It is possible that the tree was built with dropout. If it is the case,
-    // we need to adjust the tree weight.
-    if (dropout_was_applied_ && tree_metadata->is_finalized()) {
-      const int32 num_trees = ensemble_config->trees_size();
+  void FindBestSplitOblivious(OpKernelContext* const context,
+                              const OpInputList& gains_list,
+                              const OpInputList& splits_list,
+                              std::map<int32, SplitCandidate>* best_splits) {
+    // Find best split per partition going through every feature candidate.
+    for (int64 handler_id = 0; handler_id < num_handlers_; ++handler_id) {
+      const auto& gains = gains_list[handler_id].vec<float>();
+      const auto& splits = splits_list[handler_id].vec<string>();
+      OP_REQUIRES(context, gains.size() == 1,
+                  errors::InvalidArgument(
+                      "Gains size must be one for oblivious weak learner: ",
+                      gains.size(), " != ", 1));
+      OP_REQUIRES(context, splits.size() == 1,
+                  errors::InvalidArgument(
+                      "Splits size must be one for oblivious weak learner: ",
+                      splits.size(), " != ", 1));
+      // Get current split candidate.
+      const auto& gain = gains(0);
+      const auto& serialized_split = splits(0);
+      SplitCandidate split;
+      split.handler_id = handler_id;
+      split.gain = gain;
+      OP_REQUIRES(
+          context, split.oblivious_split_info.ParseFromString(serialized_split),
+          errors::InvalidArgument("Unable to parse oblivious split info."));
 
-      std::vector<int32> dropped_trees;
-      // Since only chief builds the trees, we are sure that the other tree
-      // weights didn't change.
-      std::vector<float> weights;
-      weights.reserve(num_trees);
-      std::vector<int32> num_updates;
-      num_updates.reserve(num_trees);
-      for (int i = 0; i < num_trees; ++i) {
-        weights.push_back(ensemble_config->tree_weights(i));
-        num_updates.push_back(
-            ensemble_config->tree_metadata(i).num_tree_weight_updates());
-      }
+      auto split_info = split.oblivious_split_info;
+      CHECK(split_info.children_size() % 2 == 0)
+          << "The oblivious split should generate an even number of children: "
+          << split_info.children_size();
 
-      std::vector<float> dropped_trees_weights;
-      // Based on seed, figure out what trees were dropped before.
-      std::unordered_set<int32> trees_not_to_drop;
-      if (center_bias_) {
-        trees_not_to_drop.insert(0);
-      }
-      // Last tree is the current tree that is built.
-      const int32 current_tree = num_trees - 1;
-      trees_not_to_drop.insert(current_tree);
-
-      const auto dropout_status = DropoutUtils::DropOutTrees(
-          dropout_seed, dropout_config_, trees_not_to_drop, weights,
-          &dropped_trees, &dropped_trees_weights);
-      CHECK(dropout_status.ok())
-          << "Can't figure out what trees were dropped out before, error is "
-          << dropout_status.error_message();
-
-      // Now we have dropped trees, update their weights and the current tree
-      // weight.
-      if (!dropped_trees.empty()) {
-        DropoutUtils::GetTreesWeightsForAddingTrees(
-            dropped_trees, dropped_trees_weights, current_tree,
-            1 /* only 1 tree was added */, &weights, &num_updates);
-
-        // Update the weights and num of updates for trees.
-        for (int i = 0; i < num_trees; ++i) {
-          ensemble_config->set_tree_weights(i, weights[i]);
-          ensemble_config->mutable_tree_metadata(i)
-              ->set_num_tree_weight_updates(num_updates[i]);
+      // If every node is pure, then we shouldn't split.
+      bool only_pure_nodes = true;
+      for (int idx = 0; idx < split_info.children_size(); idx += 2) {
+        if (IsLeafWellFormed(*split_info.mutable_children(idx)) &&
+            IsLeafWellFormed(*split_info.mutable_children(idx + 1))) {
+          only_pure_nodes = false;
+          break;
         }
+      }
+      if (only_pure_nodes) {
+        VLOG(1) << "The oblivious split does not actually split anything.";
+        continue;
+      }
+
+      // Don't consider negative splits if we're pre-pruning the tree.
+      if (learner_config_.pruning_mode() == learner::LearnerConfig::PRE_PRUNE &&
+          gain < 0) {
+        continue;
+      }
+
+      // Take the split if we don't have a candidate yet.
+      auto best_split_it = best_splits->find(0);
+      if (best_split_it == best_splits->end()) {
+        best_splits->insert(std::make_pair(0, std::move(split)));
+        continue;
+      }
+
+      // Determine if we should update best split.
+      SplitCandidate& best_split = best_split_it->second;
+      trees::TreeNode current_node = split_info.split_node();
+      trees::TreeNode best_node = best_split.oblivious_split_info.split_node();
+      if (TF_PREDICT_FALSE(gain == best_split.gain)) {
+        // Tie break on node case preferring simpler tree node types.
+        VLOG(2) << "Attempting to tie break with smaller node case. "
+                << "(current split: " << current_node.node_case()
+                << ", best split: " << best_node.node_case() << ")";
+        if (current_node.node_case() < best_node.node_case()) {
+          best_split = std::move(split);
+        } else if (current_node.node_case() == best_node.node_case()) {
+          // Tie break on handler Id.
+          VLOG(2) << "Tie breaking with higher handler Id. "
+                  << "(current split: " << handler_id
+                  << ", best split: " << best_split.handler_id << ")";
+          if (handler_id > best_split.handler_id) {
+            best_split = std::move(split);
+          }
+        }
+      } else if (gain > best_split.gain) {
+        best_split = std::move(split);
       }
     }
   }
 
-  // Helper method to update and retrieve the growable tree which is by
-  // definition the last tree in the ensemble.
-  std::pair<boosted_trees::trees::DecisionTreeConfig*,
-            boosted_trees::trees::DecisionTreeMetadata*>
-  UpdateAndRetrieveGrowableTree(
-      boosted_trees::models::DecisionTreeEnsembleResource*
-          decision_tree_ensemble_resource,
-      float learning_rate, const uint64 dropout_seed) {
-    boosted_trees::trees::DecisionTreeEnsembleConfig* ensemble_config =
-        decision_tree_ensemble_resource->mutable_decision_tree_ensemble();
-    auto num_trees = ensemble_config->trees_size();
-    CHECK(num_trees == ensemble_config->tree_metadata_size() &&
-          num_trees == ensemble_config->tree_weights_size());
-    if (num_trees <= 0 ||
-        ensemble_config->tree_metadata(num_trees - 1).is_finalized()) {
-      // Create a new tree with a no-op leaf.
-      boosted_trees::trees::DecisionTreeConfig* tree_config =
-          ensemble_config->add_trees();
-      ++num_trees;
-      VLOG(1) << "Adding layer 0 to tree " << num_trees - 1
-              << " of ensemble of " << num_trees << " trees.";
-      tree_config->add_nodes()->mutable_leaf();
-      ensemble_config->add_tree_weights(learning_rate);
-      boosted_trees::trees::DecisionTreeMetadata* tree_metadata =
-          ensemble_config->add_tree_metadata();
-      tree_metadata->set_num_layers_grown(1);
-      tree_metadata->set_is_finalized(
-          learner_config_.constraints().max_tree_depth() <= 1);
-      tree_metadata->set_num_tree_weight_updates(1);
+  void UpdateTreeWeightsIfDropout(
+      boosted_trees::models::DecisionTreeEnsembleResource* const
+          ensemble_resource,
+      const uint64 dropout_seed) {
+    // It is possible that the tree was built with dropout. If it is the case,
+    // we need to adjust the tree weight, or bail out.
+    if (!dropout_was_applied_ ||
+        !ensemble_resource->LastTreeMetadata()->is_finalized()) {
+      return;
+    }
+    const int32 num_trees = ensemble_resource->num_trees();
 
-      UpdateTreeWeightsIfDropout(ensemble_config, tree_metadata, dropout_seed);
-      return std::make_pair(tree_config, tree_metadata);
+    // Based on seed, figure out what trees were dropped before.
+    std::unordered_set<int32> trees_not_to_drop;
+    if (center_bias_) {
+      trees_not_to_drop.insert(0);
+    }
+    // Last tree is the current tree that is built.
+    const int32 current_tree = num_trees - 1;
+    trees_not_to_drop.insert(current_tree);
+
+    // Since only chief builds the trees, we are sure that the other tree
+    // weights didn't change.
+    std::vector<float> weights = ensemble_resource->GetTreeWeights();
+    std::vector<int32> dropped_trees;
+    std::vector<float> dropped_trees_weights;
+    const auto dropout_status = DropoutUtils::DropOutTrees(
+        dropout_seed, dropout_config_, trees_not_to_drop, weights,
+        &dropped_trees, &dropped_trees_weights);
+    CHECK(dropout_status.ok())
+        << "Can't figure out what trees were dropped out before, error is "
+        << dropout_status.error_message();
+
+    // Now we have dropped trees, update their weights and the current tree
+    // weight.
+    if (!dropped_trees.empty()) {
+      std::vector<int32> increment_num_updates(num_trees, 0);
+      DropoutUtils::GetTreesWeightsForAddingTrees(
+          dropped_trees, dropped_trees_weights, current_tree,
+          1 /* only 1 tree was added */, &weights, &increment_num_updates);
+
+      // Update the weights and num of updates for trees.
+      for (int i = 0; i < num_trees; ++i) {
+        ensemble_resource->SetTreeWeight(i, weights[i],
+                                         increment_num_updates[i]);
+      }
+    }
+  }
+
+  // Helper method to update the growable tree which is by definition the last
+  // tree in the ensemble.
+  boosted_trees::trees::DecisionTreeConfig* UpdateAndRetrieveGrowableTree(
+      boosted_trees::models::DecisionTreeEnsembleResource* const
+          ensemble_resource,
+      const float learning_rate, const uint64 dropout_seed,
+      const int32 max_tree_depth, const int32 weak_learner_type) {
+    const auto num_trees = ensemble_resource->num_trees();
+    if (num_trees <= 0 ||
+        ensemble_resource->LastTreeMetadata()->is_finalized()) {
+      // Create a new tree with a no-op leaf.
+      boosted_trees::trees::DecisionTreeConfig* const tree_config =
+          ensemble_resource->AddNewTree(learning_rate);
+      VLOG(1) << "Adding layer #0 to tree #" << num_trees << " of ensemble of "
+              << num_trees + 1 << " trees.";
+      tree_config->add_nodes()->mutable_leaf();
+      boosted_trees::trees::DecisionTreeMetadata* const tree_metadata =
+          ensemble_resource->LastTreeMetadata();
+      tree_metadata->set_is_finalized(max_tree_depth <= 1);
+      tree_metadata->set_num_tree_weight_updates(1);
     } else {
       // The growable tree is by definition the last tree in the ensemble.
-      boosted_trees::trees::DecisionTreeMetadata* tree_metadata =
-          ensemble_config->mutable_tree_metadata(num_trees - 1);
-      auto num_layers_grown = tree_metadata->num_layers_grown();
-      VLOG(1) << "Adding layer " << num_layers_grown << " to tree "
+      boosted_trees::trees::DecisionTreeMetadata* const tree_metadata =
+          ensemble_resource->LastTreeMetadata();
+      const auto new_num_layers = tree_metadata->num_layers_grown() + 1;
+      VLOG(1) << "Adding layer #" << new_num_layers - 1 << " to tree #"
               << num_trees - 1 << " of ensemble of " << num_trees << " trees.";
       // Update growable tree metadata.
-      ++num_layers_grown;
-      tree_metadata->set_num_layers_grown(num_layers_grown);
-      tree_metadata->set_is_finalized(
-          num_layers_grown >= learner_config_.constraints().max_tree_depth());
-      auto* tree_config = ensemble_config->mutable_trees(num_trees - 1);
-
-      UpdateTreeWeightsIfDropout(ensemble_config, tree_metadata, dropout_seed);
-
-      return std::make_pair(tree_config, tree_metadata);
+      tree_metadata->set_num_layers_grown(new_num_layers);
+      tree_metadata->set_is_finalized(new_num_layers >= max_tree_depth);
     }
+    UpdateTreeWeightsIfDropout(ensemble_resource, dropout_seed);
+    return ensemble_resource->LastTree();
   }
 
   // Helper method to merge leaf weights as the tree is being grown.
@@ -586,6 +650,12 @@ class GrowTreeEnsembleOp : public OpKernel {
     if (learner_config_.growing_mode() ==
         boosted_trees::learner::LearnerConfig::WHOLE_TREE) {
       // No merging occurs when building a whole tree at a time.
+      return dest;
+    }
+
+    if (dest->leaf_case() == boosted_trees::trees::Leaf::LEAF_NOT_SET) {
+      // No merging is required. Just copy the source weights;
+      *dest = source;
       return dest;
     }
 
@@ -647,8 +717,10 @@ class GrowTreeEnsembleOp : public OpKernel {
 
   // Helper method to split a tree node and append its respective
   // leaf children given the split candidate.
-  void SplitTreeNode(const int32 node_id, SplitCandidate* split,
-                     boosted_trees::trees::DecisionTreeConfig* tree_config) {
+  void SplitTreeNode(
+      const int32 node_id, SplitCandidate* split,
+      boosted_trees::trees::DecisionTreeConfig* tree_config,
+      boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource) {
     // No-op if we have no real node.
     CHECK(node_id < tree_config->nodes_size())
         << "Invalid node " << node_id << " to split.";
@@ -688,8 +760,76 @@ class GrowTreeEnsembleOp : public OpKernel {
     // Replace node in tree.
     (*tree_config->mutable_nodes(node_id)) =
         *split->split_info.mutable_split_node();
+    if (learner_config_.constraints().max_number_of_unique_feature_columns()) {
+      ensemble_resource->MaybeAddUsedHandler(split->handler_id);
+    }
   }
 
+  void SplitTreeLayer(
+      SplitCandidate* split,
+      boosted_trees::trees::DecisionTreeConfig* tree_config,
+      boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource) {
+    int depth = 0;
+    while (depth < tree_config->nodes_size() &&
+           tree_config->nodes(depth).node_case() != TreeNode::kLeaf) {
+      depth++;
+    }
+    CHECK(tree_config->nodes_size() > 0)
+        << "A tree must have at least one dummy leaf.";
+    // The number of new children.
+    int num_children = 1 << (depth + 1);
+    auto split_info = split->oblivious_split_info;
+    CHECK(num_children >= split_info.children_size())
+        << "Too many new children, expected <= " << num_children << " and got "
+        << split_info.children_size();
+    std::vector<trees::Leaf> new_leaves;
+    new_leaves.reserve(num_children);
+    int next_id = 0;
+    for (int idx = 0; idx < num_children / 2; idx++) {
+      trees::Leaf old_leaf =
+          *tree_config->mutable_nodes(depth + idx)->mutable_leaf();
+      // Check if a split was made for this leaf.
+      if (next_id < split_info.children_parent_id_size() &&
+          depth + idx == split_info.children_parent_id(next_id)) {
+        // Add left leaf.
+        new_leaves.push_back(*MergeLeafWeights(
+            old_leaf, split_info.mutable_children(2 * next_id)));
+        // Add right leaf.
+        new_leaves.push_back(*MergeLeafWeights(
+            old_leaf, split_info.mutable_children(2 * next_id + 1)));
+        next_id++;
+      } else {
+        // If there is no split for this leaf, just duplicate it.
+        new_leaves.push_back(old_leaf);
+        new_leaves.push_back(old_leaf);
+      }
+    }
+    CHECK(next_id == split_info.children_parent_id_size());
+    TreeNodeMetadata* split_metadata =
+        split_info.mutable_split_node()->mutable_node_metadata();
+    split_metadata->set_gain(split->gain);
+
+    TreeNode new_split = *split_info.mutable_split_node();
+    // Move old children to metadata.
+    for (int idx = depth; idx < tree_config->nodes_size(); idx++) {
+      *new_split.mutable_node_metadata()->add_original_oblivious_leaves() =
+          *tree_config->mutable_nodes(idx)->mutable_leaf();
+    }
+    // Add the new split to the tree_config in place before the children start.
+    *tree_config->mutable_nodes(depth) = new_split;
+    // Add the new children
+    int nodes_size = tree_config->nodes_size();
+    for (int idx = 0; idx < num_children; idx++) {
+      if (idx + depth + 1 < nodes_size) {
+        // Update leaves that were already there.
+        *tree_config->mutable_nodes(idx + depth + 1)->mutable_leaf() =
+            new_leaves[idx];
+      } else {
+        // Add new leaves.
+        *tree_config->add_nodes()->mutable_leaf() = new_leaves[idx];
+      }
+    }
+  }
   void PruneTree(boosted_trees::trees::DecisionTreeConfig* tree_config) {
     // No-op if tree is empty.
     if (tree_config->nodes_size() <= 0) {
@@ -763,12 +903,11 @@ class TreeEnsembleStatsOp : public OpKernel {
 
   void Compute(OpKernelContext* const context) override {
     // Get decision tree ensemble.
-    boosted_trees::models::DecisionTreeEnsembleResource*
-        decision_tree_ensemble_resource;
+    boosted_trees::models::DecisionTreeEnsembleResource* ensemble_resource;
     OP_REQUIRES_OK(context, LookupResource(context, HandleFromInput(context, 0),
-                                           &decision_tree_ensemble_resource));
-    core::ScopedUnref unref_me(decision_tree_ensemble_resource);
-    tf_shared_lock l(*decision_tree_ensemble_resource->get_mutex());
+                                           &ensemble_resource));
+    core::ScopedUnref unref_me(ensemble_resource);
+    tf_shared_lock l(*ensemble_resource->get_mutex());
 
     // Get the stamp token.
     const Tensor* stamp_token_t;
@@ -777,9 +916,9 @@ class TreeEnsembleStatsOp : public OpKernel {
 
     // Only the Chief should run this Op and it is guaranteed to be in
     // a consistent state so the stamps must always match.
-    CHECK(decision_tree_ensemble_resource->is_stamp_valid(stamp_token));
+    CHECK(ensemble_resource->is_stamp_valid(stamp_token));
     const boosted_trees::trees::DecisionTreeEnsembleConfig& ensemble_config =
-        decision_tree_ensemble_resource->decision_tree_ensemble();
+        ensemble_resource->decision_tree_ensemble();
 
     // Set tree stats.
     Tensor* num_trees_t = nullptr;
@@ -794,13 +933,13 @@ class TreeEnsembleStatsOp : public OpKernel {
                    context->allocate_output("attempted_trees", TensorShape({}),
                                             &attempted_tree_t));
 
-    int num_trees = ensemble_config.trees_size();
+    const int num_trees = ensemble_resource->num_trees();
     active_tree_t->scalar<int64>()() = num_trees;
-    if (num_trees > 0 &&
-        !ensemble_config.tree_metadata(num_trees - 1).is_finalized()) {
-      --num_trees;
-    }
-    num_trees_t->scalar<int64>()() = num_trees;
+    num_trees_t->scalar<int64>()() =
+        (num_trees <= 0 ||
+         ensemble_resource->LastTreeMetadata()->is_finalized())
+            ? num_trees
+            : num_trees - 1;
     attempted_tree_t->scalar<int64>()() =
         ensemble_config.growing_metadata().num_trees_attempted();
 

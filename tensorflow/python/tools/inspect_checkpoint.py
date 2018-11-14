@@ -29,7 +29,8 @@ from tensorflow.python.platform import flags
 FLAGS = None
 
 
-def print_tensors_in_checkpoint_file(file_name, tensor_name, all_tensors):
+def print_tensors_in_checkpoint_file(file_name, tensor_name, all_tensors,
+                                     all_tensor_names=False):
   """Prints tensors in a checkpoint file.
 
   If no `tensor_name` is provided, prints the tensor names and shapes
@@ -41,14 +42,16 @@ def print_tensors_in_checkpoint_file(file_name, tensor_name, all_tensors):
     file_name: Name of the checkpoint file.
     tensor_name: Name of the tensor in the checkpoint file to print.
     all_tensors: Boolean indicating whether to print all tensors.
+    all_tensor_names: Boolean indicating whether to print all tensor names.
   """
   try:
     reader = pywrap_tensorflow.NewCheckpointReader(file_name)
-    if all_tensors:
+    if all_tensors or all_tensor_names:
       var_to_shape_map = reader.get_variable_to_shape_map()
       for key in sorted(var_to_shape_map):
         print("tensor_name: ", key)
-        print(reader.get_tensor(key))
+        if all_tensors:
+          print(reader.get_tensor(key))
     elif not tensor_name:
       print(reader.debug_string().decode("utf-8"))
     else:
@@ -94,8 +97,9 @@ def parse_numpy_printoption(kv_str):
     raise argparse.ArgumentTypeError(
         "Setting '%s' from the command line is not supported." % k)
   try:
-    v = (v_type(v_str) if v_type is not bool
-         else flags.BooleanParser().parse(v_str))
+    v = (
+        v_type(v_str)
+        if v_type is not bool else flags.BooleanParser().parse(v_str))
   except ValueError as e:
     raise argparse.ArgumentTypeError(e.message)
   np.set_printoptions(**{k: v})
@@ -104,20 +108,26 @@ def parse_numpy_printoption(kv_str):
 def main(unused_argv):
   if not FLAGS.file_name:
     print("Usage: inspect_checkpoint --file_name=checkpoint_file_name "
-          "[--tensor_name=tensor_to_print]")
+          "[--tensor_name=tensor_to_print] "
+          "[--all_tensors] "
+          "[--all_tensor_names] "
+          "[--printoptions]")
     sys.exit(1)
   else:
     print_tensors_in_checkpoint_file(FLAGS.file_name, FLAGS.tensor_name,
-                                     FLAGS.all_tensors)
+                                     FLAGS.all_tensors, FLAGS.all_tensor_names)
 
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
   parser.register("type", "bool", lambda v: v.lower() == "true")
   parser.add_argument(
-      "--file_name", type=str, default="", help="Checkpoint filename. "
-                    "Note, if using Checkpoint V2 format, file_name is the "
-                    "shared prefix between all files in the checkpoint.")
+      "--file_name",
+      type=str,
+      default="",
+      help="Checkpoint filename. "
+      "Note, if using Checkpoint V2 format, file_name is the "
+      "shared prefix between all files in the checkpoint.")
   parser.add_argument(
       "--tensor_name",
       type=str,
@@ -129,7 +139,14 @@ if __name__ == "__main__":
       const=True,
       type="bool",
       default=False,
-      help="If True, print the values of all the tensors.")
+      help="If True, print the names and values of all the tensors.")
+  parser.add_argument(
+      "--all_tensor_names",
+      nargs="?",
+      const=True,
+      type="bool",
+      default=False,
+      help="If True, print the names of all the tensors.")
   parser.add_argument(
       "--printoptions",
       nargs="*",

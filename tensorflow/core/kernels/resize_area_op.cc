@@ -149,7 +149,7 @@ class ResizeAreaOp : public OpKernel {
 
     if (!context->status().ok()) return;
 
-    typename TTypes<T, 4>::ConstTensor input_data = input.tensor<T, 4>();
+    typename TTypes<T, 4>::ConstTensor input_data(input.tensor<T, 4>());
 
     // Precompute values used when iterating over x coordinates within a row.
     // Note that it may be useful to cache x_interps for a given
@@ -190,8 +190,7 @@ class ResizeAreaOp : public OpKernel {
   void ComputeLoop(const ImageResizerState& st,
                    const std::vector<CachedInterpolation>& x_interps,
                    typename TTypes<T, 4>::ConstTensor input_data) {
-    typename TTypes<float, 4>::Tensor output_data =
-        st.output->tensor<float, 4>();
+    TTypes<float, 4>::Tensor output_data = st.output->tensor<float, 4>();
 
     // When using this algorithm for downsizing, the target pixel value is the
     // weighted average of all the source pixels. The weight is determined by
@@ -272,7 +271,7 @@ class ResizeAreaOp : public OpKernel {
 
  private:
   static EIGEN_ALWAYS_INLINE int64 Bound(int64 val, int64 limit) {
-    return std::min(limit - 1ll, std::max(0ll, val));
+    return std::min(limit - 1ll, std::max(int64{0}, val));
   }
 
   bool align_corners_;

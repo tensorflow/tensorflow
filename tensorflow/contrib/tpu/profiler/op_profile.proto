@@ -4,23 +4,29 @@ package tensorflow.tpu.op_profile;
 
 // Profile is the top-level data that summarizes a program.
 message Profile {
+  reserved 2;
+  reserved "by_program_structure";
+  reserved 3;
+  reserved "per_program";
   // Root of a profile broken down by instruction category.
   Node by_category = 1;
-  // Root of a profile broken down by program structure.
-  Node by_program_structure = 2;
+  // Root of a profile broken down by program.
+  Node by_program = 4;
 }
 
 // An entry in the profile tree. (An instruction, or set of instructions).
 message Node {
   string name = 1;      // Semantics depend on contents.
   Metrics metrics = 2;  // May be omitted e.g. for fused instructions.
-  repeated Node children = 3;
+  repeated Node children = 3;  // Subjected to pruning.
 
   // Details about what this node represents.
   oneof contents {
     InstructionCategory category = 4;
     XLAInstruction xla = 5;
   }
+
+  int32 num_children = 6;  // Total number of children before pruning.
   // A category of XLA instructions.
   // name is a descriptive string, like "data formatting".
   message InstructionCategory {
@@ -60,6 +66,11 @@ message Metrics {
   //  - it does not reveal the peak core FLOPS of the hardware
   double flops = 2;
 
+  // The memory bandwidth used to load operands, as a fraction of
+  // thereotical memory bandwidth on the specific hardware.
+  double memory_bandwidth = 3;
+
   double raw_time = 11;   // Elapsed core-time in picoseconds.
   double raw_flops = 12;  // Total floating-point operations performed.
+  double raw_bytes_accessed = 13;  // Total bytes accessed (include read/write).
 }

@@ -37,6 +37,7 @@ import android.os.HandlerThread;
 import android.os.Trace;
 import android.util.Size;
 import android.view.KeyEvent;
+import android.view.Surface;
 import android.view.WindowManager;
 import android.widget.Toast;
 import java.nio.ByteBuffer;
@@ -332,8 +333,12 @@ public abstract class CameraActivity extends Activity
           continue;
         }
 
-        useCamera2API = isHardwareLevelSupported(characteristics,
-            CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
+        // Fallback to camera1 API for internal cameras that don't have full support.
+        // This should help with legacy situations where using the camera2 API causes
+        // distorted or otherwise broken previews.
+        useCamera2API = (facing == CameraCharacteristics.LENS_FACING_EXTERNAL)
+            || isHardwareLevelSupported(characteristics, 
+                                        CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
         LOGGER.i("Camera API lv2?: %s", useCamera2API);
         return cameraId;
       }
@@ -346,6 +351,10 @@ public abstract class CameraActivity extends Activity
 
   protected void setFragment() {
     String cameraId = chooseCamera();
+    if (cameraId == null) {
+      Toast.makeText(this, "No Camera Detected", Toast.LENGTH_SHORT).show();
+      finish();
+    }
 
     Fragment fragment;
     if (useCamera2API) {
@@ -411,7 +420,8 @@ public abstract class CameraActivity extends Activity
 
   @Override
   public boolean onKeyDown(final int keyCode, final KeyEvent event) {
-    if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+    if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP
+            || keyCode == KeyEvent.KEYCODE_BUTTON_L1 || keyCode == KeyEvent.KEYCODE_DPAD_CENTER) {
       debug = !debug;
       requestRender();
       onSetDebug(debug);
@@ -423,6 +433,19 @@ public abstract class CameraActivity extends Activity
   protected void readyForNextImage() {
     if (postInferenceCallback != null) {
       postInferenceCallback.run();
+    }
+  }
+
+  protected int getScreenOrientation() {
+    switch (getWindowManager().getDefaultDisplay().getRotation()) {
+      case Surface.ROTATION_270:
+        return 270;
+      case Surface.ROTATION_180:
+        return 180;
+      case Surface.ROTATION_90:
+        return 90;
+      default:
+        return 0;
     }
   }
 

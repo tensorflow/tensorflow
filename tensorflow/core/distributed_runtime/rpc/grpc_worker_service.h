@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_
 
+#include "tensorflow/core/distributed_runtime/recent_request_ids.h"
 #include "tensorflow/core/distributed_runtime/worker.h"
 
 namespace grpc {
@@ -26,12 +27,13 @@ class ServerBuilder;
 namespace tensorflow {
 
 class AsyncServiceInterface;
+class ConfigProto;
 struct WorkerEnv;
 struct WorkerSession;
 
 class GrpcWorker : public Worker {
  public:
-  GrpcWorker(WorkerEnv* env);
+  GrpcWorker(WorkerEnv* env, const ConfigProto& config);
 
   // Specialized version of RecvTensor for gRPC, which avoids a copy.
   virtual void GrpcRecvTensorAsync(CallOptions* opts,
@@ -39,10 +41,21 @@ class GrpcWorker : public Worker {
                                    ::grpc::ByteBuffer* response,
                                    StatusCallback done);
 
+  virtual void LoggingAsync(const LoggingRequest* request,
+                            LoggingResponse* response, StatusCallback done);
+
+  virtual void RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
+                            RecvBufResponse* response, StatusCallback done);
+
   WorkerEnv* env();
+
+ private:
+  RecentRequestIds recent_request_ids_;
+  const int32 recv_buf_max_chunk_;
 };
 
-std::unique_ptr<GrpcWorker> NewGrpcWorker(WorkerEnv* worker_env);
+std::unique_ptr<GrpcWorker> NewGrpcWorker(WorkerEnv* worker_env,
+                                          const ConfigProto& config);
 
 // Returns an implementation of WorkerService rpc service.
 std::unique_ptr<AsyncServiceInterface> NewGrpcWorkerService(
@@ -50,4 +63,4 @@ std::unique_ptr<AsyncServiceInterface> NewGrpcWorkerService(
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_

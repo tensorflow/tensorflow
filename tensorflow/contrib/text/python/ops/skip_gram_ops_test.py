@@ -63,7 +63,7 @@ class SkipGramOpsTest(test.TestCase):
         (b"jumps", b"brown"),
         (b"jumps", b"fox"),
     ])
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(expected_tokens, tokens.eval())
       self.assertAllEqual(expected_labels, labels.eval())
 
@@ -94,7 +94,7 @@ class SkipGramOpsTest(test.TestCase):
         (b"jumps", b"fox"),
         (b"jumps", b"jumps"),
     ])
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(expected_tokens, tokens.eval())
       self.assertAllEqual(expected_labels, labels.eval())
 
@@ -105,7 +105,7 @@ class SkipGramOpsTest(test.TestCase):
     # If emit_self_as_target is False (default), output will be empty.
     tokens, labels = text.skip_gram_sample(
         input_tensor, min_skips=0, max_skips=0, emit_self_as_target=False)
-    with self.test_session():
+    with self.cached_session():
       self.assertEqual(0, tokens.eval().size)
       self.assertEqual(0, labels.eval().size)
 
@@ -117,7 +117,7 @@ class SkipGramOpsTest(test.TestCase):
         (b"quick", b"quick"),
         (b"brown", b"brown"),
     ])
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(expected_tokens, tokens.eval())
       self.assertAllEqual(expected_labels, labels.eval())
 
@@ -134,7 +134,7 @@ class SkipGramOpsTest(test.TestCase):
         (b"brown", b"the"),
         (b"brown", b"quick"),
     ])
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(expected_tokens, tokens.eval())
       self.assertAllEqual(expected_labels, labels.eval())
 
@@ -150,7 +150,7 @@ class SkipGramOpsTest(test.TestCase):
         (b"quick", b"brown"),
         (b"brown", b"quick"),
     ])
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(expected_tokens, tokens.eval())
       self.assertAllEqual(expected_labels, labels.eval())
 
@@ -165,7 +165,7 @@ class SkipGramOpsTest(test.TestCase):
         (b"quick", b"brown"),
         (b"brown", b"quick"),
     ])
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(expected_tokens, tokens.eval())
       self.assertAllEqual(expected_labels, labels.eval())
 
@@ -196,7 +196,7 @@ class SkipGramOpsTest(test.TestCase):
         (b"over", b"fox"),
         (b"over", b"jumps"),
     ])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tokens_eval, labels_eval = sess.run([tokens, labels])
       self.assertAllEqual(expected_tokens, tokens_eval)
       self.assertAllEqual(expected_labels, labels_eval)
@@ -222,7 +222,7 @@ class SkipGramOpsTest(test.TestCase):
     tokens_2, labels_2 = text.skip_gram_sample(
         input_tensor, min_skips=1, max_skips=5)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tokens_1_eval, labels_1_eval, tokens_2_eval, labels_2_eval = sess.run(
           [tokens_1, labels_1, tokens_2, labels_2])
 
@@ -244,7 +244,7 @@ class SkipGramOpsTest(test.TestCase):
         (b"brown", b"fox"),
         (b"fox", b"brown"),
     ])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       coord = coordinator.Coordinator()
       threads = queue_runner_impl.start_queue_runners(sess=sess, coord=coord)
 
@@ -269,7 +269,7 @@ class SkipGramOpsTest(test.TestCase):
         (2, 3),
         (3, 2),
     ])
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(expected_tokens, tokens.eval())
       self.assertAllEqual(expected_labels, labels.eval())
 
@@ -286,7 +286,7 @@ class SkipGramOpsTest(test.TestCase):
     for min_skips, max_skips in invalid_skips:
       tokens, labels = text.skip_gram_sample(
           input_tensor, min_skips=min_skips, max_skips=max_skips)
-      with self.test_session() as sess, self.assertRaises(
+      with self.cached_session() as sess, self.assertRaises(
           errors.InvalidArgumentError):
         sess.run([tokens, labels])
 
@@ -338,8 +338,8 @@ class SkipGramOpsTest(test.TestCase):
     vocab_freq_table = lookup.HashTable(
         lookup.KeyValueTensorInitializer(keys, values), -1)
 
-    with self.test_session():
-      vocab_freq_table.init.run()
+    with self.cached_session():
+      vocab_freq_table.initializer.run()
 
       # No vocab_freq_table specified - output should be the same as input.
       no_table_output = skip_gram_ops._filter_input(
@@ -395,8 +395,8 @@ class SkipGramOpsTest(test.TestCase):
     vocab_freq_table = lookup.HashTable(
         lookup.KeyValueTensorInitializer(keys, values), -1)
 
-    with self.test_session():
-      vocab_freq_table.init.run()
+    with self.cached_session():
+      vocab_freq_table.initializer.run()
       output = skip_gram_ops._filter_input(
           input_tensor=input_tensor,
           vocab_freq_table=vocab_freq_table,
@@ -464,7 +464,7 @@ class SkipGramOpsTest(test.TestCase):
         (b"life", b"and"),
         (b"and", b"life"),
     ])
-    with self.test_session():
+    with self.cached_session():
       lookup_ops.tables_initializer().run()
       self.assertAllEqual(expected_tokens, tokens.eval())
       self.assertAllEqual(expected_labels, labels.eval())
@@ -510,7 +510,7 @@ class SkipGramOpsTest(test.TestCase):
         (b"to", b"life"),
         (b"life", b"to"),
     ])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       lookup_ops.tables_initializer().run()
       tokens_eval, labels_eval = sess.run([tokens, labels])
       self.assertAllEqual(expected_tokens, tokens_eval)

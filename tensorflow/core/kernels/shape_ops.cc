@@ -16,6 +16,7 @@ limitations under the License.
 // See docs in ../ops/array_ops.cc.
 
 #include "tensorflow/core/kernels/shape_ops.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/register_types.h"
 
 namespace tensorflow {
@@ -84,6 +85,7 @@ REGISTER_KERNEL_BUILDER(Name("Shape")
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 TF_CALL_bool(REGISTER_GPU_KERNEL);
+TF_CALL_variant(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 // A special GPU kernel for int32.
@@ -101,23 +103,6 @@ REGISTER_KERNEL_BUILDER(Name("Shape")
                             .HostMemory("input")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T")
-                            .TypeConstraint<int64>("out_type"),
-                        ShapeOp<int64>);
-
-// TODO(ebrevdo): Once rendezvous has been properly set up for
-// Variants, we'll no longer need a HostMemory attribute for this case.
-REGISTER_KERNEL_BUILDER(Name("Shape")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("input")
-                            .HostMemory("output")
-                            .TypeConstraint<Variant>("T")
-                            .TypeConstraint<int32>("out_type"),
-                        ShapeOp<int32>);
-REGISTER_KERNEL_BUILDER(Name("Shape")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("input")
-                            .HostMemory("output")
-                            .TypeConstraint<Variant>("T")
                             .TypeConstraint<int64>("out_type"),
                         ShapeOp<int64>);
 
@@ -245,6 +230,7 @@ REGISTER_KERNEL_BUILDER(Name("Rank")
                               .HostMemory("output"),     \
                           RankOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+TF_CALL_variant(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 // A special GPU kernel for int32 and bool.
@@ -264,14 +250,6 @@ REGISTER_KERNEL_BUILDER(Name("Rank")
                             .HostMemory("output"),
                         RankOp);
 
-// TODO(ebrevdo): Once rendezvous has been properly set up for
-// Variants, we'll no longer need a HostMemory attribute for this case.
-REGISTER_KERNEL_BUILDER(Name("Rank")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<Variant>("T")
-                            .HostMemory("input")
-                            .HostMemory("output"),
-                        RankOp);
 #endif  // GOOGLE_CUDA
 
 // Size ------------------------------------------
@@ -302,6 +280,7 @@ REGISTER_KERNEL_BUILDER(Name("Size")
                           SizeOp<int64>);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 TF_CALL_bool(REGISTER_GPU_KERNEL);
+TF_CALL_variant(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 // A special GPU kernel for int32.
@@ -322,22 +301,6 @@ REGISTER_KERNEL_BUILDER(Name("Size")
                             .HostMemory("output"),
                         SizeOp<int64>);
 
-// TODO(ebrevdo): Once rendezvous has been properly set up for
-// Variants, we'll no longer need a HostMemory attribute for this case.
-REGISTER_KERNEL_BUILDER(Name("Size")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<Variant>("T")
-                            .TypeConstraint<int32>("out_type")
-                            .HostMemory("input")
-                            .HostMemory("output"),
-                        SizeOp<int32>);
-REGISTER_KERNEL_BUILDER(Name("Size")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<Variant>("T")
-                            .TypeConstraint<int64>("out_type")
-                            .HostMemory("input")
-                            .HostMemory("output"),
-                        SizeOp<int64>);
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
@@ -379,7 +342,12 @@ REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                             .Device(DEVICE_CPU)
                             .HostMemory("dim")
                             .TypeConstraint<int32>("Tdim"),
-                        ExpandDimsOp);
+                        ExpandDimsOp<int32>);
+REGISTER_KERNEL_BUILDER(Name("ExpandDims")
+                            .Device(DEVICE_CPU)
+                            .HostMemory("dim")
+                            .TypeConstraint<int64>("Tdim"),
+                        ExpandDimsOp<int64>);
 
 #if GOOGLE_CUDA
 #define REGISTER_GPU_KERNEL(type)                            \
@@ -388,7 +356,13 @@ REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                               .TypeConstraint<type>("T")     \
                               .TypeConstraint<int32>("Tdim") \
                               .HostMemory("dim"),            \
-                          ExpandDimsOp);
+                          ExpandDimsOp<int32>);              \
+  REGISTER_KERNEL_BUILDER(Name("ExpandDims")                 \
+                              .Device(DEVICE_GPU)            \
+                              .TypeConstraint<type>("T")     \
+                              .TypeConstraint<int64>("Tdim") \
+                              .HostMemory("dim"),            \
+                          ExpandDimsOp<int64>);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
 TF_CALL_bool(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
@@ -400,7 +374,15 @@ REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                             .HostMemory("input")
                             .HostMemory("dim")
                             .HostMemory("output"),
-                        ExpandDimsOp);
+                        ExpandDimsOp<int32>);
+REGISTER_KERNEL_BUILDER(Name("ExpandDims")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int64>("Tdim")
+                            .HostMemory("input")
+                            .HostMemory("dim")
+                            .HostMemory("output"),
+                        ExpandDimsOp<int64>);
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
@@ -410,7 +392,13 @@ REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                               .TypeConstraint<type>("T")     \
                               .TypeConstraint<int32>("Tdim") \
                               .HostMemory("dim"),            \
-                          ExpandDimsOp);
+                          ExpandDimsOp<int32>);              \
+  REGISTER_KERNEL_BUILDER(Name("ExpandDims")                 \
+                              .Device(DEVICE_SYCL)           \
+                              .TypeConstraint<type>("T")     \
+                              .TypeConstraint<int64>("Tdim") \
+                              .HostMemory("dim"),            \
+                          ExpandDimsOp<int64>);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_KERNEL);
 TF_CALL_bool(REGISTER_SYCL_KERNEL);
 #undef REGISTER_SYCL_KERNEL
@@ -422,7 +410,15 @@ REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                             .HostMemory("input")
                             .HostMemory("dim")
                             .HostMemory("output"),
-                        ExpandDimsOp);
+                        ExpandDimsOp<int32>);
+REGISTER_KERNEL_BUILDER(Name("ExpandDims")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int64>("Tdim")
+                            .HostMemory("input")
+                            .HostMemory("dim")
+                            .HostMemory("output"),
+                        ExpandDimsOp<int64>);
 #endif  // TENSORFLOW_USE_SYCL
 
 // Squeeze ---------------------------------------
@@ -465,4 +461,96 @@ REGISTER_KERNEL_BUILDER(Name("Squeeze")
                         SqueezeOp);
 #endif  // TENSORFLOW_USE_SYCL
 
+class EnsureShapeOp : public OpKernel {
+ public:
+  explicit EnsureShapeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &expected_shape_));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx,
+                   shape_op_helpers::GetRegularOrVariantShape(ctx, 0, &shape));
+
+    if (!expected_shape_.IsCompatibleWith(shape)) {
+      ctx->SetStatus(errors::InvalidArgument(
+          "Shape of tensor ", this->def().input(0), " ", shape.DebugString(),
+          " is not compatible with expected shape ",
+          expected_shape_.DebugString(), "."));
+    }
+
+    // If shape matches, outputs the tensor.
+    if (IsRefType(ctx->input_dtype(0))) {
+      ctx->forward_ref_input_to_ref_output(0, 0);
+    } else {
+      ctx->set_output(0, ctx->input(0));
+    }
+  }
+
+  bool IsExpensive() override { return false; }
+
+ private:
+  PartialTensorShape expected_shape_;
+};
+
+// NOTE(rachelim): The kernel registrations for EnsureShapeOp are identical to
+// those of the identity op, since the ops have the same device type
+// constraints.
+REGISTER_KERNEL_BUILDER(Name("EnsureShape").Device(DEVICE_CPU), EnsureShapeOp);
+
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(type)                                       \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("EnsureShape").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      EnsureShapeOp)
+
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_KERNEL);
+
+#undef REGISTER_SYCL_KERNEL
+
+#define REGISTER_SYCL_HOST_KERNEL(type)                   \
+  REGISTER_KERNEL_BUILDER(Name("EnsureShape")             \
+                              .Device(DEVICE_SYCL)        \
+                              .HostMemory("input")        \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          EnsureShapeOp)
+
+REGISTER_SYCL_HOST_KERNEL(int32);
+REGISTER_SYCL_HOST_KERNEL(bool);
+
+#undef REGISTER_SYCL_HOST_KERNEL
+
+#endif  // TENSORFLOW_USE_SYCL
+
+#define REGISTER_GPU_KERNEL(type)                                       \
+  REGISTER_KERNEL_BUILDER(                                              \
+      Name("EnsureShape").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
+      EnsureShapeOp)
+
+TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+REGISTER_GPU_KERNEL(Variant);
+
+#undef REGISTER_GPU_KERNEL
+
+#if GOOGLE_CUDA
+// A special GPU kernel for int32 and bool.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+#define REGISTER_GPU_HOST_KERNEL(type)                    \
+  REGISTER_KERNEL_BUILDER(Name("EnsureShape")             \
+                              .Device(DEVICE_GPU)         \
+                              .HostMemory("input")        \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          EnsureShapeOp)
+
+REGISTER_GPU_HOST_KERNEL(int32);
+REGISTER_GPU_HOST_KERNEL(bool);
+REGISTER_GPU_HOST_KERNEL(string);
+REGISTER_GPU_HOST_KERNEL(ResourceHandle);
+
+#undef REGISTER_GPU_HOST_KERNEL
+
+#endif
 }  // namespace tensorflow

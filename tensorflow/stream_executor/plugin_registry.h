@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <map>
 
+#include "absl/base/macros.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/fft.h"
@@ -28,8 +29,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/plugin.h"
 #include "tensorflow/stream_executor/rng.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 namespace internal {
 class StreamExecutorInterface;
@@ -98,6 +98,7 @@ class PluginRegistry {
   // TODO(b/22689637): Deprecated/temporary. Will be deleted once all users are
   // on MultiPlatformManager / PlatformId.
   template <typename FactoryT>
+  ABSL_DEPRECATED("Use MultiPlatformManager / PlatformId instead.")
   port::StatusOr<FactoryT> GetFactory(PlatformKind platform_kind,
                                       PluginId plugin_id);
 
@@ -160,7 +161,6 @@ class PluginRegistry {
   SE_DISALLOW_COPY_AND_ASSIGN(PluginRegistry);
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_PLUGIN_REGISTRY_H_

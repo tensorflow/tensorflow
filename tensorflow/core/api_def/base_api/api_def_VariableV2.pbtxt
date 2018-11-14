@@ -1,0 +1,44 @@
+op {
+  graph_op_name: "VariableV2"
+  endpoint {
+    name: "Variable"
+  }
+  out_arg {
+    name: "ref"
+    description: <<END
+A reference to the variable tensor.
+END
+  }
+  attr {
+    name: "shape"
+    description: <<END
+The shape of the variable tensor.
+END
+  }
+  attr {
+    name: "dtype"
+    description: <<END
+The type of elements in the variable tensor.
+END
+  }
+  attr {
+    name: "container"
+    description: <<END
+If non-empty, this variable is placed in the given container.
+Otherwise, a default container is used.
+END
+  }
+  attr {
+    name: "shared_name"
+    description: <<END
+If non-empty, this variable is named in the given bucket
+with this shared_name. Otherwise, the node name is used instead.
+END
+  }
+  summary: "Holds state in the form of a tensor that persists across steps."
+  description: <<END
+Outputs a ref to the tensor state so it may be read or modified.
+TODO(zhifengc/mrry): Adds a pointer to a more detail document
+about sharing states in tensorflow.
+END
+}

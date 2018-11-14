@@ -28,7 +28,7 @@ usage="usage: $prog [-t linux|ios|android|macos|native]
         [-a architecture] [-v android_api_version]
 
 A script to build nsync for tensorflow.
-This script can be run on Linux or MacOS host platforms, and can target 
+This script can be run on Linux or MacOS host platforms, and can target
 Linux, MacOS, iOS, or Android.
 
 Options:
@@ -109,17 +109,18 @@ for arch in $archs; do
         linux)  makefile='
                         CC=${CC_PREFIX} g++
                         PLATFORM_CPPFLAGS=-DNSYNC_USE_CPP11_TIMEPOINT -DNSYNC_ATOMIC_CPP11 \
+                                          -I../../platform/c++11.futex \
                                           -I../../platform/c++11 -I../../platform/gcc \
                                           -I../../platform/posix -pthread
                         PLATFORM_CFLAGS=-std=c++11 -Werror -Wall -Wextra -pedantic
                         PLATFORM_LDFLAGS=-pthread
                         MKDEP=${CC} -M -std=c++11
-                        PLATFORM_C=../../platform/c++11/src/nsync_semaphore_mutex.cc \
+                        PLATFORM_C=../../platform/linux/src/nsync_semaphore_futex.c \
                                    ../../platform/c++11/src/per_thread_waiter.cc \
                                    ../../platform/c++11/src/yield.cc \
                                    ../../platform/c++11/src/time_rep_timespec.cc \
                                    ../../platform/c++11/src/nsync_panic.cc
-                        PLATFORM_OBJS=nsync_semaphore_mutex.o per_thread_waiter.o yield.o \
+                        PLATFORM_OBJS=nsync_semaphore_futex.o per_thread_waiter.o yield.o \
                                       time_rep_timespec.o nsync_panic.o
                         TEST_PLATFORM_C=../../platform/c++11/src/start_thread.cc
                         TEST_PLATFORM_OBJS=start_thread.o
@@ -255,6 +256,7 @@ for arch in $archs; do
                 esac
 
                 makefile='
+			AR := ${NDK_ROOT}/toolchains/'"$toolchain"'/prebuilt/'"$android_os_arch"'/bin/'"$bin_prefix"'-ar
                         CC=${CC_PREFIX} \
                            ${NDK_ROOT}/toolchains/'"$toolchain"'/prebuilt/'"$android_os_arch"'/bin/'"$bin_prefix"'-g++
                         PLATFORM_CPPFLAGS=--sysroot \
@@ -265,11 +267,11 @@ for arch in $archs; do
                                           -I$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/libs/'"$arch"'/include \
                                           -I../../platform/c++11 -I../../platform/gcc \
                                           -I../../platform/posix -pthread
-                        PLATFORM_CFLAGS=-std=c++11 -Wno-narrowing '"$march_option"' -fPIE
+                        PLATFORM_CFLAGS=-std=c++11 -Wno-narrowing '"$march_option"' -fPIE -fPIC
                         PLATFORM_LDFLAGS=-pthread
                         MKDEP=${CC} -M -std=c++11
                         PLATFORM_C=../../platform/c++11/src/nsync_semaphore_mutex.cc \
-                                   ../../platform/c++11/src/per_thread_waiter.cc \
+                                   ../../platform/posix/src/per_thread_waiter.c \
                                    ../../platform/c++11/src/yield.cc \
                                    ../../platform/c++11/src/time_rep_timespec.cc \
                                    ../../platform/c++11/src/nsync_panic.cc
@@ -301,6 +303,9 @@ done
 
 case "$target_platform" in
 ios)    nsync_platform_dir="$nsync_builds_dir/lipo.$target_platform.c++11"
+        if [ -d "$nsync_platform_dir" ]; then
+            rm -rf "$nsync_platform_dir"
+        fi
         mkdir "$nsync_platform_dir"
         eval lipo $platform_libs -create -output '$nsync_platform_dir/nsync.a'
         echo "$nsync_platform_dir/nsync.a"

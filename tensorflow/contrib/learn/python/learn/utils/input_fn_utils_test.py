@@ -22,10 +22,11 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
+
 class InputFnTest(test.TestCase):
 
   def test_build_default_serving_input_fn_name(self):
-    """Test case for #12755"""
+    """Test case for issue #12755."""
     f = {
         'feature':
             array_ops.placeholder(
@@ -35,5 +36,6 @@ class InputFnTest(test.TestCase):
     v = serving_input()
     self.assertTrue(isinstance(v, input_fn_utils.InputFnOps))
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
   test.main()

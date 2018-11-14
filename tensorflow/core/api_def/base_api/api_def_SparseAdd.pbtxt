@@ -1,0 +1,62 @@
+op {
+  graph_op_name: "SparseAdd"
+  in_arg {
+    name: "a_indices"
+    description: <<END
+2-D.  The `indices` of the first `SparseTensor`, size `[nnz, ndims]` Matrix.
+END
+  }
+  in_arg {
+    name: "a_values"
+    description: <<END
+1-D.  The `values` of the first `SparseTensor`, size `[nnz]` Vector.
+END
+  }
+  in_arg {
+    name: "a_shape"
+    description: <<END
+1-D.  The `shape` of the first `SparseTensor`, size `[ndims]` Vector.
+END
+  }
+  in_arg {
+    name: "b_indices"
+    description: <<END
+2-D.  The `indices` of the second `SparseTensor`, size `[nnz, ndims]` Matrix.
+END
+  }
+  in_arg {
+    name: "b_values"
+    description: <<END
+1-D.  The `values` of the second `SparseTensor`, size `[nnz]` Vector.
+END
+  }
+  in_arg {
+    name: "b_shape"
+    description: <<END
+1-D.  The `shape` of the second `SparseTensor`, size `[ndims]` Vector.
+END
+  }
+  in_arg {
+    name: "thresh"
+    description: <<END
+0-D.  The magnitude threshold that determines if an output value/index
+pair takes space.
+END
+  }
+  summary: "Adds two `SparseTensor` objects to produce another `SparseTensor`."
+  description: <<END
+The input `SparseTensor` objects' indices are assumed ordered in standard
+lexicographic order.  If this is not the case, before this step run
+`SparseReorder` to restore index ordering.
+
+By default, if two values sum to zero at some index, the output `SparseTensor`
+would still include that particular location in its index, storing a zero in the
+corresponding value slot.  To override this, callers can specify `thresh`,
+indicating that if the sum has a magnitude strictly smaller than `thresh`, its
+corresponding value and index would then not be included.  In particular,
+`thresh == 0` (default) means everything is kept and actual thresholding happens
+only for a positive value.
+
+In the following shapes, `nnz` is the count after taking `thresh` into account.
+END
+}

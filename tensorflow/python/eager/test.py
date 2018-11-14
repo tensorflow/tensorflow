@@ -18,11 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.eager import context as _context
+from tensorflow.python.framework import ops as _ops
 from tensorflow.python.platform import test as _test
 from tensorflow.python.platform.test import *  # pylint: disable=wildcard-import
 
 
+# TODO(akshayka): Do away with this file.
 def main(argv=None):
-  _context.enable_eager_execution()
+  _ops.enable_eager_execution()
   _test.main(argv)

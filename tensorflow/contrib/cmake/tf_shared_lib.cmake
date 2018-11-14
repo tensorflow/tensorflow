@@ -27,6 +27,7 @@ if(WIN32)
       $<TARGET_OBJECTS:tf_cc>
       $<TARGET_OBJECTS:tf_cc_framework>
       $<TARGET_OBJECTS:tf_cc_ops>
+      $<TARGET_OBJECTS:tf_cc_while_loop>
       $<TARGET_OBJECTS:tf_core_lib>
       $<TARGET_OBJECTS:tf_core_cpu>
       $<TARGET_OBJECTS:tf_core_framework>
@@ -44,15 +45,20 @@ if(WIN32)
       $<TARGET_FILE:tensorflow_static>
       $<TARGET_FILE:tf_protos_cc>
   )
-    
-  set(tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/tensorflow.def")
-  set_source_files_properties(${tensorflow_deffile} PROPERTIES GENERATED TRUE)
 
+  if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+    set(tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/tensorflow.def")
+  else()
+    set(tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/tensorflow.def")
+  endif()
+  set_source_files_properties(${tensorflow_deffile} PROPERTIES GENERATED TRUE)
+  math(EXPR tensorflow_target_bitness "${CMAKE_SIZEOF_VOID_P}*8")
   add_custom_command(TARGET tensorflow_static POST_BUILD
       COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/create_def_file.py
           --input "${tensorflow_static_dependencies}"
           --output "${tensorflow_deffile}"
           --target tensorflow.dll
+          --bitness "${tensorflow_target_bitness}"
   )
 endif(WIN32)
 
@@ -63,6 +69,7 @@ add_library(tensorflow SHARED
     $<TARGET_OBJECTS:tf_cc>
     $<TARGET_OBJECTS:tf_cc_framework>
     $<TARGET_OBJECTS:tf_cc_ops>
+    $<TARGET_OBJECTS:tf_cc_while_loop>
     $<TARGET_OBJECTS:tf_core_lib>
     $<TARGET_OBJECTS:tf_core_cpu>
     $<TARGET_OBJECTS:tf_core_framework>
@@ -71,7 +78,7 @@ add_library(tensorflow SHARED
     $<TARGET_OBJECTS:tf_tools_transform_graph_lib>
     $<$<BOOL:${tensorflow_ENABLE_GRPC_SUPPORT}>:$<TARGET_OBJECTS:tf_core_distributed_runtime>>
     $<TARGET_OBJECTS:tf_core_kernels>
-    $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>
+    $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<$<BOOL:${BOOL_WIN32}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>>
     $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_stream_executor>>
     ${tensorflow_deffile}
 )
@@ -92,3 +99,54 @@ endif()
 if(WIN32)
   add_dependencies(tensorflow tensorflow_static)
 endif(WIN32)
+
+target_include_directories(tensorflow PUBLIC 
+    $<INSTALL_INTERFACE:include/>)
+
+install(TARGETS tensorflow EXPORT tensorflow_export
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib)
+        
+install(EXPORT tensorflow_export
+        FILE TensorflowConfig.cmake
+        DESTINATION lib/cmake)
+
+# install necessary headers
+# tensorflow headers
+install(DIRECTORY ${tensorflow_source_dir}/tensorflow/cc/
+        DESTINATION include/tensorflow/cc
+        FILES_MATCHING PATTERN "*.h")
+install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/tensorflow/cc/
+        DESTINATION include/tensorflow/cc
+        FILES_MATCHING PATTERN "*.h")
+install(DIRECTORY ${tensorflow_source_dir}/tensorflow/core/
+        DESTINATION include/tensorflow/core
+        FILES_MATCHING PATTERN "*.h")
+install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/tensorflow/core/
+        DESTINATION include/tensorflow/core
+        FILES_MATCHING PATTERN "*.h")
+install(DIRECTORY ${tensorflow_source_dir}/tensorflow/stream_executor/
+        DESTINATION include/tensorflow/stream_executor
+        FILES_MATCHING PATTERN "*.h")
+# google protobuf headers
+install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/src/google/
+        DESTINATION include/google
+        FILES_MATCHING PATTERN "*.h")
+# Eigen directory
+install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/eigen/src/eigen/Eigen/
+        DESTINATION include/Eigen)
+# external directory
+install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/external/eigen_archive/
+        DESTINATION include/external/eigen_archive)
+# third_party eigen directory
+install(DIRECTORY ${tensorflow_source_dir}/third_party/eigen3/
+        DESTINATION include/third_party/eigen3)
+# unsupported Eigen directory
+install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/eigen/src/eigen/unsupported/Eigen/
+        DESTINATION include/unsupported/Eigen)
+# mkl
+if (tensorflow_ENABLE_MKL_SUPPORT)
+    install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/mkl/src/mkl/include/
+            DESTINATION include/mkl)
+endif (tensorflow_ENABLE_MKL_SUPPORT)

@@ -35,6 +35,7 @@ from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
@@ -112,11 +113,11 @@ class StateSpaceModelConfiguration(
       exogenous_noise_decreases: If True, exogenous regressors can "set" model
           state, decreasing uncertainty. If both this parameter and
           exogenous_noise_increases are False, exogenous regressors are ignored.
-      exogenous_feature_columns: A list of tf.contrib.layers.FeatureColumn
-          objects (for example tf.contrib.layers.embedding_column) corresponding
-          to exogenous features which provide extra information to the model but
-          are not part of the series to be predicted. Passed to
-          tf.contrib.layers.input_from_feature_columns.
+      exogenous_feature_columns: A list of `tf.feature_column`s (for example
+          `tf.feature_column.embedding_column`) corresponding to exogenous
+          features which provide extra information to the model but are not part
+          of the series to be predicted. Passed to
+          `tf.feature_column.input_layer`.
       exogenous_update_condition: A function taking two Tensor arguments `times`
           (shape [batch size]) and `features` (a dictionary mapping exogenous
           feature keys to Tensors with shapes [batch size, ...]) and returning a
@@ -232,6 +233,7 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
                             + filtering_postprocessor_names),
         predict_output_names=["mean", "covariance"],
         num_features=configuration.num_features,
+        normalize_features=True,
         dtype=configuration.dtype,
         exogenous_feature_columns=configuration.exogenous_feature_columns,
         exogenous_update_condition=configuration.exogenous_update_condition,
@@ -309,15 +311,10 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
     _, _, priors_from_time = state
     times = ops.convert_to_tensor(times)
     priors_from_time = ops.convert_to_tensor(priors_from_time)
-    with ops.control_dependencies([
-        control_flow_ops.Assert(
-            math_ops.reduce_all(priors_from_time <= times[:, 0]),
-            [priors_from_time, times[:, 0]],
-            summarize=100)
-    ]):
-      times = array_ops.identity(times)
     intra_batch_gaps = array_ops.reshape(times[:, 1:] - times[:, :-1], [-1])
-    starting_gaps = times[:, 0] - priors_from_time
+    # Ignore negative starting gaps, since there will be transient start times
+    # as inputs statistics are computed.
+    starting_gaps = math_ops.maximum(times[:, 0] - priors_from_time, 0)
     # Pre-define transition matrices raised to powers (and their sums) for every
     # gap in this window. This avoids duplicate computation (for example many
     # steps will use the transition matrix raised to the first power) and
@@ -369,20 +366,15 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
       Imputed model state corresponding to the `state` argument.
     """
     estimated_state, estimated_state_var, previous_times = state
-    catchup_times = current_times - previous_times
-    non_negative_assertion = control_flow_ops.Assert(
-        math_ops.reduce_all(catchup_times >= 0), [
-            "Negative imputation interval", catchup_times, current_times,
-            previous_times
-        ],
-        summarize=100)
-    with ops.control_dependencies([non_negative_assertion]):
-      transition_matrices, transition_noise_sums = (  # pylint: disable=unbalanced-tuple-unpacking
-          self._cached_transition_powers_and_sums(catchup_times))
-      estimated_state = self._kalman_filter.predict_state_mean(
-          estimated_state, transition_matrices)
-      estimated_state_var = self._kalman_filter.predict_state_var(
-          estimated_state_var, transition_matrices, transition_noise_sums)
+    # Ignore negative imputation intervals due to transient start time
+    # estimates.
+    catchup_times = math_ops.maximum(current_times - previous_times, 0)
+    transition_matrices, transition_noise_sums = (  # pylint: disable=unbalanced-tuple-unpacking
+        self._cached_transition_powers_and_sums(catchup_times))
+    estimated_state = self._kalman_filter.predict_state_mean(
+        estimated_state, transition_matrices)
+    estimated_state_var = self._kalman_filter.predict_state_var(
+        estimated_state_var, transition_matrices, transition_noise_sums)
     return (estimated_state, estimated_state_var,
             previous_times + catchup_times)
 
@@ -437,6 +429,13 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
           outputs=predictions)
     return (filtered_state, predictions)
 
+  def _scale_back_predictions(self, predictions):
+    """Return a window of predictions to input scale."""
+    predictions["mean"] = self._scale_back_data(predictions["mean"])
+    predictions["covariance"] = self._scale_back_variance(
+        predictions["covariance"])
+    return predictions
+
   def _prediction_step(self, current_times, state):
     """Make a prediction based on `state`.
 
@@ -458,7 +457,7 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
     """
     estimated_state, estimated_state_var, previous_times = state
     advanced_to_current_assert = control_flow_ops.Assert(
-        math_ops.reduce_all(math_ops.equal(current_times, previous_times)),
+        math_ops.reduce_all(math_ops.less_equal(current_times, previous_times)),
         ["Attempted to predict without imputation"])
     with ops.control_dependencies([advanced_to_current_assert]):
       observation_model = self.get_broadcasted_observation_model(current_times)
@@ -475,6 +474,9 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
         (self.num_features,)))
     predicted_obs_var.set_shape(current_times.get_shape().concatenate(
         (self.num_features, self.num_features)))
+    # Not scaled back to input-scale, since this also feeds into the
+    # loss. Instead, predictions are scaled back before being returned to the
+    # user in _scale_back_predictions.
     predictions = {
         "mean": predicted_obs,
         "covariance": predicted_obs_var}
@@ -509,7 +511,7 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
     estimated_state, estimated_state_covariance, previous_times = state
     state_transition = ops.convert_to_tensor(
         self.get_state_transition(), dtype=self.dtype)
-    state_dimension = state_transition.get_shape()[0].value
+    state_dimension = tensor_shape.dimension_value(state_transition.shape[0])
     # Learning the observation model would be redundant since we transform
     # `exogenous_values` to the state space via a linear transformation anyway.
     observation_model = linalg_ops.eye(
@@ -571,8 +573,9 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
     start_mean, start_covariance, previous_times = state
     with variable_scope.variable_scope("exogenous_noise_increasing_mean"):
       mean_addition = layers.fully_connected(
-          exogenous_values, start_mean.get_shape()[1].value, activation_fn=None)
-    state_dimension = start_covariance.get_shape()[1].value
+          exogenous_values,
+          tensor_shape.dimension_value(start_mean.shape[1]), activation_fn=None)
+    state_dimension = tensor_shape.dimension_value(start_covariance.shape[1])
     with variable_scope.variable_scope("exogenous_noise_increasing_covariance"):
       covariance_addition = (
           math_utils.transform_to_covariance_matrices(
@@ -711,7 +714,7 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
     """
     with variable_scope.variable_scope(self._variable_scope):
       state_dimension = ops.convert_to_tensor(
-          self.get_state_transition()).get_shape()[0].value
+          self.get_state_transition()).get_shape().dims[0].value
       if self._configuration.trainable_start_state:
         base_covariance = math_utils.variable_covariance_matrix(
             state_dimension, "prior_state_var",
@@ -722,7 +725,8 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
         # Make sure initial latent value uncertainty is at least on the same
         # scale as noise in the data.
         covariance_multiplier = math_ops.reduce_max(
-            self._input_statistics.series_start_moments.variance)
+            self._scale_variance(
+                self._input_statistics.series_start_moments.variance))
         return base_covariance * gen_math_ops.maximum(
             covariance_multiplier, 1.0)
       else:
@@ -740,7 +744,7 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
     with variable_scope.variable_scope(self._variable_scope):
       state_transition = ops.convert_to_tensor(
           self.get_state_transition(), dtype=self.dtype)
-      state_dimension = state_transition.get_shape()[0].value
+      state_dimension = state_transition.get_shape().dims[0].value
       return variable_scope.get_variable(
           name="prior_state_mean",
           shape=[state_dimension],
@@ -907,7 +911,7 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
     elif unbroadcasted_shape.ndims == 2:
       # Unbroadcasted shape [num features x state dimension]
       broadcasted_model = array_ops.tile(
-          array_ops.expand_dims(unbroadcasted_model, dim=0),
+          array_ops.expand_dims(unbroadcasted_model, axis=0),
           [array_ops.shape(times)[0], 1, 1])
     elif unbroadcasted_shape.ndims == 3:
       broadcasted_model = unbroadcasted_model
@@ -918,9 +922,10 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
       self, minimum_initial_variance=1e-5):
     state_noise_transform = ops.convert_to_tensor(
         self.get_noise_transform(), dtype=self.dtype)
-    state_noise_dimension = state_noise_transform.get_shape()[1].value
+    state_noise_dimension = state_noise_transform.get_shape().dims[1].value
     if self._input_statistics is not None:
-      feature_variance = self._input_statistics.series_start_moments.variance
+      feature_variance = self._scale_variance(
+          self._input_statistics.series_start_moments.variance)
       initial_transition_noise_scale = math_ops.log(
           gen_math_ops.maximum(
               math_ops.reduce_mean(feature_variance) / math_ops.cast(
@@ -945,7 +950,8 @@ class StateSpaceModel(model.SequentialTimeSeriesModel):
       if self._input_statistics is not None:
         # Get variance across the first few values in each batch for each
         # feature, for an initial observation noise (over-)estimate.
-        feature_variance = self._input_statistics.series_start_moments.variance
+        feature_variance = self._scale_variance(
+            self._input_statistics.series_start_moments.variance)
       else:
         feature_variance = None
       if feature_variance is not None:

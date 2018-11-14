@@ -26,6 +26,13 @@ limitations under the License.
 namespace xla {
 namespace primitive_util {
 
+// The number of exponent bits in a BF16 value.
+const int kBFloat16ExponentBits = 8;
+
+// The number of mantissa bits in a BF16 value. There is an implicit leading
+// 1, so there is an implicit additional bit of precision.
+const int kBFloat16MantissaBits = 7;
+
 // Returns the XLA primitive type (eg, F32) corresponding to the given
 // template parameter native type (eg, float).
 template <typename NativeT>
@@ -40,45 +47,85 @@ PrimitiveType NativeToPrimitiveType() {
 }
 
 // Declarations of specializations for each native type which correspond to a
-// XLA primitive type.
+// XLA primitive type.  As an optimization, these are declared inline in the
+// header.
 template <>
-PrimitiveType NativeToPrimitiveType<bool>();
+inline PrimitiveType NativeToPrimitiveType<bool>() {
+  return PRED;
+}
 
 // Unsigned integer
 template <>
-PrimitiveType NativeToPrimitiveType<uint8>();
+inline PrimitiveType NativeToPrimitiveType<uint8>() {
+  return U8;
+}
 
 template <>
-PrimitiveType NativeToPrimitiveType<uint16>();
+inline PrimitiveType NativeToPrimitiveType<uint16>() {
+  return U16;
+}
 
 template <>
-PrimitiveType NativeToPrimitiveType<uint32>();
+inline PrimitiveType NativeToPrimitiveType<uint32>() {
+  return U32;
+}
 
 template <>
-PrimitiveType NativeToPrimitiveType<uint64>();
+inline PrimitiveType NativeToPrimitiveType<uint64>() {
+  return U64;
+}
 
 // Signed integer
 template <>
-PrimitiveType NativeToPrimitiveType<int8>();
+inline PrimitiveType NativeToPrimitiveType<int8>() {
+  return S8;
+}
 
 template <>
-PrimitiveType NativeToPrimitiveType<int16>();
+inline PrimitiveType NativeToPrimitiveType<int16>() {
+  return S16;
+}
 
 template <>
-PrimitiveType NativeToPrimitiveType<int32>();
+inline PrimitiveType NativeToPrimitiveType<int32>() {
+  return S32;
+}
 
 template <>
-PrimitiveType NativeToPrimitiveType<int64>();
+inline PrimitiveType NativeToPrimitiveType<int64>() {
+  return S64;
+}
 
 // Floating point
 template <>
-PrimitiveType NativeToPrimitiveType<float>();
+inline PrimitiveType NativeToPrimitiveType<float>() {
+  return F32;
+}
+
 template <>
-PrimitiveType NativeToPrimitiveType<double>();
+inline PrimitiveType NativeToPrimitiveType<double>() {
+  return F64;
+}
+
 template <>
-PrimitiveType NativeToPrimitiveType<half>();
+inline PrimitiveType NativeToPrimitiveType<half>() {
+  return F16;
+}
+
+template <>
+inline PrimitiveType NativeToPrimitiveType<bfloat16>() {
+  return BF16;
+}
+
+// Complex
+template <>
+inline PrimitiveType NativeToPrimitiveType<complex64>() {
+  return C64;
+}
 
 bool IsFloatingPointType(PrimitiveType type);
+
+bool IsComplexType(PrimitiveType type);
 
 bool IsSignedIntegralType(PrimitiveType type);
 
@@ -86,8 +133,15 @@ bool IsUnsignedIntegralType(PrimitiveType type);
 
 bool IsIntegralType(PrimitiveType type);
 
+// Returns true if values of the given primitive type are held in array shapes.
+bool IsArrayType(PrimitiveType primitive_type);
+
 // Returns the number of bits in the representation for a given type.
 int BitWidth(PrimitiveType type);
+
+// Returns the real, imag component type underlying the given complex type.
+// LOG(FATAL)'s if complex_type is not complex.
+PrimitiveType ComplexComponentType(PrimitiveType complex_type);
 
 // Returns the native type (eg, float) corresponding to the given template
 // parameter XLA primitive type (eg, F32).
@@ -157,6 +211,16 @@ struct PrimitiveTypeToNative<F16> {
   using type = half;
 };
 
+template <>
+struct PrimitiveTypeToNative<BF16> {
+  using type = bfloat16;
+};
+
+// Complex
+template <>
+struct PrimitiveTypeToNative<C64> {
+  using type = complex64;
+};
 }  // namespace primitive_util
 }  // namespace xla
 

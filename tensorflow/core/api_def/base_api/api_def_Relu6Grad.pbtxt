@@ -1,0 +1,25 @@
+op {
+  graph_op_name: "Relu6Grad"
+  visibility: HIDDEN
+  in_arg {
+    name: "gradients"
+    description: <<END
+The backpropagated gradients to the corresponding Relu6 operation.
+END
+  }
+  in_arg {
+    name: "features"
+    description: <<END
+The features passed as input to the corresponding Relu6 operation, or
+its output; using either one produces the same result.
+END
+  }
+  out_arg {
+    name: "backprops"
+    description: <<END
+The gradients:
+`gradients * (features > 0) * (features < 6)`.
+END
+  }
+  summary: "Computes rectified linear 6 gradients for a Relu6 operation."
+}

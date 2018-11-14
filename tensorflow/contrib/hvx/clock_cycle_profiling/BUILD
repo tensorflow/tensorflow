@@ -13,18 +13,6 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//visibility:public"])
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 tf_cc_binary(
     name = "clock_cycle_profiling",
     testonly = 1,
@@ -52,13 +40,9 @@ tf_cc_binary(
             "//tensorflow/core:android_tensorflow_test_lib",
         ],
         "//conditions:default": [
-            "//tensorflow/core:core_cpu",
             "//tensorflow/core:lib",
-            "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
-            "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:tensorflow",
-            "//tensorflow/core:test",
         ],
     }),
 )

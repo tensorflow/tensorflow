@@ -13,13 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Operations for manipulating the binary representations of integers.
-
-@@bitwise_and
-@@bitwise_or
-@@bitwise_xor
-@@invert
-"""
+"""Operations for manipulating the binary representations of integers."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -30,12 +24,11 @@ from tensorflow.python.framework import ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_bitwise_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.util.all_util import remove_undocumented
 
 ops.NotDifferentiable("BitwiseAnd")
 ops.NotDifferentiable("BitwiseOr")
 ops.NotDifferentiable("BitwiseXor")
 ops.NotDifferentiable("Invert")
 ops.NotDifferentiable("PopulationCount")
-
-remove_undocumented(__name__)
+ops.NotDifferentiable("LeftShift")
+ops.NotDifferentiable("RightShift")

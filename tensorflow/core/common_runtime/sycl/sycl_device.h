@@ -46,8 +46,8 @@ class GSYCLInterface {
 
     if (!found_device) {
       // Currently Intel GPU is not supported
-      LOG(WARNING) << "No OpenCL GPU found that is supported by ComputeCpp, "
-                      "trying OpenCL CPU";
+      LOG(WARNING) << "No OpenCL GPU found that is supported by "
+                   << "ComputeCpp/triSYCL, trying OpenCL CPU";
     }
 
     for (const auto& device : device_list) {
@@ -59,9 +59,23 @@ class GSYCLInterface {
     }
 
     if (!found_device) {
+      LOG(WARNING) << "No OpenCL CPU found that is supported by "
+                   << "ComputeCpp/triSYCL, checking for host sycl device";
+    }
+
+    for (const auto& device : device_list) {
+      // triSYCL only supports the host device for now
+      if (device.is_host()) {
+        LOG(WARNING) << "Found SYCL host device";
+        AddDevice(device);
+        found_device = true;
+      }
+    }
+
+    if (!found_device) {
       // Currently Intel GPU is not supported
-      LOG(FATAL)
-          << "No OpenCL GPU nor CPU found that is supported by ComputeCpp";
+      LOG(FATAL) << "No SYCL host and no OpenCL GPU nor CPU"
+                 << " supported by ComputeCPP/triSYCL was found";
     } else {
       LOG(INFO) << "Found following OpenCL devices:";
       for (int i = 0; i < device_list.size(); i++) {
@@ -173,9 +187,9 @@ class GSYCLInterface {
       type = "Unknown";
     }
 
-    return strings::StrCat("id: ", device_id, ", type: ", type, ", name: ",
-                           name.c_str(), ", vendor: ", vendor.c_str(),
-                           ", profile: ", profile.c_str());
+    return strings::StrCat(
+        "id: ", device_id, ", type: ", type, ", name: ", name.c_str(),
+        ", vendor: ", vendor.c_str(), ", profile: ", profile.c_str());
   }
 };
 

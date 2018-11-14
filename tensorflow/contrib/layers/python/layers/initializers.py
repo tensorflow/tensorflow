@@ -47,7 +47,7 @@ def xavier_initializer(uniform=True, seed=None, dtype=dtypes.float32):
   Args:
     uniform: Whether to use uniform or normal distributed random initialization.
     seed: A Python integer. Used to create random seeds. See
-          @{tf.set_random_seed} for behavior.
+          `tf.set_random_seed` for behavior.
     dtype: The data type. Only floating point types are supported.
 
   Returns:
@@ -79,7 +79,8 @@ def variance_scaling_initializer(factor=2.0, mode='FAN_IN', uniform=False,
   ```
 
   * To get [Delving Deep into Rectifiers](
-     http://arxiv.org/pdf/1502.01852v1.pdf), use (Default):<br/>
+     http://arxiv.org/pdf/1502.01852v1.pdf) (also know as the "MSRA 
+     initialization"), use (Default):<br/>
     `factor=2.0 mode='FAN_IN' uniform=False`
   * To get [Convolutional Architecture for Fast Feature Embedding](
      http://arxiv.org/abs/1408.5093), use:<br/>
@@ -97,7 +98,7 @@ def variance_scaling_initializer(factor=2.0, mode='FAN_IN', uniform=False,
     mode: String.  'FAN_IN', 'FAN_OUT', 'FAN_AVG'.
     uniform: Whether to use uniform or normal distributed random initialization.
     seed: A Python integer. Used to create random seeds. See
-          @{tf.set_random_seed} for behavior.
+          `tf.set_random_seed` for behavior.
     dtype: The data type. Only floating point types are supported.
 
   Returns:
@@ -110,7 +111,7 @@ def variance_scaling_initializer(factor=2.0, mode='FAN_IN', uniform=False,
   if not dtype.is_floating:
     raise TypeError('Cannot create initializer for non-floating point type.')
   if mode not in ['FAN_IN', 'FAN_OUT', 'FAN_AVG']:
-    raise TypeError('Unknow mode %s [FAN_IN, FAN_OUT, FAN_AVG]', mode)
+    raise TypeError('Unknown mode %s [FAN_IN, FAN_OUT, FAN_AVG]', mode)
 
   # pylint: disable=unused-argument
   def _initializer(shape, dtype=dtype, partition_info=None):

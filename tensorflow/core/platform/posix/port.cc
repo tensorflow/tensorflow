@@ -13,26 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef TENSORFLOW_USE_JEMALLOC
-#include "jemalloc/jemalloc.h"
-#endif
+#include "absl/base/internal/sysinfo.h"
 
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/types.h"
+
 #if defined(__linux__) && !defined(__ANDROID__)
 #include <sched.h>
+#include <sys/sysinfo.h>
 #endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#ifdef SNAPPY
+#ifdef TF_USE_SNAPPY
 #include "snappy.h"
 #endif
-#if (defined(__APPLE__) && defined(__MACH__)) || defined(__FreeBSD__)
+#if (defined(__APPLE__) && defined(__MACH__)) || defined(__FreeBSD__) || \
+    defined(__HAIKU__)
 #include <thread>
 #endif
 
@@ -56,7 +58,8 @@ int NumSchedulableCPUs() {
   }
   perror("sched_getaffinity");
 #endif
-#if (defined(__APPLE__) && defined(__MACH__)) || defined(__FreeBSD__)
+#if (defined(__APPLE__) && defined(__MACH__)) || defined(__FreeBSD__) || \
+    defined(__HAIKU__)
   unsigned int count = std::thread::hardware_concurrency();
   if (count > 0) return static_cast<int>(count);
 #endif
@@ -64,6 +67,24 @@ int NumSchedulableCPUs() {
   fprintf(stderr, "can't determine number of CPU cores: assuming %d\n",
           kDefaultCores);
   return kDefaultCores;
+}
+
+int NumHyperthreadsPerCore() {
+  static const int ht_per_core = tensorflow::port::CPUIDNumSMT();
+  return (ht_per_core > 0) ? ht_per_core : 1;
+}
+
+bool NUMAEnabled() {
+  // Not yet implemented: coming soon.
+  return false;
+}
+
+int NUMANumNodes() { return 1; }
+
+void NUMASetThreadNodeAffinity(int node) {}
+
+int NUMAGetThreadNodeAffinity() {
+  return kNUMANoAffinity;
 }
 
 void* AlignedMalloc(size_t size, int minimum_alignment) {
@@ -76,11 +97,7 @@ void* AlignedMalloc(size_t size, int minimum_alignment) {
   // memory aligned to at least the size of a pointer.
   const int required_alignment = sizeof(void*);
   if (minimum_alignment < required_alignment) return Malloc(size);
-#ifdef TENSORFLOW_USE_JEMALLOC
-  int err = jemalloc_posix_memalign(&ptr, minimum_alignment, size);
-#else
   int err = posix_memalign(&ptr, minimum_alignment, size);
-#endif
   if (err != 0) {
     return nullptr;
   } else {
@@ -91,29 +108,19 @@ void* AlignedMalloc(size_t size, int minimum_alignment) {
 
 void AlignedFree(void* aligned_memory) { Free(aligned_memory); }
 
-void* Malloc(size_t size) {
-#ifdef TENSORFLOW_USE_JEMALLOC
-  return jemalloc_malloc(size);
-#else
-  return malloc(size);
-#endif
+void* Malloc(size_t size) { return malloc(size); }
+
+void* Realloc(void* ptr, size_t size) { return realloc(ptr, size); }
+
+void Free(void* ptr) { free(ptr); }
+
+void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
+  return AlignedMalloc(size, minimum_alignment);
 }
 
-void* Realloc(void* ptr, size_t size) {
-#ifdef TENSORFLOW_USE_JEMALLOC
-  return jemalloc_realloc(ptr, size);
-#else
-  return realloc(ptr, size);
-#endif
-}
+void NUMAFree(void* ptr, size_t size) { Free(ptr); }
 
-void Free(void* ptr) {
-#ifdef TENSORFLOW_USE_JEMALLOC
-  jemalloc_free(ptr);
-#else
-  free(ptr);
-#endif
-}
+int NUMAGetMemAffinity(const void* addr) { return kNUMANoAffinity; }
 
 void MallocExtension_ReleaseToSystem(std::size_t num_bytes) {
   // No-op.
@@ -126,7 +133,7 @@ void AdjustFilenameForLogging(string* filename) {
 }
 
 bool Snappy_Compress(const char* input, size_t length, string* output) {
-#ifdef SNAPPY
+#ifdef TF_USE_SNAPPY
   output->resize(snappy::MaxCompressedLength(length));
   size_t outlen;
   snappy::RawCompress(input, length, &(*output)[0], &outlen);
@@ -139,7 +146,7 @@ bool Snappy_Compress(const char* input, size_t length, string* output) {
 
 bool Snappy_GetUncompressedLength(const char* input, size_t length,
                                   size_t* result) {
-#ifdef SNAPPY
+#ifdef TF_USE_SNAPPY
   return snappy::GetUncompressedLength(input, length, result);
 #else
   return false;
@@ -147,7 +154,7 @@ bool Snappy_GetUncompressedLength(const char* input, size_t length,
 }
 
 bool Snappy_Uncompress(const char* input, size_t length, char* output) {
-#ifdef SNAPPY
+#ifdef TF_USE_SNAPPY
   return snappy::RawUncompress(input, length, output);
 #else
   return false;
@@ -157,8 +164,18 @@ bool Snappy_Uncompress(const char* input, size_t length, char* output) {
 string Demangle(const char* mangled) { return mangled; }
 
 double NominalCPUFrequency() {
-  // TODO(yuefengz): implement it for this platform.
-  return 1.0;
+  return absl::base_internal::NominalCPUFrequency();
+}
+
+int64 AvailableRam() {
+#if defined(__linux__) && !defined(__ANDROID__)
+  struct sysinfo info;
+  int err = sysinfo(&info);
+  if (err == 0) {
+    return info.freeram;
+  }
+#endif
+  return INT64_MAX;
 }
 
 }  // namespace port

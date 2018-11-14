@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/fuzzing/fuzz_session.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/kernels/fuzzing/fuzz_session.h"
 
 namespace tensorflow {
 namespace fuzzing {
@@ -25,8 +25,8 @@ class FuzzStringSplit : public FuzzSession {
         tensorflow::ops::Placeholder(scope.WithOpName("input1"), DT_STRING);
     auto delimeter =
         tensorflow::ops::Placeholder(scope.WithOpName("input2"), DT_STRING);
-    std::ignore = tensorflow::ops::StringSplit(scope.WithOpName("output"),
-                                               input, delimeter);
+    (void)tensorflow::ops::StringSplit(scope.WithOpName("output"), input,
+                                       delimeter);
   }
 
   void FuzzImpl(const uint8_t* data, size_t size) final {

@@ -8,6 +8,7 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "py_binary")
 
 py_binary(
     name = "grpc_tensorflow_server",
@@ -36,16 +37,4 @@ py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

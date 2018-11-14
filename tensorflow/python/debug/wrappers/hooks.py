@@ -27,25 +27,22 @@ from tensorflow.python.debug.wrappers import grpc_wrapper
 from tensorflow.python.debug.wrappers import local_cli_wrapper
 from tensorflow.python.training import session_run_hook
 
-# The prefix for GRPC endpoint URLs.
-_GRPC_ENDPOINT_PREFIX = "grpc://"
-
 
 class LocalCLIDebugHook(session_run_hook.SessionRunHook):
   """Command-line-interface debugger hook.
 
-  Can be used as a monitor/hook for `tf.train.MonitoredSession`s and
-  `tf.contrib.learn`'s `Estimator`s and `Experiment`s.
+  Can be used as a hook for `tf.train.MonitoredSession`s and
+  `tf.estimator.Estimator`s. Provides a substitute for
+  `tfdbg.LocalCLIDebugWrapperSession` in cases where the session is not directly
+  available.
   """
 
-  def __init__(self,
-               ui_type="curses",
-               dump_root=None,
-               thread_name_filter=None):
+  def __init__(self, ui_type="curses", dump_root=None, thread_name_filter=None):
     """Create a local debugger command-line interface (CLI) hook.
 
     Args:
-      ui_type: (str) user-interface type.
+      ui_type: (`str`) requested user-interface type. Currently supported:
+        (curses | readline).
       dump_root: (`str`) optional path to the dump root directory. Must be a
         directory that does not exist or an empty directory. If the directory
         does not exist, it will be created by the debugger core during debug
@@ -65,7 +62,8 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
     """Add a tensor filter.
 
     See doc of `LocalCLIDebugWrapperSession.add_tensor_filter()` for details.
-    Override default behavior to accommodate the possibility of this method being
+    Override default behavior to accommodate the possibility of this method
+    being
     called prior to the initialization of the underlying
     `LocalCLIDebugWrapperSession` object.
 
@@ -140,9 +138,7 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
       # pylint: enable=protected-access
 
       with stepper.NodeStepper(
-          run_context.session,
-          run_context.original_args.
-          fetches,
+          run_context.session, run_context.original_args.fetches,
           run_context.original_args.feed_dict) as node_stepper:
         self._session_wrapper.invoke_node_stepper(
             node_stepper, restore_variable_values_on_exit=True)
@@ -152,16 +148,16 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook):
   def after_run(self, run_context, run_values):
     # Adapt run_context and run_values to OnRunEndRequest and invoke superclass
     # on_run_end()
-    on_run_end_request = framework.OnRunEndRequest(
-        self._performed_action, run_values.run_metadata)
+    on_run_end_request = framework.OnRunEndRequest(self._performed_action,
+                                                   run_values.run_metadata)
     self._session_wrapper.on_run_end(on_run_end_request)
 
 
 class DumpingDebugHook(session_run_hook.SessionRunHook):
   """A debugger hook that dumps debug data to filesystem.
 
-  Can be used as a monitor/hook for `tf.train.MonitoredSession`s and
-  `tf.contrib.learn`'s `Estimator`s and `Experiment`s.
+  Can be used as a hook for `tf.train.MonitoredSession`s and
+  `tf.estimator.Estimator`s.
   """
 
   def __init__(self,
@@ -192,6 +188,7 @@ class DumpingDebugHook(session_run_hook.SessionRunHook):
     pass
 
   def before_run(self, run_context):
+    reset_disk_byte_usage = False
     if not self._session_wrapper:
       self._session_wrapper = dumping_wrapper.DumpingDebugWrapperSession(
           run_context.session,
@@ -199,6 +196,7 @@ class DumpingDebugHook(session_run_hook.SessionRunHook):
           watch_fn=self._watch_fn,
           thread_name_filter=self._thread_name_filter,
           log_usage=self._log_usage)
+      reset_disk_byte_usage = True
 
     self._session_wrapper.increment_run_call_count()
 
@@ -216,7 +214,8 @@ class DumpingDebugHook(session_run_hook.SessionRunHook):
         op_type_regex_whitelist=watch_options.op_type_regex_whitelist,
         tensor_dtype_regex_whitelist=watch_options.tensor_dtype_regex_whitelist,
         tolerate_debug_op_creation_failures=(
-            watch_options.tolerate_debug_op_creation_failures))
+            watch_options.tolerate_debug_op_creation_failures),
+        reset_disk_byte_usage=reset_disk_byte_usage)
 
     run_args = session_run_hook.SessionRunArgs(
         None, feed_dict=None, options=run_options)
@@ -236,8 +235,8 @@ class GrpcDebugHook(session_run_hook.SessionRunHook):
   When the arguments of debug_utils.watch_graph changes, strongly consider
   changing arguments here too so that features are available to tflearn users.
 
-  Can be used as a monitor/hook for `tf.train.MonitoredSession`s and
-  `tf.contrib.learn`'s `Estimator`s and `Experiment`s.
+  Can be used as a hook for `tf.train.MonitoredSession`s and
+  `tf.estimator.Estimator`s.
   """
 
   def __init__(self,
@@ -249,8 +248,8 @@ class GrpcDebugHook(session_run_hook.SessionRunHook):
 
     Args:
       grpc_debug_server_addresses: (`list` of `str`) A list of the gRPC debug
-        server addresses, in the format of <host:port>, without the "grpc://"
-        prefix. For example: ["localhost:7000", "192.168.0.2:8000"]
+        server addresses, in the format of <host:port>, with or without the
+        "grpc://" prefix. For example: ["localhost:7000", "192.168.0.2:8000"]
       watch_fn: A function that allows for customizing which ops to watch at
         which specific steps. See doc of
         `dumping_wrapper.DumpingDebugWrapperSession.__init__` for details.
@@ -258,23 +257,14 @@ class GrpcDebugHook(session_run_hook.SessionRunHook):
         wrapper session will be active. See doc of `BaseDebugWrapperSession` for
         more details.
       log_usage: (bool) Whether usage is to be logged.
-
-    Raises:
-      ValueError: if any debugger server addresses start with grpc://.
     """
-
-    for address in grpc_debug_server_addresses:
-      if address.startswith(_GRPC_ENDPOINT_PREFIX):
-        raise ValueError(
-            ("Debug server address %r starts with %r. It should not because "
-             "the hook already automatically adds the prefix.") % (
-                 address, _GRPC_ENDPOINT_PREFIX))
-
-    # A wrapper session responsible for GRPC communication.
     self._grpc_debug_wrapper_session = None
     self._thread_name_filter = thread_name_filter
+    self._grpc_debug_server_addresses = (
+        grpc_debug_server_addresses
+        if isinstance(grpc_debug_server_addresses, list) else
+        [grpc_debug_server_addresses])
 
-    self._grpc_debug_server_addresses = grpc_debug_server_addresses
     self._watch_fn = watch_fn
     self._log_usage = log_usage
 
@@ -315,3 +305,58 @@ class GrpcDebugHook(session_run_hook.SessionRunHook):
 
     return session_run_hook.SessionRunArgs(
         None, feed_dict=None, options=run_options)
+
+
+class TensorBoardDebugHook(GrpcDebugHook):
+  """A tfdbg hook that can be used with TensorBoard Debugger Plugin.
+
+  This hook is the same as `GrpcDebugHook`, except that it uses a predefined
+    `watch_fn` that
+    1) uses `DebugIdentity` debug ops with the `gated_grpc` attribute set to
+        `True`, to allow the interactive enabling and disabling of tensor
+       breakpoints.
+    2) watches all tensors in the graph.
+  This saves the need for the user to define a `watch_fn`.
+  """
+
+  def __init__(self,
+               grpc_debug_server_addresses,
+               thread_name_filter=None,
+               send_traceback_and_source_code=True,
+               log_usage=True):
+    """Constructor of TensorBoardDebugHook.
+
+    Args:
+      grpc_debug_server_addresses: gRPC address(es) of debug server(s), as a
+        `str` or a `list` of `str`s. E.g., "localhost:2333",
+        "grpc://localhost:2333", ["192.168.0.7:2333", "192.168.0.8:2333"].
+      thread_name_filter: Optional filter for thread names.
+      send_traceback_and_source_code: Whether traceback of graph elements and
+        the source code are to be sent to the debug server(s).
+      log_usage: Whether the usage of this class is to be logged (if
+        applicable).
+    """
+
+    def _gated_grpc_watch_fn(fetches, feeds):
+      del fetches, feeds  # Unused.
+      return framework.WatchOptions(
+          debug_ops=["DebugIdentity(gated_grpc=true)"])
+
+    super(TensorBoardDebugHook, self).__init__(
+        grpc_debug_server_addresses,
+        watch_fn=_gated_grpc_watch_fn,
+        thread_name_filter=thread_name_filter,
+        log_usage=log_usage)
+
+    self._grpc_debug_server_addresses = grpc_debug_server_addresses
+    self._send_traceback_and_source_code = send_traceback_and_source_code
+    self._sent_graph_version = -1
+    grpc_wrapper.register_signal_handler()
+
+  def before_run(self, run_context):
+    if self._send_traceback_and_source_code:
+      self._sent_graph_version = grpc_wrapper.publish_traceback(
+          self._grpc_debug_server_addresses, run_context.session.graph,
+          run_context.original_args.feed_dict,
+          run_context.original_args.fetches, self._sent_graph_version)
+    return super(TensorBoardDebugHook, self).before_run(run_context)

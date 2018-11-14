@@ -196,18 +196,8 @@ class StatusAdaptorForMacros {
 #define TF_STATUS_MACROS_CONCAT_NAME(x, y) TF_STATUS_MACROS_CONCAT_IMPL(x, y)
 #define TF_STATUS_MACROS_CONCAT_IMPL(x, y) x##y
 
-#define TF_ASSIGN_OR_RETURN(...)                                             \
-  TF_STATUS_MACRO_GET_VARIADIC_IMPL(__VA_ARGS__, TF_ASSIGN_OR_RETURN_IMPL_3, \
-                                    TF_ASSIGN_OR_RETURN_IMPL_2)              \
-  (__VA_ARGS__)
-
-#define TF_STATUS_MACRO_GET_VARIADIC_IMPL(_1, _2, _3, NAME, ...) NAME
-
-#define TF_ASSIGN_OR_RETURN_IMPL_2(lhs, rexpr) \
-  TF_ASSIGN_OR_RETURN_IMPL_3(lhs, rexpr)
-
-#define TF_ASSIGN_OR_RETURN_IMPL_3(lhs, rexpr) \
-  TF_ASSIGN_OR_RETURN_IMPL(                    \
+#define TF_ASSIGN_OR_RETURN(lhs, rexpr) \
+  TF_ASSIGN_OR_RETURN_IMPL(             \
       TF_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), lhs, rexpr)
 
 #define TF_ASSIGN_OR_RETURN_IMPL(statusor, lhs, rexpr) \

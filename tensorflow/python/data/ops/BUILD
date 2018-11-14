@@ -9,7 +9,9 @@ py_library(
     srcs = ["dataset_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":iterator_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -17,22 +19,89 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_seed",
         "//tensorflow/python:script_ops",
+        "//tensorflow/python:smart_cond",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:string_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/experimental/ops:stats_options",
         "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:random_seed",
+        "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/data/util:structure",
         "//third_party/py/numpy",
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
+py_library(
+    name = "readers",
+    srcs = ["readers.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dataset_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/compat",
+        "//tensorflow/python/data/util:convert",
+    ],
+)
+
+py_library(
+    name = "iterator_ops",
+    srcs = ["iterator_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":optional_ops",
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:saver",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/compat",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/data/util:structure",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/training/checkpointable:base",
+    ],
+)
+
+py_library(
+    name = "optional_ops",
+    srcs = ["optional_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/data/util:structure",
+    ],
+)
+
+py_library(
+    name = "multi_device_iterator_ops",
+    srcs = ["multi_device_iterator_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dataset_ops",
+        ":iterator_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:functional_ops",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/data/util:nest",
+        "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
+    ],
 )

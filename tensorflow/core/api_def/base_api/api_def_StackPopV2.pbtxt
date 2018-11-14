@@ -1,0 +1,23 @@
+op {
+  graph_op_name: "StackPopV2"
+  visibility: SKIP
+  in_arg {
+    name: "handle"
+    description: <<END
+The handle to a stack.
+END
+  }
+  out_arg {
+    name: "elem"
+    description: <<END
+The tensor that is popped from the top of the stack.
+END
+  }
+  attr {
+    name: "elem_type"
+    description: <<END
+The type of the elem that is popped.
+END
+  }
+  summary: "Pop the element at the top of the stack."
+}

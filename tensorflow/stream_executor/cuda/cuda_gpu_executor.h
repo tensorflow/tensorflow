@@ -22,9 +22,10 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_GPU_EXECUTOR_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_GPU_EXECUTOR_H_
 
-#include <map>
 #include <set>
+#include <unordered_map>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/stream_executor/cuda/cuda_kernel.h"
 #include "tensorflow/stream_executor/event.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -35,8 +36,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace cuda {
 
 // CUDA-platform implementation of the platform-agnostic
@@ -62,10 +62,25 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
 
   bool GetKernel(const MultiKernelLoaderSpec &spec,
                  KernelBase *kernel) override;
+  void UnloadKernel(const KernelBase *kernel) override;
+  bool LoadModule(const MultiModuleLoaderSpec &spec,
+                  ModuleHandle *module_handle) override;
+  bool UnloadModule(ModuleHandle module_handle) override;
 
   bool Launch(Stream *stream, const ThreadDim &thread_dims,
               const BlockDim &block_dims, const KernelBase &k,
               const KernelArgsArrayBase &args) override;
+
+  int CalculateOccupancy(const DeviceDescription &device_description,
+                         uint64 registers_per_thread,
+                         uint64 shared_memory_per_block,
+                         const ThreadDim &thread_dims, CUfunction func);
+
+  int CompareOccupancy(int *initial_blocks,
+                       const DeviceDescription &device_description,
+                       uint64 registers_per_thread,
+                       uint64 shared_memory_per_block,
+                       const ThreadDim &thread_dims, CUfunction func);
 
   void *Allocate(uint64 size) override;
 
@@ -73,6 +88,14 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
                           uint64 size_bytes) override;
 
   void Deallocate(DeviceMemoryBase *mem) override;
+
+  void *UnifiedMemoryAllocate(uint64 size) override {
+    return CUDADriver::UnifiedMemoryAllocate(context_, size);
+  }
+
+  void UnifiedMemoryDeallocate(void *location) override {
+    return CUDADriver::UnifiedMemoryDeallocate(context_, location);
+  }
 
   // CUDA allocation/registration functions are necessary because the driver
   // internally sets up buffers for DMA operations (and page locks them).
@@ -151,7 +174,7 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
 
   Event::Status PollForEventStatus(Event *event) override;
 
-  bool BlockHostUntilDone(Stream *stream) override;
+  port::Status BlockHostUntilDone(Stream *stream) override;
 
   int PlatformDeviceCount() override { return CUDADriver::GetDeviceCount(); }
 
@@ -167,7 +190,8 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
 
   // Search for the symbol and returns a device pointer and size.
   // Returns false if symbol does not exist.
-  bool GetSymbol(const string& symbol_name, void **mem, size_t *bytes) override;
+  bool GetSymbol(const string &symbol_name, ModuleHandle module_handle,
+                 void **mem, size_t *bytes) override;
 
   DeviceDescription *PopulateDeviceDescription() const override;
 
@@ -202,7 +226,7 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
 
   std::unique_ptr<internal::TimerInterface> GetTimerImplementation() override;
 
-  void *CudaContextHack() override;
+  void *GpuContextHack() override;
 
   CudaContext* cuda_context();
 
@@ -211,8 +235,8 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
   // filename by looking for compute-capability-specific suffixed versions; i.e.
   // looking for "foo.ptx" will check to see if "foo.ptx.cc30.ptx" is present if
   // we're on a compute capability 3.0 machine.
-  bool FindOnDiskForComputeCapability(port::StringPiece filename,
-                                      port::StringPiece canonical_suffix,
+  bool FindOnDiskForComputeCapability(absl::string_view filename,
+                                      absl::string_view canonical_suffix,
                                       string *found_filename) const;
 
   // Host callback landing routine invoked by CUDA.
@@ -231,19 +255,25 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
   void VlogOccupancyInfo(const KernelBase &kernel, const ThreadDim &thread_dims,
                          const BlockDim &block_dims);
 
-  // Guards the on-disk-module mapping.
-  mutex disk_modules_mu_;
+  bool LoadModuleFromCuBin(const char *cubin, CUmodule *module)
+      EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
-  // Mapping from filename to CUmodule, if it was already retrieved.
-  // Multiple CUfunctions are usually obtained from a single CUmodule so we
-  // attempt to hit in this mapping first, before retrieving it.
-  std::map<string, CUmodule> disk_modules_ GUARDED_BY(disk_modules_mu_);
+  // Loads the PTX text `ptx` as a CUDA module.  `ptx` must be null terminated.
+  bool LoadModuleFromPtx(const char *ptx, CUmodule *module)
+      EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
+
+  bool UnloadGpuBinary(const void *gpu_binary)
+      EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
   // Guards the in-memory-module mapping.
   mutex in_memory_modules_mu_;
 
-  std::map<const char *, CUmodule> in_memory_modules_
+  // Kernel -> loaded GPU binary. Many kernels may load the same binary.
+  std::unordered_map<const KernelBase *, const void *> kernel_to_gpu_binary_
       GUARDED_BY(in_memory_modules_mu_);
+  // GPU binary (PTX or CUBIN) -> {CUDA module, reference count}.
+  std::unordered_map<const void *, std::pair<CUmodule, uint64>>
+      gpu_binary_to_module_ GUARDED_BY(in_memory_modules_mu_);
 
   // Guards the launched kernel set.
   mutex launched_kernels_mu_;
@@ -276,7 +306,6 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
 };
 
 }  // namespace cuda
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_GPU_EXECUTOR_H_

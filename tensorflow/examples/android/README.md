@@ -45,11 +45,7 @@ on API >= 14 devices.
 
 ## Prebuilt Components:
 
-If you just want the fastest path to trying the demo, you may download the
-nightly build
-[here](https://ci.tensorflow.org/view/Nightly/job/nightly-android/). Expand the
-"View" and then the "out" folders under "Last Successful Artifacts" to find
-tensorflow_demo.apk.
+The fastest path to trying the demo is to download the [prebuilt demo APK](http://download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk).
 
 Also available are precompiled native libraries, and a jcenter package that you
 may simply drop into your own applications. See
@@ -113,8 +109,7 @@ protobuf compilation.
 
 NOTE: Bazel does not currently support building for Android on Windows. Full
 support for gradle/cmake builds is coming soon, but in the meantime we suggest
-that Windows users download the [prebuilt
-binaries](https://ci.tensorflow.org/view/Nightly/job/nightly-android/) instead.
+that Windows users download the [prebuilt demo APK](http://download.tensorflow.org/deps/tflite/TfLiteCameraDemo.apk) instead.
 
 ##### Install Bazel and Android Prerequisites
 
@@ -134,6 +129,10 @@ the Android NDK and SDK must be installed on your system.
     devices).
 
 ##### Edit WORKSPACE
+
+NOTE: As long as you have the SDK and NDK installed, the `./configure` script
+will create these rules for you. Answer "Yes" when the script asks to
+automatically configure the `./WORKSPACE`.
 
 The Android entries in
 [`<workspace_root>/WORKSPACE`](../../../WORKSPACE#L19-L36) must be uncommented
@@ -156,7 +155,7 @@ download-models.gradle.
 
 **Optional**: If you wish to place the models in your assets manually, remove
 all of the `model_files` entries from the `assets` list in `tensorflow_demo`
-found in the `[BUILD](BUILD)` file. Then download and extract the archives
+found in the [`BUILD`](BUILD#L92) file. Then download and extract the archives
 yourself to the `assets` directory in the source tree:
 
 ```bash

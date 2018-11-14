@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/python/lib/core/bfloat16.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 
 namespace tensorflow {
@@ -88,6 +89,12 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
     case NPY_UINT16:
       *out_tf_datatype = TF_UINT16;
       break;
+    case NPY_UINT32:
+      *out_tf_datatype = TF_UINT32;
+      break;
+    case NPY_UINT64:
+      *out_tf_datatype = TF_UINT64;
+      break;
     case NPY_INT8:
       *out_tf_datatype = TF_INT8;
       break;
@@ -119,10 +126,41 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
       // custom struct type.
       return PyArrayDescr_to_TF_DataType(descr, out_tf_datatype);
     default:
+      if (pyarray_type == Bfloat16NumpyType()) {
+        *out_tf_datatype = TF_BFLOAT16;
+        break;
+      }
       // TODO(mrry): Support these.
       return errors::Internal("Unsupported feed type");
   }
   return Status::OK();
+}
+
+Status PyObjectToString(PyObject* obj, const char** ptr, Py_ssize_t* len,
+                        PyObject** ptr_owner) {
+  *ptr_owner = nullptr;
+  if (!PyUnicode_Check(obj)) {
+    char* buf;
+    if (PyBytes_AsStringAndSize(obj, &buf, len) != 0) {
+      return errors::Internal("Unable to get element as bytes.");
+    }
+    *ptr = buf;
+    return Status::OK();
+  }
+#if (PY_MAJOR_VERSION > 3 || (PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION >= 3))
+  *ptr = PyUnicode_AsUTF8AndSize(obj, len);
+  if (*ptr != nullptr) return Status::OK();
+#else
+  PyObject* utemp = PyUnicode_AsUTF8String(obj);
+  char* buf;
+  if (utemp != nullptr && PyBytes_AsStringAndSize(utemp, &buf, len) != -1) {
+    *ptr = buf;
+    *ptr_owner = utemp;
+    return Status::OK();
+  }
+  Py_XDECREF(utemp);
+#endif
+  return errors::Internal("Unable to convert element to UTF-8.");
 }
 
 // Iterate over the string array 'array', extract the ptr and len of each string
@@ -134,36 +172,15 @@ Status PyBytesArrayMap(PyArrayObject* array, F f) {
   while (PyArray_ITER_NOTDONE(iter.get())) {
     auto item = tensorflow::make_safe(PyArray_GETITEM(
         array, static_cast<char*>(PyArray_ITER_DATA(iter.get()))));
-    if (!item.get()) {
+    if (!item) {
       return errors::Internal("Unable to get element from the feed - no item.");
     }
-    char* ptr;
     Py_ssize_t len;
-
-    if (PyUnicode_Check(item.get())) {
-#if PY_VERSION_HEX >= 0x03030000
-      // Accept unicode by converting to UTF-8 bytes.
-      ptr = PyUnicode_AsUTF8AndSize(item.get(), &len);
-      if (!ptr) {
-        return errors::Internal("Unable to get element as UTF-8.");
-      }
-      f(ptr, len);
-#else
-      PyObject* utemp = PyUnicode_AsUTF8String(item.get());
-      if (!utemp || PyBytes_AsStringAndSize(utemp, &ptr, &len) == -1) {
-        Py_XDECREF(utemp);
-        return errors::Internal("Unable to convert element to UTF-8.");
-      }
-      f(ptr, len);
-      Py_DECREF(utemp);
-#endif
-    } else {
-      int success = PyBytes_AsStringAndSize(item.get(), &ptr, &len);
-      if (success != 0) {
-        return errors::Internal("Unable to get element as bytes.");
-      }
-      f(ptr, len);
-    }
+    const char* ptr;
+    PyObject* ptr_owner;
+    TF_RETURN_IF_ERROR(PyObjectToString(item.get(), &ptr, &len, &ptr_owner));
+    f(ptr, len);
+    Py_XDECREF(ptr_owner);
     PyArray_ITER_NEXT(iter.get());
   }
   return Status::OK();
@@ -175,10 +192,11 @@ Status EncodePyBytesArray(PyArrayObject* array, tensorflow::int64 nelems,
                           size_t* size, void** buffer) {
   // Compute bytes needed for encoding.
   *size = 0;
-  TF_RETURN_IF_ERROR(PyBytesArrayMap(array, [&size](char* ptr, Py_ssize_t len) {
-    *size +=
-        sizeof(tensorflow::uint64) + tensorflow::core::VarintLength(len) + len;
-  }));
+  TF_RETURN_IF_ERROR(
+      PyBytesArrayMap(array, [&size](const char* ptr, Py_ssize_t len) {
+        *size += sizeof(tensorflow::uint64) +
+                 tensorflow::core::VarintLength(len) + len;
+      }));
   // Encode all strings.
   std::unique_ptr<char[]> base_ptr(new char[*size]);
   char* base = base_ptr.get();
@@ -187,7 +205,7 @@ Status EncodePyBytesArray(PyArrayObject* array, tensorflow::int64 nelems,
   tensorflow::uint64* offsets = reinterpret_cast<tensorflow::uint64*>(base);
 
   TF_RETURN_IF_ERROR(PyBytesArrayMap(
-      array, [&base, &data_start, &dst, &offsets](char* ptr, Py_ssize_t len) {
+      array, [&data_start, &dst, &offsets](const char* ptr, Py_ssize_t len) {
         *offsets = (dst - data_start);
         offsets++;
         dst = tensorflow::core::EncodeVarint64(dst, len);
@@ -256,7 +274,9 @@ gtl::InlinedVector<npy_intp, 4> GetPyArrayDimensionsForTensor(
   const int ndims = TF_NumDims(tensor);
   gtl::InlinedVector<npy_intp, 4> dims(ndims);
   if (TF_TensorType(tensor) == TF_RESOURCE) {
-    dims[0] = TF_TensorByteSize(tensor);
+    CHECK_EQ(ndims, 0)
+        << "Fetching of non-scalar resource tensors is not supported.";
+    dims.push_back(TF_TensorByteSize(tensor));
     *nelems = dims[0];
   } else {
     *nelems = 1;
@@ -299,6 +319,40 @@ Status GetPyArrayDescrForTensor(const TF_Tensor* tensor,
 
   return Status::OK();
 }
+
+inline void FastMemcpy(void* dst, const void* src, size_t size) {
+  // clang-format off
+  switch (size) {
+    // Most compilers will generate inline code for fixed sizes,
+    // which is significantly faster for small copies.
+    case  1: memcpy(dst, src, 1); break;
+    case  2: memcpy(dst, src, 2); break;
+    case  3: memcpy(dst, src, 3); break;
+    case  4: memcpy(dst, src, 4); break;
+    case  5: memcpy(dst, src, 5); break;
+    case  6: memcpy(dst, src, 6); break;
+    case  7: memcpy(dst, src, 7); break;
+    case  8: memcpy(dst, src, 8); break;
+    case  9: memcpy(dst, src, 9); break;
+    case 10: memcpy(dst, src, 10); break;
+    case 11: memcpy(dst, src, 11); break;
+    case 12: memcpy(dst, src, 12); break;
+    case 13: memcpy(dst, src, 13); break;
+    case 14: memcpy(dst, src, 14); break;
+    case 15: memcpy(dst, src, 15); break;
+    case 16: memcpy(dst, src, 16); break;
+#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_POSIX) && \
+    !defined(IS_MOBILE_PLATFORM)
+    // On Linux, memmove appears to be faster than memcpy for
+    // large sizes, strangely enough.
+    default: memmove(dst, src, size); break;
+#else
+    default: memcpy(dst, src, size); break;
+#endif
+  }
+  // clang-format on
+}
+
 }  // namespace
 
 // Converts the given TF_Tensor to a numpy ndarray.
@@ -349,8 +403,8 @@ Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray) {
                             " bytes but TF_Tensor was ",
                             TF_TensorByteSize(tensor.get()), " bytes");
   } else {
-    memcpy(PyArray_DATA(py_array), TF_TensorData(tensor.get()),
-           PyArray_NBYTES(py_array));
+    FastMemcpy(PyArray_DATA(py_array), TF_TensorData(tensor.get()),
+               PyArray_NBYTES(py_array));
   }
 
   // PyArray_Return turns rank 0 arrays into numpy scalars
@@ -364,7 +418,7 @@ Status PyArrayToTF_Tensor(PyObject* ndarray, Safe_TF_TensorPtr* out_tensor) {
 
   // Make sure we dereference this array object in case of error, etc.
   Safe_PyObjectPtr array_safe(make_safe(
-      PyArray_FromAny(ndarray, nullptr, 0, 0, NPY_ARRAY_CARRAY, nullptr)));
+      PyArray_FromAny(ndarray, nullptr, 0, 0, NPY_ARRAY_CARRAY_RO, nullptr)));
   if (!array_safe) return errors::InvalidArgument("Not a ndarray.");
   PyArrayObject* array = reinterpret_cast<PyArrayObject*>(array_safe.get());
 

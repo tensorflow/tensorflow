@@ -13,7 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-"""TensorFlow estimators for Linear and DNN joined training models."""
+"""TensorFlow estimators for Linear and DNN joined training models (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -372,6 +377,10 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
 class DNNLinearCombinedEstimator(estimator.Estimator):
   """An estimator for TensorFlow Linear and DNN joined training models.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+
   Note: New users must set `fix_global_step_increment_bug=True` when creating an
   estimator.
 
@@ -489,6 +498,10 @@ class DNNLinearCombinedEstimator(estimator.Estimator):
 
 class DNNLinearCombinedClassifier(estimator.Estimator):
   """A classifier for TensorFlow Linear and DNN joined training models.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Note: New users must set `fix_global_step_increment_bug=True` when creating an
   estimator.
@@ -831,6 +844,10 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
 
 class DNNLinearCombinedRegressor(estimator.Estimator):
   """A regressor for TensorFlow Linear and DNN joined training models.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Note: New users must set `fix_global_step_increment_bug=True` when creating an
   estimator.

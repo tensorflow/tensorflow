@@ -1,0 +1,43 @@
+path: "tensorflow.test"
+tf_module {
+  member {
+    name: "Benchmark"
+    mtype: "<class \'tensorflow.python.platform.benchmark._BenchmarkRegistrar\'>"
+  }
+  member {
+    name: "StubOutForTesting"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TestCase"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "assert_equal_graph_def"
+    argspec: "args=[\'actual\', \'expected\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "benchmark_config"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "create_local_cluster"
+    argspec: "args=[\'num_workers\', \'num_ps\', \'protocol\', \'worker_config\', \'ps_config\'], varargs=None, keywords=None, defaults=[\'grpc\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "gpu_device_name"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_built_with_cuda"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_gpu_available"
+    argspec: "args=[\'cuda_only\', \'min_cuda_compute_capability\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
+    name: "main"
+    argspec: "args=[\'argv\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

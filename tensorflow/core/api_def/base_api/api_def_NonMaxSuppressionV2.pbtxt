@@ -1,0 +1,58 @@
+op {
+  graph_op_name: "NonMaxSuppressionV2"
+  in_arg {
+    name: "boxes"
+    description: <<END
+A 2-D float tensor of shape `[num_boxes, 4]`.
+END
+  }
+  in_arg {
+    name: "scores"
+    description: <<END
+A 1-D float tensor of shape `[num_boxes]` representing a single
+score corresponding to each box (each row of boxes).
+END
+  }
+  in_arg {
+    name: "max_output_size"
+    description: <<END
+A scalar integer tensor representing the maximum number of
+boxes to be selected by non max suppression.
+END
+  }
+  in_arg {
+    name: "iou_threshold"
+    description: <<END
+A 0-D float tensor representing the threshold for deciding whether
+boxes overlap too much with respect to IOU.
+END
+  }
+  out_arg {
+    name: "selected_indices"
+    description: <<END
+A 1-D integer tensor of shape `[M]` representing the selected
+indices from the boxes tensor, where `M <= max_output_size`.
+END
+  }
+  summary: "Greedily selects a subset of bounding boxes in descending order of score,"
+  description: <<END
+pruning away boxes that have high intersection-over-union (IOU) overlap
+with previously selected boxes.  Bounding boxes are supplied as
+[y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+diagonal pair of box corners and the coordinates can be provided as normalized
+(i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+is agnostic to where the origin is in the coordinate system.  Note that this
+algorithm is invariant to orthogonal transformations and translations
+of the coordinate system; thus translating or reflections of the coordinate
+system result in the same boxes being selected by the algorithm.
+
+The output of this operation is a set of integers indexing into the input
+collection of bounding boxes representing the selected boxes.  The bounding
+box coordinates corresponding to the selected indices can then be obtained
+using the `tf.gather operation`.  For example:
+
+  selected_indices = tf.image.non_max_suppression_v2(
+      boxes, scores, max_output_size, iou_threshold)
+  selected_boxes = tf.gather(boxes, selected_indices)
+END
+}

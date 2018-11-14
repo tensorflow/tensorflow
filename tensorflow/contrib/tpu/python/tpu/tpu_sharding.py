@@ -177,6 +177,10 @@ class ShardingPolicy(object):
       raise ValueError("shape %s does not contain shard_dimension %d" %
                        (shape.as_list(), self._shard_dimension))
     dims = shape.as_list()
+    if dims[self._shard_dimension] is None:
+      raise ValueError("shape %s must have a fixed size for dimension %d "
+                       "that is known at graph construction time." %
+                       (shape.as_list(), self._shard_dimension))
     if (dims[self._shard_dimension] % self._number_of_shards) != 0:
       raise ValueError("shape %s cannot be sharded %d ways along dimension %d" %
                        (shape.as_list(), self._number_of_shards,
@@ -240,7 +244,8 @@ class ShardingPolicy(object):
               str(shapes), self.number_of_shards))
     unsharded_shapes = [self._unshard_shape(s) for s in shapes]
     for i in xrange(self.number_of_shards - 1):
-      if unsharded_shapes[i] != unsharded_shapes[self.number_of_shards - 1]:
+      if not unsharded_shapes[i].is_compatible_with(
+          unsharded_shapes[self.number_of_shards - 1]):
         raise ValueError(
             "sharded shapes %s are not consistent shards of a full shape "
             "sharded %d ways along dimension %d" % (

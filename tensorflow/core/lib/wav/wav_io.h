@@ -21,6 +21,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/lib/core/coding.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -54,6 +56,36 @@ Status DecodeLin16WaveAsFloatVector(const string& wav_string,
                                     std::vector<float>* float_values,
                                     uint32* sample_count, uint16* channel_count,
                                     uint32* sample_rate);
+
+// Everything below here is only exposed publicly for testing purposes.
+
+// Handles moving the data index forward, validating the arguments, and avoiding
+// overflow or underflow.
+Status IncrementOffset(int old_offset, size_t increment, size_t max_size,
+                       int* new_offset);
+
+// This function is only exposed in the header for testing purposes, as a
+// template that needs to be instantiated. Reads a typed numeric value from a
+// stream of data.
+template <class T>
+Status ReadValue(const string& data, T* value, int* offset) {
+  int new_offset;
+  TF_RETURN_IF_ERROR(
+      IncrementOffset(*offset, sizeof(T), data.size(), &new_offset));
+  if (port::kLittleEndian) {
+    memcpy(value, data.data() + *offset, sizeof(T));
+  } else {
+    *value = 0;
+    const uint8* data_buf =
+        reinterpret_cast<const uint8*>(data.data() + *offset);
+    int shift = 0;
+    for (int i = 0; i < sizeof(T); ++i, shift += 8) {
+      *value = *value | (data_buf[i] << shift);
+    }
+  }
+  *offset = new_offset;
+  return Status::OK();
+}
 
 }  // namespace wav
 }  // namespace tensorflow

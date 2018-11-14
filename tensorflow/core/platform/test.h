@@ -13,15 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_TEST_H_
-#define TENSORFLOW_PLATFORM_TEST_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_TEST_H_
+#define TENSORFLOW_CORE_PLATFORM_TEST_H_
 
 #include <memory>
 #include <vector>
 
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/platform.h"
-#include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/types.h"
 
 // As of September 2016, we continue to attempt to avoid the use of gmock aka
@@ -49,12 +48,6 @@ string TensorFlowSrcRoot();
 // Returns the same value for the lifetime of the process.
 int RandomSeed();
 
-// Returns an object that represents a child process that will be
-// launched with the given command-line arguments `argv`. The process
-// must be explicitly started by calling the Start() method on the
-// returned object.
-std::unique_ptr<SubProcess> CreateSubProcess(const std::vector<string>& argv);
-
 // Returns an unused port number, for use in multi-process testing.
 // NOTE: This function is not thread-safe.
 int PickUnusedPortOrDie();
@@ -62,4 +55,4 @@ int PickUnusedPortOrDie();
 }  // namespace testing
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_PLATFORM_TEST_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_TEST_H_

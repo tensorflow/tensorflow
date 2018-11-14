@@ -1,0 +1,7 @@
+op {
+  graph_op_name: "Reciprocal"
+  summary: "Computes the reciprocal of x element-wise."
+  description: <<END
+I.e., \\(y = 1 / x\\).
+END
+}

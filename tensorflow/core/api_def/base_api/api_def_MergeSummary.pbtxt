@@ -1,0 +1,26 @@
+op {
+  graph_op_name: "MergeSummary"
+  in_arg {
+    name: "inputs"
+    description: <<END
+Can be of any shape.  Each must contain serialized `Summary` protocol
+buffers.
+END
+  }
+  out_arg {
+    name: "summary"
+    description: <<END
+Scalar. Serialized `Summary` protocol buffer.
+END
+  }
+  summary: "Merges summaries."
+  description: <<END
+This op creates a
+[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
+protocol buffer that contains the union of all the values in the input
+summaries.
+
+When the Op is run, it reports an `InvalidArgument` error if multiple values
+in the summaries to merge use the same tag.
+END
+}

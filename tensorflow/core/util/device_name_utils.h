@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_UTIL_DEVICE_NAME_UTILS_H_
-#define TENSORFLOW_UTIL_DEVICE_NAME_UTILS_H_
+#ifndef TENSORFLOW_CORE_UTIL_DEVICE_NAME_UTILS_H_
+#define TENSORFLOW_CORE_UTIL_DEVICE_NAME_UTILS_H_
 
 #include <string>
 
@@ -48,9 +48,6 @@ class DeviceNameUtils {
   // Returns a fully qualified device name given the parameters.
   static string FullName(const string& job, int replica, int task,
                          const string& type, int id);
-  // Returns a fully qualified device name given the parameters in legacy style.
-  static string LegacyName(const string& job, int replica, int task,
-                           const string& type, int id);
 
   struct ParsedName {
     void Clear() {
@@ -90,6 +87,15 @@ class DeviceNameUtils {
   };
   // Parses "fullname" into "*parsed". Returns true iff succeeds.
   static bool ParseFullName(StringPiece fullname, ParsedName* parsed);
+
+  // Canonicalizes "fullname" into "*canonical_name". Uses a fully specified
+  // basename to fill in fields that are missing. Accepts both legacy, newer
+  // and local versions of the device spec. Returns the newer version of the
+  // device spec. If we were unable to interpret / parse "fullname" returns
+  // an error and *canonical_name is set to "".
+  static Status CanonicalizeDeviceName(StringPiece fullname,
+                                       StringPiece basename,
+                                       string* canonical_name);
 
   // Returns true if "name" specifies any non-trivial constraint on the device.
   static bool HasSomeDetails(const ParsedName& name) {
@@ -155,10 +161,21 @@ class DeviceNameUtils {
 
   // Returns canonical and legacy full names for the given parsed
   // device name 'pn'. The returned string names are often useful to
-  // lookup devices from a mapping.
+  // look up devices from a mapping.
   static std::vector<string> GetNamesForDeviceMappings(const ParsedName& pn);
+
+  // Returns canonical and legacy local names for the given parsed device name
+  // 'pn'. The returned string names are often useful to look up devices from a
+  // mapping.
+  static std::vector<string> GetLocalNamesForDeviceMappings(
+      const ParsedName& pn);
+
+  // Returns name of the CPU:0 device on the same host as the device
+  // `device_name`.
+  static Status DeviceNameToCpuDeviceName(const string& device_name,
+                                          string* host_device_name);
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_UTIL_DEVICE_NAME_UTILS_H_
+#endif  // TENSORFLOW_CORE_UTIL_DEVICE_NAME_UTILS_H_

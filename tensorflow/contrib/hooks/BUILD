@@ -19,37 +19,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client",
-        "//tensorflow/python:platform",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
     ],
-)
-
-py_test(
-    name = "profiler_hook_test",
-    size = "small",
-    srcs = ["python/training/profiler_hook_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":hooks",
-        "//tensorflow/contrib/framework:framework_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:training",
-    ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
 )

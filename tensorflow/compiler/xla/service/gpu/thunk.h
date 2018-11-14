@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -40,12 +41,20 @@ class GpuExecutable;
 // This is thread-compatible.
 class Thunk {
  public:
-  enum class Kind {
+  enum Kind {
+    kConditional,
     kConvolution,
     kCopy,
+    kCudnnBatchNormBackward,
+    kCudnnBatchNormForwardInference,
+    kCudnnBatchNormForwardTraining,
+    kFft,
     kGemm,
     kInfeed,
     kKernel,
+    kMemset32BitValue,
+    kMemzero,
+    kOutfeed,
     kSequential,
     kTuple,
     kWhile,
@@ -63,19 +72,28 @@ class Thunk {
   Kind kind() const { return kind_; }
   const HloInstruction* hlo_instruction() const { return hlo_instruction_; }
 
-  // Prepares for executing the thunk. This method is called only once over
-  // Thunk's lifetime. For example, KernelThunk::Initialize loads the PTX of a
-  // kernel, which is the same in every execution.
-  virtual tensorflow::Status Initialize(const GpuExecutable& executable) {
-    return tensorflow::Status::OK();
+  // Prepares the thunk for execution on the given StreamExecutor.
+  //
+  // This may be called multiple times.  Its main purpose is to give us a chance
+  // to do initialization outside of ExecuteOnStream() so that the
+  // time spent initializing doesn't count towards our execution profile.
+  virtual Status Initialize(const GpuExecutable& /*executable*/,
+                            se::StreamExecutor* /*executor*/) {
+    return Status::OK();
   }
+
+  // Returns true if this kernel will autotune for the stream device the next
+  // time it is run.
+  virtual bool WillAutotuneKernel(se::Stream* /*stream*/) { return false; }
 
   // Execute the kernel for the thunk on the given stream. This method must be
   // called after Initialize and can be called multiple times over Thunk's
-  // lifetime. Stream argument must be non-null.
-  virtual tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations,
-      perftools::gputools::Stream* stream) = 0;
+  // lifetime. 'stream' and 'profiler' must be non-null.
+  //
+  // Precondition: Initialize(stream->parent()) has been called.
+  virtual Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                                 se::Stream* stream,
+                                 HloExecutionProfiler* profiler) = 0;
 
  private:
   Kind kind_;
@@ -84,6 +102,8 @@ class Thunk {
 
 // A sequence of thunks.
 using ThunkSequence = std::vector<std::unique_ptr<Thunk>>;
+
+std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);
 
 }  // namespace gpu
 }  // namespace xla

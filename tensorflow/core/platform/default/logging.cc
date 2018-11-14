@@ -21,6 +21,7 @@ limitations under the License.
 #include <android/log.h>
 #include <iostream>
 #include <sstream>
+#include <cstring>
 #endif
 
 #include <stdlib.h>
@@ -83,14 +84,13 @@ void LogMessage::GenerateLogMessage() {
   const size_t time_buffer_size = 30;
   char time_buffer[time_buffer_size];
   strftime(time_buffer, time_buffer_size, "%Y-%m-%d %H:%M:%S",
-	   localtime(&now_seconds));
+           localtime(&now_seconds));
 
   // TODO(jeff,sanjay): Replace this with something that logs through the env.
   fprintf(stderr, "%s.%06d: %c %s:%d] %s\n", time_buffer, micros_remainder,
-	  "IWEF"[severity_], fname_, line_, str().c_str());
+          "IWEF"[severity_], fname_, line_, str().c_str());
 }
 #endif
-
 
 namespace {
 
@@ -114,6 +114,8 @@ int64 LogLevelStrToInt(const char* tf_env_var_val) {
   return level;
 }
 
+}  // namespace
+
 int64 MinLogLevelFromEnv() {
   const char* tf_env_var_val = getenv("TF_CPP_MIN_LOG_LEVEL");
   return LogLevelStrToInt(tf_env_var_val);
@@ -124,8 +126,6 @@ int64 MinVLogLevelFromEnv() {
   return LogLevelStrToInt(tf_env_var_val);
 }
 
-}  // namespace
-
 LogMessage::~LogMessage() {
   // Read the min log level once during the first call to logging.
   static int64 min_log_level = MinLogLevelFromEnv();
@@ -133,8 +133,16 @@ LogMessage::~LogMessage() {
 }
 
 int64 LogMessage::MinVLogLevel() {
+  // We don't want to print logs during fuzzing as that would slow fuzzing down
+  // by almost 2x. So, if we are in fuzzing mode (not just running a test), we
+  // return minimum value so that nothing is actually printed
+  // See also http://llvm.org/docs/LibFuzzer.html#fuzzer-friendly-build-mode
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+  return 0;
+#else
   static int64 min_vlog_level = MinVLogLevelFromEnv();
   return min_vlog_level;
+#endif
 }
 
 LogMessageFatal::LogMessageFatal(const char* file, int line)

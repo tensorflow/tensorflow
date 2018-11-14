@@ -1,0 +1,25 @@
+op {
+  graph_op_name: "RegexReplace"
+  in_arg {
+    name: "input"
+    description: "The text to be processed."
+  }
+  in_arg {
+    name: "pattern"
+    description: "The regular expression to match the input."
+  }
+  in_arg {
+    name: "rewrite"
+    description: "The rewrite to be applied to the matched expresion."
+  }
+  out_arg {
+    name: "output"
+    description: "The text after applying pattern and rewrite."
+  }
+  attr {
+    name: "replace_global"
+    description: "If True, the replacement is global, otherwise the replacement\nis done only on the first match."
+  }
+  summary: "Replaces the match of pattern in input with rewrite."
+  description: "It follows the re2 syntax (https://github.com/google/re2/wiki/Syntax)"
+}

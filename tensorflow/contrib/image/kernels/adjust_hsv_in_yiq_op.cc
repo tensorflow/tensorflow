@@ -12,14 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cmath>
+#if GOOGLE_CUDA
+#define EIGEN_USE_GPU
+#endif
+
+#include "tensorflow/contrib/image/kernels/adjust_hsv_in_yiq_op.h"
 #include <memory>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/work_sharder.h"
@@ -36,10 +37,10 @@ class AdjustHsvInYiqOpBase : public OpKernel {
 
   struct ComputeOptions {
     const Tensor* input = nullptr;
+    Tensor* output = nullptr;
     const Tensor* delta_h = nullptr;
     const Tensor* scale_s = nullptr;
     const Tensor* scale_v = nullptr;
-    Tensor* output = nullptr;
     int64 channel_count = 0;
   };
 
@@ -65,7 +66,7 @@ class AdjustHsvInYiqOpBase : public OpKernel {
                                         scale_v.shape().DebugString()));
     auto channels = input.dim_size(input.dims() - 1);
     OP_REQUIRES(
-        context, channels == 3,
+        context, channels == kChannelSize,
         errors::InvalidArgument("input must have 3 channels but instead has ",
                                 channels, " channels."));
 
@@ -101,53 +102,21 @@ class AdjustHsvInYiqOp<CPUDevice> : public AdjustHsvInYiqOpBase {
     const Tensor* input = options.input;
     Tensor* output = options.output;
     const int64 channel_count = options.channel_count;
-    static const int kChannelSize = 3;
     auto input_data = input->shaped<float, 2>({channel_count, kChannelSize});
     const float delta_h = options.delta_h->scalar<float>()();
     const float scale_s = options.scale_s->scalar<float>()();
     const float scale_v = options.scale_v->scalar<float>()();
     auto output_data = output->shaped<float, 2>({channel_count, kChannelSize});
+    float tranformation_matrix[kChannelSize * kChannelSize] = {0};
+    internal::compute_tranformation_matrix<kChannelSize * kChannelSize>(
+        delta_h, scale_s, scale_v, tranformation_matrix);
     const int kCostPerChannel = 10;
     const DeviceBase::CpuWorkerThreads& worker_threads =
         *context->device()->tensorflow_cpu_worker_threads();
     Shard(worker_threads.num_threads, worker_threads.workers, channel_count,
           kCostPerChannel,
-          [channel_count, &input_data, &output_data, delta_h, scale_s, scale_v](
+          [channel_count, &input_data, &output_data, &tranformation_matrix](
               int64 start_channel, int64 end_channel) {
-            // Using approximate linear transfomation described in:
-            // https://beesbuzz.biz/code/hsv_color_transforms.php
-            /** Get the constants from sympy
-             from sympy import Matrix
-             from sympy.abc import u, w
-             # Projection matrix to YIQ. http://en.wikipedia.org/wiki/YIQ
-             tyiq = Matrix([[0.299, 0.587, 0.114],
-                            [0.596, -0.274, -0.322],
-                            [0.211, -0.523, 0.312]])
-             # Hue rotation matrix in YIQ space.
-             hue_proj = Matrix(3,3, [v, 0, 0, 0, vsu, -vsw, 0, vsw, vsu])
-             m = tyiq.inv() * hue_proj * tyiq
-             **/
-            // TODO(huangyp): directly compute the projection matrix from tyiq.
-            static const float t[kChannelSize][kChannelSize][kChannelSize] = {
-                {{.299, .701, .16862179492229},
-                 {.587, -.587, .329804745287403},
-                 {.114, -.114, -0.498426540209694}},
-                {{.299, -.299, -.327963394172371},
-                 {.587, .413, .0346106879248821},
-                 {.114, -.114, .293352706247489}},
-                {{.299, -.299, 1.24646136576682},
-                 {.587, -.587, -1.04322888291964},
-                 {.114, .886, -.203232482847173}}};
-            float m[kChannelSize][kChannelSize] = {{0.}};
-            float su = scale_s * std::cos(delta_h);
-            float sw = scale_s * std::sin(delta_h);
-            for (int q_index = 0; q_index < kChannelSize; q_index++) {
-              for (int p_index = 0; p_index < kChannelSize; p_index++) {
-                m[q_index][p_index] = scale_v * (t[q_index][p_index][0] +
-                                                 t[q_index][p_index][1] * su +
-                                                 t[q_index][p_index][2] * sw);
-              }
-            }
             // Applying projection matrix to input RGB vectors.
             const float* p = input_data.data() + start_channel * kChannelSize;
             float* q = output_data.data() + start_channel * kChannelSize;
@@ -155,7 +124,9 @@ class AdjustHsvInYiqOp<CPUDevice> : public AdjustHsvInYiqOpBase {
               for (int q_index = 0; q_index < kChannelSize; q_index++) {
                 q[q_index] = 0;
                 for (int p_index = 0; p_index < kChannelSize; p_index++) {
-                  q[q_index] += m[q_index][p_index] * p[p_index];
+                  q[q_index] +=
+                      p[p_index] *
+                      tranformation_matrix[q_index + kChannelSize * p_index];
                 }
               }
               p += kChannelSize;
@@ -165,8 +136,33 @@ class AdjustHsvInYiqOp<CPUDevice> : public AdjustHsvInYiqOpBase {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("AdjustHsvInYiq").Device(DEVICE_CPU),
-                        AdjustHsvInYiqOp<CPUDevice>);
+REGISTER_KERNEL_BUILDER(
+    Name("AdjustHsvInYiq").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    AdjustHsvInYiqOp<CPUDevice>);
 
-// TODO(huangyp): add the GPU kernel
+#if GOOGLE_CUDA
+template <>
+class AdjustHsvInYiqOp<GPUDevice> : public AdjustHsvInYiqOpBase {
+ public:
+  explicit AdjustHsvInYiqOp(OpKernelConstruction* context)
+      : AdjustHsvInYiqOpBase(context) {}
+
+  void DoCompute(OpKernelContext* ctx, const ComputeOptions& options) override {
+    const int64 number_of_elements = options.input->NumElements();
+    if (number_of_elements <= 0) {
+      return;
+    }
+    const float* delta_h = options.delta_h->flat<float>().data();
+    const float* scale_s = options.scale_s->flat<float>().data();
+    const float* scale_v = options.scale_v->flat<float>().data();
+    functor::AdjustHsvInYiqGPU()(ctx, options.channel_count, options.input,
+                                 delta_h, scale_s, scale_v, options.output);
+  }
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("AdjustHsvInYiq").Device(DEVICE_GPU).TypeConstraint<float>("T"),
+    AdjustHsvInYiqOp<GPUDevice>);
+#endif
+
 }  // namespace tensorflow

@@ -652,7 +652,8 @@ def map_fn(fn, labeled_tensor, name=None):
         tensor_lt = core.LabeledTensor(tensor, original_axes)
         return fn(tensor_lt).tensor
 
-      map_op = functional_ops.map_fn(tf_fn, labeled_tensor.tensor)
+      map_op = functional_ops.map_fn(
+          tf_fn, labeled_tensor.tensor, dtype=first_map_lt.dtype)
       map_lt = core.LabeledTensor(map_op, final_axes)
 
       return core.identity(map_lt, name=scope)
@@ -951,7 +952,7 @@ def define_reduce_op(op_name, reduce_fn):
           intermediate_axes.append(axis)
 
       reduce_op = reduce_fn(
-          labeled_tensor.tensor, reduction_dimensions, keep_dims=True)
+          labeled_tensor.tensor, reduction_dimensions, keepdims=True)
       reduce_lt = core.LabeledTensor(reduce_op, intermediate_axes)
 
       return squeeze(reduce_lt, axes_to_squeeze, name=scope)

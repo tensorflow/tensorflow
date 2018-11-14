@@ -15,11 +15,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
-#include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
-
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace internal {
 
 // -- CUDA
@@ -40,7 +36,17 @@ StreamExecutorFactory* MakeOpenCLExecutorImplementation() {
 
 StreamExecutorFactory MakeHostExecutorImplementation;
 
+// TODO(b/112125301): Consolodate this down to one implementation of
+// HostCallback, taking a callback that returns a Status.
+bool StreamExecutorInterface::HostCallback(
+    Stream* stream, std::function<port::Status()> callback) {
+  return HostCallback(stream, [callback]() {
+    port::Status s = callback();
+    if (!s.ok()) {
+      LOG(WARNING) << "HostCallback failed: " << s;
+    }
+  });
+}
 
 }  // namespace internal
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

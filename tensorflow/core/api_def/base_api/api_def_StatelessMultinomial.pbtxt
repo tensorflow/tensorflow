@@ -1,0 +1,30 @@
+op {
+  graph_op_name: "StatelessMultinomial"
+  in_arg {
+    name: "logits"
+    description: <<END
+2-D Tensor with shape `[batch_size, num_classes]`.  Each slice `[i, :]`
+represents the unnormalized log probabilities for all classes.
+END
+  }
+  in_arg {
+    name: "num_samples"
+    description: <<END
+0-D.  Number of independent samples to draw for each row slice.
+END
+  }
+  in_arg {
+    name: "seed"
+    description: <<END
+2 seeds (shape [2]).
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+2-D Tensor with shape `[batch_size, num_samples]`.  Each slice `[i, :]`
+contains the drawn class labels with range `[0, num_classes)`.
+END
+  }
+  summary: "Draws samples from a multinomial distribution."
+}

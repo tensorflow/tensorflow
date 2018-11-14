@@ -28,3 +28,12 @@ filegroup(
     name = "fft2d_headers_srcs",
     srcs = ["fft.h"],
 )
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = ["**/OWNERS"],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
+)

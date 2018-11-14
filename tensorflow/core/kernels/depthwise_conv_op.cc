@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA
+#include "cuda/include/cudnn.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
@@ -94,7 +95,7 @@ struct DepthwiseConv2DKernel {
 
     for (int i = 0; i < output_vectorized_size; i += kPacketSize) {
       // Reset accumulator.
-      auto vaccum = Eigen::internal::pset1<Packet>(0);
+      auto vaccum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
       for (int j = 0; j < filter_spatial_size; ++j) {
         // Calculate index.
         const int64 index = i + j * padded_filter_inner_dim_size;
@@ -115,7 +116,7 @@ struct DepthwiseConv2DKernel {
     }
 
     if (output_scalar_size > 0) {
-      auto vaccum = Eigen::internal::pset1<Packet>(0);
+      auto vaccum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
       for (int j = 0; j < filter_spatial_size; ++j) {
         const int64 index =
             output_vectorized_size + j * padded_filter_inner_dim_size;
@@ -241,16 +242,21 @@ struct LaunchDepthwiseConvOp<CPUDevice, T> {
 };
 
 // Extern template instantiated in conv_ops.cc.
-extern template class LaunchConv2DOp<CPUDevice, float>;
+extern template struct LaunchConv2DOp<CPUDevice, Eigen::half>;
+extern template struct LaunchConv2DOp<CPUDevice, float>;
+extern template struct LaunchConv2DOp<CPUDevice, double>;
 
 #if GOOGLE_CUDA
 
+// Extern template instantiated in conv_ops.cc.
+extern template struct LaunchConv2DOp<GPUDevice, Eigen::half>;
+extern template struct LaunchConv2DOp<GPUDevice, float>;
+extern template struct LaunchConv2DOp<GPUDevice, double>;
+
 // Extern template instantiated in depthwise_conv_op_gpu.cc.
+extern template struct LaunchDepthwiseConvOp<GPUDevice, Eigen::half>;
 extern template struct LaunchDepthwiseConvOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvOp<GPUDevice, double>;
-
-// Extern template instantiated in conv_ops.cc.
-extern template class LaunchConv2DOp<GPUDevice, float>;
 
 #endif
 
@@ -283,9 +289,11 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
                                 "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
 
-    // For special case when in_depth == 1.
-    use_cudnn_ = CanUseCudnn();
+    // For in_depth == 1 and grouped convolutions.
+    use_cudnn_ = CanUseCudnn() && std::is_same<Device, GPUDevice>::value;
     cudnn_use_autotune_ = CudnnUseAutotune();
+    use_cudnn_grouped_conv_ = false;
+    dtype_ = DataTypeToEnum<T>::value;
   }
 
   void Compute(OpKernelContext* context) override {
@@ -307,10 +315,10 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
 
     // in_depth for input and filter must match.
     const int64 in_depth = GetTensorDim(input, data_format_, 'C');
-    OP_REQUIRES(
-        context, in_depth == filter.dim_size(2),
-        errors::InvalidArgument("input and filter must have the same depth: ",
-                                in_depth, " vs ", filter.dim_size(2)));
+    OP_REQUIRES(context, in_depth == filter.dim_size(2),
+                errors::InvalidArgument(
+                    "input and filter must have the same depth: ", in_depth,
+                    " vs ", filter.dim_size(2)));
 
     // The last dimension for filter is depth multiplier.
     const int32 depth_multiplier = filter.dim_size(3);
@@ -356,23 +364,46 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
 
-    VLOG(2) << "DepthwiseConv2dNative: "
-            << " Input: [" << batch << ", " << input_rows << ", " << input_cols
-            << ", " << in_depth << "]; Filter: [" << filter_rows << ", "
-            << filter_cols << ", " << in_depth << ", " << depth_multiplier
-            << "]; stride = " << stride_ << ", pad_rows = " << pad_rows
-            << ", pad_cols = " << pad_cols << ", output: [" << batch << ", "
-            << out_rows << ", " << out_cols << ", " << out_depth << "]";
-
     // If there is nothing to compute, return.
     if (out_shape.num_elements() == 0) {
       return;
     }
 
-    // If in_depth==1, this operation is just a standard convolution, so
-    // invoke that op.
-    if (std::is_same<T, float>::value && in_depth == 1) {
-      launcher_(context, use_cudnn_, cudnn_use_autotune_, input, filter,
+    // TODO(csigg): Have autotune decide if native is faster than cuDNN.
+    // If in_depth==1, this operation is just a standard convolution.
+    // Depthwise convolution is a special case of cuDNN's grouped convolution.
+    bool use_cudnn = use_cudnn_ && (in_depth == 1 || use_cudnn_grouped_conv_);
+
+    VLOG(2) << "DepthwiseConv2dNative: "
+            << " Input: [" << batch << ", " << input_rows << ", " << input_cols
+            << ", " << in_depth << "]; Filter: [" << filter_rows << ", "
+            << filter_cols << ", " << in_depth << ", " << depth_multiplier
+            << "]; Output: [" << batch << ", " << out_rows << ", " << out_cols
+            << ", " << out_depth << "], stride = " << stride_
+            << ", pad_rows = " << pad_rows << ", pad_cols = " << pad_cols
+            << ", Use cuDNN: " << use_cudnn;
+
+    if (use_cudnn) {
+      // Reshape from TF depthwise filter to cuDNN grouped convolution filter:
+      //
+      //                  | TensorFlow       | cuDNN
+      // --------------------------------------------------------------------
+      // filter_out_depth | depth_multiplier | depth_multiplier * group_count
+      // filter_in_depth  | in_depth         | in_depth / group_count
+      //
+      // For depthwise convolution, we have group_count == in_depth.
+      int32 filter_in_depth = 1;
+      TensorShape shape =
+          TensorShape{filter_rows, filter_cols, filter_in_depth, out_depth};
+      Tensor reshaped_filter(/*type=*/dtype_);
+      OP_REQUIRES(
+          context, reshaped_filter.CopyFrom(filter, shape),
+          errors::Internal(
+              "Failed to reshape filter tensor for grouped convolution."));
+      // TODO(yangzihao): Send in arbitrary dilation rates after the dilated
+      // conv is supported.
+      launcher_(context, use_cudnn_, cudnn_use_autotune_, input,
+                reshaped_filter, /*row_dilation=*/1, /*col_dilation=*/1,
                 stride_, stride_, padding_, output, data_format_);
       return;
     }
@@ -399,6 +430,9 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
                                        output_ptr, data_format_);
   }
 
+ protected:
+  bool use_cudnn_grouped_conv_;
+
  private:
   std::vector<int32> strides_;
   Padding padding_;
@@ -406,10 +440,11 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
 
   int64 stride_;  // in height/width dimension.
 
-  // For the case in_depth == 1.
+  // For in_depth == 1 and grouped convolutions.
   LaunchConv2DOp<Device, T> launcher_;
   bool use_cudnn_;
   bool cudnn_use_autotune_;
+  DataType dtype_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeOp);
 };
@@ -417,22 +452,47 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
 #define REGISTER_CPU_KERNEL(T)                                                 \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("DepthwiseConv2dNative").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
-      DepthwiseConv2dNativeOp<CPUDevice, T>);
+      DepthwiseConv2dNativeOp<CPUDevice, T>)
 
+TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 #if !defined(PLATFORM_WINDOWS) || !defined(_DEBUG)
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #endif
 
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(
-    Name("DepthwiseConv2dNative").Device(DEVICE_GPU).TypeConstraint<float>("T"),
-    DepthwiseConv2dNativeOp<GPUDevice, float>);
 
-REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNative")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<double>("T"),
-                        DepthwiseConv2dNativeOp<GPUDevice, double>);
-#endif
+#define REGISTER_GPU_KERNEL(T)                                                 \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("DepthwiseConv2dNative").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      DepthwiseConv2dNativeOp<GPUDevice, T>)
+
+TF_CALL_half(REGISTER_GPU_KERNEL);
+TF_CALL_float(REGISTER_GPU_KERNEL);
+TF_CALL_double(REGISTER_GPU_KERNEL);
+
+#if CUDNN_VERSION >= 7000
+template <typename T>
+class DepthwiseConv2dGroupedConvOp
+    : public DepthwiseConv2dNativeOp<GPUDevice, T> {
+ public:
+  DepthwiseConv2dGroupedConvOp(OpKernelConstruction* context)
+      : DepthwiseConv2dNativeOp<GPUDevice, T>(context) {
+    this->use_cudnn_grouped_conv_ = true;
+  }
+};
+
+#define REGISTER_GROUPED_CONV_KERNEL(T)                            \
+  REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNative")            \
+                              .Device(DEVICE_GPU)                  \
+                              .TypeConstraint<T>("T")              \
+                              .Label("cudnn_grouped_convolution"), \
+                          DepthwiseConv2dGroupedConvOp<T>)
+
+TF_CALL_half(REGISTER_GROUPED_CONV_KERNEL);
+TF_CALL_float(REGISTER_GROUPED_CONV_KERNEL);
+TF_CALL_double(REGISTER_GROUPED_CONV_KERNEL);
+#endif  // CUDNN_VERSION
+#endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

@@ -1,3 +1,13 @@
+# WARNING: THESE IMAGES ARE DEPRECATED.
+
+TensorFlow's Dockerfiles are now located in
+[`tensorflow/tools/dockerfiles/`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/dockerfiles).
+However, these Dockerfiles are still used to build
+[TensorFlow's official Docker images](https://hub.docker.com/r/tensorflow/tensorflow)
+while the internal infrastructure for the newer Dockerfiles is being developed.
+
+This directory will eventually be removed.
+
 # Using TensorFlow via Docker
 
 This directory contains `Dockerfile`s to make it easy to get up and running with
@@ -16,12 +26,12 @@ quick links here:
 
 We currently maintain two Docker container images:
 
-* `gcr.io/tensorflow/tensorflow` - TensorFlow with all dependencies - CPU only!
+* `tensorflow/tensorflow` - TensorFlow with all dependencies - CPU only!
 
-* `gcr.io/tensorflow/tensorflow:latest-gpu` - TensorFlow with all dependencies
+* `tensorflow/tensorflow:latest-gpu` - TensorFlow with all dependencies
   and support for NVidia CUDA
 
-Note: We also publish the same containers into
+Note: We store all our containers on 
 [Docker Hub](https://hub.docker.com/r/tensorflow/tensorflow/tags/).
 
 
@@ -29,21 +39,22 @@ Note: We also publish the same containers into
 
 Run non-GPU container using
 
-    $ docker run -it -p 8888:8888 gcr.io/tensorflow/tensorflow
+    $ docker run -it -p 8888:8888 tensorflow/tensorflow
 
 For GPU support install NVidia drivers (ideally latest) and
 [nvidia-docker](https://github.com/NVIDIA/nvidia-docker). Run using
 
-    $ nvidia-docker run -it -p 8888:8888 gcr.io/tensorflow/tensorflow:latest-gpu
+    $ nvidia-docker run -it -p 8888:8888 tensorflow/tensorflow:latest-gpu
 
 
 Note: If you would have a problem running nvidia-docker you may try the old method
 we have used. But it is not recommended. If you find a bug in nvidia-docker, please report
 it there and try using nvidia-docker as described above.
 
+    $ # The old, not recommended way to run docker with gpu support:
     $ export CUDA_SO=$(\ls /usr/lib/x86_64-linux-gnu/libcuda.* | xargs -I{} echo '-v {}:{}')
     $ export DEVICES=$(\ls /dev/nvidia* | xargs -I{} echo '--device {}:{}')
-    $ docker run -it -p 8888:8888 $CUDA_SO $DEVICES gcr.io/tensorflow/tensorflow:latest-gpu
+    $ docker run -it -p 8888:8888 $CUDA_SO $DEVICES tensorflow/tensorflow:latest-gpu
 
 
 ## More containers
@@ -59,6 +70,20 @@ Building TensorFlow Docker containers should be done through the
 script. The raw Dockerfiles should not be used directly as they contain strings
 to be replaced by the script during the build.
 
+Attempting to run [parameterized_docker_build.sh](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/docker/parameterized_docker_build.sh)
+from a binary docker image such as for example `tensorflow/tensorflow:latest` will
+not work. One needs to execute the script from a developer docker image since by
+contrast with a binary docker image it contains not only the compiled solution but
+also the tensorflow source code. Please select the appropriate developer docker
+image of tensorflow at `tensorflow/tensorflow:[.](https://hub.docker.com/r/tensorflow/tensorflow/tags/)`.
+
+The smallest command line to generate a docker image will then be:
+```docker run -it tensorflow/tensorflow:"right_tag"```
+
+If you would like to start a jupyter notebook on your docker container, make sure
+to map the port 8888 of your docker container by adding -p 8888:8888 to the above
+command.
+
 To use the script, specify the container type (`CPU` vs. `GPU`), the desired
 Python version (`PYTHON2` vs. `PYTHON3`) and whether the developer Docker image
 is to be built (`NO` vs. `YES`). In addition, you need to specify the central
@@ -72,8 +97,10 @@ export TF_DOCKER_BUILD_IS_DEVEL=NO
 export TF_DOCKER_BUILD_TYPE=CPU
 export TF_DOCKER_BUILD_PYTHON_VERSION=PYTHON2
 
-export NIGHTLY_VERSION="1.head"
-export TF_DOCKER_BUILD_CENTRAL_PIP=$(echo ${TF_DOCKER_BUILD_PYTHON_VERSION} | sed s^PYTHON2^http://ci.tensorflow.org/view/Nightly/job/nightly-matrix-cpu/TF_BUILD_IS_OPT=OPT,TF_BUILD_IS_PIP=PIP,TF_BUILD_PYTHON_VERSION=${TF_DOCKER_BUILD_PYTHON_VERSION},label=cpu-slave/lastSuccessfulBuild/artifact/pip_test/whl/tensorflow-${NIGHTLY_VERSION}-cp27-cp27mu-manylinux1_x86_64.whl^ | sed s^PYTHON3^http://ci.tensorflow.org/view/Nightly/job/nightly-python35-linux-cpu/lastSuccessfulBuild/artifact/pip_test/whl/tensorflow-${NIGHTLY_VERSION}-cp35-cp35m-manylinux1_x86_64.whl^)
+pip download --no-deps tf-nightly
+
+export TF_DOCKER_BUILD_CENTRAL_PIP=$(ls tf_nightly*.whl)
+export TF_DOCKER_BUILD_CENTRAL_PIP_IS_LOCAL=1
 
 tensorflow/tools/docker/parameterized_docker_build.sh
 ```

@@ -1,0 +1,32 @@
+op {
+  graph_op_name: "RemoteFusedGraphExecute"
+  in_arg {
+    name: "inputs"
+    description: <<END
+Arbitrary number of tensors with arbitrary data types
+END
+  }
+  out_arg {
+    name: "outputs"
+    description: <<END
+Arbitrary number of tensors with arbitrary data types
+END
+  }
+  attr {
+    name: "serialized_remote_fused_graph_execute_info"
+    description: <<END
+Serialized protocol buffer
+of RemoteFusedGraphExecuteInfo which contains graph specifications.
+END
+  }
+  summary: "Execute a sub graph on a remote processor."
+  description: <<END
+The graph specifications(such as graph itself, input tensors and output names)
+are stored as a serialized protocol buffer of RemoteFusedGraphExecuteInfo
+as serialized_remote_fused_graph_execute_info.
+The specifications will be passed to a dedicated registered
+remote fused graph executor.  The executor will send the graph specifications
+to a remote processor and execute that graph.  The execution results
+will be passed to consumer nodes as outputs of this node.
+END
+}

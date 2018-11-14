@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Methods to allow generator of dict with numpy arrays."""
+"""Methods to allow generator of dict with numpy arrays (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,8 +28,10 @@ from types import FunctionType
 from types import GeneratorType
 
 from tensorflow.python.estimator.inputs.queues.feeding_functions import _enqueue_data as enqueue_data
+from tensorflow.python.util.deprecation import deprecated
 
 
+@deprecated(None, 'Please use tf.data.')
 def generator_input_fn(x,
                        target_key=None,
                        batch_size=128,

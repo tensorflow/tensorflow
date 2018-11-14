@@ -18,8 +18,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/platform/port.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace port {
 
 // Convert strings to floating point values.
@@ -28,7 +27,6 @@ namespace port {
 bool safe_strto32(const string& str, int32* value);
 
 }  // namespace port
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_NUMBERS_H_

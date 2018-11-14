@@ -64,8 +64,14 @@ cc_library(
 tf_cc_test(
     name = "tensor_bundle_test",
     srcs = ["tensor_bundle_test.cc"],
+    data = glob(["testdata/**"]),
+    tags = [
+        "nomsan",
+        "notsan",
+    ],
     deps = [
         ":tensor_bundle",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -73,19 +79,4 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
-)
-
-# -----------------------------------------------------------------------------
-# Google-internal targets.  These must be at the end for syncrepo.
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

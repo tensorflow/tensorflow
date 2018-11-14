@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/cwise_ops.h"
 #include "tensorflow/core/kernels/meta_support.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -30,6 +31,19 @@ enum {
   QUANTIZE_MODE_MIN_COMBINED,
   QUANTIZE_MODE_MIN_FIRST,
   QUANTIZE_MODE_SCALED,
+};
+enum {
+  // Round half away from zero: if the fraction of y is exactly 0.5, then
+  // round(y) = y + 0.5 if y > 0
+  // round(y) = y - 0.5 if y < 0
+  // E.g., -5.5 gets rounded to -6, -5.4 goes to -5,
+  // 5.4 goes to 5, and 5.5 goes to 6.
+  ROUND_HALF_AWAY_FROM_ZERO,
+  // Round half to even: if the fraction of y is exactly 0.5, then round(y) is
+  // the nearest even integer to y.
+  // E.g., 23.5 gets rounded to 24, 24.5 gets rounded to 24, while -23.5 becomes
+  // -24, and -24.5 gets rounded to 24.
+  ROUND_HALF_TO_EVEN,
 };
 }  // namespace
 
@@ -66,6 +80,26 @@ class QuantizeV2Op : public OpKernel {
     } else if (mode_string == "SCALED") {
       mode_ = QUANTIZE_MODE_SCALED;
     }
+
+    string round_mode_string;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("round_mode", &round_mode_string));
+    OP_REQUIRES(ctx,
+                (round_mode_string == "HALF_AWAY_FROM_ZERO" ||
+                 round_mode_string == "HALF_TO_EVEN"),
+                errors::InvalidArgument("Round mode string must be "
+                                        "'HALF_AWAY_FROM_ZERO' or "
+                                        "'HALF_TO_EVEN', is '" +
+                                        round_mode_string + "'"));
+    if (round_mode_string == "HALF_AWAY_FROM_ZERO") {
+      round_mode_ = ROUND_HALF_AWAY_FROM_ZERO;
+    } else if (round_mode_string == "HALF_TO_EVEN") {
+      OP_REQUIRES(ctx, mode_string == "SCALED",
+                  errors::InvalidArgument("Round mode 'HALF_TO_EVEN' "
+                                          "only supported for mode 'SCALED', "
+                                          "but mode is '" +
+                                          mode_string + "'."));
+      round_mode_ = ROUND_HALF_TO_EVEN;
+    }
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -97,6 +131,7 @@ class QuantizeV2Op : public OpKernel {
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));
+    typename TTypes<T>::Vec o = output->template flat<T>();
     if (mode_ == QUANTIZE_MODE_MIN_COMBINED) {
       const float scale_factor =
           (static_cast<double>(std::numeric_limits<T>::max()) -
@@ -113,7 +148,6 @@ class QuantizeV2Op : public OpKernel {
       // semantic of std::round, which implements "round-half-away-zero",
       // e.g., -5.5 gets rounded to -6, -5.4 goes to -5, 5.4 goes to 5,
       // and 5.5 goes to 6.
-      typename TTypes<T>::Vec o = output->template flat<T>();
       bool is_signed = std::is_signed<T>::value;
       if (is_signed) {
         // The slow path.
@@ -146,45 +180,33 @@ class QuantizeV2Op : public OpKernel {
             output);
       }
     } else if (mode_ == QUANTIZE_MODE_SCALED) {
-      // The quantization logic for mode SCALED matches that of
-      // QuantizeAndDequantizeV2 and QuantizeAndDequantizeV3.
-      typename TTypes<T>::Vec o = output->template flat<T>();
-      static constexpr int num_bits = sizeof(T) * 8;
-      const float max_abs = std::max(std::abs(min_range), std::abs(max_range));
-      bool is_signed = std::is_signed<T>::value;
-      if (is_signed) {
-        max_range = max_abs;
-        min_range = -max_abs;
-        // If it is signed, we try to keep 0.0 being 0 and drop one bucket. For
-        // example, if it is 8 bits, we have the range [-127, 127]. So for input
-        // range of [-x, x], the scale should be 254/(2*x).
-        const float target_range =
-            static_cast<float>((uint64_t{1} << (num_bits - 1)) - 1);
-        const float scale_factor = target_range / max_abs;
-        // Note that std::round is used to round the number before the cast.
-        // std::round implements "round-half-away-zero",
-        // e.g., -5.5 gets rounded to -6, -5.4 goes to -5, 5.4 goes to 5,
-        // and 5.5 goes to 6.
+      const int min_output_value = std::numeric_limits<T>::min();
+      const int max_output_value = std::numeric_limits<T>::max();
+      const float scale_factor_from_min_side =
+          (min_output_value * min_range > 0)
+              ? min_output_value / min_range
+              : std::numeric_limits<float>::max();
+      const float scale_factor_from_max_side =
+          (max_output_value * max_range > 0)
+              ? max_output_value / max_range
+              : std::numeric_limits<float>::max();
+      const float scale_factor =
+          std::min(scale_factor_from_min_side, scale_factor_from_max_side);
+      min_range = min_output_value / scale_factor;
+      max_range = max_output_value / scale_factor;
+      if (round_mode_ == ROUND_HALF_TO_EVEN) {
+        // scalar_round_op_google implements "round-half-to-even".
         o.device(ctx->template eigen_device<Device>()) =
             (input.flat<float>().cwiseMin(max_range).cwiseMax(min_range) *
              scale_factor)
-                .round()
+                .unaryExpr(Eigen::internal::scalar_round_op_google<float>())
                 .template cast<T>();
-      } else {
-        max_range = max_abs;
-        min_range = 0.0;
-        // If it is unsigned and num_bits == 8, the range with 8 bits is [0,
-        // 255].  If the input range is [0, x], then the scale is x/255 instead
-        // of 254 as in the case above.
-        const float target_range =
-            static_cast<float>((uint64_t{1} << num_bits) - 1);
-        const float scale_factor = target_range / max_abs;
-        // Because input is unsigned, we don't need to implement "round away
-        // from zero".  The fast path avoids unaryExpr.
+      } else if (round_mode_ == ROUND_HALF_AWAY_FROM_ZERO) {
+        // scalar_round_op implements "round-half-away-from-zero".
         o.device(ctx->template eigen_device<Device>()) =
             (input.flat<float>().cwiseMin(max_range).cwiseMax(min_range) *
-                 scale_factor +
-             0.5f)
+             scale_factor)
+                .unaryExpr(Eigen::internal::scalar_round_op<float>())
                 .template cast<T>();
       }
     }
@@ -201,6 +223,7 @@ class QuantizeV2Op : public OpKernel {
  private:
   float half_range_;
   int mode_;
+  int round_mode_;
 };
 
 REGISTER_KERNEL_BUILDER(
@@ -218,5 +241,4 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("QuantizeV2").Device(DEVICE_CPU).TypeConstraint<qint32>("T"),
     QuantizeV2Op<CPUDevice, qint32>);
-
 }  // namespace tensorflow

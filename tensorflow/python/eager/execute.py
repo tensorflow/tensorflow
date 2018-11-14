@@ -30,7 +30,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 
 
-def execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
+def quick_execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
   """Execute a TensorFlow operation.
 
   Args:
@@ -47,49 +47,51 @@ def execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
     name: Customized name for the operation.
 
   Returns:
-    None if there are no outputs, a single Tensor object if there is one output
-    and a list of Tensor objects if there are multiple outputs.
+    List of output Tensor objects. The list is empty if there are no outputs
 
   Raises:
     An exception on error.
   """
-  # TODO(apassos) move this to convert_to_tensor
-  # pylint: disable=protected-access
-  input_handles = [c._handle for c in inputs]
   device_name = ctx.device_name
+  # pylint: disable=protected-access
   try:
-    outh = pywrap_tensorflow.TFE_Py_Execute(ctx._handle, device_name,
-                                            op_name, input_handles, attrs,
-                                            num_outputs)
+    tensors = pywrap_tensorflow.TFE_Py_Execute(ctx._handle, device_name,
+                                               op_name, inputs, attrs,
+                                               num_outputs)
   except core._NotOkStatusException as e:
     if name is not None:
       message = e.message + " name: " + name
     else:
       message = e.message
     six.raise_from(core._status_to_exception(e.code, message), None)
+  except TypeError as e:
+    if any(ops._is_keras_symbolic_tensor(x) for x in inputs):
+      if any(isinstance(x, ops.EagerTensor) for x in inputs):
+        raise TypeError("You are attempting to mix computation of symbolic "
+                        "Tensors (computation rooted at tf.keras.Input()) "
+                        "and concrete values. This is not supported. "
+                        "If you need this support, file an issue on the "
+                        "TensorFlow GitHub repository.")
+      raise core._SymbolicException
+    raise e
   # pylint: enable=protected-access
+  return tensors
 
-  tensors = [ops._tensor_from_handle(x) for x in outh]  # pylint: disable=protected-access
-  # TODO(alive, cais): Use the execution callback mechanism.
-  if core.active_trace() is not None:
-    for t in tensors:
-      # pylint: disable=protected-access
-      core.active_trace().record_tensor(op_name,
-                                        ops.tensor_id(t),
-                                        t.device,
-                                        t.shape.num_elements())
-      # pylint: enable=protected-access
 
-  # TODO(cais): Optimize this, perhaps by replacing this execute function with
-  # a different one when there are execution callback(s).
+def execute_with_callbacks(op_name, num_outputs, inputs, attrs, ctx, name=None):
+  """Monkey-patch to execute to enable execution callbacks."""
+  tensors = quick_execute(op_name, num_outputs, inputs, attrs, ctx, name)
   for callback in ctx.post_execution_callbacks:
-    callback(op_name, name, attrs, inputs, tensors)
+    callback(op_name, inputs, attrs, tensors, name)
 
   return tensors
 
 
+execute = quick_execute
+
+
 def record_gradient(unused_op_name, unused_inputs, unused_attrs, unused_results,
-                    unused_ctx, unused_name):
+                    unused_name):
   """Import backprop if you want gradients recorded."""
   pass
 
@@ -173,35 +175,44 @@ def make_tensor(v, arg_name):
 
 def args_to_matching_eager(l, ctx, default_dtype=None):
   """Convert sequence `l` to eager same-type Tensors."""
+  EagerTensor = ops.EagerTensor  # pylint: disable=invalid-name
+  for x in l:
+    if not isinstance(x, EagerTensor):
+      break
+  else:  # note: intentional for-else
+    return l[0]._datatype_enum(), l  # pylint: disable=protected-access
   # TODO(josh11b): Could we do a better job if we also passed in the
   # allowed dtypes when that was known?
 
   # Is some input already a Tensor with a dtype?
   dtype = None
   for t in l:
-    if isinstance(t, ops.EagerTensor):
+    if isinstance(t, EagerTensor):
       dtype = t.dtype
       break
 
+  internal_convert_to_tensor = ops.internal_convert_to_tensor
   if dtype is None:
     # Infer a dtype based on the first value, and use that dtype for the
     # remaining values.
     ret = []
     for t in l:
-      ret.append(ops.internal_convert_to_tensor(
-          t, dtype, preferred_dtype=default_dtype, ctx=ctx))
+      ret.append(internal_convert_to_tensor(
+          t, dtype,
+          preferred_dtype=default_dtype,
+          ctx=ctx,
+          accept_symbolic_tensors=False))
       if dtype is None:
         dtype = ret[-1].dtype
   else:
-    ret = [ops.internal_convert_to_tensor(t, dtype, ctx=ctx) for t in l]
+    ret = [internal_convert_to_tensor(t, dtype, ctx=ctx) for t in l]
 
-  return dtype, ret
+  return dtype.as_datatype_enum, ret
 
 
 def convert_to_mixed_eager_tensors(values, ctx):
-  v = [t if isinstance(t, ops.EagerTensor) else ops.EagerTensor(t, ctx)
-       for t in values]
-  types = [t.dtype for t in v]
+  v = [ops.internal_convert_to_tensor(t, ctx=ctx) for t in values]
+  types = [t._datatype_enum() for t in v]  # pylint: disable=protected-access
   return types, v
 
 
@@ -239,5 +250,5 @@ def args_to_mixed_eager_tensors(lists, ctx):
       for j in range(len(lists)):
         lists_ret[j].append(
             ops.internal_convert_to_tensor(lists[j][i], dtype=dtype, ctx=ctx))
-    types.append(dtype)
+    types.append(dtype.as_datatype_enum)
   return types, lists_ret

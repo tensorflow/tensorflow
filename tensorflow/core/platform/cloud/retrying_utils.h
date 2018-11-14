@@ -13,13 +13,33 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_CLOUD_RETRYING_UTILS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_CLOUD_RETRYING_UTILS_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_CLOUD_RETRYING_UTILS_H_
+#define TENSORFLOW_CORE_PLATFORM_CLOUD_RETRYING_UTILS_H_
 
 #include <functional>
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
+
+// Default time before reporting failure: ~100 seconds.
+struct RetryConfig {
+  RetryConfig(int64 init_delay_time_us = 100 * 1000,
+              int64 max_delay_time_us = 32 * 1000 * 1000,
+              int max_retries = 10) {
+    this->init_delay_time_us = init_delay_time_us;
+    this->max_delay_time_us = max_delay_time_us;
+    this->max_retries = max_retries;
+  }
+
+  // In case of failure, every call will be retried max_retries times.
+  int max_retries;
+
+  // Initial backoff time
+  int64 init_delay_time_us;
+
+  // Maximum backoff time in microseconds.
+  int64 max_delay_time_us;
+};
 
 class RetryingUtils {
  public:
@@ -31,20 +51,21 @@ class RetryingUtils {
   /// retries.
   /// If all retries failed, returns the last error status.
   static Status CallWithRetries(const std::function<Status()>& f,
-                                const int64 initial_delay_microseconds);
+                                const RetryConfig& config);
+
   /// sleep_usec is a function that sleeps for the given number of microseconds.
   static Status CallWithRetries(const std::function<Status()>& f,
-                                const int64 initial_delay_microseconds,
-                                const std::function<void(int64)>& sleep_usec);
+                                const std::function<void(int64)>& sleep_usec,
+                                const RetryConfig& config);
   /// \brief A retrying wrapper for a function that deletes a resource.
   ///
   /// The function takes care of the scenario when a delete operation
   /// returns a failure but succeeds under the hood: if a retry returns
   /// NOT_FOUND, the whole operation is considered a success.
   static Status DeleteWithRetries(const std::function<Status()>& delete_func,
-                                  const int64 initial_delay_microseconds);
+                                  const RetryConfig& config);
 };
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PLATFORM_CLOUD_RETRYING_UTILS_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_CLOUD_RETRYING_UTILS_H_

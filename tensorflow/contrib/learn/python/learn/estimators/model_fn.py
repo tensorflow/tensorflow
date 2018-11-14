@@ -13,7 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Classes and methods related to model_fn."""
+"""Classes and methods related to model_fn (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,7 +28,6 @@ import collections
 
 import six
 
-from tensorflow.contrib import framework as contrib_framework
 from tensorflow.contrib.framework import get_graph_from_inputs
 from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import metric_key
@@ -32,15 +36,19 @@ from tensorflow.python.estimator import model_fn as core_model_fn_lib
 from tensorflow.python.estimator.export import export_output as core_export_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.util.deprecation import deprecated
 
 
 class ModeKeys(object):
-  """Standard names for model modes.
+  """Standard names for model modes (deprecated).
+
+  THIS CLASS IS DEPRECATED.
 
   The following standard keys are defined:
 
@@ -65,8 +73,16 @@ class ModelFnOps(
         'output_alternatives', 'training_chief_hooks', 'training_hooks',
         'scaffold', 'mode'
     ])):
-  """Ops returned from a model_fn."""
+  """Ops returned from a model_fn.
 
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
+  """
+
+  @deprecated(None, 'When switching to tf.estimator.Estimator, use '
+              'tf.estimator.EstimatorSpec. You can use the `estimator_spec`'
+              ' method to create an equivalent one.')
   def __new__(cls,
               mode,
               predictions=None,
@@ -156,11 +172,11 @@ class ModelFnOps(
     else:
       if isinstance(predictions, dict):
         predictions = {
-            k: contrib_framework.convert_to_tensor_or_sparse_tensor(v)
+            k: sparse_tensor.convert_to_tensor_or_sparse_tensor(v)
             for k, v in six.iteritems(predictions)
         }
       else:
-        predictions = contrib_framework.convert_to_tensor_or_sparse_tensor(
+        predictions = sparse_tensor.convert_to_tensor_or_sparse_tensor(
             predictions)
 
     # Validate eval_metric_ops

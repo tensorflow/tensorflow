@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/fuzzing/fuzz_session.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/kernels/fuzzing/fuzz_session.h"
 
 namespace tensorflow {
 namespace fuzzing {
@@ -43,9 +43,9 @@ class FuzzExampleProtoFastParsing : public FuzzSession {
     std::vector<PartialTensorShape> dense_shapes;
     dense_shapes.push_back(PartialTensorShape());
 
-    std::ignore = ParseExample(scope.WithOpName("output"), in_expanded, names,
-                               sparse_keys, dense_keys, dense_defaults,
-                               sparse_types, dense_shapes);
+    (void)ParseExample(scope.WithOpName("output"), in_expanded, names,
+                       sparse_keys, dense_keys, dense_defaults, sparse_types,
+                       dense_shapes);
   }
 
   void FuzzImpl(const uint8_t* data, size_t size) final {

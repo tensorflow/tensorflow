@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef LEARNING_BRAIN_KERNELS_FUZZING_FUZZ_SESSION_H_
-#define LEARNING_BRAIN_KERNELS_FUZZING_FUZZ_SESSION_H_
+#ifndef TENSORFLOW_CORE_KERNELS_FUZZING_FUZZ_SESSION_H_
+#define TENSORFLOW_CORE_KERNELS_FUZZING_FUZZ_SESSION_H_
 
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/core/graph/graph.h"
@@ -39,8 +39,7 @@ limitations under the License.
   void BuildGraph(const Scope& scope) override {                         \
     auto op_node =                                                       \
         tensorflow::ops::Placeholder(scope.WithOpName("input1"), dtype); \
-    std::ignore =                                                        \
-        tensorflow::ops::opName(scope.WithOpName("output"), op_node);    \
+    (void)tensorflow::ops::opName(scope.WithOpName("output"), op_node);  \
   }
 
 namespace tensorflow {
@@ -153,4 +152,4 @@ class FuzzStringInputOp : public FuzzSession {
 }  // end namespace fuzzing
 }  // end namespace tensorflow
 
-#endif  // LEARNING_BRAIN_KERNELS_FUZZING_FUZZ_SESSION_H_
+#endif  // TENSORFLOW_CORE_KERNELS_FUZZING_FUZZ_SESSION_H_

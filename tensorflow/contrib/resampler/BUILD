@@ -7,12 +7,12 @@ package(default_visibility = ["//visibility:public"])
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_custom_op_library",
-    "tf_custom_op_py_library",
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
     "tf_kernel_library",
 )
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 tf_custom_op_py_library(
     name = "resampler_py",
@@ -20,22 +20,37 @@ tf_custom_op_py_library(
     dso = [":python/ops/_resampler_ops.so"],
     kernels = [
         ":resampler_ops_kernels",
-        ":resampler_ops_op_lib",
     ],
     visibility = ["//visibility:public"],
     deps = [
         ":resampler_ops",
         "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
+        "//third_party/py/numpy",
     ],
 )
 
 tf_kernel_library(
     name = "resampler_ops_kernels",
+    srcs = [
+        "kernels/resampler_ops.cc",
+        "kernels/resampler_ops.h",
+    ],
+    gpu_srcs = [
+        "kernels/resampler_ops_gpu.cu.cc",
+        "kernels/resampler_ops.h",
+    ],
     prefix = "resampler_ops",
     deps = [
+        ":resampler_ops_op_lib",
+        "//tensorflow/compiler/tf2xla/kernels:resampler_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -78,15 +93,4 @@ cuda_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:array_ops",
     ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
 )

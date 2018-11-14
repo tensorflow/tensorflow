@@ -495,8 +495,25 @@ MySelect(x:float) -> (z:float) {
   EXPECT_EQ(DebugString(result.nodes), e2);
 }
 
+TEST(TFunc, IntsOnDeviceArgNotSet) {
+  auto fdef = test::function::XTimesTwoInt32();
+  InstantiationResult result;
+  TF_ASSERT_OK(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result));
+  EXPECT_EQ(5, result.nodes.size());
+  EXPECT_EQ("_Retval", result.nodes[4].op());
+}
+
+TEST(TFunc, IntsOnDeviceArgSet) {
+  auto fdef = test::function::XTimesTwoInt32();
+  (*fdef.mutable_attr())["experimental_ints_on_device"].set_b(true);
+  InstantiationResult result;
+  TF_ASSERT_OK(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result));
+  EXPECT_EQ(5, result.nodes.size());
+  EXPECT_EQ("_DeviceRetval", result.nodes[4].op());
+}
+
 static void HasError(const Status& s, const string& substr) {
-  EXPECT_TRUE(StringPiece(s.ToString()).contains(substr))
+  EXPECT_TRUE(str_util::StrContains(s.ToString(), substr))
       << ">>" << s << "<<, expected substring >>" << substr << "<<";
 }
 
@@ -1281,36 +1298,46 @@ TEST(FunctionDefsEqualTest, TestFunctionDefsEqual) {
   // Equal functions
   const FunctionDef fdef1 = test::function::XTimesTwo();
   FunctionDef fdef2 = test::function::XTimesTwo();
+  uint64 hash1 = FunctionDefHash(fdef1);
   EXPECT_TRUE(FunctionDefsEqual(fdef1, fdef2));
+  EXPECT_EQ(hash1, FunctionDefHash(fdef2));
 
   // Different functions
   fdef2 = test::function::XTimesFour();
   EXPECT_FALSE(FunctionDefsEqual(fdef1, fdef2));
+  EXPECT_NE(hash1, FunctionDefHash(fdef2));
 
   // Different signatures
   fdef2 = test::function::XTimesTwo();
   fdef2.mutable_signature()->mutable_input_arg(0)->set_name("foo");
   EXPECT_FALSE(FunctionDefsEqual(fdef1, fdef2));
+  EXPECT_NE(hash1, FunctionDefHash(fdef2));
 
   // Descriptions must be equal
   fdef2 = test::function::XTimesTwo();
   fdef2.mutable_signature()->mutable_input_arg(0)->set_description("foo");
   EXPECT_FALSE(FunctionDefsEqual(fdef1, fdef2));
+  EXPECT_NE(hash1, FunctionDefHash(fdef2));
 
   // Different NodeDefs
   fdef2 = test::function::XTimesTwo();
-  *fdef2.add_node_def() = fdef2.node_def(0);
+  NodeDef* ndef = fdef2.add_node_def();
+  *ndef = fdef2.node_def(0);
+  ndef->set_name("new_name");
   EXPECT_FALSE(FunctionDefsEqual(fdef1, fdef2));
+  EXPECT_NE(hash1, FunctionDefHash(fdef2));
 
   // Different return values
   fdef2 = test::function::XTimesTwo();
   (*fdef2.mutable_ret())["y"] = "y:z:1";  // originally is "y:z:0"
   EXPECT_FALSE(FunctionDefsEqual(fdef1, fdef2));
+  EXPECT_NE(hash1, FunctionDefHash(fdef2));
 
   // Different attributes
   fdef2 = test::function::XTimesTwo();
   SetAttrValue(&fdef2, "ExtraAttr", true);
   EXPECT_FALSE(FunctionDefsEqual(fdef1, fdef2));
+  EXPECT_NE(hash1, FunctionDefHash(fdef2));
 
   // Multiple equivalent attributes; the two functions should be equal.
   fdef2 = test::function::XTimesTwo();
@@ -1322,6 +1349,7 @@ TEST(FunctionDefsEqualTest, TestFunctionDefsEqual) {
   SetAttrValue(&fdef2, "Baz", "abc");
   SetAttrValue(&fdef3, "Baz", "abc");
   EXPECT_TRUE(FunctionDefsEqual(fdef2, fdef3));
+  EXPECT_EQ(FunctionDefHash(fdef2), FunctionDefHash(fdef3));
 }
 
 }  // end namespace

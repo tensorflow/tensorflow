@@ -39,19 +39,28 @@ limitations under the License.
 
 namespace tensorflow {
 
-GdrWorker::GdrWorker(WorkerEnv* worker_env,
+GdrWorker::GdrWorker(WorkerEnv* worker_env, const ConfigProto& config,
                      RemoteMemoryManager* remote_memory_manager)
-    : GrpcWorker(worker_env), remote_memory_manager_(remote_memory_manager) {}
+    : GrpcWorker(worker_env, config),
+      remote_memory_manager_(remote_memory_manager),
+      recv_tensor_recent_request_ids_(100000) {}
 
 void GdrWorker::GrpcRecvTensorAsync(CallOptions* opts,
                                     const RecvTensorRequest* request,
                                     ::grpc::ByteBuffer* response,
                                     StatusCallback done) {
+  Status s = recv_tensor_recent_request_ids_.TrackUnique(
+      request->request_id(), "RecvTensor (GdrWorker)", *request);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
+
   const int64 step_id = request->step_id();
   const string& key = request->rendezvous_key();
   TRACEPRINTF("RecvTensor: %lld %s", step_id, key.c_str());
   Rendezvous::ParsedKey parsed;
-  Status s = Rendezvous::ParseKey(key, &parsed);
+  s = Rendezvous::ParseKey(key, &parsed);
   Device* src_dev = nullptr;
   if (s.ok()) {
     s = PrepareRecvTensor(parsed, &src_dev);

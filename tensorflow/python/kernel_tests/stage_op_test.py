@@ -25,8 +25,8 @@ from tensorflow.python.platform import test
 
 TIMEOUT = 1
 
-class StageTest(test.TestCase):
 
+class StageTest(test.TestCase):
 
   def testSimple(self):
     with ops.Graph().as_default() as G:
@@ -41,7 +41,7 @@ class StageTest(test.TestCase):
 
     G.finalize()
 
-    with self.test_session(use_gpu=True, graph=G) as sess:
+    with self.session(use_gpu=True, graph=G) as sess:
       sess.run(stage, feed_dict={x: -1})
       for i in range(10):
         _, yval = sess.run([stage, y], feed_dict={x: i})
@@ -60,7 +60,7 @@ class StageTest(test.TestCase):
 
     G.finalize()
 
-    with self.test_session(use_gpu=True, graph=G) as sess:
+    with self.session(use_gpu=True, graph=G) as sess:
       sess.run(stage, feed_dict={x: -1})
       for i in range(10):
         _, yval = sess.run([stage, y], feed_dict={x: i})
@@ -85,7 +85,7 @@ class StageTest(test.TestCase):
 
     G.finalize()
 
-    with self.test_session(use_gpu=True, graph=G) as sess:
+    with self.session(use_gpu=True, graph=G) as sess:
       sess.run(stage, feed_dict={x: -1})
       for i in range(10):
         _, yval = sess.run([stage, y], feed_dict={x: i})
@@ -116,14 +116,17 @@ class StageTest(test.TestCase):
         x = array_ops.placeholder(dtypes.int32, name='x')
         p = array_ops.placeholder(dtypes.int32, name='p')
       with ops.device(test.gpu_device_name()):
-        stager = data_flow_ops.StagingArea([dtypes.int32, ], shapes=[[]])
+        stager = data_flow_ops.StagingArea(
+            [
+                dtypes.int32,
+            ], shapes=[[]])
         stage = stager.put([x])
         peek = stager.peek(p)
         ret = stager.get()
 
     G.finalize()
 
-    with self.test_session(use_gpu=True, graph=G) as sess:
+    with self.session(use_gpu=True, graph=G) as sess:
       for i in range(10):
         sess.run(stage, feed_dict={x: i})
 
@@ -147,7 +150,7 @@ class StageTest(test.TestCase):
 
     G.finalize()
 
-    with self.test_session(use_gpu=True, graph=G) as sess:
+    with self.session(use_gpu=True, graph=G) as sess:
       sess.run(stage, feed_dict={x: -1})
       self.assertEqual(sess.run(size), 1)
       sess.run(stage, feed_dict={x: -1})
@@ -162,8 +165,10 @@ class StageTest(test.TestCase):
       with ops.device('/cpu:0'):
         x = array_ops.placeholder(dtypes.int32, name='x')
       with ops.device(test.gpu_device_name()):
-        stager = data_flow_ops.StagingArea([dtypes.int32, ],
-          capacity=capacity, shapes=[[]])
+        stager = data_flow_ops.StagingArea(
+            [
+                dtypes.int32,
+            ], capacity=capacity, shapes=[[]])
         stage = stager.put([x])
         ret = stager.get()
         size = stager.size()
@@ -176,7 +181,7 @@ class StageTest(test.TestCase):
     queue = Queue.Queue()
     n = 8
 
-    with self.test_session(use_gpu=True, graph=G) as sess:
+    with self.session(use_gpu=True, graph=G) as sess:
       # Stage data in a separate thread which will block
       # when it hits the staging area's capacity and thus
       # not fill the queue with n tokens
@@ -201,9 +206,8 @@ class StageTest(test.TestCase):
         self.fail("Expected to timeout on iteration '{}' "
                   "but instead timed out on iteration '{}' "
                   "Staging Area size is '{}' and configured "
-                  "capacity is '{}'.".format(capacity, i,
-                                            sess.run(size),
-                                            capacity))
+                  "capacity is '{}'.".format(capacity, i, sess.run(size),
+                                             capacity))
 
       # Should have capacity elements in the staging area
       self.assertTrue(sess.run(size) == capacity)
@@ -216,16 +220,18 @@ class StageTest(test.TestCase):
       self.assertTrue(sess.run(size) == 0)
 
   def testMemoryLimit(self):
-    memory_limit = 512*1024  # 512K
-    chunk = 200*1024 # 256K
+    memory_limit = 512 * 1024  # 512K
+    chunk = 200 * 1024  # 256K
     capacity = memory_limit // chunk
 
     with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
         x = array_ops.placeholder(dtypes.uint8, name='x')
       with ops.device(test.gpu_device_name()):
-        stager = data_flow_ops.StagingArea([dtypes.uint8, ],
-          memory_limit=memory_limit, shapes=[[]])
+        stager = data_flow_ops.StagingArea(
+            [
+                dtypes.uint8,
+            ], memory_limit=memory_limit, shapes=[[]])
         stage = stager.put([x])
         ret = stager.get()
         size = stager.size()
@@ -239,7 +245,7 @@ class StageTest(test.TestCase):
     queue = Queue.Queue()
     n = 8
 
-    with self.test_session(use_gpu=True, graph=G) as sess:
+    with self.session(use_gpu=True, graph=G) as sess:
       # Stage data in a separate thread which will block
       # when it hits the staging area's capacity and thus
       # not fill the queue with n tokens
@@ -264,9 +270,8 @@ class StageTest(test.TestCase):
         self.fail("Expected to timeout on iteration '{}' "
                   "but instead timed out on iteration '{}' "
                   "Staging Area size is '{}' and configured "
-                  "capacity is '{}'.".format(capacity, i,
-                                            sess.run(size),
-                                            capacity))
+                  "capacity is '{}'.".format(capacity, i, sess.run(size),
+                                             capacity))
 
       # Should have capacity elements in the staging area
       self.assertTrue(sess.run(size) == capacity)
@@ -276,6 +281,7 @@ class StageTest(test.TestCase):
         self.assertTrue(np.all(sess.run(ret)[0] == i))
 
       self.assertTrue(sess.run(size) == 0)
+
 
 if __name__ == '__main__':
   test.main()

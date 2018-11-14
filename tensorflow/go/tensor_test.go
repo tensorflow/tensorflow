@@ -18,6 +18,7 @@ package tensorflow
 
 import (
 	"bytes"
+	"io"
 	"reflect"
 	"testing"
 )
@@ -34,14 +35,22 @@ func TestNewTensor(t *testing.T) {
 		{nil, int64(5)},
 		{nil, uint8(5)},
 		{nil, uint16(5)},
+		{nil, uint32(5)},
+		{nil, uint64(5)},
 		{nil, float32(5)},
 		{nil, float64(5)},
 		{nil, complex(float32(5), float32(6))},
 		{nil, complex(float64(5), float64(6))},
 		{nil, "a string"},
+		{[]int64{1}, []uint32{1}},
+		{[]int64{1}, []uint64{1}},
 		{[]int64{2}, []bool{true, false}},
 		{[]int64{1}, []float64{1}},
 		{[]int64{1}, [1]float64{1}},
+		{[]int64{1, 1}, [1][1]float64{{1}}},
+		{[]int64{1, 1, 1}, [1][1][]float64{{{1}}}},
+		{[]int64{1, 1, 2}, [1][][2]float64{{{1, 2}}}},
+		{[]int64{1, 1, 1, 1}, [1][][1][]float64{{{{1}}}}},
 		{[]int64{2}, []string{"string", "slice"}},
 		{[]int64{2}, [2]string{"string", "array"}},
 		{[]int64{3, 2}, [][]float64{{1, 2}, {3, 4}, {5, 6}}},
@@ -67,13 +76,14 @@ func TestNewTensor(t *testing.T) {
 		// native ints not supported
 		int(5),
 		[]int{5},
-		// uint32 and uint64 are not supported in TensorFlow
-		uint32(5),
-		[]uint32{5},
-		uint64(5),
-		[]uint64{5},
 		// Mismatched dimensions
 		[][]float32{{1, 2, 3}, {4}},
+		// Mismatched dimensions. Should return "mismatched slice lengths" error instead of "BUG"
+		[][][]float32{{{1, 2}, {3, 4}}, {{1}, {3}}},
+		// Mismatched dimensions. Should return error instead of valid tensor
+		[][][]float32{{{1, 2}, {3, 4}}, {{1}, {3}}, {{1, 2, 3}, {2, 3, 4}}},
+		// Mismatched dimensions for strings
+		[][]string{{"abc"}, {"abcd", "abcd"}},
 	}
 
 	for _, test := range tests {
@@ -217,6 +227,54 @@ func TestTensorSerializationErrors(t *testing.T) {
 	}
 }
 
+func TestReadTensorReadAll(t *testing.T) {
+	// Get the bytes of a tensor.
+	a := []float32{1.1, 1.2, 1.3}
+	ats, err := NewTensor(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	abuf := new(bytes.Buffer)
+	if _, err := ats.WriteContentsTo(abuf); err != nil {
+		t.Fatal(err)
+	}
+
+	// Get the bytes of another tensor.
+	b := []float32{1.1, 1.2, 1.3}
+	bts, err := NewTensor(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bbuf := new(bytes.Buffer)
+	if _, err := bts.WriteContentsTo(bbuf); err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that ReadTensor reads all bytes of both tensors, when the situation
+	// requires one than reads.
+	abbuf := io.MultiReader(abuf, bbuf)
+	abts, err := ReadTensor(Float, []int64{2, 3}, abbuf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	abtsf32 := abts.Value().([][]float32)
+	expected := [][]float32{a, b}
+
+	if len(abtsf32) != 2 {
+		t.Fatalf("first dimension %d is not 2", len(abtsf32))
+	}
+	for i := 0; i < 2; i++ {
+		if len(abtsf32[i]) != 3 {
+			t.Fatalf("second dimension %d is not 3", len(abtsf32[i]))
+		}
+		for j := 0; j < 3; j++ {
+			if abtsf32[i][j] != expected[i][j] {
+				t.Errorf("value at %d %d not equal %f %f", i, j, abtsf32[i][j], expected[i][j])
+			}
+		}
+	}
+}
+
 func benchmarkNewTensor(b *testing.B, v interface{}) {
 	for i := 0; i < b.N; i++ {
 		if t, err := NewTensor(v); err != nil || t == nil {
@@ -233,4 +291,24 @@ func BenchmarkNewTensor(b *testing.B) {
 		vector [224 * 224 * 3]int32
 	)
 	b.Run("[150528]", func(b *testing.B) { benchmarkNewTensor(b, vector) })
+}
+
+func benchmarkDecodeTensor(b *testing.B, t *Tensor) {
+	for i := 0; i < b.N; i++ {
+		_ = t.Value()
+	}
+}
+
+func BenchmarkDecodeTensor(b *testing.B) {
+	var (
+		// Some sample sizes from the Inception image labeling model.
+		// Where input tensors correspond to a 224x224 RGB image
+		// flattened into a vector.
+		vector [224 * 224 * 3]int32
+	)
+	t, err := NewTensor(vector)
+	if err != nil {
+		b.Fatalf("(%v, %v)", t, err)
+	}
+	b.Run("[150528]", func(b *testing.B) { benchmarkDecodeTensor(b, t) })
 }

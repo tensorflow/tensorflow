@@ -1,0 +1,8 @@
+op {
+  graph_op_name: "Elu"
+  summary: "Computes exponential linear: `exp(features) - 1` if < 0, `features` otherwise."
+  description: <<END
+See [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)
+](http://arxiv.org/abs/1511.07289)
+END
+}

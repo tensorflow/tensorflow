@@ -23,8 +23,8 @@ often provide.
 decorator is stateless, or can capture all of the variables it needs to work
 with through lexical closure, this is the simplest option. Create your wrapper
 function as usual, but instead of returning it, return
-`tf_decorator.make_decorator(your_wrapper)`. This will attach some decorator
-introspection metadata onto your wrapper and return it.
+`tf_decorator.make_decorator(target, your_wrapper)`. This will attach some
+decorator introspection metadata onto your wrapper and return it.
 
 Example:
 
@@ -32,7 +32,7 @@ Example:
     def wrapper(*args, **kwargs):
       print('hello')
       return target(*args, **kwargs)
-    return tf_decorator.make_decorator(wrapper)
+    return tf_decorator.make_decorator(target, wrapper)
 
 2. Derive from TFDecorator. If your decorator needs to be stateful, you can
 implement it in terms of a TFDecorator. Store whatever state you need in your
@@ -85,15 +85,69 @@ def make_decorator(target,
   if decorator_name is None:
     frame = _traceback.extract_stack(limit=2)[0]
     # frame name is tuple[2] in python2, and object.name in python3
-    decorator_name = getattr(frame, 'name', frame[2]) # Caller's name
+    decorator_name = getattr(frame, 'name', frame[2])  # Caller's name
   decorator = TFDecorator(decorator_name, target, decorator_doc,
                           decorator_argspec)
   setattr(decorator_func, '_tf_decorator', decorator)
-  decorator_func.__name__ = target.__name__
-  decorator_func.__module__ = target.__module__
-  decorator_func.__doc__ = decorator.__doc__
+  # Objects that are callables (e.g., a functools.partial object) may not have
+  # the following attributes.
+  if hasattr(target, '__name__'):
+    decorator_func.__name__ = target.__name__
+  if hasattr(target, '__module__'):
+    decorator_func.__module__ = target.__module__
+  if hasattr(target, '__doc__'):
+    decorator_func.__doc__ = decorator.__doc__
   decorator_func.__wrapped__ = target
   return decorator_func
+
+
+def rewrap(decorator_func, previous_target, new_target):
+  """Injects a new target into a function built by make_decorator.
+
+  This function allows replacing a function wrapped by `decorator_func`,
+  assuming the decorator that wraps the function is written as described below.
+
+  The decorator function must use `<decorator name>.__wrapped__` instead of the
+  wrapped function that is normally used:
+
+  Example:
+
+      # Instead of this:
+      def simple_parametrized_wrapper(*args, **kwds):
+        return wrapped_fn(*args, **kwds)
+
+      tf_decorator.make_decorator(simple_parametrized_wrapper, wrapped_fn)
+
+      # Write this:
+      def simple_parametrized_wrapper(*args, **kwds):
+        return simple_parametrized_wrapper.__wrapped__(*args, **kwds)
+
+      tf_decorator.make_decorator(simple_parametrized_wrapper, wrapped_fn)
+
+  Note that this process modifies decorator_func.
+
+  Args:
+    decorator_func: Callable returned by `wrap`.
+    previous_target: Callable that needs to be replaced.
+    new_target: Callable to replace previous_target with.
+  """
+  # Because the process mutates the decorator, we only need to alter the
+  # innermost function that wraps previous_target.
+  cur = decorator_func
+  innermost_decorator = None
+  target = None
+  while hasattr(cur, '_tf_decorator'):
+    innermost_decorator = cur
+    target = getattr(cur, '_tf_decorator')
+    if target.decorated_target is previous_target:
+      break
+    cur = target.decorated_target
+
+  if innermost_decorator is None:
+    return
+
+  target.decorated_target = new_target
+  innermost_decorator.__wrapped__ = new_target
 
 
 def unwrap(maybe_tf_decorator):
@@ -139,10 +193,11 @@ class TFDecorator(object):
     self._decorator_name = decorator_name
     self._decorator_doc = decorator_doc
     self._decorator_argspec = decorator_argspec
-    self.__name__ = target.__name__
+    if hasattr(target, '__name__'):
+      self.__name__ = target.__name__
     if self._decorator_doc:
       self.__doc__ = self._decorator_doc
-    elif target.__doc__:
+    elif hasattr(target, '__doc__') and target.__doc__:
       self.__doc__ = target.__doc__
     else:
       self.__doc__ = ''
@@ -156,6 +211,10 @@ class TFDecorator(object):
   @property
   def decorated_target(self):
     return self._decorated_target
+
+  @decorated_target.setter
+  def decorated_target(self, decorated_target):
+    self._decorated_target = decorated_target
 
   @property
   def decorator_name(self):

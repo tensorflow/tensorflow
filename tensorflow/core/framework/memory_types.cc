@@ -60,11 +60,17 @@ void MemoryTypesHelper(const NameRangeMap& name_map,
   host_memory_args->resize(keep);
 }
 
-MemoryType MTypeFromDType(const DataType dtype) {
-  return (dtype == DT_INT32) ? HOST_MEMORY : DEVICE_MEMORY;
+bool IsFunctionCallOp(const string& op_type) {
+  return op_type == "SymbolicGradient" || op_type == "PartitionedCall" ||
+         op_type == "StatefulPartitionedCall";
 }
 
 }  // namespace
+
+MemoryType MTypeFromDType(const DataType dtype) {
+  return (dtype == DT_INT32 || DataTypeAlwaysOnHost(dtype)) ? HOST_MEMORY
+                                                            : DEVICE_MEMORY;
+}
 
 Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
                           const DeviceType& device_type, const NodeDef& ndef,
@@ -93,7 +99,7 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
   // TODO(zhifengc,phawkins): We should do type inference over function bodies
   // to derive the correct input/output memory types. We should also split
   // host-memory and non host-memory arguments into separate type lists.
-  if (!status.ok() || ndef.op() == "SymbolicGradient") {
+  if (!status.ok() || IsFunctionCallOp(ndef.op())) {
     for (const auto& t : inp_dtypes) inp_mtypes->push_back(MTypeFromDType(t));
     for (const auto& t : out_dtypes) out_mtypes->push_back(MTypeFromDType(t));
     return Status::OK();
@@ -117,6 +123,20 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
     return errors::InvalidArgument(
         "HostMemory args '", str_util::Join(host_memory_args, "', '"),
         "' not found in OpDef: ", SummarizeOpDef(*op_def));
+  }
+  CHECK_LE(inp_mtypes->size(), inp_dtypes.size());
+  CHECK_LE(out_mtypes->size(), out_dtypes.size());
+
+  // Mark e.g. all resource and string types as host memory.
+  for (int i = 0; i < inp_mtypes->size(); ++i) {
+    if (DataTypeAlwaysOnHost(inp_dtypes[i])) {
+      (*inp_mtypes)[i] = HOST_MEMORY;
+    }
+  }
+  for (int i = 0; i < out_mtypes->size(); ++i) {
+    if (DataTypeAlwaysOnHost(out_dtypes[i])) {
+      (*out_mtypes)[i] = HOST_MEMORY;
+    }
   }
 
   std::vector<int32> hostmem_attr;

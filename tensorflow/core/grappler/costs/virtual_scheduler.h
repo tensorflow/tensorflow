@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_SCHEDULER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_SCHEDULER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_SCHEDULER_H_
+#define TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_SCHEDULER_H_
 
 #include <list>
 #include <memory>
@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/grappler/costs/cost_estimator.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/costs/op_context.h"
 #include "tensorflow/core/grappler/costs/virtual_placer.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 
@@ -106,13 +107,14 @@ struct DeviceState {
       mem_usage_snapshot_at_peak;
 
   Costs device_costs;
-  std::map<string, Costs> op_to_cost;    // Per-op cost.
-  std::map<string, int64> op_to_memory;  // Per-op memory usage at peak usage.
-  int64 memory_usage;
-  int64 max_memory_usage;
+  std::map<string, Costs> op_to_cost;  // Per-op cost.
+
+  int64 memory_usage;      // Current temporary memory usage
+  int64 max_memory_usage;  // Max temporary memory usage
 
   DeviceState() {
     device_costs = Costs::ZeroCosts();
+    device_costs.num_ops_total = 0;
     memory_usage = 0;
     max_memory_usage = 0;
   }
@@ -126,6 +128,8 @@ class ReadyNodeManager {
  public:
   ReadyNodeManager() {}
   virtual ~ReadyNodeManager() {}
+  virtual void Init(
+      const std::unordered_map<const NodeDef*, NodeState>* node_state) {}
   virtual void AddNode(const NodeDef* node) = 0;
   virtual const NodeDef* GetCurrNode() = 0;
   virtual void RemoveCurrNode() = 0;
@@ -136,8 +140,13 @@ class FIFOManager : public ReadyNodeManager {
  public:
   FIFOManager() : ReadyNodeManager() {}
   ~FIFOManager() override {}
+  void Init(const std::unordered_map<const NodeDef*, NodeState>* node_state)
+      override {}
   void AddNode(const NodeDef* node) override { nodes_.push_back(node); }
-  const NodeDef* GetCurrNode() override { return nodes_.front(); }
+  const NodeDef* GetCurrNode() override {
+    CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
+    return nodes_.front();
+  }
   void RemoveCurrNode() override { nodes_.pop_front(); }
   bool Empty() const override { return nodes_.empty(); }
 
@@ -153,21 +162,11 @@ class LIFOManager : public ReadyNodeManager {
  public:
   LIFOManager() : ReadyNodeManager() {}
   ~LIFOManager() override {}
+  void Init(const std::unordered_map<const NodeDef*, NodeState>* node_state)
+      override {}
   void AddNode(const NodeDef* node) override { nodes_.push_back(node); }
-  const NodeDef* GetCurrNode() override {
-    curr_pos_ = nodes_.end();
-    curr_pos_--;
-    return nodes_.back();
-  }
-  void RemoveCurrNode() override {
-    if (curr_pos_ != nodes_.end()) {
-      nodes_.erase(curr_pos_);
-    } else if (!nodes_.empty()) {
-      nodes_.pop_back();
-    }
-    curr_pos_ = nodes_.end();
-    curr_pos_--;
-  }
+  const NodeDef* GetCurrNode() override;
+  void RemoveCurrNode() override;
   bool Empty() const override { return nodes_.empty(); }
 
  private:
@@ -184,61 +183,24 @@ class LIFOManager : public ReadyNodeManager {
 // time_ready value (it depends on C++ STL push_heap and pop_heap).
 class FirstReadyManager : public ReadyNodeManager {
  public:
-  FirstReadyManager(
-      const std::unordered_map<const NodeDef*, NodeState>* node_state)
-      : ReadyNodeManager(), node_state_(node_state) {
-    std::make_heap(nodes_.begin(), nodes_.end());
-    greater_ = [this](const NodeDef* a, const NodeDef* b) -> bool {
-      // Note: we need a node with minimum time_ready, not
-      // maximum; hence, using a > b for comparison function.
-      return node_state_->at(a).time_ready > node_state_->at(b).time_ready;
-    };
-  }
+  FirstReadyManager();
+  void Init(
+      const std::unordered_map<const NodeDef*, NodeState>* node_state) override;
   ~FirstReadyManager() override {}
-
   void AddNode(const NodeDef* node) override { waiting_queue_.push_back(node); }
-
-  const NodeDef* GetCurrNode() override {
-    if (nodes_.empty()) {
-      // Nothing in the node_; probably, the very first call. Move
-      // waiting_queue_ to node_.
-      _DrainWaitingQueue();
-      CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
-    }
-    return nodes_.front();
-  }
-
-  void RemoveCurrNode() override {
-    if (nodes_.empty()) {
-      // Make sure that there is a node to be removed at the front of nodes_.
-      GetCurrNode();
-    }
-    std::pop_heap(nodes_.begin(), nodes_.end(), greater_);
-    nodes_.pop_back();
-    _DrainWaitingQueue();
-  }
-
-  bool Empty() const override {
-    return nodes_.empty() && waiting_queue_.empty();
-  }
+  const NodeDef* GetCurrNode() override;
+  void RemoveCurrNode() override;
+  bool Empty() const override;
 
  private:
   // Move all the nodes in the waiting_queue_ to nodes_.
-  void _DrainWaitingQueue() {
-    for (const auto* node : waiting_queue_) {
-      // push_heap in AddNode() and pop_heap in RemoveCurrNode() guarantees that
-      // the first element is the node with minimum time_ready.
-      nodes_.push_back(node);
-      std::push_heap(nodes_.begin(), nodes_.end(), greater_);
-    }
-    waiting_queue_.clear();
-  }
+  void DrainWaitingQueue();
 
   // nodes_ is the main queue, where we construct heap, and the front is the
   // current node.
   std::vector<const NodeDef*> nodes_;
   // Newly added nodes are added to waiting_queue_. That way, GetCurrNode(),
-  // wihch returns the front of the nodes_, always returns the same node,
+  // which returns the front of the nodes_, always returns the same node,
   // even if any of new nodes has time_ready smaller than the current node's.
   std::vector<const NodeDef*> waiting_queue_;
   // Comparator functor for heap; stl heap is max heap, so we use "greater than"
@@ -250,27 +212,72 @@ class FirstReadyManager : public ReadyNodeManager {
   const std::unordered_map<const NodeDef*, NodeState>* node_state_;
 };
 
-// A wrapper struct to OpInfo proto.
-// TODO(dyoon): once we extend OpInfo or implement a better interface, and  then
-// delete this wrapper struct.
-struct NodeInfo {
-  OpInfo op_info;
-  string name;
-  string device_name;
+// CompositeNodeManager has a few other NodeManagers: per-device LIFO for normal
+// ops (neither _Send nor _Recv) and FirstReadyManagers for _Send ops and _Recv
+// ops, and then it chooses FirstReady among the ops chosen from each
+// internal NodeManagers. The objective is to maximize producer-consumer
+// locality within device, while processing nodes across devices, including
+// _Send and _Recv, fairly, in terms of their time_ready.
+class CompositeNodeManager : public ReadyNodeManager {
+ public:
+  CompositeNodeManager();
+  ~CompositeNodeManager() override {}
+
+  void Init(
+      const std::unordered_map<const NodeDef*, NodeState>* node_state) override;
+  void AddNode(const NodeDef* node) override;
+  const NodeDef* GetCurrNode() override;
+  void RemoveCurrNode() override;
+  bool Empty() const override;
+
+ private:
+  // Internal ready node managers:
+  // LIFO for normal ops to maximize producer consumer locality.
+  // One LIFO per device.
+  std::unordered_map<string, LIFOManager> ops_lifo_map_;
+  // FirstReady for send and recv. Handle send and recv separately ensures that
+  // send and recv do not block previously read ops with LIFO schedule.
+  FirstReadyManager send_manager_;
+  FirstReadyManager recv_manager_;
+
+  // NodeState structure from VirtualScheduler to get time_ready of ready nodes.
+  // Not owned by FirstReadyManager.
+  const std::unordered_map<const NodeDef*, NodeState>* node_state_;
+
+  // Cached curr node. Set back to nullptr from RemoveCurrNode().
+  const NodeDef* curr_node_;
 };
+
+// Constructs a ready node manager from the given string.
+std::unique_ptr<ReadyNodeManager> ReadyNodeManagerFactory(
+    const string& ready_node_manager);
 
 // The virtual scheduler emulates execution of nodes in a graph, considering
 // dependencies, device, etc.
 class VirtualScheduler {
  public:
+  // TODO(pcma): Modify power_analyzer.cc to use new API's.
+  // DEPRECATED
   VirtualScheduler(const GrapplerItem* grappler_item,
-                   const bool use_static_shapes, Cluster* cluster);
-
-  // Initializes NodeState and DeviceState from grappler_item_ and
-  // graph_properties_.
+                   const bool use_static_shapes, Cluster* cluster,
+                   ReadyNodeManager* ready_nodes);
+  // DEPRECATED
   Status Init();
 
-  NodeInfo GetCurrNodeInfo() const;
+  // Does not take ownership of cluster or ready_nodes.
+  VirtualScheduler(bool use_static_shapes, Cluster* cluster,
+                   ReadyNodeManager* ready_nodes);
+  // Initializes the scheduler for the specific grappler item.
+  // Should be called immediately after the c'tor or when the scheduler will be
+  // reused for a new grappler item. All internal states of the scheduler
+  // related to the previous grappler item will be reset/cleared.
+  //
+  // This function should be called at least once after the scheduler is
+  // constructed. An uninitialized or failed-to-initialize scheduler will cause
+  // undefined behavior.
+  Status Init(const GrapplerItem* item);
+
+  OpContext GetCurrNode() const;
 
   // Returns true if there is any node to be scheduled.
   bool MarkCurrNodeExecuted(const Costs& node_costs);
@@ -280,20 +287,23 @@ class VirtualScheduler {
   // Like the above, but writes detailed stats to RunMetadata.
   // If metadata is nullptr, then just calls and return Summary().
   Costs Summary(RunMetadata* metadata);
+  // Generate RunMetadata's step_stats and partition_graphs fields from results
+  // of the virtual execution of the graph.
+  void GenerateRunMetadata(RunMetadata* metadata);
 
- protected:
+  // DEPRECATED
+  static ReadyNodeManager* ReadyNodeManagerFactory(
+      const string& ready_node_manager);
+
+  // Return per device peak memory usage.
+  const std::unordered_map<string, int64> GetPeakMemoryUsage() const;
+
   const std::unordered_map<string, DeviceState>* GetDeviceStates() const {
     return &device_;
   }
   const std::unordered_map<const NodeDef*, NodeState>* GetNodeStates() const {
     return &node_map_;
   }
-
-  // Returns the size of output at port_num (unit: bytes). A special case is
-  // port_num -1, which is for control dependency and assumed to be 4 bytes.
-  int64 CalculateOutputSize(
-      const std::vector<OpInfo::TensorProperties>& output_properties,
-      const int port_num) const;
 
  private:
   // Constants.
@@ -302,15 +312,13 @@ class VirtualScheduler {
   const string kAttrDstDevice = "dst_device_";
   const string kChannelDevice = "Channel";
 
-  // Methods called from constructor.
-  ReadyNodeManager* ReadyNodeManagerFactory(const string& ready_node_manager);
-
   // Methods called from Init(). Fails if initialize_ is set.
   void MaybeUpdateInputOutput(const NodeDef* node);
   NodeState& GetNodeStateOrCreateIt(const NodeDef* node);
   std::pair<const NodeDef*, const NodeDef*> CreateSendRecv(
       const NodeDef* from, const NodeDef* to, const string& input_name);
   string DeviceName(const NodeDef* node) const;
+  string SanitizedDeviceName(const NodeDef* node) const;
   string ChannelDeviceName(const NodeDef* from, const NodeDef* to) const;
 
   // Helper methods.
@@ -320,7 +328,7 @@ class VirtualScheduler {
   bool IsPersistentNode(const NodeDef* node) const;
 
   // Scheduler states:
-  std::unique_ptr<ReadyNodeManager> ready_nodes_;
+  ReadyNodeManager* ready_nodes_;  // Not owned.
   std::unordered_map<const NodeDef*, NodeState> node_map_;
   std::unordered_map<string, DeviceState> device_;
 
@@ -328,14 +336,20 @@ class VirtualScheduler {
   std::vector<std::unique_ptr<NodeDef>> additional_nodes_;
 
   // Stats:
-  std::map<string, int> op_counts_;  // Op counts with key with input shape.
-  std::map<string, int> op_costs_;   // Individual op costs (with input shapes).
-  Costs graph_costs_;                // Graph cost.
+  // Op counts with key with input shape.
+  // Example key: "[Op=AssignSub, input_shapes=[[7,1,160,160][7,1,160,160]]"
+  std::map<string, int> op_counts_;
+  // Individual op costs with key with input shape.
+  // Integer field for execution time in micro seconds.
+  // Boolean field for whether the cost is accurate.
+  std::map<string, std::pair<int, bool>> op_costs_;
+
+  Costs graph_costs_;                   // Graph cost.
   std::map<string, Costs> op_to_cost_;  // Per-op cost.
 
-  // Auxilliary data structures for constructing NodeState and DeviceState.
-  GraphProperties graph_properties_;
-  Cluster* cluster_;                   // Not owned.
+  // Auxiliary data structures for constructing NodeState and DeviceState.
+  std::unique_ptr<GraphProperties> graph_properties_;  // Initialized in Init().
+  Cluster* cluster_;                                   // Not owned.
 
   const GrapplerItem* grappler_item_;  // Not owned.
   bool use_static_shapes_;
@@ -347,4 +361,4 @@ class VirtualScheduler {
 }  // namespace grappler
 }  // end namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_SCHEDULER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_COSTS_VIRTUAL_SCHEDULER_H_

@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "Maximum"
+  endpoint {
+    name: "math.maximum"
+  }
+  endpoint {
+    name: "maximum"
+  }
+}

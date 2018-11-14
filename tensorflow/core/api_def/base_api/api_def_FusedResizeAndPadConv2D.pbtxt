@@ -1,0 +1,63 @@
+op {
+  graph_op_name: "FusedResizeAndPadConv2D"
+  in_arg {
+    name: "input"
+    description: <<END
+4-D with shape `[batch, in_height, in_width, in_channels]`.
+END
+  }
+  in_arg {
+    name: "size"
+    description: <<END
+A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
+new size for the images.
+END
+  }
+  in_arg {
+    name: "paddings"
+    description: <<END
+A two-column matrix specifying the padding sizes. The number of
+rows must be the same as the rank of `input`.
+END
+  }
+  in_arg {
+    name: "filter"
+    description: <<END
+4-D with shape
+`[filter_height, filter_width, in_channels, out_channels]`.
+END
+  }
+  attr {
+    name: "resize_align_corners"
+    description: <<END
+If true, the centers of the 4 corner pixels of the input and output tensors are
+aligned, preserving the values at the corner pixels. Defaults to false.
+END
+  }
+  attr {
+    name: "strides"
+    description: <<END
+1-D of length 4.  The stride of the sliding window for each dimension
+of `input`. Must be in the same order as the dimension specified with format.
+END
+  }
+  attr {
+    name: "padding"
+    description: <<END
+The type of padding algorithm to use.
+END
+  }
+  summary: "Performs a resize and padding as a preprocess during a convolution."
+  description: <<END
+It's often possible to do spatial transformations more efficiently as part of
+the packing stage of a convolution, so this op allows for an optimized
+implementation where these stages are fused together. This prevents the need to
+write out the intermediate results as whole tensors, reducing memory pressure,
+and we can get some latency gains by merging the transformation calculations.
+The data_format attribute for Conv2D isn't supported by this op, and defaults to
+'NHWC' order.
+Internally this op uses a single per-graph scratch buffer, which means that it
+will block if multiple versions are being run in parallel. This is because this
+operator is primarily an optimization to minimize memory usage.
+END
+}

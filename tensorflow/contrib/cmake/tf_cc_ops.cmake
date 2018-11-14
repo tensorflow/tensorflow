@@ -83,7 +83,7 @@ foreach(tf_cc_op_lib_name ${tf_cc_op_lib_names})
                ${cc_ops_target_dir}/${tf_cc_op_lib_name}.cc
                ${cc_ops_target_dir}/${tf_cc_op_lib_name}_internal.h
                ${cc_ops_target_dir}/${tf_cc_op_lib_name}_internal.cc
-        COMMAND ${tf_cc_op_lib_name}_gen_cc ${cc_ops_target_dir}/${tf_cc_op_lib_name}.h ${cc_ops_target_dir}/${tf_cc_op_lib_name}.cc ${tensorflow_source_dir}/tensorflow/cc/ops/op_gen_overrides.pbtxt ${cc_ops_include_internal}
+        COMMAND ${tf_cc_op_lib_name}_gen_cc ${cc_ops_target_dir}/${tf_cc_op_lib_name}.h ${cc_ops_target_dir}/${tf_cc_op_lib_name}.cc ${cc_ops_include_internal} ${tensorflow_source_dir}/tensorflow/core/api_def/base_api
         DEPENDS ${tf_cc_op_lib_name}_gen_cc create_cc_ops_header_dir
     )
 
@@ -135,6 +135,8 @@ set(tf_cc_srcs
     "${tensorflow_source_dir}/tensorflow/cc/framework/gradient_checker.cc"
     "${tensorflow_source_dir}/tensorflow/cc/framework/gradients.h"
     "${tensorflow_source_dir}/tensorflow/cc/framework/gradients.cc"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/while_gradients.h"
+    "${tensorflow_source_dir}/tensorflow/cc/framework/while_gradients.cc"
 )
 
 file(GLOB_RECURSE tf_cc_test_srcs
@@ -146,7 +148,15 @@ list(REMOVE_ITEM tf_cc_srcs ${tf_cc_test_srcs})
 add_library(tf_cc OBJECT ${tf_cc_srcs})
 add_dependencies(tf_cc tf_cc_framework tf_cc_ops)
 
-set (pywrap_tensorflow_lib "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow_internal.lib")
+if (WIN32)
+  if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+    set (pywrap_tensorflow_lib "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow_internal.lib")
+  else()
+    set (pywrap_tensorflow_lib "${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow_internal.lib")
+  endif()
+else (WIN32)
+  set (pywrap_tensorflow_lib "${CMAKE_CURRENT_BINARY_DIR}/libpywrap_tensorflow_internal${CMAKE_SHARED_LIBRARY_SUFFIX}")
+endif (WIN32)
 add_custom_target(tf_extension_ops)
 
 function(AddUserOps)
@@ -162,15 +172,13 @@ function(AddUserOps)
   # create shared library from source and cuda obj
   add_library(${_AT_TARGET} SHARED ${_AT_SOURCES} ${gpu_lib})
   target_link_libraries(${_AT_TARGET} ${pywrap_tensorflow_lib})
-  if(WIN32)
-    if (tensorflow_ENABLE_GPU AND _AT_GPUSOURCES)
-        # some ops call out to cuda directly; need to link libs for the cuda dlls
-        target_link_libraries(${_AT_TARGET} ${CUDA_LIBRARIES})
-    endif()
-    if (_AT_DISTCOPY)
-        add_custom_command(TARGET ${_AT_TARGET} POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${_AT_TARGET}> ${_AT_DISTCOPY}/)
-    endif()
+  if (tensorflow_ENABLE_GPU AND _AT_GPUSOURCES)
+      # some ops call out to cuda directly; need to link libs for the cuda dlls
+      target_link_libraries(${_AT_TARGET} ${CUDA_LIBRARIES})
+  endif()
+  if (_AT_DISTCOPY)
+      add_custom_command(TARGET ${_AT_TARGET} POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${_AT_TARGET}> ${_AT_DISTCOPY}/)
   endif()
   if (_AT_DEPENDS)
     add_dependencies(${_AT_TARGET} ${_AT_DEPENDS})
@@ -178,9 +186,19 @@ function(AddUserOps)
   # make sure TF_COMPILE_LIBRARY is not defined for this target
   get_target_property(target_compile_flags  ${_AT_TARGET} COMPILE_FLAGS)
   if(target_compile_flags STREQUAL "target_compile_flags-NOTFOUND")
-    set(target_compile_flags "/UTF_COMPILE_LIBRARY")
+    if (WIN32)
+      set(target_compile_flags "/UTF_COMPILE_LIBRARY")
+    else (WIN32)
+      # gcc uses UTF as default
+      set(target_compile_flags "-finput-charset=UTF-8")
+    endif (WIN32)
   else()
-    set(target_compile_flags "${target_compile_flags} /UTF_COMPILE_LIBRARY")
+    if (WIN32)
+      set(target_compile_flags "${target_compile_flags} /UTF_COMPILE_LIBRARY")
+    else (WIN32)
+      # gcc uses UTF as default
+      set(target_compile_flags "${target_compile_flags} -finput-charset=UTF-8")
+    endif (WIN32)
   endif()
   set_target_properties(${_AT_TARGET} PROPERTIES COMPILE_FLAGS ${target_compile_flags})
   add_dependencies(tf_extension_ops ${_AT_TARGET})

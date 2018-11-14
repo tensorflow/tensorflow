@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "Erf"
+  summary: "Computes the Gauss error function of `x` element-wise."
+}

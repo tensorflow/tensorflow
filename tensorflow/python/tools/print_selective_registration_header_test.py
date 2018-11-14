@@ -24,6 +24,7 @@ import sys
 from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.tools import selective_registration_header_lib
@@ -58,6 +59,9 @@ GRAPH_DEF_TXT = """
   }
 """
 
+# AccumulateNV2 is included because it should be included in the header despite
+# lacking a kernel (it's rewritten by AccumulateNV2RemovePass; see
+# core/common_runtime/accumulate_n_optimizer.cc.
 GRAPH_DEF_TXT_2 = """
   node: {
     name: "node_4"
@@ -65,6 +69,12 @@ GRAPH_DEF_TXT_2 = """
     input: [ "none", "none" ]
     device: "/cpu:0"
     attr: { key: "T" value: { type: DT_FLOAT } }
+  }
+  node: {
+    name: "node_5"
+    op: "AccumulateNV2"
+    attr: { key: "T" value: { type: DT_INT32 } }
+    attr: { key  : "N" value: { i: 3 } }
   }
 
 """
@@ -93,11 +103,17 @@ class PrintOpFilegroupTest(test.TestCase):
 
     ops_and_kernels = selective_registration_header_lib.get_ops_and_kernels(
         'rawproto', self.WriteGraphFiles(graphs), default_ops)
+    matmul_prefix = ''
+    if test_util.IsMklEnabled():
+      matmul_prefix = 'Mkl'
+
     self.assertListEqual(
         [
+            ('AccumulateNV2', None),  #
             ('BiasAdd', 'BiasOp<CPUDevice, float>'),  #
-            ('MatMul', 'MatMulOp<CPUDevice, double, false >'),  #
-            ('MatMul', 'MatMulOp<CPUDevice, float, false >'),  #
+            ('MatMul',
+             matmul_prefix + 'MatMulOp<CPUDevice, double, false >'),  #
+            ('MatMul', matmul_prefix + 'MatMulOp<CPUDevice, float, false >'),  #
             ('NoOp', 'NoOp'),  #
             ('Reshape', 'ReshapeOp'),  #
             ('_Recv', 'RecvOp'),  #
@@ -111,9 +127,11 @@ class PrintOpFilegroupTest(test.TestCase):
         'rawproto', self.WriteGraphFiles(graphs), default_ops)
     self.assertListEqual(
         [
+            ('AccumulateNV2', None),  #
             ('BiasAdd', 'BiasOp<CPUDevice, float>'),  #
-            ('MatMul', 'MatMulOp<CPUDevice, double, false >'),  #
-            ('MatMul', 'MatMulOp<CPUDevice, float, false >'),  #
+            ('MatMul',
+             matmul_prefix + 'MatMulOp<CPUDevice, double, false >'),  #
+            ('MatMul', matmul_prefix + 'MatMulOp<CPUDevice, float, false >'),  #
             ('NoOp', 'NoOp'),  #
             ('Reshape', 'ReshapeOp'),  #
             ('_Recv', 'RecvOp'),  #
@@ -189,6 +207,7 @@ class PrintOpFilegroupTest(test.TestCase):
 
 constexpr inline bool ShouldRegisterOp(const char op[]) {
   return false
+     || isequal(op, "AccumulateNV2")
      || isequal(op, "BiasAdd")
   ;
 }

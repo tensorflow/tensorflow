@@ -52,6 +52,11 @@ __global__ void GatherSliceOpKernel(
     // that determines how many slice_size-length locs are iterated
     // over, and another that iterates over slice_size iterations for
     // the correct indices?
+    // NOTE(eriche):
+    // You can consider one kernel where a warp or block is assigned
+    // to one offset.  The calculation of offset can be shared within
+    // the warp or block and then the warp / block can cooperate to
+    // the copy.
     const Index loc_offset = i - loc * slice_size;
     out[i] = (out_of_bounds) ? T(0) : ldg(params + offset + loc_offset);
   }
@@ -106,13 +111,19 @@ struct GatherNdSlice<GPUDevice, T, Index, IXDIM> {
   DEFINE_GPU_SPECS_INDEX_NDIM(T, Index, 2); \
   DEFINE_GPU_SPECS_INDEX_NDIM(T, Index, 3); \
   DEFINE_GPU_SPECS_INDEX_NDIM(T, Index, 4); \
-  DEFINE_GPU_SPECS_INDEX_NDIM(T, Index, 5);
+  DEFINE_GPU_SPECS_INDEX_NDIM(T, Index, 5); \
+  DEFINE_GPU_SPECS_INDEX_NDIM(T, Index, 6); \
+  DEFINE_GPU_SPECS_INDEX_NDIM(T, Index, 7);
 
 #define DEFINE_GPU_SPECS(T)         \
   DEFINE_GPU_SPECS_INDEX(T, int32); \
   DEFINE_GPU_SPECS_INDEX(T, int64);
 
+TF_CALL_int32(DEFINE_GPU_SPECS);
+TF_CALL_int64(DEFINE_GPU_SPECS);
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
+TF_CALL_complex64(DEFINE_GPU_SPECS);
+TF_CALL_complex128(DEFINE_GPU_SPECS);
 
 #undef DEFINE_GPU_SPECS
 #undef DEFINE_GPU_SPECS_INDEX

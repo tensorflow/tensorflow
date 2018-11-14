@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_JAVA_OPERATION_BUILDER_JNI_H_
-#define TENSORFLOW_JAVA_OPERATION_BUILDER_JNI_H_
+#ifndef TENSORFLOW_JAVA_SRC_MAIN_NATIVE_OPERATION_BUILDER_JNI_H_
+#define TENSORFLOW_JAVA_SRC_MAIN_NATIVE_OPERATION_BUILDER_JNI_H_
 
 #include <jni.h>
 
@@ -171,6 +171,14 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrShape(
 
 /*
  * Class:     org_tensorflow_OperationBuilder
+ * Method:    setAttrShapeList
+ * Signature: (JLjava/lang/String;[J[I)V
+ */
+JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrShapeList(
+    JNIEnv *, jclass, jlong, jstring, jlongArray, jintArray);
+
+/*
+ * Class:     org_tensorflow_OperationBuilder
  * Method:    setAttrStringList
  * Signature: (JLjava/lang/String;[L)V
  */
@@ -180,4 +188,4 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrStringList(
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
-#endif  // TENSORFLOW_JAVA_OPERATION_BUILDER_JNI_H_
+#endif  // TENSORFLOW_JAVA_SRC_MAIN_NATIVE_OPERATION_BUILDER_JNI_H_

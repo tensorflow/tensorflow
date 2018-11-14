@@ -18,7 +18,6 @@ from __future__ import print_function
 
 import numbers
 
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -26,7 +25,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_impl
 
 
 def alpha_dropout(x, keep_prob, noise_shape=None, seed=None, name=None): # pylint: disable=invalid-name
@@ -45,7 +43,7 @@ def alpha_dropout(x, keep_prob, noise_shape=None, seed=None, name=None): # pylin
     noise_shape: A 1-D `Tensor` of type `int32`, representing the
       shape for randomly generated keep/drop flags.
     seed: A Python integer. Used to create random seeds. See
-      @{tf.set_random_seed} for behavior.
+      `tf.set_random_seed` for behavior.
     name: A name for this operation (optional).
 
   Returns:

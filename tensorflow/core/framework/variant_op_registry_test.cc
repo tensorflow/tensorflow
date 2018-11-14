@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include "tensorflow/core/lib/strings/str_util.h"
 
 #define EIGEN_USE_THREADS
 
@@ -77,41 +78,48 @@ struct VariantValue {
     out->value = -(a.value + b.value);  // GPU
     return Status::OK();
   }
+  static Status CPUToGPUCopyFn(
+      const VariantValue& from, VariantValue* to,
+      const std::function<Status(const Tensor&, Tensor*)>& copier) {
+    TF_RETURN_IF_ERROR(copier(Tensor(), nullptr));
+    to->value = 0xdeadbeef;
+    return Status::OK();
+  }
   bool early_exit;
   int value;
 };
 
-REGISTER_UNARY_VARIANT_SHAPE_FUNCTION(VariantValue, "TEST VariantValue",
-                                      VariantValue::ShapeFn);
+REGISTER_UNARY_VARIANT_SHAPE_FUNCTION(VariantValue, VariantValue::ShapeFn);
 
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(VariantValue, "TEST VariantValue");
 
+INTERNAL_REGISTER_UNARY_VARIANT_DEVICE_COPY_FUNCTION(
+    VariantValue, VariantDeviceCopyDirection::HOST_TO_DEVICE,
+    VariantValue::CPUToGPUCopyFn);
+
 REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(ZEROS_LIKE_VARIANT_UNARY_OP,
                                          DEVICE_CPU, VariantValue,
-                                         "TEST VariantValue",
                                          VariantValue::CPUZerosLikeFn);
 
 REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(ZEROS_LIKE_VARIANT_UNARY_OP,
                                          DEVICE_GPU, VariantValue,
-                                         "TEST VariantValue",
                                          VariantValue::GPUZerosLikeFn);
 
 REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(ADD_VARIANT_BINARY_OP, DEVICE_CPU,
-                                          VariantValue, "TEST VariantValue",
-                                          VariantValue::CPUAddFn);
+                                          VariantValue, VariantValue::CPUAddFn);
 
 REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(ADD_VARIANT_BINARY_OP, DEVICE_GPU,
-                                          VariantValue, "TEST VariantValue",
-                                          VariantValue::GPUAddFn);
+                                          VariantValue, VariantValue::GPUAddFn);
 
 }  // namespace
 
 TEST(VariantOpShapeRegistryTest, TestBasic) {
-  EXPECT_EQ(UnaryVariantOpRegistry::Global()->GetShapeFn("YOU SHALL NOT PASS"),
+  class Blah {};
+  EXPECT_EQ(UnaryVariantOpRegistry::Global()->GetShapeFn(MakeTypeIndex<Blah>()),
             nullptr);
 
-  auto* shape_fn =
-      UnaryVariantOpRegistry::Global()->GetShapeFn("TEST VariantValue");
+  auto* shape_fn = UnaryVariantOpRegistry::Global()->GetShapeFn(
+      MakeTypeIndex<VariantValue>());
   EXPECT_NE(shape_fn, nullptr);
   TensorShape shape;
 
@@ -119,7 +127,7 @@ TEST(VariantOpShapeRegistryTest, TestBasic) {
   Variant v = vv_early_exit;
   Status s0 = (*shape_fn)(v, &shape);
   EXPECT_FALSE(s0.ok());
-  EXPECT_TRUE(StringPiece(s0.error_message()).contains("early exit!"));
+  EXPECT_TRUE(str_util::StrContains(s0.error_message(), "early exit!"));
 
   VariantValue vv_ok{false /* early_exit */};
   v = vv_ok;
@@ -130,10 +138,11 @@ TEST(VariantOpShapeRegistryTest, TestBasic) {
 TEST(VariantOpShapeRegistryTest, TestDuplicate) {
   UnaryVariantOpRegistry registry;
   UnaryVariantOpRegistry::VariantShapeFn f;
-  string kTypeName = "fjfjfj";
-  registry.RegisterShapeFn(kTypeName, f);
-  EXPECT_DEATH(registry.RegisterShapeFn(kTypeName, f),
-               "fjfjfj already registered");
+  class FjFjFj {};
+  const auto kTypeIndex = MakeTypeIndex<FjFjFj>();
+  registry.RegisterShapeFn(kTypeIndex, f);
+  EXPECT_DEATH(registry.RegisterShapeFn(kTypeIndex, f),
+               "FjFjFj already registered");
 }
 
 TEST(VariantOpDecodeRegistryTest, TestBasic) {
@@ -166,9 +175,50 @@ TEST(VariantOpDecodeRegistryTest, TestDuplicate) {
                "fjfjfj already registered");
 }
 
+TEST(VariantOpCopyToGPURegistryTest, TestBasic) {
+  // No registered copy fn for GPU<->GPU.
+  EXPECT_EQ(UnaryVariantOpRegistry::Global()->GetDeviceCopyFn(
+                VariantDeviceCopyDirection::DEVICE_TO_DEVICE,
+                MakeTypeIndex<VariantValue>()),
+            nullptr);
+
+  auto* copy_to_gpu_fn = UnaryVariantOpRegistry::Global()->GetDeviceCopyFn(
+      VariantDeviceCopyDirection::HOST_TO_DEVICE,
+      MakeTypeIndex<VariantValue>());
+  EXPECT_NE(copy_to_gpu_fn, nullptr);
+
+  VariantValue vv{true /* early_exit */};
+  Variant v = vv;
+  Variant v_out;
+  bool dummy_executed = false;
+  auto dummy_copy_fn = [&dummy_executed](const Tensor& from,
+                                         Tensor* to) -> Status {
+    dummy_executed = true;
+    return Status::OK();
+  };
+  TF_EXPECT_OK((*copy_to_gpu_fn)(v, &v_out, dummy_copy_fn));
+  EXPECT_TRUE(dummy_executed);
+  VariantValue* copied_value = v_out.get<VariantValue>();
+  EXPECT_NE(copied_value, nullptr);
+  EXPECT_EQ(copied_value->value, 0xdeadbeef);
+}
+
+TEST(VariantOpCopyToGPURegistryTest, TestDuplicate) {
+  UnaryVariantOpRegistry registry;
+  UnaryVariantOpRegistry::AsyncVariantDeviceCopyFn f;
+  class FjFjFj {};
+  const auto kTypeIndex = MakeTypeIndex<FjFjFj>();
+  registry.RegisterDeviceCopyFn(VariantDeviceCopyDirection::HOST_TO_DEVICE,
+                                kTypeIndex, f);
+  EXPECT_DEATH(registry.RegisterDeviceCopyFn(
+                   VariantDeviceCopyDirection::HOST_TO_DEVICE, kTypeIndex, f),
+               "FjFjFj already registered");
+}
+
 TEST(VariantOpZerosLikeRegistryTest, TestBasicCPU) {
+  class Blah {};
   EXPECT_EQ(UnaryVariantOpRegistry::Global()->GetUnaryOpFn(
-                ZEROS_LIKE_VARIANT_UNARY_OP, DEVICE_CPU, "YOU SHALL NOT PASS"),
+                ZEROS_LIKE_VARIANT_UNARY_OP, DEVICE_CPU, MakeTypeIndex<Blah>()),
             nullptr);
 
   VariantValue vv_early_exit{true /* early_exit */, 0 /* value */};
@@ -180,7 +230,7 @@ TEST(VariantOpZerosLikeRegistryTest, TestBasicCPU) {
                                         ZEROS_LIKE_VARIANT_UNARY_OP, v, &v_out);
   EXPECT_FALSE(s0.ok());
   EXPECT_TRUE(
-      StringPiece(s0.error_message()).contains("early exit zeros_like"));
+      str_util::StrContains(s0.error_message(), "early exit zeros_like"));
 
   VariantValue vv_ok{false /* early_exit */, 0 /* value */};
   v = vv_ok;
@@ -192,8 +242,9 @@ TEST(VariantOpZerosLikeRegistryTest, TestBasicCPU) {
 
 #if GOOGLE_CUDA
 TEST(VariantOpUnaryOpRegistryTest, TestBasicGPU) {
+  class Blah {};
   EXPECT_EQ(UnaryVariantOpRegistry::Global()->GetUnaryOpFn(
-                ZEROS_LIKE_VARIANT_UNARY_OP, DEVICE_GPU, "YOU SHALL NOT PASS"),
+                ZEROS_LIKE_VARIANT_UNARY_OP, DEVICE_GPU, MakeTypeIndex<Blah>()),
             nullptr);
 
   VariantValue vv_early_exit{true /* early_exit */, 0 /* value */};
@@ -205,7 +256,7 @@ TEST(VariantOpUnaryOpRegistryTest, TestBasicGPU) {
                                         ZEROS_LIKE_VARIANT_UNARY_OP, v, &v_out);
   EXPECT_FALSE(s0.ok());
   EXPECT_TRUE(
-      StringPiece(s0.error_message()).contains("early exit zeros_like"));
+      str_util::StrContains(s0.error_message(), "early exit zeros_like"));
 
   VariantValue vv_ok{false /* early_exit */, 0 /* value */};
   v = vv_ok;
@@ -219,25 +270,26 @@ TEST(VariantOpUnaryOpRegistryTest, TestBasicGPU) {
 TEST(VariantOpUnaryOpRegistryTest, TestDuplicate) {
   UnaryVariantOpRegistry registry;
   UnaryVariantOpRegistry::VariantUnaryOpFn f;
-  string kTypeName = "fjfjfj";
+  class FjFjFj {};
+  const auto kTypeIndex = MakeTypeIndex<FjFjFj>();
 
-  registry.RegisterUnaryOpFn(ZEROS_LIKE_VARIANT_UNARY_OP, DEVICE_CPU, kTypeName,
-                             f);
+  registry.RegisterUnaryOpFn(ZEROS_LIKE_VARIANT_UNARY_OP, DEVICE_CPU,
+                             kTypeIndex, f);
   EXPECT_DEATH(registry.RegisterUnaryOpFn(ZEROS_LIKE_VARIANT_UNARY_OP,
-                                          DEVICE_CPU, kTypeName, f),
-               "fjfjfj already registered");
+                                          DEVICE_CPU, kTypeIndex, f),
+               "FjFjFj already registered");
 
-  registry.RegisterUnaryOpFn(ZEROS_LIKE_VARIANT_UNARY_OP, DEVICE_GPU, kTypeName,
-                             f);
+  registry.RegisterUnaryOpFn(ZEROS_LIKE_VARIANT_UNARY_OP, DEVICE_GPU,
+                             kTypeIndex, f);
   EXPECT_DEATH(registry.RegisterUnaryOpFn(ZEROS_LIKE_VARIANT_UNARY_OP,
-                                          DEVICE_GPU, kTypeName, f),
-               "fjfjfj already registered");
+                                          DEVICE_GPU, kTypeIndex, f),
+               "FjFjFj already registered");
 }
 
 TEST(VariantOpAddRegistryTest, TestBasicCPU) {
-  return;
+  class Blah {};
   EXPECT_EQ(UnaryVariantOpRegistry::Global()->GetBinaryOpFn(
-                ADD_VARIANT_BINARY_OP, DEVICE_CPU, "YOU SHALL NOT PASS"),
+                ADD_VARIANT_BINARY_OP, DEVICE_CPU, MakeTypeIndex<Blah>()),
             nullptr);
 
   VariantValue vv_early_exit{true /* early_exit */, 3 /* value */};
@@ -250,7 +302,7 @@ TEST(VariantOpAddRegistryTest, TestBasicCPU) {
   Status s0 = BinaryOpVariants<CPUDevice>(
       null_context_pointer, ADD_VARIANT_BINARY_OP, v_a, v_b, &v_out);
   EXPECT_FALSE(s0.ok());
-  EXPECT_TRUE(StringPiece(s0.error_message()).contains("early exit add"));
+  EXPECT_TRUE(str_util::StrContains(s0.error_message(), "early exit add"));
 
   VariantValue vv_ok{false /* early_exit */, 3 /* value */};
   v_a = vv_ok;
@@ -262,8 +314,9 @@ TEST(VariantOpAddRegistryTest, TestBasicCPU) {
 
 #if GOOGLE_CUDA
 TEST(VariantOpAddRegistryTest, TestBasicGPU) {
+  class Blah {};
   EXPECT_EQ(UnaryVariantOpRegistry::Global()->GetBinaryOpFn(
-                ADD_VARIANT_BINARY_OP, DEVICE_GPU, "YOU SHALL NOT PASS"),
+                ADD_VARIANT_BINARY_OP, DEVICE_GPU, MakeTypeIndex<Blah>()),
             nullptr);
 
   VariantValue vv_early_exit{true /* early_exit */, 3 /* value */};
@@ -276,7 +329,7 @@ TEST(VariantOpAddRegistryTest, TestBasicGPU) {
   Status s0 = BinaryOpVariants<GPUDevice>(
       null_context_pointer, ADD_VARIANT_BINARY_OP, v_a, v_b, &v_out);
   EXPECT_FALSE(s0.ok());
-  EXPECT_TRUE(StringPiece(s0.error_message()).contains("early exit add"));
+  EXPECT_TRUE(str_util::StrContains(s0.error_message(), "early exit add"));
 
   VariantValue vv_ok{false /* early_exit */, 3 /* value */};
   v_a = vv_ok;
@@ -290,17 +343,18 @@ TEST(VariantOpAddRegistryTest, TestBasicGPU) {
 TEST(VariantOpAddRegistryTest, TestDuplicate) {
   UnaryVariantOpRegistry registry;
   UnaryVariantOpRegistry::VariantBinaryOpFn f;
-  string kTypeName = "fjfjfj";
+  class FjFjFj {};
+  const auto kTypeIndex = MakeTypeIndex<FjFjFj>();
 
-  registry.RegisterBinaryOpFn(ADD_VARIANT_BINARY_OP, DEVICE_CPU, kTypeName, f);
+  registry.RegisterBinaryOpFn(ADD_VARIANT_BINARY_OP, DEVICE_CPU, kTypeIndex, f);
   EXPECT_DEATH(registry.RegisterBinaryOpFn(ADD_VARIANT_BINARY_OP, DEVICE_CPU,
-                                           kTypeName, f),
-               "fjfjfj already registered");
+                                           kTypeIndex, f),
+               "FjFjFj already registered");
 
-  registry.RegisterBinaryOpFn(ADD_VARIANT_BINARY_OP, DEVICE_GPU, kTypeName, f);
+  registry.RegisterBinaryOpFn(ADD_VARIANT_BINARY_OP, DEVICE_GPU, kTypeIndex, f);
   EXPECT_DEATH(registry.RegisterBinaryOpFn(ADD_VARIANT_BINARY_OP, DEVICE_GPU,
-                                           kTypeName, f),
-               "fjfjfj already registered");
+                                           kTypeIndex, f),
+               "FjFjFj already registered");
 }
 
 }  // namespace tensorflow

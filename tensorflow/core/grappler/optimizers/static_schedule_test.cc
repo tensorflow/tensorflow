@@ -64,17 +64,17 @@ TEST_F(StaticScheduleTest, BasicGraph) {
     if (time.first->name() == "Const/Const") {
       EXPECT_EQ(Costs::NanoSeconds(1), time.second);
     } else if (time.first->name() == "x") {
-      EXPECT_EQ(Costs::NanoSeconds(250002), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(1500001), time.second);
     } else if (time.first->name() == "Square") {
-      EXPECT_EQ(Costs::NanoSeconds(1500005), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(4000004), time.second);
     } else if (time.first->name() == "Square_1") {
-      EXPECT_EQ(Costs::NanoSeconds(2750008), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(6500007), time.second);
     } else if (time.first->name() == "Square_2") {
-      EXPECT_EQ(Costs::NanoSeconds(4000011), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(9000010), time.second);
     } else if (time.first->name() == "Square_3") {
-      EXPECT_EQ(Costs::NanoSeconds(5250014), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(11500013), time.second);
     } else if (time.first->name() == "y") {
-      EXPECT_EQ(Costs::NanoSeconds(6500017), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(14000013), time.second);
     }
   }
 }
@@ -110,13 +110,13 @@ TEST_F(StaticScheduleTest, BasicGraphWithCtrlDependencies) {
     if (time.first->name() == "a") {
       EXPECT_EQ(Costs::NanoSeconds(1), time.second);
     } else if (time.first->name() == "b") {
-      EXPECT_EQ(Costs::NanoSeconds(12500026), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(25000001), time.second);
     } else if (time.first->name() == "c") {
-      EXPECT_EQ(Costs::NanoSeconds(12500027), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(25000002), time.second);
     } else if (time.first->name() == "d") {
-      EXPECT_EQ(Costs::NanoSeconds(12500028), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(25000003), time.second);
     } else if (time.first->name() == "e") {
-      EXPECT_EQ(Costs::NanoSeconds(25000053), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(50000003), time.second);
     }
   }
 }
@@ -142,17 +142,17 @@ TEST_F(StaticScheduleTest, RequiredTimes) {
 
   for (auto time : required_times) {
     if (time.first->name() == "Const/Const") {
-      EXPECT_EQ(Costs::NanoSeconds(-6500016), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(-14000012), time.second);
     } else if (time.first->name() == "x") {
-      EXPECT_EQ(Costs::NanoSeconds(-6250015), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(-12500012), time.second);
     } else if (time.first->name() == "Square") {
-      EXPECT_EQ(Costs::NanoSeconds(-5000012), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(-10000009), time.second);
     } else if (time.first->name() == "Square_1") {
-      EXPECT_EQ(Costs::NanoSeconds(-3750009), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(-7500006), time.second);
     } else if (time.first->name() == "Square_2") {
-      EXPECT_EQ(Costs::NanoSeconds(-2500006), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(-5000003), time.second);
     } else if (time.first->name() == "Square_3") {
-      EXPECT_EQ(Costs::NanoSeconds(-1250003), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(-2500000), time.second);
     } else if (time.first->name() == "y") {
       EXPECT_EQ(Costs::NanoSeconds(0), time.second);
     }

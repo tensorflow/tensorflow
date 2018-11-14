@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.image.ops import gen_distort_image_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -132,7 +133,7 @@ def adjust_hsv_in_yiq(image,
     orig_dtype = image.dtype
     flt_image = image_ops.convert_image_dtype(image, dtypes.float32)
 
-    rgb_altered = _distort_image_ops.adjust_hsv_in_yiq(
+    rgb_altered = gen_distort_image_ops.adjust_hsv_in_yiq(
         flt_image, delta_hue, scale_saturation, scale_value)
 
     return image_ops.convert_image_dtype(rgb_altered, orig_dtype)

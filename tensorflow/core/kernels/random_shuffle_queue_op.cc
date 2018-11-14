@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
 
@@ -170,7 +171,7 @@ Status RandomShuffleQueue::GetElementComponentFromBatch(
   TF_RETURN_IF_ERROR(ctx->allocate_persistent(
       tuple[component].dtype(), element_shape, out_tensor, &element_access));
   TF_RETURN_IF_ERROR(
-      CopySliceToElement(tuple[component], element_access, index));
+      batch_util::CopySliceToElement(tuple[component], element_access, index));
   return Status::OK();
 }
 
@@ -333,96 +334,95 @@ void RandomShuffleQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
       // TODO(josh11b): This makes two copies of callback, avoid this if possible.
       dequeue_attempts_.emplace_back(
           num_elements, [callback]() { callback(Tuple()); }, ctx, cm, token,
-          [callback, allow_small_batch, this](Attempt* attempt)
-              EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-                int32 queue_size = queues_[0].size();
-                if (closed_ && queue_size < attempt->elements_requested) {
-                  // If we don't have enough for a full dequeue, we have
-                  // to reset the attempt tuple.
-                  if (!attempt->tuple.empty()) {
-                    // Restore already-dequeued elements to the queue.
-                    for (int64 i = attempt->tuple[0].dim_size(0) -
-                                   attempt->elements_requested - 1;
-                         i >= 0; --i) {
-                      for (int j = 0; j < num_components(); ++j) {
-                        PersistentTensor element;
-                        Status s = GetElementComponentFromBatch(
-                            attempt->tuple, i, j, attempt->context, &element);
-                        if (!s.ok()) {
-                          attempt->context->SetStatus(
-                              errors::DataLoss("Failed to restore element from "
-                                               "partially-dequeued batch "
-                                               "to RandomShuffleQueue: ",
-                                               s.error_message()));
-                        }
-                        queues_[j].push_back(element);
-                      }
-                    }
-                  }
-                  if (allow_small_batch && !queues_[0].empty()) {
-                    // Request all remaining elements in the queue.
-                    queue_size = queues_[0].size();
-                    attempt->tuple.clear();
-                    attempt->elements_requested = queue_size;
-                  } else {
-                    if (allow_small_batch) {
-                      // There may be some other attempts containing
-                      // values.  If so, we'll yield and wait for them
-                      // to add elements to the queue.
-                      if (!enqueue_attempts_.empty()) return kProgress;
-                    }
-                    if (attempt->context->status().ok()) {
-                      attempt->context->SetStatus(errors::OutOfRange(
-                          "RandomShuffleQueue '", name_, "' is closed and has ",
-                          "insufficient elements (requested ",
-                          attempt->elements_requested, ", current size ",
-                          queue_size, ")"));
-                    }
-                    return kComplete;
-                  }
-                }
-
-                RunResult result = kNoProgress;
-                if (!closed_) queue_size -= min_after_dequeue_;
-                for (; queue_size > 0; --queue_size) {
-                  if (attempt->tuple.empty()) {
-                    // Only allocate tuple when we have something to dequeue
-                    // so we don't use excessive memory when there are many
-                    // blocked dequeue attempts waiting.
-                    attempt->tuple.reserve(num_components());
-                    for (int i = 0; i < num_components(); ++i) {
-                      const TensorShape shape =
-                          ManyOutShape(i, attempt->elements_requested);
-                      Tensor element;
+          [callback, allow_small_batch,
+           this](Attempt* attempt) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+            int32 queue_size = queues_[0].size();
+            if (closed_ && queue_size < attempt->elements_requested) {
+              // If we don't have enough for a full dequeue, we have
+              // to reset the attempt tuple.
+              if (!attempt->tuple.empty()) {
+                // Restore already-dequeued elements to the queue.
+                for (int64 i = attempt->tuple[0].dim_size(0) -
+                               attempt->elements_requested - 1;
+                     i >= 0; --i) {
+                  for (int j = 0; j < num_components(); ++j) {
+                    PersistentTensor element;
+                    Status s = GetElementComponentFromBatch(
+                        attempt->tuple, i, j, attempt->context, &element);
+                    if (!s.ok()) {
                       attempt->context->SetStatus(
-                          attempt->context->allocate_temp(component_dtypes_[i],
-                                                          shape, &element));
-                      if (!attempt->context->status().ok()) return kComplete;
-                      attempt->tuple.emplace_back(element);
+                          errors::DataLoss("Failed to restore element from "
+                                           "partially-dequeued batch "
+                                           "to RandomShuffleQueue: ",
+                                           s.error_message()));
                     }
-                  }
-                  result = kProgress;
-                  Tuple tuple;
-                  DequeueLocked(attempt->context, &tuple);
-                  const int index = attempt->tuple[0].dim_size(0) -
-                                    attempt->elements_requested;
-                  for (int i = 0; i < num_components(); ++i) {
-                    attempt->context->SetStatus(CopyElementToSlice(
-                        tuple[i], &attempt->tuple[i], index));
-                    if (!attempt->context->status().ok()) return kComplete;
-                  }
-                  tuple.clear();
-                  --attempt->elements_requested;
-                  if (attempt->elements_requested == 0) {
-                    tuple = attempt->tuple;
-                    attempt->done_callback = [callback, tuple]() {
-                      callback(tuple);
-                    };
-                    return kComplete;
+                    queues_[j].push_back(element);
                   }
                 }
-                return result;
-              });
+              }
+              if (allow_small_batch && !queues_[0].empty()) {
+                // Request all remaining elements in the queue.
+                queue_size = queues_[0].size();
+                attempt->tuple.clear();
+                attempt->elements_requested = queue_size;
+              } else {
+                if (allow_small_batch) {
+                  // There may be some other attempts containing
+                  // values.  If so, we'll yield and wait for them
+                  // to add elements to the queue.
+                  if (!enqueue_attempts_.empty()) return kProgress;
+                }
+                if (attempt->context->status().ok()) {
+                  attempt->context->SetStatus(errors::OutOfRange(
+                      "RandomShuffleQueue '", name_, "' is closed and has ",
+                      "insufficient elements (requested ",
+                      attempt->elements_requested, ", current size ",
+                      queue_size, ")"));
+                }
+                return kComplete;
+              }
+            }
+
+            RunResult result = kNoProgress;
+            if (!closed_) queue_size -= min_after_dequeue_;
+            for (; queue_size > 0; --queue_size) {
+              if (attempt->tuple.empty()) {
+                // Only allocate tuple when we have something to dequeue
+                // so we don't use excessive memory when there are many
+                // blocked dequeue attempts waiting.
+                attempt->tuple.reserve(num_components());
+                for (int i = 0; i < num_components(); ++i) {
+                  const TensorShape shape =
+                      ManyOutShape(i, attempt->elements_requested);
+                  Tensor element;
+                  attempt->context->SetStatus(attempt->context->allocate_temp(
+                      component_dtypes_[i], shape, &element));
+                  if (!attempt->context->status().ok()) return kComplete;
+                  attempt->tuple.emplace_back(element);
+                }
+              }
+              result = kProgress;
+              Tuple tuple;
+              DequeueLocked(attempt->context, &tuple);
+              const int index =
+                  attempt->tuple[0].dim_size(0) - attempt->elements_requested;
+              for (int i = 0; i < num_components(); ++i) {
+                attempt->context->SetStatus(batch_util::CopyElementToSlice(
+                    std::move(tuple[i]), &attempt->tuple[i], index));
+                if (!attempt->context->status().ok()) return kComplete;
+              }
+              tuple.clear();
+              --attempt->elements_requested;
+              if (attempt->elements_requested == 0) {
+                tuple = attempt->tuple;
+                attempt->done_callback = [callback, tuple]() {
+                  callback(tuple);
+                };
+                return kComplete;
+              }
+            }
+            return result;
+          });
     }
   }
   if (!already_cancelled) {

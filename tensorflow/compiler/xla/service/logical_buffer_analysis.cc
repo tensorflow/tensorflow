@@ -17,11 +17,29 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
+
+namespace {
+
+// Gather fusion instructions from 'instruction' into 'fusion_instructions'.
+void GatherFusionInstructions(
+    HloInstruction* instruction,
+    std::vector<HloInstruction*>* fusion_instructions) {
+  CHECK_EQ(HloOpcode::kFusion, instruction->opcode());
+  for (auto* fused : instruction->fused_instructions()) {
+    if (fused->opcode() == HloOpcode::kFusion) {
+      GatherFusionInstructions(fused, fusion_instructions);
+    }
+  }
+  fusion_instructions->push_back(instruction);
+}
+
+}  // namespace
 
 /* static */ StatusOr<std::unique_ptr<LogicalBufferAnalysis>>
 LogicalBufferAnalysis::Run(const HloModule* module) {
@@ -36,22 +54,23 @@ Status LogicalBufferAnalysis::Analyze() {
   // so reserve 10% more than the number of instructions to avoid frequent
   // resizes.
   logical_buffers_.clear();
-  logical_buffers_.reserve((module_->NumUniqueInstructionIds() * 11) / 10);
+  logical_buffers_.reserve((module_->instruction_count() * 11) / 10);
 
   // We filter out fusion computations, and get to them through fusion
   // instructions. This is because it's possible to have orphaned (unreachable)
   // fusion computations, and we don't want to try to assign buffers to those.
-  for (auto& computation : module_->computations()) {
-    if (computation->IsFusionComputation()) {
-      continue;
-    }
+  std::vector<HloInstruction*> fusion_instructions;
+  for (auto* computation : module_->MakeNonfusionComputations()) {
     TF_RETURN_IF_ERROR(computation->Accept(this));
-    for (auto& instruction : computation->instructions()) {
+    for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() != HloOpcode::kFusion) {
         continue;
       }
-      TF_RETURN_IF_ERROR(instruction->fused_expression_root()->Accept(this));
+      GatherFusionInstructions(instruction, &fusion_instructions);
     }
+  }
+  for (auto* instruction : fusion_instructions) {
+    TF_RETURN_IF_ERROR(instruction->fused_expression_root()->Accept(this));
   }
   return Status::OK();
 }
@@ -71,7 +90,7 @@ void LogicalBufferAnalysis::NewLogicalBuffer(HloInstruction* instruction,
                                              const ShapeIndex& index) {
   CHECK_EQ(logical_buffers_.size(), next_buffer_id_);
   logical_buffers_.emplace_back(
-      MakeUnique<LogicalBuffer>(instruction, index, next_buffer_id_));
+      absl::make_unique<LogicalBuffer>(instruction, index, next_buffer_id_));
   output_buffers_[std::make_pair(instruction, index)] =
       logical_buffers_.back().get();
 
@@ -89,8 +108,7 @@ Status LogicalBufferAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleGetTupleElement(
-    HloInstruction* get_tuple_element, HloInstruction* operand) {
+Status LogicalBufferAnalysis::HandleGetTupleElement(HloInstruction*) {
   // GetTupleElement does not create buffers.
   return Status::OK();
 }
@@ -102,27 +120,48 @@ Status LogicalBufferAnalysis::HandleCopy(HloInstruction* copy) {
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleBitcast(HloInstruction* bitcast) {
+Status LogicalBufferAnalysis::HandleBitcast(HloInstruction*) {
   // A kBitcast instruction aliases its operand. That is, the buffer of its
   // result *is* the buffer of its operand.
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleTuple(
-    HloInstruction* tuple,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+Status LogicalBufferAnalysis::HandleDomain(HloInstruction*) {
+  // A kDomain instruction aliases its operand. That is, the buffer of its
+  // result *is* the buffer of its operand.
+  return Status::OK();
+}
+
+Status LogicalBufferAnalysis::HandleRecvDone(HloInstruction* recv_done) {
+  // RecvDone produces a two-element tuple containing the data value (which
+  // aliases part of its operand) and a token. Only the tuple index table and
+  // the token are defined by the RecvDone.
+  NewLogicalBuffer(recv_done, /*index=*/{});
+  NewLogicalBuffer(recv_done, /*index=*/{1});
+  return Status::OK();
+}
+
+Status LogicalBufferAnalysis::HandleSend(HloInstruction* send) {
+  // Send creates new buffers for the top-level tuple, the context (tuple
+  // element at {1}), and the token (tuple element at {2}). Tuple element at {0}
+  // is an alias of the Send operand, so we don't need to create a new Logical
+  // Buffer for that.
+  NewLogicalBuffer(send, /*index=*/{});
+  NewLogicalBuffer(send, /*index=*/{1});
+  NewLogicalBuffer(send, /*index=*/{2});
+  return Status::OK();
+}
+
+Status LogicalBufferAnalysis::HandleTuple(HloInstruction* tuple) {
   // A Tuple instruction only creates the top-level buffer.
   NewLogicalBuffer(tuple, /*index=*/{});
   return Status::OK();
 }
 
-Status LogicalBufferAnalysis::HandleSelect(HloInstruction* select,
-                                           HloInstruction* /*pred*/,
-                                           HloInstruction* on_true,
-                                           HloInstruction* on_false) {
+Status LogicalBufferAnalysis::HandleTupleSelect(HloInstruction* tuple_select) {
   // Select allocates a new buffer and then shallow copies the on_true or
   // on_false buffer into this new buffer.
-  NewLogicalBuffer(select, /*index=*/{});
+  NewLogicalBuffer(tuple_select, /*index=*/{});
   return Status::OK();
 }
 

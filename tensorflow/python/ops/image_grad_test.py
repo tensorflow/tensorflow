@@ -38,7 +38,7 @@ class ResizeNearestNeighborOpTest(test.TestCase):
     for nptype in self.TYPES:
       x = np.arange(0, 4).reshape(in_shape).astype(nptype)
 
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         input_tensor = constant_op.constant(x, shape=in_shape)
         resize_out = image_ops.resize_nearest_neighbor(input_tensor,
                                                        out_shape[1:3])
@@ -54,7 +54,7 @@ class ResizeNearestNeighborOpTest(test.TestCase):
     for nptype in self.TYPES:
       x = np.arange(0, 6).reshape(in_shape).astype(nptype)
 
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         input_tensor = constant_op.constant(x, shape=in_shape)
         resize_out = image_ops.resize_nearest_neighbor(input_tensor,
                                                        out_shape[1:3])
@@ -69,7 +69,7 @@ class ResizeNearestNeighborOpTest(test.TestCase):
     for nptype in self.TYPES:
       x = np.arange(0, 24).reshape(in_shape).astype(nptype)
 
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         input_tensor = constant_op.constant(x, shape=in_shape)
         resize_out = image_ops.resize_nearest_neighbor(input_tensor,
                                                        out_shape[1:3])
@@ -84,14 +84,14 @@ class ResizeNearestNeighborOpTest(test.TestCase):
     for nptype in self.TYPES:
       x = np.arange(0, np.prod(in_shape)).reshape(in_shape).astype(nptype)
       for align_corners in [True, False]:
-        with self.test_session(use_gpu=False):
+        with self.cached_session(use_gpu=False):
           input_tensor = constant_op.constant(x, shape=in_shape)
           resize_out = image_ops.resize_nearest_neighbor(
               input_tensor, out_shape[1:3], align_corners=align_corners)
           grad_cpu = gradient_checker.compute_gradient(
               input_tensor, in_shape, resize_out, out_shape, x_init_value=x)
 
-        with self.test_session(use_gpu=True):
+        with self.cached_session(use_gpu=True):
           input_tensor = constant_op.constant(x, shape=in_shape)
           resize_out = image_ops.resize_nearest_neighbor(
               input_tensor, out_shape[1:3], align_corners=align_corners)
@@ -108,7 +108,7 @@ class ResizeBilinearOpTest(test.TestCase):
 
     x = np.arange(0, 4).reshape(in_shape).astype(np.float32)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       input_tensor = constant_op.constant(x, shape=in_shape)
       resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
       self.assertEqual(out_shape, list(resize_out.get_shape()))
@@ -122,7 +122,7 @@ class ResizeBilinearOpTest(test.TestCase):
 
     x = np.arange(0, 6).reshape(in_shape).astype(np.float32)
 
-    with self.test_session():
+    with self.cached_session():
       input_tensor = constant_op.constant(x, shape=in_shape)
       resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
       err = gradient_checker.compute_gradient_error(
@@ -135,24 +135,12 @@ class ResizeBilinearOpTest(test.TestCase):
 
     x = np.arange(0, 24).reshape(in_shape).astype(np.float32)
 
-    with self.test_session():
+    with self.cached_session():
       input_tensor = constant_op.constant(x, shape=in_shape)
       resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
       err = gradient_checker.compute_gradient_error(
           input_tensor, in_shape, resize_out, out_shape, x_init_value=x)
     self.assertLess(err, 1e-3)
-
-  def testGradOnUnsupportedType(self):
-    in_shape = [1, 4, 6, 1]
-    out_shape = [1, 2, 3, 1]
-
-    x = np.arange(0, 24).reshape(in_shape).astype(np.uint8)
-
-    with self.test_session():
-      input_tensor = constant_op.constant(x, shape=in_shape)
-      resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
-      grad = gradients_impl.gradients(input_tensor, [resize_out])
-      self.assertEqual([None], grad)
 
   def testCompareGpuVsCpu(self):
     in_shape = [2, 4, 6, 3]
@@ -163,7 +151,7 @@ class ResizeBilinearOpTest(test.TestCase):
     for align_corners in [True, False]:
       grad = {}
       for use_gpu in [False, True]:
-        with self.test_session(use_gpu=use_gpu):
+        with self.cached_session(use_gpu=use_gpu):
           input_tensor = constant_op.constant(x, shape=in_shape)
           resized_tensor = image_ops.resize_bilinear(
               input_tensor, out_shape[1:3], align_corners=align_corners)
@@ -171,6 +159,26 @@ class ResizeBilinearOpTest(test.TestCase):
               input_tensor, in_shape, resized_tensor, out_shape, x_init_value=x)
 
       self.assertAllClose(grad[False], grad[True], rtol=1e-4, atol=1e-4)
+
+  def testTypes(self):
+    in_shape = [1, 4, 6, 1]
+    out_shape = [1, 2, 3, 1]
+    x = np.arange(0, 24).reshape(in_shape)
+
+    with self.cached_session() as sess:
+      for dtype in [np.float16, np.float32, np.float64]:
+        input_tensor = constant_op.constant(x.astype(dtype), shape=in_shape)
+        resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
+        grad = sess.run(gradients_impl.gradients(resize_out, input_tensor))[0]
+        self.assertAllEqual(in_shape, grad.shape)
+        # Not using gradient_checker.compute_gradient as I didn't work out
+        # the changes required to compensate for the lower precision of
+        # float16 when computing the numeric jacobian.
+        # Instead, we just test the theoretical jacobian.
+        self.assertAllEqual([[[[1.], [0.], [1.], [0.], [1.], [0.]], [[0.], [
+            0.
+        ], [0.], [0.], [0.], [0.]], [[1.], [0.], [1.], [0.], [1.], [0.]],
+                              [[0.], [0.], [0.], [0.], [0.], [0.]]]], grad)
 
 
 class ResizeBicubicOpTest(test.TestCase):
@@ -182,7 +190,7 @@ class ResizeBicubicOpTest(test.TestCase):
     x = np.arange(0, 4).reshape(in_shape).astype(np.float32)
 
     for align_corners in [True, False]:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         input_tensor = constant_op.constant(x, shape=in_shape)
         resize_out = image_ops.resize_bicubic(input_tensor, out_shape[1:3],
                                               align_corners=align_corners)
@@ -198,7 +206,7 @@ class ResizeBicubicOpTest(test.TestCase):
     x = np.arange(0, 6).reshape(in_shape).astype(np.float32)
 
     for align_corners in [True, False]:
-      with self.test_session():
+      with self.cached_session():
         input_tensor = constant_op.constant(x, shape=in_shape)
         resize_out = image_ops.resize_bicubic(input_tensor, out_shape[1:3],
                                               align_corners=align_corners)
@@ -213,7 +221,7 @@ class ResizeBicubicOpTest(test.TestCase):
     x = np.arange(0, 24).reshape(in_shape).astype(np.float32)
 
     for align_corners in [True, False]:
-      with self.test_session():
+      with self.cached_session():
         input_tensor = constant_op.constant(x, shape=in_shape)
         resize_out = image_ops.resize_bicubic(input_tensor, out_shape[1:3],
                                               align_corners=align_corners)
@@ -227,7 +235,7 @@ class ResizeBicubicOpTest(test.TestCase):
 
     x = np.arange(0, 24).reshape(in_shape).astype(np.uint8)
 
-    with self.test_session():
+    with self.cached_session():
       input_tensor = constant_op.constant(x, shape=in_shape)
       resize_out = image_ops.resize_bicubic(input_tensor, out_shape[1:3])
       grad = gradients_impl.gradients(input_tensor, [resize_out])
@@ -254,7 +262,7 @@ class CropAndResizeOpTest(test.TestCase):
     boxes = np.array([[0, 0, 1, 1], [.1, .2, .7, .8]], dtype=np.float32)
     box_ind = np.array([0, 1], dtype=np.int32)
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       crops = image_ops.crop_and_resize(
           constant_op.constant(
               image, shape=image_shape),
@@ -343,7 +351,7 @@ class CropAndResizeOpTest(test.TestCase):
               boxes = np.array(boxes, dtype=np.float32)
               box_ind = np.arange(batch, dtype=np.int32)
 
-              with self.test_session(use_gpu=True):
+              with self.cached_session(use_gpu=True):
                 image_tensor = constant_op.constant(image, shape=image_shape)
                 boxes_tensor = constant_op.constant(boxes, shape=[num_boxes, 4])
                 box_ind_tensor = constant_op.constant(

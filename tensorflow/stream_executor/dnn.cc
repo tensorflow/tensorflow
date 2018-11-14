@@ -15,28 +15,36 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/dnn.h"
 
-#include "tensorflow/stream_executor/lib/strcat.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 namespace dnn {
 
+uint64 AlgorithmDesc::hash() const {
+  return ::tensorflow::Hash64Combine(algo_, tensor_ops_enabled_);
+}
+
 bool DnnSupport::GetConvolveAlgorithms(
-    bool with_winograd_nonfused,
-    std::vector<AlgorithmDesc::Index>* out_algorithms) {
+    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    std::vector<AlgorithmDesc>* out_algorithms) {
+  return false;
+}
+
+bool DnnSupport::GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
 bool DnnSupport::GetConvolveBackwardDataAlgorithms(
-    bool with_winograd_nonfused,
-    std::vector<AlgorithmDesc::Index>* out_algorithms) {
+    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
 bool DnnSupport::GetConvolveBackwardFilterAlgorithms(
-    bool with_winograd_nonfused,
-    std::vector<AlgorithmDesc::Index>* out_algorithms) {
+    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
@@ -109,6 +117,8 @@ string FilterLayoutString(FilterLayout layout) {
   switch (layout) {
     case FilterLayout::kOutputInputYX:
       return "OutputInputYX";
+    case FilterLayout::kOutputYXInput:
+      return "OutputYXInput";
     case FilterLayout::kOutputInputYX4:
       return "OutputInputYX4";
     case FilterLayout::kInputYXOutput:
@@ -131,6 +141,10 @@ string PadAlignmentString(PadAlignment alignment) {
       return "TensorFlow padding";
   }
   return "unknown pad alignment";
+}
+
+std::ostream& operator<<(std::ostream& str, dnn::PadAlignment alignment) {
+  return str << PadAlignmentString(alignment);
 }
 
 string ShortPoolingModeString(PoolingMode mode) {
@@ -205,8 +219,15 @@ std::vector<int64> ReorderDims(const std::vector<int64>& input,
 // -- AlgorithmConfig
 
 string AlgorithmConfig::ToString() const {
-  return port::StrCat(algorithm_.algo_id(), ", ",
-                      algorithm_no_scratch_.algo_id());
+  AlgorithmDesc::Index algo_id = -1;
+  if (algorithm().has_value()) {
+    algo_id = algorithm()->algo_id();
+  }
+  AlgorithmDesc::Index algo_id_no_scratch = -1;
+  if (algorithm_no_scratch().has_value()) {
+    algo_id_no_scratch = algorithm_no_scratch()->algo_id();
+  }
+  return absl::StrCat(algo_id, ", ", algo_id_no_scratch);
 }
 
 // -- BatchDescriptor
@@ -277,8 +298,8 @@ string BatchDescriptor::ToShortString() const {
   // All the constituent strings are less than 15 characters, so the
   // small string optimization ensures that there will be at most one
   // heap memory allocation.
-  string depth = port::StrCat("d", feature_map_count());
-  string batch = port::StrCat("b", count());
+  string depth = absl::StrCat("d", feature_map_count());
+  string batch = absl::StrCat("b", count());
 
   string spatial = "s";
   for (int i = 0; i < ndims_; i++) {
@@ -287,7 +308,7 @@ string BatchDescriptor::ToShortString() const {
 
   string suffix;
   if (value_min() != value_max()) {
-    port::StrAppend(&suffix, "[", value_min(), ";", value_max(), "]");
+    absl::StrAppend(&suffix, "[", value_min(), ";", value_max(), "]");
   }
   if (quantized_activation_mode() == QuantizedActivationMode::k16Bit) {
     suffix += "_16bit";
@@ -295,15 +316,15 @@ string BatchDescriptor::ToShortString() const {
 
   switch (layout()) {
     case DataLayout::kYXDepthBatch:
-      return port::StrCat(spatial, depth, batch, suffix);
+      return absl::StrCat(spatial, depth, batch, suffix);
     case DataLayout::kYXBatchDepth:
-      return port::StrCat(spatial, batch, depth, suffix);
+      return absl::StrCat(spatial, batch, depth, suffix);
     case DataLayout::kBatchYXDepth:
-      return port::StrCat(batch, spatial, depth, suffix);
+      return absl::StrCat(batch, spatial, depth, suffix);
     case DataLayout::kBatchDepthYX:
-      return port::StrCat(batch, depth, spatial, suffix);
+      return absl::StrCat(batch, depth, spatial, suffix);
     case DataLayout::kBatchDepthYX4:
-      return port::StrCat(batch, depth, spatial, suffix, "(VECT_C)");
+      return absl::StrCat(batch, depth, spatial, suffix, "(VECT_C)");
     default:
       LOG(FATAL) << "Unknown layout " << static_cast<int32>(layout());
       return "";  // Avoid return warning (unreachable)
@@ -379,7 +400,7 @@ string FilterDescriptor::ToString() const {
   for (int i = 0; i < ndims_; i++) {
     port::Appendf(&desc, "%lld ", input_filter_dims_[i]);
   }
-  port::StrAppend(&desc, "}");
+  absl::StrAppend(&desc, "}");
 
   return desc;
 }
@@ -388,8 +409,8 @@ string FilterDescriptor::ToShortString() const {
   // All the constituent strings are less than 15 characters, so the
   // small string optimization ensures that there will be at most one
   // heap memory allocation.
-  string od = port::StrCat("od", output_feature_map_count_);
-  string id = port::StrCat("id", input_feature_map_count_);
+  string od = absl::StrCat("od", output_feature_map_count_);
+  string id = absl::StrCat("id", input_feature_map_count_);
 
   string spatial = "s";
   for (int i = 0; i < ndims_; i++) {
@@ -398,13 +419,15 @@ string FilterDescriptor::ToShortString() const {
 
   switch (layout_) {
     case FilterLayout::kOutputInputYX:
-      return port::StrCat(od, id, spatial);
+      return absl::StrCat(od, id, spatial);
+    case FilterLayout::kOutputYXInput:
+      return absl::StrCat(od, spatial, id);
     case FilterLayout::kOutputInputYX4:
-      return port::StrCat(od, id, spatial, "(VECT_C)");
+      return absl::StrCat(od, id, spatial, "(VECT_C)");
     case FilterLayout::kInputYXOutput:
-      return port::StrCat(id, spatial, od);
+      return absl::StrCat(id, spatial, od);
     case FilterLayout::kYXInputOutput:
-      return port::StrCat(spatial, id, od);
+      return absl::StrCat(spatial, id, od);
     default:
       LOG(FATAL) << "Unknown layout " << static_cast<int32>(layout_);
       return "";  // Avoid return warning (unreachable)
@@ -424,8 +447,10 @@ int64 FilterDescriptor::ComputeWeightCount() const {
 ConvolutionDescriptor::ConvolutionDescriptor(int ndims)
     : zero_padding_(ndims, 0),
       filter_strides_(ndims, 1),
-      pad_alignment_(PadAlignment::kDefault),
-      ndims_(ndims) {}
+      dilation_rates_(ndims, 1),
+      group_count_(1),
+      ndims_(ndims),
+      convolution_not_crosscorr_(false) {}
 
 ConvolutionDescriptor::ConvolutionDescriptor()
     : ConvolutionDescriptor(/*ndims=*/2) {}
@@ -435,15 +460,18 @@ ConvolutionDescriptor::~ConvolutionDescriptor() {}
 string ConvolutionDescriptor::ToString() const {
   string padding;
   string strides;
+  string dilations;
   for (int i = 0; i < ndims_; i++) {
     port::Appendf(&padding, "%lld ", zero_padding_[i]);
     port::Appendf(&strides, "%lld ", filter_strides_[i]);
+    port::Appendf(&dilations, "%lld ", dilation_rates_[i]);
   }
 
-  return port::Printf("{zero_padding: %s pad_alignment: %s filter_strides: %s}",
-                      padding.c_str(),
-                      PadAlignmentString(pad_alignment_).c_str(),
-                      strides.c_str());
+  return port::Printf(
+      "{zero_padding: %s pad_alignment: %s filter_strides: %s dilation_rates: "
+      "%s}",
+      padding.c_str(), PadAlignmentString(pad_alignment()).c_str(),
+      strides.c_str(), dilations.c_str());
 }
 
 string ConvolutionDescriptor::ToShortString() const {
@@ -455,6 +483,9 @@ string ConvolutionDescriptor::ToShortString() const {
   for (int i = 0; i < ndims_; i++) {
     port::Appendf(&desc, "_s%d:%lld", i, filter_strides_[i]);
   }
+  for (int i = 0; i < ndims_; i++) {
+    port::Appendf(&desc, "_d%d:%lld", i, dilation_rates_[i]);
+  }
   return desc;
 }
 
@@ -463,6 +494,7 @@ string ConvolutionDescriptor::ToShortString() const {
 PoolingDescriptor::PoolingDescriptor(int ndims)
     : mode_(dnn::PoolingMode::kMaximum),
       ndims_(ndims),
+      propagate_nans_(false),
       window_(ndims, 0),
       padding_(ndims, 0),
       strides_(ndims, 1) {}
@@ -475,6 +507,7 @@ void PoolingDescriptor::CloneFrom(const PoolingDescriptor& other) {
   window_ = other.window_;
   padding_ = other.padding_;
   strides_ = other.strides_;
+  propagate_nans_ = other.propagate_nans_;
 }
 
 string PoolingDescriptor::ToString() const {
@@ -488,9 +521,12 @@ string PoolingDescriptor::ToString() const {
     port::Appendf(&padding, "%lld", padding_[i]);
   }
 
-  return port::Printf("{mode: %s window: %s strides: %s padding: %s}",
-                      mode_string, window.c_str(), strides.c_str(),
-                      padding.c_str());
+  const char* propagate_string = propagate_nans_ ? "Yes" : "No";
+
+  return port::Printf(
+      "{mode: %s window: %s strides: %s padding: %s propagate NaNs: %s}",
+      mode_string, window.c_str(), strides.c_str(), padding.c_str(),
+      propagate_string);
 }
 
 string PoolingDescriptor::ToShortString() const {
@@ -500,8 +536,9 @@ string PoolingDescriptor::ToShortString() const {
     port::Appendf(&strides, "_s%d:%lld", i, strides_[i]);
     port::Appendf(&padding, "_p%d:%lld", i, padding_[i]);
   }
-  return port::StrCat(mode_ == dnn::PoolingMode::kMaximum ? "max" : "avg",
-                      window, strides, padding);
+  return absl::StrCat(mode_ == dnn::PoolingMode::kMaximum ? "max" : "avg",
+                      window, strides, padding,
+                      propagate_nans_ ? "propagate_nans" : "ignore_nans");
 }
 
 // -- NormalizeDescriptor
@@ -531,11 +568,10 @@ string NormalizeDescriptor::ToString() const {
 }
 
 string NormalizeDescriptor::ToShortString() const {
-  return port::StrCat("bias:", bias_, "_range:", range_, "_alpha:", alpha_,
-                      "_beta:", beta_, "_wrap:", wrap_around_, "_size:",
-                      segment_size_);
+  return absl::StrCat("bias:", bias_, "_range:", range_, "_alpha:", alpha_,
+                      "_beta:", beta_, "_wrap:", wrap_around_,
+                      "_size:", segment_size_);
 }
 
 }  // namespace dnn
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor

@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
@@ -28,52 +28,48 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
-#include "tensorflow/compiler/xla/service/inliner.h"
 #include "tensorflow/compiler/xla/service/interpreter/executable.h"
 #include "tensorflow/compiler/xla/service/layout_assignment.h"
+#include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace interpreter {
 
-namespace se = ::perftools::gputools;
-namespace sep = ::perftools::gputools::interpreter;
-
-/*
- * Run optimization passes on the module. The graph is transformed by
- * each pass in the optimization pipeline. The service subdirectory
- * contains useful optimization passes.
- */
 Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
   HloPassPipeline pipeline("Interpreter");
-  pipeline.AddPass<Inliner>();
-  pipeline.AddPass<HloSubcomputationUnification>();
-  pipeline.AddPass<HloCSE>(false);
 
-  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
-      false, [](const Shape&, const Shape&) { return false; });
-  pipeline.AddPass<ReshapeMover>();
-  pipeline.AddPass<HloConstantFolding>();
-  pipeline.AddPass<HloCSE>(true);
   pipeline.AddPass<LayoutAssignment>(
-      hlo_module->mutable_entry_computation_layout());
-
-  pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<FlattenCallGraph>();
+      hlo_module->mutable_entry_computation_layout(),
+      LayoutAssignment::InstructionCanChangeLayout);
   return pipeline.Run(hlo_module).status();
 }
 
-StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::Compile(
-    std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* stream_exec) {
+StatusOr<std::unique_ptr<HloModule>> InterpreterCompiler::RunHloPasses(
+    std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* /*stream_exec*/,
+    DeviceMemoryAllocator* /*device_allocator*/) {
+  VLOG(1) << "Run hlo passes on graph " << hlo_module->name();
+  TF_RETURN_IF_ERROR(RunHloOptimization(hlo_module.get()));
+  return std::move(hlo_module);
+}
+
+Status InterpreterCompiler::RunHloPassesOnModuleGroup(
+    HloModuleGroup* module_group,
+    absl::Span<se::StreamExecutor* const> executors,
+    DeviceMemoryAllocator* device_allocator) {
+  return Unimplemented("Module group compilation not supported on Interpreter");
+}
+
+StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
+    std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* stream_exec,
+    DeviceMemoryAllocator* /*device_allocator*/) {
   TF_RET_CHECK(stream_exec != nullptr);
 
-  VLOG(1) << "Generate graph " << hlo_module->name();
-
-  TF_RETURN_IF_ERROR(RunHloOptimization(hlo_module.get()));
+  VLOG(1) << "Run backend " << hlo_module->name();
 
   // Typically you would visit the HLO graph, building up a compiled equivalent
   // In this case we are using an HloEvaluator at execution time, so we don't
@@ -81,28 +77,58 @@ StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::Compile(
 
   // Create executable from only the Hlo module.
   std::unique_ptr<Executable> executable =
-      xla::MakeUnique<InterpreterExecutable>(std::move(hlo_module));
+      absl::make_unique<InterpreterExecutable>(
+          std::move(hlo_module), absl::make_unique<HloEvaluator>());
 
   return std::move(executable);
 }
 
+StatusOr<std::vector<std::unique_ptr<Executable>>>
+InterpreterCompiler::RunBackendOnModuleGroup(
+    std::unique_ptr<HloModuleGroup> module_group,
+    std::vector<std::vector<se::StreamExecutor*>> stream_exec,
+    DeviceMemoryAllocator* device_allocator) {
+  return Unimplemented(
+      "Module group compilation is not supported on Interpreter.");
+}
+
 StatusOr<std::vector<std::unique_ptr<Executable>>> InterpreterCompiler::Compile(
-    std::vector<std::unique_ptr<HloModule>> /*hlo_modules*/,
-    std::vector<se::StreamExecutor*> /*stream_execs*/) {
-  return tensorflow::errors::Unimplemented(
-      "Compilation of multiple HLO modules is not supported on Interpreter.");
+    std::unique_ptr<HloModuleGroup> module_group,
+    std::vector<std::vector<se::StreamExecutor*>> stream_exec,
+    DeviceMemoryAllocator* device_allocator) {
+  if (module_group->empty()) {
+    return std::vector<std::unique_ptr<Executable>>();
+  }
+  if (module_group->size() > 1) {
+    return tensorflow::errors::Unimplemented(
+        "Compilation of multiple HLO modules is not supported on Interpreter.");
+  }
+  if (stream_exec.size() != 1 || stream_exec[0].size() != 1) {
+    return tensorflow::errors::Unimplemented(
+        "Unexpected number of StreamExecutor's.");
+  }
+  auto hlo_modules = module_group->ConsumeModules();
+  TF_ASSIGN_OR_RETURN(auto module,
+                      RunHloPasses(std::move(hlo_modules[0]), stream_exec[0][0],
+                                   device_allocator));
+  TF_ASSIGN_OR_RETURN(
+      auto executable,
+      RunBackend(std::move(module), stream_exec[0][0], device_allocator));
+  std::vector<std::unique_ptr<Executable>> ret;
+  ret.push_back(std::move(executable));
+  return std::move(ret);
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 InterpreterCompiler::CompileAheadOfTime(
-    std::vector<std::unique_ptr<HloModule>> hlo_modules,
+    std::unique_ptr<HloModuleGroup> module_group,
     const AotCompilationOptions& aot_options) {
   return tensorflow::errors::InvalidArgument(
       "AOT compilation not supported on Interpreter");
 }
 
 se::Platform::Id InterpreterCompiler::PlatformId() const {
-  return sep::kInterpreterPlatformId;
+  return se::interpreter::kXlaInterpreterPlatformId;
 }
 
 HloCostAnalysis::ShapeSizeFunction InterpreterCompiler::ShapeSizeBytesFunction()
@@ -110,16 +136,14 @@ HloCostAnalysis::ShapeSizeFunction InterpreterCompiler::ShapeSizeBytesFunction()
   return InterpreterExecutable::ShapeSizeBytes;
 }
 
-static std::unique_ptr<xla::ComputationPlacer> CreateComputationPlacer() {
-  return xla::MakeUnique<xla::ComputationPlacer>();
-}
-
 static bool InitModule() {
-  xla::Compiler::RegisterCompilerFactory(sep::kInterpreterPlatformId, []() {
-    return xla::MakeUnique<xla::interpreter::InterpreterCompiler>();
-  });
-  xla::ComputationPlacer::RegisterComputationPlacer(sep::kInterpreterPlatformId,
-                                                    &CreateComputationPlacer);
+  xla::Compiler::RegisterCompilerFactory(
+      se::interpreter::kXlaInterpreterPlatformId, []() {
+        return absl::make_unique<xla::interpreter::InterpreterCompiler>();
+      });
+  xla::ComputationPlacer::RegisterComputationPlacer(
+      se::interpreter::kXlaInterpreterPlatformId,
+      []() { return absl::make_unique<xla::ComputationPlacer>(); });
   return true;
 }
 

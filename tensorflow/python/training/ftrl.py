@@ -22,8 +22,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("train.FtrlOptimizer")
 class FtrlOptimizer(optimizer.Optimizer):
   """Optimizer that implements the FTRL algorithm.
 
@@ -50,8 +52,11 @@ class FtrlOptimizer(optimizer.Optimizer):
     Args:
       learning_rate: A float value or a constant float `Tensor`.
       learning_rate_power: A float value, must be less or equal to zero.
+        Controls how the learning rate decreases during training. Use zero for
+        a fixed learning rate. See section 3.1 in the
+        [paper](https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf).
       initial_accumulator_value: The starting value for accumulators.
-        Only positive values are allowed.
+        Only zero or positive values are allowed.
       l1_regularization_strength: A float value, must be greater than or
         equal to zero.
       l2_regularization_strength: A float value, must be greater than or
@@ -82,9 +87,10 @@ class FtrlOptimizer(optimizer.Optimizer):
     """
     super(FtrlOptimizer, self).__init__(use_locking, name)
 
-    if initial_accumulator_value <= 0.0:
-      raise ValueError("initial_accumulator_value %f needs to be positive" %
-                       initial_accumulator_value)
+    if initial_accumulator_value < 0.0:
+      raise ValueError(
+          "initial_accumulator_value %f needs to be positive or zero" %
+          initial_accumulator_value)
     if learning_rate_power > 0.0:
       raise ValueError("learning_rate_power %f needs to be negative or zero" %
                        learning_rate_power)
@@ -265,4 +271,3 @@ class FtrlOptimizer(optimizer.Optimizer):
                         grad.dtype),
           math_ops.cast(self._learning_rate_power_tensor, grad.dtype),
           use_locking=self._use_locking)
-

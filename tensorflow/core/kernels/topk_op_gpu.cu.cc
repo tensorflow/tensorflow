@@ -20,9 +20,9 @@ limitations under the License.
 #include <cmath>
 #include <vector>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "external/cub_archive/cub/device/device_segmented_radix_sort.cuh"
-#include "external/cub_archive/cub/iterator/counting_input_iterator.cuh"
-#include "external/cub_archive/cub/iterator/transform_input_iterator.cuh"
+#include "third_party/cub/device/device_segmented_radix_sort.cuh"
+#include "third_party/cub/iterator/counting_input_iterator.cuh"
+#include "third_party/cub/iterator/transform_input_iterator.cuh"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -379,7 +379,7 @@ cudaError LaunchTopKKernel(const cudaStream_t& stream, int num_shards,
   // Use as many shards as possible.
   if (num_shards <= 0) {
     constexpr auto shared_memory_size = 48 << 10;  // 48 KB
-    const auto heap_size = k * (sizeof(int) + sizeof(T));
+    const auto heap_size = k * sizeof(Entry<T>);
     // shared_memory_size = (num_shards + 1) * heap_size <=>
     num_shards = shared_memory_size / heap_size - 1;
     if (num_shards <= 0) {

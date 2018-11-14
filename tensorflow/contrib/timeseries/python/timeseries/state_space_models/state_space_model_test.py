@@ -96,7 +96,7 @@ class ConstructionTests(test.TestCase):
           },
           mode=estimator_lib.ModeKeys.TRAIN)
       initializer = variables.global_variables_initializer()
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         sess.run([initializer])
         outputs.loss.eval()
 
@@ -114,7 +114,7 @@ class ConstructionTests(test.TestCase):
           },
           mode=estimator_lib.ModeKeys.TRAIN)
       initializer = variables.global_variables_initializer()
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         sess.run([initializer])
         outputs.loss.eval()
 
@@ -144,7 +144,7 @@ class GapTests(test.TestCase):
         state=math_utils.replicate_state(
             start_state=random_model.get_start_state(),
             batch_size=array_ops.shape(times)[0]))
-    with self.test_session() as session:
+    with self.cached_session() as session:
       variables.global_variables_initializer().run()
       coordinator = coordinator_lib.Coordinator()
       queue_runner_impl.start_queue_runners(session, coord=coordinator)
@@ -185,20 +185,17 @@ class StateSpaceEquivalenceTests(test.TestCase):
             "exogenous": [-1., -2., -3., -4.]
         }))
     estimator.train(combined_input_fn, steps=1)
-    export_location = estimator.export_savedmodel(
-        self.get_temp_dir(),
-        estimator.build_raw_serving_input_receiver_fn(
-            exogenous_features={
-                "exogenous": numpy.zeros((0, 0), dtype=numpy.float32)}))
+    export_location = estimator.export_saved_model(
+        self.get_temp_dir(), estimator.build_raw_serving_input_receiver_fn())
     with ops.Graph().as_default() as graph:
       random_model.initialize_graph()
-      with self.test_session(graph=graph) as session:
+      with self.session(graph=graph) as session:
         variables.global_variables_initializer().run()
         evaled_start_state = session.run(random_model.get_start_state())
     evaled_start_state = [
         state_element[None, ...] for state_element in evaled_start_state]
     with ops.Graph().as_default() as graph:
-      with self.test_session(graph=graph) as session:
+      with self.session(graph=graph) as session:
         signatures = loader.load(
             session, [tag_constants.SERVING], export_location)
         first_split_filtering = saved_model_utils.filter_continuation(
@@ -209,7 +206,7 @@ class StateSpaceEquivalenceTests(test.TestCase):
             features={
                 feature_keys.FilteringFeatures.TIMES: [1, 2],
                 feature_keys.FilteringFeatures.VALUES: [1., 2.],
-                "exogenous": [-1., -2.]})
+                "exogenous": [[-1.], [-2.]]})
         second_split_filtering = saved_model_utils.filter_continuation(
             continue_from=first_split_filtering,
             signatures=signatures,
@@ -217,7 +214,7 @@ class StateSpaceEquivalenceTests(test.TestCase):
             features={
                 feature_keys.FilteringFeatures.TIMES: [3, 4],
                 feature_keys.FilteringFeatures.VALUES: [3., 4.],
-                "exogenous": [-3., -4.]
+                "exogenous": [[-3.], [-4.]]
             })
         combined_filtering = saved_model_utils.filter_continuation(
             continue_from={
@@ -227,7 +224,7 @@ class StateSpaceEquivalenceTests(test.TestCase):
             features={
                 feature_keys.FilteringFeatures.TIMES: [1, 2, 3, 4],
                 feature_keys.FilteringFeatures.VALUES: [1., 2., 3., 4.],
-                "exogenous": [-1., -2., -3., -4.]
+                "exogenous": [[-1.], [-2.], [-3.], [-4.]]
             })
         split_predict = saved_model_utils.predict_continuation(
             continue_from=second_split_filtering,
@@ -235,14 +232,14 @@ class StateSpaceEquivalenceTests(test.TestCase):
             session=session,
             steps=1,
             exogenous_features={
-                "exogenous": [[-5.]]})
+                "exogenous": [[[-5.]]]})
         combined_predict = saved_model_utils.predict_continuation(
             continue_from=combined_filtering,
             signatures=signatures,
             session=session,
             steps=1,
             exogenous_features={
-                "exogenous": [[-5.]]})
+                "exogenous": [[[-5.]]]})
     for state_key, combined_state_value in combined_filtering.items():
       if state_key == feature_keys.FilteringResults.TIMES:
         continue
@@ -252,7 +249,7 @@ class StateSpaceEquivalenceTests(test.TestCase):
       self.assertAllClose(combined_value, split_predict[prediction_key])
 
   def _equivalent_to_single_model_test_template(self, model_generator):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       random_model = RandomStateSpaceModel(
           state_dimension=5,
           state_noise_dimension=4,
@@ -376,7 +373,7 @@ class PredictionTests(test.TestCase):
               math_utils.replicate_state(
                   start_state=random_model.get_start_state(), batch_size=1)
       })
-      with self.test_session():
+      with self.cached_session():
         variables.global_variables_initializer().run()
         predicted_mean = prediction_dict["mean"].eval()
         predicted_covariance = prediction_dict["covariance"].eval()
@@ -406,7 +403,7 @@ class PredictionTests(test.TestCase):
           feature_keys.PredictionFeatures.TIMES: [[5, 7, 8]],
           feature_keys.PredictionFeatures.STATE_TUPLE: model_outputs.end_state
       })
-      with self.test_session():
+      with self.cached_session():
         variables.global_variables_initializer().run()
         predicted_mean = predictions["mean"].eval()
         predicted_covariance = predictions["covariance"].eval()
@@ -430,7 +427,7 @@ class ExogenousTests(test.TestCase):
             state=[
                 array_ops.ones(shape=[1, 5]), original_covariance[None], [0]
             ])
-        with self.test_session() as session:
+        with self.cached_session() as session:
           variables.global_variables_initializer().run()
           evaled_new_covariance, evaled_original_covariance = session.run(
               [new_covariance[0], original_covariance])
@@ -456,7 +453,7 @@ class ExogenousTests(test.TestCase):
                 -array_ops.ones(shape=[1, 5], dtype=dtype),
                 original_covariance[None], [0]
             ])
-        with self.test_session() as session:
+        with self.cached_session() as session:
           variables.global_variables_initializer().run()
           evaled_new_covariance, evaled_original_covariance = session.run(
               [new_covariance[0], original_covariance])
@@ -521,7 +518,7 @@ class PosteriorTests(test.TestCase):
         model=stub_model, data=data, true_parameters=true_params)
 
   def test_exact_posterior_recovery_no_transition_noise(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       stub_model, data, true_params = self._get_single_model()
       input_fn = input_pipeline.WholeDatasetInputFn(
           input_pipeline.NumpyReader(data))
@@ -561,7 +558,7 @@ class PosteriorTests(test.TestCase):
           posterior_times)
 
   def test_chained_exact_posterior_recovery_no_transition_noise(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       stub_model, data, true_params = self._get_single_model()
       chunk_size = 10
       input_fn = test_utils.AllWindowInputFn(
@@ -605,6 +602,7 @@ class TimeDependentStateSpaceModel(state_space_model.StateSpaceModel):
     super(TimeDependentStateSpaceModel, self).__init__(
         configuration=state_space_model.StateSpaceModelConfiguration(
             use_observation_noise=False,
+            transition_covariance_initial_log_scale_bias=5.,
             static_unrolling_window_size_threshold=
             static_unrolling_window_size_threshold))
 
@@ -626,9 +624,8 @@ class UnknownShapeModel(TimeDependentStateSpaceModel):
 
   def get_observation_model(self, times):
     parent_model = super(UnknownShapeModel, self).get_observation_model(times)
-    parent_model._shape = tensor_shape.unknown_shape()
-    assert parent_model.get_shape().ndims is None
-    return parent_model
+    return array_ops.placeholder_with_default(
+        input=parent_model, shape=tensor_shape.unknown_shape())
 
 
 class TimeDependentTests(test.TestCase):
@@ -750,7 +747,7 @@ class MultivariateTests(test.TestCase):
         },
         mode=estimator_lib.ModeKeys.TRAIN)
     initializer = variables.global_variables_initializer()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run([initializer])
       outputs.loss.eval()
 

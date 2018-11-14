@@ -52,6 +52,18 @@ TEST(SparseOpsTest, SparseAddGrad_ShapeFn) {
   INFER_OK(op, "?;[?,?];[?,?];?", "[d1_0];[d2_0]");
 }
 
+TEST(SparseOpsTest, SparseSliceGrad_ShapeFn) {
+  ShapeInferenceTestOp op("SparseSliceGrad");
+
+  // Rank checks.
+  INFER_ERROR("must be rank 2", op, "?;[1];?;?");
+
+  INFER_OK(op, "?;?;?;?", "[?]");
+
+  // input[1].dim(0) determine output.
+  INFER_OK(op, "?;[?,?];?;?", "[d1_0]");
+}
+
 TEST(SparseOpsTest, SparseReorder_ShapeFn) {
   ShapeInferenceTestOp op("SparseReorder");
 
@@ -187,8 +199,8 @@ TEST(SparseOpsTest, SparseTensorDenseMatMul_ShapeFn) {
 
   // second output dim comes from b, depending on adjoint_b value.
   INFER_OK(op, "?;?;?;?", "[?,?]");
-  INFER_OK(op, "?;?;?;[?,?]", "[?,d3_1]");  // use d3_1, !adjoint_b.
-  INFER_OK(op, "?;?;?;[1,2]", "[?,d3_1]");  // use d3_1, !adjoint_b.
+  INFER_OK(op, "?;?;?;[?,?]", "[?,d3_1]");    // use d3_1, !adjoint_b.
+  INFER_OK(op, "?;?;?;[1,2]", "[?,d3_1]");    // use d3_1, !adjoint_b.
   INFER_OK(op, "?;?;[2];[1,2]", "[?,d3_1]");  // use d3_1, !adjoint_b.
 
   set_adjoints(false, true);

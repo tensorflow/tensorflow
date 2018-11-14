@@ -8,7 +8,8 @@ explicitly model the distribution and without writing an explicit loss. For
 example, the generator could learn to draw samples from the distribution of
 natural images. For more details on this technique, see
 ['Generative Adversarial Networks'](https://arxiv.org/abs/1406.2661) by
-Goodfellow et al.
+Goodfellow et al. See [tensorflow/models](https://github.com/tensorflow/models/tree/master/research/gan/) for examples, and [this tutorial](https://github.com/tensorflow/models/tree/master/research/gan/tutorial.ipynb) for an
+introduction.
 
 #### Usage
 ```python
@@ -23,8 +24,8 @@ mix TFGAN, native TF, and other custom frameworks
 * Use already implemented [GAN losses and penalties](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/losses/python/losses_impl.py) (ex Wasserstein loss, gradient penalty, mutual information penalty, etc)
 * [Monitor and visualize](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/eval/python/summaries_impl.py) GAN progress during training, and [evaluate](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/eval/python/classifier_metrics_impl.py) them
 * Use already-implemented [tricks](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/features/python/) to stabilize and improve training
-* Develop based on examples of common GAN setups
-* Use the TFGAN-backed tf.Learn Estimator to easily train a GAN model
+* Develop based on examples of [common GAN setups](https://github.com/tensorflow/models/tree/master/research/gan/)
+* Use the TFGAN-backed [GANEstimator](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/estimator/python/gan_estimator_impl.py) to easily train a GAN model
 * Improvements in TFGAN infrastructure will automatically benefit your TFGAN project
 * Stay up-to-date with research as we add more algorithms
 
@@ -33,27 +34,32 @@ mix TFGAN, native TF, and other custom frameworks
 TFGAN is composed of several parts which were design to exist independently.
 These include the following main pieces (explained in detail below).
 
-* [core](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/train.py):
-provides the main infrastructure needed to train a GAN. Training occurs in four phases, and each phase
-can be completed by custom-code or by using a TFGAN library call.
+*   [core](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/train.py):
+    provides the main infrastructure needed to train a GAN. Training occurs in
+    four phases, and each phase can be completed by custom-code or by using a
+    TFGAN library call.
 
-* [features](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/features/python/):
-Many common GAN operations and normalization techniques are implemented for you
-to use, such as instance normalization and conditioning.
+*   [features](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/features/python/):
+    Many common GAN operations and normalization techniques are implemented for
+    you to use, such as instance normalization and conditioning.
 
-* [losses](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/losses/python/):
-Easily experiment with already-implemented and well-tested losses and penalties,
-such as the Wasserstein loss, gradient penalty, mutual information penalty, etc
+*   [losses](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/losses/python/):
+    Easily experiment with already-implemented and well-tested losses and
+    penalties, such as the Wasserstein loss, gradient penalty, mutual
+    information penalty, etc
 
-* [evaluation](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/eval/python/):
-Use `Inception Score` or `Frechet Distance` with a pretrained Inception
-network to evaluate your unconditional generative model. You can also also use
-your own pretrained classifier for more specific performance numbers, or use
-other methods for evaluating conditional generative models.
+*   [evaluation](https://www.tensorflow.org/code/tensorflow/contrib/gan/python/eval/python/):
+    Use `Inception Score`, `Frechet Distance`, or `Kernel Distance` with a
+    pretrained Inception network to evaluate your unconditional generative
+    model. You can also use your own pretrained classifier for more specific
+    performance numbers, or use other methods for evaluating conditional
+    generative models.
 
-* [examples](https://github.com/tensorflow/models/tree/master/gan/):
-See examples of how to use TFGAN to make GAN training easier, or use the more complicated examples to jumpstart your
-own project.
+*   [examples](https://github.com/tensorflow/models/tree/master/research/gan/)
+    and [tutorial](https://github.com/tensorflow/models/tree/master/research/gan/tutorial.ipynb): See examples of how to use TFGAN to make
+    GAN training easier, or use the more complicated examples to jumpstart your
+    own project. These include unconditional and conditional GANs, InfoGANs,
+    adversarial losses on existing networks, and image-to-image translation.
 
 ## Training a GAN model
 
@@ -97,8 +103,8 @@ gan_model = tfgan.gan_model(
 # Build the GAN loss.
 gan_loss = tfgan.gan_loss(
     gan_model,
-    generator_loss_fn=tfgan_losses.wasserstein_generator_loss,
-    discriminator_loss_fn=tfgan_losses.wasserstein_discriminator_loss)
+    generator_loss_fn=tfgan.losses.wasserstein_generator_loss,
+    discriminator_loss_fn=tfgan.losses.wasserstein_discriminator_loss)
 
 # Create the train ops, which calculate gradients and apply updates to weights.
 train_ops = tfgan.gan_train_ops(
@@ -159,8 +165,8 @@ gan_model = tfgan.gan_model(
 # Build the GAN loss and standard pixel loss.
 gan_loss = tfgan.gan_loss(
     gan_model,
-    generator_loss_fn=tfgan_losses.wasserstein_generator_loss,
-    discriminator_loss_fn=tfgan_losses.wasserstein_discriminator_loss,
+    generator_loss_fn=tfgan.losses.wasserstein_generator_loss,
+    discriminator_loss_fn=tfgan.losses.wasserstein_discriminator_loss,
     gradient_penalty=1.0)
 l1_pixel_loss = tf.norm(gan_model.real_data - gan_model.generated_data, ord=1)
 
@@ -191,8 +197,8 @@ gan_model = tfgan.gan_model(
 # Build the GAN loss and standard pixel loss.
 gan_loss = tfgan.gan_loss(
     gan_model,
-    generator_loss_fn=tfgan_losses.least_squares_generator_loss,
-    discriminator_loss_fn=tfgan_losses.least_squares_discriminator_loss)
+    generator_loss_fn=tfgan.losses.least_squares_generator_loss,
+    discriminator_loss_fn=tfgan.losses.least_squares_discriminator_loss)
 l1_pixel_loss = tf.norm(gan_model.real_data - gan_model.generated_data, ord=1)
 
 # Modify the loss tuple to include the pixel loss.
@@ -221,8 +227,8 @@ gan_model = tfgan.infogan_model(
 # Build the GAN loss with mutual information penalty.
 gan_loss = tfgan.gan_loss(
     gan_model,
-    generator_loss_fn=tfgan_losses.wasserstein_generator_loss,
-    discriminator_loss_fn=tfgan_losses.wasserstein_discriminator_loss,
+    generator_loss_fn=tfgan.losses.wasserstein_generator_loss,
+    discriminator_loss_fn=tfgan.losses.wasserstein_discriminator_loss,
     gradient_penalty=1.0,
     mutual_information_penalty_weight=1.0)
 

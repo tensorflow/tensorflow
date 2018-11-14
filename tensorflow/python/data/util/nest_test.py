@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -86,7 +87,7 @@ class NestTest(test.TestCase):
         ordered_reconstruction)
     self.assertEqual({"d": 3, "b": 1, "a": 0, "c": 2}, plain_reconstruction)
 
-  def testFlattenAndPack_withDicts(self):
+  def testFlattenAndPackWithDicts(self):
     # A nice messy mix of tuples, lists, dicts, and `OrderedDict`s.
     named_tuple = collections.namedtuple("A", ("b", "c"))
     mess = (
@@ -132,6 +133,17 @@ class NestTest(test.TestCase):
     self.assertIsInstance(unflattened_ordered_dict, collections.OrderedDict)
     self.assertEqual(list(unflattened_ordered_dict.keys()), ["b", "a"])
 
+  def testFlattenSparseValue(self):
+    st = sparse_tensor.SparseTensorValue([[0]], [0], [1])
+    single_value = st
+    list_of_values = [st, st, st]
+    nest_of_values = ((st), ((st), (st)))
+    dict_of_values = {"foo": st, "bar": st, "baz": st}
+    self.assertEqual([st], nest.flatten(single_value))
+    self.assertEqual([[st, st, st]], nest.flatten(list_of_values))
+    self.assertEqual([st, st, st], nest.flatten(nest_of_values))
+    self.assertEqual([st, st, st], nest.flatten(dict_of_values))
+
   def testIsSequence(self):
     self.assertFalse(nest.is_sequence("1234"))
     self.assertFalse(nest.is_sequence([1, 3, [4, 5]]))
@@ -143,27 +155,38 @@ class NestTest(test.TestCase):
     self.assertFalse(nest.is_sequence(math_ops.tanh(ones)))
     self.assertFalse(nest.is_sequence(np.ones((4, 5))))
     self.assertTrue(nest.is_sequence({"foo": 1, "bar": 2}))
+    self.assertFalse(
+        nest.is_sequence(sparse_tensor.SparseTensorValue([[0]], [0], [1])))
 
   def testAssertSameStructure(self):
     structure1 = (((1, 2), 3), 4, (5, 6))
     structure2 = ((("foo1", "foo2"), "foo3"), "foo4", ("foo5", "foo6"))
     structure_different_num_elements = ("spam", "eggs")
     structure_different_nesting = (((1, 2), 3), 4, 5, (6,))
+    structure_dictionary = {"foo": 2, "bar": 4, "baz": {"foo": 5, "bar": 6}}
+    structure_dictionary_diff_nested = {
+        "foo": 2,
+        "bar": 4,
+        "baz": {
+            "foo": 5,
+            "baz": 6
+        }
+    }
     nest.assert_same_structure(structure1, structure2)
     nest.assert_same_structure("abc", 1.0)
     nest.assert_same_structure("abc", np.array([0, 1]))
     nest.assert_same_structure("abc", constant_op.constant([0, 1]))
 
     with self.assertRaisesRegexp(ValueError,
-                                 "don't have the same number of elements"):
+                                 "don't have the same nested structure"):
       nest.assert_same_structure(structure1, structure_different_num_elements)
 
     with self.assertRaisesRegexp(ValueError,
-                                 "don't have the same number of elements"):
+                                 "don't have the same nested structure"):
       nest.assert_same_structure((0, 1), np.array([0, 1]))
 
     with self.assertRaisesRegexp(ValueError,
-                                 "don't have the same number of elements"):
+                                 "don't have the same nested structure"):
       nest.assert_same_structure(0, (0, 1))
 
     with self.assertRaisesRegexp(ValueError,
@@ -189,11 +212,23 @@ class NestTest(test.TestCase):
       nest.assert_same_structure(((3,), 4), (3, (4,)))
 
     structure1_list = {"a": ((1, 2), 3), "b": 4, "c": (5, 6)}
+    structure2_list = {"a": ((1, 2), 3), "b": 4, "d": (5, 6)}
     with self.assertRaisesRegexp(TypeError,
                                  "don't have the same sequence type"):
       nest.assert_same_structure(structure1, structure1_list)
     nest.assert_same_structure(structure1, structure2, check_types=False)
     nest.assert_same_structure(structure1, structure1_list, check_types=False)
+    with self.assertRaisesRegexp(ValueError, "don't have the same set of keys"):
+      nest.assert_same_structure(structure1_list, structure2_list)
+    with self.assertRaisesRegexp(ValueError, "don't have the same set of keys"):
+      nest.assert_same_structure(structure_dictionary,
+                                 structure_dictionary_diff_nested)
+    nest.assert_same_structure(
+        structure_dictionary,
+        structure_dictionary_diff_nested,
+        check_types=False)
+    nest.assert_same_structure(
+        structure1_list, structure2_list, check_types=False)
 
   def testMapStructure(self):
     structure1 = (((1, 2), 3), 4, (5, 6))
@@ -253,6 +288,19 @@ class NestTest(test.TestCase):
     with self.assertRaisesRegexp(TypeError, expected_message):
       nest.assert_shallow_structure(inp_ab2, inp_ab1)
     nest.assert_shallow_structure(inp_ab2, inp_ab1, check_types=False)
+
+    inp_ab1 = {"a": (1, 1), "b": {"c": (2, 2)}}
+    inp_ab2 = {"a": (1, 1), "b": {"d": (2, 2)}}
+    expected_message = (
+        r"The two structures don't have the same keys. Input "
+        r"structure has keys \['c'\], while shallow structure has "
+        r"keys \['d'\].")
+    with self.assertRaisesRegexp(ValueError, expected_message):
+      nest.assert_shallow_structure(inp_ab2, inp_ab1)
+
+    inp_ab = collections.OrderedDict([("a", 1), ("b", (2, 3))])
+    inp_ba = collections.OrderedDict([("b", (2, 3)), ("a", 1)])
+    nest.assert_shallow_structure(inp_ab, inp_ba)
 
   def testFlattenUpTo(self):
     input_tree = (((2, 2), (3, 3)), ((4, 9), (5, 5)))

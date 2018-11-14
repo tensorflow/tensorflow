@@ -50,6 +50,8 @@ namespace {
 // Fake cache implementation for WorkerEnv.
 class DummyWorkerCache : public WorkerCacheInterface {
   void ListWorkers(std::vector<string>* workers) const override {}
+  void ListWorkersInJob(const string& job_name,
+                        std::vector<string>* workers) const override {}
   WorkerInterface* CreateWorker(const string& target) override {
     return nullptr;
   }
@@ -66,7 +68,7 @@ class RpcRendezvousMgrTest : public ::testing::Test {
  protected:
   RpcRendezvousMgrTest()
       : cache_(new DummyWorkerCache),
-        worker_session_("/job:mnist/replica:1/task:2",
+        worker_session_("rpc_session", "/job:mnist/replica:1/task:2",
                         std::unique_ptr<WorkerCacheInterface>(cache_),
                         std::unique_ptr<DeviceMgr>(),
                         std::unique_ptr<GraphMgr>()),

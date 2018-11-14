@@ -30,5 +30,5 @@ REGISTER6(BinaryOp, GPU, "NotEqual", functor::not_equal_to, int8, int16, int64,
 
 #endif  // GOOGLE_CUDA
 
-#endif   // !defined(__ANDROID_TYPES_SLIM__)
+#endif  // !defined(__ANDROID_TYPES_SLIM__)
 }  // namespace tensorflow

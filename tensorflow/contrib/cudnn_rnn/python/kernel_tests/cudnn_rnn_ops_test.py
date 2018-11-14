@@ -35,15 +35,11 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import rnn as rnn_lib
-from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import saver as saver_lib
 
 CUDNN_RNN_UNIDIRECTION = cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION
@@ -123,45 +119,6 @@ def _CreateParamsSavable(params,
   return params_saveable
 
 
-def _BuildCudnnForward(rnn_mode,
-                       num_layers,
-                       num_units,
-                       input_data,
-                       is_training=False):
-  input_data_shape = input_data.get_shape().with_rank(3)
-  batch_size = input_data_shape[1].value
-  input_size = input_data_shape[2].value
-  model = _CreateModel(rnn_mode, num_layers, num_units, input_size)
-
-  # Set zero init input states
-  input_h = constant_op.constant(
-      np.zeros([num_layers, batch_size, num_units]), dtype=dtypes.float32)
-  has_input_c = (rnn_mode == cudnn_rnn_ops.CUDNN_LSTM)
-  if has_input_c:
-    input_c = constant_op.constant(
-        np.zeros([num_layers, batch_size, num_units]), dtype=dtypes.float32)
-
-  # Set rnn params
-  params_size_t = model.params_size()
-  params = variables.Variable(
-      random_ops.random_uniform([params_size_t]), validate_shape=False)
-  args = {
-      "input_data": input_data,
-      "input_h": input_h,
-      "params": params,
-      "is_training": is_training
-  }
-  if has_input_c:
-    args["input_c"] = input_c
-  # Build cell
-  output_tuple = model(**args)
-
-  # Create savable objects for params
-  _CreateParamsSavable(params, model)
-
-  return output_tuple, model
-
-
 def _MinLSTMParamSize(num_layers,
                       num_units,
                       input_size,
@@ -179,25 +136,6 @@ def _MinLSTMParamSize(num_layers,
     return 2 * (first_layer_weights + higher_layer_weights + all_biases)
   else:
     raise ValueError("%s direction is not supported.")
-
-
-def _CreateCudnnCompatibleCanonicalRNN(cudnn_model,
-                                       inputs,
-                                       scope=None):
-  model = cudnn_model.rnn_mode
-  if model not in (cudnn_rnn_ops.CUDNN_LSTM, cudnn_rnn_ops.CUDNN_GRU):
-    raise ValueError("%s is not supported!" % model)
-
-  num_units = cudnn_model.num_units
-  num_layers = cudnn_model.num_layers
-  # To reuse cuDNN-trained models, must use cudnn compatible rnn cells.
-  if model == cudnn_rnn_ops.CUDNN_LSTM:
-    single_cell = lambda: cudnn_rnn_ops.CudnnCompatibleLSTMCell(num_units)
-  else:
-    single_cell = lambda: cudnn_rnn_ops.CudnnCompatibleGRUCell(num_units)
-  cell = rnn_cell_impl.MultiRNNCell([single_cell() for _ in range(num_layers)])
-  return rnn_lib.dynamic_rnn(
-      cell, inputs, dtype=dtypes.float32, time_major=True, scope=scope)
 
 
 class CudnnRNNTestSaveRestore(TensorFlowTestCase):
@@ -264,12 +202,13 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
           dtype=dtype)
       random_seed.set_random_seed(1234)
       params_size_t = model.params_size()
-      params = variables.Variable(
+      params = variables.VariableV1(
           random_ops.random_uniform([params_size_t], dtype=dtype),
           dtype=dtype,
           validate_shape=False)
       saveable = _CreateParamsSavable(params, model)
-      weights, biases = saveable._OpaqueParamsToCanonical()
+      weights, biases = saveable.format_converter._opaque_to_cu_canonical(
+          saveable._variables)
       reset_params = state_ops.assign(
           params,
           array_ops.zeros([params_size_t], dtype=dtype),
@@ -310,7 +249,7 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
       params_size_t = model.params_size()
       names = ["rnn_1", "rnn_2"]
       param_vars = [
-          variables.Variable(
+          variables.VariableV1(
               random_ops.random_uniform([params_size_t], dtype=dtype),
               dtype=dtype,
               validate_shape=False) for name in names
@@ -318,8 +257,10 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
       saveables = []
       for name, params in zip(names, param_vars):
         saveables.append(_CreateParamsSavable(params, model, name, name))
-      weights1, biases1 = saveables[0]._OpaqueParamsToCanonical()
-      weights2, biases2 = saveables[1]._OpaqueParamsToCanonical()
+      weights1, biases1 = saveables[0].format_converter._opaque_to_cu_canonical(
+          saveables[0]._variables)
+      weights2, biases2 = saveables[1].format_converter._opaque_to_cu_canonical(
+          saveables[1]._variables)
       reset_params = [
           state_ops.assign(
               params,
@@ -366,7 +307,7 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
           direction=direction,
           dtype=dtype)
       params_size_t = model.params_size()
-      params = variables.Variable(
+      params = variables.VariableV1(
           array_ops.ones([params_size_t], dtype=dtype),
           validate_shape=False,
           dtype=dtype)
@@ -436,143 +377,6 @@ class CudnnRNNTestSaveRestore(TensorFlowTestCase):
       self._testSaveRestoreOutput(rnn_mode, direction, dtype)
 
 
-class CudnnRNNTestCompatibleRnnCells(TensorFlowTestCase):
-
-  @unittest.skipUnless(test.is_built_with_cuda(),
-                       "Test only applicable when running on GPUs")
-  def testCudnnCompatibleRnnCells(self):
-    configs = [
-        {
-            "num_layers": 1,
-            "seq_length": 3,
-            "num_units": 4,
-            "input_size": 5,
-            "batch_size": 6,
-        },
-        {
-            "num_layers": 2,
-            "seq_length": 8,
-            "num_units": 4,
-            "input_size": 8,
-            "batch_size": 16,
-        },
-        {
-            "num_layers": 2,
-            "seq_length": 3,
-            "num_units": 4,
-            "input_size": 5,
-            "batch_size": 6,
-        },
-        {
-            "num_layers": 1,
-            "seq_length": 2,
-            "num_units": 2,
-            "input_size": 4,
-            "batch_size": 1,
-        },
-    ]
-    for rnn, cfg in itertools.product((cudnn_rnn_ops.CUDNN_LSTM,), configs):
-      self._testCudnnCompatibleRnnCells(cfg["num_layers"], cfg["seq_length"],
-                                        cfg["num_units"], cfg["input_size"],
-                                        cfg["batch_size"], rnn)
-    # TODO(jamesqin): Add CudnnCompatibleGRUBlockCell.
-    for rnn, cfg in itertools.product((cudnn_rnn_ops.CUDNN_GRU,), configs):
-      self._testCudnnCompatibleRnnCells(cfg["num_layers"], cfg["seq_length"],
-                                        cfg["num_units"], cfg["input_size"],
-                                        cfg["batch_size"], rnn)
-
-  def _testCudnnCompatibleRnnCells(self, num_layers, seq_length, num_units,
-                                   input_size, batch_size, rnn_mode):
-    has_state_c = rnn_mode == cudnn_rnn_ops.CUDNN_LSTM
-    np.random.seed(0)
-    # Train graph
-    with ops.Graph().as_default():
-      random_seed.set_random_seed(299)
-      input_data = array_ops.placeholder(
-          dtypes.float32, shape=[seq_length, batch_size, input_size])
-      output_tuple, cudnn_model = _BuildCudnnForward(
-          rnn_mode, num_layers, num_units, input_data, is_training=True)
-      target_output = array_ops.placeholder(dtype=dtypes.float32, shape=None)
-      total_sum = sum(map(math_ops.reduce_sum, output_tuple))
-
-      loss_op = losses.log_loss(labels=target_output, predictions=total_sum)
-      optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=1e-2)
-      train_op = optimizer.minimize(loss_op)
-
-      saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V2)
-
-      # Train Cudnn model
-      with self.test_session(
-          use_gpu=True, graph=ops.get_default_graph()) as sess:
-        sess.run(variables.global_variables_initializer())
-        # Train 128 steps
-        num_steps = 128
-        for _ in range(num_steps):
-          inputs = np.random.rand(seq_length, batch_size,
-                                  input_size).astype(np.float32)
-          targets = np.random.rand()
-          sess.run(
-              train_op, feed_dict={input_data: inputs,
-                                   target_output: targets})
-
-        save_path = os.path.join(self.get_temp_dir(),
-                                 ("cudnn-rnn-%s-test" % rnn_mode))
-        save_v = saver.save(sess, save_path)
-        self.assertEqual(save_path, save_v)
-
-    # cuDNN inference graph
-    with ops.Graph().as_default():
-      random_seed.set_random_seed(299)
-      cudnn_inputs = array_ops.placeholder(
-          dtypes.float32, shape=[seq_length, batch_size, input_size])
-      (cudnn_output_tuple, cudnn_model) = _BuildCudnnForward(
-          rnn_mode, num_layers, num_units, cudnn_inputs, is_training=False)
-      saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V2)
-
-      inference_input = np.random.rand(seq_length, batch_size,
-                                       input_size).astype(np.float32)
-      with self.test_session(
-          use_gpu=True, graph=ops.get_default_graph()) as sess:
-        sess.run(variables.global_variables_initializer())
-        saver.restore(sess, save_path)
-
-        # Cudnn inference
-        cudnn_output = sess.run(
-            cudnn_output_tuple, feed_dict={cudnn_inputs: inference_input})
-
-    # Canonical RNN inference graph
-    with ops.Graph().as_default():
-      random_seed.set_random_seed(299)
-      cell_inputs = array_ops.placeholder(
-          dtypes.float32, shape=[seq_length, batch_size, input_size])
-      (output, states) = _CreateCudnnCompatibleCanonicalRNN(
-          cudnn_model, cell_inputs)
-      saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V2)
-
-      with self.test_session(
-          use_gpu=True, graph=ops.get_default_graph()) as sess:
-        saver.restore(sess, save_path)
-
-        # BlockCell inference
-        output_v, states_v = sess.run(
-            [output, states], feed_dict={cell_inputs: inference_input})
-
-        # output across timestamps are packed into one tensor.
-        self.assertAllClose(cudnn_output[0], output_v, atol=1e-6, rtol=1e-6)
-
-        for i in range(num_layers):
-          if has_state_c:
-            # output_h
-            self.assertAllClose(
-                cudnn_output[1][i, :], states_v[i].h, atol=1e-6, rtol=1e-6)
-            # output_c
-            self.assertAllClose(
-                cudnn_output[2][i, :], states_v[i].c, atol=1e-6, rtol=1e-6)
-          else:
-            self.assertAllClose(
-                cudnn_output[1][i, :], states_v[i], atol=1e-6, rtol=1e-6)
-
-
 class CudnnRNNTestParamsSize(TensorFlowTestCase):
 
   def _testOneLSTMParamsSize(self, num_layers, num_units, input_size,
@@ -612,6 +416,31 @@ class CudnnRNNTestParamsSize(TensorFlowTestCase):
         self._testOneLSTMParamsSize(num_layers, num_units, input_size,
                                     direction)
 
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testLSTMParamsSizeShape(self):
+    with self.assertRaisesRegexp(
+        ValueError, "Shape must be rank 0 but is rank 1"):
+      model = _CreateModel(
+          cudnn_rnn_ops.CUDNN_LSTM,
+          constant_op.constant([4]), 200, 200,
+          direction=cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
+      _ = model.params_size()
+    with self.assertRaisesRegexp(
+        ValueError, "Shape must be rank 0 but is rank 1"):
+      model = _CreateModel(
+          cudnn_rnn_ops.CUDNN_LSTM,
+          4, constant_op.constant([200]), 200,
+          direction=cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
+      _ = model.params_size()
+    with self.assertRaisesRegexp(
+        ValueError, "Shape must be rank 0 but is rank 1"):
+      model = _CreateModel(
+          cudnn_rnn_ops.CUDNN_LSTM,
+          4, 200, constant_op.constant([200]),
+          direction=cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION)
+      _ = model.params_size()
+
 
 class CudnnRNNTestInference(TensorFlowTestCase):
 
@@ -632,7 +461,7 @@ class CudnnRNNTestInference(TensorFlowTestCase):
     params_size_t = model.params_size()
     input_data = array_ops.ones([seq_length, batch_size, input_size])
     input_h = array_ops.ones([num_layers * dir_count, batch_size, num_units])
-    params = variables.Variable(
+    params = variables.VariableV1(
         array_ops.ones([params_size_t]), validate_shape=False)
     if has_input_c:
       input_c = array_ops.ones([num_layers * dir_count, batch_size, num_units])
@@ -758,20 +587,20 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
         dtype=dtype,
         dropout=dropout)
     params_size_t = model.params_size()
-    input_data = variables.Variable(
+    input_data = variables.VariableV1(
         random_ops.random_uniform(
             [seq_length, batch_size, input_size], dtype=dtype),
         dtype=dtype)
-    input_h = variables.Variable(
+    input_h = variables.VariableV1(
         random_ops.random_uniform(
             [num_layers * dir_count, batch_size, num_units], dtype=dtype),
         dtype=dtype)
-    params = variables.Variable(
+    params = variables.VariableV1(
         random_ops.random_uniform([params_size_t], dtype=dtype),
         validate_shape=False,
         dtype=dtype)
     if has_input_c:
-      input_c = variables.Variable(
+      input_c = variables.VariableV1(
           random_ops.random_uniform(
               [num_layers * dir_count, batch_size, num_units], dtype=dtype),
           dtype=dtype)
@@ -813,7 +642,8 @@ class CudnnRNNTestTraining(TensorFlowTestCase):
 
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
-  def testSimpleTraining(self):
+  def DISABLED_testSimpleTraining(self):
+    # TODO(jamesqin): fix b/117989214
     test_configs = [
         {
             "rnn_mode": cudnn_rnn_ops.CUDNN_LSTM,

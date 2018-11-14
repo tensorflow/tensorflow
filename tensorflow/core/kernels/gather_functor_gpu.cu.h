@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_GPU_CU_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_GPU_CU_H_
+#ifndef TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_GPU_CU_H_
+#define TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_GPU_CU_H_
 
 #if GOOGLE_CUDA
 
@@ -72,10 +72,11 @@ __global__ void GatherOpKernel(const T* params, const Index* indices, T* out,
 namespace functor {
 template <typename T, typename Index>
 struct GatherFunctor<GPUDevice, T, Index> {
-  int64 operator()(const GPUDevice& d,
+  int64 operator()(OpKernelContext* ctx,
                    typename TTypes<T, 3>::ConstTensor params,
                    typename TTypes<Index>::ConstFlat indices,
                    typename TTypes<T, 3>::Tensor out) {
+    const GPUDevice& d = ctx->eigen_gpu_device();
     const int64 out_size = out.size();
     if (out_size == 0) {
       // We need a check here since the CPU version does useful error checking
@@ -117,4 +118,4 @@ struct GatherFunctor<GPUDevice, T, Index> {
 
 #endif  // GOOGLE_CUDA
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_GPU_CU_H_
+#endif  // TENSORFLOW_CORE_KERNELS_GATHER_FUNCTOR_GPU_CU_H_

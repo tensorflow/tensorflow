@@ -397,10 +397,6 @@ class ScipyOptimizerInterface(ExternalOptimizerInterface):
             'automatically and cannot be injected manually'.format(kwarg))
 
     minimize_kwargs.update(optimizer_kwargs)
-    if method == 'SLSQP':
-      # SLSQP doesn't support step callbacks. Obviate associated warning
-      # message.
-      del minimize_kwargs['callback']
 
     import scipy.optimize  # pylint: disable=g-import-not-at-top
     result = scipy.optimize.minimize(*minimize_args, **minimize_kwargs)
@@ -433,7 +429,7 @@ def _accumulate(list_):
 
 
 def _get_shape_tuple(tensor):
-  return tuple(dim.value for dim in tensor.get_shape())
+  return tuple(tensor.get_shape().as_list())
 
 
 def _prod(array):

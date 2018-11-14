@@ -277,17 +277,6 @@ test_ptb_word_lm() {
   fi
 }
 
-
-# -----------------------------------------------------------
-# translate_test
-test_translate_test() {
-  LOG_FILE=$1
-
-  run_in_directory "${TEST_DIR}" "${LOG_FILE}" \
-    "${TF_MODELS_DIR}/tutorials/rnn/translate/translate.py" --self_test=True
-}
-
-
 # Run the tutorial tests
 test_runner "tutorial test-on-install" \
     "${TUT_TESTS}" "${TF_BUILD_TUT_TEST_BLACKLIST}" "${LOGS_DIR}"

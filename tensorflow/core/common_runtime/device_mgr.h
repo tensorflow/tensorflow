@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_DEVICE_MGR_H_
-#define TENSORFLOW_COMMON_RUNTIME_DEVICE_MGR_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_MGR_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_MGR_H_
 
 #include <string>
 #include <unordered_map>
@@ -68,7 +68,7 @@ class DeviceMgr {
 
   StringPiece CopyToBackingStore(StringPiece s);
 
-  std::unordered_map<StringPiece, Device*, StringPiece::Hasher> device_map_;
+  std::unordered_map<StringPiece, Device*, StringPieceHasher> device_map_;
   core::Arena name_backing_store_;  // Storage for keys in device_map_
   std::unordered_map<string, int> device_type_counts_;
 
@@ -77,4 +77,4 @@ class DeviceMgr {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_DEVICE_MGR_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_MGR_H_

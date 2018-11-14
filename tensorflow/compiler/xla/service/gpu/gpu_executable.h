@@ -19,6 +19,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/executable.h"
@@ -32,8 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -47,11 +49,15 @@ namespace gpu {
 // This is an immutable data type after initialization, and thus thread safe.
 class GpuExecutable : public Executable {
  public:
-  GpuExecutable(tensorflow::StringPiece ptx,
-                std::unique_ptr<ThunkSchedule> thunk_schedule,
-                std::unique_ptr<HloModule> hlo_module,
-                std::unique_ptr<BufferAssignment> assignment,
-                HloCostAnalysis::ShapeSizeFunction shape_size_function);
+  // cubin (i.e. the compiled ptx) may be empty, in which case we leave
+  // compilation up to the GPU driver.
+  GpuExecutable(const string& ptx, const std::vector<uint8>& cubin,
+                std::pair<int, int> compute_capability,
+                std::unique_ptr<const ThunkSchedule> thunk_schedule,
+                std::unique_ptr<const HloModule> hlo_module,
+                std::unique_ptr<const BufferAssignment> assignment,
+                std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
+                std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -62,30 +68,22 @@ class GpuExecutable : public Executable {
   }
 
   // Returns the compiled PTX for the computation.
-  tensorflow::StringPiece ptx() const { return ptx_; }
+  const string& ptx() const { return ptx_; }
 
-  StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
+  // Returns the cubin (compiled PTX) stored in this GpuExecutable.  May be
+  // empty, in which case compilation is left up to the GPU driver.
+  const std::vector<uint8>& cubin() const { return cubin_; }
+
+  // ExecuteOnStream will fail if the compute capability of the stream doesn't
+  // match the compute capability passed to this object's constructor.
+  StatusOr<ScopedShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
+      absl::Span<const ShapedBuffer* const> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
-
-  StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteAsyncOnStream(
-      const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments) override;
-
-  const Status EqualOrFail(const Executable& executable) {
-    // TODO(b/62952745) Implement equality test on GPU executable.
-    return Unimplemented("Equality test on GPU executable is not implemented.");
-  }
-
-  std::unique_ptr<HloCostAnalysis> CreateCostAnalysis() const override;
+      absl::Span<const ShapedBuffer* const> arguments) override;
 
  private:
   // If `block_host_until_done` is false, execution will not block the host
@@ -102,6 +100,15 @@ class GpuExecutable : public Executable {
   // computation. Uses points-to analysis from buffer assignment.
   const PointsToSet& GetRootPointsToSet() const;
 
+  using BufferAllocToDeviceMemoryMap =
+      absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>;
+
+  // Loads the PTX or CUBIN for this executable into `executor` and resolves the
+  // globals corresponding to constant buffers.  Returns a map mapping buffer
+  // allocation indices to GPU pointers.
+  StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
+      stream_executor::StreamExecutor* executor);
+
   // The LLVM IR, in string format, of the unoptimized module generated for this
   // GpuExecutable. We save a string instead of an llvm::Module* because leaving
   // llvm::Module* in a singleton can cause the heap checker to emit false
@@ -110,19 +117,33 @@ class GpuExecutable : public Executable {
   // This string should be modified only before ExecuteOnStream.
   string ir_module_string_;
 
-  // The reference to the compiled PTX for the computation.
-  const tensorflow::StringPiece ptx_;
+  // The PTX for the computation.
+  const string ptx_;
+
+  // The GPU machine code for the computation, targeting GPUs at
+  // compute_capability_.
+  //
+  // May be empty, in which case we leave compilation up to the GPU driver.
+  const std::vector<uint8> cubin_;
+
+  // The compute capability of the GPU we're targeting with this GpuExecutable.
+  std::pair<int, int> compute_capability_;
 
   // The thunks to be invoked by this GpuExecutable. They are generated by the
   // IrEmitter.
-  const std::unique_ptr<ThunkSchedule> thunk_schedule_;
+  const std::unique_ptr<const ThunkSchedule> thunk_schedule_;
 
   // Owns the buffer data at runtime. It provides information to allocate
   // memory for every output/temp buffers.
-  const std::unique_ptr<BufferAssignment> assignment_;
+  const std::unique_ptr<const BufferAssignment> assignment_;
 
-  // Function to compute the size of a given Shape, in bytes.
-  HloCostAnalysis::ShapeSizeFunction shape_size_function_;
+  // Cache of module handles and constant buffer allocation maps used by
+  // `ResolveConstantGlobals`.
+  tensorflow::mutex module_handle_mutex_;
+  std::map<stream_executor::StreamExecutor*, se::ScopedModuleHandle>
+      module_handles_ GUARDED_BY(module_handle_mutex_);
+  std::map<stream_executor::StreamExecutor*, BufferAllocToDeviceMemoryMap>
+      module_globals_ GUARDED_BY(module_handle_mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuExecutable);
 };

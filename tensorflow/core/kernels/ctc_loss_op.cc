@@ -100,8 +100,10 @@ class CTCLossOp : public OpKernel {
 
     TensorShape labels_shape({batch_size, max_label_len});
     std::vector<int64> order{0, 1};
-    sparse::SparseTensor labels_sp(*labels_indices, *labels_values,
-                                   labels_shape, order);
+    sparse::SparseTensor labels_sp;
+    OP_REQUIRES_OK(
+        ctx, sparse::SparseTensor::Create(*labels_indices, *labels_values,
+                                          labels_shape, order, &labels_sp));
 
     Status labels_sp_valid = labels_sp.IndicesValid();
     OP_REQUIRES(ctx, labels_sp_valid.ok(),
@@ -113,8 +115,8 @@ class CTCLossOp : public OpKernel {
       const int64 batch_indices = g.group()[0];
       OP_REQUIRES(ctx, FastBoundsCheck(batch_indices, batch_size),
                   errors::InvalidArgument("labels batch index must be between ",
-                                          0, " and ", batch_size, " but saw: ",
-                                          batch_indices));
+                                          0, " and ", batch_size,
+                                          " but saw: ", batch_indices));
 
       auto values = g.values<int32>();
       std::vector<int>* b_values = &labels_t[batch_indices];

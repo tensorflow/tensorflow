@@ -64,7 +64,7 @@ limitations under the License.
 //
 // Users typically won't need to type out the TypedKernel signature in full, it
 // will be typedef'd by automatically generated code; for example, see
-// perftools::gputools::executor_sample::VecReduceAddKernel.
+// stream_executor::executor_sample::VecReduceAddKernel.
 
 #ifndef TENSORFLOW_STREAM_EXECUTOR_KERNEL_H_
 #define TENSORFLOW_STREAM_EXECUTOR_KERNEL_H_
@@ -75,15 +75,13 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/kernel_cache_config.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
-#include "tensorflow/stream_executor/lib/inlined_vector.h"
-#include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 class DeviceMemoryBase;
 template <typename ElemT>
@@ -136,7 +134,7 @@ class KernelMetadata {
 // Thread-compatible.
 class KernelBase {
  public:
-  KernelBase(KernelBase &&) = default;
+  KernelBase(KernelBase &&from);
 
   // Constructs an "empty" (not-yet-loaded) kernel instance.
   //
@@ -179,7 +177,7 @@ class KernelBase {
   // Gets the preferred cache configuration for a kernel.
   KernelCacheConfig GetPreferredCacheConfig() const;
 
-  void set_name(port::StringPiece name);
+  void set_name(absl::string_view name);
   const string &name() const { return name_; }
   const string &demangled_name() const { return demangled_name_; }
 
@@ -340,8 +338,8 @@ class KernelArgIterator {
 //
 // This class exists as a way to pass kernel arguments to
 // StreamExecutorInterface::Launch. That Launch method is virtual, so it can't
-// be templated to accept any KernelArgsArray type, therfore a reference to this
-// base type is passed instead.
+// be templated to accept any KernelArgsArray type, therefore a reference to
+// this base type is passed instead.
 //
 // Performance is not a concern here because each of these methods will be
 // called at most once per kernel launch. Past performance concerns with
@@ -639,8 +637,8 @@ struct KernelInvocationChecker {
   // NOTE: if you encounter an error here, you can see the mismatch by looking
   // at the end of the last error message, which will be of the form:
   //
-  //    ...::Compatible<const perftools::gputools::DeviceMemory<OneThing> &,
-  //                    perftools::gputools::DeviceMemory<AnotherThing>, true,
+  //    ...::Compatible<const stream_executor::DeviceMemory<OneThing> &,
+  //                    stream_executor::DeviceMemory<AnotherThing>, true,
   //                    0>'
   //    requested here
   //
@@ -711,7 +709,6 @@ struct KernelParamsOk<TypedKernel<Params...>, Args...> {
       std::tuple<Params...>, std::tuple<Args...>>::CheckAllNoStaticAssert();
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_KERNEL_H_

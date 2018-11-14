@@ -19,10 +19,8 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 
 #if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/from_stream_executor_status.h"
 #include "tensorflow/stream_executor/platform/google/dso_loader.h"
 #else
-#include "tensorflow/core/platform/default/from_stream_executor_status.h"
 #include "tensorflow/stream_executor/dso_loader.h"
 #endif
 #include "tensorflow/stream_executor/cuda/cuda_platform_id.h"

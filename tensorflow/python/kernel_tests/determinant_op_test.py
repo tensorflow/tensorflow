@@ -24,8 +24,11 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
 
@@ -41,10 +44,29 @@ class DeterminantOpTest(test.TestCase):
     self.assertShapeEqual(np_ans, tf_ans)
     self.assertAllClose(np_ans, out, atol=5e-5)
 
+  def _compareLogDeterminantBase(self, matrix_x, tf_ans):
+    sign_tf, abs_log_det_tf = tf_ans
+    shape = matrix_x.shape
+    if shape[-1] == 0 or shape[-2] == 0:
+      np_sign, np_ans = (1.0, np.zeros(shape[:-2]).astype(matrix_x.dtype))
+    else:
+      np_sign, np_ans = np.linalg.slogdet(matrix_x)
+      np_ans = np_ans.astype(matrix_x.dtype)
+
+    self.assertShapeEqual(np_ans, abs_log_det_tf)
+    sign_tf_val = sign_tf.eval()
+    abs_log_det_tf_val = abs_log_det_tf.eval()
+    self.assertAllClose(
+        sign_tf_val * np.exp(abs_log_det_tf_val),
+        np_sign * np.exp(np_ans),
+        atol=5e-5)
+
   def _compareDeterminant(self, matrix_x):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       self._compareDeterminantBase(matrix_x,
                                    linalg_ops.matrix_determinant(matrix_x))
+      self._compareLogDeterminantBase(
+          matrix_x, gen_linalg_ops.log_matrix_determinant(matrix_x))
 
   def testBasic(self):
     # 2x2 matrices
@@ -105,11 +127,10 @@ class DeterminantOpTest(test.TestCase):
     self._compareDeterminant(
         np.random.rand(3, 4, 5, 2, 2).astype(np.complex128))
 
-  def testOverflow(self):
+  def testInfiniteDeterminant(self):
     max_double = np.finfo("d").max
     huge_matrix = np.array([[max_double, 0.0], [0.0, max_double]])
-    with self.assertRaisesOpError("not finite"):
-      self._compareDeterminant(huge_matrix)
+    self._compareDeterminant(huge_matrix)
 
   def testNonSquareMatrix(self):
     # When the determinant of a non-square matrix is attempted we should return
@@ -127,6 +148,15 @@ class DeterminantOpTest(test.TestCase):
   def testEmpty(self):
     self._compareDeterminant(np.empty([0, 2, 2]))
     self._compareDeterminant(np.empty([2, 0, 0]))
+
+  def testConcurrentExecutesWithoutError(self):
+    with self.session(use_gpu=True) as sess:
+      matrix1 = random_ops.random_normal([5, 5], seed=42)
+      matrix2 = random_ops.random_normal([5, 5], seed=42)
+      det1 = linalg_ops.matrix_determinant(matrix1)
+      det2 = linalg_ops.matrix_determinant(matrix2)
+      det1_val, det2_val = sess.run([det1, det2])
+      self.assertEqual(det1_val, det2_val)
 
 
 class MatrixDeterminantBenchmark(test.Benchmark):
@@ -156,8 +186,8 @@ class MatrixDeterminantBenchmark(test.Benchmark):
 
   def benchmarkMatrixDeterminantOp(self):
     for shape in self.shapes:
-      with ops.Graph().as_default(), session.Session() as sess, ops.device(
-          "/cpu:0"):
+      with ops.Graph().as_default(), session.Session(
+          config=benchmark.benchmark_config()) as sess, ops.device("/cpu:0"):
         matrix = self._GenerateMatrix(shape)
         d = linalg_ops.matrix_determinant(matrix)
         variables.global_variables_initializer().run()
@@ -169,8 +199,8 @@ class MatrixDeterminantBenchmark(test.Benchmark):
             name="matrix_determinant_cpu_{shape}".format(shape=shape))
 
       if test.is_gpu_available(True):
-        with ops.Graph().as_default(), session.Session() as sess, ops.device(
-            "/gpu:0"):
+        with ops.Graph().as_default(), session.Session(
+            config=benchmark.benchmark_config()) as sess, ops.device("/gpu:0"):
           matrix = self._GenerateMatrix(shape)
           d = linalg_ops.matrix_determinant(matrix)
           variables.global_variables_initializer().run()

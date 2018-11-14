@@ -85,7 +85,7 @@ class BipartiteMatchOp : public OpKernel {
                    context->allocate_output(1, TensorShape({num_input_columns}),
                                             &column_to_row_match_indices));
 
-    typename TTypes<float, 2>::ConstTensor distance_mat =
+    TTypes<float, 2>::ConstTensor distance_mat =
         input_distance_mat.shaped<float, 2>(
             {num_input_rows, num_input_columns});
 

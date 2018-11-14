@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,22 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utility methods to create simple input_fns."""
+"""inputs python module.
+
+Importing from tensorflow.python.estimator is unsupported
+and will soon break!
+"""
+# pylint: disable=unused-import,g-bad-import-order,g-import-not-at-top,wildcard-import
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,line-too-long
-from tensorflow.python.estimator.inputs.numpy_io import numpy_input_fn
-from tensorflow.python.estimator.inputs.pandas_io import pandas_input_fn
+from tensorflow_estimator.python.estimator.inputs import inputs
 
-from tensorflow.python.util.all_util import remove_undocumented
-# pylint: enable=unused-import,line-too-long
+# Include attrs that start with single underscore.
+_HAS_DYNAMIC_ATTRIBUTES = True
+inputs.__all__ = [s for s in dir(inputs) if not s.startswith('__')]
 
-_allowed_symbols = [
-    'numpy_input_fn',
-    'pandas_input_fn'
-]
-
-remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)
+from tensorflow_estimator.python.estimator.inputs.inputs import *

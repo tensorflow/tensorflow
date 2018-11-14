@@ -17,13 +17,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tempfile
+
 from tensorflow.contrib.eager.python import tfe
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import numerics
 from tensorflow.python.platform import test
+from tensorflow.python.summary import summary
+from tensorflow.python.summary.writer import writer
 
 
 class TFETest(test_util.TensorFlowTestCase):
@@ -44,7 +50,7 @@ class TFETest(test_util.TensorFlowTestCase):
       return math_ops.multiply(x, x)
 
     grad = tfe.gradients_function(square)
-    self.assertEquals([6], [x.numpy() for x in grad(3)])
+    self.assertEquals([6], [x.numpy() for x in grad(3.)])
 
   def testGradOfGrad(self):
 
@@ -53,7 +59,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
     grad = tfe.gradients_function(square)
     gradgrad = tfe.gradients_function(lambda x: grad(x)[0])
-    self.assertEquals([2], [x.numpy() for x in gradgrad(3)])
+    self.assertEquals([2], [x.numpy() for x in gradgrad(3.)])
 
   def testCustomGrad(self):
 
@@ -66,41 +72,57 @@ class TFETest(test_util.TensorFlowTestCase):
 
       return y, grad_fn
 
-    # TODO(ashankar): This [0] should ideally not be needed.
-    grad = tfe.gradients_function(f, [0])
-    self.assertEquals([12], [x.numpy() for x in grad(3)])
+    grad = tfe.gradients_function(f)
+    self.assertEquals([12], [x.numpy() for x in grad(3.)])
 
   def testGPU(self):
     if tfe.num_gpus() <= 0:
       self.skipTest('No GPUs available')
 
     # tf.Tensor.as_gpu_device() moves a tensor to GPU.
-    x = constant_op.constant([[1., 2.], [3., 4.]]).as_gpu_tensor()
-    # Alternatively, tfe.device() as a context manager places tensors and
+    x = constant_op.constant([[1., 2.], [3., 4.]]).gpu()
+    # Alternatively, tf.device() as a context manager places tensors and
     # operations.
-    with tfe.device('gpu:0'):
+    with ops.device('gpu:0'):
       x += 1.
     # Without a device context, heuristics are used to place ops.
     # In this case, ops.reduce_mean runs on the GPU.
     reduction_indices = range(x.shape.ndims)
     m = math_ops.reduce_mean(x, reduction_indices)
     # m is on GPU, bring it back to CPU and compare.
-    self.assertEqual(3.5, m.as_cpu_tensor().numpy())
+    self.assertEqual(3.5, m.cpu().numpy())
 
   def testListDevices(self):
     # Expect at least one device.
     self.assertTrue(tfe.list_devices())
 
-  def testNumGPUs(self):
-    devices = tfe.list_devices()
-    self.assertEqual(len(devices) - 1, tfe.num_gpus())
-
-  def testCallingEnableEagerExecutionMoreThanOnce(self):
-    # Note that eager.test.main() has already invoked enable_eager_exceution().
+  def testAddCheckNumericsOpsRaisesError(self):
     with self.assertRaisesRegexp(
-        ValueError, r'Do not call tfe\.%s more than once in the same process' %
-        tfe.enable_eager_execution.__name__):
-      tfe.enable_eager_execution()
+        RuntimeError,
+        r'add_check_numerics_ops\(\) is not compatible with eager execution'):
+      numerics.add_check_numerics_ops()
+
+  def testClassicSummaryOpsErrorOut(self):
+    x = constant_op.constant(42)
+    x_summary = summary.scalar('x', x)
+    y = constant_op.constant([1, 3, 3, 7])
+    y_summary = summary.histogram('hist', y)
+
+    with self.assertRaisesRegexp(
+        RuntimeError,
+        r'Merging tf\.summary\.\* ops is not compatible with eager execution'):
+      summary.merge([x_summary, y_summary])
+
+    with self.assertRaisesRegexp(
+        RuntimeError,
+        r'Merging tf\.summary\.\* ops is not compatible with eager execution'):
+      summary.merge_all()
+
+  def testClassicSummaryFileWriterErrorsOut(self):
+    with self.assertRaisesRegexp(
+        RuntimeError,
+        r'tf\.summary\.FileWriter is not compatible with eager execution'):
+      writer.FileWriter(tempfile.mkdtemp())
 
 
 if __name__ == '__main__':

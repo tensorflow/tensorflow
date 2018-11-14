@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_LINALG_OPS_COMMON_H_
-#define TENSORFLOW_KERNELS_LINALG_OPS_COMMON_H_
+#ifndef TENSORFLOW_CORE_KERNELS_LINALG_OPS_COMMON_H_
+#define TENSORFLOW_CORE_KERNELS_LINALG_OPS_COMMON_H_
 
 // Classes to support linear algebra functionality, similar to the numpy.linalg
 // module. Supports batch computation on several matrices at once, sharding the
@@ -172,13 +172,14 @@ extern template class LinearAlgebraOp<complex128>;
 
 }  // namespace tensorflow
 
-#define INHERIT_LINALG_TYPEDEFS(Scalar)                   \
-  typedef LinearAlgebraOp<Scalar> Base;                   \
-  using Matrix = typename Base::Matrix;                   \
-  using MatrixMap = typename Base::MatrixMap;             \
-  using MatrixMaps = typename Base::MatrixMaps;           \
-  using ConstMatrixMap = typename Base::ConstMatrixMap;   \
-  using ConstMatrixMaps = typename Base::ConstMatrixMaps; \
+#define INHERIT_LINALG_TYPEDEFS(Scalar)                       \
+  typedef LinearAlgebraOp<Scalar> Base;                       \
+  using RealScalar = typename Eigen::NumTraits<Scalar>::Real; \
+  using Matrix = typename Base::Matrix;                       \
+  using MatrixMap = typename Base::MatrixMap;                 \
+  using MatrixMaps = typename Base::MatrixMaps;               \
+  using ConstMatrixMap = typename Base::ConstMatrixMap;       \
+  using ConstMatrixMaps = typename Base::ConstMatrixMaps;     \
   using TensorShapes = typename Base::TensorShapes;
 
 #define REGISTER_LINALG_OP_CPU(OpName, OpClass, Scalar) \
@@ -193,4 +194,4 @@ extern template class LinearAlgebraOp<complex128>;
 #define REGISTER_LINALG_OP(OpName, OpClass, Scalar) \
   REGISTER_LINALG_OP_CPU(OpName, OpClass, Scalar)
 
-#endif  // TENSORFLOW_KERNELS_LINALG_OPS_COMMON_H_
+#endif  // TENSORFLOW_CORE_KERNELS_LINALG_OPS_COMMON_H_

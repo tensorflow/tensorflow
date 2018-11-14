@@ -144,9 +144,9 @@ BaseRemoteRendezvous::~BaseRemoteRendezvous() {
 // Returns true if "device_name" is a valid full name of local device
 // of the "worker".  This helper is purely based on the worker name
 // and device name and does no lookups in the worker->device_mgr.
-static bool IsLocalDevice(const string& worker_name,
+static bool IsLocalDevice(const StringPiece worker_name,
                           const StringPiece device_name) {
-  return device_name.starts_with(worker_name);
+  return str_util::StartsWith(device_name, worker_name);
 }
 
 Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
@@ -243,8 +243,9 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
   }
 
   // This copy must involve a GPU. Hence, "in" must support DMA
-  // (e.g., string tensors do not work on GPU).
-  if (!DMAHelper::CanUseDMA(&in)) {
+  // (e.g., string tensors do not work on GPU).  Variant copy DMA
+  // checks happen inside CopyTensor::ViaDMA.
+  if (!DMAHelper::CanUseDMA(&in) && in.dtype() != DT_VARIANT) {
     done(errors::InvalidArgument("Non-DMA-safe ", DataTypeString(in.dtype()),
                                  " tensor may not be copied from/to a GPU."));
     return;
@@ -252,13 +253,13 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
 
   WorkerSession* sess = session();
   Device* src_device;
-  Status s = sess->device_mgr->LookupDevice(parsed.src_device, &src_device);
+  Status s = sess->device_mgr()->LookupDevice(parsed.src_device, &src_device);
   if (!s.ok()) {
     done(s);
     return;
   }
   Device* dst_device;
-  s = sess->device_mgr->LookupDevice(parsed.dst_device, &dst_device);
+  s = sess->device_mgr()->LookupDevice(parsed.dst_device, &dst_device);
   if (!s.ok()) {
     done(s);
     return;
@@ -268,15 +269,19 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
   attr.set_gpu_compatible(send_args.alloc_attrs.gpu_compatible() ||
                           recv_args.alloc_attrs.gpu_compatible());
   Allocator* out_allocator = dst_device->GetAllocator(attr);
-  Tensor copy(out_allocator, in.dtype(), in.shape());
-  *out = copy;
+
+  if (in.dtype() != DT_VARIANT) {
+    // Variants are handled by CopyTensor::ViaDMA.
+    Tensor copy(out_allocator, in.dtype(), in.shape());
+    *out = copy;
+  }
 
   // The following function takes care of cpu->gpu, gpu->cpu, gpu->gpu copies,
   // etc.
   CopyTensor::ViaDMA(parsed.edge_name, send_args.device_context,
                      recv_args.device_context, src_device, dst_device,
                      send_args.alloc_attrs, recv_args.alloc_attrs, &in, out,
-                     done);
+                     0 /*dev_to_dev_stream_index*/, std::move(done));
 }
 
 bool BaseRemoteRendezvous::IsSameWorker(DeviceNameUtils::ParsedName src,

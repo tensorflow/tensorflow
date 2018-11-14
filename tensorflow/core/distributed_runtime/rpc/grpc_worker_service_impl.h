@@ -13,56 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_IMPL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_IMPL_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_IMPL_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_IMPL_H_
 
-#include "grpc++/impl/codegen/async_stream.h"
-#include "grpc++/impl/codegen/async_unary_call.h"
-#include "grpc++/impl/codegen/proto_utils.h"
-#include "grpc++/impl/codegen/rpc_method.h"
-#include "grpc++/impl/codegen/service_type.h"
-#include "grpc++/impl/codegen/status.h"
-#include "grpc++/impl/codegen/stub_options.h"
-#include "grpc++/impl/codegen/sync_stream.h"
-#include "grpc++/support/byte_buffer.h"
+#include "grpcpp/impl/codegen/async_stream.h"
+#include "grpcpp/impl/codegen/async_unary_call.h"
+#include "grpcpp/impl/codegen/proto_utils.h"
+#include "grpcpp/impl/codegen/rpc_method.h"
+#include "grpcpp/impl/codegen/service_type.h"
+#include "grpcpp/impl/codegen/status.h"
+#include "grpcpp/impl/codegen/stub_options.h"
+#include "grpcpp/impl/codegen/sync_stream.h"
+#include "grpcpp/support/byte_buffer.h"
 
-#include "tensorflow/core/distributed_runtime/rpc/grpc_serialization_traits.h"
+#include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
-
-// Contains potentially large GraphDef.
-TF_GRPC_ALLOW_UNLIMITED_MESSAGE_SIZE(tensorflow::RegisterGraphRequest);
-// Contains potentially large TensorProto.
-TF_GRPC_ALLOW_UNLIMITED_MESSAGE_SIZE(tensorflow::RunGraphRequest);
-// Contains potentially large StepStats, TensorProto.
-TF_GRPC_ALLOW_UNLIMITED_MESSAGE_SIZE(tensorflow::RunGraphResponse);
-
-namespace tensorflow {
-class GrpcByteSource : public TensorResponse::Source {
- public:
-  explicit GrpcByteSource(grpc_byte_buffer* buffer) : buffer_(buffer) {}
-  ~GrpcByteSource() override { DeleteStream(); }
-
-  typedef ::grpc::tensorflow_helper::GrpcBufferReader Reader;
-
-  protobuf::io::ZeroCopyInputStream* contents() override {
-    DeleteStream();
-    stream_ = new (&space_) Reader(buffer_);
-    return stream_;
-  }
-
- private:
-  void DeleteStream() {
-    if (stream_) {
-      stream_->~Reader();
-    }
-  }
-
-  grpc_byte_buffer* buffer_;  // Not owned
-  Reader* stream_ = nullptr;  // Points into space_ if non-nullptr
-  char space_[sizeof(Reader)];
-};
-}  // namespace tensorflow
 
 namespace grpc {
 class CompletionQueue;
@@ -74,21 +40,19 @@ class ServerContext;
 // Support parsing/unparsing of tensorflow::TensorResponse.
 // Wire-format is identical to RecvTensorResponse.
 template <>
-class SerializationTraits<tensorflow::TensorResponse>
-    : public UnlimitedSizeProtoSerializationTraits<tensorflow::TensorResponse> {
+class SerializationTraits<tensorflow::TensorResponse> {
  public:
-  static Status Serialize(const tensorflow::TensorResponse& msg,
-                          grpc_byte_buffer** bp, bool* own_buffer) {
+  static Status Serialize(const tensorflow::TensorResponse& msg, ByteBuffer* bp,
+                          bool* own_buffer) {
     LOG(FATAL) << "TODO(sanjay,jeff): Implement";
     return Status();
   }
-  static Status Deserialize(grpc_byte_buffer* buffer,
-                            tensorflow::TensorResponse* msg,
-                            int max_message_size = INT_MAX) {
+  static Status Deserialize(ByteBuffer* buffer,
+                            tensorflow::TensorResponse* msg) {
     if (buffer == nullptr) {
       return Status(StatusCode::INTERNAL, "No payload");
     }
-    Status result = g_core_codegen_interface->ok();
+    Status result = Status::OK;
     if (result.ok()) {
       ::tensorflow::GrpcByteSource source(buffer);
       auto s = msg->ParseFrom(&source);
@@ -98,7 +62,7 @@ class SerializationTraits<tensorflow::TensorResponse>
                             "TensorResponse parse error", s.ToString()));
       }
     }
-    g_core_codegen_interface->grpc_byte_buffer_destroy(buffer);
+    buffer->Clear();
     return result;
   }
 };
@@ -110,17 +74,22 @@ namespace tensorflow {
 enum class GrpcWorkerMethod {
   kGetStatus,
   kCreateWorkerSession,
+  kDeleteWorkerSession,
   kRegisterGraph,
   kDeregisterGraph,
   kRunGraph,
   kCleanupGraph,
   kCleanupAll,
   kRecvTensor,
+  kRecvBuf,
   kLogging,
   kTracing,
+  kCompleteGroup,
+  kCompleteInstance,
+  kGetStepSequence,
 };
 static const int kGrpcNumWorkerMethods =
-    static_cast<int>(GrpcWorkerMethod::kTracing) + 1;
+    static_cast<int>(GrpcWorkerMethod::kGetStepSequence) + 1;
 
 const char* GrpcWorkerMethodName(GrpcWorkerMethod id);
 
@@ -146,4 +115,4 @@ class WorkerService final {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_IMPL_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_IMPL_H_

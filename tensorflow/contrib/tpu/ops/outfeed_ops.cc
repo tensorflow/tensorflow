@@ -26,6 +26,7 @@ REGISTER_OP("OutfeedEnqueue")
     .Input("input: dtype")
     .Attr("dtype: type")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"doc(
 An op which emits a single Tensor value from an XLA computation.
 
@@ -36,10 +37,11 @@ REGISTER_OP("OutfeedEnqueueTuple")
     .Input("inputs: dtypes")
     .Attr("dtypes: list(type)")
     .SetIsStateful()
+    .SetShapeFn(shape_inference::NoOutputs)
     .Doc(R"doc(
 An op which emits multiple Tensor values from an XLA computation.
 
-inputs: A list of tensors that will be inserted into the outfeed queue as an 
+inputs: A list of tensors that will be inserted into the outfeed queue as an
 XLA tuple.
 )doc");
 

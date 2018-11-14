@@ -21,7 +21,7 @@ limitations under the License.
 // a single PC in a unit called a warp. There is a maximum number of threads
 // that can execute in a shared-context entity called a block. Presently, that
 // number is 1024 -- again, something that should not be relied on from this
-// comment, but checked via perftools::gputools::DeviceDescription.
+// comment, but checked via stream_executor::DeviceDescription.
 //
 // For additional information, see
 // http://docs.nvidia.com/cuda/kepler-tuning-guide/#device-utilization-and-occupancy
@@ -37,11 +37,10 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/platform/port.h"
 
-#include "tensorflow/stream_executor/lib/strcat.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
-namespace perftools {
-namespace gputools {
+namespace stream_executor {
 
 // Basic type that represents a 3-dimensional index space.
 struct Dim3D {
@@ -58,7 +57,7 @@ struct ThreadDim : public Dim3D {
 
   // Returns a string representation of the thread dimensionality.
   string ToString() const {
-    return port::StrCat("ThreadDim{", x, ", ", y, ", ", z, "}");
+    return absl::StrCat("ThreadDim{", x, ", ", y, ", ", z, "}");
   }
 };
 
@@ -70,11 +69,10 @@ struct BlockDim : public Dim3D {
 
   // Returns a string representation of the block dimensionality.
   string ToString() const {
-    return port::StrCat("BlockDim{", x, ", ", y, ", ", z, "}");
+    return absl::StrCat("BlockDim{", x, ", ", y, ", ", z, "}");
   }
 };
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LAUNCH_DIM_H_

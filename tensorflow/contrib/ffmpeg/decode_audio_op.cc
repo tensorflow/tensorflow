@@ -37,29 +37,6 @@ namespace {
 // https://www.ffmpeg.org/ffmpeg-formats.html
 const char* kValidFileFormats[] = {"mp3", "mp4", "ogg", "wav"};
 
-// Writes binary data to a file.
-Status WriteFile(const string& filename, tensorflow::StringPiece contents) {
-  Env& env = *Env::Default();
-  std::unique_ptr<WritableFile> file;
-  TF_RETURN_IF_ERROR(env.NewWritableFile(filename, &file));
-  TF_RETURN_IF_ERROR(file->Append(contents));
-  TF_RETURN_IF_ERROR(file->Close());
-  return Status::OK();
-}
-
-// Cleans up a file on destruction.
-class FileDeleter {
- public:
-  explicit FileDeleter(const string& filename) : filename_(filename) {}
-  ~FileDeleter() {
-    Env& env = *Env::Default();
-    env.DeleteFile(filename_).IgnoreError();
-  }
-
- private:
-  const string filename_;
-};
-
 /*
  * Decoding implementation, shared across V1 and V2 ops. Creates a new
  * output in the context.
@@ -67,9 +44,9 @@ class FileDeleter {
 void Decode(OpKernelContext* context,
             const tensorflow::StringPiece& file_contents,
             const string& file_format, const int32 samples_per_second,
-            const int32 channel_count) {
+            const int32 channel_count, const string& stream) {
   // Write the input data to a temp file.
-  const string temp_filename = GetTempFilename(file_format);
+  const string temp_filename = io::GetTempFilename(file_format);
   OP_REQUIRES_OK(context, WriteFile(temp_filename, file_contents));
   FileDeleter deleter(temp_filename);
 
@@ -77,7 +54,7 @@ void Decode(OpKernelContext* context,
   std::vector<float> output_samples;
   Status result =
       ffmpeg::ReadAudioFile(temp_filename, file_format, samples_per_second,
-                            channel_count, &output_samples);
+                            channel_count, stream, &output_samples);
   if (result.code() == error::Code::NOT_FOUND) {
     OP_REQUIRES(
         context, result.ok(),
@@ -122,7 +99,12 @@ void Decode(OpKernelContext* context,
  */
 class DecodeAudioOpV2 : public OpKernel {
  public:
-  explicit DecodeAudioOpV2(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit DecodeAudioOpV2(OpKernelConstruction* context) : OpKernel(context) {
+    string stream;
+    if (context->GetAttr("stream", &stream).ok()) {
+      stream_ = stream;
+    }
+  }
 
   void Compute(OpKernelContext* context) override {
     OP_REQUIRES(
@@ -176,8 +158,12 @@ class DecodeAudioOpV2 : public OpKernel {
         errors::InvalidArgument("channel_count must be positive, but got: ",
                                 channel_count));
 
-    Decode(context, contents, file_format, samples_per_second, channel_count);
+    Decode(context, contents, file_format, samples_per_second, channel_count,
+           stream_);
   }
+
+ private:
+  string stream_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("DecodeAudioV2").Device(DEVICE_CPU),
@@ -189,6 +175,7 @@ REGISTER_OP("DecodeAudioV2")
     .Input("samples_per_second: int32")
     .Input("channel_count: int32")
     .Output("sampled_audio: float")
+    .Attr("stream: string = ''")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       const Tensor* channels_tensor = c->input_tensor(3);
       if (channels_tensor == nullptr) {
@@ -260,7 +247,7 @@ class DecodeAudioOp : public OpKernel {
 
     const tensorflow::StringPiece file_contents = contents.scalar<string>()();
     Decode(context, file_contents, file_format_, samples_per_second_,
-           channel_count_);
+           channel_count_, "");
   }
 
  private:

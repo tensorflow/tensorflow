@@ -69,9 +69,9 @@ class TestCase(test.TestCase):
 class ExternalOptimizerInterfaceTest(TestCase):
 
   def test_optimize(self):
-    scalar = variables.Variable(random_ops.random_normal([]), 'scalar')
-    vector = variables.Variable(random_ops.random_normal([2]), 'vector')
-    matrix = variables.Variable(random_ops.random_normal([2, 3]), 'matrix')
+    scalar = variables.VariableV1(random_ops.random_normal([]), 'scalar')
+    vector = variables.VariableV1(random_ops.random_normal([2]), 'vector')
+    matrix = variables.VariableV1(random_ops.random_normal([2, 3]), 'matrix')
 
     minimum_location = constant_op.constant(np.arange(9), dtype=dtypes.float32)
 
@@ -85,7 +85,7 @@ class ExternalOptimizerInterfaceTest(TestCase):
 
     optimizer = MockOptimizerInterface(loss)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       optimizer.minimize(sess)
@@ -96,7 +96,7 @@ class ExternalOptimizerInterfaceTest(TestCase):
 
   def test_callbacks(self):
     vector_val = np.array([7., -2.], dtype=np.float32)
-    vector = variables.Variable(vector_val, 'vector')
+    vector = variables.VariableV1(vector_val, 'vector')
 
     minimum_location_val = np.arange(2)
     minimum_location = constant_op.constant(
@@ -107,7 +107,7 @@ class ExternalOptimizerInterfaceTest(TestCase):
 
     optimizer = MockOptimizerInterface(loss)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       initial_vector_val = sess.run(vector)
@@ -160,11 +160,11 @@ class ScipyOptimizerInterfaceTest(TestCase):
                                 rtol=1e-5,
                                 atol=1e-5,
                                 dimension=5):
-    x = variables.Variable(array_ops.zeros(dimension))
+    x = variables.VariableV1(array_ops.zeros(dimension))
     optimizer = external_optimizer.ScipyOptimizerInterface(
         self._objective(x), method=method, options=options)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       optimizer.minimize(sess)
 
@@ -173,10 +173,10 @@ class ScipyOptimizerInterfaceTest(TestCase):
   def test_unconstrained(self):
 
     dimension = 5
-    x = variables.Variable(array_ops.zeros(dimension))
+    x = variables.VariableV1(array_ops.zeros(dimension))
     optimizer = external_optimizer.ScipyOptimizerInterface(self._objective(x))
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       optimizer.minimize(sess)
 
@@ -230,7 +230,7 @@ class ScipyOptimizerInterfaceTest(TestCase):
 
   def test_nonlinear_programming(self):
     vector_initial_value = [7., 7.]
-    vector = variables.Variable(vector_initial_value, 'vector')
+    vector = variables.VariableV1(vector_initial_value, 'vector')
 
     # Make norm as small as possible.
     loss = math_ops.reduce_sum(math_ops.square(vector))
@@ -242,14 +242,14 @@ class ScipyOptimizerInterfaceTest(TestCase):
     optimizer = external_optimizer.ScipyOptimizerInterface(
         loss, equalities=equalities, inequalities=inequalities, method='SLSQP')
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       optimizer.minimize(sess)
       self.assertAllClose(np.ones(2), sess.run(vector))
 
   def test_scalar_bounds(self):
     vector_initial_value = [7., 7.]
-    vector = variables.Variable(vector_initial_value, 'vector')
+    vector = variables.VariableV1(vector_initial_value, 'vector')
 
     # Make norm as small as possible.
     loss = math_ops.reduce_sum(math_ops.square(vector))
@@ -260,14 +260,14 @@ class ScipyOptimizerInterfaceTest(TestCase):
     optimizer = external_optimizer.ScipyOptimizerInterface(
         loss, var_to_bounds=var_to_bounds)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       optimizer.minimize(sess)
       self.assertAllClose(np.ones(2), sess.run(vector))
 
   def test_vector_bounds(self):
     vector_initial_value = [7., 7.]
-    vector = variables.Variable(vector_initial_value, 'vector')
+    vector = variables.VariableV1(vector_initial_value, 'vector')
 
     # Make norm as small as possible.
     loss = math_ops.reduce_sum(math_ops.square(vector))
@@ -277,7 +277,7 @@ class ScipyOptimizerInterfaceTest(TestCase):
     optimizer = external_optimizer.ScipyOptimizerInterface(
         loss, var_to_bounds=var_to_bounds)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       optimizer.minimize(sess)
       self.assertAllClose([0., 2.], sess.run(vector))
@@ -287,17 +287,56 @@ class ScipyOptimizerInterfaceTest(TestCase):
     # after running optimizer.minimize().
     # Bug reference: b/64065260
     vector_initial_value = [7., 7.]
-    vector = variables.Variable(vector_initial_value, 'vector')
+    vector = variables.VariableV1(vector_initial_value, 'vector')
     loss = math_ops.reduce_sum(math_ops.square(vector))
 
     optimizer = external_optimizer.ScipyOptimizerInterface(
         loss, method='SLSQP')
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       optimizer.minimize(sess)
       method = optimizer.optimizer_kwargs.get('method')
       self.assertEqual('SLSQP', method)
+
+  def test_callbacks(self):
+    vector_val = np.array([7., -2.], dtype=np.float32)
+    vector = variables.VariableV1(vector_val, 'vector')
+
+    minimum_location_val = np.arange(2)
+    minimum_location = constant_op.constant(
+        minimum_location_val, dtype=dtypes.float32)
+
+    loss = math_ops.reduce_sum(math_ops.square(vector - minimum_location)) / 2.
+    loss_val_first = ((vector_val - minimum_location_val)**2).sum() / 2.
+
+    optimizer = external_optimizer.ScipyOptimizerInterface(loss, method='SLSQP')
+
+    with self.cached_session() as sess:
+      sess.run(variables.global_variables_initializer())
+
+      initial_vector_val = sess.run(vector)
+
+      extra_fetches = [loss]
+
+      step_callback = test.mock.Mock()
+      loss_callback = test.mock.Mock()
+
+      optimizer.minimize(
+          sess,
+          fetches=extra_fetches,
+          loss_callback=loss_callback,
+          step_callback=step_callback)
+
+      loss_val_last = sess.run(loss)
+
+      call_first = test.mock.call(loss_val_first)
+      call_last = test.mock.call(loss_val_last)
+      loss_calls = [call_first, call_last]
+      loss_callback.assert_has_calls(loss_calls, any_order=True)
+
+      args, _ = step_callback.call_args
+      self.assertAllClose(minimum_location_val, args[0])
 
 
 if __name__ == '__main__':

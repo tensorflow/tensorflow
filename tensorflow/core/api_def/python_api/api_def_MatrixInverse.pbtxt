@@ -1,0 +1,10 @@
+op {
+  graph_op_name: "MatrixInverse"
+  endpoint {
+    name: "linalg.inv"
+  }
+  endpoint {
+    name: "matrix_inverse"
+    deprecation_version: 2
+  }
+}

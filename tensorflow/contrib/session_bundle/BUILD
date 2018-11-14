@@ -1,9 +1,7 @@
 # Description:
 #   TensorFlow Serving session bundle.
 
-package(
-    default_visibility = ["//visibility:public"],
-)
+package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
@@ -17,18 +15,6 @@ load(
     "if_not_mobile",
     "py_test",
     "tf_cc_test",
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "g3doc/sitemap.md",
-        ],
-    ),
 )
 
 # TODO(b/32673259): add a test to continuously validate these files.
@@ -136,7 +122,6 @@ py_test(
         ":gc",
         ":manifest_proto_py",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -166,6 +151,7 @@ py_test(
     name = "gc_test",
     srcs = ["gc_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     visibility = ["//visibility:private"],
     deps = [
         ":gc",
@@ -411,8 +397,6 @@ tf_cc_test(
         ":test_util",
         "//tensorflow/cc/saved_model:signature_constants",
         "//tensorflow/cc/saved_model:tag_constants",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",

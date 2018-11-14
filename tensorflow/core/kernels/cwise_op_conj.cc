@@ -23,14 +23,9 @@ REGISTER2(UnaryOp, CPU, "Conj", functor::conj, complex64, complex128);
 REGISTER_VARIANT(UnaryVariantOp, CPU, "Conj", CONJ_VARIANT_UNARY_OP);
 
 #if GOOGLE_CUDA
-// TODO(ebrevdo): Once rendezvous has been properly set up for
-// Variants, we'll no longer need a HostMemory attribute for this case.
-REGISTER_KERNEL_BUILDER(Name("Conj")
-                            .Device(DEVICE_GPU)
-                            .TypeConstraint<Variant>("T")
-                            .HostMemory("input")
-                            .HostMemory("output"),
-                        UnaryVariantOp<GPUDevice, CONJ_VARIANT_UNARY_OP>);
+REGISTER_KERNEL_BUILDER(
+    Name("Conj").Device(DEVICE_GPU).TypeConstraint<Variant>("T"),
+    UnaryVariantOp<GPUDevice, CONJ_VARIANT_UNARY_OP>);
 REGISTER_KERNEL_BUILDER(
     Name("Conj").Device(DEVICE_GPU).TypeConstraint<complex64>("T"),
     UnaryOp<GPUDevice, functor::conj<complex64>>);

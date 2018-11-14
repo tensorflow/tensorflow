@@ -97,10 +97,13 @@ def _input_from_feature_columns(columns_to_tensors,
                                 trainable,
                                 scope,
                                 output_rank,
-                                default_name):
+                                default_name,
+                                cols_to_outs=None):
   """Implementation of `input_from(_sequence)_feature_columns`."""
   columns_to_tensors = columns_to_tensors.copy()
   check_feature_columns(feature_columns)
+  if cols_to_outs is not None and not isinstance(cols_to_outs, dict):
+    raise ValueError('cols_to_outs must be a dict unless None')
   with variable_scope.variable_scope(scope,
                                      default_name=default_name,
                                      values=columns_to_tensors.values()):
@@ -144,6 +147,8 @@ def _input_from_feature_columns(columns_to_tensors,
           except ValueError as e:
             raise ValueError('Error creating input layer for column: {}.\n'
                              '{}, {}'.format(column.name, e, ee))
+        if cols_to_outs is not None:
+          cols_to_outs[column] = output_tensors[-1]
     return array_ops.concat(output_tensors, output_rank - 1)
 
 
@@ -151,7 +156,8 @@ def input_from_feature_columns(columns_to_tensors,
                                feature_columns,
                                weight_collections=None,
                                trainable=True,
-                               scope=None):
+                               scope=None,
+                               cols_to_outs=None):
   """A tf.contrib.layers style input layer builder based on FeatureColumns.
 
   Generally a single example in training data is described with feature columns.
@@ -196,6 +202,8 @@ def input_from_feature_columns(columns_to_tensors,
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     scope: Optional scope for variable_scope.
+    cols_to_outs: Optional dict from feature column to output tensor,
+      which is concatenated into the returned tensor.
 
   Returns:
     A Tensor which can be consumed by hidden layers in the neural network.
@@ -209,7 +217,8 @@ def input_from_feature_columns(columns_to_tensors,
                                      trainable,
                                      scope,
                                      output_rank=2,
-                                     default_name='input_from_feature_columns')
+                                     default_name='input_from_feature_columns',
+                                     cols_to_outs=cols_to_outs)
 
 
 @experimental
@@ -674,11 +683,12 @@ def parse_feature_columns_from_sequence_examples(
       the serialized proto.
 
   Returns:
-    A tuple consisting of:
-    context_features: a dict mapping `FeatureColumns` from
-      `context_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
-    sequence_features: a dict mapping `FeatureColumns` from
-      `sequence_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
+    A tuple consisting of (context_features, sequence_features)
+
+    *  context_features: a dict mapping `FeatureColumns` from
+        `context_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
+    *  sequence_features: a dict mapping `FeatureColumns` from
+        `sequence_feature_columns` to their parsed `Tensors`/`SparseTensor`s.
   """
   # Sequence example parsing requires a single (scalar) example.
   try:
@@ -806,7 +816,7 @@ class _Transformer(object):
   """
 
   def __init__(self, columns_to_tensors):
-    """Initializes transfomer.
+    """Initializes transformer.
 
     Args:
       columns_to_tensors: A mapping from feature columns to tensors. 'string'
@@ -899,7 +909,7 @@ def _gather_feature_columns(feature_columns):
 
 
 def _check_forbidden_sequence_columns(feature_columns):
-  """Recursively cecks `feature_columns` for `_FORBIDDEN_SEQUENCE_COLUMNS`."""
+  """Recursively checks `feature_columns` for `_FORBIDDEN_SEQUENCE_COLUMNS`."""
   all_feature_columns = _gather_feature_columns(feature_columns)
   for feature_column in all_feature_columns:
     if isinstance(feature_column, _FORBIDDEN_SEQUENCE_COLUMNS):

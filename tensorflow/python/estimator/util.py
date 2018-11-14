@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,46 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""util python module.
 
-"""Utility to retrieve function args.."""
+Importing from tensorflow.python.estimator is unsupported
+and will soon break!
+"""
+# pylint: disable=unused-import,g-bad-import-order,g-import-not-at-top,wildcard-import
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
+from tensorflow_estimator.python.estimator import util
 
+# Include attrs that start with single underscore.
+_HAS_DYNAMIC_ATTRIBUTES = True
+util.__all__ = [s for s in dir(util) if not s.startswith('__')]
 
-def fn_args(fn):
-  """Get argument names for function-like object.
-
-  Args:
-    fn: Function, or function-like object (e.g., result of `functools.partial`).
-
-  Returns:
-    `tuple` of string argument names.
-
-  Raises:
-    ValueError: if partial function has positionally bound arguments
-  """
-  _, fn = tf_decorator.unwrap(fn)
-
-  # Handle callables.
-  if hasattr(fn, '__call__') and tf_inspect.ismethod(fn.__call__):
-    return tuple(tf_inspect.getargspec(fn.__call__).args)
-
-  # Handle functools.partial and similar objects.
-  if hasattr(fn, 'func') and hasattr(fn, 'keywords') and hasattr(fn, 'args'):
-    # Handle nested partial.
-    original_args = fn_args(fn.func)
-    if not original_args:
-      return tuple()
-
-    return tuple([
-        arg for arg in original_args[len(fn.args):]
-        if arg not in set((fn.keywords or {}).keys())
-    ])
-
-  # Handle function.
-  return tuple(tf_inspect.getargspec(fn).args)
+from tensorflow_estimator.python.estimator.util import *

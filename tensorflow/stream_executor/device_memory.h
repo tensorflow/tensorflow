@@ -26,11 +26,20 @@ limitations under the License.
 
 #include <stddef.h>
 
-#include "tensorflow/stream_executor/lib/casts.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace perftools {
 namespace gputools {
+
+// Temporarily pull stream_executor into perftools::gputools while we migrate
+// code to the new namespace.  TODO(b/77980417): Remove this once we've
+// completed the migration.
+using namespace stream_executor;  // NOLINT[build/namespaces]
+
+}  // namespace gputools
+}  // namespace perftools
+
+namespace stream_executor {
 
 class StreamExecutor;
 
@@ -280,7 +289,6 @@ static_assert(sizeof(Float2) == 2 * sizeof(float), "Float2 must be packed");
 static_assert(sizeof(Float4) == 4 * sizeof(float), "Float4 must be packed");
 static_assert(sizeof(Double2) == 2 * sizeof(double), "Double2 must be packed");
 
-}  // namespace gputools
-}  // namespace perftools
+}  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_DEVICE_MEMORY_H_

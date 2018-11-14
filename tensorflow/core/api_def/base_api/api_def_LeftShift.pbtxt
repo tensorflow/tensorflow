@@ -1,0 +1,8 @@
+op {
+  graph_op_name: "LeftShift"
+  summary: "Elementwise computes the bitwise left-shift of `x` and `y`."
+  description: <<END
+If `y` is negative, or greater than or equal to the width of `x` in bits the
+result is implementation defined.
+END
+}

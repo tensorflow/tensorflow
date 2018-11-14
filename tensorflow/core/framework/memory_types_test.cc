@@ -36,11 +36,13 @@ REGISTER_OP("HostMemoryTest")
     .Input("b: T")
     .Input("c: N * string")
     .Input("d: Tlist")
+    .Input("e: Rlist")
     .Output("o: N * T")
     .Output("p: Tlist")
     .Attr("T: type")
     .Attr("N: int")
-    .Attr("Tlist: list(type)");
+    .Attr("Tlist: list(type)")
+    .Attr("Rlist: list(type)");
 REGISTER_KERNEL_BUILDER(Name("HostMemoryTest").Device(DEVICE_CPU), DummyKernel);
 REGISTER_KERNEL_BUILDER(Name("HostMemoryTest")
                             .Device(DEVICE_GPU)
@@ -57,15 +59,20 @@ TEST(MemoryTypesForNode, Simple) {
                    .Input(FakeInput(DT_BOOL))
                    .Input(FakeInput(3))
                    .Input(FakeInput({DT_INT32, DT_FLOAT, DT_INT32}))
+                   .Input(FakeInput({DT_RESOURCE, DT_STRING, DT_RESOURCE}))
                    .Finalize(&node_def));
   MemoryTypeVector input, output;
 
   TF_EXPECT_OK(MemoryTypesForNode(OpRegistry::Global(), DEVICE_CPU, node_def,
                                   &input, &output));
-  EXPECT_EQ(MemoryTypeVector({DEVICE_MEMORY, DEVICE_MEMORY, DEVICE_MEMORY,
-                              DEVICE_MEMORY, DEVICE_MEMORY, DEVICE_MEMORY,
-                              DEVICE_MEMORY, DEVICE_MEMORY}),
-            input);
+  // a:float, b:bool, c:3*string, d:(int32, float, int32),
+  // e:(resource, string, resource)
+  EXPECT_EQ(
+      MemoryTypeVector({DEVICE_MEMORY, DEVICE_MEMORY, HOST_MEMORY, HOST_MEMORY,
+                        HOST_MEMORY, DEVICE_MEMORY, DEVICE_MEMORY,
+                        DEVICE_MEMORY, HOST_MEMORY, HOST_MEMORY, HOST_MEMORY}),
+      input);
+  // o:3*bool, p:(int32, float, int32)
   EXPECT_EQ(MemoryTypeVector({DEVICE_MEMORY, DEVICE_MEMORY, DEVICE_MEMORY,
                               DEVICE_MEMORY, DEVICE_MEMORY, DEVICE_MEMORY}),
             output);
@@ -74,7 +81,8 @@ TEST(MemoryTypesForNode, Simple) {
                                   &input, &output));
   EXPECT_EQ(
       MemoryTypeVector({HOST_MEMORY, DEVICE_MEMORY, HOST_MEMORY, HOST_MEMORY,
-                        HOST_MEMORY, HOST_MEMORY, HOST_MEMORY, HOST_MEMORY}),
+                        HOST_MEMORY, HOST_MEMORY, HOST_MEMORY, HOST_MEMORY,
+                        HOST_MEMORY, HOST_MEMORY, HOST_MEMORY}),
       input);
   EXPECT_EQ(MemoryTypeVector({HOST_MEMORY, HOST_MEMORY, HOST_MEMORY,
                               DEVICE_MEMORY, DEVICE_MEMORY, DEVICE_MEMORY}),
