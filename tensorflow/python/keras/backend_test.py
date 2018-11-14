@@ -1248,18 +1248,18 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     expected_outputs[1, -mask_last_num_timesteps:] = \
         expected_outputs[1, -(mask_last_num_timesteps + 1)]
 
-    expected_state = initial_state_vals.copy()
+    expected_last_state = initial_state_vals.copy()
     # first state should be incremented for every timestep (no masking)
-    expected_state[0] += num_timesteps
+    expected_last_state[0] += num_timesteps
     # second state should not be incremented for last two timesteps
-    expected_state[1] += (num_timesteps - mask_last_num_timesteps)
+    expected_last_state[1] += (num_timesteps - mask_last_num_timesteps)
 
     # verify same expected output for `unroll=true/false`
     inputs = keras.backend.variable(inputs_vals)
     initial_states = [keras.backend.variable(initial_state_vals)]
     mask = keras.backend.variable(mask_vals)
     for unroll in [True, False]:
-      last_output, outputs, last_states = keras.backend.rnn(
+      _, outputs, last_states = keras.backend.rnn(
           step_function,
           inputs,
           initial_states,
@@ -1267,10 +1267,9 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
           unroll=unroll,
           input_length=num_timesteps if unroll else None)
 
-      self.assertAllClose(
-          keras.backend.eval(outputs), expected_outputs)
-      self.assertAllClose(
-          keras.backend.eval(last_states[0]), expected_state)
+      self.assertAllClose(keras.backend.eval(outputs), expected_outputs)
+      self.assertAllClose(keras.backend.eval(
+          last_states[0]), expected_last_state)
 
   def test_rnn_output_num_dim_larger_than_2_masking(self):
     num_samples = 3
@@ -1298,7 +1297,7 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     initial_states = [keras.backend.variable(initial_state_vals)]
     mask = keras.backend.variable(mask_vals)
     for unroll in [True, False]:
-      last_output, outputs, last_states = keras.backend.rnn(
+      _, outputs, _ = keras.backend.rnn(
           step_function,
           inputs,
           initial_states,
@@ -1313,7 +1312,7 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     num_timesteps = 4
 
     def step_function(inputs, states):
-        return inputs, [s + 1 for s in states]
+      return inputs, [s + 1 for s in states]
 
     inputs_vals = np.random.random((num_samples, num_timesteps, 5))
     initial_state_vals = np.random.random((num_samples, 6, 7))
@@ -1328,7 +1327,7 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     initial_states = [keras.backend.variable(initial_state_vals)]
     mask = keras.backend.variable(mask_vals)
     for unroll in [True, False]:
-      last_output, outputs, last_states = keras.backend.rnn(
+      _, _, last_states = keras.backend.rnn(
           step_function,
           inputs,
           initial_states,
@@ -1336,10 +1335,8 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
           unroll=unroll,
           input_length=num_timesteps if unroll else None)
 
-      # not updated last timestep:
       self.assertAllClose(
-          keras.backend.eval(last_states[0]),
-          expected_last_state)
+          keras.backend.eval(last_states[0]), expected_last_state)
 
   def test_normalize_batch_in_training(self):
     val = np.random.random((10, 3, 10, 10))
