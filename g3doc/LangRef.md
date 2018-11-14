@@ -60,7 +60,7 @@ operations.
 
 Here's an example of an MLIR module:
 
-``` {.mlir}
+```mlir {.mlir}
 // Compute A*B using mlfunc implementation of multiply kernel and print the
 // result using a TensorFlow op. The dimensions of A and B are partially
 // known. The shapes are assumed to match.
@@ -147,7 +147,7 @@ literal     ::= `abcd` // Matches the literal `abcd`.
 
 Code examples are presented in blue boxes.
 
-``` {.mlir}
+```mlir {.mlir}
 // This is an example use of the grammar above:
 // This matches things like: ba, bana, boma, banana, banoma, bomana...
 example ::= `b` (`an` | `om`)* `a`
@@ -223,7 +223,7 @@ are declared in parentheses and symbols are declared in square brackets.
 
 Examples:
 
-``` {.mlir}
+```mlir {.mlir}
 // A 2d to 3d affine mapping.
 // d0/d1 are dimensions, s0 is a symbol
 #affine_map2to3 = (d0, d1)[s0] -> (d0, d1 + s0, d1 - s0) size (10, 20, 30)
@@ -269,7 +269,7 @@ other dimensions and symbols).
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 #affine_map2to3 = (d0, d1)[s0] -> (d0, d1 + s0, d1 - s0) size (10,20,30)
 // Binds %N to the s0 symbol in affine_map2to3.
 %x = alloc()[%N] : memref<40x50xf32, #affine_map2to3>
@@ -382,7 +382,7 @@ name.
 
 Examples:
 
-``` {.mlir}
+```mlir {.mlir}
 // Affine map out-of-line definition and usage example.
 #affine_map42 =
   (d0, d1)[s0] -> (d0, d0 + d1 + floordiv(s0,2)) size (10, s0)
@@ -489,7 +489,7 @@ dimensions.
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 // A example two-dimensional integer set with two symbols.
 #set42 = (d0, d1)[s0, s1]
    : d0 >= 0, -d0 + s0 - 1 >= 0, d1 >= 0, -d1 + s1 - 1 >= 0
@@ -654,7 +654,7 @@ of tensor type.
 
 Examples:
 
-``` {.mlir}
+```mlir {.mlir}
 // Tensor with unknown rank.
 tensor<* x f32>
 
@@ -701,7 +701,7 @@ and index maps.
 
 Examples of memref static type
 
-``` {.mlir}
+```mlir {.mlir}
 // Identity index/layout map
 #imapA = (d0, d1) -> (d0, d1) size (16, 32)
 
@@ -724,7 +724,7 @@ memref<16x4x?xf32, #imapB, hbm>
 
 Symbol capture example:
 
-``` {.mlir}
+```mlir {.mlir}
 // Affine map with symbol 's0' used as offset for first dimension.
 #imapA = (d0, d1) [s0] -> (d0 + s0, d1)
 // Allocate memref and bind the following symbols:
@@ -747,7 +747,7 @@ multidimensional index space defined by the memref's dimension list.
 
 Examples
 
-``` {.mlir}
+```mlir {.mlir}
 // Allocates a memref with 2D index space:
 //   { (i, j) : 0 <= i < 16, 0 <= j < 32 }
 %A = alloc() : memref<16x32xf32, #imapA, hbm>
@@ -775,7 +775,7 @@ symbols for dynamic dimension sizes first, followed by other required symbols.
 
 Index map examples:
 
-``` {.mlir}
+```mlir {.mlir}
 // Index map from [MS, NS] slice index space to larger [M, N]
 // matrix index space at slice offset symbols OI, OJ:
 // Maps from [MS, NS] -> [M, N]
@@ -797,7 +797,7 @@ identity layout map corresponds to a row-major layout.
 
 Layout map examples:
 
-``` {.mlir}
+```mlir {.mlir}
 // MxN matrix stored in row major layout in memory:
 #layout_map_row_major = (i, j) [M, N] -> (i, j) size (M, N)
 
@@ -900,7 +900,7 @@ ext-func ::= `extfunc` function-signature (`attributes` attribute-dict)?
 
 Examples:
 
-``` {.mlir}
+```mlir {.mlir}
 extfunc @abort()
 extfunc @scribble(i32, i64, memref<? x 128 x f32, #layout_map0>) -> f64
 ```
@@ -919,7 +919,7 @@ cfg-func ::= `cfgfunc` function-signature
 
 A simple CFG function that returns its argument twice looks like this:
 
-``` {.mlir}
+```mlir {.mlir}
 cfgfunc @count(i64) -> (i64, i64)
   attributes {fruit: "banana"} {
 bb0(%x: i64):
@@ -962,7 +962,7 @@ provided for these basic block arguments by branches that go to the block.
 Here is a simple example function showing branches, returns, and basic block
 arguments:
 
-``` {.mlir}
+```mlir {.mlir}
 cfgfunc @simple(i64, i1) -> i64 {
 bb0(%a: i64, %cond: i1): // Code dominated by bb0 may refer to %a
   br_cond %cond, bb1, bb2
@@ -1040,7 +1040,7 @@ allowed to be the same.
 The following example illustrates a CFG function with a conditional branch
 instruction that targets the same basic block:
 
-``` {.mlir}
+```mlir {.mlir}
 cfgfunc @select(%a : i32, %b :i32, %flag : i1) -> i32 {
 bb0:
     // Both targets are the same, operands differ
@@ -1142,7 +1142,7 @@ nullary mapping function that returns the constant value (e.g. `()->(-42)()`).
 
 Example showing reverse iteration of the inner loop:
 
-``` {.mlir}
+```mlir {.mlir}
 #map57 = (d0, d1)[s0] -> (d0, s0 - d1)
 
 mlfunc @simple_example(%A: memref<?x?xf32>, %B: memref<?x?xf32>) {
@@ -1184,7 +1184,7 @@ symbols.
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 #set = (d0, d1)[s0]: (d0 - 10 >= 0, s0 - d0 - 9 >= 0,
                       d1 - 10 >= 0, s0 - d1 - 9 >= 0)
 mlfunc @reduced_domain_example(%A, %X, %N) : (memref<10xi32>, i32, i32) {
@@ -1228,7 +1228,7 @@ indicate the types of the results and operands.
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 // Invoke a TensorFlow function called tf.scramble with two inputs
 // and an attribute "fruit".
 %2 = "tf.scramble"(%42, %12){fruit: "banana"} : (f32, i32) -> f32
@@ -1275,7 +1275,7 @@ SSA values must all have 'index' type, and the results are all of 'index' type.
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 #map10 = (d0, d1) -> (floordiv(d0,8), floordiv(d1,128),
                       d0 mod 8, d1 mod 128)
 ...
@@ -1300,7 +1300,7 @@ encoded as a function attribute named "callee".
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 // Calling the CFG function my_add.
 %31 = call @my_add(%0, %1) : (tensor<16xf32>, tensor<16xf32>) -> tensor<16xf32>
 ```
@@ -1324,7 +1324,7 @@ Function values can be created with the
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 %31 = call_indirect %15(%0, %1)
         : (tensor<16xf32>, tensor<16xf32>) -> tensor<16xf32>
 ```
@@ -1345,7 +1345,7 @@ The `dim` operation is represented with a single integer attribute named
 
 Examples:
 
-``` {.mlir}
+```mlir {.mlir}
 // Always returns 4, can be constant folded:
 %x = dim %A, 0 : tensor<4 x ? x f32>
 
@@ -1374,7 +1374,7 @@ are the same. For example, a `16x16xf32` memref can be reshaped into a
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 // Allocate base memref with dynamic 16x?xf32.
 #lmapD = (i, j)[S0] -> (i, j) size (16, S0)
 %D = alloc <16x?xf32, #lmapD, hbm>(%N)[%N]
@@ -1409,7 +1409,7 @@ type (and any captured symbols). See the figure below for an example.
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 #map_b = (i,j)[s0, s1] -> (i + s0, j) size (16, s1)
 
 // %B is a view of %A with a window of size 4 with offset %0 along the
@@ -1449,7 +1449,7 @@ and destroyed by the `dealloc` instruction.
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 // Allocating memref for a fully static shape.
 %A = alloc() : memref<1024x64xf32, #layout_map0, hbm>
 
@@ -1475,7 +1475,7 @@ require dynamic symbols in their layout function (use the
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 %A = alloc_static(0x1232a00) : memref<1024 x 64 x f32, #layout_map0, hbm>
 ```
 
@@ -1496,7 +1496,7 @@ allocation. It is paired with an [`alloc`](#'alloc'-operation) or
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 dealloc %A : memref<128 x f32, #layout, hbm>
 ```
 
@@ -1530,7 +1530,7 @@ specified as shown below.
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 %size = constant 32 : index
 %tag = alloc() : memref<1 x i32, (d0) -> (d0), 4>
 %idx = constant 0 : index
@@ -1556,7 +1556,7 @@ load/store indices when appearing in MLFunctions.
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 dma_wait %tag[%index], %num_elements : memref<1 x i32, (d0) -> (d0), 4>
 ```
 
@@ -1577,7 +1577,7 @@ then 3 indices are required for the extract. The indices should all be of
 
 Examples:
 
-``` {.mlir}
+```mlir {.mlir}
 %3 = extract_element %v[%1, %2] : vector<4x4xi32>
 %4 = extract_element %t[%1, %2] : tensor<4x4xi32>
 %5 = extract_element %ut[%1, %2] : tensor<*xi32>
@@ -1606,7 +1606,7 @@ operation.
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 #remap1 = (d0, d1) -> (4*d0, d1+1)
 #remap2 = (d0) -> (2*d0 + 1)
  ...
@@ -1648,7 +1648,7 @@ such an `affine_apply` operation.
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 store %100, %A[%1, 1023] : memref<4x?xf32, #layout, hbm>
 ```
 
@@ -1674,7 +1674,7 @@ operand.
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 // Produces a value of tensor<4x?xf32> type.
 %12 = tensor_load %10 : memref<4x?xf32, #layout, hbm>
 ```
@@ -1693,7 +1693,7 @@ element types of these must match, and are specified by the memref type.
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 %9 = dim %8, 1 : tensor<4x?xf32>
 %10 = alloc(%9) : memref<4x?xf32, #layout, hbm>
 tensor_store %8, %10 : memref<4x?xf32, #layout, hbm>
@@ -1712,7 +1712,7 @@ supported by HLO and LLVM.
 
 Examples:
 
-``` {.mlir}
+```mlir {.mlir}
 // Scalar addition.
 %a = addi %b, %c : i64
 
@@ -1732,7 +1732,7 @@ attributes.
 
 Examples:
 
-``` {.mlir}
+```mlir {.mlir}
 // Scalar addition.
 %a = addf %b, %c : f64
 
@@ -1757,7 +1757,7 @@ controls.
 
 Examples:
 
-``` {.mlir}
+```mlir {.mlir}
 // Scalar "signed less than" comparison.
 %x = cmpi "slt", %lhs, %rhs : i32
 
@@ -1832,7 +1832,7 @@ The type specifies the result type of the operation.
 
 Examples:
 
-``` {.mlir}
+```mlir {.mlir}
 // Integer constant
 %1 = constant 42 : i32
 
@@ -1861,7 +1861,7 @@ operation ::= ssa-id `=` `memref_cast` ssa-use `:` type `to` type
 
 Examples:
 
-``` {.mlir}
+```mlir {.mlir}
 // Convert to a type with more known dimensions.
 %3 = memref_cast %2 : memref<4x?xf32> to memref<?x?xf32>
 
@@ -1879,7 +1879,7 @@ converting to a mismatching constant dimension.
 
 Examples:
 
-``` {.mlir}
+```mlir {.mlir}
 // Scalar multiplication.
 %a = mulf %b, %c : f64
 
@@ -1904,13 +1904,13 @@ controls.
 
 Syntax:
 
-``` {.mlir}
+```mlir {.mlir}
 operation ::= ssa-id `=` `tensor_cast` ssa-use `:` type `to` type
 ```
 
 Examples:
 
-``` {.mlir}
+```mlir {.mlir}
 // Convert from unknown rank to rank 2 with unknown dimension sizes.
 %2 = "tensor_cast"(%1) : (tensor<*xf32>) -> tensor<?x?xf32>
 %2 = tensor_cast %1 : tensor<*xf32> to tensor<?x?xf32>
@@ -1943,7 +1943,7 @@ directly, with type attributes represented as strings.
 
 Examples:
 
-``` {.mlir}
+```mlir {.mlir}
 // TensorFlow Add operation.
 %a = "tf.Add"(%b, %c)
   : (tensor<*xf32>,tensor<*xf32>) -> tensor<*xf32>
@@ -1965,7 +1965,7 @@ directly through to MLIR.
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 // TPU vector add instruction
 %f = "tpu.vaddf32"(%a, %b)
              : (vector<8x128xf32>, vector<8x128xf32>) -> vector<8x128xf32>
@@ -1979,7 +1979,7 @@ start with an "llvm." name.
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 // LLVM: %x = call {i16, i1} @llvm.sadd.with.overflow.i16(i16 %a, i16 %b)
 %x = "llvm.sadd.with.overflow.i16"(%a, %b) : (i16, i16) -> (i16, i1)
 ```
