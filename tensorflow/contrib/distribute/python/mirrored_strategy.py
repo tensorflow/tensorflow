@@ -73,17 +73,14 @@ class _RequestedStop(Exception):
 
 # TODO(yuefengz): maybe create a common class for those who need to call this
 # _call_for_each_replica.
-def _call_for_each_replica(distribution, fn, *args, **kwargs):
+def _call_for_each_replica(distribution, fn, args, kwargs):
   """Run `fn` in separate threads, once per replica/worker device.
 
   Args:
     distribution: the DistributionStrategy object.
     fn: function to run (will be run once per device, each in its own thread).
-    *args: positional arguments for `fn`
-    **kwargs: keyword arguments for `fn`.
-        `"run_concurrently"`: Boolean indicating whether executions of `fn`
-           can be run concurrently (under eager execution only), defaults to
-           `True`.
+    args: positional arguments for `fn`
+    kwargs: keyword arguments for `fn`.
 
   Returns:
     Merged return value of `fn` across all replicas.
@@ -92,16 +89,12 @@ def _call_for_each_replica(distribution, fn, *args, **kwargs):
     RuntimeError: If fn() calls get_replica_context().merge_call() a different
         number of times from the available devices.
   """
-  run_concurrently = kwargs.pop("run_concurrently", True)
+  # TODO(josh11b): Add this option once we add synchronization to variable
+  # creation. Until then, this is pretty unsafe to use.
+  run_concurrently = False
   if not context.executing_eagerly():
-    # Lots of TF library code isn't thread-safe in graph mode, and
-    # there is little to be gained by turning on multithreading when
-    # constructing a graph.
-    run_concurrently = False
     # Needed for per-thread device, etc. contexts in graph mode.
     ops.get_default_graph().switch_to_thread_local()
-  elif run_concurrently is None:
-    run_concurrently = True
 
   coord = coordinator.Coordinator(clean_stop_exception_types=(_RequestedStop,))
 
@@ -192,7 +185,7 @@ def _reduce_non_distributed_value(distribution, aggregation, value,
     raise ValueError("You are passing a `DistributedValue` to "
                      "`_reduce_non_distributed_value`, which is not allowed.")
 
-  # If the same value is present on all replicas then the PerDevice value will
+  # If the same value is present on all replicas then the PerReplica value will
   # be a single value. We also handle the case when `value` is a single value
   # and equal to 0.
   if value == 0:
@@ -348,8 +341,6 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       specified.
     cross_device_ops: optional, a descedant of `CrossDeviceOps`. If this is not
       set, the `configure` method will try to find the best one.
-    prefetch_on_device: optional boolean to specify whether to prefetch input
-      data to devices.
     auto_shard_dataset: whether to auto-shard the dataset when there are
       multiple workers.
     cross_tower_ops: Deprecated alias for `cross_device_ops`.
@@ -360,14 +351,12 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
                num_gpus=None,
                num_gpus_per_worker=None,
                cross_device_ops=None,
-               prefetch_on_device=None,
                auto_shard_dataset=False,
                cross_tower_ops=None):
     super(MirroredStrategy, self).__init__()
 
     assert not (cross_device_ops and cross_tower_ops)
     self._cross_tower_ops = cross_device_ops or cross_tower_ops
-    self._prefetch_on_device = prefetch_on_device
     self._auto_shard_dataset = auto_shard_dataset
     # Remember num GPUs which might be needed by `configure` method.
     if num_gpus is not None and num_gpus_per_worker is not None:
@@ -402,7 +391,8 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     # TODO(josh11b): Require at least 2 devices?
     self._devices = [device_util.resolve(d) for d in devices]
     self._canonical_device_set = set(self._devices)
-    self._device_index = values.PerDevice({d: i for i, d in enumerate(devices)})
+    self._device_index = values.PerReplica(
+        {d: i for i, d in enumerate(devices)})
 
   def _initialize_multi_worker(self, num_gpus, cluster_spec):
     """Initializes the object for multi-worker training."""
@@ -417,19 +407,19 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     if num_gpus is None:
       raise ValueError("`num_gpus` is required if `cluster_spec` is given.")
     if num_gpus > 0:
-      self._worker_device_map = {
-          worker: [
+      self._worker_devices = [
+          (worker, [
               device_util.canonicalize(worker + "/device:GPU:%d" % gpu)
               for gpu in range(num_gpus)
-          ] for worker in self._workers
-      }
+          ]) for worker in self._workers
+      ]
     else:
-      self._worker_device_map = {
-          worker: [device_util.canonicalize(worker, "/device:CPU:0")]
+      self._worker_devices = [
+          (worker, [device_util.canonicalize(worker, "/device:CPU:0")])
           for worker in self._workers
-      }
+      ]
 
-    devices = nest.flatten(self._worker_device_map)
+    devices = nest.flatten([l for _, l in self._worker_devices])
 
     # Setting `_default_device` will add a device scope in the
     # distribution.scope. We set the default device to the first worker. When
@@ -446,7 +436,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     # TODO(josh11b): Require at least 2 devices?
     self._devices = [device_util.resolve(d) for d in devices]
     self._canonical_device_set = set(self._devices)
-    self._device_index = values.PerDevice(
+    self._device_index = values.PerReplica(
         {d: i for i, d in enumerate(devices)})
 
   def _create_variable(self, next_creator, *args, **kwargs):
@@ -490,12 +480,11 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   def distribute_dataset(self, dataset_fn):
     if self._cluster_spec:
       return values.MultiWorkerDataset(
-          partial(self._call_dataset_fn, dataset_fn), self._worker_device_map,
-          self._prefetch_on_device, self._auto_shard_dataset)
+          partial(self._call_dataset_fn, dataset_fn), self._worker_devices,
+          auto_shard=self._auto_shard_dataset)
     else:
-      return values.PerDeviceDataset(
-          self._call_dataset_fn(dataset_fn), self._devices,
-          self._prefetch_on_device)
+      return values.PerReplicaDataset(
+          self._call_dataset_fn(dataset_fn), self._devices)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   def _run_steps_on_dataset(self, fn, iterator, iterations,
@@ -546,10 +535,10 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     for (name, aggregation) in ctx._last_step_outputs_aggregations.items():  # pylint: disable=protected-access
       output = last_step_tensor_outputs_dict[name]
       # For outputs that have already been aggregated, wrap them in a Mirrored
-      # container, else in a PerDevice container.
+      # container, else in a PerReplica container.
       if aggregation is variables_lib.VariableAggregation.NONE:
         last_step_tensor_outputs_dict[name] = values.regroup(
-            {d: t for d, t in zip(self._devices, output)}, values.PerDevice)
+            {d: t for d, t in zip(self._devices, output)}, values.PerReplica)
       else:
         assert len(output) == 1
         last_step_tensor_outputs_dict[name] = output[0]
@@ -562,8 +551,8 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     return self._get_cross_tower_ops().broadcast(tensor, destinations or
                                                  self._devices)
 
-  def _call_for_each_replica(self, fn, *args, **kwargs):
-    return _call_for_each_replica(self, fn, *args, **kwargs)
+  def _call_for_each_replica(self, fn, args, kwargs):
+    return _call_for_each_replica(self, fn, args, kwargs)
 
   def map(self, map_over, fn, *args, **kwargs):
     # TODO(josh11b): In eager mode, use one thread per device.
@@ -577,8 +566,8 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
                     **values.select_device_mirrored(d, kwargs)))
         index[d] = l
     # TODO(josh11b): Need a values.regroup equivalent that handles MapOutput
-    # in addition to PerDevice data.
-    return values.PerDevice({k: values.MapOutput(v) for k, v in index.items()})
+    # in addition to PerReplica data.
+    return values.PerReplica({k: values.MapOutput(v) for k, v in index.items()})
 
   def configure(self,
                 session_config=None,
@@ -617,9 +606,10 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   def _reduce(self, aggregation, value, destinations):
     assert not isinstance(value, values.Mirrored)
     if not isinstance(value, values.DistributedValues):
-      # This function handles reducing values that are not PerDevice or Mirrored
-      # values. For example, the same value could be present on all replicas in
-      # which case `value` would be a single value or value could be 0.
+      # This function handles reducing values that are not PerReplica or
+      # Mirrored values. For example, the same value could be present on all
+      # replicas in which case `value` would be a single value or value could
+      # be 0.
       return _reduce_non_distributed_value(self, aggregation, value,
                                            destinations)
     if aggregation == variable_scope.VariableAggregation.ONLY_FIRST_REPLICA:
@@ -818,7 +808,7 @@ class MirroredReplicaContext(distribute_lib.ReplicaContext):
   `MirroredStrategy.call_for_each_replica()`).
   """
 
-  def _merge_call(self, fn, *args, **kwargs):
+  def _merge_call(self, fn, args, kwargs):
     """Delegate to the main thread to actually perform merge_call()."""
     t = threading.current_thread()  # a _MirroredReplicaThread
     t.merge_fn = fn
@@ -837,5 +827,9 @@ class MirroredReplicaContext(distribute_lib.ReplicaContext):
 
   @property
   def device(self):
+    raise RuntimeError("Use .devices instead")
+
+  @property
+  def devices(self):
     distribute_lib.require_replica_context(self)
-    return self._distribution_strategy.worker_devices[self._replica_id]
+    return [self._distribution_strategy.worker_devices[self._replica_id]]

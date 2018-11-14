@@ -455,7 +455,7 @@ TEST(ComparisonsTest, LessEqualQuantized) {
 TEST(ComparisonsTest, QuantizedEqualWithBroadcast) {
   const float kMin = -1.f;
   const float kMax = 128.f;
-  std::vector<std::initializer_list<int>> test_shapes = {
+  std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     ComparisonOpModel model({TensorType_UINT8, test_shapes[i], kMin, kMax},
@@ -473,7 +473,7 @@ TEST(ComparisonsTest, QuantizedEqualWithBroadcast) {
 TEST(ComparisonsTest, QuantizedNotEqualWithBroadcast) {
   const float kMin = -1.f;
   const float kMax = 128.f;
-  std::vector<std::initializer_list<int>> test_shapes = {
+  std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     ComparisonOpModel model({TensorType_UINT8, test_shapes[i], kMin, kMax},
@@ -491,7 +491,7 @@ TEST(ComparisonsTest, QuantizedNotEqualWithBroadcast) {
 TEST(ComparisonsTest, QuantizedGreaterWithBroadcast) {
   const float kMin = -1.f;
   const float kMax = 128.f;
-  std::vector<std::initializer_list<int>> test_shapes = {
+  std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     ComparisonOpModel model({TensorType_UINT8, test_shapes[i], kMin, kMax},
@@ -509,7 +509,7 @@ TEST(ComparisonsTest, QuantizedGreaterWithBroadcast) {
 TEST(ComparisonsTest, QuantizedGreaterEqualWithBroadcast) {
   const float kMin = -1.f;
   const float kMax = 128.f;
-  std::vector<std::initializer_list<int>> test_shapes = {
+  std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     ComparisonOpModel model({TensorType_UINT8, test_shapes[i], kMin, kMax},
@@ -527,7 +527,7 @@ TEST(ComparisonsTest, QuantizedGreaterEqualWithBroadcast) {
 TEST(ComparisonsTest, QuantizedLessWithBroadcast) {
   const float kMin = -1.f;
   const float kMax = 128.f;
-  std::vector<std::initializer_list<int>> test_shapes = {
+  std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     ComparisonOpModel model({TensorType_UINT8, test_shapes[i], kMin, kMax},
@@ -545,7 +545,7 @@ TEST(ComparisonsTest, QuantizedLessWithBroadcast) {
 TEST(ComparisonsTest, QuantizedLessEqualWithBroadcast) {
   const float kMin = -1.f;
   const float kMax = 128.f;
-  std::vector<std::initializer_list<int>> test_shapes = {
+  std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     ComparisonOpModel model({TensorType_UINT8, test_shapes[i], kMin, kMax},

@@ -318,13 +318,13 @@ def _set_checkpoint_initializer(variable,
         saveable_objects.append(s)
 
     assert len(saveable_objects) == 1  # Should be only one variable.
-    init_op = saveable_objects[0].restore([restore_op], restored_shapes=None)
+  init_op = saveable_objects[0].restore([restore_op], restored_shapes=None)
 
-    # pylint:disable=protected-access
-    variable._initializer_op = init_op
-    restore_op.set_shape(variable.shape)
-    variable._initial_value = restore_op
-    # pylint:enable=protected-access
+  # pylint:disable=protected-access
+  variable._initializer_op = init_op
+  restore_op.set_shape(variable.shape)
+  variable._initial_value = restore_op
+  # pylint:enable=protected-access
 
 
 def _set_variable_or_list_initializer(variable_or_list, ckpt_file,

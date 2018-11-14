@@ -330,8 +330,8 @@ std::shared_ptr<Node> MakeUnknownNode(Node::Args args) {
   return std::make_shared<Unknown>(std::move(args));
 }
 
-void Model::AddNode(Node::Factory factory, const string& name,
-                    const string& output_name) {
+std::shared_ptr<Node> Model::AddNode(Node::Factory factory, const string& name,
+                                     const string& output_name) {
   // The name captures the sequence of iterators joined by `::`. We use the full
   // sequence as the key in the lookup table, but only the last element of the
   // sequence as the name node.
@@ -357,6 +357,7 @@ void Model::AddNode(Node::Factory factory, const string& name,
     output->add_input(node);
   }
   lookup_table_.insert(std::make_pair(name, node));
+  return node;
 }
 
 void Model::AddProcessingTime(const string& name, int64 delta) {
@@ -441,10 +442,11 @@ void Model::RecordStart(const string& name, bool stop_output) {
   tf_shared_lock l(mu_);
   auto node = gtl::FindOrNull(lookup_table_, name);
   if (node) {
+    int64 now_nanos = Env::Default()->NowNanos();
     if (stop_output && (*node)->output()) {
-      (*node)->output()->record_stop();
+      (*node)->output()->record_stop(now_nanos);
     }
-    (*node)->record_start();
+    (*node)->record_start(now_nanos);
   }
 }
 
@@ -452,9 +454,10 @@ void Model::RecordStop(const string& name, bool start_output) {
   tf_shared_lock l(mu_);
   auto node = gtl::FindOrNull(lookup_table_, name);
   if (node) {
-    (*node)->record_stop();
+    int64 now_nanos = Env::Default()->NowNanos();
+    (*node)->record_stop(now_nanos);
     if (start_output && (*node)->output()) {
-      (*node)->output()->record_start();
+      (*node)->output()->record_start(now_nanos);
     }
   }
 }

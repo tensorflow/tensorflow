@@ -35,6 +35,13 @@ limitations under the License.
 namespace tensorflow {
 class XlaAllocator;
 
+// Struct that represents a possibly-absent Tensor.
+struct OptionalTensor {
+  string name;           // A descriptive name
+  bool present = false;  // Is the tensor present?
+  Tensor value;          // If present, what is the Tensor's value?
+};
+
 // Takes a snapshot of the values of resource variable arguments, whose indices
 // are specified in `variable_indices` argument. We snapshot tensors that back
 // resource variables since concurrent updates may modify the shape, and it is
@@ -139,6 +146,13 @@ class XlaComputationLaunchContext {
                               bool allocate_xla_tensors,
                               bool use_multiple_streams);
 
+  // Builds a XlaCompiler::Argument vector from the arguments to an XlaLaunch
+  // op.
+  static Status BuildXlaCompilerArguments(
+      const std::map<int, Tensor>& constant_args,
+      const std::map<int, OptionalTensor>& variable_args, OpKernelContext* ctx,
+      std::vector<XlaCompiler::Argument>* args);
+
   // Add all inputs within `ctx` as XLA arguments (returned by arguments()).
   // `variables` is a map from TensorFlow argument number to resource variable.
   //
@@ -222,17 +236,6 @@ class XlaTensorBuffer : public TensorBuffer {
   size_t actual_size_;
   Allocator* allocator_;
 };
-
-// Exposed in this header file for microbenchmarking purposes, but this is an
-// internal implementation detail.
-namespace internal {
-// Return the 'index''th subtree of the given ShapedBuffer as a
-// ScopedShapedBuffer. The returned ScopedShapedBuffer takes ownership of the
-// subtree, and sets the input's buffer pointers to nullptr for the subtree.
-xla::ScopedShapedBuffer ExtractSubShapedBuffer(
-    xla::ShapedBuffer* shaped_buffer, int index,
-    xla::DeviceMemoryAllocator* allocator);
-}  // namespace internal
 
 }  // namespace tensorflow
 

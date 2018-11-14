@@ -27,6 +27,7 @@ from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -48,6 +49,7 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import queue_runner_impl
+from tensorflow.python.training import rmsprop
 
 
 def _initialized_session(config=None):
@@ -67,11 +69,30 @@ def get_linear_model_column_var(column, name='linear_model'):
                             name + '/' + column.name)[0]
 
 
+class BaseFeatureColumnForTests(fc.FeatureColumn):
+  """A base FeatureColumn useful to avoid boiler-plate in tests.
+
+  Provides dummy implementations for abstract methods that raise ValueError in
+  order to avoid re-defining all abstract methods for each test sub-class.
+  """
+
+  @property
+  def parents(self):
+    raise ValueError('Should not use this method.')
+
+  @classmethod
+  def _from_config(cls, config, custom_objects=None, columns_by_name=None):
+    raise ValueError('Should not use this method.')
+
+  def _get_config(self):
+    raise ValueError('Should not use this method.')
+
+
 class LazyColumnTest(test.TestCase):
 
   def test_transformations_called_once(self):
 
-    class TransformCounter(fc.FeatureColumn):
+    class TransformCounter(BaseFeatureColumnForTests):
 
       def __init__(self):
         self.num_transform = 0
@@ -103,7 +124,7 @@ class LazyColumnTest(test.TestCase):
 
   def test_returns_transform_output(self):
 
-    class Transformer(fc.FeatureColumn):
+    class Transformer(BaseFeatureColumnForTests):
 
       @property
       def _is_v2_column(self):
@@ -128,7 +149,7 @@ class LazyColumnTest(test.TestCase):
 
   def test_does_not_pollute_given_features_dict(self):
 
-    class Transformer(fc.FeatureColumn):
+    class Transformer(BaseFeatureColumnForTests):
 
       @property
       def _is_v2_column(self):
@@ -162,7 +183,7 @@ class LazyColumnTest(test.TestCase):
 
   def test_not_supported_feature_column(self):
 
-    class NotAProperColumn(fc.FeatureColumn):
+    class NotAProperColumn(BaseFeatureColumnForTests):
 
       @property
       def _is_v2_column(self):
@@ -409,6 +430,28 @@ class NumericColumnTest(test.TestCase):
         self.assertAllClose([[0.], [0.]], predictions.eval())
         sess.run(price_var.assign([[10.]]))
         self.assertAllClose([[10.], [50.]], predictions.eval())
+
+  def test_serialization(self):
+
+    def _increment_two(input_tensor):
+      return input_tensor + 2.
+
+    price = fc.numeric_column('price', normalizer_fn=_increment_two)
+    self.assertEqual(['price'], price.parents)
+
+    config = price._get_config()
+    self.assertEqual({
+        'key': 'price',
+        'shape': (1,),
+        'default_value': None,
+        'dtype': 'float32',
+        'normalizer_fn': '_increment_two'
+    }, config)
+
+    self.assertEqual(
+        price,
+        fc.NumericColumn._from_config(
+            config, custom_objects={'_increment_two': _increment_two}))
 
 
 class BucketizedColumnTest(test.TestCase):
@@ -725,6 +768,35 @@ class BucketizedColumnTest(test.TestCase):
         sess.run(bias.assign([1.]))
         self.assertAllClose([[11.], [21.], [41.], [51.]], predictions.eval())
 
+  def test_serialization(self):
+    price = fc.numeric_column('price', shape=[2])
+    bucketized_price = fc.bucketized_column(price, boundaries=[0, 2, 4, 6])
+    self.assertEqual([price], bucketized_price.parents)
+
+    config = bucketized_price._get_config()
+    self.assertEqual({
+        'source_column': {
+            'class_name': 'NumericColumn',
+            'config': {
+                'key': 'price',
+                'shape': (2,),
+                'default_value': None,
+                'dtype': 'float32',
+                'normalizer_fn': None
+            }
+        },
+        'boundaries': (0, 2, 4, 6)
+    }, config)
+
+    new_bucketized_price = fc.BucketizedColumn._from_config(config)
+    self.assertEqual(bucketized_price, new_bucketized_price)
+    self.assertIsNot(price, new_bucketized_price.source_column)
+
+    new_bucketized_price = fc.BucketizedColumn._from_config(
+        config, columns_by_name={price.name: price})
+    self.assertEqual(bucketized_price, new_bucketized_price)
+    self.assertIs(price, new_bucketized_price.source_column)
+
 
 class HashedCategoricalColumnTest(test.TestCase):
 
@@ -950,6 +1022,20 @@ class HashedCategoricalColumnTest(test.TestCase):
         # 'marlo' -> 3: wire_var[3] = 4
         # 'skywalker' -> 2, 'omar' -> 2: wire_var[2] + wire_var[2] = 3+3 = 6
         self.assertAllClose(((4.,), (6.,)), predictions.eval())
+
+  def test_serialization(self):
+    wire_column = fc.categorical_column_with_hash_bucket('wire', 4)
+    self.assertEqual(['wire'], wire_column.parents)
+
+    config = wire_column._get_config()
+    self.assertEqual({
+        'key': 'wire',
+        'hash_bucket_size': 4,
+        'dtype': 'string'
+    }, config)
+
+    self.assertEqual(wire_column,
+                     fc.HashedCategoricalColumn._from_config(config))
 
 
 class CrossedColumnTest(test.TestCase):
@@ -1200,7 +1286,8 @@ class CrossedColumnTest(test.TestCase):
 
   def test_linear_model_with_weights(self):
 
-    class _TestColumnWithWeights(fc.CategoricalColumn):
+    class _TestColumnWithWeights(BaseFeatureColumnForTests,
+                                 fc.CategoricalColumn):
       """Produces sparse IDs and sparse weights."""
 
       @property
@@ -1292,7 +1379,8 @@ class CrossedColumnTest(test.TestCase):
 
   def test_old_linear_model_with_weights(self):
 
-    class _TestColumnWithWeights(fc.CategoricalColumn,
+    class _TestColumnWithWeights(BaseFeatureColumnForTests,
+                                 fc.CategoricalColumn,
                                  fc_old._CategoricalColumn):
       """Produces sparse IDs and sparse weights."""
 
@@ -1399,6 +1487,47 @@ class CrossedColumnTest(test.TestCase):
         sess.run(bias.assign((.1,)))
         self.assertAllClose(((3.1,), (14.1,)), predictions.eval())
 
+  def test_serialization(self):
+    a = fc.numeric_column('a', dtype=dtypes.int32, shape=(2,))
+    b = fc.bucketized_column(a, boundaries=(0, 1))
+    crossed = fc.crossed_column([b, 'c'], hash_bucket_size=5, hash_key=5)
+
+    self.assertEqual([b, 'c'], crossed.parents)
+
+    config = crossed._get_config()
+    self.assertEqual({
+        'hash_bucket_size':
+            5,
+        'hash_key':
+            5,
+        'keys': ({
+            'config': {
+                'boundaries': (0, 1),
+                'source_column': {
+                    'config': {
+                        'dtype': 'int32',
+                        'default_value': None,
+                        'key': 'a',
+                        'normalizer_fn': None,
+                        'shape': (2,)
+                    },
+                    'class_name': 'NumericColumn'
+                }
+            },
+            'class_name': 'BucketizedColumn'
+        }, 'c')
+    }, config)
+
+    new_crossed = fc.CrossedColumn._from_config(config)
+    self.assertEqual(crossed, new_crossed)
+    self.assertIsNot(b, new_crossed.keys[0])
+
+    new_crossed = fc.CrossedColumn._from_config(
+        config, columns_by_name={b.name: b})
+    self.assertEqual(crossed, new_crossed)
+    self.assertIs(b, new_crossed.keys[0])
+
+
 
 class LinearModelTest(test.TestCase):
 
@@ -1413,7 +1542,7 @@ class LinearModelTest(test.TestCase):
 
   def test_should_be_dense_or_categorical_column(self):
 
-    class NotSupportedColumn(fc.FeatureColumn):
+    class NotSupportedColumn(BaseFeatureColumnForTests):
 
       @property
       def _is_v2_column(self):
@@ -1445,6 +1574,14 @@ class LinearModelTest(test.TestCase):
       fc.LinearModel(
           feature_columns=[fc.numeric_column('a'),
                            fc.numeric_column('a')])
+
+  def test_not_dict_input_features(self):
+    price = fc.numeric_column('price')
+    with ops.Graph().as_default():
+      features = [[1.], [5.]]
+      model = fc.LinearModel([price])
+      with self.assertRaisesRegexp(ValueError, 'We expected a dictionary here'):
+        predictions = model(features)
 
   def test_dense_bias(self):
     price = fc.numeric_column('price')
@@ -1498,7 +1635,8 @@ class LinearModelTest(test.TestCase):
   def test_dense_and_sparse_column(self):
     """When the column is both dense and sparse, uses sparse tensors."""
 
-    class _DenseAndSparseColumn(fc.DenseColumn, fc.CategoricalColumn):
+    class _DenseAndSparseColumn(BaseFeatureColumnForTests, fc.DenseColumn,
+                                fc.CategoricalColumn):
 
       @property
       def _is_v2_column(self):
@@ -1816,6 +1954,8 @@ class LinearModelTest(test.TestCase):
           'sparse_feature': [['a'], ['x']],
       }
       model(features)
+      for var in model.variables:
+        self.assertTrue(isinstance(var, variables_lib.RefVariable))
       variable_names = [var.name for var in model.variables]
       self.assertItemsEqual([
           'linear_model/dense_feature_bucketized/weights:0',
@@ -1824,6 +1964,23 @@ class LinearModelTest(test.TestCase):
           'linear_model/sparse_feature_embedding/weights:0',
           'linear_model/bias_weights:0',
       ], variable_names)
+
+  def test_fit_and_predict(self):
+    columns = [fc.numeric_column('a')]
+
+    model = fc.LinearModel(columns)
+    model.compile(
+        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        loss='categorical_crossentropy',
+        metrics=['accuracy'])
+
+    x = {'a': np.random.random((10, 1))}
+    y = np.random.randint(20, size=(10, 1))
+    y = keras.utils.to_categorical(y, num_classes=20)
+    model.fit(x, y, epochs=1, batch_size=5)
+    model.fit(x, y, epochs=1, batch_size=5)
+    model.evaluate(x, y, batch_size=5)
+    model.predict(x, batch_size=5)
 
   def test_static_batch_size_mismatch(self):
     price1 = fc.numeric_column('price1')
@@ -2063,7 +2220,8 @@ class OldLinearModelTest(test.TestCase):
 
   def test_should_be_dense_or_categorical_column(self):
 
-    class NotSupportedColumn(fc.FeatureColumn, fc_old._FeatureColumn):
+    class NotSupportedColumn(BaseFeatureColumnForTests, fc.FeatureColumn,
+                             fc_old._FeatureColumn):
 
       @property
       def _is_v2_column(self):
@@ -2159,8 +2317,9 @@ class OldLinearModelTest(test.TestCase):
   def test_dense_and_sparse_column(self):
     """When the column is both dense and sparse, uses sparse tensors."""
 
-    class _DenseAndSparseColumn(fc.DenseColumn, fc.CategoricalColumn,
-                                fc_old._DenseColumn, fc_old._CategoricalColumn):
+    class _DenseAndSparseColumn(BaseFeatureColumnForTests, fc.DenseColumn,
+                                fc.CategoricalColumn, fc_old._DenseColumn,
+                                fc_old._CategoricalColumn):
 
       @property
       def _is_v2_column(self):
@@ -4046,7 +4205,7 @@ class FunctionalInputLayerTest(test.TestCase):
 
 class MakeParseExampleSpecTest(test.TestCase):
 
-  class _TestFeatureColumn(fc.FeatureColumn,
+  class _TestFeatureColumn(BaseFeatureColumnForTests,
                            collections.namedtuple('_TestFeatureColumn',
                                                   ('parse_spec'))):
 
@@ -4605,6 +4764,28 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         # 'skywalker' -> 3, 'omar' -> 0: wire_var[3] + wire_var[0] = 4+1 = 5
         self.assertAllClose(((3.,), (5.,)), predictions.eval())
 
+  def test_serialization(self):
+    wire_column = fc.categorical_column_with_vocabulary_file(
+        key='wire',
+        vocabulary_file=self._wire_vocabulary_file_name,
+        vocabulary_size=self._wire_vocabulary_size,
+        num_oov_buckets=1)
+
+    self.assertEqual(['wire'], wire_column.parents)
+
+    config = wire_column._get_config()
+    self.assertEqual({
+        'default_value': -1,
+        'dtype': 'string',
+        'key': 'wire',
+        'num_oov_buckets': 1,
+        'vocabulary_file': self._wire_vocabulary_file_name,
+        'vocabulary_size': 3
+    }, config)
+
+    self.assertEqual(wire_column,
+                     fc.VocabularyFileCategoricalColumn._from_config(config))
+
 
 class VocabularyListCategoricalColumnTest(test.TestCase):
 
@@ -5006,6 +5187,27 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         # 'skywalker' -> 3, 'omar' -> 0: wire_var[3] + wire_var[0] = 4+1 = 5
         self.assertAllClose(((3.,), (5.,)), predictions.eval())
 
+  def test_serialization(self):
+    wire_column = fc.categorical_column_with_vocabulary_list(
+        key='aaa',
+        vocabulary_list=('omar', 'stringer', 'marlo'),
+        num_oov_buckets=1)
+
+    self.assertEqual(['aaa'], wire_column.parents)
+
+    config = wire_column._get_config()
+    self.assertEqual({
+        'default_value': -1,
+        'dtype': 'string',
+        'key': 'aaa',
+        'num_oov_buckets': 1,
+        'vocabulary_list': ('omar', 'stringer', 'marlo')
+    }, config)
+
+    self.assertEqual(wire_column,
+                     fc.VocabularyListCategoricalColumn._from_config(config))
+
+
 
 class IdentityCategoricalColumnTest(test.TestCase):
 
@@ -5260,6 +5462,20 @@ class IdentityCategoricalColumnTest(test.TestCase):
         # weight_var[2] + weight_var[1] = 3+2 = 5
         self.assertAllClose(((1.,), (5.,)), predictions.eval())
 
+  def test_serialization(self):
+    column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
+
+    self.assertEqual(['aaa'], column.parents)
+
+    config = column._get_config()
+    self.assertEqual({
+        'default_value': None,
+        'key': 'aaa',
+        'number_buckets': 3
+    }, config)
+
+    self.assertEqual(column, fc.IdentityCategoricalColumn._from_config(config))
+
 
 class TransformFeaturesTest(test.TestCase):
 
@@ -5289,7 +5505,7 @@ class TransformFeaturesTest(test.TestCase):
   def test_column_order(self):
     """When the column is both dense and sparse, uses sparse tensors."""
 
-    class _LoggerColumn(fc.FeatureColumn):
+    class _LoggerColumn(BaseFeatureColumnForTests):
 
       def __init__(self, name):
         self._name = name
@@ -5578,6 +5794,34 @@ class IndicatorColumnTest(test.TestCase):
       with _initialized_session():
         self.assertAllClose([[0., 1., 1., 0.]], net.eval())
 
+  def test_serialization(self):
+    parent = fc.categorical_column_with_identity('animal', num_buckets=4)
+    animal = fc.indicator_column(parent)
+
+    self.assertEqual([parent], animal.parents)
+
+    config = animal._get_config()
+    self.assertEqual({
+        'categorical_column': {
+            'class_name': 'IdentityCategoricalColumn',
+            'config': {
+                'key': 'animal',
+                'default_value': None,
+                'number_buckets': 4
+            }
+        }
+    }, config)
+
+    new_animal = fc.IndicatorColumn._from_config(config)
+    self.assertEqual(animal, new_animal)
+    self.assertIsNot(parent, new_animal.categorical_column)
+
+    new_animal = fc.IndicatorColumn._from_config(
+        config, columns_by_name={parent.name: parent})
+    self.assertEqual(animal, new_animal)
+    self.assertIs(parent, new_animal.categorical_column)
+
+
 
 class _TestStateManager(fc.StateManager):
 
@@ -5592,6 +5836,7 @@ class _TestStateManager(fc.StateManager):
                       shape,
                       dtype=None,
                       trainable=True,
+                      use_resource=True,
                       initializer=None):
     if feature_column not in self._all_variables:
       self._all_variables[feature_column] = {}
@@ -5604,6 +5849,7 @@ class _TestStateManager(fc.StateManager):
           shape=shape,
           dtype=dtype,
           trainable=self._trainable and trainable,
+          use_resource=use_resource,
           initializer=initializer)
       var_dict[name] = var
       return var
@@ -6182,6 +6428,8 @@ class EmbeddingColumnTest(test.TestCase):
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
     self.assertItemsEqual(('feature_layer/aaa_embedding/embedding_weights:0',),
                           tuple([v.name for v in global_vars]))
+    for v in global_vars:
+      self.assertTrue(isinstance(v, variables_lib.RefVariable))
     trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
     self.assertItemsEqual(('feature_layer/aaa_embedding/embedding_weights:0',),
                           tuple([v.name for v in trainable_vars]))
@@ -6461,6 +6709,56 @@ class EmbeddingColumnTest(test.TestCase):
         # sum(embeddings * linear_weights)
         # = [4*7 + 6*11, 4*2 + 6*3.5, 4*0 + 6*0, 4*3 + 6*5] = [94, 29, 0, 42]
         self.assertAllClose(((94.,), (29.,), (0.,), (42.,)), predictions.eval())
+
+  def test_serialization(self):
+
+    def _initializer(shape, dtype, partition_info):
+      del shape, dtype, partition_info
+      return ValueError('Not expected to be called')
+
+    # Build columns.
+    categorical_column = fc.categorical_column_with_identity(
+        key='aaa', num_buckets=3)
+    embedding_column = fc.embedding_column(
+        categorical_column, dimension=2, initializer=_initializer)
+
+    self.assertEqual([categorical_column], embedding_column.parents)
+
+    config = embedding_column._get_config()
+    self.assertEqual({
+        'categorical_column': {
+            'class_name': 'IdentityCategoricalColumn',
+            'config': {
+                'number_buckets': 3,
+                'key': 'aaa',
+                'default_value': None
+            }
+        },
+        'ckpt_to_load_from': None,
+        'combiner': 'mean',
+        'dimension': 2,
+        'initializer': '_initializer',
+        'max_norm': None,
+        'tensor_name_in_ckpt': None,
+        'trainable': True
+    }, config)
+
+    custom_objects = {
+        '_initializer': _initializer,
+    }
+
+    new_embedding_column = fc.EmbeddingColumn._from_config(
+        config, custom_objects=custom_objects)
+    self.assertEqual(embedding_column, new_embedding_column)
+    self.assertIsNot(categorical_column,
+                     new_embedding_column.categorical_column)
+
+    new_embedding_column = fc.EmbeddingColumn._from_config(
+        config,
+        custom_objects=custom_objects,
+        columns_by_name={categorical_column.name: categorical_column})
+    self.assertEqual(embedding_column, new_embedding_column)
+    self.assertIs(categorical_column, new_embedding_column.categorical_column)
 
 
 class SharedEmbeddingColumnTest(test.TestCase):
@@ -6964,6 +7262,8 @@ class SharedEmbeddingColumnTest(test.TestCase):
     self.assertItemsEqual(
         ['aaa_bbb_shared_embedding:0', 'ccc_ddd_shared_embedding:0'],
         tuple([v.name for v in global_vars]))
+    for v in global_vars:
+      self.assertTrue(isinstance(v, variables_lib.RefVariable))
     trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
     if trainable:
       self.assertItemsEqual(
@@ -6981,6 +7281,26 @@ class SharedEmbeddingColumnTest(test.TestCase):
 
   def test_feature_layer_no_trainable(self):
     self._test_feature_layer(trainable=False)
+
+  def test_serialization(self):
+
+    def _initializer(shape, dtype, partition_info):
+      del shape, dtype, partition_info
+      return ValueError('Not expected to be called')
+
+    categorical_column_a = fc.categorical_column_with_identity(
+        key='aaa', num_buckets=3)
+    categorical_column_b = fc.categorical_column_with_identity(
+        key='bbb', num_buckets=3)
+    embedding_column_a, embedding_column_b = fc.shared_embedding_columns_v2(
+        [categorical_column_a, categorical_column_b],
+        dimension=2,
+        initializer=_initializer)
+
+    self.assertEqual([categorical_column_a], embedding_column_a.parents)
+    self.assertEqual([categorical_column_b], embedding_column_b.parents)
+    # TODO(rohanj): Add tests for (from|get)_config once implemented
+
 
 
 class WeightedCategoricalColumnTest(test.TestCase):
@@ -7429,6 +7749,137 @@ class WeightedCategoricalColumnTest(test.TestCase):
         self.assertAllClose(((.5,), (3.2,)), predictions.eval())
 
   # TODO(ptucker): Add test with embedding of weighted categorical.
+
+  def test_serialization(self):
+    categorical_column = fc.categorical_column_with_identity(
+        key='ids', num_buckets=3)
+    column = fc.weighted_categorical_column(
+        categorical_column=categorical_column, weight_feature_key='weight')
+
+    self.assertEqual([categorical_column, 'weight'], column.parents)
+
+    config = column._get_config()
+    self.assertEqual({
+        'categorical_column': {
+            'config': {
+                'key': 'ids',
+                'number_buckets': 3,
+                'default_value': None
+            },
+            'class_name': 'IdentityCategoricalColumn'
+        },
+        'dtype': 'float32',
+        'weight_feature_key': 'weight'
+    }, config)
+
+    self.assertEqual(column, fc.WeightedCategoricalColumn._from_config(config))
+
+    new_column = fc.WeightedCategoricalColumn._from_config(
+        config, columns_by_name={categorical_column.name: categorical_column})
+    self.assertEqual(column, new_column)
+    self.assertIs(categorical_column, new_column.categorical_column)
+
+
+class FeatureColumnForSerializationTest(BaseFeatureColumnForTests):
+
+  @property
+  def _is_v2_column(self):
+    return True
+
+  @property
+  def name(self):
+    return 'BadParentsFeatureColumn'
+
+  def transform_feature(self, transformation_cache, state_manager):
+    return 'Output'
+
+  @property
+  def parse_example_spec(self):
+    pass
+
+
+class SerializationTest(test.TestCase):
+  """Tests for serialization, deserialization helpers."""
+
+  def test_serialize_non_feature_column(self):
+
+    class NotAFeatureColumn(object):
+      pass
+
+    with self.assertRaisesRegexp(ValueError, 'is not a FeatureColumn'):
+      fc.serialize_feature_column(NotAFeatureColumn())
+
+  def test_deserialize_invalid_config(self):
+    with self.assertRaisesRegexp(ValueError, 'Improper config format: {}'):
+      fc.deserialize_feature_column({})
+
+  def test_deserialize_config_missing_key(self):
+    config_missing_key = {
+        'config': {
+            # Dtype is missing and should cause a failure.
+            # 'dtype': 'int32',
+            'default_value': None,
+            'key': 'a',
+            'normalizer_fn': None,
+            'shape': (2,)
+        },
+        'class_name': 'NumericColumn'
+    }
+    with self.assertRaisesRegexp(ValueError, 'Invalid config:'):
+      fc.deserialize_feature_column(config_missing_key)
+
+  def test_deserialize_invalid_class(self):
+    with self.assertRaisesRegexp(
+        ValueError, 'Unknown feature_column_v2: NotExistingFeatureColumnClass'):
+      fc.deserialize_feature_column({
+          'class_name': 'NotExistingFeatureColumnClass',
+          'config': {}
+      })
+
+  def test_deserialization_deduping(self):
+    price = fc.numeric_column('price')
+    bucketized_price = fc.bucketized_column(price, boundaries=[0, 1])
+
+    configs = fc.serialize_feature_columns([price, bucketized_price])
+
+    deserialized_feature_columns = fc.deserialize_feature_columns(configs)
+    self.assertEqual(2, len(deserialized_feature_columns))
+    new_price = deserialized_feature_columns[0]
+    new_bucketized_price = deserialized_feature_columns[1]
+
+    # Ensure these are not the original objects:
+    self.assertIsNot(price, new_price)
+    self.assertIsNot(bucketized_price, new_bucketized_price)
+    # But they are equivalent:
+    self.assertEquals(price, new_price)
+    self.assertEquals(bucketized_price, new_bucketized_price)
+
+    # Check that deduping worked:
+    self.assertIs(new_bucketized_price.source_column, new_price)
+
+  def deserialization_custom_objects(self):
+    # Note that custom_objects is also tested extensively above per class, this
+    # test ensures that the public wrappers also handle it correctly.
+    def _custom_fn(input_tensor):
+      return input_tensor + 42.
+
+    price = fc.numeric_column('price', normalizer_fn=_custom_fn)
+
+    configs = fc.serialize_feature_columns([price])
+
+    deserialized_feature_columns = fc.deserialize_feature_columns(configs)
+
+    self.assertEqual(1, len(deserialized_feature_columns))
+    new_price = deserialized_feature_columns[0]
+
+    # Ensure these are not the original objects:
+    self.assertIsNot(price, new_price)
+    # But they are equivalent:
+    self.assertEquals(price, new_price)
+
+    # Check that normalizer_fn points to the correct function.
+    self.assertIs(new_price.normalizer_fn, _custom_fn)
+
 
 if __name__ == '__main__':
   test.main()

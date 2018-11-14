@@ -147,6 +147,9 @@ class ShapeIndexView {
 
   string ToString() const;
 
+  // Returns true if this shape index starts with 'prefix'.
+  bool StartsWith(ShapeIndexView prefix) const;
+
  private:
   absl::Span<const int64> indices_;
 };

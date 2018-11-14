@@ -69,6 +69,26 @@ class ReduceTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(ValueError, "must be at most rank 1"):
       math_ops.reduce_sum(x, axis)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testReduceVar(self):
+    x = np.array([[0, 0, 0], [0, 0, 0]], "float32")
+    self.assertAllClose(self.evaluate(math_ops.reduce_variance(x)), 0)
+    self.assertAllClose(
+        self.evaluate(math_ops.reduce_variance(x, axis=0)), [0, 0, 0])
+
+    x = np.array([[0, 2, 1, 1], [1, 2, 0, 1]], "float32")
+    self.assertAllClose(self.evaluate(math_ops.reduce_variance(x)), 0.5)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testReduceStd(self):
+    x = np.array([[0, 0, 0], [0, 0, 0]], "float32")
+    self.assertAllClose(self.evaluate(math_ops.reduce_std(x)), 0)
+    self.assertAllClose(
+        self.evaluate(math_ops.reduce_std(x, axis=0)), [0, 0, 0])
+
+    x = np.array([[1, 2, 1, 1], [1, 1, 0, 1]], "float32")
+    self.assertAllClose(self.evaluate(math_ops.reduce_std(x)), 0.5)
+
 
 class LogSumExpTest(test_util.TensorFlowTestCase):
 

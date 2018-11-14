@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_TENSOR_H_
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_H_
 
+#include <cstdint>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -109,6 +110,76 @@ class Tensor {
   /// IsInitialized() returning True. See the Tensor() documentation
   /// for details.
   explicit Tensor(DataType type);
+
+ private:
+  // A tag type for selecting the `Tensor` constructor overload that creates a
+  // scalar tensor in host memory.
+  struct host_scalar_tag {};
+
+  class HostScalarTensorBufferBase;
+  template <typename T>
+  class HostScalarTensorBuffer;
+
+  // Creates a tensor with the given scalar `value` in CPU memory.
+  template <typename T>
+  Tensor(T value, host_scalar_tag tag);
+
+ public:
+  // A series of specialized constructors for scalar tensors in host memory.
+  //
+  // NOTE: The `Variant` host-scalar constructor is not defined, because Variant
+  // is implicitly constructible from many different types, and this causes
+  // ambiguities with some compilers.
+  explicit Tensor(float scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(double scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(int32 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(uint32 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(uint16 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(uint8 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(int16 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(int8 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(string scalar_value)
+      : Tensor(std::move(scalar_value), host_scalar_tag{}) {}
+  explicit Tensor(complex64 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(complex128 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(int64 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(uint64 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(bool scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(qint8 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(quint8 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(qint16 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(quint16 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(qint32 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(bfloat16 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(Eigen::half scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(ResourceHandle scalar_value)
+      : Tensor(std::move(scalar_value), host_scalar_tag{}) {}
+
+  // NOTE: The `const char*` host-scalar constructor is provided as a
+  // convenience because otherwise passing a string literal would surprisingly
+  // construct a DT_BOOL tensor.
+  explicit Tensor(const char* scalar_value)
+      : Tensor(string(scalar_value), host_scalar_tag{}) {}
 
   /// Copy constructor.
   Tensor(const Tensor& other);
@@ -797,6 +868,46 @@ inline Tensor::Tensor(const Tensor& other)
 inline Tensor::Tensor(Tensor&& other)
     : shape_(std::move(other.shape())), buf_(other.buf_) {
   other.buf_ = nullptr;
+}
+
+class Tensor::HostScalarTensorBufferBase : public TensorBuffer {
+ public:
+  void FillAllocationDescription(AllocationDescription* proto) const final;
+};
+
+// `Tensor::HostScalarTensorBuffer<T>` is a specialized `TensorBuffer`
+// implementation for storing a single scalar value.
+//
+// TODO(mrry): Evaluate other compilers or approaches to aligning the value
+// so that it can be used directly as a tensor value. For example, in a C++17
+// future, we could use `alignas(EIGEN_MAX_ALIGN_BYTES)` to store the value
+// inline in this object to save an allocation. However, this is not currently
+// widely supported in our compilers.
+template <typename T>
+class Tensor::HostScalarTensorBuffer : public HostScalarTensorBufferBase {
+ public:
+  HostScalarTensorBuffer(T&& value)
+      : data_(reinterpret_cast<T*>(cpu_allocator()->AllocateRaw(
+            EIGEN_MAX_ALIGN_BYTES, sizeof(value)))) {
+    if (is_simple_type<T>::value) {
+      *data_ = value;
+    } else {
+      new (data_) T(std::move(value));
+    }
+  }
+  ~HostScalarTensorBuffer() { cpu_allocator()->Deallocate(data_, 1); }
+  void* data() const final { return const_cast<T*>(data_); }
+  size_t size() const final { return sizeof(*data_); }
+  TensorBuffer* root_buffer() final { return this; }
+
+ private:
+  T* const data_;
+};
+
+template <typename T>
+Tensor::Tensor(T value, host_scalar_tag tag)
+    : buf_(new HostScalarTensorBuffer<T>(std::move(value))) {
+  set_dtype(DataTypeToEnum<T>::value);
 }
 
 inline Tensor& Tensor::operator=(Tensor&& other) {

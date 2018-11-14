@@ -3,6 +3,7 @@ licenses(["notice"])  # Apache 2.0
 package(
     default_visibility = [
         "//learning/deepmind/public/wavenet/python:__subpackages__",
+        "//learning/deepmind/research/alphastar:__subpackages__",
         "//learning/tfx:__subpackages__",
         "//tensorflow:internal",
     ],

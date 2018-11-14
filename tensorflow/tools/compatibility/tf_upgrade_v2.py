@@ -30,51 +30,24 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
   def __init__(self):
     # Maps from a function name to a dictionary that describes how to
     # map from an old argument keyword to the new argument keyword.
-    self.function_keyword_renames = {}
+    self.function_keyword_renames = {
+        "tf.convert_to_tensor": {
+            "preferred_dtype": "dtype_hint"
+        },
+    }
 
     # Mapping from function to the new name of the function
-    self.function_renames = renames_v2.renames
+    self.symbol_renames = renames_v2.renames
     # pylint: disable=line-too-long
-    self.function_renames.update({
-        "tf.FixedLengthRecordReader": "tf.compat.v1.FixedLengthRecordReader",
-        "tf.IdentityReader": "tf.compat.v1.IdentityReader",
-        "tf.LMDBReader": "tf.compat.v1.LMDBReader",
-        "tf.ReaderBase": "tf.compat.v1.ReaderBase",
-        "tf.TFRecordReader": "tf.compat.v1.TFRecordReader",
-        "tf.TextLineReader": "tf.compat.v1.TextLineReader",
-        "tf.WholeFileReader": "tf.compat.v1.WholeFileReader",
-        "tf.saved_model.builder.SavedModelBuilder": "tf.compat.v1.saved_model.Builder",
-        "tf.saved_model.loader.load": "tf.compat.v1.saved_model.load",
-        "tf.saved_model.main_op.main_op": "tf.compat.v1.saved_model.main_op",
-        "tf.saved_model.main_op.main_op_with_restore": "tf.compat.v1.saved_model.main_op_with_restore",
-        "tf.saved_model.simple_save": "tf.compat.v1.saved_model.simple_save",
-        "tf.saved_model.utils.build_tensor_info": "tf.compat.v1.saved_model.build_tensor_info",
-        "tf.saved_model.utils.get_tensor_from_tensor_info": "tf.compat.v1.saved_model.get_tensor_from_tensor_info",
-        "tf.train.QueueRunner": "tf.compat.v1.QueueRunner",
-        "tf.train.add_queue_runner": "tf.compat.v1.add_queue_runner",
-        "tf.train.batch": "tf.compat.v1.train.batch",
-        "tf.train.batch_join": "tf.compat.v1.train.batch_join",
-        "tf.train.input_producer": "tf.compat.v1.train.input_producer",
-        "tf.train.limit_epochs": "tf.compat.v1.train.limit_epochs",
-        "tf.train.maybe_batch": "tf.compat.v1.train.maybe_batch",
-        "tf.train.maybe_batch_join": "tf.compat.v1.train.maybe_batch_join",
-        "tf.train.maybe_shuffle_batch": "tf.compat.v1.train.maybe_shuffle_batch",
-        "tf.train.maybe_shuffle_batch_join": "tf.compat.v1.train.maybe_shuffle_batch_join",
-        "tf.train.queue_runner.QueueRunner": "tf.compat.v1.queue_runner.QueueRunner",
-        "tf.train.queue_runner.add_queue_runner": "tf.compat.v1.queue_runner.add_queue_runner",
-        "tf.train.queue_runner.start_queue_runners": "tf.compat.v1.queue_runner.start_queue_runners",
-        "tf.train.range_input_producer": "tf.compat.v1.train.range_input_producer",
-        "tf.train.shuffle_batch": "tf.compat.v1.train.shuffle_batch",
-        "tf.train.shuffle_batch_join": "tf.compat.v1.train.shuffle_batch_join",
-        "tf.train.slice_input_producer": "tf.compat.v1.train.slice_input_producer",
-        "tf.train.string_input_producer": "tf.compat.v1.train.string_input_producer",
-        "tf.train.start_queue_runners": "tf.compat.v1.start_queue_runners",
+    # Add additional renames not in renames_v2.py here.
+    self.symbol_renames.update({
     })
     # pylint: enable=line-too-long
 
-    # TODO(amitpatankar): Fix the function rename script
-    # to handle constants without hardcoding.
-    self.function_renames["QUANTIZED_DTYPES"] = "dtypes.QUANTIZED_DTYPES"
+    # For custom behavior and if auto-generate rename in renames_v2.py
+    # is incorrect, add the op name here to exclude it from renames_v2.py.
+    excluded_renames = [
+    ]
 
     # Variables that should be changed to functions.
     self.change_to_function = {}
@@ -82,7 +55,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Functions that were reordered should be changed to the new keyword args
     # for safety, if positional arguments are used. If you have reversed the
     # positional arguments yourself, this could do the wrong thing.
-    self.function_reorders = {}
+    self.function_reorders = {
+        "tf.convert_to_tensor": ["value", "dtype", "preferred_dtype", "name"],
+        "tf.argmin": ["input", "axis", "output_type", "name"],
+        "tf.argmax": ["input", "axis", "output_type", "name"],
+        "tf.boolean_mask": ["tensor", "mask", "name", "axis"],
+    }
 
     # Specially handled functions.
     self.function_handle = {}
@@ -93,6 +71,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "unchanged during eager execution (returns a callable like "
         "before). The converter cannot detect and fix this reliably, so "
         "you need to inspect this usage manually.\n"
+    )
+
+    # TODO(b/118888586): add default value change to update script.
+    default_loss_reduction_changed = (
+        "WARNING: default value of loss_reduction has been changed to "
+        "SUM_OVER_BATCH_SIZE.\n"
     )
 
     # Function warnings. <function name> placeholder inside warnings will be
@@ -107,6 +91,13 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.train.cosine_decay_restarts": decay_function_comment,
         "tf.train.linear_cosine_decay": decay_function_comment,
         "tf.train.noisy_linear_cosine_decay": decay_function_comment,
+        "tf.estimator.LinearClassifier": default_loss_reduction_changed,
+    }
+    # Right now we can't have both a rename and a warning.
+    self.symbol_renames = {
+        name: new_name
+        for name, new_name in self.symbol_renames.items()
+        if name not in self.function_warnings and name not in excluded_renames
     }
 
 

@@ -64,7 +64,7 @@ def main(argv=None):
   return _googletest.main(argv)
 
 
-@tf_export('test.get_temp_dir')
+@tf_export(v1=['test.get_temp_dir'])
 def get_temp_dir():
   """Returns a temporary directory for use during tests.
 
@@ -76,7 +76,7 @@ def get_temp_dir():
   return _googletest.GetTempDir()
 
 
-@tf_export('test.test_src_dir_path')
+@tf_export(v1=['test.test_src_dir_path'])
 def test_src_dir_path(relative_path):
   """Creates an absolute test srcdir path given a relative path.
 

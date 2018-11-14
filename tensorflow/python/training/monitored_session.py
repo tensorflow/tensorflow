@@ -346,7 +346,7 @@ def _create_monitored_session_with_worker_context(worker_context,  # pylint: dis
       stop_grace_period_secs=stop_grace_period_secs)
 
 
-@tf_export('train.MonitoredTrainingSession')
+@tf_export(v1=['train.MonitoredTrainingSession'])
 def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              is_chief=True,
                              checkpoint_dir=None,

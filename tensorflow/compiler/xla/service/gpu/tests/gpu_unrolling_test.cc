@@ -85,7 +85,7 @@ TEST_F(GpuUnrollingTest, UnrollFourTimes) {
 TEST_F(GpuUnrollingTest, UnrollDefaultTimes) {
   // The default unrolling factor is 4.
   HloModuleConfig config;
-  config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+  config.set_debug_options(GetDebugOptionsFromFlags());
   auto hlo_module = ParseHloString(kAddModule, config).ValueOrDie();
 
   CompileAndVerifyIr(std::move(hlo_module),

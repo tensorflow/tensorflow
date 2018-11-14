@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "absl/memory/memory.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
 #include "tensorflow/core/platform/logging.h"
@@ -23,9 +23,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-std::unique_ptr<HloModule> GpuCodegenTest::CreateNewModuleWithFTZ(bool ftz) {
+std::unique_ptr<HloModule> GpuCodegenTest::CreateNewUnverifiedModuleWithFTZ(
+    bool ftz) {
   HloModuleConfig config;
-  auto debug_options = legacy_flags::GetDebugOptionsFromFlags();
+  auto debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_ftz(ftz);
   debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
   // TODO(b/38354253): Change tests to use Parameters instead of Constants.

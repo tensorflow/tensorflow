@@ -649,7 +649,7 @@ class LinearOperator(object):
         "  Requires conversion to a dense matrix and O(N^3) operations.")
     if self._can_use_cholesky():
       return math_ops.exp(self.log_abs_determinant())
-    return linalg_ops.matrix_determinant(self._matrix)
+    return linalg_ops.matrix_determinant(self.to_dense())
 
   def determinant(self, name="det"):
     """Determinant for every batch member.
@@ -677,7 +677,7 @@ class LinearOperator(object):
     if self._can_use_cholesky():
       diag = array_ops.matrix_diag_part(linalg_ops.cholesky(self.to_dense()))
       return 2 * math_ops.reduce_sum(math_ops.log(diag), reduction_indices=[-1])
-    _, log_abs_det = linalg.slogdet(self._matrix)
+    _, log_abs_det = linalg.slogdet(self.to_dense())
     return log_abs_det
 
   def log_abs_determinant(self, name="log_abs_det"):

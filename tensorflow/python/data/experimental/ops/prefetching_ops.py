@@ -138,7 +138,7 @@ class _PrefetchToDeviceIterator(object):
       ret = remote_iterator.get_next()
       return nest.flatten(sparse.serialize_sparse_tensors(ret))
 
-    self._prefetch_fn = _prefetch_fn.get_concrete_function()
+    self._prefetch_fn = _prefetch_fn._get_concrete_function_internal()  # pylint: disable=protected-access
 
     iterator_device = ged_ops.experimental_iterator_get_device(
         self._input_iterator._iterator_resource)
@@ -237,7 +237,7 @@ class _PrefetchToDeviceEagerIterator(iterator_ops.EagerIterator):
       ret = remote_iterator.get_next()
       return nest.flatten(sparse.serialize_sparse_tensors(ret))
 
-    self._prefetch_fn = _prefetch_fn.get_concrete_function()
+    self._prefetch_fn = _prefetch_fn._get_concrete_function_internal()  # pylint: disable=protected-access
 
     with ops.device(device):
       self._buffering_resource = function_buffering_resource(
@@ -422,7 +422,8 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
           [gen_dataset_ops.make_iterator(ds_variant, resource)]):
         return gen_dataset_ops.iterator_to_string_handle(resource)
 
-    init_func_concrete = _init_func.get_concrete_function()
+    init_func_concrete = _init_func._get_concrete_function_internal()  # pylint: disable=protected-access
+
     @function.defun()
     def _remote_init_func():
       return functional_ops.remote_call(
@@ -431,7 +432,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
           Tout=[dtypes.string],
           f=init_func_concrete)
 
-    self._init_func = _remote_init_func.get_concrete_function()
+    self._init_func = _remote_init_func._get_concrete_function_internal()  # pylint: disable=protected-access
     self._init_captured_args = self._init_func.captured_inputs
 
     @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
@@ -450,7 +451,8 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
       ret = iterator.get_next()
       return nest.flatten(sparse.serialize_sparse_tensors(ret))
 
-    next_func_concrete = _next_func.get_concrete_function()
+    next_func_concrete = _next_func._get_concrete_function_internal()  # pylint: disable=protected-access
+
     @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _remote_next_func(string_handle):
       return functional_ops.remote_call(
@@ -460,7 +462,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
           Tout=self._flat_output_types,
           f=next_func_concrete)
 
-    self._next_func = _remote_next_func.get_concrete_function()
+    self._next_func = _remote_next_func._get_concrete_function_internal()  # pylint: disable=protected-access
     self._next_captured_args = self._next_func.captured_inputs
 
     @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
@@ -481,7 +483,8 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
               iterator_resource, ignore_lookup_error=True)]):
         return array_ops.constant(0, dtypes.int64)
 
-    finalize_func_concrete = _finalize_func.get_concrete_function()
+    finalize_func_concrete = _finalize_func._get_concrete_function_internal()  # pylint: disable=protected-access
+
     @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _remote_finalize_func(string_handle):
       return functional_ops.remote_call(
@@ -491,7 +494,8 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
           Tout=[dtypes.int64],
           f=finalize_func_concrete)
 
-    self._finalize_func = _remote_finalize_func.get_concrete_function()
+    self._finalize_func = _remote_finalize_func._get_concrete_function_internal(  # pylint: disable=protected-access
+    )
     self._finalize_captured_args = self._finalize_func.captured_inputs
 
     g = ops.get_default_graph()

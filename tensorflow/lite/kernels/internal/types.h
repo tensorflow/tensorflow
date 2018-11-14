@@ -852,7 +852,6 @@ struct FullyConnectedParams {
 };
 
 struct GatherParams {
-  int16 input_rank;
   int16 axis;
 };
 

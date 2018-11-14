@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
@@ -755,6 +756,12 @@ Status ShapeVerifier::HandleAfterAll(HloInstruction* token) {
   return CheckShape(token, ShapeInference::InferAfterAllShape(operand_shapes));
 }
 
+Status ShapeVerifier::HandleGetDimensionSize(HloInstruction* get_size) {
+  return CheckShape(
+      get_size, ShapeInference::InferGetDimensionSizeShape(
+                    get_size->operand(0)->shape(), get_size->dimensions(0)));
+}
+
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
                                  const Shape& inferred_shape) {
   // If allow_mixed_precision_ is false, check if there are operands with
@@ -1328,6 +1335,15 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
         << "shape: " << shape << ", operand->shape(): " << shape
         << ", dimensions: {" << absl::StrJoin(transpose->dimensions(), ", ")
         << "}";
+    return Status::OK();
+  }
+
+  Status HandleCrossReplicaSum(HloInstruction* crs) override {
+    if (crs->all_reduce_id().has_value()) {
+      TF_RET_CHECK(crs->all_reduce_id().value() > 0)
+          << "All reduce id must be greater than 0 for "
+          << crs->ToShortString();
+    }
     return Status::OK();
   }
 

@@ -721,7 +721,7 @@ class Model(Network):
       inputs = (self._feed_inputs +
                 self._feed_targets +
                 self._feed_sample_weights)
-      if self.uses_learning_phase and not isinstance(K.learning_phase(), int):
+      if not isinstance(K.learning_phase(), int):
         inputs += [K.learning_phase()]
 
       with K.name_scope('training'):
@@ -766,7 +766,7 @@ class Model(Network):
       inputs = (self._feed_inputs +
                 self._feed_targets +
                 self._feed_sample_weights)
-      if self.uses_learning_phase and not isinstance(K.learning_phase(), int):
+      if not isinstance(K.learning_phase(), int):
         inputs += [K.learning_phase()]
       updates = self.state_updates
       # Add stateful metrics updates.
@@ -794,7 +794,7 @@ class Model(Network):
     if not hasattr(self, 'predict_function'):
       self.predict_function = None
     if self.predict_function is None:
-      if self.uses_learning_phase and not isinstance(K.learning_phase(), int):
+      if not isinstance(K.learning_phase(), int):
         inputs = self._feed_inputs + [K.learning_phase()]
       else:
         inputs = self._feed_inputs
@@ -807,6 +807,17 @@ class Model(Network):
           updates=self.state_updates,
           name='predict_function',
           **kwargs)
+
+  def _get_execution_function(self, mode):
+    if mode == 'train':
+      self._make_fit_function()
+      return self._fit_function
+    if mode == 'test':
+      self._make_eval_function()
+      return self._eval_function
+    if mode == 'predict':
+      self._make_predict_function()
+      return self.predict_function
 
   def _get_iterator_get_next_tensors(self, iterator):
     get_next_op = self._iterator_get_next.get(iterator, None)
@@ -882,7 +893,7 @@ class Model(Network):
       x_shape = first_x_value.shape
       if batch_size is None:
         batch_size = distributed_training_utils.get_batch_size(
-            self._distribution_strategy.num_replicas, x_shape[0], steps)
+            self._distribution_strategy.num_replicas_in_sync, x_shape[0], steps)
       # We need to use the drop_remainder argument to allow for a static
       # input shape which is required for TPUs.
       drop_remainder = self._distribution_strategy.require_static_shapes
@@ -1310,8 +1321,8 @@ class Model(Network):
         # We assert that the first layer is a FeatureLayer.
         if not training_utils.is_feature_layer(self.layers[0]):
           raise ValueError('Passing a dictionary input to a Sequential Model '
-                           'which doesnt have FeatureLayer as the first layer '
-                           'is an error')
+                           'which doesn\'t have FeatureLayer as the first layer'
+                           ' is an error.')
         input_shape = (None,)
         self.build(input_shape=input_shape)
       else:
@@ -1641,7 +1652,9 @@ class Model(Network):
           validation_steps=validation_steps)
     else:
       return training_arrays.fit_loop(
-          self, x, y,
+          self,
+          x,
+          y,
           sample_weights=sample_weights,
           batch_size=batch_size,
           epochs=epochs,
@@ -1861,12 +1874,6 @@ class Model(Network):
       batch_size = 32
 
     if self._distribution_strategy:
-      # Turn off prefetching since this is currently not deterministic. Once
-      # b/112498930 is fixed we can turn it back on.
-      # `_prefetch_on_device` is currently a property of only
-      # `MirroredStrategy`.
-      if hasattr(self._distribution_strategy, '_prefetch_on_device'):
-        self._distribution_strategy._prefetch_on_device = False  # pylint: disable=protected-access
       distributed_training_utils.validate_inputs(
           x, None, self._distribution_strategy)
       first_x_value = nest.flatten(x)[0]
@@ -1886,9 +1893,6 @@ class Model(Network):
     elif self._distribution_strategy:
       results = training_distributed.predict_loop(
           self, x, verbose=verbose, steps=steps)
-      # Turn prefetching back on since we turned it off previously.
-      if hasattr(self._distribution_strategy, '_prefetch_on_device'):
-        self._distribution_strategy._prefetch_on_device = True  # pylint: disable=protected-access
       return results
     else:
       return training_arrays.predict_loop(
@@ -1900,32 +1904,28 @@ class Model(Network):
     Arguments:
         x: Input data. It could be:
           - A Numpy array (or array-like), or a list of arrays
-            (in case the model has multiple inputs).
+              (in case the model has multiple inputs).
           - A TensorFlow tensor, or a list of tensors
-            (in case the model has multiple inputs).
+              (in case the model has multiple inputs).
           - A dict mapping input names to the corresponding array/tensors,
-            if the model has named inputs.
+              if the model has named inputs.
           - A `tf.data` dataset or a dataset iterator.
-        y: Target data. Like the input data `x`,
-          it could be either Numpy array(s) or TensorFlow tensor(s).
-          It should be consistent with `x` (you cannot have Numpy inputs and
-          tensor targets, or inversely). If `x` is a dataset or a
-          dataset iterator, `y` should not be specified
+        y: Target data. Like the input data `x`, it could be either Numpy
+          array(s) or TensorFlow tensor(s). It should be consistent with `x`
+          (you cannot have Numpy inputs and tensor targets, or inversely). If
+          `x` is a dataset or a dataset iterator, `y` should not be specified
           (since targets will be obtained from the iterator).
         sample_weight: Optional array of the same length as x, containing
-            weights to apply to the model's loss for each sample.
-            In the case of temporal data, you can pass a 2D array
-            with shape (samples, sequence_length),
-            to apply a different weight to every timestep of every sample.
-            In this case you should make sure to specify
-            sample_weight_mode="temporal" in compile(). This argument is not
-            supported when `x` is a dataset or a dataset iterator.
-        class_weight: Optional dictionary mapping
-            class indices (integers) to
-            a weight (float) to apply to the model's loss for the samples
-            from this class during training.
-            This can be useful to tell the model to "pay more attention" to
-            samples from an under-represented class.
+          weights to apply to the model's loss for each sample. In the case of
+          temporal data, you can pass a 2D array with shape (samples,
+          sequence_length), to apply a different weight to every timestep of
+          every sample. In this case you should make sure to specify
+          sample_weight_mode="temporal" in compile(). This argument is not
+          supported when `x` is a dataset or a dataset iterator.
+        class_weight: Optional dictionary mapping class indices (integers) to a
+          weight (float) to apply to the model's loss for the samples from this
+          class during training. This can be useful to tell the model to "pay
+          more attention" to samples from an under-represented class.
 
     Returns:
         Scalar training loss
@@ -1948,7 +1948,7 @@ class Model(Network):
       outputs = training_eager.train_on_batch(
           self, x, y, sample_weights=sample_weights)
     else:
-      if self.uses_learning_phase and not isinstance(K.learning_phase(), int):
+      if not isinstance(K.learning_phase(), int):
         ins = x + y + sample_weights + [1]
       else:
         ins = x + y + sample_weights
@@ -2007,7 +2007,7 @@ class Model(Network):
       outputs = training_eager.test_on_batch(
           self, x, y, sample_weights=sample_weights)
     else:
-      if self.uses_learning_phase and not isinstance(K.learning_phase(), int):
+      if not isinstance(K.learning_phase(), int):
         ins = x + y + sample_weights + [0]
       else:
         ins = x + y + sample_weights
@@ -2052,7 +2052,7 @@ class Model(Network):
       return self(inputs)  # pylint: disable=not-callable
 
     if not context.executing_eagerly():
-      if self.uses_learning_phase and not isinstance(K.learning_phase(), int):
+      if not isinstance(K.learning_phase(), int):
         ins = inputs + [0]
       else:
         ins = inputs

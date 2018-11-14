@@ -19,9 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import deque
-from collections import Iterable
-from collections import OrderedDict
+import collections
 import copy
 import csv
 import io
@@ -68,7 +66,8 @@ def configure_callbacks(callbacks,
                         samples=None,
                         validation_steps=None,
                         verbose=1,
-                        count_mode='steps'):
+                        count_mode='steps',
+                        mode='train'):
   """Configures callbacks for use in various training loops.
 
   Arguments:
@@ -88,21 +87,30 @@ def configure_callbacks(callbacks,
       validation_steps: Number of batches to run per validation epoch.
       verbose: int, 0 or 1. Keras logging verbosity to pass to ProgbarLogger.
       count_mode: One of 'steps' or 'samples'. Per-batch or per-sample count.
+      mode: String. One of 'train', 'test', or 'predict'. Which loop mode to
+        configure callbacks for.
 
   Returns:
       Instance of CallbackList used to control all Callbacks.
   """
+  # Check if callbacks have already been configured.
+  if isinstance(callbacks, CallbackList):
+    return callbacks
 
-  # Add additional callbacks
-  model.history = History()
-  stateful_metric_names = None
-  if hasattr(model, 'metrics_names'):
-    stateful_metric_names = model.metrics_names[1:]  # Exclude `loss`
-  callbacks = [BaseLogger(stateful_metrics=stateful_metric_names)
-              ] + (callbacks or []) + [model.history]
-  if verbose:
-    callbacks.append(
-        ProgbarLogger(count_mode, stateful_metrics=stateful_metric_names))
+  if not callbacks:
+    callbacks = []
+
+  # Add additional callbacks during training.
+  if mode == 'train':
+    model.history = History()
+    stateful_metric_names = None
+    if hasattr(model, 'metrics_names'):
+      stateful_metric_names = model.metrics_names[1:]  # Exclude `loss`
+    callbacks = [BaseLogger(stateful_metrics=stateful_metric_names)
+                ] + (callbacks or []) + [model.history]
+    if verbose:
+      callbacks.append(
+          ProgbarLogger(count_mode, stateful_metrics=stateful_metric_names))
   callback_list = CallbackList(callbacks)
 
   # Set callback model
@@ -118,7 +126,7 @@ def configure_callbacks(callbacks,
   callback_metrics = []
   # When we have deferred build scenario with iterator input, we will compile
   # when we standardize first batch of data.
-  if model._is_compiled:  # pylint: disable=protected-access
+  if mode != 'predict' and model._is_compiled:  # pylint: disable=protected-access
     callback_metrics = copy.copy(model.metrics_names)
     if do_validation:
       callback_metrics += ['val_' + n for n in model.metrics_names]
@@ -137,6 +145,7 @@ def configure_callbacks(callbacks,
   callback_list.set_params(callback_params)
 
   # Pass validation data to callbacks
+  # TODO(omalleyt): remove this once val hooks are ready.
   if not val_inputs:
     val_data = []
   elif _is_generator_like(val_inputs):
@@ -145,7 +154,7 @@ def configure_callbacks(callbacks,
     val_data = val_inputs + val_targets
     if val_sample_weights:
       val_data += val_sample_weights
-    if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
+    if not isinstance(K.learning_phase(), int):
       val_data += [0.]
   for cbk in callbacks:
     cbk.validation_data = val_data
@@ -175,6 +184,12 @@ class CallbackList(object):
     self.queue_length = queue_length
     self.params = {}
     self.model = None
+    self._reset_batch_timing()
+
+  def _reset_batch_timing(self):
+    self._delta_t_batch = 0.
+    self._delta_ts = collections.defaultdict(
+        lambda: collections.deque([], maxlen=self.queue_length))
 
   def append(self, callback):
     self.callbacks.append(callback)
@@ -189,72 +204,96 @@ class CallbackList(object):
     for callback in self.callbacks:
       callback.set_model(model)
 
-  def on_epoch_begin(self, epoch, logs=None):
+  def _call_batch_hook(self, mode, hook, batch, logs=None):
+    """Helper function for all batch_{begin | end} methods."""
+    # TODO(omalleyt): add batch hooks for test/predict.
+    if mode != 'train':
+      return
+
+    hook_name = 'on_{mode}_batch_{hook}'.format(mode=mode, hook=hook)
+    if hook == 'begin':
+      self._t_enter_batch = time.time()
+    if hook == 'end':
+      # Batch is ending, calculate batch time.
+      self._delta_t_batch = time.time() - self._t_enter_batch
+
+    logs = logs or {}
+    t_before_callbacks = time.time()
+    for callback in self.callbacks:
+      batch_hook = getattr(callback, hook_name)
+      batch_hook(batch, logs)
+    self._delta_ts[hook_name].append(time.time() - t_before_callbacks)
+
+    delta_t_median = np.median(self._delta_ts[hook_name])
+    if (self._delta_t_batch > 0. and
+        delta_t_median > 0.95 * self._delta_t_batch and delta_t_median > 0.1):
+      logging.warning(
+          'Method (%s) is slow compared '
+          'to the batch update (%f). Check your callbacks.', hook_name,
+          delta_t_median)
+
+  def _call_begin_hook(self, mode):
+    """Helper function for on_{train|test|predict}_begin methods."""
+    # TODO(omalleyt): add test/predict methods.
+    if mode == 'train':
+      self.on_train_begin()
+
+  def _call_end_hook(self, mode):
+    """Helper function for on_{train|test|predict}_end methods."""
+    # TODO(omalleyt): add test/predict methods.
+    if mode == 'train':
+      self.on_train_end()
+
+  def on_batch_begin(self, batch, logs=None):
+    self._call_batch_hook('train', 'begin', batch, logs=logs)
+
+  def on_batch_end(self, batch, logs=None):
+    self._call_batch_hook('train', 'end', batch, logs=logs)
+
+  def on_epoch_begin(self, epoch, logs=None, mode='train'):
     """Called at the start of an epoch.
 
     Arguments:
         epoch: integer, index of epoch.
         logs: dictionary of logs.
+        mode: One of 'train'/'test'/'predict'
     """
-    logs = logs or {}
-    for callback in self.callbacks:
-      callback.on_epoch_begin(epoch, logs)
-    self._delta_t_batch = 0.
-    self._delta_ts_batch_begin = deque([], maxlen=self.queue_length)
-    self._delta_ts_batch_end = deque([], maxlen=self.queue_length)
+    if mode == 'train':
+      logs = logs or {}
+      for callback in self.callbacks:
+        callback.on_epoch_begin(epoch, logs)
+    self._reset_batch_timing()
 
-  def on_epoch_end(self, epoch, logs=None):
+  def on_epoch_end(self, epoch, logs=None, mode='train'):
     """Called at the end of an epoch.
 
     Arguments:
         epoch: integer, index of epoch.
         logs: dictionary of logs.
+        mode: One of 'train'/'test'/'predict'
     """
-    logs = logs or {}
-    for callback in self.callbacks:
-      callback.on_epoch_end(epoch, logs)
+    if mode == 'train':
+      logs = logs or {}
+      for callback in self.callbacks:
+        callback.on_epoch_end(epoch, logs)
 
-  def on_batch_begin(self, batch, logs=None):
-    """Called right before processing a batch.
+  def on_train_batch_begin(self, batch, logs=None):
+    """Called at the beginning of a training batch in `fit` methods.
 
     Arguments:
         batch: integer, index of batch within the current epoch.
         logs: dictionary of logs.
     """
-    logs = logs or {}
-    t_before_callbacks = time.time()
-    for callback in self.callbacks:
-      callback.on_batch_begin(batch, logs)
-    self._delta_ts_batch_begin.append(time.time() - t_before_callbacks)
-    delta_t_median = np.median(self._delta_ts_batch_begin)
-    if (self._delta_t_batch > 0. and
-        delta_t_median > 0.95 * self._delta_t_batch and delta_t_median > 0.1):
-      logging.warning('Method on_batch_begin() is slow compared '
-                      'to the batch update (%f). Check your callbacks.',
-                      delta_t_median)
-    self._t_enter_batch = time.time()
+    self._call_batch_hook('train', 'begin', batch, logs=logs)
 
-  def on_batch_end(self, batch, logs=None):
-    """Called at the end of a batch.
+  def on_train_batch_end(self, batch, logs=None):
+    """Called at the end of a training batch in `fit` methods.
 
     Arguments:
         batch: integer, index of batch within the current epoch.
         logs: dictionary of logs.
     """
-    logs = logs or {}
-    if not hasattr(self, '_t_enter_batch'):
-      self._t_enter_batch = time.time()
-    self._delta_t_batch = time.time() - self._t_enter_batch
-    t_before_callbacks = time.time()
-    for callback in self.callbacks:
-      callback.on_batch_end(batch, logs)
-    self._delta_ts_batch_end.append(time.time() - t_before_callbacks)
-    delta_t_median = np.median(self._delta_ts_batch_end)
-    if (self._delta_t_batch > 0. and
-        (delta_t_median > 0.95 * self._delta_t_batch and delta_t_median > 0.1)):
-      logging.warning('Method on_batch_end() is slow compared '
-                      'to the batch update (%f). Check your callbacks.',
-                      delta_t_median)
+    self._call_batch_hook('train', 'end', batch, logs=logs)
 
   def on_train_begin(self, logs=None):
     """Called at the beginning of training.
@@ -329,6 +368,14 @@ class Callback(object):
 
   def on_batch_end(self, batch, logs=None):
     pass
+
+  def on_train_batch_begin(self, batch, logs=None):
+    # For backwards compatibility
+    self.on_batch_begin(batch, logs=logs)
+
+  def on_train_batch_end(self, batch, logs=None):
+    # For backwards compatibility
+    self.on_batch_end(batch, logs=logs)
 
   def on_train_begin(self, logs=None):
     pass
@@ -432,18 +479,19 @@ class ProgbarLogger(Callback):
     self.epochs = self.params['epochs']
 
   def on_epoch_begin(self, epoch, logs=None):
+    self.seen = 0
+    if self.use_steps:
+      self.target = self.params['steps']
+    else:
+      self.target = self.params['samples']
+
     if self.verbose:
-      print('Epoch %d/%d' % (epoch + 1, self.epochs))
-      if self.use_steps:
-        target = self.params['steps']
-      else:
-        target = self.params['samples']
-      self.target = target
+      if self.epochs > 1:
+        print('Epoch %d/%d' % (epoch + 1, self.epochs))
       self.progbar = Progbar(
           target=self.target,
           verbose=self.verbose,
           stateful_metrics=self.stateful_metrics)
-    self.seen = 0
 
   def on_batch_begin(self, batch, logs=None):
     if self.seen < self.target:
@@ -1191,7 +1239,7 @@ class TensorBoard(Callback):
 
           feed_dict.update({self.batch_id: i, self.step: step})
 
-          if self.model.uses_learning_phase:
+          if not isinstance(K.learning_phase(), int):
             feed_dict[K.learning_phase()] = False
 
           self.sess.run(self.assign_embeddings, feed_dict=feed_dict)
@@ -1385,7 +1433,7 @@ class CSVLogger(Callback):
       is_zero_dim_ndarray = isinstance(k, np.ndarray) and k.ndim == 0
       if isinstance(k, six.string_types):
         return k
-      elif isinstance(k, Iterable) and not is_zero_dim_ndarray:
+      elif isinstance(k, collections.Iterable) and not is_zero_dim_ndarray:
         return '"[%s]"' % (', '.join(map(str, k)))
       else:
         return k
@@ -1413,7 +1461,7 @@ class CSVLogger(Callback):
       if self.append_header:
         self.writer.writeheader()
 
-    row_dict = OrderedDict({'epoch': epoch})
+    row_dict = collections.OrderedDict({'epoch': epoch})
     row_dict.update((key, handle_value(logs[key])) for key in self.keys)
     self.writer.writerow(row_dict)
     self.csv_file.flush()

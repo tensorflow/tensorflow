@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -59,20 +59,15 @@ string CanonicalPlatformName(const string& name) {
 
 /* static */ StatusOr<std::vector<se::Platform*>>
 PlatformUtil::GetSupportedPlatforms() {
-  se::MultiPlatformManager::PlatformMap platform_map;
-  se::port::Status platforms_status = se::MultiPlatformManager::WithPlatforms(
-      [&platform_map](se::MultiPlatformManager::PlatformMap* map) {
-        platform_map = *map;
-        return se::port::Status::OK();
-      });
-  if (platform_map.empty()) {
+  std::vector<se::Platform*> all_platforms =
+      se::MultiPlatformManager::AllPlatforms();
+  if (all_platforms.empty()) {
     LOG(WARNING) << "no executor platforms available: platform map is empty";
   }
 
   // Gather all platforms which have an XLA compiler.
   std::vector<se::Platform*> platforms;
-  for (auto& platform_pair : platform_map) {
-    auto* platform = platform_pair.second;
+  for (se::Platform* platform : all_platforms) {
     auto compiler_status = Compiler::GetForPlatform(platform);
     if (compiler_status.ok()) {
       platforms.push_back(platform);
@@ -222,8 +217,8 @@ PlatformUtil::GetStreamExecutors(se::Platform* platform) {
     // fix the number of devices to one.  However we do let the user override
     // this behavior to help run tests on the host that run models in parallel
     // across multiple devices.
-    device_count = legacy_flags::GetDebugOptionsFromFlags()
-                       .xla_force_host_platform_device_count();
+    device_count =
+        GetDebugOptionsFromFlags().xla_force_host_platform_device_count();
   }
   std::vector<se::StreamExecutor*> stream_executors(device_count, nullptr);
   VLOG(1) << "Initializing devices";

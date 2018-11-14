@@ -368,17 +368,14 @@ def get_input_batch_params(first_x_value, batch_size, distribution_strategy):
   if not num_batches:
     raise ValueError('Please specify a batch_size that is smaller than'
                      'the number of input samples %d.' % first_x_value.shape[0])
-  # TODO(anjalisridhar): TPU currently supports using the num_replicas property.
-  # We might want to look into implementing worker_devices. In multi worker
-  # strategy, perhaps num_replicas works better?
-  steps = num_batches // distribution_strategy.num_replicas
+  steps = num_batches // distribution_strategy.num_replicas_in_sync
   if not steps:
     # TODO(anjalisridhar): Number of replicas in the error message may not
     # convey what we want to the user. Is there another terminology that we can
     # use that is consistent across different strategies?
     raise ValueError('The number of batches %d is smaller than the number '
                      'of replicas %d used for DistributionStrategy. ' %
-                     (num_batches, distribution_strategy.num_replicas))
+                     (num_batches, distribution_strategy.num_replicas_in_sync))
   return steps
 
 
@@ -496,7 +493,7 @@ def _get_var_for_numpy(distribution_strategy, input_array):
                                 input_var.dtype.size
 
   # Calculate number of elements we want to copy per slice.
-  batch_size_per_slice = np.ceil((64 << 20) / byte_size_per_batch_element)
+  batch_size_per_slice = int(np.ceil((64 << 20) / byte_size_per_batch_element))
 
   # Copy slices of the above size starting at 0, except the last slice will be
   # smaller.

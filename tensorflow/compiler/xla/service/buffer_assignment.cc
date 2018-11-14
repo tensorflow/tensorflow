@@ -641,7 +641,7 @@ Status BufferAssignment::ComputeSummaryStats() {
   bool schedule_complete = true;
   for (const auto& computation : module_->computations()) {
     if (!computation->IsFusionComputation()) {
-      const std::vector<const HloInstruction*>* sequence =
+      const HloInstructionSequence* sequence =
           liveness_->hlo_ordering().SequentialOrder(*computation);
       if (sequence == nullptr) {
         schedule_complete = false;
@@ -1180,7 +1180,7 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       const HloComputation* computation = pair.first;
       const flat_hash_set<const LogicalBuffer*>& buffers_to_assign =
           pair.second;
-      const std::vector<const HloInstruction*>* instruction_sequence =
+      const HloInstructionSequence* instruction_sequence =
           hlo_ordering.SequentialOrder(*computation);
       CHECK(instruction_sequence != nullptr) << computation->name();
       schedule.set_sequence(computation, *instruction_sequence);
@@ -1215,7 +1215,7 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       const HloComputation* computation = pair.first;
       const flat_hash_set<const LogicalBuffer*>& buffers_to_assign =
           pair.second;
-      const std::vector<const HloInstruction*>* instruction_sequence =
+      const HloInstructionSequence* instruction_sequence =
           hlo_ordering.SequentialOrder(*computation);
       CHECK(instruction_sequence != nullptr) << computation->name();
       auto color_map = SplitBuffersByColor(buffers_to_assign);
@@ -1230,7 +1230,7 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         TF_ASSIGN_OR_RETURN(
             const HeapSimulator::Result result,
             HeapSimulator::Run(get_heap_algorithm(alignment), *computation,
-                               HloInstructionSequence(*instruction_sequence),
+                               *instruction_sequence,
                                assignment->points_to_analysis(),
                                assignment->buffer_size_, options));
         AssignBuffersFromHeapSimulator(result, assignment,

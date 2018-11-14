@@ -31,6 +31,7 @@ import six
 from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.contrib.tpu.python.tpu import tensor_tracer
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import error_handling
 from tensorflow.contrib.tpu.python.tpu import session_support
@@ -106,6 +107,15 @@ ops.register_proto_function(
     proto_type=variable_pb2.VariableDef,
     to_proto=resource_variable_ops._to_proto_fn,  # pylint: disable=protected-access
     from_proto=resource_variable_ops._from_proto_fn)  # pylint: disable=protected-access
+
+
+def _is_iterable(obj):
+  """A Python 2 and 3 compatible util to check whether `obj` is iterable."""
+  try:
+    iter(obj)
+    return True
+  except TypeError:
+    return False
 
 
 def _create_global_step(graph):
@@ -1317,9 +1327,15 @@ class _ModelFnWrapper(object):
 
       captured_training_hooks.capture(estimator_spec.training_hooks)
 
+      tracing_ops = []
+      if tensor_tracer.TensorTracer.is_enabled():
+        tt = tensor_tracer.TensorTracer()
+        loss, tracing_ops = tt.trace_tpu(ops.get_default_graph(), loss,
+                                         self._ctx.num_replicas)
+
       # We must run train_op to update the variables prior to running the
       # outfeed.
-      with ops.control_dependencies([train_op]):
+      with ops.control_dependencies([train_op]+tracing_ops):
         host_call_outfeed_ops = []
         if (isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)  # pylint: disable=protected-access
             and estimator_spec.host_call is not None):
@@ -2250,8 +2266,7 @@ class TPUEstimator(estimator_lib.Estimator):
         # Only fetching `tpu_tensors_on_cpu` does not trigger
         # TPU computation and blocks, so we add the control dependency here.
         control_inputs = (
-            tpu_tensors_on_cpu if isinstance(tpu_tensors_on_cpu,
-                                             (list, tuple)) else
+            tpu_tensors_on_cpu if _is_iterable(tpu_tensors_on_cpu) else
             (tpu_tensors_on_cpu,))
         with ops.control_dependencies(control_inputs):
           new_tensors.append(array_ops.identity(t))

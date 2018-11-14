@@ -40,8 +40,8 @@ public final class InterpreterTest {
   private static final File MODEL_FILE =
       new File("tensorflow/lite/java/src/testdata/add.bin");
 
-  private static final File MOBILENET_MODEL_FILE =
-      new File("tensorflow/lite/java/src/testdata/mobilenet.tflite.bin");
+  private static final File MULTIPLE_INPUTS_MODEL_FILE =
+      new File("tensorflow/lite/testdata/multi_add.bin");
 
   private static final File FLEX_MODEL_FILE =
       new File("tensorflow/lite/testdata/multi_add_flex.bin");
@@ -167,20 +167,29 @@ public final class InterpreterTest {
 
   @Test
   public void testRunForMultipleInputsOutputs() {
-    Interpreter interpreter = new Interpreter(MODEL_FILE);
-    float[] oneD = {1.23f, 6.54f, 7.81f};
-    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
-    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
-    float[][][][] fourD = {threeD, threeD};
-    Object[] inputs = {fourD};
-    float[][][][] parsedOutputs = new float[2][8][8][3];
+    Interpreter interpreter = new Interpreter(MULTIPLE_INPUTS_MODEL_FILE);
+    assertThat(interpreter.getInputTensorCount()).isEqualTo(4);
+    assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+    assertThat(interpreter.getInputTensor(1).dataType()).isEqualTo(DataType.FLOAT32);
+    assertThat(interpreter.getInputTensor(2).dataType()).isEqualTo(DataType.FLOAT32);
+    assertThat(interpreter.getInputTensor(3).dataType()).isEqualTo(DataType.FLOAT32);
+    assertThat(interpreter.getOutputTensorCount()).isEqualTo(2);
+    assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+    assertThat(interpreter.getOutputTensor(1).dataType()).isEqualTo(DataType.FLOAT32);
+
+    float[] input0 = {1.23f};
+    float[] input1 = {2.43f};
+    Object[] inputs = {input0, input1, input0, input1};
+    float[] parsedOutput0 = new float[1];
+    float[] parsedOutput1 = new float[1];
     Map<Integer, Object> outputs = new HashMap<>();
-    outputs.put(0, parsedOutputs);
+    outputs.put(0, parsedOutput0);
+    outputs.put(1, parsedOutput1);
     interpreter.runForMultipleInputsOutputs(inputs, outputs);
-    float[] outputOneD = parsedOutputs[0][0][0];
-    float[] expected = {3.69f, 19.62f, 23.43f};
-    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
-    interpreter.close();
+    float[] expected0 = {4.89f};
+    float[] expected1 = {6.09f};
+    assertThat(parsedOutput0).usingTolerance(0.1f).containsExactly(expected0).inOrder();
+    assertThat(parsedOutput1).usingTolerance(0.1f).containsExactly(expected1).inOrder();
   }
 
   @Test
@@ -212,32 +221,6 @@ public final class InterpreterTest {
       interpreter.run(input, output);
       assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(inputDims);
     }
-  }
-
-  @Test
-  public void testMobilenetRun() {
-    // Create a gray image.
-    float[][][][] img = new float[1][224][224][3];
-    for (int i = 0; i < 224; ++i) {
-      for (int j = 0; j < 224; ++j) {
-        img[0][i][j][0] = 0.5f;
-        img[0][i][j][1] = 0.5f;
-        img[0][i][j][2] = 0.5f;
-      }
-    }
-
-    // Allocate memory to receive the output values.
-    float[][] labels = new float[1][1001];
-
-    Interpreter interpreter = new Interpreter(MOBILENET_MODEL_FILE);
-    interpreter.run(img, labels);
-    assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(new int[] {1, 224, 224, 3});
-    assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(new int[] {1, 1001});
-    interpreter.close();
-
-    assertThat(labels[0])
-        .usingExactEquality()
-        .containsNoneOf(new float[] {Float.NaN, Float.NEGATIVE_INFINITY, Float.POSITIVE_INFINITY});
   }
 
   @Test
@@ -286,7 +269,7 @@ public final class InterpreterTest {
 
   @Test
   public void testGetInputIndex() {
-    Interpreter interpreter = new Interpreter(MOBILENET_MODEL_FILE);
+    Interpreter interpreter = new Interpreter(MODEL_FILE);
     try {
       interpreter.getInputIndex("WrongInputName");
       fail();
@@ -303,7 +286,7 @@ public final class InterpreterTest {
 
   @Test
   public void testGetOutputIndex() {
-    Interpreter interpreter = new Interpreter(MOBILENET_MODEL_FILE);
+    Interpreter interpreter = new Interpreter(MODEL_FILE);
     try {
       interpreter.getOutputIndex("WrongOutputName");
       fail();
@@ -312,9 +295,9 @@ public final class InterpreterTest {
           .hasMessageThat()
           .contains(
               "'WrongOutputName' is not a valid name for any output. Names of outputs and their"
-                  + " indexes are {MobilenetV1/Predictions/Softmax=0}");
+                  + " indexes are {output=0}");
     }
-    int index = interpreter.getOutputIndex("MobilenetV1/Predictions/Softmax");
+    int index = interpreter.getOutputIndex("output");
     assertThat(index).isEqualTo(0);
   }
 

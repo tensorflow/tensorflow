@@ -85,8 +85,7 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op, int i,
                                       RunMetadata* run_metadata,
                                       TensorHandle** handle) {
   EagerContext* ctx = op->EagerContext();
-  Device* handle_device = nullptr;
-  TF_RETURN_IF_ERROR((*handle)->Device(&handle_device));
+  Device* handle_device = (*handle)->device();
   const Device* actual_device =
       handle_device == nullptr ? ctx->HostCPU() : handle_device;
   const Device* op_device =
@@ -334,7 +333,9 @@ Status EagerLocalExecute(EagerOperation* op,
     // TODO(agarwal): Consider executing "cheap" kernels inline for performance.
     tensorflow::uint64 id = ctx->NextId();
     for (int i = 0; i < *num_retvals; ++i) {
-      (*retvals)[i] = new TensorHandle(id, output_dtypes[i], ctx);
+      (*retvals)[i] = new TensorHandle(id, /* d= */ kernel->OutputDevice(i),
+                                       /* op_device= */ kernel->device(),
+                                       output_dtypes[i], ctx);
     }
     EagerNode* node = new ExecuteNode(
         id, ctx, op->Device(), op->Inputs(), kernel, maybe_stats.release(),
@@ -417,8 +418,7 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
   request.set_op_id(ctx->NextId());
   request.set_device_name(recv_device->name());
 
-  Device* tensor_handle_device;
-  TF_RETURN_IF_ERROR(h->Device(&tensor_handle_device));
+  Device* tensor_handle_device = h->device();
 
   // AsProtoTensorContent doesn't work when the tensor is on the GPU, hence copy
   // it to the CPU before copying it out.
@@ -485,8 +485,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   auto* remote_op = request->add_queue()->mutable_operation();
 
   for (int i = 0; i < op->Inputs().size(); i++) {
-    tensorflow::Device* input_device;
-    TF_RETURN_IF_ERROR(op->Inputs()[i]->Device(&input_device));
+    tensorflow::Device* input_device = op->Inputs()[i]->device();
     if (op->Device() != input_device &&
         // If the expected and actual devices are on the same task, don't
         // explicitly copy, and instead depend on the copy to happen locally
@@ -622,8 +621,7 @@ Status MaybeUpdateOpDevice(EagerOperation* op) {
       ctx->PinSmallOpsToCPU() && IsPinnableOp(op->Name());
 
   for (int i = 0; i < op->Inputs().size(); ++i) {
-    Device* input_op_device = nullptr;
-    TF_RETURN_IF_ERROR(op->Inputs()[i]->OpDevice(&input_op_device));
+    Device* input_op_device = op->Inputs()[i]->op_device();
     VLOG(2) << "for op " << op->Name() << " input " << i << " "
             << DataTypeString(op->Inputs()[i]->dtype) << " "
             << (input_op_device == nullptr ? "cpu" : input_op_device->name())
@@ -767,17 +765,19 @@ Status EagerExecute(EagerContext* ctx, Device* device,
     }
   }
   DCHECK_EQ(num_retvals, outputs.size());
-  Device* op_device = device;
   for (int i = 0; i < num_retvals; ++i) {
-    Device* d = op_device;
-    if (d != nullptr && output_memory_types != nullptr &&
-        (*output_memory_types)[i] == HOST_MEMORY) {
-      d = nullptr;
-    }
     if (retvals[i] == nullptr) {
-      retvals[i] = new TensorHandle(outputs[i], d, op_device, ctx);
+      retvals[i] =
+          new TensorHandle(outputs[i], /* d= */ kernel->OutputDevice(i),
+                           /* op_device= */ device, ctx);
     } else {
-      retvals[i]->SetTensorAndDevice(outputs[i], d, op_device);
+      // In the async case, the retval is not a nullptr, and its device is
+      // already set since all TensorHandles always have their device set during
+      // construction.
+      DCHECK_EQ(device, retvals[i]->op_device());
+      DCHECK_EQ(kernel->OutputDevice(i), retvals[i]->device());
+
+      retvals[i]->SetTensor(outputs[i]);
     }
   }
   return Status::OK();
@@ -892,8 +892,7 @@ string GetUniqueWireID() {
 
 Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
                          const char* device_name, TensorHandle** result) {
-  tensorflow::Device* send_device;
-  TF_RETURN_IF_ERROR(h->Device(&send_device));
+  tensorflow::Device* send_device = h->device();
 
   if (send_device == nullptr) {
     send_device = ctx->HostCPU();

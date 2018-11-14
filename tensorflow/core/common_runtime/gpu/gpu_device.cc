@@ -84,13 +84,13 @@ namespace tensorflow {
 // corresponding stream have completed.  The following two classes
 // serve this purpose in two different compilation environments.
 
-class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
+class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
  public:
-  EigenCudaStreamDevice()
+  EigenGpuStreamDevice()
       : scratch_(nullptr), semaphore_(nullptr), context_(nullptr) {
     Eigen::initializeDeviceProp();
   }
-  ~EigenCudaStreamDevice() override {}
+  ~EigenGpuStreamDevice() override {}
   void Reinitialize(OpKernelContext* context, const cudaStream_t* cuda_stream,
                     TfGpuId tf_gpu_id, ::tensorflow::Allocator* alloc,
                     char* scratch) {
@@ -101,7 +101,7 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
     context_ = context;
     scratch_ = scratch;
     semaphore_ =
-        reinterpret_cast<unsigned int*>(scratch + Eigen::kCudaScratchSize);
+        reinterpret_cast<unsigned int*>(scratch + Eigen::kGpuScratchSize);
     stream_ = cuda_stream;
     allocator_ = alloc;
     PlatformGpuId platform_gpu_id;
@@ -185,7 +185,7 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
   mutable unsigned int* semaphore_;
   OpKernelContext* context_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(EigenCudaStreamDevice);
+  TF_DISALLOW_COPY_AND_ASSIGN(EigenGpuStreamDevice);
 };
 
 // This factory helps to ensure that different GPU device objects that refer to
@@ -292,7 +292,7 @@ Status BaseGPUDevice::InitScratchBuffers() {
       DCHECK(streams_[i]);
       if (scratch_.size() > i && scratch_[i]) continue;
       size_t scratch_buffer_size =
-          Eigen::kCudaScratchSize + sizeof(unsigned int);
+          Eigen::kGpuScratchSize + sizeof(unsigned int);
       void* scratch_buffer = gpu_allocator_->AllocateRaw(
           Allocator::kAllocatorAlignment, scratch_buffer_size);
       if (scratch_buffer == nullptr) {
@@ -304,7 +304,7 @@ Status BaseGPUDevice::InitScratchBuffers() {
           se::DeviceMemoryBase(scratch_buffer, scratch_buffer_size));
 
       bool ok = executor_->SynchronousMemZero(
-          &mem, Eigen::kCudaScratchSize + sizeof(unsigned int));
+          &mem, Eigen::kGpuScratchSize + sizeof(unsigned int));
       if (!ok) {
         return errors::FailedPrecondition(
             "Failed to memcopy into scratch buffer for device ",
@@ -692,7 +692,7 @@ class ConcretePerOpGpuDevice : public PerOpGpuDevice {
   const Eigen::GpuDevice& device() const override { return device_; }
 
  private:
-  EigenCudaStreamDevice stream_device_;
+  EigenGpuStreamDevice stream_device_;
   Eigen::GpuDevice device_;
 };
 
@@ -1169,6 +1169,7 @@ Status BaseGPUDeviceFactory::GetDeviceLocalities(
     int num_tf_gpus, const std::vector<InterconnectMap>& interconnects,
     LocalityMap* localities) {
   std::vector<TfGpuId> all_tf_gpu_ids;
+  all_tf_gpu_ids.reserve(num_tf_gpus);
   for (int i = 0; i < num_tf_gpus; ++i) {
     all_tf_gpu_ids.push_back(TfGpuId(i));
   }

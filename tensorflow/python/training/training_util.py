@@ -39,7 +39,7 @@ GLOBAL_STEP_READ_KEY = 'global_step_read_op_cache'
 write_graph = graph_io.write_graph
 
 
-@tf_export('train.global_step')
+@tf_export(v1=['train.global_step'])
 def global_step(sess, global_step_tensor):
   """Small helper to get the global step.
 
@@ -69,7 +69,7 @@ def global_step(sess, global_step_tensor):
   return int(sess.run(global_step_tensor))
 
 
-@tf_export('train.get_global_step')
+@tf_export(v1=['train.get_global_step'])
 def get_global_step(graph=None):
   """Get the global step tensor.
 
@@ -104,7 +104,7 @@ def get_global_step(graph=None):
   return global_step_tensor
 
 
-@tf_export('train.create_global_step')
+@tf_export(v1=['train.create_global_step'])
 def create_global_step(graph=None):
   """Create global step tensor in graph.
 
@@ -145,7 +145,7 @@ def create_global_step(graph=None):
                      ops.GraphKeys.GLOBAL_STEP])
 
 
-@tf_export('train.get_or_create_global_step')
+@tf_export(v1=['train.get_or_create_global_step'])
 def get_or_create_global_step(graph=None):
   """Returns and create (if necessary) the global step tensor.
 
@@ -163,7 +163,7 @@ def get_or_create_global_step(graph=None):
   return global_step_tensor
 
 
-@tf_export('train.assert_global_step')
+@tf_export(v1=['train.assert_global_step'])
 def assert_global_step(global_step_tensor):
   """Asserts `global_step_tensor` is a scalar int `Variable` or `Tensor`.
 

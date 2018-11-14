@@ -1,3 +1,3 @@
 # TOCO
 
-These files have moved to [../../g3doc/tflite_convert](../../g3doc/tflite_convert)
+These files have moved to [../../g3doc/convert](../../g3doc/convert)

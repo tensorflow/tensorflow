@@ -87,18 +87,8 @@ class StackedRNNCells(Layer):
 
   @property
   def state_size(self):
-    # States are a flat list of the individual cell state size.
-    # e.g. states of a 2-layer LSTM would be `[h1, c1, h2, c2]`.
-    # (assuming one LSTM has states [h, c])
-    # In the case of reverse_state_order=True, the state_size will be
-    # [h2, c2, h1, c1].
-    state_size = []
-    for cell in self.cells[::-1] if self.reverse_state_order else self.cells:
-      if _is_multiple_state(cell.state_size):
-        state_size += list(cell.state_size)
-      else:
-        state_size.append(cell.state_size)
-    return tuple(state_size)
+    return tuple(c.state_size for c in
+                 (self.cells[::-1] if self.reverse_state_order else self.cells))
 
   @property
   def output_size(self):
@@ -110,8 +100,6 @@ class StackedRNNCells(Layer):
       return self.cells[-1].state_size
 
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
-    # The init state is flattened into a list because state_size is a flattened
-    # list.
     initial_states = []
     for cell in self.cells[::-1] if self.reverse_state_order else self.cells:
       get_initial_state_fn = getattr(cell, 'get_initial_state', None)
@@ -122,39 +110,27 @@ class StackedRNNCells(Layer):
         initial_states.append(_generate_zero_filled_state_for_cell(
             cell, inputs, batch_size, dtype))
 
-    return nest.flatten(initial_states)
+    return tuple(initial_states)
 
   def call(self, inputs, states, constants=None, **kwargs):
     # Recover per-cell states.
-    nested_states = []
-    for cell in self.cells[::-1] if self.reverse_state_order else self.cells:
-      if _is_multiple_state(cell.state_size):
-        nested_states.append(states[:len(cell.state_size)])
-        states = states[len(cell.state_size):]
-      else:
-        nested_states.append([states[0]])
-        states = states[1:]
-    if self.reverse_state_order:
-      nested_states = nested_states[::-1]
+    state_size = (self.state_size[::-1]
+                  if self.reverse_state_order else self.state_size)
+    nested_states = nest.pack_sequence_as(state_size, nest.flatten(states))
 
     # Call the cells in order and store the returned states.
     new_nested_states = []
     for cell, states in zip(self.cells, nested_states):
+      states = states if nest.is_sequence(states) else [states]
       if generic_utils.has_arg(cell.call, 'constants'):
         inputs, states = cell.call(inputs, states, constants=constants,
                                    **kwargs)
       else:
         inputs, states = cell.call(inputs, states, **kwargs)
-
       new_nested_states.append(states)
 
-    # Format the new states as a flat list
-    new_states = []
-    if self.reverse_state_order:
-      new_nested_states = new_nested_states[::-1]
-    for cell_states in new_nested_states:
-      new_states += cell_states
-    return inputs, new_states
+    return inputs, nest.pack_sequence_as(state_size,
+                                         nest.flatten(new_nested_states))
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
@@ -865,12 +841,6 @@ class RNN(Layer):
     else:
       output = last_output
 
-    # Properly set learning phase
-    if getattr(last_output, '_uses_learning_phase', False):
-      output._uses_learning_phase = True
-      for state in states:
-        state._uses_learning_phase = True
-
     if self.return_state:
       if not isinstance(states, (list, tuple)):
         states = [states]
@@ -1132,12 +1102,6 @@ class SimpleRNNCell(Layer):
     if self.activation is not None:
       output = self.activation(output)
 
-    # Properly set learning phase on output tensor.
-    if 0 < self.dropout + self.recurrent_dropout:
-      if training is None and not context.executing_eagerly():
-        # This would be harmless to set in eager mode, but eager tensors
-        # disallow setting arbitrary attributes.
-        output._uses_learning_phase = True
     return output, [output]
 
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
@@ -1640,12 +1604,6 @@ class GRUCell(Layer):
       hh = self.activation(x_h + recurrent_h)
     # previous and candidate state mixed by update gate
     h = z * h_tm1 + (1 - z) * hh
-    if 0 < self.dropout + self.recurrent_dropout:
-      if training is None and not context.executing_eagerly():
-        # This would be harmless to set in eager mode, but eager tensors
-        # disallow setting arbitrary attributes.
-        h._uses_learning_phase = True
-
     return h, [h]
 
   def get_config(self):
@@ -2030,7 +1988,7 @@ class LSTMCell(Layer):
     self.dropout = min(1., max(0., dropout))
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
     self.implementation = implementation
-    self.state_size = (self.units, self.units)
+    self.state_size = [self.units, self.units]
     self.output_size = self.units
     self._dropout_mask = None
     self._recurrent_dropout_mask = None
@@ -2171,11 +2129,6 @@ class LSTMCell(Layer):
       c, o = self._compute_carry_and_output_fused(z, c_tm1)
 
     h = o * self.activation(c)
-    if 0 < self.dropout + self.recurrent_dropout:
-      if training is None and not context.executing_eagerly():
-        # This would be harmless to set in eager mode, but eager tensors
-        # disallow setting arbitrary attributes.
-        h._uses_learning_phase = True
     return h, [h, c]
 
   def get_config(self):

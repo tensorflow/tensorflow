@@ -83,7 +83,8 @@ class VariableCreatorStackTest(test.TestCase):
     with context.graph_mode(), \
         dist.scope(), \
         variable_scope.variable_creator_scope(main_thread_creator):
-      result = dist.call_for_each_replica(model_fn, dist.worker_device_index)
+      result = dist.call_for_each_replica(
+          model_fn, args=(dist.worker_device_index,))
       result = dist.unwrap(result)
       expected = ["main_thread:thread_0", "main_thread:thread_1"]
       self.assertEquals(expected, result)
