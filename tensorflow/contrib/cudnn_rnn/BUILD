@@ -92,7 +92,6 @@ cuda_py_test(
     ],
     shard_count = 6,
     tags = [
-        "no_oss",  # http://b/119506830
         "noasan",  # http://b/62067814
     ],
 )
