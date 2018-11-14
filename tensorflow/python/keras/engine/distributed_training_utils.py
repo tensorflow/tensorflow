@@ -364,9 +364,24 @@ def get_input_batch_params(first_x_value, batch_size, distribution_strategy):
     ValueError: If the number of batches or steps evaluates to 0.
 
   """
+  if batch_size is None:
+    # Default the global batch size to the minimum of 32 and the size of
+    # the numpy array. 32 is chosen to guarantee backward compatibility.
+    batch_size = min(first_x_value.shape[0], 32)
+    if distribution_strategy.__class__.__name__ != 'TPUStrategy':
+      if batch_size % distribution_strategy.num_replicas_in_sync:
+        raise ValueError(
+            'The batch size (%s) could not be sharded evenly across the sync '
+            'replicas (%s) in the distribution strategy.' % (
+                batch_size, distribution_strategy.num_replicas_in_sync))
+      batch_size = batch_size // distribution_strategy.num_replicas_in_sync
+
+  # Calculate number of global batches
+  if first_x_value.shape[0] % batch_size:
+    raise ValueError('The number of samples is not divisible by batch size.')
   num_batches = first_x_value.shape[0] // batch_size
   if not num_batches:
-    raise ValueError('Please specify a batch_size that is smaller than'
+    raise ValueError('Please specify a batch_size that is smaller than '
                      'the number of input samples %d.' % first_x_value.shape[0])
   # TODO(b/118776054): Use global batch size for Keras/DS support.
   # The Keras API supports using the global batch size which is currently only
