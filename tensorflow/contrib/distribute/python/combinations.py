@@ -59,6 +59,7 @@ from tensorflow.python.training import adagrad
 from tensorflow.python.training import adam
 from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import rmsprop
 from tensorflow.python.util import tf_inspect
 
 
@@ -328,44 +329,42 @@ one_device_strategy = NamedDistribution(
     required_gpus=None)
 tpu_strategy = NamedDistribution(
     "TPU", lambda: tpu_lib.TPUStrategy(
-        TPUClusterResolver(""), steps_per_run=5),
+        TPUClusterResolver(""), steps_per_run=2),
     required_tpu=True)
 tpu_strategy_one_step = NamedDistribution(
-    "TPU", lambda: tpu_lib.TPUStrategy(
+    "TPUOneStep", lambda: tpu_lib.TPUStrategy(
         TPUClusterResolver(""), steps_per_run=1),
     required_tpu=True)
-# Note that we disable prefetching for testing since prefetching makes
-# the input non-deterministic.
 mirrored_strategy_with_gpu_and_cpu = NamedDistribution(
     "MirroredCPUAndGPU",
-    lambda: mirrored_lib.MirroredStrategy(
-        ["/gpu:0", "/cpu:0"], prefetch_on_device=False),
+    lambda: mirrored_lib.MirroredStrategy(["/gpu:0", "/cpu:0"]),
     required_gpus=1)
 mirrored_strategy_with_two_gpus = NamedDistribution(
     "Mirrored2GPUs",
-    lambda: mirrored_lib.MirroredStrategy(
-        ["/gpu:0", "/gpu:1"], prefetch_on_device=False),
+    lambda: mirrored_lib.MirroredStrategy(["/gpu:0", "/gpu:1"]),
     required_gpus=2)
 
 
-adam_optimizer_v1_fn = NamedObject(
-    "AdamV1", lambda: adam.AdamOptimizer(0.001, epsilon=1))
 gradient_descent_optimizer_v1_fn = NamedObject(
     "GradientDescentV1", lambda: gradient_descent.GradientDescentOptimizer(0.2))
 adagrad_optimizer_v1_fn = NamedObject(
     "AdagradV1", lambda: adagrad.AdagradOptimizer(0.001))
-optimizers_v1 = [adam_optimizer_v1_fn, gradient_descent_optimizer_v1_fn,
-                 adagrad_optimizer_v1_fn]
+adam_optimizer_v1_fn = NamedObject("AdamV1",
+                                   lambda: adam.AdamOptimizer(0.001, epsilon=1))
+rmsprop_optimizer_v1_fn = NamedObject(
+    "RmsPropV1", lambda: rmsprop.RMSPropOptimizer(0.001))
 
-adam_optimizer_v2_fn = NamedObject(
-    "AdamV2", lambda: adam_v2.AdamOptimizer(0.001, epsilon=1))
+optimizers_v1 = [gradient_descent_optimizer_v1_fn, adagrad_optimizer_v1_fn]
+
 gradient_descent_optimizer_v2_fn = NamedObject(
     "GradientDescentV2",
     lambda: gradient_descent_v2.GradientDescentOptimizer(0.2))
 adagrad_optimizer_v2_fn = NamedObject(
     "AdagradV2", lambda: adagrad_v2.AdagradOptimizer(0.001))
-optimizers_v2 = [adam_optimizer_v2_fn, gradient_descent_optimizer_v2_fn,
-                 adagrad_optimizer_v2_fn]
+adam_optimizer_v2_fn = NamedObject(
+    "AdamV2", lambda: adam_v2.AdamOptimizer(0.001, epsilon=1))
+
+optimizers_v2 = [gradient_descent_optimizer_v2_fn, adagrad_optimizer_v2_fn]
 
 graph_and_eager_modes = ["graph", "eager"]
 

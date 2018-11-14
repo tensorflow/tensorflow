@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_TENSOR_H_
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_H_
 
+#include <cstdint>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -110,6 +112,76 @@ class Tensor {
   /// for details.
   explicit Tensor(DataType type);
 
+ private:
+  // A tag type for selecting the `Tensor` constructor overload that creates a
+  // scalar tensor in host memory.
+  struct host_scalar_tag {};
+
+  class HostScalarTensorBufferBase;
+  template <typename T>
+  struct ValueAndTensorBuffer;
+
+  // Creates a tensor with the given scalar `value` in CPU memory.
+  template <typename T>
+  Tensor(T value, host_scalar_tag tag);
+
+ public:
+  // A series of specialized constructors for scalar tensors in host memory.
+  //
+  // NOTE: The `Variant` host-scalar constructor is not defined, because Variant
+  // is implicitly constructible from many different types, and this causes
+  // ambiguities with some compilers.
+  explicit Tensor(float scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(double scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(int32 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(uint32 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(uint16 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(uint8 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(int16 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(int8 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(string scalar_value)
+      : Tensor(std::move(scalar_value), host_scalar_tag{}) {}
+  explicit Tensor(complex64 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(complex128 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(int64 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(uint64 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(bool scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(qint8 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(quint8 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(qint16 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(quint16 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(qint32 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(bfloat16 scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(Eigen::half scalar_value)
+      : Tensor(scalar_value, host_scalar_tag{}) {}
+  explicit Tensor(ResourceHandle scalar_value)
+      : Tensor(std::move(scalar_value), host_scalar_tag{}) {}
+
+  // NOTE: The `const char*` host-scalar constructor is provided as a
+  // convenience because otherwise passing a string literal would surprisingly
+  // construct a DT_BOOL tensor.
+  explicit Tensor(const char* scalar_value)
+      : Tensor(string(scalar_value), host_scalar_tag{}) {}
+
   /// Copy constructor.
   Tensor(const Tensor& other);
 
@@ -154,7 +226,7 @@ class Tensor {
   /// Returns the estimated memory usage of this tensor.
   size_t TotalBytes() const;
 
-  // Returns the size of sallocated memory for this tensor.
+  // Returns the size of allocated memory for this tensor.
   size_t AllocatedBytes() const;
 
   /// Returns true iff this tensor is aligned.
@@ -200,9 +272,28 @@ class Tensor {
   /// must check the returned tensor's alignment before calling certain
   /// methods that have alignment requirement (e.g., `flat()`, `tensor()`).
   ///
+  /// NOTE: When fed with an N-dimensional tensor, this method returns a tensor
+  /// also with N dimensions. If you want to select a sub tensor, see SubSlice.
+  ///
   /// REQUIRES: `dims()` >= 1
   /// REQUIRES: `0 <= dim0_start <= dim0_limit <= dim_size(0)`
   Tensor Slice(int64 dim0_start, int64 dim0_limit) const;
+
+  /// \brief Select a subslice from this tensor along the 1st dimension.
+  ///
+  /// When fed with an N-dimensional tensor, this method returns a tensor with
+  /// N-1 dimensions, where the returned tensor is a subslice of the input
+  /// tensor along the first dimension. The N-1 dimensions of the returned
+  /// tensor are the last N-1 dimensions of the input tensor.
+  ///
+  /// NOTE: The returned tensor may not satisfy the same alignment
+  /// requirement as this tensor depending on the shape. The caller
+  /// must check the returned tensor's alignment before calling certain
+  /// methods that have alignment requirement (e.g., `flat()`, `tensor()`).
+  ///
+  /// REQUIRES: `dims()` >= 1
+  /// REQUIRES: `0 <= dim0_start < dim_size(0)`
+  Tensor SubSlice(int64 index) const;
 
   /// \brief Parse `other` and construct the tensor.
 
@@ -430,7 +521,7 @@ class Tensor {
       int64 begin) const;
 
   /// Render the first `max_entries` values in `*this` into a string.
-  string SummarizeValue(int64 max_entries) const;
+  string SummarizeValue(int64 max_entries, bool print_v2 = false) const;
 
   /// A human-readable summary of the tensor suitable for debugging.
   string DebugString() const;
@@ -778,6 +869,50 @@ inline Tensor::Tensor(const Tensor& other)
 inline Tensor::Tensor(Tensor&& other)
     : shape_(std::move(other.shape())), buf_(other.buf_) {
   other.buf_ = nullptr;
+}
+
+class Tensor::HostScalarTensorBufferBase : public TensorBuffer {
+ public:
+  void FillAllocationDescription(AllocationDescription* proto) const final;
+};
+
+template <typename T>
+Tensor::Tensor(T value, host_scalar_tag tag) {
+  // A packed representation for a single scalar value of type `T`, and a
+  // `TensorBuffer` implementation that describes (and manages the lifetime of)
+  // that value.
+  struct ValueAndTensorBuffer {
+    class HostScalarTensorBuffer : public HostScalarTensorBufferBase {
+     public:
+      HostScalarTensorBuffer(void* data) : data_(data) {}
+      void* data() const final { return const_cast<void*>(data_); }
+      size_t size() const final { return sizeof(T); }
+      TensorBuffer* root_buffer() final { return this; }
+
+      // Override `operator delete` so that calling `delete this` in
+      // `core::Refcounted::Unref()` for an object of this type will free
+      // the enclosing `ValueAndTensorBuffer` for the tensor buffer.
+      static void operator delete(void* ptr) {
+        port::AlignedFree(static_cast<char*>(ptr) -
+                          offsetof(ValueAndTensorBuffer, tensor_buffer));
+      }
+
+     private:
+      ~HostScalarTensorBuffer() override { static_cast<T*>(data_)->~T(); }
+      void* const data_;
+    };
+
+    T value;
+    HostScalarTensorBuffer tensor_buffer;
+  };
+
+  auto* value_and_buf = static_cast<ValueAndTensorBuffer*>(
+      port::AlignedMalloc(sizeof(ValueAndTensorBuffer), EIGEN_MAX_ALIGN_BYTES));
+  new (&value_and_buf->value) T(std::move(value));
+  new (&value_and_buf->tensor_buffer)
+      typename ValueAndTensorBuffer::HostScalarTensorBuffer(value_and_buf);
+  buf_ = &value_and_buf->tensor_buffer;
+  set_dtype(DataTypeToEnum<T>::value);
 }
 
 inline Tensor& Tensor::operator=(Tensor&& other) {

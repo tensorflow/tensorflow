@@ -10,12 +10,15 @@ load(
 )
 
 tf_proto_library(
-    name = "tpu_embedding_config_proto",
+    name = "tpu_embedding_configuration_proto",
     srcs = [
-        "tpu_embedding_config.proto",
+        "tpu_embedding_configuration.proto",
     ],
     cc_api_version = 2,
-    protodeps = [":optimization_parameters_proto"],
+    protodeps = [
+        ":tpu_embedding_output_layout_proto",
+        ":optimization_parameters_proto",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -23,6 +26,15 @@ tf_proto_library(
     name = "optimization_parameters_proto",
     srcs = [
         "optimization_parameters.proto",
+    ],
+    cc_api_version = 2,
+    visibility = ["//visibility:public"],
+)
+
+tf_proto_library(
+    name = "tpu_embedding_output_layout_proto",
+    srcs = [
+        "tpu_embedding_output_layout.proto",
     ],
     cc_api_version = 2,
     visibility = ["//visibility:public"],

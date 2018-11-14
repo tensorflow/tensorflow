@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import functools
 
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import renames_v2
@@ -31,10 +30,24 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
   def __init__(self):
     # Maps from a function name to a dictionary that describes how to
     # map from an old argument keyword to the new argument keyword.
-    self.function_keyword_renames = {}
+    self.function_keyword_renames = {
+        "tf.convert_to_tensor": {
+            "preferred_dtype": "dtype_hint"
+        },
+    }
 
     # Mapping from function to the new name of the function
-    self.function_renames = renames_v2.renames
+    self.symbol_renames = renames_v2.renames
+    # pylint: disable=line-too-long
+    # Add additional renames not in renames_v2.py here.
+    self.symbol_renames.update({
+    })
+    # pylint: enable=line-too-long
+
+    # For custom behavior and if auto-generate rename in renames_v2.py
+    # is incorrect, add the op name here to exclude it from renames_v2.py.
+    excluded_renames = [
+    ]
 
     # Variables that should be changed to functions.
     self.change_to_function = {}
@@ -42,33 +55,50 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Functions that were reordered should be changed to the new keyword args
     # for safety, if positional arguments are used. If you have reversed the
     # positional arguments yourself, this could do the wrong thing.
-    self.function_reorders = {}
+    self.function_reorders = {
+        "tf.convert_to_tensor": ["value", "dtype", "preferred_dtype", "name"],
+        "tf.argmin": ["input", "axis", "output_type", "name"],
+        "tf.argmax": ["input", "axis", "output_type", "name"],
+        "tf.boolean_mask": ["tensor", "mask", "name", "axis"],
+    }
 
     # Specially handled functions.
     self.function_handle = {}
-    for decay in ["tf.train.exponential_decay", "tf.train.piecewise_constant",
-                  "tf.train.polynomial_decay", "tf.train.natural_exp_decay",
-                  "tf.train.inverse_time_decay", "tf.train.cosine_decay",
-                  "tf.train.cosine_decay_restarts",
-                  "tf.train.linear_cosine_decay",
-                  "tf.train.noisy_linear_cosine_decay"]:
-      self.function_handle[decay] = functools.partial(
-          self._learning_rate_decay_handler, decay_name=decay)
 
-  @staticmethod
-  def _learning_rate_decay_handler(file_edit_recorder, node, decay_name):
-    comment = ("ERROR: %s has been changed to return a callable instead of a "
-               "tensor when graph building, but its functionality remains "
-               "unchanged during eager execution (returns a callable like "
-               "before). The converter cannot detect and fix this reliably, so "
-               "you need to inspect this usage manually.\n") % decay_name
-    file_edit_recorder.add(
-        comment,
-        node.lineno,
-        node.col_offset,
-        decay_name,
-        decay_name,
-        error="%s requires manual check." % decay_name)
+    decay_function_comment = (
+        "ERROR: <function name> has been changed to return a callable instead "
+        "of a tensor when graph building, but its functionality remains "
+        "unchanged during eager execution (returns a callable like "
+        "before). The converter cannot detect and fix this reliably, so "
+        "you need to inspect this usage manually.\n"
+    )
+
+    # TODO(b/118888586): add default value change to update script.
+    default_loss_reduction_changed = (
+        "WARNING: default value of loss_reduction has been changed to "
+        "SUM_OVER_BATCH_SIZE.\n"
+    )
+
+    # Function warnings. <function name> placeholder inside warnings will be
+    # replaced by function name.
+    self.function_warnings = {
+        "tf.train.exponential_decay": decay_function_comment,
+        "tf.train.piecewise_constant": decay_function_comment,
+        "tf.train.polynomial_decay": decay_function_comment,
+        "tf.train.natural_exp_decay": decay_function_comment,
+        "tf.train.inverse_time_decay": decay_function_comment,
+        "tf.train.cosine_decay": decay_function_comment,
+        "tf.train.cosine_decay_restarts": decay_function_comment,
+        "tf.train.linear_cosine_decay": decay_function_comment,
+        "tf.train.noisy_linear_cosine_decay": decay_function_comment,
+        "tf.estimator.LinearClassifier": default_loss_reduction_changed,
+    }
+    # Right now we can't have both a rename and a warning.
+    self.symbol_renames = {
+        name: new_name
+        for name, new_name in self.symbol_renames.items()
+        if name not in self.function_warnings and name not in excluded_renames
+    }
 
 
 if __name__ == "__main__":
@@ -120,10 +150,18 @@ Simple usage:
   report_filename = args.report_filename
   files_processed = 0
   if args.input_file:
+    if not args.output_file:
+      raise ValueError(
+          "--outfile=<output file> argument is required when converting a "
+          "single file.")
     files_processed, report_text, errors = upgrade.process_file(
         args.input_file, args.output_file)
     files_processed = 1
   elif args.input_tree:
+    if not args.output_tree:
+      raise ValueError(
+          "--outtree=<output directory> argument is required when converting a "
+          "file tree.")
     files_processed, report_text, errors = upgrade.process_tree(
         args.input_tree, args.output_tree, args.copy_other_files)
   else:

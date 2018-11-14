@@ -19,10 +19,12 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Target/TargetOptions.h"
@@ -33,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/byte_order.h"
@@ -83,10 +84,9 @@ string DumpModuleToString(const llvm::Module& module) {
   return AsString(buffer_string);
 }
 
-llvm::Value* EmitCallToIntrinsic(llvm::Intrinsic::ID intrinsic_id,
-                                 absl::Span<llvm::Value* const> operands,
-                                 absl::Span<llvm::Type* const> overloaded_types,
-                                 llvm::IRBuilder<>* b) {
+llvm::CallInst* EmitCallToIntrinsic(
+    llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
+    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b) {
   llvm::Module* module = ModuleFromIRBuilder(b);
   llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
       module, intrinsic_id, AsArrayRef(overloaded_types));
@@ -260,6 +260,17 @@ llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
       /*AddNull=*/false);
 }
 
+llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
+                                               llvm::Type* tile_type,
+                                               absl::string_view name) {
+  const int kNVPTXSharedMemoryAddrSpace = 3;
+  return new llvm::GlobalVariable(
+      *module, tile_type,
+      /*isConstant=*/false, llvm::GlobalValue::PrivateLinkage,
+      llvm::UndefValue::get(tile_type), AsStringRef(name), nullptr,
+      llvm::GlobalValue::NotThreadLocal, kNVPTXSharedMemoryAddrSpace);
+}
+
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
                                             absl::string_view name,
                                             llvm::IRBuilder<>* b,
@@ -362,11 +373,10 @@ static void LogS64(const char* tag, int64 value) {
 void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilder<>* b) {
   llvm::FunctionType* log_function_type = llvm::FunctionType::get(
       b->getVoidTy(), {b->getInt64Ty(), b->getInt64Ty()}, /*isVarArg=*/false);
-  b->CreateCall(
-      log_function_type,
-      b->CreateIntToPtr(b->getInt64(tensorflow::bit_cast<int64>(&LogS64)),
-                        log_function_type->getPointerTo()),
-      {b->getInt64(tensorflow::bit_cast<int64>(tag)), value});
+  b->CreateCall(log_function_type,
+                b->CreateIntToPtr(b->getInt64(absl::bit_cast<int64>(&LogS64)),
+                                  log_function_type->getPointerTo()),
+                {b->getInt64(absl::bit_cast<int64>(tag)), value});
 }
 
 void SetAlignmentMetadataForLoad(llvm::LoadInst* load, uint64_t alignment) {

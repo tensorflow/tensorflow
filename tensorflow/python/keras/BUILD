@@ -3,9 +3,9 @@
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
-
 package(default_visibility = ["//visibility:public"])
+
+exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
@@ -55,16 +55,24 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = select({
-        ":empty_condition": [],
-        "//conditions:default": [],
-    }) + [
+    deps = [
         ":backend",
         ":engine",
         ":layers",
-        "//tensorflow/python/saved_model",
+        ":pil_for_keras",
         "//tensorflow/python:training",
+        "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/saved_model",
+        "@keras_applications_archive//:keras_applications",
     ],
+)
+
+py_library(
+    name = "pil_for_keras",
+    deps = select({
+        ":empty_condition": [],
+        "//conditions:default": [],
+    }),
 )
 
 py_library(
@@ -310,7 +318,7 @@ py_test(
 
 py_test(
     name = "advanced_activations_test",
-    size = "small",
+    size = "medium",
     srcs = ["layers/advanced_activations_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -336,6 +344,7 @@ py_test(
     name = "convolutional_test",
     size = "large",
     srcs = ["layers/convolutional_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
@@ -360,7 +369,7 @@ cuda_py_test(
 
 py_test(
     name = "pooling_test",
-    size = "small",
+    size = "large",
     srcs = ["layers/pooling_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -373,6 +382,7 @@ py_test(
     name = "core_test",
     size = "medium",
     srcs = ["layers/core_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
@@ -381,12 +391,11 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "embeddings_test",
     size = "medium",
     srcs = ["layers/embeddings_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
     ],
@@ -394,9 +403,11 @@ py_test(
 
 py_test(
     name = "local_test",
-    size = "large",
+    size = "medium",
     srcs = ["layers/local_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -485,7 +496,7 @@ py_test(
 
 py_test(
     name = "recurrent_test",
-    size = "medium",
+    size = "large",
     srcs = ["layers/recurrent_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -683,8 +694,22 @@ py_test(
 
 py_test(
     name = "training_test",
-    size = "enormous",
+    size = "medium",
     srcs = ["engine/training_test.py"],
+    shard_count = 4,
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "training_generator_test",
+    size = "enormous",
+    srcs = ["engine/training_generator_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [
@@ -738,6 +763,7 @@ py_test(
     name = "model_subclassing_test",
     size = "medium",
     srcs = ["model_subclassing_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [
@@ -755,6 +781,18 @@ py_test(
     tags = [
         "no-internal-py3",
     ],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "base_layer_test",
+    size = "small",
+    srcs = ["engine/base_layer_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -792,6 +830,7 @@ py_test(
     name = "models_test",
     size = "medium",
     srcs = ["models_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
     tags = ["notsan"],  # b/67509773
     deps = [

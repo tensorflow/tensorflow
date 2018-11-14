@@ -24,8 +24,8 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.platform import test
 
 
@@ -148,6 +148,18 @@ class TrainingUtilTest(test.TestCase):
     any_true = training_utils._nested_any(nested_data, lambda x: x)
     self.assertEquals(any_true, False)
 
+  def test_check_array_lengths(self):
+    training_utils.check_array_lengths(None, None, None)
+    a_np = np.random.random((4, 3, 3))
+    training_utils.check_array_lengths(a_np, a_np, a_np)
+    training_utils.check_array_lengths(
+        [a_np, a_np], [a_np, a_np], [a_np, a_np])
+    training_utils.check_array_lengths([None], [None], [None])
+
+    b_np = np.random.random((3, 4))
+    with self.assertRaises(ValueError):
+      training_utils.check_array_lengths([a_np], [b_np], None)
+
 
 class ModelInputsTest(test.TestCase):
 
@@ -155,9 +167,6 @@ class ModelInputsTest(test.TestCase):
     a = np.ones(10)
     model_inputs = training_utils.ModelInputs(a)
     self.assertEquals(['input_1'], model_inputs.get_input_names())
-    vals = model_inputs.get_input_values()
-    self.assertAllEqual(np.ones(10), vals)
-    self.assertFalse(tensor_util.is_tensor(vals))
     vals = model_inputs.get_symbolic_inputs()
     self.assertTrue(tensor_util.is_tensor(vals))
     vals = model_inputs.get_symbolic_inputs(return_single_as_list=True)
@@ -169,25 +178,16 @@ class ModelInputsTest(test.TestCase):
       a = np.ones(10)
       model_inputs = training_utils.ModelInputs(a)
       self.assertEquals(['input_1'], model_inputs.get_input_names())
-      vals = model_inputs.get_input_values()
-      self.assertAllEqual(np.ones(10), vals)
-      self.assertTrue(tensor_util.is_tensor(vals))
-      vals = model_inputs.get_symbolic_inputs()
-      self.assertTrue(isinstance(vals, base_layer.DeferredTensor))
+      val = model_inputs.get_symbolic_inputs()
+      self.assertTrue(tf_utils.is_symbolic_tensor(val))
       vals = model_inputs.get_symbolic_inputs(return_single_as_list=True)
       self.assertEquals(1, len(vals))
-      self.assertTrue(isinstance(vals[0], base_layer.DeferredTensor))
+      self.assertTrue(tf_utils.is_symbolic_tensor(vals[0]))
 
   def test_list(self):
     a = [np.ones(10), np.ones(20)]
     model_inputs = training_utils.ModelInputs(a)
     self.assertEquals(['input_1', 'input_2'], model_inputs.get_input_names())
-    vals = model_inputs.get_input_values()
-    self.assertEqual(2, len(vals))
-    self.assertAllEqual(np.ones(10), vals[0])
-    self.assertAllEqual(np.ones(20), vals[1])
-    self.assertFalse(tensor_util.is_tensor(vals[0]))
-    self.assertFalse(tensor_util.is_tensor(vals[1]))
     vals = model_inputs.get_symbolic_inputs()
     self.assertTrue(tensor_util.is_tensor(vals[0]))
     self.assertTrue(tensor_util.is_tensor(vals[1]))
@@ -197,25 +197,14 @@ class ModelInputsTest(test.TestCase):
       a = [np.ones(10), np.ones(20)]
       model_inputs = training_utils.ModelInputs(a)
       self.assertEquals(['input_1', 'input_2'], model_inputs.get_input_names())
-      vals = model_inputs.get_input_values()
-      self.assertEqual(2, len(vals))
-      self.assertAllEqual(np.ones(10), vals[0])
-      self.assertAllEqual(np.ones(20), vals[1])
-      self.assertTrue(tensor_util.is_tensor(vals[0]))
-      self.assertTrue(tensor_util.is_tensor(vals[1]))
       vals = model_inputs.get_symbolic_inputs()
-      self.assertTrue(isinstance(vals[0], base_layer.DeferredTensor))
-      self.assertTrue(isinstance(vals[1], base_layer.DeferredTensor))
+      self.assertTrue(tf_utils.is_symbolic_tensor(vals[0]))
+      self.assertTrue(tf_utils.is_symbolic_tensor(vals[1]))
 
   def test_dict(self):
     a = {'b': np.ones(10), 'a': np.ones(20)}
     model_inputs = training_utils.ModelInputs(a)
     self.assertEquals(['a', 'b'], model_inputs.get_input_names())
-    vals = model_inputs.get_input_values()
-    self.assertAllEqual(np.ones(20), vals['a'])
-    self.assertAllEqual(np.ones(10), vals['b'])
-    self.assertFalse(tensor_util.is_tensor(vals['a']))
-    self.assertFalse(tensor_util.is_tensor(vals['b']))
     vals = model_inputs.get_symbolic_inputs()
     self.assertTrue(tensor_util.is_tensor(vals['a']))
     self.assertTrue(tensor_util.is_tensor(vals['b']))
@@ -225,14 +214,9 @@ class ModelInputsTest(test.TestCase):
       a = {'b': np.ones(10), 'a': np.ones(20)}
       model_inputs = training_utils.ModelInputs(a)
       self.assertEquals(['a', 'b'], model_inputs.get_input_names())
-      vals = model_inputs.get_input_values()
-      self.assertAllEqual(np.ones(20), vals['a'])
-      self.assertAllEqual(np.ones(10), vals['b'])
-      self.assertTrue(tensor_util.is_tensor(vals['a']))
-      self.assertTrue(tensor_util.is_tensor(vals['b']))
       vals = model_inputs.get_symbolic_inputs()
-      self.assertTrue(isinstance(vals['a'], base_layer.DeferredTensor))
-      self.assertTrue(isinstance(vals['b'], base_layer.DeferredTensor))
+      self.assertTrue(tf_utils.is_symbolic_tensor(vals['a']))
+      self.assertTrue(tf_utils.is_symbolic_tensor(vals['b']))
 
 
 if __name__ == '__main__':

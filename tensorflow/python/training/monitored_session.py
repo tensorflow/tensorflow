@@ -195,8 +195,12 @@ class Scaffold(object):
           default_ready_op)
     if self._ready_for_local_init_op is None:
       def default_ready_for_local_init_op():
-        return variables.report_uninitialized_variables(
-            variables.global_variables())
+        return array_ops.concat([
+            variables.report_uninitialized_variables(
+                variables.global_variables()),
+            resources.report_uninitialized_resources(
+                resources.shared_resources())
+        ], 0)
       self._ready_for_local_init_op = Scaffold.get_or_default(
           'ready_for_local_init_op', ops.GraphKeys.READY_FOR_LOCAL_INIT_OP,
           default_ready_for_local_init_op)
@@ -342,7 +346,7 @@ def _create_monitored_session_with_worker_context(worker_context,  # pylint: dis
       stop_grace_period_secs=stop_grace_period_secs)
 
 
-@tf_export('train.MonitoredTrainingSession')
+@tf_export(v1=['train.MonitoredTrainingSession'])
 def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              is_chief=True,
                              checkpoint_dir=None,
@@ -505,6 +509,7 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
 
 
 @tf_export('train.SessionCreator')
+@six.add_metaclass(abc.ABCMeta)
 class SessionCreator(object):
   """A factory for tf.Session."""
 
@@ -1067,8 +1072,10 @@ class _WrappedSession(object):
     if self._sess:
       try:
         self._sess.close()
-      except _PREEMPTION_ERRORS:
-        pass
+      except _PREEMPTION_ERRORS as e:
+        logging.warning('An error occurred when attempting to close the '
+                        'session. This may be due to a preemption in a '
+                        'connected worker or parameter server. Error: %s', e)
       finally:
         self._sess = None
 
@@ -1114,7 +1121,11 @@ class _RecoverableSession(_WrappedSession):
         logging.info('An error was raised while a session was being created. '
                      'This may be due to a preemption of a connected worker '
                      'or parameter server. A new session will be created. '
-                     'Error: %s', e)
+                     'This error may also occur due to a gRPC failure caused '
+                     'by high memory or network bandwidth usage in the '
+                     'parameter servers. If this error occurs repeatedly, try '
+                     'increasing the number of parameter servers assigned to '
+                     'the job. Error: %s', e)
 
   def _check_stop(self):
     try:
@@ -1127,7 +1138,11 @@ class _RecoverableSession(_WrappedSession):
                    'session is complete. This may be due to a preemption in '
                    'a connected worker or parameter server. The current '
                    'session will be closed and a new session will be '
-                   'created. Error: %s', e)
+                   'created. This error may also occur due to a gRPC failure '
+                   'caused by high memory or network bandwidth usage in the '
+                   'parameter servers. If this error occurs repeatedly, try '
+                   'increasing the number of parameter servers assigned to '
+                   'the job. Error: %s', e)
       self.close()
       self._sess = self._create_session()
       # Since we have just recreated the session, the overall computation should
@@ -1150,7 +1165,11 @@ class _RecoverableSession(_WrappedSession):
         logging.info('An error was raised. This may be due to a preemption in '
                      'a connected worker or parameter server. The current '
                      'session will be closed and a new session will be '
-                     'created. Error: %s', e)
+                     'created. This error may also occur due to a gRPC failure '
+                     'caused by high memory or network bandwidth usage in the '
+                     'parameter servers. If this error occurs repeatedly, try '
+                     'increasing the number of parameter servers assigned to '
+                     'the job. Error: %s', e)
         self.close()
         self._sess = None
 
@@ -1166,7 +1185,11 @@ class _RecoverableSession(_WrappedSession):
         logging.info('An error was raised. This may be due to a preemption in '
                      'a connected worker or parameter server. The current '
                      'session will be closed and a new session will be '
-                     'created. Error: %s', e)
+                     'created. This error may also occur due to a gRPC failure '
+                     'caused by high memory or network bandwidth usage in the '
+                     'parameter servers. If this error occurs repeatedly, try '
+                     'increasing the number of parameter servers assigned to '
+                     'the job. Error: %s', e)
         self.close()
         self._sess = None
 

@@ -103,7 +103,8 @@ fi
 
 run_configure_for_gpu_build
 
-bazel build --announce_rc --config=opt tensorflow/tools/pip_package:build_pip_package || exit $?
+bazel build --announce_rc --config=opt --define=no_tensorflow_py_deps=true \
+  tensorflow/tools/pip_package:build_pip_package || exit $?
 
 if [[ "$SKIP_TEST" == 1 ]]; then
   exit 0
@@ -122,7 +123,7 @@ fi
 PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow_gpu-*.whl)
 reinstall_tensorflow_pip ${PIP_NAME}
 
-TF_GPU_COUNT=${TF_GPU_COUNT:-8}
+TF_GPU_COUNT=${TF_GPU_COUNT:-4}
 
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow

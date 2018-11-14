@@ -34,8 +34,11 @@ VirtualCluster::VirtualCluster(
 
 VirtualCluster::VirtualCluster(
     const std::unordered_map<string, DeviceProperties>& devices,
-    OpLevelCostEstimator* node_estimator, ReadyNodeManager* node_manager)
-    : Cluster(0), node_estimator_(node_estimator), node_manager_(node_manager) {
+    std::unique_ptr<OpLevelCostEstimator> node_estimator,
+    std::unique_ptr<ReadyNodeManager> node_manager)
+    : Cluster(0),
+      node_estimator_(std::move(node_estimator)),
+      node_manager_(std::move(node_manager)) {
   devices_ = devices;
 }
 
@@ -70,8 +73,8 @@ Status VirtualCluster::Run(const GraphDef& graph,
   item.graph = graph;
   item.feed = feed;
   item.fetch = fetch;
-  VirtualScheduler scheduler(&item, true, this, node_manager_.get());
-  TF_RETURN_IF_ERROR(scheduler.Init());
+  VirtualScheduler scheduler(true, this, node_manager_.get());
+  TF_RETURN_IF_ERROR(scheduler.Init(&item));
 
   if (metadata) {
     metadata->clear_step_stats();

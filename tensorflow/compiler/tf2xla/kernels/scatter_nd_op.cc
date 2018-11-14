@@ -116,7 +116,8 @@ class ScatterNdOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("ScatterNd").CompileTimeConstInput("shape"), ScatterNdOp);
+REGISTER_XLA_OP(Name("ScatterNd").CompileTimeConstantInput("shape"),
+                ScatterNdOp);
 
 }  // namespace
 }  // namespace tensorflow

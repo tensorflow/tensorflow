@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_runner.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 
@@ -29,6 +28,33 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+// Different types of convolutions supported by cudnn.
+//
+// A way to think about these is that a convolution is defined by three arrays
+// -- the "input", the "filter", and the "output" -- and given any two of these,
+// we can compute the third.  For example, a backward-input convolution takes as
+// input a filter and an "output" and produces an "input" such that if one were
+// to do a forward convolution of "input" using filter, the result would be
+// something with the same shape as "output".
+//
+// This way of thinking is not correct if you look at the values produced. For
+// example, a backward-input convolution is not actually the mathematical
+// inverse of a forward convolution.  But it's right as far as the shapes and
+// "connectivity" (i.e. which elements of the input affect which elements of
+// the output) are concerned.
+enum class CudnnConvKind {
+  kForward,            // input  + filter => output
+  kBackwardInput,      // filter + output => input
+  kBackwardFilter,     // input  + output => filter
+  kForwardActivation,  // activation(conv(input, filter) + broadcast(bias) +
+                       // (optionally) side_input) => output
+};
+
+StatusOr<CudnnConvKind> GetCudnnConvKind(const HloCustomCallInstruction* instr);
+
+// Converts a CudnnConvKind value to a string.
+string CudnnConvKindToString(CudnnConvKind kind);
 
 constexpr int64 kWarpSize = 32;
 
@@ -82,9 +108,9 @@ bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo);
 // memory used by cudnn.  Callers shouldn't inspect scratch_memory, as its value
 // is not well-defined.
 //
-// CudnnConvolutionRewriter lowers kConvolution HLOs to these custom calls.
+// CudnnConvRewriter lowers kConvolution HLOs to these custom calls.
 // When it does so, it chooses algorithm -1 and 0 bytes of scratch space.  Later
-// on in the pipeline, CudnnConvolutionAlgorithmChooser chooses an explicit
+// on in the pipeline, CudnnConvAlgorithmChooser chooses an explicit
 // algorithm for each conv and sets the amount of scratch space needed.
 //
 // (Representing the scratch memory as an output may seem strange at first, but
@@ -95,6 +121,7 @@ bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo);
 extern const char* const kCudnnConvForwardCallTarget;
 extern const char* const kCudnnConvBackwardInputCallTarget;
 extern const char* const kCudnnConvBackwardFilterCallTarget;
+extern const char* const kCudnnConvBiasActivationForwardCallTarget;
 
 // Returns true if `hlo` will be implemented as a call to a cuDNN convolution
 // routine.
@@ -103,28 +130,6 @@ extern const char* const kCudnnConvBackwardFilterCallTarget;
 // one of the kCudnnConvFoo constants above, but returns *false* for HLOs with a
 // kConvolution opcode.
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo);
-
-// Creates a CustomCall for a cudnn forward/backward-input/backward-filter conv.
-// Note that these CustomCalls return a tuple (conv_result, scratch_memory).  If
-// you want just the conv result, you'll need to get-tuple-element the value
-// returned by this function.
-//
-// The created cudnn call will use the default cudnn algorithm and no scratch
-// space.
-HloInstruction* CreateCudnnConvForward(const Shape& shape,
-                                       HloInstruction* input,
-                                       HloInstruction* kernel,
-                                       const Window& window,
-                                       const ConvolutionDimensionNumbers& dnums,
-                                       int64 feature_group_count);
-HloInstruction* CreateCudnnConvBackwardInput(
-    const Shape& shape, HloInstruction* output, HloInstruction* reverse_filter,
-    const Window& window, const ConvolutionDimensionNumbers& dnums,
-    int64 feature_group_count);
-HloInstruction* CreateCudnnConvBackwardFilter(
-    const Shape& shape, HloInstruction* input, HloInstruction* output,
-    const Window& window, const ConvolutionDimensionNumbers& dnums,
-    int64 feature_group_count);
 
 // Returns true if `hlo` will be implemented as a library call, e.g. cuBLAS gemm
 // or cuDNN convolution.
@@ -149,11 +154,6 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
 // https://docs.nvidia.com/cuda/parallel-thread-execution/#data-movement-and-conversion-instructions-shfl-sync
 llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
                                      llvm::IRBuilder<>* builder);
-
-// Populates params using conv, which must be a custom-call to a cudnn
-// convolution.  Does not modify any buffers in the params.
-Status PopulateCudnnConvParams(const HloCustomCallInstruction* custom_call,
-                               CudnnConvParams* params);
 
 }  // namespace gpu
 }  // namespace xla

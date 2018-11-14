@@ -26,7 +26,7 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class PrefetchDatasetOp::Dataset : public DatasetBase {
@@ -103,18 +103,18 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
+      const auto& stats_aggregator = ctx->stats_aggregator();
       {
         mutex_lock l(mu_);
-        auto stats_aggregator = ctx->stats_aggregator();
         TF_RETURN_IF_ERROR(EnsurePrefetchThreadStarted(ctx));
         // Wait until the next element in the buffer has been
         // produced, or we are shutting down.
         while (!cancelled_ && buffer_.empty() && !prefetch_thread_finished_ &&
                auto_tuner_.buffer_limit() != 0) {
           auto_tuner_.RecordEmpty();
-          StopWork(ctx);
+          RecordStop(ctx);
           cond_var_.wait(l);
-          StartWork(ctx);
+          RecordStart(ctx);
         }
 
         if (cancelled_) {
@@ -123,7 +123,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         }
 
         if (!buffer_.empty()) {
-          return Consume(out_tensors, end_of_sequence, stats_aggregator);
+          return Consume(out_tensors, end_of_sequence, ctx);
         }
 
         if (prefetch_thread_finished_) {
@@ -136,10 +136,25 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
       mutex_lock parent_l(parent_mu_);
       mutex_lock l(mu_);
+      if (stats_aggregator) {
+        stats_aggregator->AddScalar(
+            strings::StrCat(prefix_end_, "::buffer_size"),
+            static_cast<float>(buffer_.size()));
+        stats_aggregator->AddScalar(
+            strings::StrCat(prefix_end_, "::buffer_capacity"),
+            static_cast<float>(auto_tuner_.buffer_limit()));
+      }
       return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
     }
 
    protected:
+    std::shared_ptr<model::Node> CreateNode(
+        IteratorContext* ctx, model::Node::Args args) const override {
+      return model::MakeAsyncKnownRatioNode(std::move(args),
+                                            /*ratio=*/1,
+                                            /*parameters=*/{});
+    }
+
     Status SaveInternal(IteratorStateWriter* writer) override {
       // Acquire both locks to ensure that the prefetch thread and
       // all GetNext threads are blocked.
@@ -212,13 +227,19 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     };
 
     Status Consume(std::vector<Tensor>* out_tensors, bool* end_of_sequence,
-                   const std::shared_ptr<StatsAggregator>& stats_aggregator)
-        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                   IteratorContext* ctx) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      const auto& stats_aggregator = ctx->stats_aggregator();
       if (stats_aggregator) {
         stats_aggregator->AddToHistogram(
             strings::StrCat(prefix_end_, "::buffer_utilization"),
             {static_cast<float>(buffer_.size()) /
              static_cast<float>(auto_tuner_.buffer_limit())});
+        stats_aggregator->AddScalar(
+            strings::StrCat(prefix_end_, "::buffer_size"),
+            static_cast<float>(buffer_.size()));
+        stats_aggregator->AddScalar(
+            strings::StrCat(prefix_end_, "::buffer_capacity"),
+            static_cast<float>(auto_tuner_.buffer_limit()));
       }
       // A new element is available. Forward the status from computing it, and
       // (if we successfully got an element) the output values.
@@ -244,7 +265,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       if (!prefetch_thread_) {
         std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
         prefetch_thread_.reset(ctx->env()->StartThread(
-            {}, "prefetch_thread",
+            {}, "tf_data_prefetch",
             [this, new_ctx]() { PrefetchThread(new_ctx); }));
       }
       return Status::OK();
@@ -255,8 +276,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     //
     // It owns the iterator context passed to it.
     void PrefetchThread(const std::shared_ptr<IteratorContext>& ctx) {
-      StartWork(ctx.get());
-      auto cleanup = gtl::MakeCleanup([this, ctx] { StopWork(ctx.get()); });
+      RecordStart(ctx.get());
+      auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
       while (true) {
         std::vector<Tensor> value;
 
@@ -264,9 +285,9 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         {
           mutex_lock l(mu_);
           while (!cancelled_ && buffer_.size() >= auto_tuner_.buffer_limit()) {
-            StopWork(ctx.get());
+            RecordStop(ctx.get());
             cond_var_.wait(l);
-            StartWork(ctx.get());
+            RecordStart(ctx.get());
           }
 
           if (cancelled_) {

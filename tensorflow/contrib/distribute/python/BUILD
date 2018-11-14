@@ -22,14 +22,15 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":input_ops",
-        ":prefetching_ops_v2",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:device_util",
         "//tensorflow/python:distribute",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/checkpointable:base",
         "@six_archive//:six",
@@ -314,6 +315,7 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:distributed_framework_test_lib",
         "//tensorflow/python:session",
+        "//tensorflow/python:util",
         "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
     ],
@@ -411,6 +413,24 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "moving_averages_test",
+    srcs = ["moving_averages_test.py"],
+    additional_deps = [
+        ":combinations",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+    ],
+    tags = [
+        "no_pip",
+    ],
+)
+
+cuda_py_test(
     name = "optimizer_v2_test",
     srcs = ["optimizer_v2_test.py"],
     additional_deps = [
@@ -447,6 +467,30 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # http://b/119349471
+        "no_pip",
+    ],
+)
+
+cuda_py_test(
+    name = "keras_optimizer_v2_test",
+    srcs = ["keras_optimizer_v2_test.py"],
+    additional_deps = [
+        ":combinations",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/contrib/optimizer_v2:training",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/feature_column",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
+    ],
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # http://b/119349471
         "no_pip",
     ],
 )
@@ -456,6 +500,7 @@ cuda_py_test(
     size = "large",
     srcs = ["estimator_training_test.py"],
     additional_deps = [
+        ":collective_all_reduce_strategy",
         ":combinations",
         ":mirrored_strategy",
         ":multi_worker_test_base",
@@ -471,12 +516,15 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:summary",
     ],
+    shard_count = 5,
     tags = [
-        "manual",
         "multi_and_single_gpu",
         "no_pip",
-        "nogpu",
-        "notap",
+        # TODO(b/118768923): Re-enable {a,m,t}san test.
+        "noasan",
+        "nomsan",
+        "notsan",
+        "no_oss",  # http://b/119349471
     ],
 )
 
@@ -576,8 +624,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":values",
-        "//tensorflow/contrib/all_reduce:all_reduce_py",
-        "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
         "//tensorflow/python:device",
@@ -585,6 +631,8 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:nccl_ops",
+        "//tensorflow/python/distribute:all_reduce",
     ],
 )
 
@@ -628,7 +676,6 @@ py_library(
 
 cuda_py_test(
     name = "cross_tower_ops_test",
-    size = "large",
     srcs = ["cross_tower_ops_test.py"],
     additional_deps = [
         ":combinations",
@@ -647,32 +694,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_pip",
-    ],
-)
-
-py_library(
-    name = "prefetching_ops_v2",
-    srcs = ["prefetching_ops_v2.py"],
-    deps = [
-        "//tensorflow/contrib/data/python/ops:contrib_op_loader",
-        "//tensorflow/contrib/data/python/ops:prefetching_ops",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/data/util:sparse",
-    ],
-)
-
-cuda_py_test(
-    name = "prefetching_ops_v2_test",
-    srcs = ["prefetching_ops_v2_test.py"],
-    additional_deps = [
-        ":prefetching_ops_v2",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/ops:iterator_ops",
     ],
 )
 
@@ -730,14 +751,29 @@ cuda_py_test(
     additional_deps = [
         ":keras_test_lib",
     ],
+    shard_count = 16,
     tags = [
-        "manual",
         "multi_and_single_gpu",
-        "no_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
         "no_pip",
         "no_windows_gpu",
-        "notap",
         "notsan",
+    ],
+)
+
+py_library(
+    name = "metrics_v1_test_lib",
+    testonly = 1,
+    srcs = ["metrics_v1_test.py"],
+    deps = [
+        ":combinations",
+        "//tensorflow/contrib/data/python/ops:batching",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -745,14 +781,7 @@ cuda_py_test(
     name = "metrics_v1_test",
     srcs = ["metrics_v1_test.py"],
     additional_deps = [
-        ":combinations",
-        "@absl_py//absl/testing:parameterized",
-        "//tensorflow/contrib/data/python/ops:batching",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:metrics",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:test",
+        ":metrics_v1_test_lib",
     ],
     tags = [
         "multi_and_single_gpu",

@@ -345,8 +345,7 @@ TEST_F(EagerServiceImplTest, SendTensorTest) {
       response.context_id(), RemoteTensorHandleInternal(2, 0), &tensor_handle));
   TF_ASSERT_OK(tensor_handle->Tensor(&t));
 
-  Device* device = nullptr;
-  TF_ASSERT_OK(tensor_handle->Device(&device));
+  Device* device = tensor_handle->device();
   EXPECT_NE(device, nullptr);
   EXPECT_EQ(device->name(), "/job:localhost/replica:0/task:0/device:CPU:0");
 

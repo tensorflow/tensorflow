@@ -49,7 +49,7 @@ _allowed_symbols.extend([
 ])
 
 # Export protos
-tf_export('profiler.GraphNodeProto')(GraphNodeProto)
-tf_export('profiler.MultiGraphNodeProto')(MultiGraphNodeProto)
-tf_export('profiler.AdviceProto')(AdviceProto)
-tf_export('profiler.OpLogProto')(OpLogProto)
+tf_export(v1=['profiler.GraphNodeProto'])(GraphNodeProto)
+tf_export(v1=['profiler.MultiGraphNodeProto'])(MultiGraphNodeProto)
+tf_export(v1=['profiler.AdviceProto'])(AdviceProto)
+tf_export(v1=['profiler.OpLogProto'])(OpLogProto)

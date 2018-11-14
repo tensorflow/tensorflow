@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"
@@ -84,8 +85,7 @@ Status MaybeCopyInputToExpectedDevice(EagerOperation* op, int i,
                                       RunMetadata* run_metadata,
                                       TensorHandle** handle) {
   EagerContext* ctx = op->EagerContext();
-  Device* handle_device = nullptr;
-  TF_RETURN_IF_ERROR((*handle)->Device(&handle_device));
+  Device* handle_device = (*handle)->device();
   const Device* actual_device =
       handle_device == nullptr ? ctx->HostCPU() : handle_device;
   const Device* op_device =
@@ -192,23 +192,23 @@ Status ValidateInputTypeAndPlacement(EagerContext* ctx, Device* op_device,
 }
 
 Status SelectDevice(const NodeDef& ndef, EagerContext* ctx, Device** device) {
-  DeviceTypeVector final_devices;
+  PrioritizedDeviceTypeVector final_devices;
   TF_RETURN_IF_ERROR(SupportedDeviceTypesForNode(
       ctx->prioritized_device_type_list(), ndef, &final_devices));
   if (final_devices.empty()) {
-    return errors::Internal(
-        "Could not find valid device for node.\nNode: ", SummarizeNodeDef(ndef),
-        "\nAll kernels registered for op ", ndef.op(), " :\n",
-        KernelsRegisteredForOp(ndef.op()));
+    return errors::Internal("Could not find valid device for node.\nNode: ",
+                            FormatNodeDefForError(ndef),
+                            "\nAll kernels registered for op ", ndef.op(),
+                            " :\n", KernelsRegisteredForOp(ndef.op()));
   }
   for (Device* d : *ctx->devices()) {
-    if (d->device_type() == final_devices[0].type_string()) {
+    if (d->device_type() == final_devices[0].first.type_string()) {
       *device = d;
       return Status::OK();
     }
   }
   return errors::Unknown("Could not find a device for node ",
-                         SummarizeNodeDef(ndef));
+                         FormatNodeDefForError(ndef));
 }
 
 Status GetOutputDTypes(EagerOperation* op, DataTypeVector* output_dtypes) {
@@ -251,26 +251,6 @@ Status EagerLocalExecute(EagerOperation* op,
   EagerContext* ctx = op->EagerContext();
   auto status = ctx->GetStatus();
   if (!status.ok()) return status;
-  // Ensure all resource-touching ops run in the device the resource is,
-  // regardless of anything else that has been specified. This is identical to
-  // the graph mode behavior.
-  for (int i = 0; i < op->Inputs().size(); ++i) {
-    Device* input_op_device = nullptr;
-    status = op->Inputs()[i]->OpDevice(&input_op_device);
-    if (!status.ok()) return status;
-    VLOG(2) << "for op " << op->Name() << " input " << i << " "
-            << DataTypeString(op->Inputs()[i]->dtype) << " "
-            << (input_op_device == nullptr ? "cpu" : input_op_device->name())
-            << " " << (op->Device() == nullptr ? "cpu" : op->Device()->name());
-    if (op->Inputs()[i]->dtype == DT_RESOURCE &&
-        (input_op_device != op->Device() || input_op_device == nullptr)) {
-      Device* d = input_op_device == nullptr ? ctx->HostCPU() : input_op_device;
-      VLOG(1) << "Changing device of operation " << op->Name() << " to "
-              << d->name() << " because input #" << i
-              << " is a resource in this device.";
-      op->SetDevice(d);
-    }
-  }
   Device* device = op->Device();
 
   Fprint128 cache_key = op->MutableAttrs()->CacheKey(
@@ -296,33 +276,20 @@ Status EagerLocalExecute(EagerOperation* op,
       LOG(INFO) << "Executing op " << ndef.op() << " in device "
                 << device->name();
     }
-    kernel = new KernelAndDevice(ctx->GetRendezvous(), ctx->LogMemory());
-    auto* flr = ctx->func_lib(device);
 
+    auto* flr = ctx->func_lib(device);
     if (flr == nullptr) {
       return errors::Unavailable(
           "Unable to find a FunctionLibraryRuntime corresponding to device ",
           device->name());
     }
+    kernel = new KernelAndDevice(ctx->GetRendezvous(), ctx->LogMemory());
     status = KernelAndDevice::Init(ndef, flr, ctx->runner(), kernel);
     if (!status.ok()) {
       delete kernel;
       return status;
     }
-    // Update output_dtypes inside `kernel`.
-    const OpDef* op_def = nullptr;
-    const FunctionDef* function_def = ctx->FuncLibDef()->Find(ndef.op());
-    if (function_def != nullptr) {
-      op_def = &(function_def->signature());
-    }
-    if (op_def == nullptr) {
-      status = OpDefForOp(ndef.op().c_str(), &op_def);
-      if (!status.ok()) return status;
-    }
-    DataTypeVector input_dtypes;
-    status = InOutTypesForNode(ndef, *op_def, &input_dtypes,
-                               kernel->mutable_output_dtypes());
-    if (!status.ok()) return status;
+
     ctx->AddKernelToCache(cache_key, kernel);
   }
   const DataTypeVector& output_dtypes = kernel->output_dtypes();
@@ -343,7 +310,11 @@ Status EagerLocalExecute(EagerOperation* op,
       ctx->ShouldStoreMetadata() ? ctx->RunMetadataProto() : nullptr);
   if (!status.ok()) return status;
   std::unique_ptr<NodeExecStats> maybe_stats;
+  StepStats* maybe_step_stats = nullptr;
+  GraphCollector* graph_collector = nullptr;
   if (ctx->ShouldStoreMetadata()) {
+    graph_collector = ctx->GetGraphCollector();
+    maybe_step_stats = ctx->RunMetadataProto()->mutable_step_stats();
     int64 now_nanos = Env::Default()->NowNanos();
     maybe_stats.reset(new NodeExecStats);
     maybe_stats->set_node_name(op->Name());
@@ -362,17 +333,20 @@ Status EagerLocalExecute(EagerOperation* op,
     // TODO(agarwal): Consider executing "cheap" kernels inline for performance.
     tensorflow::uint64 id = ctx->NextId();
     for (int i = 0; i < *num_retvals; ++i) {
-      (*retvals)[i] = new TensorHandle(id, output_dtypes[i], ctx);
+      (*retvals)[i] = new TensorHandle(id, /* d= */ kernel->OutputDevice(i),
+                                       /* op_device= */ kernel->device(),
+                                       output_dtypes[i], ctx);
     }
-    EagerNode* node =
-        new ExecuteNode(id, ctx, op->Device(), op->Inputs(), kernel,
-                        maybe_stats.release(), output_dtypes, *retvals);
+    EagerNode* node = new ExecuteNode(
+        id, ctx, op->Device(), op->Inputs(), kernel, maybe_stats.release(),
+        maybe_step_stats, graph_collector, output_dtypes, *retvals);
     ctx->ExecutorAdd(node);
   } else {
     // Execute checks if retvals[i] is nullptr or not to figure if it needs to
     // allocate it.
     status = EagerExecute(ctx, op->Device(), op->Inputs(), kernel,
-                          maybe_stats.get(), retvals->data(), *num_retvals);
+                          maybe_stats.get(), maybe_step_stats, graph_collector,
+                          retvals->data(), *num_retvals);
   }
 
   return status;
@@ -444,8 +418,23 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
   request.set_op_id(ctx->NextId());
   request.set_device_name(recv_device->name());
 
+  Device* tensor_handle_device = h->device();
+
+  // AsProtoTensorContent doesn't work when the tensor is on the GPU, hence copy
+  // it to the CPU before copying it out.
+  // TODO(nareshmodi): this is currently slow, but can be fixed by making tensor
+  // handles aware of more than one device.
+  TensorHandle* actual_handle;
+  if (tensor_handle_device != nullptr &&
+      tensor_handle_device->device_type() != "CPU") {
+    TF_RETURN_IF_ERROR(h->CopyToDevice(ctx, ctx->HostCPU(), &actual_handle));
+  } else {
+    actual_handle = h;
+    actual_handle->Ref();
+  }
+
   const Tensor* tensor;
-  TF_RETURN_IF_ERROR(h->Tensor(&tensor));
+  TF_RETURN_IF_ERROR(actual_handle->Tensor(&tensor));
   tensor->AsProtoTensorContent(request.add_tensors());
 
   const tensorflow::uint64 id = request.op_id();
@@ -468,6 +457,8 @@ Status EagerRemoteSendTensor(EagerContext* ctx, TensorHandle* h,
                              tensor->dtype(), std::move(destructor),
                              recv_device, recv_device, ctx);
   (*result)->SetRemoteShape(MakeUnique<TensorShape>(tensor->shape()));
+
+  actual_handle->Unref();
 
   return Status::OK();
 #endif
@@ -494,8 +485,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   auto* remote_op = request->add_queue()->mutable_operation();
 
   for (int i = 0; i < op->Inputs().size(); i++) {
-    tensorflow::Device* input_device;
-    TF_RETURN_IF_ERROR(op->Inputs()[i]->Device(&input_device));
+    tensorflow::Device* input_device = op->Inputs()[i]->device();
     if (op->Device() != input_device &&
         // If the expected and actual devices are on the same task, don't
         // explicitly copy, and instead depend on the copy to happen locally
@@ -599,11 +589,97 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   return Status::OK();
 #endif
 }
+
+// These ops are not pinnable since they generate data. It can be slower to
+// generate and then copy the data instead of just generating the data on the
+// device directly.
+bool IsPinnableOp(const string& op_type) {
+  static const gtl::FlatSet<string>* unpinnable_ops = new gtl::FlatSet<string>({
+      "RandomUniform",
+      "RandomUniformInt",
+      "RandomNormal",
+      "StatelessRandomUniform",
+      "StatelessRandomUniformInt",
+      "StatelessRandomNormal",
+  });
+
+  return unpinnable_ops->find(op_type) == unpinnable_ops->end();
+}
+
+// The Op device may be updated if:
+// - A resource touching input is specified: all resource-touching ops run in
+// the device the resource is, regardless of anything else that has been
+// specified. This is identical to the graph mode behavior.
+//
+// - All op inputs are on the CPU, small (<64 elements) and integers
+// (int32/int64). This can be disabled by setting the environment variable
+// "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING" to "0" or "false".
+Status MaybeUpdateOpDevice(EagerOperation* op) {
+  EagerContext* ctx = op->EagerContext();
+  bool device_set_for_resource_variable = false;
+  bool all_inputs_eligible_for_cpu_pinning =
+      ctx->PinSmallOpsToCPU() && IsPinnableOp(op->Name());
+
+  for (int i = 0; i < op->Inputs().size(); ++i) {
+    Device* input_op_device = op->Inputs()[i]->op_device();
+    VLOG(2) << "for op " << op->Name() << " input " << i << " "
+            << DataTypeString(op->Inputs()[i]->dtype) << " "
+            << (input_op_device == nullptr ? "cpu" : input_op_device->name())
+            << " " << (op->Device() == nullptr ? "cpu" : op->Device()->name());
+    if (op->Inputs()[i]->dtype == DT_RESOURCE &&
+        (input_op_device != op->Device() || input_op_device == nullptr)) {
+      Device* d = input_op_device == nullptr ? ctx->HostCPU() : input_op_device;
+      VLOG(1) << "Changing device of operation " << op->Name() << " to "
+              << d->name() << " because input #" << i
+              << " is a resource in this device.";
+      op->SetDevice(d);
+
+      device_set_for_resource_variable = true;
+      all_inputs_eligible_for_cpu_pinning = false;
+    } else if (all_inputs_eligible_for_cpu_pinning) {
+      TensorHandle* handle = op->Inputs()[i];
+
+      // Input is on CPU.
+      if (input_op_device != nullptr && input_op_device != ctx->HostCPU()) {
+        all_inputs_eligible_for_cpu_pinning = false;
+        continue;
+      }
+
+      if (handle->dtype != DataType::DT_INT32 &&
+          handle->dtype != DataType::DT_INT64) {
+        all_inputs_eligible_for_cpu_pinning = false;
+        continue;
+      }
+
+      int64 num_elements;
+      TF_RETURN_IF_ERROR(handle->NumElements(&num_elements));
+      if (num_elements > 64) {
+        all_inputs_eligible_for_cpu_pinning = false;
+      }
+    }
+  }
+
+  // Ops without inputs are usually ops that generate a tensor in some way and
+  // usually require being present on whatever device they are scheduled on
+  // - for e.g. VarHandleOp or _Recv).
+  // TODO(nareshmodi): Is it possible there is no int32/int64 CPU kernel for
+  // an op, but there is a GPU kernel?
+  if (!op->Inputs().empty() && all_inputs_eligible_for_cpu_pinning) {
+    VLOG(1) << "Forcing op " << op->Name()
+            << " to be on the CPU since all input tensors have an "
+               "int32/int64 dtype, and are small (less than 64 elements).";
+    op->SetDevice(ctx->HostCPU());
+  }
+
+  return Status::OK();
+}
 }  // namespace
 
 Status EagerExecute(EagerOperation* op,
                     gtl::InlinedVector<TensorHandle*, 2>* retvals,
                     int* num_retvals) {
+  TF_RETURN_IF_ERROR(MaybeUpdateOpDevice(op));
+
   bool op_is_local = IsLocal(op->EagerContext(), op->Device());
 
   if (op_is_local) {
@@ -621,7 +697,9 @@ Status EagerExecute(EagerOperation* op,
 Status EagerExecute(EagerContext* ctx, Device* device,
                     const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
                     KernelAndDevice* kernel, NodeExecStats* maybe_stats,
-                    TensorHandle** retvals, int num_retvals) {
+                    StepStats* maybe_step_stats,
+                    GraphCollector* graph_collector, TensorHandle** retvals,
+                    int num_retvals) {
   if (device == nullptr) {
     // TODO(apassos) debug how the assignment below might return a different
     // device from the one requested above.
@@ -642,9 +720,11 @@ Status EagerExecute(EagerContext* ctx, Device* device,
   // TODO(agarwal): change Run to take vector of handles ?
   ScopedStepContainer* container = ctx->StepContainer();
   if (container == nullptr) {
-    TF_RETURN_IF_ERROR(kernel->Run(&inputs, &outputs, maybe_stats));
+    TF_RETURN_IF_ERROR(kernel->Run(&inputs, &outputs, maybe_stats,
+                                   maybe_step_stats, graph_collector));
   } else {
-    TF_RETURN_IF_ERROR(kernel->Run(container, &inputs, &outputs, maybe_stats));
+    TF_RETURN_IF_ERROR(kernel->Run(container, &inputs, &outputs, maybe_stats,
+                                   maybe_step_stats, graph_collector));
   }
   if (maybe_stats != nullptr) {
     int64 nanos = Env::Default()->NowNanos();
@@ -656,6 +736,14 @@ Status EagerExecute(EagerContext* ctx, Device* device,
     maybe_stats->set_all_end_rel_nanos(nanos - maybe_stats->all_start_nanos());
     mutex_lock ml(*ctx->MetadataMu());
     if (ctx->ShouldStoreMetadata()) {
+      {
+        GraphCollector* collector = ctx->GetGraphCollector();
+        mutex_lock mll(collector->mu);
+        for (const auto& graph : collector->graphs) {
+          *ctx->RunMetadataProto()->add_partition_graphs() = graph;
+        }
+        collector->graphs.clear();
+      }
       auto* step_stats = ctx->RunMetadataProto()->mutable_step_stats();
       // Lazily initialize the RunMetadata with information about all devices if
       // this is the first call.
@@ -677,17 +765,19 @@ Status EagerExecute(EagerContext* ctx, Device* device,
     }
   }
   DCHECK_EQ(num_retvals, outputs.size());
-  Device* op_device = device;
   for (int i = 0; i < num_retvals; ++i) {
-    Device* d = op_device;
-    if (d != nullptr && output_memory_types != nullptr &&
-        (*output_memory_types)[i] == HOST_MEMORY) {
-      d = nullptr;
-    }
     if (retvals[i] == nullptr) {
-      retvals[i] = new TensorHandle(outputs[i], d, op_device, ctx);
+      retvals[i] =
+          new TensorHandle(outputs[i], /* d= */ kernel->OutputDevice(i),
+                           /* op_device= */ device, ctx);
     } else {
-      retvals[i]->SetTensorAndDevice(outputs[i], d, op_device);
+      // In the async case, the retval is not a nullptr, and its device is
+      // already set since all TensorHandles always have their device set during
+      // construction.
+      DCHECK_EQ(device, retvals[i]->op_device());
+      DCHECK_EQ(kernel->OutputDevice(i), retvals[i]->device());
+
+      retvals[i]->SetTensor(outputs[i]);
     }
   }
   return Status::OK();
@@ -802,8 +892,7 @@ string GetUniqueWireID() {
 
 Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
                          const char* device_name, TensorHandle** result) {
-  tensorflow::Device* send_device;
-  TF_RETURN_IF_ERROR(h->Device(&send_device));
+  tensorflow::Device* send_device = h->device();
 
   if (send_device == nullptr) {
     send_device = ctx->HostCPU();

@@ -132,6 +132,18 @@ class TemplatesTest(test.TestCase):
     self.assertIsInstance(node.body[0].targets[0].elts[0].ctx, gast.Store)
     self.assertIsInstance(node.body[0].targets[0].elts[1].ctx, gast.Store)
 
+  def test_replace_expression_context(self):
+    template = """
+      def test_fn(foo):
+        foo
+    """
+
+    node = templates.replace(
+        template, foo=parser.parse_expression('a + 2 * b / -c'))[0]
+    self.assertIsInstance(node.body[0].ctx, gast.Load)
+    self.assertIsInstance(node.body[0].left.ctx, gast.Load)
+    self.assertIsInstance(node.body[0].right.left.right.ctx, gast.Load)
+
   def test_replace_complex_context(self):
     template = """
       def test_fn(foo):
@@ -145,6 +157,18 @@ class TemplatesTest(test.TestCase):
     self.assertIsInstance(function_call_arg.elts[0].ctx, gast.Load)
     self.assertIsInstance(function_call_arg.elts[0].elts[0].ctx, gast.Load)
     self.assertIsInstance(function_call_arg.elts[0].elts[1].ctx, gast.Load)
+
+  def test_replace_index(self):
+    template = """
+      def test_fn(foo):
+        foo = 0
+    """
+
+    node = templates.replace(
+        template, foo=parser.parse_expression('foo(a[b]).bar'))[0]
+    function_call_arg = node.body[0].targets[0].value.args[0]
+    self.assertIsInstance(function_call_arg.ctx, gast.Load)
+    self.assertIsInstance(function_call_arg.slice.value.ctx, gast.Load)
 
   def test_replace_call_keyword(self):
     template = """
@@ -190,15 +214,15 @@ class TemplatesTest(test.TestCase):
     result, _ = compiler.ast_to_object(node)
     self.assertEquals(3, result.test_fn())
 
-  def replace_as_expression(self):
+  def test_replace_as_expression(self):
     template = """
       foo(a)
     """
 
-    node = templates.replace(template, foo='bar', a='baz')
-    self.assertTrue(node is gast.Call)
+    node = templates.replace_as_expression(template, foo='bar', a='baz')
+    self.assertIsInstance(node, gast.Call)
     self.assertEqual(node.func.id, 'bar')
-    self.assertEqual(node.func.args[0].id, 'baz')
+    self.assertEqual(node.args[0].id, 'baz')
 
   def test_replace_as_expression_restrictions(self):
     template = """
@@ -207,6 +231,13 @@ class TemplatesTest(test.TestCase):
     """
     with self.assertRaises(ValueError):
       templates.replace_as_expression(template)
+
+  def test_function_call_in_list(self):
+    template = """
+        foo(bar)
+    """
+    source = parser.parse_expression('[a(b(1))]')
+    templates.replace_as_expression(template, bar=source)
 
 
 if __name__ == '__main__':

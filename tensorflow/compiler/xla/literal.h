@@ -203,6 +203,10 @@ class LiteralBase {
   // Returns the count of the elements in the array at the given shape index in
   // this literal.
   int64 element_count(const ShapeIndex& index = {}) const {
+    if (index.empty()) {
+      // Common case, avoid GetSubshape().
+      return ShapeUtil::ElementsIn(shape());
+    }
     return ShapeUtil::ElementsIn(ShapeUtil::GetSubshape(shape(), index));
   }
 
@@ -297,7 +301,7 @@ class LiteralBase {
   //
   // Note: It's an antipattern to use this method then immediately call
   // MutableLiteralBase::Populate on the result (since that results in zero
-  // initialization, then reinitialization. Conside if a call to
+  // initialization, then reinitialization. Consider if a call to
   // absl::make_unique<Literal>(shape), followed by the call to
   // MutableLiteralBase::Populate can be used instead.
   static Literal CreateFromShape(const Shape& shape);
@@ -852,9 +856,9 @@ class BorrowingLiteral : public LiteralBase {
 
 template <typename NativeT>
 absl::Span<const NativeT> LiteralBase::Piece::data() const {
-  CHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
-  CHECK_EQ(subshape().element_type(),
-           primitive_util::NativeToPrimitiveType<NativeT>())
+  DCHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
+  DCHECK_EQ(subshape().element_type(),
+            primitive_util::NativeToPrimitiveType<NativeT>())
       << "Attempting to access "
       << PrimitiveType_Name(primitive_util::NativeToPrimitiveType<NativeT>())
       << " type, but literal element type is "
@@ -865,9 +869,9 @@ absl::Span<const NativeT> LiteralBase::Piece::data() const {
 
 template <typename NativeT>
 absl::Span<NativeT> LiteralBase::Piece::data() {
-  CHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
-  CHECK_EQ(subshape().element_type(),
-           primitive_util::NativeToPrimitiveType<NativeT>())
+  DCHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
+  DCHECK_EQ(subshape().element_type(),
+            primitive_util::NativeToPrimitiveType<NativeT>())
       << "Attempting to access "
       << PrimitiveType_Name(primitive_util::NativeToPrimitiveType<NativeT>())
       << " type, but literal element type is "
@@ -975,9 +979,8 @@ inline void MutableLiteralBase::PopulateR1(absl::Span<const NativeT> values) {
   CHECK_EQ(ShapeUtil::ElementsIn(shape()), values.size());
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
-  for (int64 i = 0; i < values.size(); ++i) {
-    Set({i}, values[i]);
-  }
+  auto data_span = data<NativeT>();
+  std::copy(values.begin(), values.end(), data_span.begin());
 }
 
 template <typename NativeT>

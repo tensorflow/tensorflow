@@ -245,11 +245,12 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
     if (!dev_mgr_ || device_type == DEVICE_CPU) {
       dev_mgr_.reset(new DeviceMgr(local_devices));
     }
+    if (!gpu_ring_order_) gpu_ring_order_.reset(new string());
     dev_resolver_.reset(new DeviceResolverLocal(dev_mgr_.get()));
     rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), kStepId,
                            fail_after);
-    col_exec_ = new BaseCollectiveExecutor(&col_exec_mgr_, rma_, kStepId,
-                                           dev_mgr_.get());
+    col_exec_ = new BaseCollectiveExecutor(
+        &col_exec_mgr_, rma_, kStepId, dev_mgr_.get(), gpu_ring_order_.get());
     col_params_.name = "test_collective";
     col_params_.instance.data_type = dtype;
     static const int kGroupKey = 6;
@@ -715,6 +716,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
   CollectiveParams col_params_;
   std::vector<tensorflow::Device*> gpu_devices_;
   std::unique_ptr<tensorflow::DeviceMgr> dev_mgr_;
+  std::unique_ptr<string> gpu_ring_order_;
   mutex mu_;
   int bcast_recv_counter_ GUARDED_BY(mu_) = 0;
   int bcast_send_counter_ GUARDED_BY(mu_) = 0;

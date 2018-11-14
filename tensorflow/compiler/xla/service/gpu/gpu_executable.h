@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -101,7 +101,7 @@ class GpuExecutable : public Executable {
   const PointsToSet& GetRootPointsToSet() const;
 
   using BufferAllocToDeviceMemoryMap =
-      tensorflow::gtl::FlatMap<BufferAllocation::Index, se::DeviceMemoryBase>;
+      absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>;
 
   // Loads the PTX or CUBIN for this executable into `executor` and resolves the
   // globals corresponding to constant buffers.  Returns a map mapping buffer

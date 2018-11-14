@@ -54,7 +54,7 @@ Status LogicalBufferAnalysis::Analyze() {
   // so reserve 10% more than the number of instructions to avoid frequent
   // resizes.
   logical_buffers_.clear();
-  logical_buffers_.reserve((module_->NumUniqueInstructionIds() * 11) / 10);
+  logical_buffers_.reserve((module_->instruction_count() * 11) / 10);
 
   // We filter out fusion computations, and get to them through fusion
   // instructions. This is because it's possible to have orphaned (unreachable)

@@ -32,7 +32,6 @@ from tensorflow.python.platform import tf_logging as logging
 _TF_CONFIG_ENV = run_config_lib._TF_CONFIG_ENV
 _SERVICE_KEY = run_config_lib._SERVICE_KEY
 _TPU_WORKER_JOB_NAME = 'tpu_worker_job_name'
-_NUM_CORES_PER_HOST = 8
 # pylint: enable=protected-access
 
 
@@ -103,7 +102,7 @@ class TPUConfig(
       input mode.
 
     Raises:
-      ValueError: If `num_cores_per_replica` is not 1, 2, 4 or 8.
+      ValueError: If `num_cores_per_replica` is not 1, 2, 4, 8 or 16.
   """
 
   def __new__(cls,
@@ -139,9 +138,9 @@ class TPUConfig(
 
     # Check num_cores_per_replica
     if num_cores_per_replica is not None:
-      if num_cores_per_replica not in [1, 2, 4, 8]:
+      if num_cores_per_replica not in [1, 2, 4, 8, 16]:
         raise ValueError(
-            'num_cores_per_replica must be 1, 2, 4, or 8; got {}'.format(
+            'num_cores_per_replica must be 1, 2, 4, 8, or 16; got {}'.format(
                 str(num_cores_per_replica)))
 
     # per_host_input_for_training may be True, False, or integer in [1..3].

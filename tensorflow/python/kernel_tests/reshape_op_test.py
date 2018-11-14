@@ -30,7 +30,7 @@ from tensorflow.python.platform import test
 class ReshapeTest(test.TestCase):
 
   def _testReshape(self, x, y, use_gpu=False):
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       np_ans = x.reshape(y)
       tf_ans = array_ops.reshape(x, y)
       out = tf_ans.eval()

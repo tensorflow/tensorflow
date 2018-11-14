@@ -23,7 +23,6 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
@@ -177,7 +176,7 @@ class Conv2DTransposeTest(test.TestCase):
   def testConv2DTransposeSingleStrideNCHW(self):
     # `NCHW` data format is only supported for CUDA device.
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         strides = [1, 1, 1, 1]
 
         # Input, output: [batch, depth, height, width, depth]
@@ -212,7 +211,7 @@ class Conv2DTransposeTest(test.TestCase):
   def testConv2DTransposeSameNCHW(self):
     # `NCHW` data format is only supported for CUDA device.
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         strides = [1, 1, 2, 2]
 
         # Input, output: [batch, depth, height, width]
@@ -248,7 +247,7 @@ class Conv2DTransposeTest(test.TestCase):
   def testConv2DTransposeValidNCHW(self):
     # `NCHW` data format is only supported for CUDA device.
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         strides = [1, 1, 2, 2]
 
         # Input, output: [batch, depth, height, width]
@@ -293,7 +292,6 @@ class Conv2DTransposeTest(test.TestCase):
 
         self.assertAllClose(cache_values, value)
 
-  @test_util.enable_c_shapes
   def testConv2DTransposeShapeInference(self):
     # Test case for 8972
     initializer = random_ops.truncated_normal(

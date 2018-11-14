@@ -25,7 +25,7 @@ namespace xla {
 
 // Pass which replaces all implicit broadcasts with their equivalent sequence of
 // explicit broadcast and reshape instructions.
-class ImplicitBroadcastRemover : public HloPassInterface {
+class ImplicitBroadcastRemover : public HloModulePass {
  public:
   ImplicitBroadcastRemover() {}
   ~ImplicitBroadcastRemover() override {}

@@ -68,7 +68,7 @@ class LLVMCompilerTest : public ::testing::Test {
     builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
 
-    auto hlo_module = CreateNewModule();
+    auto hlo_module = CreateNewUnverifiedModule();
     hlo_module->AddEntryComputation(builder.Build());
 
     compiler->SetPreOptimizationHook(pre_opt_hook);
@@ -90,18 +90,19 @@ class LLVMCompilerTest : public ::testing::Test {
     builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
 
-    std::unique_ptr<HloModule> hlo_module = CreateNewModule();
+    std::unique_ptr<HloModule> hlo_module = CreateNewUnverifiedModule();
     hlo_module->AddEntryComputation(builder.Build());
 
-    std::vector<std::unique_ptr<HloModule>> modules;
-    modules.push_back(hlo_module->Clone());
-    modules.push_back(std::move(hlo_module));
+    auto module_group = absl::make_unique<HloModuleGroup>("test_module_group");
+    module_group->push_back(hlo_module->Clone());
+    module_group->push_back(std::move(hlo_module));
 
     std::vector<std::vector<se::StreamExecutor *>> executors;
     executors.push_back({backend_->default_stream_executor()});
     executors.push_back({backend_->default_stream_executor()});
 
-    EXPECT_IS_OK(compiler->Compile(std::move(modules), std::move(executors),
+    EXPECT_IS_OK(compiler->Compile(std::move(module_group),
+                                   std::move(executors),
                                    /*device_allocator=*/nullptr));
   }
 
@@ -123,9 +124,9 @@ class LLVMCompilerTest : public ::testing::Test {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 
-  static std::unique_ptr<HloModule> CreateNewModule() {
+  static std::unique_ptr<HloModule> CreateNewUnverifiedModule() {
     HloModuleConfig config;
-    config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+    config.set_debug_options(GetDebugOptionsFromFlags());
     return absl::make_unique<HloModule>(TestName(), config);
   }
 };
@@ -150,12 +151,12 @@ TEST_F(GpuCompilerTest, HooksTest) {
   TestCompilerHooks(&compiler);
 }
 
-TEST_F(CpuCompilerTest, MultiModuleCompilation) {
+TEST_F(CpuCompilerTest, CpuMultiModuleCompilation) {
   cpu::CpuCompiler compiler;
   TestMultiModuleCompilation(&compiler);
 }
 
-TEST_F(GpuCompilerTest, MultModuleCompilation) {
+TEST_F(GpuCompilerTest, NVPTXMultiModuleCompilation) {
   gpu::NVPTXCompiler compiler;
   TestMultiModuleCompilation(&compiler);
 }

@@ -26,6 +26,7 @@ from tensorflow.contrib.tensorrt.python.ops import trt_engine_op
 # pylint: enable=unused-import
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
@@ -49,6 +50,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
   def testTensorrtRewriterConfig(self):
     """Test case for trt_convert.tensorrt_rewriter_config()."""
     rewriter_cfg = trt_convert.tensorrt_rewriter_config(
+        rewriter_config=None,
         max_batch_size=128,
         max_workspace_size_bytes=1234,
         precision_mode="INT8",
@@ -56,6 +58,10 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         is_dynamic_op=True,
         maximum_cached_engines=2,
         cached_engine_batch_sizes=[1, 128])
+    self.assertEqual(["constfold", "layout", "constfold"],
+                     rewriter_cfg.optimizers)
+    self.assertEqual(rewriter_config_pb2.RewriterConfig.ONE,
+                     rewriter_cfg.meta_optimizer_iterations)
     trt_optimizer = None
     for optimizer in rewriter_cfg.custom_optimizers:
       if optimizer.name == "TensorRTOptimizer":
@@ -94,7 +100,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
       with g.device("/GPU:0"):
         inp = array_ops.placeholder(
             dtype=dtypes.float32, shape=[None, 1, 1], name="input")
-        var = variables.Variable([[[1.0]]], dtype=dtypes.float32, name="v1")
+        var = variables.VariableV1([[[1.0]]], dtype=dtypes.float32, name="v1")
         add = inp + var.value()
         mul = inp * add
         add = mul + add
@@ -104,7 +110,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
   def _GetGraphDef(self):
     """Get the graph def for testing."""
     g, var, _, _ = self._GetGraph()
-    with self.test_session(graph=g, config=self._GetConfigProto()) as sess:
+    with self.session(graph=g, config=self._GetConfigProto()) as sess:
       sess.run(var.initializer)
       graph_def = graph_util.convert_variables_to_constants(
           sess, g.as_graph_def(add_shapes=True), ["output"])
@@ -128,7 +134,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         outputs={"myoutput": utils.build_tensor_info(out)},
         method_name=signature_constants.PREDICT_METHOD_NAME)
     saved_model_builder = builder.SavedModelBuilder(input_saved_model_dir)
-    with self.test_session(graph=g, config=self._GetConfigProto()) as sess:
+    with self.session(graph=g, config=self._GetConfigProto()) as sess:
       sess.run(var.initializer)
       saved_model_builder.add_meta_graph_and_variables(
           sess, [tag_constants.SERVING],

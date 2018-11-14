@@ -187,11 +187,12 @@ class RingReducerTest : public ::testing::Test {
                  << " devices: ";
       dev_mgr_.reset(new DeviceMgr(local_devices));
     }
+    if (!gpu_ring_order_) gpu_ring_order_.reset(new string());
     dev_resolver_.reset(new DeviceResolverLocal(dev_mgr_.get()));
     rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), kStepId,
                            fail_after);
-    col_exec_ = new BaseCollectiveExecutor(&col_exec_mgr_, rma_, kStepId,
-                                           dev_mgr_.get());
+    col_exec_ = new BaseCollectiveExecutor(
+        &col_exec_mgr_, rma_, kStepId, dev_mgr_.get(), gpu_ring_order_.get());
     col_params_.name = "test_collective";
     static const int kGroupKey = 5;
     col_params_.group.group_key = kGroupKey;
@@ -545,41 +546,43 @@ class RingReducerTest : public ::testing::Test {
   CollectiveParams col_params_;
   std::vector<tensorflow::Device*> gpu_devices_;
   std::unique_ptr<tensorflow::DeviceMgr> dev_mgr_;
+  std::unique_ptr<string> gpu_ring_order_;
   mutex mu_;
   int32 reduce_counter_ GUARDED_BY(mu_) = 0;
 };
 
-TEST_F(RingReducerTest, InitializeParams) {
-  static const int kNumDevsPerTask = 8;
-  static const int kNumTasks = 3;
-  static const int kNumDevs = kNumDevsPerTask * kNumTasks;
+CollectiveParams SetUpCollectiveParams(const int num_devs_per_task,
+                                       const int num_tasks) {
   CollectiveParams cp;
-  std::vector<string> device_names;
-  std::vector<string> task_names;
+  const int kNumDevs = num_devs_per_task * num_tasks;
   cp.group.group_key = 1;
   cp.group.group_size = kNumDevs;
   cp.group.device_type = DeviceType("GPU");
-  cp.group.num_tasks = kNumTasks;
+  cp.group.num_tasks = num_tasks;
   cp.instance.instance_key = 3;
   cp.instance.type = REDUCTION_COLLECTIVE;
   cp.instance.data_type = DataType(DT_FLOAT);
-  cp.instance.shape = TensorShape({5});
+  cp.instance.shape = TensorShape({kNumDevs});
   cp.instance.impl_details.collective_name = "RingReduce";
   cp.instance.impl_details.subdiv_offsets.push_back(0);
   cp.is_source = false;
   for (int i = 0; i < kNumDevs; ++i) {
-    int task_id = i / kNumDevsPerTask;
-    int dev_id = i % kNumDevsPerTask;
+    int task_id = i / num_devs_per_task;
+    int dev_id = i % num_devs_per_task;
     string task_name = strings::StrCat("/job:worker/replica:0/task:", task_id);
-    task_names.push_back(task_name);
     string device_name = strings::StrCat(task_name, "/device:GPU:", dev_id);
-    device_names.push_back(device_name);
     cp.instance.task_names.push_back(task_name);
     cp.instance.device_names.push_back(device_name);
   }
+  return cp;
+}
 
-  int test_rank = 0;
-  cp.default_rank = test_rank;
+TEST_F(RingReducerTest, InitializeParams) {
+  const int kNumDevsPerTask = 8;
+  const int kNumTasks = 3;
+  CollectiveParams cp = SetUpCollectiveParams(kNumDevsPerTask, kNumTasks);
+
+  cp.default_rank = 0;
   cp.instance.impl_details.subdiv_offsets = {0, 4};
   RunSubdivPermsTest(&cp,
                      {{0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
@@ -588,8 +591,15 @@ TEST_F(RingReducerTest, InitializeParams) {
                        8, 9, 10, 11, 20, 21, 22, 23, 16, 17, 18, 19}},
                      {0, 4});
 
-  test_rank = 3;
-  cp.default_rank = test_rank;
+  cp.instance.impl_details.subdiv_offsets = {0, -4};
+  RunSubdivPermsTest(&cp,
+                     {{0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                       12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23},
+                      {3,  2,  1,  0,  7,  6,  5,  4,  11, 10, 9,  8,
+                       15, 14, 13, 12, 19, 18, 17, 16, 23, 22, 21, 20}},
+                     {0, 3});
+
+  cp.default_rank = 3;
   cp.instance.impl_details.subdiv_offsets = {3, -3};
   RunSubdivPermsTest(&cp,
                      {{3,  4, 5, 6,  7,  0,  1,  2,  11, 12, 13, 14,
@@ -597,6 +607,49 @@ TEST_F(RingReducerTest, InitializeParams) {
                       {4, 3,  2,  1,  0,  7,  6,  5,  12, 11, 10, 9,
                        8, 15, 14, 13, 20, 19, 18, 17, 16, 23, 22, 21}},
                      {0, 1});
+}
+
+TEST_F(RingReducerTest, AutomaticSubdivs) {
+  const int kNumDevsPerTask = 8;
+  const int kNumTasks = 3;
+  const int kNumDevs = kNumDevsPerTask * kNumTasks;
+  CollectiveParams cp = SetUpCollectiveParams(kNumDevsPerTask, kNumTasks);
+
+  // Test automatic generation of subdiv offsets.
+  cp.default_rank = 0;
+  cp.instance.impl_details.subdiv_offsets.clear();
+  RunSubdivPermsTest(&cp, {{0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                            12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23}},
+                     {0});
+
+  // Set shape so that with 2 subdivs chunk_size is 3 MiB.  This should cause 2
+  // offsets, {0, -4}, to be generated.
+  {
+    int num_subdivs = 2;
+    int num_chunks = kNumDevs * num_subdivs;
+    size_t chunk_size = 3 * 1048576;  // 3 MB
+    size_t tensor_size = chunk_size * num_chunks;
+    cp.instance.shape =
+        TensorShape({static_cast<int64>(tensor_size / DataTypeSize(DT_FLOAT))});
+  }
+  cp.instance.impl_details.subdiv_offsets.clear();
+  RunSubdivPermsTest(&cp,
+                     {{0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11,
+                       12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23},
+                      {3,  2,  1,  0,  7,  6,  5,  4,  11, 10, 9,  8,
+                       15, 14, 13, 12, 19, 18, 17, 16, 23, 22, 21, 20}},
+                     {0, 3});
+}
+
+TEST_F(RingReducerTest, AutomaticSubdivUpperBound) {
+  const int kNumDevsPerTask = 1;
+  const int kNumTasks = 4;
+  CollectiveParams cp = SetUpCollectiveParams(kNumDevsPerTask, kNumTasks);
+
+  cp.default_rank = 0;
+  cp.instance.impl_details.subdiv_offsets.clear();
+  cp.instance.shape = TensorShape({104857600 / DataTypeSize(DT_FLOAT)});
+  RunSubdivPermsTest(&cp, {{0, 1, 2, 3}, {0, 1, 2, 3}}, {0, 0});
 }
 
 // TODO(b/113171733): change to use TEST_P.

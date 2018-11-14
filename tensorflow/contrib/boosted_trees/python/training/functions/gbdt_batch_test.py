@@ -86,7 +86,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
 
   def testExtractFeatures(self):
     """Tests feature extraction."""
-    with self.test_session():
+    with self.cached_session():
       features = {}
       features["dense_float"] = array_ops.zeros([2, 1], dtypes.float32)
       features["sparse_float"] = sparse_tensor.SparseTensor(
@@ -128,7 +128,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
 
   def testExtractFeaturesWithTransformation(self):
     """Tests feature extraction."""
-    with self.test_session():
+    with self.cached_session():
       features = {}
       features["dense_float"] = array_ops.zeros([2, 1], dtypes.float32)
       features["sparse_float"] = sparse_tensor.SparseTensor(
@@ -178,7 +178,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
 
   def testExtractFeaturesFromCoreFeatureColumns(self):
     """Tests feature extraction when using core columns."""
-    with self.test_session():
+    with self.cached_session():
       features = {}
       # Sparse float column does not exist in core, so only dense numeric and
       # categorical.
@@ -213,7 +213,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
 
   def testTrainFnChiefNoBiasCentering(self):
     """Tests the train function running on chief without bias centering."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       ensemble_handle = model_ops.tree_ensemble_variable(
           stamp_token=0, tree_ensemble_config="", name="tree_ensemble")
       learner_config = learner_pb2.LearnerConfig()
@@ -239,7 +239,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
       partition_ids = array_ops.zeros([4], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -316,7 +316,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       self.assertProtoEquals(expected_tree, output.trees[0])
 
   def testObliviousDecisionTreeAsWeakLearner(self):
-    with self.test_session():
+    with self.cached_session():
       ensemble_handle = model_ops.tree_ensemble_variable(
           stamp_token=0, tree_ensemble_config="", name="tree_ensemble")
       learner_config = learner_pb2.LearnerConfig()
@@ -473,7 +473,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
 
   def testTrainFnChiefSparseAndDense(self):
     """Tests the train function with sparse and dense features."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       ensemble_handle = model_ops.tree_ensemble_variable(
           stamp_token=0, tree_ensemble_config="", name="tree_ensemble")
       learner_config = learner_pb2.LearnerConfig()
@@ -503,7 +503,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
       partition_ids = array_ops.zeros([4], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -580,7 +580,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
 
   def testTrainFnChiefScalingNumberOfExamples(self):
     """Tests the train function running on chief without bias centering."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       ensemble_handle = model_ops.tree_ensemble_variable(
           stamp_token=0, tree_ensemble_config="", name="tree_ensemble")
       learner_config = learner_pb2.LearnerConfig()
@@ -607,7 +607,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
       partition_ids = array_ops.zeros([4], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -685,7 +685,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
 
   def testTrainFnChiefWithBiasCentering(self):
     """Tests the train function running on chief with bias centering."""
-    with self.test_session():
+    with self.cached_session():
       ensemble_handle = model_ops.tree_ensemble_variable(
           stamp_token=0, tree_ensemble_config="", name="tree_ensemble")
       learner_config = learner_pb2.LearnerConfig()
@@ -711,7 +711,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
       partition_ids = array_ops.zeros([4], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -757,7 +757,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
 
   def testTrainFnNonChiefNoBiasCentering(self):
     """Tests the train function running on worker without bias centering."""
-    with self.test_session():
+    with self.cached_session():
       ensemble_handle = model_ops.tree_ensemble_variable(
           stamp_token=0, tree_ensemble_config="", name="tree_ensemble")
       learner_config = learner_pb2.LearnerConfig()
@@ -783,7 +783,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
       partition_ids = array_ops.zeros([4], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -821,7 +821,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
 
   def testTrainFnNonChiefWithCentering(self):
     """Tests the train function running on worker with bias centering."""
-    with self.test_session():
+    with self.cached_session():
       ensemble_handle = model_ops.tree_ensemble_variable(
           stamp_token=0, tree_ensemble_config="", name="tree_ensemble")
       learner_config = learner_pb2.LearnerConfig()
@@ -847,7 +847,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
       partition_ids = array_ops.zeros([4], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -885,7 +885,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
 
   def testPredictFn(self):
     """Tests the predict function."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Create ensemble with one bias node.
       ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       text_format.Merge(
@@ -939,7 +939,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
 
   def testPredictFnWithLeafIndexAdvancedLeft(self):
     """Tests the predict function with output leaf ids."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Create ensemble with one bias node.
       ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       text_format.Merge(
@@ -1051,7 +1051,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
 
   def testTrainFnMulticlassFullHessian(self):
     """Tests the GBDT train for multiclass full hessian."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       ensemble_handle = model_ops.tree_ensemble_variable(
           stamp_token=0, tree_ensemble_config="", name="tree_ensemble")
 
@@ -1090,7 +1090,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       weights = array_ops.ones([batch_size, 1], dtypes.float32)
 
       partition_ids = array_ops.zeros([batch_size], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -1155,7 +1155,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
 
   def testTrainFnMulticlassDiagonalHessian(self):
     """Tests the GBDT train for multiclass diagonal hessian."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       ensemble_handle = model_ops.tree_ensemble_variable(
           stamp_token=0, tree_ensemble_config="", name="tree_ensemble")
 
@@ -1194,7 +1194,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       weights = array_ops.ones([batch_size, 1], dtypes.float32)
 
       partition_ids = array_ops.zeros([batch_size], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -1257,9 +1257,99 @@ class GbdtTest(test_util.TensorFlowTestCase):
       self.assertArrayNear(expected_leaf_2,
                            output.trees[0].nodes[2].leaf.vector.value, 1e-3)
 
+  def testTrainFnMulticlassDiagonalHessianOblivious(self):
+    """Tests the GBDT train for multiclass diagonal hessian."""
+    with self.cached_session():
+      ensemble_handle = model_ops.tree_ensemble_variable(
+          stamp_token=0, tree_ensemble_config="", name="tree_ensemble")
+
+      learner_config = learner_pb2.LearnerConfig()
+      learner_config.learning_rate_tuner.fixed.learning_rate = 1
+      # Use full hessian multiclass strategy.
+      learner_config.multi_class_strategy = (
+          learner_pb2.LearnerConfig.DIAGONAL_HESSIAN)
+      learner_config.num_classes = 5
+      learner_config.regularization.l1 = 0
+      # To make matrix inversible.
+      learner_config.regularization.l2 = 1e-5
+      learner_config.weak_learner_type = (
+          learner_pb2.LearnerConfig.OBLIVIOUS_DECISION_TREE)
+      learner_config.pruning_mode = learner_pb2.LearnerConfig.PRE_PRUNE
+      learner_config.constraints.max_tree_depth = 5
+      learner_config.constraints.min_node_weight = 0
+      batch_size = 3
+      features = {}
+      features["sparse_int"] = sparse_tensor.SparseTensor(
+          array_ops.constant([[0, 0], [1, 0]], dtypes.int64),
+          array_ops.constant([1, 2], dtypes.int64),
+          array_ops.constant([3, 1], dtypes.int64))
+
+      gbdt_model = gbdt_batch.GradientBoostedDecisionTreeModel(
+          is_chief=True,
+          num_ps_replicas=0,
+          center_bias=False,
+          ensemble_handle=ensemble_handle,
+          examples_per_layer=1,
+          learner_config=learner_config,
+          logits_dimension=5,
+          features=features)
+
+      labels = array_ops.constant([[2], [2], [3]], dtype=dtypes.float32)
+      weights = array_ops.ones([batch_size, 1], dtypes.float32)
+
+      predictions_dict = gbdt_model.predict(learn.ModeKeys.TRAIN)
+      predictions = predictions_dict["predictions"]
+
+      # Create train op.
+      train_op = gbdt_model.train(
+          loss=math_ops.reduce_mean(
+              losses.per_example_maxent_loss(
+                  labels,
+                  weights,
+                  predictions,
+                  num_classes=learner_config.num_classes)[0]),
+          predictions_dict=predictions_dict,
+          labels=labels)
+      variables.global_variables_initializer().run()
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      stamp_token, serialized = model_ops.tree_ensemble_serialize(
+          ensemble_handle)
+
+      # Grow 2 layers.
+      train_op.run()
+      train_op.run()
+
+      output = tree_config_pb2.DecisionTreeEnsembleConfig()
+      output.ParseFromString(serialized.eval())
+
+      stamp_token, serialized = model_ops.tree_ensemble_serialize(
+          ensemble_handle)
+      output.ParseFromString(serialized.eval())
+      self.assertEqual(len(output.trees), 1)
+      # We got 6 nodes: one parent and 4 leafs.
+      self.assertEqual(len(output.trees[0].nodes), 6)
+      self.assertAllClose(output.tree_weights, [1])
+      self.assertEqual(stamp_token.eval(), 2)
+
+      print(output.trees[0])
+      # Leafs should have a dense vector of size 5.
+      expected_leaf_1 = [-1.2497, -1.24976, 4.999, -1.24976, -1.2497]
+      expected_leaf_2 = [-2.2362, -2.2362, 6.0028, -2.2362, -2.2362]
+      expected_leaf_3 = [-2.2694, -2.2694, 4.0064, -0.0084, -2.2694]
+      expected_leaf_4 = [-2.2694, -2.2694, -0.0084, 4.0064, -2.2694]
+      self.assertArrayNear(expected_leaf_1,
+                           output.trees[0].nodes[2].leaf.vector.value, 1e-3)
+      self.assertArrayNear(expected_leaf_2,
+                           output.trees[0].nodes[3].leaf.vector.value, 1e-3)
+      self.assertArrayNear(expected_leaf_3,
+                           output.trees[0].nodes[4].leaf.vector.value, 1e-3)
+      self.assertArrayNear(expected_leaf_4,
+                           output.trees[0].nodes[5].leaf.vector.value, 1e-3)
+
   def testTrainFnMulticlassTreePerClass(self):
     """Tests the GBDT train for multiclass tree per class strategy."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       ensemble_handle = model_ops.tree_ensemble_variable(
           stamp_token=0, tree_ensemble_config="", name="tree_ensemble")
 
@@ -1299,7 +1389,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       weights = array_ops.ones([batch_size, 1], dtypes.float32)
 
       partition_ids = array_ops.zeros([batch_size], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -1374,7 +1464,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
 
   def testTrainFnChiefFeatureSelectionReachedLimitNoGoodSplit(self):
     """Tests the train function running on chief with feature selection."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       ensemble_handle = model_ops.tree_ensemble_variable(
           stamp_token=0, tree_ensemble_config="", name="tree_ensemble")
       learner_config = learner_pb2.LearnerConfig()
@@ -1405,7 +1495,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
       partition_ids = array_ops.zeros([4], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -1493,7 +1583,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
 
   def testTrainFnChiefFeatureSelectionWithGoodSplits(self):
     """Tests the train function running on chief with feature selection."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       ensemble_handle = model_ops.tree_ensemble_variable(
           stamp_token=0, tree_ensemble_config="", name="tree_ensemble")
       learner_config = learner_pb2.LearnerConfig()
@@ -1524,7 +1614,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
       partition_ids = array_ops.zeros([4], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -1610,7 +1700,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
 
   def testTrainFnChiefFeatureSelectionReachedLimitIncrementAttemptedLayer(self):
     """Tests the train function running on chief with feature selection."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       tree = tree_ensemble_config.trees.add()
 
@@ -1656,7 +1746,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
       predictions = array_ops.constant(
           [[0.0], [1.0], [0.0], [2.0]], dtype=dtypes.float32)
       partition_ids = array_ops.zeros([4], dtypes.int32)
-      ensemble_stamp = variables.Variable(
+      ensemble_stamp = variables.VariableV1(
           initial_value=0,
           name="ensemble_stamp",
           trainable=False,
@@ -1720,7 +1810,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
 
   def testResetModelBeforeAndAfterSplit(self):
     """Tests whether resetting works."""
-    with self.test_session():
+    with self.cached_session():
       # First build a small tree and train it to verify training works.
       ensemble_handle = model_ops.tree_ensemble_variable(
           stamp_token=0, tree_ensemble_config="", name="tree_ensemble")
@@ -1854,7 +1944,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
 
   def testResetModelNonChief(self):
     """Tests the reset function on a non-chief worker."""
-    with self.test_session():
+    with self.cached_session():
       # Create ensemble with one bias node.
       ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       text_format.Merge(
@@ -1930,7 +2020,7 @@ class GbdtTest(test_util.TensorFlowTestCase):
 
   def testResetModelWithCenterBias(self):
     """Tests the reset function running on chief with bias centering."""
-    with self.test_session():
+    with self.cached_session():
       ensemble_handle = model_ops.tree_ensemble_variable(
           stamp_token=0, tree_ensemble_config="", name="tree_ensemble")
       learner_config = learner_pb2.LearnerConfig()

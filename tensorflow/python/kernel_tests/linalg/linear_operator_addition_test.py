@@ -19,14 +19,12 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_addition
 from tensorflow.python.platform import test
 
 linalg = linalg_lib
-random_seed.set_random_seed(23)
 rng = np.random.RandomState(0)
 
 add_operators = linear_operator_addition.add_operators
@@ -76,7 +74,7 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
         [1., 1.], is_positive_definite=True, name="A")
     op_b = linalg.LinearOperatorDiag(
         [2., 2.], is_positive_definite=True, name="B")
-    with self.test_session():
+    with self.cached_session():
       op_sum = add_operators([op_a, op_b])
       self.assertEqual(1, len(op_sum))
       op = op_sum[0]
@@ -98,7 +96,7 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
         [2., 2.], is_positive_definite=True, name="op2")
     op3 = linalg.LinearOperatorDiag(
         [3., 3.], is_positive_definite=True, name="op3")
-    with self.test_session():
+    with self.cached_session():
       op_sum = add_operators([op1, op2, op3])
       self.assertEqual(1, len(op_sum))
       op = op_sum[0]
@@ -121,7 +119,7 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
         name="tril")
     op3 = linalg.LinearOperatorDiag(
         [3., 3.], is_non_singular=True, name="diag_b")
-    with self.test_session():
+    with self.cached_session():
       op_sum = add_operators([op1, op2, op3])
       self.assertEqual(1, len(op_sum))
       op = op_sum[0]
@@ -143,7 +141,7 @@ class LinearOperatorAdditionCorrectnessTest(test.TestCase):
     op2 = linalg.LinearOperatorLowerTriangular(
         [[2., 0.], [1.5, 2.]], name="tril")
     op3 = linalg.LinearOperatorDiag([3., 3.], name="diag_b")
-    with self.test_session():
+    with self.cached_session():
       op_sum = add_operators([op0, op1, op2, op3], operator_name="my_operator")
       self.assertEqual(1, len(op_sum))
       op = op_sum[0]
@@ -233,7 +231,7 @@ class LinearOperatorOrderOfAdditionTest(test.TestCase):
     self.assertEqual(2, len(op_sum))
     found_diag = False
     found_tril = False
-    with self.test_session():
+    with self.cached_session():
       for op in op_sum:
         if isinstance(op, linalg.LinearOperatorDiag):
           found_diag = True
@@ -273,7 +271,7 @@ class AddAndReturnScaledIdentityTest(test.TestCase):
     operator = self._adder.add(id1, id2, "my_operator", hints)
     self.assertIsInstance(operator, linalg.LinearOperatorScaledIdentity)
 
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(2 *
                           linalg_ops.eye(num_rows=2, batch_shape=[3]).eval(),
                           operator.to_dense().eval())
@@ -291,7 +289,7 @@ class AddAndReturnScaledIdentityTest(test.TestCase):
     operator = self._adder.add(id1, id2, "my_operator", hints)
     self.assertIsInstance(operator, linalg.LinearOperatorScaledIdentity)
 
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(3.2 *
                           linalg_ops.eye(num_rows=2, batch_shape=[3]).eval(),
                           operator.to_dense().eval())
@@ -310,7 +308,7 @@ class AddAndReturnScaledIdentityTest(test.TestCase):
     operator = self._adder.add(id1, id2, "my_operator", hints)
     self.assertIsInstance(operator, linalg.LinearOperatorScaledIdentity)
 
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(1.2 *
                           linalg_ops.eye(num_rows=2, batch_shape=[3]).eval(),
                           operator.to_dense().eval())
@@ -334,7 +332,7 @@ class AddAndReturnDiagTest(test.TestCase):
     operator = self._adder.add(id1, id2, "my_operator", hints)
     self.assertIsInstance(operator, linalg.LinearOperatorDiag)
 
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(2 *
                           linalg_ops.eye(num_rows=2, batch_shape=[3]).eval(),
                           operator.to_dense().eval())
@@ -354,7 +352,7 @@ class AddAndReturnDiagTest(test.TestCase):
     operator = self._adder.add(op1, op2, "my_operator", hints)
     self.assertIsInstance(operator, linalg.LinearOperatorDiag)
 
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(
           linalg.LinearOperatorDiag(diag1 + diag2).to_dense().eval(),
           operator.to_dense().eval())
@@ -379,7 +377,7 @@ class AddAndReturnTriLTest(test.TestCase):
     operator = self._adder.add(diag, tril, "my_operator", hints)
     self.assertIsInstance(operator, linalg.LinearOperatorLowerTriangular)
 
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose([[11., 0.], [30., 2.]], operator.to_dense().eval())
     self.assertTrue(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
@@ -401,7 +399,7 @@ class AddAndReturnMatrixTest(test.TestCase):
     operator = self._adder.add(diag1, diag2, "my_operator", hints)
     self.assertIsInstance(operator, linalg.LinearOperatorFullMatrix)
 
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose([[0., 0.], [0., 5.]], operator.to_dense().eval())
     self.assertFalse(operator.is_positive_definite)
     self.assertFalse(operator.is_non_singular)

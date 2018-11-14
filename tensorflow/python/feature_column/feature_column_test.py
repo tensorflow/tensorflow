@@ -30,7 +30,7 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.feature_column import feature_column_lib as fc
+from tensorflow.python.feature_column import feature_column as fc
 from tensorflow.python.feature_column.feature_column import _CategoricalColumn
 from tensorflow.python.feature_column.feature_column import _DenseColumn
 from tensorflow.python.feature_column.feature_column import _FeatureColumn
@@ -168,6 +168,18 @@ class LazyColumnTest(test.TestCase):
     with self.assertRaisesRegexp(
         TypeError, '"key" must be either a "str" or "_FeatureColumn".'):
       builder.get(NotAFeatureColumn())
+
+  def test_expand_dim_rank_1_sparse_tensor_empty_batch(self):
+    # empty 1-D sparse tensor:
+    builder = _LazyBuilder(features={'a': sparse_tensor.SparseTensor(
+        indices=np.reshape(np.array([], dtype=np.int64), (0, 1)),
+        dense_shape=[0],
+        values=np.array([]))})
+    with self.cached_session():
+      spv = builder.get('a').eval()
+      self.assertAllEqual(np.array([0, 1], dtype=np.int64), spv.dense_shape)
+      self.assertAllEqual(
+          np.reshape(np.array([], dtype=np.int64), (0, 2)), spv.indices)
 
 
 class NumericColumnTest(test.TestCase):

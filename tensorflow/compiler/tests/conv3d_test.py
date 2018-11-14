@@ -225,7 +225,7 @@ class Conv3DTransposeTest(xla_test.XLATestCase):
       err = gradient_checker.compute_gradient_error([x, f], [x_shape, f_shape],
                                                     output, y_shape)
     print("conv3d_transpose gradient err = %g " % err)
-    err_tolerance = 0.0005
+    err_tolerance = 0.001
     self.assertLess(err, err_tolerance)
 
 

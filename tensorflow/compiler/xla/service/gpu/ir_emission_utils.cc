@@ -38,10 +38,9 @@ namespace gpu {
 
 namespace {
 
-// Return whether the given shape is a matrix with no padding.
-bool IsRank2WithNoPadding(const Shape& shape, int64 batch_dimensions_size) {
-  return ShapeUtil::Rank(shape) == batch_dimensions_size + 2 &&
-         !LayoutUtil::IsPadded(shape);
+// Return whether the given shape is rank 2 excluding the batch dimensions.
+bool IsRank2(const Shape& shape, int64 batch_dimensions_size) {
+  return ShapeUtil::Rank(shape) == batch_dimensions_size + 2;
 }
 
 // In a gemm operation where output = lhs * rhs, check whether the given shapes
@@ -56,10 +55,9 @@ bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
   bool type_is_allowed =
       (output_primitive_type == F16 || output_primitive_type == F32 ||
        output_primitive_type == F64 || output_primitive_type == C64);
-  return type_is_allowed &&
-         IsRank2WithNoPadding(lhs_shape, batch_dimensions_size) &&
-         IsRank2WithNoPadding(rhs_shape, batch_dimensions_size) &&
-         IsRank2WithNoPadding(output_shape, batch_dimensions_size) &&
+  return type_is_allowed && IsRank2(lhs_shape, batch_dimensions_size) &&
+         IsRank2(rhs_shape, batch_dimensions_size) &&
+         IsRank2(output_shape, batch_dimensions_size) &&
          !ShapeUtil::IsZeroElementArray(lhs_shape) &&
          !ShapeUtil::IsZeroElementArray(rhs_shape);
 }
@@ -93,7 +91,8 @@ bool ImplementedAsGemm(const HloInstruction& hlo) {
 
   if (hlo.opcode() == HloOpcode::kFusion &&
       hlo.fusion_kind() == HloInstruction::FusionKind::kOutput &&
-      hlo.fused_expression_root()->opcode() == HloOpcode::kMultiply) {
+      (hlo.fused_expression_root()->opcode() == HloOpcode::kMultiply ||
+       hlo.fused_expression_root()->opcode() == HloOpcode::kAdd)) {
     // Try to find the dot inside the output fusion node.
     const HloInstruction* dot = hlo.fused_expression_root()->operand(0);
     if (dot->opcode() != HloOpcode::kDot) {
@@ -129,6 +128,8 @@ const char* const kCudnnConvBackwardInputCallTarget =
     "__cudnn$convBackwardInput";
 const char* const kCudnnConvBackwardFilterCallTarget =
     "__cudnn$convBackwardFilter";
+const char* const kCudnnConvBiasActivationForwardCallTarget =
+    "__cudnn$convBiasActivationForward";
 
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
   if (hlo.opcode() != HloOpcode::kCustomCall) {
@@ -137,65 +138,13 @@ bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
   const auto& target = hlo.custom_call_target();
   return target == kCudnnConvForwardCallTarget ||
          target == kCudnnConvBackwardInputCallTarget ||
-         target == kCudnnConvBackwardFilterCallTarget;
+         target == kCudnnConvBackwardFilterCallTarget ||
+         target == kCudnnConvBiasActivationForwardCallTarget;
 }
 
 bool ImplementedAsLibraryCall(const HloInstruction& hlo) {
   return ImplementedAsGemm(hlo) || IsCustomCallToDnnBatchNorm(hlo) ||
          IsCustomCallToDnnConvolution(hlo);
-}
-
-static HloInstruction* CreateCudnnConv(const char* call_target,
-                                       const Shape& shape, HloInstruction* lhs,
-                                       HloInstruction* rhs,
-                                       const Window& window,
-                                       const ConvolutionDimensionNumbers& dnums,
-                                       int64 feature_group_count) {
-  HloComputation* computation = lhs->parent();
-
-  // This call returns a tuple of (conv_result, scratch_memory), where
-  // conv_result is the actual result of the convolution, and scratch_memory is
-  // temporary memory used by cudnn.
-  //
-  // At the moment, we don't know how much scratch memory this conv is going to
-  // use, so we put u8[0] in this place.  Later on another pass will choose
-  // which conv algorithm to use, and at that point we'll modify the shape of
-  // this second tuple element.
-  Shape call_shape =
-      ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeShape(U8, {0})});
-
-  HloInstruction* custom_call = computation->AddInstruction(
-      HloInstruction::CreateCustomCall(call_shape, {lhs, rhs}, call_target));
-  custom_call->set_window(window);
-  custom_call->set_convolution_dimension_numbers(dnums);
-  custom_call->set_feature_group_count(feature_group_count);
-  return custom_call;
-}
-
-HloInstruction* CreateCudnnConvForward(const Shape& shape,
-                                       HloInstruction* input,
-                                       HloInstruction* kernel,
-                                       const Window& window,
-                                       const ConvolutionDimensionNumbers& dnums,
-                                       int64 feature_group_count) {
-  return CreateCudnnConv(kCudnnConvForwardCallTarget, shape, input, kernel,
-                         window, dnums, feature_group_count);
-}
-
-HloInstruction* CreateCudnnConvBackwardInput(
-    const Shape& shape, HloInstruction* output, HloInstruction* reverse_filter,
-    const Window& window, const ConvolutionDimensionNumbers& dnums,
-    int64 feature_group_count) {
-  return CreateCudnnConv(kCudnnConvBackwardInputCallTarget, shape, output,
-                         reverse_filter, window, dnums, feature_group_count);
-}
-
-HloInstruction* CreateCudnnConvBackwardFilter(
-    const Shape& shape, HloInstruction* input, HloInstruction* output,
-    const Window& window, const ConvolutionDimensionNumbers& dnums,
-    int64 feature_group_count) {
-  return CreateCudnnConv(kCudnnConvBackwardFilterCallTarget, shape, input,
-                         output, window, dnums, feature_group_count);
 }
 
 bool IsReductionToVector(const HloInstruction& reduce) {
@@ -288,41 +237,35 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
       value->getType());
 }
 
-Status PopulateCudnnConvParams(const HloCustomCallInstruction* custom_call,
-                               CudnnConvParams* params) {
-  TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig backend_config,
-                      custom_call->backend_config<CudnnConvBackendConfig>());
-  const auto& target = custom_call->custom_call_target();
-  const auto& lhs_shape = custom_call->operand(0)->shape();
-  const auto& rhs_shape = custom_call->operand(1)->shape();
-  const auto& conv_result_shape = custom_call->shape().tuple_shapes(0);
-
-  params->window = &custom_call->window();
-  params->dnums = &custom_call->convolution_dimension_numbers();
-  params->feature_group_count = custom_call->feature_group_count();
-  params->algorithm = se::dnn::AlgorithmConfig(se::dnn::AlgorithmDesc(
-      backend_config.algorithm(), backend_config.tensor_ops_enabled()));
-
+StatusOr<CudnnConvKind> GetCudnnConvKind(
+    const HloCustomCallInstruction* instr) {
+  absl::string_view target = instr->custom_call_target();
   if (target == kCudnnConvForwardCallTarget) {
-    params->kind = CudnnConvKind::kForward;
-    params->input_shape = &lhs_shape;
-    params->filter_shape = &rhs_shape;
-    params->output_shape = &conv_result_shape;
-  } else if (target == kCudnnConvBackwardInputCallTarget) {
-    params->kind = CudnnConvKind::kBackwardInput;
-    params->input_shape = &conv_result_shape;
-    params->filter_shape = &rhs_shape;
-    params->output_shape = &lhs_shape;
-  } else if (target == kCudnnConvBackwardFilterCallTarget) {
-    params->kind = CudnnConvKind::kBackwardFilter;
-    params->input_shape = &lhs_shape;
-    params->filter_shape = &conv_result_shape;
-    params->output_shape = &rhs_shape;
-  } else {
-    LOG(FATAL) << "Unexpected custom call target: "
-               << custom_call->custom_call_target();
+    return CudnnConvKind::kForward;
   }
-  return Status::OK();
+  if (target == kCudnnConvBackwardInputCallTarget) {
+    return CudnnConvKind::kBackwardInput;
+  }
+  if (target == kCudnnConvBackwardFilterCallTarget) {
+    return CudnnConvKind::kBackwardFilter;
+  }
+  if (target == kCudnnConvBiasActivationForwardCallTarget) {
+    return CudnnConvKind::kForwardActivation;
+  }
+  return InternalError("Unexpected call target: %s", target);
+}
+
+string CudnnConvKindToString(CudnnConvKind kind) {
+  switch (kind) {
+    case CudnnConvKind::kForward:
+      return "forward";
+    case CudnnConvKind::kBackwardFilter:
+      return "backward_filter";
+    case CudnnConvKind::kBackwardInput:
+      return "backward_input";
+    case CudnnConvKind::kForwardActivation:
+      return "forward with activation";
+  }
 }
 
 }  // namespace gpu

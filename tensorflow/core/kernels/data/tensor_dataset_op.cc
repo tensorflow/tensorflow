@@ -12,16 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class TensorDatasetOp : public DatasetOpKernel {
@@ -33,11 +33,7 @@ class TensorDatasetOp : public DatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->input_list("components", &inputs));
     // TODO(mrry): Validate that the shapes of the "components" tensors match
     // the "shapes" attr.;
-    std::vector<Tensor> components;
-    components.reserve(inputs.size());
-    for (const Tensor& t : inputs) {
-      components.push_back(t);
-    }
+    std::vector<Tensor> components(inputs.begin(), inputs.end());
     *output = new Dataset(ctx, std::move(components));
   }
 
@@ -73,10 +69,10 @@ class TensorDatasetOp : public DatasetOpKernel {
       components.reserve(tensors_.size());
       for (const Tensor& t : tensors_) {
         Node* node;
-        std::vector<std::pair<string, Tensor>>* input_list = ctx->input_list();
-        if (input_list) {
+        if (ctx->optimization_only()) {
           TF_RETURN_IF_ERROR(b->AddPlaceholder(t, &node));
-          input_list->emplace_back(node->name(), t);
+          DCHECK_NE(ctx->input_list(), nullptr);
+          ctx->input_list()->emplace_back(node->name(), t);
         } else {
           TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
         }
@@ -111,6 +107,11 @@ class TensorDatasetOp : public DatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeSourceNode(std::move(args));
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (produced_)

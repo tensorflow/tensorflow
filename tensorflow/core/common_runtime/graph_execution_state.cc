@@ -76,7 +76,7 @@ GraphExecutionState::~GraphExecutionState() {
     GraphDef* graph_def, const GraphExecutionStateOptions& options,
     std::unique_ptr<GraphExecutionState>* out_state) {
 #ifndef __ANDROID__
-  VLOG(4) << "Graph proto is " << graph_def->DebugString();
+  VLOG(4) << "Graph proto is \n" << graph_def->DebugString();
 #endif  // __ANDROID__
 
   std::unique_ptr<GraphExecutionState> ret(
@@ -531,7 +531,8 @@ Status GraphExecutionState::InitBaseGraph(const BuildGraphOptions& options) {
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
 
-  Placer placer(new_graph.get(), device_set_, session_options_);
+  Placer placer(new_graph.get(), device_set_, session_options_,
+                /* default_device= */ nullptr);
   // TODO(mrry): Consider making the Placer cancelable.
   TF_RETURN_IF_ERROR(placer.Run());
 

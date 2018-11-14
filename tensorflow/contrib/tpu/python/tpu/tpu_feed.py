@@ -765,9 +765,8 @@ class _PartitionedInfeedQueue(InfeedQueue):
           zip(per_host_sharded_inputs[replica_index], inputs_part_dims_flat)
       ]
 
-      for core_index in xrange(self._device_assignment.num_cores_per_replica):
+      for logical_core in xrange(self._device_assignment.num_cores_per_replica):
         # Places different partitions to different logic cores.
-        logical_core = self._get_logical_core(core_index)
         replica_id = self._device_assignment.lookup_replicas(
             self._host_id, logical_core)[replica_index]
         ordinal = self._device_assignment.tpu_ordinal(
@@ -784,7 +783,7 @@ class _PartitionedInfeedQueue(InfeedQueue):
                   inputs=infeed_inputs,
                   shapes=[x.shape for x in infeed_inputs],
                   name="enqueue/replica_{0}/input_{1}".format(
-                      replica_index, core_index),
+                      replica_index, logical_core),
                   device_ordinal=ordinal))
     return per_host_enqueue_ops
 
@@ -890,20 +889,3 @@ class _PartitionedInfeedQueue(InfeedQueue):
     return nest.map_structure_up_to(
         dequeues, self._tag_sharding_attribute_for_dequeued_tensor, dequeues,
         dims)
-
-  def _get_logical_core(self, core_index):
-    """Maps the core index to the 3D coordinate within replica.
-
-      The lowest dimension number in computation_shape is the slowest varying
-      dimension (most major).
-
-    Args:
-      core_index: An integer represents the core index within replcia.
-
-    Returns:
-      A tuple with three integers which represents the 3D coordinate.
-    """
-    computation_shape = self._device_assignment.computation_shape
-    return (core_index // (computation_shape[1] * computation_shape[2]),
-            core_index % (computation_shape[1] * computation_shape[2]) //
-            computation_shape[2], core_index % computation_shape[2])

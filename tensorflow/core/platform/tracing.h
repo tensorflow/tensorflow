@@ -155,9 +155,12 @@ class TraceCollector {
       StringPiece name_part1, StringPiece name_part2,
       bool is_expensive) const = 0;
 
+  // Returns true if this annotation tracing is enabled for any op.
+  virtual bool IsEnabledForAnnotations() const = 0;
+
   // Returns true if this activity handle tracking is enabled for an op of the
   // given expensiveness.
-  virtual bool IsEnabled(bool is_expensive) const = 0;
+  virtual bool IsEnabledForActivities(bool is_expensive) const = 0;
 
  protected:
   static string ConcatenateNames(StringPiece first, StringPiece second);

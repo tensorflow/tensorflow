@@ -19,6 +19,9 @@ This module can perform operations on nested structures. A nested structure is a
 Python sequence, tuple (including `namedtuple`), or dict that can contain
 further sequences, tuples, and dicts.
 
+attr.s decorated classes (http://www.attrs.org) are also supported, in the
+same way as `namedtuple`.
+
 The utilities here assume (and do not check) that the nested structures form a
 'tree', i.e., no references in the structure of the input of these functions
 should be recursive.
@@ -36,6 +39,12 @@ import collections as _collections
 import six as _six
 
 from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
+
+
+def _get_attrs_values(obj):
+  """Returns the list of values from an attrs instance."""
+  attrs = getattr(obj.__class__, "__attrs_attrs__")
+  return [getattr(obj, a.name) for a in attrs]
 
 
 def _sorted(dict_):
@@ -64,6 +73,7 @@ def _is_namedtuple(instance, strict=False):
 
 # See the swig file (util.i) for documentation.
 _is_mapping = _pywrap_tensorflow.IsMapping
+_is_attrs = _pywrap_tensorflow.IsAttrs
 
 
 def _sequence_like(instance, args):
@@ -85,7 +95,7 @@ def _sequence_like(instance, args):
     # corresponding `OrderedDict` to pack it back).
     result = dict(zip(_sorted(instance), args))
     return type(instance)((key, result[key]) for key in _six.iterkeys(instance))
-  elif _is_namedtuple(instance):
+  elif _is_namedtuple(instance) or _is_attrs(instance):
     return type(instance)(*args)
   else:
     # Not a namedtuple
@@ -93,6 +103,7 @@ def _sequence_like(instance, args):
 
 
 def _yield_value(iterable):
+  """Yields the next value from the given iterable."""
   if _is_mapping(iterable):
     # Iterate through dictionaries in a deterministic order by sorting the
     # keys. Notice this means that we ignore the original order of `OrderedDict`
@@ -101,6 +112,9 @@ def _yield_value(iterable):
     # corresponding `OrderedDict` to pack it back).
     for key in _sorted(iterable):
       yield iterable[key]
+  elif _is_attrs(iterable):
+    for value in _get_attrs_values(iterable):
+      yield value
   else:
     for value in iterable:
       yield value
@@ -116,6 +130,18 @@ flatten = _pywrap_tensorflow.Flatten
 
 # See the swig file (util.i) for documentation.
 _same_namedtuples = _pywrap_tensorflow.SameNamedtuples
+
+
+class _DotString(object):
+
+  def __str__(self):
+    return "."
+
+  def __repr__(self):
+    return "."
+
+
+_DOT = _DotString()
 
 
 def assert_same_structure(nest1, nest2, check_types=True):
@@ -149,7 +175,15 @@ def assert_same_structure(nest1, nest2, check_types=True):
     TypeError: If the two structures differ in the type of sequence in any of
       their substructures. Only possible if `check_types` is `True`.
   """
-  _pywrap_tensorflow.AssertSameStructure(nest1, nest2, check_types)
+  try:
+    _pywrap_tensorflow.AssertSameStructure(nest1, nest2, check_types)
+  except (ValueError, TypeError) as e:
+    str1 = str(map_structure(lambda _: _DOT, nest1))
+    str2 = str(map_structure(lambda _: _DOT, nest2))
+    raise type(e)("%s\n"
+                  "Entire first structure:\n%s\n"
+                  "Entire second structure:\n%s"
+                  % (str(e), str1, str2))
 
 
 def flatten_dict_items(dictionary):
@@ -469,7 +503,8 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
               "The two namedtuples don't have the same sequence type. Input "
               "structure has type %s, while shallow structure has type %s."
               % (type(input_tree), type(shallow_tree)))
-      else:
+      elif not (isinstance(shallow_tree, _collections.Mapping)
+                and isinstance(input_tree, _collections.Mapping)):
         raise TypeError(
             "The two structures don't have the same sequence type. Input "
             "structure has type %s, while shallow structure has type %s."
@@ -785,5 +820,5 @@ def flatten_with_joined_string_paths(structure, separator="/"):
   return list(zip(flat_string_paths, flatten(structure)))
 
 
-_pywrap_tensorflow.RegisterSequenceClass(_collections.Sequence)
-_pywrap_tensorflow.RegisterMappingClass(_collections.Mapping)
+_pywrap_tensorflow.RegisterType("Mapping", _collections.Mapping)
+_pywrap_tensorflow.RegisterType("Sequence", _collections.Sequence)

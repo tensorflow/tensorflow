@@ -63,7 +63,8 @@ class TrtPrecisionMode(object):
     return [TrtPrecisionMode.FP32, TrtPrecisionMode.FP16, TrtPrecisionMode.INT8]
 
 
-def tensorrt_rewriter_config(max_batch_size=1,
+def tensorrt_rewriter_config(rewriter_config=None,
+                             max_batch_size=1,
                              max_workspace_size_bytes=2 << 20,
                              precision_mode=TrtPrecisionMode.FP32,
                              minimum_segment_size=3,
@@ -73,6 +74,8 @@ def tensorrt_rewriter_config(max_batch_size=1,
   """Returns a RewriterConfig proto for TRT transformation.
 
   Args:
+    rewriter_config: a RewriterConfig proto to append the TensorRTOptimizer to.
+      If None, it will create one with default settings.
     max_batch_size: max size for the input batch
     max_workspace_size_bytes: the maximum GPU temporary memory which the TRT
       engine can use at execution time. This corresponds to the 'workspaceSize'
@@ -97,18 +100,28 @@ def tensorrt_rewriter_config(max_batch_size=1,
     A RewriterConfig proto which sets a TensorRTOptimizer to run Grappler.
 
   Raises:
-    TypeError: if the provided precision mode is invalid.
-    ValueError: if len(cached_engine_batch_sizes) exceed maximum_cached_engines.
+    TypeError: if any of the parameters are of unexpected type.
+    ValueError: if any of the parameters are of unexpected value.
   """
+  if rewriter_config is not None and not isinstance(
+      rewriter_config, rewriter_config_pb2.RewriterConfig):
+    raise TypeError("rewriter_config should be a RewriterConfig proto.")
+
+  if rewriter_config is None:
+    rewriter_config = rewriter_config_pb2.RewriterConfig()
+    # Layout optimizer may add Const nodes followed by Reshape nodes, thus we
+    # need to run constant folding again.
+    rewriter_config.optimizers.extend(["constfold", "layout", "constfold"])
+    rewriter_config.meta_optimizer_iterations = (
+        rewriter_config_pb2.RewriterConfig.ONE)
+
   if precision_mode.upper() not in TrtPrecisionMode.supported_precision_modes():
     raise ValueError(("precision mode '{}' is not supported."
                       "It should be one of {}").format(
                           precision_mode,
                           TrtPrecisionMode.supported_precision_modes))
 
-  rewriter_cfg = rewriter_config_pb2.RewriterConfig()
-  rewriter_cfg.optimizers.extend(["constfold", "layout"])
-  optimizer = rewriter_cfg.custom_optimizers.add()
+  optimizer = rewriter_config.custom_optimizers.add()
   optimizer.name = "TensorRTOptimizer"
   optimizer.parameter_map["minimum_segment_size"].i = minimum_segment_size
   optimizer.parameter_map["max_batch_size"].i = max_batch_size
@@ -125,7 +138,7 @@ def tensorrt_rewriter_config(max_batch_size=1,
                        "maximum_cached_engines items.")
     optimizer.parameter_map["cached_engine_batches"].list.i.extend(
         cached_engine_batch_sizes)
-  return rewriter_cfg
+  return rewriter_config
 
 
 def create_inference_graph(input_graph_def,
@@ -137,6 +150,7 @@ def create_inference_graph(input_graph_def,
                            is_dynamic_op=False,
                            maximum_cached_engines=1,
                            cached_engine_batch_sizes=None,
+                           rewriter_config=None,
                            input_saved_model_dir=None,
                            input_saved_model_tags=None,
                            output_saved_model_dir=None,
@@ -168,6 +182,8 @@ def create_inference_graph(input_graph_def,
       use this list to determine the batch sizes of the cached engines, instead
       of making the decision on the fly. This is useful when we know the most
       common batch size(s) the application is going to generate.
+    rewriter_config: a RewriterConfig proto to append the TensorRTOptimizer to.
+      If None, it will create one with default settings.
     input_saved_model_dir: the directory to load the SavedModel which contains
       the input graph to transforms. Used only when input_graph_def is None.
     input_saved_model_tags: list of tags to load the SavedModel.
@@ -307,14 +323,14 @@ def create_inference_graph(input_graph_def,
           output_collection)
 
   # Create RewriterConfig.
-  rewriter_cfg = tensorrt_rewriter_config(
-      max_batch_size, max_workspace_size_bytes, precision_mode,
+  rewriter_config = tensorrt_rewriter_config(
+      rewriter_config, max_batch_size, max_workspace_size_bytes, precision_mode,
       minimum_segment_size, is_dynamic_op, maximum_cached_engines,
       cached_engine_batch_sizes)
 
   # Run Grappler.
   transformed_graph_def = tf_optimizer.OptimizeGraph(
-      rewriter_cfg, grappler_meta_graph_def, graph_id=b"tf_graph")
+      rewriter_config, grappler_meta_graph_def, graph_id=b"tf_graph")
 
   # Optionally write the transformed graphdef as SavedModel.
   if output_saved_model_dir is not None:

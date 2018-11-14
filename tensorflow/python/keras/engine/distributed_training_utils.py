@@ -17,11 +17,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.client import session as session_module
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.util import nest
@@ -182,7 +189,8 @@ def validate_callbacks(input_callbacks):
                            'supported when using DistributionStrategy.')
 
 
-def validate_distributed_dataset_inputs(distribution_strategy, x, y):
+def validate_distributed_dataset_inputs(distribution_strategy, x, y,
+                                        sample_weights=None):
   """Validate all the components of a DistributedValue Dataset input.
 
   Args:
@@ -196,6 +204,9 @@ def validate_distributed_dataset_inputs(distribution_strategy, x, y):
         `MirroredStrategy` this is a PerDevice object with a tensor for each
         device set in the dict. y can also be a tuple or dict. The keys of the
         dict should match the names of the output layers of the model.
+    sample_weights: Sample weights Dataset DistributedValue object. For example,
+        when we use `MirroredStrategy` this is a PerDevice object with a tensor
+        for each device set in the dict.
 
   Returns:
     The unwrapped values list of the x and y DistributedValues inputs.
@@ -218,8 +229,14 @@ def validate_distributed_dataset_inputs(distribution_strategy, x, y):
   else:
     y_values_list = None
 
+  if sample_weights is not None:
+    sample_weights_list = validate_per_device_inputs(distribution_strategy,
+                                                     sample_weights)
+  else:
+    sample_weights_list = None
+
   # Return the unwrapped values to avoid calling `unwrap` a second time.
-  return x_values_list, y_values_list
+  return x_values_list, y_values_list, sample_weights_list
 
 
 def validate_per_device_inputs(distribution_strategy, x):
@@ -293,41 +310,50 @@ def configure_and_create_session(distribution_strategy):
   K.set_session(session)
 
 
-def validate_inputs(x, y):
+def validate_inputs(x, y, distribution_strategy):
   """Validate inputs when using DistributionStrategy.
 
   Args:
     x: Model Inputs.
     y: Model Targets.
+    distribution_strategy: The DistributionStrategy with which the model is
+      compiled.
 
   Raises:
-    ValueError: if input is not a Dataset or a numpy array.
+    ValueError: if input is not a Dataset or a numpy array(when we use
+      MirroredStrategy).
   """
-  if isinstance(x, list) or isinstance(y, list):
-    raise ValueError('DistributionStrategy does not support lists of numpy'
-                     'arrays. You must pass a Dataset object or a numpy array '
-                     'as input.')
-
   if isinstance(x, dict) or isinstance(y, dict):
-    raise ValueError('DistributionStrategy does not support inputs of type '
-                     'dict. You must pass a Dataset object or a numpy array as '
-                     'input.')
+    raise ValueError('`DistributionStrategy` does not support inputs of type '
+                     'dict. You must pass a `tf.data.Dataset` object or a '
+                     'numpy array as input.')
 
-  if isinstance(x, iterator_ops.Iterator) or \
-      isinstance(y, iterator_ops.Iterator):
-    raise ValueError('DistributionStrategy does not support inputs of type '
-                     'Iterator. You must pass a Dataset object or a numpy '
-                     'array as input.')
+  if (isinstance(x, iterator_ops.Iterator) or
+      isinstance(y, iterator_ops.Iterator)):
+    raise ValueError('`DistributionStrategy` does not support inputs of type '
+                     'Iterator. You must pass a `tf.data.Dataset` object or a '
+                     'numpy array as input.')
+
+  if distribution_strategy.__class__.__name__ == 'TPUStrategy':
+    for i in [x, y]:
+      if isinstance(i, dataset_ops.Dataset):
+        shapes = nest.flatten(i.output_shapes)
+        if any([not s.is_fully_defined() for s in shapes]):
+          raise ValueError(
+              'Using TPUs currently requires fully defined shapes. Either use '
+              'set_shape() on the input tensors or use '
+              'dataset.batch(..., drop_remainder=True).'
+              'Found unknown shape {} in input {}.'.format(s, i))
 
 
-def get_input_batch_params(first_x_value, batch_size, current_strategy):
+def get_input_batch_params(first_x_value, batch_size, distribution_strategy):
   """Calculate the number of batches and steps/steps_per_epoch.
 
   Args:
     first_x_value: This is the first input numpy array that is passed in as the
       model input.
     batch_size: The specified batch_size or the default batch_size of 32.
-    current_strategy: The current DistributionStrategy used to compile the
+    distribution_strategy: The current DistributionStrategy used to compile the
       model.
 
   Returns:
@@ -342,17 +368,22 @@ def get_input_batch_params(first_x_value, batch_size, current_strategy):
   if not num_batches:
     raise ValueError('Please specify a batch_size that is smaller than'
                      'the number of input samples %d.' % first_x_value.shape[0])
-  # TODO(anjalisridhar): TPU currently supports using the num_towers property.
-  # We might want to look into implementing worker_devices. In multi worker
-  # strategy, perhaps num_towers works better?
-  steps = num_batches // current_strategy.num_towers
+  # TODO(b/118776054): Use global batch size for Keras/DS support.
+  # The Keras API supports using the global batch size which is currently only
+  # supported in TPU Strategy. For other strategies we use a per_replica
+  # batch size so the number of steps required to run needs to be divide by
+  # the number of replicas.
+  if distribution_strategy.__class__.__name__ == 'TPUStrategy':
+    steps = num_batches
+  else:
+    steps = num_batches // distribution_strategy.num_replicas_in_sync
   if not steps:
-    # TODO(anjalisridhar): Number of towers in the error message may not convey
-    # what we want to the user. Is there another terminology that we can use
-    # that is consistent across different strategies.
+    # TODO(anjalisridhar): Number of replicas in the error message may not
+    # convey what we want to the user. Is there another terminology that we can
+    # use that is consistent across different strategies?
     raise ValueError('The number of batches %d is smaller than the number '
-                     'of towers %d used for DistributionStrategy. ' %
-                     num_batches, current_strategy.num_towers)
+                     'of replicas %d used for DistributionStrategy. ' %
+                     (num_batches, distribution_strategy.num_replicas_in_sync))
   return steps
 
 
@@ -362,3 +393,136 @@ def get_batch_dimension(iterator):
   # all.
   dims = shapes[0].dims
   return dims[0] if dims else None
+
+
+def get_batch_size(distribution_strategy, num_samples, steps):
+  """Calculate and return batch size for numpy inputs.
+
+  Args:
+    distribution_strategy: The current DistributionStrategy used to compile the
+      model.
+    num_samples: Total number of input samples in the input numpy arrays.
+    steps: Number of steps that we run the model for.
+
+  Returns:
+    batch size used to create the Dataset object from the input numpy arrays.
+
+  """
+  if num_samples % steps != 0:
+    logging.warning('The number of input samples %d is not evenly '
+                    'divisible by the number of steps %d. '
+                    'Some samples will not be processed as expected.' %
+                    (num_samples, steps))
+  global_batch_size = num_samples // steps
+
+  # TODO(b/118776054): Use global batch size for Keras/DS support.
+  # The Keras API supports using the global batch size which is currently only
+  # supported in TPU Strategy. For other strategies we use a per_replica
+  # batch size so we need to divide it by the number of replicas.
+  if distribution_strategy.__class__.__name__ == 'TPUStrategy':
+    return global_batch_size
+
+  num_replicas = distribution_strategy.num_replicas_in_sync
+  if global_batch_size % num_replicas != 0:
+    logging.warning('The total number of batches per step %d is not evenly '
+                    'divisible by the number of replicas %d used in '
+                    'DistributionStrategy. Some samples will not be processed '
+                    'as expected.' %
+                    (global_batch_size, num_replicas))
+  return global_batch_size // num_replicas
+
+
+def get_cpu_device(distribution_strategy):
+  """Returns the CPU device of the TPU host or the default CPU device string.
+
+  Args:
+    distribution_strategy: The DistributionStrategy used to compile the model.
+
+  Returns:
+    A device string which is the TPU host's CPU device in case of
+    TPUDistributionStrategy or the default CPU device string in all other
+    cases.
+
+  Raises:
+    NotImplementedError: We currently don't support copying numpy data to
+    multiple hosts in the case of Cloud TPU pods.
+  """
+  if distribution_strategy.__class__.__name__ == 'TPUStrategy':
+    if distribution_strategy.num_hosts > 1:
+      raise NotImplementedError('TPUDistributionStrategy does not '
+                                'support numpy inputs when running on Cloud'
+                                'TPU pods.')
+    return distribution_strategy.get_host_cpu_device(0)
+  else:
+    # For all strategies except TPUDistributionStrategy
+    # TODO(anjalisridhar): We may need to modify this when we add support for
+    # multi-worker strategy.
+    return '/CPU:0'
+
+
+def get_var_for_numpy(distribution_strategy, x):
+  if isinstance(x, list):
+    var_x = tuple([_get_var_for_numpy(distribution_strategy, single_input)
+                   for single_input in x])
+  else:
+    var_x = _get_var_for_numpy(distribution_strategy, x)
+  return var_x
+
+
+def _get_var_for_numpy(distribution_strategy, input_array):
+  """Creates a variable and assigns the value of the numpy array to it.
+
+  Args:
+    distribution_strategy: The DistributionStrategy used to compile the model.
+    input_array: The input numpy array whose value will be assigned to the
+      variable we create.
+
+  Returns:
+    The variable to which we will copy the value of the input numpy array.
+
+  """
+  with ops.device(get_cpu_device(distribution_strategy)):
+    # Create and initialize a variable on the CPU device. This is the CPU
+    # device of the host in the case of TPUDistributionStrategy.
+    input_var = variables.VariableV1(array_ops.zeros(input_array.shape,
+                                                     input_array.dtype),
+                                     trainable=False, use_resource=True)
+  K.get_session().run(input_var.initializer)
+
+  # Create a placeholder for the numpy array input slices. We copy the value
+  # of the input numpy array to the variable in slices of size 64 MB to avoid
+  # running into memory issues or RPC message limits.
+  start_placeholder = array_ops.placeholder(dtypes.int64, ())
+  end_placeholder = array_ops.placeholder(dtypes.int64, ())
+  slice_placeholder = array_ops.placeholder(input_var.dtype)
+  assign_slice_op = input_var[start_placeholder:end_placeholder].assign(
+      slice_placeholder)
+
+  # If each batch element is > 64 MB, then we copy each batch element
+  # individually. Otherwise, the slices will be < 128 MB. There might be padding
+  # which might mean that the slices are 128 MB even if the size of the
+  # tensor allocated is less than 128 MB.
+  # This formula gives slices with size:
+  # ceil(64 MB / byte size per batch element) bytes.
+  # Using ceil() guarantees we get a number >= 1.
+
+  # Calculate the size of each batch element.
+  byte_size_per_batch_element = np.prod(input_array.shape[1:]) * \
+                                input_var.dtype.size
+
+  # Calculate number of elements we want to copy per slice.
+  batch_size_per_slice = int(np.ceil((64 << 20) / byte_size_per_batch_element))
+
+  # Copy slices of the above size starting at 0, except the last slice will be
+  # smaller.
+  start = 0
+  limit = input_array.shape[0]
+  while start < limit:
+    end = min(start + batch_size_per_slice, limit)
+    K.get_session().run(assign_slice_op, feed_dict={
+        start_placeholder: start,
+        end_placeholder: end,
+        slice_placeholder: input_array[start:end]})
+    start = end
+
+  return input_var

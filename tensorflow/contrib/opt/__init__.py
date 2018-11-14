@@ -1,4 +1,4 @@
-    # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ from __future__ import print_function
 # pylint: disable=wildcard-import
 from tensorflow.contrib.opt.python.training.adamax import *
 from tensorflow.contrib.opt.python.training.addsign import *
+from tensorflow.contrib.opt.python.training.agn_optimizer import *
 from tensorflow.contrib.opt.python.training.drop_stale_gradient_optimizer import *
 from tensorflow.contrib.opt.python.training.elastic_average_optimizer import *
 from tensorflow.contrib.opt.python.training.external_optimizer import *
@@ -60,6 +61,8 @@ _allowed_symbols = [
     'VariableClippingOptimizer',
     'MultitaskOptimizerWrapper',
     'clip_gradients_by_global_norm',
+    'AGNOptimizer',
+    'AGNCustomGetter',
     'ElasticAverageOptimizer',
     'ElasticAverageCustomGetter',
     'ModelAverageOptimizer',

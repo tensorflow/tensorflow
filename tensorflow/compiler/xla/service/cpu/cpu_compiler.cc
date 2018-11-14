@@ -86,8 +86,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
-#include "tensorflow/compiler/xla/service/inliner.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
@@ -249,9 +249,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       &pipeline, module->config().debug_options(),
       ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
 
-  // TODO(b/35786417): Re-enable inliner pass after fixing the bug and deciding
-  // where we will take this pass in future.
-  // pipeline.AddPass<Inliner>();
+  pipeline.AddPass<MapInliner>();
 
   // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
   // pass.
@@ -308,7 +306,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
 
   pipeline.AddPass<CpuLayoutAssignment>(
-      module->mutable_entry_computation_layout(), target_machine_features);
+      module->mutable_entry_computation_layout(),
+      LayoutAssignment::InstructionCanChangeLayout, target_machine_features);
   return pipeline.Run(module).status();
 }
 
@@ -328,8 +327,13 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   {
     auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
         "simplification after layout assignement");
-    pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/true,
-                                          /*allow_mixed_precision=*/false);
+    // TODO(b/117156505): When the bug is fixed, the CPU backend should not
+    // produce layout changing elementwise operations. We will then pass
+    // LayoutAssignment::InstructionCanChangeLayout to the HLO verifier to
+    // enable stricter verification.
+    pass.AddInvariantChecker<HloVerifier>(
+        /*layout_sensitive=*/true,
+        /*allow_mixed_precision=*/false);
     pass.AddPass<HloPassFix<AlgebraicSimplifier>>(
         /*is_layout_sensitive=*/true,
         [](const Shape&, const Shape&) { return true; },
@@ -498,8 +502,8 @@ Status CreateHloProfilingArtifacts(
 
   HloCostAnalysis cost_analysis(shape_size_bytes);
   TF_RETURN_IF_ERROR(entry_computation.Accept(&cost_analysis));
-  *hlo_profile_printer_data =
-      CreateHloProfilePrinterData(**hlo_profile_index_map, cost_analysis);
+  *hlo_profile_printer_data = CreateHloProfilePrinterData(
+      **hlo_profile_index_map, cost_analysis, entry_computation.name());
   *computation_to_profile_idx =
       (*hlo_profile_index_map)->computation_to_profile_idx();
 
@@ -672,9 +676,12 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
+CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                 const AotCompilationOptions& aot_options) {
-  TF_RET_CHECK(!modules.empty());
+  TF_RET_CHECK(!module_group->empty());
+  std::vector<std::unique_ptr<HloModule>> modules =
+      module_group->ConsumeModules();
+
   std::call_once(llvm_command_line_options_initialized,
                  &llvm_ir::InitializeLLVMCommandLineOptions,
                  modules[0]->config());

@@ -18,11 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gast
+
 from tensorflow.python.autograph.converters import error_handlers
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.autograph.core import errors
 from tensorflow.python.autograph.pyct import anno
-from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.platform import test
 
 
@@ -33,26 +34,20 @@ class ErrorHandlersTest(converter_testing.TestCase):
     def test_fn():
       raise ValueError()
 
-    node, ctx = self.prepare(test_fn, {})
-    anno.setanno(
-        node, anno.Basic.ORIGIN,
-        origin_info.OriginInfo(None, 'test_function_name', 'test_code',
-                               'test_comment'))
-    node = error_handlers.transform(node, ctx)
-    with self.compiled(node, {}) as result:
+    with self.converted(test_fn, error_handlers, {}) as result:
       with self.assertRaises(errors.GraphConstructionError):
-        # Here we just assert that the handler works. Its correctness is
-        # verified by errors_test.py.
+        # Here we just assert that the handler works.
         result.test_fn()
 
   def test_no_origin_annotation(self):
 
-    def test_fn():
-      raise ValueError()
+    def test_fn(x):
+      return x + 1
 
-    with self.converted(test_fn, error_handlers, {}) as result:
-      with self.assertRaises(ValueError):
-        result.test_fn()
+    node, ctx = self.prepare(test_fn, {})
+    anno.delanno(node, anno.Basic.ORIGIN)
+    node = error_handlers.transform(node, ctx)
+    self.assertIsInstance(node.body[0], gast.Return)
 
 
 if __name__ == '__main__':

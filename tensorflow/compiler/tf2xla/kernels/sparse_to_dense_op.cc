@@ -80,7 +80,7 @@ class SparseToDenseOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("SparseToDense").CompileTimeConstInput("output_shape"),
+REGISTER_XLA_OP(Name("SparseToDense").CompileTimeConstantInput("output_shape"),
                 SparseToDenseOp);
 
 }  // namespace

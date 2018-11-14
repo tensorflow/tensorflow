@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
@@ -80,10 +82,10 @@ class Embedding(Layer):
         (without it, the shape of the dense outputs cannot be computed).
 
   Input shape:
-      2D tensor with shape: `(batch_size, sequence_length)`.
+      2D tensor with shape: `(batch_size, input_length)`.
 
   Output shape:
-      3D tensor with shape: `(batch_size, sequence_length, output_dim)`.
+      3D tensor with shape: `(batch_size, input_length, output_dim)`.
 
   """
 
@@ -117,12 +119,27 @@ class Embedding(Layer):
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
-    self.embeddings = self.add_weight(
-        shape=(self.input_dim, self.output_dim),
-        initializer=self.embeddings_initializer,
-        name='embeddings',
-        regularizer=self.embeddings_regularizer,
-        constraint=self.embeddings_constraint)
+    # Note: most sparse optimizers do not have GPU kernels defined. When
+    # building graphs, the placement algorithm is able to place variables on CPU
+    # since it knows all kernels using the variable only exist on CPU.
+    # When eager execution is enabled, the placement decision has to be made
+    # right now. Checking for the presence of GPUs to avoid complicating the
+    # TPU codepaths which can handle sparse optimizers.
+    if context.executing_eagerly() and context.context().num_gpus():
+      with ops.device('cpu:0'):
+        self.embeddings = self.add_weight(
+            shape=(self.input_dim, self.output_dim),
+            initializer=self.embeddings_initializer,
+            name='embeddings',
+            regularizer=self.embeddings_regularizer,
+            constraint=self.embeddings_constraint)
+    else:
+      self.embeddings = self.add_weight(
+          shape=(self.input_dim, self.output_dim),
+          initializer=self.embeddings_initializer,
+          name='embeddings',
+          regularizer=self.embeddings_regularizer,
+          constraint=self.embeddings_constraint)
     self.built = True
 
   def compute_mask(self, inputs, mask=None):
@@ -142,13 +159,15 @@ class Embedding(Layer):
       else:
         in_lens = [self.input_length]
       if len(in_lens) != len(input_shape) - 1:
-        ValueError('"input_length" is %s, but received input has shape %s' %
-                   (str(self.input_length), str(input_shape)))
+        raise ValueError('"input_length" is %s, '
+                         'but received input has shape %s' % (str(
+                             self.input_length), str(input_shape)))
       else:
         for i, (s1, s2) in enumerate(zip(in_lens, input_shape[1:])):
           if s1 is not None and s2 is not None and s1 != s2:
-            ValueError('"input_length" is %s, but received input has shape %s' %
-                       (str(self.input_length), str(input_shape)))
+            raise ValueError('"input_length" is %s, '
+                             'but received input has shape %s' % (str(
+                                 self.input_length), str(input_shape)))
           elif s1 is None:
             in_lens[i] = s2
       return (input_shape[0],) + tuple(in_lens) + (self.output_dim,)

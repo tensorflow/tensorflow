@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -110,9 +111,9 @@ TEST(FusionUtilsTest, FuseFunctionWithPredicate) {
   CheckUniqueNames(*fused_function);
 
   ASSERT_TRUE(
-      graph_utils::ContainsFunctionNodeWithOp("Equal", *fused_function));
+      function_utils::ContainsFunctionNodeWithOp("Equal", *fused_function));
   const auto &equal_node = fused_function->node_def(
-      graph_utils::FindFunctionNodeWithOp("Equal", *fused_function));
+      function_utils::FindFunctionNodeWithOp("Equal", *fused_function));
 
   EXPECT_EQ(xtimes_two->signature().output_arg(0).name(),
             fused_function->signature().output_arg(0).name());

@@ -134,7 +134,7 @@ class Defun(object):
     # Func should not use kwargs and defaults.
     argspec = tf_inspect.getargspec(func)
     if argspec.keywords or argspec.defaults:
-      raise ValueError("Functions with argument defaults or keyword "
+      raise ValueError("Functions with argument defaults or keywords "
                        "arguments are not supported.")
 
     # Computes how many arguments 'func' has.
@@ -756,21 +756,17 @@ class _FuncGraph(ops.Graph):
       ph = array_ops.placeholder(
           tensor.dtype, shape=tensor.get_shape(), name=name)
     # pylint: disable=protected-access
-    if ops._USE_C_SHAPES:
-      if isinstance(tensor, ops.EagerTensor):
-        handle_data = tensor._handle_data
-        if handle_data:
-          handle_data = handle_data.SerializeToString()
-      else:
-        handle_data = c_api.GetResourceHandleShapeAndType(
-            tensor.graph._c_graph, tensor._as_tf_output())
-
+    if isinstance(tensor, ops.EagerTensor):
+      handle_data = tensor._handle_data
       if handle_data:
-        c_api.SetResourceHandleShapeAndType(ph.graph._c_graph,
-                                            ph._as_tf_output(),
-                                            compat.as_bytes(handle_data))
+        handle_data = handle_data.SerializeToString()
     else:
-      ph._handle_data = tensor._handle_data
+      handle_data = c_api.GetHandleShapeAndType(tensor.graph._c_graph,
+                                                tensor._as_tf_output())
+
+    if handle_data:
+      c_api.SetHandleShapeAndType(ph.graph._c_graph, ph._as_tf_output(),
+                                  compat.as_bytes(handle_data))
     # pylint: enable=protected-access
     self.inputs.append(ph)
     self._captured[tensor] = ph
@@ -879,7 +875,7 @@ def func_graph_from_py_func(func, arg_names, arg_types, name=None,
       if not isinstance(outputs, (list, tuple)):
         outputs = (outputs,)
       if any([_ is None for _ in outputs]):
-        raise ValueError("Function can not return None.")
+        raise ValueError("Function %s can not return None." % name)
     # Ensures each output is a Tensor in the function graph.
     outputs = [ops.convert_to_tensor(t) for t in outputs]
     outputs = [func_graph.capture(t) if t.graph is not func_graph else t
@@ -1097,6 +1093,21 @@ def _from_library(lib):
   return initialized.values()
 
 
+def _get_experimental_kwarg_as_attr(attr_name, value):
+  """Creates an AttrValue for a python object."""
+  if isinstance(value, bool):
+    return attr_value_pb2.AttrValue(b=value)
+  elif isinstance(value, int):
+    return attr_value_pb2.AttrValue(i=value)
+  elif isinstance(value, float):
+    return attr_value_pb2.AttrValue(f=value)
+  elif isinstance(value, str):
+    return attr_value_pb2.AttrValue(s=compat.as_bytes(value))
+  else:
+    raise ValueError("Unsupported attribute type for %s with type %s" %
+                     (attr_name, type(value)))
+
+
 def _parse_kwargs_as_attrs(func_name, **kwargs):
   """Parses **kwargs into a node's attributes."""
   attrs = {}
@@ -1123,7 +1134,7 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
   kwargs_keys = list(kwargs.keys())
   for key in kwargs_keys:
     if key.startswith("experimental_"):
-      attrs[key] = attr_value_pb2.AttrValue(s=compat.as_bytes(kwargs[key]))
+      attrs[key] = _get_experimental_kwarg_as_attr(key, kwargs[key])
       del kwargs[key]
 
   if kwargs:

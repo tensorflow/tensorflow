@@ -143,8 +143,10 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
     def _real_mirrored_creator(devices, *args, **kwargs):
       """Creates one MirroredVariable on the current worker."""
       index = {}
+      unique_var_name = ops.get_default_graph().unique_name(
+          kwargs["name"], mark_as_used=False).rstrip("/")
       collective_instance_key = self._collective_keys.get_instance_key(
-          key_id=kwargs["name"])
+          key_id=unique_var_name)
       if "initial_value" not in kwargs:
         raise ValueError("Initial value must be specified.")
       initial_value = kwargs["initial_value"]
@@ -158,7 +160,7 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
           if i > 0:
             # Give replicas meaningful distinct names:
             var0name = index[devices[0]].name.split(":")[0]
-            # We append a / to variable names created on towers with id > 0 to
+            # We append a / to variable names created on replicas with id > 0 to
             # ensure that we ignore the name scope and instead use the given
             # name as the absolute name of the variable.
             kwargs["name"] = "%s/replica_%d/" % (var0name, i)
@@ -188,6 +190,10 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
           with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
             v = next_creator(*args, **kwargs)
 
+          if i == 0:
+            actual_var_name = v.name.split(":")[0]
+            assert unique_var_name == actual_var_name, "%r vs %r" % (
+                unique_var_name, actual_var_name)
           assert not isinstance(v, values.DistributedVariable)
           index[d] = v
       return index
@@ -199,7 +205,7 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
   def distribute_dataset(self, dataset_fn):
     """Distributes the dataset to each local GPU."""
     # TODO(yuefengz): shard the dataset.
-    return values.PerDeviceDataset(
+    return values.PerReplicaDataset(
         self._call_dataset_fn(dataset_fn), self._devices, True)
 
   def configure(self,
@@ -210,7 +216,7 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
     """Configures the object.
 
     Args:
-      session_config: a @{tf.ConfigProto}
+      session_config: a `tf.ConfigProto`
       cluster_spec: a dict, ClusterDef or ClusterSpec object specifying the
         cluster configurations.
       task_type: the current task type, such as "worker".
@@ -226,10 +232,23 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
       self._initialize_multi_worker(self._num_gpus_per_worker, cluster_spec,
                                     task_type, task_id)
 
-    if not session_config or not self._cluster_spec:
+    if not session_config:
       return
 
-    session_config.isolate_session_state = True
+    # Enable the scoped allocator optimization for CollectiveOps.  This
+    # optimization converts many small all-reduces into fewer larger
+    # all-reduces.
+    rewrite_options = session_config.graph_options.rewrite_options
+    rewrite_options.scoped_allocator_optimization = (
+        rewriter_config_pb2.RewriterConfig.ON)
+    # We turn on ScopedAllocator only for CollectiveReduce op, i.e. enable_op =
+    # ["CollectiveReduce"].  Since we can't assign to a repeated proto field, we
+    # clear and then append.
+    del rewrite_options.scoped_allocator_opts.enable_op[:]
+    rewrite_options.scoped_allocator_opts.enable_op.append("CollectiveReduce")
+
+    if not self._cluster_spec:
+      return
 
     assert self._task_type
     assert self._task_id is not None
@@ -251,14 +270,6 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
     session_config.device_filters.append(
         "/job:%s/task:%d" % (self._task_type, self._task_id))
 
-    # The scoped_allocator_optimization is to optimize graphs for collective
-    # ops.
-    rewrite_options = session_config.graph_options.rewrite_options
-    rewrite_options.scoped_allocator_optimization = (
-        rewriter_config_pb2.RewriterConfig.ON)
-    del rewrite_options.scoped_allocator_opts.enable_op[:]
-    rewrite_options.scoped_allocator_opts.enable_op.append("CollectiveReduce")
-
   @property
   def between_graph(self):
     return True
@@ -274,3 +285,8 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
   @property
   def should_save_summary(self):
     return self._is_chief
+
+  @property
+  def num_replicas_in_sync(self):
+    return len(self._devices) * self._num_workers
+

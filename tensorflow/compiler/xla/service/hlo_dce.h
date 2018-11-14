@@ -33,7 +33,7 @@ namespace xla {
 //
 // This pass does not remove dead parameter instructions, as parameter
 // instructions cannot be deleted.
-class HloDCE : public HloPassInterface {
+class HloDCE : public HloModulePass {
  public:
   ~HloDCE() override {}
   absl::string_view name() const override { return "dce"; }

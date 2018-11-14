@@ -505,7 +505,7 @@ TEST_F(MultiOutputFusionTest,
       p1.1 = f16[2,2,2]{2,1,0} parameter(1)
       c0 = f16[] constant(0)
       broadcast = f16[2,2,2]{2,1,0} broadcast(f16[] c0), dimensions={}
-      greater-than = pred[2,2,2]{2,1,0} greater-than(f32[2,2,2]{2,1,0} p1.1, f32[2,2,2]{2,1,0} broadcast)
+      greater-than = pred[2,2,2]{2,1,0} greater-than(f16[2,2,2]{2,1,0} p1.1, f16[2,2,2]{2,1,0} broadcast)
       p0.1 = f16[2,2,2]{2,1,0} parameter(0)
       ROOT select = f16[2,2,2]{2,1,0} select(pred[2,2,2]{2,1,0} greater-than, f16[2,2,2]{2,1,0} p0.1, f16[2,2,2]{2,1,0} broadcast)
     }
@@ -580,7 +580,7 @@ TEST_F(MultiOutputFusionTest, AvoidsLargeFusion) {
   //   ...
   // where each of the (pi * pj)'s is represented as a fusion node so that
   // multi-output fusion will pay attention to it.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation::Builder b(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {10, 100});
 
@@ -619,6 +619,40 @@ TEST_F(MultiOutputFusionTest, AvoidsLargeFusion) {
               GpuInstructionFusion::kMaxOperandsAndOutputsPerFusion)
         << instr->ToString();
   }
+}
+
+TEST_F(MultiOutputFusionTest, MultiOutputFusionDUS) {
+  auto module = ParseHloString(R"(HloModule dus_mof
+    fusion.1 {
+      p.0 = f16[50,96,1024]{2,1,0} parameter(0)
+      p.1 = s32[1]{0} parameter(1)
+      p.2 = f16[1,96,1024]{2,1,0} parameter(2)
+      c.0 = s32[] constant(0)
+      pad = s32[3]{0} pad(p.1, c.0), padding=0_2
+      ROOT %dynamic-update-slice = f16[50,96,1024]{2,1,0} dynamic-update-slice(p.0, p.2, pad)
+    }
+
+    fusion.2 {
+      p.0 = f16[50,96,1024]{2,1,0} parameter(0)
+      p.1 = s32[1]{0} parameter(1)
+      p.2 = f16[1,96,1024]{2,1,0} parameter(2)
+      c.0 = s32[] constant(0)
+      pad = s32[3]{0} pad(p.1, c.0), padding=0_2
+      ROOT %dynamic-update-slice = f16[50,96,1024]{2,1,0} dynamic-update-slice(p.0, p.2, pad)
+    }
+
+    ENTRY entry {
+      p.00 = f16[50,96,1024]{2,1,0} parameter(0)
+      p.01 = f16[50,96,1024]{2,1,0} parameter(1)
+      p.1 = s32[1]{0} parameter(2)
+      p.2 = f16[1,96,1024]{2,1,0} parameter(3)
+
+      f1 = f16[50,96,1024] fusion(p.00, p.1, p.2), kind=kLoop, calls=fusion.1
+      f2 = f16[50,96,1024] fusion(p.01, p.1, p.2), kind=kLoop, calls=fusion.2
+      ROOT tuple = (f16[50,96,1024],f16[50,96,1024]) tuple(f1, f2)
+    })")
+                    .ValueOrDie();
+  ASSERT_FALSE(GpuMultiOutputFusion().Run(module.get()).ValueOrDie());
 }
 
 }  // namespace gpu

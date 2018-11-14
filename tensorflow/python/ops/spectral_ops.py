@@ -21,6 +21,7 @@ import math as _math
 
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util as _tensor_util
 from tensorflow.python.ops import array_ops as _array_ops
 from tensorflow.python.ops import gen_spectral_ops
@@ -65,7 +66,7 @@ def _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length, is_reverse=False):
 
   # Edge case: skip padding empty tensors.
   if (input_tensor.shape.ndims is not None and
-      any(dim.value == 0 for dim in input_tensor.shape)):
+      any(dim.value == 0 for dim in input_tensor.shape.dims)):
     return input_tensor
 
   # If we know the shapes ahead of time, we can either skip or pre-compute the
@@ -78,10 +79,12 @@ def _maybe_pad_for_rfft(input_tensor, fft_rank, fft_length, is_reverse=False):
     if input_fft_shape.is_fully_defined():
       # In reverse, we only pad the inner-most dimension to fft_length / 2 + 1.
       if is_reverse:
-        fft_shape = fft_shape[:-1].concatenate(fft_shape[-1].value // 2 + 1)
+        fft_shape = fft_shape[:-1].concatenate(
+            fft_shape.dims[-1].value // 2 + 1)
 
       paddings = [[0, max(fft_dim.value - input_dim.value, 0)]
-                  for fft_dim, input_dim in zip(fft_shape, input_fft_shape)]
+                  for fft_dim, input_dim in zip(
+                      fft_shape.dims, input_fft_shape.dims)]
       if any(pad > 0 for _, pad in paddings):
         outer_paddings = [[0, 0]] * max((input_tensor.shape.ndims -
                                          fft_shape.ndims), 0)
@@ -162,37 +165,48 @@ irfft3d = _irfft_wrapper(gen_spectral_ops.irfft3d, 3, "irfft3d")
 tf_export("spectral.irfft3d")(irfft3d)
 
 
-def _validate_dct_arguments(dct_type, n, axis, norm):
+def _validate_dct_arguments(input_tensor, dct_type, n, axis, norm):
+  """Checks that DCT/IDCT arguments are compatible and well formed."""
   if n is not None:
     raise NotImplementedError("The DCT length argument is not implemented.")
   if axis != -1:
     raise NotImplementedError("axis must be -1. Got: %s" % axis)
-  if dct_type not in (2, 3):
-    raise ValueError("Only Types II and III (I)DCT are supported.")
+  if dct_type not in (1, 2, 3):
+    raise ValueError("Only Types I, II and III (I)DCT are supported.")
+  if dct_type == 1:
+    if norm == "ortho":
+      raise ValueError("Normalization is not supported for the Type-I DCT.")
+    if input_tensor.shape[-1] is not None and input_tensor.shape[-1] < 2:
+      raise ValueError(
+          "Type-I DCT requires the dimension to be greater than one.")
+
   if norm not in (None, "ortho"):
     raise ValueError(
         "Unknown normalization. Expected None or 'ortho', got: %s" % norm)
 
 
-# TODO(rjryan): Implement `type`, `n` and `axis` parameters.
+# TODO(rjryan): Implement `n` and `axis` parameters.
 @tf_export("spectral.dct")
 def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disable=redefined-builtin
   """Computes the 1D [Discrete Cosine Transform (DCT)][dct] of `input`.
 
-  Currently only Types II and III are supported. Type II is implemented using a
-  length `2N` padded `tf.spectral.rfft`, as described here:
-  https://dsp.stackexchange.com/a/10606. Type III is a fairly straightforward
-  inverse of Type II (i.e. using a length `2N` padded `tf.spectral.irfft`).
+  Currently only Types I, II and III are supported.
+  Type I is implemented using a length `2N` padded `tf.spectral.rfft`.
+  Type II is implemented using a length `2N` padded `tf.spectral.rfft`, as
+  described here:
+  https://dsp.stackexchange.com/a/10606.
+  Type III is a fairly straightforward inverse of Type II
+  (i.e. using a length `2N` padded `tf.spectral.irfft`).
 
   @compatibility(scipy)
-  Equivalent to scipy.fftpack.dct for Type-II and Type-III DCT.
+  Equivalent to scipy.fftpack.dct for Type-I, Type-II and Type-III DCT.
   https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.fftpack.dct.html
   @end_compatibility
 
   Args:
     input: A `[..., samples]` `float32` `Tensor` containing the signals to
       take the DCT of.
-    type: The DCT type to perform. Must be 2 or 3.
+    type: The DCT type to perform. Must be 1, 2 or 3.
     n: For future expansion. The length of the transform. Must be `None`.
     axis: For future expansion. The axis to compute the DCT along. Must be `-1`.
     norm: The normalization to apply. `None` for no normalization or `'ortho'`
@@ -203,19 +217,27 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
     A `[..., samples]` `float32` `Tensor` containing the DCT of `input`.
 
   Raises:
-    ValueError: If `type` is not `2` or `3`, `n` is not `None, `axis` is not
-      `-1`, or `norm` is not `None` or `'ortho'`.
+    ValueError: If `type` is not `1`, `2` or `3`, `n` is not `None, `axis` is
+      not `-1`, or `norm` is not `None` or `'ortho'`.
+    ValueError: If `type` is `1` and `norm` is `ortho`.
 
   [dct]: https://en.wikipedia.org/wiki/Discrete_cosine_transform
   """
-  _validate_dct_arguments(type, n, axis, norm)
+  _validate_dct_arguments(input, type, n, axis, norm)
   with _ops.name_scope(name, "dct", [input]):
     # We use the RFFT to compute the DCT and TensorFlow only supports float32
     # for FFTs at the moment.
     input = _ops.convert_to_tensor(input, dtype=_dtypes.float32)
 
-    axis_dim = input.shape[-1].value or _array_ops.shape(input)[-1]
+    axis_dim = (tensor_shape.dimension_value(input.shape[-1])
+                or _array_ops.shape(input)[-1])
     axis_dim_float = _math_ops.to_float(axis_dim)
+
+    if type == 1:
+      dct1_input = _array_ops.concat([input, input[..., -2:0:-1]], axis=-1)
+      dct1 = _math_ops.real(rfft(dct1_input))
+      return dct1
+
     if type == 2:
       scale = 2.0 * _math_ops.exp(
           _math_ops.complex(
@@ -262,12 +284,12 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
       return dct3
 
 
-# TODO(rjryan): Implement `type`, `n` and `axis` parameters.
+# TODO(rjryan): Implement `n` and `axis` parameters.
 @tf_export("spectral.idct")
 def idct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disable=redefined-builtin
   """Computes the 1D [Inverse Discrete Cosine Transform (DCT)][idct] of `input`.
 
-  Currently only Types II and III are supported. Type III is the inverse of
+  Currently only Types I, II and III are supported. Type III is the inverse of
   Type II, and vice versa.
 
   Note that you must re-normalize by 1/(2n) to obtain an inverse if `norm` is
@@ -277,14 +299,14 @@ def idct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disab
   `signal == idct(dct(signal, norm='ortho'), norm='ortho')`.
 
   @compatibility(scipy)
-  Equivalent to scipy.fftpack.idct for Type-II and Type-III DCT.
+  Equivalent to scipy.fftpack.idct for Type-I, Type-II and Type-III DCT.
   https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.fftpack.idct.html
   @end_compatibility
 
   Args:
     input: A `[..., samples]` `float32` `Tensor` containing the signals to take
       the DCT of.
-    type: The IDCT type to perform. Must be 2 or 3.
+    type: The IDCT type to perform. Must be 1, 2 or 3.
     n: For future expansion. The length of the transform. Must be `None`.
     axis: For future expansion. The axis to compute the DCT along. Must be `-1`.
     norm: The normalization to apply. `None` for no normalization or `'ortho'`
@@ -295,12 +317,12 @@ def idct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disab
     A `[..., samples]` `float32` `Tensor` containing the IDCT of `input`.
 
   Raises:
-    ValueError: If `type` is not `2` or `3`, `n` is not `None, `axis` is not
-      `-1`, or `norm` is not `None` or `'ortho'`.
+    ValueError: If `type` is not `1`, `2` or `3`, `n` is not `None, `axis` is
+      not `-1`, or `norm` is not `None` or `'ortho'`.
 
   [idct]:
   https://en.wikipedia.org/wiki/Discrete_cosine_transform#Inverse_transforms
   """
-  _validate_dct_arguments(type, n, axis, norm)
-  inverse_type = {2: 3, 3: 2}[type]
+  _validate_dct_arguments(input, type, n, axis, norm)
+  inverse_type = {1: 1, 2: 3, 3: 2}[type]
   return dct(input, type=inverse_type, n=n, axis=axis, norm=norm, name=name)

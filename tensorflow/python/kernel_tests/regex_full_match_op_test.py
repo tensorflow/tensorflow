@@ -42,7 +42,7 @@ class RegexFullMatchOpVariantsTest(test.TestCase, parameterized.TestCase):
 
   def testRegexFullMatchTwoDims(self, op):
     values = [["abaaba", "abcdabcde"], ["acdcba", "ebcda"]]
-    with self.test_session():
+    with self.cached_session():
       input_tensor = constant_op.constant(values, dtypes.string)
       matched = op(input_tensor, "a.*a").eval()
       self.assertAllEqual([[True, False], [True, False]], matched)
@@ -68,7 +68,7 @@ class RegexFullMatchOpTest(test.TestCase):
 
   def testRegexFullMatchDelegation(self):
     with compat.forward_compatibility_horizon(2018, 11, 1):
-      with self.test_session():
+      with self.cached_session():
         input_tensor = constant_op.constant("foo", dtypes.string)
         pattern = "[a-z]"
         op = string_ops.regex_full_match(input_tensor, pattern)
@@ -80,7 +80,7 @@ class RegexFullMatchOpTest(test.TestCase):
 
   def testStaticRegexFullMatchDelegation(self):
     with compat.forward_compatibility_horizon(2018, 11, 20):
-      with self.test_session():
+      with self.cached_session():
         input_tensor = constant_op.constant("foo", dtypes.string)
         pattern = "[a-z]*"
         op = string_ops.regex_full_match(input_tensor, pattern)

@@ -79,20 +79,6 @@ Status TensorHandle::Tensor(const tensorflow::Tensor** t) {
   return Status::OK();
 }
 
-Status TensorHandle::Device(tensorflow::Device** d) {
-  TF_RETURN_IF_ERROR(WaitReady());
-  DCHECK(IsReady());
-  *d = device_;
-  return Status::OK();
-}
-
-Status TensorHandle::OpDevice(tensorflow::Device** d) {
-  TF_RETURN_IF_ERROR(WaitReady());
-  DCHECK(IsReady());
-  *d = op_device_;
-  return Status::OK();
-}
-
 Status TensorHandle::TensorAndDevice(const tensorflow::Tensor** tensor,
                                      tensorflow::Device** device,
                                      tensorflow::Device** op_device) {
@@ -125,7 +111,6 @@ Status TensorHandle::Shape(tensorflow::TensorShape* shape) {
 Status TensorHandle::NumDims(int* num_dims) {
   if (IsRemote()) {
     TF_RETURN_IF_ERROR(WaitForNode(remote_shape_node_id_, false));
-    CHECK(remote_shape_ != nullptr);
     *num_dims = remote_shape_->dims();
   } else {
     TF_RETURN_IF_ERROR(WaitReady());
@@ -153,6 +138,21 @@ Status TensorHandle::Dim(int dim_index, int64* dim) {
   return Status::OK();
 }
 
+Status TensorHandle::NumElements(int64* num_elements) {
+  if (IsRemote()) {
+    TF_RETURN_IF_ERROR(WaitForNode(remote_shape_node_id_, false));
+    *num_elements = remote_shape_->num_elements();
+  } else {
+    TF_RETURN_IF_ERROR(WaitReady());
+    DCHECK(IsReady());
+    DCHECK(num_elements != nullptr);
+
+    *num_elements = tensor_.NumElements();
+  }
+
+  return Status::OK();
+}
+
 Status TensorHandle::RemoteAddress(int64* op_id, int32* output_num) {
   if (!IsRemote()) {
     return errors::FailedPrecondition(
@@ -164,17 +164,12 @@ Status TensorHandle::RemoteAddress(int64* op_id, int32* output_num) {
   return Status::OK();
 }
 
-void TensorHandle::SetTensorAndDevice(const tensorflow::Tensor& tensor,
-                                      tensorflow::Device* device,
-                                      tensorflow::Device* op_device) {
+void TensorHandle::SetTensor(const tensorflow::Tensor& tensor) {
   mutex_lock l(ctx_mutex_);
-  DCHECK(node_id_ > 0 && !is_ready_)
-      << "SetTensorAndDevice should be only called  "
-      << "on non-ready handles.";
+  DCHECK(node_id_ > 0 && !is_ready_) << "SetTensor should be only called  "
+                                     << "on non-ready handles.";
   is_ready_ = true;
   tensor_ = tensor;
-  device_ = device;
-  op_device_ = op_device;
 }
 
 Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,

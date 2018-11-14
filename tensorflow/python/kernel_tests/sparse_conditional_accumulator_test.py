@@ -195,7 +195,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
       self.assertAllEqual([-1, 2], val.dense_shape)
 
   def testAccumulatorTakeGradSum(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32, name="Q", shape=(), reduction_type="SUM")
 
@@ -289,7 +289,7 @@ class IndexedSlicesConditionalAccumulatorTest(test.TestCase):
           val, sess)
 
   def testParallelApplyGradSum(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       q = data_flow_ops.SparseConditionalAccumulator(
           dtypes_lib.float32,
           name="Q",

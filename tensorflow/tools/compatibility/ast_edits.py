@@ -34,7 +34,7 @@ class APIChangeSpec(object):
 
   * `function_keyword_renames`: maps function names to a map of old -> new
     argument names
-  * `function_renames`: maps function names to new function names
+  * `symbol_renames`: maps function names to new function names
   * `change_to_function`: a set of function names that have changed (for
     notifications)
   * `function_reorders`: maps functions whose argument order has changed to the
@@ -176,11 +176,22 @@ class _ASTCallVisitor(ast.NodeVisitor):
     ast.NodeVisitor.generic_visit(self, node)
 
   def _rename_functions(self, node, full_name):
-    function_renames = self._api_change_spec.function_renames
+    symbol_renames = self._api_change_spec.symbol_renames
     try:
-      new_name = function_renames[full_name]
+      new_name = symbol_renames[full_name]
       self._file_edit.add("Renamed function %r to %r" % (full_name, new_name),
                           node.lineno, node.col_offset, full_name, new_name)
+    except KeyError:
+      pass
+
+  def _print_warning_for_function(self, node, full_name):
+    function_warnings = self._api_change_spec.function_warnings
+    try:
+      warning_message = function_warnings[full_name]
+      warning_message = warning_message.replace("<function name>", full_name)
+      self._file_edit.add(warning_message,
+                          node.lineno, node.col_offset, full_name, full_name,
+                          error="%s requires manual check." % full_name)
     except KeyError:
       pass
 
@@ -350,6 +361,7 @@ class _ASTCallVisitor(ast.NodeVisitor):
     full_name = self._get_attribute_full_path(node)
     if full_name:
       self._rename_functions(node, full_name)
+      self._print_warning_for_function(node, full_name)
     if full_name in self._api_change_spec.change_to_function:
       if not hasattr(node, "is_function_for_call"):
         new_text = full_name + "()"

@@ -14,12 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/parallel_map_iterator.h"
 
+#include <atomic>
 #include <deque>
 #include <functional>
+#include <memory>
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -27,35 +32,42 @@ namespace {
 
 class ParallelMapIterator : public DatasetBaseIterator {
  public:
-  explicit ParallelMapIterator(
-      const typename DatasetBaseIterator::BaseParams& params,
-      const DatasetBase* input_dataset,
-      std::function<Status(IteratorContext*)> init_func,
-      ParallelMapIteratorFunction map_func, int32 num_parallel_calls)
+  ParallelMapIterator(const typename DatasetBaseIterator::BaseParams& params,
+                      const DatasetBase* input_dataset,
+                      std::function<Status(IteratorContext*)> init_func,
+                      ParallelMapIteratorFunction map_func,
+                      int32 num_parallel_calls, bool sloppy)
       : DatasetBaseIterator(params),
         input_dataset_(input_dataset),
         init_func_(std::move(init_func)),
         map_func_(std::move(map_func)),
-        num_parallel_calls_(num_parallel_calls) {}
+        mu_(std::make_shared<mutex>()),
+        cond_var_(std::make_shared<condition_variable>()),
+        num_parallel_calls_(std::make_shared<model::SharedState>(
+            num_parallel_calls, mu_, cond_var_)),
+        sloppy_(sloppy) {
+    std::vector<string> components =
+        str_util::Split(params.prefix, "::", str_util::SkipEmpty());
+    prefix_end_ = components.back();
+  }
 
   ~ParallelMapIterator() override {
-    // TODO(mrry): Replace this cancellation logic with a
-    // CancellationManager. The syntax would be more heavyweight,
-    // but it would be possible to thread a cancellation manager
-    // through the IteratorContext to upstream,
-    // potentially-blocking iterators, when we add these.
-    mutex_lock l(mu_);
+    mutex_lock l(*mu_);
     // Cancel the runner thread.
     cancelled_ = true;
-    cond_var_.notify_all();
+    cond_var_->notify_all();
     // Wait for all in-flight calls to complete.
     while (num_calls_ > 0) {
-      cond_var_.wait(l);
+      cond_var_->wait(l);
     }
   }
 
   Status Initialize(IteratorContext* ctx) override {
-    SetMetadata(ctx, "parallelism", num_parallel_calls_);
+    mutex_lock l(*mu_);
+    if (num_parallel_calls_->value == kAutoTune) {
+      num_parallel_calls_->value = ctx->runner_threadpool_size();
+      num_parallel_calls_->tunable = true;
+    }
     TF_RETURN_IF_ERROR(
         input_dataset_->MakeIterator(ctx, prefix(), &input_impl_));
     if (init_func_) {
@@ -68,51 +80,56 @@ class ParallelMapIterator : public DatasetBaseIterator {
                          bool* end_of_sequence) override {
     std::shared_ptr<InvocationResult> result;
     {
-      mutex_lock l(mu_);
+      mutex_lock l(*mu_);
       EnsureRunnerThreadStarted(ctx);
-      while (invocation_results_.empty()) {
-        StopWork(ctx);
-        cond_var_.wait(l);
-        StartWork(ctx);
+      while (ShouldWait(&result)) {
+        RecordStop(ctx);
+        cond_var_->wait(l);
+        RecordStart(ctx);
       }
-      std::swap(result, invocation_results_.front());
-      invocation_results_.pop_front();
     }
-    cond_var_.notify_all();
-    StopWork(ctx);
+    RecordStop(ctx);
     result->notification.WaitForNotification();
-    StartWork(ctx);
+    RecordStart(ctx);
     return ProcessResult(result, out_tensors, end_of_sequence);
   }
 
  protected:
+  std::shared_ptr<model::Node> CreateNode(
+      IteratorContext* ctx, model::Node::Args args) const override {
+    return model::MakeAsyncKnownRatioNode(
+        std::move(args),
+        /*ratio=*/1,
+        {model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
+                              /*max=*/ctx->runner_threadpool_size())});
+  }
+
   Status SaveInternal(IteratorStateWriter* writer) override {
-    mutex_lock l(mu_);
+    mutex_lock l(*mu_);
     // Wait for all in-flight calls to complete.
     while (num_calls_ > 0) {
-      cond_var_.wait(l);
+      cond_var_->wait(l);
     }
     CHECK_EQ(num_calls_, 0);
     TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
     TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("invocation_results.size"),
                                            invocation_results_.size()));
     for (size_t i = 0; i < invocation_results_.size(); i++) {
-      std::shared_ptr<InvocationResult> result = invocation_results_[i];
-      TF_RETURN_IF_ERROR(WriteStatusLocked(writer, i, result->status));
+      const auto& result = *(invocation_results_[i]);
+      TF_RETURN_IF_ERROR(WriteStatusLocked(writer, i, result.status));
       TF_RETURN_IF_ERROR(writer->WriteScalar(
           full_name(strings::StrCat("invocation_results[", i, "].size")),
-          result->return_values.size()));
-      for (size_t j = 0; j < result->return_values.size(); j++) {
-        TF_RETURN_IF_ERROR(
-            writer->WriteTensor(full_name(strings::StrCat(
-                                    "invocation_results[", i, "][", j, "]")),
-                                result->return_values[j]));
+          result.return_values.size()));
+      for (size_t j = 0; j < result.return_values.size(); j++) {
+        TF_RETURN_IF_ERROR(writer->WriteTensor(
+            full_name(strings::StrCat("invocation_results[", i, "][", j, "]")),
+            result.return_values[j]));
       }
-      if (result->end_of_input) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(
-                strings::StrCat("invocation_results[", i, "].end_of_input")),
-            ""));
+      if (result.end_of_input) {
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(full_name(strings::StrCat("invocation_results[",
+                                                          i, "].end_of_input")),
+                                ""));
       }
     }
     return Status::OK();
@@ -120,41 +137,38 @@ class ParallelMapIterator : public DatasetBaseIterator {
 
   Status RestoreInternal(IteratorContext* ctx,
                          IteratorStateReader* reader) override {
-    mutex_lock l(mu_);
+    mutex_lock l(*mu_);
     TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
     int64 invocation_results_size;
-    TF_RETURN_IF_ERROR(reader->ReadScalar(
-        full_name("invocation_results.size"), &invocation_results_size));
+    TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("invocation_results.size"),
+                                          &invocation_results_size));
     for (size_t i = 0; i < invocation_results_size; i++) {
-      std::shared_ptr<InvocationResult> result(new InvocationResult());
-      invocation_results_.push_back(result);
-      TF_RETURN_IF_ERROR(ReadStatusLocked(reader, i, &result->status));
+      invocation_results_.push_back(std::make_shared<InvocationResult>());
+      auto& result = *invocation_results_.back();
+      TF_RETURN_IF_ERROR(ReadStatusLocked(reader, i, &result.status));
       size_t num_return_values;
       {
         int64 size;
-        TF_RETURN_IF_ERROR(
-            reader->ReadScalar(full_name(strings::StrCat(
-                                   "invocation_results[", i, "].size")),
-                               &size));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(
+            full_name(strings::StrCat("invocation_results[", i, "].size")),
+            &size));
         num_return_values = static_cast<size_t>(size);
         if (num_return_values != size) {
           return errors::InvalidArgument(strings::StrCat(
-              full_name(
-                  strings::StrCat("invocation_results[", i, "].size")),
+              full_name(strings::StrCat("invocation_results[", i, "].size")),
               ": ", size, " is not a valid value of type size_t."));
         }
       }
-      result->return_values.reserve(num_return_values);
+      result.return_values.reserve(num_return_values);
       for (size_t j = 0; j < num_return_values; j++) {
-        result->return_values.emplace_back();
-        TF_RETURN_IF_ERROR(
-            reader->ReadTensor(full_name(strings::StrCat(
-                                   "invocation_results[", i, "][", j, "]")),
-                               &result->return_values.back()));
+        result.return_values.emplace_back();
+        TF_RETURN_IF_ERROR(reader->ReadTensor(
+            full_name(strings::StrCat("invocation_results[", i, "][", j, "]")),
+            &result.return_values.back()));
       }
-      result->end_of_input = reader->Contains(full_name(
+      result.end_of_input = reader->Contains(full_name(
           strings::StrCat("invocation_results[", i, "].end_of_input")));
-      result->notification.Notify();
+      result.notification.Notify();
     }
     return Status::OK();
   }
@@ -168,54 +182,56 @@ class ParallelMapIterator : public DatasetBaseIterator {
   };
 
   void EnsureRunnerThreadStarted(IteratorContext* ctx)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
     if (!runner_thread_) {
-      std::shared_ptr<IteratorContext> ctx_copy(new IteratorContext(*ctx));
+      auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
       runner_thread_.reset(ctx->env()->StartThread(
-          {}, "runner_thread",
+          {}, "tf_data_parallel_map",
           std::bind(&ParallelMapIterator::RunnerThread, this, ctx_copy)));
     }
   }
 
-  void CallCompleted(const std::shared_ptr<InvocationResult>& result)
-      LOCKS_EXCLUDED(mu_) {
-    {
-      mutex_lock l(mu_);
-      num_calls_--;
+  void CallCompleted(const std::shared_ptr<IteratorContext>& ctx,
+                     const std::shared_ptr<InvocationResult>& result)
+      LOCKS_EXCLUDED(*mu_) {
+    mutex_lock l(*mu_);
+    num_calls_--;
+    const auto& stats_aggregator = ctx->stats_aggregator();
+    if (stats_aggregator) {
+      stats_aggregator->AddScalar(
+          strings::StrCat(prefix_end_, "::active_parallel_calls"),
+          static_cast<float>(num_calls_));
     }
     result->notification.Notify();
-    cond_var_.notify_all();
+    cond_var_->notify_all();
   }
 
   void CallFunction(const std::shared_ptr<IteratorContext>& ctx,
                     const std::shared_ptr<InvocationResult>& result)
-      LOCKS_EXCLUDED(mu_) {
+      LOCKS_EXCLUDED(*mu_) {
     // Get the next input element.
     std::vector<Tensor> input_element;
     result->status =
         input_impl_->GetNext(ctx.get(), &input_element, &result->end_of_input);
     if (result->end_of_input || !result->status.ok()) {
-      CallCompleted(result);
+      CallCompleted(ctx, result);
       return;
     }
 
-    // Call `func_(input_element)`, store the result in
-    // `result->return_values`, and notify `result->notification` to unblock
-    // a consumer.
-    auto done = [this, result](Status status) {
+    auto done = [this, ctx, result](Status status) {
       result->status.Update(status);
-      CallCompleted(result);
+      CallCompleted(ctx, result);
     };
 
-    map_func_(ctx.get(), std::move(input_element), &result->return_values,
-              std::move(done));
+    // Apply the map function on `input_element`, storing the result in
+    // `result->return_values`, and invoking `done` when finished.
+    map_func_(ctx.get(), prefix(), std::move(input_element),
+              &result->return_values, std::move(done));
   }
 
-  int64 MaxInvocationResults() { return num_parallel_calls_; }
-
   Status ProcessResult(const std::shared_ptr<InvocationResult>& result,
-                       std::vector<Tensor>* out_tensors,
-                       bool* end_of_sequence) {
+                       std::vector<Tensor>* out_tensors, bool* end_of_sequence)
+      LOCKS_EXCLUDED(*mu_) {
     if (!result->end_of_input && result->status.ok()) {
       *out_tensors = std::move(result->return_values);
       *end_of_sequence = false;
@@ -231,32 +247,46 @@ class ParallelMapIterator : public DatasetBaseIterator {
     return result->status;
   }
 
-  void RunnerThread(const std::shared_ptr<IteratorContext>& ctx) {
-    StartWork(ctx.get());
-    auto cleanup = gtl::MakeCleanup([this, ctx] { StopWork(ctx.get()); });
+  void RunnerThread(const std::shared_ptr<IteratorContext>& ctx)
+      LOCKS_EXCLUDED(*mu_) {
+    RecordStart(ctx.get());
+    auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
     std::vector<std::shared_ptr<InvocationResult>> new_calls;
-    new_calls.reserve(num_parallel_calls_);
+    new_calls.reserve(num_parallel_calls_->value);
+    auto busy = [this]() EXCLUSIVE_LOCKS_REQUIRED(*mu_) -> bool {
+      int64 num_parallel_calls = num_parallel_calls_->value;
+      return num_calls_ >= num_parallel_calls ||
+             invocation_results_.size() >= num_parallel_calls;
+    };
     while (true) {
       {
-        mutex_lock l(mu_);
-        while (!cancelled_ &&
-               (num_calls_ >= num_parallel_calls_ ||
-                invocation_results_.size() >= MaxInvocationResults())) {
-          StopWork(ctx.get());
-          cond_var_.wait(l);
-          StartWork(ctx.get());
+        mutex_lock l(*mu_);
+        while (!cancelled_ && busy()) {
+          RecordStop(ctx.get());
+          cond_var_->wait(l);
+          RecordStart(ctx.get());
         }
         if (cancelled_) {
           return;
         }
-        while (num_calls_ < num_parallel_calls_ &&
-               invocation_results_.size() < MaxInvocationResults()) {
-          invocation_results_.emplace_back(new InvocationResult());
+        while (!busy()) {
+          invocation_results_.push_back(std::make_shared<InvocationResult>());
           new_calls.push_back(invocation_results_.back());
           num_calls_++;
         }
+        const auto& stats_aggregator = ctx->stats_aggregator();
+        if (stats_aggregator) {
+          // TODO(shivaniagrawal): add `parallel_calls_utilization` in the
+          // monitoring code or as histogram at fixed time intervals.
+          stats_aggregator->AddScalar(
+              strings::StrCat(prefix_end_, "::active_parallel_calls"),
+              static_cast<float>(num_calls_));
+          stats_aggregator->AddScalar(
+              strings::StrCat(prefix_end_, "::num_parallel_calls"),
+              static_cast<float>(num_parallel_calls_->value));
+        }
+        cond_var_->notify_all();
       }
-      cond_var_.notify_all();
       for (const auto& call : new_calls) {
         CallFunction(ctx, call);
       }
@@ -264,8 +294,33 @@ class ParallelMapIterator : public DatasetBaseIterator {
     }
   }
 
+  // Determines whether the caller needs to wait for a result. Upon returning
+  // false, `result` will point to the result.
+  bool ShouldWait(std::shared_ptr<InvocationResult>* result)
+      EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+    if (sloppy_) {
+      for (auto it = invocation_results_.begin();
+           it != invocation_results_.end(); ++it) {
+        if ((*it)->notification.HasBeenNotified() &&
+            (it == invocation_results_.begin() || !(*it)->end_of_input)) {
+          std::swap(*result, *it);
+          invocation_results_.erase(it);
+          cond_var_->notify_all();
+          return false;
+        }
+      }
+    } else if (!invocation_results_.empty()) {
+      std::swap(*result, invocation_results_.front());
+      invocation_results_.pop_front();
+      cond_var_->notify_all();
+      return false;
+    }
+    return true;
+  }
+
   Status WriteStatusLocked(IteratorStateWriter* writer, size_t index,
-                           const Status& status) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                           const Status& status)
+      EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
     TF_RETURN_IF_ERROR(
         writer->WriteScalar(CodeKey(index), static_cast<int64>(status.code())));
     if (!status.ok()) {
@@ -276,7 +331,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
   }
 
   Status ReadStatusLocked(IteratorStateReader* reader, size_t index,
-                          Status* status) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                          Status* status) EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
     int64 code_int;
     TF_RETURN_IF_ERROR(reader->ReadScalar(CodeKey(index), &code_int));
     error::Code code = static_cast<error::Code>(code_int);
@@ -293,8 +348,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
   }
 
   string CodeKey(size_t index) {
-    return full_name(
-        strings::StrCat("invocation_results[", index, "].code"));
+    return full_name(strings::StrCat("invocation_results[", index, "].code"));
   }
 
   string ErrorMessageKey(size_t index) {
@@ -305,43 +359,40 @@ class ParallelMapIterator : public DatasetBaseIterator {
   const DatasetBase* const input_dataset_;  // Not owned.
   const std::function<Status(IteratorContext*)> init_func_;
   const ParallelMapIteratorFunction map_func_;
-  const int32 num_parallel_calls_;
   // Used for coordination between the main thread and the runner thread.
-  mutex mu_;
+  const std::shared_ptr<mutex> mu_;
   // Used for coordination between the main thread and the runner thread. In
   // particular, the runner thread should only schedule new calls when the
   // number of in-flight calls is less than the user specified level of
   // parallelism and there are slots available in the `invocation_results_`
   // buffer.
-  condition_variable cond_var_;
+  const std::shared_ptr<condition_variable> cond_var_;
+  // Identifies the maximum number of parallel calls.
+  const std::shared_ptr<model::SharedState> num_parallel_calls_;
+  // Determines whether outputs can be produced in non-deterministic order.
+  const bool sloppy_;
   // Counts the number of outstanding calls.
-  int64 num_calls_ GUARDED_BY(mu_) = 0;
+  int64 num_calls_ GUARDED_BY(*mu_) = 0;
   std::unique_ptr<IteratorBase> input_impl_;
   // Buffer for storing the invocation results.
   std::deque<std::shared_ptr<InvocationResult>> invocation_results_
-      GUARDED_BY(mu_);
-  std::unique_ptr<Thread> runner_thread_ GUARDED_BY(mu_);
-  bool cancelled_ GUARDED_BY(mu_) = false;
+      GUARDED_BY(*mu_);
+  std::unique_ptr<Thread> runner_thread_ GUARDED_BY(*mu_);
+  bool cancelled_ GUARDED_BY(*mu_) = false;
+  string prefix_end_;
 };
 
 }  // namespace
 
 std::unique_ptr<IteratorBase> NewParallelMapIterator(
     const DatasetBaseIterator::BaseParams& params,
-    const DatasetBase* input_dataset, ParallelMapIteratorFunction map_func,
-    int32 num_parallel_calls) {
-  return NewParallelMapIterator(params, input_dataset, nullptr,
-                                std::move(map_func), num_parallel_calls);
-}
-
-std::unique_ptr<IteratorBase> NewParallelMapIterator(
-    const DatasetBaseIterator::BaseParams& params,
     const DatasetBase* input_dataset,
     std::function<Status(IteratorContext*)> init_func,
-    ParallelMapIteratorFunction map_func, int32 num_parallel_calls) {
-  return std::unique_ptr<IteratorBase>(
-      new ParallelMapIterator(params, input_dataset, std::move(init_func),
-                              std::move(map_func), num_parallel_calls));
+    ParallelMapIteratorFunction map_func, int32 num_parallel_calls,
+    bool sloppy) {
+  return MakeUnique<ParallelMapIterator>(
+      params, input_dataset, std::move(init_func), std::move(map_func),
+      num_parallel_calls, sloppy);
 }
 
 }  // namespace data
