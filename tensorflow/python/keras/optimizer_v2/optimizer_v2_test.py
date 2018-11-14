@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
@@ -25,6 +27,12 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import backend
+from tensorflow.python.keras import callbacks
+from tensorflow.python.keras.engine import input_layer
+from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import array_ops
@@ -279,8 +287,8 @@ class OptimizerTest(test.TestCase):
   def testIterationWithoutMinimize(self):
     with self.cached_session():
       sgd = gradient_descent.SGD(3.0)
-      self.evaluate(sgd.iteration.initializer)
-      self.assertEqual(0, self.evaluate(sgd.iteration))
+      self.evaluate(sgd.iterations.initializer)
+      self.assertEqual(0, self.evaluate(sgd.iterations))
 
   @test_util.run_in_graph_and_eager_modes
   def testSerializationWithinDefun(self):
@@ -341,8 +349,8 @@ class OptimizerTest(test.TestCase):
       opt2.set_weights(weights)
       self.evaluate([opt_op_1, opt_op_2])
       self.assertAllClose(self.evaluate(var1), self.evaluate(var2))
-      self.assertEqual(1, self.evaluate(opt1.iteration))
-      self.assertEqual(1, self.evaluate(opt2.iteration))
+      self.assertEqual(1, self.evaluate(opt1.iterations))
+      self.assertEqual(1, self.evaluate(opt2.iterations))
 
       var3 = resource_variable_ops.ResourceVariable([1.0, 2.0, 3.0],
                                                     dtype=dtypes.float32)
@@ -410,6 +418,79 @@ class OptimizerTest(test.TestCase):
       # This is just to test tf.function. The values needs to be updated
       # when adam updates beta_1_power.
       self.assertAllClose([-1.343838, -0.343838], fn())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testOptimizerWithKerasModel(self):
+    a = input_layer.Input(shape=(3,), name='input_a')
+    b = input_layer.Input(shape=(3,), name='input_b')
+
+    dense = core.Dense(4, name='dense')
+    c = dense(a)
+    d = dense(b)
+    e = core.Dropout(0.5, name='dropout')(c)
+
+    model = training.Model([a, b], [d, e])
+
+    optimizer = gradient_descent.SGD(learning_rate=0.001)
+    loss = 'mse'
+    model.compile(optimizer, loss, metrics=['mae'])
+
+    input_a_np = np.random.random((10, 3))
+    input_b_np = np.random.random((10, 3))
+
+    output_d_np = np.random.random((10, 4))
+    output_e_np = np.random.random((10, 4))
+
+    model.fit([input_a_np, input_b_np], [output_d_np, output_e_np],
+              epochs=1,
+              batch_size=5)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testOptimizerWithCallbacks(self):
+    input_np = np.random.random((10, 3))
+    output_np = np.random.random((10, 4))
+    a = input_layer.Input(shape=(3,), name='input_a')
+    model = sequential.Sequential()
+    model.add(core.Dense(4, name='dense'))
+    model.add(core.Dropout(0.5, name='dropout'))
+    model(a)
+    optimizer = gradient_descent.SGD(learning_rate=0.1)
+    model.compile(optimizer, loss='mse', metrics=['mae'])
+    # This does not reduce the LR after the first epoch (due to low delta).
+    cbks = [
+        callbacks.ReduceLROnPlateau(
+            monitor='val_loss', factor=0.1, min_delta=0, patience=1, cooldown=5)
+    ]
+    model.fit(
+        input_np,
+        output_np,
+        batch_size=10,
+        validation_data=(input_np, output_np),
+        callbacks=cbks,
+        epochs=5,
+        verbose=0)
+    self.assertAllClose(
+        float(backend.get_value(model.optimizer.lr)), 0.1, atol=1e-4)
+
+    # This should reduce the LR after the first epoch (due to high delta).
+    cbks = [
+        callbacks.ReduceLROnPlateau(
+            monitor='val_loss',
+            factor=0.1,
+            min_delta=10,
+            patience=1,
+            cooldown=5)
+    ]
+    model.fit(
+        input_np,
+        output_np,
+        batch_size=10,
+        validation_data=(input_np, output_np),
+        callbacks=cbks,
+        epochs=5,
+        verbose=2)
+    self.assertAllClose(
+        float(backend.get_value(model.optimizer.lr)), 0.01, atol=1e-4)
 
 
 if __name__ == '__main__':
