@@ -60,6 +60,7 @@ tf_cuda_library(
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
             "//tensorflow/core:op_gen_lib",
+            "//tensorflow/core/distributed_runtime:server_lib",
         ],
     }),
 )
