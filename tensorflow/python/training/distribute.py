@@ -1093,11 +1093,6 @@ class ReplicaContext(object):
       _pop_per_thread_mode()
 
   @property
-  def num_replicas(self):
-    """Returns number of replicas, for purposes of averaging across replicas."""
-    return self._distribution_strategy.num_replicas
-
-  @property
   def num_replicas_in_sync(self):
     """Returns number of replicas over which gradients are aggregated."""
     return self._distribution_strategy.num_replicas_in_sync
@@ -1203,10 +1198,6 @@ class _DefaultDistributionStrategy(DistributionStrategy):
 
   def value_container(self, value):
     return value
-
-  @property
-  def num_replicas(self):
-    return 1
 
   @property
   def num_replicas_in_sync(self):
