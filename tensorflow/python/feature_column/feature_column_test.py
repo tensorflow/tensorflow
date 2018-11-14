@@ -30,7 +30,7 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.feature_column import feature_column_lib as fc
+from tensorflow.python.feature_column import feature_column as fc
 from tensorflow.python.feature_column.feature_column import _CategoricalColumn
 from tensorflow.python.feature_column.feature_column import _DenseColumn
 from tensorflow.python.feature_column.feature_column import _FeatureColumn
