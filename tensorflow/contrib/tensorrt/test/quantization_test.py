@@ -43,6 +43,7 @@ def build_graph(input_name, input_dims, output_name,
   with g.as_default():
     x = array_ops.placeholder(
         dtype=dtype, shape=[None] + input_dims[1:], name=input_name)
+
     x = quantize(x, 10.0)
     x = x + 5
     x = quantize(x, 15.0)
@@ -50,6 +51,9 @@ def build_graph(input_name, input_dims, output_name,
     x = quantize(x, 10.0)
     x = x * 0.1
     x = quantize(x, 1.0)
+    w = constant_op.constant(np.ones((10, 1)), dtype=dtypes.float32)
+    x = math_ops.matmul(x, w)
+    x = quantize(x, 10.0)
     x = array_ops.identity(x, name=output_name)
   return g
 
@@ -58,7 +62,7 @@ class QuantizationMissingAllRangesTest(trt_test.TfTrtIntegrationTestBase):
   def GetParams(self):
     """Create a graph containing single segment with no quantization ranges."""
     input_name = "input"
-    input_dims = [100, 100]
+    input_dims = [128, 10]
     output_name = "output"
     g = build_graph(input_name, input_dims, output_name,
                     add_quantization_nodes=False)
@@ -67,7 +71,7 @@ class QuantizationMissingAllRangesTest(trt_test.TfTrtIntegrationTestBase):
         input_names=[input_name],
         input_dims=[input_dims],
         output_names=[output_name],
-        expected_output_dims=[(100, 100)])
+        expected_output_dims=[(128, 1)])
 
   def ShouldRunTest(self, run_params):
     return (run_params.precision_mode == "INT8" and
@@ -85,7 +89,7 @@ class QuantizationWithRangesTest(trt_test.TfTrtIntegrationTestBase):
   def GetParams(self):
     """Create a graph containing single segment with no quantization ranges."""
     input_name = "input"
-    input_dims = [100, 100]
+    input_dims = [128, 10]
     output_name = "output"
     g = build_graph(input_name, input_dims, output_name,
                     add_quantization_nodes=True)
@@ -94,7 +98,7 @@ class QuantizationWithRangesTest(trt_test.TfTrtIntegrationTestBase):
         input_names=[input_name],
         input_dims=[input_dims],
         output_names=[output_name],
-        expected_output_dims=[(100, 100)])
+        expected_output_dims=[(128, 1)])
 
   def ShouldRunTest(self, run_params):
     return (run_params.precision_mode == "INT8" and
@@ -117,7 +121,7 @@ class NonQuantizedPrecisionsWithRangesTest(trt_test.TfTrtIntegrationTestBase):
   def GetParams(self):
     """Create a graph containing single segment with no quantization ranges."""
     input_name = "input"
-    input_dims = [100, 100]
+    input_dims = [128, 10]
     output_name = "output"
     g = build_graph(input_name, input_dims, output_name,
                     add_quantization_nodes=True)
@@ -126,7 +130,7 @@ class NonQuantizedPrecisionsWithRangesTest(trt_test.TfTrtIntegrationTestBase):
         input_names=[input_name],
         input_dims=[input_dims],
         output_names=[output_name],
-        expected_output_dims=[(100, 100)])
+        expected_output_dims=[(128, 1)])
 
   def ShouldRunTest(self, run_params):
     return (run_params.precision_mode == "FP32" or
@@ -134,7 +138,7 @@ class NonQuantizedPrecisionsWithRangesTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    return ["my_trt_op_0", "my_trt_op_1", "my_trt_op_2"]
+    return ["my_trt_op_0", "my_trt_op_1", "my_trt_op_2", "my_trt_op_3"]
   
   def ExpectedAbsoluteTolerance(self, run_params):
     """The absolute tolerance to compare floating point results."""
