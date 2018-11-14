@@ -649,9 +649,6 @@ TfLiteStatus Interpreter::Invoke() {
   // Note that calling Invoke repeatedly will cause the original memory plan to
   // be reused, unless either ResizeInputTensor() or AllocateTensors() has been
   // called.
-  // TODO(b/71913981): we should force recalculation in the presence of dynamic
-  // tensors, because they may have new value which in turn may affect shapes
-  // and allocations.
   for (int execution_plan_index = 0;
        execution_plan_index < execution_plan_.size(); execution_plan_index++) {
     if (execution_plan_index == next_execution_plan_index_to_prepare_) {

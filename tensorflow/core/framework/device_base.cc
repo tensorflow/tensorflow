@@ -34,14 +34,14 @@ const string& DeviceBase::name() const {
 }
 
 void DeviceBase::set_eigen_cpu_device(Eigen::ThreadPoolDevice* d) {
-  // Eigen::ThreadPoolDevice is a very cheap struct (one pointer and
+  // Eigen::ThreadPoolDevice is a very cheap struct (two pointers and
   // an int).  Therefore, we can afford a pre-allocated array of
   // Eigen::ThreadPoolDevice.  Here, we ensure that
   // Eigen::ThreadPoolDevices in eigen_cpu_devices_ has increasingly
   // larger numThreads.
   for (int i = 1; i <= d->numThreads(); ++i) {
-    eigen_cpu_devices_.push_back(
-        new Eigen::ThreadPoolDevice(d->getPool(), i /* numThreads() */));
+    eigen_cpu_devices_.push_back(new Eigen::ThreadPoolDevice(
+        d->getPool(), i /* numThreads() */, d->allocator()));
   }
 }
 

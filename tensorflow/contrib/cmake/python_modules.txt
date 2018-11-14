@@ -57,6 +57,7 @@ tensorflow/python/ops
 tensorflow/python/ops/distributions
 tensorflow/python/ops/linalg
 tensorflow/python/ops/losses
+tensorflow/python/ops/signal
 tensorflow/python/platform
 tensorflow/python/profiler
 tensorflow/python/profiler/internal
@@ -377,8 +378,6 @@ tensorflow/contrib/seq2seq/python/ops
 tensorflow/contrib/session_bundle
 tensorflow/contrib/session_bundle/example
 tensorflow/contrib/signal
-tensorflow/contrib/signal/python
-tensorflow/contrib/signal/python/ops
 tensorflow/contrib/slim
 tensorflow/contrib/slim/python
 tensorflow/contrib/slim/python/slim

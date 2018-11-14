@@ -544,4 +544,19 @@ class SequenceNumericColumn(
     return fc.SequenceDenseColumn.TensorSequenceLengthPair(
         dense_tensor=dense_tensor, sequence_length=seq_length)
 
+  # TODO(b/119409767): Implement parents, _{get,from}_config.
+  @property
+  def parents(self):
+    """See 'FeatureColumn` base class."""
+    raise NotImplementedError()
+
+  def _get_config(self):
+    """See 'FeatureColumn` base class."""
+    raise NotImplementedError()
+
+  @classmethod
+  def _from_config(cls, config, custom_objects=None, columns_by_name=None):
+    """See 'FeatureColumn` base class."""
+    raise NotImplementedError()
+
 # pylint: enable=protected-access

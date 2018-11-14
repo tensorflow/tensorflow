@@ -155,17 +155,7 @@ def _simple_reduce(per_replica_value, reduce_to_device, accumulation_fn,
   all_values = []
   count = 0
   for v in per_replica_value._index.values():  # pylint: disable=protected-access
-    if isinstance(v, value_lib.MapOutput):
-      v_list = v.get()
-      if not v_list:
-        continue
-      count += len(v_list)
-      # Sum within each device before aggregating across devices.
-      # TODO(yuefengz): Check whether it helps to use accumulation_fn here.
-      v = cross_tower_utils.aggregate_tensors_or_indexed_slices(
-          v_list, math_ops.add_n)
-    else:
-      count += 1
+    count += 1
     all_values.append(v)
   if not all_values:
     raise ValueError("`per_replica_value` must be non-empty")

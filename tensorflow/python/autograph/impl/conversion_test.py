@@ -205,6 +205,22 @@ class ConversionTest(test.TestCase):
     self.assertIsInstance(fn_node.value, gast.Lambda)
     self.assertEqual('tf__lambda', name)
 
+  def test_entity_to_graph_nested_functions(self):
+    b = 2
+
+    def f(x):
+      def g(x):
+        return b * x
+      return g(x)
+
+    program_ctx = self._simple_program_ctx()
+    nodes, name, ns = conversion.entity_to_graph(f, program_ctx, None, None)
+    fn_node, _ = nodes
+    self.assertIsInstance(fn_node, gast.FunctionDef)
+    self.assertEqual(fn_node.name, 'tf__f')
+    self.assertEqual('tf__f', name)
+    self.assertIs(ns['b'], b)
+
   def test_ag_module_cached(self):
     def callee():
       return range(3)

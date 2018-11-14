@@ -933,6 +933,8 @@ class XlaBuilder {
                       const XlaOp& grad_output, float epsilon,
                       int64 feature_index);
 
+  XlaOp GetDimensionSize(const XlaOp& operand, int64 dimension);
+
   StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr, HloOpcode opcode,
                                  absl::Span<const XlaOp> operands = {});
 
@@ -1355,6 +1357,8 @@ class XlaBuilder {
                                 const string& outfeed_config);
   friend XlaOp CreateToken(XlaBuilder* builder);
   friend XlaOp AfterAll(XlaBuilder* builder, absl::Span<const XlaOp> tokens);
+
+  friend XlaOp GetDimensionSize(const XlaOp& operand, int64 dimension);
 };
 
 // RAII-style object: sets the current sharding assignment in builder on
@@ -2128,6 +2132,10 @@ XlaOp BatchNormGrad(const XlaOp& operand, const XlaOp& scale,
                     const XlaOp& batch_mean, const XlaOp& batch_var,
                     const XlaOp& grad_output, float epsilon,
                     int64 feature_index);
+
+// Returns the size of the given dimension of the operand. The operand must be
+// array shaped.
+XlaOp GetDimensionSize(const XlaOp& operand, int64 dimension);
 
 // Implementation details below this point.
 

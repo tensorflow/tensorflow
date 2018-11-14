@@ -72,8 +72,6 @@ def _regression_dataset_fn():
       "predictions": [1., .75, .25, 0.]}).repeat()
 
 
-# TODO(priyag): Add TPU Strategy to this once metrics aggregate correctly using
-# ReplicaLocalVariables on TPUs. Submit http://cl/208914352.
 def all_combinations():
   return combinations.combine(
       distribution=[combinations.default_strategy,
@@ -100,7 +98,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
       if isinstance(distribution, tpu_strategy.TPUStrategy):
         def step_fn(ctx, inputs):
           value, update = distribution.call_for_each_replica(
-              metric_fn, inputs)
+              metric_fn, args=[inputs])
           ctx.set_non_tensor_output(name="value", output=value)
           return distribution.group(update)
 

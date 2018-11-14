@@ -149,8 +149,8 @@ class FunctionInstantiationHelper {
   }
 
   // Builds index for nodes that can be used as node's input arguments.
-  Status BuildInputArgIndex(const OpDef::ArgDef& arg_def,
-                            AttrSlice attr_values) {
+  Status BuildInputArgIndex(const OpDef::ArgDef& arg_def, AttrSlice attr_values,
+                            bool ints_on_device) {
     bool is_type_list;
     DataTypeVector dtypes;
     TF_RETURN_IF_ERROR(
@@ -169,7 +169,11 @@ class FunctionInstantiationHelper {
         strings::StrAppend(&name, "_", i);
       }
       NodeDef* gnode = AddNode(name);
-      gnode->set_op(FunctionLibraryDefinition::kArgOp);
+      if (ints_on_device && dtypes[i] == DataType::DT_INT32) {
+        gnode->set_op(FunctionLibraryDefinition::kDeviceArgOp);
+      } else {
+        gnode->set_op(FunctionLibraryDefinition::kArgOp);
+      }
       AddAttr("T", dtypes[i], gnode);
       AddAttr("index", arg_index, gnode);
       result_.arg_types.push_back(dtypes[i]);
@@ -564,9 +568,11 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
   std::vector<const NodeDef*> ret;
   std::vector<const NodeDef*> body;
   for (const NodeDef* n : nodes) {
-    if (n->op() == FunctionLibraryDefinition::kArgOp) {
+    if (n->op() == FunctionLibraryDefinition::kArgOp ||
+        n->op() == FunctionLibraryDefinition::kDeviceArgOp) {
       arg.push_back(n);
-    } else if (n->op() == FunctionLibraryDefinition::kRetOp) {
+    } else if (n->op() == FunctionLibraryDefinition::kRetOp ||
+               n->op() == FunctionLibraryDefinition::kDeviceRetOp) {
       ret.push_back(n);
     } else {
       body.push_back(n);
@@ -638,10 +644,13 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
   const OpDef& sig = fdef.signature();
   TF_RETURN_IF_ERROR(ValidateSignatureWithAttrs(sig, attr_values));
 
+  bool ints_on_device = fdef.attr().count("experimental_ints_on_device") != 0 &&
+                        fdef.attr().at("experimental_ints_on_device").b();
+
   FunctionInstantiationHelper helper(get_function, result);
   Status s;
   for (const OpDef::ArgDef& arg_def : sig.input_arg()) {
-    s = helper.BuildInputArgIndex(arg_def, attr_values);
+    s = helper.BuildInputArgIndex(arg_def, attr_values, ints_on_device);
     if (!s.ok()) {
       errors::AppendToMessage(&s, "In ", Print(arg_def));
       return s;
@@ -692,9 +701,6 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
       return s;
     }
   }
-
-  bool ints_on_device = fdef.attr().count("experimental_ints_on_device") != 0 &&
-                        fdef.attr().at("experimental_ints_on_device").b();
 
   // Emits nodes for the function's return values.
   int ret_index = 0;

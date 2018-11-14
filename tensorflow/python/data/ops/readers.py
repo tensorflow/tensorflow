@@ -33,7 +33,7 @@ _DEFAULT_READER_BUFFER_SIZE_BYTES = 256 * 1024  # 256 KB
 
 
 @tf_export("data.TextLineDataset")
-class TextLineDataset(dataset_ops.Dataset):
+class TextLineDataset(dataset_ops.DatasetSource):
   """A `Dataset` comprising lines from one or more text files."""
 
   def __init__(self, filenames, compression_type=None, buffer_size=None):
@@ -62,9 +62,6 @@ class TextLineDataset(dataset_ops.Dataset):
     return gen_dataset_ops.text_line_dataset(
         self._filenames, self._compression_type, self._buffer_size)
 
-  def _inputs(self):
-    return []
-
   @property
   def output_classes(self):
     return ops.Tensor
@@ -78,7 +75,7 @@ class TextLineDataset(dataset_ops.Dataset):
     return dtypes.string
 
 
-class _TFRecordDataset(dataset_ops.Dataset):
+class _TFRecordDataset(dataset_ops.DatasetSource):
   """A `Dataset` comprising records from one or more TFRecord files."""
 
   def __init__(self, filenames, compression_type=None, buffer_size=None):
@@ -108,9 +105,6 @@ class _TFRecordDataset(dataset_ops.Dataset):
   def _as_variant_tensor(self):
     return gen_dataset_ops.tf_record_dataset(
         self._filenames, self._compression_type, self._buffer_size)
-
-  def _inputs(self):
-    return []
 
   @property
   def output_classes(self):
@@ -248,7 +242,7 @@ class TFRecordDataset(dataset_ops.Dataset):
 
 
 @tf_export("data.FixedLengthRecordDataset")
-class FixedLengthRecordDataset(dataset_ops.Dataset):
+class FixedLengthRecordDataset(dataset_ops.DatasetSource):
   """A `Dataset` of fixed-length records from one or more binary files."""
 
   def __init__(self,
@@ -302,9 +296,6 @@ class FixedLengthRecordDataset(dataset_ops.Dataset):
           self._filenames, self._header_bytes, self._record_bytes,
           self._footer_bytes, self._buffer_size)
 
-
-  def _inputs(self):
-    return []
 
   @property
   def output_classes(self):

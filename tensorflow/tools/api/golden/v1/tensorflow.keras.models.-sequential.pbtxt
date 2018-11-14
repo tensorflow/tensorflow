@@ -71,6 +71,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "run_eagerly"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "state_updates"
     mtype: "<type \'property\'>"
   }
@@ -88,10 +92,6 @@ tf_class {
   }
   member {
     name: "updates"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "uses_learning_phase"
     mtype: "<type \'property\'>"
   }
   member {

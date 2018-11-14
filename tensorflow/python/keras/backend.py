@@ -376,27 +376,22 @@ def learning_phase():
   Returns:
       Learning phase (scalar integer tensor or Python integer).
   """
-  with ops.init_scope():
-    # We always check & set the learning phase inside the init_scope,
-    # otherwise the wrong default_graph will be used to look up the learning
-    # phase inside of functions & defuns.
-    #
-    # This is because functions & defuns (both in graph & in eager mode)
-    # will always execute non-eagerly using a function-specific default
-    # subgraph.
-    if context.executing_eagerly():
-      if _DUMMY_EAGER_GRAPH not in _GRAPH_LEARNING_PHASES:
-        # Fallback to inference mode as default.
-        return 0
-      return _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
+  if context.executing_eagerly():
+    if _DUMMY_EAGER_GRAPH not in _GRAPH_LEARNING_PHASES:
+      # Fallback to inference mode as default.
+      return 0
+    return _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH]
+  return symbolic_learning_phase()
 
-    graph = get_graph()
-    with graph.as_default():
-      if graph not in _GRAPH_LEARNING_PHASES:
-        phase = array_ops.placeholder_with_default(
-            False, shape=(), name='keras_learning_phase')
-        _GRAPH_LEARNING_PHASES[graph] = phase
-      return _GRAPH_LEARNING_PHASES[graph]
+
+def symbolic_learning_phase():
+  graph = get_graph()
+  with graph.as_default():
+    if graph not in _GRAPH_LEARNING_PHASES:
+      phase = array_ops.placeholder_with_default(
+          False, shape=(), name='keras_learning_phase')
+      _GRAPH_LEARNING_PHASES[graph] = phase
+    return _GRAPH_LEARNING_PHASES[graph]
 
 
 @tf_export('keras.backend.set_learning_phase')
@@ -695,7 +690,6 @@ def variable(value, dtype=None, name=None, constraint=None):
     v = sparse_tensor.SparseTensor(
         indices=indices, values=sparse_coo.data, dense_shape=sparse_coo.shape)
     v._keras_shape = sparse_coo.shape
-    v._uses_learning_phase = False
     return v
   v = resource_variable_ops.ResourceVariable(
       value,
@@ -706,7 +700,6 @@ def variable(value, dtype=None, name=None, constraint=None):
     v._keras_shape = value.shape
   elif hasattr(value, 'shape'):
     v._keras_shape = int_shape(value)
-  v._uses_learning_phase = False
   track_variable(v)
   return v
 
@@ -869,7 +862,6 @@ def placeholder(shape=None, ndim=None, dtype=None, sparse=False, name=None):
       x = array_ops.sparse_placeholder(dtype, shape=shape, name=name)
     else:
       x = array_ops.placeholder(dtype, shape=shape, name=name)
-  x._uses_learning_phase = False
   return x
 
 
@@ -3126,20 +3118,20 @@ class EagerExecutionFunction(object):
             updates_ops.append(update)
 
       # We set the update ops to run at the end by conditioning it on output[0]
-      if updates and not outputs:
+      if updates and not self.outputs:
         # Edge case; never happens in practice
         raise ValueError('Cannot create a Keras backend function with updates'
                          ' but no outputs during eager execution.')
       with ops.control_dependencies(updates_ops):
-        outputs[0] = array_ops.identity(outputs[0])
+        self.outputs[0] = array_ops.identity(self.outputs[0])
 
     # Prepare graph function
     # TODO(fchollet): can we restrict `captures` to variables actually used in
     # the relevant subgraph?
-    graph.inputs = inputs + list(graph.captures.values())
-    graph.outputs = outputs
+    graph.inputs = self.inputs + list(graph.captures.values())
+    graph.outputs = self.outputs
     graph_fn = eager_function.Function(graph)
-    graph_fn._num_positional_args = len(inputs)
+    graph_fn._num_positional_args = len(self.inputs)
     graph_fn._arg_keywords = []
     self._graph_fn = graph_fn
 
@@ -3329,9 +3321,6 @@ def rnn(step_function,
   if constants is None:
     constants = []
 
-  global uses_learning_phase  # pylint: disable=global-variable-undefined
-  uses_learning_phase = False
-
   # tf.where needs its condition tensor to be the same shape as its two
   # result tensors, but in our case the condition (mask) tensor is
   # (nsamples, 1), and inputs are (nsamples, ndimensions) or even more.
@@ -3383,9 +3372,6 @@ def rnn(step_function,
         inp = _get_input_tensor(i)
         mask_t = mask_list[i]
         output, new_states = step_function(inp, states + constants)
-        if getattr(output, '_uses_learning_phase', False):
-          uses_learning_phase = True
-
         tiled_mask_t = _expand_mask(mask_t, output)
 
         if not successive_outputs:
@@ -3410,8 +3396,6 @@ def rnn(step_function,
       for i in range(time_steps):
         inp = _get_input_tensor(i)
         output, states = step_function(inp, states + constants)
-        if getattr(output, '_uses_learning_phase', False):
-          uses_learning_phase = True
         successive_outputs.append(output)
         successive_states.append(states)
       last_output = successive_outputs[-1]
@@ -3499,10 +3483,6 @@ def rnn(step_function,
         mask_t = mask_ta.read(time)
         output, new_states = step_function(current_input,
                                            tuple(states) + tuple(constants))
-        if getattr(output, '_uses_learning_phase', False):
-          global uses_learning_phase  # pylint: disable=global-variable-undefined
-          uses_learning_phase = True
-
         # mask output
         flat_output = nest.flatten(output)
         flat_previous_output = nest.flatten(prev_output)
@@ -3550,10 +3530,6 @@ def rnn(step_function,
         current_input = nest.pack_sequence_as(inputs, current_input)
         output, new_states = step_function(current_input,
                                            tuple(states) + tuple(constants))
-        if getattr(output, '_uses_learning_phase', False):
-          global uses_learning_phase  # pylint: disable=global-variable-undefined
-          uses_learning_phase = True
-
         flat_state = nest.flatten(states)
         flat_new_state = nest.flatten(new_states)
         for state, new_state in zip(flat_state, flat_new_state):
@@ -3562,6 +3538,7 @@ def rnn(step_function,
         flat_output = nest.flatten(output)
         output_ta_t = tuple(
             ta.write(time, out) for ta, out in zip(output_ta_t, flat_output))
+        new_states = nest.pack_sequence_as(initial_states, flat_new_state)
         return (time + 1, output_ta_t) + tuple(new_states)
 
       final_outputs = control_flow_ops.while_loop(
@@ -3576,9 +3553,6 @@ def rnn(step_function,
     outputs = tuple(o.stack() for o in output_ta)
     outputs = nest.pack_sequence_as(output_time_zero, outputs)
     last_output = tuple(o.read(last_time - 1) for o in output_ta)
-    if not context.executing_eagerly():
-      for o in last_output:
-        o._uses_learning_phase = uses_learning_phase
     last_output = nest.pack_sequence_as(output_time_zero, last_output)
 
   # static shape inference
@@ -3682,9 +3656,6 @@ def in_train_phase(x, alt, training=None):
   """
   if training is None:
     training = learning_phase()
-    uses_learning_phase = True
-  else:
-    uses_learning_phase = False
 
   if training is 1 or training is True:
     if callable(x):
@@ -3700,8 +3671,6 @@ def in_train_phase(x, alt, training=None):
 
   # else: assume learning phase is a placeholder tensor.
   x = switch(training, x, alt)
-  if uses_learning_phase:
-    x._uses_learning_phase = True
   return x
 
 

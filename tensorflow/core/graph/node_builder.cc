@@ -29,6 +29,8 @@ NodeBuilder::NodeOut::NodeOut(Node* n, int32 i)  // NOLINT(runtime/explicit)
       index(i),
       dt(SafeGetOutput(node, i, &error)) {}
 
+NodeBuilder::NodeOut::NodeOut(OutputTensor t) : NodeOut(t.node, t.index) {}
+
 NodeBuilder::NodeOut::NodeOut(StringPiece n, int32 i, DataType t)
     : node(nullptr), error(false), name(n), index(i), dt(t) {}
 

@@ -690,6 +690,11 @@ Status HloCostAnalysis::HandleScatter(const HloInstruction* scatter) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleGetDimensionSize(
+    const HloInstruction* /*get_size*/) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::FinishVisit(const HloInstruction*) {
   return Status::OK();
 }

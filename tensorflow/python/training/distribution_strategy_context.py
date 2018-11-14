@@ -204,14 +204,3 @@ def _get_default_replica_mode():
   if _defaults["replica_mode"] is None:
     _defaults["replica_mode"] = _DefaultReplicaThreadMode()
   return _defaults["replica_mode"]
-
-
-#-------------------------------------------------------------------------------
-# For compatibility during the tower -> replica transistion.
-_CrossTowerThreadMode = _CrossReplicaThreadMode
-_InTowerThreadMode = _InReplicaThreadMode
-_DefaultTowerThreadMode = _DefaultReplicaThreadMode
-get_tower_context = get_replica_context
-get_cross_tower_context = get_cross_replica_context
-_get_default_tower_context = _get_default_replica_context
-_get_default_tower_mode = _get_default_replica_mode

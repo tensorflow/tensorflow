@@ -60,6 +60,7 @@ tf_cuda_library(
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
             "//tensorflow/core:op_gen_lib",
+            "//tensorflow/core/distributed_runtime:server_lib",
         ],
     }),
 )
@@ -95,6 +96,7 @@ tf_cuda_library(
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
+            "//tensorflow/core/distributed_runtime:server_lib",
         ],
     }) + select({
         "//tensorflow:with_xla_support": [
@@ -207,7 +209,10 @@ tf_cuda_cc_test(
         "//tensorflow:darwin": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    tags = ["noasan"],
+    tags = [
+        "no_oss",  # http://b/119522529
+        "noasan",
+    ],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     # linkstatic = tf_kernel_tests_linkstatic(),

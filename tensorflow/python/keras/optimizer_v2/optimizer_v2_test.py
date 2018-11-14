@@ -370,6 +370,30 @@ class OptimizerTest(test.TestCase):
       self.assertAllClose(
           self.evaluate([var3, var4]), self.evaluate([var5, var6]))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testGettingHyperParameters(self):
+    opt = adam.Adam(learning_rate=1.0)
+    var = resource_variable_ops.ResourceVariable([1.0, 2.0],
+                                                 dtype=dtypes.float32)
+    loss = lambda: 3 * var
+    opt_op = opt.minimize(loss, [var])
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(opt_op)
+
+    lr = self.evaluate(opt.lr)
+    self.assertEqual(1.0, lr)
+
+    opt.lr = 2.0
+    lr = self.evaluate(opt.lr)
+    self.assertEqual(2.0, lr)
+
+    self.evaluate(opt.lr.assign(3.0))
+    lr = self.evaluate(opt.lr)
+    self.assertEqual(3.0, lr)
+
+    with self.assertRaises(AttributeError):
+      opt.not_an_attr += 3
+
   def testOptimizerWithFunction(self):
     with context.eager_mode():
       var = resource_variable_ops.ResourceVariable([1.0, 2.0],

@@ -51,6 +51,10 @@ XlaOp Lgamma(XlaOp input);
 // Computes an approximation of the digamma function.
 XlaOp Digamma(XlaOp input);
 
+// Rounds the given number to even when the number is equidistant between two
+// integers.
+XlaOp RoundToEven(XlaOp x);
+
 // Trigonometric functions
 
 // Computes the arc cosine of 'x'.

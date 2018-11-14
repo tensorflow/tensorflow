@@ -30,7 +30,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
   def __init__(self):
     # Maps from a function name to a dictionary that describes how to
     # map from an old argument keyword to the new argument keyword.
-    self.function_keyword_renames = {}
+    self.function_keyword_renames = {
+        "tf.convert_to_tensor": {
+            "preferred_dtype": "dtype_hint"
+        },
+    }
 
     # Mapping from function to the new name of the function
     self.symbol_renames = renames_v2.renames
@@ -40,13 +44,23 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     })
     # pylint: enable=line-too-long
 
+    # For custom behavior and if auto-generate rename in renames_v2.py
+    # is incorrect, add the op name here to exclude it from renames_v2.py.
+    excluded_renames = [
+    ]
+
     # Variables that should be changed to functions.
     self.change_to_function = {}
 
     # Functions that were reordered should be changed to the new keyword args
     # for safety, if positional arguments are used. If you have reversed the
     # positional arguments yourself, this could do the wrong thing.
-    self.function_reorders = {}
+    self.function_reorders = {
+        "tf.convert_to_tensor": ["value", "dtype", "preferred_dtype", "name"],
+        "tf.argmin": ["input", "axis", "output_type", "name"],
+        "tf.argmax": ["input", "axis", "output_type", "name"],
+        "tf.boolean_mask": ["tensor", "mask", "name", "axis"],
+    }
 
     # Specially handled functions.
     self.function_handle = {}
@@ -81,8 +95,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     }
     # Right now we can't have both a rename and a warning.
     self.symbol_renames = {
-        name: new_name for name, new_name in self.symbol_renames.items()
-        if name not in self.function_warnings
+        name: new_name
+        for name, new_name in self.symbol_renames.items()
+        if name not in self.function_warnings and name not in excluded_renames
     }
 
 

@@ -3528,6 +3528,29 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
   return launch_dimensions;
 }
 
+namespace {
+// Returns true to indicate it is safe to use the tile based shared memory
+// transpose implementation to implement the kernel for the instruction.
+//
+// An instruction is not safe for such an implementation if it can change the
+// element order of a tensor without changing the dimension of the tensor, and
+// the instruction has a corresponding elemental_ir_emitter.
+bool IsInstructionSafeForTileBasedTranspose(const HloInstruction* hlo) {
+  auto is_safe_for_tile_based_transpose = [&](const HloInstruction* instr) {
+    HloOpcode opcode = instr->opcode();
+    CHECK_NE(opcode, HloOpcode::kFusion);
+    return (opcode != HloOpcode::kReverse && opcode != HloOpcode::kGather);
+  };
+
+  if (hlo->opcode() == HloOpcode::kFusion) {
+    return absl::c_all_of(hlo->fused_instructions_computation()->instructions(),
+                          is_safe_for_tile_based_transpose);
+  }
+
+  return is_safe_for_tile_based_transpose(hlo);
+}
+}  // namespace
+
 bool IrEmitterUnnested::CheckAndEmitHloWithTile021(HloInstruction* hlo) {
   HloOpcode opcode = hlo->opcode();
   CHECK(opcode == HloOpcode::kFusion || opcode == HloOpcode::kCopy);
@@ -3569,6 +3592,10 @@ bool IrEmitterUnnested::CheckAndEmitHloWithTile021(HloInstruction* hlo) {
 
   if ((*reduced_dims_021)[1] < kMinDimensionToTransposeTiled ||
       (*reduced_dims_021)[2] < kMinDimensionToTransposeTiled) {
+    return false;
+  }
+
+  if (!IsInstructionSafeForTileBasedTranspose(hlo)) {
     return false;
   }
 
