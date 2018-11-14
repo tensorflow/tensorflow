@@ -952,32 +952,6 @@ class DistributionStrategy(object):
     raise NotImplementedError("must be implemented in descendants")
 
   @property
-  def worker_device_index(self):
-    """An object mapping worker device to an id.
-
-    This might be passed as an argument to `call_for_each_replica()`, as in:
-
-    ```
-    with distribution_strategy.scope():
-
-      def fn(device_id):
-        # device_id is an integer. `fn` is being executed on device:
-        #    distribution_strategy.worker_devices[device_id].
-
-      distribution_strategy.call_for_each_replica(
-          fn, distribution_strategy.worker_device_index)
-    ```
-
-    Returns:
-      An index object, or the integer 0 if there is only a single replica.
-    """
-    _require_cross_replica_context(self)
-    return self._worker_device_index()
-
-  def _worker_device_index(self):
-    raise NotImplementedError("must be implemented in descendants")
-
-  @property
   def between_graph(self):
     """Whether the strategy uses between-graph replication or not.
 
@@ -1231,10 +1205,6 @@ class _DefaultDistributionStrategy(DistributionStrategy):
 
   def non_slot_devices(self, var_list):
     return min(var_list, key=lambda x: x.name)
-
-  def _worker_device_index(self):
-    raise RuntimeError("worker_device_index() method unsupported by "
-                       "_DefaultDistributionStrategy.")
 
 
 # ------------------------------------------------------------------------------
