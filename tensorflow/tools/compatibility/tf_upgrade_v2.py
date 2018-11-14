@@ -59,10 +59,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # for safety, if positional arguments are used. If you have reversed the
     # positional arguments yourself, this could do the wrong thing.
     self.function_reorders = {
-        "tf.convert_to_tensor": ["value", "dtype", "preferred_dtype", "name"],
-        "tf.argmin": ["input", "axis", "output_type", "name"],
         "tf.argmax": ["input", "axis", "output_type", "name"],
+        "tf.argmin": ["input", "axis", "output_type", "name"],
         "tf.boolean_mask": ["tensor", "mask", "name", "axis"],
+        "tf.convert_to_tensor": ["value", "dtype", "preferred_dtype", "name"],
+        "tf.pad": ["tensor", "paddings", "mode", "name", "constant_values"],
     }
 
     # Specially handled functions.
