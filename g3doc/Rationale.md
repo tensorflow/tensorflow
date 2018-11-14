@@ -140,7 +140,7 @@ unknown dimension can be queried using the "dim" builtin as shown below.
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 mlfunc foo(...) {
   %A = alloc <8x?xf32, #lmap> (%N)
   ...
@@ -334,7 +334,7 @@ functions and CFG functions work together.
 
 ### Non-affine control flow {#non-affine-control-flow}
 
-``` {.mlir}
+```mlir {.mlir}
 // A simple linear search in every row of a matrix
 for (i=0; i<N; i++) {
   for (j=0; j<N; j++) {
@@ -351,7 +351,7 @@ The presence of dynamic control flow leads to a CFG function nested in an ML
 function: an ML function captures the outer loop while the inner loop is
 represented in the CFG function.
 
-``` {.mlir}
+```mlir {.mlir}
 mlfunc @search(memref<?x?xi32 %A, <?xi32> %S, i32 %key) {
   %ni = dim %A, 0 : memref<?x?xi32>
   // This loop can be parallelized
@@ -410,7 +410,7 @@ for (i=0; i <N; i++)
        }
 ```
 
-``` {.mlir}
+```mlir {.mlir}
 mlfunc @outer_nest(%n) : (i32) {
   for %i = 0 to %n {
     for %j = 0 to %n {
@@ -442,7 +442,7 @@ The following example illustrates a reference implementation of a 2D
 convolution, which uses an integer set `@@domain` to represent valid input data
 in a dilated convolution.
 
-``` {.mlir}
+```mlir {.mlir}
 // Dilation factors S0 and S1 can be constant folded if constant at compile time.
 @@domain = (d0, d1)[S0,S1,S2,S3]: (d0 % S0 == 0, d1 % S1 == 0, d0 >= 0, d1 >= 0,
                                    S3 - d0 - 1 >= 0, S4 - d1 - 1 >= 0)
@@ -556,7 +556,7 @@ which is called a schedule tree. Each non-leaf node of the tree is an abstract
 polyhedral dimension corresponding to an abstract fused loop for each ML
 instruction that appears in that branch. Each leaf node is an ML Instruction.
 
-``` {.mlir}
+```mlir {.mlir}
 // A tiled matmul code (128x128x128) represented in schedule tree form
 
 // #map0 = (d0, d1, d2, d3, d4, d5) -> (128*d0 + d3, 128*d1 + d4, 128*d2 + d5)
@@ -641,7 +641,7 @@ dimensions.
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 // read relation: two elements ( d0 <= r0 <= d0+1 )
 ##aff_rel9 = (d0) -> (r0) : r0 - d0 >= 0, d0 - r0 + 1 >= 0
 
@@ -673,7 +673,7 @@ TODO: figure out the right syntax.
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 ##rel9 ( ) [s0] -> (r0, r1) : 0 <= r0 <= 1023, 0 <= r1 <= s0 - 1
 
 extfunc @cblas_reduce_ffi(memref<1024 x ? x f32, #layout_map0, hbm> %M) -> f32 [
@@ -744,7 +744,7 @@ a list of statements that may also include a yield statement.
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 // Return sum of elements in 1-dimensional mref A
 mlfunc int32 @sum(%A : memref<?xi32>, %N : i32) -> (i32) {
    %init = 0
@@ -774,7 +774,7 @@ situation.
 
 Example:
 
-``` {.mlir}
+```mlir {.mlir}
 // Compute sum of half of the array
 mlfunc int32 @sum_half(%A, %N) {
    %s0 = 0

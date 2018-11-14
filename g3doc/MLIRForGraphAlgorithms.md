@@ -209,7 +209,7 @@ test the dependence analysis infra in the code generator, Andy Davis wrote a
 simple pass that checks dependencies and emits them as "notes", allowing him to
 write tests like this:
 
-``` {.mlir}
+```mlir {.mlir}
   // RUN: mlir-opt %s -memref-dependence-check -verify
   mlfunc @different_memrefs() {
     %m.a = alloc() : memref<100xf32>
@@ -243,7 +243,7 @@ with ShapeRefiner.
 The [MLIR Tensor Type](g3doc/LangRef.md#tensor-type) directly captures shape
 information, so you can have things like:
 
-``` {.mlir}
+```mlir {.mlir}
   %x = tf.Add %x, %y : tensor<128 x 8 x ? x f32>
 ```
 
