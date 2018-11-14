@@ -18,7 +18,7 @@ code.  TensorFlow also includes [TensorBoard](https://www.tensorflow.org/guide/s
 TensorFlow was originally developed by researchers and engineers
 by a part of the Google Brain team. Google's Machine Intelligence Research
 organization conceived TensorFlow for the purposes of conducting machine learning and deep neural
-networks research.  The system is general enough to be applicable in a wide
+networks research.  The system is general enough to be applicable in a
 variety of other domains, as well.
 
 TensorFlow provides stable Python API and C APIs as well as without API backwards compatibility guarantee like C++, Go, Java, JavaScript and Swift.
