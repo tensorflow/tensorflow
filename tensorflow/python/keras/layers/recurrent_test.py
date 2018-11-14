@@ -1079,6 +1079,32 @@ class RNNTest(test.TestCase):
     # Expect last output to be the same as last output before masking
     self.assertAllClose(y_np, x_np[:, 1, :])
 
+  def test_zero_output_for_masking(self):
+
+    for unroll in [True, False]:
+      cell = keras.layers.SimpleRNNCell(5)
+      x = keras.Input((5, 5))
+      mask = keras.layers.Masking()
+      layer = keras.layers.RNN(
+          cell, return_sequences=True, zero_output_for_mask=True, unroll=unroll)
+      masked_input = mask(x)
+      y = layer(masked_input)
+      model = keras.models.Model(x, y)
+      model.compile(optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.001),
+                    loss='mse')
+
+      np_x = np.ones((6, 5, 5))
+      result_1 = model.predict(np_x)
+
+      # set the time 4 and 5 for last record to be zero (masked).
+      np_x[5, 3:] = 0
+      result_2 = model.predict(np_x)
+
+      # expect the result_2 has same output, except the time 4,5 for last
+      # record.
+      result_1[5, 3:] = 0
+      self.assertAllClose(result_1, result_2)
+
 
 class Minimal2DRNNCell(keras.layers.Layer):
   """The minimal 2D RNN cell is a simple combination of 2 1-D RNN cell.
