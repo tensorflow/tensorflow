@@ -69,7 +69,7 @@ class MklSoftmaxOp : public OpKernel {
       }
       else {
         axis = input_dims - 1;
-        output_dims = src_dims; //nhwc
+        output_dims = src_dims;
       }
       memory::format layout_type;
       // In MKL, data format passed to mkl softmax op depends on dimension of the input tensor.
@@ -113,18 +113,11 @@ class MklSoftmaxOp : public OpKernel {
               ? src_mkl_shape.GetMklLayout()
               : memory::desc(src_dims, MklDnnType<T>(), layout_type);
 
-      // src: setting memory descriptor and op memory descriptor
-      // Basically following two functions maps the TF "src_tensor" to mkl
-      // tensor object "src"
+      // src: setting memory descriptor
       // following functions are in mkl_util.h
-      // data format is "nc" for src and dst; since the src and dst buffer is
-      // always in 2D shape
       src.SetUsrMem(src_md, &src_tensor);
 
       // creating a memory descriptor
-      // passing outermost dim as default axis, where the softmax is applied
-      // If axis is not the last dimension, python op will do a transpose so that we can
-      // still perform softmax on its last dimension.
       auto softmax_fwd_desc = softmax_forward::desc(prop_kind::forward_scoring,
                                                     src.GetUsrMemDesc(), axis);
       auto softmax_fwd_pd =
