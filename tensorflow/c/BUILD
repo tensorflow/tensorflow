@@ -209,7 +209,10 @@ tf_cuda_cc_test(
         "//tensorflow:darwin": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
-    tags = ["noasan"],
+    tags = [
+        "no_oss",  # http://b/119522529
+        "noasan",
+    ],
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     # linkstatic = tf_kernel_tests_linkstatic(),
