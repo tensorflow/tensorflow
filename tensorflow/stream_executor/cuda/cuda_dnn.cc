@@ -685,10 +685,10 @@ class CudnnConvolutionDescriptor {
     CHECK_CUDNN_OK(cudnnSetConvolutionNdDescriptor(
         handle_.get(), convolution_descriptor.ndims(), padding.data(),
         strides.data(), dilations.data(),
-        // NOTE(keveman): cuDNN supports convolution and cross correlation.
-        // However, almost all the use cases do cross correlation, so just
-        // hard coding it here.
-        CUDNN_CROSS_CORRELATION, data_type));
+        convolution_descriptor.convolution_not_crosscorr()
+            ? CUDNN_CONVOLUTION
+            : CUDNN_CROSS_CORRELATION,
+        data_type));
 
     // NOTE(benbarsdell): This only applies if tensor op math is enabled
     //                      and algo selection is set to Default.
