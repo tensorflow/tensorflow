@@ -27,6 +27,7 @@ import six
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import run_config
@@ -39,6 +40,7 @@ from tensorflow.python.feature_column import feature_column
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras.optimizer_v2 import adam
+from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -140,6 +142,13 @@ class KerasOptimizerV2IntegrationTest(test.TestCase, parameterized.TestCase):
       shutil.rmtree(self._model_dir)
 
 
+def get_model():
+  x = keras.layers.Input(shape=(3,), name='input')
+  y = keras.layers.Dense(4, name='dense')(x)
+  model = keras.Model(x, y)
+  return model
+
+
 class MirroredStrategyOptimizerV2Test(test.TestCase):
 
   def testKerasOptimizerWithUnequalInput(self):
@@ -155,7 +164,7 @@ class MirroredStrategyOptimizerV2Test(test.TestCase):
       train_op = optimizer.minimize(loss, var_list=[var])
       m = optimizer.get_slot(var, 'm')
       v = optimizer.get_slot(var, 'v')
-      return (var, m, v, train_op, optimizer.iteration)
+      return (var, m, v, train_op, optimizer.iterations)
 
     devices = ['/device:GPU:0', '/device:CPU:0']
     dist = mirrored_strategy.MirroredStrategy(devices)
@@ -234,6 +243,32 @@ class MirroredStrategyOptimizerV2Test(test.TestCase):
                               counter.get(devices[0]),
                               counter.get(devices[1])
                           ]))
+
+  def testOptimizerWithKerasModelAndNumpyArrays(self):
+    if context.num_gpus() < 1:
+      self.skipTest('Not enough GPUs.')
+
+    with self.cached_session():
+      model = get_model()
+      optimizer = gradient_descent.SGD(0.001)
+      loss = 'mse'
+      metrics = ['mae']
+      devices = ['/device:GPU:0', '/device:CPU:0']
+      dist = mirrored_strategy.MirroredStrategy(devices)
+      model.compile(optimizer, loss, metrics=metrics, distribute=dist)
+
+      inputs = np.zeros((64, 3), dtype=np.float32)
+      targets = np.zeros((64, 4), dtype=np.float32)
+
+      model.fit(
+          inputs,
+          targets,
+          epochs=1,
+          batch_size=2,
+          verbose=0,
+          validation_data=(inputs, targets))
+      model.evaluate(inputs, targets)
+      model.predict(inputs)
 
 
 def _replica_id():
