@@ -58,7 +58,7 @@ REQUIRED_PACKAGES = [
     'protobuf >= 3.6.1',
     'tensorboard >= 1.12.0, < 1.13.0',
     'tensorflow_estimator >= 1.10.0',
-    'termcolor >= 1.1.0'
+    'termcolor >= 1.1.0',
 ]
 
 if sys.byteorder == 'little':
