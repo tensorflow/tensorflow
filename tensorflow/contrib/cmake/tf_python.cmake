@@ -765,8 +765,6 @@ string(REPLACE "# BEGIN GENERATED FILES" "" api_init_files_text ${api_init_files
 string(REPLACE "# END GENERATED FILES" "" api_init_files_text ${api_init_files_text})
 string(REPLACE "," ";" api_init_files_list ${api_init_files_text})
 
-message(STATUS ${api_init_files_text})
-
 set(api_init_files "")
 foreach(api_init_file ${api_init_files_list})
     string(STRIP "${api_init_file}" api_init_file)
