@@ -32,18 +32,6 @@ bool ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val) {
   return default_val;
 }
 
-std::unique_ptr<thread::ThreadPool> EagerThreadPool(
-    const SessionOptions& opts) {
-  SessionOptions opts_copy(opts);
-  if (opts_copy.config.inter_op_parallelism_threads() == 0) {
-    // Eager defaults to a single thread when no threads are specified.
-    opts_copy.config.set_inter_op_parallelism_threads(1);
-  }
-
-  return std::unique_ptr<thread::ThreadPool>(
-      NewThreadPoolFromSessionOptions(opts_copy));
-}
-
 }  // namespace
 
 EagerContext::EagerContext(const SessionOptions& opts,
@@ -61,7 +49,7 @@ EagerContext::EagerContext(const SessionOptions& opts,
     : policy_(default_policy),
       devices_(device_mgr->ListDevices()),
       rendezvous_(rendezvous),
-      thread_pool_(EagerThreadPool(opts)),
+      thread_pool_(NewThreadPoolFromSessionOptions(opts)),
       pflr_(new ProcessFunctionLibraryRuntime(
           device_mgr, opts.env, TF_GRAPH_DEF_VERSION, &func_lib_def_, {},
           thread_pool_.get())),
