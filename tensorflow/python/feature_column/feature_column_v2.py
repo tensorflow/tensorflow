@@ -165,6 +165,7 @@ from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 _FEATURE_COLUMN_DEPRECATION_DATE = '2018-11-30'
@@ -258,7 +259,7 @@ class StateManager(object):
 
 
 class _StateManagerImpl(StateManager):
-  """Manages the state of FeatureLayer and LinearModel."""
+  """Manages the state of DenseFeatures and LinearLayer."""
 
   def __init__(self, layer, trainable):
     """Creates an _StateManagerImpl object.
@@ -302,7 +303,8 @@ class _StateManagerImpl(StateManager):
     raise ValueError('Variable does not exist.')
 
 
-class FeatureLayer(Layer):
+@tf_export('keras.layers.DenseFeatures', v1=[])
+class DenseFeatures(Layer):
   """A layer that produces a dense `Tensor` based on given `feature_columns`.
 
   Generally a single example in training data is described with FeatureColumns.
@@ -318,7 +320,7 @@ class FeatureLayer(Layer):
   keywords_embedded = embedding_column(
       categorical_column_with_hash_bucket("keywords", 10K), dimensions=16)
   columns = [price, keywords_embedded, ...]
-  feature_layer = FeatureLayer(columns)
+  feature_layer = DenseFeatures(columns)
 
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
   dense_tensor = feature_layer(features)
@@ -333,7 +335,7 @@ class FeatureLayer(Layer):
                trainable=True,
                name=None,
                **kwargs):
-    """Constructs a FeatureLayer.
+    """Constructs a DenseFeatures.
 
     Args:
       feature_columns: An iterable containing the FeatureColumns to use as
@@ -344,13 +346,14 @@ class FeatureLayer(Layer):
         `indicator_column`.
       trainable: If `True` also add the variable to the graph collection
         `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
-      name: Name to give to the FeatureLayer.
+      name: Name to give to the DenseFeatures.
       **kwargs: Keyword arguments to construct a layer.
 
     Raises:
       ValueError: if an item in `feature_columns` is not a `DenseColumn`.
     """
-    super(FeatureLayer, self).__init__(name=name, trainable=trainable, **kwargs)
+    super(DenseFeatures, self).__init__(
+        name=name, trainable=trainable, **kwargs)
 
     self._feature_columns = _normalize_feature_columns(feature_columns)
     self._feature_columns = sorted(self._feature_columns, key=lambda x: x.name)
@@ -371,7 +374,7 @@ class FeatureLayer(Layer):
       with variable_scope._pure_variable_scope(self.name):  # pylint: disable=protected-access
         with variable_scope._pure_variable_scope(column.name):  # pylint: disable=protected-access
           column.create_state(self._state_manager)
-      super(FeatureLayer, self).build(None)
+      super(DenseFeatures, self).build(None)
 
   def call(self, features, cols_to_output_tensors=None):
     """Returns a dense tensor corresponding to the `feature_columns`.
@@ -515,6 +518,7 @@ class _LinearModelLayer(Layer):
       return predictions
 
 
+@tf_export('keras.layers.LinearModel', v1=[])
 class LinearModel(training.Model):
   """Produces a linear prediction `Tensor` based on given `feature_columns`.
 
@@ -522,7 +526,7 @@ class LinearModel(training.Model):
   Weighted sum refers to logits in classification problems. It refers to the
   prediction itself for linear regression problems.
 
-  Note on supported columns: `LinearModel` treats categorical columns as
+  Note on supported columns: `LinearLayer` treats categorical columns as
   `indicator_column`s. To be specific, assume the input as `SparseTensor` looks
   like:
 
@@ -547,7 +551,7 @@ class LinearModel(training.Model):
   keywords = categorical_column_with_hash_bucket("keywords", 10K)
   keywords_price = crossed_column('keywords', price_buckets, ...)
   columns = [price_buckets, keywords, keywords_price ...]
-  linear_model = LinearModel(columns)
+  linear_model = LinearLayer(columns)
 
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
   prediction = linear_model(features)
@@ -561,7 +565,7 @@ class LinearModel(training.Model):
                trainable=True,
                name=None,
                **kwargs):
-    """Constructs a LinearModel.
+    """Constructs a LinearLayer.
 
     Args:
       feature_columns: An iterable containing the FeatureColumns to use as
@@ -695,7 +699,8 @@ def _transform_features(features, feature_columns, state_manager):
   return outputs
 
 
-def make_parse_example_spec(feature_columns):
+@tf_export('feature_column.make_parse_example_spec', v1=[])
+def make_parse_example_spec_v2(feature_columns):
   """Creates parsing spec dictionary from input feature_columns.
 
   The returned dictionary can be used as arg 'features' in `tf.parse_example`.
@@ -754,10 +759,15 @@ def make_parse_example_spec(feature_columns):
   return result
 
 
-def embedding_column(
-    categorical_column, dimension, combiner='mean', initializer=None,
-    ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None,
-    trainable=True):
+@tf_export('feature_column.embedding_column', v1=[])
+def embedding_column_v2(categorical_column,
+                        dimension,
+                        combiner='mean',
+                        initializer=None,
+                        ckpt_to_load_from=None,
+                        tensor_name_in_ckpt=None,
+                        max_norm=None,
+                        trainable=True):
   """`DenseColumn` that converts from sparse, categorical input.
 
   Use this when your inputs are sparse, but you want to convert them to a dense
@@ -854,6 +864,7 @@ def embedding_column(
       trainable=trainable)
 
 
+@tf_export('feature_column.shared_embedding_columns', v1=[])
 def shared_embedding_columns_v2(categorical_columns,
                                 dimension,
                                 combiner='mean',
@@ -1019,11 +1030,12 @@ def shared_embedding_columns_v2(categorical_columns,
   return result
 
 
-def numeric_column(key,
-                   shape=(1,),
-                   default_value=None,
-                   dtype=dtypes.float32,
-                   normalizer_fn=None):
+@tf_export('feature_column.numeric_column', v1=[])
+def numeric_column_v2(key,
+                      shape=(1,),
+                      default_value=None,
+                      dtype=dtypes.float32,
+                      normalizer_fn=None):
   """Represents real valued or numerical features.
 
   Example:
@@ -1094,7 +1106,8 @@ def numeric_column(key,
       normalizer_fn=normalizer_fn)
 
 
-def bucketized_column(source_column, boundaries):
+@tf_export('feature_column.bucketized_column', v1=[])
+def bucketized_column_v2(source_column, boundaries):
   """Represents discretized dense input.
 
   Buckets include the left boundary, and exclude the right boundary. Namely,
@@ -1190,9 +1203,10 @@ def _assert_key_is_string(key):
             type(key), key))
 
 
-def categorical_column_with_hash_bucket(key,
-                                        hash_bucket_size,
-                                        dtype=dtypes.string):
+@tf_export('feature_column.categorical_column_with_hash_bucket', v1=[])
+def categorical_column_with_hash_bucket_v2(key,
+                                           hash_bucket_size,
+                                           dtype=dtypes.string):
   """Represents sparse feature where ids are set by hashing.
 
   Use this when your sparse features are in string or integer format, and you
@@ -1248,12 +1262,13 @@ def categorical_column_with_hash_bucket(key,
   return HashedCategoricalColumn(key, hash_bucket_size, dtype)
 
 
-def categorical_column_with_vocabulary_file(key,
-                                            vocabulary_file,
-                                            vocabulary_size=None,
-                                            num_oov_buckets=0,
-                                            default_value=None,
-                                            dtype=dtypes.string):
+@tf_export('feature_column.categorical_column_with_vocabulary_file', v1=[])
+def categorical_column_with_vocabulary_file_v2(key,
+                                               vocabulary_file,
+                                               vocabulary_size=None,
+                                               num_oov_buckets=0,
+                                               default_value=None,
+                                               dtype=dtypes.string):
   """A `CategoricalColumn` with a vocabulary file.
 
   Use this when your inputs are in string or integer format, and you have a
@@ -1367,8 +1382,12 @@ def categorical_column_with_vocabulary_file(key,
       dtype=dtype)
 
 
-def categorical_column_with_vocabulary_list(
-    key, vocabulary_list, dtype=None, default_value=-1, num_oov_buckets=0):
+@tf_export('feature_column.categorical_column_with_vocabulary_list', v1=[])
+def categorical_column_with_vocabulary_list_v2(key,
+                                               vocabulary_list,
+                                               dtype=None,
+                                               default_value=-1,
+                                               num_oov_buckets=0):
   """A `CategoricalColumn` with in-memory vocabulary.
 
   Use this when your inputs are in string or integer format, and you have an
@@ -1480,7 +1499,8 @@ def categorical_column_with_vocabulary_list(
       num_oov_buckets=num_oov_buckets)
 
 
-def categorical_column_with_identity(key, num_buckets, default_value=None):
+@tf_export('feature_column.categorical_column_with_identity', v1=[])
+def categorical_column_with_identity_v2(key, num_buckets, default_value=None):
   """A `CategoricalColumn` that returns identity values.
 
   Use this when your inputs are integers in the range `[0, num_buckets)`, and
@@ -1547,7 +1567,8 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
       key=key, number_buckets=num_buckets, default_value=default_value)
 
 
-def indicator_column(categorical_column):
+@tf_export('feature_column.indicator_column', v1=[])
+def indicator_column_v2(categorical_column):
   """Represents multi-hot representation of given categorical column.
 
   - For DNN model, `indicator_column` can be used to wrap any
@@ -1581,8 +1602,10 @@ def indicator_column(categorical_column):
   return IndicatorColumn(categorical_column)
 
 
-def weighted_categorical_column(
-    categorical_column, weight_feature_key, dtype=dtypes.float32):
+@tf_export('feature_column.weighted_categorical_column', v1=[])
+def weighted_categorical_column_v2(categorical_column,
+                                   weight_feature_key,
+                                   dtype=dtypes.float32):
   """Applies weight values to a `CategoricalColumn`.
 
   Use this when each of your sparse inputs has both an ID and a value. For
@@ -1655,7 +1678,8 @@ def weighted_categorical_column(
       dtype=dtype)
 
 
-def crossed_column(keys, hash_bucket_size, hash_key=None):
+@tf_export('feature_column.crossed_column', v1=[])
+def crossed_column_v2(keys, hash_bucket_size, hash_key=None):
   """Returns a column for performing crosses of categorical features.
 
   Crossed features will be hashed according to `hash_bucket_size`. Conceptually,
@@ -2890,7 +2914,7 @@ class EmbeddingColumn(
 def _raise_shared_embedding_column_error():
   raise ValueError('SharedEmbeddingColumns are not supported in '
                    '`linear_model` or `input_layer`. Please use '
-                   '`FeatureLayer` or `LinearModel` instead.')
+                   '`DenseFeatures` or `LinearModel` instead.')
 
 
 class SharedEmbeddingColumnCreator(tracking.Checkpointable):

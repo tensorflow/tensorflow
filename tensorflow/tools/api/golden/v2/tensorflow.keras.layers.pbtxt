@@ -125,6 +125,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "DenseFeatures"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "DepthwiseConv2D"
     mtype: "<type \'type\'>"
   }
@@ -238,6 +242,10 @@ tf_module {
   }
   member {
     name: "LeakyReLU"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LinearModel"
     mtype: "<type \'type\'>"
   }
   member {
