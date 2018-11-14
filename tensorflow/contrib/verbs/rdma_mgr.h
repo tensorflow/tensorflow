@@ -33,13 +33,14 @@ class RdmaMgr {
 
  public:
   explicit RdmaMgr(const WorkerEnv* const worker_env,
-                   GrpcChannelCache* const channel_cache);
+                   GrpcChannelCache* const channel_cache,
+                   RdmaAdapter* rdma_adapter);
   ~RdmaMgr();
   RdmaChannel* FindChannel(const string& key);
   void SetupChannels();
   bool ConnectivityCheck();
   void InitAllocators();
-  static void RegMemVisitors();
+  static void RegMemVisitors(ibv_device* device);
   const string& local_worker() { return local_worker_; }
 
  private:

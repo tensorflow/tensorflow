@@ -382,6 +382,7 @@ class RdmaAdapter {
   string name() const;
   void StartPolling();
   void Process_CQ();
+  ibv_device* GetDevice() const { return context_->device; }
 
  protected:
   static const int MAX_CONCURRENT_WRITES = 1000;
