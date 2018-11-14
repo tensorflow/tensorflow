@@ -168,9 +168,6 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     del var_list
     return [self._device]
 
-  def _worker_device_index(self):
-    return 0
-
 
 class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):
   """ReplicaContext for OneDeviceStrategy."""

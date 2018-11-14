@@ -36,12 +36,16 @@ from tensorflow.python.estimator.canned import prediction_keys
 from tensorflow.python.estimator.export import export
 from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.feature_column import feature_column
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.keras.optimizer_v2 import adam
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer_cache
+from tensorflow.python.training import distribution_strategy_context
 
 
 class KerasOptimizerV2IntegrationTest(test.TestCase, parameterized.TestCase):
@@ -142,11 +146,11 @@ class MirroredStrategyOptimizerV2Test(test.TestCase):
     if context.num_gpus() < 1:
       self.skipTest('Not enough GPUs.')
 
-    def create_fn(device_id):
+    def create_fn():
       var = variables.Variable(
           2.0, name='var', aggregation=variable_scope.VariableAggregation.SUM)
       # grad for cpu is 1, grad for gpu is 2, avg grad is 1.5.
-      loss = (device_id + 1) * var
+      loss = math_ops.cast(_replica_id() + 1, dtype=dtypes.float32) * var
       optimizer = adam.Adam(learning_rate=0.01, beta_1=0.2, beta_2=0.2)
       train_op = optimizer.minimize(loss, var_list=[var])
       m = optimizer.get_slot(var, 'm')
@@ -156,8 +160,7 @@ class MirroredStrategyOptimizerV2Test(test.TestCase):
     devices = ['/device:GPU:0', '/device:CPU:0']
     dist = mirrored_strategy.MirroredStrategy(devices)
     with dist.scope():
-      (var, m, v, op, counter) = dist.call_for_each_replica(
-          create_fn, args=[dist.worker_device_index])
+      (var, m, v, op, counter) = dist.call_for_each_replica(create_fn)
       self.evaluate(variables.global_variables_initializer())
       var_val = [2.0, 2.0, 2.0]
       self.assertAllClose(
@@ -231,6 +234,12 @@ class MirroredStrategyOptimizerV2Test(test.TestCase):
                               counter.get(devices[0]),
                               counter.get(devices[1])
                           ]))
+
+
+def _replica_id():
+  # TODO(cjfj): Return `replica_id` directly, once it is a `Tensor`.
+  return constant_op.constant(
+      distribution_strategy_context.get_replica_context().replica_id)
 
 
 if __name__ == '__main__':

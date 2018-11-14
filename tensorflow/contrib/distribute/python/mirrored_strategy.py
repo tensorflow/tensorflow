@@ -662,9 +662,6 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   def num_replicas_in_sync(self):
     return len(self._devices)
 
-  def _worker_device_index(self):
-    return self._device_index
-
   @property
   def worker_devices(self):
     # Make a copy to prevent users from accidentally mutating our copy.
