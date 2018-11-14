@@ -371,7 +371,8 @@ Status PoplarExecutor::ConfigurePoplarDevice(
           }
         } else {
           // User has specified a configuration
-          if (ordinal_ >= current_config_.device_config_size()) {
+          if (!current_config_.enable_sharding() &&
+              ordinal_ >= current_config_.device_config_size()) {
             return InternalError(
                 "Device ordinal %d not in device configuration list.",
                 ordinal_);
