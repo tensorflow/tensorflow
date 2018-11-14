@@ -1467,6 +1467,10 @@ tensorflow::Status BinaryTensorOpWeight(OpConverterParams* params,
           *const_cast<nvinfer1::ITensor*>(tensor),
           nvinfer1::UnaryOperation::kNEG);
       TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+      // Since quantization ranges are symmetric, the same range as the input
+      // will work for the negation of the input.
+      params->converter->MarkQuantizationRangesAsInferrable(
+          const_cast<nvinfer1::ITensor*>(tensor), layer->getOutput(0));
       tensor = layer->getOutput(0);
     } else {
       TRT_ShapedWeights neg_weights =
@@ -1478,6 +1482,23 @@ tensorflow::Status BinaryTensorOpWeight(OpConverterParams* params,
     }
   } else if (node_def.op() == "Div" || node_def.op() == "RealDiv") {
     if (swapped_inputs) {
+      // We need to infer the quantization range for this intermediate
+      // tensor.
+      // x -> [Recip] -> 1/x -> [Scale] -> s/x
+      //                  ^
+      //          need range for this
+      // We have the quantization scales for x and s/x - can we divide the scale
+      // for s/x by s? Only if it was a scalar...
+      // Because of this issue, fall back to BinaryTensorOpTensor if we are
+      // doing INT8 with no calibration. There is most likely no performance
+      // penalty by falling back here.
+      if (params->converter->precision_mode() == INT8MODE &&
+          !params->converter->use_calibration()) {
+        return tensorflow::errors::Unimplemented(
+            "Intermediate quantization range cannot be determined without"
+            " calibration. Falling back to BinaryTensorOpTensor for ",
+            node_def.op(), ", at ", node_def.name());
+      }
       scale_weights = weights;
       nvinfer1::IUnaryLayer* layer = params->converter->network()->addUnary(
           *const_cast<nvinfer1::ITensor*>(tensor),
@@ -2409,6 +2430,12 @@ tensorflow::Status ConvertBinary(OpConverterParams* params) {
         node_def.name());
   }
 
+  // TODO(tmorris): TRT plans to deprecate IScaleLayer and will replace it with
+  // IElementwiseLayer. At that point, we can remove BinaryTensorOpWeight. For
+  // now, the performance will be slightly better with IScaleLayer because it
+  // can be fused in more situations. However, most of the benefits of
+  // IScaleLayer are when the layer performs both a shift and a scale, which we
+  // don't do except for convolutions.
   // Try to convert into Scale layer first (for better performance)
   // Since scale layer supports restricted broadcast policy and op types, we
   // allow failure and try to handle it through Elementwise op
@@ -2451,6 +2478,18 @@ tensorflow::Status ConvertUnary(OpConverterParams* params) {
 
   nvinfer1::IUnaryLayer* layer;
   if (node_def.op() == "Rsqrt") {
+    // We will need a quantization range for intermediate tensor
+    // if not using calibration.
+    // x -> [Sqrt] -> sqrt(x) -> [Recip] -> 1/sqrt(x)
+    //                   ^
+    //             need range here
+    if (params->converter->precision_mode() == INT8MODE &&
+        !params->converter->use_calibration()) {
+        return tensorflow::errors::Unimplemented(
+            "Intermediate quantization range cannot be determined without"
+            " calibration for Rsqrt, consider replacing with "
+            "Sqrt -> FakeQuant -> Reciprocal ops, at ", node_def.name());
+    }
     layer = params->converter->network()->addUnary(
         *const_cast<nvinfer1::ITensor*>(tensor),
         nvinfer1::UnaryOperation::kSQRT);
