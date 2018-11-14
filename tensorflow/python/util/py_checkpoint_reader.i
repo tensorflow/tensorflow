@@ -165,7 +165,6 @@ def NewCheckpointReader(filepattern):
     from tensorflow.python.util import compat
     return CheckpointReader(compat.as_bytes(filepattern), status)
 
-NewCheckpointReader._tf_api_names = ['train.NewCheckpointReader']
 NewCheckpointReader._tf_api_names_v1 = ['train.NewCheckpointReader']
 %}
 
