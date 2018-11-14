@@ -80,7 +80,7 @@ on ASTs. Clang has
 for simple constant folding of expressions (as required by the C++ standard) but
 doesn't perform general optimizations on its ASTs.
 
-The primary downside of tree optimizers are that you can't see across operations
+The primary downside of tree optimizers is that you can't see across operations
 that have multiple uses. It is
 [well known in literature](https://llvm.org/pubs/2008-06-LCTES-ISelUsingSSAGraphs.pdf)
 that DAG pattern matching is more powerful than tree pattern matching, but OTOH,
@@ -104,7 +104,7 @@ operations as a result. The LLVM
 [Legalization](http://llvm.org/viewvc/llvm-project/llvm/trunk/lib/CodeGen/SelectionDAG/)
 infrastructure has a different outer loop but otherwise works the same way.
 
-These passes have a lot of diversity, but also having a unifying structure: they
+These passes have a lot of diversity, but also have a unifying structure: they
 mostly have a worklist outer loop which visits operations. They then use the C++
 visitor pattern (or equivalent) to switch over the class of operation and
 dispatch to a method. That method contains a long list of hand-written C++ code
