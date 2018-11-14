@@ -1740,4 +1740,38 @@ TEST(CAPI, TestTFE_OpInferMixedTypeInputListAttrs) {
   TFE_DeleteTensorHandle(t1);
   TFE_DeleteTensorHandle(t2);
 }
+
+TEST(CAPI, TestTFE_OpAttrsInferenceDisabledWhenNotCallingOpAddInputList) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_TensorHandle* input1 = TestMatrixTensorHandle();
+  TFE_TensorHandle* input2 = TestMatrixTensorHandle();
+  TFE_TensorHandle* dim = TestScalarTensorHandle(0);
+  TFE_Op* concatOp = TFE_NewOp(ctx, "Concat", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_TensorHandle* inputs[] = { input1, input2 };
+  TFE_OpAddInput(concatOp, dim, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  CHECK(concatOp->inference_ctx);
+  TFE_OpAddInput(concatOp, inputs[0], status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  EXPECT_FALSE(concatOp->inference_ctx) << "Inference context is still present";
+  TFE_OpAddInput(concatOp, inputs[1], status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  tensorflow::AttrValueMap attr_values;
+  concatOp->operation.Attrs().FillAttrValueMap(&attr_values);
+  EXPECT_EQ(attr_values.find("T"), attr_values.end());
+  EXPECT_EQ(attr_values.find("N"), attr_values.end());
+
+  TF_DeleteStatus(status);
+  TFE_DeleteOp(concatOp);
+  TFE_DeleteTensorHandle(input1);
+  TFE_DeleteTensorHandle(input2);
+  TFE_DeleteTensorHandle(dim);
+}
 }  // namespace
