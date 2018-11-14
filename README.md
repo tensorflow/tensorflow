@@ -51,7 +51,7 @@ People who are a little more adventurous can also try our nightly binaries:
 under the [tf-nightly](https://pypi.python.org/pypi/tf-nightly) and
 [tf-nightly-gpu](https://pypi.python.org/pypi/tf-nightly-gpu) project on pypi.
 Simply run `pip install tf-nightly` or `pip install tf-nightly-gpu` in a clean
-environment to install the nightly TensorFlow build. We support CPU and GPU
+environment to install the nightly TensorFlow build. TensorFlow supports CPU and GPU
 packages on Linux, Mac, and Windows.
 
 
