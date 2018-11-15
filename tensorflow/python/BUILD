@@ -3552,8 +3552,10 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":constant_op",
         ":control_flow_ops",
         ":device_util",
+        ":dtypes",
         ":framework_ops",
         ":platform",
         ":resource_variable_ops",
@@ -3573,7 +3575,9 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":client_testlib",
+        ":constant_op",
         ":distribute",
+        ":dtypes",
         ":variable_scope",
     ],
 )

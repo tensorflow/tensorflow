@@ -39,6 +39,7 @@ from tensorflow.python.estimator.inputs import numpy_io
 from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import math_ops
@@ -272,9 +273,10 @@ class MirroredStrategyOptimizerV2Test(test.TestCase):
 
 
 def _replica_id():
-  # TODO(cjfj): Return `replica_id_...` directly, once it is a `Tensor`.
-  return constant_op.constant(
-      ds_context.get_replica_context().replica_id_in_sync_group)
+  replica_id = ds_context.get_replica_context().replica_id_in_sync_group
+  if not isinstance(replica_id, ops.Tensor):
+    replica_id = constant_op.constant(replica_id)
+  return replica_id
 
 
 if __name__ == '__main__':

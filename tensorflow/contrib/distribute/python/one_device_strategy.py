@@ -22,6 +22,7 @@ import six
 
 from tensorflow.contrib.distribute.python import values
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -180,7 +181,13 @@ class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):
 
   def __init__(self, distribution_strategy):
     distribute_lib.ReplicaContext.__init__(
-        self, distribution_strategy, replica_id_in_sync_group=0)
+        self,
+        distribution_strategy,
+        replica_id_in_sync_group=constant_op.constant(0, dtypes.int32))
+
+  @property
+  def device(self):
+    raise RuntimeError("Use .devices instead")
 
   @property
   def devices(self):

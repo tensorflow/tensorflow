@@ -32,7 +32,9 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
@@ -783,7 +785,8 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
             context.context()._mode(self.context_mode), \
             context.context().device_policy(self.context_device_policy), \
             _enter_graph(self.graph), \
-            MirroredReplicaContext(self.distribution, self.replica_id), \
+            MirroredReplicaContext(self.distribution, constant_op.constant(
+                self.replica_id, dtypes.int32)), \
             ops.device(self.device), \
             ops.name_scope(self._name_scope), \
             variable_scope.variable_scope(
@@ -825,5 +828,5 @@ class MirroredReplicaContext(distribute_lib.ReplicaContext):
   @property
   def devices(self):
     distribute_lib.require_replica_context(self)
-    ds = self._distribution_strategy
-    return [ds.worker_devices[self._replica_id_in_sync_group]]
+    replica_id = tensor_util.constant_value(self._replica_id_in_sync_group)
+    return [self._distribution_strategy.worker_devices[replica_id]]

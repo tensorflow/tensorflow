@@ -35,6 +35,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -50,6 +51,13 @@ from tensorflow.python.training import training_util
 CHIEF = run_config.TaskType.CHIEF
 WORKER = run_config.TaskType.WORKER
 PS = run_config.TaskType.PS
+
+
+def _get_replica_id_integer():
+  replica_id = ds_context.get_replica_context().replica_id_in_sync_group
+  if isinstance(replica_id, ops.Tensor):
+    replica_id = tensor_util.constant_value(replica_id)
+  return replica_id
 
 
 class ParameterServerStrategyTestBase(
@@ -96,9 +104,8 @@ class ParameterServerStrategyTestBase(
         if num_gpus == 0:
           last_part_device = 'device:CPU:0'
         else:
-          last_part_device = (
-              'device:GPU:%d' %
-              ds_context.get_replica_context().replica_id_in_sync_group)
+          replica_id = _get_replica_id_integer()
+          last_part_device = ('device:GPU:%d' % replica_id)
 
         a = constant_op.constant(1.0)
         b = constant_op.constant(2.0)
@@ -263,18 +270,16 @@ class ParameterServerStrategyTestBase(
         if 'CPU' in compute_device:
           replica_compute_device = '/device:CPU:0'
         else:
-          replica_compute_device = (
-              '/device:GPU:%d' %
-              ds_context.get_replica_context().replica_id_in_sync_group)
+          replica_id = _get_replica_id_integer()
+          replica_compute_device = ('/device:GPU:%d' % replica_id)
         replica_compute_device = device_util.canonicalize(
             replica_compute_device)
 
         if 'CPU' in variable_device:
           replica_variable_device = '/device:CPU:0'
         else:
-          replica_variable_device = (
-              '/device:GPU:%d' %
-              ds_context.get_replica_context().replica_id_in_sync_group)
+          replica_id = _get_replica_id_integer()
+          replica_variable_device = ('/device:GPU:%d' % replica_id)
         replica_variable_device = device_util.canonicalize(
             replica_variable_device)
 

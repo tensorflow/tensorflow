@@ -35,6 +35,7 @@ from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -404,7 +405,7 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
       return [tpu.shutdown_system()]
 
   def _get_devices_from(self, colocate_with=None):
-     # TODO(jhseu): Change this when we support model parallelism.
+    # TODO(jhseu): Change this when we support model parallelism.
     return self._tpu_devices
 
   def _create_variable(self, next_creator, *args, **kwargs):
@@ -587,10 +588,18 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
   # TODO(sourabhbajaj): Call for each tower should be updating this.
   def __init__(self, distribution_strategy):
     distribute_lib.ReplicaContext.__init__(
-        self, distribution_strategy, replica_id_in_sync_group=0)
+        self,
+        distribution_strategy,
+        # TODO(b/118385803): properly initialize replica_id, instead of always 0
+        replica_id_in_sync_group=constant_op.constant(0, dtypes.int32))
+
+  @property
+  def device(self):
+    raise RuntimeError("Use .devices instead")
 
   @property
   def devices(self):
     distribute_lib.require_replica_context(self)
     ds = self._distribution_strategy
-    return [ds.worker_devices[self._replica_id_in_sync_group]]
+    replica_id = tensor_util.constant_value(self._replica_id_in_sync_group)
+    return [ds.worker_devices[replica_id]]
