@@ -3218,7 +3218,7 @@ def non_max_suppression_lite(boxes,
                              max_total_size,
                              iou_threshold=0.5,
                              score_threshold=float('-inf'),
-                             use_static_shapes=False,
+                             pad_per_class=False,
                              name=None):
   """Greedily selects a subset of bounding boxes in descending order of score.
 
@@ -3248,11 +3248,11 @@ def non_max_suppression_lite(boxes,
       overlap too much with respect to IOU.
     score_threshold: A float representing the threshold for deciding when to
       remove boxes based on score.
-    use_static_shapes: If false, the output nmsed boxes, scores, classes and
+    pad_per_class: If false, the output nmsed boxes, scores, classes and
       selected_indices are padded/clipped to `max_total_size`. If true, the
       output nmsed boxes, scores, classes and selected_indices are
-      padded/clipped to be of length `max_size_per_class` or `max_total_size`.
-      Defaults to false.
+      padded/clipped to be of length `max_size_per_class` or `max_total_size`
+      (smaller of the two). Defaults to false.
     name: A name for the operation (optional).
 
   Returns:
@@ -3275,4 +3275,4 @@ def non_max_suppression_lite(boxes,
         score_threshold, name='score_threshold')
     return gen_image_ops.non_max_suppression_lite(boxes, scores,
             max_output_size_per_class, max_total_size, iou_threshold,
-            score_threshold, use_static_shapes)
+            score_threshold, pad_per_class)

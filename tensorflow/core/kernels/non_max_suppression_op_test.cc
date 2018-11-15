@@ -863,7 +863,7 @@ TEST_F(NonMaxSuppressionWithOverlapsOpTest, TestEmptyInput) {
 
 class NonMaxSuppressionLiteOpTest : public OpsTestBase {
  protected:
-  void MakeOp(bool use_static_shapes = false) {
+  void MakeOp(bool pad_per_class = false) {
     TF_EXPECT_OK(NodeDefBuilder("non_max_suppression_lite_op", 
                                 "NonMaxSuppressionLite")
                      .Input(FakeInput(DT_FLOAT))
@@ -872,7 +872,7 @@ class NonMaxSuppressionLiteOpTest : public OpsTestBase {
                      .Input(FakeInput(DT_INT32))
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_FLOAT))
-                     .Attr("use_static_shapes", use_static_shapes)
+                     .Attr("pad_per_class", pad_per_class)
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
   }
