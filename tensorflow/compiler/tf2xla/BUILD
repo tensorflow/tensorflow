@@ -195,8 +195,8 @@ cc_library(
         ":sharding_util",
         ":side_effect_util",
         ":tf2xla_util",
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/jit:xla_cluster_util",
-        "//tensorflow/compiler/jit/legacy_flags:mark_for_compilation_pass_flags",
         "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -439,13 +439,12 @@ cc_library(
     name = "dump_graph",
     srcs = [
         "dump_graph.cc",
-        "dump_graph_flags.cc",
-        "dump_graph_flags.h",
     ],
     hdrs = [
         "dump_graph.h",
     ],
     deps = [
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/xla:parse_flags_from_env",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
