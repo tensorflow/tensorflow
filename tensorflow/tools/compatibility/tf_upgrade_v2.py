@@ -66,6 +66,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Functions that were reordered should be changed to the new keyword args
     # for safety, if positional arguments are used. If you have reversed the
     # positional arguments yourself, this could do the wrong thing.
+    # IMPORTANT: order here should correspond to OLD argument order.
+    # We just prepend "arg_name=" to all arguments in function calls.
     self.function_reorders = {
         "tf.argmax": ["input", "axis", "output_type", "name"],
         "tf.argmin": ["input", "axis", "output_type", "name"],
