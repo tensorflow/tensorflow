@@ -295,11 +295,17 @@ def function_to_graph(f,
           ' matching signature. To avoid ambiguity, define each lambda'
           ' in a separate expression.'.format(f, source))
     else:
+      # The inspect.getsource bug is currently known to occur in the Windows
+      # integration tests which run Python 3.6.
+      # TODO(mdan): Find out eaxctly which distribution of Python is that.
       raise ValueError(
           'Unable to identify source code of function {}. The source code'
           ' reported by Python did not include exactly one matching signature:'
           '\n{}\nTo avoid ambiguity, use a unique name for each'
-          ' function.'.format(f, source))
+          ' function.\nNote that some distributions of Python may report source'
+          ' code incorrectly. It may be possible to avoid that bug by'
+          ' organizing the code into smaller units (smaller files, functions or'
+          ' classes), or by turning AutoGraph off.'.format(f, source))
   node, = nodes
 
   # TODO(znado): Place inside standard_analysis.
