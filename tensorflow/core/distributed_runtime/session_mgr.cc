@@ -122,7 +122,9 @@ Status SessionMgr::WorkerSessionForSessionLocked(
     auto it = sessions_.find(session_handle);
     if (it == sessions_.end()) {
       return errors::Aborted("Session handle is not found: ", session_handle,
-                             ". Possibly this worker just restarted.");
+                             ". Possibly this worker (\"",
+                             legacy_session_->worker_name,
+                             "\") just restarted.");
     } else {
       *out_session = it->second;
     }
