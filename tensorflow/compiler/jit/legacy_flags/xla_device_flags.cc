@@ -41,7 +41,7 @@ static void AllocateFlags() {
            "Switch a device into 'on-demand' mode, where instead of "
            "autoclustering ops are compiled one by one just-in-time."),
   });
-  xla::ParseFlagsFromEnv(*flag_list);
+  xla::ParseFlagsFromEnv("TF_XLA_FLAGS", *flag_list);
 }
 
 // Return a pointer to the XlaDeviceFlags struct;

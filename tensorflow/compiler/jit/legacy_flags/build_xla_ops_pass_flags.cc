@@ -34,7 +34,7 @@ void AllocateAndParseFlags() {
       Flag("tf_xla_enable_lazy_compilation",
            &flags->tf_xla_enable_lazy_compilation, ""),
   });
-  xla::ParseFlagsFromEnv(*flag_list);
+  xla::ParseFlagsFromEnv("TF_XLA_FLAGS", *flag_list);
 }
 
 }  // namespace

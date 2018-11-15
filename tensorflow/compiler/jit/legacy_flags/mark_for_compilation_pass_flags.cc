@@ -65,7 +65,7 @@ static void AllocateFlags() {
        Flag("tf_xla_fusion_only", &flags->tf_xla_fusion_only,
             "enable fusion of element-wise operations only using XLA when "
             "global_jit_level is ON*.")});
-  xla::ParseFlagsFromEnv(*flag_list);
+  xla::ParseFlagsFromEnv("TF_XLA_FLAGS", *flag_list);
 
   if (VLOG_IS_ON(1)) {
     VLOG(1) << "Parsed MarkForCompilationPassFlags:";
