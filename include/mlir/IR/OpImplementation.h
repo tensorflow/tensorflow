@@ -73,6 +73,11 @@ public:
   virtual void printAffineMap(AffineMap map) = 0;
   virtual void printAffineExpr(AffineExpr expr) = 0;
 
+  /// Print a successor, and use list, of a terminator operation given the
+  /// terminator and the successor index.
+  virtual void printSuccessorAndUseList(const Operation *term,
+                                        unsigned index) = 0;
+
   /// If the specified operation has attributes, print out an attribute
   /// dictionary with their values.  elidedAttrs allows the client to ignore
   /// specific well known attributes, commonly used if the attribute value is
@@ -253,6 +258,11 @@ public:
 
   /// Parse a single operand.
   virtual bool parseOperand(OperandType &result) = 0;
+
+  /// Parse a single operation successor and it's operand list.
+  virtual bool
+  parseSuccessorAndUseList(BasicBlock *&dest,
+                           SmallVectorImpl<SSAValue *> &operands) = 0;
 
   /// These are the supported delimiters around operand lists, used by
   /// parseOperandList.

@@ -24,6 +24,7 @@
 
 namespace mlir {
 class AttributeListStorage;
+class BasicBlock;
 template <typename OpType> class ConstOpPointer;
 template <typename OpType> class OpPointer;
 template <typename ObjectType, typename ElementType> class OperandIterator;
@@ -98,6 +99,23 @@ public:
   const_result_iterator result_begin() const;
   const_result_iterator result_end() const;
   llvm::iterator_range<const_result_iterator> getResults() const;
+
+  // Support for successor querying.
+  unsigned getNumSuccessors() const;
+  unsigned getNumSuccessorOperands(unsigned index) const;
+  BasicBlock *getSuccessor(unsigned index);
+  BasicBlock *getSuccessor(unsigned index) const {
+    return const_cast<Operation *>(this)->getSuccessor(index);
+  }
+  void setSuccessor(BasicBlock *block, unsigned index);
+  void addSuccessorOperand(unsigned index, SSAValue *value);
+  void addSuccessorOperands(unsigned index, ArrayRef<SSAValue *> values) {
+    for (auto *value : values)
+      addSuccessorOperand(index, value);
+  }
+  llvm::iterator_range<const_operand_iterator>
+  getSuccessorOperands(unsigned index) const;
+  llvm::iterator_range<operand_iterator> getSuccessorOperands(unsigned index);
 
   /// Return true if there are no users of any results of this operation.
   bool use_empty() const;

@@ -269,11 +269,14 @@ BasicBlock *CFGFuncBuilder::createBlock(BasicBlock *insertBefore) {
 OperationInst *CFGFuncBuilder::createOperation(const OperationState &state) {
   SmallVector<CFGValue *, 8> operands;
   operands.reserve(state.operands.size());
+  // Allow null operands as they act as sentinal barriers between successor
+  // operand lists.
   for (auto elt : state.operands)
-    operands.push_back(cast<CFGValue>(elt));
+    operands.push_back(elt ? cast<CFGValue>(elt) : nullptr);
 
-  auto *op = OperationInst::create(state.location, state.name, operands,
-                                   state.types, state.attributes, context);
+  auto *op =
+      OperationInst::create(state.location, state.name, operands, state.types,
+                            state.attributes, state.successors, context);
   block->getOperations().insert(insertPoint, op);
   return op;
 }

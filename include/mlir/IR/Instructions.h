@@ -60,8 +60,8 @@ private:
 
 namespace mlir {
 
-/// The operand of a TerminatorInst contains a BasicBlock.
-using BasicBlockOperand = IROperandImpl<BasicBlock, TerminatorInst>;
+/// The operand of a Terminator contains a BasicBlock.
+using BasicBlockOperand = IROperandImpl<BasicBlock, Instruction>;
 
 /// Instruction is the root of the operation and terminator instructions in the
 /// hierarchy.
@@ -193,18 +193,26 @@ inline raw_ostream &operator<<(raw_ostream &os, const Instruction &inst) {
 
 /// Operations are the main instruction kind in MLIR, which represent all of the
 /// arithmetic and other basic computation.
+//
+// The trailing objects of an operation instruction are layed out as follows:
+//   - InstResult        : The results of the instruction.
+//   - BasicBlockOperand : Use-list of successor blocks if this is a terminator.
+//   - unsigned          : Count of operands held for each of the successors.
+//
+// Note: For Terminators, we rely on the assumption that all non successor
+// operands are placed at the beginning of the operands list.
 class OperationInst final
     : public Operation,
       public Instruction,
       public llvm::ilist_node_with_parent<OperationInst, BasicBlock>,
-      private llvm::TrailingObjects<OperationInst, InstOperand, InstResult> {
+      private llvm::TrailingObjects<OperationInst, InstResult,
+                                    BasicBlockOperand, unsigned> {
 public:
   /// Create a new OperationInst with the specified fields.
-  static OperationInst *create(Location location, OperationName name,
-                               ArrayRef<CFGValue *> operands,
-                               ArrayRef<Type> resultTypes,
-                               ArrayRef<NamedAttribute> attributes,
-                               MLIRContext *context);
+  static OperationInst *
+  create(Location location, OperationName name, ArrayRef<CFGValue *> operands,
+         ArrayRef<Type> resultTypes, ArrayRef<NamedAttribute> attributes,
+         ArrayRef<BasicBlock *> successors, MLIRContext *context);
 
   using Instruction::dump;
   using Instruction::emitError;
@@ -220,7 +228,7 @@ public:
   // Operands
   //===--------------------------------------------------------------------===//
 
-  unsigned getNumOperands() const { return numOperands; }
+  unsigned getNumOperands() const { return operands.size(); }
 
   CFGValue *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
   const CFGValue *getOperand(unsigned idx) const {
@@ -259,12 +267,9 @@ public:
     return {operand_begin(), operand_end()};
   }
 
-  ArrayRef<InstOperand> getInstOperands() const {
-    return {getTrailingObjects<InstOperand>(), numOperands};
-  }
-  MutableArrayRef<InstOperand> getInstOperands() {
-    return {getTrailingObjects<InstOperand>(), numOperands};
-  }
+  MutableArrayRef<InstOperand> getInstOperands() { return operands; }
+  ArrayRef<InstOperand> getInstOperands() const { return operands; }
+
   // Accessors to InstOperand. Without these methods invoking getInstOperand()
   // calls Instruction::getInstOperands() resulting in execution of
   // an unnecessary switch statement.
@@ -322,6 +327,74 @@ public:
   }
 
   //===--------------------------------------------------------------------===//
+  // Terminators
+  //===--------------------------------------------------------------------===//
+
+  MutableArrayRef<BasicBlockOperand> getBasicBlockOperands() {
+    assert(isTerminator() && "Only terminators have a block operands list.");
+    return {getTrailingObjects<BasicBlockOperand>(), numSuccs};
+  }
+  ArrayRef<BasicBlockOperand> getBasicBlockOperands() const {
+    return const_cast<OperationInst *>(this)->getBasicBlockOperands();
+  }
+
+  MutableArrayRef<InstOperand> getSuccessorInstOperands(unsigned index) {
+    assert(isTerminator() && "Only terminators have successors.");
+    assert(index < getNumSuccessors());
+    unsigned succOpIndex = getSuccessorOperandIndex(index);
+    auto *operandBegin = operands.data() + succOpIndex;
+    return {operandBegin, getNumSuccessorOperands(index)};
+  }
+  ArrayRef<InstOperand> getSuccessorInstOperands(unsigned index) const {
+    return const_cast<OperationInst *>(this)->getSuccessorInstOperands(index);
+  }
+
+  unsigned getNumSuccessors() const { return getBasicBlockOperands().size(); }
+  unsigned getNumSuccessorOperands(unsigned index) const {
+    assert(isTerminator() && "Only terminators have successors.");
+    assert(index < getNumSuccessors());
+    return getTrailingObjects<unsigned>()[index];
+  }
+
+  BasicBlock *getSuccessor(unsigned index) {
+    assert(index < getNumSuccessors());
+    return getBasicBlockOperands()[index].get();
+  }
+  BasicBlock *getSuccessor(unsigned index) const {
+    return const_cast<OperationInst *>(this)->getSuccessor(index);
+  }
+  void setSuccessor(BasicBlock *block, unsigned index) {
+    assert(index < getNumSuccessors());
+    getBasicBlockOperands()[index].set(block);
+  }
+
+  /// Add one value to the operand list of the successor at the provided index.
+  void addSuccessorOperand(unsigned index, CFGValue *value);
+
+  /// Add a list of values to the operand list of the successor at the provided
+  /// index.
+  void addSuccessorOperands(unsigned index, ArrayRef<CFGValue *> values);
+
+  /// Erase a specific argument from the arg list.
+  // TODO: void eraseSuccessorOperand(unsigned index, unsigned argIndex);
+
+  /// Get the index of the first operand of the successor at the provided
+  /// index.
+  unsigned getSuccessorOperandIndex(unsigned index) const {
+    assert(isTerminator() && "Only terminators have successors.");
+    assert(index < getNumSuccessors());
+
+    // Count the number of operands for each of the successors after, and
+    // including, the one at 'index'. This is based upon the assumption that all
+    // non successor operands are placed at the beginning of the operand list.
+    auto *successorOpCountBegin = getTrailingObjects<unsigned>();
+    unsigned postSuccessorOpCount =
+        std::accumulate(successorOpCountBegin + index,
+                        successorOpCountBegin + getNumSuccessors(), 0);
+    return getNumOperands() - postSuccessorOpCount;
+  }
+
+  //===--------------------------------------------------------------------===//
   // Other
   //===--------------------------------------------------------------------===//
 
@@ -351,21 +424,24 @@ public:
   }
 
 private:
-  const unsigned numOperands, numResults;
+  const unsigned numResults, numSuccs;
+  std::vector<InstOperand> operands;
 
-  OperationInst(Location location, OperationName name, unsigned numOperands,
-                unsigned numResults, ArrayRef<NamedAttribute> attributes,
+  OperationInst(Location location, OperationName name, unsigned numResults,
+                unsigned numSuccessors, ArrayRef<NamedAttribute> attributes,
                 MLIRContext *context);
   ~OperationInst();
 
   // This stuff is used by the TrailingObjects template.
-  friend llvm::TrailingObjects<OperationInst, InstOperand, InstResult>;
-  size_t numTrailingObjects(OverloadToken<InstOperand>) const {
-    return numOperands;
-  }
+  friend llvm::TrailingObjects<OperationInst, InstResult, BasicBlockOperand,
+                               unsigned>;
   size_t numTrailingObjects(OverloadToken<InstResult>) const {
     return numResults;
   }
+  size_t numTrailingObjects(OverloadToken<BasicBlockOperand>) const {
+    return numSuccs;
+  }
+  size_t numTrailingObjects(OverloadToken<unsigned>) const { return numSuccs; }
 };
 
 /// Terminator instructions are the last part of a basic block, used to

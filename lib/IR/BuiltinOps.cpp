@@ -169,16 +169,23 @@ bool AffineApplyOp::constantFold(ArrayRef<Attribute> operandConstants,
 // BranchOp
 //===----------------------------------------------------------------------===//
 
-void BranchOp::build(Builder *builder, OperationState *result) {}
+void BranchOp::build(Builder *builder, OperationState *result, BasicBlock *dest,
+                     ArrayRef<SSAValue *> operands) {
+  result->addSuccessor(dest, operands);
+}
 
 bool BranchOp::parse(OpAsmParser *parser, OperationState *result) {
-  // TODO(riverriddle) Parse successors and operands.
-  return true;
+  BasicBlock *dest;
+  SmallVector<SSAValue *, 4> destOperands;
+  if (parser->parseSuccessorAndUseList(dest, destOperands))
+    return true;
+  result->addSuccessor(dest, destOperands);
+  return false;
 }
 
 void BranchOp::print(OpAsmPrinter *p) const {
   *p << "br ";
-  // TODO(riverriddle) Print successors and operands.
+  p->printSuccessorAndUseList(getOperation(), 0);
 }
 
 bool BranchOp::verify() const {
@@ -188,34 +195,70 @@ bool BranchOp::verify() const {
   return false;
 }
 
+BasicBlock *BranchOp::getDest() const {
+  return getOperation()->getSuccessor(0);
+}
+
+void BranchOp::setDest(BasicBlock *block) {
+  return getOperation()->setSuccessor(block, 0);
+}
+
+void BranchOp::addOperand(SSAValue *value) {
+  return getOperation()->addSuccessorOperand(0, value);
+}
+
+void BranchOp::addOperands(ArrayRef<SSAValue *> values) {
+  return getOperation()->addSuccessorOperands(0, values);
+}
+
 //===----------------------------------------------------------------------===//
 // CondBranchOp
 //===----------------------------------------------------------------------===//
 
 void CondBranchOp::build(Builder *builder, OperationState *result,
-                         SSAValue *condition) {
+                         SSAValue *condition, BasicBlock *trueDest,
+                         BasicBlock *falseDest) {
   result->addOperands(condition);
+  result->addSuccessor(trueDest, /*succOperands=*/{});
+  result->addSuccessor(falseDest, /*succOperands=*/{});
 }
 
 bool CondBranchOp::parse(OpAsmParser *parser, OperationState *result) {
+  SmallVector<SSAValue *, 4> destOperands;
+  BasicBlock *dest;
   OpAsmParser::OperandType condInfo;
-  Type int1Ty = parser->getBuilder().getIntegerType(1);
-  if (parser->parseOperand(condInfo))
-    return true;
-  // TODO(riverriddle) Parse successors and operands.
 
-  if (parser->resolveOperand(condInfo, int1Ty, result->operands)) {
+  // Parse the condition.
+  Type int1Ty = parser->getBuilder().getIntegerType(1);
+  if (parser->parseOperand(condInfo) || parser->parseComma() ||
+      parser->resolveOperand(condInfo, int1Ty, result->operands)) {
     return parser->emitError(parser->getNameLoc(),
                              "expected condition type was boolean (i1)");
   }
+
+  // Parse the true successor.
+  if (parser->parseSuccessorAndUseList(dest, destOperands))
+    return true;
+  result->addSuccessor(dest, destOperands);
+
+  // Parse the false successor.
+  destOperands.clear();
+  if (parser->parseComma() ||
+      parser->parseSuccessorAndUseList(dest, destOperands))
+    return true;
+  result->addSuccessor(dest, destOperands);
+
+  // Return false on success.
   return false;
 }
 
 void CondBranchOp::print(OpAsmPrinter *p) const {
   *p << "cond_br ";
   p->printOperand(getCondition());
-
-  // TODO(riverriddle) Print successors and operands.
+  *p << ", ";
+  p->printSuccessorAndUseList(getOperation(), trueIndex);
+  *p << ", ";
+  p->printSuccessorAndUseList(getOperation(), falseIndex);
 }
 
 bool CondBranchOp::verify() const {
@@ -225,6 +268,38 @@ bool CondBranchOp::verify() const {
   if (!getCondition()->getType().isInteger(1))
     return emitOpError("expected condition type was boolean (i1)");
   return false;
+}
+
+BasicBlock *CondBranchOp::getTrueDest() const {
+  return getOperation()->getSuccessor(trueIndex);
+}
+
+BasicBlock *CondBranchOp::getFalseDest() const {
+  return getOperation()->getSuccessor(falseIndex);
+}
+
+unsigned CondBranchOp::getNumTrueOperands() const {
+  return getOperation()->getNumSuccessorOperands(trueIndex);
+}
+
+void CondBranchOp::addTrueOperand(SSAValue *value) {
+  return getOperation()->addSuccessorOperand(trueIndex, value);
+}
+
+void CondBranchOp::addTrueOperands(ArrayRef<SSAValue *> values) {
+  return getOperation()->addSuccessorOperands(trueIndex, values);
+}
+
+unsigned CondBranchOp::getNumFalseOperands() const {
+  return getOperation()->getNumSuccessorOperands(falseIndex);
+}
+
+void CondBranchOp::addFalseOperand(SSAValue *value) {
+  return getOperation()->addSuccessorOperand(falseIndex, value);
+}
+
+void CondBranchOp::addFalseOperands(ArrayRef<SSAValue *> values) {
+  return getOperation()->addSuccessorOperands(falseIndex, values);
 }
 
 //===----------------------------------------------------------------------===//

@@ -1168,6 +1168,8 @@ public:
   void print(const BranchInst *inst);
   void print(const CondBranchInst *inst);
 
+  void printSuccessorAndUseList(const Operation *term, unsigned index);
+
   void printBBName(const BasicBlock *block) { os << "bb" << getBBID(block); }
 
   unsigned getBBID(const BasicBlock *block) {
@@ -1303,12 +1305,18 @@ void CFGFunctionPrinter::printBranchOperands(const Range &range) {
 
   os << '(';
   interleaveComma(range,
-                  [this](const CFGValue *operand) { printValueID(operand); });
+                  [this](const SSAValue *operand) { printValueID(operand); });
   os << " : ";
-  interleaveComma(range, [this](const CFGValue *operand) {
+  interleaveComma(range, [this](const SSAValue *operand) {
     printType(operand->getType());
   });
   os << ')';
+}
+
+void CFGFunctionPrinter::printSuccessorAndUseList(const Operation *term,
+                                                  unsigned index) {
+  printBBName(term->getSuccessor(index));
+  printBranchOperands(term->getSuccessorOperands(index));
 }
 
 void CFGFunctionPrinter::print(const BranchInst *inst) {
@@ -1372,6 +1380,9 @@ public:
   void print(const ForStmt *stmt);
   void print(const IfStmt *stmt);
   void print(const StmtBlock *block);
+  void printSuccessorAndUseList(const Operation *term, unsigned index) {
+    assert(false && "MLFunctions do not have terminators with successors.");
+  }
 
   // Print loop bounds.
   void printDimAndSymbolList(ArrayRef<StmtOperand> ops, unsigned numDims);

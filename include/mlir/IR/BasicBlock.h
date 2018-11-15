@@ -263,7 +263,7 @@ public:
   }
 
 private:
-  using BBUseIterator = SSAValueUseIterator<BasicBlockOperand, TerminatorInst>;
+  using BBUseIterator = SSAValueUseIterator<BasicBlockOperand, Instruction>;
   BBUseIterator bbUseIterator;
 };
 

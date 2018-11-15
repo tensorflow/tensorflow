@@ -33,6 +33,7 @@
 #include <type_traits>
 
 namespace mlir {
+class BasicBlock;
 class Builder;
 
 namespace OpTrait {
@@ -682,7 +683,30 @@ public:
     return impl::verifyIsTerminator(op);
   }
 
-  // TODO(riverriddle) Add handling for successor blocks and operands.
+  unsigned getNumSuccessors() const {
+    return this->getOperation()->getNumSuccessors();
+  }
+  unsigned getNumSuccessorOperands(unsigned index) const {
+    return this->getOperation()->getNumSuccessorOperands(index);
+  }
+
+  const BasicBlock *getSuccessor(unsigned index) const {
+    return this->getOperation()->getSuccessor(index);
+  }
+  BasicBlock *getSuccessor(unsigned index) {
+    return this->getOperation()->getSuccessor(index);
+  }
+
+  void setSuccessor(BasicBlock *block, unsigned index) {
+    return this->getOperation()->setSuccessor(block, index);
+  }
+
+  void addSuccessorOperand(unsigned index, SSAValue *value) {
+    return this->getOperation()->addSuccessorOperand(index, value);
+  }
+  void addSuccessorOperands(unsigned index, ArrayRef<SSAValue *> values) {
+    return this->getOperation()->addSuccessorOperand(index, values);
+  }
 };
 
 } // end namespace OpTrait

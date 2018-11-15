@@ -29,6 +29,7 @@
 #include "mlir/IR/OpDefinition.h"
 
 namespace mlir {
+class BasicBlock;
 class Builder;
 class MLValue;
 
@@ -100,14 +101,26 @@ class BranchOp : public Op<BranchOp, OpTrait::VariadicOperands,
 public:
   static StringRef getOperationName() { return "br"; }
 
-  static void build(Builder *builder, OperationState *result);
+  static void build(Builder *builder, OperationState *result, BasicBlock *dest,
+                    ArrayRef<SSAValue *> operands = {});
 
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
   bool verify() const;
 
-  /// TODO(riverriddle) Add support for basic block successors and operands.
+  /// Return the block this branch jumps to.
+  BasicBlock *getDest() const;
+  void setDest(BasicBlock *block);
+
+  /// Add one value to the operand list.
+  void addOperand(SSAValue *value);
+
+  /// Add a list of values to the operand list.
+  void addOperands(ArrayRef<SSAValue *> values);
+
+  /// Erase a specific argument from the arg list.
+  // TODO: void eraseArgument(int Index);
 
 private:
   friend class Operation;
@@ -129,26 +142,119 @@ private:
 ///
 class CondBranchOp : public Op<CondBranchOp, OpTrait::AtLeastNOperands<1>::Impl,
                                OpTrait::ZeroResult, OpTrait::IsTerminator> {
+  // These are the indices into the dests list.
+  enum { trueIndex = 0, falseIndex = 1 };
+
+  /// The operands list of a conditional branch operation is layed out as
+  /// follows:
+  /// { condition, [true_operands], [false_operands] }
 public:
   static StringRef getOperationName() { return "cond_br"; }
 
   static void build(Builder *builder, OperationState *result,
-                    SSAValue *condition);
+                    SSAValue *condition, BasicBlock *trueDest,
+                    BasicBlock *falseDest);
 
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
   bool verify() const;
 
-  // The condition operand is the last operand in the list.
-  SSAValue *getCondition() { return getOperand(getNumOperands() - 1); }
-  const SSAValue *getCondition() const {
-    return getOperand(getNumOperands() - 1);
+  // The condition operand is the first operand in the list.
+  SSAValue *getCondition() { return getOperand(0); }
+  const SSAValue *getCondition() const { return getOperand(0); }
+
+  /// Return the destination if the condition is true.
+  BasicBlock *getTrueDest() const;
+
+  /// Return the destination if the condition is false.
+  BasicBlock *getFalseDest() const;
+
+  // Accessors for operands to the 'true' destination.
+  SSAValue *getTrueOperand(unsigned idx) {
+    assert(idx < getNumTrueOperands());
+    return getOperand(getTrueDestOperandIndex() + idx);
+  }
+  const SSAValue *getTrueOperand(unsigned idx) const {
+    return const_cast<CondBranchOp *>(this)->getTrueOperand(idx);
+  }
+  void setTrueOperand(unsigned idx, SSAValue *value) {
+    assert(idx < getNumTrueOperands());
+    setOperand(getTrueDestOperandIndex() + idx, value);
   }
 
-  /// TODO(riverriddle) Add support for basic block successors and operands.
+  operand_iterator true_operand_begin() { return operand_begin(); }
+  operand_iterator true_operand_end() {
+    return operand_begin() + getNumTrueOperands();
+  }
+  llvm::iterator_range<operand_iterator> getTrueOperands() {
+    return {true_operand_begin(), true_operand_end()};
+  }
+
+  const_operand_iterator true_operand_begin() const { return operand_begin(); }
+  const_operand_iterator true_operand_end() const {
+    return operand_begin() + getNumTrueOperands();
+  }
+  llvm::iterator_range<const_operand_iterator> getTrueOperands() const {
+    return {true_operand_begin(), true_operand_end()};
+  }
+
+  unsigned getNumTrueOperands() const;
+
+  /// Add one value to the true operand list.
+  void addTrueOperand(SSAValue *value);
+
+  /// Add a list of values to the operand list.
+  void addTrueOperands(ArrayRef<SSAValue *> values);
+
+  // Accessors for operands to the 'false' destination.
+  SSAValue *getFalseOperand(unsigned idx) {
+    assert(idx < getNumFalseOperands());
+    return getOperand(getFalseDestOperandIndex() + idx);
+  }
+  const SSAValue *getFalseOperand(unsigned idx) const {
+    return const_cast<CondBranchOp *>(this)->getFalseOperand(idx);
+  }
+  void setFalseOperand(unsigned idx, SSAValue *value) {
+    assert(idx < getNumFalseOperands());
+    setOperand(getFalseDestOperandIndex() + idx, value);
+  }
+
+  operand_iterator false_operand_begin() { return true_operand_end(); }
+  operand_iterator false_operand_end() {
+    return false_operand_begin() + getNumFalseOperands();
+  }
+  llvm::iterator_range<operand_iterator> getFalseOperands() {
+    return {false_operand_begin(), false_operand_end()};
+  }
+
+  const_operand_iterator false_operand_begin() const {
+    return true_operand_end();
+  }
+  const_operand_iterator false_operand_end() const {
+    return false_operand_begin() + getNumFalseOperands();
+  }
+  llvm::iterator_range<const_operand_iterator> getFalseOperands() const {
+    return {false_operand_begin(), false_operand_end()};
+  }
+
+  unsigned getNumFalseOperands() const;
+
+  /// Add one value to the false operand list.
+  void addFalseOperand(SSAValue *value);
+
+  /// Add a list of values to the false operand list.
+  void addFalseOperands(ArrayRef<SSAValue *> values);
 
 private:
+  /// Get the index of the first true destination operand.
+  unsigned getTrueDestOperandIndex() { return 1; }
+
+  /// Get the index of the first false destination operand.
+  unsigned getFalseDestOperandIndex() {
+    return getTrueDestOperandIndex() + getNumTrueOperands();
+  }
+
   friend class Operation;
   explicit CondBranchOp(const Operation *state) : Op(state) {}
 };

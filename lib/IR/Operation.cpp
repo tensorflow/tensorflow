@@ -134,6 +134,65 @@ SSAValue *Operation::getResult(unsigned idx) {
   return llvm::cast<OperationStmt>(this)->getResult(idx);
 }
 
+unsigned Operation::getNumSuccessors() const {
+  assert(isTerminator() && "Only terminators have successors.");
+  if (llvm::isa<OperationInst>(this))
+    return llvm::cast<OperationInst>(this)->getNumSuccessors();
+
+  // OperationStmt currently only has a return terminator.
+  auto *stmt = llvm::cast<OperationStmt>(this);
+  assert(stmt->isReturn() && "Unhandled OperationStmt terminator.");
+  return 0;
+}
+
+unsigned Operation::getNumSuccessorOperands(unsigned index) const {
+  assert(isTerminator() && "Only terminators have successors.");
+  assert(llvm::isa<OperationInst>(this) &&
+         "Only instructions have successors.");
+  return llvm::cast<OperationInst>(this)->getNumSuccessorOperands(index);
+}
+BasicBlock *Operation::getSuccessor(unsigned index) {
+  assert(isTerminator() && "Only terminators have successors.");
+  assert(llvm::isa<OperationInst>(this) &&
+         "Only instructions have basic block successors.");
+  return llvm::cast<OperationInst>(this)->getSuccessor(index);
+}
+void Operation::setSuccessor(BasicBlock *block, unsigned index) {
+  assert(isTerminator() && "Only terminators have successors.");
+  assert(llvm::isa<OperationInst>(this) &&
+         "Only instructions have basic block successors.");
+  llvm::cast<OperationInst>(this)->setSuccessor(block, index);
+}
+void Operation::addSuccessorOperand(unsigned index, SSAValue *value) {
+  assert(isTerminator() && "Only terminators have successors.");
+  assert(llvm::isa<OperationInst>(this) &&
+         "Only instructions have successors.");
+  return llvm::cast<OperationInst>(this)->addSuccessorOperand(
+      index, llvm::cast<CFGValue>(value));
+}
+auto Operation::getSuccessorOperands(unsigned index) const
+    -> llvm::iterator_range<const_operand_iterator> {
+  assert(isTerminator() && "Only terminators have successors.");
+  assert(llvm::isa<OperationInst>(this) &&
+         "Only instructions have successors.");
+  unsigned succOperandIndex =
+      llvm::cast<OperationInst>(this)->getSuccessorOperandIndex(index);
+  return {const_operand_iterator(this, succOperandIndex),
+          const_operand_iterator(this, succOperandIndex +
+                                           getNumSuccessorOperands(index))};
+}
+auto Operation::getSuccessorOperands(unsigned index)
+    -> llvm::iterator_range<operand_iterator> {
+  assert(isTerminator() && "Only terminators have successors.");
+  assert(llvm::isa<OperationInst>(this) &&
+         "Only instructions have successors.");
+  unsigned succOperandIndex =
+      llvm::cast<OperationInst>(this)->getSuccessorOperandIndex(index);
+  return {operand_iterator(this, succOperandIndex),
+          operand_iterator(this,
+                           succOperandIndex + getNumSuccessorOperands(index))};
+}
+
 /// Return true if there are no users of any results of this operation.
 bool Operation::use_empty() const {
   for (auto *result : getResults())
@@ -437,6 +496,43 @@ bool OpTrait::impl::verifySameOperandsAndResult(const Operation *op) {
   return false;
 }
 
+static bool verifyBBArguments(
+    llvm::iterator_range<Operation::const_operand_iterator> operands,
+    const BasicBlock *destBB, const Operation *op) {
+  unsigned operandCount = std::distance(operands.begin(), operands.end());
+  if (operandCount != destBB->getNumArguments()) {
+    op->emitError("branch has " + Twine(operandCount) +
+                  " operands, but target block has " +
+                  Twine(destBB->getNumArguments()));
+    return true;
+  }
+
+  auto operandIt = operands.begin();
+  for (unsigned i = 0, e = operandCount; i != e; ++i, ++operandIt) {
+    if ((*operandIt)->getType() != destBB->getArgument(i)->getType()) {
+      op->emitError("type mismatch in bb argument #" + Twine(i));
+      return true;
+    }
+  }
+
+  return false;
+}
+
+static bool verifyTerminatorSuccessors(const Operation *op) {
+  // Verify that the operands lines up with the BB arguments in the successor.
+  const Function *fn = op->getOperationFunction();
+  for (unsigned i = 0, e = op->getNumSuccessors(); i != e; ++i) {
+    auto *succ = op->getSuccessor(i);
+    if (succ->getFunction() != fn) {
+      op->emitError("reference to block defined in another function");
+      return true;
+    }
+    if (verifyBBArguments(op->getSuccessorOperands(i), succ, op))
+      return true;
+  }
+  return false;
+}
+
 bool OpTrait::impl::verifyIsTerminator(const Operation *op) {
   // Verify that the operation is at the end of the respective parent block.
   if (auto *stmt = dyn_cast<OperationStmt>(op)) {
@@ -451,7 +547,9 @@ bool OpTrait::impl::verifyIsTerminator(const Operation *op) {
           "must be the last instruction in the parent basic block.");
   }
 
-  // TODO(riverriddle) Verify successor blocks when added.
+  // Verify the state of the successor blocks.
+  if (op->getNumSuccessors() != 0 && verifyTerminatorSuccessors(op))
+    return true;
   return false;
 }
 

@@ -111,6 +111,12 @@ void Instruction::dropAllReferences() {
   if (auto *term = dyn_cast<TerminatorInst>(this))
     for (auto &dest : term->getBasicBlockOperands())
       dest.drop();
+
+  if (OperationInst *opInst = dyn_cast<OperationInst>(this)) {
+    if (opInst->isTerminator())
+      for (auto &dest : opInst->getBasicBlockOperands())
+        dest.drop();
+  }
 }
 
 /// Emit a note about this instruction, reporting up to any diagnostic
@@ -145,56 +151,151 @@ OperationInst *OperationInst::create(Location location, OperationName name,
                                      ArrayRef<CFGValue *> operands,
                                      ArrayRef<Type> resultTypes,
                                      ArrayRef<NamedAttribute> attributes,
+                                     ArrayRef<BasicBlock *> successors,
                                      MLIRContext *context) {
-  auto byteSize = totalSizeToAlloc<InstOperand, InstResult>(operands.size(),
-                                                            resultTypes.size());
+  unsigned numSuccessors = successors.size();
+  auto byteSize = totalSizeToAlloc<InstResult, BasicBlockOperand, unsigned>(
+      resultTypes.size(), numSuccessors, numSuccessors);
   void *rawMem = malloc(byteSize);
 
   // Initialize the OperationInst part of the instruction.
-  auto inst = ::new (rawMem) OperationInst(
-      location, name, operands.size(), resultTypes.size(), attributes, context);
+  auto inst = ::new (rawMem) OperationInst(location, name, resultTypes.size(),
+                                           numSuccessors, attributes, context);
 
-  // Initialize the operands and results.
-  auto instOperands = inst->getInstOperands();
-  for (unsigned i = 0, e = operands.size(); i != e; ++i)
-    new (&instOperands[i]) InstOperand(inst, operands[i]);
-
+  // Initialize the results and operands.
   auto instResults = inst->getInstResults();
   for (unsigned i = 0, e = resultTypes.size(); i != e; ++i)
     new (&instResults[i]) InstResult(resultTypes[i], inst);
+
+  unsigned operandIt = 0, operandE = operands.size();
+  for (; operandIt != operandE; ++operandIt) {
+    // Null operands are used as sentinals between successor operand lists. If
+    // we encounter one here, break and handle the successor operands lists
+    // separately below.
+    if (!operands[operandIt])
+      break;
+    inst->operands.push_back(InstOperand(inst, operands[operandIt]));
+  }
+
+  // Check to see if a sentinal operand was encountered.
+  unsigned currentSuccNum = 0;
+  if (operandIt != operandE) {
+    assert(inst->isTerminator() &&
+           "Sentinal operand found in non terminator operand list.");
+    auto instBlockOperands = inst->getBasicBlockOperands();
+    unsigned *succOperandCountIt = inst->getTrailingObjects<unsigned>();
+    unsigned *succOperandCountE = succOperandCountIt + numSuccessors;
+
+    for (; operandIt != operandE; ++operandIt) {
+      // If we encounter a sentinal branch to the next operand update the count
+      // variable.
+      if (!operands[operandIt]) {
+        assert(currentSuccNum < numSuccessors);
+
+        // After the first iteration update the successor operand count
+        // variable.
+        if (currentSuccNum != 0) {
+          ++succOperandCountIt;
+          assert(succOperandCountIt != succOperandCountE &&
+                 "More sentinal operands than successors.");
+        }
+
+        new (&instBlockOperands[currentSuccNum])
+            BasicBlockOperand(inst, successors[currentSuccNum]);
+        *succOperandCountIt = 0;
+        ++currentSuccNum;
+        continue;
+      }
+      inst->operands.push_back(InstOperand(inst, operands[operandIt]));
+      ++(*succOperandCountIt);
+    }
+  }
+
+  // Verify that the amount of sentinal operands is equivalent to the number of
+  // successors.
+  assert(currentSuccNum == numSuccessors);
   return inst;
 }
 
 OperationInst *OperationInst::clone() const {
   SmallVector<CFGValue *, 8> operands;
   SmallVector<Type, 8> resultTypes;
+  SmallVector<BasicBlock *, 1> successors;
 
-  // Put together the operands and results.
-  for (auto *operand : getOperands())
-    operands.push_back(const_cast<CFGValue *>(operand));
-
+  // Put together the results.
   for (auto *result : getResults())
     resultTypes.push_back(result->getType());
 
+  // If the instruction is a terminator the successor and non-successor operand
+  // lists are interleaved with sentinal(nullptr) operands.
+  if (isTerminator()) {
+    // To interleave the operand lists we iterate in reverse and insert the
+    // operands in-place.
+    operands.resize(getNumOperands() + getNumSuccessors());
+    successors.resize(getNumSuccessors());
+    int cloneOperandIt = operands.size() - 1, operandIt = getNumOperands() - 1;
+    for (int succIt = getNumSuccessors() - 1, succE = 0; succIt >= succE;
+         --succIt) {
+      successors[succIt] = getSuccessor(succIt);
+
+      // Add the successor operands in-place in reverse order.
+      for (unsigned i = 0, e = getNumSuccessorOperands(succIt); i != e;
+           ++i, --cloneOperandIt, --operandIt) {
+        operands[cloneOperandIt] =
+            const_cast<CFGValue *>(getOperand(operandIt));
+      }
+
+      // Add a null operand for the barrier.
+      operands[cloneOperandIt--] = nullptr;
+    }
+
+    // Add the rest of the non-successor operands.
+    for (; cloneOperandIt >= 0; --cloneOperandIt, --operandIt)
+      operands[cloneOperandIt] = const_cast<CFGValue *>(getOperand(operandIt));
+    // For non terminators we can simply add each of the instructions in place.
+  } else {
+    for (auto *operand : getOperands())
+      operands.push_back(const_cast<CFGValue *>(operand));
+  }
+
   return create(getLoc(), getName(), operands, resultTypes, getAttrs(),
-                getContext());
+                successors, getContext());
 }
 
 OperationInst::OperationInst(Location location, OperationName name,
-                             unsigned numOperands, unsigned numResults,
+                             unsigned numResults, unsigned numSuccessors,
                              ArrayRef<NamedAttribute> attributes,
                              MLIRContext *context)
     : Operation(/*isInstruction=*/true, name, attributes, context),
-      Instruction(Kind::Operation, location), numOperands(numOperands),
-      numResults(numResults) {}
+      Instruction(Kind::Operation, location), numResults(numResults),
+      numSuccs(numSuccessors) {}
 
 OperationInst::~OperationInst() {
-  // Explicitly run the destructors for the operands and results.
-  for (auto &operand : getInstOperands())
-    operand.~InstOperand();
-
+  // Explicitly run the destructors for the results and successors.
   for (auto &result : getInstResults())
     result.~InstResult();
+
+  if (isTerminator())
+    for (auto &successor : getBasicBlockOperands())
+      successor.~BasicBlockOperand();
+}
+
+void OperationInst::addSuccessorOperand(unsigned index, CFGValue *value) {
+  assert(isTerminator() && "Only terminators have successors.");
+  assert(index < getNumSuccessors());
+  assert(std::accumulate(getTrailingObjects<unsigned>() + index + 1,
+                         getTrailingObjects<unsigned>() + numSuccs, 0u) == 0 &&
+         "All successor operands must be added before moving to the next.");
+
+  operands.push_back(InstOperand(this, value));
+  ++getTrailingObjects<unsigned>()[index];
+}
+
+void OperationInst::addSuccessorOperands(unsigned index,
+                                         ArrayRef<CFGValue *> values) {
+  operands.reserve(operands.size() + values.size());
+  for (auto *value : values)
+    addSuccessorOperand(index, value);
 }
 
 void llvm::ilist_traits<::mlir::OperationInst>::deleteNode(

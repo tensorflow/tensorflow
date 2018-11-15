@@ -31,6 +31,7 @@
 #include <memory>
 
 namespace mlir {
+class BasicBlock;
 class Dialect;
 class Operation;
 class OperationState;
@@ -198,6 +199,8 @@ struct OperationState {
   /// Types of the results of this operation.
   SmallVector<Type, 4> types;
   SmallVector<NamedAttribute, 4> attributes;
+  /// Successors of this operation and their respective operands.
+  SmallVector<BasicBlock *, 1> successors;
 
 public:
   OperationState(MLIRContext *context, Location location, StringRef name)
@@ -208,13 +211,17 @@ public:
 
   OperationState(MLIRContext *context, Location location, StringRef name,
                  ArrayRef<SSAValue *> operands, ArrayRef<Type> types,
-                 ArrayRef<NamedAttribute> attributes = {})
+                 ArrayRef<NamedAttribute> attributes = {},
+                 ArrayRef<BasicBlock *> successors = {})
       : context(context), location(location), name(name, context),
         operands(operands.begin(), operands.end()),
         types(types.begin(), types.end()),
-        attributes(attributes.begin(), attributes.end()) {}
+        attributes(attributes.begin(), attributes.end()),
+        successors(successors.begin(), successors.end()) {}
 
   void addOperands(ArrayRef<SSAValue *> newOperands) {
+    assert(successors.empty() &&
+           "Non successor operands should be added first.");
     operands.append(newOperands.begin(), newOperands.end());
   }
 
@@ -230,6 +237,13 @@ public:
   /// Add an attribute with the specified name.
   void addAttribute(Identifier name, Attribute attr) {
     attributes.push_back({name, attr});
+  }
+
+  void addSuccessor(BasicBlock *successor, ArrayRef<SSAValue *> succOperands) {
+    successors.push_back(successor);
+    // Insert a sentinal operand to mark a barrier between successor operands.
+    operands.push_back(nullptr);
+    operands.append(succOperands.begin(), succOperands.end());
   }
 };
 

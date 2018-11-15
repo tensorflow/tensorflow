@@ -1849,10 +1849,15 @@ public:
   Operation *parseVerboseOperation(const CreateOperationFunction &createOpFunc);
   Operation *parseCustomOperation(const CreateOperationFunction &createOpFunc);
 
+  /// Parse a single operation successor and it's operand list.
+  virtual bool
+  parseSuccessorAndUseList(BasicBlock *&dest,
+                           SmallVectorImpl<SSAValue *> &operands) = 0;
+
 protected:
   FunctionParser(ParserState &state, Kind kind) : Parser(state), kind(kind) {}
 
-  ~FunctionParser();
+  virtual ~FunctionParser();
 
 private:
   /// Kind indicates if this is CFG or ML function parser.
@@ -1886,7 +1891,8 @@ SSAValue *FunctionParser::createForwardReferencePlaceholder(SMLoc loc,
   auto name = OperationName("placeholder", getContext());
   auto *inst = OperationInst::create(getEncodedSourceLocation(loc), name,
                                      /*operands=*/{}, type,
-                                     /*attributes=*/{}, getContext());
+                                     /*attributes=*/{},
+                                     /*successors=*/{}, getContext());
   forwardReferencePlaceholders[inst->getResult(0)] = loc;
   return inst->getResult(0);
 }
@@ -2296,6 +2302,13 @@ public:
     return false;
   }
 
+  bool
+  parseSuccessorAndUseList(BasicBlock *&dest,
+                           SmallVectorImpl<SSAValue *> &operands) override {
+    // Defer successor parsing to the function parsers.
+    return parser.parseSuccessorAndUseList(dest, operands);
+  }
+
   bool parseOperandList(SmallVectorImpl<OperandType> &result,
                         int requiredOperandCount = -1,
                         Delimiter delimiter = Delimiter::None) override {
@@ -2462,6 +2475,9 @@ public:
 
   ParseResult parseFunctionBody();
 
+  bool parseSuccessorAndUseList(BasicBlock *&dest,
+                                SmallVectorImpl<SSAValue *> &operands);
+
 private:
   CFGFunction *function;
   llvm::StringMap<std::pair<BasicBlock *, SMLoc>> blocksByName;
@@ -2519,6 +2535,29 @@ private:
   TerminatorInst *parseTerminator();
 };
 } // end anonymous namespace
+
+/// Parse a single operation successor and it's operand list.
+///
+///   successor ::= bb-id branch-use-list?
+///   branch-use-list ::= `(` ssa-use-list ':' type-list-no-parens `)`
+///
+bool CFGFunctionParser::parseSuccessorAndUseList(
+    BasicBlock *&dest, SmallVectorImpl<SSAValue *> &operands) {
+  // Verify branch is identifier and get the matching block.
+  if (!getToken().is(Token::bare_identifier))
+    return emitError("expected basic block name");
+  dest = getBlockNamed(getTokenSpelling(), getToken().getLoc());
+  consumeToken();
+
+  // Handle optional arguments.
+  if (consumeIf(Token::l_paren) &&
+      (parseOptionalSSAUseAndTypeList(operands) ||
+       parseToken(Token::r_paren, "expected ')' to close argument list"))) {
+    return true;
+  }
+
+  return false;
+}
 
 /// Parse a (possibly empty) list of SSA operands with types as basic block
 /// arguments.
@@ -2745,6 +2784,12 @@ private:
   ParseResult parseElseClause(IfClause *elseClause);
   ParseResult parseStatements(StmtBlock *block);
   ParseResult parseStmtBlock(StmtBlock *block);
+
+  bool parseSuccessorAndUseList(BasicBlock *&dest,
+                                SmallVectorImpl<SSAValue *> &operands) {
+    assert(false && "MLFunctions do not have terminators with successors.");
+    return true;
+  }
 };
 } // end anonymous namespace
 
