@@ -192,8 +192,15 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
   XlaTensor* xla_tensor = XlaTensor::FromTensor(device_tensor);
   xla_tensor->WaitForDefinitionEventOnStream(device_to_host_stream_.get());
 
+  // Transfer manager requires the shape of the shaped buffer to be the same as
+  // literal shape except for the layout.  Set the literal to use xla_tensor's
+  // shape as it is derived from the cpu_tensor's shape using
+  // shape_representation_fn_.
   xla::MutableBorrowingLiteral literal;
-  TF_CHECK_OK(HostTensorToMutableBorrowingLiteral(cpu_tensor, &literal));
+  TF_CHECK_OK(HostTensorToMutableBorrowingLiteral(
+      xla::LayoutUtil::GetWithDefaultLayout(
+          xla_tensor->shaped_buffer().on_host_shape()),
+      cpu_tensor, &literal));
 
   TensorReference ref(*device_tensor);
   transfer_manager_->TransferLiteralFromDevice(

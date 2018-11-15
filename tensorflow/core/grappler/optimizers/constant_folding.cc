@@ -1316,64 +1316,6 @@ Status ConstantFolding::FoldGraph(
   return Status::OK();
 }
 
-// Returns true iff this reduction can be reduced to an identity (i.e if the set
-// of dimensions to reduce along is empty). This happens often in the gradient
-// graphs.
-bool ConstantFolding::IsSimplifiableReduction(
-    const NodeDef& node, const GraphProperties& properties) const {
-  if (IsReduction(node)) {
-    CHECK_LE(2, node.input_size());
-    const NodeDef* reductions_indices = node_map_->GetNode(node.input(1));
-    if (IsReallyConstant(*reductions_indices)) {
-      TensorVector output;
-      auto outputs_cleanup = gtl::MakeCleanup([&output] {
-        for (const auto& out : output) {
-          delete out.tensor;
-        }
-      });
-      Status s = EvaluateNode(*reductions_indices, TensorVector(), &output);
-      if (!s.ok()) {
-        return false;
-      }
-      CHECK_EQ(1, output.size());
-      int output_size = output[0]->NumElements();
-      if (output_size == 0) {
-        return true;
-      }
-      if (node.attr().count("keep_dims") > 0 &&
-          node.attr().at("keep_dims").b()) {
-        const auto& props = properties.GetInputProperties(node.name());
-        if (!props.empty()) {
-          const TensorShapeProto& input_shape = props[0].shape();
-          if (!input_shape.unknown_rank()) {
-            bool simplifiable = true;
-            for (int i = 0; i < output[0]->NumElements(); ++i) {
-              int64 dim;
-              if (output[0]->dtype() == DT_INT32) {
-                dim = output[0]->flat<int32>()(i);
-              } else {
-                dim = output[0]->flat<int64>()(i);
-              }
-              if (dim < 0) {
-                dim += input_shape.dim_size();
-              }
-              if (dim < 0 || dim >= input_shape.dim_size() ||
-                  input_shape.dim(dim).size() != 1) {
-                simplifiable = false;
-                break;
-              }
-            }
-            if (simplifiable) {
-              return true;
-            }
-          }
-        }
-      }
-    }
-  }
-  return false;
-}
-
 bool ConstantFolding::IsSimplifiableReshape(
     const NodeDef& node, const GraphProperties& properties) const {
   if (!IsReshape(node)) {
@@ -1723,7 +1665,7 @@ Status ConstantFolding::SimplifyNode(bool use_shape_info, NodeDef* node,
     return Status::OK();
   }
 
-  if (SimplifyReduction(*properties, node)) {
+  if (SimplifyReduction(optimized_graph, *properties, node)) {
     graph_modified_ = true;
     return Status::OK();
   }
@@ -2326,9 +2268,148 @@ bool ConstantFolding::SimplifySwitch(GraphDef* optimized_graph, NodeDef* node) {
   return false;
 }
 
-bool ConstantFolding::SimplifyReduction(const GraphProperties& properties,
+bool ConstantFolding::IsReductionCandidateForSimplification(
+    const NodeDef& node, const GraphProperties& properties,
+    TensorShapeProto* input_tensor_shape, TensorShapeProto* output_tensor_shape,
+    bool* is_single_element_op) const {
+  // Ensure its an appropriate Reduce node.
+  if (!IsReduction(node) || node.input_size() < 2) {
+    return false;
+  }
+  // Ensure that the axes to reduce by are constant.
+  NodeDef* reductions_indices = node_map_->GetNode(node.input(1));
+  if (!IsReallyConstant(*reductions_indices)) {
+    return false;
+  }
+
+  // Get the properties of the input & output tensors and check if they both
+  // contain a single element.
+  if (!properties.HasInputProperties(node.name()) ||
+      !properties.HasOutputProperties(node.name())) {
+    return false;
+  }
+  const auto& input_props = properties.GetInputProperties(node.name())[0];
+  const auto& output_props = properties.GetOutputProperties(node.name())[0];
+  if (!input_props.has_shape() || input_props.shape().unknown_rank() ||
+      !output_props.has_shape() || output_props.shape().unknown_rank()) {
+    return false;
+  }
+  *input_tensor_shape = input_props.shape();
+  *output_tensor_shape = output_props.shape();
+  for (int i = 0; i < input_tensor_shape->dim_size(); ++i) {
+    if (input_tensor_shape->dim(i).size() < 0) {
+      return false;
+    }
+  }
+  for (int i = 0; i < output_tensor_shape->dim_size(); ++i) {
+    if (output_tensor_shape->dim(i).size() < 0) {
+      return false;
+    }
+  }
+  const int input_num_elements =
+      TensorShape(*input_tensor_shape).num_elements();
+  const int output_num_elements =
+      TensorShape(*output_tensor_shape).num_elements();
+  *is_single_element_op = input_num_elements == 1 && output_num_elements == 1;
+
+  return true;
+}
+
+bool ConstantFolding::IsReductionSimplifiableToIdentity(
+    const NodeDef& node, const TensorShapeProto& input_shape, bool keep_dims,
+    const TensorVector& reduction_indices_vector) const {
+  int output_size = reduction_indices_vector[0]->NumElements();
+  if (output_size == 0) {
+    return true;
+  }
+
+  if (!keep_dims) {
+    return false;
+  }
+  bool simplifiable = true;
+  for (int i = 0; i < output_size; ++i) {
+    int64 dim;
+    if (reduction_indices_vector[0]->dtype() == DT_INT32) {
+      dim = reduction_indices_vector[0]->flat<int32>()(i);
+    } else {
+      dim = reduction_indices_vector[0]->flat<int64>()(i);
+    }
+    if (dim < 0) {
+      dim += input_shape.dim_size();
+    }
+    if (dim < 0 || dim >= input_shape.dim_size() ||
+        input_shape.dim(dim).size() != 1) {
+      simplifiable = false;
+      break;
+    }
+  }
+  return simplifiable;
+}
+
+bool ConstantFolding::SimplifyReduction(GraphDef* optimized_graph,
+                                        const GraphProperties& properties,
                                         NodeDef* node) {
-  if (IsSimplifiableReduction(*node, properties)) {
+  bool is_single_element_op = false;
+  TensorShapeProto input_tensor_shape, output_tensor_shape;
+  if (!IsReductionCandidateForSimplification(
+          *node, properties, &input_tensor_shape, &output_tensor_shape,
+          &is_single_element_op)) {
+    return false;
+  }
+
+  // Get the reduction indices.
+  string reduction_indices_input = node->input(1);
+  NodeDef* reduction_indices = node_map_->GetNode(reduction_indices_input);
+  TensorVector reduction_indices_vector;
+  auto outputs_cleanup = gtl::MakeCleanup([&reduction_indices_vector] {
+    for (const auto& out : reduction_indices_vector) {
+      delete out.tensor;
+    }
+  });
+  if (!EvaluateNode(*reduction_indices, TensorVector(),
+                    &reduction_indices_vector)
+           .ok() ||
+      reduction_indices_vector.size() != 1) {
+    return false;
+  }
+
+  bool keep_dims =
+      node->attr().count("keep_dims") > 0 && node->attr().at("keep_dims").b();
+  bool simplifiable_to_reshape =
+      is_single_element_op && !keep_dims && (node->attr().count("T") > 0);
+  bool simplifiable_to_identity = IsReductionSimplifiableToIdentity(
+      *node, input_tensor_shape, keep_dims, reduction_indices_vector);
+
+  if (simplifiable_to_reshape) {
+    // Const node to output shape.
+    const int new_num_dimensions = output_tensor_shape.dim_size();
+    Tensor tensor(DT_INT32, TensorShape({new_num_dimensions}));
+    for (int i = 0; i < new_num_dimensions; i++) {
+      tensor.flat<int>()(i) = 1;
+    }
+    TensorValue shape_value(&tensor);
+    NodeDef* shape_node = optimized_graph->add_node();
+    if (!CreateNodeDef(OptimizedNodeName(*node, "_shape_const"), shape_value,
+                       shape_node)
+             .ok()) {
+      return false;
+    }
+    shape_node->set_device(node->device());
+    node_map_->AddNode(shape_node->name(), shape_node);
+    // Control dependency to ensure shape_node is in the correct frame.
+    shape_node->add_input(AsControlDependency(reduction_indices_input));
+    node_map_->AddOutput(NodeName(reduction_indices_input), shape_node->name());
+    // Optimize node to Reshape.
+    node->set_op("Reshape");
+    node_map_->UpdateInput(node->name(), node->input(1), shape_node->name());
+    node->set_input(1, shape_node->name());
+    node->mutable_attr()->erase("keep_dims");
+    node->mutable_attr()->erase("Tidx");
+    AttrValue attr_type_indices;
+    attr_type_indices.set_type(DT_INT32);
+    (*node->mutable_attr())["Tshape"] = attr_type_indices;
+    return true;
+  } else if (simplifiable_to_identity) {
     // Replace the reduction node with an identity node, that can be further
     // optimized by the model pruner.
     DataType output_type;

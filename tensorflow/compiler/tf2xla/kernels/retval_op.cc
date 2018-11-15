@@ -47,63 +47,8 @@ class RetvalOp : public XlaOpKernel {
       // compilation.
       OP_REQUIRES_OK(ctx, frame->SetRetval(index_, input));
     } else {
-      xla::XlaOp input = ctx->Input(0);
-      const TensorShape input_shape = ctx->InputShape(0);
-      DataType input_type = ctx->input_type(0);
-      XlaContext& tc = XlaContext::Get(ctx);
-
-      if (input_type == DT_RESOURCE) {
-        XlaResource* resource;
-        OP_REQUIRES_OK(ctx, ctx->GetResourceInput(0, &resource));
-        ctx->SetStatus(tc.AddResourceRetval(index_, resource));
-        return;
-      }
-
-      auto is_constant = ctx->builder()->IsConstant(input);
-      if (!is_constant.ok()) {
-        ctx->SetStatus(is_constant.status());
-        return;
-      }
-
-      if (tc.resolve_compile_time_constants() &&
-          (input_shape.num_elements() == 0 || is_constant.ValueOrDie())) {
-        xla::Literal literal;
-        OP_REQUIRES_OK(ctx, ctx->ConstantInput(0, &literal));
-        OP_REQUIRES_OK(ctx, tc.AddConstRetval(index_, dtype_, literal));
-      } else {
-        TensorShape shape = ctx->InputShape(0);
-        ctx->SetStatus(is_constant.status());
-        xla::Shape representation_shape;
-        if (tc.is_entry_computation()) {
-          xla::StatusOr<xla::Shape> shape_or_status =
-              tc.RepresentationShape(shape, ctx->input_type(0));
-          if (!shape_or_status.ok()) {
-            ctx->SetStatus(shape_or_status.status());
-            return;
-          } else {
-            representation_shape = shape_or_status.ValueOrDie();
-          }
-        } else {
-          OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(ctx->input_type(0), shape,
-                                                    &representation_shape));
-        }
-
-        xla::XlaOp output = input;
-        if (tc.is_entry_computation()) {
-          output = xla::Reshape(
-              input, xla::AsInt64Slice(representation_shape.dimensions()));
-        } else {
-          // The core from which a return value is returned depends on the
-          // device assignment of the input to the retval. Since we can't change
-          // the device assignment of "input" at this point, we must always
-          // introduce an operator here, even if the shape does not change.
-          // TODO(b/76097077): propagate device assignments onto arguments and
-          // return values of functions, and then reshape unconditionally.
-          output =
-              xla::GetTupleElement(xla::Tuple(ctx->builder(), {output}), 0);
-        }
-        tc.AddRetval(index_, dtype_, shape, output);
-      }
+      XlaContext& xla_context = XlaContext::Get(ctx);
+      xla_context.SetRetval(index_, ctx->InputExpression(0));
     }
   }
 

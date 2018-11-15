@@ -638,6 +638,30 @@ class Conv3DTest(test.TestCase):
         padding="SAME",
         test_input=False)
 
+  # Test the fast path in gemm_pack_rhs/mkldnn_gemm_pack, when channel
+  # dimension is a multiple of packet size.
+  def testInputGradientValidPaddingStrideOneFastPath(self):
+    self.ConstructAndTestGradient(
+        batch=2,
+        input_shape=(3, 5, 4),
+        filter_shape=(2, 2, 2),
+        in_depth=8,
+        out_depth=2,
+        stride=1,
+        padding="VALID",
+        test_input=True)
+
+  def testFilterGradientValidPaddingStrideOneFastPath(self):
+    self.ConstructAndTestGradient(
+        batch=2,
+        input_shape=(4, 6, 5),
+        filter_shape=(2, 2, 2),
+        in_depth=8,
+        out_depth=2,
+        stride=1,
+        padding="VALID",
+        test_input=False)
+
   # Testing for backprops
   def _RunAndVerifyBackprop(self, input_sizes, filter_sizes, output_sizes,
                             strides, dilations, padding, data_format, use_gpu,

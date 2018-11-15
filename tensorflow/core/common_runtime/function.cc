@@ -46,7 +46,11 @@ namespace tensorflow {
 
 // A few string constant used throughout this module.
 static constexpr const char* const kArgOp = FunctionLibraryDefinition::kArgOp;
+static constexpr const char* const kDeviceArgOp =
+    FunctionLibraryDefinition::kDeviceArgOp;
 static constexpr const char* const kRetOp = FunctionLibraryDefinition::kRetOp;
+static constexpr const char* const kDeviceRetOp =
+    FunctionLibraryDefinition::kDeviceRetOp;
 static constexpr const char* const kGradientOp =
     FunctionLibraryDefinition::kGradientOp;
 static constexpr const char* const kNodeLabel = "Func";
@@ -1633,9 +1637,9 @@ FunctionBody::FunctionBody(const FunctionDef& f, DataTypeSlice arg_t,
   this->ret_nodes.resize(ret_types.size());
   for (Node* n : this->graph->op_nodes()) {
     gtl::InlinedVector<Node*, 4>* node_vec;
-    if (n->type_string() == kRetOp) {
+    if (n->type_string() == kRetOp || n->type_string() == kDeviceRetOp) {
       node_vec = &this->ret_nodes;
-    } else if (n->type_string() == kArgOp) {
+    } else if (n->type_string() == kArgOp || n->type_string() == kDeviceArgOp) {
       node_vec = &this->arg_nodes;
     } else {
       continue;

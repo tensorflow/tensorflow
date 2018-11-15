@@ -78,14 +78,16 @@ class SymbolAlreadyExposedError(Exception):
   pass
 
 
-def get_canonical_name_for_symbol(symbol, api_name=TENSORFLOW_API_NAME):
+def get_canonical_name_for_symbol(
+    symbol, api_name=TENSORFLOW_API_NAME,
+    add_prefix_to_v1_names=False):
   """Get canonical name for the API symbol.
-
-  Canonical name is the first non-deprecated endpoint name.
 
   Args:
     symbol: API function or class.
     api_name: API name (tensorflow or estimator).
+    add_prefix_to_v1_names: Specifies whether a name available only in V1
+      should be prefixed with compat.v1.
 
   Returns:
     Canonical name for the API symbol (for e.g. initializers.zeros) if
@@ -98,26 +100,42 @@ def get_canonical_name_for_symbol(symbol, api_name=TENSORFLOW_API_NAME):
   if api_names_attr not in undecorated_symbol.__dict__:
     return None
   api_names = getattr(undecorated_symbol, api_names_attr)
-  # TODO(annarev): may be add a separate deprecated attribute
-  # for estimator names.
   deprecated_api_names = undecorated_symbol.__dict__.get(
       '_tf_deprecated_api_names', [])
-  return get_canonical_name(api_names, deprecated_api_names)
+
+  canonical_name = get_canonical_name(api_names, deprecated_api_names)
+  if canonical_name:
+    return canonical_name
+
+  # If there is no V2 canonical name, get V1 canonical name.
+  api_names_attr = API_ATTRS_V1[api_name].names
+  api_names = getattr(undecorated_symbol, api_names_attr)
+  v1_canonical_name = get_canonical_name(api_names, deprecated_api_names)
+  if add_prefix_to_v1_names:
+    return 'compat.v1.%s' % v1_canonical_name
+  return v1_canonical_name
 
 
 def get_canonical_name(api_names, deprecated_api_names):
-  """Get first non-deprecated endpoint name.
+  """Get preferred endpoint name.
 
   Args:
     api_names: API names iterable.
     deprecated_api_names: Deprecated API names iterable.
   Returns:
-    Canonical name if there is at least one non-deprecated endpoint.
-    Otherwise returns None.
+    Returns one of the following in decreasing preference:
+    - first non-deprecated endpoint
+    - first endpoint
+    - None
   """
-  return next(
+  non_deprecated_name = next(
       (name for name in api_names if name not in deprecated_api_names),
       None)
+  if non_deprecated_name:
+    return non_deprecated_name
+  if api_names:
+    return api_names[0]
+  return None
 
 
 class api_export(object):  # pylint: disable=invalid-name

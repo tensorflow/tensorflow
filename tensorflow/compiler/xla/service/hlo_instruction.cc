@@ -312,6 +312,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                 proto.exponent_bits(), proto.mantissa_bits());
       break;
     case HloOpcode::kInfeed: {
+      TF_RET_CHECK(ShapeUtil::IsTuple(proto.shape()) &&
+                   (ShapeUtil::TupleElementCount(proto.shape()) == 2))
+          << "Infeed should have a tuple shape with 2 operands, but has: "
+          << proto.shape();
       const Shape& data_shape =
           ShapeUtil::GetTupleElementShape(proto.shape(), 0);
       TF_RET_CHECK(proto.operand_ids_size() == 1)
@@ -530,6 +534,12 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           absl::make_unique<ShardingMetadata>(exit_hlo_sharding));
       break;
     }
+    case HloOpcode::kGetDimensionSize:
+      TF_RET_CHECK(proto.operand_ids_size() == 1);
+      TF_RET_CHECK(proto.dimensions_size() == 1);
+      instruction = CreateGetDimensionSize(proto.shape(), operands(0),
+                                           proto.dimensions(0));
+      break;
     default: {
       instruction = absl::WrapUnique(new HloInstruction(opcode, proto.shape()));
       for (const int64 operand_id : proto.operand_ids()) {
@@ -1002,6 +1012,14 @@ HloInstruction::CreateSelectAndScatter(
 }
 
 /* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateGetDimensionSize(const Shape& shape,
+                                       HloInstruction* operand,
+                                       int64 dimension) {
+  return absl::make_unique<HloGetDimensionSizeInstruction>(shape, operand,
+                                                           dimension);
+}
+
+/* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateBroadcastSequence(
     const Shape& output_shape, HloInstruction* operand,
     const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
@@ -1272,6 +1290,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kIota:
     case HloOpcode::kDot:
     case HloOpcode::kDomain:
+    case HloOpcode::kGetDimensionSize:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
       break;
     // Unary ops.
@@ -1719,6 +1738,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kScatter:
     case HloOpcode::kDot:
     case HloOpcode::kDomain:
+    case HloOpcode::kGetDimensionSize:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
@@ -1878,6 +1898,11 @@ void HloInstruction::set_while_body(HloComputation* computation) {
   CHECK(!IsFused());
   CHECK_EQ(HloOpcode::kWhile, opcode_);
   called_computations_[kBodyComputationIndex] = computation;
+}
+
+HloInstruction* HloInstruction::while_init() const {
+  CHECK_EQ(HloOpcode::kWhile, opcode_);
+  return operands_[0];
 }
 
 HloComputation* HloInstruction::true_computation() const {
@@ -2444,6 +2469,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleAfterAll(this);
     case HloOpcode::kIota:
       return visitor->HandleIota(this);
+    case HloOpcode::kGetDimensionSize:
+      return visitor->HandleGetDimensionSize(this);
 
     // These opcodes are not handled here.
     case HloOpcode::kTrace:
@@ -3219,6 +3246,11 @@ void HloInstruction::set_cross_replica_sum_barrier(const string& barrier) {
 
 absl::optional<int64> HloInstruction::all_reduce_id() const {
   return Cast<HloAllReduceInstruction>(this)->all_reduce_id();
+}
+
+void HloInstruction::set_all_reduce_id(
+    const absl::optional<int64>& all_reduce_id) {
+  return Cast<HloAllReduceInstruction>(this)->set_all_reduce_id(all_reduce_id);
 }
 
 const ConvolutionDimensionNumbers&

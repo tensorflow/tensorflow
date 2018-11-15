@@ -115,15 +115,7 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
   if tf_inspect.isclass(o):
     node, name, ns = class_to_graph(o, program_ctx)
   elif tf_inspect.isfunction(o):
-    # TODO(mdan): This is not a reliable mechanism.
-    # The most reliable way is to check the source code, the AST will contain
-    # a Lambda node instead of a FunctionDef
-    if o.__name__ == '<lambda>':
-      raise NotImplementedError(
-          'lambda functions are not yet supported; declare the function'
-          ' using def instead: %s' % o)
-    else:
-      node, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
+    node, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
   elif tf_inspect.ismethod(o):
     node, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
   # TODO(mdan,yashkatariya): Remove when object conversion is implemented.
@@ -288,6 +280,28 @@ def function_to_graph(f,
 
   node, source = parser.parse_entity(f)
   node = node.body[0]
+
+  # In general, the output of inspect.getsource is inexact because it uses crude
+  # regex matching methods to search the source file. This is particularly
+  # problematic for lambda functions, where the entire containing lines are
+  # returned. Certain distributions of CPython may also return the enclosing
+  # function for local functions.
+  nodes = ast_util.find_matching_definitions(node, f)
+  if len(nodes) != 1:
+    if f.__name__ == '<lambda>':
+      raise ValueError(
+          'Unable to identify source code of lambda function {}. It was'
+          ' defined on this line: {}, which must contain a single lambda with'
+          ' matching signature. To avoid ambiguity, define each lambda'
+          ' in a separate expression.'.format(f, source))
+    else:
+      raise ValueError(
+          'Unable to identify source code of function {}. The source code'
+          ' reported by Python did not include exactly one matching signature:'
+          '\n{}\nTo avoid ambiguity, use a unique name for each'
+          ' function.'.format(f, source))
+  node, = nodes
+
   # TODO(znado): Place inside standard_analysis.
   origin_info.resolve(node, source, f)
   namespace = inspect_utils.getnamespace(f)
@@ -304,13 +318,20 @@ def function_to_graph(f,
   context = converter.EntityContext(namer, entity_info, program_ctx)
   node = node_to_graph(node, context)
 
-  # TODO(mdan): This somewhat duplicates the call rename logic in call_trees.py
-  new_name, did_rename = namer.compiled_function_name(f.__name__, f, owner_type)
-  if not did_rename:
-    new_name = f.__name__
-    if node.name != f.__name__:
-      raise NotImplementedError('Strange corner case. Send us offending code!')
-  node.name = new_name
+  if isinstance(node, gast.Lambda):
+    new_name = namer.new_symbol('tf__lambda', ())
+    node = gast.Assign(
+        targets=[gast.Name(new_name, gast.Store(), None)], value=node)
+
+  else:
+    # TODO(mdan): This somewhat duplicates the renaming logic in call_trees.py
+    new_name, did_rename = namer.compiled_function_name(f.__name__, f,
+                                                        owner_type)
+    if did_rename:
+      node.name = new_name
+    else:
+      new_name = f.__name__
+      assert node.name == new_name
 
   program_ctx.update_name_map(namer)
   # TODO(mdan): Use this at compilation.

@@ -109,6 +109,15 @@ ops.register_proto_function(
     from_proto=resource_variable_ops._from_proto_fn)  # pylint: disable=protected-access
 
 
+def _is_iterable(obj):
+  """A Python 2 and 3 compatible util to check whether `obj` is iterable."""
+  try:
+    iter(obj)
+    return True
+  except TypeError:
+    return False
+
+
 def _create_global_step(graph):
   graph = graph or ops.get_default_graph()
   if training.get_global_step(graph) is not None:
@@ -289,9 +298,9 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
       host_calls['host_call'] = host_call
     _OutfeedHostCall.validate(host_calls)
 
-    training_hooks = list(training_hooks or [])
-    evaluation_hooks = list(evaluation_hooks or [])
-    prediction_hooks = list(prediction_hooks or [])
+    training_hooks = tuple(training_hooks or [])
+    evaluation_hooks = tuple(evaluation_hooks or [])
+    prediction_hooks = tuple(prediction_hooks or [])
 
     for hook in training_hooks + evaluation_hooks + prediction_hooks:
       if not isinstance(hook, session_run_hook.SessionRunHook):
@@ -326,7 +335,7 @@ class TPUEstimatorSpec(model_fn_lib._TPUEstimatorSpec):  # pylint: disable=prote
     hooks = None
     if self.host_call is not None:
       hooks = [_OutfeedHostCallHook(host_call_ret['host_call'])]
-    hooks = list(hooks or [])
+    hooks = tuple(hooks or [])
     scaffold = self.scaffold_fn() if self.scaffold_fn else None
     return model_fn_lib.EstimatorSpec(
         mode=self.mode,
@@ -2257,8 +2266,7 @@ class TPUEstimator(estimator_lib.Estimator):
         # Only fetching `tpu_tensors_on_cpu` does not trigger
         # TPU computation and blocks, so we add the control dependency here.
         control_inputs = (
-            tpu_tensors_on_cpu if isinstance(tpu_tensors_on_cpu,
-                                             (list, tuple)) else
+            tpu_tensors_on_cpu if _is_iterable(tpu_tensors_on_cpu) else
             (tpu_tensors_on_cpu,))
         with ops.control_dependencies(control_inputs):
           new_tensors.append(array_ops.identity(t))

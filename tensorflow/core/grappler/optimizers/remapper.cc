@@ -27,7 +27,206 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-void AddBatchNormNodes(GraphDef* optimized_graph, const NodeDef& fused_node) {
+namespace {
+
+// FusedBatchNorm that can be replaced with a cheaper set of primitives.
+struct FusedBatchNorm {
+  const NodeDef* fused_batch_norm;
+};
+
+// Conv2D node followed by a BiasAdd.
+struct Conv2DWithBiasAdd {
+  const NodeDef* conv2d;
+  const NodeDef* bias_add;
+};
+
+// Conv2D node followed by a BiasAdd and Relu.
+struct Conv2DWithBiasAddAndRelu {
+  const NodeDef* conv2d;
+  const NodeDef* bias_add;
+  const NodeDef* relu;
+};
+
+bool IsFloatOrDoubleDataType(const NodeDef* node,
+                             const string& type_attr = "T") {
+  DataType dtype = GetDataTypeFromAttr(*node, type_attr);
+  return dtype == DT_FLOAT || dtype == DT_DOUBLE;
+}
+
+bool HaveSameDataType(const NodeDef* lhs, const NodeDef* rhs,
+                      const string& type_attr) {
+  DataType lhs_attr = GetDataTypeFromAttr(*lhs, type_attr);
+  DataType rhs_attr = GetDataTypeFromAttr(*rhs, type_attr);
+
+  return lhs_attr != DT_INVALID && rhs_attr != DT_INVALID &&
+         lhs_attr == rhs_attr;
+}
+
+bool FindConv2DWithBias(const GraphView& graph_view, const NodeDef* node,
+                        Conv2DWithBiasAdd* matched) {
+  // Root of the pattern must be a BiasAdd.
+  if (!node) return false;
+  if (!IsBiasAdd(*node)) return false;
+  if (!NodeIsOnCpu(node)) return false;
+  if (!IsFloatOrDoubleDataType(node)) return false;
+  if (!NoControlFaninOrFanout(graph_view, node)) return false;
+
+  // Input to the BiasAdd must be a Conv2D in NHWC format.
+  const auto input_port = GraphView::InputPort(node, 0);
+  const auto conv2d = graph_view.GetRegularFanin(input_port);
+  if (!conv2d.node) return false;
+  if (!IsConv2D(*conv2d.node)) return false;
+  if (conv2d.node->attr().at("data_format").s() != "NHWC") return false;
+  if (!NodeIsOnCpu(conv2d.node)) return false;
+  if (!HaveSameDataType(node, conv2d.node, "T")) return false;
+  if (!NoControlFaninOrFanout(graph_view, conv2d.node)) return false;
+  if (!HasSingleFanoutNode(graph_view, conv2d.node)) return false;
+
+  // We successfully found a Conv2D+BiasAdd pattern.
+  matched->conv2d = conv2d.node;
+  matched->bias_add = node;
+
+  return true;
+}
+
+bool FindConv2DWithBiasAndRelu(const GraphView& graph_view, const NodeDef* node,
+                               Conv2DWithBiasAddAndRelu* matched) {
+  // Root of the pattern must be a Relu.
+  if (!node) return false;
+  if (!IsRelu(*node)) return false;
+  if (!NodeIsOnCpu(node)) return false;
+  if (!IsFloatOrDoubleDataType(node)) return false;
+  if (!NoControlFaninOrFanout(graph_view, node)) return false;
+
+  // And input to Relu must match Conv2DWithBiasAdd pattern.
+  const auto input_port = GraphView::InputPort(node, 0);
+  const auto bias_add = graph_view.GetRegularFanin(input_port);
+
+  Conv2DWithBiasAdd base;
+  if (!FindConv2DWithBias(graph_view, bias_add.node, &base)) return false;
+  if (!HasSingleFanoutNode(graph_view, base.bias_add)) return false;
+  if (!HaveSameDataType(node, base.bias_add, "T")) return false;
+
+  // We successfully found a Conv2D+BiasAdd+Relu pattern.
+  matched->conv2d = base.conv2d;
+  matched->bias_add = base.bias_add;
+  matched->relu = node;
+
+  return true;
+}
+
+// Check that given node meets some basic FusedBatchNorm optimization
+// preconditions. We use this check to lazily infer graph properties which is
+// rather expensive.
+bool IsFusedBatchNormCandidate(const GraphView& graph_view,
+                               const NodeDef& node) {
+  if (!IsFusedBatchNorm(node)) return false;
+  if (GetDataTypeFromAttr(node, "T") != DT_FLOAT) return false;
+
+  // Check that the node is in inference mode.
+  const auto& attr = node.attr();
+  if (attr.count("is_training") > 0 && attr.at("is_training").b()) return false;
+
+  return true;
+}
+
+bool FindFusedBatchNorm(const GraphView& graph_view,
+                        const GraphProperties& graph_properties,
+                        const NodeDef* node, FusedBatchNorm* matched) {
+  if (!IsFusedBatchNormCandidate(graph_view, *node)) return false;
+
+  const auto& props = graph_properties.GetInputProperties(node->name());
+
+  // a. Scaling factor can be const folded:
+  //      scaling_factor = (variance + epsilon).rsqrt() * scale
+  bool const_scaling_factor =
+      props.size() == 5 &&     // [x, scale, offset, mean, variance]
+      props[1].has_value() &&  // scale
+      props[4].has_value();    // variance aka estimated variance
+
+  // b. Or input can be const folded into some other expression.
+  auto const_inputs = std::count_if(
+      props.begin(), props.end(),
+      [](const OpInfo::TensorProperties& props) { return props.has_value(); });
+
+  // TODO(bsteiner): use the cost model to compare the cost of fused batch
+  // norm against that of the optimized form.
+  bool can_remap = const_scaling_factor || const_inputs >= 4;
+  if (!can_remap) return false;
+
+  // The optimized version only generates the first output.
+  for (GraphView::Edge edge : graph_view.GetFanoutEdges(*node, false)) {
+    if (edge.src.port_id != 0) return false;
+  }
+
+  // We found a fused batch norm node that can be replaced with primitive ops.
+  matched->fused_batch_norm = node;
+  return true;
+}
+
+#undef REMAPPER_REQUIRES
+
+void CopyConv2DAttributes(const NodeDef* conv2d, NodeDef* fused_conv2d,
+                          const std::vector<string>& fused_ops = {},
+                          int num_args = 1, float epsilon = 0.0) {
+  auto* attr = fused_conv2d->mutable_attr();
+  auto src_attr = conv2d->attr();
+
+  (*attr)["T"] = src_attr.at("T");
+  (*attr)["strides"] = src_attr.at("strides");
+  (*attr)["padding"] = src_attr.at("padding");
+  (*attr)["dilations"] = src_attr.at("dilations");
+  (*attr)["data_format"] = src_attr.at("data_format");
+
+  auto* fused_ops_attr = (*attr)["fused_ops"].mutable_list();
+  for (const string& fused_op : fused_ops) {
+    fused_ops_attr->add_s(fused_op);
+  }
+
+  SetAttrValue(num_args, &(*attr)["num_args"]);
+  // Required only for FusedBatchNorm.
+  SetAttrValue(epsilon, &(*attr)["epsilon"]);
+}
+
+void AddFusedConv2DNode(const Conv2DWithBiasAdd& matched,
+                        GraphDef* optimized_graph) {
+  VLOG(2) << "Fuse Conv2D with BiasAdd: bias_add=" << matched.bias_add->name()
+          << " conv2d=" << matched.conv2d->name();
+
+  NodeDef* fused_conv2d = optimized_graph->add_node();
+  fused_conv2d->set_name(matched.bias_add->name());
+  fused_conv2d->set_op("_FusedConv2D");
+  fused_conv2d->set_device(matched.bias_add->device());
+  fused_conv2d->add_input(matched.conv2d->input(0));    // 0: input
+  fused_conv2d->add_input(matched.conv2d->input(1));    // 1: filter
+  fused_conv2d->add_input(matched.bias_add->input(1));  // 2: bias
+
+  CopyConv2DAttributes(matched.conv2d, fused_conv2d, {"BiasAdd"});
+}
+
+void AddFusedConv2DNode(const Conv2DWithBiasAddAndRelu& matched,
+                        GraphDef* optimized_graph) {
+  VLOG(2) << "Fuse Conv2D with BiasAdd and Relu: relu=" << matched.relu->name()
+          << " bias_add=" << matched.bias_add->name()
+          << " conv2d=" << matched.conv2d->name();
+
+  NodeDef* fused_conv2d = optimized_graph->add_node();
+  fused_conv2d->set_name(matched.relu->name());
+  fused_conv2d->set_op("_FusedConv2D");
+  fused_conv2d->set_device(matched.relu->device());
+  fused_conv2d->add_input(matched.conv2d->input(0));    // 0: input
+  fused_conv2d->add_input(matched.conv2d->input(1));    // 1: filter
+  fused_conv2d->add_input(matched.bias_add->input(1));  // 2: bias
+
+  CopyConv2DAttributes(matched.conv2d, fused_conv2d, {"BiasAdd", "Relu"});
+}
+
+void AddBatchNormNodes(const FusedBatchNorm& matched,
+                       GraphDef* optimized_graph) {
+  const NodeDef& fused_node = *matched.fused_batch_norm;
+  VLOG(2) << "Optimizing fused batch norm node "
+          << SummarizeNodeDef(fused_node);
+
   const string& x = fused_node.input(0);
   string scale = fused_node.input(1);
   string offset = fused_node.input(2);
@@ -164,6 +363,7 @@ void AddBatchNormNodes(GraphDef* optimized_graph, const NodeDef& fused_node) {
   *r->add_input() = a->name();
   *r->add_input() = c->name();
 }
+}  // namespace
 
 Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
                           GraphDef* optimized_graph) {
@@ -171,47 +371,39 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
   bool inferred_properties = false;
   GraphView graph(const_cast<GraphDef*>(&item.graph));
 
-  // During inference, most of the inputs to FusedBatchNorm are constant, and we
-  // can therefore replace the op with a much cheaper set of primitives.
+  // Supported graph patterns.
+  FusedBatchNorm fused_batch_norm{};
+  Conv2DWithBiasAdd conv2d_with_bias{};
+  Conv2DWithBiasAddAndRelu conv2d_with_bias_and_relu{};
+
   optimized_graph->mutable_node()->Reserve(item.graph.node_size());
   for (const NodeDef& node : item.graph.node()) {
-    if (node.op() == "FusedBatchNorm" || node.op() == "FusedBatchNormV2") {
-      bool optimizable = (node.attr().count("T") == 0 ||
-                          node.attr().at("T").type() == DT_FLOAT);
-      optimizable &= (node.attr().count("is_training") == 0 ||
-                      !node.attr().at("is_training").b());
-      if (optimizable) {
-        int const_inputs = 0;
-        if (!inferred_properties) {
-          // Infer properties lazily in case they are not needed.
-          TF_RETURN_IF_ERROR(properties.InferStatically(false));
-          inferred_properties = true;
-        }
-        const auto& props = properties.GetInputProperties(node.name());
-        for (const auto& prop : props) {
-          if (prop.has_value()) {
-            const_inputs += 1;
-          }
-        }
-        // TODO(bsteiner): use the cost model to compare the cost of fused batch
-        // norm against that of the optimized form.
-        optimizable = (const_inputs >= 4);
-      }
-      if (optimizable) {
-        for (GraphView::Edge edge : graph.GetFanoutEdges(node, false)) {
-          if (edge.src.port_id != 0) {
-            // The optimized version only generates the first output.
-            optimizable = false;
-            break;
-          }
-        }
-      }
-      if (optimizable) {
-        VLOG(1) << "Optimizing fused batch norm node " << node.DebugString();
-        AddBatchNormNodes(optimized_graph, node);
-        continue;
-      }
+    // Remap Conv2D+BiasAdd into the _FusedConv2DWithBias.
+    if (FindConv2DWithBias(graph, &node, &conv2d_with_bias)) {
+      AddFusedConv2DNode(conv2d_with_bias, optimized_graph);
+      continue;
     }
+
+    // Remap Conv2D+BiasAdd+Relu into the _FusedConv2DWithBias(Relu).
+    if (FindConv2DWithBiasAndRelu(graph, &node, &conv2d_with_bias_and_relu)) {
+      AddFusedConv2DNode(conv2d_with_bias_and_relu, optimized_graph);
+      continue;
+    }
+
+    // Infer properties lazily in case they are not needed.
+    if (!inferred_properties && IsFusedBatchNormCandidate(graph, node)) {
+      TF_RETURN_IF_ERROR(properties.InferStatically(false));
+      inferred_properties = true;
+    }
+
+    // During inference, most of the inputs to FusedBatchNorm are constant, and
+    // we can therefore replace the op with a much cheaper set of primitives.
+    if (FindFusedBatchNorm(graph, properties, &node, &fused_batch_norm)) {
+      AddBatchNormNodes(fused_batch_norm, optimized_graph);
+      continue;
+    }
+
+    // If we didn't match a node to any pattern copy it to the optimized graph.
     *optimized_graph->add_node() = node;
   }
 

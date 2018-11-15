@@ -61,7 +61,7 @@ TEST_F(LayoutAssignmentTest, Elementwise) {
             HloInstruction::CreateParameter(1, ashape, "y"));
         auto add = builder.AddInstruction(
             HloInstruction::CreateBinary(ashape, HloOpcode::kAdd, x, y));
-        auto module = CreateNewModule();
+        auto module = CreateNewVerifiedModule();
         HloComputation* computation =
             module->AddEntryComputation(builder.Build(add));
 
@@ -148,7 +148,7 @@ TEST_F(LayoutAssignmentTest, BatchNormInference) {
           {operand, scale, offset, mean, variance, epsilon, feature_index},
           kCudnnBatchNormForwardInferenceCallTarget));
 
-      auto module = CreateNewModule();
+      auto module = CreateNewVerifiedModule();
       HloComputation* computation =
           module->AddEntryComputation(builder.Build(batchnorm));
 
@@ -217,7 +217,7 @@ TEST_F(LayoutAssignmentTest, BatchNormTraining) {
           batchnorm_shape, {operand, scale, offset, epsilon, feature_index},
           kCudnnBatchNormForwardTrainingCallTarget));
 
-      auto module = CreateNewModule();
+      auto module = CreateNewVerifiedModule();
       HloComputation* computation =
           module->AddEntryComputation(builder.Build(batchnorm));
 
@@ -298,7 +298,7 @@ TEST_F(LayoutAssignmentTest, BatchNormGrad) {
                  feature_index},
                 kCudnnBatchNormBackwardCallTarget));
 
-        auto module = CreateNewModule();
+        auto module = CreateNewVerifiedModule();
         HloComputation* computation =
             module->AddEntryComputation(builder.Build(batchnorm));
 

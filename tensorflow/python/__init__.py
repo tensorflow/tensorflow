@@ -91,6 +91,7 @@ from tensorflow.python.ops import spectral_ops as spectral
 from tensorflow.python.ops.distributions import distributions
 from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.ops.signal import signal
 from tensorflow.python.profiler import profiler
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.summary import summary
@@ -124,6 +125,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 # Eager execution
 from tensorflow.python.eager.context import executing_eagerly
+from tensorflow.python.eager.def_function import function
 from tensorflow.python.framework.ops import enable_eager_execution
 
 # Necessary for the symbols in this module to be taken into account by

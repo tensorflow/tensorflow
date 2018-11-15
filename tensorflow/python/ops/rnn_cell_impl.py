@@ -462,7 +462,7 @@ class BasicRNNCell(LayerRNNCell):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export("nn.rnn_cell.GRUCell")
+@tf_export(v1=["nn.rnn_cell.GRUCell"])
 class GRUCell(LayerRNNCell):
   """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078).
 
@@ -488,6 +488,8 @@ class GRUCell(LayerRNNCell):
       `trainable` etc when constructing the cell from configs of get_config().
   """
 
+  @deprecated(None, "This class is equivalent as tf.keras.layers.GRUCell,"
+                    " and will be replaced by that in Tensorflow 2.0.")
   def __init__(self,
                num_units,
                activation=None,
@@ -610,8 +612,7 @@ class LSTMStateTuple(_LSTMStateTuple):
     return c.dtype
 
 
-# TODO(scottzhu): Stop exporting this class in TF 2.0.
-@tf_export("nn.rnn_cell.BasicLSTMCell")
+@tf_export(v1=["nn.rnn_cell.BasicLSTMCell"])
 class BasicLSTMCell(LayerRNNCell):
   """DEPRECATED: Please use `tf.nn.rnn_cell.LSTMCell` instead.
 
@@ -634,10 +635,8 @@ class BasicLSTMCell(LayerRNNCell):
   better performance on CPU.
   """
 
-  @deprecated(None, "This class is deprecated, please use "
-                    "tf.nn.rnn_cell.LSTMCell, which supports all the feature "
-                    "this cell currently has. Please replace the existing code "
-                    "with tf.nn.rnn_cell.LSTMCell(name='basic_lstm_cell').")
+  @deprecated(None, "This class is equivalent as tf.keras.layers.LSTMCell,"
+                    " and will be replaced by that in Tensorflow 2.0.")
   def __init__(self,
                num_units,
                forget_bias=1.0,
@@ -779,7 +778,7 @@ class BasicLSTMCell(LayerRNNCell):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export("nn.rnn_cell.LSTMCell")
+@tf_export(v1=["nn.rnn_cell.LSTMCell"])
 class LSTMCell(LayerRNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
@@ -807,6 +806,8 @@ class LSTMCell(LayerRNNCell):
   better performance on CPU.
   """
 
+  @deprecated(None, "This class is equivalent as tf.keras.layers.LSTMCell,"
+                    " and will be replaced by that in Tensorflow 2.0.")
   def __init__(self, num_units,
                use_peepholes=False, cell_clip=None,
                initializer=None, num_proj=None, proj_clip=None,

@@ -1526,11 +1526,11 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
                                                   OperatorType::kUnsupported,
                                                   enable_select_tf_ops));
 
-  // There operators are supported by Toco, but not by TF Lite, and has no
-  // attributes.
-  ops.push_back(
-      MakeUnique<SimpleOperator<AddNOperator>>("ADDN", OperatorType::kAddN));
-  // Simple Operators.
+  // SimpleOperator was designed to export CUSTOM TF Lite ops, but has since
+  // been modified to also export builtins. As TOCO evolved we added warnings
+  // when custom ops are exported but SimpleOperator bypasses thoses. To
+  // prevent user confusion we are settling on using SimpleOperator only for
+  // builtins.
   ops.push_back(MakeUnique<SimpleOperator<DequantizeOperator>>(
       "DEQUANTIZE", OperatorType::kDequantize));
   ops.push_back(

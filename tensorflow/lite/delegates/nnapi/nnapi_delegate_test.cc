@@ -34,6 +34,11 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
       interpreter->ModifyGraphWithDelegate(NnApiDelegate());
     });
   }
+
+  TfLiteStatus ResizeInputTensor(int tensor_index,
+                                 const std::vector<int>& dims) {
+    return interpreter_->ResizeInputTensor(tensor_index, dims);
+  }
 };
 
 class FloatAddOpModel : public SingleOpModelWithNNAPI {
@@ -95,6 +100,17 @@ TEST(NNAPIDelegate, AddWithRelu) {
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0.0, 0.4, 1.0, 1.3}));
+}
+
+// Verify that resize attempts fail.
+// TODO(b/113110851): Verify success after the delegate supports resizing.
+TEST(NNAPIDelegate, ResizeFails) {
+  FloatAddOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+  EXPECT_EQ(m.ResizeInputTensor(m.input1(), {1, 3, 3, 1}), kTfLiteError);
 }
 
 class FloatMulOpModel : public SingleOpModelWithNNAPI {

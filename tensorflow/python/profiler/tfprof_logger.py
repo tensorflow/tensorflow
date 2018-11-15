@@ -188,7 +188,7 @@ def merge_default_with_oplog(graph, op_log=None, run_meta=None,
   return tmp_op_log
 
 
-@tf_export('profiler.write_op_log')
+@tf_export(v1=['profiler.write_op_log'])
 def write_op_log(graph, log_dir, op_log=None, run_meta=None, add_trace=True):
   """Log provided 'op_log', and add additional model information below.
 

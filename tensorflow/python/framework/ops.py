@@ -890,6 +890,12 @@ class _EagerTensorBase(Tensor):
     """Returns the number of Tensor dimensions."""
     return self.shape.ndims
 
+  def __len__(self):
+    """Returns the length of the first dimension in the Tensor."""
+    if not self.shape.ndims:
+      raise TypeError("Scalar tensor has no `len()`")
+    return self._shape_tuple()[0]
+
   def _cpu_nograd(self):
     """A copy of this Tensor with contents backed by host memory.
 
@@ -1001,7 +1007,7 @@ _tensor_conversion_func_lock = threading.Lock()
 register_dense_tensor_like_type(Tensor)
 
 
-@tf_export("convert_to_tensor")
+@tf_export(v1=["convert_to_tensor"])
 def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
   """Converts the given `value` to a `Tensor`.
 
@@ -1051,11 +1057,64 @@ def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
     RuntimeError: If a registered conversion function returns an invalid value.
 
   """
+  return convert_to_tensor_v2(value, dtype, preferred_dtype, name)
+
+
+@tf_export("convert_to_tensor", v1=[])
+def convert_to_tensor_v2(value, dtype=None, dtype_hint=None, name=None):
+  """Converts the given `value` to a `Tensor`.
+
+  This function converts Python objects of various types to `Tensor`
+  objects. It accepts `Tensor` objects, numpy arrays, Python lists,
+  and Python scalars. For example:
+
+  ```python
+  import numpy as np
+
+  def my_func(arg):
+    arg = tf.convert_to_tensor(arg, dtype=tf.float32)
+    return tf.matmul(arg, arg) + arg
+
+  # The following calls are equivalent.
+  value_1 = my_func(tf.constant([[1.0, 2.0], [3.0, 4.0]]))
+  value_2 = my_func([[1.0, 2.0], [3.0, 4.0]])
+  value_3 = my_func(np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32))
+  ```
+
+  This function can be useful when composing a new operation in Python
+  (such as `my_func` in the example above). All standard Python op
+  constructors apply this function to each of their Tensor-valued
+  inputs, which allows those ops to accept numpy arrays, Python lists,
+  and scalars in addition to `Tensor` objects.
+
+  Note: This function diverges from default Numpy behavior for `float` and
+    `string` types when `None` is present in a Python list or scalar. Rather
+    than silently converting `None` values, an error will be thrown.
+
+  Args:
+    value: An object whose type has a registered `Tensor` conversion function.
+    dtype: Optional element type for the returned tensor. If missing, the
+      type is inferred from the type of `value`.
+    dtype_hint: Optional element type for the returned tensor,
+      used when dtype is None. In some cases, a caller may not have a
+      dtype in mind when converting to a tensor, so dtype_hint
+      can be used as a soft preference.  If the conversion to
+      `dtype_hint` is not possible, this argument has no effect.
+    name: Optional name to use if a new `Tensor` is created.
+
+  Returns:
+    An `Output` based on `value`.
+
+  Raises:
+    TypeError: If no conversion function is registered for `value`.
+    RuntimeError: If a registered conversion function returns an invalid value.
+
+  """
   return internal_convert_to_tensor(
       value=value,
       dtype=dtype,
       name=name,
-      preferred_dtype=preferred_dtype,
+      preferred_dtype=dtype_hint,
       as_ref=False)
 
 
@@ -1271,7 +1330,7 @@ def convert_n_to_tensor(values, dtype=None, name=None, preferred_dtype=None):
       as_ref=False)
 
 
-@tf_export("convert_to_tensor_or_indexed_slices")
+@tf_export(v1=["convert_to_tensor_or_indexed_slices"])
 def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None):
   """Converts the given object to a `Tensor` or an `IndexedSlices`.
 
@@ -2442,8 +2501,9 @@ class RegisterGradient(object):
     return f
 
 
-@tf_export("NoGradient", "NotDifferentiable")
-def NotDifferentiable(op_type):
+@deprecation.deprecated_endpoints("NotDifferentiable", "NoGradient")
+@tf_export("no_gradient", v1=["no_gradient", "NotDifferentiable", "NoGradient"])
+def no_gradient(op_type):
   """Specifies that ops of type `op_type` is not differentiable.
 
   This function should *not* be used for operations that have a
@@ -2476,8 +2536,9 @@ def NotDifferentiable(op_type):
   _gradient_registry.register(None, op_type)
 
 
-# Alias for the old name, will be eventually removed.
-NoGradient = NotDifferentiable
+# Aliases for the old names, will be eventually removed.
+NoGradient = no_gradient
+NotDifferentiable = no_gradient
 
 
 def get_gradient_function(op):
@@ -4931,7 +4992,7 @@ class Graph(object):
 # apply to inner graph mode code. Fix that.
 
 
-@tf_export("device")
+@tf_export(v1=["device"])
 def device(device_name_or_function):
   """Wrapper for `Graph.device()` using the default graph.
 
@@ -4961,7 +5022,41 @@ def device(device_name_or_function):
     return get_default_graph().device(device_name_or_function)
 
 
-@tf_export("container")
+@tf_export("device", v1=[])
+def device_v2(device_name):
+  """Specifies the device for ops created/executed in this context.
+
+  `device_name` can be fully specified, as in "/job:worker/task:1/device:cpu:0",
+  or partially specified, containing only a subset of the "/"-separated
+  fields. Any fields which are specified override device annotations from outer
+  scopes. For example:
+
+  with tf.device('/job:foo'):
+    # ops created here have devices with /job:foo
+    with tf.device('/job:bar/task:0/device:gpu:2'):
+      # ops created here have the fully specified device above
+    with tf.device('/device:gpu:1'):
+      # ops created here have the device '/job:foo/device:gpu:1'
+
+  Args:
+    device_name: The device name to use in the context.
+
+  Returns:
+    A context manager that specifies the default device to use for newly
+    created ops.
+
+  Raises:
+    RuntimeError: If a function is passed in.
+  """
+  if callable(device_name):
+    raise RuntimeError("tf.device does not support functions.")
+  if context.executing_eagerly():
+    return context.device(device_name)
+  else:
+    return get_default_graph().device(device_name)
+
+
+@tf_export(v1=["container"])
 def container(container_name):
   """Wrapper for `Graph.container()` using the default graph.
 
@@ -5582,7 +5677,7 @@ def reset_default_graph():
   _default_graph_stack.reset()
 
 
-@tf_export("get_default_graph")
+@tf_export(v1=["get_default_graph"])
 def get_default_graph():
   """Returns the default graph for the current thread.
 
@@ -5875,7 +5970,7 @@ def dismantle_graph(graph):
   graph.__dict__ = {}
 
 
-@tf_export("add_to_collection")
+@tf_export(v1=["add_to_collection"])
 def add_to_collection(name, value):
   """Wrapper for `Graph.add_to_collection()` using the default graph.
 
@@ -5894,7 +5989,8 @@ def add_to_collection(name, value):
   """
   get_default_graph().add_to_collection(name, value)
 
-@tf_export("add_to_collections")
+
+@tf_export(v1=["add_to_collections"])
 def add_to_collections(names, value):
   """Wrapper for `Graph.add_to_collections()` using the default graph.
 
@@ -5914,7 +6010,7 @@ def add_to_collections(names, value):
   get_default_graph().add_to_collections(names, value)
 
 
-@tf_export("get_collection_ref")
+@tf_export(v1=["get_collection_ref"])
 def get_collection_ref(key):
   """Wrapper for `Graph.get_collection_ref()` using the default graph.
 
@@ -5938,7 +6034,7 @@ def get_collection_ref(key):
   return get_default_graph().get_collection_ref(key)
 
 
-@tf_export("get_collection")
+@tf_export(v1=["get_collection"])
 def get_collection(key, scope=None):
   """Wrapper for `Graph.get_collection()` using the default graph.
 
@@ -6148,7 +6244,7 @@ def prepend_name_scope(name, import_scope):
 
 # pylint: disable=g-doc-return-or-yield
 # pylint: disable=not-context-manager
-@tf_export("op_scope")
+@tf_export(v1=["op_scope"])
 @tf_contextlib.contextmanager
 def op_scope(values, name, default_name=None):
   """DEPRECATED. Same as name_scope above, just different argument order."""

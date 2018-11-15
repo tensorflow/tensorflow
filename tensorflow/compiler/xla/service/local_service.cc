@@ -220,4 +220,10 @@ StatusOr<const ShapedBuffer*> LocalService::GlobalDataToShapedBuffer(
   return buffers[replica_number];
 }
 
+StatusOr<GlobalDataHandle> LocalService::RegisterReplicatedBuffers(
+    std::vector<ScopedShapedBuffer> replicated_buffers, const string& tag) {
+  return allocation_tracker_.RegisterReplicatedBuffers(
+      std::move(replicated_buffers), tag);
+}
+
 }  // namespace xla

@@ -1257,13 +1257,12 @@ class GradientBoostedDecisionTreeModel(object):
   def _get_replica_device_setter(self, worker_device):
     """Creates a replica device setter."""
     ps_tasks = self._num_ps_replicas
-    ps_ops = [
-        "Variable",
-        "VariableV2",
+    ps_ops = list(device_setter.STANDARD_PS_OPS)
+    ps_ops.extend([
         "DecisionTreeEnsembleResourceHandleOp",
         "StatsAccumulatorScalarResourceHandleOp",
         "StatsAccumulatorTensorResourceHandleOp",
-    ]
+    ])
     ps_strategy = _OpRoundRobinStrategy(ps_ops, ps_tasks)
     return device_setter.replica_device_setter(
         worker_device=worker_device,

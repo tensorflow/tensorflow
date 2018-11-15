@@ -99,7 +99,7 @@ TEST(FloatSubOpModel, ActivationRELU_N1_TO_1) {
 }
 
 TEST(FloatSubOpModel, VariousInputShapes) {
-  std::vector<std::initializer_list<int>> test_shapes = {
+  std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     FloatSubOpModel m({TensorType_FLOAT32, test_shapes[i]},
@@ -116,7 +116,7 @@ TEST(FloatSubOpModel, VariousInputShapes) {
 }
 
 TEST(FloatSubOpModel, WithBroadcast) {
-  std::vector<std::initializer_list<int>> test_shapes = {
+  std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     FloatSubOpModel m({TensorType_FLOAT32, test_shapes[i]},
@@ -153,7 +153,7 @@ TEST(IntegerSubOpModel, ActivationRELU_N1_TO_1) {
 }
 
 TEST(IntegerSubOpModel, VariousInputShapes) {
-  std::vector<std::initializer_list<int>> test_shapes = {
+  std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     IntegerSubOpModel m({TensorType_INT32, test_shapes[i]},
@@ -168,7 +168,7 @@ TEST(IntegerSubOpModel, VariousInputShapes) {
 }
 
 TEST(IntegerSubOpModel, WithBroadcast) {
-  std::vector<std::initializer_list<int>> test_shapes = {
+  std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     IntegerSubOpModel m({TensorType_INT32, test_shapes[i]},
@@ -185,14 +185,13 @@ TEST(IntegerSubOpModel, WithBroadcast) {
 
 TEST(QuantizedSubOpModel, QuantizedTestsNoActivation) {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
-  std::vector<std::initializer_list<float>> inputs1 = {
+  std::vector<std::vector<float>> inputs1 = {
       {0.1, 0.2, 0.3, 0.4}, {-0.2, 0.2, 0.4, 0.7}, {-0.01, 0.2, 0.7, 0.3}};
-  std::vector<std::initializer_list<float>> inputs2 = {
+  std::vector<std::vector<float>> inputs2 = {
       {0.6, 0.4, 0.3, 0.1}, {0.6, 0.4, 0.5, -0.2}, {0.6, 0.4, -0.18, 0.5}};
-  std::vector<std::initializer_list<float>> results = {
-      {-0.5, -0.2, 0.0, 0.3},
-      {-0.8, -0.2, -0.1, 0.9},
-      {-0.61, -0.2, 0.88, -0.2}};
+  std::vector<std::vector<float>> results = {{-0.5, -0.2, 0.0, 0.3},
+                                             {-0.8, -0.2, -0.1, 0.9},
+                                             {-0.61, -0.2, 0.88, -0.2}};
   for (int i = 0; i < inputs1.size(); ++i) {
     QuantizedSubOpModel m({TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
                           {TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
@@ -209,12 +208,12 @@ TEST(QuantizedSubOpModel, QuantizedTestsNoActivation) {
 
 TEST(QuantizedSubOpModel, QuantizedTestsActivationRELU_N1_TO_1) {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
-  std::vector<std::initializer_list<float>> inputs1 = {{-0.8, 0.2, 0.9, 0.7},
-                                                       {-0.8, 0.2, 0.7, 0.5}};
-  std::vector<std::initializer_list<float>> inputs2 = {{0.6, 0.4, 0.9, -0.8},
-                                                       {0.6, 0.4, -0.8, 0.3}};
-  std::vector<std::initializer_list<float>> results = {{-1.0, -0.2, 0.0, 1.0},
-                                                       {-1.0, -0.2, 1.0, 0.2}};
+  std::vector<std::vector<float>> inputs1 = {{-0.8, 0.2, 0.9, 0.7},
+                                             {-0.8, 0.2, 0.7, 0.5}};
+  std::vector<std::vector<float>> inputs2 = {{0.6, 0.4, 0.9, -0.8},
+                                             {0.6, 0.4, -0.8, 0.3}};
+  std::vector<std::vector<float>> results = {{-1.0, -0.2, 0.0, 1.0},
+                                             {-1.0, -0.2, 1.0, 0.2}};
   for (int i = 0; i < inputs1.size(); ++i) {
     QuantizedSubOpModel m({TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
                           {TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
@@ -231,7 +230,7 @@ TEST(QuantizedSubOpModel, QuantizedTestsActivationRELU_N1_TO_1) {
 
 TEST(QuantizedSubOpModel, QuantizedVariousInputShapes) {
   float kQuantizedTolerance = GetTolerance(-3.0, 3.0);
-  std::vector<std::initializer_list<int>> test_shapes = {
+  std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     QuantizedSubOpModel m({TensorType_UINT8, test_shapes[i], -3.0, 3.0},
@@ -250,7 +249,7 @@ TEST(QuantizedSubOpModel, QuantizedVariousInputShapes) {
 
 TEST(QuantizedSubOpModel, QuantizedWithBroadcast) {
   float kQuantizedTolerance = GetTolerance(-3.0, 3.0);
-  std::vector<std::initializer_list<int>> test_shapes = {
+  std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
     QuantizedSubOpModel m({TensorType_UINT8, test_shapes[i], -3.0, 3.0},

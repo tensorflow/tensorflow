@@ -756,6 +756,12 @@ Status ShapeVerifier::HandleAfterAll(HloInstruction* token) {
   return CheckShape(token, ShapeInference::InferAfterAllShape(operand_shapes));
 }
 
+Status ShapeVerifier::HandleGetDimensionSize(HloInstruction* get_size) {
+  return CheckShape(
+      get_size, ShapeInference::InferGetDimensionSizeShape(
+                    get_size->operand(0)->shape(), get_size->dimensions(0)));
+}
+
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
                                  const Shape& inferred_shape) {
   // If allow_mixed_precision_ is false, check if there are operands with

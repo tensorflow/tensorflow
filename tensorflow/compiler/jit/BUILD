@@ -51,6 +51,7 @@ cc_library(
     deps = [
         ":jit_compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_ops",
+        "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/service:cpu_plugin",
     ],
@@ -64,6 +65,7 @@ cc_library(
         ":jit_compilation_passes",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/xla/service:gpu_plugin",
     ]),
     alwayslink = 1,
@@ -74,10 +76,10 @@ cc_library(
     srcs = ["xla_cpu_device.cc"],
     visibility = [":friends"],
     deps = [
+        ":flags",
         ":jit_compilation_passes",
         ":xla_device",
         "//tensorflow/compiler/jit/kernels:xla_ops",
-        "//tensorflow/compiler/jit/legacy_flags:xla_device_flags",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/service:cpu_plugin",  # buildcleaner: keep
@@ -209,6 +211,18 @@ cc_library(
 # Internal targets below this point.
 
 cc_library(
+    name = "flags",
+    srcs = ["flags.cc"],
+    hdrs = ["flags.h"],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/compiler/xla:parse_flags_from_env",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "common",
     srcs = [
         "defs.cc",
@@ -266,6 +280,7 @@ cc_library(
         "//tensorflow/core/kernels:variable_ops",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -485,6 +500,7 @@ cc_library(
     deps = [
         ":common",
         ":encapsulate_util",
+        ":flags",
         ":shape_inference_helpers",
         ":union_find",
         ":xla_cluster_util",
@@ -492,8 +508,6 @@ cc_library(
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope_internal",
         "//tensorflow/compiler/jit/graphcycles",
-        "//tensorflow/compiler/jit/legacy_flags:build_xla_ops_pass_flags",
-        "//tensorflow/compiler/jit/legacy_flags:mark_for_compilation_pass_flags",
         "//tensorflow/compiler/jit/ops:xla_ops",
         "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla:resource_operation_table",
@@ -540,25 +554,6 @@ cc_library(
 cc_library(
     name = "union_find",
     hdrs = ["union_find.h"],
-)
-
-cc_library(
-    name = "producer_consumer_queue",
-    hdrs = ["producer_consumer_queue.h"],
-    deps = ["//tensorflow/core:lib"],
-)
-
-tf_cc_test(
-    name = "producer_consumer_queue_test",
-    size = "small",
-    srcs = ["producer_consumer_queue_test.cc"],
-    deps = [
-        ":producer_consumer_queue",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
 )
 
 tf_cc_test(
@@ -624,6 +619,7 @@ tf_cc_test(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/cc:xla_jit_ops",
         "//tensorflow/compiler/tf2xla/cc:xla_ops",
+        "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",

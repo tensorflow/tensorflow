@@ -63,6 +63,11 @@ class LocalService : public Service {
   StatusOr<const ShapedBuffer*> GlobalDataToShapedBuffer(
       const GlobalDataHandle& data, int replica_number);
 
+  // Registers a vector of shaped buffers of device memory, one per replica, and
+  // returns a corresponding handle that can be used for talking to XLA clients.
+  StatusOr<GlobalDataHandle> RegisterReplicatedBuffers(
+      std::vector<ScopedShapedBuffer> replicated_buffers, const string& tag);
+
  private:
   explicit LocalService(const ServiceOptions& options,
                         std::unique_ptr<Backend> backend);

@@ -1,19 +1,32 @@
-# Ignite Dataset
+# Apache Ignite Integration
 
-- [Overview](#overview)
-- [Features](#features)
-  * [Distributed In-Memory Datasource](#distributed-in-memory-datasource)
-  * [Structured Objects](#structured-objects)
-  * [Distributed Training](#distributed-training)
-  * [SSL Connection](#ssl-connection)
-  * [Windows Support](#windows-support)
-- [Try it out](#try-it-out)
-- [Limitations](#limitations)
+-   [Overview](#overview)
+-   [Features](#features)
+    *   [Distributed In-Memory Datasource](#distributed-in-memory-datasource)
+    *   [Structured Objects](#structured-objects)
+    *   [Distributed Training](#distributed-training)
+    *   [Distributed File System](#distributed-file-system)
+    *   [SSL Connection](#ssl-connection)
+    *   [Windows Support](#windows-support)
+-   [Try it out](#try-it-out)
+    *   [Ignite Dataset](#ignite-dataset)
+    *   [IGFS](#igfs)
+-   [Limitations](#limitations)
 
 ## Overview
 
-[Apache Ignite](https://ignite.apache.org/) is a memory-centric distributed database, caching, and processing platform for
-transactional, analytical, and streaming workloads, delivering in-memory speeds at petabyte scale. This contrib package contains an integration between Apache Ignite and TensorFlow. The integration is based on [tf.data](https://www.tensorflow.org/api_docs/python/tf/data) from TensorFlow side and [Binary Client Protocol](https://apacheignite.readme.io/v2.6/docs/binary-client-protocol) from Apache Ignite side. It allows to use Apache Ignite as a data source for neural network training, inference and all other computations supported by TensorFlow. 
+[Apache Ignite](https://ignite.apache.org/) is a memory-centric distributed
+database, caching, and processing platform for transactional, analytical, and
+streaming workloads, delivering in-memory speeds at petabyte scale. This contrib
+package contains an integration between Apache Ignite and TensorFlow. The
+integration is based on
+[tf.data](https://www.tensorflow.org/api_docs/python/tf/data) from TensorFlow
+side and
+[Binary Client Protocol](https://apacheignite.readme.io/v2.6/docs/binary-client-protocol)
+from Apache Ignite side. It allows to use Apache Ignite as a data source for
+neural network training, inference and all other computations supported by
+TensorFlow. Another part of this module is an integration with distributed file
+system based on Apache Ignite.
 
 ## Features
 
@@ -134,6 +147,23 @@ Ignite Dataset allows using these two aspects of distributed neural network trai
 
 High-level TensorFlow API for [distributed training](https://www.tensorflow.org/api_docs/python/tf/contrib/distribute/DistributionStrategy) is supported as well. 
 
+### Distributed File System
+
+In addition to database functionality Apache Ignite provides a distributed file
+system called [IGFS](https://ignite.apache.org/features/igfs.html). IGFS
+delivers a similar functionality to Hadoop HDFS, but only in-memory. In fact, in
+addition to its own APIs, IGFS implements Hadoop FileSystem API and can be
+transparently plugged into Hadoop or Spark deployments. This contrib package
+contains an integration between IGFS and TensorFlow. The integration is based
+on [custom filesystem plugin](https://www.tensorflow.org/extend/add_filesys)
+from TensorFlow side and
+[IGFS Native API](https://ignite.apache.org/features/igfs.html) from Apache
+Ignite side. It has numerous uses, for example: * Checkpoints of state can be
+saved to IGFS for reliability and fault-tolerance. * Training processes
+communicate with TensorBoard by writing event files to a directory, which
+TensorBoard watches. IGFS allows this communication to work even when
+TensorBoard runs in a different process or machine.
+
 ### SSL Connection
 
 Apache Ignite allows to protect data transfer channels by [SSL](https://en.wikipedia.org/wiki/Transport_Layer_Security) and authentification. Ignite Dataset supports both SSL connection with and without authntication. For more information, please refer to the [Apache Ignite SSL/TLS](https://apacheignite.readme.io/docs/ssltls) documentation.
@@ -141,9 +171,12 @@ Apache Ignite allows to protect data transfer channels by [SSL](https://en.wikip
 ```python
 >>> import tensorflow as tf
 >>> from tensorflow.contrib.ignite import IgniteDataset
->>> 
->>> dataset = IgniteDataset(cache_name="IMAGES", certfile="client.pem", cert_password="password", username="ignite", password="ignite")
->>> ...
+>>>
+>>> dataset = IgniteDataset(cache_name="IMAGES",
+                            certfile="client.pem",
+                            cert_password="password",
+                            username="ignite",
+                            password="ignite")
 ```
 
 ### Windows Support
@@ -152,7 +185,16 @@ Ignite Dataset is fully compatible with Windows. You can use it as part of Tenso
 
 ## Try it out
 
-The simplest way to try Ignite Dataset is to run a [Docker](https://www.docker.com/) container with Apache Ignite and loaded [MNIST](http://yann.lecun.com/exdb/mnist/) data and after start interruct with it using Ignite Dataset. Such container is available on Docker Hub: [dmitrievanthony/ignite-with-mnist](https://hub.docker.com/r/dmitrievanthony/ignite-with-mnist/). You need to start this container on your machine:
+Following examples will help you to easily start working with this module.
+
+### Ignite Dataset
+
+The simplest way to try Ignite Dataset is to run a
+[Docker](https://www.docker.com/) container with Apache Ignite and loaded
+[MNIST](http://yann.lecun.com/exdb/mnist/) data and after start interruct with
+it using Ignite Dataset. Such container is available on Docker Hub:
+[dmitrievanthony/ignite-with-mnist](https://hub.docker.com/r/dmitrievanthony/ignite-with-mnist/).
+You need to start this container on your machine:
 
 ```
 docker run -it -p 10800:10800 dmitrievanthony/ignite-with-mnist
@@ -161,6 +203,35 @@ docker run -it -p 10800:10800 dmitrievanthony/ignite-with-mnist
 After that you will be able to work with it following way:
 
 ![ignite-dataset-mnist](https://s3.amazonaws.com/helloworld23423423ew23/ignite-dataset-mnist.png "Ignite Dataset Mnist")
+
+### IGFS
+
+The simplest way to try IGFS with TensorFlow is to run
+[Docker](https://www.docker.com/) container with Apache Ignite and enabled IGFS
+and then interruct with it using TensorFlow
+[tf.gfile](https://www.tensorflow.org/api_docs/python/tf/gfile). Such container
+is available on Docker Hub:
+[dmitrievanthony/ignite-with-igfs](https://hub.docker.com/r/dmitrievanthony/ignite-with-igfs/).
+You need to start this container on your machine:
+
+```
+docker run -it -p 10500:10500 dmitrievanthony/ignite-with-igfs
+```
+
+After that you will be able to work with it following way:
+
+```python
+>>> import tensorflow as tf
+>>> import tensorflow.contrib.ignite.python.ops.igfs_ops
+>>>
+>>> with tf.gfile.Open("igfs:///hello.txt", mode='w') as w:
+>>>   w.write("Hello, world!")
+>>>
+>>> with tf.gfile.Open("igfs:///hello.txt", mode='r') as r:
+>>>   print(r.read())
+
+Hello, world!
+```
 
 ## Limitations
 

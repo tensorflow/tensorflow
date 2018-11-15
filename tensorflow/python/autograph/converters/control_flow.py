@@ -131,14 +131,18 @@ class ControlFlowTransformer(converter.Base):
     created_in_body = body_scope.modified & returned_from_cond - defined_in
     created_in_orelse = orelse_scope.modified & returned_from_cond - defined_in
 
-    if created_in_body != created_in_orelse:
+    basic_created_in_body = tuple(
+        s for s in created_in_body if not s.is_composite())
+    basic_created_in_orelse = tuple(
+        s for s in created_in_orelse if not s.is_composite())
+    if basic_created_in_body != basic_created_in_orelse:
       raise ValueError(
           'if statement may not initialize all variables: the true branch'
           ' creates %s, while the false branch creates %s. Make sure all'
           ' these variables are initialized either in both'
           ' branches or before the if statement.' %
-          (self._fmt_symbols(created_in_body),
-           self._fmt_symbols(created_in_orelse)))
+          (self._fmt_symbols(basic_created_in_body),
+           self._fmt_symbols(basic_created_in_orelse)))
 
     # Alias the closure variables inside the conditional functions, to allow
     # the functions access to the respective variables.

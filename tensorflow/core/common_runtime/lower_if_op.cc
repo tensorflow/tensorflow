@@ -76,7 +76,7 @@ class CondBuilder {
   // The identity node with the same outputs as the original If op.
   Node* lowered_if_output_;
   // The predicate of the conditional.
-  Node* pred_;
+  OutputTensor pred_;
   // Node corresponding to pivot_f branch of predicate switch which is
   // the pivot node that dominates all nodes in the false/else branch.
   Node* pivot_f_;
@@ -102,7 +102,7 @@ CondBuilder::CondBuilder(Node* if_op, const string& then_fn_name,
       name_(if_op->name()),
       then_call_builder_(NewName("then"), then_fn_name, graph->op_registry()),
       else_call_builder_(NewName("else"), else_fn_name, graph->op_registry()) {
-  TF_CHECK_OK(if_op_->input_node(0, &pred_));
+  TF_CHECK_OK(if_op_->input_tensor(0, &pred_));
   then_call_builder_.Device(if_op_->requested_device());
   else_call_builder_.Device(if_op_->requested_device());
 }
@@ -113,8 +113,8 @@ Status CondBuilder::CreatePivotNodes() {
   Node* switch_pred;
   TF_RETURN_IF_ERROR(
       NodeBuilder(NewName("switch_pred"), "Switch", graph_->op_registry())
-          .Input(NodeOut(pred_, 0))
-          .Input(NodeOut(pred_, 0))
+          .Input(NodeOut(pred_))
+          .Input(NodeOut(pred_))
           .Device(if_op_->requested_device())
           .Finalize(graph_, &switch_pred));
   control_predecessor_ = switch_pred;
@@ -140,7 +140,7 @@ Status CondBuilder::AddInput(Node* src, int src_output) {
   TF_RETURN_IF_ERROR(
       NodeBuilder(NewName(src->name()), "Switch", graph_->op_registry())
           .Input(src, src_output)
-          .Input(pred_, 0)
+          .Input(pred_)
           .Device(if_op_->requested_device())
           .Finalize(graph_, &input));
   then_call_builder_.Input(input, kThenBranch);

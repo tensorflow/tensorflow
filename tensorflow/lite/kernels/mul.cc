@@ -153,26 +153,34 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                            const TfLiteTensor* input2, TfLiteTensor* output) {
   if (input1->type == kTfLiteUInt8 && input2->type == kTfLiteUInt8 &&
       output->type == kTfLiteUInt8) {
+    tflite::ArithmeticParams op_params;
+    SetActivationParams(data->output_activation_min,
+                        data->output_activation_max, &op_params);
+    op_params.input1_offset = -input1->params.zero_point;
+    op_params.input2_offset = -input2->params.zero_point;
+    op_params.output_offset = output->params.zero_point;
+    op_params.output_multiplier = data->output_multiplier;
+    op_params.output_shift = data->output_shift;
+    bool need_broadcast = optimized_ops::ProcessBroadcastShapes(
+        GetTensorShape(input1), GetTensorShape(input2), &op_params);
 #define TF_LITE_MUL(type, opname)                                      \
-  tflite::ArithmeticParams op_params;                                  \
-  SetActivationParams(data->output_activation_min,                     \
-                      data->output_activation_max, &op_params);        \
-  op_params.input1_offset = -input1->params.zero_point;                \
-  op_params.input2_offset = -input2->params.zero_point;                \
-  op_params.output_offset = output->params.zero_point;                 \
-  op_params.output_multiplier = data->output_multiplier;               \
-  op_params.output_shift = data->output_shift;                         \
   type::opname(op_params, GetTensorShape(input1),                      \
                GetTensorData<uint8_t>(input1), GetTensorShape(input2), \
                GetTensorData<uint8_t>(input2), GetTensorShape(output), \
                GetTensorData<uint8_t>(output))
 
-    // The quantized version of Mul doesn't support activations, so we
-    // always use BroadcastMul.
     if (kernel_type == kReference) {
-      TF_LITE_MUL(reference_ops, BroadcastMul4DSlow);
+      if (need_broadcast) {
+        TF_LITE_MUL(reference_ops, BroadcastMul4DSlow);
+      } else {
+        TF_LITE_MUL(reference_ops, Mul);
+      }
     } else {
-      TF_LITE_MUL(optimized_ops, BroadcastMul4DSlow);
+      if (need_broadcast) {
+        TF_LITE_MUL(optimized_ops, BroadcastMulFivefold);
+      } else {
+        TF_LITE_MUL(optimized_ops, Mul);
+      }
     }
 #undef TF_LITE_MUL
   } else if (input1->type == kTfLiteInt16 && input2->type == kTfLiteInt16 &&

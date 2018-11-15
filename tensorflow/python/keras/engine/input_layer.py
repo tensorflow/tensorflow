@@ -84,7 +84,6 @@ class InputLayer(base_layer.Layer):
     self.sparse = sparse
     self.batch_size = batch_size
     self.supports_masking = True
-    self._can_use_graph_functions = True
 
     if isinstance(input_shape, tensor_shape.TensorShape):
       input_shape = tuple(input_shape.as_list())

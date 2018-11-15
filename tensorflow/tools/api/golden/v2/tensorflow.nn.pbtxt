@@ -129,10 +129,6 @@ tf_module {
     argspec: "args=[\'x\', \'keep_prob\', \'noise_shape\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
-    name: "dynamic_rnn"
-    argspec: "args=[\'cell\', \'inputs\', \'sequence_length\', \'initial_state\', \'dtype\', \'parallel_iterations\', \'swap_memory\', \'time_major\', \'scope\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'False\', \'False\', \'None\'], "
-  }
-  member_method {
     name: "elu"
     argspec: "args=[\'features\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -226,7 +222,7 @@ tf_module {
   }
   member_method {
     name: "pool"
-    argspec: "args=[\'input\', \'window_shape\', \'pooling_type\', \'padding\', \'dilation_rate\', \'strides\', \'name\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'input\', \'window_shape\', \'pooling_type\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'VALID\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "quantized_avg_pool"
@@ -243,10 +239,6 @@ tf_module {
   member_method {
     name: "quantized_relu_x"
     argspec: "args=[\'features\', \'max_value\', \'min_features\', \'max_features\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'None\'], "
-  }
-  member_method {
-    name: "raw_rnn"
-    argspec: "args=[\'cell\', \'loop_fn\', \'parallel_iterations\', \'swap_memory\', \'scope\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "relu"
@@ -315,10 +307,6 @@ tf_module {
   member_method {
     name: "static_bidirectional_rnn"
     argspec: "args=[\'cell_fw\', \'cell_bw\', \'inputs\', \'initial_state_fw\', \'initial_state_bw\', \'dtype\', \'sequence_length\', \'scope\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "static_rnn"
-    argspec: "args=[\'cell\', \'inputs\', \'initial_state\', \'dtype\', \'sequence_length\', \'scope\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "static_state_saving_rnn"

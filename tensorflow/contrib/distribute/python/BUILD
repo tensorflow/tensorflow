@@ -85,6 +85,7 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
     ],
@@ -105,6 +106,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:context",
     ],
 )
@@ -151,6 +153,7 @@ py_library(
         "//tensorflow/python:distribute",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
     ],
@@ -343,6 +346,7 @@ py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
+        "//tensorflow/python/distribute:reduce_util",
     ],
 )
 
@@ -374,9 +378,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_pip",
-        # TODO(b/118820960): Re-enable this test in guitar.
-        "manual",
-        "noguitar",
     ],
 )
 
@@ -470,6 +471,7 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # http://b/119349471
         "no_pip",
     ],
 )
@@ -478,20 +480,11 @@ cuda_py_test(
     name = "keras_optimizer_v2_test",
     srcs = ["keras_optimizer_v2_test.py"],
     additional_deps = [
-        ":combinations",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/contrib/optimizer_v2:training",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/feature_column",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
+        ":keras_test_lib",
     ],
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # http://b/119349471
         "no_pip",
     ],
 )
@@ -525,6 +518,7 @@ cuda_py_test(
         "noasan",
         "nomsan",
         "notsan",
+        "no_oss",  # http://b/119349471
     ],
 )
 
@@ -624,7 +618,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":values",
-        "//tensorflow/contrib/all_reduce:all_reduce_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
         "//tensorflow/python:device",
@@ -633,6 +626,7 @@ py_library(
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nccl_ops",
+        "//tensorflow/python/distribute:all_reduce",
     ],
 )
 
@@ -669,6 +663,7 @@ py_library(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
     ],

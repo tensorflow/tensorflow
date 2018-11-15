@@ -109,6 +109,22 @@ class KubernetesClusterResolverTest(test.TestCase):
     """
     self._verifyClusterSpecEquality(actual_cluster_spec, str(expected_proto))
 
+  def testGetMasterWithOverrideParameters(self):
+    ret = _create_pod_list(
+        ('worker-0', 'Running', '10.1.2.3'),
+        ('worker-1', 'Running', '10.1.2.4'),
+        ('worker-2', 'Running', '10.1.2.5'))
+
+    cluster_resolver = KubernetesClusterResolver(
+        override_client=_mock_kubernetes_client(
+            {'job-name=tensorflow': ret}))
+    cluster_resolver.task_type = 'blah'
+    cluster_resolver.task_index = 1
+    self.assertEqual(cluster_resolver.task_type, 'blah')
+    self.assertEqual(cluster_resolver.task_index, 1)
+    self.assertEqual(cluster_resolver.master('worker', 2),
+                     'grpc://10.1.2.5:8470')
+
   def testNonRunningPod(self):
     ret = _create_pod_list(('tensorflow-abc123', 'Failed', '10.1.2.3'),)
 

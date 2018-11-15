@@ -47,7 +47,7 @@ TEST_F(GpuNoAliasTest, Concat) {
 
   std::unique_ptr<HloComputation> computation = builder.Build();
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   CompileAndVerifyIr(std::move(hlo_module),

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import ops
@@ -27,9 +28,8 @@ from tensorflow.python.platform import tf_logging
 
 # TODO(priyag): Any other reader datasets to consider here?
 _READER_DATASET_OPS = [
-    "TextLineDataset",
-    "TFRecordDataset",
-    "FixedLengthRecordDataset"
+    "TextLineDataset", "TFRecordDataset", "FixedLengthRecordDataset",
+    "FixedLengthRecordDatasetV2"
 ]
 
 
@@ -75,6 +75,8 @@ def auto_shard_dataset(dataset, num_shards, index):
         # instead of updating in-place.
         return dataset._clone(
             filenames=dataset._filenames.shard(num_shards, index))
+      elif isinstance(dataset, dataset_ops.RangeDataset):
+        return dataset.shard(num_shards, index)
       elif hasattr(dataset, "_map_func"):
         # TODO(priyag): Make this check more robust by enforcing some common
         # property on all map/flatmap/interleave datasets.
@@ -99,6 +101,11 @@ def auto_shard_dataset(dataset, num_shards, index):
           dataset._input_dataset = _auto_shard_impl(
               dataset._input_dataset, found_reader_op)
           return dataset
+
+    if isinstance(dataset, dataset_ops.DatasetV1Adapter):
+      dataset._dataset = _auto_shard_impl(
+          dataset._dataset, found_reader_op)
+      return dataset
 
     # TODO(priyag): Make _input_dataset(s) a common property of all datasets to
     # make this check more robust.

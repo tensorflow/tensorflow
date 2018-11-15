@@ -367,6 +367,18 @@ class ApiTest(test.TestCase):
       sess.run(variables.global_variables_initializer())
       self.assertAllEqual([[0.0, 0.0]], sess.run(x))
 
+  def test_converted_call_lambda(self):
+
+    opts = converter.ConversionOptions()
+
+    l = lambda x: x == 0
+
+    x = api.converted_call(l, None, opts, constant_op.constant(0))
+
+    with self.cached_session() as sess:
+      sess.run(variables.global_variables_initializer())
+      self.assertAllEqual(True, sess.run(x))
+
   def test_to_graph_basic(self):
 
     def test_fn(x, s):

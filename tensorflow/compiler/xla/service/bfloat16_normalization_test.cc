@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -68,11 +68,11 @@ class TestBFloat16Support : public BFloat16Support {
   }
 };
 
-class BFloat16NormalizationTest : public HloVerifiedTestBase {
+class BFloat16NormalizationTest : public HloTestBase {
  protected:
   BFloat16NormalizationTest()
-      : HloVerifiedTestBase(/*layout_sensitive=*/false,
-                            /*allow_mixed_precision=*/true) {}
+      : HloTestBase(/*verifier_layout_sensitive=*/false,
+                    /*allow_mixed_precision_in_hlo_verifier=*/true) {}
 
   bool Normalize(HloModule* module) {
     TestBFloat16Support bfloat16_support_;
@@ -106,10 +106,10 @@ TEST_F(BFloat16NormalizationTest, NoopIfSupported) {
   HloInstruction* add1 = builder.AddInstruction(
       HloInstruction::CreateBinary(f32_shape, HloOpcode::kAdd, add0, c));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_FALSE(Normalize(module));
+  EXPECT_FALSE(Normalize(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), add1);
   EXPECT_EQ(add0->shape().element_type(), BF16);
@@ -134,10 +134,10 @@ TEST_F(BFloat16NormalizationTest, ResolveIfUnsupportedBF16) {
   HloInstruction* mul1 = builder.AddInstruction(
       HloInstruction::CreateBinary(bf16_shape, HloOpcode::kMultiply, mul0, c));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(Normalize(module));
+  EXPECT_TRUE(Normalize(module.get()));
 
   EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kConvert);
   EXPECT_EQ(computation->root_instruction()->operand(0), mul1);
@@ -164,10 +164,10 @@ TEST_F(BFloat16NormalizationTest, ResolveUnsupportedMixedPrecisionSubtraction) {
   HloInstruction* sub1 = builder.AddInstruction(
       HloInstruction::CreateBinary(bf16_shape, HloOpcode::kSubtract, sub0, c));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(Normalize(module));
+  EXPECT_TRUE(Normalize(module.get()));
 
   EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kConvert);
   EXPECT_EQ(computation->root_instruction()->operand(0), sub1);
@@ -191,7 +191,7 @@ TEST_F(BFloat16NormalizationTest, ResolveUnsupportedMixedPrecisionReduce) {
       HloInstruction::CreateBinary(bf16_scalar_shape, HloOpcode::kAdd,
                                    reduce_comp_param0, reduce_comp_param1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto reduce_computation =
       module->AddEmbeddedComputation(reduce_comp_builder.Build());
 
@@ -205,7 +205,7 @@ TEST_F(BFloat16NormalizationTest, ResolveUnsupportedMixedPrecisionReduce) {
 
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(Normalize(module));
+  EXPECT_TRUE(Normalize(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), reduce);
   EXPECT_EQ(reduce->called_computations().size(), 1);
@@ -233,7 +233,7 @@ TEST_F(BFloat16NormalizationTest, ResolveUnsupportedMixedPrecisionReduce) {
 }
 
 TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleCrossReplicaSum) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation::Builder sum_builder("sum");
   auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(
       /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {}), "x"));
@@ -263,7 +263,7 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleCrossReplicaSum) {
 
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(Normalize(module));
+  EXPECT_TRUE(Normalize(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), gte);
   EXPECT_EQ(gte->shape().element_type(), BF16);
@@ -272,7 +272,7 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleCrossReplicaSum) {
 }
 
 TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleSort) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   Shape f32_shape = ShapeUtil::MakeShape(F32, {1024});
   Shape bf16_shape = ShapeUtil::MakeShape(BF16, {1024});
@@ -290,7 +290,7 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleSort) {
 
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(Normalize(module));
+  EXPECT_TRUE(Normalize(module.get()));
 
   EXPECT_EQ(computation->root_instruction(), gte);
   EXPECT_EQ(gte->shape().element_type(), BF16);
@@ -299,7 +299,7 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleSort) {
 }
 
 TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleSortRoot) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   Shape f32_shape = ShapeUtil::MakeShape(F32, {1024});
   Shape bf16_shape = ShapeUtil::MakeShape(BF16, {1024});
@@ -314,7 +314,7 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleSortRoot) {
 
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(Normalize(module));
+  EXPECT_TRUE(Normalize(module.get()));
 
   EXPECT_EQ(sort->operand(0)->shape().element_type(), F32);
   EXPECT_EQ(ShapeUtil::GetSubshape(sort->shape(), {0}).element_type(), F32);
@@ -342,10 +342,10 @@ TEST_F(BFloat16NormalizationTest, DoNotAddUnsupportedMixedPrecision) {
   HloInstruction* dot = builder.AddInstruction(
       HloInstruction::CreateDot(bf16_shape, a, b, dot_dnums, precision_config));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  EXPECT_TRUE(Normalize(module));
+  EXPECT_TRUE(Normalize(module.get()));
 
   EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kConvert);
   EXPECT_EQ(dot->shape().element_type(), F32);

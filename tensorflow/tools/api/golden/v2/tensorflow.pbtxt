@@ -41,14 +41,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "FixedLenFeature"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "FixedLenSequenceFeature"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "GPUOptions"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
@@ -121,10 +113,6 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "SparseFeature"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "SparseTensor"
     mtype: "<type \'type\'>"
   }
@@ -159,10 +147,6 @@ tf_module {
   member {
     name: "UnconnectedGradients"
     mtype: "<class \'enum.EnumMeta\'>"
-  }
-  member {
-    name: "VarLenFeature"
-    mtype: "<type \'type\'>"
   }
   member {
     name: "Variable"
@@ -345,10 +329,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "profiler"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "pywrap_tensorflow"
     mtype: "<type \'module\'>"
   }
@@ -393,15 +373,15 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
-    name: "resource_loader"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "saved_model"
     mtype: "<type \'module\'>"
   }
   member {
     name: "sets"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "signal"
     mtype: "<type \'module\'>"
   }
   member {
@@ -457,10 +437,6 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
-    name: "user_ops"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "variant"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
@@ -475,14 +451,6 @@ tf_module {
   member_method {
     name: "Assert"
     argspec: "args=[\'condition\', \'data\', \'summarize\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "NoGradient"
-    argspec: "args=[\'op_type\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "NotDifferentiable"
-    argspec: "args=[\'op_type\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "abs"
@@ -501,20 +469,8 @@ tf_module {
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "add_check_numerics_ops"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "add_n"
     argspec: "args=[\'inputs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "add_to_collection"
-    argspec: "args=[\'name\', \'value\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "add_to_collections"
-    argspec: "args=[\'names\', \'value\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "arg_max"
@@ -526,11 +482,11 @@ tf_module {
   }
   member_method {
     name: "argmax"
-    argspec: "args=[\'input\', \'axis\', \'name\', \'dimension\', \'output_type\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \"<dtype: \'int64\'>\"], "
+    argspec: "args=[\'input\', \'axis\', \'output_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'int64\'>\", \'None\'], "
   }
   member_method {
     name: "argmin"
-    argspec: "args=[\'input\', \'axis\', \'name\', \'dimension\', \'output_type\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \"<dtype: \'int64\'>\"], "
+    argspec: "args=[\'input\', \'axis\', \'output_type\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'int64\'>\", \'None\'], "
   }
   member_method {
     name: "as_dtype"
@@ -598,7 +554,7 @@ tf_module {
   }
   member_method {
     name: "boolean_mask"
-    argspec: "args=[\'tensor\', \'mask\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'boolean_mask\', \'None\'], "
+    argspec: "args=[\'tensor\', \'mask\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'boolean_mask\'], "
   }
   member_method {
     name: "broadcast_dynamic_shape"
@@ -653,24 +609,12 @@ tf_module {
     argspec: "args=[\'value\', \'dtype\', \'shape\', \'name\', \'verify_shape\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'Const\', \'False\'], "
   }
   member_method {
-    name: "container"
-    argspec: "args=[\'container_name\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "control_dependencies"
     argspec: "args=[\'control_inputs\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "convert_to_tensor"
-    argspec: "args=[\'value\', \'dtype\', \'name\', \'preferred_dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "convert_to_tensor_or_indexed_slices"
-    argspec: "args=[\'value\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "convert_to_tensor_or_sparse_tensor"
-    argspec: "args=[\'value\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'value\', \'dtype\', \'dtype_hint\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "cos"
@@ -679,10 +623,6 @@ tf_module {
   member_method {
     name: "cosh"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "count_nonzero"
-    argspec: "args=[\'input_tensor\', \'axis\', \'keepdims\', \'dtype\', \'name\', \'reduction_indices\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \"<dtype: \'int64\'>\", \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "create_partitioned_variables"
@@ -698,11 +638,7 @@ tf_module {
   }
   member_method {
     name: "device"
-    argspec: "args=[\'device_name_or_function\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "div"
-    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'device_name\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "div_no_nan"
@@ -750,7 +686,7 @@ tf_module {
   }
   member_method {
     name: "expand_dims"
-    argspec: "args=[\'input\', \'axis\', \'name\', \'dim\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'input\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "extract_volume_patches"
@@ -759,14 +695,6 @@ tf_module {
   member_method {
     name: "eye"
     argspec: "args=[\'num_rows\', \'num_columns\', \'batch_shape\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \"<dtype: \'float32\'>\", \'None\'], "
-  }
-  member_method {
-    name: "fft2d"
-    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "fft3d"
-    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "fill"
@@ -797,24 +725,16 @@ tf_module {
     argspec: "args=[\'fn\', \'elems\', \'initializer\', \'parallel_iterations\', \'back_prop\', \'swap_memory\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'True\', \'False\', \'None\'], "
   }
   member_method {
+    name: "function"
+    argspec: "args=[\'func\', \'input_signature\', \'autograph\', \'experimental_autograph_options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\'], "
+  }
+  member_method {
     name: "gather"
     argspec: "args=[\'params\', \'indices\', \'validate_indices\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'0\'], "
   }
   member_method {
     name: "gather_nd"
     argspec: "args=[\'params\', \'indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "get_collection"
-    argspec: "args=[\'key\', \'scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "get_collection_ref"
-    argspec: "args=[\'key\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "get_default_graph"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "gradients"
@@ -857,24 +777,12 @@ tf_module {
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "ifft2d"
-    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "ifft3d"
-    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "import_graph_def"
     argspec: "args=[\'graph_def\', \'input_map\', \'return_elements\', \'name\', \'op_dict\', \'producer_op_list\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "init_scope"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "initialize_all_tables"
-    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'init_all_tables\'], "
   }
   member_method {
     name: "less"
@@ -929,14 +837,6 @@ tf_module {
     argspec: "args=[\'tensor\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "make_template"
-    argspec: "args=[\'name_\', \'func_\', \'create_scope_now_\', \'unique_name_\', \'custom_getter_\'], varargs=None, keywords=kwargs, defaults=[\'False\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "make_tensor_proto"
-    argspec: "args=[\'values\', \'dtype\', \'shape\', \'verify_shape\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
-  }
-  member_method {
     name: "map_fn"
     argspec: "args=[\'fn\', \'elems\', \'dtype\', \'parallel_iterations\', \'back_prop\', \'swap_memory\', \'infer_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'False\', \'True\', \'None\'], "
   }
@@ -981,6 +881,10 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "no_gradient"
+    argspec: "args=[\'op_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "no_op"
     argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1009,36 +913,12 @@ tf_module {
     argspec: "args=[\'tensor\', \'dtype\', \'name\', \'optimize\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\'], "
   }
   member_method {
-    name: "op_scope"
-    argspec: "args=[\'values\', \'name\', \'default_name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "pad"
-    argspec: "args=[\'tensor\', \'paddings\', \'mode\', \'name\', \'constant_values\'], varargs=None, keywords=None, defaults=[\'CONSTANT\', \'None\', \'0\'], "
+    argspec: "args=[\'tensor\', \'paddings\', \'mode\', \'constant_values\', \'name\'], varargs=None, keywords=None, defaults=[\'CONSTANT\', \'0\', \'None\'], "
   }
   member_method {
     name: "parallel_stack"
     argspec: "args=[\'values\', \'name\'], varargs=None, keywords=None, defaults=[\'parallel_stack\'], "
-  }
-  member_method {
-    name: "parse_example"
-    argspec: "args=[\'serialized\', \'features\', \'name\', \'example_names\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "parse_single_example"
-    argspec: "args=[\'serialized\', \'features\', \'name\', \'example_names\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "parse_single_sequence_example"
-    argspec: "args=[\'serialized\', \'context_features\', \'sequence_features\', \'example_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "placeholder"
-    argspec: "args=[\'dtype\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "placeholder_with_default"
-    argspec: "args=[\'input\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "pow"
@@ -1049,28 +929,12 @@ tf_module {
     argspec: "args=[], varargs=inputs, keywords=kwargs, defaults=None"
   }
   member_method {
-    name: "py_func"
-    argspec: "args=[\'func\', \'inp\', \'Tout\', \'stateful\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    name: "py_function"
+    argspec: "args=[\'func\', \'inp\', \'Tout\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "quantize_v2"
     argspec: "args=[\'input\', \'min_range\', \'max_range\', \'T\', \'mode\', \'name\', \'round_mode\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'None\', \'HALF_AWAY_FROM_ZERO\'], "
-  }
-  member_method {
-    name: "random_crop"
-    argspec: "args=[\'value\', \'size\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "random_normal"
-    argspec: "args=[\'shape\', \'mean\', \'stddev\', \'dtype\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \"<dtype: \'float32\'>\", \'None\', \'None\'], "
-  }
-  member_method {
-    name: "random_shuffle"
-    argspec: "args=[\'value\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-  member_method {
-    name: "random_uniform"
-    argspec: "args=[\'shape\', \'minval\', \'maxval\', \'dtype\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \"<dtype: \'float32\'>\", \'None\', \'None\'], "
   }
   member_method {
     name: "range"
@@ -1189,16 +1053,8 @@ tf_module {
     argspec: "args=[\'lengths\', \'maxlen\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'bool\'>\", \'None\'], "
   }
   member_method {
-    name: "serialize_tensor"
-    argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "set_random_seed"
     argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "setdiff1d"
-    argspec: "args=[\'x\', \'y\', \'index_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
   }
   member_method {
     name: "shape"
@@ -1239,30 +1095,6 @@ tf_module {
   member_method {
     name: "sparse_concat"
     argspec: "args=[\'axis\', \'sp_inputs\', \'name\', \'expand_nonconcat_dim\', \'concat_dim\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
-  }
-  member_method {
-    name: "sparse_matmul"
-    argspec: "args=[\'a\', \'b\', \'transpose_a\', \'transpose_b\', \'a_is_sparse\', \'b_is_sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'None\'], "
-  }
-  member_method {
-    name: "sparse_reduce_max"
-    argspec: "args=[\'sp_input\', \'axis\', \'keepdims\', \'reduction_axes\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "sparse_reduce_max_sparse"
-    argspec: "args=[\'sp_input\', \'axis\', \'keepdims\', \'reduction_axes\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "sparse_reduce_sum"
-    argspec: "args=[\'sp_input\', \'axis\', \'keepdims\', \'reduction_axes\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "sparse_reduce_sum_sparse"
-    argspec: "args=[\'sp_input\', \'axis\', \'keepdims\', \'reduction_axes\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "sparse_split"
-    argspec: "args=[\'keyword_required\', \'sp_input\', \'num_split\', \'axis\', \'name\', \'split_dim\'], varargs=None, keywords=None, defaults=[\'KeywordRequired()\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "sparse_to_dense"
@@ -1309,10 +1141,6 @@ tf_module {
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "tables_initializer"
-    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'init_all_tables\'], "
-  }
-  member_method {
     name: "tan"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1331,34 +1159,6 @@ tf_module {
   member_method {
     name: "timestamp"
     argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "to_bfloat16"
-    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToBFloat16\'], "
-  }
-  member_method {
-    name: "to_complex128"
-    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToComplex128\'], "
-  }
-  member_method {
-    name: "to_complex64"
-    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToComplex64\'], "
-  }
-  member_method {
-    name: "to_double"
-    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToDouble\'], "
-  }
-  member_method {
-    name: "to_float"
-    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToFloat\'], "
-  }
-  member_method {
-    name: "to_int32"
-    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToInt32\'], "
-  }
-  member_method {
-    name: "to_int64"
-    argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'ToInt64\'], "
   }
   member_method {
     name: "transpose"

@@ -113,5 +113,117 @@ IrArray::Index GetUnreducedOutputIndex(
   return IrArray::Index(linear_index, unreduced_output_shape, b);
 }
 
+KernelMappingScheme::KernelMappingScheme(
+    absl::Span<const int64> dims_in_elems, int64 tile_size_y, int64 tile_size_x,
+    absl::Span<const int64> req_block_sizes, int64 num_threads_y,
+    int64 num_threads_x, llvm::IRBuilder<>* b)
+    : b_(b),
+      dims_in_elems_(dims_in_elems),
+      tile_sizes_{1, tile_size_y, tile_size_x},
+      num_threads_x_(num_threads_x),
+      num_threads_y_(num_threads_y) {
+  DCHECK_EQ(dims_in_elems_.size(), 3);
+  DCHECK_EQ(req_block_sizes.size(), 3);
+
+  DCHECK_EQ(tile_size_y % num_threads_y_, 0);
+  DCHECK_EQ(tile_size_x % num_threads_x_, 0);
+
+  dims_in_tiles_ = ElementWiseCeilOfRatio<int64>(dims_in_elems_, tile_sizes_);
+  block_sizes_.reserve(req_block_sizes.size());
+  absl::c_transform(req_block_sizes, dims_in_tiles_,
+                    std::back_inserter(block_sizes_),
+                    [](const int64 requested_size, const int64 max_size) {
+                      return std::min(requested_size, max_size);
+                    });
+  dims_in_blocks_ = ElementWiseCeilOfRatio<int64>(dims_in_tiles_, block_sizes_);
+
+  VLOG(10) << "dims_in_elems_ = [" << absl::StrJoin(dims_in_elems_, ",") << "]";
+  VLOG(10) << "dims_in_tiles_ = [" << absl::StrJoin(dims_in_tiles_, ",") << "]";
+  VLOG(10) << "dims_in_blocks_ = [" << absl::StrJoin(dims_in_blocks_, ",")
+           << "]";
+}
+
+IrArray::Index KernelMappingScheme::GetReshapedOutputIndex(
+    const IrArray::Index& output_index, const Shape& reshaped_output_shape) {
+  DCHECK_EQ(output_index.size(), dims_in_elems_.size());
+  Shape output_shape = ShapeUtil::MakeShapeWithDescendingLayout(
+      reshaped_output_shape.element_type(), GetDimensionsInElements());
+  return llvm_ir::GetUnreducedOutputIndex(output_index, output_shape,
+                                          reshaped_output_shape, b_);
+}
+
+IrArray::Index KernelMappingScheme::EmitBlockIndex(llvm::Type* index_ty) {
+  llvm::Value* block_id = llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x, {}, {}, b_);
+  llvm_ir::AddRangeMetadata(0, GetNumberOfBlocks(),
+                            llvm::cast<llvm::Instruction>(block_id));
+  llvm::Value* linear_block_id =
+      b_->CreateIntCast(block_id, index_ty, /*isSigned=*/true, "block.id.x");
+  return IrArray::Index(linear_block_id,
+                        ShapeUtil::MakeShapeWithDescendingLayout(
+                            PRED /*arbitrary*/, dims_in_blocks_),
+                        b_);
+}
+
+IrArray::Index KernelMappingScheme::GetTileIndexForBlockOrigin(
+    const IrArray::Index& block_index) {
+  IrArray::Index tile_index = block_index;
+  for (int i = 0; i < block_sizes_.size(); ++i) {
+    tile_index[i] = b_->CreateMul(
+        block_index[i],
+        llvm::ConstantInt::get(block_index[i]->getType(), block_sizes_[i]),
+        "block_origin." + std::to_string(i));
+  }
+  return tile_index;
+}
+
+IrArray::Index KernelMappingScheme::GetElementIndexForTileOrigin(
+    const IrArray::Index& tile_index) {
+  IrArray::Index elem_index = tile_index;
+  for (int i = DimY; i < DimTot; ++i) {
+    elem_index[i] =
+        b_->CreateMul(tile_index[i],
+                      llvm::ConstantInt::get(tile_index[i]->getType(),
+                                             GetTileSizeForDimension(i)),
+                      "tile_origin." + std::to_string(i));
+  }
+  return elem_index;
+}
+
+llvm::GlobalVariable* KernelMappingScheme::GetSharedMemoryBufferForElementType(
+    llvm::Type* elem_ty, absl::string_view buffer_name) {
+  // If shared memory tranpose is needed, we use square tiles.
+  CHECK_EQ(GetTileSizeForDimensionX(), GetTileSizeForDimensionY());
+
+  // For Nvidia GPUs, the warp size is 32 threads and the shared memory bank is
+  // organized into 32-way. We usually use the warp size or a multiplier or a
+  // the warp size as the size for tiling. This may cause all elements in the
+  // same column of a tile use the same memory bank and therefore shared memory
+  // bank conflicts. Adding 1 to the minor dimension of the shared memory buffer
+  // can reduce such shared memory bank conflicts.
+  llvm::Type* buffer_type = llvm::ArrayType::get(
+      llvm::ArrayType::get(elem_ty, GetTileSizeForDimension(DimX) + 1),
+      GetTileSizeForDimension(DimY));
+  return llvm_ir::AllocateSharedMemoryTile(b_->GetInsertBlock()->getModule(),
+                                           buffer_type, buffer_name);
+}
+
+std::tuple<llvm::Value*, llvm::Value*>
+KernelMappingScheme::EmitThreadYXCoordinate(llvm::Type* index_ty) {
+  // Calculate (y, x) coordinate of the thread in the 2D view of thread block
+  // defined by (num_thread_y, num_thread_x) from thread_id.
+  llvm::CallInst* thread_id_raw = llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x, {}, {}, b_);
+  llvm_ir::AddRangeMetadata(0, GetThreadsPerTile(), thread_id_raw);
+  llvm::Value* thread_id_int =
+      b_->CreateIntCast(thread_id_raw, index_ty,
+                        /*isSigned=*/true, "thread.id.x");
+  llvm::Value* num_thread_x =
+      llvm::ConstantInt::get(index_ty, GetNumberOfThreadsForDimensionX());
+  llvm::Value* x = b_->CreateURem(thread_id_int, num_thread_x);
+  llvm::Value* y = b_->CreateUDiv(thread_id_int, num_thread_x);
+  return std::make_tuple(y, x);
+}
+
 }  // namespace llvm_ir
 }  // namespace xla

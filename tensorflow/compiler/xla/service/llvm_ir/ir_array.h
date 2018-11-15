@@ -108,6 +108,14 @@ class IrArray {
     Index(absl::Span<llvm::Value* const> multidim, llvm::Value* linear,
           const Shape& shape);
 
+    // Returns an index that adds `addend` to the given `dim` of the object.
+    Index AddOffsetToDim(llvm::Value* addend, int64 dim,
+                         llvm::IRBuilder<>* b) const {
+      IrArray::Index index = *this;
+      index[dim] = b->CreateAdd(index[dim], addend);
+      return index;
+    }
+
     const std::vector<llvm::Value*>& multidim() const { return multidim_; }
     llvm::Value* linear() const { return linear_; }
 
