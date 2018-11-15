@@ -901,7 +901,13 @@ def make_reduce_tests(reduce_op,
     }, {
         "input_dtype": [tf.float32],
         "input_shape": [[], [1, 8, 8, 3], [3, 2, 4]],
-        "axis": [None],
+        "axis": [[]],   # shape is: [0]
+        "const_axis": [False],
+        "keepdims": [True, False],
+    }, {
+        "input_dtype": [tf.float32],
+        "input_shape": [[], [1, 8, 8, 3], [3, 2, 4]],
+        "axis": [None],  # shape is: []
         "const_axis": [True],
         "keepdims": [True, False],
     }]
