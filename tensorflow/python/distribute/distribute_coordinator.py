@@ -262,6 +262,10 @@ class _WorkerContext(object):
           max_wait_secs=max_wait_secs)
 
   @property
+  def session_config(self):
+    return copy.deepcopy(self._session_config)
+
+  @property
   def has_barrier(self):
     """Whether the barrier is set or not."""
     return self._worker_barrier is not None
@@ -300,6 +304,11 @@ class _WorkerContext(object):
   def num_workers(self):
     """Returns number of workers in the cluster, including chief."""
     return self._num_workers
+
+  @property
+  def should_init(self):
+    """Whether to run init ops."""
+    return self._strategy.should_init
 
   @property
   def should_checkpoint(self):

@@ -25,6 +25,7 @@ import collections
 import itertools
 import json
 import os
+import threading
 import weakref
 
 import numpy as np
@@ -73,9 +74,9 @@ py_sum = sum
 # while executing eagerly (such as the functional API for model-building).
 _GRAPH = None
 
-# This is the default internal TF session used by Keras.
-# It can be set manually via `set_session(sess)`.
-_SESSION = None
+# This is a thread local object that will hold the default internal TF session
+# used by Keras. It can be set manually via `set_session(sess)`.
+_SESSION = threading.local()
 
 # This dictionary holds a mapping {graph: learning_phase}.
 # A learning phase is a bool tensor used to run Keras models in
@@ -337,7 +338,7 @@ def clear_session():
   global _GRAPH_TF_OPTIMIZERS  # pylint: disable=global-variable-not-assigned
   ops.reset_default_graph()
   reset_uids()
-  _SESSION = None
+  _SESSION.session = None
   graph = get_graph()
   with graph.as_default():
     phase = array_ops.placeholder_with_default(
@@ -444,6 +445,20 @@ def learning_phase_scope(value):
         _GRAPH_LEARNING_PHASES[get_graph()] = previous_value
 
 
+def _get_session():
+  """Returns the session object for the current thread."""
+  global _SESSION
+  default_session = ops.get_default_session()
+  if default_session is not None:
+    session = default_session
+  else:
+    if getattr(_SESSION, 'session', None) is None:
+      _SESSION.session = session_module.Session(
+          config=get_default_session_config())
+    session = _SESSION.session
+  return session
+
+
 @tf_export(v1=['keras.backend.get_session'])
 def get_session():
   """Returns the TF session to be used by the backend.
@@ -461,14 +476,7 @@ def get_session():
   Returns:
       A TensorFlow session.
   """
-  global _SESSION
-  default_session = ops.get_default_session()
-  if default_session is not None:
-    session = default_session
-  else:
-    if _SESSION is None:
-      _SESSION = session_module.Session(config=get_default_session_config())
-    session = _SESSION
+  session = _get_session()
   if not _MANUAL_VAR_INIT:
     with session.graph.as_default():
       _initialize_variables(session)
@@ -493,7 +501,7 @@ def set_session(session):
       session: A TF Session.
   """
   global _SESSION
-  _SESSION = session
+  _SESSION.session = session
 
 
 def get_default_session_config():
