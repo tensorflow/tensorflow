@@ -823,10 +823,6 @@ class MirroredReplicaContext(distribute_lib.ReplicaContext):
     return t.merge_result
 
   @property
-  def device(self):
-    raise RuntimeError("Use .devices instead")
-
-  @property
   def devices(self):
     distribute_lib.require_replica_context(self)
     ds = self._distribution_strategy
