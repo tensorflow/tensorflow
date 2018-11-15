@@ -43,6 +43,11 @@ TENSORFLOW_API_INIT_FILES_V2 = (
     TENSORFLOW_API_INIT_FILES + get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
 )
 
+# @unused
+TENSORFLOW_API_INIT_FILES_V1_WITH_COMPAT = (
+    TENSORFLOW_API_INIT_FILES_V1 + get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
+)
+
 # Config setting used when building for products
 # which requires restricted licenses to be avoided.
 config_setting(
@@ -561,10 +566,15 @@ genrule(
 
 gen_api_init_files(
     name = "tf_python_api_gen_v1",
-    srcs = ["api_template_v1.__init__.py"],
+    srcs = [
+        "api_template_v1.__init__.py",
+        "compat_template_v1.__init__.py",
+    ],
     api_version = 1,
+    compat_api_versions = [1],
+    compat_init_templates = ["compat_template_v1.__init__.py"],
     output_dir = "_api/v1/",
-    output_files = TENSORFLOW_API_INIT_FILES_V1,
+    output_files = TENSORFLOW_API_INIT_FILES_V1_WITH_COMPAT,
     output_package = "tensorflow._api.v1",
     root_file_name = "v1.py",
     root_init_template = "api_template_v1.__init__.py",
