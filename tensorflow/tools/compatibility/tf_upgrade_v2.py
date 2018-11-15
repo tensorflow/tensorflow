@@ -116,16 +116,36 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
     self.function_warnings = {
-        "tf.train.exponential_decay": decay_function_comment,
-        "tf.train.piecewise_constant": decay_function_comment,
-        "tf.train.polynomial_decay": decay_function_comment,
-        "tf.train.natural_exp_decay": decay_function_comment,
-        "tf.train.inverse_time_decay": decay_function_comment,
-        "tf.train.cosine_decay": decay_function_comment,
-        "tf.train.cosine_decay_restarts": decay_function_comment,
-        "tf.train.linear_cosine_decay": decay_function_comment,
-        "tf.train.noisy_linear_cosine_decay": decay_function_comment,
-        "tf.estimator.LinearClassifier": default_loss_reduction_changed,
+        "tf.train.exponential_decay":
+            decay_function_comment,
+        "tf.train.piecewise_constant":
+            decay_function_comment,
+        "tf.train.polynomial_decay":
+            decay_function_comment,
+        "tf.train.natural_exp_decay":
+            decay_function_comment,
+        "tf.train.inverse_time_decay":
+            decay_function_comment,
+        "tf.train.cosine_decay":
+            decay_function_comment,
+        "tf.train.cosine_decay_restarts":
+            decay_function_comment,
+        "tf.train.linear_cosine_decay":
+            decay_function_comment,
+        "tf.train.noisy_linear_cosine_decay":
+            decay_function_comment,
+        "tf.estimator.LinearClassifier":
+            default_loss_reduction_changed,
+        "tf.estimator.LinearRegressor":
+            default_loss_reduction_changed,
+        "tf.estimator.DNNLinearCombinedClassifier":
+            default_loss_reduction_changed,
+        "tf.estimator.DNNLinearCombinedRegressor":
+            default_loss_reduction_changed,
+        "tf.estimator.DNNRegressor":
+            default_loss_reduction_changed,
+        "tf.estimator.DNNClassifier":
+            default_loss_reduction_changed,
     }
     # Right now we can't have both a rename and a warning.
     self.symbol_renames = {

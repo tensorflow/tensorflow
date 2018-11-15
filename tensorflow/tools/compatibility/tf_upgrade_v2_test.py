@@ -102,13 +102,18 @@ class TestUpgrade(test_util.TensorFlowTestCase):
       self.assertEqual(errors, ["test.py:1: %s requires manual check." % decay])
       self.assertIn("%s has been changed" % decay, report)
 
-  def testEstimatorLossReductionChangege(self):
-    text = "tf.estimator.LinearClassifier(a, b)\n"
-    _, report, errors, new_text = self._upgrade(text)
-    self.assertEqual(text, new_text)
-    self.assertEqual(errors, ["test.py:1: %s requires manual check."
-                              % "tf.estimator.LinearClassifier"])
-    self.assertIn("loss_reduction has been changed", report)
+  def testEstimatorLossReductionChange(self):
+    classes = [
+        "LinearClassifier", "LinearRegressor", "DNNLinearCombinedClassifier",
+        "DNNLinearCombinedRegressor", "DNNRegressor", "DNNClassifier"
+    ]
+    for c in classes:
+      ns = "tf.estimator." + c
+      text = ns + "(a, b)"
+      _, report, errors, new_text = self._upgrade(text)
+      self.assertEqual(text, new_text)
+      self.assertEqual(errors, ["test.py:1: %s requires manual check." % ns])
+      self.assertIn("loss_reduction has been changed", report)
 
   def testCountNonZeroChanges(self):
     text = (
