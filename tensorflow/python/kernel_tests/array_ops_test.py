@@ -48,23 +48,24 @@ from tensorflow.python.platform import test as test_lib
 
 class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_in_graph_and_eager_modes
   def testNonBatchMatrix(self):
     matrix = [[1, 2, 3], [4, 5, 6]]  # Shape (2, 3)
     expected_transposed = [[1, 4], [2, 5], [3, 6]]  # Shape (3, 2)
-    with self.cached_session():
-      transposed = array_ops.matrix_transpose(matrix)
-      self.assertEqual((3, 2), transposed.get_shape())
-      self.assertAllEqual(expected_transposed, transposed.eval())
+    transposed = array_ops.matrix_transpose(matrix)
+    self.assertEqual((3, 2), transposed.get_shape())
+    self.assertAllEqual(expected_transposed, transposed)
 
+  @test_util.run_in_graph_and_eager_modes
   def testConjugate(self):
     m = [[1 + 1j, 2 + 2j, 3 + 3j], [4 + 4j, 5 + 5j, 6 + 6j]]
     expected_transposed = [[1 - 1j, 4 - 4j], [2 - 2j, 5 - 5j], [3 - 3j, 6 - 6j]]
-    with self.cached_session():
-      matrix = ops.convert_to_tensor(m)
-      transposed = array_ops.matrix_transpose(matrix, conjugate=True)
-      self.assertEqual((3, 2), transposed.get_shape())
-      self.assertAllEqual(expected_transposed, transposed.eval())
+    matrix = ops.convert_to_tensor(m)
+    transposed = array_ops.matrix_transpose(matrix, conjugate=True)
+    self.assertEqual((3, 2), transposed.get_shape())
+    self.assertAllEqual(expected_transposed, transposed)
 
+  @test_util.run_in_graph_and_eager_modes
   def testBatchMatrix(self):
     matrix_0 = [[1, 2, 3], [4, 5, 6]]
     matrix_0_t = [[1, 4], [2, 5], [3, 6]]
@@ -72,10 +73,9 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
     matrix_1_t = [[11, 44], [22, 55], [33, 66]]
     batch_matrix = [matrix_0, matrix_1]  # Shape (2, 2, 3)
     expected_transposed = [matrix_0_t, matrix_1_t]  # Shape (2, 3, 2)
-    with self.cached_session():
-      transposed = array_ops.matrix_transpose(batch_matrix)
-      self.assertEqual((2, 3, 2), transposed.get_shape())
-      self.assertAllEqual(expected_transposed, transposed.eval())
+    transposed = array_ops.matrix_transpose(batch_matrix)
+    self.assertEqual((2, 3, 2), transposed.get_shape())
+    self.assertAllEqual(expected_transposed, transposed)
 
   def testNonBatchMatrixDynamicallyDefined(self):
     matrix = [[1, 2, 3], [4, 5, 6]]  # Shape (2, 3)
@@ -104,11 +104,11 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
               batch_matrix_ph: batch_matrix
           }))
 
+  @test_util.run_in_graph_and_eager_modes
   def testTensorWithStaticRankLessThanTwoRaisesBecauseNotAMatrix(self):
     vector = [1, 2, 3]
-    with self.cached_session():
-      with self.assertRaisesRegexp(ValueError, "should be a "):
-        array_ops.matrix_transpose(vector)
+    with self.assertRaisesRegexp(ValueError, "should be a "):
+      array_ops.matrix_transpose(vector)
 
 
 class BooleanMaskTest(test_util.TensorFlowTestCase):
