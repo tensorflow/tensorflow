@@ -814,7 +814,7 @@ class DistributionStrategy(object):
     """Run `fn` once per replica.
 
     `fn` may call `tf.get_replica_context()` to access methods such as
-    `replica_id()` and `merge_call()`.
+    `replica_id_in_sync_group` and `merge_call()`.
 
     `merge_call()` is used to communicate between the replicas and
     re-enter the cross-replica context. All replicas pause their execution
@@ -832,7 +832,7 @@ class DistributionStrategy(object):
     # Called once per replica in `distribution`, in a "replica" context.
     def fn(three):
       replica_ctx = tf.get_replica_context()
-      v = three + replica_ctx.replica_id
+      v = three + replica_ctx.replica_id_in_sync_group
       # Computes the sum of the `v` values across all replicas.
       s = replica_ctx.merge_call(merge_fn, args=(v,))
       return s + v
@@ -1182,11 +1182,11 @@ class DistributionStrategy(object):
 class ReplicaContext(object):
   """DistributionStrategy API inside a `call_for_each_replica()` call."""
 
-  def __init__(self, distribution_strategy, replica_id):
+  def __init__(self, distribution_strategy, replica_id_in_sync_group):
     self._distribution_strategy = distribution_strategy
     self._thread_context = distribution_strategy_context._InReplicaThreadMode(  # pylint: disable=protected-access
         self)
-    self._replica_id = replica_id
+    self._replica_id_in_sync_group = replica_id_in_sync_group
 
   def __enter__(self):
     _push_per_thread_mode(self._thread_context)
@@ -1255,10 +1255,10 @@ class ReplicaContext(object):
     return self._distribution_strategy.num_replicas_in_sync
 
   @property
-  def replica_id(self):
+  def replica_id_in_sync_group(self):
     """Which replica is being defined, a number from 0 to `num_replicas - 1`."""
     require_replica_context(self)
-    return self._replica_id
+    return self._replica_id_in_sync_group
 
   @property
   def distribution_strategy(self):
@@ -1327,7 +1327,7 @@ class _DefaultDistributionStrategy(DistributionStrategy):
       raise NotImplementedError("TODO")
 
   def _call_for_each_replica(self, fn, args, kwargs):
-    with ReplicaContext(self, replica_id=0):
+    with ReplicaContext(self, replica_id_in_sync_group=0):
       return fn(*args, **kwargs)
 
   def _reduce(self, reduce_op, value, destinations):

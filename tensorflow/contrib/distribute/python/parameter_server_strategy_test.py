@@ -44,7 +44,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import device_util
-from tensorflow.python.training import distribution_strategy_context
+from tensorflow.python.training import distribution_strategy_context as ds_context
 from tensorflow.python.training import training_util
 
 CHIEF = run_config.TaskType.CHIEF
@@ -98,7 +98,7 @@ class ParameterServerStrategyTestBase(
         else:
           last_part_device = (
               'device:GPU:%d' %
-              distribution_strategy_context.get_replica_context().replica_id)
+              ds_context.get_replica_context().replica_id_in_sync_group)
 
         a = constant_op.constant(1.0)
         b = constant_op.constant(2.0)
@@ -265,7 +265,7 @@ class ParameterServerStrategyTestBase(
         else:
           replica_compute_device = (
               '/device:GPU:%d' %
-              distribution_strategy_context.get_replica_context().replica_id)
+              ds_context.get_replica_context().replica_id_in_sync_group)
         replica_compute_device = device_util.canonicalize(
             replica_compute_device)
 
@@ -274,7 +274,7 @@ class ParameterServerStrategyTestBase(
         else:
           replica_variable_device = (
               '/device:GPU:%d' %
-              distribution_strategy_context.get_replica_context().replica_id)
+              ds_context.get_replica_context().replica_id_in_sync_group)
         replica_variable_device = device_util.canonicalize(
             replica_variable_device)
 

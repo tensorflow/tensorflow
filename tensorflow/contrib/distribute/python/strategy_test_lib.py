@@ -29,7 +29,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.training import distribution_strategy_context
+from tensorflow.python.training import distribution_strategy_context as ds_context
 from tensorflow.python.training import optimizer
 
 
@@ -46,8 +46,7 @@ def _raise_exception_fn(_=None):
 # Must be the argument to a distribution.call_for_each_replica() call, calls a
 # get_replica_context().merge_call() that raises an exception.
 def _merge_raises_fn():
-  distribution_strategy_context.get_replica_context().merge_call(
-      _raise_exception_fn)
+  ds_context.get_replica_context().merge_call(_raise_exception_fn)
 
 
 # Must be the argument to a get_replica_context().merge_call() call, calls
@@ -60,8 +59,7 @@ def _call_raises_fn(dist):
 # calls a get_replica_context().merge_call() that calls a
 # call_for_each_replica() that raises an exception.
 def _merge_call_raises_fn():
-  distribution_strategy_context.get_replica_context().merge_call(
-      _call_raises_fn)
+  ds_context.get_replica_context().merge_call(_call_raises_fn)
 
 
 # Must be the argument to a get_replica_context().merge_call() call, calls
@@ -75,8 +73,7 @@ def _call_merge_raises_fn(dist):
 # get_replica_context().merge_call() that calls a call_for_each_replica() that
 # calls a get_replica_context().merge_call() that raises an exception.
 def _merge_call_merge_raises_fn():
-  distribution_strategy_context.get_replica_context().merge_call(
-      _call_merge_raises_fn)
+  ds_context.get_replica_context().merge_call(_call_merge_raises_fn)
 
 
 class DistributionTestBase(test.TestCase):
@@ -193,8 +190,7 @@ class DistributionTestBase(test.TestCase):
       expected_devices = [False] * len(d.worker_devices)
 
       def mark_devices_fn():
-        replica_id = (
-            distribution_strategy_context.get_replica_context().replica_id)
+        replica_id = ds_context.get_replica_context().replica_id_in_sync_group
         self.assertLess(replica_id, len(d.worker_devices))
         self.assertFalse(expected_devices[replica_id])
         expected_devices[replica_id] = True

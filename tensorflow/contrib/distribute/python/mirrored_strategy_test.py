@@ -26,7 +26,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.training import distribution_strategy_context
+from tensorflow.python.training import distribution_strategy_context as ds_context
 
 
 class MirroredOneCPUDistributionTest(strategy_test_lib.DistributionTestBase):
@@ -87,8 +87,7 @@ class VariableCreatorStackTest(test.TestCase):
         v = variable_scope.variable(1.0)
 
         # This will pause the current thread, and execute the other thread.
-        distribution_strategy_context.get_replica_context().merge_call(
-            lambda _: _)
+        ds_context.get_replica_context().merge_call(lambda _: _)
       return v
 
     def main_thread_creator(next_creator, *args, **kwargs):
@@ -106,9 +105,9 @@ class VariableCreatorStackTest(test.TestCase):
 
 
 def _replica_id():
-  # TODO(cjfj): Return `replica_id` directly, once it is a `Tensor`.
+  # TODO(cjfj): Return `replica_id_...` directly, once it is a `Tensor`.
   return constant_op.constant(
-      distribution_strategy_context.get_replica_context().replica_id)
+      ds_context.get_replica_context().replica_id_in_sync_group)
 
 
 class MultiWorkerMirroredStrategyTest(test.TestCase):

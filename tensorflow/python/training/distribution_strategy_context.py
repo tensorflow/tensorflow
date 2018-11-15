@@ -196,7 +196,7 @@ def _get_default_distribution_strategy():
 def _get_default_replica_context():
   if _defaults["replica_context"] is None:
     _defaults["replica_context"] = distribute_lib.ReplicaContext(
-        _get_default_distribution_strategy(), replica_id=0)
+        _get_default_distribution_strategy(), replica_id_in_sync_group=0)
   return _defaults["replica_context"]
 
 
