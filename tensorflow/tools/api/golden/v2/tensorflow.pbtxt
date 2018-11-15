@@ -389,10 +389,6 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
-    name: "spectral"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "string"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }

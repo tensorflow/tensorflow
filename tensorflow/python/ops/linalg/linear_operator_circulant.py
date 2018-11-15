@@ -30,6 +30,7 @@ from tensorflow.python.ops.distributions import util as distribution_util
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_util
+from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = [
@@ -39,8 +40,8 @@ __all__ = [
 ]
 
 # Different FFT Ops will be used for different block depths.
-_FFT_OP = {1: math_ops.fft, 2: math_ops.fft2d, 3: math_ops.fft3d}
-_IFFT_OP = {1: math_ops.ifft, 2: math_ops.ifft2d, 3: math_ops.ifft3d}
+_FFT_OP = {1: fft_ops.fft, 2: fft_ops.fft2d, 3: fft_ops.fft3d}
+_IFFT_OP = {1: fft_ops.ifft, 2: fft_ops.ifft2d, 3: fft_ops.ifft3d}
 
 # This is the only dtype allowed with fft ops.
 # TODO(langmore) Add other types once available.

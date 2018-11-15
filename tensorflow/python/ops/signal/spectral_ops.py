@@ -25,7 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import spectral_ops
+from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.ops.signal import reconstruction_ops
 from tensorflow.python.ops.signal import shape_ops
 from tensorflow.python.ops.signal import window_ops
@@ -86,9 +86,9 @@ def stft(signals, frame_length, frame_step, fft_length=None,
       window = window_fn(frame_length, dtype=framed_signals.dtype)
       framed_signals *= window
 
-    # spectral_ops.rfft produces the (fft_length/2 + 1) unique components of the
+    # fft_ops.rfft produces the (fft_length/2 + 1) unique components of the
     # FFT of the real windowed signals in framed_signals.
-    return spectral_ops.rfft(framed_signals, [fft_length])
+    return fft_ops.rfft(framed_signals, [fft_length])
 
 
 @tf_export('signal.inverse_stft_window_fn')
@@ -232,7 +232,7 @@ def inverse_stft(stfts,
       fft_length = ops.convert_to_tensor(fft_length, name='fft_length')
       fft_length.shape.assert_has_rank(0)
 
-    real_frames = spectral_ops.irfft(stfts, [fft_length])
+    real_frames = fft_ops.irfft(stfts, [fft_length])
 
     # frame_length may be larger or smaller than fft_length, so we pad or
     # truncate real_frames to frame_length.

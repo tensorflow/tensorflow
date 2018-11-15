@@ -29,8 +29,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_spectral_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import spectral_ops
 from tensorflow.python.ops import spectral_ops_test_util
+from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.platform import test
 
 VALID_FFT_RANKS = (1, 2, 3)
@@ -139,21 +139,21 @@ class FFTOpsTest(BaseFFTOpsTest):
 
   def _tfFFTForRank(self, rank):
     if rank == 1:
-      return spectral_ops.fft
+      return fft_ops.fft
     elif rank == 2:
-      return spectral_ops.fft2d
+      return fft_ops.fft2d
     elif rank == 3:
-      return spectral_ops.fft3d
+      return fft_ops.fft3d
     else:
       raise ValueError("invalid rank")
 
   def _tfIFFTForRank(self, rank):
     if rank == 1:
-      return spectral_ops.ifft
+      return fft_ops.ifft
     elif rank == 2:
-      return spectral_ops.ifft2d
+      return fft_ops.ifft2d
     elif rank == 3:
-      return spectral_ops.ifft3d
+      return fft_ops.ifft3d
     else:
       raise ValueError("invalid rank")
 
@@ -312,21 +312,21 @@ class RFFTOpsTest(BaseFFTOpsTest):
 
   def _tfFFTForRank(self, rank):
     if rank == 1:
-      return spectral_ops.rfft
+      return fft_ops.rfft
     elif rank == 2:
-      return spectral_ops.rfft2d
+      return fft_ops.rfft2d
     elif rank == 3:
-      return spectral_ops.rfft3d
+      return fft_ops.rfft3d
     else:
       raise ValueError("invalid rank")
 
   def _tfIFFTForRank(self, rank):
     if rank == 1:
-      return spectral_ops.irfft
+      return fft_ops.irfft
     elif rank == 2:
-      return spectral_ops.irfft2d
+      return fft_ops.irfft2d
     elif rank == 3:
-      return spectral_ops.irfft3d
+      return fft_ops.irfft3d
     else:
       raise ValueError("invalid rank")
 

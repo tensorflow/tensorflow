@@ -474,7 +474,6 @@ tf_xla_py_test(
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
-        "//tensorflow/python:spectral_ops",
         "//tensorflow/python/ops/signal",
     ],
 )

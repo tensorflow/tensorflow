@@ -12,16 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Spectral operators (e.g. DCT, FFT, RFFT)."""
+"""Fast-Fourier Transform ops."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math as _math
+import numpy as np
 
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util as _tensor_util
 from tensorflow.python.ops import array_ops as _array_ops
 from tensorflow.python.ops import gen_spectral_ops
@@ -112,6 +111,7 @@ def _rfft_wrapper(fft_fn, fft_rank, default_name):
   """Wrapper around gen_spectral_ops.rfft* that infers fft_length argument."""
 
   def _rfft(input_tensor, fft_length=None, name=None):
+    """Wrapper around gen_spectral_ops.rfft* that infers fft_length argument."""
     with _ops.name_scope(name, default_name,
                          [input_tensor, fft_length]) as name:
       input_tensor = _ops.convert_to_tensor(input_tensor, _dtypes.float32)
@@ -130,6 +130,7 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
   """Wrapper around gen_spectral_ops.irfft* that infers fft_length argument."""
 
   def _irfft(input_tensor, fft_length=None, name=None):
+    """Wrapper irfft* that infers fft_length argument."""
     with _ops.name_scope(name, default_name,
                          [input_tensor, fft_length]) as name:
       input_tensor = _ops.convert_to_tensor(input_tensor, _dtypes.complex64)
@@ -145,6 +146,8 @@ def _irfft_wrapper(ifft_fn, fft_rank, default_name):
   return _irfft
 
 
+# FFT/IFFT 1/2/3D are exported via
+# third_party/tensorflow/core/api_def/python_api/
 fft = gen_spectral_ops.fft
 ifft = gen_spectral_ops.ifft
 fft2d = gen_spectral_ops.fft2d
@@ -152,177 +155,176 @@ ifft2d = gen_spectral_ops.ifft2d
 fft3d = gen_spectral_ops.fft3d
 ifft3d = gen_spectral_ops.ifft3d
 rfft = _rfft_wrapper(gen_spectral_ops.rfft, 1, "rfft")
-tf_export("spectral.rfft")(rfft)
+tf_export("signal.rfft", v1=["signal.rfft", "spectral.rfft"])(rfft)
 irfft = _irfft_wrapper(gen_spectral_ops.irfft, 1, "irfft")
-tf_export("spectral.irfft")(irfft)
+tf_export("signal.irfft", v1=["signal.irfft", "spectral.irfft"])(irfft)
 rfft2d = _rfft_wrapper(gen_spectral_ops.rfft2d, 2, "rfft2d")
-tf_export("spectral.rfft2d")(rfft2d)
+tf_export("signal.rfft2d", v1=["signal.rfft2d", "spectral.rfft2d"])(rfft2d)
 irfft2d = _irfft_wrapper(gen_spectral_ops.irfft2d, 2, "irfft2d")
-tf_export("spectral.irfft2d")(irfft2d)
+tf_export("signal.irfft2d", v1=["signal.irfft2d", "spectral.irfft2d"])(irfft2d)
 rfft3d = _rfft_wrapper(gen_spectral_ops.rfft3d, 3, "rfft3d")
-tf_export("spectral.rfft3d")(rfft3d)
+tf_export("signal.rfft3d", v1=["signal.rfft3d", "spectral.rfft3d"])(rfft3d)
 irfft3d = _irfft_wrapper(gen_spectral_ops.irfft3d, 3, "irfft3d")
-tf_export("spectral.irfft3d")(irfft3d)
+tf_export("signal.irfft3d", v1=["signal.irfft3d", "spectral.irfft3d"])(irfft3d)
 
 
-def _validate_dct_arguments(input_tensor, dct_type, n, axis, norm):
-  """Checks that DCT/IDCT arguments are compatible and well formed."""
-  if n is not None:
-    raise NotImplementedError("The DCT length argument is not implemented.")
-  if axis != -1:
-    raise NotImplementedError("axis must be -1. Got: %s" % axis)
-  if dct_type not in (1, 2, 3):
-    raise ValueError("Only Types I, II and III (I)DCT are supported.")
-  if dct_type == 1:
-    if norm == "ortho":
-      raise ValueError("Normalization is not supported for the Type-I DCT.")
-    if input_tensor.shape[-1] is not None and input_tensor.shape[-1] < 2:
-      raise ValueError(
-          "Type-I DCT requires the dimension to be greater than one.")
-
-  if norm not in (None, "ortho"):
-    raise ValueError(
-        "Unknown normalization. Expected None or 'ortho', got: %s" % norm)
+def _fft_size_for_grad(grad, rank):
+  return _math_ops.reduce_prod(_array_ops.shape(grad)[-rank:])
 
 
-# TODO(rjryan): Implement `n` and `axis` parameters.
-@tf_export("spectral.dct")
-def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disable=redefined-builtin
-  """Computes the 1D [Discrete Cosine Transform (DCT)][dct] of `input`.
-
-  Currently only Types I, II and III are supported.
-  Type I is implemented using a length `2N` padded `tf.spectral.rfft`.
-  Type II is implemented using a length `2N` padded `tf.spectral.rfft`, as
-  described here:
-  https://dsp.stackexchange.com/a/10606.
-  Type III is a fairly straightforward inverse of Type II
-  (i.e. using a length `2N` padded `tf.spectral.irfft`).
-
-  @compatibility(scipy)
-  Equivalent to scipy.fftpack.dct for Type-I, Type-II and Type-III DCT.
-  https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.fftpack.dct.html
-  @end_compatibility
-
-  Args:
-    input: A `[..., samples]` `float32` `Tensor` containing the signals to
-      take the DCT of.
-    type: The DCT type to perform. Must be 1, 2 or 3.
-    n: For future expansion. The length of the transform. Must be `None`.
-    axis: For future expansion. The axis to compute the DCT along. Must be `-1`.
-    norm: The normalization to apply. `None` for no normalization or `'ortho'`
-      for orthonormal normalization.
-    name: An optional name for the operation.
-
-  Returns:
-    A `[..., samples]` `float32` `Tensor` containing the DCT of `input`.
-
-  Raises:
-    ValueError: If `type` is not `1`, `2` or `3`, `n` is not `None, `axis` is
-      not `-1`, or `norm` is not `None` or `'ortho'`.
-    ValueError: If `type` is `1` and `norm` is `ortho`.
-
-  [dct]: https://en.wikipedia.org/wiki/Discrete_cosine_transform
-  """
-  _validate_dct_arguments(input, type, n, axis, norm)
-  with _ops.name_scope(name, "dct", [input]):
-    # We use the RFFT to compute the DCT and TensorFlow only supports float32
-    # for FFTs at the moment.
-    input = _ops.convert_to_tensor(input, dtype=_dtypes.float32)
-
-    axis_dim = (tensor_shape.dimension_value(input.shape[-1])
-                or _array_ops.shape(input)[-1])
-    axis_dim_float = _math_ops.to_float(axis_dim)
-
-    if type == 1:
-      dct1_input = _array_ops.concat([input, input[..., -2:0:-1]], axis=-1)
-      dct1 = _math_ops.real(rfft(dct1_input))
-      return dct1
-
-    if type == 2:
-      scale = 2.0 * _math_ops.exp(
-          _math_ops.complex(
-              0.0, -_math_ops.range(axis_dim_float) * _math.pi * 0.5 /
-              axis_dim_float))
-
-      # TODO(rjryan): Benchmark performance and memory usage of the various
-      # approaches to computing a DCT via the RFFT.
-      dct2 = _math_ops.real(
-          rfft(input, fft_length=[2 * axis_dim])[..., :axis_dim] * scale)
-
-      if norm == "ortho":
-        n1 = 0.5 * _math_ops.rsqrt(axis_dim_float)
-        n2 = n1 * _math_ops.sqrt(2.0)
-        # Use tf.pad to make a vector of [n1, n2, n2, n2, ...].
-        weights = _array_ops.pad(
-            _array_ops.expand_dims(n1, 0), [[0, axis_dim - 1]],
-            constant_values=n2)
-        dct2 *= weights
-
-      return dct2
-
-    elif type == 3:
-      if norm == "ortho":
-        n1 = _math_ops.sqrt(axis_dim_float)
-        n2 = n1 * _math_ops.sqrt(0.5)
-        # Use tf.pad to make a vector of [n1, n2, n2, n2, ...].
-        weights = _array_ops.pad(
-            _array_ops.expand_dims(n1, 0), [[0, axis_dim - 1]],
-            constant_values=n2)
-        input *= weights
-      else:
-        input *= axis_dim_float
-      scale = 2.0 * _math_ops.exp(
-          _math_ops.complex(
-              0.0,
-              _math_ops.range(axis_dim_float) * _math.pi * 0.5 /
-              axis_dim_float))
-      dct3 = _math_ops.real(
-          irfft(
-              scale * _math_ops.complex(input, 0.0),
-              fft_length=[2 * axis_dim]))[..., :axis_dim]
-
-      return dct3
+@_ops.RegisterGradient("FFT")
+def _fft_grad(_, grad):
+  size = _math_ops.cast(_fft_size_for_grad(grad, 1), grad.dtype)
+  return ifft(grad) * size
 
 
-# TODO(rjryan): Implement `n` and `axis` parameters.
-@tf_export("spectral.idct")
-def idct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disable=redefined-builtin
-  """Computes the 1D [Inverse Discrete Cosine Transform (DCT)][idct] of `input`.
+@_ops.RegisterGradient("IFFT")
+def _ifft_grad(_, grad):
+  rsize = _math_ops.cast(
+      1. / _math_ops.cast(_fft_size_for_grad(grad, 1), grad.dtype.real_dtype),
+      grad.dtype)
+  return fft(grad) * rsize
 
-  Currently only Types I, II and III are supported. Type III is the inverse of
-  Type II, and vice versa.
 
-  Note that you must re-normalize by 1/(2n) to obtain an inverse if `norm` is
-  not `'ortho'`. That is:
-  `signal == idct(dct(signal)) * 0.5 / signal.shape[-1]`.
-  When `norm='ortho'`, we have:
-  `signal == idct(dct(signal, norm='ortho'), norm='ortho')`.
+@_ops.RegisterGradient("FFT2D")
+def _fft2d_grad(_, grad):
+  size = _math_ops.cast(_fft_size_for_grad(grad, 2), grad.dtype)
+  return ifft2d(grad) * size
 
-  @compatibility(scipy)
-  Equivalent to scipy.fftpack.idct for Type-I, Type-II and Type-III DCT.
-  https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.fftpack.idct.html
-  @end_compatibility
 
-  Args:
-    input: A `[..., samples]` `float32` `Tensor` containing the signals to take
-      the DCT of.
-    type: The IDCT type to perform. Must be 1, 2 or 3.
-    n: For future expansion. The length of the transform. Must be `None`.
-    axis: For future expansion. The axis to compute the DCT along. Must be `-1`.
-    norm: The normalization to apply. `None` for no normalization or `'ortho'`
-      for orthonormal normalization.
-    name: An optional name for the operation.
+@_ops.RegisterGradient("IFFT2D")
+def _ifft2d_grad(_, grad):
+  rsize = _math_ops.cast(
+      1. / _math_ops.cast(_fft_size_for_grad(grad, 2), grad.dtype.real_dtype),
+      grad.dtype)
+  return fft2d(grad) * rsize
 
-  Returns:
-    A `[..., samples]` `float32` `Tensor` containing the IDCT of `input`.
 
-  Raises:
-    ValueError: If `type` is not `1`, `2` or `3`, `n` is not `None, `axis` is
-      not `-1`, or `norm` is not `None` or `'ortho'`.
+@_ops.RegisterGradient("FFT3D")
+def _fft3d_grad(_, grad):
+  size = _math_ops.cast(_fft_size_for_grad(grad, 3), grad.dtype)
+  return ifft3d(grad) * size
 
-  [idct]:
-  https://en.wikipedia.org/wiki/Discrete_cosine_transform#Inverse_transforms
-  """
-  _validate_dct_arguments(input, type, n, axis, norm)
-  inverse_type = {1: 1, 2: 3, 3: 2}[type]
-  return dct(input, type=inverse_type, n=n, axis=axis, norm=norm, name=name)
+
+@_ops.RegisterGradient("IFFT3D")
+def _ifft3d_grad(_, grad):
+  rsize = _math_ops.cast(
+      1. / _math_ops.cast(_fft_size_for_grad(grad, 3), grad.dtype.real_dtype),
+      grad.dtype)
+  return fft3d(grad) * rsize
+
+
+def _rfft_grad_helper(rank, irfft_fn):
+  """Returns a gradient function for an RFFT of the provided rank."""
+  # Can't happen because we don't register a gradient for RFFT3D.
+  assert rank in (1, 2), "Gradient for RFFT3D is not implemented."
+
+  def _grad(op, grad):
+    """A gradient function for RFFT with the provided `rank` and `irfft_fn`."""
+    fft_length = op.inputs[1]
+    input_shape = _array_ops.shape(op.inputs[0])
+    is_even = _math_ops.cast(1 - (fft_length[-1] % 2), _dtypes.complex64)
+
+    def _tile_for_broadcasting(matrix, t):
+      expanded = _array_ops.reshape(
+          matrix,
+          _array_ops.concat([
+              _array_ops.ones([_array_ops.rank(t) - 2], _dtypes.int32),
+              _array_ops.shape(matrix)
+          ], 0))
+      return _array_ops.tile(
+          expanded, _array_ops.concat([_array_ops.shape(t)[:-2], [1, 1]], 0))
+
+    def _mask_matrix(length):
+      """Computes t_n = exp(sqrt(-1) * pi * n^2 / line_len)."""
+      # TODO(rjryan): Speed up computation of twiddle factors using the
+      # following recurrence relation and cache them across invocations of RFFT.
+      #
+      # t_n = exp(sqrt(-1) * pi * n^2 / line_len)
+      # for n = 0, 1,..., line_len-1.
+      # For n > 2, use t_n = t_{n-1}^2 / t_{n-2} * t_1^2
+      a = _array_ops.tile(
+          _array_ops.expand_dims(_math_ops.range(length), 0), (length, 1))
+      b = _array_ops.transpose(a, [1, 0])
+      return _math_ops.exp(
+          -2j * np.pi * _math_ops.cast(a * b, _dtypes.complex64) /
+          _math_ops.cast(length, _dtypes.complex64))
+
+    def _ymask(length):
+      """A sequence of [1+0j, -1+0j, 1+0j, -1+0j, ...] with length `length`."""
+      return _math_ops.cast(1 - 2 * (_math_ops.range(length) % 2),
+                            _dtypes.complex64)
+
+    y0 = grad[..., 0:1]
+    if rank == 1:
+      ym = grad[..., -1:]
+      extra_terms = y0 + is_even * ym * _ymask(input_shape[-1])
+    elif rank == 2:
+      # Create a mask matrix for y0 and ym.
+      base_mask = _mask_matrix(input_shape[-2])
+
+      # Tile base_mask to match y0 in shape so that we can batch-matmul the
+      # inner 2 dimensions.
+      tiled_mask = _tile_for_broadcasting(base_mask, y0)
+
+      y0_term = _math_ops.matmul(tiled_mask, _math_ops.conj(y0))
+      extra_terms = y0_term
+
+      ym = grad[..., -1:]
+      ym_term = _math_ops.matmul(tiled_mask, _math_ops.conj(ym))
+
+      inner_dim = input_shape[-1]
+      ym_term = _array_ops.tile(
+          ym_term,
+          _array_ops.concat([
+              _array_ops.ones([_array_ops.rank(grad) - 1], _dtypes.int32),
+              [inner_dim]
+          ], 0)) * _ymask(inner_dim)
+
+      extra_terms += is_even * ym_term
+
+    # The gradient of RFFT is the IRFFT of the incoming gradient times a scaling
+    # factor, plus some additional terms to make up for the components dropped
+    # due to Hermitian symmetry.
+    input_size = _math_ops.to_float(_fft_size_for_grad(op.inputs[0], rank))
+    the_irfft = irfft_fn(grad, fft_length)
+    return 0.5 * (the_irfft * input_size + _math_ops.real(extra_terms)), None
+
+  return _grad
+
+
+def _irfft_grad_helper(rank, rfft_fn):
+  """Returns a gradient function for an IRFFT of the provided rank."""
+  # Can't happen because we don't register a gradient for IRFFT3D.
+  assert rank in (1, 2), "Gradient for IRFFT3D is not implemented."
+
+  def _grad(op, grad):
+    """A gradient function for IRFFT with the provided `rank` and `rfft_fn`."""
+    # Generate a simple mask like [1.0, 2.0, ..., 2.0, 1.0] for even-length FFTs
+    # and [1.0, 2.0, ..., 2.0] for odd-length FFTs. To reduce extra ops in the
+    # graph we special-case the situation where the FFT length and last
+    # dimension of the input are known at graph construction time.
+    fft_length = op.inputs[1]
+    is_odd = _math_ops.mod(fft_length[-1], 2)
+    input_last_dimension = _array_ops.shape(op.inputs[0])[-1]
+    mask = _array_ops.concat(
+        [[1.0], 2.0 * _array_ops.ones([input_last_dimension - 2 + is_odd]),
+         _array_ops.ones([1 - is_odd])], 0)
+
+    rsize = _math_ops.reciprocal(_math_ops.to_float(
+        _fft_size_for_grad(grad, rank)))
+
+    # The gradient of IRFFT is the RFFT of the incoming gradient times a scaling
+    # factor and a mask. The mask scales the gradient for the Hermitian
+    # symmetric components of the RFFT by a factor of two, since these
+    # components are de-duplicated in the RFFT.
+    the_rfft = rfft_fn(grad, fft_length)
+    return the_rfft * _math_ops.cast(rsize * mask, _dtypes.complex64), None
+
+  return _grad
+
+
+_ops.RegisterGradient("RFFT")(_rfft_grad_helper(1, irfft))
+_ops.RegisterGradient("IRFFT")(_irfft_grad_helper(1, rfft))
+_ops.RegisterGradient("RFFT2D")(_rfft_grad_helper(2, irfft2d))
+_ops.RegisterGradient("IRFFT2D")(_irfft_grad_helper(2, rfft2d))

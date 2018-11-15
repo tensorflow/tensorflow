@@ -23,8 +23,8 @@ import importlib
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.ops import spectral_ops
 from tensorflow.python.ops import spectral_ops_test_util
+from tensorflow.python.ops.signal import dct_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
@@ -105,10 +105,10 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
   def _compare(self, signals, norm, dct_type, atol=5e-4, rtol=5e-4):
     """Compares (I)DCT to SciPy (if available) and a NumPy implementation."""
     np_dct = NP_DCT[dct_type](signals, norm)
-    tf_dct = spectral_ops.dct(signals, type=dct_type, norm=norm).eval()
+    tf_dct = dct_ops.dct(signals, type=dct_type, norm=norm).eval()
     self.assertAllClose(np_dct, tf_dct, atol=atol, rtol=rtol)
     np_idct = NP_IDCT[dct_type](signals, norm)
-    tf_idct = spectral_ops.idct(signals, type=dct_type, norm=norm).eval()
+    tf_idct = dct_ops.idct(signals, type=dct_type, norm=norm).eval()
     self.assertAllClose(np_idct, tf_idct, atol=atol, rtol=rtol)
     if fftpack:
       scipy_dct = fftpack.dct(signals, type=dct_type, norm=norm)
@@ -116,9 +116,9 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
       scipy_idct = fftpack.idct(signals, type=dct_type, norm=norm)
       self.assertAllClose(scipy_idct, tf_idct, atol=atol, rtol=rtol)
     # Verify inverse(forward(s)) == s, up to a normalization factor.
-    tf_idct_dct = spectral_ops.idct(
+    tf_idct_dct = dct_ops.idct(
         tf_dct, type=dct_type, norm=norm).eval()
-    tf_dct_idct = spectral_ops.dct(
+    tf_dct_idct = dct_ops.dct(
         tf_idct, type=dct_type, norm=norm).eval()
     if norm is None:
       if dct_type == 1:
@@ -147,20 +147,20 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
     signals = np.random.rand(10)
     # Unsupported type.
     with self.assertRaises(ValueError):
-      spectral_ops.dct(signals, type=5)
+      dct_ops.dct(signals, type=5)
     # DCT-I normalization not implemented.
     with self.assertRaises(ValueError):
-      spectral_ops.dct(signals, type=1, norm="ortho")
+      dct_ops.dct(signals, type=1, norm="ortho")
     # DCT-I requires at least two inputs.
     with self.assertRaises(ValueError):
-      spectral_ops.dct(np.random.rand(1), type=1)
+      dct_ops.dct(np.random.rand(1), type=1)
     # Unknown normalization.
     with self.assertRaises(ValueError):
-      spectral_ops.dct(signals, norm="bad")
+      dct_ops.dct(signals, norm="bad")
     with self.assertRaises(NotImplementedError):
-      spectral_ops.dct(signals, n=10)
+      dct_ops.dct(signals, n=10)
     with self.assertRaises(NotImplementedError):
-      spectral_ops.dct(signals, axis=0)
+      dct_ops.dct(signals, axis=0)
 
 
 if __name__ == "__main__":

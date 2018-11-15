@@ -19,6 +19,35 @@ py_library(
 )
 
 cuda_py_tests(
+    name = "dct_ops_test",
+    srcs = ["dct_ops_test.py"],
+    additional_deps = [
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:spectral_ops_test_util",
+        "//tensorflow/python/ops/signal",
+    ],
+)
+
+cuda_py_tests(
+    name = "fft_ops_test",
+    size = "medium",
+    srcs = ["fft_ops_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:spectral_ops_test_util",
+        "//tensorflow/python/ops/signal",
+    ],
+    shard_count = 4,
+    tags = ["optonly"],
+)
+
+cuda_py_tests(
     name = "mel_ops_test",
     srcs = ["mel_ops_test.py"],
     additional_deps = [
@@ -91,9 +120,9 @@ cuda_py_tests(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python/ops/signal",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:spectral_ops_test_util",
+        "//tensorflow/python/ops/signal",
     ],
     tags = ["nomac"],
 )
