@@ -24,6 +24,12 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("ApproximateEqual").Device(DEVICE_CPU).TypeConstraint<double>("T"),
     ApproximateEqualOp<CPUDevice, double>);
+REGISTER_KERNEL_BUILDER(
+    Name("Equal").Device(DEVICE_CPU).TypeConstraint<int64>("T"),
+    BinaryOp<CPUDevice, functor::equal_to<int64>>);
+REGISTER_KERNEL_BUILDER(
+    Name("Equal").Device(DEVICE_CPU).TypeConstraint<int32>("T"),
+    BinaryOp<CPUDevice, functor::equal_to<int32>>);
 #if GOOGLE_CUDA
 REGISTER4(BinaryOp, GPU, "Equal", functor::equal_to, float, Eigen::half, double,
           uint8);
