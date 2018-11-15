@@ -27,8 +27,8 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
-from tensorflow.python.ops import signal
 from tensorflow.python.ops import spectral_ops
+from tensorflow.python.ops.signal import signal
 from tensorflow.python.platform import googletest
 
 BATCH_DIMS = (3, 5)
