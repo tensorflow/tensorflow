@@ -105,6 +105,13 @@ def fit_loop(
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.call_for_each_replica(
          _per_device_fit_function, args=(model._grouped_model,))
+
+    # Initialize the variables in the replicated model. This is necessary for
+    # multi-worker training because on some workers, initialization is not
+    # needed. This method does initialization or waiting for initialization
+    # according to the context object of distribute coordinator.
+    distributed_training_utils.init_restore_or_wait_for_variables()
+
     # Unwrap all the per device values returned from `call_for_each_replica`.
     # Unwrapping per device values gives you a list of values that can be
     # used to construct a new train function that is composed of update ops on
