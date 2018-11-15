@@ -118,10 +118,11 @@ class KubernetesClusterResolverTest(test.TestCase):
     cluster_resolver = KubernetesClusterResolver(
         override_client=_mock_kubernetes_client(
             {'job-name=tensorflow': ret}))
-    cluster_resolver.task_type = 'blah'
-    cluster_resolver.task_index = 1
-    self.assertEqual(cluster_resolver.task_type, 'blah')
-    self.assertEqual(cluster_resolver.task_index, 1)
+    cluster_resolver.task_type = 'worker'
+    cluster_resolver.task_index = 0
+    self.assertEqual(cluster_resolver.task_type, 'worker')
+    self.assertEqual(cluster_resolver.task_index, 0)
+    self.assertEqual(cluster_resolver.master(), 'grpc://10.1.2.3:8470')
     self.assertEqual(cluster_resolver.master('worker', 2),
                      'grpc://10.1.2.5:8470')
 

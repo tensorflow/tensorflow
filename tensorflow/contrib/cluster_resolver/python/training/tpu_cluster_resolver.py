@@ -192,13 +192,13 @@ class TPUClusterResolver(ClusterResolver):
 
     if tpu.startswith('grpc://'):
       # Cloud environment, where we are using GRPC to communicate to TPUs.
-      self.environment = ''
+      self._environment = ''
     elif tpu == 'local' or not tpu:
       # Google environment, where the TPU is attached to the host.
-      self.environment = 'google'
+      self._environment = 'google'
     elif tpu.startswith('/bns'):
       # Google environment, where we reach the TPU through BNS.
-      self.environment = 'google'
+      self._environment = 'google'
 
     # If TPU is in the Google environment or exists locally, we don't use any
     # RPC layer.
@@ -397,6 +397,11 @@ class TPUClusterResolver(ClusterResolver):
     """
     del session_config  # Unused. Not necessary to query anything.
     return 8
+
+  @property
+  def environment(self):
+    """Returns the current environment which TensorFlow is running in."""
+    return self._environment
 
   def _start_local_server(self):
     address = self._requestComputeMetadata('instance/network-interfaces/0/ip')
