@@ -42,8 +42,12 @@ class SquareLinearOperatorCompositionTest(
     self._rtol[dtypes.float32] = 1e-4
     self._rtol[dtypes.complex64] = 1e-4
 
+  @property
+  def _tests_to_skip(self):
+    # Cholesky not implemented.
+    return ["cholesky"]
+
   def _operator_and_matrix(self, build_info, dtype, use_placeholder):
-    sess = ops.get_default_session()
     shape = list(build_info.shape)
 
     # Either 1 or 2 matrices, depending.
