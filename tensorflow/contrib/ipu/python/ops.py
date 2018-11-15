@@ -60,7 +60,7 @@ def ipu_scope(device):
         yield scope
 
 @tf_contextlib.contextmanager
-def ipu_scope(index):
+def ipu_shard(index):
 
   ipus = []
   if hasattr(index, '__iter__'):

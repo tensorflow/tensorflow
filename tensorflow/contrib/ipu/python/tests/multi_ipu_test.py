@@ -24,10 +24,10 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
   def testMultiIpu(self):
     def my_graph(pa, pb, pc):
       with ops.device("/device:IPU:0"):
-        with ipu.ops.ipu_scope(0):
+        with ipu.ops.ipu_shard(0):
           o1 = pa + pb
 
-        with ipu.ops.ipu_scope(1):
+        with ipu.ops.ipu_shard(1):
           o2 = pa + pc
           out = o1 + o2
 
@@ -75,14 +75,14 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
   def testMultiIpuVariables(self):
     def my_graph(pa, pb, pc):
       with variable_scope.variable_scope("", use_resource=True):
-        with ops.device("/device:IPU:0"):
-          with ipu.ops.ipu_scope(0):
+        with ipu.ops.ipu_scope("/device:IPU:0"):
+          with ipu.ops.ipu_shard(0):
             init1 = init_ops.constant_initializer([1.0, 3.0]);
             v1 = variable_scope.get_variable("v1", dtype=np.float32, shape=[2],
                                              initializer=init1)
             o1 = pa + pb + v1
 
-          with ipu.ops.ipu_scope(1):
+          with ipu.ops.ipu_shard(1):
             init2 = init_ops.constant_initializer([1.0, 2.0]);
             v2 = variable_scope.get_variable("v2", dtype=np.float32, shape=[2],
                                              initializer=init2)
