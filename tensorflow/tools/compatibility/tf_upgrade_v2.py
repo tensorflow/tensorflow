@@ -37,6 +37,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.convert_to_tensor": {
             "preferred_dtype": "dtype_hint"
         },
+        "tf.nn.pool": {
+            "dilation_rate": "dilations"
+        }
     }
 
     # Mapping from function to the new name of the function
@@ -64,6 +67,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.boolean_mask": ["tensor", "mask", "name", "axis"],
         "tf.convert_to_tensor": ["value", "dtype", "preferred_dtype", "name"],
         "tf.pad": ["tensor", "paddings", "mode", "name", "constant_values"],
+        "tf.nn.pool": [
+            "input", "window_shape", "pooling_type", "padding", "dilation_rate",
+            "strides", "name", "data_format"
+        ]
     }
 
     # Specially handled functions.
