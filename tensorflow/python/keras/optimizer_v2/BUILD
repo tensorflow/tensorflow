@@ -16,6 +16,7 @@ py_library(
         "adam.py",
         "gradient_descent.py",
         "optimizer_v2.py",
+        "rmsprop.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -85,5 +86,24 @@ py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:def_function",
+    ],
+)
+
+cuda_py_test(
+    name = "rmsprop_test",
+    size = "medium",
+    srcs = ["rmsprop_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:clip_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
     ],
 )
