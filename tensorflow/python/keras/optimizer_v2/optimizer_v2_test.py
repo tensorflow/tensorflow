@@ -402,21 +402,6 @@ class OptimizerTest(test.TestCase):
     with self.assertRaises(AttributeError):
       opt.not_an_attr += 3
 
-  def testOptimizerWithFunction(self):
-    with context.eager_mode():
-      var = resource_variable_ops.ResourceVariable([1.0, 2.0],
-                                                   dtype=dtypes.float32)
-      loss = lambda: 3 * var
-      opt = adam.Adam(learning_rate=1.0)
-
-      @def_function.function
-      def fn():
-        opt.minimize(loss, [var])
-        return var
-
-      self.assertAllClose([0., 1.], fn(), atol=1e-4)
-      self.assertAllClose([-1, 0.], fn(), atol=1e-4)
-
   @test_util.run_in_graph_and_eager_modes
   def testOptimizerWithKerasModel(self):
     a = input_layer.Input(shape=(3,), name='input_a')
@@ -489,6 +474,26 @@ class OptimizerTest(test.TestCase):
         verbose=2)
     self.assertAllClose(
         float(backend.get_value(model.optimizer.lr)), 0.01, atol=1e-4)
+
+
+# Note: These tests are kept in a separate class to avoid bugs in some
+# distributions of Python that break AutoGraph which is used by tf.function.
+class OptimizerWithFunctionTest(test.TestCase):
+
+  def testBasic(self):
+    with context.eager_mode():
+      var = resource_variable_ops.ResourceVariable([1.0, 2.0],
+                                                   dtype=dtypes.float32)
+      loss = lambda: 3 * var
+      opt = adam.Adam(learning_rate=1.0)
+
+      @def_function.function
+      def fn():
+        opt.minimize(loss, [var])
+        return var
+
+      self.assertAllClose([0., 1.], fn(), atol=1e-4)
+      self.assertAllClose([-1, 0.], fn(), atol=1e-4)
 
 
 if __name__ == '__main__':
