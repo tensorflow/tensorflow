@@ -22,7 +22,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.feature_column import feature_column_v2 as fc
+from tensorflow.python.feature_column import feature_column_lib as fc
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.platform import test
