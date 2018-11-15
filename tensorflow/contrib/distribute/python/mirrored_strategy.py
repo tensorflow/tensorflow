@@ -36,7 +36,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribute as distribute_lib
@@ -532,11 +531,11 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     last_step_tensor_outputs_dict = nest.pack_sequence_as(
         ctx.last_step_outputs, last_step_tensor_outputs)
 
-    for (name, aggregation) in ctx._last_step_outputs_aggregations.items():  # pylint: disable=protected-access
+    for name, reduce_op in ctx._last_step_outputs_reduce_ops.items():  # pylint: disable=protected-access
       output = last_step_tensor_outputs_dict[name]
-      # For outputs that have already been aggregated, wrap them in a Mirrored
+      # For outputs that have already been reduced, wrap them in a Mirrored
       # container, else in a PerReplica container.
-      if aggregation is variables_lib.VariableAggregation.NONE:
+      if reduce_op is None:
         last_step_tensor_outputs_dict[name] = values.regroup(
             {d: t for d, t in zip(self._devices, output)}, values.PerReplica)
       else:

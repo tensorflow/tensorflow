@@ -71,11 +71,11 @@ class UpdateContext(object):
 
 
 def get_loss_reduction():
-  """Reduce `aggregation` corresponding to the last loss reduction."""
+  """Reduce op corresponding to the last loss reduction."""
   loss_reduction = ops.get_default_graph()._last_loss_reduction  # pylint: disable=protected-access
   if loss_reduction == losses_impl.Reduction.SUM:
-    return variable_scope.VariableAggregation.SUM
-  return variable_scope.VariableAggregation.MEAN
+    return reduce_util.ReduceOp.SUM
+  return reduce_util.ReduceOp.MEAN
 
 
 # ------------------------------------------------------------------------------

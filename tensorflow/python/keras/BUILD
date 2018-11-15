@@ -146,6 +146,7 @@ py_library(
     deps = [
         ":backend",
         "//tensorflow/python/data",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/training/checkpointable:data_structures",
         "//tensorflow/tools/docs:doc_controls",

@@ -41,7 +41,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import distribution_strategy_context
@@ -1508,7 +1507,7 @@ class MultiStepContext(object):
       A context object.
     """
     self._last_step_outputs = {}
-    self._last_step_outputs_aggregations = {}
+    self._last_step_outputs_reduce_ops = {}
     self._non_tensor_outputs = {}
 
   @property
@@ -1518,8 +1517,8 @@ class MultiStepContext(object):
     Keys in the dictionary are names of tensors to be captured, as specified
     when `set_last_step_output` is called.
     Values in the dictionary are the tensors themselves. If
-    `set_last_step_output` was called with an `aggregation` for this output,
-    then the value is the aggregated value.
+    `set_last_step_output` was called with a `reduce_op` for this output,
+    then the value is the reduced value.
 
     Returns:
       A dictionary with last step outputs.
@@ -1532,8 +1531,7 @@ class MultiStepContext(object):
       raise ValueError("Need a dictionary to set last_step_outputs.")
     self._last_step_outputs = outputs
 
-  def set_last_step_output(self, name, output,
-                           aggregation=variables_lib.VariableAggregation.NONE):
+  def set_last_step_output(self, name, output, reduce_op=None):
     """Set `output` with `name` to be outputted from the last step.
 
     Args:
@@ -1541,37 +1539,35 @@ class MultiStepContext(object):
         name.
       output: The tensors that should be outputted with `name`. See below for
         actual types supported.
-      aggregation: Aggregation method to use to aggregate outputs from multiple
+      reduce_op: Reduction method to use to reduce outputs from multiple
         replicas. Required if `set_last_step_output` is called in a replica
         context. Optional in cross_replica_context.
-        When present, the outputs from all the replicas are aggregated using the
+        When present, the outputs from all the replicas are reduced using the
         current distribution strategy's `reduce` method. Hence, the type of
         `output` must be what's supported by the corresponding `reduce` method.
-        For e.g. if using MirroredStrategy and aggregation is set, output
+        For e.g. if using MirroredStrategy and reduction is set, output
         must be a `PerReplica` value.
-        The aggregation method is also recorded in a dictionary
-        `_last_step_outputs_aggregations` for later interpreting of the
+        The reduce method is also recorded in a dictionary
+        `_last_step_outputs_reduce_ops` for later interpreting of the
         outputs as already reduced or not.
-        # TODO(priyag): Change aggregation type used here.
-
     """
     if distribution_strategy_context.get_cross_replica_context():
-      self._last_step_outputs_aggregations[name] = aggregation
-      if aggregation is variables_lib.VariableAggregation.NONE:
+      self._last_step_outputs_reduce_ops[name] = reduce_op
+      if reduce_op is None:
         self._last_step_outputs[name] = output
       else:
         distribution = distribution_strategy_context.get_distribution_strategy()
         self._last_step_outputs[name] = distribution.reduce(
-            aggregation, output, destinations="/device:CPU:0")
+            reduce_op, output, destinations="/device:CPU:0")
     else:
-      assert aggregation is not variables_lib.VariableAggregation.NONE
+      assert reduce_op is not None
       def merge_fn(distribution, value):
         self._last_step_outputs[name] = distribution.reduce(
-            aggregation, value, destinations="/device:CPU:0")
+            reduce_op, value, destinations="/device:CPU:0")
         # Setting this inside the `merge_fn` because all replicas share the same
         # context object, so it's more robust to set it only once (even if all
         # the replicas are trying to set the same value).
-        self._last_step_outputs_aggregations[name] = aggregation
+        self._last_step_outputs_reduce_ops[name] = reduce_op
 
       distribution_strategy_context.get_replica_context().merge_call(
           merge_fn, output)
@@ -1588,7 +1584,7 @@ class MultiStepContext(object):
     else:
       def merge_fn(distribution, value):
         # NOTE(priyag): For non tensor outputs, we simply return all the values
-        # in a list as aggregation doesn't make sense on non tensors.
+        # in a list as reduction doesn't make sense on non tensors.
         self._non_tensor_outputs[name] = distribution.unwrap(value)
       distribution_strategy_context.get_replica_context().merge_call(
           merge_fn, output)
