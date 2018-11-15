@@ -701,7 +701,6 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(g.get_operation_by_name("myop"), op)
     self.assertEqual(g.get_tensor_by_name("myop:0"), op.outputs[0])
 
-  @test_util.enable_c_shapes
   def testShape(self):
     g = ops.Graph()
     with g.as_default():

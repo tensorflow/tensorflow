@@ -154,7 +154,6 @@ class LocallyConnected1D(Layer):
     self.bias_constraint = constraints.get(bias_constraint)
     self.implementation = implementation
     self.input_spec = InputSpec(ndim=3)
-    self._can_use_graph_functions = True
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
@@ -430,7 +429,6 @@ class LocallyConnected2D(Layer):
     self.bias_constraint = constraints.get(bias_constraint)
     self.implementation = implementation
     self.input_spec = InputSpec(ndim=4)
-    self._can_use_graph_functions = True
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):

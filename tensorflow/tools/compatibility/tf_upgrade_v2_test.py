@@ -64,6 +64,30 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, "tf.math.rsqrt(tf.math.log_sigmoid(3.8))\n")
 
+  def testRenameConstant(self):
+    text = "tf.MONOLITHIC_BUILD\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, "tf.sysconfig.MONOLITHIC_BUILD\n")
+    text = "some_call(tf.MONOLITHIC_BUILD)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text, "some_call(tf.sysconfig.MONOLITHIC_BUILD)\n")
+
+  def testRenameArgs(self):
+    text = ("tf.nn.pool(input_a, window_shape_a, pooling_type_a, padding_a, "
+            "dilation_rate_a, strides_a, name_a, data_format_a)\n")
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text,
+                     ("tf.nn.pool(input=input_a, window_shape=window_shape_a,"
+                      " pooling_type=pooling_type_a, padding=padding_a, "
+                      "dilations=dilation_rate_a, strides=strides_a, "
+                      "name=name_a, data_format=data_format_a)\n"))
+
+  def testReorder(self):
+    text = "tf.boolean_mask(a, b, c, d)\n"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(new_text,
+                     "tf.boolean_mask(tensor=a, mask=b, name=c, axis=d)\n")
+
   def testLearningRateDecay(self):
     for decay in ["tf.train.exponential_decay", "tf.train.piecewise_constant",
                   "tf.train.polynomial_decay", "tf.train.natural_exp_decay",
@@ -85,6 +109,18 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     self.assertEqual(errors, ["test.py:1: %s requires manual check."
                               % "tf.estimator.LinearClassifier"])
     self.assertIn("loss_reduction has been changed", report)
+
+  def testCountNonZeroChanges(self):
+    text = (
+        "tf.math.count_nonzero(input_tensor=input, dtype=dtype, name=name, "
+        "reduction_indices=axis, keep_dims=keepdims)\n"
+        )
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    expected_text = (
+        "tf.math.count_nonzero(input=input, dtype=dtype, name=name, "
+        "axis=axis, keepdims=keepdims)\n"
+        )
+    self.assertEqual(new_text, expected_text)
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):

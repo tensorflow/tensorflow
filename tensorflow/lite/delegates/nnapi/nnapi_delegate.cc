@@ -374,7 +374,7 @@ struct NNAPIOpMappingArgs {
   std::vector<int>* model_state_tfl_inputs;
 };
 
-// The kernel that represents the subgraph of TF Lite being run on NN API.
+// The kernel that represents the node sub set of TF Lite being run on NN API.
 class NNAPIDelegateKernel {
  public:
   NNAPIDelegateKernel() = default;
@@ -1141,7 +1141,7 @@ class NNAPIDelegateKernel {
 TfLiteDelegate* NnApiDelegate() {
   static TfLiteDelegate delegate = {
       .data_ = nullptr,
-      .flags = kTfLiteDelegateFlagsAllowDynamicTensors,
+      .flags = kTfLiteDelegateFlagsNone,
       .Prepare = [](TfLiteContext* context,
                     TfLiteDelegate* delegate) -> TfLiteStatus {
         // Do not check nodes_ if NN API is unavailable.
@@ -1174,7 +1174,7 @@ TfLiteDelegate* NnApiDelegate() {
         supported_nodes[0] = supported_nodes.size() - 1;
 
         // NN API Delegate Registration (the pseudo kernel that will invoke NN
-        // API subgraphs)
+        // API node sub sets)
         static const TfLiteRegistration nnapi_delegate_kernel = {
             .init = [](TfLiteContext* context, const char* buffer,
                        size_t length) -> void* {
@@ -1207,8 +1207,8 @@ TfLiteDelegate* NnApiDelegate() {
         };
 
         // Request TFLite to partition the graph and make kernels
-        // for each independent subgraph a new nnapi_delegate_kernel.
-        context->ReplaceSubgraphsWithDelegateKernels(
+        // for each independent node sub set a new nnapi_delegate_kernel.
+        context->ReplaceNodeSubsetsWithDelegateKernels(
             context, nnapi_delegate_kernel,
             reinterpret_cast<TfLiteIntArray*>(supported_nodes.data()),
             delegate);

@@ -139,7 +139,7 @@ class Network(base_layer.Layer):
     self._eager_losses = []
     self._scope = None  # Never used.
     self._reuse = None  # Never used.
-    self._can_use_graph_functions = False
+    self._call_is_graph_friendly = True
     if context.executing_eagerly():
       self._graph = None
     else:
@@ -258,10 +258,6 @@ class Network(base_layer.Layer):
 
     self._track_layers(layers)
 
-    # A Graph network supports defun-ed eager loops if all of its layers do.
-    self._can_use_graph_functions = all(
-        layer._can_use_graph_functions for layer in layers)
-
     # Create the node linking internal inputs to internal outputs.
     base_layer.Node(
         outbound_layer=self,
@@ -282,9 +278,7 @@ class Network(base_layer.Layer):
       if layer.is_placeholder:
         self._feed_input_names.append(layer.name)
         self._feed_input_shapes.append(backend.int_shape(self.inputs[i]))
-        # layer.input gives an error in eager mode
-        if not context.executing_eagerly():
-          self._feed_inputs.append(layer.input)
+        self._feed_inputs.append(layer.input)
     for layer in self._output_layers:
       self.output_names.append(layer.name)
 
@@ -301,13 +295,12 @@ class Network(base_layer.Layer):
     self.outputs = []
     self.inputs = []
     self.built = False
-    self._static_graph_friendly = True
 
   @property
-  def _is_static_graph_friendly(self):
+  def _static_graph_friendly(self):
     if self._is_graph_network:
-      return all(layer._is_static_graph_friendly for layer in self.layers)
-    return self._static_graph_friendly
+      return all(layer._static_graph_friendly for layer in self.layers)
+    return self._call_is_graph_friendly
 
   def _determine_call_convention(self, call_argspec):
     """Decides how `self.call()` is invoked. See base_layer.CallConvention."""
@@ -450,11 +443,6 @@ class Network(base_layer.Layer):
           'and variables properties.')
 
   @property
-  def uses_learning_phase(self):
-    return any(
-        [getattr(x, '_uses_learning_phase', False) for x in self.outputs])
-
-  @property
   def stateful(self):
     return any([(hasattr(layer, 'stateful') and layer.stateful)
                 for layer in self.layers])
@@ -562,8 +550,6 @@ class Network(base_layer.Layer):
 
   @property
   def _unfiltered_updates(self):
-    if context.executing_eagerly():
-      return []
     updates = []
     for layer in self.layers:
       if isinstance(layer, Network):
@@ -646,9 +632,6 @@ class Network(base_layer.Layer):
     Returns:
         A list of update ops.
     """
-    if context.executing_eagerly():
-      return []
-
     if not self.trainable and not self.stateful:
       return []
 
@@ -900,9 +883,7 @@ class Network(base_layer.Layer):
 
   def compute_output_shape(self, input_shape):
     if not self._is_graph_network:
-      if context.executing_eagerly():
-        return super(Network, self).compute_output_shape(input_shape)
-      raise NotImplementedError
+      return super(Network, self).compute_output_shape(input_shape)
 
     if isinstance(input_shape, list):
       input_shapes = []

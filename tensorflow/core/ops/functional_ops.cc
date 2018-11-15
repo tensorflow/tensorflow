@@ -226,6 +226,7 @@ REGISTER_OP("PartitionedCall")
     .Attr("Tout: list(type) >= 0")
     .Attr("f: func")
     .Attr("config: string = ''")
+    .Attr("config_proto: string = ''")
     .Attr("executor_type: string = ''")
     .SetShapeFn(shape_inference::UnknownShape);
 
@@ -235,7 +236,8 @@ REGISTER_OP("StatefulPartitionedCall")
     .Attr("Tin: list(type) >= 0")
     .Attr("Tout: list(type) >= 0")
     .Attr("f: func")
-    .Attr("config: string = ''")
+    .Attr("config: string = ''")  // Deprecated in favor of config_proto
+    .Attr("config_proto: string = ''")
     .Attr("executor_type: string = ''")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape);

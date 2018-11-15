@@ -40,7 +40,6 @@ tf_export(
 # CollectionDef key for the legacy init op.
 LEGACY_INIT_OP_KEY = "legacy_init_op"
 tf_export(
-    "saved_model.LEGACY_INIT_OP_KEY",
     v1=[
         "saved_model.LEGACY_INIT_OP_KEY",
         "saved_model.constants.LEGACY_INIT_OP_KEY"

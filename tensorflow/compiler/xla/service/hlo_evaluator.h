@@ -221,16 +221,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
       const Literal& operand_literal) {
     const auto shape = instruction->shape();
     const auto* operand = instruction->operand(0);
-
-    // TODO(b/35950897, b/27796129): add DCHECK back once implicit broadcast is
-    // removed.
-    if (!ShapeUtil::SameDimensions(shape, operand->shape())) {
-      return Unimplemented(
-          "Implicit broadcasting is currently unsupported in HLO evaluator "
-          "Shape Mismatch: %s vs %s",
-          ShapeUtil::HumanString(shape),
-          ShapeUtil::HumanString(operand->shape()));
-    }
+    TF_RET_CHECK(ShapeUtil::SameDimensions(shape, operand->shape()));
 
     Literal result(shape);
     TF_RETURN_IF_ERROR(

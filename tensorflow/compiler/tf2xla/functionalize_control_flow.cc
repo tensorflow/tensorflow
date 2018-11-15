@@ -242,23 +242,20 @@ Status FunctionalizeControlFlowPass::Run(
       continue;
     }
     const string func_attr = it->second;
-    if (kNodeTypeToFunctionAttrMapping->find(n->type_string()) !=
-        kNodeTypeToFunctionAttrMapping->end()) {
-      NameAttrList func;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), func_attr, &func));
-      VLOG(2) << "Graph has node " << n->type_string()
-              << ". Corresponding function: " << func.name();
-      string new_func_name = options.flib_def->UniqueFunctionName(
-          absl::StrCat(func.name(), "_f15n_"));
-      bool modified;
-      TF_RETURN_IF_ERROR(FunctionalizeControlFlowForFunction(
-          func.name(), new_func_name, func.attr(), options.flib_def, flr,
-          &canonicalized_name_to_new_name, &modified));
-      if (modified) {
-        n->ClearAttr(func_attr);
-        func.set_name(new_func_name);
-        n->AddAttr(func_attr, func);
-      }
+    NameAttrList func;
+    TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), func_attr, &func));
+    VLOG(2) << "Graph has node " << n->type_string()
+            << ". Corresponding function: " << func.name();
+    string new_func_name = options.flib_def->UniqueFunctionName(
+        absl::StrCat(func.name(), "_f15n_"));
+    bool modified;
+    TF_RETURN_IF_ERROR(FunctionalizeControlFlowForFunction(
+        func.name(), new_func_name, func.attr(), options.flib_def, flr,
+        &canonicalized_name_to_new_name, &modified));
+    if (modified) {
+      n->ClearAttr(func_attr);
+      func.set_name(new_func_name);
+      n->AddAttr(func_attr, func);
     }
   }
 

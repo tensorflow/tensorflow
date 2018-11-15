@@ -53,7 +53,8 @@ typedef std::function<void(const WorkerEnv*, ::grpc::ServerBuilder*)>
     ServiceInitFunction;
 
 // function that creates a grpc based worker implementation.
-typedef std::function<std::unique_ptr<GrpcWorker>(WorkerEnv*)>
+typedef std::function<std::unique_ptr<GrpcWorker>(WorkerEnv*,
+                                                  const ConfigProto& config)>
     WorkerCreationFunction;
 
 class GrpcServer : public ServerInterface {

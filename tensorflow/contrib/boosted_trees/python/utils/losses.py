@@ -48,6 +48,47 @@ def per_example_logistic_loss(labels, weights, predictions):
       labels=labels, logits=predictions)
   return unweighted_loss * weights, control_flow_ops.no_op()
 
+# MUST USE WITH HESSIAN REGULARIZATION,
+# This loss can have zero hessian, so it must be used with l2 or min_node_weight
+# regularization.
+# An example config is
+# learner_config.constraints.min_node_weight = 1 / num_examples_per_layer
+# learner_config.regularization.l2 = 1.0 / num_examples_per_layer
+# TODO(nponomareva): make it multidimensional so we can estimate several
+# quantiles at once.
+def per_example_quantile_regression_loss(labels, weights, predictions,
+                                         quantile):
+  """Smoothed loss for quantile regression.
+
+  The standard quantile regression loss is quantile*(y-y') when y>y' and
+  (quantile-1)*(y-y') otherwise, y' is a prediction, y is a label. The impl
+  below is this loss but squared in the region where the loss value < 1.
+
+  Args:
+    labels: Rank 2 (N, 1) tensor of per-example labels.
+    weights: Rank 2 (N, 1) tensor of per-example weights.
+    predictions: Rank 2 (N, 1) tensor of per-example predictions.
+    quantile: The quantile to use.
+
+  Returns:
+    loss: A Rank 2 (N, 1) tensor of per-example quantile loss.
+    update_op: An update operation to update the loss's internal state.
+  """
+  labels = math_ops.to_float(labels)
+  error = labels - predictions
+  square_loss_right = array_ops.where(error * quantile < 1.0,
+                                      math_ops.square(quantile * error),
+                                      quantile * error)
+  square_loss_left = array_ops.where(error * (quantile - 1) < 1,
+                                     math_ops.square((quantile - 1) * error),
+                                     (quantile - 1) * error)
+
+  unweighted_loss = array_ops.where(error > 0, square_loss_right,
+                                    square_loss_left)
+  if weights is None:
+    return unweighted_loss, control_flow_ops.no_op()
+  else:
+    return unweighted_loss * weights, control_flow_ops.no_op()
 
 # This is classical form of Maximum entropy loss, that is twice differentiable
 # (sparse_softmax_cross_entropy which is what we go for is not twice

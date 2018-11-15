@@ -40,12 +40,6 @@ class MirroredOneCPUDistributionTest(strategy_test_lib.DistributionTestBase):
   def testMinimizeLossGraph(self):
     self._test_minimize_loss_graph(self._get_distribution_strategy())
 
-  def testMapReduce(self):
-    self._test_map_reduce(self._get_distribution_strategy())
-
-  def testDeviceIndex(self):
-    self._test_device_index(self._get_distribution_strategy())
-
   def testReplicaId(self):
     self._test_replica_id(self._get_distribution_strategy())
 
@@ -60,11 +54,11 @@ class VariableCreatorStackTest(test.TestCase):
     devices = ["/device:CPU:0", "/device:GPU:0"]
     dist = mirrored_strategy.MirroredStrategy(devices)
 
-    def model_fn(device_id):
-      assert isinstance(device_id, int)
+    def model_fn():
+      replica_id_str = str(self.evaluate(_replica_id()))
 
       def thread_creator_fn(next_creator, *args, **kwargs):
-        return next_creator(*args, **kwargs) + ":thread_" + str(device_id)
+        return next_creator(*args, **kwargs) + ":thread_" + replica_id_str
 
       with variable_scope.variable_creator_scope(thread_creator_fn):
         # Create a variable in this scope.
@@ -83,10 +77,16 @@ class VariableCreatorStackTest(test.TestCase):
     with context.graph_mode(), \
         dist.scope(), \
         variable_scope.variable_creator_scope(main_thread_creator):
-      result = dist.call_for_each_replica(model_fn, dist.worker_device_index)
+      result = dist.call_for_each_replica(model_fn)
       result = dist.unwrap(result)
       expected = ["main_thread:thread_0", "main_thread:thread_1"]
-      self.assertEquals(expected, result)
+      self.assertEqual(expected, result)
+
+
+def _replica_id():
+  # TODO(cjfj): Return `replica_id` directly, once it is a `Tensor`.
+  return constant_op.constant(
+      distribution_strategy_context.get_replica_context().replica_id)
 
 
 class MultiWorkerMirroredStrategyTest(test.TestCase):

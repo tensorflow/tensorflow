@@ -35,6 +35,10 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#endif
+
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/stream_executor.h"
 using stream_executor::dnn::DimIndex;

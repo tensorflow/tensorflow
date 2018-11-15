@@ -90,8 +90,8 @@ namespace xla {
 // are provided below.
 //
 // Example nullary instruction:
-//   Param()                        == Op().WithOpcode(HloOpcode::kParam)
-//   Param(&a)                      == Op(&a).WithOpcode(HloOpcode::kParam)
+//   Parameter()                    == Op().WithOpcode(HloOpcode::kParameter)
+//   Parameter(&a)                  == Op(&a).WithOpcode(HloOpcode::kParameter)
 //
 // Example unary instruction:
 //   Abs()                             == Op().WithOpcode(HloOpcode::kAbs)
@@ -1067,8 +1067,10 @@ XLA_UNOP_PATTERN(RoundNearestAfz)
 XLA_UNOP_PATTERN(Bitcast)
 XLA_UNOP_PATTERN(Broadcast)
 XLA_UNOP_PATTERN(Ceil)
+XLA_UNOP_PATTERN(Convert)
 XLA_UNOP_PATTERN(Copy)
 XLA_UNOP_PATTERN(Cos)
+XLA_UNOP_PATTERN(CrossReplicaSum)
 XLA_UNOP_PATTERN(Exp)
 XLA_UNOP_PATTERN(Fft)
 XLA_UNOP_PATTERN(Floor)

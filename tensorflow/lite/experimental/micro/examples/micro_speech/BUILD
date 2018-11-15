@@ -32,14 +32,14 @@ tflite_micro_cc_test(
 )
 
 tflite_micro_cc_test(
-    name = "preprocessor_float_test",
+    name = "preprocessor_reference_test",
     srcs = [
         "no_30ms_sample_data.cc",
         "no_30ms_sample_data.h",
         "no_power_spectrum_data.cc",
         "no_power_spectrum_data.h",
+        "preprocessor.cc",
         "preprocessor.h",
-        "preprocessor_float.cc",
         "preprocessor_test.cc",
         "yes_30ms_sample_data.cc",
         "yes_30ms_sample_data.h",
@@ -56,12 +56,12 @@ tflite_micro_cc_test(
 tflite_micro_cc_test(
     name = "preprocessor_fixed_test",
     srcs = [
+        "fixed_point/preprocessor.cc",
         "no_30ms_sample_data.cc",
         "no_30ms_sample_data.h",
         "no_power_spectrum_data.cc",
         "no_power_spectrum_data.h",
         "preprocessor.h",
-        "preprocessor_fixed.cc",
         "preprocessor_test.cc",
         "yes_30ms_sample_data.cc",
         "yes_30ms_sample_data.h",

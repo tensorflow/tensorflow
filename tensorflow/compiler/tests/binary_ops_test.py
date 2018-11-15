@@ -969,7 +969,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
       self._testBinary(
           array_ops.expand_dims,
           np.array([42], dtype=dtype),
-          np.int32(0),
+          np.array([0], dtype=np.int64),
           expected=np.array([[42]], dtype=dtype))
       self._testBinary(
           array_ops.expand_dims,
@@ -996,6 +996,11 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([[[1, 2], [3, 4]]], dtype=dtype),
           np.int32(3),
           expected=np.array([[[[1], [2]], [[3], [4]]]], dtype=dtype))
+      self._testBinary(
+          array_ops.expand_dims,
+          np.array([[[1, 2], [3, 4]]], dtype=dtype),
+          np.array([2], dtype=np.int64),
+          expected=np.array([[[[1, 2]], [[3, 4]]]], dtype=dtype))
 
   def testPad(self):
     for dtype, pad_type in itertools.product(

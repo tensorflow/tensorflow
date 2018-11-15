@@ -23,6 +23,7 @@ import six
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import clip_ops
@@ -833,17 +834,17 @@ def get(identifier):
   Raises:
       ValueError: If `identifier` cannot be interpreted.
   """
+  if isinstance(identifier, (Optimizer, optimizer_v2.OptimizerV2)):
+    return identifier
   # Wrap TF optimizer instances
-  if isinstance(identifier, tf_optimizer_module.Optimizer):
+  elif isinstance(identifier, tf_optimizer_module.Optimizer):
     opt = TFOptimizer(identifier)
     K.track_tf_optimizer(opt)
     return opt
-  if isinstance(identifier, dict):
+  elif isinstance(identifier, dict):
     return deserialize(identifier)
   elif isinstance(identifier, six.string_types):
     config = {'class_name': str(identifier), 'config': {}}
     return deserialize(config)
-  if isinstance(identifier, Optimizer):
-    return identifier
   else:
     raise ValueError('Could not interpret optimizer identifier:', identifier)

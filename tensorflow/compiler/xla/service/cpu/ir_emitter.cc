@@ -1536,7 +1536,8 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
 
     case HloOpcode::kMaximum:
       return [root_is_floating_point, root_is_signed](
-                 llvm::IRBuilder<>* b, llvm::Value* lhs, llvm::Value* rhs) {
+                 llvm::IRBuilder<>* b, llvm::Value* lhs,
+                 llvm::Value* rhs) -> llvm::Value* {
         if (root_is_floating_point) {
           return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::maxnum,
                                               {lhs, rhs}, {lhs->getType()}, b);
@@ -1551,7 +1552,8 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
 
     case HloOpcode::kMinimum:
       return [root_is_floating_point, root_is_signed](
-                 llvm::IRBuilder<>* b, llvm::Value* lhs, llvm::Value* rhs) {
+                 llvm::IRBuilder<>* b, llvm::Value* lhs,
+                 llvm::Value* rhs) -> llvm::Value* {
         if (root_is_floating_point) {
           return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::minnum,
                                               {lhs, rhs}, {lhs->getType()}, b);

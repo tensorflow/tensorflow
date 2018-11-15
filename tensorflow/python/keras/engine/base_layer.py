@@ -183,16 +183,6 @@ class Layer(checkpointable.CheckpointableBase):
 
     self.supports_masking = False
 
-    # Mark if a layer supports using graph functions in the eager
-    # fit/predict/evaluate loop
-    # TODO(kaftan): merge this with the _static_graph_friendly flag once
-    # enough eager function bugs involving control flow / tensorarrays have
-    # been fixed,  and static-graph-friendly layers will almost always work in
-    # eager graph functions.
-    # We conservatively make this flag opt-in for now to avoid causing existing
-    # custom layers to crash.
-    self._can_use_graph_functions = False
-
     call_argspec = tf_inspect.getfullargspec(self.call)
     if 'training' in call_argspec.args:
       self._expects_training_arg = True
@@ -200,7 +190,7 @@ class Layer(checkpointable.CheckpointableBase):
       self._expects_training_arg = False
 
     # Whether the `call` method can be used to build a TF graph without issues.
-    self._static_graph_friendly = True
+    self._call_is_graph_friendly = True
 
     # Manage input shape information if passed.
     if 'input_shape' in kwargs or 'batch_input_shape' in kwargs:
@@ -221,17 +211,6 @@ class Layer(checkpointable.CheckpointableBase):
       self._initial_weights = kwargs['weights']
     else:
       self._initial_weights = None
-
-  @property
-  def _is_static_graph_friendly(self):
-    return self._static_graph_friendly
-
-  @_is_static_graph_friendly.setter
-  def _is_static_graph_friendly(self, value):
-    if value not in {True, False}:
-      raise ValueError('`static_graph_friendly` requires a boolean value. '
-                       'Received: {}'.format(value))
-    self._static_graph_friendly = value
 
   def _init_set_name(self, name, zero_based=True):
     if not name:
@@ -298,8 +277,6 @@ class Layer(checkpointable.CheckpointableBase):
 
   @property
   def updates(self):
-    if context.executing_eagerly():
-      raise RuntimeError('Layer.updates not supported in Eager mode.')
     if not self.trainable and not self.stateful:
       return []
     return self._updates
@@ -366,9 +343,6 @@ class Layer(checkpointable.CheckpointableBase):
     Raises:
       RuntimeError: If called in Eager mode.
     """
-    if context.executing_eagerly():
-      raise RuntimeError('`get_updates_for()` not supported in Eager mode.')
-
     # Updates disabled if layer is not trainable and not explicitly stateful.
     if not self.trainable and not self.stateful:
       return []
@@ -471,9 +445,6 @@ class Layer(checkpointable.CheckpointableBase):
     Raises:
       RuntimeError: If called in Eager mode.
     """
-    if context.executing_eagerly():
-      raise RuntimeError('Layer.get_losses_for not supported in Eager mode.')
-
     if inputs is None:
       # Requesting unconditional losses.
       return [x for x in self.losses if x._unconditional_loss]  # pylint: disable=protected-access
@@ -772,10 +743,10 @@ class Layer(checkpointable.CheckpointableBase):
               # Any issue during graph-building means we will later run the
               # model in eager mode, whether the issue was related to
               # graph mode or not. This provides a nice debugging experience.
-              self._is_static_graph_friendly = False
+              self._call_is_graph_friendly = False
               # We will use static shape inference to return symbolic tensors
               # matching the specifications of the layer outputs.
-              # Since we have set `self._is_static_graph_friendly = False`,
+              # Since we have set `self._call_is_graph_friendly = False`,
               # we will never attempt to run the underlying TF graph (which is
               # disconnected).
               # TODO(fchollet): consider py_func as an alternative, which
@@ -792,7 +763,6 @@ class Layer(checkpointable.CheckpointableBase):
                              '(layer: ' + self.name + ').')
           self._handle_activity_regularization(inputs, outputs)
           self._set_mask_metadata(inputs, outputs, previous_mask)
-          self._set_learning_phase_metadata(inputs, outputs)
           if have_all_keras_metadata(inputs):
             inputs, outputs = self._set_connectivity_metadata_(
                 inputs, outputs, args, kwargs)
@@ -830,23 +800,6 @@ class Layer(checkpointable.CheckpointableBase):
       Output tensor(s).
     """
     return self.__call__(inputs, *args, **kwargs)
-
-  def _set_learning_phase_metadata(self, inputs, outputs):
-    # Update learning phase info. To work with subclassed models,
-    # this should be done even if Keras metadata is absent.
-    output_tensors = generic_utils.to_list(outputs)
-    uses_lp = any(
-        [getattr(x, '_uses_learning_phase', False)
-         for x in generic_utils.to_list(inputs)])
-    uses_lp = getattr(self, 'uses_learning_phase', False) or uses_lp
-    for i in range(len(output_tensors)):
-      try:
-        output_tensors[i]._uses_learning_phase = getattr(
-            output_tensors[i], '_uses_learning_phase', False) or uses_lp
-      except AttributeError:
-        # An output element happens to be a C type (such as tuple or dict).
-        # We don't track learning phase info in such edge cases.
-        pass
 
   def _set_mask_metadata(self, inputs, outputs, previous_mask):
     # In some cases the mask of the outputs has already been computed by
@@ -1007,7 +960,6 @@ class Layer(checkpointable.CheckpointableBase):
       # use `compute_output_shape` manually (these users will have to
       # implement `compute_output_shape` themselves).
       self.build(input_shape)
-
       with context.graph_mode():
         graph = func_graph.FuncGraph('graph')
         with graph.as_default():
@@ -1623,6 +1575,23 @@ class Layer(checkpointable.CheckpointableBase):
         A layer instance.
     """
     return cls(**config)
+
+  @property
+  def _static_graph_friendly(self):
+    """Whether the layer can be called to create a static graph.
+
+    Because of nesting, there are two components to being "graph-friendly":
+      1) all inner layers are graph-friendly
+      2) the way they are composed is graph-friendly.
+    We denote the latter as "_call_is_graph_friendly", and define
+    "_static_graph_friendly" as being the combination of
+    "_call_is_graph_friendly" and "all inner layers are _static_graph_friendly".
+    For atomic layers (no inner layers), this is just "_call_is_graph_friendly".
+
+    Returns:
+      Boolean.
+    """
+    return self._call_is_graph_friendly
 
 
 @tf_export(

@@ -143,10 +143,7 @@ class Node {
   }
 
   // Returns the node output.
-  Node* output() const LOCKS_EXCLUDED(mu_) {
-    tf_shared_lock l(mu_);
-    return output_;
-  }
+  Node* output() const { return output_; }
 
   // Returns the aggregate processing time.
   int64 processing_time() const LOCKS_EXCLUDED(mu_) {
@@ -161,18 +158,18 @@ class Node {
   }
 
   // Records that a node thread has started executing.
-  void record_start() LOCKS_EXCLUDED(mu_) {
+  void record_start(int64 time_nanos) LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
-    work_start_[std::this_thread::get_id()] = Env::Default()->NowNanos();
+    work_start_[std::this_thread::get_id()] = time_nanos;
   }
 
   // Records that a node thread has stopped executing.
-  void record_stop() LOCKS_EXCLUDED(mu_) {
+  void record_stop(int64 time_nanos) LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     std::thread::id tid = std::this_thread::get_id();
     auto iter = work_start_.find(tid);
     if (iter != work_start_.end()) {
-      processing_time_ += Env::Default()->NowNanos() - iter->second;
+      processing_time_ += time_nanos - iter->second;
       work_start_.erase(iter);
     } else {
       LOG(WARNING)
@@ -285,7 +282,7 @@ class Node {
 
   // The reference to the output node is not owned so that that deletion of a
   // node results in recursive deletion of the subtree rooted in the node.
-  Node* output_ GUARDED_BY(mu_);
+  Node* const output_;
 };
 
 // InterleaveMany is used to model datasets whose inputs are used to create
@@ -335,8 +332,8 @@ class Model {
   Model() = default;
 
   // Adds a node with the given name and given output.
-  void AddNode(Node::Factory factory, const string& name,
-               const string& output_name) LOCKS_EXCLUDED(mu_);
+  std::shared_ptr<Node> AddNode(Node::Factory factory, const string& name,
+                                const string& output_name) LOCKS_EXCLUDED(mu_);
 
   // Increments the processing time for the given node..
   void AddProcessingTime(const string& name, int64 delta) LOCKS_EXCLUDED(mu_);

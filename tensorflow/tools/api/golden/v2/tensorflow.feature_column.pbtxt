@@ -33,14 +33,6 @@ tf_module {
     argspec: "args=[\'categorical_column\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "input_layer"
-    argspec: "args=[\'features\', \'feature_columns\', \'weight_collections\', \'trainable\', \'cols_to_vars\', \'cols_to_output_tensors\'], varargs=None, keywords=None, defaults=[\'None\', \'True\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "linear_model"
-    argspec: "args=[\'features\', \'feature_columns\', \'units\', \'sparse_combiner\', \'weight_collections\', \'trainable\', \'cols_to_vars\'], varargs=None, keywords=None, defaults=[\'1\', \'sum\', \'None\', \'True\', \'None\'], "
-  }
-  member_method {
     name: "make_parse_example_spec"
     argspec: "args=[\'feature_columns\'], varargs=None, keywords=None, defaults=None"
   }

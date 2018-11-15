@@ -82,10 +82,10 @@ class Embedding(Layer):
         (without it, the shape of the dense outputs cannot be computed).
 
   Input shape:
-      2D tensor with shape: `(batch_size, sequence_length)`.
+      2D tensor with shape: `(batch_size, input_length)`.
 
   Output shape:
-      3D tensor with shape: `(batch_size, sequence_length, output_dim)`.
+      3D tensor with shape: `(batch_size, input_length, output_dim)`.
 
   """
 
@@ -116,7 +116,6 @@ class Embedding(Layer):
     self.mask_zero = mask_zero
     self.supports_masking = mask_zero
     self.input_length = input_length
-    self._can_use_graph_functions = True
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):

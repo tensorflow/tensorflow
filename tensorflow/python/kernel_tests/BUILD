@@ -1155,6 +1155,18 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "unicode_decode_op_test",
+    size = "small",
+    srcs = ["unicode_decode_op_test.py"],
+    additional_deps = [
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:string_ops",
+    ],
+)
+
+tf_py_test(
     name = "unique_op_test",
     size = "small",
     srcs = ["unique_op_test.py"],
@@ -2618,6 +2630,7 @@ cuda_py_test(
     name = "dct_ops_test",
     srcs = ["dct_ops_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -2888,7 +2901,7 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
-    shard_count = 20,
+    shard_count = 30,
 )
 
 cuda_py_test(

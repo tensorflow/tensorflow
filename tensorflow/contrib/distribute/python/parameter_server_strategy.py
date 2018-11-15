@@ -22,6 +22,7 @@ from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import values
 from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
@@ -64,7 +65,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   Operations that occur only on the first replica (such as incrementing the
   global step), will occur on the first replica *of every worker*.
 
-  It is expected to call `call_for_each_replica(fn, *args, **kwargs)` for any
+  It is expected to call `call_for_each_replica(fn, ...)` for any
   operations which potentially can be replicated across replicas (i.e. multiple
   GPUs) even if there is only CPU or one GPU. When defining the `fn`, extra
   caution needs to be taken:
@@ -223,13 +224,16 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
 
   def distribute_dataset(self, dataset_fn):
     """Distributes the dataset to each local GPU."""
-    return values.PerDeviceDataset(
+    return values.PerReplicaDataset(
         self._call_dataset_fn(dataset_fn), self._compute_devices, True)
 
   def _broadcast(self, tensor, destinations):
     if not cross_tower_ops_lib.check_destinations(destinations):
       destinations = self._compute_devices
     return self._cross_tower_ops.broadcast(tensor, destinations)
+
+  def _allow_variable_partition(self):
+    return not context.executing_eagerly()
 
   # TODO(yuefengz): not all ops in device_setter.STANDARD_PS_OPS will go through
   # this creator, such as "MutableHashTable".
@@ -288,9 +292,9 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
       with ops.device(self._variable_device):
         return var_creator(*args, **kwargs)
 
-  def _call_for_each_replica(self, fn, *args, **kwargs):
+  def _call_for_each_replica(self, fn, args, kwargs):
     # pylint: disable=protected-access
-    return mirrored_strategy._call_for_each_replica(self, fn, *args, **kwargs)
+    return mirrored_strategy._call_for_each_replica(self, fn, args, kwargs)
 
   def _verify_destinations_not_different_worker(self, destinations):
     if not self._cluster_spec:
@@ -304,24 +308,24 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
             "Cannot reduce to another worker: %r, current worker is %r" %
             (d, self._worker_device))
 
-  def _reduce(self, aggregation, value, destinations):
+  def _reduce(self, reduce_op, value, destinations):
     self._verify_destinations_not_different_worker(destinations)
     if not isinstance(value, values.DistributedValues):
       # pylint: disable=protected-access
       return mirrored_strategy._reduce_non_distributed_value(
-          self, aggregation, value, destinations)
-    if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+          self, reduce_op, value, destinations)
+    if reduce_op == reduce_util.ReduceOp.ONLY_FIRST_REPLICA:
       return self.broadcast(value.get(self._compute_devices[0]), destinations)
     return self._cross_tower_ops.reduce(
-        aggregation, value, destinations=destinations)
+        reduce_op, value, destinations=destinations)
 
-  def _batch_reduce(self, aggregation, value_destination_pairs):
-    if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+  def _batch_reduce(self, reduce_op, value_destination_pairs):
+    if reduce_op == reduce_util.ReduceOp.ONLY_FIRST_REPLICA:
       return [self.broadcast(v.get(self._compute_devices[0]), d)
               for v, d in value_destination_pairs]
     for _, destinations in value_destination_pairs:
       self._verify_destinations_not_different_worker(destinations)
-    return self._cross_tower_ops.batch_reduce(aggregation,
+    return self._cross_tower_ops.batch_reduce(reduce_op,
                                               value_destination_pairs)
 
   def _select_single_value(self, structured):
@@ -336,9 +340,9 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
               "You cannot update variable with a Mirrored object with multiple "
               "components %r when using ParameterServerStrategy. You must "
               "specify a single value or a Mirrored with a single value." % x)
-      elif isinstance(x, values.PerDevice):
+      elif isinstance(x, values.PerReplica):
         raise ValueError(
-            "You cannot update variable with a PerDevice object %r when using "
+            "You cannot update variable with a PerReplica object %r when using "
             "ParameterServerStrategy. You must specify a single value or a "
             "Mirrored with a single value" % x)
       else:
@@ -346,30 +350,26 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
 
     return nest.map_structure(_select_fn, structured)
 
-  def _update(self, var, options, fn, *args, **kwargs):
+  def _update(self, var, fn, args, kwargs, group):
     if isinstance(var, values.AggregatingVariable):
       var = var.get()
     if not isinstance(var, resource_variable_ops.ResourceVariable):
       raise ValueError(
           "You can not update `var` %r. It must be a Variable." % var)
-    should_group = options.pop("grouped")
-    assert not options  # Validate that we are processing all of the options.
     with ops.colocate_with(var), distribute_lib.UpdateContext(var.device):
       result = fn(var, *self._select_single_value(args),
                   **self._select_single_value(kwargs))
-      if should_group:
+      if group:
         return result
       else:
         return nest.map_structure(self._unwrap, result)
 
   # TODO(yuefengz): does it need to call _select_single_value?
-  def _update_non_slot(self, colocate_with, options, fn, *args, **kwargs):
-    should_group = options.pop("grouped")
-    assert not options  # Validate that we are processing all of the options.
+  def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     with ops.device(
         colocate_with.device), distribute_lib.UpdateContext(colocate_with):
       result = fn(*args, **kwargs)
-      if should_group:
+      if group:
         return result
       else:
         return nest.map_structure(self._unwrap, result)
@@ -445,10 +445,6 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     del session_config.device_filters[:]
     session_config.device_filters.extend(
         ["/job:%s/task:%d" % (self._task_type, self._task_id), "/job:ps"])
-
-  @property
-  def num_replicas(self):
-    return len(self._compute_devices)
 
   @property
   def num_replicas_in_sync(self):

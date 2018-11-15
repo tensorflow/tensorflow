@@ -46,7 +46,7 @@ class CpuExternalConstantsTest : public CpuCodegenTest {
     builder.AddInstruction(
         HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param, constant));
 
-    std::unique_ptr<HloModule> module = CreateNewModule();
+    std::unique_ptr<HloModule> module = CreateNewVerifiedModule();
     module->AddEntryComputation(builder.Build());
 
     CompileAndVerifyIr(std::move(module), filecheck_pattern,

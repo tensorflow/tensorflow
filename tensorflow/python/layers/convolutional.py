@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.python.keras import layers as keras_layers
 from tensorflow.python.layers import base
 from tensorflow.python.ops import init_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -114,6 +115,9 @@ class Conv1D(keras_layers.Conv1D, base.Layer):
         name=name, **kwargs)
 
 
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.conv1d instead.')
 @tf_export(v1=['layers.conv1d'])
 def conv1d(inputs,
            filters,
@@ -310,6 +314,9 @@ class Conv2D(keras_layers.Conv2D, base.Layer):
         name=name, **kwargs)
 
 
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.conv2d instead.')
 @tf_export(v1=['layers.conv2d'])
 def conv2d(inputs,
            filters,
@@ -514,6 +521,9 @@ class Conv3D(keras_layers.Conv3D, base.Layer):
         name=name, **kwargs)
 
 
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.conv3d instead.')
 @tf_export(v1=['layers.conv3d'])
 def conv3d(inputs,
            filters,
@@ -841,6 +851,9 @@ class SeparableConv2D(keras_layers.SeparableConv2D, base.Layer):
         **kwargs)
 
 
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.separable_conv1d instead.')
 @tf_export(v1=['layers.separable_conv1d'])
 def separable_conv1d(inputs,
                      filters,
@@ -958,6 +971,9 @@ def separable_conv1d(inputs,
   return layer.apply(inputs)
 
 
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.separable_conv2d instead.')
 @tf_export(v1=['layers.separable_conv2d'])
 def separable_conv2d(inputs,
                      filters,
@@ -1165,6 +1181,9 @@ class Conv2DTranspose(keras_layers.Conv2DTranspose, base.Layer):
         **kwargs)
 
 
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.conv2d_transpose instead.')
 @tf_export(v1=['layers.conv2d_transpose'])
 def conv2d_transpose(inputs,
                      filters,
@@ -1342,6 +1361,9 @@ class Conv3DTranspose(keras_layers.Conv3DTranspose, base.Layer):
         **kwargs)
 
 
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.conv3d_transpose instead.')
 @tf_export(v1=['layers.conv3d_transpose'])
 def conv3d_transpose(inputs,
                      filters,

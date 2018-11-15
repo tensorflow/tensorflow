@@ -35,7 +35,7 @@ class LinearOperatorZerosTest(
 
   @property
   def _tests_to_skip(self):
-    return ["log_abs_det", "solve", "solve_with_broadcast"]
+    return ["cholesky", "log_abs_det", "solve", "solve_with_broadcast"]
 
   @property
   def _operator_build_infos(self):
@@ -46,7 +46,10 @@ class LinearOperatorZerosTest(
         build_info((3, 4, 4)),
         build_info((2, 1, 4, 4))]
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(
+      self, build_info, dtype, use_placeholder,
+      ensure_self_adjoint_and_pd=False):
+    del ensure_self_adjoint_and_pd
     del use_placeholder
     shape = list(build_info.shape)
     assert shape[-1] == shape[-2]

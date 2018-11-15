@@ -97,6 +97,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "cholesky"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'cholesky\'], "
+  }
+  member_method {
     name: "convolution_kernel"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'convolution_kernel\'], "
   }

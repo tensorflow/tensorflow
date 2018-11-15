@@ -128,6 +128,23 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     tensor = constant_op.constant(numpy_tensor)
     self.assertAllEqual(numpy_tensor.ndim, tensor.ndim)
 
+  def testLenAgreesWithNumpy(self):
+    numpy_tensor = np.asarray(1.0)
+    tensor = constant_op.constant(numpy_tensor)
+    with self.assertRaises(TypeError):
+      len(numpy_tensor)
+    with self.assertRaisesRegexp(
+        TypeError, r"Scalar tensor has no `len[(][)]`"):
+      len(tensor)
+
+    numpy_tensor = np.asarray([1.0, 2.0, 3.0])
+    tensor = constant_op.constant(numpy_tensor)
+    self.assertAllEqual(len(numpy_tensor), len(tensor))
+
+    numpy_tensor = np.asarray([[1.0, 2.0, 3.0], [1.0, 2.0, 3.0]])
+    tensor = constant_op.constant(numpy_tensor)
+    self.assertAllEqual(len(numpy_tensor), len(tensor))
+
   def testCopy(self):
     t = constant_op.constant(1.0)
     tt = copy.copy(t)
@@ -261,9 +278,8 @@ class TFETensorTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testCompatibility(self):
-    # TODO(nareshmodi): uint32, uint64 are not correctly handled in graph mode.
     integer_types = [dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
-                     dtypes.uint8, dtypes.uint16]
+                     dtypes.uint8, dtypes.uint16, dtypes.uint32, dtypes.uint64]
 
     # Floats are not compatible with ints
     for t in integer_types:

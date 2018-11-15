@@ -315,6 +315,27 @@ REGISTER_OP("Conv2DBackpropFilter")
       return Status::OK();
     });
 
+REGISTER_OP("_FusedConv2D")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("args: num_args * T")
+    .Output("output: T")
+    .Attr("T: {float, double}")
+    .Attr("num_args: int >= 0")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("fused_ops: list(string) = []")
+    // Attributes for the FusedBatchNorm ------------------------------------ //
+    .Attr("epsilon: float = 0.0001")
+    // ---------------------------------------------------------------------- //
+    .SetShapeFn(shape_inference::Conv2DShape)
+    .Doc(R"doc(
+*NOTE*: Do not invoke this operator directly in Python. Grappler is
+expected to create these operators.
+)doc");
+
 namespace {
 
 Status CommonFusedConvCalculations(InferenceContext* c, bool has_resize) {

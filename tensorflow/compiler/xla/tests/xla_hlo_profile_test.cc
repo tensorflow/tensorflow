@@ -380,7 +380,7 @@ static std::pair<int, char**> AddXlaHloProfileFlag(int argc, char** argv) {
 
 GTEST_API_ int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
+  xla::AppendDebugOptionsFlags(&flag_list);
   std::tie(argc, argv) = AddXlaHloProfileFlag(argc, argv);
 
   auto usage = tensorflow::Flags::Usage(argv[0], flag_list);

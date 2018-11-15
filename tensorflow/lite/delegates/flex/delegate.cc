@@ -46,11 +46,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteDelegate* delegate) {
   }
 
   // Request TFLite to partition the graph and make kernels for each independent
-  // subgraph.
+  // node sub set.
   TfLiteIntArray* size_and_nodes =
       ConvertVectorToTfLiteIntArray(supported_nodes);
-  context->ReplaceSubgraphsWithDelegateKernels(context, GetKernel(),
-                                               size_and_nodes, delegate);
+  context->ReplaceNodeSubsetsWithDelegateKernels(context, GetKernel(),
+                                                 size_and_nodes, delegate);
   TfLiteIntArrayFree(size_and_nodes);
   return kTfLiteOk;
 }

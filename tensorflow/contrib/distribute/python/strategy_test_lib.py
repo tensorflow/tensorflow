@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
@@ -26,7 +27,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import optimizer
@@ -104,7 +104,7 @@ class DistributionTestBase(test.TestCase):
       def step():
         """Perform one optimization step."""
         # Run forward & backward to get gradients, variables list.
-        g_v = d.call_for_each_replica(grad_fn, one, run_concurrently=l.built)
+        g_v = d.call_for_each_replica(grad_fn, args=(one,))
 
         # Update the variables using the gradients and the update() function.
         before_list = []
@@ -114,8 +114,7 @@ class DistributionTestBase(test.TestCase):
           before_list.append(fetched)
           # control_dependencies irrelevant but harmless in eager execution
           with ops.control_dependencies([fetched]):
-            g = d.reduce(
-                variable_scope.VariableAggregation.SUM, g, destinations=v)
+            g = d.reduce(reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(d.update(
                 v, update, g, grouped=False)):
               after_list.append(d.read_var(v))
@@ -160,7 +159,7 @@ class DistributionTestBase(test.TestCase):
       def step():
         """Perform one optimization step."""
         # Run forward & backward to get gradients, variables list.
-        g_v = d.call_for_each_replica(grad_fn, one)
+        g_v = d.call_for_each_replica(grad_fn, args=(one,))
 
         # Update the variables using the gradients and the update() function.
         before_list = []
@@ -169,8 +168,7 @@ class DistributionTestBase(test.TestCase):
           fetched = d.read_var(v)
           before_list.append(fetched)
           with ops.control_dependencies([fetched]):
-            g = d.reduce(
-                variable_scope.VariableAggregation.SUM, g, destinations=v)
+            g = d.reduce(reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(d.update(
                 v, update, g, grouped=False)):
               after_list.append(d.read_var(v))
@@ -188,27 +186,6 @@ class DistributionTestBase(test.TestCase):
       error_after = abs(after - 1)
       # Error should go down
       self.assertLess(error_after, error_before)
-
-  def _test_map_reduce(self, d, in_graph=None):
-    with d.scope():
-      map_in = [constant_op.constant(i) for i in range(10)]
-      map_out = d.map(map_in, lambda x, y: x * y, 2)
-      observed = d.reduce(variable_scope.VariableAggregation.SUM, map_out,
-                          "/device:CPU:0")
-      expected = 90  # 2 * (0 + 1 + ... + 9)
-      self.assertEqual(expected, observed.numpy())
-
-  def _test_device_index(self, d):
-    with d.scope():
-      expected_devices = [False] * len(d.worker_devices)
-
-      def mark_devices_fn(device_id):
-        self.assertLess(device_id, len(d.worker_devices))
-        self.assertFalse(expected_devices[device_id])
-        expected_devices[device_id] = True
-
-      d.call_for_each_replica(mark_devices_fn, d.worker_device_index)
-      self.assertAllEqual(expected_devices, [True] * len(d.worker_devices))
 
   def _test_replica_id(self, d):
     with d.scope():

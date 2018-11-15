@@ -29,7 +29,6 @@ from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import model_fn as model_fn_lib
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
@@ -462,11 +461,6 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
       clone = keras.models.Model(inputs, x)
       clone.compile(loss='mse', optimizer=keras.optimizers.RMSprop(lr=0.0001))
       clone.train_on_batch(input_arr, target_arr)
-
-    with self.assertRaisesRegexp(
-        errors.InternalError, 'Model and clone must use the same variables.'):
-      keras_saved_model._assert_same_non_optimizer_objects(
-          model, model_graph, clone, clone_graph)
 
   def testSaveSeqModelWithoutInputShapesRaisesError(self):
     """A Sequential model that hasn't been built should raise an error."""
