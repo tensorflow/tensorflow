@@ -112,34 +112,33 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "mkl_dnn",
         build_file = clean_dep("//third_party/mkl_dnn:mkldnn.BUILD"),
-        sha256 = "363cc9239eacf8e7917753c6d8c94f767e4cd049160d0654a61ef32d5e1b3049",
-        strip_prefix = "mkl-dnn-4e333787e0d66a1dca1218e99a891d493dbc8ef1",
+        sha256 = "b100f57af4a2b59a3a37a1ba38f77b644d2107d758a1a7f4e51310063cd21e73",
+        strip_prefix = "mkl-dnn-733fc908874c71a5285043931a1cf80aa923165c",
         urls = [
-            "https://mirror.bazel.build/github.com/intel/mkl-dnn/archive/4e333787e0d66a1dca1218e99a891d493dbc8ef1.tar.gz",
-            "https://github.com/intel/mkl-dnn/archive/4e333787e0d66a1dca1218e99a891d493dbc8ef1.tar.gz",
+            "https://mirror.bazel.build/github.com/intel/mkl-dnn/archive/733fc908874c71a5285043931a1cf80aa923165c.tar.gz",
+            "https://github.com/intel/mkl-dnn/archive/733fc908874c71a5285043931a1cf80aa923165c.tar.gz",
         ],
     )
 
     tf_http_archive(
         name = "com_google_absl",
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
-        sha256 = "3cf6132129ba87f0781c383bfaf381b7174b5818e81fffcc5d04bb451154f0f2",
-        strip_prefix = "abseil-cpp-f95179062eb65ce40895cc76f1398cce25394369",
+        sha256 = "f8536445cd480be7ec89bac19deaf766a1038330470fb0b469a98bce09e5c5ce",
+        strip_prefix = "abseil-cpp-7b46e1d31a6b08b1c6da2a13e7b151a20446fa07",
         urls = [
-            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/f95179062eb65ce40895cc76f1398cce25394369.tar.gz",
-            "https://github.com/abseil/abseil-cpp/archive/f95179062eb65ce40895cc76f1398cce25394369.tar.gz",
+            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/7b46e1d31a6b08b1c6da2a13e7b151a20446fa07.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/7b46e1d31a6b08b1c6da2a13e7b151a20446fa07.tar.gz",
         ],
     )
 
     tf_http_archive(
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
-        patch_file = clean_dep("//third_party:eigen_reshaped.patch"),
-        sha256 = "d66cec3b54b3dfaa4666c1d49481a7197f93fc078cd53c54e2b4a8893a529c9f",
-        strip_prefix = "eigen-eigen-b4890dc6bc34",
+        sha256 = "1e045bef75e9b17d459b60cc30b34408f3fdab300c5053d3919d1a5921f3c86a",
+        strip_prefix = "eigen-eigen-af2071407280",
         urls = [
-            "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/b4890dc6bc34.tar.gz",
-            "https://bitbucket.org/eigen/eigen/get/b4890dc6bc34.tar.gz",
+            "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/af2071407280.tar.gz",
+            "https://bitbucket.org/eigen/eigen/get/af2071407280.tar.gz",
         ],
     )
 

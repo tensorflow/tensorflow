@@ -370,7 +370,8 @@ def make_zip_of_tests(zip_path,
                       make_graph,
                       make_test_inputs,
                       extra_toco_options=ExtraTocoOptions(),
-                      use_frozen_graph=False):
+                      use_frozen_graph=False,
+                      expected_tf_success=None):
   """Helper to make a zip file of a bunch of TensorFlow models.
 
   This does a cartestian product of the dictionary of test_parameters and
@@ -390,6 +391,8 @@ def make_zip_of_tests(zip_path,
       `output_tensors` and returns tuple `(input_values, output_values)`.
     extra_toco_options: Additional toco options.
     use_frozen_graph: Whether or not freeze graph before toco converter.
+    expected_tf_success: Number of times tensorflow is supposed to succeed in
+      executing the input graphs. `None` means "unknown".
 
   Raises:
     RuntimeError: if there are toco errors that can't be ignored.
@@ -549,6 +552,11 @@ def make_zip_of_tests(zip_path,
   tf.logging.info(("Archive %s Considered %d graphs, %d TF evaluated graphs "
                    " and %d TOCO converted graphs (%.1f%%"), zip_path,
                   total_conversions, tf_success, toco_success, percent)
+
+  if expected_tf_success is not None and tf_success != expected_tf_success:
+    raise RuntimeError(
+        "Expected TF to succeed %d times, but that happened %d times" %
+        (expected_tf_success, tf_success))
 
   if not FLAGS.ignore_toco_errors and toco_errors > 0:
     raise RuntimeError(
@@ -1142,9 +1150,9 @@ def make_gather_tests(zip_path):
       # TODO(mgubin): add string tests when they are supported by Toco.
       # TODO(mgubin): add tests for Nd indices when they are supported by
       # TfLite.
-      "params_dtype": [tf.float32, tf.int32],
+      "params_dtype": [tf.float32, tf.int32, tf.int64],
       "params_shape": [[10], [1, 2, 20]],
-      "indices_dtype": [tf.int32],
+      "indices_dtype": [tf.int32, tf.int64],
       "indices_shape": [[3], [5]],
       "axis": [-1, 0, 1],
   }]
@@ -1172,7 +1180,13 @@ def make_gather_tests(zip_path):
     return [params, indices], sess.run(
         outputs, feed_dict=dict(zip(inputs, [params, indices])))
 
-  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+  # Note that TF can't execute with index=1 and params_shape=[10].
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_success=60)
 
 
 def make_global_batch_norm_tests(zip_path):
@@ -3121,7 +3135,7 @@ def make_transpose_conv_tests(zip_path):
 def make_tile_tests(zip_path):
   """Make a set of tests to do tile."""
   test_parameters = [{
-      "input_dtype": [tf.float32, tf.int32],
+      "input_dtype": [tf.float32, tf.int32, tf.bool],
       "input_shape": [[3, 2, 1], [2, 2, 2]],
       "multiplier_dtype": [tf.int32, tf.int64],
       "multiplier_shape": [[3]]
@@ -3143,8 +3157,10 @@ def make_tile_tests(zip_path):
   def build_inputs(parameters, sess, inputs, outputs):
     input_value = create_tensor_data(parameters["input_dtype"],
                                      parameters["input_shape"])
-    multipliers_value = create_tensor_data(parameters["multiplier_dtype"],
-                                           parameters["multiplier_shape"])
+    multipliers_value = create_tensor_data(
+        parameters["multiplier_dtype"],
+        parameters["multiplier_shape"],
+        min_value=0)
     return [input_value, multipliers_value], sess.run(
         outputs,
         feed_dict={

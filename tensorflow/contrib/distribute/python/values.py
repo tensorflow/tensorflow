@@ -30,6 +30,7 @@ import six
 from tensorflow.contrib.distribute.python import input_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import device as tf_device
@@ -40,7 +41,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import distribution_strategy_context
@@ -373,12 +373,13 @@ class MirroredVariable(DistributedVariable, Mirrored,
       if self._aggregation == vs.VariableAggregation.NONE:
         raise ValueError("You must specify an aggregation method to update a "
                          "MirroredVariable in Replica Context.")
+      reduce_op = reduce_util.ReduceOp.from_variable_aggregation(
+          self._aggregation)
 
       def merge_fn(strategy, value, *other_args, **other_kwargs):
         return strategy.update(
             self, f,
-            strategy.reduce(
-                aggregation=self._aggregation, value=value, destinations=self),
+            strategy.reduce(reduce_op, value=value, destinations=self),
             *other_args, **other_kwargs)
 
       return distribution_strategy_context.get_replica_context().merge_call(
@@ -614,12 +615,13 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
       if self._aggregation == vs.VariableAggregation.NONE:
         raise ValueError("You must specify an aggregation method to update a "
                          "TPUMirroredVariable in Replica Context.")
+      reduce_op = reduce_util.ReduceOp.from_variable_aggregation(
+          self._aggregation)
 
       def merge_fn(strategy, value, *other_args, **other_kwargs):
         return strategy.update(
             self, f,
-            strategy.reduce(
-                aggregation=self._aggregation, value=value, destinations=self),
+            strategy.reduce(reduce_op, value=value, destinations=self),
             *other_args, **other_kwargs)
 
       return distribution_strategy_context.get_replica_context().merge_call(
@@ -1060,10 +1062,10 @@ def select_device_mirrored(device, structured):
   return nest.map_structure(_get_mirrored, structured)
 
 
-def update_regroup(strategy, updates, should_group):
+def update_regroup(strategy, updates, group):
   """Regroup for an update, with dependencies to ensure all updates execute."""
   regrouped = regroup(updates, Mirrored)
-  if not should_group:
+  if not group:
     return nest.map_structure(strategy.unwrap, regrouped)
   grouped_flat = []
   for u in nest.flatten(regrouped):
@@ -1254,22 +1256,34 @@ class MultiWorkerDataset(object):
     """Initialize the MultiWorkerDataset object.
 
     Args:
-      dataset_fn: a function that returns a `tf.data.Dataset`.
+      dataset_fn: a function or a list of functions that returns a
+        `tf.data.Dataset`.
       worker_device_pairs: a list of (worker, list of devices on that worker)
-        pairs.
+        pairs; it must have same length with `dataset_fn` if `dataset_fn` is a
+        list.
       prefetch_on_device: whether to prefetch to devices.
       auto_shard: whether to auto-shard the dataset.
     """
+    if isinstance(dataset_fn, list):
+      if len(dataset_fn) != len(worker_device_pairs):
+        raise ValueError("If `dataset_fn` is a list, it must have same length "
+                         "as `worker_device_pairs`")
+      if auto_shard:
+        raise ValueError(
+            "If `dataset_fn` is a list, `auto_shard` is not supported.")
     self._worker_device_pairs = worker_device_pairs
     self._datasets = []
     # TODO(yuefengz, priyag): support different set of jobs for input
     # processing.
     for i, (worker, worker_devices) in enumerate(worker_device_pairs):
       with ops.device(worker):
-        worker_input = dataset_fn()
-        if auto_shard:
-          worker_input = input_ops.auto_shard_dataset(
-              worker_input, len(worker_device_pairs), i)
+        if isinstance(dataset_fn, list):
+          worker_input = dataset_fn[i]()
+        else:
+          worker_input = dataset_fn()
+          if auto_shard:
+            worker_input = input_ops.auto_shard_dataset(
+                worker_input, len(worker_device_pairs), i)
         dataset = PerReplicaDataset(
             worker_input, worker_devices, prefetch_on_device=prefetch_on_device)
         self._datasets.append((worker, dataset))
@@ -1505,7 +1519,7 @@ class MultiStepContext(object):
       A context object.
     """
     self._last_step_outputs = {}
-    self._last_step_outputs_aggregations = {}
+    self._last_step_outputs_reduce_ops = {}
     self._non_tensor_outputs = {}
 
   @property
@@ -1515,8 +1529,8 @@ class MultiStepContext(object):
     Keys in the dictionary are names of tensors to be captured, as specified
     when `set_last_step_output` is called.
     Values in the dictionary are the tensors themselves. If
-    `set_last_step_output` was called with an `aggregation` for this output,
-    then the value is the aggregated value.
+    `set_last_step_output` was called with a `reduce_op` for this output,
+    then the value is the reduced value.
 
     Returns:
       A dictionary with last step outputs.
@@ -1529,8 +1543,7 @@ class MultiStepContext(object):
       raise ValueError("Need a dictionary to set last_step_outputs.")
     self._last_step_outputs = outputs
 
-  def set_last_step_output(self, name, output,
-                           aggregation=variables_lib.VariableAggregation.NONE):
+  def set_last_step_output(self, name, output, reduce_op=None):
     """Set `output` with `name` to be outputted from the last step.
 
     Args:
@@ -1538,36 +1551,35 @@ class MultiStepContext(object):
         name.
       output: The tensors that should be outputted with `name`. See below for
         actual types supported.
-      aggregation: Aggregation method to use to aggregate outputs from multiple
+      reduce_op: Reduction method to use to reduce outputs from multiple
         replicas. Required if `set_last_step_output` is called in a replica
         context. Optional in cross_replica_context.
-        When present, the outputs from all the replicas are aggregated using the
+        When present, the outputs from all the replicas are reduced using the
         current distribution strategy's `reduce` method. Hence, the type of
         `output` must be what's supported by the corresponding `reduce` method.
-        For e.g. if using MirroredStrategy and aggregation is set, output
+        For e.g. if using MirroredStrategy and reduction is set, output
         must be a `PerReplica` value.
-        The aggregation method is also recorded in a dictionary
-        `_last_step_outputs_aggregations` for later interpreting of the
+        The reduce method is also recorded in a dictionary
+        `_last_step_outputs_reduce_ops` for later interpreting of the
         outputs as already reduced or not.
-
     """
     if distribution_strategy_context.get_cross_replica_context():
-      self._last_step_outputs_aggregations[name] = aggregation
-      if aggregation is variables_lib.VariableAggregation.NONE:
+      self._last_step_outputs_reduce_ops[name] = reduce_op
+      if reduce_op is None:
         self._last_step_outputs[name] = output
       else:
         distribution = distribution_strategy_context.get_distribution_strategy()
         self._last_step_outputs[name] = distribution.reduce(
-            aggregation, output, destinations="/device:CPU:0")
+            reduce_op, output, destinations="/device:CPU:0")
     else:
-      assert aggregation is not variables_lib.VariableAggregation.NONE
+      assert reduce_op is not None
       def merge_fn(distribution, value):
         self._last_step_outputs[name] = distribution.reduce(
-            aggregation, value, destinations="/device:CPU:0")
+            reduce_op, value, destinations="/device:CPU:0")
         # Setting this inside the `merge_fn` because all replicas share the same
         # context object, so it's more robust to set it only once (even if all
         # the replicas are trying to set the same value).
-        self._last_step_outputs_aggregations[name] = aggregation
+        self._last_step_outputs_reduce_ops[name] = reduce_op
 
       distribution_strategy_context.get_replica_context().merge_call(
           merge_fn, output)
@@ -1584,7 +1596,7 @@ class MultiStepContext(object):
     else:
       def merge_fn(distribution, value):
         # NOTE(priyag): For non tensor outputs, we simply return all the values
-        # in a list as aggregation doesn't make sense on non tensors.
+        # in a list as reduction doesn't make sense on non tensors.
         self._non_tensor_outputs[name] = distribution.unwrap(value)
       distribution_strategy_context.get_replica_context().merge_call(
           merge_fn, output)
@@ -1650,12 +1662,13 @@ class AggregatingVariable(checkpointable.CheckpointableBase):
       if self._aggregation == vs.VariableAggregation.NONE:
         raise ValueError("You must specify an aggregation method to update a "
                          "a variable in Replica Context.")
+      reduce_op = reduce_util.ReduceOp.from_variable_aggregation(
+          self._aggregation)
 
       def merge_fn(strategy, value, *other_args, **other_kwargs):
         return strategy.update(
             self, f,
-            strategy.reduce(
-                aggregation=self._aggregation, value=value, destinations=self),
+            strategy.reduce(reduce_op, value=value, destinations=self),
             *other_args, **other_kwargs)
 
       return distribution_strategy_context.get_replica_context().merge_call(

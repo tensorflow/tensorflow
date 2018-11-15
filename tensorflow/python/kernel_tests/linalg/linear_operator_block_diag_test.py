@@ -23,6 +23,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_block_diag as block_diag
+from tensorflow.python.ops.linalg import linear_operator_lower_triangular as lower_triangular
 from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.platform import test
@@ -78,7 +79,9 @@ class SquareLinearOperatorBlockDiagTest(
         build_info((2, 1, 5, 5), blocks=[(2, 1, 2, 2), (1, 3, 3)]),
     ]
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(
+      self, build_info, dtype, use_placeholder,
+      ensure_self_adjoint_and_pd=False):
     shape = list(build_info.shape)
     expected_blocks = (
         build_info.__dict__["blocks"] if "blocks" in build_info.__dict__
@@ -98,7 +101,11 @@ class SquareLinearOperatorBlockDiagTest(
 
     operator = block_diag.LinearOperatorBlockDiag(
         [linalg.LinearOperatorFullMatrix(
-            l, is_square=True) for l in lin_op_matrices])
+            l,
+            is_square=True,
+            is_self_adjoint=True if ensure_self_adjoint_and_pd else None,
+            is_positive_definite=True if ensure_self_adjoint_and_pd else None)
+         for l in lin_op_matrices])
 
     # Should be auto-set.
     self.assertTrue(operator.is_square)
@@ -128,6 +135,40 @@ class SquareLinearOperatorBlockDiagTest(
     self.assertTrue(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
     self.assertFalse(operator.is_self_adjoint)
+
+  def test_block_diag_cholesky_type(self):
+    matrix = [[1., 0.], [0., 1.]]
+    operator = block_diag.LinearOperatorBlockDiag(
+        [
+            linalg.LinearOperatorFullMatrix(
+                matrix,
+                is_positive_definite=True,
+                is_self_adjoint=True,
+            ),
+            linalg.LinearOperatorFullMatrix(
+                matrix,
+                is_positive_definite=True,
+                is_self_adjoint=True,
+            ),
+        ],
+        is_positive_definite=True,
+        is_self_adjoint=True,
+    )
+    cholesky_factor = operator.cholesky()
+    self.assertTrue(isinstance(
+        cholesky_factor,
+        block_diag.LinearOperatorBlockDiag))
+    self.assertEqual(2, len(cholesky_factor.operators))
+    self.assertTrue(
+        isinstance(
+            cholesky_factor.operators[0],
+            lower_triangular.LinearOperatorLowerTriangular)
+    )
+    self.assertTrue(
+        isinstance(
+            cholesky_factor.operators[1],
+            lower_triangular.LinearOperatorLowerTriangular)
+    )
 
   def test_is_non_singular_auto_set(self):
     # Matrix with two positive eigenvalues, 11 and 8.

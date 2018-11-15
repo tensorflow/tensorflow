@@ -29,6 +29,11 @@ class LinearOperatorLowerTriangularTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
+  @property
+  def _tests_to_skip(self):
+    # Cholesky does not make sense for triangular matrices.
+    return ["cholesky"]
+
   def _operator_and_matrix(self, build_info, dtype, use_placeholder):
     shape = list(build_info.shape)
     # Upper triangle will be nonzero, but ignored.

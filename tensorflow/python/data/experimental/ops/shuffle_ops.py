@@ -26,7 +26,7 @@ from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
-class _ShuffleAndRepeatDataset(dataset_ops.UnaryDataset):
+class _ShuffleAndRepeatDataset(dataset_ops.UnaryUnchangedStructureDataset):
   """A `Dataset` that fuses `shuffle` and `repeat`."""
 
   def __init__(self, input_dataset, buffer_size, count=None, seed=None):
@@ -52,18 +52,6 @@ class _ShuffleAndRepeatDataset(dataset_ops.UnaryDataset):
         seed2=self._seed2,
         **dataset_ops.flat_structure(self))
     # pylint: enable=protected-access
-
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
-
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
 
 
 @tf_export("data.experimental.shuffle_and_repeat")

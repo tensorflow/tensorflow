@@ -3237,7 +3237,8 @@ def rnn(step_function,
         constants=None,
         unroll=False,
         input_length=None,
-        time_major=False):
+        time_major=False,
+        zero_output_for_mask=False):
   """Iterates over the time dimension of a tensor.
 
   Arguments:
@@ -3275,7 +3276,9 @@ def rnn(step_function,
           RNN calculation. However, most TensorFlow data is batch-major, so by
           default this function accepts input and emits output in batch-major
           form.
-
+      zero_output_for_mask: Boolean. If True, the output for masked timestep
+          will be zeros, whereas in the False case, output from previous
+          timestep is returned.
   Returns:
       A tuple, `(last_output, outputs, new_states)`.
           last_output: the latest output of the rnn, of shape `(samples, ...)`
@@ -3327,13 +3330,13 @@ def rnn(step_function,
   # So we need to broadcast the mask to match the shape of inputs.
   # That's what the tile call does, it just repeats the mask along its
   # second dimension n times.
-  def _expand_mask(mask_t, input_t):
+  def _expand_mask(mask_t, input_t, fixed_dim=1):
     assert not nest.is_sequence(mask_t)
     assert not nest.is_sequence(input_t)
     rank_diff = len(input_t.shape) - len(mask_t.shape)
     for _ in range(rank_diff):
       mask_t = array_ops.expand_dims(mask_t, -1)
-    multiples = [1] + input_t.shape.as_list()[1:]
+    multiples = [1] * fixed_dim + input_t.shape.as_list()[fixed_dim:]
     return array_ops.tile(mask_t, multiples)
 
   if unroll:
@@ -3392,6 +3395,17 @@ def rnn(step_function,
       last_output = successive_outputs[-1]
       new_states = successive_states[-1]
       outputs = array_ops.stack(successive_outputs)
+
+      if zero_output_for_mask:
+        last_output = array_ops.where(
+            _expand_mask(mask_list[-1], last_output),
+            last_output,
+            zeros_like(last_output))
+        outputs = array_ops.where(
+            _expand_mask(mask, outputs, fixed_dim=2),
+            outputs,
+            zeros_like(outputs))
+
     else:
       for i in range(time_steps):
         inp = _get_input_tensor(i)
@@ -3485,11 +3499,12 @@ def rnn(step_function,
                                            tuple(states) + tuple(constants))
         # mask output
         flat_output = nest.flatten(output)
-        flat_previous_output = nest.flatten(prev_output)
+        flat_mask_output = (flat_zero_output if zero_output_for_mask
+                            else nest.flatten(prev_output))
         tiled_mask_t = tuple(_expand_mask(mask_t, o) for o in flat_output)
         flat_new_output = tuple(
-            array_ops.where(m, o, po) for m, o, po in zip(
-                tiled_mask_t, flat_output, flat_previous_output))
+            array_ops.where(m, o, zo) for m, o, zo in zip(
+                tiled_mask_t, flat_output, flat_mask_output))
 
         # mask states
         flat_state = nest.flatten(states)
@@ -3498,8 +3513,8 @@ def rnn(step_function,
           new_state.set_shape(state.shape)
         tiled_mask_t = tuple(_expand_mask(mask_t, s) for s in flat_state)
         flat_final_state = tuple(
-            array_ops.where(m, o, po)
-            for m, o, po in zip(tiled_mask_t, flat_new_state, flat_state))
+            array_ops.where(m, s, ps)
+            for m, s, ps in zip(tiled_mask_t, flat_new_state, flat_state))
         new_states = nest.pack_sequence_as(new_states, flat_final_state)
 
         output_ta_t = tuple(

@@ -19,8 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import threading
+import enum
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -70,11 +72,11 @@ class UpdateContext(object):
 
 
 def get_loss_reduction():
-  """Reduce `aggregation` corresponding to the last loss reduction."""
+  """Reduce op corresponding to the last loss reduction."""
   loss_reduction = ops.get_default_graph()._last_loss_reduction  # pylint: disable=protected-access
   if loss_reduction == losses_impl.Reduction.SUM:
-    return variable_scope.VariableAggregation.SUM
-  return variable_scope.VariableAggregation.MEAN
+    return reduce_util.ReduceOp.SUM
+  return reduce_util.ReduceOp.MEAN
 
 
 # ------------------------------------------------------------------------------
@@ -181,6 +183,80 @@ class _SameScopeAgainContext(object):
 
   def __exit__(self, exception_type, exception_value, traceback):
     del exception_type, exception_value, traceback
+
+
+# TODO(yuefengz): add more replication modes.
+class InputReplicationMode(enum.Enum):
+  """Replication mode for input function."""
+
+  # The input function will be called on each worker independently, creating as
+  # many input pipelines as number of workers. Replicas will dequeue from the
+  # local Dataset on their worker. Distribution Strategy doesn't manage any
+  # state sharing between such separate input pipelines.
+  PER_WORKER = 0
+
+
+class InputContext(object):
+  """A class wrapping information needed by an input function.
+
+  This is a context class that is passed to the user's input fn and contains
+  information about the compute replicas and input pipelines. The number of
+  compute replicas (in sync training) helps compute per input pipeline batch
+  size from the desired global batch size. Input pipeline information can be
+  used to return a different subset of the input in each input pipeline (for
+  e.g. shard the input pipeline, use a different input source etc).
+  """
+
+  def __init__(self,
+               num_input_pipelines=1,
+               input_pipeline_id=0,
+               num_replicas_in_sync=1):
+    """Initializes an InputContext object.
+
+    Args:
+      num_input_pipelines: the number of input pipelines in a cluster.
+      input_pipeline_id: the current input pipeline id, should be an int in
+        [0,`num_input_pipelines`).
+      num_replicas_in_sync: the number of replicas that are in sync.
+    """
+    self._num_input_pipelines = num_input_pipelines
+    self._input_pipeline_id = input_pipeline_id
+    self._num_replicas_in_sync = num_replicas_in_sync
+
+  @property
+  def num_replicas_in_sync(self):
+    """Returns the number of compute replicas in sync."""
+    return self._num_replicas_in_sync
+
+  @property
+  def input_pipeline_id(self):
+    """Returns the input pipeline ID."""
+    return self._input_pipeline_id
+
+  @property
+  def num_input_pipelines(self):
+    """Returns the number of input pipelines."""
+    return self._num_input_pipelines
+
+  def get_per_replica_batch_size(self, global_batch_size):
+    """Returns the per-replica batch size.
+
+    Args:
+      global_batch_size: the global batch size which should be divisible by
+        `num_replicas_in_sync`.
+
+    Returns:
+      the per-replica batch size.
+
+    Raises:
+      ValueError: if `global_batch_size` not divisible by
+        `num_replicas_in_sync`.
+    """
+    if global_batch_size % self._num_replicas_in_sync != 0:
+      raise ValueError("The `global_batch_size` %r is not divisible by "
+                       "`num_replicas_in_sync` %r " %
+                       (global_batch_size, self._num_replicas_in_sync))
+    return global_batch_size // self._num_replicas_in_sync
 
 
 # ------------------------------------------------------------------------------
@@ -513,7 +589,7 @@ class DistributionStrategy(object):
         # operates on v1 from var1, v2 from var2, and v3 from var3
 
       # `fn` runs on every device `v1` is on, `v2` and `v3` will be there too.
-      distribution_strategy.update(v1, fn, v2, v3)
+      distribution_strategy.update(v1, fn, args=(v2, v3))
     ```
 
     Args:
@@ -533,8 +609,15 @@ class DistributionStrategy(object):
     _require_distribution_strategy_scope(self)
     return variable_scope.variable_creator_scope(create_colocated_variable)
 
-  def _call_dataset_fn(self, dataset_fn):
-    result = dataset_fn()
+  def _call_dataset_fn(self, dataset_fn, input_context=None):
+    """Call the `dataset_fn` with `input_context` as argument."""
+    # This method is invoked by both `make_input_fn_iterator` and
+    # `distribute_dataset`. The `dataset_fn` for the former one accepts an
+    # input_context while the latter one doesn't.
+    if input_context:
+      result = dataset_fn(input_context)
+    else:
+      result = dataset_fn()
     if not isinstance(result, dataset_ops.Dataset):
       raise ValueError(
           "dataset_fn() must return a tf.data.Dataset when using a "
@@ -579,7 +662,7 @@ class DistributionStrategy(object):
       return tf.data.Dataset.from_tensors([[1.]]).repeat()
     with distribution_strategy.scope():
       distributed_dataset = distribution_strategy.distribute_dataset(dataset_fn)
-      iterator = distributed_dataset.make_one_shot_iterator()
+      iterator = distributed_dataset.make_initializable_iterator()
       replica_results = distribution_strategy.call_for_each_replica(
           replica_fn, args=(iterator.get_next(),))
     ```
@@ -590,6 +673,46 @@ class DistributionStrategy(object):
     Returns:
       A `PerReplicaDataset` that will produce data for each replica.
     """
+    raise NotImplementedError("must be implemented in descendants")
+
+  def make_input_fn_iterator(self,
+                             input_fn,
+                             replication_mode=InputReplicationMode.PER_WORKER):
+    """Returns an iterator split across replicas created from an input function.
+
+    The `input_fn` should take an `InputContext` object where information about
+    input sharding can be accessed:
+
+    ```
+    def input_fn(input_context):
+      d = tf.data.Dataset.from_tensors([[1.]]).repeat()
+      return d.shard(input_context.num_input_pipelines,
+                     input_context.input_pipeline_id)
+    with distribution_strategy.scope():
+      iterator = distribution_strategy.make_input_fn_iterator(
+          input_fn)
+      replica_results = distribution_strategy.call_for_each_replica(
+          replica_fn, iterator.get_next())
+    ```
+
+    Args:
+      input_fn: A function that returns a `tf.data.Dataset`. This function is
+        expected to take an `InputContext` object.
+      replication_mode: an enum value of `InputReplicationMode`. Only
+        `PER_WORKER` is supported currently.
+
+    Returns:
+      An iterator object that can be initialized and fetched next element.
+    """
+    if replication_mode != InputReplicationMode.PER_WORKER:
+      raise ValueError(
+          "Input replication mode not supported: %r" % replication_mode)
+    return self._make_input_fn_iterator(
+        input_fn, replication_mode=replication_mode)
+
+  def _make_input_fn_iterator(self,
+                              input_fn,
+                              replication_mode=InputReplicationMode.PER_WORKER):
     raise NotImplementedError("must be implemented in descendants")
 
   def broadcast(self, tensor, destinations=None):
@@ -755,9 +878,13 @@ class DistributionStrategy(object):
     """Combine (via e.g. sum or mean) values across replicas.
 
     Args:
-      aggregation: Indicates how a variable will be aggregated. Accepted values
-        are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`,
+      aggregation: Reduction type, an instance of `tf.distribute.ReduceOp` enum.
+        DEPRECATED but still accepted values:
+        `tf.VariableAggregation.SUM`,
+        `tf.VariableAggregation.MEAN`,
         `tf.VariableAggregation.ONLY_FIRST_REPLICA`.
+        # TODO(priyag): Rename this argument when moving the method to
+        # DSExtended.
       value: A per-replica value with one value per replica.
       destinations: A mirrored variable, a per-replica tensor, a device string,
         or list of device strings. The return value will be copied to all
@@ -771,23 +898,32 @@ class DistributionStrategy(object):
     # TODO(josh11b): Return an unwrapped value if colocate_with is a
     # single device.
     _require_cross_replica_context(self)
-    assert aggregation in [
-        variable_scope.VariableAggregation.SUM,
-        variable_scope.VariableAggregation.MEAN,
-        variable_scope.VariableAggregation.ONLY_FIRST_REPLICA
-    ]
-    return self._reduce(aggregation, value, destinations)
 
-  def _reduce(self, aggregation, value, destinations):
+    # TODO(priyag): Remove this when all callers have been updated.
+    reduce_op = aggregation
+    if isinstance(aggregation, variable_scope.VariableAggregation):
+      assert aggregation in [
+          variable_scope.VariableAggregation.SUM,
+          variable_scope.VariableAggregation.MEAN,
+          variable_scope.VariableAggregation.ONLY_FIRST_REPLICA
+      ]
+      reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
+    return self._reduce(reduce_op, value, destinations)
+
+  def _reduce(self, reduce_op, value, destinations):
     raise NotImplementedError("must be implemented in descendants")
 
   def batch_reduce(self, aggregation, value_destination_pairs):
     """Combine multiple `reduce` calls into one for faster execution.
 
     Args:
-      aggregation: Indicates how a variable will be aggregated. Accepted values
-        are `tf.VariableAggregation.SUM`, `tf.VariableAggregation.MEAN`,
+      aggregation: Reduction type, an instance of `tf.distribute.ReduceOp` enum.
+        DEPRECATED but still accepted values:
+        `tf.VariableAggregation.SUM`,
+        `tf.VariableAggregation.MEAN`,
         `tf.VariableAggregation.ONLY_FIRST_REPLICA`.
+        # TODO(priyag): Rename this argument when moving the method to
+        # DSExtended.
       value_destination_pairs: A sequence of (value, destinations)
         pairs. See `reduce()` for a description.
 
@@ -796,16 +932,21 @@ class DistributionStrategy(object):
     """
     # TODO(josh11b): More docstring
     _require_cross_replica_context(self)
-    assert aggregation in [
-        variable_scope.VariableAggregation.SUM,
-        variable_scope.VariableAggregation.MEAN,
-        variable_scope.VariableAggregation.ONLY_FIRST_REPLICA
-    ]
-    return self._batch_reduce(aggregation, value_destination_pairs)
 
-  def _batch_reduce(self, aggregation, value_destination_pairs):
+    # TODO(priyag): Remove this when all callers have been updated.
+    reduce_op = aggregation
+    if isinstance(aggregation, variable_scope.VariableAggregation):
+      assert aggregation in [
+          variable_scope.VariableAggregation.SUM,
+          variable_scope.VariableAggregation.MEAN,
+          variable_scope.VariableAggregation.ONLY_FIRST_REPLICA
+      ]
+      reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
+    return self._batch_reduce(reduce_op, value_destination_pairs)
+
+  def _batch_reduce(self, reduce_op, value_destination_pairs):
     return [
-        self.reduce(aggregation, t, destinations=v)
+        self.reduce(reduce_op, t, destinations=v)
         for t, v in value_destination_pairs
     ]
 
@@ -819,7 +960,7 @@ class DistributionStrategy(object):
     results = {}
     for device, v in var:
       with tf.device(device):
-        # *args and **kwargs will be unwrapped if they are mirrored.
+        # args and kwargs will be unwrapped if they are mirrored.
         results[device] = fn(v, *args, **kwargs)
     return merged(results)
     ```
@@ -833,23 +974,41 @@ class DistributionStrategy(object):
     Args:
       var: Variable, possibly mirrored to multiple devices, to operate on.
       fn: Function to call. Should take the variable as the first argument.
-      *args: Additional positional arguments to pass to `fn()`.
-      **kwargs: Keyword arguments to pass to `fn()`. If "grouped=False" is
-        specified, the return value will be unwrapped.
+      args: Tuple or list. Additional positional arguments to pass to `fn()`.
+      kwargs: Dict with keyword arguments to pass to `fn()`.
+      group: Boolean. Defaults to True. If False, the return value will be
+        unwrapped.
 
     Returns:
       By default, the merged return value of `fn` across all replicas.  The
       merged result has dependencies to make sure that if it is evaluated at
       all, the side effects (updates) will happen on every replica. If instead
-      "grouped=False" is specified, this function will return a nest of lists
+      "group=False" is specified, this function will return a nest of lists
       where each list has an element per replica, and the caller is responsible
       for ensuring all elements are executed.
     """
     _require_cross_replica_context(self)
-    options = {"grouped": kwargs.pop("grouped", True)}
-    return self._update(var, options, fn, *args, **kwargs)
+    group = kwargs.pop("group", True)
+    # We temporarily support "grouped" in addition to "group" for backward-
+    # compatibility.
+    group = kwargs.pop("grouped", True) and group
+    # Handle old *args, **kwargs, and new args=(...), kwargs={...}, to
+    # allow transition.
+    a = kwargs.pop("args", None)
+    if a is not None:
+      if args:
+        raise ValueError(
+            "Can't pass *args and args=... to update")
+      args = a
+    k = kwargs.pop("kwargs", None)
+    if k is not None:
+      if kwargs:
+        raise ValueError(
+            "Can't pass **kwargs and kwargs=... to update")
+      kwargs = k
+    return self._update(var, fn, args, kwargs, group)
 
-  def _update(self, var, options, fn, *args, **kwargs):
+  def _update(self, var, fn, args, kwargs, group):
     raise NotImplementedError("must be implemented in descendants")
 
   def update_non_slot(self, colocate_with, fn, *args, **kwargs):
@@ -858,19 +1017,36 @@ class DistributionStrategy(object):
     Args:
       colocate_with: The return value of `non_slot_devices()`.
       fn: Function to execute.
-      *args: Positional arguments to pass to `fn()`.
-      **kwargs: Keyword arguments to pass to `fn()`. If "grouped=False" is
-        specified, the return value will be unwrapped and the caller is
-        responsible for ensuring all elements are executed.
+      args: Tuple or list. Positional arguments to pass to `fn()`.
+      kwargs: Dict with keyword arguments to pass to `fn()`.
+      group: Boolean. Defaults to True. If False, the return value will be
+        unwrapped.
 
     Returns:
       Return value of `fn`, possibly merged across devices.
     """
     _require_cross_replica_context(self)
-    options = {"grouped": kwargs.pop("grouped", True)}
-    return self._update_non_slot(colocate_with, options, fn, *args, **kwargs)
+    group = kwargs.pop("group", True)
+    # We temporarily support "grouped" in addition to "group" for backward-
+    # compatibility.
+    group = kwargs.pop("grouped", True) and group
+    # Handle old *args, **kwargs, and new args=(...), kwargs={...}, to
+    # allow transition.
+    a = kwargs.pop("args", None)
+    if a is not None:
+      if args:
+        raise ValueError(
+            "Can't pass *args and args=... to update_non_slot")
+      args = a
+    k = kwargs.pop("kwargs", None)
+    if k is not None:
+      if kwargs:
+        raise ValueError(
+            "Can't pass **kwargs and kwargs=... to update_non_slot")
+      kwargs = k
+    return self._update_non_slot(colocate_with, fn, args, kwargs, group)
 
-  def _update_non_slot(self, colocate_with, options, fn, *args, **kwargs):
+  def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     raise NotImplementedError("must be implemented in descendants")
 
   def unwrap(self, value):
@@ -949,32 +1125,6 @@ class DistributionStrategy(object):
       var_list: The list of variables being optimized, needed with the
         default `DistributionStrategy`.
     """
-    raise NotImplementedError("must be implemented in descendants")
-
-  @property
-  def worker_device_index(self):
-    """An object mapping worker device to an id.
-
-    This might be passed as an argument to `call_for_each_replica()`, as in:
-
-    ```
-    with distribution_strategy.scope():
-
-      def fn(device_id):
-        # device_id is an integer. `fn` is being executed on device:
-        #    distribution_strategy.worker_devices[device_id].
-
-      distribution_strategy.call_for_each_replica(
-          fn, distribution_strategy.worker_device_index)
-    ```
-
-    Returns:
-      An index object, or the integer 0 if there is only a single replica.
-    """
-    _require_cross_replica_context(self)
-    return self._worker_device_index()
-
-  def _worker_device_index(self):
     raise NotImplementedError("must be implemented in descendants")
 
   @property
@@ -1100,11 +1250,6 @@ class ReplicaContext(object):
       _pop_per_thread_mode()
 
   @property
-  def num_replicas(self):
-    """Returns number of replicas, for purposes of averaging across replicas."""
-    return self._distribution_strategy.num_replicas
-
-  @property
   def num_replicas_in_sync(self):
     """Returns number of replicas over which gradients are aggregated."""
     return self._distribution_strategy.num_replicas_in_sync
@@ -1170,6 +1315,11 @@ class _DefaultDistributionStrategy(DistributionStrategy):
   def distribute_dataset(self, dataset_fn):
     return self._call_dataset_fn(dataset_fn)
 
+  def _make_input_fn_iterator(self,
+                              input_fn,
+                              replication_mode=InputReplicationMode.PER_WORKER):
+    return self._call_dataset_fn(input_fn, InputContext())
+
   def _broadcast(self, tensor, destinations):
     if destinations is None:
       return tensor
@@ -1180,19 +1330,17 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     with ReplicaContext(self, replica_id=0):
       return fn(*args, **kwargs)
 
-  def _reduce(self, aggregation, value, destinations):
+  def _reduce(self, reduce_op, value, destinations):
     # TODO(josh11b): Use destinations?
-    del aggregation, destinations
+    del reduce_op, destinations
     return value
 
-  def _update(self, var, options, fn, *args, **kwargs):
+  def _update(self, var, fn, args, kwargs, group):
     # The implementations of _update() and _update_non_slot() are identical
     # except _update() passes `var` as the first argument to `fn()`.
-    return self._update_non_slot(var, options, fn, var, *args, **kwargs)
+    return self._update_non_slot(var, fn, (var,) + tuple(args), kwargs, group)
 
-  def _update_non_slot(self, colocate_with, options, fn, *args, **kwargs):
-    should_group = options.pop("grouped")
-    assert not options  # Validate that we are processing all of the options.
+  def _update_non_slot(self, colocate_with, fn, args, kwargs, should_group):
     # TODO(josh11b): Figure out what we should be passing to UpdateContext()
     # once that value is used for something.
     with ops.colocate_with(colocate_with), UpdateContext(colocate_with):
@@ -1212,10 +1360,6 @@ class _DefaultDistributionStrategy(DistributionStrategy):
     return value
 
   @property
-  def num_replicas(self):
-    return 1
-
-  @property
   def num_replicas_in_sync(self):
     return 1
 
@@ -1231,10 +1375,6 @@ class _DefaultDistributionStrategy(DistributionStrategy):
 
   def non_slot_devices(self, var_list):
     return min(var_list, key=lambda x: x.name)
-
-  def _worker_device_index(self):
-    raise RuntimeError("worker_device_index() method unsupported by "
-                       "_DefaultDistributionStrategy.")
 
 
 # ------------------------------------------------------------------------------

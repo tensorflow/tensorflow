@@ -24,6 +24,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_kronecker as kronecker
+from tensorflow.python.ops.linalg import linear_operator_lower_triangular as lower_triangular
 from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.platform import test
@@ -99,7 +100,12 @@ class SquareLinearOperatorKroneckerTest(
   def _tests_to_skip(self):
     return ["det", "solve", "solve_with_broadcast"]
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(
+      self, build_info, dtype, use_placeholder,
+      ensure_self_adjoint_and_pd=False):
+    # Kronecker products constructed below will be from symmetric
+    # positive-definite matrices.
+    del ensure_self_adjoint_and_pd
     shape = list(build_info.shape)
     expected_factors = build_info.__dict__["factors"]
     matrices = [
@@ -116,7 +122,11 @@ class SquareLinearOperatorKroneckerTest(
 
     operator = kronecker.LinearOperatorKronecker(
         [linalg.LinearOperatorFullMatrix(
-            l, is_square=True) for l in lin_op_matrices])
+            l,
+            is_square=True,
+            is_self_adjoint=True,
+            is_positive_definite=True)
+         for l in lin_op_matrices])
 
     matrices = linear_operator_util.broadcast_matrix_batch_dims(matrices)
 
@@ -179,6 +189,40 @@ class SquareLinearOperatorKroneckerTest(
   def test_empty_or_one_operators_raises(self):
     with self.assertRaisesRegexp(ValueError, ">=1 operators"):
       kronecker.LinearOperatorKronecker([])
+
+  def test_kronecker_cholesky_type(self):
+    matrix = [[1., 0.], [0., 1.]]
+    operator = kronecker.LinearOperatorKronecker(
+        [
+            linalg.LinearOperatorFullMatrix(
+                matrix,
+                is_positive_definite=True,
+                is_self_adjoint=True,
+            ),
+            linalg.LinearOperatorFullMatrix(
+                matrix,
+                is_positive_definite=True,
+                is_self_adjoint=True,
+            ),
+        ],
+        is_positive_definite=True,
+        is_self_adjoint=True,
+    )
+    cholesky_factor = operator.cholesky()
+    self.assertTrue(isinstance(
+        cholesky_factor,
+        kronecker.LinearOperatorKronecker))
+    self.assertEqual(2, len(cholesky_factor.operators))
+    self.assertTrue(
+        isinstance(
+            cholesky_factor.operators[0],
+            lower_triangular.LinearOperatorLowerTriangular)
+    )
+    self.assertTrue(
+        isinstance(
+            cholesky_factor.operators[1],
+            lower_triangular.LinearOperatorLowerTriangular)
+    )
 
 
 if __name__ == "__main__":

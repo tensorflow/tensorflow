@@ -29,6 +29,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import distribute as distribute_lib
 
 
 # TODO(yuefengz): support in-graph replication.
@@ -94,8 +95,7 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
           "Unrecognized task_type: %r, valid task types are: \"chief\", "
           "\"worker\"." % task_type)
     cluster_spec = multi_worker_util.normalize_cluster_spec(cluster_spec)
-    self._num_workers = len(cluster_spec.as_dict().get("worker", [])) + len(
-        cluster_spec.as_dict().get("chief", []))
+    self._num_workers = multi_worker_util.worker_count(cluster_spec, task_type)
     if not self._num_workers:
       raise ValueError("No `worker` or `chief` tasks can be found in "
                        "`cluster_spec`.")
@@ -208,6 +208,23 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
     return values.PerReplicaDataset(
         self._call_dataset_fn(dataset_fn), self._devices, True)
 
+  def _make_input_fn_iterator(
+      self,
+      input_fn,
+      replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
+    """Distributes the dataset to each local GPU."""
+    if self._cluster_spec is None:
+      input_pipeline_id = 0
+    else:
+      input_pipeline_id = multi_worker_util.id_in_cluster(
+          self._cluster_spec, self._task_type, self._task_id)
+    input_context = distribute_lib.InputContext(
+        num_input_pipelines=self._num_workers,
+        input_pipeline_id=input_pipeline_id,
+        num_replicas_in_sync=self.num_replicas_in_sync)
+    return values.PerReplicaDataset(
+        self._call_dataset_fn(input_fn, input_context), self._devices, True)
+
   def configure(self,
                 session_config=None,
                 cluster_spec=None,
@@ -289,4 +306,3 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
   @property
   def num_replicas_in_sync(self):
     return len(self._devices) * self._num_workers
-

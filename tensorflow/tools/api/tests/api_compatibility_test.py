@@ -33,7 +33,7 @@ import re
 import sys
 
 import tensorflow as tf
-from tensorflow._api import v2 as tf_v2
+from tensorflow._api.v2 import v2 as tf_v2
 
 from google.protobuf import message
 from google.protobuf import text_format

@@ -31,8 +31,19 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Maps from a function name to a dictionary that describes how to
     # map from an old argument keyword to the new argument keyword.
     self.function_keyword_renames = {
+        "tf.expand_dims": {
+            "dim": "axis",
+        },
         "tf.convert_to_tensor": {
             "preferred_dtype": "dtype_hint"
+        },
+        "tf.math.count_nonzero": {
+            "input_tensor": "input",
+            "keep_dims": "keepdims",
+            "reduction_indices": "axis",
+        },
+        "tf.nn.pool": {
+            "dilation_rate": "dilations"
         },
     }
 
@@ -56,10 +67,15 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # for safety, if positional arguments are used. If you have reversed the
     # positional arguments yourself, this could do the wrong thing.
     self.function_reorders = {
-        "tf.convert_to_tensor": ["value", "dtype", "preferred_dtype", "name"],
-        "tf.argmin": ["input", "axis", "output_type", "name"],
         "tf.argmax": ["input", "axis", "output_type", "name"],
+        "tf.argmin": ["input", "axis", "output_type", "name"],
         "tf.boolean_mask": ["tensor", "mask", "name", "axis"],
+        "tf.convert_to_tensor": ["value", "dtype", "preferred_dtype", "name"],
+        "tf.pad": ["tensor", "paddings", "mode", "name", "constant_values"],
+        "tf.nn.pool": [
+            "input", "window_shape", "pooling_type", "padding", "dilation_rate",
+            "strides", "name", "data_format"
+        ]
     }
 
     # Specially handled functions.

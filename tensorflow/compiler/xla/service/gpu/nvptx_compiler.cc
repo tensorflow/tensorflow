@@ -810,7 +810,7 @@ std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(const string& ptx,
             // binaries are not available. We don't want to spam logs with
             // identical warnings in this case.
 
-            // TODO(zhengxq): we should implement a LOG_FIRST_N and LOG_EVERY_N
+            // TODO(jlebar): we should implement a LOG_FIRST_N and LOG_EVERY_N
             // for more general usage.
             static std::atomic<bool> warning_done(false);
             log_warning = !warning_done.exchange(true);

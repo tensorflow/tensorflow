@@ -20384,6 +20384,13 @@ op {
     }
   }
   attr {
+    name: "config_proto"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
     name: "executor_type"
     type: "string"
     default_value {
@@ -33551,6 +33558,13 @@ op {
   }
   attr {
     name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "config_proto"
     type: "string"
     default_value {
       s: ""

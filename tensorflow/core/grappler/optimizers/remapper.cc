@@ -168,7 +168,7 @@ bool FindFusedBatchNorm(const GraphView& graph_view,
 
 void CopyConv2DAttributes(const NodeDef* conv2d, NodeDef* fused_conv2d,
                           const std::vector<string>& fused_ops = {},
-                          int num_args = 1) {
+                          int num_args = 1, float epsilon = 0.0) {
   auto* attr = fused_conv2d->mutable_attr();
   auto src_attr = conv2d->attr();
 
@@ -184,6 +184,8 @@ void CopyConv2DAttributes(const NodeDef* conv2d, NodeDef* fused_conv2d,
   }
 
   SetAttrValue(num_args, &(*attr)["num_args"]);
+  // Required only for FusedBatchNorm.
+  SetAttrValue(epsilon, &(*attr)["epsilon"]);
 }
 
 void AddFusedConv2DNode(const Conv2DWithBiasAdd& matched,

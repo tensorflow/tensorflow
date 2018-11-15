@@ -13,10 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_JIT_LEGACY_FLAGS_MARK_FOR_COMPILATION_PASS_FLAGS_H_
-#define TENSORFLOW_COMPILER_JIT_LEGACY_FLAGS_MARK_FOR_COMPILATION_PASS_FLAGS_H_
-
-// Legacy flags for the XLA bridge's mark_for_compilation_pass module.
+#ifndef TENSORFLOW_COMPILER_JIT_FLAGS_H_
+#define TENSORFLOW_COMPILER_JIT_FLAGS_H_
 
 #include <vector>
 
@@ -26,13 +24,7 @@ limitations under the License.
 namespace tensorflow {
 namespace legacy_flags {
 
-// Append to *flag_list flag definitions associated with the XLA bridge's
-// mark_for_compilation_pass module.
-void AppendMarkForCompilationPassFlags(
-    std::vector<tensorflow::Flag>* flag_list);
-
-// The values of flags associated with the XLA bridge's
-// mark_for_compilation_pass module.
+// Flags associated with the XLA bridge's mark_for_compilation_pass module.
 struct MarkForCompilationPassFlags {
   int32 tf_xla_auto_jit;  // Control compilation of operators into XLA
                           // computations on CPU and GPU devices.  0 = use
@@ -57,12 +49,57 @@ struct MarkForCompilationPassFlags {
                             // only using XLA.
 };
 
-// Return a pointer to the MarkForCompilationPassFlags struct;
+// Flags associated with the XLA bridge's xla_device module.
+struct XlaDeviceFlags {
+  // Switch the CPU device into "on-demand" mode, where instead of
+  // autoclustering ops are compiled one by one just-in-time.
+  // Enabling this mode by a legacy flag is a temporary mechanism. When this
+  // feature is battle-tested, we will switch this to be a session option.
+  bool tf_xla_compile_on_demand;
+};
+
+// Flags common to the _Xla* ops and their kernels.
+struct XlaOpsCommonFlags {
+  // If true, _XlaCompile always refuses to compile the cluster, which means the
+  // XLA clusters always run in the TF executor.  Defaults to false.
+  bool tf_xla_always_defer_compilation;
+};
+
+// Flags for the build_xla_ops pass.
+struct BuildXlaOpsPassFlags {
+  // Enables lazy compilation for TF/XLA (only when auto-clustering) if true.
+  // Defaults to true.
+  bool tf_xla_enable_lazy_compilation;
+};
+
+// Flags for the XLA bridge's dump_graph module.
+struct DumpGraphFlags {
+  // Path prefix to which graphs dumped during debugging should be written.
+  string tf_dump_graph_prefix;
+};
+
+// Return a pointer to the DumpGraphFlags struct;
 // repeated calls return the same pointer.
 // This should be called only after Flags::Parse() has returned.
+
+// Getters for flags structs defined above.  The first call to any of these
+// parses TF_XLA_FLAGS for all of them.  Those functions which return a pointer
+// always return the same pointer.
 MarkForCompilationPassFlags* GetMarkForCompilationPassFlags();
+const BuildXlaOpsPassFlags& GetBuildXlaOpsPassFlags();
+XlaDeviceFlags* GetXlaDeviceFlags();
+const XlaOpsCommonFlags& GetXlaOpsCommonFlags();
+DumpGraphFlags* GetDumpGraphFlags();
+
+// Appends the flag definitions associated with
+// MarkForCompilationPassFlags/DumpGraphFlags to `flag_list`.
+//
+// Has the side-effect of parsing TF_XLA_FLAGS if that hasn't happened yet.
+void AppendMarkForCompilationPassFlags(
+    std::vector<tensorflow::Flag>* flag_list);
+void AppendDumpGraphFlags(std::vector<tensorflow::Flag>* flag_list);
 
 }  // namespace legacy_flags
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_JIT_LEGACY_FLAGS_MARK_FOR_COMPILATION_PASS_FLAGS_H_
+#endif  // TENSORFLOW_COMPILER_JIT_FLAGS_H_
