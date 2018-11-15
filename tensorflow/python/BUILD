@@ -3565,6 +3565,7 @@ py_library(
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/tools/docs:doc_controls",
     ],
 )
 

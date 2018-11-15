@@ -1062,18 +1062,18 @@ def select_device_mirrored(device, structured):
   return nest.map_structure(_get_mirrored, structured)
 
 
-def update_regroup(strategy, updates, group):
+def update_regroup(extended, updates, group):
   """Regroup for an update, with dependencies to ensure all updates execute."""
   regrouped = regroup(updates, Mirrored)
   if not group:
-    return nest.map_structure(strategy.unwrap, regrouped)
+    return nest.map_structure(extended._unwrap, regrouped)  # pylint: disable=protected-access
   grouped_flat = []
   for u in nest.flatten(regrouped):
     if isinstance(u, DistributedValues):
-      g = strategy.group(u)
+      g = extended._group(u)  # pylint: disable=protected-access
       if u.is_tensor_like:
         # Make sure we run all updates. Without this, something like
-        # session.run(strategy.update(...)) may only update one replica.
+        # session.run(extended.update(...)) may only update one replica.
         index = {}
         for d in u.devices:
           with ops.device(d), ops.control_dependencies([g]):

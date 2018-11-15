@@ -80,8 +80,8 @@ class CollectiveAllReduceStrategyTestBase(
         CollectiveAllReduceStrategyTestBase.collective_key_base,
         instance_key_with_id_start=num_gpus * 10000 +
         CollectiveAllReduceStrategyTestBase.collective_key_base)
-    distribution._collective_keys = collective_keys
-    distribution._cross_tower_ops._collective_keys = collective_keys
+    distribution.extended._collective_keys = collective_keys
+    distribution.extended._cross_tower_ops._collective_keys = collective_keys
     if task_type and task_id is not None:
       return distribution, 'grpc://' + self._cluster_spec[task_type][
           task_id], session_config
@@ -95,7 +95,8 @@ class CollectiveAllReduceStrategyTestBase(
          self.cached_session(config=config,
                              target=master_target) as sess, \
          d.scope():
-      l = core.Dense(1, use_bias=False, name='gpu_%d' % d._num_gpus_per_worker)
+      l = core.Dense(1, use_bias=False,
+                     name='gpu_%d' % d.extended._num_gpus_per_worker)
 
       def loss_fn(x):
         y = array_ops.reshape(l(x), []) - constant_op.constant(1.)
@@ -138,7 +139,7 @@ class CollectiveAllReduceStrategyTestBase(
 
       before_out, after_out = step()
 
-      if context.num_gpus() < d._num_gpus_per_worker:
+      if context.num_gpus() < d.extended._num_gpus_per_worker:
         return True
 
       sess.run(

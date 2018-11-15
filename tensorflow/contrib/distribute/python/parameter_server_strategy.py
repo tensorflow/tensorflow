@@ -95,7 +95,15 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
       ValueError: if `cluster_spec` is given but `task_type` or `task_id` is
         not.
     """
-    super(ParameterServerStrategy, self).__init__()
+    super(ParameterServerStrategy, self).__init__(
+        ParameterServerExtended(self, num_gpus_per_worker))
+
+
+class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
+  """Implementation of ParameterServerStrategy."""
+
+  def __init__(self, container_strategy, num_gpus_per_worker):
+    super(ParameterServerExtended, self).__init__(container_strategy)
     self._num_gpus_per_worker = num_gpus_per_worker
     self._initialize_local(num_gpus_per_worker)
 
@@ -222,7 +230,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
         "ParameterServerStrategy with compute_devices = %r, "
         "variable_device = %r", self._compute_devices, self._variable_device)
 
-  def distribute_dataset(self, dataset_fn):
+  def _distribute_dataset(self, dataset_fn):
     """Distributes the dataset to each local GPU."""
     return values.PerReplicaDataset(
         self._call_dataset_fn(dataset_fn), self._compute_devices, True)
@@ -243,12 +251,12 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     input_context = distribute_lib.InputContext(
         num_input_pipelines=num_input_pipelines,
         input_pipeline_id=input_pipeline_id,
-        num_replicas_in_sync=self.num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync)
     return values.PerReplicaDataset(
         self._call_dataset_fn(input_fn, input_context), self._compute_devices,
         True)
 
-  def _broadcast(self, tensor, destinations):
+  def _broadcast_to(self, tensor, destinations):
     if not cross_tower_ops_lib.check_destinations(destinations):
       destinations = self._compute_devices
     return self._cross_tower_ops.broadcast(tensor, destinations)
@@ -259,7 +267,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   # TODO(yuefengz): not all ops in device_setter.STANDARD_PS_OPS will go through
   # this creator, such as "MutableHashTable".
   def _create_variable(self, next_creator, *args, **kwargs):
-    if self.num_replicas_in_sync > 1:
+    if self._num_replicas_in_sync > 1:
       aggregation = kwargs.pop("aggregation", vs.VariableAggregation.NONE)
       if aggregation not in (
           vs.VariableAggregation.NONE,
@@ -315,7 +323,8 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
 
   def _call_for_each_replica(self, fn, args, kwargs):
     # pylint: disable=protected-access
-    return mirrored_strategy._call_for_each_replica(self, fn, args, kwargs)
+    return mirrored_strategy._call_for_each_replica(
+        self._container_strategy(), fn, args, kwargs)
 
   def _verify_destinations_not_different_worker(self, destinations):
     if not self._cluster_spec:
@@ -329,20 +338,21 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
             "Cannot reduce to another worker: %r, current worker is %r" %
             (d, self._worker_device))
 
-  def _reduce(self, reduce_op, value, destinations):
+  def _reduce_to(self, reduce_op, value, destinations):
     self._verify_destinations_not_different_worker(destinations)
     if not isinstance(value, values.DistributedValues):
       # pylint: disable=protected-access
       return mirrored_strategy._reduce_non_distributed_value(
           self, reduce_op, value, destinations)
     if reduce_op == reduce_util.ReduceOp.ONLY_FIRST_REPLICA:
-      return self.broadcast(value.get(self._compute_devices[0]), destinations)
+      return self.broadcast_to(
+          value.get(self._compute_devices[0]), destinations)
     return self._cross_tower_ops.reduce(
         reduce_op, value, destinations=destinations)
 
-  def _batch_reduce(self, reduce_op, value_destination_pairs):
+  def _batch_reduce_to(self, reduce_op, value_destination_pairs):
     if reduce_op == reduce_util.ReduceOp.ONLY_FIRST_REPLICA:
-      return [self.broadcast(v.get(self._compute_devices[0]), d)
+      return [self.broadcast_to(v.get(self._compute_devices[0]), d)
               for v, d in value_destination_pairs]
     for _, destinations in value_destination_pairs:
       self._verify_destinations_not_different_worker(destinations)
@@ -416,11 +426,11 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     # variables.
     return array_ops.identity(var)
 
-  def configure(self,
-                session_config=None,
-                cluster_spec=None,
-                task_type=None,
-                task_id=None):
+  def _configure(self,
+                 session_config=None,
+                 cluster_spec=None,
+                 task_type=None,
+                 task_id=None):
     """Configures the strategy class.
 
     The strategy object will be re-initialized if `cluster_spec` is given but
@@ -468,7 +478,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
         ["/job:%s/task:%d" % (self._task_type, self._task_id), "/job:ps"])
 
   @property
-  def num_replicas_in_sync(self):
+  def _num_replicas_in_sync(self):
     return len(self._compute_devices)
 
   @property
@@ -484,11 +494,12 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     return min(var_list, key=lambda x: x.name)
 
   @property
-  def between_graph(self):
+  def experimental_between_graph(self):
+    # TODO(yuefengz): Should this return False in the local case?
     return True
 
   @property
-  def should_init(self):
+  def experimental_should_init(self):
     return self._is_chief
 
   @property

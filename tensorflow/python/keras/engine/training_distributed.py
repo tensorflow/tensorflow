@@ -317,7 +317,7 @@ def _experimental_fit_loop(
     raise ValueError('`steps_per_epoch` should be specified when calling '
                      '`fit` on the model.')
   steps_per_run = K.variable(
-      value=min(steps_per_epoch, current_strategy.steps_per_run),
+      value=min(steps_per_epoch, current_strategy.extended.steps_per_run),
       dtype='int32',
       name='steps_per_run')
 
@@ -348,10 +348,11 @@ def _experimental_fit_loop(
       verbose=verbose)
 
   # Calculate the steps each time on the device.
-  steps_to_run = [current_strategy.steps_per_run] * (
-      steps_per_epoch // current_strategy.steps_per_run)
-  if steps_per_epoch % current_strategy.steps_per_run:
-    steps_to_run.append(steps_per_epoch % current_strategy.steps_per_run)
+  steps_to_run = [current_strategy.extended.steps_per_run] * (
+      steps_per_epoch // current_strategy.extended.steps_per_run)
+  if steps_per_epoch % current_strategy.extended.steps_per_run:
+    steps_to_run.append(
+        steps_per_epoch % current_strategy.extended.steps_per_run)
 
   callbacks.on_train_begin()
   for epoch in range(initial_epoch, epochs):

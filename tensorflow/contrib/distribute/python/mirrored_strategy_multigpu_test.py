@@ -644,7 +644,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
       self.evaluate([y for x in ret_ops for y in dist.unwrap(x)])
       expected_sum = 0.0
       expected_mean = 0.0
-      for i, d in enumerate(dist.worker_devices):
+      for i, d in enumerate(dist.extended.worker_devices):
         # Should see different values on different devices.
         v_sum_value = self.evaluate(ret_v_sum.get(d).read_value())
         v_mean_value = self.evaluate(ret_v_mean.get(d).read_value())
@@ -654,7 +654,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
         expected = i * 6.0
         self.assertEqual(expected, v_mean_value)
         expected_mean += expected
-      expected_mean /= len(dist.worker_devices)
+      expected_mean /= len(dist.extended.worker_devices)
 
       # Without get(device), should return the value you get by
       # applying the reduction across all replicas (whether you use
@@ -829,7 +829,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
         # Assert that the aggregated value of the replica local vars is the sum
         # of the individual values before running the update ops.
         self.assertEquals(1.0, self.evaluate(
-            ret_v_sum.get(dist._devices[0]).read_value()))
+            ret_v_sum.get(dist.extended.worker_devices[0]).read_value()))
         self.assertEquals(2.0, self.evaluate(ret_v_sum))
 
         # Apply updates.
@@ -837,7 +837,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
         # Assert that the aggregated value of the replica local vars is the sum
         # of the individual values after running the update ops.
         self.assertEquals(5.0, self.evaluate(
-            ret_v_sum.get(dist._devices[0]).read_value()))
+            ret_v_sum.get(dist.extended.worker_devices[0]).read_value()))
         self.assertEquals(10.0, self.evaluate(ret_v_sum))
 
 
