@@ -2038,7 +2038,16 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
                            dimension);
   }
 
-  return ShapeUtil::MakeShape(S64, {});
+  // TODO(b/119580730): Remove this restriction when very large dimension size
+  // is needed.
+  if (shape.dimensions(dimension) > std::numeric_limits<uint32>::max()) {
+    return InvalidArgument(
+        "GetDimensionSize's input shape is %s, the %dth dimension exceeds the "
+        "UINT_MAX limit.",
+        ShapeUtil::HumanString(shape), dimension);
+  }
+
+  return ShapeUtil::MakeShape(U32, {});
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferSliceShape(
