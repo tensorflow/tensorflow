@@ -347,12 +347,6 @@ GrapplerFunctionItem::GrapplerFunctionItem(
       fetch.push_back(output_tensor);
     }
   }
-  // Stateful and Send (it's not stateful) nodes must be preserved in the graph.
-  for (const NodeDef& node : graph.node()) {
-    if (IsSend(node)) {
-      keep_ops.push_back(node.name());
-    }
-  }
 }
 
 const string& GrapplerFunctionItem::description() const { return description_; }
@@ -584,8 +578,8 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
     TF_RETURN_IF_ERROR(RegisterFunctionBodyOutputs(*registration, func_def_node,
                                                    &connectivity));
 
-    // Stateful and Send nodes must be preserved in a function body
-    if (registration->op_def.is_stateful() || IsSend(func_def_node)) {
+    // Ops with side effects must be preserved in a function body.
+    if (!IsFreeOfSideEffect(func_def_node)) {
       keep_nodes.push_back(func_def_node.name());
     }
   }

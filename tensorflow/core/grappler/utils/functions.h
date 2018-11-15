@@ -142,12 +142,6 @@ class GrapplerFunctionItemInstantiation {
 class GrapplerFunctionItem : public GrapplerItem {
  public:
   GrapplerFunctionItem() = default;
-  GrapplerFunctionItem(string func_name, string description,
-                       AttrSlice func_attr,
-                       std::vector<InputArgExpansion> input_arg_expansions,
-                       std::vector<OutputArgExpansion> output_arg_expansions,
-                       std::vector<string> keep_nodes, int graph_def_version,
-                       bool is_stateful, GraphDef&& function_body);
 
   const string& description() const;
 
@@ -170,11 +164,21 @@ class GrapplerFunctionItem : public GrapplerItem {
   GrapplerFunctionItem& SwapFunctionBody(GraphDef&& other);
 
  private:
+  friend Status MakeGrapplerFunctionItem(const FunctionDef&, const AttrSlice&,
+                                         const FunctionLibraryDefinition&, int,
+                                         GrapplerFunctionItem*);
   friend Status ReplaceInputWithConst(const NodeDef&, int,
                                       GrapplerFunctionItem*);
   friend Status RemoveUnusedOutputs(
       const gtl::FlatSet<int>& active_outputs, GrapplerFunctionItem* item,
       std::vector<std::pair<int, int>>* output_mapping);
+
+  GrapplerFunctionItem(string func_name, string description,
+                       AttrSlice func_attr,
+                       std::vector<InputArgExpansion> input_arg_expansions,
+                       std::vector<OutputArgExpansion> output_arg_expansions,
+                       std::vector<string> keep_nodes, int graph_def_version,
+                       bool is_stateful, GraphDef&& function_body);
 
   string description_;
   AttrSlice func_attr_;  // Attributes specific to function definition that
