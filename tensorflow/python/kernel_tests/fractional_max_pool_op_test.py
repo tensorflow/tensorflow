@@ -37,7 +37,6 @@ class FractionalMaxPoolTest(test.TestCase):
   # Random number generate with seed.
   _PRNG = np.random.RandomState(341261)
   _SEED = 123456
-  _SEED2 = 654321
 
   def _MaxPoolAlongRows(self, input_matrix, row_seq, overlapping):
     """Perform max pool along row of a 2-D matrix based on row_seq.
@@ -128,14 +127,12 @@ class FractionalMaxPoolTest(test.TestCase):
       None
     """
     with self.cached_session() as sess:
-      p, r, c = nn_ops.fractional_max_pool(
+      p, r, c = nn_ops.fractional_max_pool_v2(
           input_tensor,
           pooling_ratio,
           pseudo_random,
           overlapping,
-          deterministic=True,
-          seed=self._SEED,
-          seed2=self._SEED2)
+          seed=self._SEED)
       actual, row_seq, col_seq = sess.run([p, r, c])
       expected = self._GetExpectedFractionalMaxPoolResult(input_tensor, row_seq,
                                                           col_seq, overlapping)
@@ -161,14 +158,12 @@ class FractionalMaxPoolTest(test.TestCase):
       rand_mat = self._PRNG.randint(10, size=tensor_shape)
       pooling_ratio = [1, math.sqrt(2), math.sqrt(2), 1]
       with self.cached_session() as sess:
-        p, r, c = nn_ops.fractional_max_pool(
+        p, r, c = nn_ops.fractional_max_pool_v2(
             rand_mat,
             pooling_ratio,
             pseudo_random,
             overlapping,
-            deterministic=True,
-            seed=self._SEED,
-            seed2=self._SEED2)
+            seed=self._SEED)
         tensor_output, row_seq, col_seq = sess.run([p, r, c])
         expected_result = self._GetExpectedFractionalMaxPoolResult(rand_mat,
                                                                    row_seq,
@@ -291,14 +286,12 @@ class FractionalMaxPoolTest(test.TestCase):
       pooling_ratio = [1, 1.5, 1.5, 1]
       pseudo_random = False
       overlapping = False
-      p, r, c = nn_ops.fractional_max_pool(
+      p, r, c = nn_ops.fractional_max_pool_v2(
           input_holder,
           pooling_ratio,
           pseudo_random,
           overlapping,
-          deterministic=True,
-          seed=self._SEED,
-          seed2=self._SEED2)
+          seed=self._SEED)
       # First run.
       input_a = np.zeros([3, 32, 32, 3])
       actual, row_seq, col_seq = sess.run([p, r, c], {input_holder: input_a})
@@ -344,7 +337,6 @@ class FractionalMaxPoolGradTest(test.TestCase):
 
   _PRNG = np.random.RandomState(341261)
   _SEED = 123456
-  _SEED2 = 654321
 
   def _GenerateUniqueRandomInputTensor(self, shape):
     """Generate 'unqiue' random input tensor.
@@ -449,14 +441,12 @@ class FractionalMaxPoolGradTest(test.TestCase):
       for overlapping in True, False:
         with self.cached_session() as _:
           input_tensor = constant_op.constant(input_data, shape=input_shape)
-          output_tensor, unused_a, unused_b = nn_ops.fractional_max_pool(
+          output_tensor, unused_a, unused_b = nn_ops.fractional_max_pool_v2(
               input_tensor,
               pooling_ratio,
               pseudo_random=pseudo_random,
               overlapping=overlapping,
-              deterministic=True,
-              seed=self._SEED,
-              seed2=self._SEED2)
+              seed=self._SEED)
           output_data = output_tensor.eval()
           output_shape = output_data.shape
           # error_margin and delta setting is similar to max_pool_grad.
@@ -484,14 +474,12 @@ class FractionalMaxPoolGradTest(test.TestCase):
             input_data += self._PRNG.random_sample(input_shape)
             with self.cached_session() as _:
               input_tensor = constant_op.constant(input_data, shape=input_shape)
-              output_tensor, unused_a, unused_b = nn_ops.fractional_max_pool(
+              output_tensor, unused_a, unused_b = nn_ops.fractional_max_pool_v2(
                   input_tensor,
                   pooling_ratio,
                   pseudo_random=pseudo_random,
                   overlapping=overlapping,
-                  deterministic=True,
-                  seed=self._SEED,
-                  seed2=self._SEED2)
+                  seed=self._SEED)
               output_data = output_tensor.eval()
               output_shape = output_data.shape
               # error_margin and delta setting is similar to max_pool_grad.
@@ -517,14 +505,12 @@ class FractionalMaxPoolGradTest(test.TestCase):
 
     with self.cached_session() as _:
       input_tensor = constant_op.constant(input_data, shape=input_shape)
-      output_tensor, unused_a, unused_b = nn_ops.fractional_max_pool(
+      output_tensor, unused_a, unused_b = nn_ops.fractional_max_pool_v2(
           input_tensor,
           pooling_ratio,
           pseudo_random=pseudo_random,
           overlapping=overlapping,
-          deterministic=True,
-          seed=self._SEED,
-          seed2=self._SEED2)
+          seed=self._SEED)
       # error_margin and delta setting is similar to max_pool_grad.
       error_margin = 1e-3
       gradient_error = gradient_checker.compute_gradient_error(
