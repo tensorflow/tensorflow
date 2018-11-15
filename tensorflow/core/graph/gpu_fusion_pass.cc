@@ -273,11 +273,88 @@ class ROCmFusionOpBase {
 
   // routine to (maybe) do fusion on the given node (+ the nodes preceding
   // it). will return true if fusion was done, false otherwise
-  virtual bool DoFusion(const Node* n, std::set<const Node*>& fused_nodes) = 0;
+  virtual bool DoFusion(const Node* n, std::set<const Node*>& fused_nodes);
 
-  using NodeIndexPair = std::pair<const Node*, int>;
+  using NodeIndexPair = std::pair<Node*, int>;
+
+  using NodeIndexPairVec = std::vector<NodeIndexPair>;
 
  protected:
+  struct FusionOpData {
+    string op_type;  // fusion op type (_ROCmFused*)
+
+    string op_name;  // fusion op name ( unique name for this op instance )
+
+    string fusion_type;  // simple description, for eg: Add+Relu
+
+    std::vector<const Node*> nodes;  // all the nodes in the fusion
+
+    // map of input data connections
+    // key is input index
+    // val is vec of node-index pairs, that connect to the input index
+    std::map<int, NodeIndexPairVec> data_inputs;
+
+    // dont need node indices for control edges, so a vector suffices
+    std::vector<Node*> control_inputs;
+
+    // map of output data connections
+    // key is output index
+    // val is vec of node-index pairs, that the output index connects to
+    std::map<int, NodeIndexPairVec> data_outputs;
+
+    // dont need node indices for control edges, so a vector suffices
+    std::vector<Node*> control_outputs;
+
+    // map of atrribute name --> value
+    std::map<string, AttrValue> attributes;
+
+    // conveninece function to add a data input
+    void add_data_input(int dst_index, Node* src_node, int src_index) {
+      auto it = data_inputs.find(dst_index);
+      if (it == data_inputs.end()) {
+        NodeIndexPairVec inputs;
+        inputs.push_back(std::make_pair(src_node, src_index));
+        data_inputs[dst_index] = inputs;
+      } else {
+        it->second.push_back(std::make_pair(src_node, src_index));
+      }
+    }
+
+    // convenience function to add a data output
+    void add_data_output(int src_index, Node* dst_node, int dst_index) {
+      auto it = data_outputs.find(src_index);
+      if (it == data_outputs.end()) {
+        NodeIndexPairVec outputs;
+        outputs.push_back(std::make_pair(dst_node, dst_index));
+        data_outputs[src_index] = outputs;
+      } else {
+        it->second.push_back(std::make_pair(dst_node, dst_index));
+      }
+    }
+
+    // conveniece function to add an attribute
+    template <typename T>
+    void add_attribute(string name, T value) {
+      AttrValue attr_value;
+      SetAttrValue(value, &attr_value);
+      attributes[name] = attr_value;
+    }
+  };
+
+  // abstract routine that must be implemented by the derived classes.
+  // this routine needs to do the following
+  // ++ determine if the node sequence *ending* at the given node is a
+  //    candidate for fusion
+  //    ++ if it is not,
+  //         return false
+  //    ++ else,
+  //         populate the FusionOpData details and return true
+  virtual bool IsFusionEligible(const Node* n, FusionOpData* d) = 0;
+
+ private:
+  void CreateFusionOp(const FusionOpData& d,
+                      std::set<const Node*>& fused_nodes);
+
   Graph* graph_;
 };
 
@@ -289,21 +366,8 @@ class ROCmFusionOpConvolutionBiasBatchNormActivation : public ROCmFusionOpBase {
   ROCmFusionOpConvolutionBiasBatchNormActivation(Graph* g)
       : ROCmFusionOpBase(g) {}
 
-  // routine to (maybe) do fusion on the given node (+ the nodes preceding
-  // it). will return true if fusion was done, false otherwise
-  bool DoFusion(const Node* n, std::set<const Node*>& fused_nodes) override;
-
  protected:
-  struct FusionData {
-    const Node* conv;
-    const Node* bias;
-    const Node* norm;
-    const Node* actv;
-  };
-
-  bool IsFusionEligible(const Node* n, FusionData* d);
-
-  void CreateFusionOp(const FusionData* d, std::set<const Node*>& fused_nodes);
+  bool IsFusionEligible(const Node* n, FusionOpData* d) override;
 };
 
 //----------------------------------------------------------------------
@@ -313,27 +377,8 @@ class ROCmFusionOpConvolutionBiasActivation : public ROCmFusionOpBase {
  public:
   ROCmFusionOpConvolutionBiasActivation(Graph* g) : ROCmFusionOpBase(g) {}
 
-  // routine to (maybe) do fusion on the given node (+ the nodes preceding
-  // it). will return true if fusion was done, false otherwise
-  bool DoFusion(const Node* n, std::set<const Node*>& fused_nodes) override;
-
  protected:
-  struct FusionData {
-    const Node* conv;
-    const Node* bias;
-    const Node* actv;
-
-    DataType data_type;
-    std::vector<int32> strides;
-    string padding;
-    string data_format;
-    std::vector<int32> dilations;
-    string activation_mode;
-  };
-
-  bool IsFusionEligible(const Node* n, FusionData* d);
-
-  void CreateFusionOp(const FusionData* d, std::set<const Node*>& fused_nodes);
+  bool IsFusionEligible(const Node* n, FusionOpData* d) override;
 };
 
 //----------------------------------------------------------------------
@@ -343,26 +388,8 @@ class ROCmFusionOpBatchNormActivationInference : public ROCmFusionOpBase {
  public:
   ROCmFusionOpBatchNormActivationInference(Graph* g) : ROCmFusionOpBase(g) {}
 
-  // routine to (maybe) do fusion on the given node (+ the nodes preceding
-  // it). will return true if fusion was done, false otherwise
-  bool DoFusion(const Node* n, std::set<const Node*>& fused_nodes) override;
-
  protected:
-  struct FusionData {
-    const Node* norm;
-    const Node* actv;
-
-    bool is_training;
-    DataType data_type_T;
-    DataType data_type_U;
-    float epsilon;
-    string data_format;
-    string activation_mode;
-  };
-
-  bool IsFusionEligible(const Node* n, FusionData* d);
-
-  void CreateFusionOp(const FusionData* d, std::set<const Node*>& fused_nodes);
+  bool IsFusionEligible(const Node* n, FusionOpData* d) override;
 };
 
 //----------------------------------------------------------------------
@@ -372,27 +399,8 @@ class ROCmFusionOpBatchNormActivationBackward : public ROCmFusionOpBase {
  public:
   ROCmFusionOpBatchNormActivationBackward(Graph* g) : ROCmFusionOpBase(g) {}
 
-  // routine to (maybe) do fusion on the given node (+ the nodes preceding
-  // it). will return true if fusion was done, false otherwise
-  bool DoFusion(const Node* n, std::set<const Node*>& fused_nodes) override;
-
  protected:
-  struct FusionData {
-    const Node* norm_grad;
-    const Node* actv_grad;
-
-    const Node* norm_offset;
-
-    DataType data_type_T;
-    DataType data_type_U;
-    float epsilon;
-    string data_format;
-    string activation_mode;
-  };
-
-  bool IsFusionEligible(const Node* n, FusionData* d);
-
-  void CreateFusionOp(const FusionData* d, std::set<const Node*>& fused_nodes);
+  bool IsFusionEligible(const Node* n, FusionOpData* d) override;
 };
 
 //----------------------------------------------------------------------
@@ -402,47 +410,19 @@ class ROCmFusionOpAddRelu : public ROCmFusionOpBase {
  public:
   ROCmFusionOpAddRelu(Graph* g) : ROCmFusionOpBase(g) {}
 
-  // routine to (maybe) do fusion on the given node (+ the nodes preceding
-  // it). will return true if fusion was done, false otherwise
-  bool DoFusion(const Node* n, std::set<const Node*>& fused_nodes) override;
-
  protected:
-  struct FusionData {
-    const Node* add;
-    const Node* relu;
-
-    DataType data_type;
-  };
-
-  bool IsFusionEligible(const Node* n, FusionData* d);
-
-  void CreateFusionOp(const FusionData* d, std::set<const Node*>& fused_nodes);
+  bool IsFusionEligible(const Node* n, FusionOpData* d) override;
 };
 
 //----------------------------------------------------------------------
 
-// AddN-Relu-ReluGrad Fusion
+// AddN-ReluGrad Fusion
 class ROCmFusionOpAddNReluGrad : public ROCmFusionOpBase {
  public:
   ROCmFusionOpAddNReluGrad(Graph* g) : ROCmFusionOpBase(g) {}
 
-  // routine to (maybe) do fusion on the given node (+ the nodes preceding
-  // it). will return true if fusion was done, false otherwise
-  bool DoFusion(const Node* n, std::set<const Node*>& fused_nodes) override;
-
  protected:
-  struct FusionData {
-    const Node* addN;
-    const Node* relu;
-    const Node* reluGrad;
-
-    DataType data_type;
-    int num_addN_inputs;
-  };
-
-  bool IsFusionEligible(const Node* n, FusionData* d);
-
-  void CreateFusionOp(const FusionData* d, std::set<const Node*>& fused_nodes);
+  bool IsFusionEligible(const Node* n, FusionOpData* d) override;
 };
 
 //----------------------------------------------------------------------
@@ -552,42 +532,123 @@ void ROCmFusionPass::InitializeFusions(
 //----------------------------------------------------------------------
 
 // -------------------------------------------------------------
-// ROCmFusionOpConvolutionBiasBatchNormActivation implementation
+// ROCmFusionOpBase implementation
 // -------------------------------------------------------------
-bool ROCmFusionOpConvolutionBiasBatchNormActivation::DoFusion(
-    const Node* n4, std::set<const Node*>& fused_nodes) {
+bool ROCmFusionOpBase::DoFusion(const Node* n,
+                                std::set<const Node*>& fused_nodes) {
   bool did_fusion = false;
-  FusionData d;
-  if (IsFusionEligible(n4, &d)) {
-    CreateFusionOp(&d, fused_nodes);
+  FusionOpData d;
+  if (IsFusionEligible(n, &d)) {
+    CreateFusionOp(d, fused_nodes);
     did_fusion = true;
   }
   return did_fusion;
 }
 
+void ROCmFusionOpBase::CreateFusionOp(const FusionOpData& d,
+                                      std::set<const Node*>& fused_nodes) {
+  // create an instance of the fusion node
+  NodeBuilder nb(d.op_name, d.op_type);
+
+  // populate input data edges
+  // this needs to be done in the correct order, and hence the strange loop
+  int num_inputs = d.data_inputs.size();
+  for (int i = 0; i < num_inputs; i++) {
+    auto inputs = d.data_inputs.find(i)->second;
+    if (inputs.size() == 1) {  // input is a singular tensor
+      nb.Input(const_cast<Node*>(inputs[0].first), inputs[0].second);
+    } else {  // input is a vector of tensors
+      std::vector<NodeBuilder::NodeOut> vec_input;
+      for (auto input : inputs) {
+        vec_input.push_back(NodeBuilder::NodeOut(input.first, input.second));
+      }
+      nb.Input(vec_input);
+    }
+  }
+
+  // populate attributes
+  for (auto& kv : d.attributes) {
+    nb.Attr(kv.first, kv.second);
+  }
+
+  // populate the device
+  nb.Device(d.nodes[0]->def().device());
+
+  // create the new fusion node
+  Node* fusion_node = nullptr;
+  TF_CHECK_OK(nb.Finalize(graph_, &fusion_node));
+
+  // populate the input control edges
+  for (Node* n : d.control_inputs) {
+    CHECK_NOTNULL(graph_->AddControlEdge(n, fusion_node, true));
+  }
+
+  // populate output data edges.
+  for (auto& kv : d.data_outputs) {
+    int src_index = kv.first;
+    auto& outputs = kv.second;
+    for (auto dst : outputs) {
+      CHECK_NOTNULL(
+          graph_->AddEdge(fusion_node, src_index, dst.first, dst.second));
+    }
+  }
+
+  // populate output control edges
+  for (Node* n : d.control_outputs) {
+    CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, n, true));
+  }
+
+  // populate the device placement
+  fusion_node->set_assigned_device_name(d.nodes[0]->assigned_device_name());
+
+  VLOG(kVlogLevel) << "\tCreated Fusion Node (" << d.fusion_type << " : "
+                   << fusion_node;
+  VLOG(kVlogLevel) << "===========";
+
+  // remove the now redundant nodes from the graph
+  for (const Node* n : d.nodes) {
+    fused_nodes.insert(n);
+    graph_->RemoveNode(const_cast<Node*>(n));
+  }
+}
+
+// -------------------------------------------------------------
+// ROCmFusionOpConvolutionBiasBatchNormActivation implementation
+// -------------------------------------------------------------
 bool ROCmFusionOpConvolutionBiasBatchNormActivation::IsFusionEligible(
-    const Node* n4, FusionData* d) {
+    const Node* actv, FusionOpData* d) {
   // First check whether we have the right sequence of ops
   bool is_eligible = false;
-  if (isOpActivation(n4)) {  // activation node
-    Node* n3 = nullptr;
-    TF_CHECK_OK(n4->input_node(0, &n3));
-    if (isOpBatchNorm(n3)) {  // preceded by a batchnorm node
-      Node* n2 = nullptr;
-      TF_CHECK_OK(n3->input_node(0, &n2));
-      if (isOpBias(n2)) {  // preceded by a bias node
-        Node* n1 = nullptr;
-        TF_CHECK_OK(n2->input_node(0, &n1));
-        if (isOpConvolution(n1)) {  // preceded by a convolution node
-          d->conv = n1;
-          d->bias = n2;
-          d->norm = n3;
-          d->actv = n4;
+
+  const Node* conv = nullptr;
+  const Node* bias = nullptr;
+  const Node* norm = nullptr;
+
+  if (isOpActivation(actv)) {  // activation node
+
+    TF_CHECK_OK(actv->input_node(0, &norm));
+    if (isOpBatchNorm(norm)) {  // preceded by a batchnorm node
+
+      TF_CHECK_OK(norm->input_node(0, &bias));
+      if (isOpBias(bias)) {  // preceded by a bias node
+
+        TF_CHECK_OK(bias->input_node(0, &conv));
+        if (isOpConvolution(conv)) {  // preceded by a convolution node
+
+          d->op_type = "_ROCmFusedConvolutionBiasBatchNormActivation";
+          d->op_name = strings::StrCat(conv->name(), bias->name(), norm->name(),
+                                       actv->name());
+          d->fusion_type = "Convolution+Bias+BatchNorm+Activation";
+          d->nodes.push_back(conv);
+          d->nodes.push_back(bias);
+          d->nodes.push_back(norm);
+          d->nodes.push_back(actv);
+
           VLOG(kVlogLevel) << "===========";
-          DumpNodeList(
-              kVlogLevel,
-              "Found Fusion Candidate Convolution+Bias+BatchNorm+Activation : ",
-              {d->conv, d->bias, d->norm, d->actv});
+          DumpNodeList(kVlogLevel,
+                       "Found Fusion Candidate " + d->fusion_type + " : ",
+                       {conv, bias, norm, actv});
+
           is_eligible = true;
         }
       }
@@ -595,67 +656,66 @@ bool ROCmFusionOpConvolutionBiasBatchNormActivation::IsFusionEligible(
   }
 
   // ensure all the nodes are placed on the same GPU
-  if (is_eligible &&
-      !areAssignedToSameGpu({d->conv, d->bias, d->norm, d->actv})) {
+  if (is_eligible && !areAssignedToSameGpu({conv, bias, norm, actv})) {
+    is_eligible = false;
+  }
+
+  if (is_eligible) {
+    VLOG(kVlogLevel) << "\tSkipping Fusion : Not yet supported";
+    VLOG(kVlogLevel) << "===========";
     is_eligible = false;
   }
 
   return is_eligible;
 }
 
-void ROCmFusionOpConvolutionBiasBatchNormActivation::CreateFusionOp(
-    const FusionData* d, std::set<const Node*>& fused_nodes) {
-  // todo
-}
 //----------------------------------------------------------------------
 
 // ----------------------------------------------------
 // ROCmFusionOpConvolutionBiasActivation implementation
 // ----------------------------------------------------
-bool ROCmFusionOpConvolutionBiasActivation::DoFusion(
-    const Node* n3, std::set<const Node*>& fused_nodes) {
-  bool did_fusion = false;
-  FusionData d;
-  if (IsFusionEligible(n3, &d)) {
-    CreateFusionOp(&d, fused_nodes);
-    did_fusion = true;
-  }
-  return did_fusion;
-}
-
-bool ROCmFusionOpConvolutionBiasActivation::IsFusionEligible(const Node* n3,
-                                                             FusionData* d) {
+bool ROCmFusionOpConvolutionBiasActivation::IsFusionEligible(const Node* actv,
+                                                             FusionOpData* d) {
   bool is_eligible = false;
 
+  const Node* conv = nullptr;
+  const Node* bias = nullptr;
+
   // First check whether we have the right sequence of ops
-  if (isOpActivation(n3)) {  // activation node
-    Node* n2 = nullptr;
-    TF_CHECK_OK(n3->input_node(0, &n2));
-    if (isOpBias(n2)) {  // preceded by a bias node
-      Node* n1 = nullptr;
-      TF_CHECK_OK(n2->input_node(0, &n1));
-      if (isOpConvolution(n1)) {  // precedded by a convolution node
-        d->conv = n1;
-        d->bias = n2;
-        d->actv = n3;
+  if (isOpActivation(actv)) {  // activation node
+
+    TF_CHECK_OK(actv->input_node(0, &bias));
+    if (isOpBias(bias)) {  // preceded by a bias node
+
+      TF_CHECK_OK(bias->input_node(0, &conv));
+      if (isOpConvolution(conv)) {  // precedded by a convolution node
+
+        d->op_type = "_ROCmFusedConvolutionBiasActivation";
+        d->op_name = strings::StrCat(conv->name(), bias->name(), actv->name());
+        d->fusion_type = "Convolution+Bias+Activation (Forward)";
+        d->nodes.push_back(conv);
+        d->nodes.push_back(bias);
+        d->nodes.push_back(actv);
+
         VLOG(kVlogLevel) << "===========";
         DumpNodeList(kVlogLevel,
-                     "Found Fusion Candidate Convolution+Bias+Activation : ",
-                     {d->conv, d->bias, d->actv});
+                     "Found Fusion Candidate " + d->fusion_type + " : ",
+                     {conv, bias, actv});
+
         is_eligible = true;
       }
     }
   }
 
   // ensure all the nodes are placed on the same GPU
-  if (is_eligible && !areAssignedToSameGpu({d->conv, d->bias, d->actv})) {
+  if (is_eligible && !areAssignedToSameGpu({conv, bias, actv})) {
     is_eligible = false;
   }
 
   // Next check if the output of conv node feeds a node other then the bias node
   if (is_eligible) {
-    for (const Edge* e : d->conv->out_edges()) {
-      if ((e->src_output() == 0) && (e->dst() != d->bias)) {
+    for (const Edge* e : conv->out_edges()) {
+      if ((e->src_output() == 0) && (e->dst() != bias)) {
         VLOG(kVlogLevel)
             << "\tSkipping Fusion : "
             << "Convolution output feeds a node other the the bias node : "
@@ -670,8 +730,8 @@ bool ROCmFusionOpConvolutionBiasActivation::IsFusionEligible(const Node* n3,
   // Next check if the output of bias node feeds a node other then the
   // activation node
   if (is_eligible) {
-    for (const Edge* e : d->bias->out_edges()) {
-      if ((e->src_output() == 0) && (e->dst() != d->actv)) {
+    for (const Edge* e : bias->out_edges()) {
+      if ((e->src_output() == 0) && (e->dst() != actv)) {
         VLOG(kVlogLevel)
             << "\tSkipping Fusion : "
             << "Bias output feeds a node other the the activation node : "
@@ -688,15 +748,15 @@ bool ROCmFusionOpConvolutionBiasActivation::IsFusionEligible(const Node* n3,
     is_eligible = false;
 
     DataType T_conv, T_bias, T_actv;
-    TF_CHECK_OK(GetNodeAttr(d->conv->def(), kAttr_T, &T_conv));
-    TF_CHECK_OK(GetNodeAttr(d->bias->def(), kAttr_T, &T_bias));
-    TF_CHECK_OK(GetNodeAttr(d->actv->def(), kAttr_T, &T_actv));
+    TF_CHECK_OK(GetNodeAttr(conv->def(), kAttr_T, &T_conv));
+    TF_CHECK_OK(GetNodeAttr(bias->def(), kAttr_T, &T_bias));
+    TF_CHECK_OK(GetNodeAttr(actv->def(), kAttr_T, &T_actv));
 
     // only float type is supported for now
     if (T_conv == DT_FLOAT) {
       // all three types must match
       if ((T_conv == T_bias) && (T_conv == T_actv)) {
-        d->data_type = T_conv;
+        d->add_attribute(kAttr_T, T_conv);
         is_eligible = true;
       } else {
         VLOG(kVlogLevel) << "\tSkipping Fusion : "
@@ -718,8 +778,8 @@ bool ROCmFusionOpConvolutionBiasActivation::IsFusionEligible(const Node* n3,
     is_eligible = false;
 
     string df_conv_str, df_bias_str;
-    TF_CHECK_OK(GetNodeAttr(d->conv->def(), kAttr_data_format, &df_conv_str));
-    TF_CHECK_OK(GetNodeAttr(d->bias->def(), kAttr_data_format, &df_bias_str));
+    TF_CHECK_OK(GetNodeAttr(conv->def(), kAttr_data_format, &df_conv_str));
+    TF_CHECK_OK(GetNodeAttr(bias->def(), kAttr_data_format, &df_bias_str));
 
     TensorFormat df_conv, df_bias;
     CHECK_EQ(FormatFromString(df_conv_str, &df_conv), true);
@@ -727,7 +787,7 @@ bool ROCmFusionOpConvolutionBiasActivation::IsFusionEligible(const Node* n3,
 
     if ((df_conv == FORMAT_NHWC) || (df_conv == FORMAT_NCHW)) {
       if (df_conv == df_bias) {
-        d->data_format = ToString(df_conv);
+        d->add_attribute(kAttr_data_format, ToString(df_conv));
         is_eligible = true;
       } else {
         VLOG(kVlogLevel) << "\tSkipping Fusion : "
@@ -746,9 +806,12 @@ bool ROCmFusionOpConvolutionBiasActivation::IsFusionEligible(const Node* n3,
 
   // Next check if the specified stride is supported
   if (is_eligible) {
+    std::vector<int32> strides;
+    TF_CHECK_OK(GetNodeAttr(conv->def(), kAttr_strides, &strides));
 
-    TF_CHECK_OK(GetNodeAttr(d->conv->def(), kAttr_strides, &d->strides));
-    for (auto stride : d->strides) {
+    d->add_attribute(kAttr_strides, strides);
+
+    for (auto stride : strides) {
       // MIOpen only supports stride values of 1 or 2
       if ((stride != 1) && (stride != 2)) {
         is_eligible = false;
@@ -762,14 +825,20 @@ bool ROCmFusionOpConvolutionBiasActivation::IsFusionEligible(const Node* n3,
 
   // Next check if the specified padding is supported
   if (is_eligible) {
-    TF_CHECK_OK(GetNodeAttr(d->conv->def(), kAttr_padding, &d->padding));
+    string padding;
+    TF_CHECK_OK(GetNodeAttr(conv->def(), kAttr_padding, &padding));
+
+    d->add_attribute(kAttr_padding, padding);
   }
 
   // Next check if the specified dilation is supported
   if (is_eligible) {
+    std::vector<int32> dilations;
+    TF_CHECK_OK(GetNodeAttr(conv->def(), kAttr_dilations, &dilations));
 
-    TF_CHECK_OK(GetNodeAttr(d->conv->def(), kAttr_dilations, &d->dilations));
-    for (auto dilation : d->dilations) {
+    d->add_attribute(kAttr_dilations, dilations);
+
+    for (auto dilation : dilations) {
       // MIOpen only supports dilation value of 1
       if (dilation != 1) {
         is_eligible = false;
@@ -784,98 +853,63 @@ bool ROCmFusionOpConvolutionBiasActivation::IsFusionEligible(const Node* n3,
 
   // finally check if the specified activation is supported
   if (is_eligible) {
-    d->activation_mode = d->actv->type_string();
+    d->add_attribute(kAttr_activation_mode, actv->type_string());
+  }
+
+  if (is_eligible) {
+    std::vector<const Edge*> conv_input_edges;
+    TF_CHECK_OK(conv->input_edges(&conv_input_edges));
+
+    std::vector<const Edge*> bias_input_edges;
+    TF_CHECK_OK(bias->input_edges(&bias_input_edges));
+
+    // populate input data edges
+    d->add_data_input(0, conv_input_edges[0]->src(),
+                      conv_input_edges[0]->src_output());
+    d->add_data_input(1, conv_input_edges[1]->src(),
+                      conv_input_edges[1]->src_output());
+    d->add_data_input(2, bias_input_edges[1]->src(),
+                      bias_input_edges[1]->src_output());
+
+    // populate the input control edges
+    for (const Edge* e : conv->in_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_inputs.push_back(e->src());
+      }
+    }
+    for (const Edge* e : bias->in_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_inputs.push_back(e->src());
+      }
+    }
+    for (const Edge* e : actv->in_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_inputs.push_back(e->src());
+      }
+    }
+
+    // populate output data and control edges
+    for (const Edge* e : conv->out_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_outputs.push_back(e->dst());
+      }
+    }
+    for (const Edge* e : bias->out_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_outputs.push_back(e->dst());
+      }
+    }
+    for (const Edge* e : actv->out_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_outputs.push_back(e->dst());
+      } else {
+        CHECK_EQ(e->src_output(), 0);
+        d->add_data_output(0, e->dst(), e->dst_input());
+      }
+    }
   }
 
   return is_eligible;
-}
-
-void ROCmFusionOpConvolutionBiasActivation::CreateFusionOp(
-    const FusionData* d, std::set<const Node*>& fused_nodes) {
-  std::vector<const Edge*> conv_input_edges;
-  TF_CHECK_OK(d->conv->input_edges(&conv_input_edges));
-
-  std::vector<const Edge*> bias_input_edges;
-  TF_CHECK_OK(d->bias->input_edges(&bias_input_edges));
-
-  // create an instance of the fusion node
-  string op_name =
-      strings::StrCat(d->conv->name(), d->bias->name(), d->actv->name());
-
-  NodeBuilder nb(op_name, "_ROCmFusedConvolutionBiasActivation");
-
-  // populate input data edges
-  nb.Input(conv_input_edges[0]->src(), conv_input_edges[0]->src_output());
-  nb.Input(conv_input_edges[1]->src(), conv_input_edges[1]->src_output());
-  nb.Input(bias_input_edges[1]->src(), bias_input_edges[1]->src_output());
-
-  // populate attributes
-  nb.Attr(kAttr_T, d->data_type);
-  nb.Attr(kAttr_strides, d->strides);
-  nb.Attr(kAttr_padding, d->padding);
-  nb.Attr(kAttr_data_format, d->data_format);
-  nb.Attr(kAttr_dilations, d->dilations);
-  nb.Attr(kAttr_activation_mode, d->activation_mode);
-
-  // populate the device
-  nb.Device(d->conv->def().device());
-
-  // create the new fusion node
-  Node* fusion_node = nullptr;
-  TF_CHECK_OK(nb.Finalize(graph_, &fusion_node));
-
-  // populate the input control edges
-  for (const Edge* e : d->conv->in_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
-    }
-  }
-  for (const Edge* e : d->bias->in_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
-    }
-  }
-  for (const Edge* e : d->actv->in_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
-    }
-  }
-
-  // populate output data and control edges
-  for (const Edge* e : d->conv->out_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
-    }
-  }
-  for (const Edge* e : d->bias->out_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
-    }
-  }
-  for (const Edge* e : d->actv->out_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
-    } else {
-      CHECK_NOTNULL(graph_->AddEdge(fusion_node, 0, e->dst(), e->dst_input()));
-    }
-  }
-
-  // populate the device placement
-  fusion_node->set_assigned_device_name(d->conv->assigned_device_name());
-
-  VLOG(kVlogLevel) << "\tCreated Convolution+Bias+Activation Fusion Node: "
-                   << fusion_node;
-  VLOG(kVlogLevel) << "===========";
-
-  // add the now redundant nodes to the set of fused nodes
-  fused_nodes.insert(d->conv);
-  fused_nodes.insert(d->bias);
-  fused_nodes.insert(d->actv);
-
-  // and remove them from the graph
-  graph_->RemoveNode(const_cast<Node*>(d->conv));
-  graph_->RemoveNode(const_cast<Node*>(d->bias));
-  graph_->RemoveNode(const_cast<Node*>(d->actv));
 }
 
 //----------------------------------------------------------------------
@@ -884,61 +918,55 @@ void ROCmFusionOpConvolutionBiasActivation::CreateFusionOp(
 // ROCmFusionOpBatchNormActivationInference implementation
 // ----------------------------------------------
 
-bool ROCmFusionOpBatchNormActivationInference::DoFusion(
-    const Node* n2, std::set<const Node*>& fused_nodes) {
-  bool did_fusion = false;
-  FusionData d;
-  if (IsFusionEligible(n2, &d)) {
-    CreateFusionOp(&d, fused_nodes);
-    did_fusion = true;
-  }
-  return did_fusion;
-}
-
-bool ROCmFusionOpBatchNormActivationInference::IsFusionEligible(const Node* n2,
-                                                                FusionData* d) {
+bool ROCmFusionOpBatchNormActivationInference::IsFusionEligible(
+    const Node* actv, FusionOpData* d) {
   // First check whether we have the right sequence of ops
   bool is_eligible = false;
 
-  if (isOpActivation(n2)) {  // activation node
-    Node* n1 = nullptr;
-    TF_CHECK_OK(n2->input_node(0, &n1));
-    if (isOpBatchNorm(n1)) {  // preceded by a batchnorm node
-      d->norm = n1;
-      d->actv = n2;
+  const Node* norm = nullptr;
+  bool is_training = false;
+
+  if (isOpActivation(actv)) {  // activation node
+
+    TF_CHECK_OK(actv->input_node(0, &norm));
+    if (isOpBatchNorm(norm)) {  // preceded by a batchnorm node
 
       // check the is_training attribute to determine the type of op to create
       // (i.e. training version or inference version)
-      TF_CHECK_OK(
-          GetNodeAttr(d->norm->def(), kAttr_is_training, &d->is_training));
+      TF_CHECK_OK(GetNodeAttr(norm->def(), kAttr_is_training, &is_training));
+      if (is_training) {
+        d->op_type = "_ROCmFusedBatchNormActivationForward";
+        d->op_name = strings::StrCat(norm->name(), actv->name());
+        d->fusion_type = "BatchNorm+Activation (training-fwd)";
+
+      } else {
+        d->op_type = "_ROCmFusedBatchNormActivationInference";
+        d->op_name = strings::StrCat(norm->name(), actv->name());
+        d->fusion_type = "BatchNorm+Activation (inference)";
+      }
+
+      d->nodes.push_back(norm);
+      d->nodes.push_back(actv);
 
       VLOG(kVlogLevel) << "===========";
-      if (d->is_training) {
-        DumpNodeList(
-            kVlogLevel,
-            "Found Fusion Candidate BatchNorm+Activation (training-fwd): ",
-            {d->norm, d->actv});
-      } else {
-        DumpNodeList(
-            kVlogLevel,
-            "Found Fusion Candidate BatchNorm+Activation (inference): ",
-            {d->norm, d->actv});
-      }
+      DumpNodeList(kVlogLevel,
+                   "Found Fusion Candidate " + d->fusion_type + " : ",
+                   {norm, actv});
 
       is_eligible = true;
     }
   }
 
   // ensure all the nodes are placed on the same GPU
-  if (is_eligible && !areAssignedToSameGpu({d->norm, d->actv})) {
+  if (is_eligible && !areAssignedToSameGpu({norm, actv})) {
     is_eligible = false;
   }
 
   // Next check if the first output of batch-norm node feeds a node other then
   // the activation node
   if (is_eligible) {
-    for (const Edge* e : d->norm->out_edges()) {
-      if ((e->src_output() == 0) && (e->dst() != d->actv)) {
+    for (const Edge* e : norm->out_edges()) {
+      if ((e->src_output() == 0) && (e->dst() != actv)) {
         VLOG(kVlogLevel)
             << "\tSkipping Fusion : "
             << "BatchNorm output feeds a node other the the activation node : "
@@ -955,14 +983,14 @@ bool ROCmFusionOpBatchNormActivationInference::IsFusionEligible(const Node* n2,
     is_eligible = false;
 
     DataType U_norm = DT_FLOAT;
-    if (d->norm->type_string() == "FusedBatchNorm") {
-      TF_CHECK_OK(GetNodeAttr(d->norm->def(), kAttr_T, &U_norm));
-    } else if (d->norm->type_string() == "FusedBatchNormV2") {
-      TF_CHECK_OK(GetNodeAttr(d->norm->def(), kAttr_U, &U_norm));
+    if (norm->type_string() == "FusedBatchNorm") {
+      TF_CHECK_OK(GetNodeAttr(norm->def(), kAttr_T, &U_norm));
+    } else if (norm->type_string() == "FusedBatchNormV2") {
+      TF_CHECK_OK(GetNodeAttr(norm->def(), kAttr_U, &U_norm));
     }
 
     if (U_norm == DT_FLOAT) {
-      d->data_type_U = U_norm;
+      d->add_attribute(kAttr_U, U_norm);
       is_eligible = true;
     } else {
       VLOG(kVlogLevel)
@@ -977,15 +1005,15 @@ bool ROCmFusionOpBatchNormActivationInference::IsFusionEligible(const Node* n2,
     is_eligible = false;
 
     DataType T_norm, T_actv;
-    TF_CHECK_OK(GetNodeAttr(d->norm->def(), kAttr_T, &T_norm));
-    TF_CHECK_OK(GetNodeAttr(d->actv->def(), kAttr_T, &T_actv));
+    TF_CHECK_OK(GetNodeAttr(norm->def(), kAttr_T, &T_norm));
+    TF_CHECK_OK(GetNodeAttr(actv->def(), kAttr_T, &T_actv));
 
     // only float and half types are supported for now
     if ((T_norm == DT_FLOAT) || (T_norm == DT_HALF)) {
 
       // datatype for batch-norm and activation must match
       if (T_norm == T_actv) {
-        d->data_type_T = T_norm;
+        d->add_attribute(kAttr_T, T_norm);
         is_eligible = true;
       } else {
         VLOG(kVlogLevel) << "\tSkipping Fusion : "
@@ -1006,13 +1034,13 @@ bool ROCmFusionOpBatchNormActivationInference::IsFusionEligible(const Node* n2,
     is_eligible = false;
 
     string df_norm_str;
-    TF_CHECK_OK(GetNodeAttr(d->norm->def(), kAttr_data_format, &df_norm_str));
+    TF_CHECK_OK(GetNodeAttr(norm->def(), kAttr_data_format, &df_norm_str));
 
     TensorFormat df_norm;
     CHECK_EQ(FormatFromString(df_norm_str, &df_norm), true);
 
     if ((df_norm == FORMAT_NHWC) || (df_norm == FORMAT_NCHW)) {
-      d->data_format = ToString(df_norm);
+      d->add_attribute(kAttr_data_format, ToString(df_norm));
       is_eligible = true;
     } else {
       VLOG(kVlogLevel) << "\tSkipping Fusion : "
@@ -1024,116 +1052,82 @@ bool ROCmFusionOpBatchNormActivationInference::IsFusionEligible(const Node* n2,
 
   // Next check the epsilon value is supported
   if (is_eligible) {
-    TF_CHECK_OK(GetNodeAttr(d->norm->def(), kAttr_epsilon, &d->epsilon));
+    float epsilon = 0.0;
+    TF_CHECK_OK(GetNodeAttr(norm->def(), kAttr_epsilon, &epsilon));
+
+    d->add_attribute(kAttr_epsilon, epsilon);
   }
 
   // finally check if the specified activation is supported
   if (is_eligible) {
-    d->activation_mode = d->actv->type_string();
+    d->add_attribute(kAttr_activation_mode, actv->type_string());
   }
 
-  return is_eligible;
-}
+  if (is_eligible) {
+    std::vector<const Edge*> norm_input_edges;
+    TF_CHECK_OK(norm->input_edges(&norm_input_edges));
 
-void ROCmFusionOpBatchNormActivationInference::CreateFusionOp(
-    const FusionData* d, std::set<const Node*>& fused_nodes) {
-  std::vector<const Edge*> norm_input_edges;
-  TF_CHECK_OK(d->norm->input_edges(&norm_input_edges));
+    // populate input data edges
 
-  // create an instance of the fusion node
-  string op_name = strings::StrCat(d->norm->name(), d->actv->name());
+    // batchnorm x
+    d->add_data_input(0, norm_input_edges[0]->src(),
+                      norm_input_edges[0]->src_output());
+    // batchnorm scale
+    d->add_data_input(1, norm_input_edges[1]->src(),
+                      norm_input_edges[1]->src_output());
+    // batchnorm offset
+    d->add_data_input(2, norm_input_edges[2]->src(),
+                      norm_input_edges[2]->src_output());
 
-  string fusion_type = d->is_training
-                           ? "_ROCmFusedBatchNormActivationForward"
-                           : "_ROCmFusedBatchNormActivationInference";
-
-  NodeBuilder nb(op_name, fusion_type);
-
-  // populate input data edges
-
-  // batchnorm x
-  nb.Input(norm_input_edges[0]->src(), norm_input_edges[0]->src_output());
-  // batchnorm scale
-  nb.Input(norm_input_edges[1]->src(), norm_input_edges[1]->src_output());
-  // batchnorm offset
-  nb.Input(norm_input_edges[2]->src(), norm_input_edges[2]->src_output());
-
-  if (!d->is_training) {
-    // batchnorm mean
-    nb.Input(norm_input_edges[3]->src(), norm_input_edges[3]->src_output());
-    // batchnorm variance
-    nb.Input(norm_input_edges[4]->src(), norm_input_edges[4]->src_output());
-  }
-
-  // populate attributes
-  nb.Attr(kAttr_T, d->data_type_T);
-  nb.Attr(kAttr_U, d->data_type_U);
-  nb.Attr(kAttr_epsilon, d->epsilon);
-  nb.Attr(kAttr_data_format, d->data_format);
-  nb.Attr(kAttr_activation_mode, d->activation_mode);
-
-  // populate the device
-  nb.Device(d->norm->def().device());
-
-  // create the new fusion node
-  Node* fusion_node = nullptr;
-  TF_CHECK_OK(nb.Finalize(graph_, &fusion_node));
-
-  // populate the input control edges
-  for (const Edge* e : d->norm->in_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+    if (!is_training) {
+      // batchnorm mean
+      d->add_data_input(3, norm_input_edges[3]->src(),
+                        norm_input_edges[3]->src_output());
+      // batchnorm variance
+      d->add_data_input(4, norm_input_edges[4]->src(),
+                        norm_input_edges[4]->src_output());
     }
-  }
-  for (const Edge* e : d->actv->in_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
-    }
-  }
 
-  // populate output data and control edges
-  for (const Edge* e : d->norm->out_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
-    } else if (d->is_training) {
-      if (e->src_output() == 1) {  // batch-norm mean
-        CHECK_NOTNULL(
-            graph_->AddEdge(fusion_node, 1, e->dst(), e->dst_input()));
-      } else if (e->src_output() == 2) {  // batch-norm variance
-        CHECK_NOTNULL(
-            graph_->AddEdge(fusion_node, 2, e->dst(), e->dst_input()));
-      } else if (e->src_output() == 3) {  // saved mean
-        CHECK_NOTNULL(
-            graph_->AddEdge(fusion_node, 3, e->dst(), e->dst_input()));
-      } else if (e->src_output() == 4) {  // saved variance
-        CHECK_NOTNULL(
-            graph_->AddEdge(fusion_node, 4, e->dst(), e->dst_input()));
+    // populate the input control edges
+    for (const Edge* e : norm->in_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_inputs.push_back(e->src());
+      }
+    }
+    for (const Edge* e : actv->in_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_inputs.push_back(e->src());
+      }
+    }
+
+    // populate output data and control edges
+    for (const Edge* e : norm->out_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_outputs.push_back(e->dst());
+      } else if (is_training) {
+        if ((1 <= e->src_output()) && (e->src_output() <= 4)) {
+          // 1 - batch-norm mean
+          // 2 - batch-norm variance
+          // 3 - saved mean
+          // 4 - saved variance
+          d->add_data_output(e->src_output(), e->dst(), e->dst_input());
+        } else {
+          // only other output index should be 0 (which feeds the actv node)
+          CHECK_EQ(e->src_output(), 0);
+        }
+      }
+    }
+    for (const Edge* e : actv->out_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_outputs.push_back(e->dst());
+      } else {
+        CHECK_EQ(e->src_output(), 0);
+        d->add_data_output(0, e->dst(), e->dst_input());
       }
     }
   }
-  for (const Edge* e : d->actv->out_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
-    } else {
-      CHECK_NOTNULL(graph_->AddEdge(fusion_node, 0, e->dst(), e->dst_input()));
-    }
-  }
 
-  // populate the device placement
-  fusion_node->set_assigned_device_name(d->norm->assigned_device_name());
-
-  VLOG(kVlogLevel) << "\tCreated BatchNorm+Activation "
-                   << (d->is_training ? "(training-fwd)" : "(inference)")
-                   << " Fusion Node: " << fusion_node;
-  VLOG(kVlogLevel) << "===========";
-
-  // add the now redundant nodes to the set of fused nodes
-  fused_nodes.insert(d->norm);
-  fused_nodes.insert(d->actv);
-
-  // and remove them from the graph
-  graph_->RemoveNode(const_cast<Node*>(d->norm));
-  graph_->RemoveNode(const_cast<Node*>(d->actv));
+  return is_eligible;
 }
 //----------------------------------------------------------------------
 
@@ -1141,28 +1135,19 @@ void ROCmFusionOpBatchNormActivationInference::CreateFusionOp(
 // ROCmFusionOpBatchNormActivationBackward implementationq
 // ----------------------------------------------
 
-bool ROCmFusionOpBatchNormActivationBackward::DoFusion(
-    const Node* n2, std::set<const Node*>& fused_nodes) {
-  bool did_fusion = false;
-  FusionData d;
-  if (IsFusionEligible(n2, &d)) {
-    CreateFusionOp(&d, fused_nodes);
-    did_fusion = true;
-  }
-  return did_fusion;
-}
-
-bool ROCmFusionOpBatchNormActivationBackward::IsFusionEligible(const Node* n2,
-                                                               FusionData* d) {
+bool ROCmFusionOpBatchNormActivationBackward::IsFusionEligible(
+    const Node* norm_grad, FusionOpData* d) {
   // First check whether we have the right sequence of ops
   bool is_eligible = false;
 
-  if (isOpBatchNormGrad(n2)) {  // batchnorm gradient node
-    Node* n1 = nullptr;
-    TF_CHECK_OK(n2->input_node(0, &n1));
-    if (isOpActivationGrad(n1)) {  // preceded by a activation graident node
-      d->norm_grad = n2;
-      d->actv_grad = n1;
+  const Node* actv_grad = nullptr;
+  const Node* norm_offset = nullptr;
+
+  if (isOpBatchNormGrad(norm_grad)) {  // batchnorm gradient node
+
+    TF_CHECK_OK(norm_grad->input_node(0, &actv_grad));
+    if (isOpActivationGrad(
+            actv_grad)) {  // preceded by a activation graident node
 
       // we need to cache the offset input to the batchnorm node
       // this is because the fused-op needs this input, and it is not present
@@ -1170,31 +1155,37 @@ bool ROCmFusionOpBatchNormActivationBackward::IsFusionEligible(const Node* n2,
       const Edge* e = nullptr;
 
       // 4th input to batchnorm grad is the saved mean from batchnorn fwd
-      TF_CHECK_OK(d->norm_grad->input_edge(3, &e));
+      TF_CHECK_OK(norm_grad->input_edge(3, &e));
       const Node* norm = e->src();
 
       // 3rd input to batchnorm fwd is the offset node we want
-      TF_CHECK_OK(norm->input_node(2, &d->norm_offset));
+      TF_CHECK_OK(norm->input_node(2, &norm_offset));
+
+      d->op_type = "_ROCmFusedBatchNormActivationBackward";
+      d->op_name = strings::StrCat(norm_grad->name(), actv_grad->name());
+      d->fusion_type = "BatchNorm+Activation (training-bwd)";
+      d->nodes.push_back(norm_grad);
+      d->nodes.push_back(actv_grad);
 
       VLOG(kVlogLevel) << "===========";
-      DumpNodeList(
-          kVlogLevel,
-          "Found Fusion Candidate BatchNorm+Activation (training-bwd): ",
-          {d->norm_grad, d->actv_grad});
+      DumpNodeList(kVlogLevel,
+                   "Found Fusion Candidate " + d->fusion_type + " : ",
+                   {norm_grad, actv_grad});
+
       is_eligible = true;
     }
   }
 
   // ensure all the nodes are placed on the same GPU
-  if (is_eligible && !areAssignedToSameGpu({d->norm_grad, d->actv_grad})) {
+  if (is_eligible && !areAssignedToSameGpu({norm_grad, actv_grad})) {
     is_eligible = false;
   }
 
   // Next check if the first output of activation gradient node feeds a node
   // other then the batch norm gradient node
   if (is_eligible) {
-    for (const Edge* e : d->actv_grad->out_edges()) {
-      if ((e->src_output() == 0) && (e->dst() != d->norm_grad)) {
+    for (const Edge* e : actv_grad->out_edges()) {
+      if ((e->src_output() == 0) && (e->dst() != norm_grad)) {
         VLOG(kVlogLevel) << "\tSkipping Fusion : "
                          << "ActivationGrad output feeds a node other the the "
                             "BatchNormGrad node : "
@@ -1211,14 +1202,14 @@ bool ROCmFusionOpBatchNormActivationBackward::IsFusionEligible(const Node* n2,
     is_eligible = false;
 
     DataType U_norm_grad = DT_FLOAT;
-    if (d->norm_grad->type_string() == "FusedBatchNormGrad") {
-      TF_CHECK_OK(GetNodeAttr(d->norm_grad->def(), kAttr_T, &U_norm_grad));
-    } else if (d->norm_grad->type_string() == "FusedBatchNormGradV2") {
-      TF_CHECK_OK(GetNodeAttr(d->norm_grad->def(), kAttr_U, &U_norm_grad));
+    if (norm_grad->type_string() == "FusedBatchNormGrad") {
+      TF_CHECK_OK(GetNodeAttr(norm_grad->def(), kAttr_T, &U_norm_grad));
+    } else if (norm_grad->type_string() == "FusedBatchNormGradV2") {
+      TF_CHECK_OK(GetNodeAttr(norm_grad->def(), kAttr_U, &U_norm_grad));
     }
 
     if (U_norm_grad == DT_FLOAT) {
-      d->data_type_U = U_norm_grad;
+      d->add_attribute(kAttr_U, U_norm_grad);
       is_eligible = true;
     } else {
       VLOG(kVlogLevel) << "\tSkipping Fusion : "
@@ -1233,15 +1224,15 @@ bool ROCmFusionOpBatchNormActivationBackward::IsFusionEligible(const Node* n2,
     is_eligible = false;
 
     DataType T_norm_grad, T_actv_grad;
-    TF_CHECK_OK(GetNodeAttr(d->norm_grad->def(), kAttr_T, &T_norm_grad));
-    TF_CHECK_OK(GetNodeAttr(d->actv_grad->def(), kAttr_T, &T_actv_grad));
+    TF_CHECK_OK(GetNodeAttr(norm_grad->def(), kAttr_T, &T_norm_grad));
+    TF_CHECK_OK(GetNodeAttr(actv_grad->def(), kAttr_T, &T_actv_grad));
 
     // only float and half types are supported for now
     if ((T_norm_grad == DT_FLOAT) || (T_norm_grad == DT_HALF)) {
 
       // datatype for batch-norm and activation must match
       if (T_norm_grad == T_actv_grad) {
-        d->data_type_T = T_norm_grad;
+        d->add_attribute(kAttr_T, T_norm_grad);
         is_eligible = true;
       } else {
         VLOG(kVlogLevel) << "\tSkipping Fusion : "
@@ -1264,13 +1255,13 @@ bool ROCmFusionOpBatchNormActivationBackward::IsFusionEligible(const Node* n2,
 
     string df_norm_grad_str;
     TF_CHECK_OK(
-        GetNodeAttr(d->norm_grad->def(), kAttr_data_format, &df_norm_grad_str));
+        GetNodeAttr(norm_grad->def(), kAttr_data_format, &df_norm_grad_str));
 
     TensorFormat df_norm_grad;
     CHECK_EQ(FormatFromString(df_norm_grad_str, &df_norm_grad), true);
 
     if ((df_norm_grad == FORMAT_NHWC) || (df_norm_grad == FORMAT_NCHW)) {
-      d->data_format = ToString(df_norm_grad);
+      d->add_attribute(kAttr_data_format, ToString(df_norm_grad));
       is_eligible = true;
     } else {
       VLOG(kVlogLevel) << "\tSkipping Fusion : "
@@ -1282,116 +1273,86 @@ bool ROCmFusionOpBatchNormActivationBackward::IsFusionEligible(const Node* n2,
 
   // Next check the epsilon value is supported
   if (is_eligible) {
-    TF_CHECK_OK(GetNodeAttr(d->norm_grad->def(), kAttr_epsilon, &d->epsilon));
+    float epsilon = 0.0;
+    TF_CHECK_OK(GetNodeAttr(norm_grad->def(), kAttr_epsilon, &epsilon));
+
+    d->add_attribute(kAttr_epsilon, epsilon);
   }
 
   // finally check if the specified activation is supported
   if (is_eligible) {
-    d->activation_mode = getActivationOpType(d->actv_grad);
+    d->add_attribute(kAttr_activation_mode, getActivationOpType(actv_grad));
   }
 
-  return is_eligible;
-}
+  if (is_eligible) {
+    std::vector<const Edge*> actv_grad_input_edges;
+    TF_CHECK_OK(actv_grad->input_edges(&actv_grad_input_edges));
 
-void ROCmFusionOpBatchNormActivationBackward::CreateFusionOp(
-    const FusionData* d, std::set<const Node*>& fused_nodes) {
-  std::vector<const Edge*> actv_grad_input_edges;
-  TF_CHECK_OK(d->actv_grad->input_edges(&actv_grad_input_edges));
+    std::vector<const Edge*> norm_grad_input_edges;
+    TF_CHECK_OK(norm_grad->input_edges(&norm_grad_input_edges));
 
-  std::vector<const Edge*> norm_grad_input_edges;
-  TF_CHECK_OK(d->norm_grad->input_edges(&norm_grad_input_edges));
+    // populate input data edges
 
-  // create an instance of the fusion node
-  string op_name = strings::StrCat(d->norm_grad->name(), d->actv_grad->name());
+    // activation grad gradients
+    d->add_data_input(0, actv_grad_input_edges[0]->src(),
+                      actv_grad_input_edges[0]->src_output());
+    // activation grad features
+    d->add_data_input(1, actv_grad_input_edges[1]->src(),
+                      actv_grad_input_edges[1]->src_output());
 
-  NodeBuilder nb(op_name, "_ROCmFusedBatchNormActivationBackward");
+    // batchnorm grad x
+    d->add_data_input(2, norm_grad_input_edges[1]->src(),
+                      norm_grad_input_edges[1]->src_output());
+    // batchnorm grad scale
+    d->add_data_input(3, norm_grad_input_edges[2]->src(),
+                      norm_grad_input_edges[2]->src_output());
+    // batchnorm offset
+    d->add_data_input(4, const_cast<Node*>(norm_offset), 0);
+    // batchnorm grad saved_mean
+    d->add_data_input(5, norm_grad_input_edges[3]->src(),
+                      norm_grad_input_edges[3]->src_output());
+    // batchnorm grad saved_var
+    d->add_data_input(6, norm_grad_input_edges[4]->src(),
+                      norm_grad_input_edges[4]->src_output());
 
-  // populate input data edges
-
-  // activation grad gradients
-  nb.Input(actv_grad_input_edges[0]->src(),
-           actv_grad_input_edges[0]->src_output());
-  // activation grad features
-  nb.Input(actv_grad_input_edges[1]->src(),
-           actv_grad_input_edges[1]->src_output());
-
-  // batchnorm grad x
-  nb.Input(norm_grad_input_edges[1]->src(),
-           norm_grad_input_edges[1]->src_output());
-  // batchnorm grad scale
-  nb.Input(norm_grad_input_edges[2]->src(),
-           norm_grad_input_edges[2]->src_output());
-  // batchnorm offset
-  nb.Input(const_cast<Node*>(d->norm_offset), 0);
-  // batchnorm grad saved_mean
-  nb.Input(norm_grad_input_edges[3]->src(),
-           norm_grad_input_edges[3]->src_output());
-  // batchnorm grad saved_var
-  nb.Input(norm_grad_input_edges[4]->src(),
-           norm_grad_input_edges[4]->src_output());
-
-  // populate attributes
-  nb.Attr(kAttr_T, d->data_type_T);
-  nb.Attr(kAttr_U, d->data_type_U);
-  nb.Attr(kAttr_epsilon, d->epsilon);
-  nb.Attr(kAttr_data_format, d->data_format);
-  nb.Attr(kAttr_activation_mode, d->activation_mode);
-
-  // populate the device
-  nb.Device(d->norm_grad->def().device());
-
-  // create the new fusion node
-  Node* fusion_node = nullptr;
-  TF_CHECK_OK(nb.Finalize(graph_, &fusion_node));
-
-  // populate the input control edges
-  for (const Edge* e : d->norm_grad->in_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+    // populate the input control edges
+    for (const Edge* e : norm_grad->in_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_inputs.push_back(e->src());
+      }
     }
-  }
-  for (const Edge* e : d->actv_grad->in_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
+    for (const Edge* e : actv_grad->in_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_inputs.push_back(e->src());
+      }
     }
-  }
 
-  // populate output data and control edges
-  for (const Edge* e : d->actv_grad->out_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
+    // populate output data and control edges
+    for (const Edge* e : actv_grad->out_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_outputs.push_back(e->dst());
+      }
     }
-  }
-  for (const Edge* e : d->norm_grad->out_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
-    } else {
-      if ((0 <= e->src_output()) && (e->src_output() <= 2)) {
-        CHECK_NOTNULL(graph_->AddEdge(fusion_node, e->src_output(), e->dst(),
-                                      e->dst_input()));
+    for (const Edge* e : norm_grad->out_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_outputs.push_back(e->dst());
       } else {
-        LOG(FATAL) << "Unexpected output connection on the BatchNormGrad node :"
-                   << d->norm_grad
-                   << ". output(idx, dest_node) :" << e->src_output() << ", "
-                   << e->dst();
+        if ((0 <= e->src_output()) && (e->src_output() <= 2)) {
+          // 0 - x_bn_backprop
+          // 1 - scale_backprop
+          // 2 - offset_backprop
+          d->add_data_output(e->src_output(), e->dst(), e->dst_input());
+        } else {
+          LOG(FATAL)
+              << "Unexpected output connection on the BatchNormGrad node :"
+              << norm_grad << ". output(idx, dest_node) :" << e->src_output()
+              << ", " << e->dst();
+        }
       }
     }
   }
 
-  // populate the device placement
-  fusion_node->set_assigned_device_name(d->norm_grad->assigned_device_name());
-
-  VLOG(kVlogLevel) << "\tCreated BatchNorm+Activation (training-bwd)"
-                   << " Fusion Node: " << fusion_node;
-  VLOG(kVlogLevel) << "===========";
-
-  // add the now redundant nodes to the set of fused nodes
-  fused_nodes.insert(d->norm_grad);
-  fused_nodes.insert(d->actv_grad);
-
-  // and remove them from the graph
-  graph_->RemoveNode(const_cast<Node*>(d->norm_grad));
-  graph_->RemoveNode(const_cast<Node*>(d->actv_grad));
+  return is_eligible;
 }
 //----------------------------------------------------------------------
 
@@ -1399,45 +1360,43 @@ void ROCmFusionOpBatchNormActivationBackward::CreateFusionOp(
 // ROCmFusionOpAddRelu implementation
 // ----------------------------------------------
 
-bool ROCmFusionOpAddRelu::DoFusion(const Node* n2,
-                                   std::set<const Node*>& fused_nodes) {
-  bool did_fusion = false;
-  FusionData d;
-  if (IsFusionEligible(n2, &d)) {
-    CreateFusionOp(&d, fused_nodes);
-    did_fusion = true;
-  }
-  return did_fusion;
-}
-
-bool ROCmFusionOpAddRelu::IsFusionEligible(const Node* n2, FusionData* d) {
+bool ROCmFusionOpAddRelu::IsFusionEligible(const Node* relu, FusionOpData* d) {
   bool is_eligible = false;
 
-  // First check whether we have the right sequence of ops
-  if (isOpRelu(n2)) {  // "Relu" node
-    Node* n1 = nullptr;
-    TF_CHECK_OK(n2->input_node(0, &n1));
-    if (isOpAdd(n1)) {  // preceded by a "Add" op
-      d->add = n1;
-      d->relu = n2;
+  const Node* add = nullptr;
 
+  // First check whether we have the right sequence of ops
+  if (isOpRelu(relu)) {  // "Relu" node
+
+    TF_CHECK_OK(relu->input_node(0, &add));
+
+    if (isOpAdd(add)) {  // preceded by a "Add" op
+
+      d->op_type = "_ROCmFusedAddRelu";
+      d->op_name = strings::StrCat(add->name(), relu->name());
+      d->fusion_type = "Add+Relu";
+      d->nodes.push_back(add);
+      d->nodes.push_back(relu);
+
+      VLOG(kVlogLevel) << "===========";
       DumpNodeList(kVlogLevel,
-                   "Found Fusion Candidate Add+Relu: ", {d->add, d->relu});
+                   "Found Fusion Candidate " + d->fusion_type + " : ",
+                   {add, relu});
 
       is_eligible = true;
     }
   }
 
   // ensure all the nodes are placed on the same GPU
-  if (is_eligible && !areAssignedToSameGpu({d->add, d->relu})) {
+  if (is_eligible && !areAssignedToSameGpu({add, relu})) {
     is_eligible = false;
   }
 
   // Next check if the first output of add node feeds a node other then
   // the activation node
   if (is_eligible) {
-    for (const Edge* e : d->add->out_edges()) {
-      if ((e->src_output() == 0) && (e->dst() != d->relu)) {
+    for (const Edge* e : add->out_edges()) {
+      if ((e->src_output() == 0) && (e->dst() != relu)) {
         VLOG(kVlogLevel)
             << "\tSkipping Fusion : "
             << "Output from Add also feeds a node other then Relu : "
@@ -1454,14 +1413,14 @@ bool ROCmFusionOpAddRelu::IsFusionEligible(const Node* n2, FusionData* d) {
     is_eligible = false;
 
     DataType T_add, T_relu;
-    TF_CHECK_OK(GetNodeAttr(d->add->def(), kAttr_T, &T_add));
-    TF_CHECK_OK(GetNodeAttr(d->relu->def(), kAttr_T, &T_relu));
+    TF_CHECK_OK(GetNodeAttr(add->def(), kAttr_T, &T_add));
+    TF_CHECK_OK(GetNodeAttr(relu->def(), kAttr_T, &T_relu));
 
     // only float and half types are supported for now
     if ((T_add == DT_FLOAT) || (T_add == DT_HALF)) {
       // datatype for add and relu must match
       if (T_add == T_relu) {
-        d->data_type = T_add;
+        d->add_attribute(kAttr_T, T_add);
         is_eligible = true;
       } else {
         VLOG(kVlogLevel) << "\tSkipping Fusion : "
@@ -1477,75 +1436,45 @@ bool ROCmFusionOpAddRelu::IsFusionEligible(const Node* n2, FusionData* d) {
     }
   }
 
+  if (is_eligible) {
+    std::vector<const Edge*> add_input_edges;
+    TF_CHECK_OK(add->input_edges(&add_input_edges));
+
+    // populate input data edges
+    d->add_data_input(0, add_input_edges[0]->src(),
+                      add_input_edges[0]->src_output());
+    d->add_data_input(1, add_input_edges[1]->src(),
+                      add_input_edges[1]->src_output());
+
+    // populate the input control edges
+    for (const Edge* e : add->in_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_inputs.push_back(e->src());
+      }
+    }
+    for (const Edge* e : relu->in_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_inputs.push_back(e->src());
+      }
+    }
+
+    // populate output data and control edges
+    for (const Edge* e : add->out_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_outputs.push_back(e->dst());
+      }
+    }
+    for (const Edge* e : relu->out_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_outputs.push_back(e->dst());
+      } else {
+        CHECK_EQ(e->src_output(), 0);
+        d->add_data_output(0, e->dst(), e->dst_input());
+      }
+    }
+  }
+
   return is_eligible;
-}
-
-void ROCmFusionOpAddRelu::CreateFusionOp(const FusionData* d,
-                                         std::set<const Node*>& fused_nodes) {
-  std::vector<const Edge*> add_input_edges;
-  TF_CHECK_OK(d->add->input_edges(&add_input_edges));
-
-  // create an instance of the fusion node
-  string op_name = strings::StrCat(d->add->name(), d->relu->name());
-
-  NodeBuilder nb(op_name, "_ROCmFusedAddRelu");
-
-  // populate input data edges
-
-  // add x
-  nb.Input(add_input_edges[0]->src(), add_input_edges[0]->src_output());
-  // add y
-  nb.Input(add_input_edges[1]->src(), add_input_edges[1]->src_output());
-
-  // populate attributes
-  nb.Attr(kAttr_T, d->data_type);
-
-  // populate the device
-  nb.Device(d->add->def().device());
-
-  // create the new fusion node
-  Node* fusion_node = nullptr;
-  TF_CHECK_OK(nb.Finalize(graph_, &fusion_node));
-
-  // populate the input control edges
-  for (const Edge* e : d->add->in_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
-    }
-  }
-  for (const Edge* e : d->relu->in_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
-    }
-  }
-
-  // populate output data and control edges
-  for (const Edge* e : d->add->out_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
-    }
-  }
-  for (const Edge* e : d->relu->out_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
-    } else {
-      CHECK_NOTNULL(graph_->AddEdge(fusion_node, 0, e->dst(), e->dst_input()));
-    }
-  }
-
-  // populate the device placement
-  fusion_node->set_assigned_device_name(d->add->assigned_device_name());
-
-  VLOG(kVlogLevel) << "\tCreated Add+Relu Fusion Node: " << fusion_node;
-  VLOG(kVlogLevel) << "===========";
-
-  // add the now redundant nodes to the set of fused nodes
-  fused_nodes.insert(d->add);
-  fused_nodes.insert(d->relu);
-
-  // and remove them from the graph
-  graph_->RemoveNode(const_cast<Node*>(d->add));
-  graph_->RemoveNode(const_cast<Node*>(d->relu));
 }
 
 //----------------------------------------------------------------------
@@ -1554,58 +1483,46 @@ void ROCmFusionOpAddRelu::CreateFusionOp(const FusionData* d,
 // ROCmFusionOpAddNReluGrad implementation
 // ----------------------------------------------
 
-bool ROCmFusionOpAddNReluGrad::DoFusion(const Node* n2,
-                                        std::set<const Node*>& fused_nodes) {
-  bool did_fusion = false;
-  FusionData d;
-  if (IsFusionEligible(n2, &d)) {
-    CreateFusionOp(&d, fused_nodes);
-    did_fusion = true;
-  }
-  return did_fusion;
-}
-
-bool ROCmFusionOpAddNReluGrad::IsFusionEligible(const Node* n2, FusionData* d) {
+bool ROCmFusionOpAddNReluGrad::IsFusionEligible(const Node* reluGrad,
+                                                FusionOpData* d) {
   bool is_eligible = false;
 
+  const Node* addN = nullptr;
+  const Node* relu = nullptr;
+
   // First check whether we have the right sequence of ops
-  if (isOpReluGrad(n2)) {  // "ReluGrad" node
+  if (isOpReluGrad(reluGrad)) {  // "ReluGrad" node
 
-    Node* n1_1 = nullptr;
-    TF_CHECK_OK(n2->input_node(0, &n1_1));
+    TF_CHECK_OK(reluGrad->input_node(0, &addN));
+    TF_CHECK_OK(reluGrad->input_node(1, &relu));
 
-    Node* n1_2 = nullptr;
-    TF_CHECK_OK(n2->input_node(1, &n1_2));
-
-    // VLOG(kVlogLevel) << "===========";
-    // DumpNodeList(kVlogLevel, "ReluGrad Inputs: ",
-    // 		 {n1_1, n1_2});
-    // VLOG(kVlogLevel) << "===========";
-
-    if (isOpAddN(n1_1) && isOpReluOrFusedAddRelu(n1_2)) {
+    if (isOpAddN(addN) && isOpReluOrFusedAddRelu(relu)) {
       // preceded by "AddN" and "Relu"/"_ROCmFusedAddRelu" Ops
 
-      d->addN = n1_1;
-      d->relu = n1_2;
-      d->reluGrad = n2;
+      d->op_type = "_ROCmFusedAddNReluGrad";
+      d->op_name = strings::StrCat(addN->name(), reluGrad->name());
+      d->fusion_type = "AddN+ReluGrad";
+      d->nodes.push_back(addN);
+      d->nodes.push_back(reluGrad);
 
-      DumpNodeList(kVlogLevel, "Found Fusion Candidate AddN+ReluGrad : ",
-                   {d->addN, d->reluGrad});
+      DumpNodeList(kVlogLevel,
+                   "Found Fusion Candidate " + d->fusion_type + " : ",
+                   {addN, reluGrad});
 
       is_eligible = true;
     }
   }
 
   // ensure all the nodes are placed on the same GPU
-  if (is_eligible && !areAssignedToSameGpu({d->addN, d->relu, d->reluGrad})) {
+  if (is_eligible && !areAssignedToSameGpu({addN, relu, reluGrad})) {
     is_eligible = false;
   }
 
   // Next check if the first output of addN node feeds a node other then
   // the activation node
   if (is_eligible) {
-    for (const Edge* e : d->addN->out_edges()) {
-      if ((e->src_output() == 0) && (e->dst() != d->reluGrad)) {
+    for (const Edge* e : addN->out_edges()) {
+      if ((e->src_output() == 0) && (e->dst() != reluGrad)) {
         VLOG(kVlogLevel)
             << "\tSkipping Fusion : "
             << "Output from AddN also feeds a node other then ReluGrad : "
@@ -1622,15 +1539,15 @@ bool ROCmFusionOpAddNReluGrad::IsFusionEligible(const Node* n2, FusionData* d) {
     is_eligible = false;
 
     DataType T_addN, T_relu, T_reluGrad;
-    TF_CHECK_OK(GetNodeAttr(d->addN->def(), kAttr_T, &T_addN));
-    TF_CHECK_OK(GetNodeAttr(d->relu->def(), kAttr_T, &T_relu));
-    TF_CHECK_OK(GetNodeAttr(d->reluGrad->def(), kAttr_T, &T_reluGrad));
+    TF_CHECK_OK(GetNodeAttr(addN->def(), kAttr_T, &T_addN));
+    TF_CHECK_OK(GetNodeAttr(relu->def(), kAttr_T, &T_relu));
+    TF_CHECK_OK(GetNodeAttr(reluGrad->def(), kAttr_T, &T_reluGrad));
 
     // only float and half types are supported for now
     if ((T_addN == DT_FLOAT) || (T_addN == DT_HALF)) {
       // datatype for binary-op and activation must match
       if ((T_addN == T_relu) && (T_addN == T_reluGrad)) {
-        d->data_type = T_addN;
+        d->add_attribute(kAttr_T, T_addN);
         is_eligible = true;
       } else {
         VLOG(kVlogLevel) << "\tSkipping Fusion : "
@@ -1649,97 +1566,66 @@ bool ROCmFusionOpAddNReluGrad::IsFusionEligible(const Node* n2, FusionData* d) {
 
   // scan in the number of inputs to the AddN node
   if (is_eligible) {
-    TF_CHECK_OK(GetNodeAttr(d->addN->def(), kAttr_N, &d->num_addN_inputs));
-    if (d->num_addN_inputs != 2) {
+    int num_addN_inputs;
+    TF_CHECK_OK(GetNodeAttr(addN->def(), kAttr_N, &num_addN_inputs));
+    if (num_addN_inputs != 2) {
       VLOG(kVlogLevel) << "\tSkipping Fusion : "
                        << " AddN node has unsupported N value : "
-                       << d->num_addN_inputs;
+                       << num_addN_inputs;
       VLOG(kVlogLevel) << "===========";
+      is_eligible = false;
+    } else {
+      d->add_attribute(kAttr_N, num_addN_inputs);
+    }
+  }
+
+  if (is_eligible) {
+    std::vector<const Edge*> addN_input_edges;
+    TF_CHECK_OK(addN->input_edges(&addN_input_edges));
+
+    std::vector<const Edge*> reluGrad_input_edges;
+    TF_CHECK_OK(reluGrad->input_edges(&reluGrad_input_edges));
+
+    // populate input data edges
+    // add addN inputs
+    for (const Edge* e : addN_input_edges) {
+      d->add_data_input(0, e->src(), e->src_output());
+    }
+
+    // add the relu output
+    d->add_data_input(1, reluGrad_input_edges[1]->src(),
+                      reluGrad_input_edges[1]->src_output());
+
+    // populate the input control edges
+    for (const Edge* e : addN->in_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_inputs.push_back(e->src());
+      }
+    }
+    for (const Edge* e : reluGrad->in_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_inputs.push_back(e->src());
+      }
+    }
+
+    // populate output data and control edges
+    for (const Edge* e : addN->out_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_outputs.push_back(e->dst());
+      }
+    }
+    for (const Edge* e : reluGrad->out_edges()) {
+      if (e->IsControlEdge()) {
+        d->control_outputs.push_back(e->dst());
+      } else {
+        CHECK_EQ(e->src_output(), 0);
+        d->add_data_output(0, e->dst(), e->dst_input());
+      }
     }
   }
 
   return is_eligible;
 }
-
-void ROCmFusionOpAddNReluGrad::CreateFusionOp(
-    const FusionData* d, std::set<const Node*>& fused_nodes) {
-  std::vector<const Edge*> addN_input_edges;
-  TF_CHECK_OK(d->addN->input_edges(&addN_input_edges));
-
-  std::vector<const Edge*> reluGrad_input_edges;
-  TF_CHECK_OK(d->reluGrad->input_edges(&reluGrad_input_edges));
-
-  // create an instance of the fusion node
-  string op_name = strings::StrCat(d->addN->name(), d->reluGrad->name());
-
-  NodeBuilder nb(op_name, "_ROCmFusedAddNReluGrad");
-
-  // populate input data edges
-
-  // add addN inputs
-  std::vector<NodeBuilder::NodeOut> addN_inputs;
-  for (const Edge* e : addN_input_edges) {
-    addN_inputs.push_back(NodeBuilder::NodeOut(e->src(), e->src_output()));
-  }
-  nb.Input(addN_inputs);
-
-  // add the relu output
-  CHECK_EQ(reluGrad_input_edges[1]->src(), d->relu);
-  nb.Input(reluGrad_input_edges[1]->src(),
-           reluGrad_input_edges[1]->src_output());
-
-  // populate attributes
-  nb.Attr(kAttr_T, d->data_type);
-  nb.Attr(kAttr_N, d->num_addN_inputs);
-
-  // populate the device
-  nb.Device(d->addN->def().device());
-
-  // create the new fusion node
-  Node* fusion_node = nullptr;
-  TF_CHECK_OK(nb.Finalize(graph_, &fusion_node));
-
-  // populate the input control edges
-  for (const Edge* e : d->addN->in_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
-    }
-  }
-  for (const Edge* e : d->reluGrad->in_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(e->src(), fusion_node, true));
-    }
-  }
-
-  // populate output data and control edges
-  for (const Edge* e : d->addN->out_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
-    }
-  }
-  for (const Edge* e : d->reluGrad->out_edges()) {
-    if (e->IsControlEdge()) {
-      CHECK_NOTNULL(graph_->AddControlEdge(fusion_node, e->dst(), true));
-    } else {
-      CHECK_NOTNULL(graph_->AddEdge(fusion_node, 0, e->dst(), e->dst_input()));
-    }
-  }
-
-  // populate the device placement
-  fusion_node->set_assigned_device_name(d->addN->assigned_device_name());
-
-  VLOG(kVlogLevel) << "\tCreated AddN+ReluGrad Fusion Node: " << fusion_node;
-  VLOG(kVlogLevel) << "===========";
-
-  // add the now redundant nodes to the set of fused nodes
-  fused_nodes.insert(d->addN);
-  fused_nodes.insert(d->reluGrad);
-
-  // and remove them from the graph
-  graph_->RemoveNode(const_cast<Node*>(d->addN));
-  graph_->RemoveNode(const_cast<Node*>(d->reluGrad));
-}
-
 //----------------------------------------------------------------------
 
 }  // namespace gpu_fusion_pass
