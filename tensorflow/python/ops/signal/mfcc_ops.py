@@ -22,7 +22,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import spectral_ops
+from tensorflow.python.ops.signal import dct_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -106,5 +106,5 @@ def mfccs_from_log_mel_spectrograms(log_mel_spectrograms, name=None):
     else:
       num_mel_bins = array_ops.shape(log_mel_spectrograms)[-1]
 
-    dct2 = spectral_ops.dct(log_mel_spectrograms)
+    dct2 = dct_ops.dct(log_mel_spectrograms, type=2)
     return dct2 * math_ops.rsqrt(math_ops.to_float(num_mel_bins) * 2.0)

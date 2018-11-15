@@ -27,6 +27,7 @@ from tensorflow.python.ops import spectral_ops_test_util
 from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.ops.linalg import linear_operator_circulant
 from tensorflow.python.ops.linalg import linear_operator_test_util
+from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.platform import test
 
 rng = np.random.RandomState(0)
@@ -75,8 +76,8 @@ class LinearOperatorCirculantBaseTest(object):
       x = np.zeros([domain_dimension])
       # x is a basis vector.
       x[m] = 1.0
-      fft_x = math_ops.fft(x.astype(np.complex64))
-      h_convolve_x = math_ops.ifft(spectrum * fft_x)
+      fft_x = fft_ops.fft(x.astype(np.complex64))
+      h_convolve_x = fft_ops.ifft(spectrum * fft_x)
       matrix_rows.append(h_convolve_x)
     matrix = array_ops.stack(matrix_rows, axis=-1)
     return math_ops.cast(matrix, dtype)
@@ -169,14 +170,14 @@ class LinearOperatorCirculantTestHermitianSpectrum(
     #  = IFFT[EvenPartOf[pre_spectrum]]
     # is the IFFT of something that is also bounded away from zero.
     # Therefore, FFT[pre_h] would be a well-conditioned spectrum.
-    pre_h = math_ops.ifft(pre_spectrum_c)
+    pre_h = fft_ops.ifft(pre_spectrum_c)
 
     # A spectrum is Hermitian iff it is the DFT of a real convolution kernel.
     # So we will make spectrum = FFT[h], for real valued h.
     h = math_ops.real(pre_h)
     h_c = _to_complex(h)
 
-    spectrum = math_ops.fft(h_c)
+    spectrum = fft_ops.fft(h_c)
 
     lin_op_spectrum = spectrum
 
@@ -273,7 +274,7 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
   def test_defining_operator_using_real_convolution_kernel(self):
     with self.cached_session():
       convolution_kernel = [1., 2., 1.]
-      spectrum = math_ops.fft(
+      spectrum = fft_ops.fft(
           math_ops.cast(convolution_kernel, dtypes.complex64))
 
       # spectrum is shape [3] ==> operator is shape [3, 3]
@@ -291,7 +292,7 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
       # Make spectrum the FFT of a real convolution kernel h.  This ensures that
       # spectrum is Hermitian.
       h = linear_operator_test_util.random_normal(shape=(3, 4))
-      spectrum = math_ops.fft(math_ops.cast(h, dtypes.complex64))
+      spectrum = fft_ops.fft(math_ops.cast(h, dtypes.complex64))
       operator = linalg.LinearOperatorCirculant(
           spectrum, input_output_dtype=dtypes.complex64)
       matrix = operator.to_dense()
@@ -419,8 +420,8 @@ class LinearOperatorCirculant2DBaseTest(object):
         x = np.zeros(block_shape)
         # x is a basis vector.
         x[n0, n1] = 1.0
-        fft_x = math_ops.fft2d(x.astype(np.complex64))
-        h_convolve_x = math_ops.ifft2d(spectrum * fft_x)
+        fft_x = fft_ops.fft2d(x.astype(np.complex64))
+        h_convolve_x = fft_ops.ifft2d(spectrum * fft_x)
         # We want the flat version of the action of the operator on a basis
         # vector, not the block version.
         h_convolve_x = array_ops.reshape(h_convolve_x, shape[:-1])
@@ -459,14 +460,14 @@ class LinearOperatorCirculant2DTestHermitianSpectrum(
     #  = IFFT[EvenPartOf[pre_spectrum]]
     # is the IFFT of something that is also bounded away from zero.
     # Therefore, FFT[pre_h] would be a well-conditioned spectrum.
-    pre_h = math_ops.ifft2d(pre_spectrum_c)
+    pre_h = fft_ops.ifft2d(pre_spectrum_c)
 
     # A spectrum is Hermitian iff it is the DFT of a real convolution kernel.
     # So we will make spectrum = FFT[h], for real valued h.
     h = math_ops.real(pre_h)
     h_c = _to_complex(h)
 
-    spectrum = math_ops.fft2d(h_c)
+    spectrum = fft_ops.fft2d(h_c)
 
     lin_op_spectrum = spectrum
 
@@ -636,7 +637,7 @@ class LinearOperatorCirculant3DTest(test.TestCase):
       convolution_kernel = linear_operator_test_util.random_normal(
           shape=(2, 2, 3, 5), dtype=dtypes.float32)
       # Convolution kernel is real ==> spectrum is Hermitian.
-      spectrum = math_ops.fft3d(
+      spectrum = fft_ops.fft3d(
           math_ops.cast(convolution_kernel, dtypes.complex64))
 
       # spectrum is Hermitian ==> operator is real.
@@ -668,7 +669,7 @@ class LinearOperatorCirculant3DTest(test.TestCase):
       #         =      H1  +      H2
       # where H1 is real since it is Hermitian,
       # and H2 is imaginary since it is anti-Hermitian.
-      ifft_s = math_ops.ifft3d(math_ops.cast(s, dtypes.complex64))
+      ifft_s = fft_ops.ifft3d(math_ops.cast(s, dtypes.complex64))
 
       # Throw away H2, keep H1.
       real_ifft_s = math_ops.real(ifft_s)
@@ -676,7 +677,7 @@ class LinearOperatorCirculant3DTest(test.TestCase):
       # This is the perfect spectrum!
       # spectrum = DFT[H1]
       #          = S1,
-      fft_real_ifft_s = math_ops.fft3d(
+      fft_real_ifft_s = fft_ops.fft3d(
           math_ops.cast(real_ifft_s, dtypes.complex64))
 
       # S1 is Hermitian ==> operator is real.
@@ -699,7 +700,7 @@ class LinearOperatorCirculant3DTest(test.TestCase):
       # S2 is anti-Hermitian ==> operator is imaginary.
       # S2 is real ==> operator is self-adjoint.
       imag_ifft_s = math_ops.imag(ifft_s)
-      fft_imag_ifft_s = math_ops.fft3d(
+      fft_imag_ifft_s = fft_ops.fft3d(
           1j * math_ops.cast(imag_ifft_s, dtypes.complex64))
       operator_imag = linalg.LinearOperatorCirculant3D(fft_imag_ifft_s)
 

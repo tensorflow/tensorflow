@@ -2627,35 +2627,6 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "dct_ops_test",
-    srcs = ["dct_ops_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:spectral_ops",
-        "//tensorflow/python:spectral_ops_test_util",
-    ],
-)
-
-cuda_py_test(
-    name = "fft_ops_test",
-    size = "medium",
-    srcs = ["fft_ops_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:spectral_ops",
-        "//tensorflow/python:spectral_ops_test_util",
-    ],
-    shard_count = 4,
-    tags = ["optonly"],
-)
-
-cuda_py_test(
     name = "pooling_ops_3d_test",
     size = "medium",
     srcs = ["pooling_ops_3d_test.py"],
