@@ -403,9 +403,9 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         train_op = optimizer.minimize(loss_fn)
         loss = loss_fn()
         output_context.set_last_step_output(
-            name="replica_loss_agg",
+            name="replica_loss_reduced",
             output=loss,
-            aggregation=variables_lib.VariableAggregation.MEAN)
+            reduce_op=reduce_util.ReduceOp.MEAN)
         output_context.set_non_tensor_output(key1, value1)
         return (train_op, loss)
 
@@ -413,11 +413,11 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         (train_op, loss) = distribution.call_for_each_replica(
             model_fn, args=(output_context,) + inputs)
         output_context.set_last_step_output(
-            name="cross_replica_loss_agg",
+            name="cross_replica_loss_reduced",
             output=loss,
-            aggregation=variables_lib.VariableAggregation.MEAN)
+            reduce_op=reduce_util.ReduceOp.MEAN)
         output_context.set_last_step_output(
-            name="cross_replica_loss_noagg",
+            name="cross_replica_loss_not_reduced",
             output=loss)
         return distribution.group(train_op)
 
@@ -425,16 +425,16 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
       def run_step():
         initial_loss = lambda: constant_op.constant(1e7)
-        # Initial values corresponding to aggregated losses are just single
-        # tensors. But for non aggregated losses, we need to have initial
+        # Initial values corresponding to reduced losses are just single
+        # tensors. But for non reduced losses, we need to have initial
         # values that are of the same structure as non reduced losses. In
         # MirroredStrategy, this will be a list of losses, in TPUStrategy
         # it will be single tensor. Using `broadcast` followed by `unwrap`
         # gives us the desired initial value structure.
         initial_loop_values = {
-            "replica_loss_agg": initial_loss(),
-            "cross_replica_loss_agg": initial_loss(),
-            "cross_replica_loss_noagg":
+            "replica_loss_reduced": initial_loss(),
+            "cross_replica_loss_reduced": initial_loss(),
+            "cross_replica_loss_not_reduced":
             distribution.unwrap(distribution.broadcast(initial_loss()))
         }
         ctx = distribution.run_steps_on_dataset(
@@ -444,17 +444,17 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         self.assertEqual({key1: [value1]}, ctx.non_tensor_outputs)
         self._verify_loss_output(
             initial_loss(),
-            loss_output=ctx.last_step_outputs["replica_loss_agg"],
-            aggregated=True, distribution=distribution)
+            loss_output=ctx.last_step_outputs["replica_loss_reduced"],
+            reduced=True, distribution=distribution)
         self._verify_loss_output(
             initial_loss(),
-            loss_output=ctx.last_step_outputs["cross_replica_loss_agg"],
-            aggregated=True, distribution=distribution)
+            loss_output=ctx.last_step_outputs["cross_replica_loss_reduced"],
+            reduced=True, distribution=distribution)
         self._verify_loss_output(
             initial_loss(),
-            loss_output=ctx.last_step_outputs["cross_replica_loss_noagg"],
-            aggregated=False, distribution=distribution)
-        return (ctx.run_op, ctx.last_step_outputs["replica_loss_agg"])
+            loss_output=ctx.last_step_outputs["cross_replica_loss_not_reduced"],
+            reduced=False, distribution=distribution)
+        return (ctx.run_op, ctx.last_step_outputs["replica_loss_reduced"])
 
       self.evaluate(distribution.initialize())
       if not context.executing_eagerly():
@@ -479,17 +479,16 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       error_is_not_increasing = all(y <= x for x, y in zip(error, error[1:]))
       self.assertTrue(error_is_not_increasing)
 
-  def _verify_loss_output(self, initial_loss, loss_output, aggregated,
+  def _verify_loss_output(self, initial_loss, loss_output, reduced,
                           distribution):
-    if not aggregated:
-      self.assertEqual(distribution.num_replicas_in_sync,
-                       len(distribution.unwrap(loss_output)))
+    if not reduced:
+      self.assertLen(distribution.unwrap(loss_output),
+                     distribution.num_replicas_in_sync)
       loss_output = distribution.reduce(
-          aggregation=reduce_util.ReduceOp.MEAN,
-          value=loss_output, destinations="/device:CPU:0")
+          reduce_util.ReduceOp.MEAN, loss_output, destinations="/device:CPU:0")
 
     unwrapped_output = distribution.unwrap(loss_output)
-    self.assertEqual(1, len(unwrapped_output))
+    self.assertLen(unwrapped_output, 1)
     loss_tensor = unwrapped_output[0]
     self.assertEqual(initial_loss.dtype, loss_tensor.dtype)
     self.assertEqual(initial_loss.shape, loss_tensor.shape)

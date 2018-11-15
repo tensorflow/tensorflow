@@ -24,6 +24,7 @@ import abc
 
 import six
 
+from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -32,7 +33,6 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.ops import gradients
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import distribution_strategy_context
@@ -580,7 +580,7 @@ def merge_grads(grads_and_vars):
 
   def merge_grad_fn(strategy, grads_and_vars):
     reduced_grads = strategy.batch_reduce(
-        variable_scope.VariableAggregation.MEAN, grads_and_vars)
+        ds_reduce_util.ReduceOp.MEAN, grads_and_vars)
     return reduced_grads
 
   return distribution_strategy_context.get_replica_context().merge_call(

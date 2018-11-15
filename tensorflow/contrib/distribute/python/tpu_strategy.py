@@ -41,7 +41,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.util import nest
@@ -360,14 +359,14 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     last_step_tensor_outputs_dict = nest.pack_sequence_as(
         ctx.last_step_outputs, last_step_tensor_outputs)
 
-    for (name, aggregation) in ctx._last_step_outputs_aggregations.items():  # pylint: disable=protected-access
+    for name, reduce_op in ctx._last_step_outputs_reduce_ops.items():  # pylint: disable=protected-access
       output = last_step_tensor_outputs_dict[name]
-      # For outputs that have already been aggregated, take the first value
+      # For outputs that have already been reduced, take the first value
       # from the list as each value should be the same. Else return the full
       # list of values.
-      # TODO(josh11b): If aggregation is NONE, we should return a PerReplica
+      # TODO(josh11b): If reduce_op is NONE, we should return a PerReplica
       # value.
-      if aggregation is not variables_lib.VariableAggregation.NONE:
+      if reduce_op is not None:
         # TODO(priyag): Should this return the element or a list with 1 element
         last_step_tensor_outputs_dict[name] = output[0]
     ctx._set_last_step_outputs(last_step_tensor_outputs_dict)  # pylint: disable=protected-access

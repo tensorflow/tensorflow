@@ -27,6 +27,7 @@ py_library(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:reduce_util",
     ],
 )
 
