@@ -93,10 +93,9 @@ struct TFE_TensorDebugInfo {
 };
 
 struct TFE_Op {
-  // t is NULL iff the TFE_Op corresponds to a TensorFlow function instead of a
-  // primitive operation.
-  TFE_Op(TFE_Context* ctx, const char* op, const tensorflow::AttrTypeMap* t)
-      : operation(&ctx->context, op, t) {}
+  TFE_Op(TFE_Context* ctx, const char* op, bool is_function,
+         const tensorflow::AttrTypeMap* t)
+      : operation(&ctx->context, op, is_function, t) {}
 
   tensorflow::EagerOperation operation;
 };

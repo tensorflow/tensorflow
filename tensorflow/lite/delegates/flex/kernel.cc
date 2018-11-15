@@ -15,6 +15,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/kernel.h"
 
 #include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
+#include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/execute.h"
+#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/context_util.h"
@@ -22,11 +28,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/util.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/string.h"
-#include "tensorflow/core/common_runtime/eager/context.h"
-#include "tensorflow/core/common_runtime/eager/execute.h"
-#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
-#include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/framework/node_def_util.h"
 
 // Note: this is part of TF Lite's Flex delegation code which is to be
 // completed soon.
@@ -78,11 +79,18 @@ tensorflow::Status ExecuteFlexOp(tensorflow::EagerContext* eager_context,
                                  const std::vector<int>& inputs,
                                  const std::vector<int>& outputs) {
   const tensorflow::AttrTypeMap* attr_types;
+  bool is_function = false;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      tensorflow::AttrTypeMapForOp(op_name.c_str(), &attr_types),
+      tensorflow::AttrTypeMapForOp(op_name.c_str(), &attr_types, &is_function),
       " (while processing attributes of '", op_name, "')");
-
-  tensorflow::EagerOperation op(eager_context, op_name.c_str(), attr_types);
+  if (is_function) {
+    return tensorflow::errors::NotFound(
+        "Operation '", op_name,
+        "' is not registered.  (while processing attributes of '", op_name,
+        "')");
+  }
+  tensorflow::EagerOperation op(eager_context, op_name.c_str(),
+                                /*is_function=*/false, attr_types);
   for (const auto& attr : nodedef.attr()) {
     op.MutableAttrs()->Set(attr.first, attr.second);
   }
