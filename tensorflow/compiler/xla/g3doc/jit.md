@@ -144,7 +144,7 @@ Execute the python script to train the model with XLA and turn on a debugging
 feature of XLA via an environmental variable that outputs the XLA graph.
 
 ```shell
-TF_XLA_FLAGS="--xla_hlo_graph_path=/tmp --xla_generate_hlo_graph=.*" python mnist_softmax_xla.py
+XLA_FLAGS="--xla_hlo_graph_path=/tmp --xla_generate_hlo_graph=.*" python mnist_softmax_xla.py
 ```
 
 Open the timeline file created (`timeline.ctf.json`).  The rendered timeline
