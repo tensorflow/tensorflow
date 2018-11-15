@@ -69,7 +69,7 @@ RUN mkdir -p $HOME/pkgs/rocblas
 RUN cd $HOME/pkgs/rocblas && wget https://github.com/ROCmSoftwarePlatform/rocBLAS/releases/download/v14.3.0/rocblas-0.14.3.158-Linux.deb && dpkg -i *.deb
 
 RUN mkdir -p $HOME/pkgs/MIOpen
-RUN cd $HOME/pkgs/MIOpen && wget https://www.dropbox.com/s/r78w0nr6e84b45u/MIOpen-HIP-1.6.0-efd7aae-Linux.deb && dpkg -i *.deb
+RUN cd $HOME/pkgs/MIOpen && wget https://www.dropbox.com/s/ppk5cqeylfsgnya/MIOpen-HIP-1.6.0-fa431f0-Linux.deb && dpkg -i *.deb
 
 
 ENV HCC_HOME=$ROCM_PATH/hcc
