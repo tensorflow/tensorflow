@@ -110,6 +110,18 @@ class TestUpgrade(test_util.TensorFlowTestCase):
                               % "tf.estimator.LinearClassifier"])
     self.assertIn("loss_reduction has been changed", report)
 
+  def testCountNonZeroChanges(self):
+    text = (
+        "tf.math.count_nonzero(input_tensor=input, dtype=dtype, name=name, "
+        "reduction_indices=axis, keep_dims=keepdims)\n"
+        )
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    expected_text = (
+        "tf.math.count_nonzero(input=input, dtype=dtype, name=name, "
+        "axis=axis, keepdims=keepdims)\n"
+        )
+    self.assertEqual(new_text, expected_text)
+
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 

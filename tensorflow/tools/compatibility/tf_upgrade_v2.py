@@ -37,9 +37,14 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.convert_to_tensor": {
             "preferred_dtype": "dtype_hint"
         },
+        "tf.math.count_nonzero": {
+            "input_tensor": "input",
+            "keep_dims": "keepdims",
+            "reduction_indices": "axis",
+        },
         "tf.nn.pool": {
             "dilation_rate": "dilations"
-        }
+        },
     }
 
     # Mapping from function to the new name of the function
