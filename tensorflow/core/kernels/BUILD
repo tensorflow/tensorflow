@@ -3197,7 +3197,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "scan_ops",
     prefix = "scan_ops",
-    deps = MATH_DEPS + if_cuda(["@cub_archive//:cub"]),
+    deps = MATH_DEPS,
 )
 
 tf_kernel_library(
@@ -3365,29 +3365,6 @@ tf_cuda_cc_test(
         ":batch_matmul_op",
         ":ops_testutil",
         ":ops_util",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cuda_cc_test(
-    name = "scan_ops_test",
-    size = "small",
-    srcs = ["scan_ops_test.cc"],
-    linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
-        "//conditions:default": [],
-    }),
-    deps = [
-        ":host_constant_op",
-        ":ops_testutil",
-        ":ops_util",
-        ":scan_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

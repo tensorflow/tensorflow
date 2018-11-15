@@ -126,11 +126,6 @@ class CumsumTest(test.TestCase):
       for axis in range(-6, 6, 3):
         self._compareAll(x, axis)
 
-  def testLarge(self):
-    for dtype in self.valid_dtypes:
-      x = np.ones([1000000], dtype=dtype) / 1024
-      self._compareAll(x, 0)
-
   def testInvalidAxis(self):
     x = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
     input_tensor = ops.convert_to_tensor(x)
