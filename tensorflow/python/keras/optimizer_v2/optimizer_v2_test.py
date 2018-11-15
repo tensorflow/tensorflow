@@ -414,10 +414,8 @@ class OptimizerTest(test.TestCase):
         opt.minimize(loss, [var])
         return var
 
-      self.assertAllClose([0., 1.], fn())
-      # This is just to test tf.function. The values needs to be updated
-      # when adam updates beta_1_power.
-      self.assertAllClose([-1.343838, -0.343838], fn())
+      self.assertAllClose([0., 1.], fn(), atol=1e-4)
+      self.assertAllClose([-1, 0.], fn(), atol=1e-4)
 
   @test_util.run_in_graph_and_eager_modes
   def testOptimizerWithKerasModel(self):
