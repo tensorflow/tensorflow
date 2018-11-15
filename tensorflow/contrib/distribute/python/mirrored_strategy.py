@@ -485,6 +485,30 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       return values.PerReplicaDataset(
           self._call_dataset_fn(dataset_fn), self._devices)
 
+  def _make_input_fn_iterator(
+      self,
+      input_fn,
+      replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
+    if self._cluster_spec:
+      input_fns = []
+      for i in range(len(self._worker_devices)):
+        input_context = distribute_lib.InputContext(
+            num_input_pipelines=len(self._worker_devices),
+            input_pipeline_id=i,
+            num_replicas_in_sync=self.num_replicas_in_sync)
+        input_fns.append(
+            partial(self._call_dataset_fn, input_fn, input_context))
+
+      return values.MultiWorkerDataset(input_fns, self._worker_devices,
+                                       self._auto_shard_dataset)
+    else:
+      input_context = distribute_lib.InputContext(
+          num_input_pipelines=1,
+          input_pipeline_id=0,
+          num_replicas_in_sync=self.num_replicas_in_sync)
+      return values.PerReplicaDataset(
+          self._call_dataset_fn(input_fn, input_context), self._devices)
+
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   def _run_steps_on_dataset(self, fn, iterator, iterations,
                             initial_loop_values=None):

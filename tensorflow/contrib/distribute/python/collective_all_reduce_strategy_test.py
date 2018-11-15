@@ -25,6 +25,7 @@ from tensorflow.contrib.distribute.python import collective_all_reduce_strategy
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import cross_tower_utils
 from tensorflow.contrib.distribute.python import multi_worker_test_base
+from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import keras
 from tensorflow.python.distribute import reduce_util
@@ -337,6 +338,31 @@ class LocalCollectiveAllReduceStrategy(CollectiveAllReduceStrategyTestBase,
     if context.num_gpus() < num_gpus:
       return
     self._test_complex_model(None, None, num_gpus)
+
+
+class InputContextTest(strategy_test_lib.DistributionTestBase):
+
+  def testInputContextPropertyLocal(self):
+    d = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
+        num_gpus_per_worker=2)
+    with context.graph_mode():
+      input_fn = self._input_fn_to_test_input_context(
+          expected_num_replicas_in_sync=2,
+          expected_num_input_pipelines=1,
+          expected_input_pipeline_id=0)
+      d.make_input_fn_iterator(input_fn)
+
+  def testInputContextPropertyMultiWorker(self):
+    d = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
+        num_gpus_per_worker=2)
+    cluster_spec = {'worker': ['worker1', 'worker2', 'worker3'], 'ps': ['ps1']}
+    d.configure(cluster_spec=cluster_spec, task_type='worker', task_id=1)
+    with context.graph_mode():
+      input_fn = self._input_fn_to_test_input_context(
+          expected_num_replicas_in_sync=6,
+          expected_num_input_pipelines=3,
+          expected_input_pipeline_id=1)  # because task_id = 1
+      d.make_input_fn_iterator(input_fn)
 
 
 if __name__ == '__main__':

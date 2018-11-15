@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import threading
+import enum
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import reduce_util
@@ -182,6 +183,80 @@ class _SameScopeAgainContext(object):
 
   def __exit__(self, exception_type, exception_value, traceback):
     del exception_type, exception_value, traceback
+
+
+# TODO(yuefengz): add more replication modes.
+class InputReplicationMode(enum.Enum):
+  """Replication mode for input function."""
+
+  # The input function will be called on each worker independently, creating as
+  # many input pipelines as number of workers. Replicas will dequeue from the
+  # local Dataset on their worker. Distribution Strategy doesn't manage any
+  # state sharing between such separate input pipelines.
+  PER_WORKER = 0
+
+
+class InputContext(object):
+  """A class wrapping information needed by an input function.
+
+  This is a context class that is passed to the user's input fn and contains
+  information about the compute replicas and input pipelines. The number of
+  compute replicas (in sync training) helps compute per input pipeline batch
+  size from the desired global batch size. Input pipeline information can be
+  used to return a different subset of the input in each input pipeline (for
+  e.g. shard the input pipeline, use a different input source etc).
+  """
+
+  def __init__(self,
+               num_input_pipelines=1,
+               input_pipeline_id=0,
+               num_replicas_in_sync=1):
+    """Initializes an InputContext object.
+
+    Args:
+      num_input_pipelines: the number of input pipelines in a cluster.
+      input_pipeline_id: the current input pipeline id, should be an int in
+        [0,`num_input_pipelines`).
+      num_replicas_in_sync: the number of replicas that are in sync.
+    """
+    self._num_input_pipelines = num_input_pipelines
+    self._input_pipeline_id = input_pipeline_id
+    self._num_replicas_in_sync = num_replicas_in_sync
+
+  @property
+  def num_replicas_in_sync(self):
+    """Returns the number of compute replicas in sync."""
+    return self._num_replicas_in_sync
+
+  @property
+  def input_pipeline_id(self):
+    """Returns the input pipeline ID."""
+    return self._input_pipeline_id
+
+  @property
+  def num_input_pipelines(self):
+    """Returns the number of input pipelines."""
+    return self._num_input_pipelines
+
+  def get_per_replica_batch_size(self, global_batch_size):
+    """Returns the per-replica batch size.
+
+    Args:
+      global_batch_size: the global batch size which should be divisible by
+        `num_replicas_in_sync`.
+
+    Returns:
+      the per-replica batch size.
+
+    Raises:
+      ValueError: if `global_batch_size` not divisible by
+        `num_replicas_in_sync`.
+    """
+    if global_batch_size % self._num_replicas_in_sync != 0:
+      raise ValueError("The `global_batch_size` %r is not divisible by "
+                       "`num_replicas_in_sync` %r " %
+                       (global_batch_size, self._num_replicas_in_sync))
+    return global_batch_size // self._num_replicas_in_sync
 
 
 # ------------------------------------------------------------------------------
@@ -534,8 +609,15 @@ class DistributionStrategy(object):
     _require_distribution_strategy_scope(self)
     return variable_scope.variable_creator_scope(create_colocated_variable)
 
-  def _call_dataset_fn(self, dataset_fn):
-    result = dataset_fn()
+  def _call_dataset_fn(self, dataset_fn, input_context=None):
+    """Call the `dataset_fn` with `input_context` as argument."""
+    # This method is invoked by both `make_input_fn_iterator` and
+    # `distribute_dataset`. The `dataset_fn` for the former one accepts an
+    # input_context while the latter one doesn't.
+    if input_context:
+      result = dataset_fn(input_context)
+    else:
+      result = dataset_fn()
     if not isinstance(result, dataset_ops.Dataset):
       raise ValueError(
           "dataset_fn() must return a tf.data.Dataset when using a "
@@ -580,7 +662,7 @@ class DistributionStrategy(object):
       return tf.data.Dataset.from_tensors([[1.]]).repeat()
     with distribution_strategy.scope():
       distributed_dataset = distribution_strategy.distribute_dataset(dataset_fn)
-      iterator = distributed_dataset.make_one_shot_iterator()
+      iterator = distributed_dataset.make_initializable_iterator()
       replica_results = distribution_strategy.call_for_each_replica(
           replica_fn, args=(iterator.get_next(),))
     ```
@@ -591,6 +673,46 @@ class DistributionStrategy(object):
     Returns:
       A `PerReplicaDataset` that will produce data for each replica.
     """
+    raise NotImplementedError("must be implemented in descendants")
+
+  def make_input_fn_iterator(self,
+                             input_fn,
+                             replication_mode=InputReplicationMode.PER_WORKER):
+    """Returns an iterator split across replicas created from an input function.
+
+    The `input_fn` should take an `InputContext` object where information about
+    input sharding can be accessed:
+
+    ```
+    def input_fn(input_context):
+      d = tf.data.Dataset.from_tensors([[1.]]).repeat()
+      return d.shard(input_context.num_input_pipelines,
+                     input_context.input_pipeline_id)
+    with distribution_strategy.scope():
+      iterator = distribution_strategy.make_input_fn_iterator(
+          input_fn)
+      replica_results = distribution_strategy.call_for_each_replica(
+          replica_fn, iterator.get_next())
+    ```
+
+    Args:
+      input_fn: A function that returns a `tf.data.Dataset`. This function is
+        expected to take an `InputContext` object.
+      replication_mode: an enum value of `InputReplicationMode`. Only
+        `PER_WORKER` is supported currently.
+
+    Returns:
+      An iterator object that can be initialized and fetched next element.
+    """
+    if replication_mode != InputReplicationMode.PER_WORKER:
+      raise ValueError(
+          "Input replication mode not supported: %r" % replication_mode)
+    return self._make_input_fn_iterator(
+        input_fn, replication_mode=replication_mode)
+
+  def _make_input_fn_iterator(self,
+                              input_fn,
+                              replication_mode=InputReplicationMode.PER_WORKER):
     raise NotImplementedError("must be implemented in descendants")
 
   def broadcast(self, tensor, destinations=None):
@@ -1192,6 +1314,11 @@ class _DefaultDistributionStrategy(DistributionStrategy):
 
   def distribute_dataset(self, dataset_fn):
     return self._call_dataset_fn(dataset_fn)
+
+  def _make_input_fn_iterator(self,
+                              input_fn,
+                              replication_mode=InputReplicationMode.PER_WORKER):
+    return self._call_dataset_fn(input_fn, InputContext())
 
   def _broadcast(self, tensor, destinations):
     if destinations is None:

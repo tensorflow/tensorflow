@@ -67,6 +67,14 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     return values.PerReplicaDataset(
         self._call_dataset_fn(dataset_fn), [self._device])
 
+  def _make_input_fn_iterator(
+      self,
+      input_fn,
+      replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
+    return values.PerReplicaDataset(
+        self._call_dataset_fn(input_fn, distribute_lib.InputContext()),
+        [self._device])
+
   def _broadcast(self, tensor, destinations):
     del destinations
     return tensor

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -211,3 +212,30 @@ class DistributionTestBase(test.TestCase):
         dist.call_for_each_replica(_merge_call_raises_fn)
       with self.assertRaises(_TestException):
         dist.call_for_each_replica(_merge_call_merge_raises_fn)
+
+  def _input_fn_to_test_input_context(self, expected_num_replicas_in_sync,
+                                      expected_num_input_pipelines,
+                                      expected_input_pipeline_id):
+    # Use a list of one element as counter so that it can be captured by the
+    # `_input_fn`. This counter is incremented by 1 each time an input_fn is
+    # called. We use this counter to check whether the `input_pipeline_id`
+    # matches the counter in the in-graph replication.
+    worker_id_counter = [0]
+
+    def _input_fn(input_context):
+      """Input fn for testing."""
+      self.assertIsNotNone(input_context)
+      self.assertEqual(expected_num_replicas_in_sync,
+                       input_context.num_replicas_in_sync)
+      self.assertEqual(expected_num_input_pipelines,
+                       input_context.num_input_pipelines)
+      if expected_input_pipeline_id is not None:
+        self.assertEqual(expected_input_pipeline_id,
+                         input_context.input_pipeline_id)
+      else:
+        self.assertEqual(worker_id_counter[0], input_context.input_pipeline_id)
+        worker_id_counter[0] += 1
+
+      return dataset_ops.Dataset.from_tensors([[1.]]).repeat()
+
+    return _input_fn

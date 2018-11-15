@@ -227,6 +227,27 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     return values.PerReplicaDataset(
         self._call_dataset_fn(dataset_fn), self._compute_devices, True)
 
+  def _make_input_fn_iterator(
+      self,
+      input_fn,
+      replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
+    """Distributes the dataset to each local GPU."""
+    if self._cluster_spec:
+      input_pipeline_id = multi_worker_util.id_in_cluster(
+          self._cluster_spec, self._task_type, self._task_id)
+      num_input_pipelines = multi_worker_util.worker_count(
+          self._cluster_spec, self._task_type)
+    else:
+      input_pipeline_id = 0
+      num_input_pipelines = 1
+    input_context = distribute_lib.InputContext(
+        num_input_pipelines=num_input_pipelines,
+        input_pipeline_id=input_pipeline_id,
+        num_replicas_in_sync=self.num_replicas_in_sync)
+    return values.PerReplicaDataset(
+        self._call_dataset_fn(input_fn, input_context), self._compute_devices,
+        True)
+
   def _broadcast(self, tensor, destinations):
     if not cross_tower_ops_lib.check_destinations(destinations):
       destinations = self._compute_devices

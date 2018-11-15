@@ -42,6 +42,15 @@ class OneDeviceStrategyTest(strategy_test_lib.DistributionTestBase):
   def testCallAndMergeExceptions(self):
     self._test_call_and_merge_exceptions(self._get_distribution_strategy())
 
+  @test_util.run_in_graph_and_eager_modes
+  def testInputContextPropertyLocal(self):
+    d = one_device_strategy.OneDeviceStrategy("/device:CPU:0")
+    input_fn = self._input_fn_to_test_input_context(
+        expected_num_replicas_in_sync=1,
+        expected_num_input_pipelines=1,
+        expected_input_pipeline_id=0)
+    d.make_input_fn_iterator(input_fn)
+
 
 if __name__ == "__main__":
   test.main()

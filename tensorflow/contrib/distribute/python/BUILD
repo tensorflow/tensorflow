@@ -118,6 +118,7 @@ cuda_py_test(
         ":combinations",
         ":multi_worker_test_base",
         ":parameter_server_strategy",
+        ":strategy_test_lib",
         ":values",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/core:protos_all_py",
