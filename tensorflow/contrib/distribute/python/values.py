@@ -1063,10 +1063,10 @@ def select_device_mirrored(device, structured):
   return nest.map_structure(_get_mirrored, structured)
 
 
-def update_regroup(strategy, updates, should_group):
+def update_regroup(strategy, updates, group):
   """Regroup for an update, with dependencies to ensure all updates execute."""
   regrouped = regroup(updates, Mirrored)
-  if not should_group:
+  if not group:
     return nest.map_structure(strategy.unwrap, regrouped)
   grouped_flat = []
   for u in nest.flatten(regrouped):

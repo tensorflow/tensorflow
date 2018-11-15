@@ -467,13 +467,10 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
       return output * (1. / len(value))
     return output
 
-  def _update(self, var, options, fn, *args, **kwargs):
+  def _update(self, var, fn, args, kwargs, group):
     assert isinstance(var, values.TPUMirroredVariable)
-    should_group = options.pop("grouped")
-    assert not options  # Validate that we are processing all of the options.
-
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
-      if should_group:
+      if group:
         return fn(var, *args, **kwargs)
       else:
         return [fn(var, *args, **kwargs)]
@@ -488,9 +485,7 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
         updates[d] = fn(v,
                         *values.select_device_mirrored(d, args),
                         **values.select_device_mirrored(d, kwargs))
-    return values.update_regroup(self, updates, should_group)
-
-  # TODO(josh11b): Need to implement _update_non_slot()!
+    return values.update_regroup(self, updates, group)
 
   def read_var(self, var):
     assert isinstance(var, values.TPUMirroredVariable)
@@ -553,14 +548,12 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
   def non_slot_devices(self, var_list):
     return self._host_device
 
-  def _update_non_slot(self, colocate_with, options, fn, *args, **kwargs):
+  def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     del colocate_with
-    should_group = options.pop("grouped")
-    assert not options  # Validate that we are processing all of the options.
     with ops.device(self._host_device), distribute_lib.UpdateContext(
         self._host_device):
       result = fn(*args, **kwargs)
-      if should_group:
+      if group:
         return result
       else:
         return nest.map_structure(self._unwrap, result)

@@ -126,18 +126,16 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     del reduce_op, destinations
     return value
 
-  def _update(self, var, options, fn, *args, **kwargs):
+  def _update(self, var, fn, args, kwargs, group):
     # The implementations of _update() and _update_non_slot() are identical
     # except _update() passes `var` as the first argument to `fn()`.
-    return self._update_non_slot(var, options, fn, var, *args, **kwargs)
+    return self._update_non_slot(var, fn, (var,) + tuple(args), kwargs, group)
 
-  def _update_non_slot(self, colocate_with, options, fn, *args, **kwargs):
+  def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     del colocate_with
-    should_group = options.pop("grouped")
-    assert not options  # Validate that we are processing all of the options.
     with ops.device(self._device), distribute_lib.UpdateContext(self._device):
       result = fn(*args, **kwargs)
-      if should_group:
+      if group:
         return result
       else:
         return nest.map_structure(self._unwrap, result)
