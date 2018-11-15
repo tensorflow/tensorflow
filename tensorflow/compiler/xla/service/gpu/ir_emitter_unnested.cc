@@ -3375,7 +3375,7 @@ void IrEmitterUnnested::EmitTileElementForFusion(
   fused_emitter.SetTiledParameterInfo(tiled_param_info);
   TF_CHECK_OK(hlo->fused_expression_root()->Accept(&fused_emitter));
   IrArray::Index untiled_index =
-      kernel_info->GetKernelMappingScheme()->GetReshapedOutputIndex(
+      kernel_info->GetKernelMappingScheme()->GetUnnormalizedIndex(
           index, output_arrays[0].GetShape());
   const llvm_ir::ElementGenerator& output_generator =
       fused_emitter.GetRootGenerator();
