@@ -682,6 +682,7 @@ TfLiteStatus AddOpsAndParams(
       case tflite::BuiltinOperator_FILL:
       case tflite::BuiltinOperator_FLOOR_MOD:
       case tflite::BuiltinOperator_RANGE:
+      case tflite::BuiltinOperator_LEAKY_RELU:
         logError("Op code %d is currently not delegated to NNAPI", builtin);
         return kTfLiteError;
         break;

@@ -328,6 +328,10 @@ typedef struct {
   int axis;
 } TfLiteUnpackParams;
 
+typedef struct {
+  float alpha;
+} TfLiteLeakyReluParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
