@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 from tensorflow.python.training import distribute as distribute_lib
@@ -41,7 +43,8 @@ def _get_test_variable(name, synchronization, aggregation):
 class _TestStrategy(distribute_lib.DistributionStrategy):
 
   def _call_for_each_replica(self, fn, args, kwargs):
-    with _TestReplicaContext(self, replica_id_in_sync_group=0):
+    with _TestReplicaContext(
+        self, replica_id_in_sync_group=constant_op.constant(0, dtypes.int32)):
       return fn(*args, **kwargs)
 
   def _create_variable(self, next_creator, *args, **kwargs):

@@ -23,6 +23,8 @@ import enum
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -1322,7 +1324,9 @@ class _DefaultDistributionStrategy(DistributionStrategy):
       raise NotImplementedError("TODO")
 
   def _call_for_each_replica(self, fn, args, kwargs):
-    with ReplicaContext(self, replica_id_in_sync_group=0):
+    with ReplicaContext(self, \
+                        replica_id_in_sync_group= \
+                        constant_op.constant(0, dtypes.int32)):
       return fn(*args, **kwargs)
 
   def _reduce(self, reduce_op, value, destinations):

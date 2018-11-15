@@ -105,9 +105,10 @@ class VariableCreatorStackTest(test.TestCase):
 
 
 def _replica_id():
-  # TODO(cjfj): Return `replica_id_...` directly, once it is a `Tensor`.
-  return constant_op.constant(
-      ds_context.get_replica_context().replica_id_in_sync_group)
+  replica_id = ds_context.get_replica_context().replica_id_in_sync_group
+  if not isinstance(replica_id, ops.Tensor):
+    replica_id = constant_op.constant(replica_id)
+  return replica_id
 
 
 class MultiWorkerMirroredStrategyTest(test.TestCase):
