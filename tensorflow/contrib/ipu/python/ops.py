@@ -16,6 +16,8 @@
 """Ops related to the Graphcore IPU."""
 
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
+from tensorflow.compiler.xla import xla_data_pb2
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.ops.variable_scope import variable_scope
@@ -56,3 +58,23 @@ def ipu_scope(device):
     with ops.device(device):
       with experimental_jit_scope() as scope:
         yield scope
+
+@tf_contextlib.contextmanager
+def ipu_scope(index):
+
+  ipus = []
+  if hasattr(index, '__iter__'):
+    ipus = index
+  else:
+    ipus = [index]
+
+  proto = xla_data_pb2.OpSharding(
+    type=xla_data_pb2.OpSharding.MAXIMAL, tile_assignment_devices=ipus)
+
+  attr_value = attr_value_pb2.AttrValue(s=proto.SerializeToString())
+  attrs = {"_XlaSharding": attr_value}
+
+  # pylint: disable=protected-access
+  with ops.get_default_graph()._attr_scope(attrs):
+    yield
+  # pylint: enable=protected-access

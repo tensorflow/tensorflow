@@ -21,7 +21,6 @@ limitations under the License.
 namespace tensorflow {
 
 const char* const DEVICE_XLA_IPU = "IPU";
-const char* const DEVICE_XLA_IPU_REP = "IPU_REPLICATED_CORE";
 const char* const DEVICE_IPU_XLA_JIT = "XLA_IPU_JIT";
 const char* const PLATFORM_NAME = "Poplar";
 

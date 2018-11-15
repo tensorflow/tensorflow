@@ -25,8 +25,7 @@ limitations under the License.
 
 #define REGISTER_IPU_OP(OP_NAME, IMPL)                                     \
   REGISTER_KERNEL_BUILDER(Name(OP_NAME).Device(DEVICE_IPU_XLA_JIT), IMPL); \
-  REGISTER_KERNEL_BUILDER(Name(OP_NAME).Device(DEVICE_XLA_IPU), IMPL);     \
-  REGISTER_KERNEL_BUILDER(Name(OP_NAME).Device(DEVICE_XLA_IPU_REP), IMPL);
+  REGISTER_KERNEL_BUILDER(Name(OP_NAME).Device(DEVICE_XLA_IPU), IMPL);
 
 namespace tensorflow {
 // A class used to make sure that kernels set the properties expected by all
@@ -47,6 +46,6 @@ class IpuOpKernel {
 
   xla::poplarplugin::IPUCustomKernelsUtil::AttributeMap attribute_map_;
 };
-}
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_PLUGIN_POPLAR_KERNELS_IPU_KERNELS_COMMON_H_

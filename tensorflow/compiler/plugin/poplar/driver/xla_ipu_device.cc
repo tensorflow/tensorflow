@@ -75,12 +75,6 @@ class XlaIpuDeviceFactory : public DeviceFactory {
                        std::vector<Device*>* devices) override;
 };
 
-class XlaIpuRepDeviceFactory : public DeviceFactory {
- public:
-  Status CreateDevices(const SessionOptions& options, const string& name_prefix,
-                       std::vector<Device*>* devices) override;
-};
-
 Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
                                           const string& name_prefix,
                                           std::vector<Device*>* devices) {
@@ -97,96 +91,31 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
 
   int config_count = options.config.ipu_options().device_config_size();
 
-  bool is_sharded = false;
-  if (config_count > 0) {
-    is_sharded = options.config.ipu_options().enable_sharding();
+  auto platform = se::MultiPlatformManager::PlatformWithName(PLATFORM_NAME);
+  if (!platform.ok()) {
+    return platform.status();
   }
 
-  if (!is_sharded) {
-    auto platform = se::MultiPlatformManager::PlatformWithName(PLATFORM_NAME);
-    if (!platform.ok()) {
-      return platform.status();
-    }
+  auto* p = static_cast<xp::PoplarPlatform*>(platform.ValueOrDie());
 
-    auto* p = static_cast<xp::PoplarPlatform*>(platform.ValueOrDie());
+  XlaDevice::Options devopts;
+  devopts.platform = platform.ValueOrDie();
+  devopts.device_name_prefix = name_prefix;
+  devopts.compilation_device_name = DEVICE_IPU_XLA_JIT;
+  devopts.device_name = DEVICE_XLA_IPU;
 
-    XlaDevice::Options devopts;
-    devopts.platform = platform.ValueOrDie();
-    devopts.device_name_prefix = name_prefix;
-    devopts.compilation_device_name = DEVICE_IPU_XLA_JIT;
-    devopts.device_name = DEVICE_XLA_IPU;
+  int num_devices = p->VisibleDeviceCount();
+  num_devices = std::min(num_devices, config_count);
+  num_devices = std::max(num_devices, 1);
 
-    int num_devices = p->VisibleDeviceCount();
-    num_devices = std::min(num_devices, config_count);
-    num_devices = std::max(num_devices, 1);
+  for (int ordinal = 0; ordinal < num_devices; ordinal++) {
+    devopts.device_ordinal = ordinal;
 
-    for (int ordinal = 0; ordinal < num_devices; ordinal++) {
-      devopts.device_ordinal = ordinal;
-
-      auto* device = new IpuDevice(options, devopts);
-      TF_RETURN_IF_ERROR(device->Init(options.config.ipu_options()));
-      devices->push_back(device);
-    }
+    auto* device = new IpuDevice(options, devopts);
+    TF_RETURN_IF_ERROR(device->Init(options.config.ipu_options()));
+    devices->push_back(device);
   }
 
-  return Status::OK();
-}
-
-Status XlaIpuRepDeviceFactory::CreateDevices(const SessionOptions& options,
-                                             const string& name_prefix,
-                                             std::vector<Device*>* devices) {
-  static XlaDeviceOpRegistrations* registrations =
-      RegisterXlaDeviceKernels(DEVICE_XLA_IPU_REP, DEVICE_IPU_XLA_JIT);
-  (void)registrations;
-
-  XlaOpRegistry::DeviceRegistration registration;
-  registration.compilation_device_name = DEVICE_IPU_XLA_JIT;
-  registration.requires_compilation = true;
-  registration.enable_jit_by_default = false;
-  registration.compile_resource_ops = true;
-  XlaOpRegistry::RegisterCompilationDevice(DEVICE_XLA_IPU_REP, registration);
-
-  int config_count = options.config.ipu_options().device_config_size();
-
-  bool is_sharded = false;
-  if (config_count > 0) {
-    is_sharded = options.config.ipu_options().enable_sharding();
-  }
-
-  if (is_sharded) {
-    if (config_count != 1) {
-      return xla::InvalidArgument(
-          "Config must contain only one device when sharding is enabled");
-    }
-
-    auto platform = se::MultiPlatformManager::PlatformWithName(PLATFORM_NAME);
-    if (!platform.ok()) {
-      return platform.status();
-    }
-
-    auto* p = static_cast<xp::PoplarPlatform*>(platform.ValueOrDie());
-
-    XlaDevice::Options devopts;
-    devopts.platform = platform.ValueOrDie();
-    devopts.device_name_prefix = name_prefix;
-    devopts.compilation_device_name = DEVICE_IPU_XLA_JIT;
-    devopts.device_name = DEVICE_XLA_IPU_REP;
-
-    if (options.config.ipu_options().device_config(0).selection_case() ==
-        tensorflow::IPUOptions::DeviceConfig::SelectionCase::kCfgIndex) {
-      return xla::InvalidArgument(
-          "Must specify the number of IPUs using auto_count");
-    }
-
-    int num_shards = options.config.ipu_options().device_config(0).auto_count();
-
-    for (int ordinal = 0; ordinal < num_shards; ordinal++) {
-      devopts.device_ordinal = ordinal;
-      auto* device = new IpuDevice(options, devopts);
-      TF_RETURN_IF_ERROR(device->Init(options.config.ipu_options()));
-      devices->push_back(device);
-    }
-  }
   return Status::OK();
 }
 
@@ -197,14 +126,6 @@ REGISTER_XLA_COMPILE_KERNEL(DEVICE_XLA_IPU, XlaCompileOp, kIpuAllTypes);
 REGISTER_XLA_RUN_KERNEL(DEVICE_XLA_IPU, XlaRunOp, kIpuAllTypes);
 
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_IPU, kIpuAllTypes);
-
-REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_IPU_REP, XlaIpuRepDeviceFactory);
-
-REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_IPU_REP, XlaLocalLaunchOp, kIpuAllTypes);
-REGISTER_XLA_COMPILE_KERNEL(DEVICE_XLA_IPU_REP, XlaCompileOp, kIpuAllTypes);
-REGISTER_XLA_RUN_KERNEL(DEVICE_XLA_IPU_REP, XlaRunOp, kIpuAllTypes);
-
-REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_IPU_REP, kIpuAllTypes);
 
 // Additional ops not explicitly defined by standard JIT
 REGISTER_XLA_OP(Name("ArgMax")
