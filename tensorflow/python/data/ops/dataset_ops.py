@@ -1731,6 +1731,22 @@ class UnaryDataset(DatasetV2):
     return [self._input_dataset]
 
 
+class UnaryUnchangedStructureDataset(UnaryDataset):
+  """Represents a unary dataset with the same input and output structure."""
+
+  @property
+  def output_classes(self):
+    return self._input_dataset.output_classes  # pylint: disable=protected-access
+
+  @property
+  def output_shapes(self):
+    return self._input_dataset.output_shapes  # pylint: disable=protected-access
+
+  @property
+  def output_types(self):
+    return self._input_dataset.output_types  # pylint: disable=protected-access
+
+
 class TensorDataset(DatasetSource):
   """A `Dataset` with a single element, viz. a nested structure of tensors."""
 
@@ -2377,7 +2393,7 @@ class ConcatenateDataset(DatasetV2):
     return self._output_types
 
 
-class RepeatDataset(UnaryDataset):
+class RepeatDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that repeats its input several times."""
 
   def __init__(self, input_dataset, count):
@@ -2395,18 +2411,6 @@ class RepeatDataset(UnaryDataset):
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         count=self._count,
         **flat_structure(self))
-
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
-
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
 
 
 class RangeDataset(DatasetSource):
@@ -2457,7 +2461,7 @@ class RangeDataset(DatasetSource):
     return dtypes.int64
 
 
-class CacheDataset(UnaryDataset):
+class CacheDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that caches elements of its input."""
 
   def __init__(self, input_dataset, filename):
@@ -2473,20 +2477,8 @@ class CacheDataset(UnaryDataset):
         filename=self._filename,
         **flat_structure(self))
 
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
 
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
-
-
-class ShuffleDataset(UnaryDataset):
+class ShuffleDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that randomly shuffles the elements of its input."""
 
   def __init__(self,
@@ -2534,20 +2526,8 @@ class ShuffleDataset(UnaryDataset):
         reshuffle_each_iteration=self._reshuffle_each_iteration,
         **flat_structure(self))
 
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
 
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
-
-
-class TakeDataset(UnaryDataset):
+class TakeDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` containing the first `count` elements from its input."""
 
   def __init__(self, input_dataset, count):
@@ -2562,20 +2542,8 @@ class TakeDataset(UnaryDataset):
         count=self._count,
         **flat_structure(self))
 
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
 
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
-
-
-class SkipDataset(UnaryDataset):
+class SkipDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` skipping the first `count` elements from its input."""
 
   def __init__(self, input_dataset, count):
@@ -2589,18 +2557,6 @@ class SkipDataset(UnaryDataset):
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         count=self._count,
         **flat_structure(self))
-
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
-
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
 
 
 class BatchDataset(UnaryDataset):
@@ -2904,7 +2860,7 @@ class MapDataset(UnaryDataset):
     return "Dataset.map()"
 
 
-class MatchingFilesDataset(DatasetV2):
+class MatchingFilesDataset(DatasetSource):
   """A `Dataset` that list the files according to the input patterns."""
 
   def __init__(self, patterns):
@@ -2914,9 +2870,6 @@ class MatchingFilesDataset(DatasetV2):
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.matching_files_dataset(self._patterns)
-
-  def _inputs(self):
-    return []
 
   @property
   def output_classes(self):
@@ -3057,7 +3010,7 @@ class ParallelInterleaveDataset(FlatMapDataset):
     return "Dataset.interleave()"
 
 
-class FilterDataset(UnaryDataset):
+class FilterDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that filters its input according to a predicate function."""
 
   def __init__(self, input_dataset, predicate):
@@ -3079,23 +3032,11 @@ class FilterDataset(UnaryDataset):
         predicate=self._predicate,
         **flat_structure(self))
 
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
-
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
-
   def _transformation_name(self):
     return "Dataset.filter()"
 
 
-class PrefetchDataset(UnaryDataset):
+class PrefetchDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that asynchronously prefetches its input."""
 
   def __init__(self, input_dataset, buffer_size):
@@ -3112,18 +3053,6 @@ class PrefetchDataset(UnaryDataset):
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         buffer_size=self._buffer_size,
         **flat_structure(self))
-
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
-
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
 
 
 class WindowDataset(UnaryDataset):
@@ -3176,7 +3105,7 @@ class WindowDataset(UnaryDataset):
     return self._output_types
 
 
-class _OptionsDataset(UnaryDataset):
+class _OptionsDataset(UnaryUnchangedStructureDataset):
   """An identity `Dataset` that stores options."""
 
   def __init__(self, input_dataset, options):
@@ -3194,20 +3123,8 @@ class _OptionsDataset(UnaryDataset):
   def options(self):
     return self._options
 
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
 
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
-
-
-class _ModelDataset(UnaryDataset):
+class _ModelDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and models performance."""
 
   def __init__(self, input_dataset):
@@ -3220,20 +3137,8 @@ class _ModelDataset(UnaryDataset):
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         **flat_structure(self))
 
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
 
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
-
-
-class _OptimizeDataset(UnaryDataset):
+class _OptimizeDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and applies optimizations."""
 
   def __init__(self, input_dataset, optimizations):
@@ -3251,20 +3156,8 @@ class _OptimizeDataset(UnaryDataset):
         self._optimizations,
         **flat_structure(self))
 
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
 
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
-
-
-class _SetStatsAggregatorDataset(UnaryDataset):
+class _SetStatsAggregatorDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and sets stats aggregator."""
 
   def __init__(self, input_dataset, aggregator, prefix, counter_prefix):
@@ -3281,15 +3174,3 @@ class _SetStatsAggregatorDataset(UnaryDataset):
         self._prefix,
         self._counter_prefix,
         **flat_structure(self))
-
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
-
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
