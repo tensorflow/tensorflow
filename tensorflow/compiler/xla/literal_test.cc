@@ -150,12 +150,58 @@ TEST_F(LiteralUtilTest, R3ToString) {
   const auto literal =
       LiteralUtil::CreateR3({{{1}, {2}}, {{3}, {4}}, {{5}, {6}}});
   const string expected = R"(s32[3,2,1] {
-{ { 1 },
-  { 2 } },
-{ { 3 },
-  { 4 } },
-{ { 5 },
-  { 6 } }
+{
+  {1},
+  {2}
+},
+{
+  {3},
+  {4}
+},
+{
+  {5},
+  {6}
+}
+})";
+  EXPECT_EQ(expected, literal.ToString());
+}
+
+TEST_F(LiteralUtilTest, R6ToString) {
+  const auto literal =
+      LiteralUtil::CreateFromDimensions(S32, {2, 2, 1, 1, 1, 2});
+  const string expected = R"(s32[2,2,1,1,1,2] {
+{ /*i0=0*/
+{ /*i1=0*/
+{ /*i2=0*/
+{ /*i3=0*/
+  { 0, 0 }
+}
+}
+},
+{ /*i1=1*/
+{ /*i2=0*/
+{ /*i3=0*/
+  { 0, 0 }
+}
+}
+}
+},
+{ /*i0=1*/
+{ /*i1=0*/
+{ /*i2=0*/
+{ /*i3=0*/
+  { 0, 0 }
+}
+}
+},
+{ /*i1=1*/
+{ /*i2=0*/
+{ /*i3=0*/
+  { 0, 0 }
+}
+}
+}
+}
 })";
   EXPECT_EQ(expected, literal.ToString());
 }
@@ -190,12 +236,16 @@ TEST_F(LiteralUtilTest, CreateR3FromArray3d) {
   EXPECT_THAT(literal.shape().dimensions(), ElementsAre(2, 3, 2));
   string result = literal.ToString();
   const string expected = R"(f32[2,3,2] {
-{ { 1, 2 },
+{
+  { 1, 2 },
   { 3, 4 },
-  { 5, 6 } },
-{ { 7, 8 },
+  { 5, 6 }
+},
+{
+  { 7, 8 },
   { 9, 10 },
-  { 11, 12 } }
+  { 11, 12 }
+}
 })";
   EXPECT_EQ(expected, result);
 }
@@ -247,18 +297,18 @@ TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
   EXPECT_THAT(literal.shape().dimensions(), ElementsAre(1, 2, 3, 2));
   string result = literal.ToString();
   const string expected = R"(f32[1,2,3,2] {
-  {  /*i0=0*/
-    {  /*i1=0*/
-      {1, 2},
-      {1001, 1002},
-      {2001, 2002}
-    },
-    {  /*i1=1*/
-      {1, 2},
-      {1001, 1002},
-      {2001, 2002}
-    }
-  }
+{ /*i0=0*/
+{ /*i1=0*/
+  { 1, 2 },
+  { 1001, 1002 },
+  { 2001, 2002 }
+},
+{ /*i1=1*/
+  { 1, 2 },
+  { 1001, 1002 },
+  { 2001, 2002 }
+}
+}
 })";
   EXPECT_EQ(expected, result);
 }
@@ -268,30 +318,30 @@ TEST_F(LiteralUtilTest, LiteralR4F32Stringifies) {
               ElementsAre(2, 2, 3, 3));
   string result = literal_r4_2x2x3x3_dim0major_.ToString();
   const string expected = R"(f32[2,2,3,3] {
-  {  /*i0=0*/
-    {  /*i1=0*/
-      {1, 2, 3},
-      {4, 5, 6},
-      {7, 8, 9}
-    },
-    {  /*i1=1*/
-      {11, 12, 13},
-      {14, 15, 16},
-      {17, 18, 19}
-    }
-  },
-  {  /*i0=1*/
-    {  /*i1=0*/
-      {101, 102, 103},
-      {104, 105, 106},
-      {107, 108, 109}
-    },
-    {  /*i1=1*/
-      {201, 202, 203},
-      {204, 205, 206},
-      {207, 208, 209}
-    }
-  }
+{ /*i0=0*/
+{ /*i1=0*/
+  { 1, 2, 3 },
+  { 4, 5, 6 },
+  { 7, 8, 9 }
+},
+{ /*i1=1*/
+  { 11, 12, 13 },
+  { 14, 15, 16 },
+  { 17, 18, 19 }
+}
+},
+{ /*i0=1*/
+{ /*i1=0*/
+  { 101, 102, 103 },
+  { 104, 105, 106 },
+  { 107, 108, 109 }
+},
+{ /*i1=1*/
+  { 201, 202, 203 },
+  { 204, 205, 206 },
+  { 207, 208, 209 }
+}
+}
 })";
   EXPECT_EQ(expected, result);
 }
