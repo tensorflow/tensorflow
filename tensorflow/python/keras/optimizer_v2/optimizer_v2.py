@@ -395,6 +395,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
       self._iterations = self.add_weight(
           "iter",
           shape=[],
+          dtype=dtypes.int64,
           trainable=False,
           aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
       self._weights.append(self._iterations)
