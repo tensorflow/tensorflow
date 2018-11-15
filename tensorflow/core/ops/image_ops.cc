@@ -154,14 +154,14 @@ Status NMSLiteShapeFn(InferenceContext* c) {
   // The boxes[3] is 4.
   TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 3), 4, &unused));
 
-  bool use_static_shapes;
-  TF_RETURN_IF_ERROR(c->GetAttr("use_static_shapes", &use_static_shapes));
-  if(!use_static_shapes) {
+  bool pad_per_class;
+  TF_RETURN_IF_ERROR(c->GetAttr("pad_per_class", &pad_per_class));
+  if(!pad_per_class) {
     DimensionHandle output_dim;
     DimensionHandle batch_dim = c->Dim(boxes, 0);
     
     TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(3, &output_dim));
-    if(c->Value(output_dim) <= 0) {
+    if(c->ValueKnown(output_dim) && c->Value(output_dim) <= 0) {
       return errors::InvalidArgument("max_total_size should be > 0 ");
     }
     c->set_output(0, c->MakeShape({batch_dim, output_dim, 4}));
@@ -881,7 +881,7 @@ REGISTER_OP("NonMaxSuppressionLite")
     .Output("nmsed_classes: float")
     .Output("valid_detections: int32")
     .Output("selected_indices: int32")
-    .Attr("use_static_shapes: bool = false")
+    .Attr("pad_per_class: bool = false")
     .SetShapeFn(NMSLiteShapeFn);   
 
 }  // namespace tensorflow

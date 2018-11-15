@@ -230,7 +230,7 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
                                 const int total_size_per_batch,
                                 const float score_threshold,
                                 const float iou_threshold,
-                                bool use_static_shapes = false) {
+                                bool pad_per_class = false) {
 
   int q = inp_boxes.dim_size(2);
   int num_classes = inp_scores.dim_size(2);
@@ -358,8 +358,8 @@ void BatchedNonMaxSuppressionOp(OpKernelContext* context,
 
     }
     int max_detections = 0;
-    // If use_static_shapes is false, we always pad to max_total_size
-    if (!use_static_shapes) {
+    // If pad_per_class is false, we always pad to max_total_size
+    if (!pad_per_class) {
       max_detections = std::min((int) result_candidate_pq.size(), 
         total_size_per_batch);
       per_batch_size = total_size_per_batch;
@@ -690,8 +690,8 @@ class NonMaxSuppressionLiteOp : public OpKernel {
  public:
   explicit NonMaxSuppressionLiteOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("use_static_shapes",
-                                             &use_static_shapes_));
+    OP_REQUIRES_OK(context, context->GetAttr("pad_per_class",
+                                             &pad_per_class_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -747,10 +747,10 @@ class NonMaxSuppressionLiteOp : public OpKernel {
     BatchedNonMaxSuppressionOp(context, boxes, scores, num_boxes, 
                                max_size_per_class, max_total_size_per_batch, 
                                score_threshold_val, iou_threshold_val, 
-                               use_static_shapes_);
+                               pad_per_class_);
   }
  private:
-  bool use_static_shapes_;
+  bool pad_per_class_;
 };
 
 
