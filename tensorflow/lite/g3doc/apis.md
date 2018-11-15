@@ -9,7 +9,7 @@ convenience.  Similarly, consistency with TensorFlow APIs was not an explicit
 goal and some variance is to be expected.
 
 There is also a Python API for TensorFlow Lite described
-[here](../g3doc/convert/python_api.md#converter-python-api-guide).
+[here](../g3doc/convert/python_api.md#tensorflow-lite-python-interpreter-).
 
 ## C++
 
