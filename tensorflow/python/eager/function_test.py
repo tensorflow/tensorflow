@@ -645,7 +645,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # Ensure that v is watched again.
     self.assertAllEqual(backprop.implicit_grad(f)()[0][0], 2.0)
 
-  def testRunMetadata(self):
+  def disabled_testRunMetadata(self):
 
     @def_function.function
     def f(x):
