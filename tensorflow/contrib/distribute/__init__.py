@@ -46,6 +46,7 @@ _allowed_symbols = [
     'CrossDeviceOps',
     'DistributeConfig',
     'DistributionStrategy',
+    'DistributionStrategyExtended',
     'MirroredStrategy',
     'Monitor',
     'MultiWorkerAllReduce',

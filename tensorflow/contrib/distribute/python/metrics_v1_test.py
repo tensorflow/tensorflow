@@ -103,13 +103,14 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
           return distribution.group(update)
 
         ctx = distribution.run_steps_on_dataset(
-            step_fn, iterator, iterations=distribution.steps_per_run)
+            step_fn, iterator, iterations=distribution.extended.steps_per_run)
         update = ctx.run_op
         value = ctx.non_tensor_outputs["value"]
         # In each run, we run multiple steps, and each steps consumes as many
         # batches as number of replicas.
         batches_per_update = (
-            distribution.num_replicas_in_sync * distribution.steps_per_run)
+            distribution.num_replicas_in_sync *
+            distribution.extended.steps_per_run)
       else:
         value, update = distribution.call_for_each_replica(
             metric_fn, iterator.get_next())

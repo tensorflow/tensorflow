@@ -33,7 +33,7 @@ from tensorflow.python.training import distribute as distribute_lib
 
 
 # TODO(yuefengz): support in-graph replication.
-class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
+class CollectiveAllReduceStrategy(distribute_lib.DistributionStrategy):
   """Distribution strategy that uses collective ops for all-reduce.
 
   It is similar to the MirroredStrategy but it uses collective ops for
@@ -54,10 +54,20 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
       num_gpus_per_worker: number of local GPUs or GPUs per worker, the default
         is 0 meaning CPU only.
     """
-    self._num_gpus_per_worker = num_gpus_per_worker
-    self._initialize_local_worker(num_gpus_per_worker)
+    super(CollectiveAllReduceStrategy, self).__init__(
+        CollectiveAllReduceExtended(self, num_gpus_per_worker))
 
-  def _initialize_local_worker(self, num_gpus_per_worker):
+
+class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
+  """Implementation of CollectiveAllReduceStrategy."""
+
+  def __init__(self, container_strategy, num_gpus_per_worker):
+    distribute_lib.DistributionStrategyExtended.__init__(
+        self, container_strategy)
+    self._num_gpus_per_worker = num_gpus_per_worker
+    self._initialize_local_worker(container_strategy, num_gpus_per_worker)
+
+  def _initialize_local_worker(self, container_strategy, num_gpus_per_worker):
     """Initializes the object for local training."""
     self._is_chief = True
     self._num_workers = 1
@@ -70,9 +80,10 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
       local_devices = ["/device:CPU:0"]
 
     self._collective_keys = cross_tower_utils.CollectiveKeys()
-    super(CollectiveAllReduceStrategy, self).__init__(
+    super(CollectiveAllReduceExtended, self).__init__(
+        container_strategy,
         devices=local_devices,
-        cross_tower_ops=cross_tower_ops_lib.CollectiveAllReduce(
+        cross_device_ops=cross_tower_ops_lib.CollectiveAllReduce(
             num_workers=1,
             num_gpus_per_worker=num_gpus_per_worker,
             collective_keys=self._collective_keys))
@@ -84,8 +95,8 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
     logging.info("CollectiveAllReduceStrategy with local_devices = %r",
                  local_devices)
 
-  def _initialize_multi_worker(self, num_gpus_per_worker, cluster_spec,
-                               task_type, task_id):
+  def _initialize_multi_worker(self, container_strategy, num_gpus_per_worker,
+                               cluster_spec, task_type, task_id):
     """Initializes the object for multi-worker training."""
     if task_type is None or task_id is None:
       raise ValueError("When `cluster_spec` is given, you must also specify "
@@ -113,9 +124,10 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
       local_devices = [worker_device]
 
     self._collective_keys = cross_tower_utils.CollectiveKeys()
-    super(CollectiveAllReduceStrategy, self).__init__(
+    super(CollectiveAllReduceExtended, self).__init__(
+        container_strategy,
         devices=local_devices,
-        cross_tower_ops=cross_tower_ops_lib.CollectiveAllReduce(
+        cross_device_ops=cross_tower_ops_lib.CollectiveAllReduce(
             num_workers=self._num_workers,
             num_gpus_per_worker=num_gpus_per_worker,
             collective_keys=self._collective_keys))
@@ -202,7 +214,7 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
     return mirrored_strategy._create_mirrored_variable(
         devices, _real_mirrored_creator, *args, **kwargs)
 
-  def distribute_dataset(self, dataset_fn):
+  def _distribute_dataset(self, dataset_fn):
     """Distributes the dataset to each local GPU."""
     # TODO(yuefengz): shard the dataset.
     return values.PerReplicaDataset(
@@ -221,15 +233,15 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
     input_context = distribute_lib.InputContext(
         num_input_pipelines=self._num_workers,
         input_pipeline_id=input_pipeline_id,
-        num_replicas_in_sync=self.num_replicas_in_sync)
+        num_replicas_in_sync=self._num_replicas_in_sync)
     return values.PerReplicaDataset(
         self._call_dataset_fn(input_fn, input_context), self._devices, True)
 
-  def configure(self,
-                session_config=None,
-                cluster_spec=None,
-                task_type=None,
-                task_id=None):
+  def _configure(self,
+                 session_config=None,
+                 cluster_spec=None,
+                 task_type=None,
+                 task_id=None):
     """Configures the object.
 
     Args:
@@ -246,8 +258,9 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
       # If a `cluster_spec` is already passed in, do nothing here.
       # TODO(yuefengz): check `cluster_spec` is the same if this object has
       # already been initialized with a `cluster_spec`.
-      self._initialize_multi_worker(self._num_gpus_per_worker, cluster_spec,
-                                    task_type, task_id)
+      self._initialize_multi_worker(
+          self._container_strategy(), self._num_gpus_per_worker, cluster_spec,
+          task_type, task_id)
 
     if not session_config:
       return
@@ -288,11 +301,11 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
         "/job:%s/task:%d" % (self._task_type, self._task_id))
 
   @property
-  def between_graph(self):
+  def experimental_between_graph(self):
     return True
 
   @property
-  def should_init(self):
+  def experimental_should_init(self):
     return True
 
   @property
@@ -304,5 +317,5 @@ class CollectiveAllReduceStrategy(mirrored_strategy.MirroredStrategy):
     return self._is_chief
 
   @property
-  def num_replicas_in_sync(self):
+  def _num_replicas_in_sync(self):
     return len(self._devices) * self._num_workers

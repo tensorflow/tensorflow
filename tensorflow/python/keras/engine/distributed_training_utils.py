@@ -338,7 +338,7 @@ def configure_and_create_session(distribution_strategy):
     # Coordinator is integrated with keras and we can create a session from
     # there.
     distribution_strategy.configure(session_config)
-    master = distribution_strategy._tpu_cluster_resolver.master()  # pylint: disable=protected-access
+    master = distribution_strategy.extended._tpu_cluster_resolver.master()  # pylint: disable=protected-access
     session = session_module.Session(config=session_config, target=master)
   else:
     worker_context = dc_context.get_current_worker_context()
@@ -508,11 +508,11 @@ def get_cpu_device(distribution_strategy):
     multiple hosts in the case of Cloud TPU pods.
   """
   if distribution_strategy.__class__.__name__ == 'TPUStrategy':
-    if distribution_strategy.num_hosts > 1:
+    if distribution_strategy.extended.num_hosts > 1:
       raise NotImplementedError('TPUDistributionStrategy does not '
                                 'support numpy inputs when running on Cloud'
                                 'TPU pods.')
-    return distribution_strategy.get_host_cpu_device(0)
+    return distribution_strategy.extended.get_host_cpu_device(0)
   else:
     # For all strategies except TPUDistributionStrategy
     # TODO(anjalisridhar): We may need to modify this when we add support for

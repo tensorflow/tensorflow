@@ -40,7 +40,14 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
   # implementations?
 
   def __init__(self, device):
-    super(OneDeviceStrategy, self).__init__()
+    super(OneDeviceStrategy, self).__init__(OneDeviceExtended(self, device))
+
+
+class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
+  """Implementation of OneDeviceStrategy."""
+
+  def __init__(self, container_strategy, device):
+    super(OneDeviceExtended, self).__init__(container_strategy)
     self._device = device
     self._default_device = device
 
@@ -59,12 +66,12 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     with ops.colocate_with(colocate_with):
       return next_creator(*args, **kwargs)
 
-  def make_dataset_iterator(self, dataset):
+  def _make_dataset_iterator(self, dataset):
     distributed_dataset = values.PerReplicaDataset(dataset, [self._device])
     # TODO(priyag): Return distribution strategy specific InputIterator
     return distributed_dataset.make_initializable_iterator()
 
-  def distribute_dataset(self, dataset_fn):
+  def _distribute_dataset(self, dataset_fn):
     return values.PerReplicaDataset(
         self._call_dataset_fn(dataset_fn), [self._device])
 
@@ -76,13 +83,13 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
         self._call_dataset_fn(input_fn, distribute_lib.InputContext()),
         [self._device])
 
-  def _broadcast(self, tensor, destinations):
+  def _broadcast_to(self, tensor, destinations):
     del destinations
     return tensor
 
   # TODO(priyag): Deal with OutOfRange errors  once b/111349762 is fixed.
-  def _run_steps_on_dataset(self, fn, iterator, iterations,
-                            initial_loop_values=None):
+  def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,
+                                          initial_loop_values=None):
     if initial_loop_values is None:
       initial_loop_values = {}
     initial_loop_values = nest.flatten(initial_loop_values)
@@ -128,10 +135,11 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     return ctx
 
   def _call_for_each_replica(self, fn, args, kwargs):
-    with ops.device(self._device), _OneDeviceReplicaContext(self):
+    strategy = self._container_strategy()
+    with ops.device(self._device), _OneDeviceReplicaContext(strategy):
       return fn(*args, **kwargs)
 
-  def _reduce(self, reduce_op, value, destinations):
+  def _reduce_to(self, reduce_op, value, destinations):
     del reduce_op, destinations
     return value
 
@@ -160,7 +168,7 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     return value
 
   @property
-  def num_replicas_in_sync(self):
+  def _num_replicas_in_sync(self):
     return 1
 
   @property
@@ -174,6 +182,18 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
   def non_slot_devices(self, var_list):
     del var_list
     return [self._device]
+
+  @property
+  def experimental_should_init(self):
+    return True
+
+  @property
+  def should_checkpoint(self):
+    return True
+
+  @property
+  def should_save_summary(self):
+    return True
 
 
 class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):

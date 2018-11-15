@@ -361,9 +361,9 @@ class ParameterServerStrategyTestBase(
   def _test_simple_increment(self, task_type, task_id, num_gpus):
     d, master_target, sess_config = self._get_test_objects(
         task_type, task_id, num_gpus)
-    if hasattr(d, '_cluster_spec') and d._cluster_spec:
-      num_workers = len(d._cluster_spec.as_dict().get(WORKER))
-      if 'chief' in d._cluster_spec.as_dict():
+    if d.extended._cluster_spec:
+      num_workers = len(d.extended._cluster_spec.as_dict().get(WORKER))
+      if 'chief' in d.extended._cluster_spec.as_dict():
         num_workers += 1
     else:
       num_workers = 1
@@ -396,7 +396,7 @@ class ParameterServerStrategyTestBase(
       x, y, z, train_op = d.call_for_each_replica(model_fn)
       train_op = d.group(train_op)
 
-      if context.num_gpus() < d._num_gpus_per_worker:
+      if context.num_gpus() < d.extended._num_gpus_per_worker:
         return True
 
       if task_id == 0:
@@ -433,9 +433,9 @@ class ParameterServerStrategyTestBase(
         task_type, task_id, num_gpus)
     if task_type:
       # Multi-worker
-      assert hasattr(d, '_cluster_spec') and d._cluster_spec
-      num_workers = len(d._cluster_spec.as_dict().get(WORKER))
-      if CHIEF in d._cluster_spec.as_dict():
+      assert hasattr(d.extended, '_cluster_spec') and d.extended._cluster_spec
+      num_workers = len(d.extended._cluster_spec.as_dict().get(WORKER))
+      if CHIEF in d.extended._cluster_spec.as_dict():
         num_workers += 1
     else:
       # local
@@ -488,11 +488,12 @@ class ParameterServerStrategyTestBase(
 
       before_out, after_out = step()
 
-      if context.num_gpus() < d._num_gpus_per_worker:
+      if context.num_gpus() < d.extended._num_gpus_per_worker:
         return True
 
       if (not task_type or
-          multi_worker_util.is_chief(d._cluster_spec, task_type, task_id)):
+          multi_worker_util.is_chief(
+              d.extended._cluster_spec, task_type, task_id)):
         variables.global_variables_initializer().run()
 
       # Workers waiting for chief worker's initializing variables.

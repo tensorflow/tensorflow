@@ -521,7 +521,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       loss = 'mse'
       strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:0',
                                                      '/device:CPU:0'])
-      strategy._require_static_shapes = True
+      strategy.extended._require_static_shapes = True
 
       model.compile(optimizer, loss, distribute=strategy)
       iterator = model._distribution_standardize_user_data(inputs,

@@ -105,10 +105,10 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
   # TODO(isaprykin): Create these threads once instead of during every run()
   # call.
   threads = []
-  for index, d in enumerate(distribution.worker_devices):
+  for index, d in enumerate(distribution.extended.worker_devices):
     variable_creator_fn = shared_variable_creator.make_fn(
         shared_variable_store, index)
-    t = MirroredStrategy._MirroredReplicaThread(  # pylint: disable=protected-access
+    t = MirroredExtended._MirroredReplicaThread(  # pylint: disable=protected-access
         distribution, coord, d, variable_creator_fn, fn,
         *values.select_device(d, args), **values.select_device(d, kwargs))
     threads.append(t)
@@ -180,8 +180,7 @@ def _call_for_each_replica(distribution, fn, args, kwargs):
   return values.regroup({t.device: t.main_result for t in threads})
 
 
-def _reduce_non_distributed_value(distribution, reduce_op, value,
-                                  destinations):
+def _reduce_non_distributed_value(extended, reduce_op, value, destinations):
   """Reduce a non-DistributedValue `value` to `destinations`."""
   if isinstance(value, values.DistributedValues):
     raise ValueError("You are passing a `DistributedValue` to "
@@ -202,7 +201,7 @@ def _reduce_non_distributed_value(distribution, reduce_op, value,
   # We do not support a reduce op of SUM if the value is the same across
   # all replicas. We call this as part of assign functions for MirroredVariables
   # and summing up identical values across replicas is not clearly defined.
-  if (len(distribution.worker_devices) != 1 or
+  if (len(extended.worker_devices) != 1 or
       not cross_tower_ops_lib.check_destinations(destinations)):
     raise ValueError("A non-DistributedValues value %s cannot be reduced with "
                      "the given reduce op %s." % (value, reduce_op))
@@ -354,10 +353,26 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
                cross_device_ops=None,
                auto_shard_dataset=False,
                cross_tower_ops=None):
-    super(MirroredStrategy, self).__init__()
-
     assert not (cross_device_ops and cross_tower_ops)
-    self._cross_tower_ops = cross_device_ops or cross_tower_ops
+    extended = MirroredExtended(
+        self, devices, num_gpus, num_gpus_per_worker,
+        cross_device_ops or cross_tower_ops, auto_shard_dataset)
+    super(MirroredStrategy, self).__init__(extended)
+
+
+class MirroredExtended(distribute_lib.DistributionStrategyExtended):
+  """Implementation of MirroredStrategy."""
+
+  def __init__(self,
+               container_strategy,
+               devices=None,
+               num_gpus=None,
+               num_gpus_per_worker=None,
+               cross_device_ops=None,
+               auto_shard_dataset=False):
+    super(MirroredExtended, self).__init__(container_strategy)
+    # TODO(josh11b): Rename self._cross_tower_ops -> self._cross_device_ops
+    self._cross_tower_ops = cross_device_ops
     self._auto_shard_dataset = auto_shard_dataset
     # Remember num GPUs which might be needed by `configure` method.
     if num_gpus is not None and num_gpus_per_worker is not None:
@@ -478,7 +493,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     return _create_mirrored_variable(devices, _real_mirrored_creator, *args,
                                      **kwargs)
 
-  def distribute_dataset(self, dataset_fn):
+  def _distribute_dataset(self, dataset_fn):
     if self._cluster_spec:
       return values.MultiWorkerDataset(
           partial(self._call_dataset_fn, dataset_fn), self._worker_devices,
@@ -497,7 +512,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
         input_context = distribute_lib.InputContext(
             num_input_pipelines=len(self._worker_devices),
             input_pipeline_id=i,
-            num_replicas_in_sync=self.num_replicas_in_sync)
+            num_replicas_in_sync=self._num_replicas_in_sync)
         input_fns.append(
             partial(self._call_dataset_fn, input_fn, input_context))
 
@@ -507,13 +522,13 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       input_context = distribute_lib.InputContext(
           num_input_pipelines=1,
           input_pipeline_id=0,
-          num_replicas_in_sync=self.num_replicas_in_sync)
+          num_replicas_in_sync=self._num_replicas_in_sync)
       return values.PerReplicaDataset(
           self._call_dataset_fn(input_fn, input_context), self._devices)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
-  def _run_steps_on_dataset(self, fn, iterator, iterations,
-                            initial_loop_values=None):
+  def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,
+                                          initial_loop_values=None):
     if initial_loop_values is None:
       initial_loop_values = {}
     initial_loop_values = nest.flatten(initial_loop_values)
@@ -528,7 +543,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       fn_result = fn(ctx, *fn_inputs)
       for (name, output) in ctx.last_step_outputs.items():
         # Convert all outputs to tensors, potentially from `DistributedValues`.
-        ctx.last_step_outputs[name] = self.unwrap(output)
+        ctx.last_step_outputs[name] = self._unwrap(output)
       flat_last_step_outputs = nest.flatten(ctx.last_step_outputs)
       with ops.control_dependencies([fn_result]):
         return [i + 1] + flat_last_step_outputs
@@ -571,19 +586,19 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     ctx._set_last_step_outputs(last_step_tensor_outputs_dict)  # pylint: disable=protected-access
     return ctx
 
-  def _broadcast(self, tensor, destinations):
+  def _broadcast_to(self, tensor, destinations):
     # TODO(josh11b): In eager mode, use one thread per device, or async mode.
     return self._get_cross_tower_ops().broadcast(tensor, destinations or
                                                  self._devices)
 
   def _call_for_each_replica(self, fn, args, kwargs):
-    return _call_for_each_replica(self, fn, args, kwargs)
+    return _call_for_each_replica(self._container_strategy(), fn, args, kwargs)
 
-  def configure(self,
-                session_config=None,
-                cluster_spec=None,
-                task_type=None,
-                task_id=None):
+  def _configure(self,
+                 session_config=None,
+                 cluster_spec=None,
+                 task_type=None,
+                 task_id=None):
     del task_type, task_id
 
     if session_config:
@@ -613,7 +628,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
           cross_tower_ops_lib.ReductionToOneDeviceCrossDeviceOps())
     return self._cross_tower_ops
 
-  def _reduce(self, reduce_op, value, destinations):
+  def _reduce_to(self, reduce_op, value, destinations):
     assert not isinstance(value, values.Mirrored)
     if not isinstance(value, values.DistributedValues):
       # This function handles reducing values that are not PerReplica or
@@ -626,13 +641,13 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       value = value.get(self._devices[0])
       if isinstance(value, (int, float)):
         return value
-      return self.broadcast(value, destinations)
+      return self.broadcast_to(value, destinations)
     return self._get_cross_tower_ops().reduce(
         reduce_op, value, destinations=destinations)
 
-  def _batch_reduce(self, reduce_op, value_destination_pairs):
+  def _batch_reduce_to(self, reduce_op, value_destination_pairs):
     if reduce_op == reduce_util.ReduceOp.ONLY_FIRST_REPLICA:
-      return [self.broadcast(v.get(self._devices[0]), d)
+      return [self.broadcast_to(v.get(self._devices[0]), d)
               for v, d in value_destination_pairs]
     return self._get_cross_tower_ops().batch_reduce(reduce_op,
                                                     value_destination_pairs)
@@ -680,7 +695,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     return values.value_container(val)
 
   @property
-  def num_replicas_in_sync(self):
+  def _num_replicas_in_sync(self):
     return len(self._devices)
 
   @property
@@ -693,11 +708,11 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     return list(self._devices)
 
   @property
-  def between_graph(self):
+  def experimental_between_graph(self):
     return False
 
   @property
-  def should_init(self):
+  def experimental_should_init(self):
     return True
 
   @property
@@ -723,7 +738,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
 
     def __init__(self, dist, coord, device, variable_creator_fn, fn, *args,
                  **kwargs):
-      super(MirroredStrategy._MirroredReplicaThread, self).__init__()  # pylint: disable=protected-access
+      super(MirroredExtended._MirroredReplicaThread, self).__init__()  # pylint: disable=protected-access
       self.coord = coord
       self.distribution = dist
       self.device = device

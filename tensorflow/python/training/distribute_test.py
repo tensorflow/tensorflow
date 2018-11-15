@@ -42,9 +42,16 @@ def _get_test_variable(name, synchronization, aggregation):
 
 class _TestStrategy(distribute_lib.DistributionStrategy):
 
+  def __init__(self):
+    super(_TestStrategy, self).__init__(_TestExtended(self))
+
+
+class _TestExtended(distribute_lib.DistributionStrategyExtended):
+
   def _call_for_each_replica(self, fn, args, kwargs):
     with _TestReplicaContext(
-        self, replica_id_in_sync_group=constant_op.constant(0, dtypes.int32)):
+        self._container_strategy(),
+        replica_id_in_sync_group=constant_op.constant(0, dtypes.int32)):
       return fn(*args, **kwargs)
 
   def _create_variable(self, next_creator, *args, **kwargs):
