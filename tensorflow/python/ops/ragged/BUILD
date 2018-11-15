@@ -256,6 +256,9 @@ py_test(
     size = "medium",
     srcs = ["ragged_tensor_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",
+    ],
     deps = [
         ":ragged",
         "//tensorflow/python:array_ops",
@@ -407,6 +410,9 @@ py_test(
     name = "ragged_to_sparse_op_test",
     srcs = ["ragged_to_sparse_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",
+    ],
     deps = [
         ":ragged",
         "//tensorflow/python:array_ops",
@@ -513,6 +519,9 @@ py_test(
     name = "ragged_constant_value_op_test",
     srcs = ["ragged_constant_value_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",
+    ],
     deps = [
         ":ragged",
         "//tensorflow/python:framework_test_lib",
