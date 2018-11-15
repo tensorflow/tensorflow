@@ -37,7 +37,6 @@ class FractionalAvgTest(test.TestCase):
   # Random number generate with seed.
   _PRNG = np.random.RandomState(341261000)
   _SEED = 341261001
-  _SEED2 = 341261002
 
   def _AvgPoolAlongRows(self, input_matrix, row_seq, overlapping):
     """Perform average pool along row of a 2-D matrix based on row_seq.
@@ -128,14 +127,12 @@ class FractionalAvgTest(test.TestCase):
       None
     """
     with self.cached_session() as sess:
-      p, r, c = nn_ops.fractional_avg_pool(
+      p, r, c = nn_ops.fractional_avg_pool_v2(
           input_tensor,
           pooling_ratio,
           pseudo_random,
           overlapping,
-          deterministic=True,
-          seed=self._SEED,
-          seed2=self._SEED2)
+          seed=self._SEED)
       actual, row_seq, col_seq = sess.run([p, r, c])
       expected = self._GetExpectedFractionalAvgPoolResult(input_tensor, row_seq,
                                                           col_seq, overlapping)
@@ -161,14 +158,12 @@ class FractionalAvgTest(test.TestCase):
       rand_mat = self._PRNG.randint(10, size=tensor_shape)
       pooling_ratio = [1, math.sqrt(2), math.sqrt(2), 1]
       with self.cached_session() as sess:
-        p, r, c = nn_ops.fractional_avg_pool(
+        p, r, c = nn_ops.fractional_avg_pool_v2(
             rand_mat.astype(np.float32),
             pooling_ratio,
             pseudo_random,
             overlapping,
-            deterministic=True,
-            seed=self._SEED,
-            seed2=self._SEED2)
+            seed=self._SEED)
         tensor_output, row_seq, col_seq = sess.run([p, r, c])
         expected_result = self._GetExpectedFractionalAvgPoolResult(
             rand_mat.astype(np.float32), row_seq, col_seq, overlapping)
@@ -214,12 +209,6 @@ class FractionalAvgTest(test.TestCase):
 
   def testIntegerTensorInput(self):
     """Test FractionalAvgPool works fine when input tensor is integer type.
-
-    I would have used _ValidateFractionalAvgPoolResult function to automate this
-    process, however, there's rounding issue. It is caused by numpy.mean cast
-    integer input to numpy.float64 for intermediate use. While for
-    fractional_avg_pool, the mean operation is integer division (trucated).  So,
-    for this test case, I will hard code a simple matrix.
     """
     pseudo_random = True
     overlapping = True
@@ -234,29 +223,9 @@ class FractionalAvgTest(test.TestCase):
         [4, 4, 5, 9, 7, 2]
     ])
     # pyformat: enable
-    with self.cached_session() as sess:
-      # Since deterministic = True, seed and seed2 are fixed. Therefore r, and c
-      # are the same each time. We can have an expected result precomputed.
-      # r = [0, 2, 4, 6]
-      # c = [0, 1, 3, 4, 6]
-
-      # pyformat: disable
-      expected = np.array([
-          [6, 5, 3, 5],
-          [5, 5, 4, 5],
-          [5, 4, 7, 5]
-      ]).reshape((1, 3, 4, 1))
-      # pyformat: enable
-      p, unused_r, unused_c = nn_ops.fractional_avg_pool(
-          mat.reshape(tensor_shape), [1, math.sqrt(3), math.sqrt(2), 1],
-          pseudo_random,
-          overlapping,
-          deterministic=True,
-          seed=self._SEED,
-          seed2=self._SEED2)
-      actual = sess.run(p)
-      self.assertShapeEqual(expected, p)
-      self.assertAllClose(expected, actual)
+    self._ValidateFractionalAvgPoolResult(mat.reshape(tensor_shape),
+                                          [1, math.sqrt(3), math.sqrt(2), 1],
+                                          pseudo_random, overlapping)
 
   def testDifferentTensorShapes(self):
     """Test different shapes of input tensor.
@@ -320,14 +289,12 @@ class FractionalAvgTest(test.TestCase):
       pooling_ratio = [1, 1.5, 1.5, 1]
       pseudo_random = False
       overlapping = False
-      p, r, c = nn_ops.fractional_avg_pool(
+      p, r, c = nn_ops.fractional_avg_pool_v2(
           input_holder,
           pooling_ratio,
           pseudo_random,
           overlapping,
-          deterministic=True,
-          seed=self._SEED,
-          seed2=self._SEED2)
+          seed=self._SEED)
       # First run.
       input_a = np.zeros([3, 32, 32, 3])
       actual, row_seq, col_seq = sess.run([p, r, c], {input_holder: input_a})
@@ -372,7 +339,6 @@ class FractionalAvgPoolGradTest(test.TestCase):
   """
   _PRNG = np.random.RandomState(341261004)
   _SEED = 341261005
-  _SEED2 = 341261006
 
   def _GenerateRandomInputTensor(self, shape):
     num_elements = 1
@@ -470,14 +436,12 @@ class FractionalAvgPoolGradTest(test.TestCase):
       for overlapping in True, False:
         with self.cached_session() as _:
           input_tensor = constant_op.constant(input_data, shape=input_shape)
-          output_tensor, unused_a, unused_b = nn_ops.fractional_avg_pool(
+          output_tensor, unused_a, unused_b = nn_ops.fractional_avg_pool_v2(
               input_tensor,
               pooling_ratio,
               pseudo_random=pseudo_random,
               overlapping=overlapping,
-              deterministic=True,
-              seed=self._SEED,
-              seed2=self._SEED2)
+              seed=self._SEED)
           output_data = output_tensor.eval()
           output_shape = output_data.shape
           # error_margin and delta setting is similar to avg_pool_grad.
@@ -503,14 +467,12 @@ class FractionalAvgPoolGradTest(test.TestCase):
             input_data = self._GenerateRandomInputTensor(input_shape)
             with self.cached_session() as _:
               input_tensor = constant_op.constant(input_data, shape=input_shape)
-              output_tensor, unused_a, unused_b = nn_ops.fractional_avg_pool(
+              output_tensor, unused_a, unused_b = nn_ops.fractional_avg_pool_v2(
                   input_tensor,
                   pooling_ratio,
                   pseudo_random=pseudo_random,
                   overlapping=overlapping,
-                  deterministic=True,
-                  seed=self._SEED,
-                  seed2=self._SEED2)
+                  seed=self._SEED)
               output_data = output_tensor.eval()
               output_shape = output_data.shape
               # error_margin and delta setting is similar to avg_pool_grad.
@@ -534,14 +496,12 @@ class FractionalAvgPoolGradTest(test.TestCase):
 
     with self.cached_session() as _:
       input_tensor = constant_op.constant(input_data, shape=input_shape)
-      output_tensor, unused_a, unused_b = nn_ops.fractional_avg_pool(
+      output_tensor, unused_a, unused_b = nn_ops.fractional_avg_pool_v2(
           input_tensor,
           pooling_ratio,
           pseudo_random=pseudo_random,
           overlapping=overlapping,
-          deterministic=True,
-          seed=self._SEED,
-          seed2=self._SEED2)
+          seed=self._SEED)
       # error_margin and delta setting is similar to avg_pool_grad.
       error_margin = 1e-4
       gradient_error = gradient_checker.compute_gradient_error(
