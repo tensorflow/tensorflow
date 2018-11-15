@@ -21,36 +21,52 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_full.h"
 
+#include "absl/container/flat_hash_map.h"
+
 namespace poplar {
 class Graph;
 class Tensor;
 }  // namespace poplar
 
 namespace xla {
+class HloParameterInstruction;
 namespace poplarplugin {
+
+using TensorInputDescription = absl::flat_hash_map<int64, std::vector<bool>>;
 
 class SubComputationVisitor : public FullVisitor {
  public:
-  SubComputationVisitor(CompilerResources& res, const ArgVectors& inputs);
+  SubComputationVisitor(CompilerResources& res, const ArgVectors& inputs,
+                        const std::vector<const SubComputationVisitor*>&
+                            dependent_subcomputations = {});
 
   Status HandleParameter(HloInstruction* inst) override;
   Status FinishVisit(HloInstruction* inst) override;
 
-  const ArgVectors& inputs() { return inputs_; }
+  const ArgVectors& inputs();
 
-  const OutVector& outputs() { return outputs_; }
+  const OutVector& outputs();
 
-  bool input_valid(unsigned int param, unsigned int index) {
-    return (param < input_valid_.size() && index < input_valid_[param].size() &&
-            input_valid_[param][index]);
-  }
+  bool InputIsAllocated(int64 param, unsigned int index) const;
+
+  bool InputIsUsed(int64 param, unsigned int index) const;
 
  private:
+  bool InputIsUsedInThisSubComputation(HloParameterInstruction* inst,
+                                       const std::vector<xla::Shape>& shapes,
+                                       unsigned int index);
+  bool InputIsUsedInDependentSubComputations(HloParameterInstruction* inst,
+                                             unsigned int index);
   ArgVectors temp_inputs_;
   ArgVectors inputs_;
   OutVector outputs_;
 
-  std::vector<std::vector<bool>> input_valid_;
+  const std::vector<const SubComputationVisitor*>& dependent_subcomputations_;
+  // Allocated tensors for inputs which are used by this subcomputation only.
+  TensorInputDescription used_tensors_;
+  // Allocated tensors for inputs which are used by this or dependent
+  // subcomputations.
+  TensorInputDescription allocated_tensors_;
 };
 
 }  // namespace poplarplugin

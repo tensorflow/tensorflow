@@ -872,6 +872,21 @@ py_test(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "wide_const_expansion_test",
+    size = "medium",
+    srcs = ["tests/wide_const_expansion_test.py"],
+    deps = [
+        ":ipu_ops_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -913,6 +928,7 @@ test_suite(
         "sort_op_test",
         "while_loop_to_repeat_simplify_test",
         "lstm_test",
+        "wide_const_expansion_test",
     ],
 )
 

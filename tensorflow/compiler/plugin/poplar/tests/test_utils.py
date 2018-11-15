@@ -22,7 +22,8 @@ import re
 
 @contextlib.contextmanager
 def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True,
-                report_every_nth_execution=0, text_report=True, sharded=False):
+                report_every_nth_execution=0, text_report=True, sharded=False,
+                compile_ipu_code=False):
   opts = config_pb2.IPUOptions()
   opts.profiling.enable_compilation_trace = compilation_trace
   opts.profiling.enable_io_trace = io_trace
@@ -30,6 +31,7 @@ def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True,
   opts.profiling.enable_poplar_reports_text = text_report
   opts.profiling.report_every_nth_execution = report_every_nth_execution
   opts.ipu_model_config.enable_ipu_model = True
+  opts.ipu_model_config.compile_ipu_code = compile_ipu_code
 
   if sharded:
     opts.enable_sharding = True
@@ -61,6 +63,16 @@ def get_compute_sets_from_report(report):
   cs = [x.split(":")[1].strip() for x in cs]
   cs = [x.split()[0] for x in cs]
   return cs
+
+
+def get_maximum_tile_size_from_events(report):
+  lines = report.split('\n')
+  for l in lines:
+    if l.startswith('Max tile memory'):
+        m = re.match(r'Max tile memory \(tile \d+\): (\d+) \(\d+% of mean\)', l)
+        if m:
+          return int(m.group(1))
+  return None
 
 def check_compute_sets_not_in_blacklist(cs_list, bl):
   result = True

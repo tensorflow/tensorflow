@@ -544,36 +544,46 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
 
 static poplar::Tensor BroadcastToWideConstant(
     poplar::Graph& graph, poplar::program::Sequence& sequence,
-    const poplar::Tensor& scalar_const, const xla::Shape& shape) {
+    const poplar::Tensor& scalar_const,
+    std::vector<std::size_t>& poplar_shape) {
   // Don't widen scalar constants.
-  const auto poplar_shape = PoplarShapeFromXlaShape(shape);
   if (poplar_shape.size() == 0) {
     return scalar_const;
   }
+  const auto num_tiles = graph.getTarget().getNumTiles();
+  const auto num_elements =
+      std::accumulate(poplar_shape.begin(), poplar_shape.end(), 1,
+                      std::multiplies<std::size_t>());
 
-  // To create a wide constant with a shape `target_shape` given a scalar
-  // constant tensor:
-  // 1. Broadcast the scalar_const tensor along the major dimension.
-  // 2. Create a new allocated tensor with shape {major dimension} and map it
-  // linearly.
-  // 3. Copy the broadcasted constant into the allocated tensor.
-  // 4. Broadcast and reshape the allocated tensor to a required shape.
-  const auto minor_to_major = LayoutUtil::MinorToMajor(shape);
-  const auto major_dimension =
-      minor_to_major.size() ? minor_to_major.back() : poplar_shape.size() - 1;
-  const auto major_dimension_size = poplar_shape[major_dimension];
+  // To allocate a wide constant:
+  // 1. Allocate an output tensor of size x = min(num_elements, num_tiles) and
+  // map it linearly.
+  // 2. Broadcast the const tensor to size x.
+  // 3. Copy from the broadcasted const tensor to output tensor.
+  // 4. If num_elements_per_tile > 0, thne broadcast the output tensor
+  // num_elements_per_tile times.
+  // 5. If there is any remainder, concat it (up to num_tiles elements).
+  // 6. Reshape to the expected shape.
+  const auto num_elements_per_tile = num_elements / num_tiles;
+  const auto remainder_elements = num_elements % num_tiles;
+
   poplar::Tensor const_tensor = scalar_const.reshape({1});
-  poplar::Tensor bcast_const = const_tensor.broadcast(major_dimension_size, 0);
+  const auto bcast_tensor_size =
+      num_elements_per_tile ? num_tiles : remainder_elements;
+  poplar::Tensor bcast_const = const_tensor.broadcast(bcast_tensor_size, 0);
   poplar::Tensor wide_const = graph.addVariable(
-      scalar_const.elementType(), {major_dimension_size}, "wide_constant");
+      scalar_const.elementType(), {bcast_tensor_size}, "wide_constant");
   poputil::mapTensorLinearly(graph, wide_const);
   sequence.add(poplar::program::Copy(bcast_const, wide_const));
-  const auto num_broadcasts =
-      std::accumulate(poplar_shape.begin(), poplar_shape.end(), 1,
-                      std::multiplies<std::size_t>()) /
-      major_dimension_size;
-  poplar::Tensor bcast_wide_const = wide_const.broadcast(num_broadcasts, 0);
-  return bcast_wide_const.reshape(poplar_shape);
+  poplar::Tensor out = num_elements_per_tile
+                           ? wide_const.broadcast(num_elements_per_tile, 0)
+                           : wide_const;
+
+  if (num_elements_per_tile && remainder_elements) {
+    poplar::Tensor remainder_tensor = wide_const.slice(0, remainder_elements);
+    out = poplar::concat(out, remainder_tensor);
+  }
+  return out.reshape(poplar_shape);
 }
 
 template <typename TYPE>
@@ -590,7 +600,7 @@ static void AddConstantTensor(poplar::Graph& graph,
     tensor = graph.addConstant(type, {0}, (TYPE)0);
   } else if (num_elements == 1) {
     poplar::Tensor scalar_const = graph.addConstant(type, {}, data[0]);
-    tensor = BroadcastToWideConstant(graph, sequence, scalar_const, shape);
+    tensor = BroadcastToWideConstant(graph, sequence, scalar_const, dim);
   } else {
     tensor = graph.addConstant(type, dim, data);
   }
@@ -612,7 +622,7 @@ static void AddFp16ConstantTensor(poplar::Graph& graph,
     tensor = graph.addConstantHalf(type, {0}, (uint16_t)0);
   } else if (num_elements == 1) {
     poplar::Tensor scalar_const = graph.addConstantHalf(type, {}, data[0]);
-    tensor = BroadcastToWideConstant(graph, sequence, scalar_const, shape);
+    tensor = BroadcastToWideConstant(graph, sequence, scalar_const, dim);
   } else {
     tensor = graph.addConstantHalf(type, dim, (uint16_t*)data);
   }
@@ -639,7 +649,7 @@ static void Add64BitConstantTensor(poplar::Graph& graph,
     tensor = graph.addConstant(type, {0}, (int32)0);
   } else if (num_elements == 1) {
     poplar::Tensor scalar_const = graph.addConstant(type, {}, data32[0]);
-    tensor = BroadcastToWideConstant(graph, sequence, scalar_const, shape);
+    tensor = BroadcastToWideConstant(graph, sequence, scalar_const, dim);
   } else {
     tensor = graph.addConstant(type, dim, data32);
   }
