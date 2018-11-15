@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute_node.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/lib/core/errors.h"
 #ifndef __ANDROID__
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
@@ -827,8 +828,11 @@ Status ExecuteSend(EagerContext* ctx, tensorflow::Device* device,
                    TensorHandle* h, StringPiece wire_id,
                    const string& recv_device) {
   const tensorflow::AttrTypeMap* types;
-  TF_RETURN_IF_ERROR(tensorflow::AttrTypeMapForOp("_Send", &types));
-  tensorflow::EagerOperation op(ctx, "_Send", types);
+  bool is_function = false;
+  TF_RETURN_IF_ERROR(
+      tensorflow::AttrTypeMapForOp("_Send", &types, &is_function));
+  DCHECK(!is_function);
+  tensorflow::EagerOperation op(ctx, "_Send", /*is_function=*/false, types);
 
   op.AddInput(h);
 
@@ -855,8 +859,11 @@ Status ExecuteRecv(EagerContext* ctx, tensorflow::Device* device,
                    const string& send_device, int64 send_device_incarnation,
                    TensorHandle** result) {
   const tensorflow::AttrTypeMap* types;
-  TF_RETURN_IF_ERROR(tensorflow::AttrTypeMapForOp("_Recv", &types));
-  tensorflow::EagerOperation op(ctx, "_Recv", types);
+  bool is_function = false;
+  TF_RETURN_IF_ERROR(
+      tensorflow::AttrTypeMapForOp("_Recv", &types, &is_function));
+  DCHECK(!is_function);
+  tensorflow::EagerOperation op(ctx, "_Recv", /*is_function=*/false, types);
 
   op.SetDevice(device);
 
