@@ -158,7 +158,8 @@ Status BuildComputation(
     xla::XlaBuilder* builder, xla::XlaComputation* computation,
     int* num_computation_outputs, int* num_nonconst_outputs,
     std::vector<XlaCompiler::OutputDescription>* outputs,
-    std::vector<XlaCompiler::ResourceUpdate>* resource_updates) {
+    std::vector<XlaCompiler::ResourceUpdate>* resource_updates,
+    xla::Shape* output_shape) {
   // Attach a common operator name as metadata. This has no semantic effect — it
   // merely makes the HLO graph more readable when visualized via TensorBoard,
   // since TensorBoard forms groups out of operators with similar names.
@@ -176,6 +177,10 @@ Status BuildComputation(
 
   std::vector<xla::XlaOp> elems;
   elems.reserve(retvals.size());
+
+  // Keeps track of which retvals have layout to update. The first element is
+  // the output index, second element is the new layout.
+  std::vector<std::pair<int64, xla::Layout>> retval_to_update_layout;
   for (int i = 0; i < retvals.size(); ++i) {
     XlaCompiler::OutputDescription& output = (*outputs)[i];
     const XlaExpression& retval = retvals[i];
@@ -202,10 +207,12 @@ Status BuildComputation(
           TF_ASSIGN_OR_RETURN(xla::Shape shape, shape_representation_fn(
                                                     output.shape, output.type));
           value = xla::Reshape(value, xla::AsInt64Slice(shape.dimensions()));
+          retval_to_update_layout.emplace_back(elems.size(), shape.layout());
         } else if (it != retval_cores.end()) {
           // Apply the sharding to the output, if there is a core assignment.
           value = identity_op(value);
         }
+
         elems.push_back(value);
         break;
       }
@@ -297,6 +304,21 @@ Status BuildComputation(
     return computation_status.status();
   }
   *computation = computation_status.ConsumeValueOrDie();
+
+  TF_ASSIGN_OR_RETURN(const auto& program_shape,
+                      computation->GetProgramShape());
+  *output_shape = program_shape.result();
+  // Update the output layout to the layout of retval.
+  for (auto& update : retval_to_update_layout) {
+    if (!always_return_tuple && elems.size() == 1) {
+      *output_shape->mutable_layout() = update.second;
+      continue;
+    }
+
+    xla::Shape* output_sub_shape =
+        xla::ShapeUtil::GetMutableSubshape(output_shape, {update.first});
+    *output_sub_shape->mutable_layout() = update.second;
+  }
   return Status::OK();
 }
 
@@ -988,23 +1010,12 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
       options.return_updated_values_for_all_resources,
       options.always_return_tuple, &builder, result->computation.get(),
       &num_computation_outputs, &num_nonconst_outputs, &result->outputs,
-      &result->resource_updates));
+      &result->resource_updates, &result->xla_output_shape));
 
   VLOG(2) << "Outputs: total: " << context->retvals().size()
           << " nonconstant: " << num_nonconst_outputs;
-
-  // Compute the XLA output shape, if there is a computation with non-constant
-  // outputs.
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::ProgramShape> computation_shape,
-                      client()->GetComputationShape(*result->computation));
-
-  result->xla_output_shape.Swap(computation_shape->mutable_result());
   VLOG(2) << "XLA output shape: "
-          << xla::ShapeUtil::HumanString(result->xla_output_shape);
-
-  // Tensorflow expects a major-to-minor order of results.
-  xla::LayoutUtil::SetToDefaultLayout(&result->xla_output_shape);
-
+          << xla::ShapeUtil::HumanStringWithLayout(result->xla_output_shape);
   return Status::OK();
 }
 
