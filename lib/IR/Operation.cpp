@@ -542,10 +542,7 @@ bool OpTrait::impl::verifyIsTerminator(const Operation *op) {
   } else {
     const OperationInst *inst = cast<OperationInst>(op);
     const BasicBlock *block = inst->getBlock();
-    // TODO(riverriddle) Check the instruction at the back of the block when
-    // terminators are in the operations list.
-    // if (!block || &block->back() != inst)
-    if (!block || block->getTerminator() != inst)
+    if (!block || &block->back() != inst)
       return op->emitOpError(
           "must be the last instruction in the parent basic block.");
   }

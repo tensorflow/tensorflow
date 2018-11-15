@@ -323,14 +323,7 @@ void llvm::ilist_traits<::mlir::OperationInst>::transferNodesFromList(
 /// Unlink this instruction from its BasicBlock and delete it.
 void OperationInst::erase() {
   assert(getBlock() && "Instruction has no parent");
-  // TODO(riverriddle) Remove this when terminators are a part of the operations
-  // list.
-  if (isTerminator()) {
-    getBlock()->setTerminator(nullptr);
-    destroy();
-  } else {
-    getBlock()->getOperations().erase(this);
-  }
+  getBlock()->getOperations().erase(this);
 }
 
 /// Unlink this operation instruction from its current basic block and insert
@@ -338,12 +331,6 @@ void OperationInst::erase() {
 /// in the same function.
 void OperationInst::moveBefore(OperationInst *existingInst) {
   assert(existingInst && "Cannot move before a null instruction");
-  // TODO(riverriddle) Remove this when terminators are a part of the operations
-  // list.
-  if (existingInst->isTerminator()) {
-    return moveBefore(existingInst->getBlock(),
-                      existingInst->getBlock()->end());
-  }
   return moveBefore(existingInst->getBlock(), existingInst->getIterator());
 }
 

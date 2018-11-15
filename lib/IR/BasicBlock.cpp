@@ -24,8 +24,6 @@ using namespace mlir;
 BasicBlock::BasicBlock() {}
 
 BasicBlock::~BasicBlock() {
-  if (terminator)
-    terminator->erase();
   for (BBArgument *arg : arguments)
     delete arg;
   arguments.clear();
@@ -56,16 +54,14 @@ auto BasicBlock::addArguments(ArrayRef<Type> types)
 // Terminator management
 //===----------------------------------------------------------------------===//
 
-void BasicBlock::setTerminator(OperationInst *inst) {
-  assert((!inst || !inst->block) && "terminator already inserted into a block");
-  // If we already had a terminator, abandon it.
-  if (terminator)
-    terminator->block = nullptr;
+OperationInst *BasicBlock::getTerminator() const {
+  if (empty())
+    return nullptr;
 
-  // Reset our terminator to the new instruction.
-  terminator = inst;
-  if (inst)
-    inst->block = this;
+  // Check if the last instruction is a terminator.
+  auto &backInst = operations.back();
+  return backInst.isTerminator() ? const_cast<OperationInst *>(&backInst)
+                                 : nullptr;
 }
 
 /// Return true if this block has no predecessors.
@@ -158,21 +154,16 @@ BasicBlock *BasicBlock::splitBasicBlock(iterator splitBefore) {
   // one in the containing function.
   auto newBB = new BasicBlock();
   getFunction()->getBlocks().insert(++CFGFunction::iterator(this), newBB);
-
-  // Create an unconditional branch to the new block, and move our terminator
-  // to the new block.
   auto branchLoc =
       splitBefore == end() ? getTerminator()->getLoc() : splitBefore->getLoc();
-  // TODO(riverriddle) Remove this when terminators are a part of the operations
-  // list.
-  auto oldTerm = getTerminator();
-  setTerminator(nullptr);
-  newBB->setTerminator(oldTerm);
-  CFGFuncBuilder(this).create<BranchOp>(branchLoc, newBB);
 
   // Move all of the operations from the split point to the end of the function
   // into the new block.
   newBB->getOperations().splice(newBB->end(), getOperations(), splitBefore,
                                 end());
+
+  // Create an unconditional branch to the new block, and move our terminator
+  // to the new block.
+  CFGFuncBuilder(this).create<BranchOp>(branchLoc, newBB);
   return newBB;
 }

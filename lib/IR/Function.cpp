@@ -174,12 +174,9 @@ CFGFunction::CFGFunction(Location location, StringRef name, FunctionType type,
 CFGFunction::~CFGFunction() {
   // Instructions may have cyclic references, which need to be dropped before we
   // can start deleting them.
-  for (auto &bb : *this) {
+  for (auto &bb : *this)
     for (auto &inst : bb)
       inst.dropAllReferences();
-    if (bb.getTerminator())
-      bb.getTerminator()->dropAllReferences();
-  }
 }
 
 //===----------------------------------------------------------------------===//

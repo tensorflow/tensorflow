@@ -1265,10 +1265,6 @@ void CFGFunctionPrinter::print(const BasicBlock *block) {
     print(&inst);
     os << '\n';
   }
-
-  os << "  ";
-  print(block->getTerminator());
-  os << '\n';
 }
 
 void CFGFunctionPrinter::print(const Instruction *inst) {

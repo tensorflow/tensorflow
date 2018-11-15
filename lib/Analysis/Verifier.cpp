@@ -62,20 +62,10 @@ public:
     return true;
   }
 
-  bool failure(const Twine &message, const Instruction &inst) {
-    inst.emitError(message);
-    return true;
-  }
-
   bool failure(const Twine &message, const BasicBlock &bb) {
     // Take the location information for the first instruction in the block.
     if (!bb.empty())
-      return failure(message, static_cast<const Instruction &>(bb.front()));
-
-    // If the code is properly formed, there will be a terminator.  Use its
-    // location.
-    if (auto *termInst = bb.getTerminator())
-      return (termInst->emitError(message), true);
+      return failure(message, bb.front());
 
     // Worst case, fall back to using the function's location.
     return failure(message, fn);
@@ -229,12 +219,6 @@ bool CFGFuncVerifier::verifyInstOperands(const Instruction &inst) {
 bool CFGFuncVerifier::verifyBlock(const BasicBlock &block) {
   if (!block.getTerminator())
     return failure("basic block with no terminator", block);
-
-  // TODO(riverriddle) Remove this when terminators are inside of the block
-  // operation list.
-  auto &term = *block.getTerminator();
-  if (verifyOperation(term) || verifyInstOperands(term))
-    return true;
 
   for (auto *arg : block.getArguments()) {
     if (arg->getOwner() != &block)
