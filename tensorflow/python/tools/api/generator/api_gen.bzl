@@ -20,7 +20,8 @@ def gen_api_init_files(
         packages = ["tensorflow.python", "tensorflow.lite.python.lite"],
         package_deps = ["//tensorflow/python:no_contrib"],
         output_package = "tensorflow",
-        output_dir = ""):
+        output_dir = "",
+        root_file_name = "__init__.py"):
     """Creates API directory structure and __init__.py files.
 
     Creates a genrule that generates a directory structure with __init__.py
@@ -54,6 +55,7 @@ def gen_api_init_files(
       output_package: Package where generated API will be added to.
       output_dir: Subdirectory to output API to.
         If non-empty, must end with '/'.
+      root_file_name: Name of the root file with all the root imports.
     """
     root_init_template_flag = ""
     if root_init_template:
@@ -73,6 +75,11 @@ def gen_api_init_files(
         ],
     )
 
+    # Replace name of root file with root_file_name.
+    output_files = [
+        root_file_name if f == "__init__.py" else f
+        for f in output_files
+    ]
     all_output_files = ["%s%s" % (output_dir, f) for f in output_files]
     compat_api_version_flags = ""
     for compat_api_version in compat_api_versions:
