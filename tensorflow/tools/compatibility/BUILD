@@ -14,6 +14,18 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "ast_edits_test",
+    srcs = ["ast_edits_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":ast_edits",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "@six_archive//:six",
+    ],
+)
+
 py_binary(
     name = "tf_upgrade",
     srcs = ["tf_upgrade.py"],
