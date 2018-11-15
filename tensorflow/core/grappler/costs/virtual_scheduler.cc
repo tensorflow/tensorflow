@@ -639,6 +639,8 @@ std::pair<const NodeDef*, const NodeDef*> VirtualScheduler::CreateSendRecv(
   send->set_device(ChannelDeviceName(from, to));
   auto& send_attr = *(send->mutable_attr());
   send_attr[kAttrInputSrc].set_s(input_name);
+  // Use input_name as tensor_name.
+  send_attr[kAttrTensorName].set_s(input_name);
   send_attr[kAttrSrcDevice].set_s(DeviceName(from));
   send_attr[kAttrDstDevice].set_s(DeviceName(to));
 
@@ -650,6 +652,8 @@ std::pair<const NodeDef*, const NodeDef*> VirtualScheduler::CreateSendRecv(
   recv->set_device(DeviceName(to));
   auto& recv_attr = *(recv->mutable_attr());
   recv_attr[kAttrInputSrc].set_s(input_name);
+  // Use input_name as tensor_name.
+  recv_attr[kAttrTensorName].set_s(input_name);
 
   // NodeState for _Send op.
   auto& send_node_state = GetNodeStateOrCreateIt(send);

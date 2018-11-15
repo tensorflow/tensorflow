@@ -308,8 +308,9 @@ class VirtualScheduler {
  private:
   // Constants.
   const string kAttrInputSrc = "input_source_";
-  const string kAttrSrcDevice = "src_device_";
-  const string kAttrDstDevice = "dst_device_";
+  const string kAttrSrcDevice = "send_device";
+  const string kAttrDstDevice = "recv_device";
+  const string kAttrTensorName = "tensor_name";
   const string kChannelDevice = "Channel";
 
   // Methods called from Init(). Fails if initialize_ is set.
