@@ -1284,7 +1284,9 @@ class Model(Network):
       y = training_utils.standardize_input_data(
           y,
           feed_output_names,
-          feed_output_shapes,
+          # Don't enforce target shapes to match output shapes.
+          # Precise checks will be run in `check_loss_and_target_compatibility`.
+          shapes=None,
           check_batch_axis=False,  # Don't enforce the batch size.
           exception_prefix='target')
 

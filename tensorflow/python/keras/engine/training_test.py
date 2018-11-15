@@ -544,6 +544,36 @@ class TrainingTest(test.TestCase):
               'val_loss', 'val_weighted_mean_absolute_error'
           ]))
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_mismatched_output_shape_and_target_shape(self):
+    model = keras.Sequential([
+        keras.layers.Dense(2, input_shape=(3, 4)),
+        keras.layers.Dense(5),
+    ])
+    model.compile(RMSPropOptimizer(learning_rate=0.001),
+                  loss='sparse_categorical_crossentropy')
+    # Test with Numpy data
+    x_train = np.random.random((10, 3, 4))
+    y_train = np.random.randint(0, 5, size=(10, 3))
+    model.fit(x_train, y_train, batch_size=5, epochs=1)
+
+    # Test with iterator
+    dataset = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
+    dataset = dataset.repeat(10)
+    dataset = dataset.batch(10)
+    iterator = dataset.make_one_shot_iterator()
+    model.fit(iterator, epochs=1, steps_per_epoch=2)
+
+    if context.executing_eagerly():
+      # Test with eager execution
+      model.compile(RMSPropOptimizer(learning_rate=0.001),
+                    loss='sparse_categorical_crossentropy',
+                    run_eagerly=True)
+      model.fit(x_train, y_train, batch_size=5, epochs=1)
+
+      # Test with eager execution and iterator
+      model.fit(iterator, epochs=1, steps_per_epoch=2)
+
 
 class TestExceptionsAndWarnings(test.TestCase):
 
