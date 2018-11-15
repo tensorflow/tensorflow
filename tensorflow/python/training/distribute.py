@@ -1266,11 +1266,6 @@ class ReplicaContext(object):
     return self._distribution_strategy
 
   @property
-  def device(self):
-    """BEING DELETED: use .devices instead."""
-    raise RuntimeError("Use .devices instead")
-
-  @property
   def devices(self):
     """The devices this replica is to be executed on, as a list of strings."""
     require_replica_context(self)
