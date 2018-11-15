@@ -144,8 +144,8 @@ def collect_function_renames():
   # It is possible that a different function is exported with the
   # same name. For e.g. when creating a different function to
   # rename arguments. Exclude it from renames in this case.
-  renames = {name: new_name for name, new_name in renames.items()
-             if name not in v2_names}
+  renames = set((name, new_name) for name, new_name in renames
+                if name not in v2_names)
   return renames
 
 
