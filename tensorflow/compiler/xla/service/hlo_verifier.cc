@@ -757,9 +757,9 @@ Status ShapeVerifier::HandleAfterAll(HloInstruction* token) {
 }
 
 Status ShapeVerifier::HandleGetDimensionSize(HloInstruction* get_size) {
-  return CheckShape(
-      get_size, ShapeInference::InferGetDimensionSizeShape(
-                    get_size->operand(0)->shape(), get_size->dimensions(0)));
+  return CheckShape(get_size,
+                    ShapeInference::InferGetDimensionSizeShape(
+                        get_size->operand(0)->shape(), get_size->dimension()));
 }
 
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,

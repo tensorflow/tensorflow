@@ -3069,6 +3069,10 @@ int64 HloInstruction::concatenate_dimension() const {
   return Cast<HloConcatenateInstruction>(this)->concatenate_dimension();
 }
 
+int64 HloInstruction::dimension() const {
+  return Cast<HloGetDimensionSizeInstruction>(this)->dimension();
+}
+
 bool HloInstruction::IsRank2Transpose() const {
   auto transpose = DynCast<HloTransposeInstruction>(this);
   return transpose != nullptr && transpose->IsRank2Transpose();

@@ -1323,6 +1323,9 @@ class HloInstruction {
   // Delegates to HloConcatenateInstruction::concatenate_dimension.
   int64 concatenate_dimension() const;
 
+  // Delegates to HloGetDimensionSizeInstruction::dimension.
+  int64 dimension() const;
+
   // Returns whether this instruction does a rank-2 transposition.
   bool IsRank2Transpose() const;
 
