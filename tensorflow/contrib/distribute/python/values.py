@@ -1256,22 +1256,34 @@ class MultiWorkerDataset(object):
     """Initialize the MultiWorkerDataset object.
 
     Args:
-      dataset_fn: a function that returns a `tf.data.Dataset`.
+      dataset_fn: a function or a list of functions that returns a
+        `tf.data.Dataset`.
       worker_device_pairs: a list of (worker, list of devices on that worker)
-        pairs.
+        pairs; it must have same length with `dataset_fn` if `dataset_fn` is a
+        list.
       prefetch_on_device: whether to prefetch to devices.
       auto_shard: whether to auto-shard the dataset.
     """
+    if isinstance(dataset_fn, list):
+      if len(dataset_fn) != len(worker_device_pairs):
+        raise ValueError("If `dataset_fn` is a list, it must have same length "
+                         "as `worker_device_pairs`")
+      if auto_shard:
+        raise ValueError(
+            "If `dataset_fn` is a list, `auto_shard` is not supported.")
     self._worker_device_pairs = worker_device_pairs
     self._datasets = []
     # TODO(yuefengz, priyag): support different set of jobs for input
     # processing.
     for i, (worker, worker_devices) in enumerate(worker_device_pairs):
       with ops.device(worker):
-        worker_input = dataset_fn()
-        if auto_shard:
-          worker_input = input_ops.auto_shard_dataset(
-              worker_input, len(worker_device_pairs), i)
+        if isinstance(dataset_fn, list):
+          worker_input = dataset_fn[i]()
+        else:
+          worker_input = dataset_fn()
+          if auto_shard:
+            worker_input = input_ops.auto_shard_dataset(
+                worker_input, len(worker_device_pairs), i)
         dataset = PerReplicaDataset(
             worker_input, worker_devices, prefetch_on_device=prefetch_on_device)
         self._datasets.append((worker, dataset))
