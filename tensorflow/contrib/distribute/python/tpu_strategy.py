@@ -239,6 +239,8 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     def _get_dataset_batch_size(dataset):
       """Get the global batch size from the dataset object."""
       # pylint: disable=protected-access
+      if isinstance(dataset, dataset_ops.DatasetV1Adapter):
+        dataset = dataset._dataset
       if isinstance(dataset, dataset_ops.BatchDataset):
         return tensor_util.constant_value(dataset._batch_size)
       elif isinstance(dataset, batching._MapAndBatchDataset):
