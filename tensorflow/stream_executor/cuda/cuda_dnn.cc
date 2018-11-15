@@ -161,6 +161,8 @@ cudnnDataType_t GetCudnnDataType<int8>(dnn::DataLayout layout) {
       return CUDNN_DATA_INT8;
     case dnn::DataLayout::kBatchDepthYX4:
       return CUDNN_DATA_INT8x4;
+    default:
+      LOG(FATAL) << "Unsupported layout: " << static_cast<int32_t>(layout);
   }
 }
 
