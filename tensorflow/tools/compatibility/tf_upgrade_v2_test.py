@@ -105,7 +105,8 @@ class TestUpgrade(test_util.TensorFlowTestCase):
   def testEstimatorLossReductionChange(self):
     classes = [
         "LinearClassifier", "LinearRegressor", "DNNLinearCombinedClassifier",
-        "DNNLinearCombinedRegressor", "DNNRegressor", "DNNClassifier"
+        "DNNLinearCombinedRegressor", "DNNRegressor", "DNNClassifier",
+        "BaselineClassifier", "BaselineRegressor"
     ]
     for c in classes:
       ns = "tf.estimator." + c
