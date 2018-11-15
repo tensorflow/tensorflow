@@ -146,6 +146,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             default_loss_reduction_changed,
         "tf.estimator.DNNClassifier":
             default_loss_reduction_changed,
+        "tf.estimator.BaselineClassifier":
+            default_loss_reduction_changed,
+        "tf.estimator.BaselineRegressor":
+            default_loss_reduction_changed,
     }
     # Right now we can't have both a rename and a warning.
     self.symbol_renames = {
