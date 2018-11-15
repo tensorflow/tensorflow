@@ -47,6 +47,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.nn.separable_conv2d": {
             "rate": "dilations"
+        },
+        "tf.nn.sufficient_statistics": {
+            "keep_dims": "keepdims"
         }
     }
 
