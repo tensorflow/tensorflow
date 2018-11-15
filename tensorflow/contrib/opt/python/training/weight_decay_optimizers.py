@@ -64,10 +64,10 @@ class DecoupledWeightDecayExtension(object):
   the decay to the `weight_decay` as well. For example:
 
   ```python
-    decay = tf.train.piecewise_constant(tf.train.get_global_step(), 
-                                        [10000, 15000], [1e-1, 1e-2, 1e-3])
-    lr = 1*decay
-    wd = 1e-4*decay
+    schedule = tf.train.piecewise_constant(tf.train.get_global_step(), 
+                                           [10000, 15000], [1e-0, 1e-1, 1e-2])
+    lr = 1e-1 * schedule()
+    wd = lambda: 1e-4 * schedule()
 
     # ...
 
