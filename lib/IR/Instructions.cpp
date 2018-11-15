@@ -185,6 +185,7 @@ OperationInst *OperationInst::create(Location location, OperationName name,
     auto instBlockOperands = inst->getBasicBlockOperands();
     unsigned *succOperandCountIt = inst->getTrailingObjects<unsigned>();
     unsigned *succOperandCountE = succOperandCountIt + numSuccessors;
+    (void)succOperandCountE;
 
     for (; operandIt != operandE; ++operandIt) {
       // If we encounter a sentinal branch to the next operand update the count

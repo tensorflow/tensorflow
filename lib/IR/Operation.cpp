@@ -140,8 +140,8 @@ unsigned Operation::getNumSuccessors() const {
     return llvm::cast<OperationInst>(this)->getNumSuccessors();
 
   // OperationStmt currently only has a return terminator.
-  auto *stmt = llvm::cast<OperationStmt>(this);
-  assert(stmt->isReturn() && "Unhandled OperationStmt terminator.");
+  assert(llvm::cast<OperationStmt>(this)->isReturn() &&
+         "Unhandled OperationStmt terminator.");
   return 0;
 }
 
