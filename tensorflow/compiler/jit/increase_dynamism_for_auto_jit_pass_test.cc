@@ -27,6 +27,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+using ::testing::_;
 using testing::matchers::AssignedDevice;
 using testing::matchers::Attr;
 using testing::matchers::Const;
@@ -142,6 +143,26 @@ TEST(SliceToDynamicSliceRewriteTest, Basic) {
   EXPECT_THAT(static_shaped_slice, m_dynamic_slice);
 }
 
+TEST(SliceToDynamicSliceRewriteTest, SliceFromVector) {
+  Scope root = Scope::NewRootScope()
+                   .ExitOnError()
+                   .WithAssignedDevice(kDeviceName)
+                   .WithXlaCluster("cluster_0");
+
+  Output input = ops::Placeholder(root.WithOpName("input"), DT_FLOAT);
+  Output begin = ops::Placeholder(root.WithOpName("begin"), DT_INT32);
+  Output size = ops::Const(root.WithOpName("size"), {-1});
+  Output slice = ops::Slice(root.WithOpName("slice"), input, begin, size);
+
+  std::unique_ptr<Graph> result;
+  TF_ASSERT_OK(IncreaseDynamismForAutoJit(root, &result));
+
+  Node* static_shaped_slice = testing::FindNodeByName(
+      result.get(), "slice/static_shaped_slice/static_shaped_slice");
+  EXPECT_NE(static_shaped_slice, nullptr);
+  EXPECT_THAT(result->nodes(), Not(Contains(NodeWith(Op("ConcatV2")))));
+}
+
 TEST(SliceToDynamicSliceRewriteTest, ControlDependencePreserved) {
   Scope root = Scope::NewRootScope()
                    .ExitOnError()
@@ -166,18 +187,18 @@ TEST(SliceToDynamicSliceRewriteTest, ControlDependencePreserved) {
                        CtrlDeps(NodeWith(Op("Placeholder"), Name("control")))));
 }
 
+int64 ToInt64(int v) { return static_cast<int64>(v); }
+
 TEST(SliceToDynamicSliceRewriteTest, Int64Indices) {
   Scope root = Scope::NewRootScope()
                    .ExitOnError()
                    .WithAssignedDevice(kDeviceName)
                    .WithXlaCluster("cluster_0");
 
-  auto to_int64 = [](int v) { return static_cast<int64>(v); };
-
   Output input = ops::Placeholder(root.WithOpName("input"), DT_FLOAT);
   Output begin = ops::Placeholder(root.WithOpName("begin"), DT_INT64);
   Output size =
-      ops::Const(root.WithOpName("size"), {to_int64(-1), to_int64(500)});
+      ops::Const(root.WithOpName("size"), {ToInt64(-1), ToInt64(500)});
   Output slice = ops::Slice(root.WithOpName("slice"), input, begin, size);
 
   std::unique_ptr<Graph> result;
@@ -252,13 +273,35 @@ TEST(SliceToDynamicSliceRewriteTest, DontRewriteSliceWithNonConstSize) {
                                     Attr(kXlaCompileTimeConstantInputsAttr)))));
 }
 
+TEST(SliceToDynamicSliceRewriteTest, ScalarSlice) {
+  Scope root = Scope::NewRootScope()
+                   .ExitOnError()
+                   .WithAssignedDevice(kDeviceName)
+                   .WithXlaCluster("cluster_0");
+
+  Output input = ops::Placeholder(root.WithOpName("input"), DT_FLOAT);
+  Output begin = ops::Placeholder(root.WithOpName("begin"), DT_INT64);
+  Output size = ops::Const<int64>(root.WithOpName("size"), {});
+  Output slice = ops::Slice(root.WithOpName("slice"), input, begin, size);
+
+  std::unique_ptr<Graph> result;
+  TF_ASSERT_OK(IncreaseDynamismForAutoJit(root, &result));
+
+  Node* static_shaped_slice = testing::FindNodeByName(
+      result.get(), "slice/static_shaped_slice/static_shaped_slice");
+  ASSERT_NE(static_shaped_slice, nullptr);
+  EXPECT_THAT(static_shaped_slice,
+              NodeWith(Op("Slice"), Attr(kXlaCompileTimeConstantInputsAttr),
+                       Inputs(_, _, Out(NodeWith(Name(size.node()->name()))))));
+}
+
 TEST(SliceToDynamicSliceRewriteTest, IndicesNotVector) {
   Scope root = Scope::NewRootScope()
                    .ExitOnError()
                    .WithAssignedDevice(kDeviceName)
                    .WithXlaCluster("cluster_0");
 
-  auto to_int64 = [](int v) { return static_cast<int64>(v); };
+  auto ToInt64 = [](int v) { return static_cast<int64>(v); };
 
   Output input = ops::Placeholder(root.WithOpName("input"), DT_FLOAT);
   Output begin = ops::Placeholder(root.WithOpName("begin"), DT_INT64);
@@ -271,7 +314,7 @@ TEST(SliceToDynamicSliceRewriteTest, IndicesNotVector) {
       ops::Slice(root.WithOpName("slice"), input, begin, size_placeholder);
 
   Output size =
-      ops::Const(root.WithOpName("size"), {{to_int64(-1)}, {to_int64(500)}});
+      ops::Const(root.WithOpName("size"), {{ToInt64(-1)}, {ToInt64(500)}});
   TF_ASSERT_OK(root.graph()->UpdateEdge(size.node(), 0, slice.node(), 2));
 
   std::unique_ptr<Graph> result;
@@ -280,6 +323,83 @@ TEST(SliceToDynamicSliceRewriteTest, IndicesNotVector) {
   EXPECT_THAT(result->nodes(),
               Not(Contains(NodeWith(Op("Slice"),
                                     Attr(kXlaCompileTimeConstantInputsAttr)))));
+}
+
+TEST(SliceToDynamicSliceRewriteTest, SliceWithSliceInput) {
+  Scope root = Scope::NewRootScope()
+                   .ExitOnError()
+                   .WithAssignedDevice(kDeviceName)
+                   .WithXlaCluster("cluster_0");
+
+  Output input = ops::Placeholder(root.WithOpName("input"), DT_FLOAT);
+  Output begin = ops::Placeholder(root.WithOpName("begin"), DT_INT32);
+  Output size_a = ops::Const(root.WithOpName("size_a"), {-1, 500});
+  Output slice = ops::Slice(root.WithOpName("slice"), input, begin, size_a);
+
+  Output size_b = ops::Const(root.WithOpName("size_a"), {-1, 200});
+  Output slice_with_slice_input = ops::Slice(
+      root.WithOpName("slice_with_slice_input"), slice, begin, size_b);
+
+  std::unique_ptr<Graph> result;
+  TF_ASSERT_OK(IncreaseDynamismForAutoJit(root, &result));
+
+  Node* static_shaped_slice = testing::FindNodeByName(
+      result.get(),
+      "slice_with_slice_input/static_shaped_slice/static_shaped_slice");
+  ASSERT_NE(static_shaped_slice, nullptr);
+  EXPECT_EQ(static_shaped_slice->output_type(0), DT_FLOAT)
+      << "Expected DT_FLOAT, was "
+      << DataType_Name(static_shaped_slice->output_type(0));
+  EXPECT_THAT(
+      static_shaped_slice,
+      NodeWith(
+          Op("Slice"),
+          Inputs(Out(NodeWith(
+                     Op("Slice"),
+                     Name("slice/static_shaped_slice/static_shaped_slice"))),
+                 _, _)));
+}
+
+TEST(SliceToDynamicSliceRewriteTest, SliceWithSliceBegin) {
+  Scope root = Scope::NewRootScope()
+                   .ExitOnError()
+                   .WithAssignedDevice(kDeviceName)
+                   .WithXlaCluster("cluster_0");
+
+  Output input_float =
+      ops::Placeholder(root.WithOpName("input_float"), DT_FLOAT);
+  Output input_i64 = ops::Placeholder(root.WithOpName("input_i64"), DT_INT64);
+
+  Output begin_begin =
+      ops::Placeholder(root.WithOpName("begin_begin"), DT_INT32);
+  Output begin_size = ops::Const(root.WithOpName("begin_size"), {-1});
+  Output begin =
+      ops::Slice(root.WithOpName("begin"), input_i64, begin_begin, begin_size);
+
+  Output size =
+      ops::Const(root.WithOpName("size"), {ToInt64(-1), ToInt64(200)});
+  Output slice_with_slice_begin = ops::Slice(
+      root.WithOpName("slice_with_slice_begin"), input_float, begin, size);
+
+  std::unique_ptr<Graph> result;
+  TF_ASSERT_OK(IncreaseDynamismForAutoJit(root, &result));
+
+  Node* static_shaped_slice = testing::FindNodeByName(
+      result.get(),
+      "slice_with_slice_begin/static_shaped_slice/static_shaped_slice");
+  ASSERT_NE(static_shaped_slice, nullptr);
+  EXPECT_EQ(static_shaped_slice->output_type(0), DT_FLOAT)
+      << "Expected DT_FLOAT, was "
+      << DataType_Name(static_shaped_slice->output_type(0));
+  EXPECT_THAT(
+      static_shaped_slice,
+      NodeWith(
+          Op("Slice"),
+          Inputs(_,
+                 Out(NodeWith(
+                     Op("Slice"),
+                     Name("begin/static_shaped_slice/static_shaped_slice"))),
+                 _)));
 }
 }  // namespace
 }  // namespace tensorflow
