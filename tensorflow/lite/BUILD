@@ -131,6 +131,7 @@ cc_library(
     name = "framework",
     srcs = [
         "allocation.cc",
+        "core/subgraph.cc",
         "graph_info.cc",
         "interpreter.cc",
         "model.cc",
@@ -155,6 +156,7 @@ cc_library(
         "allocation.h",
         "context.h",
         "context_util.h",
+        "core/subgraph.h",
         "error_reporter.h",
         "graph_info.h",
         "interpreter.h",
