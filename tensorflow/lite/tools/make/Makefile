@@ -208,6 +208,9 @@ $(BENCHMARK_BINARY) : $(BENCHMARK_LIB)
 
 benchmark: $(BENCHMARK_BINARY)
 
+libdir:
+	@echo $(LIBDIR)
+
 # Gets rid of all generated files.
 clean:
 	rm -rf $(MAKEFILE_DIR)/gen
