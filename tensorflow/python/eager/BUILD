@@ -175,6 +175,23 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "function_gradients_test",
+    size = "medium",
+    srcs = ["function_gradients_test.py"],
+    additional_deps = [
+        ":backprop",
+        ":context",
+        ":def_function",
+        ":function",
+        ":test",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+    ],
+    shard_count = 5,
+)
+
+cuda_py_test(
     name = "function_test",
     size = "medium",
     srcs = ["function_test.py"],
@@ -193,7 +210,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
     ],
-    shard_count = 20,
+    shard_count = 15,
 )
 
 py_library(
