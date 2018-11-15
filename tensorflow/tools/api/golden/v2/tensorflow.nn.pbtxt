@@ -222,7 +222,7 @@ tf_module {
   }
   member_method {
     name: "pool"
-    argspec: "args=[\'input\', \'window_shape\', \'pooling_type\', \'padding\', \'dilation_rate\', \'strides\', \'name\', \'data_format\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'input\', \'window_shape\', \'pooling_type\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'VALID\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "quantized_avg_pool"
