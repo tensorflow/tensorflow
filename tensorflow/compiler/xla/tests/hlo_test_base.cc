@@ -140,14 +140,6 @@ std::unique_ptr<VerifiedHloModule> HloTestBase::CreateNewVerifiedModule(
       allow_mixed_precision_in_hlo_verifier_);
 }
 
-StatusOr<std::unique_ptr<HloModule>>
-HloTestBase::ParseAndReturnUnverifiedModule(absl::string_view hlo_text,
-                                            const HloModuleConfig& config) {
-  auto module = absl::make_unique<HloModule>(TestName(), config);
-  TF_RETURN_IF_ERROR(ParseHloString(hlo_text, module.get()));
-  return std::move(module);
-}
-
 StatusOr<std::unique_ptr<VerifiedHloModule>>
 HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
                                           const HloModuleConfig& config) {
