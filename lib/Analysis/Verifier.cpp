@@ -75,7 +75,7 @@ public:
     // If the code is properly formed, there will be a terminator.  Use its
     // location.
     if (auto *termInst = bb.getTerminator())
-      return failure(message, *termInst);
+      return (termInst->emitError(message), true);
 
     // Worst case, fall back to using the function's location.
     return failure(message, fn);
@@ -166,14 +166,7 @@ struct CFGFuncVerifier : public Verifier {
 
   bool verify();
   bool verifyBlock(const BasicBlock &block);
-  bool verifyTerminator(const TerminatorInst &term);
   bool verifyInstOperands(const Instruction &inst);
-
-  bool verifyBBArguments(ArrayRef<InstOperand> operands,
-                         const BasicBlock *destBB, const TerminatorInst &term);
-  bool verifyReturn(const ReturnInst &inst);
-  bool verifyBranch(const BranchInst &inst);
-  bool verifyCondBranch(const CondBranchInst &inst);
 };
 } // end anonymous namespace
 
@@ -237,7 +230,10 @@ bool CFGFuncVerifier::verifyBlock(const BasicBlock &block) {
   if (!block.getTerminator())
     return failure("basic block with no terminator", block);
 
-  if (verifyTerminator(*block.getTerminator()))
+  // TODO(riverriddle) Remove this when terminators are inside of the block
+  // operation list.
+  auto &term = *block.getTerminator();
+  if (verifyOperation(term) || verifyInstOperands(term))
     return true;
 
   for (auto *arg : block.getArguments()) {
@@ -249,101 +245,6 @@ bool CFGFuncVerifier::verifyBlock(const BasicBlock &block) {
     if (verifyOperation(inst) || verifyInstOperands(inst))
       return true;
   }
-  return false;
-}
-
-bool CFGFuncVerifier::verifyTerminator(const TerminatorInst &term) {
-  if (term.getFunction() != &fn)
-    return failure("terminator in the wrong function", term);
-
-  // Check that operands are non-nil and structurally ok.
-  for (const auto *operand : term.getOperands()) {
-    if (!operand)
-      return failure("null operand found", term);
-
-    if (operand->getFunction() != &fn)
-      return failure("reference to operand defined in another function", term);
-  }
-
-  // Verify dominance of values.
-  verifyInstOperands(term);
-
-  // Check that successors are in the right function.
-  for (auto *succ : term.getBlock()->getSuccessors()) {
-    if (succ->getFunction() != &fn)
-      return failure("reference to block defined in another function", term);
-  }
-
-  if (auto *ret = dyn_cast<ReturnInst>(&term))
-    return verifyReturn(*ret);
-
-  if (auto *br = dyn_cast<BranchInst>(&term))
-    return verifyBranch(*br);
-
-  if (auto *br = dyn_cast<CondBranchInst>(&term))
-    return verifyCondBranch(*br);
-
-  return false;
-}
-
-/// Check a set of basic block arguments against the expected list in in the
-/// destination basic block.
-bool CFGFuncVerifier::verifyBBArguments(ArrayRef<InstOperand> operands,
-                                        const BasicBlock *destBB,
-                                        const TerminatorInst &term) {
-  if (operands.size() != destBB->getNumArguments())
-    return failure("branch has " + Twine(operands.size()) +
-                       " operands, but target block has " +
-                       Twine(destBB->getNumArguments()),
-                   term);
-
-  for (unsigned i = 0, e = operands.size(); i != e; ++i)
-    if (operands[i].get()->getType() != destBB->getArgument(i)->getType())
-      return failure("type mismatch in bb argument #" + Twine(i), term);
-
-  return false;
-}
-
-bool CFGFuncVerifier::verifyReturn(const ReturnInst &inst) {
-  // Verify that the return operands match the results of the function.
-  auto results = fn.getType().getResults();
-  if (inst.getNumOperands() != results.size())
-    return failure("return has " + Twine(inst.getNumOperands()) +
-                       " operands, but enclosing function returns " +
-                       Twine(results.size()),
-                   inst);
-
-  for (unsigned i = 0, e = results.size(); i != e; ++i)
-    if (inst.getOperand(i)->getType() != results[i])
-      return failure("type of return operand " + Twine(i) +
-                         " doesn't match function result type",
-                     inst);
-
-  return false;
-}
-
-bool CFGFuncVerifier::verifyBranch(const BranchInst &inst) {
-  // Verify that the number of operands lines up with the number of BB arguments
-  // in the successor.
-  if (verifyBBArguments(inst.getInstOperands(), inst.getDest(), inst))
-    return true;
-
-  return false;
-}
-
-bool CFGFuncVerifier::verifyCondBranch(const CondBranchInst &inst) {
-  // Verify that the number of operands lines up with the number of BB arguments
-  // in the true successor.
-  if (verifyBBArguments(inst.getTrueInstOperands(), inst.getTrueDest(), inst))
-    return true;
-
-  // And the false successor.
-  if (verifyBBArguments(inst.getFalseInstOperands(), inst.getFalseDest(), inst))
-    return true;
-
-  if (inst.getCondition()->getType() != Type::getInteger(1, fn.getContext()))
-    return failure("type of condition is not boolean (i1)", inst);
-
   return false;
 }
 

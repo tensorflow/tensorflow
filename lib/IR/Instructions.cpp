@@ -53,15 +53,6 @@ void Instruction::destroy() {
   case Kind::Operation:
     cast<OperationInst>(this)->destroy();
     break;
-  case Kind::Branch:
-    delete cast<BranchInst>(this);
-    break;
-  case Kind::CondBranch:
-    delete cast<CondBranchInst>(this);
-    break;
-  case Kind::Return:
-    cast<ReturnInst>(this)->destroy();
-    break;
   }
 }
 
@@ -79,12 +70,6 @@ unsigned Instruction::getNumOperands() const {
   switch (getKind()) {
   case Kind::Operation:
     return cast<OperationInst>(this)->getNumOperands();
-  case Kind::Branch:
-    return cast<BranchInst>(this)->getNumOperands();
-  case Kind::CondBranch:
-    return cast<CondBranchInst>(this)->getNumOperands();
-  case Kind::Return:
-    return cast<ReturnInst>(this)->getNumOperands();
   }
 }
 
@@ -92,12 +77,6 @@ MutableArrayRef<InstOperand> Instruction::getInstOperands() {
   switch (getKind()) {
   case Kind::Operation:
     return cast<OperationInst>(this)->getInstOperands();
-  case Kind::Branch:
-    return cast<BranchInst>(this)->getInstOperands();
-  case Kind::CondBranch:
-    return cast<CondBranchInst>(this)->getInstOperands();
-  case Kind::Return:
-    return cast<ReturnInst>(this)->getInstOperands();
   }
 }
 
@@ -107,10 +86,6 @@ MutableArrayRef<InstOperand> Instruction::getInstOperands() {
 void Instruction::dropAllReferences() {
   for (auto &op : getInstOperands())
     op.drop();
-
-  if (auto *term = dyn_cast<TerminatorInst>(this))
-    for (auto &dest : term->getBasicBlockOperands())
-      dest.drop();
 
   if (OperationInst *opInst = dyn_cast<OperationInst>(this)) {
     if (opInst->isTerminator())
@@ -348,7 +323,14 @@ void llvm::ilist_traits<::mlir::OperationInst>::transferNodesFromList(
 /// Unlink this instruction from its BasicBlock and delete it.
 void OperationInst::erase() {
   assert(getBlock() && "Instruction has no parent");
-  getBlock()->getOperations().erase(this);
+  // TODO(riverriddle) Remove this when terminators are a part of the operations
+  // list.
+  if (isTerminator()) {
+    getBlock()->setTerminator(nullptr);
+    destroy();
+  } else {
+    getBlock()->getOperations().erase(this);
+  }
 }
 
 /// Unlink this operation instruction from its current basic block and insert
@@ -356,6 +338,12 @@ void OperationInst::erase() {
 /// in the same function.
 void OperationInst::moveBefore(OperationInst *existingInst) {
   assert(existingInst && "Cannot move before a null instruction");
+  // TODO(riverriddle) Remove this when terminators are a part of the operations
+  // list.
+  if (existingInst->isTerminator()) {
+    return moveBefore(existingInst->getBlock(),
+                      existingInst->getBlock()->end());
+  }
   return moveBefore(existingInst->getBlock(), existingInst->getIterator());
 }
 
@@ -365,127 +353,4 @@ void OperationInst::moveBefore(BasicBlock *block,
                                llvm::iplist<OperationInst>::iterator iterator) {
   block->getOperations().splice(iterator, getBlock()->getOperations(),
                                 getIterator());
-}
-
-//===----------------------------------------------------------------------===//
-// TerminatorInst
-//===----------------------------------------------------------------------===//
-
-/// Remove this terminator from its BasicBlock and delete it.
-void TerminatorInst::erase() {
-  assert(getBlock() && "Instruction has no parent");
-  getBlock()->setTerminator(nullptr);
-  destroy();
-}
-
-/// Return the list of destination entries that this terminator branches to.
-MutableArrayRef<BasicBlockOperand> TerminatorInst::getBasicBlockOperands() {
-  switch (getKind()) {
-  case Kind::Operation:
-    llvm_unreachable("not a terminator");
-  case Kind::Branch:
-    return cast<BranchInst>(this)->getBasicBlockOperands();
-  case Kind::CondBranch:
-    return cast<CondBranchInst>(this)->getBasicBlockOperands();
-  case Kind::Return:
-    // Return has no basic block successors.
-    return {};
-  }
-}
-
-//===----------------------------------------------------------------------===//
-// ReturnInst
-//===----------------------------------------------------------------------===//
-
-/// Create a new OperationInst with the specific fields.
-ReturnInst *ReturnInst::create(Location location,
-                               ArrayRef<CFGValue *> operands) {
-  auto byteSize = totalSizeToAlloc<InstOperand>(operands.size());
-  void *rawMem = malloc(byteSize);
-
-  // Initialize the ReturnInst part of the instruction.
-  auto inst = ::new (rawMem) ReturnInst(location, operands.size());
-
-  // Initialize the operands and results.
-  auto instOperands = inst->getInstOperands();
-  for (unsigned i = 0, e = operands.size(); i != e; ++i)
-    new (&instOperands[i]) InstOperand(inst, operands[i]);
-  return inst;
-}
-
-ReturnInst::ReturnInst(Location location, unsigned numOperands)
-    : TerminatorInst(Kind::Return, location), numOperands(numOperands) {}
-
-void ReturnInst::destroy() {
-  this->~ReturnInst();
-  free(this);
-}
-
-ReturnInst::~ReturnInst() {
-  // Explicitly run the destructors for the operands.
-  for (auto &operand : getInstOperands())
-    operand.~InstOperand();
-}
-
-//===----------------------------------------------------------------------===//
-// BranchInst
-//===----------------------------------------------------------------------===//
-
-BranchInst::BranchInst(Location location, BasicBlock *dest,
-                       ArrayRef<CFGValue *> operands)
-    : TerminatorInst(Kind::Branch, location), dest(this, dest) {
-  addOperands(operands);
-}
-
-void BranchInst::setDest(BasicBlock *block) { dest.set(block); }
-
-/// Add one value to the operand list.
-void BranchInst::addOperand(CFGValue *value) {
-  operands.emplace_back(InstOperand(this, value));
-}
-
-/// Add a list of values to the operand list.
-void BranchInst::addOperands(ArrayRef<CFGValue *> values) {
-  operands.reserve(operands.size() + values.size());
-  for (auto *value : values)
-    addOperand(value);
-}
-
-//===----------------------------------------------------------------------===//
-// CondBranchInst
-//===----------------------------------------------------------------------===//
-
-CondBranchInst::CondBranchInst(Location location, CFGValue *condition,
-                               BasicBlock *trueDest, BasicBlock *falseDest)
-    : TerminatorInst(Kind::CondBranch, location),
-      condition(condition), dests{{this}, {this}}, numTrueOperands(0) {
-  dests[falseIndex].set(falseDest);
-  dests[trueIndex].set(trueDest);
-}
-
-/// Add one value to the true operand list.
-void CondBranchInst::addTrueOperand(CFGValue *value) {
-  assert(getNumFalseOperands() == 0 &&
-         "Must insert all true operands before false operands!");
-  operands.emplace_back(InstOperand(this, value));
-  ++numTrueOperands;
-}
-
-/// Add a list of values to the true operand list.
-void CondBranchInst::addTrueOperands(ArrayRef<CFGValue *> values) {
-  operands.reserve(operands.size() + values.size());
-  for (auto *value : values)
-    addTrueOperand(value);
-}
-
-/// Add one value to the false operand list.
-void CondBranchInst::addFalseOperand(CFGValue *value) {
-  operands.emplace_back(InstOperand(this, value));
-}
-
-/// Add a list of values to the false operand list.
-void CondBranchInst::addFalseOperands(ArrayRef<CFGValue *> values) {
-  operands.reserve(operands.size() + values.size());
-  for (auto *value : values)
-    addFalseOperand(value);
 }

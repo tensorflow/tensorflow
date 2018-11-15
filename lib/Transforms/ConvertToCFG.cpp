@@ -62,19 +62,13 @@ private:
 };
 } // end anonymous namespace
 
-// Return a vector of OperationStmt's arguments as the CFGValues or SSAValues
-// depending on the template argument.  For each statement operands, represented
-// as MLValue, lookup its CFGValue conterpart in the valueRemapping table.
-// The return type parameterization is necessary because some instructions
-// accept vectors of SSAValues while others accept vectors of CFGValues.
-template <typename SSAValueTy>
-static llvm::SmallVector<SSAValueTy *, 4>
+// Return a vector of OperationStmt's arguments as SSAValues.  For each
+// statement operands, represented as MLValue, lookup its CFGValue conterpart in
+// the valueRemapping table.
+static llvm::SmallVector<SSAValue *, 4>
 operandsAs(OperationStmt *opStmt,
            const llvm::DenseMap<const MLValue *, CFGValue *> &valueRemapping) {
-  static_assert(std::is_same<SSAValueTy, SSAValue>::value ||
-                    std::is_same<SSAValueTy, CFGValue>::value,
-                "can only cast statement operands to CFGValue or SSAValue");
-  llvm::SmallVector<SSAValueTy *, 4> operands;
+  llvm::SmallVector<SSAValue *, 4> operands;
   for (const MLValue *operand : opStmt->getOperands()) {
     assert(valueRemapping.count(operand) != 0 && "operand is not defined");
     operands.push_back(valueRemapping.lookup(operand));
@@ -89,20 +83,10 @@ operandsAs(OperationStmt *opStmt,
 // mapping MLValue->CFGValue as the conversion is performed.  The operation
 // instruction is appended to current block (end of SESE region).
 void FunctionConverter::visitOperationStmt(OperationStmt *opStmt) {
-  // Handle returns separately, they are transformed into a specially-typed
-  // return instruction.
-  // TODO(zinenko): after terminators and operations are merged, remove this
-  // special case and de-template operandsAs.
-  if (opStmt->getName().getStringRef() == ReturnOp::getOperationName()) {
-    builder.createReturn(opStmt->getLoc(),
-                         operandsAs<CFGValue>(opStmt, valueRemapping));
-    return;
-  }
-
   // Set up basic operation state (context, name, operands).
   OperationState state(cfgFunc->getContext(), opStmt->getLoc(),
                        opStmt->getName());
-  state.addOperands(operandsAs<SSAValue>(opStmt, valueRemapping));
+  state.addOperands(operandsAs(opStmt, valueRemapping));
 
   // Set up operation return types.  The corresponding SSAValues will become
   // available after the operation is created.
@@ -206,7 +190,7 @@ void FunctionConverter::visitForStmt(ForStmt *forStmt) {
 
   // At the loop insertion location, branch immediately to the loop init block.
   builder.setInsertionPoint(loopInsertionPoint);
-  builder.createBranch(builder.getUnknownLoc(), loopInitBlock);
+  builder.create<BranchOp>(builder.getUnknownLoc(), loopInitBlock);
 
   // The loop condition block has an argument for loop induction variable.
   // Create it upfront and make the loop induction variable -> basic block
@@ -230,8 +214,8 @@ void FunctionConverter::visitForStmt(ForStmt *forStmt) {
   CFGValue *step = getConstantIndexValue(forStmt->getStep());
   auto stepOp = builder.create<AddIOp>(forStmt->getLoc(), iv, step);
   CFGValue *nextIvValue = cast<CFGValue>(stepOp->getResult());
-  builder.createBranch(builder.getUnknownLoc(), loopConditionBlock,
-                       {nextIvValue});
+  builder.create<BranchOp>(builder.getUnknownLoc(), loopConditionBlock,
+                           nextIvValue);
 
   // Create post-loop block here so that it appears after all loop body blocks.
   BasicBlock *postLoopBlock = builder.createBlock();
@@ -243,15 +227,15 @@ void FunctionConverter::visitForStmt(ForStmt *forStmt) {
       getConstantIndexValue(forStmt->getConstantLowerBound());
   CFGValue *upperBound =
       getConstantIndexValue(forStmt->getConstantUpperBound());
-  builder.createBranch(builder.getUnknownLoc(), loopConditionBlock,
-                       {lowerBound});
+  builder.create<BranchOp>(builder.getUnknownLoc(), loopConditionBlock,
+                           lowerBound);
 
   builder.setInsertionPoint(loopConditionBlock);
   auto comparisonOp = builder.create<CmpIOp>(
       forStmt->getLoc(), CmpIPredicate::SLT, iv, upperBound);
   auto comparisonResult = cast<CFGValue>(comparisonOp->getResult());
-  builder.createCondBranch(builder.getUnknownLoc(), comparisonResult,
-                           loopBodyFirstBlock, postLoopBlock);
+  builder.create<CondBranchOp>(builder.getUnknownLoc(), comparisonResult,
+                               loopBodyFirstBlock, postLoopBlock);
 
   // Finally, make sure building can continue by setting the post-loop block
   // (end of loop SESE region) as the insertion point.

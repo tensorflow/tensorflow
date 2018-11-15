@@ -78,9 +78,6 @@ MLIRContext *IROperandOwner::getContext() const {
     return cast<IfStmt>(this)->getContext();
 
   case Kind::OperationInst:
-  case Kind::BranchInst:
-  case Kind::CondBranchInst:
-  case Kind::ReturnInst:
     // If we have an instruction, we can efficiently get this from the function
     // the instruction is in.
     auto *fn = cast<Instruction>(this)->getFunction();

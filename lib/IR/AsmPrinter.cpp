@@ -1164,9 +1164,6 @@ public:
 
   void print(const Instruction *inst);
   void print(const OperationInst *inst);
-  void print(const ReturnInst *inst);
-  void print(const BranchInst *inst);
-  void print(const CondBranchInst *inst);
 
   void printSuccessorAndUseList(const Operation *term, unsigned index);
 
@@ -1282,12 +1279,6 @@ void CFGFunctionPrinter::print(const Instruction *inst) {
   switch (inst->getKind()) {
   case Instruction::Kind::Operation:
     return print(cast<OperationInst>(inst));
-  case TerminatorInst::Kind::Branch:
-    return print(cast<BranchInst>(inst));
-  case TerminatorInst::Kind::CondBranch:
-    return print(cast<CondBranchInst>(inst));
-  case TerminatorInst::Kind::Return:
-    return print(cast<ReturnInst>(inst));
   }
 }
 
@@ -1317,40 +1308,6 @@ void CFGFunctionPrinter::printSuccessorAndUseList(const Operation *term,
                                                   unsigned index) {
   printBBName(term->getSuccessor(index));
   printBranchOperands(term->getSuccessorOperands(index));
-}
-
-void CFGFunctionPrinter::print(const BranchInst *inst) {
-  os << "br ";
-  printBBName(inst->getDest());
-  printBranchOperands(inst->getOperands());
-}
-
-void CFGFunctionPrinter::print(const CondBranchInst *inst) {
-  os << "cond_br ";
-  printValueID(inst->getCondition());
-
-  os << ", ";
-  printBBName(inst->getTrueDest());
-  printBranchOperands(inst->getTrueOperands());
-
-  os << ", ";
-  printBBName(inst->getFalseDest());
-  printBranchOperands(inst->getFalseOperands());
-}
-
-void CFGFunctionPrinter::print(const ReturnInst *inst) {
-  os << "return";
-
-  if (inst->getNumOperands() == 0)
-    return;
-
-  os << ' ';
-  interleaveComma(inst->getOperands(),
-                  [&](const CFGValue *operand) { printValueID(operand); });
-  os << " : ";
-  interleaveComma(inst->getOperands(), [&](const CFGValue *operand) {
-    printType(operand->getType());
-  });
 }
 
 void ModulePrinter::print(const CFGFunction *fn) {

@@ -267,32 +267,7 @@ public:
     return op;
   }
 
-  // Terminators.
-
-  ReturnInst *createReturn(Location location, ArrayRef<CFGValue *> operands) {
-    return insertTerminator(ReturnInst::create(location, operands));
-  }
-
-  BranchInst *createBranch(Location location, BasicBlock *dest,
-                           ArrayRef<CFGValue *> operands = {}) {
-    return insertTerminator(BranchInst::create(location, dest, operands));
-  }
-
-  CondBranchInst *createCondBranch(Location location, CFGValue *condition,
-                                   BasicBlock *trueDest,
-                                   BasicBlock *falseDest) {
-    return insertTerminator(
-        CondBranchInst::create(location, condition, trueDest, falseDest));
-  }
-
 private:
-  template <typename T> T *insertTerminator(T *term) {
-    // FIXME: b/118738403
-    assert(!block->getTerminator() && "cannot insert the second terminator");
-    block->setTerminator(term);
-    return term;
-  }
-
   CFGFunction *function;
   BasicBlock *block = nullptr;
   BasicBlock::iterator insertPoint;

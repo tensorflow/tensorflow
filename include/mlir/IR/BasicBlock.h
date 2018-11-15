@@ -116,9 +116,9 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Change the terminator of this block to the specified instruction.
-  void setTerminator(TerminatorInst *inst);
+  void setTerminator(OperationInst *inst);
 
-  TerminatorInst *getTerminator() const { return terminator; }
+  OperationInst *getTerminator() const { return terminator; }
 
   //===--------------------------------------------------------------------===//
   // Predecessors and successors.
@@ -217,7 +217,7 @@ private:
   std::vector<BBArgument *> arguments;
 
   /// This is the owning reference to the terminator of the block.
-  TerminatorInst *terminator = nullptr;
+  OperationInst *terminator = nullptr;
 
   BasicBlock(const BasicBlock&) = delete;
   void operator=(const BasicBlock&) = delete;

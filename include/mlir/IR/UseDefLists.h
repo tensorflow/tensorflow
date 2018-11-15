@@ -80,9 +80,6 @@ public:
     ForStmt,
     IfStmt,
     OperationInst,
-    BranchInst,
-    CondBranchInst,
-    ReturnInst,
 
     /// These enums define ranges used for classof implementations.
     STMT_LAST = IfStmt,

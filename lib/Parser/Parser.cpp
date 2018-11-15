@@ -2133,7 +2133,10 @@ FunctionParser::parseOperation(const CreateOperationFunction &createOpFunc) {
   // is structurally as we expect.  If not, produce an error with a reasonable
   // source location.
   if (auto *opInfo = op->getAbstractOperation()) {
-    if (opInfo->verifyInvariants(op))
+    // We don't wan't to verify branching terminators at this time because
+    // the successors may not have been fully parsed yet.
+    if (!(op->isTerminator() && op->getNumSuccessors() != 0) &&
+        opInfo->verifyInvariants(op))
       return ParseFailure;
   }
 
@@ -2528,11 +2531,8 @@ private:
   ParseResult
   parseOptionalBasicBlockArgList(SmallVectorImpl<BBArgument *> &results,
                                  BasicBlock *owner);
-  ParseResult parseBranchBlockAndUseList(BasicBlock *&block,
-                                         SmallVectorImpl<CFGValue *> &values);
 
   ParseResult parseBasicBlock();
-  TerminatorInst *parseTerminator();
 };
 } // end anonymous namespace
 
@@ -2610,6 +2610,15 @@ ParseResult CFGFunctionParser::parseFunctionBody() {
     return ParseFailure;
   }
 
+  // Now that the function body has been fully parsed we check the invariants
+  // of any branching terminators.
+  for (auto &block : *function) {
+    auto *term = block.getTerminator();
+    auto *abstractOp = term->getAbstractOperation();
+    if (term->getNumSuccessors() != 0 && abstractOp)
+      abstractOp->verifyInvariants(term);
+  }
+
   return finalizeFunction(function, braceLoc);
 }
 
@@ -2657,99 +2666,11 @@ ParseResult CFGFunctionParser::parseBasicBlock() {
       return ParseFailure;
   }
 
-  if (!parseTerminator())
+  // Parse the terminator operation.
+  if (parseOperation(createOpFunc))
     return ParseFailure;
 
   return ParseSuccess;
-}
-
-ParseResult CFGFunctionParser::parseBranchBlockAndUseList(
-    BasicBlock *&block, SmallVectorImpl<CFGValue *> &values) {
-  // Verify branch is identifier and get the matching block.
-  if (!getToken().is(Token::bare_identifier))
-    return emitError("expected basic block name");
-  block = getBlockNamed(getTokenSpelling(), getToken().getLoc());
-  consumeToken();
-
-  // Handle optional arguments.
-  if (consumeIf(Token::l_paren) &&
-      (parseOptionalSSAUseAndTypeList(values) ||
-       parseToken(Token::r_paren, "expected ')' to close argument list"))) {
-    return ParseFailure;
-  }
-
-  return ParseSuccess;
-}
-
-/// Parse the terminator instruction for a basic block.
-///
-///   terminator-stmt ::= `br` bb-id branch-use-list?
-///   branch-use-list ::= `(` ssa-use-list ':' type-list-no-parens `)`
-///   terminator-stmt ::=
-///     `cond_br` ssa-use `,` bb-id branch-use-list? `,` bb-id
-///     branch-use-list?
-///   terminator-stmt ::= `return` ssa-use-and-type-list?
-///
-TerminatorInst *CFGFunctionParser::parseTerminator() {
-  auto loc = getToken().getLoc();
-
-  switch (getToken().getKind()) {
-  default:
-    return (emitError("expected terminator at end of basic block"), nullptr);
-
-  case Token::kw_return: {
-    consumeToken(Token::kw_return);
-
-    // Parse any operands.
-    SmallVector<CFGValue *, 8> operands;
-    if (parseOptionalSSAUseAndTypeList(operands))
-      return nullptr;
-    return builder.createReturn(getEncodedSourceLocation(loc), operands);
-  }
-
-  case Token::kw_br: {
-    consumeToken(Token::kw_br);
-    BasicBlock *destBB;
-    SmallVector<CFGValue *, 4> values;
-    if (parseBranchBlockAndUseList(destBB, values))
-      return nullptr;
-    auto branch = builder.createBranch(getEncodedSourceLocation(loc), destBB);
-    branch->addOperands(values);
-    return branch;
-  }
-
-  case Token::kw_cond_br: {
-    consumeToken(Token::kw_cond_br);
-    SSAUseInfo ssaUse;
-    if (parseSSAUse(ssaUse))
-      return nullptr;
-    auto *cond = resolveSSAUse(ssaUse, builder.getIntegerType(1));
-    if (!cond)
-      return (emitError("expected type was boolean (i1)"), nullptr);
-    if (parseToken(Token::comma, "expected ',' in conditional branch"))
-      return nullptr;
-
-    BasicBlock *trueBlock;
-    SmallVector<CFGValue *, 4> trueOperands;
-    if (parseBranchBlockAndUseList(trueBlock, trueOperands))
-      return nullptr;
-
-    if (parseToken(Token::comma, "expected ',' in conditional branch"))
-      return nullptr;
-
-    BasicBlock *falseBlock;
-    SmallVector<CFGValue *, 4> falseOperands;
-    if (parseBranchBlockAndUseList(falseBlock, falseOperands))
-      return nullptr;
-
-    auto branch =
-        builder.createCondBranch(getEncodedSourceLocation(loc),
-                                 cast<CFGValue>(cond), trueBlock, falseBlock);
-    branch->addTrueOperands(trueOperands);
-    branch->addFalseOperands(falseOperands);
-    return branch;
-  }
-  }
 }
 
 //===----------------------------------------------------------------------===//

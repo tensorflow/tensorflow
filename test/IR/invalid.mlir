@@ -338,7 +338,7 @@ mlfunc @malformed_type(%a : intt) { // expected-error {{expected type}}
 
 cfgfunc @resulterror() -> i32 {
 bb42:
-  return    // expected-error {{return has 0 operands, but enclosing function returns 1}}
+  return    // expected-error {{'return' op has 0 operands, but enclosing function returns 1}}
 }
 
 // -----
@@ -387,7 +387,7 @@ cfgfunc @condbr_notbool() {
 bb0:
   %a = "foo"() : () -> i32 // expected-error {{prior use here}}
   cond_br %a, bb0, bb0 // expected-error {{use of value '%a' expects different type than prior uses}}
-// expected-error@-1 {{expected type was boolean (i1)}}
+// expected-error@-1 {{expected condition type was boolean (i1)}}
 }
 
 // -----

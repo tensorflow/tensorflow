@@ -19,6 +19,7 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Module.h"
@@ -277,7 +278,15 @@ OperationInst *CFGFuncBuilder::createOperation(const OperationState &state) {
   auto *op =
       OperationInst::create(state.location, state.name, operands, state.types,
                             state.attributes, state.successors, context);
-  block->getOperations().insert(insertPoint, op);
+  // TODO(riverriddle) Remove this when the terminators are in basic block
+  // operation lists.
+  if (op->isTerminator()) {
+    // FIXME(b/118738403)
+    assert(!block->getTerminator() && "cannot insert the second terminator");
+    block->setTerminator(op);
+  } else {
+    block->getOperations().insert(insertPoint, op);
+  }
   return op;
 }
 

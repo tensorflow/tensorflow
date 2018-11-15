@@ -16,6 +16,8 @@
 // =============================================================================
 
 #include "mlir/IR/BasicBlock.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/CFGFunction.h"
 using namespace mlir;
 
@@ -54,7 +56,7 @@ auto BasicBlock::addArguments(ArrayRef<Type> types)
 // Terminator management
 //===----------------------------------------------------------------------===//
 
-void BasicBlock::setTerminator(TerminatorInst *inst) {
+void BasicBlock::setTerminator(OperationInst *inst) {
   assert((!inst || !inst->block) && "terminator already inserted into a block");
   // If we already had a terminator, abandon it.
   if (terminator)
@@ -161,9 +163,12 @@ BasicBlock *BasicBlock::splitBasicBlock(iterator splitBefore) {
   // to the new block.
   auto branchLoc =
       splitBefore == end() ? getTerminator()->getLoc() : splitBefore->getLoc();
+  // TODO(riverriddle) Remove this when terminators are a part of the operations
+  // list.
   auto oldTerm = getTerminator();
-  setTerminator(BranchInst::create(branchLoc, newBB));
+  setTerminator(nullptr);
   newBB->setTerminator(oldTerm);
+  CFGFuncBuilder(this).create<BranchOp>(branchLoc, newBB);
 
   // Move all of the operations from the split point to the end of the function
   // into the new block.

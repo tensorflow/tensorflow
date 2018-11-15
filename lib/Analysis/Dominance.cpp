@@ -49,12 +49,12 @@ bool DominanceInfo::properlyDominates(const Instruction *a,
     return false;
 
   // If one is a terminator, then the other dominates it.
-  auto *aOp = dyn_cast<OperationInst>(a);
-  if (!aOp)
+  auto *aOp = cast<OperationInst>(a);
+  if (aOp->isTerminator())
     return false;
 
-  auto *bOp = dyn_cast<OperationInst>(b);
-  if (!bOp)
+  auto *bOp = cast<OperationInst>(b);
+  if (bOp->isTerminator())
     return true;
 
   // Otherwise, do a linear scan to determine whether B comes after A.
