@@ -481,8 +481,8 @@ ENTRY main {
   const char* expected_root_expression = R"(
 (scalar-indexed-const
   (constant s32[2,1,1,1,6] s32[2,1,1,1,6] {
-    { /*i0=0*/ { /*i1=0*/ { /*i2=0*/ {1, 2, 3, 4, 5, 6} } } },
-    { /*i0=1*/ { /*i1=0*/ { /*i2=0*/ {1, 2, 3, 4, 5, 6} } } } })
+    { /*i0=0*/ { /*i1=0*/ { /*i2=0*/ { 1, 2, 3, 4, 5, 6 } } } },
+    { /*i0=1*/ { /*i1=0*/ { /*i2=0*/ { 1, 2, 3, 4, 5, 6 } } } } })
   (reshape %indices to s32[])
   0->[])
 )";
@@ -512,8 +512,8 @@ ENTRY main {
   const char* expected_root_expression = R"(
 (scalar-indexed-const
   (constant s32[2,1,1,6] s32[2,1,1,6] {
-    { /*i0=0*/ { /*i1=0*/ {1, 2, 3, 4, 5, 6} } },
-    { /*i0=1*/ { /*i1=0*/ {1, 2, 3, 4, 5, 6} } } })
+    { /*i0=0*/ { /*i1=0*/ { 1, 2, 3, 4, 5, 6 } } },
+    { /*i0=1*/ { /*i1=0*/ { 1, 2, 3, 4, 5, 6 } } } })
   (reshape %indices to s32[5])
   0->[2])
 )";

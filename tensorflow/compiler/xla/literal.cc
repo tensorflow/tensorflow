@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -1012,166 +1013,144 @@ void LiteralBase::Piece::SortSparseElementsInternal() {
 
 namespace {
 
+string ShapeToString(bool print_layout, const Shape& shape) {
+  return print_layout ? ShapeUtil::HumanStringWithLayout(shape)
+                      : ShapeUtil::HumanString(shape);
+}
+
+void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
+                    bool print_layout, std::vector<string>* pieces);
+
+void TupleToStringHelper(const LiteralBase& literal,
+                         const ShapeIndex& shape_index, bool print_layout,
+                         std::vector<string>* pieces) {
+  const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
+  pieces->push_back(ShapeToString(print_layout, subshape));
+  pieces->push_back(" (\n");
+  std::vector<string> tuple_pieces;
+  for (int i = 0; i < ShapeUtil::TupleElementCount(subshape); ++i) {
+    ShapeIndex element_index = shape_index;
+    element_index.push_back(i);
+    std::vector<string> element_pieces;
+    ToStringHelper(literal, element_index, print_layout, &element_pieces);
+    tuple_pieces.push_back(absl::StrJoin(element_pieces, ""));
+  }
+  pieces->push_back(absl::StrJoin(tuple_pieces, ",\n"));
+  pieces->push_back("\n)");
+}
+
+void SparseArrayToStringHelper(const LiteralBase& literal,
+                               const Shape& subshape, bool print_layout,
+                               std::vector<string>* pieces) {
+  pieces->push_back(ShapeToString(print_layout, subshape));
+  pieces->push_back("{");
+  int64 rank = ShapeUtil::Rank(subshape);
+  int64 num_elements = literal.sparse_element_count();
+  for (int64 i = 0; i < num_elements; ++i) {
+    if (i > 0) {
+      pieces->push_back(", ");
+    }
+    if (rank == 1) {
+      pieces->push_back(StrCat(literal.GetSparseIndex(i)[0]));
+      pieces->push_back(": ");
+    } else {
+      pieces->push_back("[");
+      pieces->push_back(absl::StrJoin(literal.GetSparseIndex(i), ", "));
+      pieces->push_back("]: ");
+    }
+    pieces->push_back(literal.GetSparseElementAsString(i));
+  }
+  pieces->push_back("}");
+}
+
+void DenseArrayToStringHelper(const LiteralBase& literal,
+                              const ShapeIndex& shape_index, bool print_layout,
+                              std::vector<string>* pieces) {
+  const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
+  int64 rank = ShapeUtil::Rank(subshape);
+
+  std::function<void(absl::Span<const int64> dimensions, std::vector<int64>*)>
+      to_string_recursive = [&](absl::Span<const int64> dimensions,
+                                std::vector<int64>* accum_indices) {
+        // dimensions.size() decreases by 1 at each recursive call,
+        // and accum_indices->size() increases by 1.
+        // Their sum is equal to the rank of the tensor.
+        CHECK_EQ(rank, dimensions.size() + accum_indices->size());
+
+        auto brace_to_string = [&](string brace) -> string {
+          // Handle 1D tensor
+          if (rank == 1) {
+            return brace;
+          }
+          // Handle the innermost tensor of a 2D+ tensor.
+          if (dimensions.size() == 1 && brace == "{") {
+            return StrCat("  ", brace, dimensions[0] <= 1 ? "" : " ");
+          }
+          if (dimensions.size() == 1 && brace == "}") {
+            return StrCat(dimensions[0] <= 1 ? "" : " ", brace);
+          }
+          // Handle the non-innermost tensors of a 2D+ tensor.
+          if (brace == "{") {
+            if (rank > 3 && !accum_indices->empty() &&
+                accum_indices->size() < rank) {
+              int index = accum_indices->size() - 1;
+              int value = accum_indices->back();
+              return StrCat(brace, " /*i", index, "=", value, "*/\n");
+            }
+            return StrCat(brace, "\n");
+          }
+          return StrCat("\n", brace);
+        };
+
+        if (dimensions.empty()) {
+          // Display predicates as 0s and 1s so that the string is more dense.
+          string elem;
+          if (subshape.element_type() == PRED && rank > 0) {
+            elem = literal.Get<bool>(*accum_indices, shape_index) ? "1" : "0";
+          } else {
+            elem = literal.GetAsString(*accum_indices, shape_index);
+          }
+          pieces->push_back(elem);
+        } else {
+          pieces->push_back(brace_to_string("{"));
+          for (int i = 0; i < dimensions[0]; ++i) {
+            std::vector<int64> cloned_indices(*accum_indices);
+            cloned_indices.push_back(i);
+            to_string_recursive(dimensions.subspan(1), &cloned_indices);
+            if (i < dimensions[0] - 1) {
+              pieces->push_back(",");
+              pieces->push_back(dimensions.size() > 1 ? "\n" : " ");
+            }
+          }
+          pieces->push_back(brace_to_string("}"));
+          return;
+        }
+      };
+
+  if (rank > 1) {
+    pieces->push_back(ShapeToString(print_layout, subshape));
+    pieces->push_back(" ");
+  }
+  std::vector<int64> indices = {};
+  std::vector<int64> dimensions(subshape.dimensions().begin(),
+                                subshape.dimensions().end());
+  to_string_recursive(dimensions, &indices);
+}
+
 void ToStringHelper(const LiteralBase& literal, const ShapeIndex& shape_index,
                     bool print_layout, std::vector<string>* pieces) {
   const Shape& subshape = ShapeUtil::GetSubshape(literal.shape(), shape_index);
   CHECK(LayoutUtil::HasLayout(literal.shape()));
   CHECK(LayoutUtil::HasLayout(subshape));
-
-  auto shape_to_string = [print_layout](const Shape& shape) {
-    if (print_layout) {
-      return ShapeUtil::HumanStringWithLayout(shape);
-    } else {
-      return ShapeUtil::HumanString(shape);
-    }
-  };
-
-  // TODO(b/32894291): refactor this code to reduce code duplication.
   if (ShapeUtil::IsTuple(subshape)) {
-    pieces->push_back(shape_to_string(subshape));
-    pieces->push_back(" (\n");
-    std::vector<string> tuple_pieces;
-    for (int i = 0; i < ShapeUtil::TupleElementCount(subshape); ++i) {
-      ShapeIndex element_index = shape_index;
-      element_index.push_back(i);
-      std::vector<string> element_pieces;
-      ToStringHelper(literal, element_index, print_layout, &element_pieces);
-      tuple_pieces.push_back(absl::StrJoin(element_pieces, ""));
-    }
-    pieces->push_back(absl::StrJoin(tuple_pieces, ",\n"));
-    pieces->push_back("\n)");
-    return;
-  }
-
-  if (ShapeUtil::IsToken(subshape)) {
+    TupleToStringHelper(literal, shape_index, print_layout, pieces);
+  } else if (ShapeUtil::IsToken(subshape)) {
     pieces->push_back("token");
-    return;
-  }
-
-  if (LayoutUtil::IsSparseArray(subshape)) {
-    pieces->push_back(shape_to_string(subshape));
-    pieces->push_back("{");
-    int64 rank = ShapeUtil::Rank(subshape);
-    int64 num_elements = literal.sparse_element_count();
-    for (int64 i = 0; i < num_elements; ++i) {
-      if (i > 0) {
-        pieces->push_back(", ");
-      }
-      if (rank == 1) {
-        pieces->push_back(StrCat(literal.GetSparseIndex(i)[0]));
-        pieces->push_back(": ");
-      } else {
-        pieces->push_back("[");
-        pieces->push_back(absl::StrJoin(literal.GetSparseIndex(i), ", "));
-        pieces->push_back("]: ");
-      }
-      pieces->push_back(literal.GetSparseElementAsString(i));
-    }
-    pieces->push_back("}");
-    return;
-  }
-
-  CHECK(LayoutUtil::IsDenseArray(subshape));
-
-  auto element_to_string = [&](absl::Span<const int64> indices) -> string {
-    PrimitiveType element_type = subshape.element_type();
-    // We display predicates as 0s and 1s so that the string is more dense.
-    string elem = element_type == PRED
-                      ? literal.Get<bool>(indices, shape_index) ? "1" : "0"
-                      : literal.GetAsString(indices, shape_index);
-    return ((!indices.empty() && indices.back() > 0) ? ", " : "") + elem;
-  };
-
-  if (ShapeUtil::Rank(subshape) == 0) {
-    pieces->push_back(literal.GetAsString({}, shape_index));
-  } else if (ShapeUtil::Rank(subshape) == 1) {
-    pieces->push_back("{");
-    for (int64 i0 = 0; i0 < subshape.dimensions(0); ++i0) {
-      pieces->push_back(element_to_string({i0}));
-    }
-    pieces->push_back("}");
-  } else if (ShapeUtil::Rank(subshape) == 2) {
-    pieces->push_back(shape_to_string(subshape));
-    pieces->push_back(" {\n");
-    for (int64 i0 = 0; i0 < subshape.dimensions(0); ++i0) {
-      pieces->push_back("  { ");
-      for (int64 i1 = 0; i1 < subshape.dimensions(1); ++i1) {
-        pieces->push_back(element_to_string({i0, i1}));
-      }
-      pieces->push_back(" ");
-      pieces->push_back(i0 == subshape.dimensions(0) - 1 ? "}\n" : "},\n");
-    }
-    pieces->push_back("}");
-  } else if (ShapeUtil::Rank(subshape) == 3) {
-    pieces->push_back(shape_to_string(subshape));
-    pieces->push_back(" {\n");
-    for (int64 i0 = 0; i0 < subshape.dimensions(0); ++i0) {
-      pieces->push_back(i0 > 0 ? ",\n{" : "{");
-      for (int64 i1 = 0; i1 < subshape.dimensions(1); ++i1) {
-        pieces->push_back(i1 > 0 ? ",\n  { " : " { ");
-        for (int64 i2 = 0; i2 < subshape.dimensions(2); ++i2) {
-          pieces->push_back(element_to_string({i0, i1, i2}));
-        }
-        pieces->push_back(" }");
-      }
-      pieces->push_back(" }");
-    }
-    pieces->push_back("\n}");
-  } else if (ShapeUtil::Rank(subshape) == 4) {
-    pieces->push_back(shape_to_string(subshape));
-    pieces->push_back(" {\n");
-    for (int64 i0 = 0; i0 < subshape.dimensions(0); ++i0) {
-      pieces->push_back(StrFormat("  {  /*i0=%d*/\n", i0));
-      for (int64 i1 = 0; i1 < subshape.dimensions(1); ++i1) {
-        pieces->push_back(StrFormat("    {  /*i1=%d*/\n", i1));
-        for (int64 i2 = 0; i2 < subshape.dimensions(2); ++i2) {
-          pieces->push_back("      {");
-          for (int64 i3 = 0; i3 < subshape.dimensions(3); ++i3) {
-            pieces->push_back(element_to_string({i0, i1, i2, i3}));
-          }
-          pieces->push_back(i2 == subshape.dimensions(2) - 1 ? "}\n" : "},\n");
-        }
-        pieces->push_back(i1 == subshape.dimensions(1) - 1 ? "    }\n"
-                                                           : "    },\n");
-      }
-      pieces->push_back(i0 == subshape.dimensions(0) - 1 ? "  }\n" : "  },\n");
-    }
-    pieces->push_back("}");
-  } else if (ShapeUtil::Rank(subshape) == 5) {
-    pieces->push_back(shape_to_string(subshape));
-    pieces->push_back(" {\n");
-    for (int64 i0 = 0; i0 < subshape.dimensions(0); ++i0) {
-      pieces->push_back(StrFormat("  {  /*i0=%d*/\n", i0));
-      for (int64 i1 = 0; i1 < subshape.dimensions(1); ++i1) {
-        pieces->push_back(StrFormat("    {  /*i1=%d*/\n", i1));
-        for (int64 i2 = 0; i2 < subshape.dimensions(2); ++i2) {
-          pieces->push_back(StrFormat("      {  /*i2=%d*/\n", i2));
-          for (int64 i3 = 0; i3 < subshape.dimensions(3); ++i3) {
-            pieces->push_back("        {");
-            for (int64 i4 = 0; i4 < subshape.dimensions(4); ++i4) {
-              pieces->push_back(element_to_string({i0, i1, i2, i3, i4}));
-            }
-            pieces->push_back(i3 == subshape.dimensions(3) - 1 ? "}\n"
-                                                               : "},\n");
-          }
-          pieces->push_back(i2 == subshape.dimensions(2) - 1 ? "      }\n"
-                                                             : "      },\n");
-        }
-        pieces->push_back(i1 == subshape.dimensions(1) - 1 ? "    }\n"
-                                                           : "    },\n");
-      }
-      pieces->push_back(i0 == subshape.dimensions(0) - 1 ? "  }\n" : "  },\n");
-    }
-    pieces->push_back("}");
+  } else if (LayoutUtil::IsSparseArray(subshape)) {
+    SparseArrayToStringHelper(literal, subshape, print_layout, pieces);
   } else {
-    pieces->push_back(shape_to_string(subshape));
-    pieces->push_back(" {");
-    literal.EachCellAsString(
-        [&](absl::Span<const int64> indices, const string& value) {
-          pieces->push_back(" ");
-          pieces->push_back(value);
-        });
-    pieces->push_back("}");
+    CHECK(LayoutUtil::IsDenseArray(subshape));
+    DenseArrayToStringHelper(literal, shape_index, print_layout, pieces);
   }
 }
 
