@@ -66,6 +66,7 @@ static const char* param_structs[] = {"TfLiteConvParams",
                                       "TfLiteFakeQuantParams",
                                       "TfLitePackParams",
                                       "TfLiteOneHotParams",
+                                      "TfLiteLeakyReluParams",
                                       nullptr};
 }  // namespace
 
