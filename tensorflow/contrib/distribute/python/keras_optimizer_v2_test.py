@@ -47,7 +47,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer_cache
-from tensorflow.python.training import distribution_strategy_context
+from tensorflow.python.training import distribution_strategy_context as ds_context
 
 
 class KerasOptimizerV2IntegrationTest(test.TestCase, parameterized.TestCase):
@@ -272,9 +272,9 @@ class MirroredStrategyOptimizerV2Test(test.TestCase):
 
 
 def _replica_id():
-  # TODO(cjfj): Return `replica_id` directly, once it is a `Tensor`.
+  # TODO(cjfj): Return `replica_id_...` directly, once it is a `Tensor`.
   return constant_op.constant(
-      distribution_strategy_context.get_replica_context().replica_id)
+      ds_context.get_replica_context().replica_id_in_sync_group)
 
 
 if __name__ == '__main__':

@@ -829,4 +829,5 @@ class MirroredReplicaContext(distribute_lib.ReplicaContext):
   @property
   def devices(self):
     distribute_lib.require_replica_context(self)
-    return [self._distribution_strategy.worker_devices[self._replica_id]]
+    ds = self._distribution_strategy
+    return [ds.worker_devices[self._replica_id_in_sync_group]]

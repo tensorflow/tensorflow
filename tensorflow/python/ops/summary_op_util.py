@@ -50,7 +50,8 @@ def skip_summary():
   # alternatives to override default behavior. (e.g. run on last replica,
   # compute sum or mean across replicas).
   replica_context = distribution_strategy_context.get_replica_context()
-  return replica_context and replica_context.replica_id > 0
+  # TODO(cjfj): Also check is sync group ID > 0?
+  return replica_context and replica_context.replica_id_in_sync_group > 0
 
 
 def clean_tag(name):

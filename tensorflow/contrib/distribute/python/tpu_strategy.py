@@ -587,7 +587,7 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
   # TODO(sourabhbajaj): Call for each tower should be updating this.
   def __init__(self, distribution_strategy):
     distribute_lib.ReplicaContext.__init__(
-        self, distribution_strategy, replica_id=0)
+        self, distribution_strategy, replica_id_in_sync_group=0)
 
   @property
   def device(self):
@@ -596,4 +596,5 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
   @property
   def devices(self):
     distribute_lib.require_replica_context(self)
-    return [self._distribution_strategy.worker_devices[self._replica_id]]
+    ds = self._distribution_strategy
+    return [ds.worker_devices[self._replica_id_in_sync_group]]

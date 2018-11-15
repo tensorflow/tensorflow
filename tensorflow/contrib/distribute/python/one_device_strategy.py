@@ -180,7 +180,7 @@ class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):
 
   def __init__(self, distribution_strategy):
     distribute_lib.ReplicaContext.__init__(
-        self, distribution_strategy, replica_id=0)
+        self, distribution_strategy, replica_id_in_sync_group=0)
 
   @property
   def device(self):
