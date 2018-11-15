@@ -58,6 +58,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # pylint: disable=line-too-long
     # Add additional renames not in renames_v2.py here.
     self.symbol_renames.update({
+        "tf.sparse_concat": "tf.sparse.concat",
     })
     # pylint: enable=line-too-long
 
@@ -75,11 +76,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # IMPORTANT: order here should correspond to OLD argument order.
     # We just prepend "arg_name=" to all arguments in function calls.
     self.function_reorders = {
-        "tf.argmax": ["input", "axis", "output_type", "name"],
-        "tf.argmin": ["input", "axis", "output_type", "name"],
+        "tf.argmax": ["input", "axis", "name", "dimension", "output_type"],
+        "tf.argmin": ["input", "axis", "name", "dimension", "output_type"],
         "tf.boolean_mask": ["tensor", "mask", "name", "axis"],
-        "tf.convert_to_tensor": ["value", "dtype", "preferred_dtype", "name"],
-        "tf.pad": ["tensor", "paddings", "mode", "name", "constant_values"],
+        "tf.convert_to_tensor": ["value", "dtype", "name", "preferred_dtype"],
         "tf.nn.pool": [
             "input", "window_shape", "pooling_type", "padding", "dilation_rate",
             "strides", "name", "data_format"
@@ -87,6 +87,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.separable_conv2d": [
             "input", "depthwise_filter", "pointwise_filter", "strides",
             "padding", "data_format", "dilations", "name"
+        ],
+        "tf.pad": ["tensor", "paddings", "mode", "name", "constant_values"],
+        "tf.shape": ["input", "name", "out_type"],
+        "tf.size": ["input", "name", "out_type"],
+        "tf.sparse.concat": [
+            "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
         ],
     }
 

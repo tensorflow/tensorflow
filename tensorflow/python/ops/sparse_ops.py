@@ -185,8 +185,14 @@ def sparse_eye(num_rows,
         dense_shape=[num_rows, num_columns])
 
 
+@tf_export("sparse.concat", "sparse_concat", v1=[])
+def sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dim=False,
+                     concat_dim=None, name=None):
+  return sparse_concat(axis, sp_inputs, name, expand_nonconcat_dim, concat_dim)
+
+
 # pylint: disable=protected-access
-@tf_export("sparse.concat", "sparse_concat")
+@tf_export(v1=["sparse.concat", "sparse_concat"])
 @deprecation.deprecated_endpoints("sparse_concat")
 @deprecation.deprecated_args(
     None, "concat_dim is deprecated, use axis instead", "concat_dim")
