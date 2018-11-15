@@ -54,6 +54,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("data.Dataset", v1=[])
+@six.add_metaclass(abc.ABCMeta)
 class DatasetV2(object):
   """Represents a potentially large set of elements.
 
