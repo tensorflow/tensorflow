@@ -130,14 +130,14 @@ ArrayRef<int> VectorOrTensorType::getShape() const {
     return cast<VectorType>().getShape();
   case Kind::RankedTensor:
     return cast<RankedTensorType>().getShape();
-  case Kind::UnrankedTensor:
-    return cast<RankedTensorType>().getShape();
   default:
-    llvm_unreachable("not a VectorOrTensorType");
+    llvm_unreachable("not a VectorOrTensorType or not ranked");
   }
 }
 
 bool VectorOrTensorType::hasStaticShape() const {
+  if (isa<UnrankedTensorType>())
+    return false;
   auto dims = getShape();
   return !std::any_of(dims.begin(), dims.end(), [](int i) { return i < 0; });
 }

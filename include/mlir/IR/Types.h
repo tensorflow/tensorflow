@@ -341,7 +341,7 @@ public:
   Type getElementType() const;
 
   /// If this is ranked tensor or vector type, return the number of elements. If
-  /// it is an unranked tensor or vector, abort.
+  /// it is an unranked tensor, abort.
   unsigned getNumElements() const;
 
   /// If this is ranked tensor or vector type, return the rank. If it is an
@@ -349,11 +349,12 @@ public:
   int getRank() const;
 
   /// If this is ranked tensor or vector type, return the shape. If it is an
-  /// unranked tensor, return an empty array.
+  /// unranked tensor, abort.
   ArrayRef<int> getShape() const;
 
-  /// If any dimension has unknown size (<0), it doesn't have static shape.
-  /// If all dimensions has known size (>= 0), it has static shape.
+  /// If this is unranked tensor or any dimension has unknown size (<0),
+  /// it doesn't have static shape. If all dimensions have known size (>= 0),
+  /// it has static shape.
   bool hasStaticShape() const;
 
   /// If this is ranked tensor or vector type, return the size of the specified
