@@ -70,6 +70,12 @@ bool HasSingleFanoutNode(const GraphView& graph_view, const NodeDef* node,
   return fanout.size() <= 1;
 }
 
+bool HasFanouts(const GraphView& graph_view, const NodeDef* node, int port) {
+  const auto output = GraphView::OutputPort(node, port);
+  const auto fanout = graph_view.GetFanout(output);
+  return !fanout.empty();
+}
+
 bool NoControlFanin(const GraphView& graph_view, const NodeDef* node) {
   const auto control_port = GraphView::InputPort(node, -1);
   return graph_view.GetFanin(control_port).empty();

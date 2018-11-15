@@ -708,6 +708,8 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
+        "//tensorflow/core/grappler/utils:topological_sort",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
