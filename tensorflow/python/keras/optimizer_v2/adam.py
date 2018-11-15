@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,8 +17,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.training import training_ops
 
 
@@ -106,22 +110,62 @@ class Adam(optimizer_v2.OptimizerV2):
       self.add_slot(var, 'v')
 
   def _resource_apply_dense(self, grad, var):
+    grad_dtype = grad.dtype.base_dtype
     m = self.get_slot(var, 'm')
     v = self.get_slot(var, 'v')
-    # TODO(tanzheny): let optimizer have its own step counter, and let
-    # beta1_power and beta2_power depend on it.
+    local_step = math_ops.cast(self.iterations + 1, grad_dtype)
+    beta_1_t = math_ops.cast(self._get_hyper('beta_1'), grad_dtype)
+    beta_2_t = math_ops.cast(self._get_hyper('beta_2'), grad_dtype)
+    beta_1_power = math_ops.pow(beta_1_t, local_step)
+    beta_2_power = math_ops.pow(beta_2_t, local_step)
     return training_ops.resource_apply_adam(
         var.handle,
         m.handle,
         v.handle,
-        math_ops.cast(self._get_hyper('beta_1'), grad.dtype.base_dtype),
-        math_ops.cast(self._get_hyper('beta_2'), grad.dtype.base_dtype),
-        math_ops.cast(self._get_hyper('learning_rate'), grad.dtype.base_dtype),
-        math_ops.cast(self._get_hyper('beta_1'), grad.dtype.base_dtype),
-        math_ops.cast(self._get_hyper('beta_2'), grad.dtype.base_dtype),
-        math_ops.cast(self._get_hyper('epsilon'), grad.dtype.base_dtype),
+        beta_1_power,
+        beta_2_power,
+        math_ops.cast(self._get_hyper('learning_rate'), grad_dtype),
+        beta_1_t,
+        beta_2_t,
+        math_ops.cast(self._get_hyper('epsilon'), grad_dtype),
         grad,
         use_locking=self._use_locking)
+
+  def _resource_apply_sparse(self, grad, var, indices):
+
+    def _resource_scatter_add(x, i, v):
+      with ops.control_dependencies(
+          [resource_variable_ops.resource_scatter_add(x.handle, i, v)]):
+        return x.value()
+
+    var_dtype = var.dtype.base_dtype
+    local_step = math_ops.cast(self.iterations + 1, var_dtype)
+    beta_1_t = math_ops.cast(self._get_hyper('beta_1'), var_dtype)
+    beta_2_t = math_ops.cast(self._get_hyper('beta_2'), var_dtype)
+    beta_1_power = math_ops.pow(beta_1_t, local_step)
+    beta_2_power = math_ops.pow(beta_2_t, local_step)
+    lr_t = math_ops.cast(self._get_hyper('learning_rate'), var_dtype)
+    epsilon_t = math_ops.cast(self._get_hyper('epsilon'), var_dtype)
+    lr = (lr_t * math_ops.sqrt(1 - beta_2_power) / (1 - beta_1_power))
+
+    # m_t = beta1 * m + (1 - beta1) * g_t
+    m = self.get_slot(var, 'm')
+    m_scaled_g_values = grad * (1 - beta_1_t)
+    m_t = state_ops.assign(m, m * beta_1_t, use_locking=self._use_locking)
+    with ops.control_dependencies([m_t]):
+      m_t = _resource_scatter_add(m, indices, m_scaled_g_values)
+
+    # v_t = beta2 * v + (1 - beta2) * (g_t * g_t)
+    v = self.get_slot(var, 'v')
+    v_scaled_g_values = (grad * grad) * (1 - beta_2_t)
+    v_t = state_ops.assign(v, v * beta_2_t, use_locking=self._use_locking)
+    with ops.control_dependencies([v_t]):
+      v_t = _resource_scatter_add(v, indices, v_scaled_g_values)
+
+    v_sqrt = math_ops.sqrt(v_t)
+    var_update = state_ops.assign_sub(
+        var, lr * m_t / (v_sqrt + epsilon_t), use_locking=self._use_locking)
+    return control_flow_ops.group(*[var_update, m_t, v_t])
 
   def get_config(self):
     config = super(Adam, self).get_config()

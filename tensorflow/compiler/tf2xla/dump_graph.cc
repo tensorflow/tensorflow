@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/tf2xla/dump_graph_flags.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 

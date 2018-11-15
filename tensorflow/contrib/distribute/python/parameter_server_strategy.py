@@ -22,6 +22,7 @@ from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import values
 from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
@@ -226,6 +227,27 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
     return values.PerReplicaDataset(
         self._call_dataset_fn(dataset_fn), self._compute_devices, True)
 
+  def _make_input_fn_iterator(
+      self,
+      input_fn,
+      replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
+    """Distributes the dataset to each local GPU."""
+    if self._cluster_spec:
+      input_pipeline_id = multi_worker_util.id_in_cluster(
+          self._cluster_spec, self._task_type, self._task_id)
+      num_input_pipelines = multi_worker_util.worker_count(
+          self._cluster_spec, self._task_type)
+    else:
+      input_pipeline_id = 0
+      num_input_pipelines = 1
+    input_context = distribute_lib.InputContext(
+        num_input_pipelines=num_input_pipelines,
+        input_pipeline_id=input_pipeline_id,
+        num_replicas_in_sync=self.num_replicas_in_sync)
+    return values.PerReplicaDataset(
+        self._call_dataset_fn(input_fn, input_context), self._compute_devices,
+        True)
+
   def _broadcast(self, tensor, destinations):
     if not cross_tower_ops_lib.check_destinations(destinations):
       destinations = self._compute_devices
@@ -307,24 +329,24 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
             "Cannot reduce to another worker: %r, current worker is %r" %
             (d, self._worker_device))
 
-  def _reduce(self, aggregation, value, destinations):
+  def _reduce(self, reduce_op, value, destinations):
     self._verify_destinations_not_different_worker(destinations)
     if not isinstance(value, values.DistributedValues):
       # pylint: disable=protected-access
       return mirrored_strategy._reduce_non_distributed_value(
-          self, aggregation, value, destinations)
-    if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+          self, reduce_op, value, destinations)
+    if reduce_op == reduce_util.ReduceOp.ONLY_FIRST_REPLICA:
       return self.broadcast(value.get(self._compute_devices[0]), destinations)
     return self._cross_tower_ops.reduce(
-        aggregation, value, destinations=destinations)
+        reduce_op, value, destinations=destinations)
 
-  def _batch_reduce(self, aggregation, value_destination_pairs):
-    if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+  def _batch_reduce(self, reduce_op, value_destination_pairs):
+    if reduce_op == reduce_util.ReduceOp.ONLY_FIRST_REPLICA:
       return [self.broadcast(v.get(self._compute_devices[0]), d)
               for v, d in value_destination_pairs]
     for _, destinations in value_destination_pairs:
       self._verify_destinations_not_different_worker(destinations)
-    return self._cross_tower_ops.batch_reduce(aggregation,
+    return self._cross_tower_ops.batch_reduce(reduce_op,
                                               value_destination_pairs)
 
   def _select_single_value(self, structured):
@@ -349,30 +371,26 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
 
     return nest.map_structure(_select_fn, structured)
 
-  def _update(self, var, options, fn, *args, **kwargs):
+  def _update(self, var, fn, args, kwargs, group):
     if isinstance(var, values.AggregatingVariable):
       var = var.get()
     if not isinstance(var, resource_variable_ops.ResourceVariable):
       raise ValueError(
           "You can not update `var` %r. It must be a Variable." % var)
-    should_group = options.pop("grouped")
-    assert not options  # Validate that we are processing all of the options.
     with ops.colocate_with(var), distribute_lib.UpdateContext(var.device):
       result = fn(var, *self._select_single_value(args),
                   **self._select_single_value(kwargs))
-      if should_group:
+      if group:
         return result
       else:
         return nest.map_structure(self._unwrap, result)
 
   # TODO(yuefengz): does it need to call _select_single_value?
-  def _update_non_slot(self, colocate_with, options, fn, *args, **kwargs):
-    should_group = options.pop("grouped")
-    assert not options  # Validate that we are processing all of the options.
+  def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     with ops.device(
         colocate_with.device), distribute_lib.UpdateContext(colocate_with):
       result = fn(*args, **kwargs)
-      if should_group:
+      if group:
         return result
       else:
         return nest.map_structure(self._unwrap, result)

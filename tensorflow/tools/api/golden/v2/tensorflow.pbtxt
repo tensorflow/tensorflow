@@ -625,10 +625,6 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "count_nonzero"
-    argspec: "args=[\'input_tensor\', \'axis\', \'keepdims\', \'dtype\', \'name\', \'reduction_indices\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \"<dtype: \'int64\'>\", \'None\', \'None\', \'None\'], "
-  }
-  member_method {
     name: "create_partitioned_variables"
     argspec: "args=[\'shape\', \'slicing\', \'initializer\', \'dtype\', \'trainable\', \'collections\', \'name\', \'reuse\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'True\', \'None\', \'None\', \'None\'], "
   }
@@ -690,7 +686,7 @@ tf_module {
   }
   member_method {
     name: "expand_dims"
-    argspec: "args=[\'input\', \'axis\', \'name\', \'dim\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'input\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "extract_volume_patches"
@@ -739,18 +735,6 @@ tf_module {
   member_method {
     name: "gather_nd"
     argspec: "args=[\'params\', \'indices\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "get_collection"
-    argspec: "args=[\'key\', \'scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "get_collection_ref"
-    argspec: "args=[\'key\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "get_default_graph"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "gradients"
@@ -930,7 +914,7 @@ tf_module {
   }
   member_method {
     name: "pad"
-    argspec: "args=[\'tensor\', \'paddings\', \'mode\', \'name\', \'constant_values\'], varargs=None, keywords=None, defaults=[\'CONSTANT\', \'None\', \'0\'], "
+    argspec: "args=[\'tensor\', \'paddings\', \'mode\', \'constant_values\', \'name\'], varargs=None, keywords=None, defaults=[\'CONSTANT\', \'0\', \'None\'], "
   }
   member_method {
     name: "parallel_stack"

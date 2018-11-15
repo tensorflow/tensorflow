@@ -86,7 +86,7 @@ on uncompilable operator, xla.compile() returns an explicit error. This is
 useful if you want more predictable behaviors from XLA compilation.
 
 Please see
-[xla.compile() tutorial Colab](https://colab.sandbox.google.com/github/tensorflow/compiler/xla/g3doc/tutorials/xla_compile.ipynb)
+[xla.compile() tutorial Colab](./tutorials/xla_compile.ipynb)
 for how to use it.
 
 ### Placing operators on XLA devices

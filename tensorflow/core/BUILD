@@ -1671,6 +1671,7 @@ cc_library(
 cc_library(
     name = "mobile_additional_lib_deps",
     deps = tf_additional_lib_deps() + [
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1775,6 +1776,7 @@ cc_library(
     deps = [
         ":protos_all_cc_impl",
         "//third_party/eigen3",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
@@ -1799,6 +1801,7 @@ cc_library(
     deps = [
         ":protos_all_cc_impl",
         "//third_party/eigen3",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
@@ -2640,6 +2643,7 @@ tf_cuda_library(
         ":stats_calculator_portable",
         ":version_lib",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",

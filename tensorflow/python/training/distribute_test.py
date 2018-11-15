@@ -20,11 +20,11 @@ from __future__ import print_function
 
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
-from tensorflow.python.training import distribute
+from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import distribution_strategy_context
 
 
-class _TestReplicaContext(distribute.ReplicaContext):
+class _TestReplicaContext(distribute_lib.ReplicaContext):
 
   def merge_call(self, fn, *args, **kwargs):
     return kwargs["test_arg"]
@@ -38,7 +38,7 @@ def _get_test_variable(name, synchronization, aggregation):
   }
 
 
-class _TestStrategy(distribute.DistributionStrategy):
+class _TestStrategy(distribute_lib.DistributionStrategy):
 
   def _call_for_each_replica(self, fn, args, kwargs):
     with _TestReplicaContext(self, replica_id=0):
@@ -142,6 +142,23 @@ class DefaultDistributionStrategyTest(test.TestCase):
                   replica_ctx)
     self.assertEqual("foo_bar", replica_ctx.merge_call(merge_fn, "bar"))
     _assert_in_default_state(self)
+
+
+class InputContextTest(test.TestCase):
+
+  def testProperties(self):
+    input_context = distribute_lib.InputContext(
+        num_input_pipelines=2, input_pipeline_id=1, num_replicas_in_sync=6)
+    self.assertEqual(6, input_context.num_replicas_in_sync)
+    self.assertEqual(1, input_context.input_pipeline_id)
+    self.assertEqual(2, input_context.num_input_pipelines)
+
+  def testPerReplicaBatchSize(self):
+    input_context = distribute_lib.InputContext(
+        num_input_pipelines=2, input_pipeline_id=1, num_replicas_in_sync=6)
+    self.assertEqual(2, input_context.get_per_replica_batch_size(12))
+    with self.assertRaises(ValueError):
+      input_context.get_per_replica_batch_size(13)
 
 
 if __name__ == "__main__":

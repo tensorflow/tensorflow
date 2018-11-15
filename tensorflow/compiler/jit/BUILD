@@ -76,10 +76,10 @@ cc_library(
     srcs = ["xla_cpu_device.cc"],
     visibility = [":friends"],
     deps = [
+        ":flags",
         ":jit_compilation_passes",
         ":xla_device",
         "//tensorflow/compiler/jit/kernels:xla_ops",
-        "//tensorflow/compiler/jit/legacy_flags:xla_device_flags",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/service:cpu_plugin",  # buildcleaner: keep
@@ -211,6 +211,18 @@ cc_library(
 # Internal targets below this point.
 
 cc_library(
+    name = "flags",
+    srcs = ["flags.cc"],
+    hdrs = ["flags.h"],
+    visibility = [":friends"],
+    deps = [
+        "//tensorflow/compiler/xla:parse_flags_from_env",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "common",
     srcs = [
         "defs.cc",
@@ -268,6 +280,7 @@ cc_library(
         "//tensorflow/core/kernels:variable_ops",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -487,6 +500,7 @@ cc_library(
     deps = [
         ":common",
         ":encapsulate_util",
+        ":flags",
         ":shape_inference_helpers",
         ":union_find",
         ":xla_cluster_util",
@@ -494,8 +508,6 @@ cc_library(
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope_internal",
         "//tensorflow/compiler/jit/graphcycles",
-        "//tensorflow/compiler/jit/legacy_flags:build_xla_ops_pass_flags",
-        "//tensorflow/compiler/jit/legacy_flags:mark_for_compilation_pass_flags",
         "//tensorflow/compiler/jit/ops:xla_ops",
         "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla:resource_operation_table",

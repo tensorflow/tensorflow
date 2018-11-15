@@ -25,8 +25,10 @@ from tensorflow.contrib.distribute.python import collective_all_reduce_strategy
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import cross_tower_utils
 from tensorflow.contrib.distribute.python import multi_worker_test_base
+from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import keras
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -128,7 +130,7 @@ class CollectiveAllReduceStrategyTestBase(
           with ops.control_dependencies([fetched]):
             # TODO(yuefengz): support non-Mirrored variable as destinations.
             g = d.reduce(
-                variable_scope.VariableAggregation.SUM, g, destinations=v)
+                reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(
                 d.update(v, update, g, grouped=False)):
               after_list.append(d.read_var(v))
@@ -224,7 +226,7 @@ class CollectiveAllReduceStrategyTestBase(
       x = distribution.call_for_each_replica(model_fn)
       reduced_x = distribution.unwrap(
           distribution.reduce(
-              variable_scope.VariableAggregation.MEAN, x,
+              reduce_util.ReduceOp.MEAN, x,
               destinations='/cpu:0'))[0]
       x = distribution.unwrap(x)[0]
 
@@ -336,6 +338,31 @@ class LocalCollectiveAllReduceStrategy(CollectiveAllReduceStrategyTestBase,
     if context.num_gpus() < num_gpus:
       return
     self._test_complex_model(None, None, num_gpus)
+
+
+class InputContextTest(strategy_test_lib.DistributionTestBase):
+
+  def testInputContextPropertyLocal(self):
+    d = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
+        num_gpus_per_worker=2)
+    with context.graph_mode():
+      input_fn = self._input_fn_to_test_input_context(
+          expected_num_replicas_in_sync=2,
+          expected_num_input_pipelines=1,
+          expected_input_pipeline_id=0)
+      d.make_input_fn_iterator(input_fn)
+
+  def testInputContextPropertyMultiWorker(self):
+    d = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
+        num_gpus_per_worker=2)
+    cluster_spec = {'worker': ['worker1', 'worker2', 'worker3'], 'ps': ['ps1']}
+    d.configure(cluster_spec=cluster_spec, task_type='worker', task_id=1)
+    with context.graph_mode():
+      input_fn = self._input_fn_to_test_input_context(
+          expected_num_replicas_in_sync=6,
+          expected_num_input_pipelines=3,
+          expected_input_pipeline_id=1)  # because task_id = 1
+      d.make_input_fn_iterator(input_fn)
 
 
 if __name__ == '__main__':

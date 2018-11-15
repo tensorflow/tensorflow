@@ -365,8 +365,9 @@ def model_iteration(model,
                           'pass shuffle="batch".')
 
         # Sparse to dense conversion.
-        for i in indices_for_conversion_to_dense:
-          ins_batch[i] = ins_batch[i].toarray()
+        if issparse is not None:
+          for i in indices_for_conversion_to_dense:
+            ins_batch[i] = ins_batch[i].toarray()
 
         # Callbacks batch_begin.
         batch_logs = {'batch': batch_index, 'size': len(batch_ids)}

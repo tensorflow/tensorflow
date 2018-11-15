@@ -554,8 +554,8 @@ genrule(
     }),
     outs = ["__init__.py"],
     cmd = select({
-        "api_version_2": "cp $(@D)/_api/v2/__init__.py $(OUTS)",
-        "//conditions:default": "cp $(@D)/_api/v1/__init__.py $(OUTS)",
+        "api_version_2": "cp $(@D)/_api/v2/v2.py $(OUTS)",
+        "//conditions:default": "cp $(@D)/_api/v1/v1.py $(OUTS)",
     }),
 )
 
@@ -566,6 +566,7 @@ gen_api_init_files(
     output_dir = "_api/v1/",
     output_files = TENSORFLOW_API_INIT_FILES_V1,
     output_package = "tensorflow._api.v1",
+    root_file_name = "v1.py",
     root_init_template = "api_template_v1.__init__.py",
 )
 
@@ -581,6 +582,7 @@ gen_api_init_files(
     output_dir = "_api/v2/",
     output_files = TENSORFLOW_API_INIT_FILES_V2,
     output_package = "tensorflow._api.v2",
+    root_file_name = "v2.py",
     root_init_template = "api_template.__init__.py",
 )
 

@@ -323,14 +323,16 @@ def create_inference_graph(input_graph_def,
           output_collection)
 
   # Create RewriterConfig.
-  rewriter_config = tensorrt_rewriter_config(
-      rewriter_config, max_batch_size, max_workspace_size_bytes, precision_mode,
-      minimum_segment_size, is_dynamic_op, maximum_cached_engines,
-      cached_engine_batch_sizes)
+  config = config_pb2.ConfigProto()
+  config.graph_options.rewrite_options.CopyFrom(
+      tensorrt_rewriter_config(
+          rewriter_config, max_batch_size, max_workspace_size_bytes,
+          precision_mode, minimum_segment_size, is_dynamic_op,
+          maximum_cached_engines, cached_engine_batch_sizes))
 
   # Run Grappler.
   transformed_graph_def = tf_optimizer.OptimizeGraph(
-      rewriter_config, grappler_meta_graph_def, graph_id=b"tf_graph")
+      config, grappler_meta_graph_def, graph_id=b"tf_graph")
 
   # Optionally write the transformed graphdef as SavedModel.
   if output_saved_model_dir is not None:

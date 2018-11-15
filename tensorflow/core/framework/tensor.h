@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_H_
 
 #include <cstdint>
+#include <type_traits>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -893,8 +894,25 @@ Tensor::Tensor(T value, host_scalar_tag tag) {
       // `core::Refcounted::Unref()` for an object of this type will free
       // the enclosing `ValueAndTensorBuffer` for the tensor buffer.
       static void operator delete(void* ptr) {
-        port::AlignedFree(static_cast<char*>(ptr) -
-                          offsetof(ValueAndTensorBuffer, tensor_buffer));
+        // Use a dummy object to compute to offset of
+        // `ValueAndTensorBuffer::tensor_buffer`, because `offsetof()` is not
+        // necessarily defined on this non-POD type (until C++17).
+        typename std::aligned_storage<sizeof(ValueAndTensorBuffer),
+                                      alignof(ValueAndTensorBuffer)>::type
+            dummy_storage_;
+        ValueAndTensorBuffer* dummy_object =
+            reinterpret_cast<ValueAndTensorBuffer*>(&dummy_storage_);
+        intptr_t offset =
+            reinterpret_cast<intptr_t>(&dummy_object->tensor_buffer) -
+            reinterpret_cast<intptr_t>(dummy_object);
+
+        port::AlignedFree(static_cast<char*>(ptr) - offset);
+      }
+
+      static void operator delete(void*, void*) {
+        // Some compilers require an overridden class-specific deallocation
+        // function, which will be called if placement `new` throws an
+        // exception.
       }
 
      private:

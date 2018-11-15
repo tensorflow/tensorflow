@@ -31,6 +31,7 @@ from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_
 from tensorflow.contrib.tpu.python.tpu import training_loop
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
@@ -40,7 +41,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training import device_util
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.util import nest
@@ -239,6 +239,8 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     def _get_dataset_batch_size(dataset):
       """Get the global batch size from the dataset object."""
       # pylint: disable=protected-access
+      if isinstance(dataset, dataset_ops.DatasetV1Adapter):
+        dataset = dataset._dataset
       if isinstance(dataset, dataset_ops.BatchDataset):
         return tensor_util.constant_value(dataset._batch_size)
       elif isinstance(dataset, batching._MapAndBatchDataset):
@@ -359,14 +361,14 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     last_step_tensor_outputs_dict = nest.pack_sequence_as(
         ctx.last_step_outputs, last_step_tensor_outputs)
 
-    for (name, aggregation) in ctx._last_step_outputs_aggregations.items():  # pylint: disable=protected-access
+    for name, reduce_op in ctx._last_step_outputs_reduce_ops.items():  # pylint: disable=protected-access
       output = last_step_tensor_outputs_dict[name]
-      # For outputs that have already been aggregated, take the first value
+      # For outputs that have already been reduced, take the first value
       # from the list as each value should be the same. Else return the full
       # list of values.
-      # TODO(josh11b): If aggregation is NONE, we should return a PerReplica
+      # TODO(josh11b): If reduce_op is NONE, we should return a PerReplica
       # value.
-      if aggregation is not variables_lib.VariableAggregation.NONE:
+      if reduce_op is not None:
         # TODO(priyag): Should this return the element or a list with 1 element
         last_step_tensor_outputs_dict[name] = output[0]
     ctx._set_last_step_outputs(last_step_tensor_outputs_dict)  # pylint: disable=protected-access
@@ -439,12 +441,12 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     return _create_tpu_mirrored_variable(devices, _real_mirrored_creator, *args,
                                          **kwargs)
 
-  def _reduce(self, aggregation, value, destinations):
+  def _reduce(self, reduce_op, value, destinations):
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
-      if aggregation == vs.VariableAggregation.MEAN:
+      if reduce_op == reduce_util.ReduceOp.MEAN:
         # TODO(jhseu):  Revisit once we support model-parallelism.
         value *= (1. / self.num_replicas_in_sync)
-      elif aggregation != vs.VariableAggregation.SUM:
+      elif reduce_op != reduce_util.ReduceOp.SUM:
         raise NotImplementedError(
             "Currently only support sum & mean in TPUStrategy.")
       return tpu_ops.cross_replica_sum(value)
@@ -459,20 +461,17 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     else:
       raise ValueError("Multiple devices are not supported for TPUStrategy")
 
-    if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+    if reduce_op == reduce_util.ReduceOp.ONLY_FIRST_REPLICA:
       return value[0]
     output = math_ops.add_n(value)
-    if aggregation == vs.VariableAggregation.MEAN:
+    if reduce_op == reduce_util.ReduceOp.MEAN:
       return output * (1. / len(value))
     return output
 
-  def _update(self, var, options, fn, *args, **kwargs):
+  def _update(self, var, fn, args, kwargs, group):
     assert isinstance(var, values.TPUMirroredVariable)
-    should_group = options.pop("grouped")
-    assert not options  # Validate that we are processing all of the options.
-
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
-      if should_group:
+      if group:
         return fn(var, *args, **kwargs)
       else:
         return [fn(var, *args, **kwargs)]
@@ -487,9 +486,7 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
         updates[d] = fn(v,
                         *values.select_device_mirrored(d, args),
                         **values.select_device_mirrored(d, kwargs))
-    return values.update_regroup(self, updates, should_group)
-
-  # TODO(josh11b): Need to implement _update_non_slot()!
+    return values.update_regroup(self, updates, group)
 
   def read_var(self, var):
     assert isinstance(var, values.TPUMirroredVariable)
@@ -552,14 +549,12 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
   def non_slot_devices(self, var_list):
     return self._host_device
 
-  def _update_non_slot(self, colocate_with, options, fn, *args, **kwargs):
+  def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     del colocate_with
-    should_group = options.pop("grouped")
-    assert not options  # Validate that we are processing all of the options.
     with ops.device(self._host_device), distribute_lib.UpdateContext(
         self._host_device):
       result = fn(*args, **kwargs)
-      if should_group:
+      if group:
         return result
       else:
         return nest.map_structure(self._unwrap, result)

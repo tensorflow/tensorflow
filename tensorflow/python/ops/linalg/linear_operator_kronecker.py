@@ -30,9 +30,7 @@ from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.util.tf_export import tf_export
 
-__all__ = [
-    "LinearOperatorKronecker",
-]
+__all__ = ["LinearOperatorKronecker"]
 
 
 def _vec(x):

@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -665,6 +666,23 @@ class CondV2Test(test.TestCase):
       self.assertTrue(
           if_found,
           "An `If` op was not found, but the graph should not be lowered.")
+
+  def testLoweringDisabledWithSingleThreadedExecutorContext(self):
+    with self.session(graph=ops.Graph()) as sess:
+      @function.defun
+      def _add_cond(x):
+        return cond_v2.cond_v2(
+            constant_op.constant(True, name="pred"),
+            lambda: x,
+            lambda: x + 1)
+
+      x = array_ops.placeholder(shape=None, dtype=dtypes.float32)
+      with context.function_executor_type("SINGLE_THREADED_EXECUTOR"):
+        out_cond = _add_cond(x)
+
+      # The fact that sess.run() succeeds means lowering is disabled, because
+      # the single threaded executor does not support cond v1 ops.
+      sess.run(out_cond, feed_dict={x: 1.0})
 
 
 class CondV2CollectionTest(test.TestCase):

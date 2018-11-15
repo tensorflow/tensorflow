@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/control_flow_ops.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
-#include "tensorflow/compiler/jit/legacy_flags/build_xla_ops_pass_flags.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/cc/ops/xla_jit_ops.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"

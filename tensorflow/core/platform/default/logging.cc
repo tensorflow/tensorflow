@@ -117,13 +117,33 @@ int64 LogLevelStrToInt(const char* tf_env_var_val) {
 }  // namespace
 
 int64 MinLogLevelFromEnv() {
+  // We don't want to print logs during fuzzing as that would slow fuzzing down
+  // by almost 2x. So, if we are in fuzzing mode (not just running a test), we
+  // return a value so that nothing is actually printed. Since LOG uses >=
+  // (see ~LogMessage in this file) to see if log messages need to be printed,
+  // the value we're interested on to disable printing is the maximum severity.
+  // See also http://llvm.org/docs/LibFuzzer.html#fuzzer-friendly-build-mode
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+  return tensorflow::NUM_SEVERITIES;
+#else
   const char* tf_env_var_val = getenv("TF_CPP_MIN_LOG_LEVEL");
   return LogLevelStrToInt(tf_env_var_val);
+#endif
 }
 
 int64 MinVLogLevelFromEnv() {
+  // We don't want to print logs during fuzzing as that would slow fuzzing down
+  // by almost 2x. So, if we are in fuzzing mode (not just running a test), we
+  // return a value so that nothing is actually printed. Since VLOG uses <=
+  // (see VLOG_IS_ON in logging.h) to see if log messages need to be printed,
+  // the value we're interested on to disable printing is 0.
+  // See also http://llvm.org/docs/LibFuzzer.html#fuzzer-friendly-build-mode
+#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+  return 0;
+#else
   const char* tf_env_var_val = getenv("TF_CPP_MIN_VLOG_LEVEL");
   return LogLevelStrToInt(tf_env_var_val);
+#endif
 }
 
 LogMessage::~LogMessage() {
@@ -133,16 +153,8 @@ LogMessage::~LogMessage() {
 }
 
 int64 LogMessage::MinVLogLevel() {
-  // We don't want to print logs during fuzzing as that would slow fuzzing down
-  // by almost 2x. So, if we are in fuzzing mode (not just running a test), we
-  // return maximum value so that nothing is actually printed
-  // See also http://llvm.org/docs/LibFuzzer.html#fuzzer-friendly-build-mode
-#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
-  return tensorflow::NUM_SEVERITIES;
-#else
   static int64 min_vlog_level = MinVLogLevelFromEnv();
   return min_vlog_level;
-#endif
 }
 
 LogMessageFatal::LogMessageFatal(const char* file, int line)

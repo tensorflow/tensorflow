@@ -129,6 +129,42 @@ ENTRY main {
   RunTest(hlo_text, &operand, &scatter_indices, &updates);
 }
 
+XLA_TEST_F(ScatterTest, TensorFlowScatterV2_InversePermutation) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatterV2
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  permutation = s32[3,4] parameter(0)
+  reshape = s32[3,4,1] reshape(permutation)
+  operand = s32[3,4] iota(), iota_dimension=1
+  updates = s32[3,4,1,1] iota(), iota_dimension=1
+  iota = s32[3,4,1] iota(), iota_dimension=0
+  indices = s32[3,4,2] concatenate(iota, reshape), dimensions={2}
+  ROOT scatter = s32[3,4] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={2,3},
+      inserted_window_dims={},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=2
+}
+)";
+  Literal permutation =
+      LiteralUtil::CreateR2<int32>({{1, 3, 2, 0}, {3, 0, 2, 1}, {2, 3, 1, 0}});
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_text, config));
+  auto actual = ExecuteAndTransfer(std::move(module), {&permutation});
+  Literal expected =
+      LiteralUtil::CreateR2<int32>({{3, 0, 2, 1}, {1, 3, 2, 0}, {3, 2, 0, 1}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, actual));
+}
+
 XLA_TEST_F(ScatterTest, SimpleR4) {
   const char* hlo_text = R"(
 HloModule SimpleR4

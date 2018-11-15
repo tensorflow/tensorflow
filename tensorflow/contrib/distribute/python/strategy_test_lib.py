@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
@@ -26,7 +28,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import optimizer
@@ -114,8 +115,7 @@ class DistributionTestBase(test.TestCase):
           before_list.append(fetched)
           # control_dependencies irrelevant but harmless in eager execution
           with ops.control_dependencies([fetched]):
-            g = d.reduce(
-                variable_scope.VariableAggregation.SUM, g, destinations=v)
+            g = d.reduce(reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(d.update(
                 v, update, g, grouped=False)):
               after_list.append(d.read_var(v))
@@ -169,8 +169,7 @@ class DistributionTestBase(test.TestCase):
           fetched = d.read_var(v)
           before_list.append(fetched)
           with ops.control_dependencies([fetched]):
-            g = d.reduce(
-                variable_scope.VariableAggregation.SUM, g, destinations=v)
+            g = d.reduce(reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(d.update(
                 v, update, g, grouped=False)):
               after_list.append(d.read_var(v))
@@ -188,18 +187,6 @@ class DistributionTestBase(test.TestCase):
       error_after = abs(after - 1)
       # Error should go down
       self.assertLess(error_after, error_before)
-
-  def _test_device_index(self, d):
-    with d.scope():
-      expected_devices = [False] * len(d.worker_devices)
-
-      def mark_devices_fn(device_id):
-        self.assertLess(device_id, len(d.worker_devices))
-        self.assertFalse(expected_devices[device_id])
-        expected_devices[device_id] = True
-
-      d.call_for_each_replica(mark_devices_fn, args=(d.worker_device_index,))
-      self.assertAllEqual(expected_devices, [True] * len(d.worker_devices))
 
   def _test_replica_id(self, d):
     with d.scope():
@@ -225,3 +212,30 @@ class DistributionTestBase(test.TestCase):
         dist.call_for_each_replica(_merge_call_raises_fn)
       with self.assertRaises(_TestException):
         dist.call_for_each_replica(_merge_call_merge_raises_fn)
+
+  def _input_fn_to_test_input_context(self, expected_num_replicas_in_sync,
+                                      expected_num_input_pipelines,
+                                      expected_input_pipeline_id):
+    # Use a list of one element as counter so that it can be captured by the
+    # `_input_fn`. This counter is incremented by 1 each time an input_fn is
+    # called. We use this counter to check whether the `input_pipeline_id`
+    # matches the counter in the in-graph replication.
+    worker_id_counter = [0]
+
+    def _input_fn(input_context):
+      """Input fn for testing."""
+      self.assertIsNotNone(input_context)
+      self.assertEqual(expected_num_replicas_in_sync,
+                       input_context.num_replicas_in_sync)
+      self.assertEqual(expected_num_input_pipelines,
+                       input_context.num_input_pipelines)
+      if expected_input_pipeline_id is not None:
+        self.assertEqual(expected_input_pipeline_id,
+                         input_context.input_pipeline_id)
+      else:
+        self.assertEqual(worker_id_counter[0], input_context.input_pipeline_id)
+        worker_id_counter[0] += 1
+
+      return dataset_ops.Dataset.from_tensors([[1.]]).repeat()
+
+    return _input_fn
