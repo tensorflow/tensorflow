@@ -265,7 +265,7 @@ class _PrefetchToDeviceEagerIterator(iterator_ops.EagerIterator):
 # pylint: enable=protected-access
 
 
-class _PrefetchToDeviceDataset(dataset_ops.UnaryDataset):
+class _PrefetchToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
   """A `Dataset` whose iterator prefetches elements to another device."""
 
   def __init__(self, input_dataset, device, buffer_size):
@@ -322,18 +322,6 @@ class _PrefetchToDeviceDataset(dataset_ops.UnaryDataset):
     raise NotImplementedError("`prefetch_to_device()` must be the last "
                               "transformation in a dataset pipeline.")
 
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
-
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
-
 
 @tf_export("data.experimental.prefetch_to_device")
 def prefetch_to_device(device, buffer_size=None):
@@ -380,7 +368,7 @@ def copy_to_device(target_device, source_device="/cpu:0"):
 # TODO(rohanj): Use the _input_hostmem attr on the RemoteCall ops to indicate
 # all inputs to the Op are in host memory, thereby avoiding some unnecessary
 # Sends and Recvs.
-class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
+class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
   """A `Dataset` that copies elements to another device."""
 
   def __init__(self, input_dataset, target_device, source_device="/cpu:0"):
@@ -528,18 +516,6 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
           finalize_func=self._finalize_func,
           output_types=self._flat_output_types,
           output_shapes=self._flat_output_shapes)
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
-
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
 
 
 class _MapOnGpuDataset(dataset_ops.UnaryDataset):
