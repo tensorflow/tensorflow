@@ -46,6 +46,18 @@ class ExportTest : public ::testing::Test {
         input_model_.operators.emplace_back(new AddOperator);
       } else if (name == "Sub") {
         input_model_.operators.emplace_back(new SubOperator);
+      } else if (name == "Assert") {
+        auto* op = new TensorFlowAssertOperator;
+
+        // Even though assert is known to TOCO, it doesn't have a tflite
+        // serializer, so it has to be exported as a custom op. If we attach a
+        // NodeDef to it, however, it will be exported as a flex op instead.
+        ::tensorflow::NodeDef node_def;
+        node_def.set_name("Assert");
+        node_def.set_op("Assert");
+        node_def.SerializeToString(&op->tensorflow_node_def);
+
+        input_model_.operators.emplace_back(op);
       } else {
         auto* op = new TensorFlowUnsupportedOperator;
         op->tensorflow_op = name;
@@ -232,37 +244,38 @@ class OpSetsTest : public ExportTest {
 TEST_F(OpSetsTest, BuiltinsOnly) {
   // --target_op_set=TFLITE_BUILTINS
   SetAllowedOpSets({kTfLiteBuiltins});
-  EXPECT_THAT(ImportExport({"Add", "AdjustHue", "UnrollAndFold"}),
+  EXPECT_THAT(ImportExport({"Add", "AdjustHue", "UnrollAndFold", "Assert"}),
               ElementsAre());
   EXPECT_THAT(ImportExport({"Add"}), ElementsAre("builtin:ADD"));
 
   // --target_op_set=TFLITE_BUILTINS --allow_custom_ops
   SetAllowedOpSets({kTfLiteBuiltins, kCustomOps});
-  EXPECT_THAT(
-      ImportExport({"Add", "AdjustHue", "UnrollAndFold"}),
-      ElementsAre("builtin:ADD", "custom:AdjustHue", "custom:UnrollAndFold"));
+  EXPECT_THAT(ImportExport({"Add", "AdjustHue", "UnrollAndFold", "Assert"}),
+              ElementsAre("builtin:ADD", "custom:AdjustHue", "custom:Assert",
+                          "custom:UnrollAndFold"));
 }
 
 TEST_F(OpSetsTest, TfSelectOnly) {
   // --target_op_set=SELECT_TF_OPS
   SetAllowedOpSets({kSelectTfOps});
-  EXPECT_THAT(
-      ImportExport({"Add", "AdjustHue", "RandomUniform", "UnrollAndFold"}),
-      ElementsAre());
+  EXPECT_THAT(ImportExport({"Add", "AdjustHue", "RandomUniform",
+                            "UnrollAndFold", "Assert"}),
+              ElementsAre());
   EXPECT_THAT(ImportExport({"Add"}), ElementsAre("custom:FlexAdd"));
 
   // --target_op_set=SELECT_TF_OPS --allow_custom_ops
   SetAllowedOpSets({kSelectTfOps, kCustomOps});
   EXPECT_THAT(
-      ImportExport({"Add", "AdjustHue", "RandomUniform", "UnrollAndFold"}),
-      ElementsAre("custom:AdjustHue", "custom:FlexAdd",
+      ImportExport(
+          {"Add", "AdjustHue", "RandomUniform", "UnrollAndFold", "Assert"}),
+      ElementsAre("custom:AdjustHue", "custom:FlexAdd", "custom:FlexAssert",
                   "custom:FlexRandomUniform", "custom:UnrollAndFold"));
 }
 
 TEST_F(OpSetsTest, BuiltinsAndTfSelect) {
   // --target_op_set=TFLITE_BUILTINS,SELECT_TF_OPS
   SetAllowedOpSets({kTfLiteBuiltins, kSelectTfOps});
-  EXPECT_THAT(ImportExport({"Add", "AdjustHue", "UnrollAndFold"}),
+  EXPECT_THAT(ImportExport({"Add", "AdjustHue", "UnrollAndFold", "Assert"}),
               ElementsAre());
   EXPECT_THAT(ImportExport({"Add", "RandomUniform"}),
               ElementsAre("builtin:ADD", "custom:FlexRandomUniform"));
@@ -270,9 +283,10 @@ TEST_F(OpSetsTest, BuiltinsAndTfSelect) {
   // --target_op_set=TFLITE_BUILTINS,SELECT_TF_OPS --allow_custom_ops
   SetAllowedOpSets({kTfLiteBuiltins, kSelectTfOps, kCustomOps});
   EXPECT_THAT(
-      ImportExport({"Add", "AdjustHue", "RandomUniform", "UnrollAndFold"}),
-      ElementsAre("builtin:ADD", "custom:AdjustHue", "custom:FlexRandomUniform",
-                  "custom:UnrollAndFold"));
+      ImportExport(
+          {"Add", "AdjustHue", "RandomUniform", "UnrollAndFold", "Assert"}),
+      ElementsAre("builtin:ADD", "custom:AdjustHue", "custom:FlexAssert",
+                  "custom:FlexRandomUniform", "custom:UnrollAndFold"));
 }
 
 // This test is based on a hypothetical scenario that dilation is supported
