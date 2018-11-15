@@ -513,6 +513,10 @@ tf_module {
     argspec: "args=[\'x\', \'padding\'], varargs=None, keywords=None, defaults=[\'(1, 1)\'], "
   }
   member_method {
+    name: "tile"
+    argspec: "args=[\'x\', \'n\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "to_dense"
     argspec: "args=[\'tensor\'], varargs=None, keywords=None, defaults=None"
   }
