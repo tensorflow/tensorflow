@@ -45,7 +45,7 @@ def get_seed(op_seed):
   graph, or for only specific operations.
 
   For details on how the graph-level seed interacts with op seeds, see
-  `tf.set_random_seed`.
+  `tf.random.set_random_seed`.
 
   Args:
     op_seed: integer.
@@ -82,7 +82,8 @@ def get_seed(op_seed):
   return seeds
 
 
-@tf_export('random.set_random_seed', 'set_random_seed')
+@tf_export('random.set_random_seed',
+           v1=['random.set_random_seed', 'set_random_seed'])
 def set_random_seed(seed):
   """Sets the graph-level random seed.
 
@@ -154,7 +155,7 @@ def set_random_seed(seed):
   sessions, set a graph-level seed:
 
   ```python
-  tf.set_random_seed(1234)
+  tf.random.set_random_seed(1234)
   a = tf.random_uniform([1])
   b = tf.random_normal([1])
 
