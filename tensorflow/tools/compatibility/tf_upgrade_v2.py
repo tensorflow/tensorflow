@@ -45,6 +45,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.pool": {
             "dilation_rate": "dilations"
         },
+        "tf.nn.separable_conv2d": {
+            "rate": "dilations"
+        }
     }
 
     # Mapping from function to the new name of the function
@@ -77,7 +80,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.pool": [
             "input", "window_shape", "pooling_type", "padding", "dilation_rate",
             "strides", "name", "data_format"
-        ]
+        ],
+        "tf.nn.separable_conv2d": [
+            "input", "depthwise_filter", "pointwise_filter", "strides",
+            "padding", "data_format", "dilations", "name"
+        ],
     }
 
     # Specially handled functions.
