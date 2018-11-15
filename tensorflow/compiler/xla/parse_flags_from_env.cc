@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This module exports ParseFlagsFromEnv(), which allows other modules to parse
-// flags from an environtment variable, or a file named by the environment
-// variable.
+// This module exports ParseFlagsFromEnvAndDieIfUnknown(), which allows other
+// modules to parse flags from an environtment variable, or a file named by the
+// environment variable.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,6 +24,9 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/parse_flags_from_env.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/logging.h"
@@ -176,23 +179,49 @@ static std::unordered_map<string, EnvArgv>& EnvArgvs() {
 // Used to protect accesses to env_argvs.
 static tensorflow::mutex env_argv_mu(tensorflow::LINKER_INITIALIZED);
 
-// Call Flags::Parse(argc, argv, flag_list) against any as yet unrecognized
-// flags passed in from the environment.
-bool ParseFlagsFromEnv(absl::string_view envvar,
-                       const std::vector<tensorflow::Flag>& flag_list) {
+bool ParseFlagsFromEnvAndDieIfUnknown(
+    absl::string_view envvar, const std::vector<tensorflow::Flag>& flag_list) {
   tensorflow::mutex_lock lock(env_argv_mu);
   auto* env_argv = &EnvArgvs()[string(envvar)];
   SetArgvFromEnv(envvar, env_argv);  // a no-op if already initialized
   bool result =
       tensorflow::Flags::Parse(&env_argv->argc, &env_argv->argv[0], flag_list);
+
+  // There's always at least one unparsed argc, namely the fake argv[0].
+  if (result && env_argv->argc != 1) {
+    // Skip the first argv, which is the fake argv[0].
+    auto unknown_flags = absl::MakeSpan(env_argv->argv);
+    unknown_flags.remove_prefix(1);
+
+    // Some flags are set on XLA_FLAGS, others on TF_XLA_FLAGS.  If we find an
+    // unrecognized flag, suggest the alternative.
+    string alternate_envvar;
+    if (envvar == "TF_XLA_FLAGS") {
+      alternate_envvar = "XLA_FLAGS";
+    } else if (envvar == "XLA_FLAGS") {
+      alternate_envvar = "TF_XLA_FLAGS";
+    }
+    string did_you_mean;
+    if (!alternate_envvar.empty()) {
+      did_you_mean = absl::StrFormat(
+          "\nPerhaps you meant to specify these on the %s envvar?",
+          alternate_envvar);
+    }
+
+    LOG(FATAL) << "Unknown flag" << (unknown_flags.size() > 1 ? "s" : "")
+               << " in " << envvar << ": " << absl::StrJoin(unknown_flags, " ")
+               << did_you_mean;
+    return false;
+  }
   return result;
 }
 
 // Testing only.
-// Reset the env_argv struct so that subsequent calls to ParseFlagsFromEnv()
-// will parse the environment variable (or the file it points to) anew, and set
-// *pargc, and *pargv to point to the internal locations of the argc and argv
-// constructed from the environment.
+//
+// Resets the env_argv struct so that subsequent calls to
+// ParseFlagsFromEnvAndDieIfUnknown() will parse the environment variable (or
+// the file it points to) anew, and set *pargc, and *pargv to point to the
+// internal locations of the argc and argv constructed from the environment.
 void ResetFlagsFromEnvForTesting(absl::string_view envvar, int** pargc,
                                  std::vector<char*>** pargv) {
   tensorflow::mutex_lock lock(env_argv_mu);

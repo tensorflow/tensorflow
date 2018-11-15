@@ -110,7 +110,7 @@ void AllocateAndParseFlags() {
   });
   AppendDumpGraphFlagsInternal(flag_list);
   AppendMarkForCompilationPassFlagsInternal(flag_list);
-  xla::ParseFlagsFromEnv("TF_XLA_FLAGS", *flag_list);
+  xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", *flag_list);
 }
 
 }  // namespace
