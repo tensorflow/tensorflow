@@ -39,19 +39,16 @@ else (systemlib_ABSEIL_CPP)
   include (ExternalProject)
 
   set(abseil_cpp_INCLUDE_DIR ${CMAKE_BINARY_DIR}/abseil_cpp/src/abseil_cpp_build)
-  set(abseil_cpp_URL https://github.com/abseil/abseil-cpp.git)
-  set(abseil_cpp_TAG master)
+  set(abseil_cpp_URL https://github.com/abseil/abseil-cpp/archive/e01d95528ea2137a4a27a88d1f57c6cb260aafed.tar.gz)
+  set(abseil_cpp_HASH SHA256=84043ed402d2a2a6ba4cdddb7e85118b1158fd81fe4ac3a14adc343d054c1e2e)
   set(abseil_cpp_BUILD ${CMAKE_BINARY_DIR}/abseil_cpp/src/abseil_cpp_build)
 
   if(WIN32)
     if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
       set(abseil_cpp_STATIC_LIBRARIES
           ${abseil_cpp_BUILD}/absl/base/Release/absl_base.lib
-          ${abseil_cpp_BUILD}/absl/base/Release/absl_internal_spinlock_wait.lib
           ${abseil_cpp_BUILD}/absl/base/Release/absl_dynamic_annotations.lib
           ${abseil_cpp_BUILD}/absl/base/Release/absl_internal_malloc_internal.lib
-          ${abseil_cpp_BUILD}/absl/base/Release/absl_internal_throw_delegate.lib
-          ${abseil_cpp_BUILD}/absl/numeric/Release/absl_int128.lib
           ${abseil_cpp_BUILD}/absl/strings/Release/absl_strings.lib
           ${abseil_cpp_BUILD}/absl/strings/Release/str_format_internal.lib
           ${abseil_cpp_BUILD}/absl/types/Release/absl_bad_optional_access.lib)
@@ -82,7 +79,8 @@ else (systemlib_ABSEIL_CPP)
 
   ExternalProject_Add(abseil_cpp_build
       PREFIX abseil_cpp
-      GIT_REPOSITORY ${abseil_cpp_URL}
+      URL ${abseil_cpp_URL}
+      URL_HASH ${abseil_cpp_HASH}
       DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
       BUILD_IN_SOURCE 1
       BUILD_BYPRODUCTS ${abseil_cpp_STATIC_LIBRARIES}
