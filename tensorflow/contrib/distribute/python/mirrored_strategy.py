@@ -612,11 +612,9 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
     return self._get_cross_tower_ops().batch_reduce(reduce_op,
                                                     value_destination_pairs)
 
-  def _update(self, var, options, fn, *args, **kwargs):
+  def _update(self, var, fn, args, kwargs, group):
     # TODO(josh11b): In eager mode, use one thread per device.
     assert isinstance(var, values.DistributedVariable)
-    should_group = options.pop("grouped")
-    assert not options  # Validate that we are processing all of the options.
     updates = {}
     for d, v in var._index.items():  # pylint: disable=protected-access
       name = "update_%d" % self._device_index.get(d)
@@ -625,12 +623,10 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
         updates[d] = fn(v,
                         *values.select_device_mirrored(d, args),
                         **values.select_device_mirrored(d, kwargs))
-    return values.update_regroup(self, updates, should_group)
+    return values.update_regroup(self, updates, group)
 
-  def _update_non_slot(self, colocate_with, options, fn, *args, **kwargs):
+  def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     assert isinstance(colocate_with, list)
-    should_group = options.pop("grouped")
-    assert not options  # Validate that we are processing all of the options.
     # TODO(josh11b): In eager mode, use one thread per device.
     updates = {}
     for d in colocate_with:
@@ -638,7 +634,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
       with ops.device(d), distribute_lib.UpdateContext(d), ops.name_scope(name):
         updates[d] = fn(*values.select_device_mirrored(d, args),
                         **values.select_device_mirrored(d, kwargs))
-    return values.update_regroup(self, updates, should_group)
+    return values.update_regroup(self, updates, group)
 
   def read_var(self, replica_local_var):
     """Read the aggregate value of a replica-local variable."""
