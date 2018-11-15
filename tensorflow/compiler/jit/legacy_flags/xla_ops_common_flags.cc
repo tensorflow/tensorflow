@@ -35,7 +35,7 @@ void AllocateAndParseFlags() {
       Flag("tf_xla_always_defer_compilation",
            &flags->tf_xla_always_defer_compilation, ""),
   });
-  xla::ParseFlagsFromEnv(*flag_list);
+  xla::ParseFlagsFromEnv("TF_XLA_FLAGS", *flag_list);
 
   if (VLOG_IS_ON(1)) {
     VLOG(1) << "Parsed XlaOpsCommonFlags:";

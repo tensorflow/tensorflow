@@ -41,7 +41,7 @@ static void AllocateFlags() {
            "Path prefix to which graphs dumped during debugging should be "
            "written."),
   });
-  xla::ParseFlagsFromEnv(*flag_list);
+  xla::ParseFlagsFromEnv("TF_XLA_FLAGS", *flag_list);
 }
 
 // Append to *append_to flag definitions associated with the XLA bridge's

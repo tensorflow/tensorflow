@@ -37,12 +37,12 @@ static void TestParseFlagsFromEnv(const char* msg) {
   // Initialize module under test.
   int* pargc;
   std::vector<char*>* pargv;
-  ResetFlagsFromEnvForTesting(&pargc, &pargv);
+  ResetFlagsFromEnvForTesting("TF_XLA_FLAGS", &pargc, &pargv);
 
   // Ensure that environment variable can be parsed when
   // no flags are expected.
   std::vector<tensorflow::Flag> empty_flag_list;
-  bool parsed_ok = ParseFlagsFromEnv(empty_flag_list);
+  bool parsed_ok = ParseFlagsFromEnv("TF_XLA_FLAGS", empty_flag_list);
   CHECK(parsed_ok) << msg;
   const std::vector<char*>& argv_first = *pargv;
   CHECK_NE(argv_first[0], nullptr) << msg;
@@ -65,7 +65,7 @@ static void TestParseFlagsFromEnv(const char* msg) {
       tensorflow::Flag("single_quoted", &single_quoted, ""),
       tensorflow::Flag("double_quoted", &double_quoted, ""),
   };
-  parsed_ok = ParseFlagsFromEnv(flag_list);
+  parsed_ok = ParseFlagsFromEnv("TF_XLA_FLAGS", flag_list);
   CHECK_EQ(*pargc, 1) << msg;
   const std::vector<char*>& argv_second = *pargv;
   CHECK_NE(argv_second[0], nullptr) << msg;
@@ -171,7 +171,7 @@ int main(int argc, char* argv[]) {
       tensorflow::Flag("int_flag", &int_flag, "An integer flag to test with"),
   };
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  bool parse_ok = xla::ParseFlagsFromEnv(flag_list);
+  bool parse_ok = xla::ParseFlagsFromEnv("TF_XLA_FLAGS", flag_list);
   if (!parse_ok) {
     LOG(QFATAL) << "can't parse from environment\n" << usage;
   }
