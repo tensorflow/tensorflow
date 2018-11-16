@@ -61,8 +61,7 @@ string MakeUniqueFilename(string name) {
 string WriteTextProtoToUniqueFile(
     Env* env, const string& name, const char* proto_type,
     const ::tensorflow::protobuf::Message& proto) {
-  const string& dirname =
-      legacy_flags::GetDumpGraphFlags()->tf_dump_graph_prefix;
+  const string& dirname = GetDumpGraphFlags()->tf_dump_graph_prefix;
   Status status = env->RecursivelyCreateDir(dirname);
   if (!status.ok()) {
     LOG(WARNING) << "Failed to create " << dirname << " for dumping "

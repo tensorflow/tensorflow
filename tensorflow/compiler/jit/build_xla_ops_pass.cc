@@ -320,10 +320,10 @@ Status BuildXlaOpsPass::Run(const GraphOptimizationPassOptions& options) {
                     return IsXlaCompiledKernel(*n);
                   });
 
-  bool lazy_compilation_enabled = enable_lazy_compilation_
-                                      ? *enable_lazy_compilation_
-                                      : legacy_flags::GetBuildXlaOpsPassFlags()
-                                            .tf_xla_enable_lazy_compilation;
+  bool lazy_compilation_enabled =
+      enable_lazy_compilation_
+          ? *enable_lazy_compilation_
+          : GetBuildXlaOpsPassFlags().tf_xla_enable_lazy_compilation;
 
   for (Node* n : xla_compiled_kernels) {
     TF_RETURN_IF_ERROR(ReplaceNodeWithXlaCompileAndXlaRun(

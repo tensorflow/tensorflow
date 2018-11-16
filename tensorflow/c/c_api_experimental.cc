@@ -51,8 +51,8 @@ void TF_EnableXLACompilation(TF_SessionOptions* options, unsigned char enable) {
     // These XLA flags are needed to trigger XLA properly from C (more generally
     // non-Python) clients. If this API is called again with `enable` set to
     // false, it is safe to keep these flag values as is.
-    tensorflow::legacy_flags::MarkForCompilationPassFlags* flags =
-        tensorflow::legacy_flags::GetMarkForCompilationPassFlags();
+    tensorflow::MarkForCompilationPassFlags* flags =
+        tensorflow::GetMarkForCompilationPassFlags();
     flags->tf_xla_cpu_global_jit = true;
     flags->tf_xla_min_cluster_size = 1;
   } else {
@@ -71,8 +71,8 @@ TF_Buffer* TF_CreateConfig(unsigned char enable_xla_compilation,
     // These XLA flags are needed to trigger XLA properly from C (more generally
     // non-Python) clients. If this API is called again with `enable` set to
     // false, it is safe to keep these flag values as is.
-    tensorflow::legacy_flags::MarkForCompilationPassFlags* flags =
-        tensorflow::legacy_flags::GetMarkForCompilationPassFlags();
+    tensorflow::MarkForCompilationPassFlags* flags =
+        tensorflow::GetMarkForCompilationPassFlags();
     flags->tf_xla_cpu_global_jit = true;
     flags->tf_xla_min_cluster_size = 1;
   } else {
