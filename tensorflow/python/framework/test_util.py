@@ -378,53 +378,12 @@ def skip_if(condition):
 
 
 def enable_c_shapes(fn):
-  """Decorator for enabling C shapes on a test.
-
-  Note this enables the C shapes after running the test class's setup/teardown
-  methods.
-
-  Args:
-    fn: the function to be wrapped
-
-  Returns:
-    The wrapped function
-  """
-
-  # pylint: disable=protected-access
-  def wrapper(*args, **kwargs):
-    prev_value = ops._USE_C_SHAPES
-    ops._USE_C_SHAPES = True
-    try:
-      fn(*args, **kwargs)
-    finally:
-      ops._USE_C_SHAPES = prev_value
-
-  # pylint: enable=protected-access
-
-  return wrapper
+  """No-op. TODO(b/74620627): Remove this."""
+  return fn
 
 
 def with_c_shapes(cls):
-  """Adds methods that call original methods but with C API shapes enabled.
-
-  Note this enables C shapes in new methods after running the test class's
-  setup method.
-
-  Args:
-    cls: class to decorate
-
-  Returns:
-    cls with new test methods added
-  """
-  # If C shapes are already enabled, don't do anything. Some tests break if the
-  # same test is run twice, so this allows us to turn on the C shapes by default
-  # without breaking these tests.
-  if ops._USE_C_SHAPES:
-    return cls
-
-  for name, value in cls.__dict__.copy().items():
-    if callable(value) and name.startswith("test"):
-      setattr(cls, name + "WithCShapes", enable_c_shapes(value))
+  """No-op. TODO(b/74620627): Remove this."""
   return cls
 
 
