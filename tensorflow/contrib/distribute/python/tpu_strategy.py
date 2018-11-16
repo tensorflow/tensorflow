@@ -328,7 +328,7 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
       fn_inputs = dequeue_fn()
       if not isinstance(fn_inputs, tuple):
         fn_inputs = (fn_inputs,)
-      fn_result = fn(ctx, *fn_inputs)
+      fn_result = fn(ctx, fn_inputs)
       flat_last_step_outputs = nest.flatten(ctx.last_step_outputs)
       if flat_last_step_outputs:
         with ops.control_dependencies([fn_result]):

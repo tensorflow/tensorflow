@@ -266,11 +266,12 @@ def _experimental_fit_loop(
   K.set_learning_phase(1)
   out_labels = model.metrics_names or []
 
-  def step_fn(ctx, inputs, targets):
+  def step_fn(ctx, inputs):
     """Clones the model and calls make_fit_function."""
     # TODO(priyag, sourabhbajaj): The model gets cloned every time
     # fit/test/predict is called. We should look into caching this keyed on
     # input shapes.
+    inputs, targets = inputs
     clone_model_on_replicas(
         model,
         current_strategy,
@@ -546,11 +547,12 @@ def _experimental_test_loop(model, iterator, verbose=0, steps=None,
   # TODO(priyag, sourabhbajaj): This should likely not be hardcoded here.
   K.set_learning_phase(0)
 
-  def step_fn(ctx, inputs, targets):
+  def step_fn(ctx, inputs):
     """Clones the model and calls make_eval_function."""
     # TODO(priyag, sourabhbajaj): The model gets cloned every time
     # fit/test/predict is called. We should look into caching this keyed on
     # input shapes.
+    inputs, targets = inputs
     clone_model_on_replicas(
         model,
         current_strategy,
@@ -750,7 +752,7 @@ def _experimental_predict_loop(model, iterator, verbose=0, steps=None):
             model.predict_function.updates_op,
             model.predict_function.session_kwargs)
 
-  def step_fn(ctx, *inputs):
+  def step_fn(ctx, inputs):
     """Clones the model and calls make_predict_function."""
 
     # TODO(priyag, sourabhbajaj): The model gets cloned every time

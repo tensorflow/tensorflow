@@ -538,7 +538,7 @@ class CoreMirroredExtended(distribute_lib.DistributionStrategyExtended):
       fn_inputs = iterator.get_next()
       if not isinstance(fn_inputs, tuple):
         fn_inputs = (fn_inputs,)
-      fn_result = fn(ctx, *fn_inputs)
+      fn_result = fn(ctx, fn_inputs)
       for (name, output) in ctx.last_step_outputs.items():
         # Convert all outputs to tensors, potentially from `DistributedValues`.
         ctx.last_step_outputs[name] = self._unwrap(output)
