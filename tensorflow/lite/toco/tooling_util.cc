@@ -2207,6 +2207,8 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kFloat;
     case QUANTIZED_UINT8:
       return ArrayDataType::kUint8;
+    case INT8:
+      return ArrayDataType::kInt8;
     case QUANTIZED_INT16:
       return ArrayDataType::kInt16;
     case INT32:
