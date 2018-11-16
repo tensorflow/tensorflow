@@ -304,8 +304,9 @@ def _in_place_subclassed_model_reset(model):
       attributes_cache[name] = value
       assert value in model._layers
     elif isinstance(
-        value, (list, tuple)) and name not in ('layers', '_layers',
-                                               'stateful_metric_functions'):
+        value,
+        (list, tuple)) and name not in ('layers', '_layers', 'metrics',
+                                        '_compile_stateful_metric_functions'):
       # Handle case: list/tuple of layers (also tracked by the Network API).
       if value and all(isinstance(val, Layer) for val in value):
         raise ValueError('We do not support the use of list-of-layers '
@@ -345,9 +346,6 @@ def _in_place_subclassed_model_reset(model):
           'targets',
           '_feed_targets',
           'sample_weight_modes',
-          'weighted_metrics',
-          'metrics_names',
-          'metrics_tensors',
           'total_loss',
           'sample_weights',
           '_feed_sample_weights',
@@ -495,10 +493,11 @@ def clone_and_build_model(
     clone.compile(
         optimizer,
         model.loss,
-        metrics=metrics_module.clone_metrics(model.metrics),
+        metrics=metrics_module.clone_metrics(model._compile_metrics),
         loss_weights=model.loss_weights,
         sample_weight_mode=model.sample_weight_mode,
-        weighted_metrics=metrics_module.clone_metrics(model.weighted_metrics),
+        weighted_metrics=metrics_module.clone_metrics(
+            model._compile_weighted_metrics),
         target_tensors=target_tensors)
 
   return clone

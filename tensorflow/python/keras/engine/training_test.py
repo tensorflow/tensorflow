@@ -37,6 +37,7 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.callbacks import Callback
 from tensorflow.python.keras.engine.training_utils import weighted_masked_objective
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
@@ -573,6 +574,31 @@ class TrainingTest(test.TestCase):
 
       # Test with eager execution and iterator
       model.fit(iterator, epochs=1, steps_per_epoch=2)
+
+  def test_losses_in_defun(self):
+    with context.eager_mode():
+      layer = keras.layers.Dense(1, kernel_regularizer='l1')
+      layer(array_ops.ones([1, 10]))
+
+      @function.defun
+      def get_losses():
+        return layer.losses
+
+      self.assertAllEqual(
+          self.evaluate(layer.losses), self.evaluate(get_losses()))
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_logging(self):
+    mock_stdout = io.BytesIO() if six.PY2 else io.StringIO()
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(10, activation='relu'))
+    model.add(keras.layers.Dense(1, activation='sigmoid'))
+    model.compile(
+        RMSPropOptimizer(learning_rate=0.001), loss='binary_crossentropy')
+    with test.mock.patch.object(sys, 'stdout', mock_stdout):
+      model.fit(
+          np.ones((10, 10), 'float32'), np.ones((10, 1), 'float32'), epochs=10)
+    self.assertTrue('Epoch 5/10' in mock_stdout.getvalue())
 
 
 class TestExceptionsAndWarnings(test.TestCase):
@@ -2248,30 +2274,327 @@ class TestTrainingWithMetrics(test.TestCase):
       scores = model.train_on_batch(x, y, sample_weight=w)
       self.assertArrayNear(scores, [0.2, 0.8], 0.1)
 
+  def test_add_metric_with_tensor_on_model_in_graph_mode(self):
+    with self.cached_session():
+      x = keras.layers.Input(shape=(1,))
+      y = keras.layers.Dense(1, kernel_initializer='ones')(x)
+      model = keras.models.Model(x, y)
+      model.add_metric(
+          math_ops.reduce_sum(y), name='metric_1', aggregation='mean')
+
+      # test with a metric which does not have the standard signature:
+      # (y_true, y_pred, sample_Weight)
+      model.add_metric(metrics_module.Mean(name='metric_2')(y))
+      model.compile('sgd', loss='mse')
+
+      inputs = np.ones(shape=(10, 1))
+      targets = np.ones(shape=(10, 1))
+      history = model.fit(
+          inputs,
+          targets,
+          epochs=2,
+          batch_size=5,
+          validation_data=(inputs, targets))
+      self.assertEqual(history.history['metric_1'][-1], 5)
+      self.assertEqual(history.history['metric_2'][-1], 1)
+      self.assertEqual(history.history['val_metric_1'][-1], 5)
+      self.assertEqual(history.history['val_metric_2'][-1], 1)
+
+      eval_results = model.evaluate(inputs, targets, batch_size=5)
+      self.assertEqual(eval_results[-1], 1)
+      self.assertEqual(eval_results[-2], 5)
+
+      model.predict(inputs, batch_size=5)
+      model.train_on_batch(inputs, targets)
+      model.test_on_batch(inputs, targets)
+
   @tf_test_util.run_in_graph_and_eager_modes
-  def test_logging(self):
-    mock_stdout = io.BytesIO() if six.PY2 else io.StringIO()
-    model = keras.models.Sequential()
-    model.add(keras.layers.Dense(10, activation='relu'))
-    model.add(keras.layers.Dense(1, activation='sigmoid'))
-    model.compile(
-        RMSPropOptimizer(learning_rate=0.001), loss='binary_crossentropy')
-    with test.mock.patch.object(sys, 'stdout', mock_stdout):
-      model.fit(
-          np.ones((10, 10), 'float32'), np.ones((10, 1), 'float32'), epochs=10)
-    self.assertTrue('Epoch 5/10' in mock_stdout.getvalue())
+  def test_add_metric_in_model_call(self):
 
-  def test_losses_in_defun(self):
+    class TestModel(keras.Model):
+
+      def __init__(self):
+        super(TestModel, self).__init__(name='test_model')
+        self.dense1 = keras.layers.Dense(2, kernel_initializer='ones')
+        self.mean = metrics_module.Mean(name='metric_1')
+
+      def call(self, x):
+        self.add_metric(
+            math_ops.reduce_sum(x), name='metric_2', aggregation='mean')
+        # Provide same name as in the instance created in __init__
+        # for eager mode
+        self.add_metric(self.mean(x), name='metric_1')
+        return self.dense1(x)
+
+    model = TestModel()
+    model.compile(loss='mse', optimizer=RMSPropOptimizer(0.01))
+
+    x = np.ones(shape=(10, 1))
+    y = np.ones(shape=(10, 2))
+    history = model.fit(x, y, epochs=2, batch_size=5, validation_data=(x, y))
+    self.assertAlmostEqual(history.history['metric_1'][-1], 1, 0)
+    self.assertAlmostEqual(history.history['val_metric_1'][-1], 1, 0)
+    self.assertAlmostEqual(history.history['metric_2'][-1], 5, 0)
+    self.assertAlmostEqual(history.history['val_metric_2'][-1], 5, 0)
+
+    eval_results = model.evaluate(x, y, batch_size=5)
+    self.assertAlmostEqual(eval_results[1], 1, 0)
+    self.assertAlmostEqual(eval_results[2], 5, 0)
+
+    model.predict(x, batch_size=5)
+    model.train_on_batch(x, y)
+    model.test_on_batch(x, y)
+
+  def test_add_metric_in_model_call_run_eagerly(self):
     with context.eager_mode():
-      layer = keras.layers.Dense(1, kernel_regularizer='l1')
-      layer(array_ops.ones([1, 10]))
 
-      @function.defun
-      def get_losses():
-        return layer.losses
+      class TestModel(keras.Model):
 
-      self.assertAllEqual(self.evaluate(layer.losses),
-                          self.evaluate(get_losses()))
+        def __init__(self):
+          super(TestModel, self).__init__(name='test_model')
+          self.dense1 = keras.layers.Dense(2, kernel_initializer='ones')
+          self.mean = metrics_module.Mean(name='metric_1')
+
+        def call(self, x):
+          self.add_metric(
+              math_ops.reduce_sum(x), name='metric_2', aggregation='mean')
+          # Provide same name as in the instance created in __init__
+          # for eager mode
+          self.add_metric(self.mean(x), name='metric_1')
+          return self.dense1(x)
+
+      model = TestModel()
+      model.compile(
+          loss='mse', optimizer=RMSPropOptimizer(0.01), run_eagerly=True)
+
+      x = np.ones(shape=(10, 1))
+      y = np.ones(shape=(10, 2))
+      history = model.fit(x, y, epochs=2, batch_size=5, validation_data=(x, y))
+      self.assertAlmostEqual(history.history['metric_1'][-1], 1, 0)
+      self.assertAlmostEqual(history.history['val_metric_1'][-1], 1, 0)
+      self.assertAlmostEqual(history.history['metric_2'][-1], 5, 0)
+      self.assertAlmostEqual(history.history['val_metric_2'][-1], 5, 0)
+
+      eval_results = model.evaluate(x, y, batch_size=5)
+      self.assertAlmostEqual(eval_results[1], 1, 0)
+      self.assertAlmostEqual(eval_results[2], 5, 0)
+
+      model.predict(x, batch_size=5)
+      model.train_on_batch(x, y)
+      model.test_on_batch(x, y)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_add_metric_in_layer_call(self):
+
+    class TestLayer(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.a = self.add_variable(
+            'a', (1, 1), initializer='ones', trainable=False)
+        self.built = True
+
+      def call(self, inputs):
+        self.add_metric(
+            math_ops.reduce_sum(inputs), name='metric_1', aggregation='mean')
+        return inputs + 1
+
+    model = keras.Sequential()
+    model.add(TestLayer(input_shape=(1,)))
+    model.add(keras.layers.Dense(2, kernel_initializer='ones'))
+    model.compile(loss='mse', optimizer=RMSPropOptimizer(0.01))
+
+    x = np.ones(shape=(10, 1))
+    y = np.ones(shape=(10, 2))
+    history = model.fit(x, y, epochs=2, batch_size=5, validation_data=(x, y))
+    self.assertEqual(history.history['metric_1'][-1], 5)
+    self.assertAlmostEqual(history.history['val_metric_1'][-1], 5, 0)
+
+  def test_add_metric_in_layer_call_run_eagerly(self):
+    with context.eager_mode():
+
+      class TestLayer(keras.layers.Layer):
+
+        def build(self, input_shape):
+          self.a = self.add_variable(
+              'a', (1, 1), initializer='ones', trainable=False)
+          self.built = True
+
+        def call(self, inputs):
+          self.add_metric(
+              math_ops.reduce_sum(inputs), name='metric_1', aggregation='mean')
+          return inputs + 1
+
+      model = keras.Sequential()
+      model.add(TestLayer(input_shape=(1,)))
+      model.add(keras.layers.Dense(2, kernel_initializer='ones'))
+      model.compile(
+          loss='mse', optimizer=RMSPropOptimizer(0.01), run_eagerly=True)
+
+      x = np.ones(shape=(10, 1))
+      y = np.ones(shape=(10, 2))
+      history = model.fit(x, y, epochs=2, batch_size=5, validation_data=(x, y))
+      self.assertEqual(history.history['metric_1'][-1], 5)
+      self.assertAlmostEqual(history.history['val_metric_1'][-1], 5, 0)
+
+  def test_model_metrics_list(self):
+    with self.cached_session():
+      x = keras.layers.Input(shape=(1,))
+      y = keras.layers.Dense(1, kernel_initializer='ones')(x)
+      model = keras.models.Model(x, y)
+      model.add_metric(
+          math_ops.reduce_sum(y), name='metric_1', aggregation='mean')
+      model.add_metric(metrics_module.Mean(name='metric_2')(y))
+      model.compile('sgd', loss='mse', metrics=['acc'])
+
+      # Verify that the metrics added using `compile` and `add_metric` API are
+      # included
+      self.assertEqual(model._compile_metrics, ['acc'])
+      names = []
+      for m in model.metrics:
+        if isinstance(m, metrics_module.Metric):
+          names.append(m.name)
+        else:
+          names.append(m.__name__)
+      self.assertEqual(names, ['binary_accuracy', 'metric_1', 'metric_2'])
+
+  def test_model_eager_metrics_list(self):
+    with context.eager_mode():
+
+      class TestModel(keras.Model):
+
+        def __init__(self):
+          super(TestModel, self).__init__(name='test_model')
+          self.dense1 = keras.layers.Dense(2, kernel_initializer='ones')
+
+        def call(self, x):
+          self.add_metric(
+              math_ops.reduce_sum(x), name='metric_1', aggregation='mean')
+          return self.dense1(x)
+
+      model = TestModel()
+      model.compile(
+          loss='mse',
+          optimizer=RMSPropOptimizer(0.01),
+          metrics=['acc'],
+          run_eagerly=True)
+      x = np.ones(shape=(10, 1))
+      y = np.ones(shape=(10, 2))
+      model.fit(x, y, epochs=2, batch_size=5, validation_data=(x, y))
+
+      self.assertEqual(model._compile_metrics, ['acc'])
+      names = []
+      for m in model.metrics:
+        if isinstance(m, metrics_module.Metric):
+          names.append(m.name)
+        else:
+          names.append(m.__name__)
+      self.assertEqual(names, ['categorical_accuracy', 'metric_1'])
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_multiple_add_metric_calls(self):
+
+    class TestModel(keras.Model):
+
+      def __init__(self):
+        super(TestModel, self).__init__(name='test_model')
+        self.dense1 = keras.layers.Dense(2, kernel_initializer='ones')
+        self.mean1 = metrics_module.Mean(name='metric_1')
+        self.mean2 = metrics_module.Mean(name='metric_2')
+
+      def call(self, x):
+        self.add_metric(self.mean2(x), name='metric_2')
+        self.add_metric(self.mean1(x), name='metric_1')
+        self.add_metric(
+            math_ops.reduce_sum(x), name='metric_3', aggregation='mean')
+        return self.dense1(x)
+
+    model = TestModel()
+    model.compile(loss='mse', optimizer=RMSPropOptimizer(0.01))
+
+    x = np.ones(shape=(10, 1))
+    y = np.ones(shape=(10, 2))
+    history = model.fit(x, y, epochs=2, batch_size=5, validation_data=(x, y))
+    self.assertAlmostEqual(history.history['metric_1'][-1], 1, 0)
+    self.assertAlmostEqual(history.history['metric_2'][-1], 1, 0)
+    self.assertAlmostEqual(history.history['metric_3'][-1], 5, 0)
+
+    eval_results = model.evaluate(x, y, batch_size=5)
+    self.assertArrayNear(eval_results[1:4], [1, 1, 5], 0.1)
+
+    model.predict(x, batch_size=5)
+    model.train_on_batch(x, y)
+    model.test_on_batch(x, y)
+
+  def test_invalid_metric_tensor_in_call(self):
+    with context.eager_mode():
+
+      class TestLayer(keras.layers.Layer):
+
+        def call(self, inputs):
+          self.add_metric(metrics_module.Mean(name='metric_1')(inputs))
+          return inputs + 1
+
+      model = keras.Sequential()
+      model.add(TestLayer(input_shape=(1,)))
+      model.add(keras.layers.Dense(2, kernel_initializer='ones'))
+      model.compile(
+          loss='mse', optimizer=RMSPropOptimizer(0.01), run_eagerly=True)
+
+      x = np.ones(shape=(10, 1))
+      y = np.ones(shape=(10, 2))
+      with self.assertRaisesRegexp(
+          ValueError,
+          'We do not support adding an aggregated metric tensor in `call` in '
+          'eager execution.'):
+        model.fit(x, y, epochs=2, batch_size=5, validation_data=(x, y))
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_duplicate_metric_name_in_add_metric(self):
+
+    class TestModel(keras.Model):
+
+      def __init__(self):
+        super(TestModel, self).__init__(name='test_model')
+        self.dense1 = keras.layers.Dense(2, kernel_initializer='ones')
+        self.mean = metrics_module.Mean(name='metric_1')
+        self.mean2 = metrics_module.Mean(name='metric_1')
+
+      def call(self, x):
+        self.add_metric(self.mean(x), name='metric_1')
+        return self.dense1(x)
+
+    model = TestModel()
+    model.compile(loss='mse', optimizer=RMSPropOptimizer(0.01))
+
+    x = np.ones(shape=(10, 1))
+    y = np.ones(shape=(10, 2))
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Please provide different names for the metrics you have added. '
+        'We found 2 metrics with the name: "metric_1"'):
+      model.fit(x, y, epochs=2, batch_size=5, validation_data=(x, y))
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_multiple_no_name_input_to_add_metric(self):
+
+    class TestModel(keras.Model):
+
+      def __init__(self):
+        super(TestModel, self).__init__(name='test_model')
+        self.dense1 = keras.layers.Dense(2, kernel_initializer='ones')
+
+      def call(self, x):
+        self.add_metric(math_ops.reduce_sum(x), aggregation='mean')
+        self.add_metric(math_ops.reduce_sum(x), aggregation='mean')
+        return self.dense1(x)
+
+    model = TestModel()
+    model.compile(loss='mse', optimizer=RMSPropOptimizer(0.01))
+    x = np.ones(shape=(10, 1))
+    y = np.ones(shape=(10, 2))
+    model.fit(x, y, epochs=2, batch_size=5, validation_data=(x, y))
+    self.assertEqual([m.name for m in model.metrics], ['mean', 'mean_1'])
+
 
 if __name__ == '__main__':
   test.main()
