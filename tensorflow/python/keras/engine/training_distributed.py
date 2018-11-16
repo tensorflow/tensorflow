@@ -477,10 +477,7 @@ def test_loop(model, iterator, verbose=0, steps=None):
     # placeholders that are created with default values.
     sample_weights = [None for _ in range(
         len(model.outputs) * current_strategy.num_replicas_in_sync)]
-    if not isinstance(K.learning_phase(), int):
-      ins = dataset_inputs + dataset_targets + sample_weights + [0]
-    else:
-      ins = dataset_inputs + dataset_targets
+    ins = dataset_inputs + dataset_targets + sample_weights
 
     for m in model.stateful_metric_functions:
       m.reset_states()
@@ -685,11 +682,6 @@ def predict_loop(model, iterator, verbose=0, steps=None):
         name='distributed_predict_function',
         **all_session_args)
 
-    if not isinstance(K.learning_phase(), int):
-      ins = dataset_inputs + [0]
-    else:
-      ins = dataset_inputs
-
     if verbose == 1:
       progbar = Progbar(target=steps)
 
@@ -706,7 +698,7 @@ def predict_loop(model, iterator, verbose=0, steps=None):
     unconcatenated_outs = []
     assert steps is not None
     for step in range(steps):
-      batch_outs = distributed_predict_function(ins)
+      batch_outs = distributed_predict_function(dataset_inputs)
       if not isinstance(batch_outs, list):
         batch_outs = [batch_outs]
       if step == 0:
