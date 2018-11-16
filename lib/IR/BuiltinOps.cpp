@@ -190,7 +190,7 @@ void BranchOp::print(OpAsmPrinter *p) const {
 
 bool BranchOp::verify() const {
   // ML functions do not have branching terminators.
-  if (!isa<OperationInst>(getOperation()))
+  if (!isa<Instruction>(getOperation()))
     return (emitOpError("cannot occur in a ML function"), true);
   return false;
 }
@@ -263,7 +263,7 @@ void CondBranchOp::print(OpAsmPrinter *p) const {
 
 bool CondBranchOp::verify() const {
   // ML functions do not have branching terminators.
-  if (!isa<OperationInst>(getOperation()))
+  if (!isa<Instruction>(getOperation()))
     return (emitOpError("cannot occur in a ML function"), true);
   if (!getCondition()->getType().isInteger(1))
     return emitOpError("expected condition type was boolean (i1)");
@@ -472,7 +472,7 @@ bool ReturnOp::verify() const {
   if (auto *stmt = dyn_cast<OperationStmt>(getOperation()))
     function = cast<MLFunction>(stmt->getBlock());
   else
-    function = cast<OperationInst>(getOperation())->getFunction();
+    function = cast<Instruction>(getOperation())->getFunction();
 
   // The operand number and types must match the function signature.
   const auto &results = function->getType().getResults();

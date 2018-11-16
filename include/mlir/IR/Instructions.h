@@ -348,9 +348,6 @@ inline raw_ostream &operator<<(raw_ostream &os, const Instruction &inst) {
   return os;
 }
 
-// TODO(riverriddle) Remove this when all uses have been renamed.
-using OperationInst = Instruction;
-
 } // end namespace mlir
 
 #endif // MLIR_IR_INSTRUCTIONS_H

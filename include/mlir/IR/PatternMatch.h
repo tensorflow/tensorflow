@@ -182,13 +182,13 @@ public:
     OperationState state(context, location, OpTy::getOperationName());
     auto result = this->create(location, args...);
 
-    // If the OperationInst we produce is valid, return it.
+    // If the Instruction we produce is valid, return it.
     if (!OpTy::verifyInvariants(result))
       return result;
 
     // Otherwise, the error message got emitted.  Just remove the instruction
     // we made.
-    if (auto *inst = dyn_cast<OperationInst>(result.getOperation()))
+    if (auto *inst = dyn_cast<Instruction>(result.getOperation()))
       inst->erase();
     else
       cast<OperationStmt>(result.getOperation())->eraseFromBlock();

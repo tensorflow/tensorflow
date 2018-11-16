@@ -170,7 +170,7 @@ void GreedyPatternRewriteDriver::simplifyFunction(Function *currentFunction,
       // guarantee that a block is non-empty.
       if (auto *cfgFunc = dyn_cast<CFGFunction>(currentFunction)) {
         auto &entryBB = cfgFunc->front();
-        cast<OperationInst>(op)->moveBefore(&entryBB, entryBB.begin());
+        cast<Instruction>(op)->moveBefore(&entryBB, entryBB.begin());
       } else {
         auto *mlFunc = cast<MLFunction>(currentFunction);
         cast<OperationStmt>(op)->moveBefore(mlFunc, mlFunc->begin());
@@ -305,7 +305,7 @@ static void processCFGFunction(CFGFunction *fn, OwningPatternList &&patterns) {
 
     void setInsertionPoint(Operation *op) override {
       // Any new operations should be added before this instruction.
-      builder.setInsertionPoint(cast<OperationInst>(op));
+      builder.setInsertionPoint(cast<Instruction>(op));
     }
 
   private:

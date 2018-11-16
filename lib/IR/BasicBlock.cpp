@@ -54,13 +54,13 @@ auto BasicBlock::addArguments(ArrayRef<Type> types)
 // Terminator management
 //===----------------------------------------------------------------------===//
 
-OperationInst *BasicBlock::getTerminator() const {
+Instruction *BasicBlock::getTerminator() const {
   if (empty())
     return nullptr;
 
   // Check if the last instruction is a terminator.
   auto &backInst = operations.back();
-  return backInst.isTerminator() ? const_cast<OperationInst *>(&backInst)
+  return backInst.isTerminator() ? const_cast<Instruction *>(&backInst)
                                  : nullptr;
 }
 
