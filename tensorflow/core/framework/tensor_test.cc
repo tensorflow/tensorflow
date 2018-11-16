@@ -854,15 +854,18 @@ TEST(Tensor_HostScalar, Basics) {
     EXPECT_FLOAT_EQ(42.0f, Tt());
   }
   {
-    Tensor t("foo");
+    // NOTE(mrry): Use long enough strings so that the contents are dynamically
+    // allocated, and the absence of a call to the string destructor would
+    // cause a memory leak.
+    Tensor t("fooooooooooooooooooooooooooooooooooooo");
     EXPECT_EQ(DT_STRING, t.dtype());
     EXPECT_EQ(1, t.NumElements());
     auto Tt = t.scalar<string>();
     EXPECT_EQ(1, Tt.size());
     EXPECT_EQ(0, Tt.rank());
-    EXPECT_EQ("foo", Tt());
-    Tt() = "bar";
-    EXPECT_EQ("bar", Tt());
+    EXPECT_EQ("fooooooooooooooooooooooooooooooooooooo", Tt());
+    Tt() = "baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaar";
+    EXPECT_EQ("baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaar", Tt());
   }
 }
 
