@@ -473,9 +473,6 @@ class ShapeUtil {
   // Returns true if shape is an empty tuple.
   static bool IsEmptyTuple(const Shape& shape);
 
-  // Returns true if shape is the nil shape (an empty tuple).
-  static bool IsNil(const Shape& shape);
-
   // Returns the number of elements in the given tuple shape.
   // Precondition: IsTuple(shape)
   static int64 TupleElementCount(const Shape& shape);
