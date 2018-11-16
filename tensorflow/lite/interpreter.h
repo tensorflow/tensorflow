@@ -58,6 +58,10 @@ constexpr TfLiteType typeToTfLiteType<unsigned char>() {
   return kTfLiteUInt8;
 }
 template <>
+constexpr TfLiteType typeToTfLiteType<int8_t>() {
+  return kTfLiteInt8;
+}
+template <>
 constexpr TfLiteType typeToTfLiteType<bool>() {
   return kTfLiteBool;
 }
