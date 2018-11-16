@@ -2230,6 +2230,7 @@ ConverterMapType GetTensorFlowNodeConverterMapForFlex() {
   return std::unordered_map<std::string, ConverterType>({
       // We need to let TCO convert Placeholder information into
       // array data, so that the data types are correct.
+      {"LegacyFedInput", ConvertPlaceholderOperator},
       {"Placeholder", ConvertPlaceholderOperator},
   });
 }
