@@ -436,8 +436,8 @@ class BoostedTreeEstimatorTest(test_util.TensorFlowTestCase):
 
     frac_above_lower = round(1. * np.count_nonzero(lower < y) / len(y), 3)
     # +/- 3%
-    self.assertTrue(frac_below_upper >= 0.92)
-    self.assertTrue(frac_below_upper <= 0.98)
+    self.assertTrue(frac_above_lower >= 0.92)
+    self.assertTrue(frac_above_lower <= 0.98)
 
 
 class CoreGradientBoostedDecisionTreeEstimators(test_util.TensorFlowTestCase):
@@ -663,7 +663,8 @@ class CoreGradientBoostedDecisionTreeEstimators(test_util.TensorFlowTestCase):
 
     frac_below_upper = round(1. * np.count_nonzero(upper > y) / len(y), 3)
     # +/- 3%
-    self.assertBetween(frac_below_upper, 0.92, 0.98)
+    self.assertTrue(frac_below_upper >= 0.92)
+    self.assertTrue(frac_below_upper <= 0.98)
 
     train_input_fn, test_input_fn, _ = _quantile_regression_input_fns()
     model_lower = estimator.CoreGradientBoostedDecisionTreeQuantileRegressor(
@@ -681,7 +682,8 @@ class CoreGradientBoostedDecisionTreeEstimators(test_util.TensorFlowTestCase):
 
     frac_above_lower = round(1. * np.count_nonzero(lower < y) / len(y), 3)
     # +/- 3%
-    self.assertBetween(frac_above_lower, 0.92, 0.98)
+    self.assertTrue(frac_above_lower >= 0.92)
+    self.assertTrue(frac_above_lower <= 0.98)
 
 
 if __name__ == "__main__":
