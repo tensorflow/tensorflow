@@ -9,27 +9,11 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "ConditionalAccumulator"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "ConditionalAccumulatorBase"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "ConfigProto"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "DType"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "DeviceSpec"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "Dimension"
     mtype: "<type \'type\'>"
   }
   member {

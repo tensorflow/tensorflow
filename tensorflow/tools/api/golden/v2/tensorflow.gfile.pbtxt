@@ -1,17 +1,5 @@
 path: "tensorflow.gfile"
 tf_module {
-  member {
-    name: "FastGFile"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "GFile"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "Open"
-    mtype: "<type \'type\'>"
-  }
   member_method {
     name: "Copy"
     argspec: "args=[\'oldpath\', \'newpath\', \'overwrite\'], varargs=None, keywords=None, defaults=[\'False\'], "

@@ -169,7 +169,7 @@ def dimension_at_index(shape, index):
     return shape.dims[index]
 
 
-@tf_export("Dimension")
+@tf_export(v1=["Dimension"])
 class Dimension(object):
   """Represents the value of one dimension in a TensorShape."""
 
