@@ -227,6 +227,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.sparse.concat": [
             "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
         ],
+        "tf.random.poisson": ["lam", "shape", "dtype", "seed", "name"],
         "tf.sparse.segment_mean": [
             "data", "indices", "segment_ids", "name", "num_segments"
         ],

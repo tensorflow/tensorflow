@@ -26,7 +26,7 @@ tf_module {
   }
   member_method {
     name: "poisson"
-    argspec: "args=[\'lam\', \'shape\', \'dtype\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\', \'None\'], "
+    argspec: "args=[\'shape\', \'lam\', \'dtype\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\', \'None\'], "
   }
   member_method {
     name: "set_random_seed"
