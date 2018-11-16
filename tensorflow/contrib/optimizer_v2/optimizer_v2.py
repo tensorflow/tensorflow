@@ -24,6 +24,7 @@ import abc
 
 import six
 
+from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -848,8 +849,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
     """Scale loss for the number of replicas."""
     if scale_loss_by_num_replicas is None:
       scale_loss_by_num_replicas = (
-          distribute_lib.get_loss_reduction() == variable_scope
-          .VariableAggregation.MEAN)
+          distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN)
     if scale_loss_by_num_replicas:
       num_replicas = \
         distribute_ctx.get_distribution_strategy().num_replicas_in_sync
@@ -928,7 +928,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
   def _distributed_apply(self, distribution, grads_and_vars, global_step, name):
     """`apply_gradients` for use with a `DistributionStrategy`."""
     reduced_grads = distribution.batch_reduce(
-        variable_scope.VariableAggregation.SUM, grads_and_vars)
+        ds_reduce_util.ReduceOp.SUM, grads_and_vars)
     var_list = [v for _, v in grads_and_vars]
     grads_and_vars = zip(reduced_grads, var_list)
 

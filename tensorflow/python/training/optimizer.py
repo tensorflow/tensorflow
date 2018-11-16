@@ -24,6 +24,7 @@ import abc
 
 import six
 
+from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -520,8 +521,7 @@ class Optimizer(
 
   @staticmethod
   def _scale_loss(loss_value):
-    if (distribute_lib.get_loss_reduction() ==
-        variable_scope.VariableAggregation.MEAN):
+    if distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
       num_replicas = \
         distribute_ctx.get_distribution_strategy().num_replicas_in_sync
       if num_replicas > 1:
@@ -658,10 +658,10 @@ class Optimizer(
     Returns:
       An `Operation` that applies the specified gradients across all
       replicas. If `global_step` was not None, that operation also
-      increments `global_step`.
+      increments `global_step`
     """
     reduced_grads = distribution.batch_reduce(
-        variable_scope.VariableAggregation.SUM, grads_and_vars)
+        ds_reduce_util.ReduceOp.SUM, grads_and_vars)
     var_list = [v for _, v in grads_and_vars]
     grads_and_vars = zip(reduced_grads, var_list)
     # Note that this is called in a cross-replica context.

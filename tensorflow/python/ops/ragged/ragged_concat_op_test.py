@@ -42,6 +42,11 @@ class RaggedConcatOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.parameters(
       dict(
+          descr='Two rank-2 inputs with empty value axis=1',
+          rt_inputs=([[]], [[]]),
+          axis=1,
+          expected=[[]]),
+      dict(
           descr='Two rank-2 inputs (ragged_rank=1), axis=0',
           rt_inputs=(
               [['a00', 'a01'], [], ['a20', 'a21']],   # shape=(3, None)

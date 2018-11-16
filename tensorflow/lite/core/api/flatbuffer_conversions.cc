@@ -618,6 +618,16 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       break;
     }
 
+    case BuiltinOperator_LEAKY_RELU: {
+      TfLiteLeakyReluParams* params =
+          allocator->AllocatePOD<TfLiteLeakyReluParams>();
+      if (auto* leaky_relu_params = op->builtin_options_as_LeakyReluOptions()) {
+        params->alpha = leaky_relu_params->alpha();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+
     // Below are the ops with no builtin_data strcture.
     case BuiltinOperator_BATCH_TO_SPACE_ND:
     // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are

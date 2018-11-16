@@ -302,7 +302,7 @@ def _aggregate_across_replicas(metrics_collections, metric_value_fn, *args):
   """Aggregate metric value across replicas."""
   def fn(distribution, *a):
     """Call `metric_value_fn` in the correct control flow context."""
-    if hasattr(distribution, '_outer_control_flow_context'):
+    if hasattr(distribution.extended, '_outer_control_flow_context'):
       # If there was an outer context captured before this method was called,
       # then we enter that context to create the metric value op. If the
       # caputred context is `None`, ops.control_dependencies(None) gives the
@@ -315,13 +315,13 @@ def _aggregate_across_replicas(metrics_collections, metric_value_fn, *args):
       # once the update ops have been evaluted.
 
       # pylint: disable=protected-access
-      if distribution._outer_control_flow_context is None:
+      if distribution.extended._outer_control_flow_context is None:
         with ops.control_dependencies(None):
           metric_value = metric_value_fn(distribution, *a)
       else:
-        distribution._outer_control_flow_context.Enter()
+        distribution.extended._outer_control_flow_context.Enter()
         metric_value = metric_value_fn(distribution, *a)
-        distribution._outer_control_flow_context.Exit()
+        distribution.extended._outer_control_flow_context.Exit()
         # pylint: enable=protected-access
     else:
       metric_value = metric_value_fn(distribution, *a)

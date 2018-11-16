@@ -146,6 +146,8 @@ py_library(
     deps = [
         ":backend",
         "//tensorflow/python/data",
+        "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/training/checkpointable:data_structures",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
@@ -503,6 +505,17 @@ py_test(
         ":keras",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "unified_rnn_test",
+    size = "medium",
+    srcs = ["layers/unified_rnn_test.py"],
+    additional_deps = [
+        ":keras",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
 )
 

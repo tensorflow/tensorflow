@@ -325,7 +325,9 @@ def random_crop(value, size, seed=None, name=None):
     return array_ops.slice(value, offset, size, name=name)
 
 
-@tf_export("random.multinomial", "multinomial")
+@tf_export(v1=["random.multinomial", "multinomial"])
+@deprecation.deprecated(
+    date=None, instructions="Use tf.random.categorical instead.")
 def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
   """Draws samples from a multinomial distribution.
 
@@ -342,9 +344,7 @@ def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
       `[i, :]` represents the unnormalized log-probabilities for all classes.
     num_samples: 0-D.  Number of independent samples to draw for each row slice.
     seed: A Python integer. Used to create a random seed for the distribution.
-      See
-      `tf.set_random_seed`
-      for behavior.
+      See `tf.set_random_seed` for behavior.
     name: Optional name for the operation.
     output_dtype: integer type to use for the output. Defaults to int64.
 
@@ -352,10 +352,43 @@ def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
     The drawn samples of shape `[batch_size, num_samples]`.
   """
   with ops.name_scope(name, "multinomial", [logits]):
-    logits = ops.convert_to_tensor(logits, name="logits")
-    seed1, seed2 = random_seed.get_seed(seed)
-    return gen_random_ops.multinomial(
-        logits, num_samples, seed=seed1, seed2=seed2, output_dtype=output_dtype)
+    return multinomial_categorical_impl(logits, num_samples, output_dtype, seed)
+
+
+@tf_export("random.categorical", v1=[])
+def categorical(logits, num_samples, dtype=None, seed=None, name=None):
+  """Draws samples from a multinomial distribution.
+
+  Example:
+
+  ```python
+  # samples has shape [1, 5], where each value is either 0 or 1 with equal
+  # probability.
+  samples = tf.random.categorical(tf.log([[10., 10.]]), 5)
+  ```
+
+  Args:
+    logits: 2-D Tensor with shape `[batch_size, num_classes]`.  Each slice
+      `[i, :]` represents the unnormalized log-probabilities for all classes.
+    num_samples: 0-D.  Number of independent samples to draw for each row slice.
+    dtype: integer type to use for the output. Defaults to int64.
+    seed: A Python integer. Used to create a random seed for the distribution.
+      See `tf.set_random_seed` for behavior.
+    name: Optional name for the operation.
+
+  Returns:
+    The drawn samples of shape `[batch_size, num_samples]`.
+  """
+  with ops.name_scope(name, "categorical", [logits]):
+    return multinomial_categorical_impl(logits, num_samples, dtype, seed)
+
+
+def multinomial_categorical_impl(logits, num_samples, dtype, seed):
+  """Implementation for random.multinomial (v1) and random.categorical (v2)."""
+  logits = ops.convert_to_tensor(logits, name="logits")
+  seed1, seed2 = random_seed.get_seed(seed)
+  return gen_random_ops.multinomial(
+      logits, num_samples, seed=seed1, seed2=seed2, output_dtype=dtype)
 
 
 ops.NotDifferentiable("Multinomial")

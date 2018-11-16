@@ -24,6 +24,7 @@ import functools
 import sys
 import types
 import weakref
+from enum import Enum
 import six
 
 from tensorflow.python.compat import compat
@@ -49,6 +50,7 @@ from tensorflow.python.keras.losses import squared_hinge
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import confusion_matrix
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
@@ -265,6 +267,153 @@ def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
       math_ops.equal(weights_rank_tensor, 0), lambda: sample_weight,
       _maybe_adjust_weights)
   return y_pred, y_true, sample_weight
+
+
+class _ConfusionMatrix(Enum):
+  TRUE_POSITIVES = 'tp'
+  FALSE_POSITIVES = 'fp'
+  TRUE_NEGATIVES = 'tn'
+  FALSE_NEGATIVES = 'fn'
+
+
+def _update_confusion_matrix_variables(variables_to_update,
+                                       y_true,
+                                       y_pred,
+                                       thresholds,
+                                       sample_weight=None):
+  """Returns op to update the given confusion matrix variables.
+
+  For every pair of values in y_true and y_pred:
+
+  true_positive: y_true == True and y_pred > thresholds
+  false_negatives: y_true == True and y_pred <= thresholds
+  true_negatives: y_true == False and y_pred <= thresholds
+  false_positive: y_true == False and y_pred > thresholds
+
+  The results will be weighted and added together. When multiple thresholds are
+  provided, we will repeat the same for every threshold.
+
+  For estimation of these metrics over a stream of data, the function creates an
+  `update_op` operation that updates the given variables.
+
+  If `sample_weight` is `None`, weights default to 1.
+  Use weights of 0 to mask values.
+
+  Args:
+    variables_to_update: Dictionary with 'tp', 'fn', 'tn', 'fp' as valid keys
+      and corresponding variables to update as values.
+    y_true: A `Tensor` whose shape matches `y_pred`. Will be cast to `bool`.
+    y_pred: A floating point `Tensor` of arbitrary shape and whose values are in
+      the range `[0, 1]`.
+    thresholds: A python list or tuple of float thresholds in `[0, 1]`.
+    sample_weight: Optional `Tensor` whose rank is either 0, or the same rank as
+      `y_true`, and must be broadcastable to `y_true` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `y_true` dimension).
+
+  Returns:
+    Update op.
+
+  Raises:
+    ValueError: If `y_pred` and `y_true` have mismatched shapes, or if
+      `sample_weight` is not `None` and its shape doesn't match `y_pred`, or if
+      `variables_to_update` contains invalid keys.
+  """
+  if variables_to_update is None:
+    return
+  y_pred.get_shape().assert_is_compatible_with(y_true.get_shape())
+
+  if not any(
+      key for key in variables_to_update if key in list(_ConfusionMatrix)):
+    raise ValueError(
+        'Please provide at least one valid confusion matrix '
+        'variable to update. Valid variable key options are: "{}". '
+        'Received: "{}"'.format(
+            list(_ConfusionMatrix), variables_to_update.keys()))
+
+  invalid_keys = [
+      key for key in variables_to_update if key not in list(_ConfusionMatrix)
+  ]
+  if invalid_keys:
+    raise ValueError(
+        'Invalid keys: {}. Valid variable key options are: "{}"'.format(
+            invalid_keys, list(_ConfusionMatrix)))
+
+  with ops.control_dependencies([
+      check_ops.assert_greater_equal(
+          y_pred,
+          math_ops.cast(0.0, dtype=y_pred.dtype),
+          message='predictions must be >= 0'),
+      check_ops.assert_less_equal(
+          y_pred,
+          math_ops.cast(1.0, dtype=y_pred.dtype),
+          message='predictions must be <= 1')
+  ]):
+    y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
+        math_ops.cast(y_pred, dtype=dtypes.float32),
+        math_ops.cast(y_true, dtype=dtypes.bool), sample_weight)
+
+  num_thresholds = len(thresholds)
+  num_predictions = array_ops.size(y_pred)
+
+  # Reshape predictions and labels.
+  predictions_2d = array_ops.reshape(y_pred, [1, -1])
+  labels_2d = array_ops.reshape(
+      math_ops.cast(y_true, dtype=dtypes.bool), [1, -1])
+
+  # Tile the thresholds for every prediction.
+  thresh_tiled = array_ops.tile(
+      array_ops.expand_dims(array_ops.constant(thresholds), 1),
+      array_ops.stack([1, num_predictions]))
+
+  # Tile the predictions for every threshold.
+  preds_tiled = array_ops.tile(predictions_2d, [num_thresholds, 1])
+
+  # Compare predictions and threshold.
+  pred_is_pos = math_ops.greater(preds_tiled, thresh_tiled)
+
+  # Tile labels by number of thresholds
+  label_is_pos = array_ops.tile(labels_2d, [num_thresholds, 1])
+
+  if sample_weight is not None:
+    weights = weights_broadcast_ops.broadcast_weights(
+        math_ops.cast(sample_weight, dtype=dtypes.float32), y_pred)
+    weights_tiled = array_ops.tile(
+        array_ops.reshape(weights, [1, -1]), [num_thresholds, 1])
+  else:
+    weights_tiled = None
+
+  update_ops = []
+
+  def weighted_assign_add(label, pred, weights, var):
+    label_and_pred = math_ops.cast(
+        math_ops.logical_and(label, pred), dtype=dtypes.float32)
+    if weights is not None:
+      label_and_pred *= weights
+    return state_ops.assign_add(var, math_ops.reduce_sum(label_and_pred, 1))
+
+  loop_vars = {
+      _ConfusionMatrix.TRUE_POSITIVES: (label_is_pos, pred_is_pos),
+  }
+  update_tn = _ConfusionMatrix.TRUE_NEGATIVES in variables_to_update
+  update_fp = _ConfusionMatrix.FALSE_POSITIVES in variables_to_update
+  update_fn = _ConfusionMatrix.FALSE_NEGATIVES in variables_to_update
+
+  if update_fn or update_tn:
+    pred_is_neg = math_ops.logical_not(pred_is_pos)
+    loop_vars[_ConfusionMatrix.FALSE_NEGATIVES] = (label_is_pos, pred_is_neg)
+
+  if update_fp or update_tn:
+    label_is_neg = math_ops.logical_not(label_is_pos)
+    loop_vars[_ConfusionMatrix.FALSE_POSITIVES] = (label_is_neg, pred_is_pos)
+    if update_tn:
+      loop_vars[_ConfusionMatrix.TRUE_NEGATIVES] = (label_is_neg, pred_is_neg)
+
+  for matrix_cond, (label, pred) in loop_vars.items():
+    if matrix_cond in variables_to_update:
+      update_ops.append(
+          weighted_assign_add(label, pred, weights_tiled,
+                              variables_to_update[matrix_cond]))
+  return control_flow_ops.group(update_ops)
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -642,6 +791,59 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
   def __init__(self, name='sparse_categorical_accuracy', dtype=None):
     super(SparseCategoricalAccuracy, self).__init__(
         sparse_categorical_accuracy, name, dtype=dtype)
+
+
+class FalsePositives(Metric):
+  """Calculates the number of false positives.
+
+  If `sample_weight` is given, calculates the sum of the weights of
+  false positives. This metric creates one local variable, `false_positives`
+  that is used to keep track of the number of false positives.
+
+  If `sample_weight` is `None`, weights default to 1.
+  Use `sample_weight` of 0 to mask values.
+  """
+
+  def __init__(self, thresholds=None, name=None, dtype=None):
+    """Creates a `FalsePositives` instance.
+
+    Args:
+      thresholds: (Optional) Defaults to [0.5]. A python list/tuple of float
+        threshold values in [0, 1]. A threshold is compared with prediction
+        values to determine the truth value of predictions (i.e., above the
+        threshold is `true`, below is `false`). One metric value is generated
+        for each threshold value.
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+    """
+    super(FalsePositives, self).__init__(name=name, dtype=dtype)
+    self.thresholds = [0.5] if thresholds is None else thresholds
+    self.fp = self.add_weight(
+        'false_positives',
+        shape=(len(self.thresholds),),
+        initializer=init_ops.zeros_initializer)
+
+  def update_state(self, y_true, y_pred, sample_weight=None):
+    """Accumulates false positive statistics.
+
+    `y_true` and `y_pred` should have the same shape.
+
+    Args:
+      y_true: The ground truth values.
+      y_pred: The predicted values.
+      sample_weight: Optional weighting of each example. Defaults to 1. Can be a
+        `Tensor` whose rank is either 0, or the same rank as `y_true`, and must
+        be broadcastable to `y_true`.
+
+    Returns:
+      Update op.
+    """
+    return _update_confusion_matrix_variables({
+        _ConfusionMatrix.FALSE_POSITIVES: self.fp
+    }, y_true, y_pred, self.thresholds, sample_weight)
+
+  def result(self):
+    return ops.convert_to_tensor(self.fp)
 
 
 @tf_export('keras.metrics.binary_accuracy')

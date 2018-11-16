@@ -71,7 +71,7 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
   ```python
   pcm = tf.placeholder(tf.float32, [None, 9152])
   frames = tf.signal.frame(pcm, 512, 180)
-  magspec = tf.abs(tf.spectral.rfft(frames, [512]))
+  magspec = tf.abs(tf.signal.rfft(frames, [512]))
   image = tf.expand_dims(magspec, 3)
   ```
 

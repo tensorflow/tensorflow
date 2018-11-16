@@ -28,6 +28,7 @@ from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.contrib.distribute.python import values
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
@@ -47,7 +48,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import device_util
-from tensorflow.python.training import distribution_strategy_context
+from tensorflow.python.training import distribution_strategy_context as ds_context
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.training import server_lib
@@ -117,32 +118,13 @@ class MirroredTwoDeviceDistributionTest(strategy_test_lib.DistributionTestBase):
     with dist.scope():
       result = dist.call_for_each_replica(_replica_id)
       reduced = dist.reduce(
-          variable_scope.VariableAggregation.SUM,
+          reduce_util.ReduceOp.SUM,
           result,
           destinations="/device:CPU:0")
       unwrapped = dist.unwrap(reduced)
       self.assertEqual(1, len(unwrapped))
       expected = sum(range(dist.num_replicas_in_sync))
       self.assertEqual(expected, self.evaluate(unwrapped[0]))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testReduceOnlyFirstReplicaUpdates(self):
-    if not GPU_TEST:
-      self.skipTest("Not GPU test")
-
-    def run_fn():
-      return 3 + 5 * _replica_id()
-
-    dist = self._get_distribution_strategy()
-    with dist.scope():
-      result = dist.call_for_each_replica(run_fn)
-      reduced = dist.reduce(
-          variable_scope.VariableAggregation.ONLY_FIRST_REPLICA,
-          result,
-          destinations="/device:CPU:0")
-      unwrapped = dist.unwrap(reduced)
-      self.assertEqual(1, len(unwrapped))
-      self.assertEqual(3, self.evaluate(unwrapped[0]))
 
   @test_util.run_in_graph_and_eager_modes()
   def testReduceToMultipleDestinations(self):
@@ -157,7 +139,7 @@ class MirroredTwoDeviceDistributionTest(strategy_test_lib.DistributionTestBase):
     dist = mirrored_strategy.MirroredStrategy(devices)
     with dist.scope():
       reduced = dist.reduce(
-          variable_scope.VariableAggregation.SUM,
+          reduce_util.ReduceOp.SUM,
           1.0,
           destinations=["/device:CPU:0", "/device:GPU:0"])
       unwrapped = dist.unwrap(reduced)
@@ -182,8 +164,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
       # This variable should be created only once across the threads because of
       # special variable_creator functions used by `dist.call_for_each_replica`.
       v = variable_scope.variable(1.0, name="foo")
-      distribution_strategy_context.get_replica_context().merge_call(
-          lambda _: _)
+      ds_context.get_replica_context().merge_call(lambda _: _)
       return v
 
     dist = mirrored_strategy.MirroredStrategy(
@@ -200,8 +181,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
 
     def model_fn():
       v = variable_scope.variable(1.0)
-      distribution_strategy_context.get_replica_context().merge_call(
-          lambda _: _)
+      ds_context.get_replica_context().merge_call(lambda _: _)
       return v
 
     dist = mirrored_strategy.MirroredStrategy(
@@ -221,8 +201,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
       vs = []
       for i in range(5):
         vs.append(variable_scope.variable(1.0, name="foo" + str(i)))
-      distribution_strategy_context.get_replica_context().merge_call(
-          lambda _: _)
+      ds_context.get_replica_context().merge_call(lambda _: _)
       return vs
 
     dist = mirrored_strategy.MirroredStrategy(
@@ -244,8 +223,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
       vs.append(variable_scope.variable(1.0, name="foo_1/bar"))
       vs.append(variable_scope.variable(1.0, name="foo_1/bar_1"))
       vs.append(variable_scope.variable(1.0, name="foo/bar_1"))
-      distribution_strategy_context.get_replica_context().merge_call(
-          lambda _: _)
+      ds_context.get_replica_context().merge_call(lambda _: _)
       return vs
 
     dist = mirrored_strategy.MirroredStrategy(
@@ -268,8 +246,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
     def model_fn():
       replica_id = self.evaluate(_replica_id())
       v = variable_scope.variable(1.0, name="foo_" + str(replica_id))
-      distribution_strategy_context.get_replica_context().merge_call(
-          lambda _: _)
+      ds_context.get_replica_context().merge_call(lambda _: _)
       return v
 
     dist = mirrored_strategy.MirroredStrategy(
@@ -291,8 +268,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
         layer2 = core.Dense(1)
         layer2(features)
         # This will pause the current thread, and execute the other thread.
-        distribution_strategy_context.get_replica_context().merge_call(
-            lambda _: _)
+        ds_context.get_replica_context().merge_call(lambda _: _)
         layer3 = core.Dense(1)
         layer3(features)
         return [(layer1.kernel, layer1.bias),
@@ -329,8 +305,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
       with variable_scope.variable_scope("common"):
         v1 = variable_scope.variable(1.0, name="var1")
         # This will pause the current thread, and execute the other thread.
-        distribution_strategy_context.get_replica_context().merge_call(
-            lambda _: _)
+        ds_context.get_replica_context().merge_call(lambda _: _)
         v2 = variable_scope.variable(
             1.0,
             name="var2",
@@ -373,8 +348,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
       with variable_scope.variable_scope("common"):
         v1 = variable_scope.get_variable("var1", [1])
         # This will pause the current thread, and execute the other thread.
-        distribution_strategy_context.get_replica_context().merge_call(
-            lambda _: _)
+        ds_context.get_replica_context().merge_call(lambda _: _)
         v2 = variable_scope.get_variable(
             "var2", [1],
             synchronization=variable_scope.VariableSynchronization.ON_READ,
@@ -563,8 +537,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
 
     def model_fn():
       v = variable_scope.variable(1.0, name="foo")
-      distribution_strategy_context.get_replica_context().merge_call(
-          lambda _: _)
+      ds_context.get_replica_context().merge_call(lambda _: _)
       return v
 
     dist = mirrored_strategy.MirroredStrategy(
@@ -581,8 +554,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
 
     def model_fn(name):
       v = variable_scope.variable(1.0, name=name)
-      distribution_strategy_context.get_replica_context().merge_call(
-          lambda _: _)
+      ds_context.get_replica_context().merge_call(lambda _: _)
       return v
 
     dist = mirrored_strategy.MirroredStrategy(
@@ -653,7 +625,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
       self.evaluate([y for x in ret_ops for y in dist.unwrap(x)])
       expected_sum = 0.0
       expected_mean = 0.0
-      for i, d in enumerate(dist.worker_devices):
+      for i, d in enumerate(dist.extended.worker_devices):
         # Should see different values on different devices.
         v_sum_value = self.evaluate(ret_v_sum.get(d).read_value())
         v_mean_value = self.evaluate(ret_v_mean.get(d).read_value())
@@ -663,7 +635,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
         expected = i * 6.0
         self.assertEqual(expected, v_mean_value)
         expected_mean += expected
-      expected_mean /= len(dist.worker_devices)
+      expected_mean /= len(dist.extended.worker_devices)
 
       # Without get(device), should return the value you get by
       # applying the reduction across all replicas (whether you use
@@ -682,8 +654,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
     def model_fn():
       with ops.name_scope("foo"):
         a = constant_op.constant(1.0, name="a")
-        distribution_strategy_context.get_replica_context().merge_call(
-            lambda _: _)
+        ds_context.get_replica_context().merge_call(lambda _: _)
         b = constant_op.constant(1.0, name="b")
       return a, b
 
@@ -704,8 +675,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
     def model_fn():
       with ops.name_scope(None, "foo"):
         a = constant_op.constant(1.0, name="a")
-        distribution_strategy_context.get_replica_context().merge_call(
-            lambda _: _)
+        ds_context.get_replica_context().merge_call(lambda _: _)
         b = constant_op.constant(2.0, name="b")
       return a, b
 
@@ -733,8 +703,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
     def model_fn():
       b = variable_scope.variable(1.0, name="b")
       with ops.name_scope("foo"):
-        c = distribution_strategy_context.get_replica_context().merge_call(
-            in_cross_replica)
+        c = ds_context.get_replica_context().merge_call(in_cross_replica)
       return b, c
 
     dist = mirrored_strategy.MirroredStrategy(
@@ -766,8 +735,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
     def model_fn():
       b = variable_scope.get_variable("b", [1])
       with ops.name_scope("foo"):
-        c = distribution_strategy_context.get_replica_context().merge_call(
-            in_cross_replica)
+        c = ds_context.get_replica_context().merge_call(in_cross_replica)
       return b, c
 
     dist = mirrored_strategy.MirroredStrategy(
@@ -842,7 +810,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
         # Assert that the aggregated value of the replica local vars is the sum
         # of the individual values before running the update ops.
         self.assertEquals(1.0, self.evaluate(
-            ret_v_sum.get(dist._devices[0]).read_value()))
+            ret_v_sum.get(dist.extended.worker_devices[0]).read_value()))
         self.assertEquals(2.0, self.evaluate(ret_v_sum))
 
         # Apply updates.
@@ -850,7 +818,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
         # Assert that the aggregated value of the replica local vars is the sum
         # of the individual values after running the update ops.
         self.assertEquals(5.0, self.evaluate(
-            ret_v_sum.get(dist._devices[0]).read_value()))
+            ret_v_sum.get(dist.extended.worker_devices[0]).read_value()))
         self.assertEquals(10.0, self.evaluate(ret_v_sum))
 
 
@@ -912,7 +880,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
       with self.assertRaisesRegexp(
           ValueError, "A non-DistributedValues value 5.0 cannot be reduced "
-          "with the given aggregation VariableAggregation.SUM."):
+          "with the given reduce op ReduceOp.SUM."):
         self.evaluate(dist.unwrap(dist.call_for_each_replica(model_fn)))
 
   @test_util.run_in_graph_and_eager_modes(config=config)
@@ -950,7 +918,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
       def model_fn():
         value = math_ops.cast(
-            distribution_strategy_context.get_replica_context().replica_id,
+            ds_context.get_replica_context().replica_id_in_sync_group,
             mirrored_var.dtype)
         return mirrored_var.assign(value)
 
@@ -1024,7 +992,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
       def model_fn():
         value = math_ops.cast(
-            distribution_strategy_context.get_replica_context().replica_id,
+            ds_context.get_replica_context().replica_id_in_sync_group,
             mirrored_var.dtype)
         return mirrored_var.assign_add(value)
 
@@ -1090,7 +1058,7 @@ class MirroredVariableUpdateTest(test.TestCase):
 
       def model_fn():
         value = math_ops.cast(
-            distribution_strategy_context.get_replica_context().replica_id,
+            ds_context.get_replica_context().replica_id_in_sync_group,
             mirrored_var.dtype)
         return mirrored_var.assign_sub(value)
 
@@ -1462,9 +1430,10 @@ class MultiWorkerMirroredStrategyTestWithChief(
 
 
 def _replica_id():
-  # TODO(cjfj): Return `replica_id` directly, once it is a `Tensor`.
-  return constant_op.constant(
-      distribution_strategy_context.get_replica_context().replica_id)
+  replica_id = ds_context.get_replica_context().replica_id_in_sync_group
+  if not isinstance(replica_id, ops.Tensor):
+    replica_id = constant_op.constant(replica_id)
+  return replica_id
 
 
 if __name__ == "__main__":

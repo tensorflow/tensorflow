@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_test_util
@@ -41,7 +42,12 @@ class LinearOperatorIdentityTest(
     # 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(
+      self, build_info, dtype, use_placeholder,
+      ensure_self_adjoint_and_pd=False):
+    # Identity matrix is already Hermitian Positive Definite.
+    del ensure_self_adjoint_and_pd
+
     shape = list(build_info.shape)
     assert shape[-1] == shape[-2]
 
@@ -242,6 +248,16 @@ class LinearOperatorIdentityTest(
           is_non_singular=None,
       )
 
+  def test_identity_cholesky_type(self):
+    operator = linalg_lib.LinearOperatorIdentity(
+        num_rows=2,
+        is_positive_definite=True,
+        is_self_adjoint=True,
+    )
+    self.assertTrue(isinstance(
+        operator.cholesky(),
+        linalg_lib.LinearOperatorIdentity))
+
 
 class LinearOperatorScaledIdentityTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
@@ -253,7 +269,10 @@ class LinearOperatorScaledIdentityTest(
     # 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(
+      self, build_info, dtype, use_placeholder,
+      ensure_self_adjoint_and_pd=False):
+
     shape = list(build_info.shape)
     assert shape[-1] == shape[-2]
 
@@ -266,6 +285,9 @@ class LinearOperatorScaledIdentityTest(
     multiplier = linear_operator_test_util.random_sign_uniform(
         shape=batch_shape, minval=1., maxval=2., dtype=dtype)
 
+    if ensure_self_adjoint_and_pd:
+      # Abs on complex64 will result in a float32, so we cast back up.
+      multiplier = math_ops.cast(math_ops.abs(multiplier), dtype=dtype)
 
     # Nothing to feed since LinearOperatorScaledIdentity takes no Tensor args.
     lin_op_multiplier = multiplier
@@ -275,7 +297,10 @@ class LinearOperatorScaledIdentityTest(
           multiplier, shape=None)
 
     operator = linalg_lib.LinearOperatorScaledIdentity(
-        num_rows, lin_op_multiplier)
+        num_rows,
+        lin_op_multiplier,
+        is_self_adjoint=True if ensure_self_adjoint_and_pd else None,
+        is_positive_definite=True if ensure_self_adjoint_and_pd else None)
 
     multiplier_matrix = array_ops.expand_dims(
         array_ops.expand_dims(multiplier, -1), -1)
@@ -419,6 +444,18 @@ class LinearOperatorScaledIdentityTest(
     self.assertFalse(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
     self.assertTrue(operator.is_self_adjoint is None)
+
+  def test_scaled_identity_cholesky_type(self):
+    operator = linalg_lib.LinearOperatorScaledIdentity(
+        num_rows=2,
+        multiplier=3.,
+        is_positive_definite=True,
+        is_self_adjoint=True,
+    )
+    self.assertTrue(isinstance(
+        operator.cholesky(),
+        linalg_lib.LinearOperatorScaledIdentity))
+
 
 
 if __name__ == "__main__":

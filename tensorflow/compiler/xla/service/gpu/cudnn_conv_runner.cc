@@ -370,14 +370,12 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
       params.output_shape = &conv_result_shape;
       params.fusion.emplace();
       auto& fusion = *params.fusion;
-      if (backend_config.activation_mode() <
-          static_cast<int64>(se::dnn::ActivationMode::kNumActivationModes)) {
-        fusion.mode = static_cast<se::dnn::ActivationMode>(
-            backend_config.activation_mode());
-      } else {
+      if (!se::dnn::ActivationMode_IsValid(backend_config.activation_mode())) {
         return InternalError("Bad activation mode: %s",
                              backend_config.ShortDebugString());
       }
+      fusion.mode = static_cast<se::dnn::ActivationMode>(
+          backend_config.activation_mode());
       fusion.side_input_scale = backend_config.side_input_scale();
       params.input_buf = operand_buffers[0];
       params.filter_buf = operand_buffers[1];

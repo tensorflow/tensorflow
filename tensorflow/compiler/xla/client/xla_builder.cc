@@ -239,6 +239,19 @@ void XlaBuilder::IsConstantVisitor(const int64 op_handle,
   visited->insert(op_handle);
 }
 
+Status XlaBuilder::SetDynamicBinding(int64 dynamic_size_param_num,
+                                     ShapeIndex dynamic_size_param_index,
+                                     int64 target_param_num,
+                                     ShapeIndex target_param_index,
+                                     int64 target_dim_num) {
+  TF_RETURN_IF_ERROR(dynamic_parameter_binding_.Bind(
+      DynamicParameterBinding::DynamicParameter{dynamic_size_param_num,
+                                                dynamic_size_param_index},
+      DynamicParameterBinding::DynamicDimension{
+          target_param_num, target_param_index, target_dim_num}));
+  return Status::OK();
+}
+
 XlaComputation XlaBuilder::BuildAndNoteError() {
   DCHECK(parent_builder_ != nullptr);
   auto build_status = Build();
@@ -296,6 +309,9 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
     module->add_computations()->Swap(&e.second);
   }
   module->add_computations()->Swap(&entry);
+
+  *(module->mutable_dynamic_parameter_binding()) =
+      dynamic_parameter_binding_.ToProto();
 
   // Clear data held by this builder.
   this->instructions_.clear();

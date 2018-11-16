@@ -242,6 +242,8 @@ HloModuleProto HloModule::ToProto() const {
   *proto.mutable_host_program_shape() =
       entry_computation_layout().ComputeProgramShape();
   *proto.mutable_input_output_alias() = input_output_alias_config().ToProto();
+  *proto.mutable_dynamic_parameter_binding() =
+      dynamic_parameter_binding().ToProto();
   return proto;
 }
 
@@ -325,6 +327,10 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 
   // Because we didn't uniquify the names or the ids, double-check that the
   // instruction and computation names and ids are unique from the proto.
+  TF_ASSIGN_OR_RETURN(module->dynamic_parameter_binding_,
+                      DynamicParameterBinding::CreateFromProto(
+                          proto.dynamic_parameter_binding()));
+
   absl::flat_hash_set<string> computation_names;
   absl::flat_hash_set<string> instruction_names;
   absl::flat_hash_set<int> computation_ids;

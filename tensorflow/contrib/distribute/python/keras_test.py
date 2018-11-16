@@ -220,7 +220,7 @@ def get_correctness_test_inputs(use_numpy, with_distribution,
   # TODO(b/118776054): Use global batch size for Keras/DS support.
   use_per_core_batch_size = (
       with_distribution and
-      with_distribution.__class__.__name__ != 'TPUStrategy')
+      not isinstance(with_distribution, tpu_strategy.TPUStrategy))
   if use_per_core_batch_size:
     batch_size //= with_distribution.num_replicas_in_sync
 
@@ -237,19 +237,7 @@ def get_correctness_test_inputs(use_numpy, with_distribution,
         'x': x_train,
         'y': y_train,
     }
-    # TODO(b/119318587): We should not require batch_size when distribution
-    # is enabled.
-    if with_distribution:
-      if use_per_core_batch_size:
-        predict_batch_size = (
-            len(x_predict) // with_distribution.num_replicas_in_sync)
-      else:
-        predict_batch_size = len(x_predict)
-    else:
-      predict_batch_size = None
-
     predict_inputs = {
-        'batch_size': predict_batch_size,
         'x': np.array(x_predict, dtype=np.float32),
     }
   else:
@@ -280,7 +268,6 @@ def get_correctness_test_inputs(use_numpy, with_distribution,
     predict_dataset = batch_wrapper(predict_dataset,
                                     predict_batch_size, with_distribution)
     predict_inputs = {
-        'batch_size': None,
         'steps': 1,
         'x': predict_dataset,
     }
@@ -292,6 +279,8 @@ strategies = [combinations.default_strategy,
               combinations.one_device_strategy,
               combinations.mirrored_strategy_with_gpu_and_cpu,
               combinations.mirrored_strategy_with_two_gpus,
+              combinations.core_mirrored_strategy_with_gpu_and_cpu,
+              combinations.core_mirrored_strategy_with_two_gpus,
               combinations.tpu_strategy,  # steps_per_run=2
               combinations.tpu_strategy_one_step]
 
@@ -301,7 +290,9 @@ def strategy_minus_tpu_combinations():
       distribution=[combinations.default_strategy,
                     combinations.one_device_strategy,
                     combinations.mirrored_strategy_with_gpu_and_cpu,
-                    combinations.mirrored_strategy_with_two_gpus],
+                    combinations.mirrored_strategy_with_two_gpus,
+                    combinations.core_mirrored_strategy_with_gpu_and_cpu,
+                    combinations.core_mirrored_strategy_with_two_gpus],
       mode=['graph'])
 
 
@@ -486,8 +477,8 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
                                                      '/device:CPU:0',
                                                      '/device:GPU:1'])
 
-      with self.assertRaisesRegexp(ValueError, 'Please specify a batch_size '
-                                               'that is smaller than'):
+      with self.assertRaisesRegexp(ValueError, 'The number of samples is not '
+                                   'divisible by batch size.'):
         # The batch size(128) is larger than the number of input
         # samples(64).
         distributed_training_utils.get_input_batch_params(inputs,
@@ -534,7 +525,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       loss = 'mse'
       strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:0',
                                                      '/device:CPU:0'])
-      strategy._require_static_shapes = True
+      strategy.extended._require_static_shapes = True
 
       model.compile(optimizer, loss, distribute=strategy)
       iterator = model._distribution_standardize_user_data(inputs,

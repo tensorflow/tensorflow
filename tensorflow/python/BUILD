@@ -124,7 +124,6 @@ py_library(
         ":session_ops",
         ":sets",
         ":sparse_ops",
-        ":spectral_ops",
         ":spectral_ops_test_util",
         ":standard_ops",
         ":state_ops",
@@ -1837,6 +1836,7 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "spectral_ops_gen",
+    visibility = ["//tensorflow/python/ops/signal:__pkg__"],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -2266,7 +2266,6 @@ py_library(
         ":platform",
         ":random_grad",
         ":resource_variable_ops",
-        ":spectral_grad",
         ":tensor_array_ops",
         ":tensor_util",
         ":unconnected_gradients",
@@ -2508,7 +2507,6 @@ py_library(
         ":nn_ops_gen",
         ":sparse_ops_gen",
         ":sparse_tensor",
-        ":spectral_ops_gen",
         ":state_ops",
         ":state_ops_gen",
         ":tensor_shape",
@@ -2818,33 +2816,6 @@ py_test(
 )
 
 py_library(
-    name = "spectral_grad",
-    srcs = ["ops/spectral_grad.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":array_ops",
-        ":framework",
-        ":framework_for_generated_wrappers",
-        ":math_ops",
-        ":spectral_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_library(
-    name = "spectral_ops",
-    srcs = ["ops/spectral_ops.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":array_ops",
-        ":dtypes",
-        ":framework_ops",
-        ":math_ops",
-        ":spectral_ops_gen",
-    ],
-)
-
-py_library(
     name = "spectral_ops_test_util",
     srcs = ["ops/spectral_ops_test_util.py"],
     srcs_version = "PY2AND3",
@@ -2961,7 +2932,6 @@ py_library(
         ":sparse_grad",
         ":sparse_ops",
         ":special_math_ops",
-        ":spectral_grad",
         ":state_grad",
         ":state_ops",
         ":stateless_random_ops",
@@ -3476,6 +3446,7 @@ py_library(
         "@six_archive//:six",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:distribute_coordinator_context",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
@@ -3581,8 +3552,10 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":constant_op",
         ":control_flow_ops",
         ":device_util",
+        ":dtypes",
         ":framework_ops",
         ":platform",
         ":resource_variable_ops",
@@ -3590,7 +3563,9 @@ py_library(
         ":util",
         ":variable_scope",
         "//tensorflow/python/data",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/tools/docs:doc_controls",
     ],
 )
 
@@ -3601,7 +3576,9 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":client_testlib",
+        ":constant_op",
         ":distribute",
+        ":dtypes",
         ":variable_scope",
     ],
 )
@@ -4902,7 +4879,7 @@ py_test(
         ":training",
         ":variable_scope",
         ":variables",
-        "//tensorflow/python/feature_column",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
     ],
 )

@@ -570,5 +570,59 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DoNotHoistOutOfSingleIteration) {
   EXPECT_FALSE(simplified_loop);
 }
 
+const char* const kInflatingTestCase = R"(
+HloModule ModuleWithWhile
+
+mul {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT mul = f32[] multiply(lhs, rhs)
+}
+
+body {
+  p_body = (f32[]) parameter(0)
+  iota = f32[1024, 1024] iota(), iota_dimension=0
+  add = f32[1024, 1024] add(iota, iota)
+  constant = f32[] constant(1.0)
+  reduce = f32[] reduce(f32[1024, 1024] add, f32[] constant), dimensions={0,1}, to_apply=mul
+  ROOT root = (f32[]) tuple(reduce)
+}
+
+condition {
+  p_cond = (f32[]) parameter(0)
+  ROOT result = pred[] constant(true)
+}
+
+ENTRY entry {
+  param = f32[] parameter(0)
+  while_init = (f32[]) tuple(param)
+  ROOT while = (f32[]) while(while_init), condition=condition, body=body
+}
+)";
+
+TEST_F(WhileLoopInvariantCodeMotionTest, HoistsInflatingByDefault) {
+  auto m = ParseAndReturnVerifiedModule(kInflatingTestCase).ValueOrDie();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool simplified_loop,
+      WhileLoopInvariantCodeMotion(/*hoist_constants=*/true).Run(m.get()));
+  EXPECT_TRUE(simplified_loop);
+
+  HloComputation* while_body = m->GetComputationWithName("wide.body");
+  ASSERT_NE(while_body, nullptr);
+  EXPECT_THAT(while_body->instructions(), Not(Contains(op::Iota())));
+}
+
+TEST_F(WhileLoopInvariantCodeMotionTest, NoHoistInflating) {
+  auto m = ParseAndReturnVerifiedModule(kInflatingTestCase).ValueOrDie();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool simplified_loop,
+      WhileLoopInvariantCodeMotion(/*hoist_constants=*/true,
+                                   /*hoist_size_inflating_ops=*/false)
+          .Run(m.get()));
+  EXPECT_FALSE(simplified_loop);
+}
+
 }  // namespace
 }  // namespace xla

@@ -22,6 +22,7 @@ from __future__ import print_function
 import enum
 import numpy as np
 
+from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -34,7 +35,6 @@ from tensorflow.python.keras.engine import distributed_training_utils
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.util import nest
@@ -105,6 +105,13 @@ def fit_loop(
     (grouped_inputs, grouped_outputs, grouped_updates,
      grouped_session_args) = current_strategy.call_for_each_replica(
          _per_device_fit_function, args=(model._grouped_model,))
+
+    # Initialize the variables in the replicated model. This is necessary for
+    # multi-worker training because on some workers, initialization is not
+    # needed. This method does initialization or waiting for initialization
+    # according to the context object of distribute coordinator.
+    distributed_training_utils.init_restore_or_wait_for_variables()
+
     # Unwrap all the per device values returned from `call_for_each_replica`.
     # Unwrapping per device values gives you a list of values that can be
     # used to construct a new train function that is composed of update ops on
@@ -288,12 +295,12 @@ def _experimental_fit_loop(
 
     for label, output in zip(out_labels, combined_fn.outputs):
       if label == 'loss':
-        aggregation = distribute_lib.get_loss_reduction()
+        reduce_op = distribute_lib.get_loss_reduction()
       else:
-        # We aggregate all other metrics using mean for now. This is temporary
+        # We reduce all other metrics using mean for now. This is temporary
         # workaround until new metrics are in place.
-        aggregation = variable_scope.VariableAggregation.MEAN
-      ctx.set_last_step_output(label, output, aggregation)
+        reduce_op = ds_reduce_util.ReduceOp.MEAN
+      ctx.set_last_step_output(label, output, reduce_op)
 
     # TODO(priyag, sourabhbajaj): Ignoring these things from the combined_fn:
     # feed_dict, session kwargs, run options, run_metadata for now. These should
@@ -310,7 +317,7 @@ def _experimental_fit_loop(
     raise ValueError('`steps_per_epoch` should be specified when calling '
                      '`fit` on the model.')
   steps_per_run = K.variable(
-      value=min(steps_per_epoch, current_strategy.steps_per_run),
+      value=min(steps_per_epoch, current_strategy.extended.steps_per_run),
       dtype='int32',
       name='steps_per_run')
 
@@ -341,10 +348,11 @@ def _experimental_fit_loop(
       verbose=verbose)
 
   # Calculate the steps each time on the device.
-  steps_to_run = [current_strategy.steps_per_run] * (
-      steps_per_epoch // current_strategy.steps_per_run)
-  if steps_per_epoch % current_strategy.steps_per_run:
-    steps_to_run.append(steps_per_epoch % current_strategy.steps_per_run)
+  steps_to_run = [current_strategy.extended.steps_per_run] * (
+      steps_per_epoch // current_strategy.extended.steps_per_run)
+  if steps_per_epoch % current_strategy.extended.steps_per_run:
+    steps_to_run.append(
+        steps_per_epoch % current_strategy.extended.steps_per_run)
 
   callbacks.on_train_begin()
   for epoch in range(initial_epoch, epochs):
@@ -469,10 +477,7 @@ def test_loop(model, iterator, verbose=0, steps=None):
     # placeholders that are created with default values.
     sample_weights = [None for _ in range(
         len(model.outputs) * current_strategy.num_replicas_in_sync)]
-    if not isinstance(K.learning_phase(), int):
-      ins = dataset_inputs + dataset_targets + sample_weights + [0]
-    else:
-      ins = dataset_inputs + dataset_targets
+    ins = dataset_inputs + dataset_targets + sample_weights
 
     for m in model.stateful_metric_functions:
       m.reset_states()
@@ -571,12 +576,12 @@ def _experimental_test_loop(model, iterator, verbose=0, steps=None,
 
     for label, output in zip(model.metrics_names, combined_fn.outputs):
       if label == 'loss':
-        aggregation = distribute_lib.get_loss_reduction()
+        reduce_op = distribute_lib.get_loss_reduction()
       else:
-        # We aggregate all other metrics using mean for now. This is temporary
+        # We reduce all other metrics using mean for now. This is temporary
         # workaround until new metrics are in place.
-        aggregation = variable_scope.VariableAggregation.MEAN
-      ctx.set_last_step_output(label, output, aggregation)
+        reduce_op = ds_reduce_util.ReduceOp.MEAN
+      ctx.set_last_step_output(label, output, reduce_op)
 
     return combined_fn.updates_op
 
@@ -677,11 +682,6 @@ def predict_loop(model, iterator, verbose=0, steps=None):
         name='distributed_predict_function',
         **all_session_args)
 
-    if not isinstance(K.learning_phase(), int):
-      ins = dataset_inputs + [0]
-    else:
-      ins = dataset_inputs
-
     if verbose == 1:
       progbar = Progbar(target=steps)
 
@@ -698,7 +698,7 @@ def predict_loop(model, iterator, verbose=0, steps=None):
     unconcatenated_outs = []
     assert steps is not None
     for step in range(steps):
-      batch_outs = distributed_predict_function(ins)
+      batch_outs = distributed_predict_function(dataset_inputs)
       if not isinstance(batch_outs, list):
         batch_outs = [batch_outs]
       if step == 0:

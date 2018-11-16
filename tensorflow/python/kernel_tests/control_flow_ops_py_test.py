@@ -560,7 +560,6 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(4, count.eval())
 
   def testCond_6(self):
-
     with self.cached_session():
       v1 = variables.Variable([7])
 
@@ -583,6 +582,89 @@ class ControlFlowTest(test.TestCase):
       fn2 = lambda: [y, y]
       r = control_flow_ops.cond(pred, fn1, fn2)
       self.assertAllEqual([11, 12], sess.run(r))
+
+  def testCondListOutput(self):
+    with self.cached_session() as sess:
+      x = constant_op.constant(10)
+      y = constant_op.constant(200)
+      pred = math_ops.less(1, 2)
+      fn1 = lambda: [math_ops.add(x, y), math_ops.add(x, y)]
+      fn2 = lambda: [y, y]
+      r = control_flow_ops.cond(pred, fn1, fn2)
+      test_result = sess.run(r)
+      self.assertListEqual([210, 210], test_result)
+
+  def testTupleOutput(self):
+    with self.cached_session() as sess:
+      x = constant_op.constant(10)
+      y = constant_op.constant(200)
+      pred = math_ops.less(1, 2)
+      fn1 = lambda: (math_ops.add(x, y), math_ops.add(x, y))
+      fn2 = lambda: (y, y)
+      r = control_flow_ops.cond(pred, fn1, fn2)
+      test_result = sess.run(r)
+      self.assertTupleEqual((210, 210), test_result)
+
+  def testDictOutput(self):
+    with self.cached_session() as sess:
+      x = constant_op.constant(10)
+      y = constant_op.constant(200)
+      pred = math_ops.less(1, 2)
+      fn1 = lambda: {"a": math_ops.add(x, y), "b": math_ops.add(x, y)}
+      fn2 = lambda: {"a": y, "b": y}
+      r = control_flow_ops.cond(pred, fn1, fn2)
+      test_result = sess.run(r)
+      self.assertDictEqual({"a": 210, "b": 210}, test_result)
+
+  def testEmbeddedListOutput(self):
+    with self.cached_session() as sess:
+      x = constant_op.constant(10)
+      y = constant_op.constant(200)
+      pred = math_ops.less(1, 2)
+      fn1 = lambda: [[math_ops.add(x, y), math_ops.add(x, y)]]
+      fn2 = lambda: [[y, y]]
+      # Pass strict=True flag as cond_v2 allows for tensors to be
+      # in nested output structures as singletons
+      r = control_flow_ops.cond(pred, fn1, fn2, strict=True)
+      test_result = sess.run(r)
+      self.assertListEqual([[210, 210]], test_result)
+
+  def testEmbeddedTupleOutput(self):
+    with self.cached_session() as sess:
+      x = constant_op.constant(10)
+      y = constant_op.constant(200)
+      pred = math_ops.less(1, 2)
+      fn1 = lambda: ((math_ops.add(x, y), math_ops.add(x, y)))
+      fn2 = lambda: ((y, y))
+      r = control_flow_ops.cond(pred, fn1, fn2)
+      test_result = sess.run(r)
+      self.assertTupleEqual(((210, 210)), test_result)
+
+  def testEmbeddedDictOutput(self):
+    with self.cached_session() as sess:
+      x = constant_op.constant(10)
+      y = constant_op.constant(200)
+      pred = math_ops.less(1, 2)
+      fn1 = lambda: {"a": {"c": math_ops.add(x, y)},
+                     "b": {"d": math_ops.add(x, y)}}
+      fn2 = lambda: {"a": {"c": y},
+                     "b": {"d": y}}
+      r = control_flow_ops.cond(pred, fn1, fn2)
+      test_result = sess.run(r)
+      self.assertDictEqual({"a": {"c": 210}, "b": {"d": 210}}, test_result)
+
+  def testCheckNestedOutputStruct(self):
+    with self.cached_session() as sess:
+      x = constant_op.constant(10)
+      y = constant_op.constant(200)
+      pred = math_ops.less(1, 2)
+      fn1 = lambda: {"a": math_ops.add(x, y), "b": math_ops.add(x, y)}
+      fn2 = lambda: {"c": y, "d": y}
+      with self.assertRaisesRegexp(
+          ValueError,
+          "The two structures don't have the same nested structure"):
+        r = control_flow_ops.cond(pred, fn1, fn2)
+        test_result = sess.run(r)
 
   def testCondRef(self):
 
@@ -710,6 +792,34 @@ class ControlFlowTest(test.TestCase):
 
       self.assertAllEqual(980.0, r.eval(feed_dict={c: 1}))
       self.assertAllEqual(30.0, r.eval(feed_dict={c: 3}))
+
+  def testCondGradMultiDevice(self):
+    config = config_pb2.ConfigProto(device_count={"CPU": 2},
+                                    allow_soft_placement=True)
+    with self.cached_session(use_gpu=True, config=config) as sess:
+      pred = array_ops.placeholder(dtypes.bool, [])
+      x = array_ops.placeholder(dtypes.float32)
+      y = array_ops.placeholder(dtypes.float32)
+
+      with ops.device("/cpu:0"):
+        z = control_flow_ops.cond(pred, lambda: x * y * 2.0, lambda: 2.0)
+
+      with ops.device("/cpu:1"):
+        grad = gradients_impl.gradients(z, x)[0]
+
+      self.assertEqual(sess.run(grad, {pred: True, x: 1.0, y: 2.0}), 4.0)
+      self.assertEqual(sess.run(grad, {pred: False, x: 1.0, y: 2.0}), 0.0)
+
+      with ops.device("/cpu:0"):
+        grad_grad = gradients_impl.gradients(grad, x)[0]
+
+      # v1 control flow gets None second derivative for some reason.
+      if not control_flow_ops.ENABLE_COND_V2:
+        self.assertIsNone(grad_grad)
+        return
+
+      self.assertEqual(sess.run(grad_grad, {pred: True, x: 1.0, y: 2.0}), 0.0)
+      self.assertEqual(sess.run(grad_grad, {pred: False, x: 1.0, y: 2.0}), 0.0)
 
   def testNestedCond_Simple(self):
     with self.cached_session():
@@ -1657,6 +1767,35 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(c, b, [n])
       self.assertAllEqual(10, r.eval())
 
+  def testWhileCondGradMultiDevice(self):
+    config = config_pb2.ConfigProto(device_count={"CPU": 2},
+                                    allow_soft_placement=True)
+    with self.cached_session(use_gpu=True, config=config) as sess:
+      pred = array_ops.placeholder(dtypes.bool, [])
+      x_init = constant_op.constant(1.0)
+
+      with ops.device("/cpu:0"):
+        z = control_flow_ops.while_loop(
+            lambda i, _: i < 3,
+            lambda i, x: (i + 1, control_flow_ops.cond(
+                pred, lambda: x * 2.0, lambda: 10.0)),
+            [0, x_init])
+
+      with ops.device("/cpu:1"):
+        grad = gradients_impl.gradients(z, x_init)[0]
+
+      self.assertEqual(sess.run(grad, {pred: True}), 8.0)
+      self.assertEqual(sess.run(grad, {pred: False}), 0.0)
+
+      if not control_flow_ops.ENABLE_WHILE_V2:
+        return
+
+      with ops.device("/cpu:0"):
+        grad_grad = gradients_impl.gradients(grad, x_init)[0]
+
+      self.assertEqual(sess.run(grad_grad, {pred: True}), 0.0)
+      self.assertEqual(sess.run(grad_grad, {pred: False}), 0.0)
+
   # NOTE: It is ok to have parallel_iterations > 1
   @test_util.disable_control_flow_v2("b/113324949 (RefVariable)")
   def testWhileUpdateVariable_1(self):
@@ -2059,7 +2198,7 @@ class ControlFlowTest(test.TestCase):
       def fn1():
         r = control_flow_ops.while_loop(c, b, [n],
                                         [tensor_shape.unknown_shape()])
-        return gradients_impl.gradients(r, x)
+        return gradients_impl.gradients(r, x)[0]
 
       r = control_flow_ops.cond(math_ops.less(1, 2), fn1, lambda: x)
       self.assertAllClose(9.0, r.eval(feed_dict={x: 1.0}))

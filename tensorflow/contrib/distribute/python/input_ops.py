@@ -102,6 +102,11 @@ def auto_shard_dataset(dataset, num_shards, index):
               dataset._input_dataset, found_reader_op)
           return dataset
 
+    if isinstance(dataset, dataset_ops.DatasetV1Adapter):
+      dataset._dataset = _auto_shard_impl(
+          dataset._dataset, found_reader_op)
+      return dataset
+
     # TODO(priyag): Make _input_dataset(s) a common property of all datasets to
     # make this check more robust.
     if hasattr(dataset, "_input_dataset"):

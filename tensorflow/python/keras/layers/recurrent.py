@@ -446,6 +446,9 @@ class RNN(Layer):
                        'an attribute `state_size` '
                        '(tuple of integers, '
                        'one integer per RNN state).')
+    # If True, the output for masked timestep will be zeros, whereas in the
+    # False case, output from previous timestep is returned for masked timestep.
+    self.zero_output_for_mask = kwargs.pop('zero_output_for_mask', False)
     super(RNN, self).__init__(**kwargs)
     self.cell = cell
     if isinstance(cell, checkpointable.CheckpointableBase):
@@ -829,7 +832,8 @@ class RNN(Layer):
         mask=mask,
         unroll=self.unroll,
         input_length=timesteps,
-        time_major=self.time_major)
+        time_major=self.time_major,
+        zero_output_for_mask=self.zero_output_for_mask)
     if self.stateful:
       updates = []
       for i in range(len(states)):
@@ -923,6 +927,8 @@ class RNN(Layer):
     }
     if self._num_constants is not None:
       config['num_constants'] = self._num_constants
+    if self.zero_output_for_mask:
+      config['zero_output_for_mask'] = self.zero_output_for_mask
 
     cell_config = self.cell.get_config()
     config['cell'] = {

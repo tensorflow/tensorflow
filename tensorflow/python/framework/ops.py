@@ -5677,7 +5677,7 @@ def reset_default_graph():
   _default_graph_stack.reset()
 
 
-@tf_export("get_default_graph")
+@tf_export(v1=["get_default_graph"])
 def get_default_graph():
   """Returns the default graph for the current thread.
 
@@ -6010,7 +6010,7 @@ def add_to_collections(names, value):
   get_default_graph().add_to_collections(names, value)
 
 
-@tf_export("get_collection_ref")
+@tf_export(v1=["get_collection_ref"])
 def get_collection_ref(key):
   """Wrapper for `Graph.get_collection_ref()` using the default graph.
 
@@ -6034,7 +6034,7 @@ def get_collection_ref(key):
   return get_default_graph().get_collection_ref(key)
 
 
-@tf_export("get_collection")
+@tf_export(v1=["get_collection"])
 def get_collection(key, scope=None):
   """Wrapper for `Graph.get_collection()` using the default graph.
 

@@ -38,45 +38,13 @@ typedef std::vector<std::string> string_vec;
 
 // Append to *found the strings within the named file with the platform_strings
 // magic prefix, and return true; or return false on error.
-static bool GetStrings(const std::string &file_name, string_vec *found) {
-  bool result = false;
-  FILE *ifp = fopen(file_name.c_str(), "rb");
-  if (ifp != nullptr) {
-    static const char prefix[] = TF_PLAT_STR_MAGIC_PREFIX_;
-    int first_char = prefix[1];
-    int last_char = -1;
-    int c;
-    while ((c = getc(ifp)) != EOF) {
-      if (c == first_char && last_char == 0) {
-        int i = 2;
-        while (prefix[i] != 0 && (c = getc(ifp)) == prefix[i]) {
-          i++;
-        }
-        if (prefix[i] == 0) {
-          std::string str;
-          while ((c = getc(ifp)) != EOF && c != 0) {
-            str.push_back(c);
-          }
-          if (!str.empty()) {
-            found->push_back(str);
-          }
-        }
-      }
-      last_char = c;
-    }
-
-    result = (ferror(ifp) == 0);
-    fclose(ifp);
-  }
-  return result;
-}
 
 // Print the platform strings embedded in the binary file_name and return 0,
 // on on error return 2.
 static int PrintStrings(const std::string file_name) {
   int rc = 0;
   string_vec str;
-  if (GetStrings(file_name, &str)) {
+  if (!tensorflow::GetPlatformStrings(file_name, &str)) {
     for (int i = 0; i != str.size(); i++) {
       printf("%s\n", str[i].c_str());
     }
@@ -145,7 +113,7 @@ static int RunTest(const std::string &binary_name) {
   int rc = 0;
   string_vec str;
 
-  if (GetStrings(binary_name, &str)) {
+  if (!tensorflow::GetPlatformStrings(binary_name, &str)) {
     CheckStr(str, "__linux__", AS_STR(__linux__));
     CheckStr(str, "_WIN32", AS_STR(_WIN32));
     CheckStr(str, "__APPLE__", AS_STR(__APPLE__));

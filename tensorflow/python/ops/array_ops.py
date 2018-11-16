@@ -269,7 +269,13 @@ def broadcast_static_shape(shape_x, shape_y):
   return common_shapes.broadcast_shape(shape_x, shape_y)
 
 
-@tf_export("shape")
+@tf_export("shape", v1=[])
+def shape_v2(input, out_type=dtypes.int32, name=None):
+  # pylint: disable=redefined-builtin
+  return shape(input, name, out_type)
+
+
+@tf_export(v1=["shape"])
 def shape(input, name=None, out_type=dtypes.int32):
   # pylint: disable=redefined-builtin
   """Returns the shape of a tensor.
@@ -342,7 +348,13 @@ def shape_n(input, out_type=dtypes.int32, name=None):
   return gen_array_ops.shape_n(input, out_type=out_type, name=name)
 
 
-@tf_export("size")
+@tf_export("size", v1=[])
+def size_v2(input, out_type=dtypes.int32, name=None):
+  # pylint: disable=redefined-builtin
+  return size(input, name, out_type)
+
+
+@tf_export(v1=["size"])
 def size(input, name=None, out_type=dtypes.int32):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
@@ -2005,7 +2017,65 @@ def sparse_placeholder(dtype, shape=None, name=None):
 # pylint: enable=redefined-outer-name
 
 
-@tf_export("pad")
+@tf_export("pad", v1=[])
+def pad_v2(tensor, paddings, mode="CONSTANT", constant_values=0, name=None):
+  """Pads a tensor.
+
+  This operation pads a `tensor` according to the `paddings` you specify.
+  `paddings` is an integer tensor with shape `[n, 2]`, where n is the rank of
+  `tensor`. For each dimension D of `input`, `paddings[D, 0]` indicates how
+  many values to add before the contents of `tensor` in that dimension, and
+  `paddings[D, 1]` indicates how many values to add after the contents of
+  `tensor` in that dimension. If `mode` is "REFLECT" then both `paddings[D, 0]`
+  and `paddings[D, 1]` must be no greater than `tensor.dim_size(D) - 1`. If
+  `mode` is "SYMMETRIC" then both `paddings[D, 0]` and `paddings[D, 1]` must be
+  no greater than `tensor.dim_size(D)`.
+
+  The padded size of each dimension D of the output is:
+
+  `paddings[D, 0] + tensor.dim_size(D) + paddings[D, 1]`
+
+  For example:
+
+  ```python
+  t = tf.constant([[1, 2, 3], [4, 5, 6]])
+  paddings = tf.constant([[1, 1,], [2, 2]])
+  # 'constant_values' is 0.
+  # rank of 't' is 2.
+  tf.pad(t, paddings, "CONSTANT")  # [[0, 0, 0, 0, 0, 0, 0],
+                                   #  [0, 0, 1, 2, 3, 0, 0],
+                                   #  [0, 0, 4, 5, 6, 0, 0],
+                                   #  [0, 0, 0, 0, 0, 0, 0]]
+
+  tf.pad(t, paddings, "REFLECT")  # [[6, 5, 4, 5, 6, 5, 4],
+                                  #  [3, 2, 1, 2, 3, 2, 1],
+                                  #  [6, 5, 4, 5, 6, 5, 4],
+                                  #  [3, 2, 1, 2, 3, 2, 1]]
+
+  tf.pad(t, paddings, "SYMMETRIC")  # [[2, 1, 1, 2, 3, 3, 2],
+                                    #  [2, 1, 1, 2, 3, 3, 2],
+                                    #  [5, 4, 4, 5, 6, 6, 5],
+                                    #  [5, 4, 4, 5, 6, 6, 5]]
+  ```
+
+  Args:
+    tensor: A `Tensor`.
+    paddings: A `Tensor` of type `int32`.
+    mode: One of "CONSTANT", "REFLECT", or "SYMMETRIC" (case-insensitive)
+    constant_values: In "CONSTANT" mode, the scalar pad value to use. Must be
+      same type as `tensor`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `tensor`.
+
+  Raises:
+    ValueError: When mode is not one of "CONSTANT", "REFLECT", or "SYMMETRIC".
+  """
+  return pad(tensor, paddings, mode, name, constant_values)
+
+
+@tf_export(v1=["pad"])
 def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pylint: disable=invalid-name
   """Pads a tensor.
 
@@ -2935,7 +3005,7 @@ def batch_gather(params, indices, name=None):
 
 # Define quantize_v2 here in order to make name the second-to-last attribute,
 # because round_mode was added later.
-@tf_export("quantize_v2")
+@tf_export(v1=["quantize_v2"])
 @deprecation.deprecated(
     "2017-10-25",
     "`tf.quantize_v2` is deprecated, please use `tf.quantization.quantize` "
@@ -2956,7 +3026,7 @@ def quantize_v2(input,  # pylint: disable=redefined-builtin
                                    round_mode=round_mode)
 
 
-quantize_v2.__doc__ = """Please use `tf.quantize` instead."""
+quantize_v2.__doc__ = """Please use `tf.quantization.quantize` instead."""
 
 
 # We want to expose tf.quantize instead of tf.quantize_v2; we can deprecate
