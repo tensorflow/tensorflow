@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -120,7 +119,7 @@ class Tensor {
 
   class HostScalarTensorBufferBase;
   template <typename T>
-  struct ValueAndTensorBuffer;
+  class HostScalarTensorBuffer;
 
   // Creates a tensor with the given scalar `value` in CPU memory.
   template <typename T>
@@ -877,62 +876,40 @@ class Tensor::HostScalarTensorBufferBase : public TensorBuffer {
   void FillAllocationDescription(AllocationDescription* proto) const final;
 };
 
+// `Tensor::HostScalarTensorBuffer<T>` is a specialized `TensorBuffer`
+// implementation for storing a single scalar value.
+//
+// TODO(mrry): Evaluate other compilers or approaches to aligning the value
+// so that it can be used directly as a tensor value. For example, in a C++17
+// future, we could use `alignas(EIGEN_MAX_ALIGN_BYTES)` to store the value
+// inline in this object to save an allocation. However, this is not currently
+// widely supported in our compilers.
 template <typename T>
-Tensor::Tensor(T value, host_scalar_tag tag) {
-  // A packed representation for a single scalar value of type `T`, and a
-  // `TensorBuffer` implementation that describes (and manages the lifetime of)
-  // that value.
-  struct ValueAndTensorBuffer {
-    class HostScalarTensorBuffer : public HostScalarTensorBufferBase {
-     public:
-      HostScalarTensorBuffer(void* data) : data_(data) {}
-      void* data() const final { return const_cast<void*>(data_); }
-      size_t size() const final { return sizeof(T); }
-      TensorBuffer* root_buffer() final { return this; }
+class Tensor::HostScalarTensorBuffer : public HostScalarTensorBufferBase {
+ public:
+  HostScalarTensorBuffer(T&& value)
+      : data_(reinterpret_cast<T*>(cpu_allocator()->AllocateRaw(
+            EIGEN_MAX_ALIGN_BYTES, sizeof(value)))) {
+    if (is_simple_type<T>::value) {
+      *data_ = value;
+    } else {
+      new (data_) T(std::move(value));
+    }
+  }
+  ~HostScalarTensorBuffer() { cpu_allocator()->Deallocate(data_, 1); }
+  void* data() const final { return const_cast<T*>(data_); }
+  size_t size() const final { return sizeof(*data_); }
+  TensorBuffer* root_buffer() final { return this; }
 
-      // Override `operator delete` so that calling `delete this` in
-      // `core::Refcounted::Unref()` for an object of this type will free
-      // the enclosing `ValueAndTensorBuffer` for the tensor buffer.
-      static void operator delete(void* ptr) {
-        // Use a dummy object to compute to offset of
-        // `ValueAndTensorBuffer::tensor_buffer`, because `offsetof()` is not
-        // necessarily defined on this non-POD type (until C++17).
-        typename std::aligned_storage<sizeof(ValueAndTensorBuffer),
-                                      alignof(ValueAndTensorBuffer)>::type
-            dummy_storage_;
-        ValueAndTensorBuffer* dummy_object =
-            reinterpret_cast<ValueAndTensorBuffer*>(&dummy_storage_);
-        intptr_t offset =
-            reinterpret_cast<intptr_t>(&dummy_object->tensor_buffer) -
-            reinterpret_cast<intptr_t>(dummy_object);
+ private:
+  T* const data_;
+};
 
-        port::AlignedFree(static_cast<char*>(ptr) - offset);
-      }
-
-      static void operator delete(void*, void*) {
-        // Some compilers require an overridden class-specific deallocation
-        // function, which will be called if placement `new` throws an
-        // exception.
-      }
-
-     private:
-      ~HostScalarTensorBuffer() override { static_cast<T*>(data_)->~T(); }
-      void* const data_;
-    };
-
-    T value;
-    HostScalarTensorBuffer tensor_buffer;
-  };
-
-  auto* value_and_buf = static_cast<ValueAndTensorBuffer*>(
-      port::AlignedMalloc(sizeof(ValueAndTensorBuffer), EIGEN_MAX_ALIGN_BYTES));
-  new (&value_and_buf->value) T(std::move(value));
-  new (&value_and_buf->tensor_buffer)
-      typename ValueAndTensorBuffer::HostScalarTensorBuffer(value_and_buf);
-  buf_ = &value_and_buf->tensor_buffer;
+template <typename T>
+Tensor::Tensor(T value, host_scalar_tag tag)
+    : buf_(new HostScalarTensorBuffer<T>(std::move(value))) {
   set_dtype(DataTypeToEnum<T>::value);
 }
-
 inline Tensor& Tensor::operator=(Tensor&& other) {
   // Avoid self-assignment, since we might destroy our underlying buffer.
   if (&other != this) {
