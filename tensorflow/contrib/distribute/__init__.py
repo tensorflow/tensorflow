@@ -63,6 +63,7 @@ _allowed_symbols = [
     'get_loss_reduction',
     'get_replica_context',
     'has_distribution_strategy',
+    'in_cross_replica_context',
     'require_replica_context',
     'run_standard_tensorflow_server',
     'UpdateContext',

@@ -86,24 +86,26 @@ def _get_per_thread_mode():
 
 
 def get_replica_context():
-  """Returns the current ReplicaContext or None if in a cross-replica context.
+  """Returns the current `tf.distribute.ReplicaContext` or `None`.
+
+  Returns `None` if in a cross-replica context.
 
   Note that execution:
 
   1. starts in the default (single-replica) replica context (this function
-     will return the default ReplicaContext object);
+     will return the default `ReplicaContext` object);
   2. switches to cross-replica context (in which case this will return
-     None) when entering a `with DistributionStrategy.scope():` block;
+     `None`) when entering a `with DistributionStrategy.scope():` block;
   3. switches to a (non-default) replica context inside
-     `call_for_each_replica(fn, ...)`;
-  4. if `fn` calls `get_replica_context()->merge_call(merge_fn, ...)`, then
+     `extended.call_for_each_replica(fn, ...)`;
+  4. if `fn` calls `get_replica_context().merge_call(merge_fn, ...)`, then
      inside `merge_fn` you are back in the cross-replica context (and again
-     this function will return None).
+     this function will return `None`).
 
   Note that you can also go directly from step 1 to 4 to switch to a
   cross-replica context for the default `DistributionStrategy`. You may
   also switch from the cross-replica context of 4 to a replica context by
-  calling `call_for_each_replica()`, jumping back to step 3.
+  calling `extended.call_for_each_replica()`, jumping back to step 3.
 
   Most `DistributionStrategy` methods may only be executed in
   a cross-replica context, in a replica context you should use the
@@ -111,16 +113,21 @@ def get_replica_context():
 
   Returns:
     The current `ReplicaContext` object when in a replica context scope,
-    else None.
+    else `None`.
 
-    Exactly one of `get_replica_context()` and `get_cross_replica_context()`
-    will return None in a particular block.
+    Within a particular block, exactly one of these two things will be true:
+
+    * `get_replica_context()` returns non-`None`, or
+    * `tf.distribute.is_cross_replica_context()` returns True.
   """
   return _get_per_thread_mode().replica_context
 
 
 def get_cross_replica_context():
   """Returns the current DistributionStrategy if in a cross-replica context.
+
+  DEPRECATED: Please use `in_cross_replica_context()` and
+  `get_distribution_strategy()` instead.
 
   Note that execution:
 
@@ -142,19 +149,37 @@ def get_cross_replica_context():
 
   Returns:
     Returns the current `DistributionStrategy` object in a cross-replica
-    context, or None.
+    context, or `None`.
 
     Exactly one of `get_replica_context()` and `get_cross_replica_context()`
-    will return None in a particular block.
+    will return `None` in a particular block.
   """
   return _get_per_thread_mode().cross_replica_context
+
+
+def in_cross_replica_context():
+  """Returns True if in a cross-replica context.
+
+  See `tf.distribute.get_replica_context` for details.
+
+  Returns:
+    True if in a cross-replica context (`get_replica_context()` returns
+    `None`), or False if in a replica context (`get_replica_context()` returns
+    non-`None`).
+  """
+  return _get_per_thread_mode().cross_replica_context is not None
 
 
 def get_distribution_strategy():
   """Returns the current `DistributionStrategy` object.
 
-  Prefer to use `get_replica_context()` or `get_cross_replica_context()`
-  instead when possible.
+  Typically only used in a cross-replica context:
+
+  ```
+  if tf.distribute.in_cross_replica_context():
+    strategy = tf.distribute.get_distribution_strategy()
+    ...
+  ```
 
   Returns:
     A `DistributionStrategy` object. Inside a

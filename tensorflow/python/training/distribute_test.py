@@ -63,6 +63,7 @@ def _assert_in_default_state(t):
   t.assertIs(distribution_strategy_context._get_default_replica_context(),
              distribution_strategy_context.get_replica_context())
   t.assertIs(None, distribution_strategy_context.get_cross_replica_context())
+  t.assertFalse(distribution_strategy_context.in_cross_replica_context())
   t.assertIs(distribution_strategy_context._get_default_distribution_strategy(),
              distribution_strategy_context.get_distribution_strategy())
   t.assertFalse(distribution_strategy_context.has_distribution_strategy())
@@ -79,6 +80,7 @@ class TestStrategyTest(test.TestCase):
       self.assertTrue(replica_context is not None)
       self.assertIs(None,
                     distribution_strategy_context.get_cross_replica_context())
+      self.assertFalse(distribution_strategy_context.in_cross_replica_context())
       self.assertTrue(distribution_strategy_context.has_distribution_strategy())
       self.assertIs(dist,
                     distribution_strategy_context.get_distribution_strategy())
@@ -102,6 +104,7 @@ class TestStrategyTest(test.TestCase):
       self.assertIs(None, distribution_strategy_context.get_replica_context())
       self.assertIs(dist,
                     distribution_strategy_context.get_cross_replica_context())
+      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
       self.assertTrue(distribution_strategy_context.has_distribution_strategy())
       self.assertIs(dist,
                     distribution_strategy_context.get_distribution_strategy())
@@ -141,6 +144,7 @@ class DefaultDistributionStrategyTest(test.TestCase):
       self.assertIs(None, distribution_strategy_context.get_replica_context())
       self.assertIs(dist,
                     distribution_strategy_context.get_cross_replica_context())
+      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
       self.assertIs(dist,
                     distribution_strategy_context.get_distribution_strategy())
       self.assertFalse(
