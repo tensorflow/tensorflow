@@ -292,6 +292,7 @@ cc_library(
     name = "hlo",
     srcs = [
         "dfs_hlo_visitor.cc",
+        "dynamic_parameter_binding.cc",
         "hlo_computation.cc",
         "hlo_input_output_alias_config.cc",
         "hlo_instruction.cc",
@@ -305,6 +306,7 @@ cc_library(
     hdrs = [
         "dfs_hlo_visitor.h",
         "dfs_hlo_visitor_with_default.h",
+        "dynamic_parameter_binding.h",
         "hlo_clone_context.h",
         "hlo_computation.h",
         "hlo_domain_metadata.h",
@@ -347,6 +349,25 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "dynamic_parameter_binding_test",
+    srcs = ["dynamic_parameter_binding_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_dce",
+        ":hlo_memory_scheduler",
+        ":hlo_ordering",
+        ":hlo_parser",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 

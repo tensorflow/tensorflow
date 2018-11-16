@@ -100,6 +100,11 @@ class ShapeIndex {
 
   string ToString() const;
 
+  template <typename H>
+  friend H AbslHashValue(H h, const ShapeIndex& index) {
+    return H::combine(std::move(h), index.indices_);
+  }
+
  private:
   container_type indices_;
 };
