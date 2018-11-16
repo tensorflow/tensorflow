@@ -2876,7 +2876,7 @@ def where(condition, x=None, y=None, name=None):
 
 
 # pylint: disable=redefined-builtin
-@tf_export("reverse_sequence")
+@tf_export(v1=["reverse_sequence"])
 @deprecation.deprecated_args(
     None, "seq_dim is deprecated, use seq_axis instead", "seq_dim")
 @deprecation.deprecated_args(
@@ -2900,12 +2900,29 @@ def reverse_sequence(input,
       name=name)
 
 
-# pylint: enable=redefined-builtin
-
 reverse_sequence.__doc__ = deprecation.rewrite_argument_docstring(
     deprecation.rewrite_argument_docstring(
         gen_array_ops.reverse_sequence.__doc__, "batch_dim", "batch_axis"),
     "seq_dim", "seq_axis")
+
+
+@tf_export("reverse_sequence", v1=[])
+def reverse_sequence_v2(
+    input, seq_lengths, seq_axis=None, batch_axis=None, name=None):
+  return gen_array_ops.reverse_sequence(
+      input=input,
+      seq_lengths=seq_lengths,
+      seq_dim=seq_axis,
+      batch_dim=batch_axis,
+      name=name)
+
+
+reverse_sequence_v2.__doc__ = deprecation.rewrite_argument_docstring(
+    deprecation.rewrite_argument_docstring(
+        gen_array_ops.reverse_sequence.__doc__, "batch_dim", "batch_axis"),
+    "seq_dim", "seq_axis")
+
+# pylint: enable=redefined-builtin
 
 
 @tf_export("gather")
