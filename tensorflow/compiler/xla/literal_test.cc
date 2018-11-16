@@ -1587,9 +1587,9 @@ TEST_F(LiteralUtilTest, DecomposeTuple) {
   Literal nested_tuple = LiteralUtil::MakeTuple(
       {&tuple_elements[0], &tuple_elements[1], &nil_literal});
 
-  EXPECT_FALSE(ShapeUtil::IsNil(nested_tuple.shape()));
+  EXPECT_FALSE(ShapeUtil::IsEmptyTuple(nested_tuple.shape()));
   std::vector<Literal> elements = nested_tuple.DecomposeTuple();
-  EXPECT_TRUE(ShapeUtil::IsNil(nested_tuple.shape()));
+  EXPECT_TRUE(ShapeUtil::IsEmptyTuple(nested_tuple.shape()));
 
   ASSERT_EQ(elements.size(), 3);
 
@@ -1640,7 +1640,7 @@ TEST_F(LiteralUtilTest, MoveIntoTuple) {
   EXPECT_EQ(literal.Get<double>({1}, /*shape_index=*/{2, 1}), 44.0);
 
   for (const Literal& element : elements) {
-    EXPECT_TRUE(ShapeUtil::IsNil(element.shape()));
+    EXPECT_TRUE(ShapeUtil::IsEmptyTuple(element.shape()));
   }
 }
 
