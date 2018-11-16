@@ -533,10 +533,19 @@ namespace functor {
       const GPUDevice& d, typename TTypes<T, 5, int>::ConstTensor in, \
       const std::array<int, 3>& padding_left,                         \
       const std::array<int, 3>& padding_right,                        \
-      typename TTypes<T, 5, int>::Tensor out, TensorFormat format);
+      typename TTypes<T, 5, int>::Tensor out, TensorFormat format);   \
+  template <>                                                         \
+  void NHWCToNCHW<GPUDevice, T, 5>::operator()(                       \
+      const GPUDevice& d, typename TTypes<T, 5>::ConstTensor in,      \
+      typename TTypes<T, 5>::Tensor out);                             \
+  template <>                                                         \
+  void NCHWToNHWC<GPUDevice, T, 5>::operator()(                       \
+      const GPUDevice& d, typename TTypes<T, 5>::ConstTensor in,      \
+      typename TTypes<T, 5>::Tensor out);
 
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
 
 }  // namespace functor
@@ -548,6 +557,9 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("Conv3D").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     Conv3DOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("Conv3D").Device(DEVICE_GPU).TypeConstraint<double>("T"),
+    Conv3DOp<GPUDevice, double>);
 #endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

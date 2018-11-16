@@ -1074,6 +1074,7 @@ namespace functor {
 
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
@@ -1863,6 +1864,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
                           Conv3DBackpropFilterOp<GPUDevice, T>);
 TF_CALL_half(REGISTER_GPU_KERNEL);
 TF_CALL_float(REGISTER_GPU_KERNEL);
+TF_CALL_double(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 #endif  // GOOGLE_CUDA
