@@ -44,6 +44,10 @@ tf_module {
     name: "VarLenFeature"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "gfile"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "decode_base64"
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
