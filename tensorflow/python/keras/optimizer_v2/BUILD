@@ -13,6 +13,7 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 py_library(
     name = "optimizer_v2",
     srcs = [
+        "adadelta.py",
         "adam.py",
         "gradient_descent.py",
         "optimizer_v2.py",
@@ -36,6 +37,25 @@ cuda_py_test(
     name = "adam_test",
     size = "medium",
     srcs = ["adam_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+    ],
+    shard_count = 4,
+)
+
+cuda_py_test(
+    name = "adadelta_test",
+    size = "medium",
+    srcs = ["adadelta_test.py"],
     additional_deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
