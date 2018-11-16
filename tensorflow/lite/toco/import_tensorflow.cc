@@ -219,10 +219,7 @@ tensorflow::Status ImportShape(
   // allocation code gets a bit confused. It seems that the code expects an
   // empty shape for zero-sized shapes, so we will do just that, except for the
   // [0] case.
-  // TODO(b/119325030): In order to correctly import the "scalar" shapes the
-  // following test must include "&& input_dims_only_sizes.size() > 1", but
-  // that seems to slow everything down a lot.
-  if (zero_sized_shape) {
+  if (zero_sized_shape && input_dims_only_sizes.size() > 1) {
     shape->mutable_dims()->clear();
     if (input_flat_size != nullptr) *input_flat_size = 0;
     return tensorflow::Status::OK();
