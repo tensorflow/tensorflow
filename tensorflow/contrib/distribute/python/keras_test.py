@@ -1102,7 +1102,8 @@ class TestDistributionStrategyCorrectness(test.TestCase,
     with self.cached_session():
       tolerance = 1e-5
 
-      if isinstance(distribution, mirrored_strategy.MirroredStrategy):
+      if isinstance(distribution, (mirrored_strategy.MirroredStrategy,
+                                   mirrored_strategy.CoreMirroredStrategy)):
         # TODO(b/119257215): use the default one once the flakyness is fixed.
         tolerance = 1e-4
 
