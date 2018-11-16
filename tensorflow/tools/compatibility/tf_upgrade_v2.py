@@ -51,6 +51,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.sufficient_statistics": {
             "keep_dims": "keepdims"
         },
+        "tf.multinomial": {
+            "output_dtype": "dtype",
+        },
+        "tf.random.multinomial": {
+            "output_dtype": "dtype",
+        },
         "tf.nn.conv3d": {
             "filter": "filters"
         },
@@ -68,6 +74,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.symbol_renames = renames_v2.renames
     # pylint: disable=line-too-long
     # Add additional renames not in renames_v2.py here.
+    # IMPORTANT: For the renames in here, if you also need to add to
+    # function_reorders or function_keyword_renames, use the OLD function name.
+    # These renames happen after the arguments have been processed.
     self.symbol_renames.update({
         "tf.contrib.data.AUTOTUNE": "tf.data.experimental.AUTOTUNE",
         "tf.contrib.data.Counter": "tf.data.experimental.Counter",
@@ -113,6 +122,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.contrib.data.unique": "tf.data.experimental.unique",
         "tf.quantize_v2": "tf.quantization.quantize",
         "tf.sparse_concat": "tf.sparse.concat",
+        "tf.multinomial": "tf.random.categorical",
+        "tf.random.multinomial": "tf.random.categorical",
         "tf.load_file_system_library": "tf.load_library",
     })
     # pylint: enable=line-too-long
@@ -143,9 +154,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "input", "window_shape", "pooling_type", "padding", "dilation_rate",
             "strides", "name", "data_format"
         ],
-        "tf.nn.separable_conv2d": [
-            "input", "depthwise_filter", "pointwise_filter", "strides",
-            "padding", "data_format", "dilations", "name"
+        "tf.multinomial": [
+            "logits", "num_samples", "seed", "name", "output_dtype"
+        ],
+        "tf.random.multinomial": [
+            "logits", "num_samples", "seed", "name", "output_dtype"
         ],
         "tf.pad": ["tensor", "paddings", "mode", "name", "constant_values"],
         "tf.quantize_v2": [
