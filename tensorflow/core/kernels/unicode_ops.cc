@@ -425,12 +425,12 @@ class UnicodeDecodeWithOffsetsOp : public OpKernel {
         ctx, ctx->allocate_output("char_to_byte_starts",
                                   {static_cast<int64>(offset_values.size())},
                                   &output_offset_values));
-    auto out_char_values = output_char_values->vec<uint32>();
+    auto out_char_values = output_char_values->vec<int32>();
     auto out_offset_values = output_offset_values->vec<int64>();
 
     // Load output tensors from intermediate value arrays.
     for (int i = 0; i < char_values.size(); ++i) {
-      out_char_values(i) = static_cast<uint32>(char_values[i]);
+      out_char_values(i) = static_cast<int32>(char_values[i]);
       out_offset_values(i) = offset_values[i];
     }
   }
