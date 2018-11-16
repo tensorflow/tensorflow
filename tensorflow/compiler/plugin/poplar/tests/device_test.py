@@ -40,11 +40,8 @@ class IpuXlaDeviceLibTest(test_util.TensorFlowTestCase):
     for d in devices:
       if d.device_type == "IPU":
         found_ipu = True
-      if d.device_type == "IPU_REPLICATED_CORE":
-        found_ipu_rep = True
 
     self.assertTrue(found_ipu)
-    self.assertFalse(found_ipu_rep)
 
   def testDeviceInSession(self):
 
@@ -60,31 +57,9 @@ class IpuXlaDeviceLibTest(test_util.TensorFlowTestCase):
       for d in devices:
         if d.device_type == "IPU":
           found_ipu = True
-        if d.device_type == "IPU_REPLICATED_CORE":
-          found_ipu_rep = True
 
       self.assertTrue(found_ipu)
-      self.assertFalse(found_ipu_rep)
 
-  def testShardedDeviceInSession(self):
-
-    with tu.ipu_session(sharded=True) as sess:
-
-      devices = sess.list_devices()
-
-      self.assertGreater(len(devices), 0)
-      self.assertEqual(devices[0].device_type, "CPU")
-
-      found_ipu = False
-      found_ipu_rep = False
-      for d in devices:
-        if d.device_type == "IPU":
-          found_ipu = True
-        if d.device_type == "IPU_REPLICATED_CORE":
-          found_ipu_rep = True
-
-      self.assertFalse(found_ipu)
-      self.assertTrue(found_ipu_rep)
 
 if __name__ == "__main__":
   googletest.main()

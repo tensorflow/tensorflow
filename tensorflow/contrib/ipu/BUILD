@@ -20,6 +20,7 @@ py_library(
     deps = [
         "//tensorflow/compiler/plugin/poplar:ipu_ops_py",
         "//tensorflow/compiler/plugin/poplar:popnn_ops_py",
+        "//tensorflow/compiler/xla:xla_data_proto_py",
         "//tensorflow/contrib/compiler:compiler_py",
     ],
 )
