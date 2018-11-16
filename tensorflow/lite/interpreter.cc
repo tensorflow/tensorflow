@@ -117,7 +117,6 @@ class InterpreterInfo : public GraphInfo {
 Interpreter::Interpreter(ErrorReporter* error_reporter)
     : error_reporter_(error_reporter ? error_reporter
                                      : DefaultErrorReporter()) {
-  subgraphs_.emplace_back(&context_);
   context_.impl_ = static_cast<void*>(this);
   context_.ResizeTensor = ResizeTensor;
   context_.ReportError = ReportError;
@@ -133,9 +132,8 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   SwitchToKernelContext();
 
   // Reserve some space for the tensors to avoid excessive resizing.
-  std::vector<TfLiteTensor>& tensors = primary_subgraph().tensors();
-  tensors.reserve(kTensorsReservedCapacity);
-  primary_subgraph().nodes_and_registration().reserve(kTensorsReservedCapacity);
+  tensors_.reserve(kTensorsReservedCapacity);
+  nodes_and_registration_.reserve(kTensorsReservedCapacity);
   next_execution_plan_index_to_prepare_ = 0;
 
   for (int i = 0; i < kTfLiteMaxExternalContexts; ++i) {
@@ -146,6 +144,16 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
 }
 
 Interpreter::~Interpreter() {
+  for (auto& nodeAndReg : nodes_and_registration_) {
+    TfLiteNode& node = nodeAndReg.first;
+    TfLiteIntArrayFree(node.inputs);
+    TfLiteIntArrayFree(node.outputs);
+    TfLiteIntArrayFree(node.temporaries);
+    if (node.builtin_data) free(node.builtin_data);
+    OpFree(nodeAndReg.second, node.user_data);
+    node.builtin_data = nullptr;
+  }
+
   for (size_t i = 0; i < context_.tensors_size; i++) {
     TfLiteTensor* tensor = &context_.tensors[i];
     if (tensor->buffer_handle != kTfLiteNullBufferHandle &&
@@ -253,8 +261,6 @@ TfLiteStatus Interpreter::ReplaceNodeSubsetsWithDelegateKernels(
                                            &node_subsets);
 
   execution_plan_.clear();
-  std::vector<TfLiteTensor>& tensors = primary_subgraph().tensors();
-
   for (auto& node_subset : node_subsets) {
     // Subsets calimed by the delegate should have a "macro" op created, the
     // other node_subsets (kTfNonPartition) just have their nodes added back to
@@ -277,15 +283,14 @@ TfLiteStatus Interpreter::ReplaceNodeSubsetsWithDelegateKernels(
 
         // Initialize the output tensors's delegate-related fields.
         for (int tensor_index : node_subset.output_tensors) {
-          TfLiteTensor* tensor = &tensors[tensor_index];
+          TfLiteTensor* tensor = &tensors_[tensor_index];
           TF_LITE_ENSURE(&context_, tensor->delegate == nullptr ||
                                         tensor->delegate == delegate);
           tensor->delegate = delegate;
         }
 
         // Associate the node with the delegate.
-        TfLiteNode* node =
-            &primary_subgraph().nodes_and_registration()[node_index].first;
+        TfLiteNode* node = &nodes_and_registration_[node_index].first;
         node->delegate = delegate;
       } break;
       case NodeSubset::kTfUnexplored:
@@ -348,21 +353,21 @@ TfLiteStatus Interpreter::GetExecutionPlan(struct TfLiteContext* context,
 TfLiteStatus Interpreter::SetInputs(std::vector<int> inputs) {
   TF_LITE_ENSURE_OK(&context_,
                     CheckTensorIndices("inputs", inputs.data(), inputs.size()));
-  primary_subgraph().inputs() = std::move(inputs);
+  inputs_ = std::move(inputs);
   return kTfLiteOk;
 }
 
 TfLiteStatus Interpreter::SetOutputs(std::vector<int> outputs) {
   TF_LITE_ENSURE_OK(
       &context_, CheckTensorIndices("outputs", outputs.data(), outputs.size()));
-  primary_subgraph().outputs() = std::move(outputs);
+  outputs_ = std::move(outputs);
   return kTfLiteOk;
 }
 
 TfLiteStatus Interpreter::SetVariables(std::vector<int> variables) {
   TF_LITE_ENSURE_OK(&context_, CheckTensorIndices("variables", variables.data(),
                                                   variables.size()));
-  primary_subgraph().variables() = std::move(variables);
+  variables_ = std::move(variables);
   return kTfLiteOk;
 }
 
@@ -437,8 +442,7 @@ TfLiteStatus Interpreter::AllocateTensors() {
   // Explicit (re)allocation is necessary if nodes have been changed or tensors
   // have been resized. For inputs marked as dynamic, we can't short-circuit the
   // allocation as the client may have done the resize manually.
-  if (state_ != kStateUninvokable &&
-      !HasDynamicTensorImpl(context_, inputs())) {
+  if (state_ != kStateUninvokable && !HasDynamicTensorImpl(context_, inputs_)) {
     return kTfLiteOk;
   }
 
@@ -462,8 +466,7 @@ TfLiteStatus Interpreter::AllocateTensors() {
 
 // TODO(ycling): Support non-zero default values.
 TfLiteStatus Interpreter::ResetVariableTensors() {
-  std::vector<TfLiteTensor>& tensors = primary_subgraph().tensors();
-  for (auto& tensor : tensors) {
+  for (auto& tensor : tensors_) {
     if (!tensor.is_variable) {
       continue;
     }
@@ -480,7 +483,7 @@ TfLiteStatus Interpreter::ResetVariableTensors() {
 }
 
 void Interpreter::ReserveNodes(int count) {
-  primary_subgraph().nodes_and_registration().reserve(count);
+  nodes_and_registration_.reserve(count);
 }
 
 TfLiteStatus Interpreter::AddNodeWithParameters(
@@ -503,11 +506,10 @@ TfLiteStatus Interpreter::AddNodeWithParameters(
       &context_,
       CheckTensorIndices("node outputs", outputs.data(), outputs.size()));
 
-  int new_node_index = primary_subgraph().nodes_and_registration().size();
+  int new_node_index = nodes_and_registration_.size();
   if (node_index) *node_index = new_node_index;
-  primary_subgraph().nodes_and_registration().resize(
-      primary_subgraph().nodes_and_registration().size() + 1);
-  auto& node_and_reg = primary_subgraph().nodes_and_registration().back();
+  nodes_and_registration_.resize(nodes_and_registration_.size() + 1);
+  auto& node_and_reg = nodes_and_registration_.back();
   TfLiteNode& node = node_and_reg.first;
   if (node.inputs) TfLiteIntArrayFree(node.inputs);
   if (node.outputs) TfLiteIntArrayFree(node.outputs);
@@ -578,13 +580,12 @@ bool HasDynamicTensor(const TfLiteContext& context,
 
 TfLiteStatus Interpreter::PrepareOpsStartingAt(
     int first_execution_plan_index, int* last_execution_plan_index_prepared) {
-  auto& subgraph = primary_subgraph();
   for (int execution_plan_index = first_execution_plan_index;
        execution_plan_index < execution_plan_.size(); execution_plan_index++) {
     int node_index = execution_plan_[execution_plan_index];
-    TfLiteNode& node = subgraph.nodes_and_registration()[node_index].first;
+    TfLiteNode& node = nodes_and_registration_[node_index].first;
     const TfLiteRegistration& registration =
-        subgraph.nodes_and_registration()[node_index].second;
+        nodes_and_registration_[node_index].second;
     EnsureTensorsVectorCapacity();
     if (OpPrepare(registration, &node) == kTfLiteError) {
       return ReportOpError(&context_, node, registration, node_index,
@@ -623,8 +624,6 @@ TfLiteStatus Interpreter::PrepareOpsAndTensors() {
 }
 
 TfLiteStatus Interpreter::Invoke() {
-  std::vector<TfLiteTensor>& tensors = primary_subgraph().tensors();
-
   if (!consistent_) {
     ReportError(&context_, "Invoke called on model that is not consistent.");
     return kTfLiteError;
@@ -661,10 +660,9 @@ TfLiteStatus Interpreter::Invoke() {
                                     execution_plan_index);
     }
     int node_index = execution_plan_[execution_plan_index];
-    TfLiteNode& node =
-        primary_subgraph().nodes_and_registration()[node_index].first;
+    TfLiteNode& node = nodes_and_registration_[node_index].first;
     const TfLiteRegistration& registration =
-        primary_subgraph().nodes_and_registration()[node_index].second;
+        nodes_and_registration_[node_index].second;
     SCOPED_OPERATOR_PROFILE(profiler_, node_index);
 
     // TODO(ycling): This is an extra loop through inputs to check if the data
@@ -676,7 +674,7 @@ TfLiteStatus Interpreter::Invoke() {
       if (tensor_index == kOptionalTensor) {
         continue;
       }
-      TfLiteTensor* tensor = &tensors[tensor_index];
+      TfLiteTensor* tensor = &tensors_[tensor_index];
       if (tensor->delegate && tensor->delegate != node.delegate &&
           tensor->data_is_stale) {
         EnsureTensorDataIsReadable(tensor_index);
@@ -699,7 +697,7 @@ TfLiteStatus Interpreter::Invoke() {
   }
 
   if (!allow_buffer_handle_output_) {
-    for (int tensor_index : outputs()) {
+    for (int tensor_index : outputs_) {
       EnsureTensorDataIsReadable(tensor_index);
     }
   }
@@ -734,17 +732,15 @@ void Interpreter::ReportError(TfLiteContext* context, const char* format, ...) {
 
 TfLiteStatus Interpreter::AddTensors(int tensors_to_add,
                                      int* first_new_tensor_index) {
-  std::vector<TfLiteTensor>& tensors = primary_subgraph().tensors();
-
-  const size_t base_index = tensors.size();
+  const size_t base_index = tensors_.size();
   if (first_new_tensor_index) *first_new_tensor_index = base_index;
-  tensors.resize(tensors.size() + tensors_to_add);
-  for (size_t i = base_index; i < tensors.size(); i++) {
-    memset(&tensors[i], 0, sizeof(tensors[i]));
-    tensors[i].buffer_handle = kTfLiteNullBufferHandle;
+  tensors_.resize(tensors_.size() + tensors_to_add);
+  for (size_t i = base_index; i < tensors_.size(); i++) {
+    memset(&tensors_[i], 0, sizeof(tensors_[i]));
+    tensors_[i].buffer_handle = kTfLiteNullBufferHandle;
   }
-  context_.tensors = tensors.data();
-  context_.tensors_size = tensors.size();
+  context_.tensors = tensors_.data();
+  context_.tensors_size = tensors_.size();
   return kTfLiteOk;
 }
 
@@ -762,9 +758,8 @@ TfLiteStatus Interpreter::GetNodeAndRegistration(
   TF_LITE_ENSURE(&context_, node_index >= 0);
   TF_LITE_ENSURE(&context_, static_cast<size_t>(node_index) < nodes_size());
   TF_LITE_ENSURE(&context_, node != nullptr && registration != nullptr);
-  auto& node_and_reg = primary_subgraph().nodes_and_registration()[node_index];
-  *node = &node_and_reg.first;
-  *registration = &node_and_reg.second;
+  *node = &nodes_and_registration_[node_index].first;
+  *registration = &nodes_and_registration_[node_index].second;
   return kTfLiteOk;
 }
 
@@ -954,8 +949,7 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
       // If all the nodes can be prepared, check if the last node has dynamic
       // tensors.
       int node_index = execution_plan_[last_execution_plan_index_prepared];
-      TfLiteNode& node =
-          primary_subgraph().nodes_and_registration()[node_index].first;
+      TfLiteNode& node = nodes_and_registration_[node_index].first;
       if (!HasDynamicTensor(context_, node.outputs)) {
         has_dynamic_tensors = false;
       }
@@ -997,8 +991,7 @@ TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
                                           TfLiteBufferHandle buffer_handle,
                                           TfLiteDelegate* delegate) {
   TF_LITE_ENSURE(&context_, tensor_index < tensors_size());
-  std::vector<TfLiteTensor>& tensors = primary_subgraph().tensors();
-  TfLiteTensor* tensor = &tensors[tensor_index];
+  TfLiteTensor* tensor = &tensors_[tensor_index];
 
   TF_LITE_ENSURE(&context_,
                  tensor->delegate == nullptr || tensor->delegate == delegate);
@@ -1017,8 +1010,7 @@ TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,
                                           TfLiteBufferHandle* buffer_handle,
                                           TfLiteDelegate** delegate) {
   TF_LITE_ENSURE(&context_, tensor_index < tensors_size());
-  std::vector<TfLiteTensor>& tensors = primary_subgraph().tensors();
-  TfLiteTensor* tensor = &tensors[tensor_index];
+  TfLiteTensor* tensor = &tensors_[tensor_index];
 
   *delegate = tensor->delegate;
   *buffer_handle = tensor->buffer_handle;
