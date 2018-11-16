@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/stderr_reporter.h"
@@ -202,37 +201,31 @@ class Interpreter {
   // Functions to access tensor data
 
   // Read only access to list of inputs.
-  const std::vector<int>& inputs() const { return primary_subgraph().inputs(); }
+  const std::vector<int>& inputs() const { return inputs_; }
 
   // Return the name of a given input. The given index must be between 0 and
   // inputs().size().
   const char* GetInputName(int index) const {
-    return context_.tensors[inputs()[index]].name;
+    return context_.tensors[inputs_[index]].name;
   }
 
   // Read only access to list of outputs.
-  const std::vector<int>& outputs() const {
-    return primary_subgraph().outputs();
-  }
+  const std::vector<int>& outputs() const { return outputs_; }
 
   // Read only access to list of variable tensors.
-  const std::vector<int>& variables() const {
-    return primary_subgraph().variables();
-  }
+  const std::vector<int>& variables() const { return variables_; }
 
   // Return the name of a given output. The given index must be between 0 and
   // outputs().size().
   const char* GetOutputName(int index) const {
-    return context_.tensors[outputs()[index]].name;
+    return context_.tensors[outputs_[index]].name;
   }
 
   // Return the number of tensors in the model.
   size_t tensors_size() const { return context_.tensors_size; }
 
   // Return the number of ops in the model.
-  size_t nodes_size() const {
-    return primary_subgraph().nodes_and_registration().size();
-  }
+  size_t nodes_size() const { return nodes_and_registration_.size(); }
 
   // WARNING: Experimental interface, subject to change
   const std::vector<int>& execution_plan() const { return execution_plan_; }
@@ -262,9 +255,10 @@ class Interpreter {
   // Get a pointer to an operation and registration data structure if in bounds.
   const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration(
       int node_index) const {
-    if (node_index < 0 || static_cast<size_t>(node_index) >= nodes_size())
+    if (node_index < 0 ||
+        static_cast<size_t>(node_index) >= nodes_and_registration_.size())
       return nullptr;
-    return &primary_subgraph().nodes_and_registration()[node_index];
+    return &nodes_and_registration_[node_index];
   }
 
   // Perform a checked cast to the appropriate tensor type (mutable pointer
@@ -295,28 +289,28 @@ class Interpreter {
   // index must be between 0 and inputs().size().
   template <class T>
   T* typed_input_tensor(int index) {
-    return typed_tensor<T>(inputs()[index]);
+    return typed_tensor<T>(inputs_[index]);
   }
 
   // Return an immutable pointer into the data of a given input tensor. The
   // given index must be between 0 and inputs().size().
   template <class T>
   const T* typed_input_tensor(int index) const {
-    return typed_tensor<T>(inputs()[index]);
+    return typed_tensor<T>(inputs_[index]);
   }
 
   // Return a mutable pointer into the data of a given output tensor. The given
   // index must be between 0 and outputs().size().
   template <class T>
   T* typed_output_tensor(int index) {
-    return typed_tensor<T>(outputs()[index]);
+    return typed_tensor<T>(outputs_[index]);
   }
 
   // Return an immutable pointer into the data of a given output tensor. The
   // given index must be between 0 and outputs().size().
   template <class T>
   const T* typed_output_tensor(int index) const {
-    return typed_tensor<T>(outputs()[index]);
+    return typed_tensor<T>(outputs_[index]);
   }
 
   // Change the dimensionality of a given tensor. Note, this is only acceptable
@@ -456,14 +450,6 @@ class Interpreter {
   friend class InterpreterBuilder;
   friend class InterpreterTest;
 
-  Subgraph& primary_subgraph() {
-    return subgraphs_.front();  // Safe as subgraphs_ always has 1 entry.
-  }
-
-  const Subgraph& primary_subgraph() const {
-    return subgraphs_.front();  // Safe as subgraphs_ always has 1 entry.
-  }
-
   // Prevent 'context_' from accessing functions that are only available to
   // delegated kernels.
   void SwitchToKernelContext();
@@ -516,7 +502,7 @@ class Interpreter {
   // tensor entries. Note, `tensors_.data()` needs to be synchronized to the
   // `context_` whenever this std::vector is reallocated. Currently this
   // only happens in `AddTensors()`.
-  // std::vector<TfLiteTensor> tensors_;
+  std::vector<TfLiteTensor> tensors_;
 
   // Check if an array of tensor indices are valid with respect to the Tensor
   // array.
@@ -610,7 +596,6 @@ class Interpreter {
   // tensors. After calling this function, adding `kTensorsCapacityHeadroom`
   // more tensors won't invalidate the pointer to existing tensors.
   void EnsureTensorsVectorCapacity() {
-    std::vector<TfLiteTensor>& tensors_ = primary_subgraph().tensors();
     const size_t required_capacity = tensors_size() + kTensorsCapacityHeadroom;
     if (required_capacity > tensors_.capacity()) {
       tensors_.reserve(required_capacity);
@@ -637,10 +622,26 @@ class Interpreter {
   // structure to store tensors.
   TfLiteContext context_;
 
+  // Node inputs/outputs are stored in TfLiteNode and TfLiteRegistration stores
+  // function pointers to actual implementation.
+  std::vector<std::pair<TfLiteNode, TfLiteRegistration>>
+      nodes_and_registration_;
+
   // Whether the model is consistent. That is to say if the inputs and outputs
   // of every node and the global inputs and outputs are valid indexes into
   // the tensor array.
   bool consistent_ = true;
+
+  // Array of indices representing the tensors that are inputs to the
+  // interpreter.
+  std::vector<int> inputs_;
+
+  // Array of indices representing the tensors that are outputs to the
+  // interpreter.
+  std::vector<int> outputs_;
+
+  // Array of indices representing the tensors that are variable tensors.
+  std::vector<int> variables_;
 
   // The error reporter delegate that tflite will forward queries errors to.
   ErrorReporter* error_reporter_;
@@ -689,9 +690,6 @@ class Interpreter {
 
   // List of active external contexts.
   TfLiteExternalContext* external_contexts_[kTfLiteMaxExternalContexts];
-
-  // Subgraphs
-  std::vector<Subgraph> subgraphs_;
 };
 
 }  // namespace tflite
