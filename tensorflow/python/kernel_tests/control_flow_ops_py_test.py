@@ -389,7 +389,6 @@ class ControlFlowTest(test.TestCase):
             with self.assertRaisesRegexp(ValueError, "may not be fed"):
               sess.run(r, feed_dict={t: 3})
 
-  @test_util.disable_control_flow_v2("b/113296180 (IndexedSlices)")
   def testCondIndexedSlices(self):
     with self.cached_session():
       values = constant_op.constant(10)
@@ -405,7 +404,6 @@ class ControlFlowTest(test.TestCase):
     self.assertAllEqual(11, val)
     self.assertAllEqual(0, ind)
 
-  @test_util.disable_control_flow_v2("b/113296161 (SparseTensors)")
   def testCondSparseTensor(self):
     with self.cached_session():
       values = constant_op.constant([2.0, 4.0], name="values")
@@ -660,9 +658,10 @@ class ControlFlowTest(test.TestCase):
       pred = math_ops.less(1, 2)
       fn1 = lambda: {"a": math_ops.add(x, y), "b": math_ops.add(x, y)}
       fn2 = lambda: {"c": y, "d": y}
+      v1_msg = "The two structures don't have the same nested structure"
+      v2_msg = "Outputs of true_fn and false_fn must have the same structure"
       with self.assertRaisesRegexp(
-          ValueError,
-          "The two structures don't have the same nested structure"):
+          ValueError, v2_msg if control_flow_ops.ENABLE_COND_V2 else v1_msg):
         r = control_flow_ops.cond(pred, fn1, fn2)
         test_result = sess.run(r)
 

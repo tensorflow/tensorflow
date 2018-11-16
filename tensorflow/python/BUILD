@@ -878,6 +878,8 @@ py_library(
     deps = [
         ":auto_control_deps",
         ":framework_ops",
+        ":sparse_tensor",
+        ":tensor_array_ops",
         "//tensorflow/python/autograph",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:graph_only_ops",
@@ -892,6 +894,8 @@ py_library(
     deps = [
         ":control_flow_ops",
         ":framework_ops",
+        ":sparse_tensor",
+        ":tensor_array_ops",
         ":util",
     ],
 )
@@ -2137,6 +2141,7 @@ py_library(
         ":control_flow_util_v2",
         ":dtypes",
         ":framework_ops",
+        ":framework_test_lib",
         ":function_def_to_graph",
         ":functional_ops_gen",
         ":gradients_impl",

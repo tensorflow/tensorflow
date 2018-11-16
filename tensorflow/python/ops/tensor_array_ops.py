@@ -953,4 +953,16 @@ class TensorArray(object):
     """Close the current TensorArray."""
     return self._implementation.close(name=name)
 
+
+def build_ta_with_new_flow(old_ta, flow):
+  ta = TensorArray(
+      dtype=old_ta.dtype,
+      handle=old_ta.handle,
+      flow=flow,
+      infer_shape=old_ta._infer_shape,
+      colocate_with_first_write_call=old_ta._colocate_with_first_write_call)
+  ta._colocate_with = old_ta._colocate_with
+  ta._element_shape = old_ta._element_shape
+  return ta
+
 # pylint: enable=protected-access
