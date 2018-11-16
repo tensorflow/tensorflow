@@ -589,9 +589,22 @@ void TensorHandleCopyBetweenTwoGPUDevices(bool async) {
   TF_DeviceList* devices = TFE_ContextListDevices(ctx, status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
   const int num_devices = TF_DeviceListCount(devices);
+  bool has_gpu0 = false;
+  bool has_gpu1 = false;
+  for (int i = 0; i < num_devices; ++i) {
+    const char* dev = TF_DeviceListName(devices, i, status.get());
+    ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+    string device_name(dev);
+    if (device_name.find("GPU:0") != string::npos) {
+      has_gpu0 = true;
+    }
+    if (device_name.find("GPU:1") != string::npos) {
+      has_gpu1 = true;
+    }
+  }
 
   const char* kCPUDevice = "CPU:0";
-  if (num_devices < 3) {
+  if (!has_gpu0 || !has_gpu1) {
     TF_DeleteDeviceList(devices);
     TF_DeleteTensor(t);
     TFE_DeleteTensorHandle(hcpu);
