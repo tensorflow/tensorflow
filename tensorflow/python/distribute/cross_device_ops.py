@@ -21,10 +21,10 @@ from __future__ import print_function
 import collections
 import six
 
-from tensorflow.contrib.distribute.python import cross_tower_utils
-from tensorflow.contrib.distribute.python import values as value_lib
 from tensorflow.python.client import device_lib
+from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -144,7 +144,7 @@ def _simple_broadcast(value, destinations):
   index = {}
   devices = get_devices_from(destinations)
   for d in devices:
-    index[d] = cross_tower_utils.copy_tensor_or_indexed_slices_to_device(
+    index[d] = cross_device_utils.copy_tensor_or_indexed_slices_to_device(
         value, d)
   return value_lib.Mirrored(index)
 
@@ -162,10 +162,10 @@ def _simple_reduce(per_replica_value, reduce_to_device, accumulation_fn,
 
   with ops.device(reduce_to_device):
     with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
-      reduced = cross_tower_utils.aggregate_tensors_or_indexed_slices(
+      reduced = cross_device_utils.aggregate_tensors_or_indexed_slices(
           all_values, accumulation_fn)
       if reduce_op == reduce_util.ReduceOp.MEAN:
-        reduced = cross_tower_utils.divide_by_n_tensors_or_indexed_slices(
+        reduced = cross_device_utils.divide_by_n_tensors_or_indexed_slices(
             reduced, count)
       elif reduce_op != reduce_util.ReduceOp.SUM:
         raise ValueError("`reduce_op` must be Reduce.SUM or Reduce.MEAN.")
@@ -332,7 +332,7 @@ def _ungroup_and_make_mirrored(grouped_reduced,
   Args:
     grouped_reduced: a list of lists, each sublist has components for each
       device, paired with a None. It is the result from
-      cross_tower_utils.aggregate_gradients_using*.
+      cross_device_utils.aggregate_gradients_using*.
     destinations: a list of device strings for returned Mirrored objects.
     reduce_op: Indicates how values will be aggregated. Accepted values
       are `tf.distribute.ReduceOp.SUM`, `tf.distribute.ReduceOp.MEAN`.
@@ -485,7 +485,7 @@ class AggregateSmallTensorPacker(object):
     """Aggregate small tensors."""
     if (self.agg_small_grads_max_bytes > 0 and
         self.agg_small_grads_max_group > 0):
-      device_grads, self.packing = cross_tower_utils.pack_small_tensors(
+      device_grads, self.packing = cross_device_utils.pack_small_tensors(
           grouped_grads_and_vars,
           max_bytes=self.agg_small_grads_max_bytes,
           max_group=self.agg_small_grads_max_group)
@@ -493,8 +493,8 @@ class AggregateSmallTensorPacker(object):
 
   def unpack(self, summed_device_grad_packs):
     """Reverse the aggregation process."""
-    return cross_tower_utils.unpack_small_tensors(summed_device_grad_packs,
-                                                  self.packing)
+    return cross_device_utils.unpack_small_tensors(summed_device_grad_packs,
+                                                   self.packing)
 
 
 def _pack_tensors(device_grads,
@@ -557,7 +557,7 @@ class AllReduceCrossDeviceOps(CrossDeviceOps):
     super(AllReduceCrossDeviceOps, self).__init__()
 
   def _reduce(self, reduce_op, per_replica_value, destinations):
-    contains_indexed_slices = cross_tower_utils.contains_indexed_slices(
+    contains_indexed_slices = cross_device_utils.contains_indexed_slices(
         per_replica_value)
     if (_devices_match(per_replica_value, destinations)
         and not context.executing_eagerly()
@@ -580,7 +580,7 @@ class AllReduceCrossDeviceOps(CrossDeviceOps):
 
   def _batch_reduce(self, reduce_op, value_destination_pairs):
     all_devices_match = _all_devices_match(value_destination_pairs)
-    contains_indexed_slices = cross_tower_utils.contains_indexed_slices(
+    contains_indexed_slices = cross_device_utils.contains_indexed_slices(
         value_destination_pairs)
     if (all_devices_match and not context.executing_eagerly()
         and not contains_indexed_slices):
@@ -618,13 +618,13 @@ class AllReduceCrossDeviceOps(CrossDeviceOps):
     # the balance on num_splits.
     if self._all_reduce_alg == "nccl":
       # TODO(yuefengz): merge this into the all-reduce library.
-      reduced = cross_tower_utils.aggregate_gradients_using_nccl(
+      reduced = cross_device_utils.aggregate_gradients_using_nccl(
           device_grad_packs)
     else:
       # TODO(yuefengz): check that gpu ids in `destinations` are in ascending
       # order.
       reduced = (
-          cross_tower_utils.aggregate_gradients_using_hierarchical_copy(
+          cross_device_utils.aggregate_gradients_using_hierarchical_copy(
               destinations, device_grad_packs))
 
     reduced = _unpack_tensors(reduced, tensor_packer)
@@ -740,13 +740,13 @@ class MultiWorkerAllReduce(AllReduceCrossDeviceOps):
         this_grads = remaining_grads
         remaining_grads = []
       else:
-        (this_grads, remaining_grads) = cross_tower_utils.split_grads_by_size(
+        (this_grads, remaining_grads) = cross_device_utils.split_grads_by_size(
             spec_tuple.limit, remaining_grads)
       if this_grads:
         device_grad_packs, tensor_packer = _pack_tensors(
             this_grads, self._num_packs, self._agg_small_grads_max_bytes,
             self._agg_small_grads_max_group)
-        range_agg_grads = cross_tower_utils.sum_gradients_all_reduce(
+        range_agg_grads = cross_device_utils.sum_gradients_all_reduce(
             self._worker_devices, device_grad_packs, len(self._worker_devices),
             spec_tuple.alg, spec_tuple.shards, range(self._num_gpus_per_worker))
         range_agg_grads = _unpack_tensors(range_agg_grads, tensor_packer)
@@ -789,13 +789,13 @@ class CollectiveAllReduce(CrossDeviceOps):
     self._num_workers = num_workers
     self._num_gpus_per_worker = num_gpus_per_worker
     self._all_reduce_merge_scope = all_reduce_merge_scope
-    self._collective_keys = collective_keys or cross_tower_utils.CollectiveKeys(
-    )
+    self._collective_keys = (collective_keys or
+                             cross_device_utils.CollectiveKeys())
     super(CollectiveAllReduce, self).__init__()
 
   # TODO(yuefengz, tucker): is indexed slices supported by collective ops?
   def _reduce(self, reduce_op, per_replica_value, destinations):
-    if cross_tower_utils.contains_indexed_slices(per_replica_value):
+    if cross_device_utils.contains_indexed_slices(per_replica_value):
       raise ValueError(
           "`IndexSlices` is not supported for Collective All-Reduce.")
     if context.executing_eagerly():
@@ -819,7 +819,7 @@ class CollectiveAllReduce(CrossDeviceOps):
       return value_lib.Mirrored(index)
 
   def _batch_reduce(self, reduce_op, value_destination_pairs):
-    if cross_tower_utils.contains_indexed_slices(value_destination_pairs):
+    if cross_device_utils.contains_indexed_slices(value_destination_pairs):
       raise ValueError(
           "`IndexSlices` is not supported for Collective All-Reduce.")
     if context.executing_eagerly():
@@ -870,7 +870,7 @@ class CollectiveAllReduce(CrossDeviceOps):
       with ops.name_scope("allreduce"):
         for grad_and_vars in chunk:
           scaled_grads = [g for g, _ in grad_and_vars]
-          collective_reduced = cross_tower_utils.build_collective_reduce(
+          collective_reduced = cross_device_utils.build_collective_reduce(
               scaled_grads, self._num_workers, self._collective_keys, "Add",
               "Id")
           result = []

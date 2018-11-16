@@ -8,6 +8,7 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_library(
     name = "all_reduce",
@@ -44,13 +45,41 @@ tf_py_test(
 )
 
 py_library(
-    name = "distribute",
+    name = "cross_device_ops",
+    srcs = ["cross_device_ops.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
     deps = [
-        ":distribute_config",
-        ":distribute_coordinator",
-        ":distribute_coordinator_context",
+        ":cross_device_utils",
+        ":reduce_util",
+        ":values",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:device_lib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/eager:context",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "cross_device_utils",
+    srcs = ["cross_device_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":all_reduce",
+        ":values",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:collective_ops",
+        "//tensorflow/python:device",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nccl_ops",
     ],
 )
 
@@ -123,6 +152,34 @@ py_library(
     ],
 )
 
+py_library(
+    name = "input_ops",
+    srcs = ["input_ops.py"],
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/data/util:nest",
+    ],
+)
+
+cuda_py_test(
+    name = "input_ops_test",
+    srcs = ["input_ops_test.py"],
+    additional_deps = [
+        ":input_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python:util",
+    ],
+    tags = [
+        "no_pip",
+    ],
+)
+
 py_test(
     name = "multi_worker_util_test",
     srcs = ["multi_worker_util_test.py"],
@@ -158,8 +215,43 @@ py_library(
 
 py_library(
     name = "reduce_util",
-    srcs = [
-        "reduce_util.py",
-    ],
+    srcs = ["reduce_util.py"],
     deps = [],
+)
+
+py_library(
+    name = "shared_variable_creator",
+    srcs = ["shared_variable_creator.py"],
+)
+
+py_test(
+    name = "shared_variable_creator_test",
+    srcs = ["shared_variable_creator_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":shared_variable_creator",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
+    name = "values",
+    srcs = ["values.py"],
+    deps = [
+        ":input_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:device_util",
+        "//tensorflow/python:distribute",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:multi_device_iterator_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/training/checkpointable:base",
+        "@six_archive//:six",
+    ],
 )

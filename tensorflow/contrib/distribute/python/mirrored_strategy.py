@@ -22,12 +22,12 @@ import contextlib
 from functools import partial
 import threading
 
-from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_ops_lib
-from tensorflow.contrib.distribute.python import shared_variable_creator
-from tensorflow.contrib.distribute.python import values
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import shared_variable_creator
+from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
@@ -196,16 +196,16 @@ def _reduce_non_distributed_value(extended, reduce_op, value, destinations):
   if reduce_op == reduce_util.ReduceOp.MEAN:
     return value
 
-  cross_tower_ops_lib.validate_destinations(destinations)
+  cross_device_ops_lib.validate_destinations(destinations)
   # We do not support a reduce op of SUM if the value is the same across
   # all replicas. We call this as part of assign functions for MirroredVariables
   # and summing up identical values across replicas is not clearly defined.
   if (len(extended.worker_devices) != 1 or
-      not cross_tower_ops_lib.check_destinations(destinations)):
+      not cross_device_ops_lib.check_destinations(destinations)):
     raise ValueError("A non-DistributedValues value %s cannot be reduced with "
                      "the given reduce op %s." % (value, reduce_op))
   # TODO(anjalisridhar): Moves these methods to a device utility file?
-  devices = cross_tower_ops_lib.get_devices_from(destinations)
+  devices = cross_device_ops_lib.get_devices_from(destinations)
   if len(devices) == 1:
     with ops.device(devices[0]):
       return array_ops.identity(value)
@@ -369,8 +369,7 @@ class CoreMirroredExtended(distribute_lib.DistributionStrategyExtended):
                cross_device_ops=None,
                auto_shard_dataset=False):
     super(CoreMirroredExtended, self).__init__(container_strategy)
-    # TODO(josh11b): Rename self._cross_tower_ops -> self._cross_device_ops
-    self._cross_tower_ops = cross_device_ops
+    self._cross_device_ops = cross_device_ops
     self._auto_shard_dataset = auto_shard_dataset
     # Remember num GPUs which might be needed by `configure` method.
     if num_gpus is not None and num_gpus_per_worker is not None:
@@ -588,7 +587,7 @@ class CoreMirroredExtended(distribute_lib.DistributionStrategyExtended):
     if isinstance(tensor, (float, int)):  # Fast path for Python constants.
       return tensor
     # TODO(josh11b): In eager mode, use one thread per device, or async mode.
-    return self._get_cross_tower_ops().broadcast(
+    return self._get_cross_device_ops().broadcast(
         tensor, destinations or self._devices)
 
   def _call_for_each_replica(self, fn, args, kwargs):
@@ -607,26 +606,27 @@ class CoreMirroredExtended(distribute_lib.DistributionStrategyExtended):
     if cluster_spec:
       self._initialize_multi_worker(self._num_gpus, cluster_spec)
 
-    if self._cross_tower_ops is None:
+    if self._cross_device_ops is None:
       if self._cluster_spec:
         # It currently cannot detect the toplogy of remote workers. So we
         # hard-code the multi-worker all-reduce algorithm for now.
         if len(self._workers) == 1:
           # The default is "nccl".
-          self._cross_tower_ops = cross_tower_ops_lib.AllReduceCrossDeviceOps()
+          self._cross_device_ops = (
+              cross_device_ops_lib.AllReduceCrossDeviceOps())
         else:
           # The default is hierarchical reduce and broadcast.
-          self._cross_tower_ops = cross_tower_ops_lib.MultiWorkerAllReduce(
+          self._cross_device_ops = cross_device_ops_lib.MultiWorkerAllReduce(
               self._workers, self._num_gpus)
       else:
-        self._cross_tower_ops = cross_tower_ops_lib.choose_the_best(
+        self._cross_device_ops = cross_device_ops_lib.choose_the_best(
             self._devices, session_config=session_config)
 
-  def _get_cross_tower_ops(self):
-    if self._cross_tower_ops is None:
-      self._cross_tower_ops = (
-          cross_tower_ops_lib.ReductionToOneDeviceCrossDeviceOps())
-    return self._cross_tower_ops
+  def _get_cross_device_ops(self):
+    if self._cross_device_ops is None:
+      self._cross_device_ops = (
+          cross_device_ops_lib.ReductionToOneDeviceCrossDeviceOps())
+    return self._cross_device_ops
 
   def _reduce_to(self, reduce_op, value, destinations):
     assert not isinstance(value, values.Mirrored)
@@ -637,12 +637,12 @@ class CoreMirroredExtended(distribute_lib.DistributionStrategyExtended):
       # be 0.
       return _reduce_non_distributed_value(self, reduce_op, value,
                                            destinations)
-    return self._get_cross_tower_ops().reduce(
+    return self._get_cross_device_ops().reduce(
         reduce_op, value, destinations=destinations)
 
   def _batch_reduce_to(self, reduce_op, value_destination_pairs):
-    return self._get_cross_tower_ops().batch_reduce(reduce_op,
-                                                    value_destination_pairs)
+    return self._get_cross_device_ops().batch_reduce(reduce_op,
+                                                     value_destination_pairs)
 
   def _update(self, var, fn, args, kwargs, group):
     # TODO(josh11b): In eager mode, use one thread per device.
@@ -723,7 +723,7 @@ class CoreMirroredExtended(distribute_lib.DistributionStrategyExtended):
     if colocate_with is None:
       return self._devices
     else:
-      return cross_tower_ops_lib.get_devices_from(colocate_with)
+      return cross_device_ops_lib.get_devices_from(colocate_with)
 
   class _MirroredReplicaThread(threading.Thread):
     """A thread that runs() a function on a device."""

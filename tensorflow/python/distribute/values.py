@@ -27,9 +27,9 @@ import operator
 import weakref
 import six
 
-from tensorflow.contrib.distribute.python import input_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
+from tensorflow.python.distribute import input_ops
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape

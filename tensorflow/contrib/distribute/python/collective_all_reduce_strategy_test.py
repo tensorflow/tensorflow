@@ -23,11 +23,11 @@ import numpy as np
 
 from tensorflow.contrib.distribute.python import collective_all_reduce_strategy
 from tensorflow.contrib.distribute.python import combinations
-from tensorflow.contrib.distribute.python import cross_tower_utils
 from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import keras
+from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -73,7 +73,7 @@ class CollectiveAllReduceStrategyTestBase(
           cluster_spec=self._cluster_spec,
           task_type=task_type,
           task_id=task_id)
-    collective_keys = cross_tower_utils.CollectiveKeys(
+    collective_keys = cross_device_utils.CollectiveKeys(
         group_key_start=10 * num_gpus +
         CollectiveAllReduceStrategyTestBase.collective_key_base,
         instance_key_start=num_gpus * 100 +
@@ -81,7 +81,7 @@ class CollectiveAllReduceStrategyTestBase(
         instance_key_with_id_start=num_gpus * 10000 +
         CollectiveAllReduceStrategyTestBase.collective_key_base)
     distribution.extended._collective_keys = collective_keys
-    distribution.extended._cross_tower_ops._collective_keys = collective_keys
+    distribution.extended._cross_device_ops._collective_keys = collective_keys
     if task_type and task_id is not None:
       return distribution, 'grpc://' + self._cluster_spec[task_type][
           task_id], session_config

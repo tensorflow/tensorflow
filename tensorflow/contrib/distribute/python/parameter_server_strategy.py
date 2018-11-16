@@ -18,10 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_ops_lib
 from tensorflow.contrib.distribute.python import mirrored_strategy
-from tensorflow.contrib.distribute.python import values
+from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
@@ -107,8 +107,8 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
     self._initialize_local(num_gpus_per_worker)
 
     # We typically don't need to do all-reduce in this strategy.
-    self._cross_tower_ops = (
-        cross_tower_ops_lib.ReductionToOneDeviceCrossDeviceOps(
+    self._cross_device_ops = (
+        cross_device_ops_lib.ReductionToOneDeviceCrossDeviceOps(
             reduce_to_device=_LOCAL_CPU))
 
   def _initialize_multi_worker(self, num_gpus_per_worker, cluster_spec,
@@ -256,9 +256,9 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
         True)
 
   def _broadcast_to(self, tensor, destinations):
-    if not cross_tower_ops_lib.check_destinations(destinations):
+    if not cross_device_ops_lib.check_destinations(destinations):
       destinations = self._compute_devices
-    return self._cross_tower_ops.broadcast(tensor, destinations)
+    return self._cross_device_ops.broadcast(tensor, destinations)
 
   def _allow_variable_partition(self):
     return not context.executing_eagerly()
@@ -330,7 +330,7 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
       return
     if destinations is None:
       return
-    for d in cross_tower_ops_lib.get_devices_from(destinations):
+    for d in cross_device_ops_lib.get_devices_from(destinations):
       d_spec = tf_device.DeviceSpec.from_string(d)
       if d_spec.job == self._task_type and d_spec.task != self._task_id:
         raise ValueError(
@@ -343,14 +343,14 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
       # pylint: disable=protected-access
       return mirrored_strategy._reduce_non_distributed_value(
           self, reduce_op, value, destinations)
-    return self._cross_tower_ops.reduce(
+    return self._cross_device_ops.reduce(
         reduce_op, value, destinations=destinations)
 
   def _batch_reduce_to(self, reduce_op, value_destination_pairs):
     for _, destinations in value_destination_pairs:
       self._verify_destinations_not_different_worker(destinations)
-    return self._cross_tower_ops.batch_reduce(reduce_op,
-                                              value_destination_pairs)
+    return self._cross_device_ops.batch_reduce(reduce_op,
+                                               value_destination_pairs)
 
   def _select_single_value(self, structured):
     """Select any single values in `structured`."""

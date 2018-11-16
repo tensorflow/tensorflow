@@ -20,9 +20,9 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.contrib.distribute.python import input_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
+from tensorflow.python.distribute import input_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.platform import test
