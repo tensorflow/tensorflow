@@ -359,7 +359,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
               [[0., 0.], [.15, .36], [.06, .07], [.1, .2]],  # node 1
               [[-.33, .58], [0., 0.], [.3, .4], [0., 0.]],  # node 2
           ]],
-          result.eval())
+          self.evaluate(result))
 
   def testMakeStatsSummaryMultipleFeatures(self):
     """Tests that MakeStatsSummary works for multiple features."""
@@ -389,7 +389,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
                   [[.3, .4], [0., 0.], [-.4, .5], [.07, .08]],  # node 2
               ],  # feature 1
           ],
-          result.eval())
+          self.evaluate(result))
 
   def _verify_precision(self, length):
     with self.cached_session():
@@ -408,7 +408,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
           node_ids, gradients, hessians, [bucketized_features], max_splits,
           num_buckets)  # shape=[max_splits, num_buckets, num_features, 2]
 
-      self.assertAllClose([[[[2., 0.2]]]], result.eval())
+      self.assertAllClose([[[[2., 0.2]]]], self.evaluate(result))
 
   def testMakeStatsSummaryNumericalPrecisionSmallBatch(self):
     """Tests numeric precision."""

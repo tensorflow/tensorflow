@@ -70,8 +70,8 @@ class KroneckerDenseTest(test.TestCase):
         [5., 10., -1., -2.]], dtype=dtypes.float32)
 
     with self.cached_session():
-      self.assertAllClose(_kronecker_dense([x, y]).eval(), z.eval())
-      self.assertAllClose(_kronecker_dense([y, x]).eval(), w.eval())
+      self.assertAllClose(_kronecker_dense([x, y]).eval(), self.evaluate(z))
+      self.assertAllClose(_kronecker_dense([y, x]).eval(), self.evaluate(w))
 
 
 class SquareLinearOperatorKroneckerTest(

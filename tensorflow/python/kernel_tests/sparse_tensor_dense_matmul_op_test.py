@@ -80,7 +80,7 @@ class SparseTensorDenseMatMulTest(test.TestCase):
       self.assertEqual(tf_value_ans.get_shape()[1], np_ans.shape[1])
       self.assertEqual(tf_tensor_ans.get_shape()[1], np_ans.shape[1])
 
-      for out in (tf_value_ans.eval(), tf_tensor_ans.eval()):
+      for out in (tf_value_ans.eval(), self.evaluate(tf_tensor_ans)):
         if x.dtype == np.float32:
           self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
         elif x.dtype == np.float64:

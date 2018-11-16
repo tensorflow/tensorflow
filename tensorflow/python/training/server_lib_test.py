@@ -174,7 +174,7 @@ class GrpcServerTest(test.TestCase):
     # is not supported, but it should successfully ignore it.
     sess = session.InteractiveSession(server.target)
     c = constant_op.constant(42.0)
-    self.assertEqual(42.0, c.eval())
+    self.assertEqual(42.0, self.evaluate(c))
     sess.close()
 
   def testSetConfiguration(self):

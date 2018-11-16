@@ -42,12 +42,12 @@ class ReverseSequenceTest(test.TestCase):
       ans = array_ops.reverse_sequence(
           x, batch_axis=batch_axis, seq_axis=seq_axis, seq_lengths=seq_lengths)
       if expected_err_re is None:
-        tf_ans = ans.eval()
+        tf_ans = self.evaluate(ans)
         self.assertAllClose(tf_ans, truth, atol=1e-10)
         self.assertShapeEqual(truth, ans)
       else:
         with self.assertRaisesOpError(expected_err_re):
-          ans.eval()
+          self.evaluate(ans)
 
   def _testBothReverseSequence(self,
                                x,

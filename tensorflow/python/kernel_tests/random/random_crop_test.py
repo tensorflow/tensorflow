@@ -44,7 +44,7 @@ class RandomCropTest(test.TestCase):
           for i in range(2) for j in range(3) for k in range(4))
       crop = random_ops.random_crop(value, size=target)
       for _ in range(20):
-        y = crop.eval()
+        y = self.evaluate(crop)
         self.assertAllEqual(y.shape, target)
         self.assertTrue(tuple(y.ravel()) in value_set)
 
@@ -61,7 +61,7 @@ class RandomCropTest(test.TestCase):
       crop = random_ops.random_crop(value, single, seed=7)
       counts = np.zeros(size, dtype=np.int32)
       for _ in range(num_samples):
-        y = crop.eval()
+        y = self.evaluate(crop)
         self.assertAllEqual(y.shape, single)
         counts[y] += 1
 

@@ -35,7 +35,7 @@ from tensorflow.python.platform import test
 class DeterminantOpTest(test.TestCase):
 
   def _compareDeterminantBase(self, matrix_x, tf_ans):
-    out = tf_ans.eval()
+    out = self.evaluate(tf_ans)
     shape = matrix_x.shape
     if shape[-1] == 0 and shape[-2] == 0:
       np_ans = np.ones(shape[:-2]).astype(matrix_x.dtype)
@@ -54,8 +54,8 @@ class DeterminantOpTest(test.TestCase):
       np_ans = np_ans.astype(matrix_x.dtype)
 
     self.assertShapeEqual(np_ans, abs_log_det_tf)
-    sign_tf_val = sign_tf.eval()
-    abs_log_det_tf_val = abs_log_det_tf.eval()
+    sign_tf_val = self.evaluate(sign_tf)
+    abs_log_det_tf_val = self.evaluate(abs_log_det_tf)
     self.assertAllClose(
         sign_tf_val * np.exp(abs_log_det_tf_val),
         np_sign * np.exp(np_ans),

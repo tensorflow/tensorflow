@@ -309,12 +309,11 @@ class FileWriterTestCase(test.TestCase):
       summ = summary_pb2.Summary(
           value=[summary_pb2.Summary.Value(
               tag="i", simple_value=1.0)])
-      sw.add_summary(summ.SerializeToString(), i.eval())
+      sw.add_summary(summ.SerializeToString(), self.evaluate(i))
       sw.add_summary(
           summary_pb2.Summary(
-              value=[summary_pb2.Summary.Value(
-                  tag="l", simple_value=2.0)]),
-          l.eval())
+              value=[summary_pb2.Summary.Value(tag="l", simple_value=2.0)]),
+          self.evaluate(l))
       sw.close()
 
     rr = self._EventsReader(test_dir)

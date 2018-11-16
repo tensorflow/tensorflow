@@ -87,7 +87,7 @@ class MatrixTriangularSolveOpTest(test.TestCase):
           b_tf = constant_op.constant(b)
           tf_ans = linalg_ops.matrix_triangular_solve(
               a_tf, b_tf, lower=lower, adjoint=adjoint)
-          tf_val = tf_ans.eval()
+          tf_val = self.evaluate(tf_ans)
           np_ans = np.linalg.solve(a_np, b)
           self.assertEqual(np_ans.shape, tf_ans.get_shape())
         self.assertEqual(np_ans.shape, tf_val.shape)

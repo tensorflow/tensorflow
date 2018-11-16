@@ -58,10 +58,10 @@ class UnicodeDecodeTest(test.TestCase):
           codepoint("更"),
           codepoint("新")
       ],
-                          utf8_text.eval().tolist())
-      self.assertAllEqual([0, 4, 14], row_splits.eval().tolist())
+                          self.evaluate(utf8_text).tolist())
+      self.assertAllEqual([0, 4, 14], self.evaluate(row_splits).tolist())
       self.assertAllEqual([0, 3, 6, 9, 0, 3, 6, 9, 12, 15, 18, 21, 24, 27],
-                          offsets.eval().tolist())
+                          self.evaluate(offsets).tolist())
 
   def testBasicDecodeWithOffset(self):
     text = constant_op.constant(["仅今年前"])
@@ -75,9 +75,9 @@ class UnicodeDecodeTest(test.TestCase):
           codepoint("年"),
           codepoint("前"),
       ],
-                          utf8_text.eval().tolist())
-      self.assertAllEqual(row_splits.eval().tolist(), [0, 4])
-      self.assertAllEqual(starts.eval().tolist(), [0, 3, 6, 9])
+                          self.evaluate(utf8_text).tolist())
+      self.assertAllEqual(self.evaluate(row_splits).tolist(), [0, 4])
+      self.assertAllEqual(self.evaluate(starts).tolist(), [0, 3, 6, 9])
 
   def testStrictError(self):
     text = constant_op.constant([b"\xFEED"])
@@ -86,7 +86,7 @@ class UnicodeDecodeTest(test.TestCase):
 
     with self.assertRaises(errors.InvalidArgumentError):
       with self.test_session():
-        error.eval()
+        self.evaluate(error)
 
   def testReplaceOnError(self):
     text = constant_op.constant([b"\xFE"])
@@ -95,7 +95,7 @@ class UnicodeDecodeTest(test.TestCase):
         text, "utf-8", errors="replace")
 
     with self.test_session():
-      self.assertAllEqual(utf8_text.eval().tolist(), [65533])
+      self.assertAllEqual(self.evaluate(utf8_text).tolist(), [65533])
 
   def testBadReplacementChar(self):
     text = constant_op.constant([b"\xFE"])
@@ -104,7 +104,7 @@ class UnicodeDecodeTest(test.TestCase):
 
     with self.assertRaises(errors.InvalidArgumentError):
       with self.test_session():
-        error.eval()
+        self.evaluate(error)
 
   def testIgnoreOnError(self):
     text = constant_op.constant([b"\xFEhello"])
@@ -113,7 +113,7 @@ class UnicodeDecodeTest(test.TestCase):
         text, "utf-8", errors="ignore")
 
     with self.test_session():
-      self.assertAllEqual(utf8_text.eval().tolist(), [
+      self.assertAllEqual(self.evaluate(utf8_text).tolist(), [
           codepoint("h"),
           codepoint("e"),
           codepoint("l"),
@@ -141,8 +141,8 @@ class UnicodeDecodeTest(test.TestCase):
           codepoint("年"),
           codepoint("前"),
       ],
-                          utf8_text.eval().tolist())
-      self.assertAllEqual([0, 5], row_splits.eval().tolist())
+                          self.evaluate(utf8_text).tolist())
+      self.assertAllEqual([0, 5], self.evaluate(row_splits).tolist())
 
 
 if __name__ == "__main__":

@@ -51,7 +51,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     length = np.array(3, dtype)
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, expected_value)
 
   @parameterized.parameters(
@@ -71,7 +71,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     length = np.array(3, dtype)
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, expected_value)
 
     # Full string
@@ -83,7 +83,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     length = np.array(5, dtype)
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, test_string)
 
     # Full string (Negative)
@@ -95,7 +95,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     length = np.array(5, dtype)
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, test_string)
 
     # Length is larger in magnitude than a negative position
@@ -111,7 +111,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     length = np.array(5, dtype)
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, expected_string)
 
   @parameterized.parameters(
@@ -138,7 +138,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     length = np.array(3, dtype)
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, expected_value)
 
   @parameterized.parameters(
@@ -173,7 +173,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     }[unit]
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, expected_value)
 
     position = np.array(-3, dtype)
@@ -188,7 +188,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     }[unit]
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, expected_value)
 
   @parameterized.parameters(
@@ -229,7 +229,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     }[unit]
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, expected_value)
 
   @parameterized.parameters(
@@ -271,7 +271,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     }[unit]
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, expected_value)
 
     # Broadcast input string onto pos/len
@@ -294,7 +294,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     }[unit]
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, expected_value)
 
     # Test 1D broadcast
@@ -310,7 +310,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     }[unit]
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, expected_value)
 
   @parameterized.parameters(
@@ -349,7 +349,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
       with self.assertRaises(errors_impl.InvalidArgumentError):
-        substr_op.eval()
+        self.evaluate(substr_op)
 
   @parameterized.parameters(
       (np.int32, 4, "BYTE"),
@@ -373,7 +373,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
       with self.assertRaises(errors_impl.InvalidArgumentError):
-        substr_op.eval()
+        self.evaluate(substr_op)
 
   @parameterized.parameters(
       (np.int32, "BYTE"),
@@ -398,7 +398,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
       with self.assertRaises(errors_impl.InvalidArgumentError):
-        substr_op.eval()
+        self.evaluate(substr_op)
 
     # Matrix/Matrix (with negative)
     position = np.array([[1, 2, -3], [1, 2, -4], [1, 2, -3]], dtype)
@@ -406,7 +406,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
       with self.assertRaises(errors_impl.InvalidArgumentError):
-        substr_op.eval()
+        self.evaluate(substr_op)
 
   @parameterized.parameters(
       (np.int32, "BYTE"),
@@ -428,7 +428,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
       with self.assertRaises(errors_impl.InvalidArgumentError):
-        substr_op.eval()
+        self.evaluate(substr_op)
 
     # Broadcast (with negative)
     position = np.array([-1, -2, -4], dtype)
@@ -436,7 +436,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
       with self.assertRaises(errors_impl.InvalidArgumentError):
-        substr_op.eval()
+        self.evaluate(substr_op)
 
   @parameterized.parameters(
       (np.int32, "BYTE"),

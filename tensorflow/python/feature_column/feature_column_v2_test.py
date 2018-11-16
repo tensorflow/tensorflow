@@ -413,11 +413,11 @@ class NumericColumnTest(test.TestCase):
       predictions = model(features)
       price_var, bias = model.variables
       with _initialized_session() as sess:
-        self.assertAllClose([0.], bias.eval())
-        self.assertAllClose([[0.]], price_var.eval())
-        self.assertAllClose([[0.], [0.]], predictions.eval())
+        self.assertAllClose([0.], self.evaluate(bias))
+        self.assertAllClose([[0.]], self.evaluate(price_var))
+        self.assertAllClose([[0.], [0.]], self.evaluate(predictions))
         sess.run(price_var.assign([[10.]]))
-        self.assertAllClose([[10.], [50.]], predictions.eval())
+        self.assertAllClose([[10.], [50.]], self.evaluate(predictions))
 
   def test_old_linear_model(self):
     price = fc.numeric_column_v2('price')
@@ -427,11 +427,11 @@ class NumericColumnTest(test.TestCase):
       bias = get_linear_model_bias()
       price_var = get_linear_model_column_var(price)
       with _initialized_session() as sess:
-        self.assertAllClose([0.], bias.eval())
-        self.assertAllClose([[0.]], price_var.eval())
-        self.assertAllClose([[0.], [0.]], predictions.eval())
+        self.assertAllClose([0.], self.evaluate(bias))
+        self.assertAllClose([[0.]], self.evaluate(price_var))
+        self.assertAllClose([[0.], [0.]], self.evaluate(predictions))
         sess.run(price_var.assign([[10.]]))
-        self.assertAllClose([[10.], [50.]], predictions.eval())
+        self.assertAllClose([[10.], [50.]], self.evaluate(predictions))
 
   def test_serialization(self):
 
@@ -557,11 +557,9 @@ class BucketizedColumnTest(test.TestCase):
             transformation_cache, None)
         self.assertAllClose(
             # One-hot tensor.
-            [[[1., 0., 0., 0., 0.]],
-             [[0., 1., 0., 0., 0.]],
-             [[0., 0., 0., 1., 0.]],
-             [[0., 0., 0., 0., 1.]]],
-            bucketized_price_tensor.eval())
+            [[[1., 0., 0., 0., 0.]], [[0., 1., 0., 0., 0.]],
+             [[0., 0., 0., 1., 0.]], [[0., 0., 0., 0., 1.]]],
+            self.evaluate(bucketized_price_tensor))
 
   def test_get_dense_tensor_two_input_values(self):
     """Tests _get_dense_tensor() for input with shape=[2]."""
@@ -578,7 +576,7 @@ class BucketizedColumnTest(test.TestCase):
             # One-hot tensor.
             [[[1., 0., 0., 0., 0.], [0., 1., 0., 0., 0.]],
              [[0., 0., 0., 1., 0.], [0., 0., 0., 0., 1.]]],
-            bucketized_price_tensor.eval())
+            self.evaluate(bucketized_price_tensor))
 
   def test_get_sparse_tensors_one_input_value(self):
     """Tests _get_sparse_tensors() for input with shape=[1]."""
@@ -647,20 +645,23 @@ class BucketizedColumnTest(test.TestCase):
       predictions = model(features)
       bucketized_price_var, bias = model.variables
       with _initialized_session() as sess:
-        self.assertAllClose([0.], bias.eval())
+        self.assertAllClose([0.], self.evaluate(bias))
         # One weight variable per bucket, all initialized to zero.
-        self.assertAllClose(
-            [[0.], [0.], [0.], [0.], [0.]], bucketized_price_var.eval())
-        self.assertAllClose([[0.], [0.], [0.], [0.]], predictions.eval())
+        self.assertAllClose([[0.], [0.], [0.], [0.], [0.]],
+                            self.evaluate(bucketized_price_var))
+        self.assertAllClose([[0.], [0.], [0.], [0.]],
+                            self.evaluate(predictions))
         sess.run(bucketized_price_var.assign(
             [[10.], [20.], [30.], [40.], [50.]]))
         # price -1. is in the 0th bucket, whose weight is 10.
         # price 1. is in the 1st bucket, whose weight is 20.
         # price 5. is in the 3rd bucket, whose weight is 40.
         # price 6. is in the 4th bucket, whose weight is 50.
-        self.assertAllClose([[10.], [20.], [40.], [50.]], predictions.eval())
+        self.assertAllClose([[10.], [20.], [40.], [50.]],
+                            self.evaluate(predictions))
         sess.run(bias.assign([1.]))
-        self.assertAllClose([[11.], [21.], [41.], [51.]], predictions.eval())
+        self.assertAllClose([[11.], [21.], [41.], [51.]],
+                            self.evaluate(predictions))
 
   def test_linear_model_two_input_values(self):
     """Tests linear_model() for input with shape=[2]."""
@@ -672,12 +673,12 @@ class BucketizedColumnTest(test.TestCase):
       predictions = model(features)
       bucketized_price_var, bias = model.variables
       with _initialized_session() as sess:
-        self.assertAllClose([0.], bias.eval())
+        self.assertAllClose([0.], self.evaluate(bias))
         # One weight per bucket per input column, all initialized to zero.
         self.assertAllClose(
             [[0.], [0.], [0.], [0.], [0.], [0.], [0.], [0.], [0.], [0.]],
-            bucketized_price_var.eval())
-        self.assertAllClose([[0.], [0.]], predictions.eval())
+            self.evaluate(bucketized_price_var))
+        self.assertAllClose([[0.], [0.]], self.evaluate(predictions))
         sess.run(bucketized_price_var.assign(
             [[10.], [20.], [30.], [40.], [50.],
              [60.], [70.], [80.], [90.], [100.]]))
@@ -687,9 +688,9 @@ class BucketizedColumnTest(test.TestCase):
         # 2nd example:
         #   price 5. is in the 3rd bucket, whose weight is 40.
         #   price 6. is in the 9th bucket, whose weight is 100.
-        self.assertAllClose([[80.], [140.]], predictions.eval())
+        self.assertAllClose([[80.], [140.]], self.evaluate(predictions))
         sess.run(bias.assign([1.]))
-        self.assertAllClose([[81.], [141.]], predictions.eval())
+        self.assertAllClose([[81.], [141.]], self.evaluate(predictions))
 
   def test_old_linear_model_one_input_value(self):
     """Tests linear_model() for input with shape=[1]."""
@@ -701,20 +702,23 @@ class BucketizedColumnTest(test.TestCase):
       bias = get_linear_model_bias()
       bucketized_price_var = get_linear_model_column_var(bucketized_price)
       with _initialized_session() as sess:
-        self.assertAllClose([0.], bias.eval())
+        self.assertAllClose([0.], self.evaluate(bias))
         # One weight variable per bucket, all initialized to zero.
         self.assertAllClose([[0.], [0.], [0.], [0.], [0.]],
-                            bucketized_price_var.eval())
-        self.assertAllClose([[0.], [0.], [0.], [0.]], predictions.eval())
+                            self.evaluate(bucketized_price_var))
+        self.assertAllClose([[0.], [0.], [0.], [0.]],
+                            self.evaluate(predictions))
         sess.run(
             bucketized_price_var.assign([[10.], [20.], [30.], [40.], [50.]]))
         # price -1. is in the 0th bucket, whose weight is 10.
         # price 1. is in the 1st bucket, whose weight is 20.
         # price 5. is in the 3rd bucket, whose weight is 40.
         # price 6. is in the 4th bucket, whose weight is 50.
-        self.assertAllClose([[10.], [20.], [40.], [50.]], predictions.eval())
+        self.assertAllClose([[10.], [20.], [40.], [50.]],
+                            self.evaluate(predictions))
         sess.run(bias.assign([1.]))
-        self.assertAllClose([[11.], [21.], [41.], [51.]], predictions.eval())
+        self.assertAllClose([[11.], [21.], [41.], [51.]],
+                            self.evaluate(predictions))
 
   def test_old_linear_model_two_input_values(self):
     """Tests linear_model() for input with shape=[2]."""
@@ -726,12 +730,12 @@ class BucketizedColumnTest(test.TestCase):
       bias = get_linear_model_bias()
       bucketized_price_var = get_linear_model_column_var(bucketized_price)
       with _initialized_session() as sess:
-        self.assertAllClose([0.], bias.eval())
+        self.assertAllClose([0.], self.evaluate(bias))
         # One weight per bucket per input column, all initialized to zero.
         self.assertAllClose(
             [[0.], [0.], [0.], [0.], [0.], [0.], [0.], [0.], [0.], [0.]],
-            bucketized_price_var.eval())
-        self.assertAllClose([[0.], [0.]], predictions.eval())
+            self.evaluate(bucketized_price_var))
+        self.assertAllClose([[0.], [0.]], self.evaluate(predictions))
         sess.run(
             bucketized_price_var.assign([[10.], [20.], [30.], [40.], [50.],
                                          [60.], [70.], [80.], [90.], [100.]]))
@@ -741,9 +745,9 @@ class BucketizedColumnTest(test.TestCase):
         # 2nd example:
         #   price 5. is in the 3rd bucket, whose weight is 40.
         #   price 6. is in the 9th bucket, whose weight is 100.
-        self.assertAllClose([[80.], [140.]], predictions.eval())
+        self.assertAllClose([[80.], [140.]], self.evaluate(predictions))
         sess.run(bias.assign([1.]))
-        self.assertAllClose([[81.], [141.]], predictions.eval())
+        self.assertAllClose([[81.], [141.]], self.evaluate(predictions))
 
   def test_old_linear_model_one_input_value_old_numeric(self):
     """Tests linear_model() for input with shape=[1]."""
@@ -755,20 +759,23 @@ class BucketizedColumnTest(test.TestCase):
       bias = get_linear_model_bias()
       bucketized_price_var = get_linear_model_column_var(bucketized_price)
       with _initialized_session() as sess:
-        self.assertAllClose([0.], bias.eval())
+        self.assertAllClose([0.], self.evaluate(bias))
         # One weight variable per bucket, all initialized to zero.
         self.assertAllClose([[0.], [0.], [0.], [0.], [0.]],
-                            bucketized_price_var.eval())
-        self.assertAllClose([[0.], [0.], [0.], [0.]], predictions.eval())
+                            self.evaluate(bucketized_price_var))
+        self.assertAllClose([[0.], [0.], [0.], [0.]],
+                            self.evaluate(predictions))
         sess.run(
             bucketized_price_var.assign([[10.], [20.], [30.], [40.], [50.]]))
         # price -1. is in the 0th bucket, whose weight is 10.
         # price 1. is in the 1st bucket, whose weight is 20.
         # price 5. is in the 3rd bucket, whose weight is 40.
         # price 6. is in the 4th bucket, whose weight is 50.
-        self.assertAllClose([[10.], [20.], [40.], [50.]], predictions.eval())
+        self.assertAllClose([[10.], [20.], [40.], [50.]],
+                            self.evaluate(predictions))
         sess.run(bias.assign([1.]))
-        self.assertAllClose([[11.], [21.], [41.], [51.]], predictions.eval())
+        self.assertAllClose([[11.], [21.], [41.], [51.]],
+                            self.evaluate(predictions))
 
   def test_serialization(self):
     price = fc.numeric_column_v2('price', shape=[2])
@@ -995,13 +1002,14 @@ class HashedCategoricalColumnTest(test.TestCase):
       })
       wire_var, bias = model.variables
       with _initialized_session():
-        self.assertAllClose((0.,), bias.eval())
-        self.assertAllClose(((0.,), (0.,), (0.,), (0.,)), wire_var.eval())
-        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+        self.assertAllClose((0.,), self.evaluate(bias))
+        self.assertAllClose(((0.,), (0.,), (0.,), (0.,)),
+                            self.evaluate(wire_var))
+        self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
         wire_var.assign(((1.,), (2.,), (3.,), (4.,))).eval()
         # 'marlo' -> 3: wire_var[3] = 4
         # 'skywalker' -> 2, 'omar' -> 2: wire_var[2] + wire_var[2] = 3+3 = 6
-        self.assertAllClose(((4.,), (6.,)), predictions.eval())
+        self.assertAllClose(((4.,), (6.,)), self.evaluate(predictions))
 
   def test_old_linear_model(self):
     wire_column = fc.categorical_column_with_hash_bucket_v2('wire', 4)
@@ -1017,13 +1025,14 @@ class HashedCategoricalColumnTest(test.TestCase):
       bias = get_linear_model_bias()
       wire_var = get_linear_model_column_var(wire_column)
       with _initialized_session():
-        self.assertAllClose((0.,), bias.eval())
-        self.assertAllClose(((0.,), (0.,), (0.,), (0.,)), wire_var.eval())
-        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+        self.assertAllClose((0.,), self.evaluate(bias))
+        self.assertAllClose(((0.,), (0.,), (0.,), (0.,)),
+                            self.evaluate(wire_var))
+        self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
         wire_var.assign(((1.,), (2.,), (3.,), (4.,))).eval()
         # 'marlo' -> 3: wire_var[3] = 4
         # 'skywalker' -> 2, 'omar' -> 2: wire_var[2] + wire_var[2] = 3+3 = 6
-        self.assertAllClose(((4.,), (6.,)), predictions.eval())
+        self.assertAllClose(((4.,), (6.,)), self.evaluate(predictions))
 
   def test_serialization(self):
     wire_column = fc.categorical_column_with_hash_bucket_v2('wire', 4)
@@ -1276,15 +1285,15 @@ class CrossedColumnTest(test.TestCase):
       })
       crossed_var, bias = model.variables
       with _initialized_session() as sess:
-        self.assertAllClose((0.,), bias.eval())
-        self.assertAllClose(
-            ((0.,), (0.,), (0.,), (0.,), (0.,)), crossed_var.eval())
-        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+        self.assertAllClose((0.,), self.evaluate(bias))
+        self.assertAllClose(((0.,), (0.,), (0.,), (0.,), (0.,)),
+                            self.evaluate(crossed_var))
+        self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
         sess.run(crossed_var.assign(((1.,), (2.,), (3.,), (4.,), (5.,))))
         # Expected ids after cross = (1, 0, 1, 3, 4, 2)
-        self.assertAllClose(((3.,), (14.,)), predictions.eval())
+        self.assertAllClose(((3.,), (14.,)), self.evaluate(predictions))
         sess.run(bias.assign((.1,)))
-        self.assertAllClose(((3.1,), (14.1,)), predictions.eval())
+        self.assertAllClose(((3.1,), (14.1,)), self.evaluate(predictions))
 
   def test_linear_model_with_weights(self):
 
@@ -1369,15 +1378,15 @@ class CrossedColumnTest(test.TestCase):
       bias = get_linear_model_bias()
       crossed_var = get_linear_model_column_var(crossed)
       with _initialized_session() as sess:
-        self.assertAllClose((0.,), bias.eval())
+        self.assertAllClose((0.,), self.evaluate(bias))
         self.assertAllClose(((0.,), (0.,), (0.,), (0.,), (0.,)),
-                            crossed_var.eval())
-        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+                            self.evaluate(crossed_var))
+        self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
         sess.run(crossed_var.assign(((1.,), (2.,), (3.,), (4.,), (5.,))))
         # Expected ids after cross = (1, 0, 1, 3, 4, 2)
-        self.assertAllClose(((3.,), (14.,)), predictions.eval())
+        self.assertAllClose(((3.,), (14.,)), self.evaluate(predictions))
         sess.run(bias.assign((.1,)))
-        self.assertAllClose(((3.1,), (14.1,)), predictions.eval())
+        self.assertAllClose(((3.1,), (14.1,)), self.evaluate(predictions))
 
   def test_old_linear_model_with_weights(self):
 
@@ -1479,15 +1488,15 @@ class CrossedColumnTest(test.TestCase):
       bias = get_linear_model_bias()
       crossed_var = get_linear_model_column_var(crossed)
       with _initialized_session() as sess:
-        self.assertAllClose((0.,), bias.eval())
+        self.assertAllClose((0.,), self.evaluate(bias))
         self.assertAllClose(((0.,), (0.,), (0.,), (0.,), (0.,)),
-                            crossed_var.eval())
-        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+                            self.evaluate(crossed_var))
+        self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
         sess.run(crossed_var.assign(((1.,), (2.,), (3.,), (4.,), (5.,))))
         # Expected ids after cross = (1, 0, 1, 3, 4, 2)
-        self.assertAllClose(((3.,), (14.,)), predictions.eval())
+        self.assertAllClose(((3.,), (14.,)), self.evaluate(predictions))
         sess.run(bias.assign((.1,)))
-        self.assertAllClose(((3.1,), (14.1,)), predictions.eval())
+        self.assertAllClose(((3.1,), (14.1,)), self.evaluate(predictions))
 
   def test_serialization(self):
     a = fc.numeric_column_v2('a', dtype=dtypes.int32, shape=(2,))
@@ -1594,10 +1603,10 @@ class LinearModelTest(test.TestCase):
       predictions = model(features)
       price_var, bias = model.variables
       with _initialized_session() as sess:
-        self.assertAllClose([0.], bias.eval())
+        self.assertAllClose([0.], self.evaluate(bias))
         sess.run(price_var.assign([[10.]]))
         sess.run(bias.assign([5.]))
-        self.assertAllClose([[15.], [55.]], predictions.eval())
+        self.assertAllClose([[15.], [55.]], self.evaluate(predictions))
 
   def test_sparse_bias(self):
     wire_cast = fc.categorical_column_with_hash_bucket_v2('wire_cast', 4)
@@ -1611,11 +1620,12 @@ class LinearModelTest(test.TestCase):
       predictions = model(features)
       wire_cast_var, bias = model.variables
       with _initialized_session() as sess:
-        self.assertAllClose([0.], bias.eval())
-        self.assertAllClose([[0.], [0.], [0.], [0.]], wire_cast_var.eval())
+        self.assertAllClose([0.], self.evaluate(bias))
+        self.assertAllClose([[0.], [0.], [0.], [0.]],
+                            self.evaluate(wire_cast_var))
         sess.run(wire_cast_var.assign([[10.], [100.], [1000.], [10000.]]))
         sess.run(bias.assign([5.]))
-        self.assertAllClose([[1005.], [10015.]], predictions.eval())
+        self.assertAllClose([[1005.], [10015.]], self.evaluate(predictions))
 
   def test_dense_and_sparse_bias(self):
     wire_cast = fc.categorical_column_with_hash_bucket_v2('wire_cast', 4)
@@ -1633,7 +1643,7 @@ class LinearModelTest(test.TestCase):
         sess.run(wire_cast_var.assign([[10.], [100.], [1000.], [10000.]]))
         sess.run(bias.assign([5.]))
         sess.run(price_var.assign([[10.]]))
-        self.assertAllClose([[1015.], [10065.]], predictions.eval())
+        self.assertAllClose([[1015.], [10065.]], self.evaluate(predictions))
 
   def test_dense_and_sparse_column(self):
     """When the column is both dense and sparse, uses sparse tensors."""
@@ -1688,7 +1698,7 @@ class LinearModelTest(test.TestCase):
         sess.run(dense_and_sparse_column_var.assign(
             [[10.], [100.], [1000.], [10000.]]))
         sess.run(bias.assign([5.]))
-        self.assertAllClose([[1005.], [10015.]], predictions.eval())
+        self.assertAllClose([[1005.], [10015.]], self.evaluate(predictions))
 
   def test_dense_multi_output(self):
     price = fc.numeric_column_v2('price')
@@ -1698,12 +1708,12 @@ class LinearModelTest(test.TestCase):
       predictions = model(features)
       price_var, bias = model.variables
       with _initialized_session() as sess:
-        self.assertAllClose(np.zeros((3,)), bias.eval())
-        self.assertAllClose(np.zeros((1, 3)), price_var.eval())
+        self.assertAllClose(np.zeros((3,)), self.evaluate(bias))
+        self.assertAllClose(np.zeros((1, 3)), self.evaluate(price_var))
         sess.run(price_var.assign([[10., 100., 1000.]]))
         sess.run(bias.assign([5., 6., 7.]))
         self.assertAllClose([[15., 106., 1007.], [55., 506., 5007.]],
-                            predictions.eval())
+                            self.evaluate(predictions))
 
   def test_sparse_multi_output(self):
     wire_cast = fc.categorical_column_with_hash_bucket_v2('wire_cast', 4)
@@ -1717,15 +1727,15 @@ class LinearModelTest(test.TestCase):
       predictions = model(features)
       wire_cast_var, bias = model.variables
       with _initialized_session() as sess:
-        self.assertAllClose(np.zeros((3,)), bias.eval())
-        self.assertAllClose(np.zeros((4, 3)), wire_cast_var.eval())
+        self.assertAllClose(np.zeros((3,)), self.evaluate(bias))
+        self.assertAllClose(np.zeros((4, 3)), self.evaluate(wire_cast_var))
         sess.run(
             wire_cast_var.assign([[10., 11., 12.], [100., 110., 120.], [
                 1000., 1100., 1200.
             ], [10000., 11000., 12000.]]))
         sess.run(bias.assign([5., 6., 7.]))
         self.assertAllClose([[1005., 1106., 1207.], [10015., 11017., 12019.]],
-                            predictions.eval())
+                            self.evaluate(predictions))
 
   def test_dense_multi_dimension(self):
     price = fc.numeric_column_v2('price', shape=2)
@@ -1735,9 +1745,9 @@ class LinearModelTest(test.TestCase):
       predictions = model(features)
       price_var, _ = model.variables
       with _initialized_session() as sess:
-        self.assertAllClose([[0.], [0.]], price_var.eval())
+        self.assertAllClose([[0.], [0.]], self.evaluate(price_var))
         sess.run(price_var.assign([[10.], [100.]]))
-        self.assertAllClose([[210.], [650.]], predictions.eval())
+        self.assertAllClose([[210.], [650.]], self.evaluate(predictions))
 
   def test_sparse_multi_rank(self):
     wire_cast = fc.categorical_column_with_hash_bucket_v2('wire_cast', 4)
@@ -1752,7 +1762,7 @@ class LinearModelTest(test.TestCase):
       predictions = model(features)
       wire_cast_var, _ = model.variables
       with _initialized_session() as sess:
-        self.assertAllClose(np.zeros((4, 1)), wire_cast_var.eval())
+        self.assertAllClose(np.zeros((4, 1)), self.evaluate(wire_cast_var))
         self.assertAllClose(
             np.zeros((2, 1)),
             predictions.eval(feed_dict={wire_tensor: wire_value}))
@@ -1775,7 +1785,7 @@ class LinearModelTest(test.TestCase):
       with _initialized_session() as sess:
         sess.run(wire_cast_var.assign([[10.], [100.], [1000.], [10000.]]))
         sess.run(bias.assign([5.]))
-        self.assertAllClose([[1005.], [5010.]], predictions.eval())
+        self.assertAllClose([[1005.], [5010.]], self.evaluate(predictions))
 
   def test_sparse_combiner_with_negative_weights(self):
     wire_cast = fc.categorical_column_with_hash_bucket_v2('wire_cast', 4)
@@ -1796,7 +1806,7 @@ class LinearModelTest(test.TestCase):
       with _initialized_session() as sess:
         sess.run(wire_cast_var.assign([[10.], [100.], [1000.], [10000.]]))
         sess.run(bias.assign([5.]))
-        self.assertAllClose([[1005.], [-9985.]], predictions.eval())
+        self.assertAllClose([[1005.], [-9985.]], self.evaluate(predictions))
 
   def test_dense_multi_dimension_multi_output(self):
     price = fc.numeric_column_v2('price', shape=2)
@@ -1806,12 +1816,12 @@ class LinearModelTest(test.TestCase):
       predictions = model(features)
       price_var, bias = model.variables
       with _initialized_session() as sess:
-        self.assertAllClose(np.zeros((3,)), bias.eval())
-        self.assertAllClose(np.zeros((2, 3)), price_var.eval())
+        self.assertAllClose(np.zeros((3,)), self.evaluate(bias))
+        self.assertAllClose(np.zeros((2, 3)), self.evaluate(price_var))
         sess.run(price_var.assign([[1., 2., 3.], [10., 100., 1000.]]))
         sess.run(bias.assign([2., 3., 4.]))
         self.assertAllClose([[23., 205., 2007.], [67., 613., 6019.]],
-                            predictions.eval())
+                            self.evaluate(predictions))
 
   def test_raises_if_shape_mismatch(self):
     price = fc.numeric_column_v2('price', shape=2)
@@ -1831,11 +1841,11 @@ class LinearModelTest(test.TestCase):
       predictions = model(features)
       price_var, bias = model.variables
       with _initialized_session() as sess:
-        self.assertAllClose([0.], bias.eval())
-        self.assertAllClose([[0.], [0.]], price_var.eval())
-        self.assertAllClose([[0.], [0.]], predictions.eval())
+        self.assertAllClose([0.], self.evaluate(bias))
+        self.assertAllClose([[0.], [0.]], self.evaluate(price_var))
+        self.assertAllClose([[0.], [0.]], self.evaluate(predictions))
         sess.run(price_var.assign([[10.], [100.]]))
-        self.assertAllClose([[210.], [650.]], predictions.eval())
+        self.assertAllClose([[210.], [650.]], self.evaluate(predictions))
 
   def test_dense_multi_column(self):
     price1 = fc.numeric_column_v2('price1', shape=2)
@@ -1849,14 +1859,14 @@ class LinearModelTest(test.TestCase):
       predictions = model(features)
       price1_var, price2_var, bias = model.variables
       with _initialized_session() as sess:
-        self.assertAllClose([0.], bias.eval())
-        self.assertAllClose([[0.], [0.]], price1_var.eval())
-        self.assertAllClose([[0.]], price2_var.eval())
-        self.assertAllClose([[0.], [0.]], predictions.eval())
+        self.assertAllClose([0.], self.evaluate(bias))
+        self.assertAllClose([[0.], [0.]], self.evaluate(price1_var))
+        self.assertAllClose([[0.]], self.evaluate(price2_var))
+        self.assertAllClose([[0.], [0.]], self.evaluate(predictions))
         sess.run(price1_var.assign([[10.], [100.]]))
         sess.run(price2_var.assign([[1000.]]))
         sess.run(bias.assign([7.]))
-        self.assertAllClose([[3217.], [4657.]], predictions.eval())
+        self.assertAllClose([[3217.], [4657.]], self.evaluate(predictions))
 
   def test_dense_trainable_default(self):
     price = fc.numeric_column_v2('price')
@@ -2200,14 +2210,14 @@ class LinearModelTest(test.TestCase):
       price_var1, bias1 = model1.variables
       price_var2, bias2 = model2.variables
       with _initialized_session() as sess:
-        self.assertAllClose([0.], bias1.eval())
+        self.assertAllClose([0.], self.evaluate(bias1))
         sess.run(price_var1.assign([[10.]]))
         sess.run(bias1.assign([5.]))
-        self.assertAllClose([[15.], [55.]], predictions1.eval())
-        self.assertAllClose([0.], bias2.eval())
+        self.assertAllClose([[15.], [55.]], self.evaluate(predictions1))
+        self.assertAllClose([0.], self.evaluate(bias2))
         sess.run(price_var2.assign([[10.]]))
         sess.run(bias2.assign([5.]))
-        self.assertAllClose([[25.], [105.]], predictions2.eval())
+        self.assertAllClose([[25.], [105.]], self.evaluate(predictions2))
 
 
 class OldLinearModelTest(test.TestCase):
@@ -2278,10 +2288,10 @@ class OldLinearModelTest(test.TestCase):
       bias = get_linear_model_bias()
       price_var = get_linear_model_column_var(price)
       with _initialized_session() as sess:
-        self.assertAllClose([0.], bias.eval())
+        self.assertAllClose([0.], self.evaluate(bias))
         sess.run(price_var.assign([[10.]]))
         sess.run(bias.assign([5.]))
-        self.assertAllClose([[15.], [55.]], predictions.eval())
+        self.assertAllClose([[15.], [55.]], self.evaluate(predictions))
 
   def test_sparse_bias(self):
     wire_cast = fc.categorical_column_with_hash_bucket_v2('wire_cast', 4)
@@ -2295,11 +2305,12 @@ class OldLinearModelTest(test.TestCase):
       bias = get_linear_model_bias()
       wire_cast_var = get_linear_model_column_var(wire_cast)
       with _initialized_session() as sess:
-        self.assertAllClose([0.], bias.eval())
-        self.assertAllClose([[0.], [0.], [0.], [0.]], wire_cast_var.eval())
+        self.assertAllClose([0.], self.evaluate(bias))
+        self.assertAllClose([[0.], [0.], [0.], [0.]],
+                            self.evaluate(wire_cast_var))
         sess.run(wire_cast_var.assign([[10.], [100.], [1000.], [10000.]]))
         sess.run(bias.assign([5.]))
-        self.assertAllClose([[1005.], [10015.]], predictions.eval())
+        self.assertAllClose([[1005.], [10015.]], self.evaluate(predictions))
 
   def test_dense_and_sparse_bias(self):
     wire_cast = fc.categorical_column_with_hash_bucket_v2('wire_cast', 4)
@@ -2318,7 +2329,7 @@ class OldLinearModelTest(test.TestCase):
         sess.run(wire_cast_var.assign([[10.], [100.], [1000.], [10000.]]))
         sess.run(bias.assign([5.]))
         sess.run(price_var.assign([[10.]]))
-        self.assertAllClose([[1015.], [10065.]], predictions.eval())
+        self.assertAllClose([[1015.], [10065.]], self.evaluate(predictions))
 
   def test_dense_and_sparse_column(self):
     """When the column is both dense and sparse, uses sparse tensors."""
@@ -2400,7 +2411,7 @@ class OldLinearModelTest(test.TestCase):
             dense_and_sparse_column_var.assign([[10.], [100.], [1000.],
                                                 [10000.]]))
         sess.run(bias.assign([5.]))
-        self.assertAllClose([[1005.], [10015.]], predictions.eval())
+        self.assertAllClose([[1005.], [10015.]], self.evaluate(predictions))
 
   def test_dense_multi_output(self):
     price = fc.numeric_column_v2('price')
@@ -2410,12 +2421,12 @@ class OldLinearModelTest(test.TestCase):
       bias = get_linear_model_bias()
       price_var = get_linear_model_column_var(price)
       with _initialized_session() as sess:
-        self.assertAllClose(np.zeros((3,)), bias.eval())
-        self.assertAllClose(np.zeros((1, 3)), price_var.eval())
+        self.assertAllClose(np.zeros((3,)), self.evaluate(bias))
+        self.assertAllClose(np.zeros((1, 3)), self.evaluate(price_var))
         sess.run(price_var.assign([[10., 100., 1000.]]))
         sess.run(bias.assign([5., 6., 7.]))
         self.assertAllClose([[15., 106., 1007.], [55., 506., 5007.]],
-                            predictions.eval())
+                            self.evaluate(predictions))
 
   def test_sparse_multi_output(self):
     wire_cast = fc.categorical_column_with_hash_bucket_v2('wire_cast', 4)
@@ -2429,15 +2440,15 @@ class OldLinearModelTest(test.TestCase):
       bias = get_linear_model_bias()
       wire_cast_var = get_linear_model_column_var(wire_cast)
       with _initialized_session() as sess:
-        self.assertAllClose(np.zeros((3,)), bias.eval())
-        self.assertAllClose(np.zeros((4, 3)), wire_cast_var.eval())
+        self.assertAllClose(np.zeros((3,)), self.evaluate(bias))
+        self.assertAllClose(np.zeros((4, 3)), self.evaluate(wire_cast_var))
         sess.run(
             wire_cast_var.assign([[10., 11., 12.], [100., 110., 120.],
                                   [1000., 1100., 1200.],
                                   [10000., 11000., 12000.]]))
         sess.run(bias.assign([5., 6., 7.]))
         self.assertAllClose([[1005., 1106., 1207.], [10015., 11017., 12019.]],
-                            predictions.eval())
+                            self.evaluate(predictions))
 
   def test_dense_multi_dimension(self):
     price = fc.numeric_column_v2('price', shape=2)
@@ -2446,9 +2457,9 @@ class OldLinearModelTest(test.TestCase):
       predictions = fc_old.linear_model(features, [price])
       price_var = get_linear_model_column_var(price)
       with _initialized_session() as sess:
-        self.assertAllClose([[0.], [0.]], price_var.eval())
+        self.assertAllClose([[0.], [0.]], self.evaluate(price_var))
         sess.run(price_var.assign([[10.], [100.]]))
-        self.assertAllClose([[210.], [650.]], predictions.eval())
+        self.assertAllClose([[210.], [650.]], self.evaluate(predictions))
 
   def test_sparse_multi_rank(self):
     wire_cast = fc.categorical_column_with_hash_bucket_v2('wire_cast', 4)
@@ -2462,7 +2473,7 @@ class OldLinearModelTest(test.TestCase):
       predictions = fc_old.linear_model(features, [wire_cast])
       wire_cast_var = get_linear_model_column_var(wire_cast)
       with _initialized_session() as sess:
-        self.assertAllClose(np.zeros((4, 1)), wire_cast_var.eval())
+        self.assertAllClose(np.zeros((4, 1)), self.evaluate(wire_cast_var))
         self.assertAllClose(
             np.zeros((2, 1)),
             predictions.eval(feed_dict={wire_tensor: wire_value}))
@@ -2486,7 +2497,7 @@ class OldLinearModelTest(test.TestCase):
       with _initialized_session() as sess:
         sess.run(wire_cast_var.assign([[10.], [100.], [1000.], [10000.]]))
         sess.run(bias.assign([5.]))
-        self.assertAllClose([[1005.], [5010.]], predictions.eval())
+        self.assertAllClose([[1005.], [5010.]], self.evaluate(predictions))
 
   def test_sparse_combiner_with_negative_weights(self):
     wire_cast = fc.categorical_column_with_hash_bucket_v2('wire_cast', 4)
@@ -2508,7 +2519,7 @@ class OldLinearModelTest(test.TestCase):
       with _initialized_session() as sess:
         sess.run(wire_cast_var.assign([[10.], [100.], [1000.], [10000.]]))
         sess.run(bias.assign([5.]))
-        self.assertAllClose([[1005.], [-9985.]], predictions.eval())
+        self.assertAllClose([[1005.], [-9985.]], self.evaluate(predictions))
 
   def test_dense_multi_dimension_multi_output(self):
     price = fc.numeric_column_v2('price', shape=2)
@@ -2518,12 +2529,12 @@ class OldLinearModelTest(test.TestCase):
       bias = get_linear_model_bias()
       price_var = get_linear_model_column_var(price)
       with _initialized_session() as sess:
-        self.assertAllClose(np.zeros((3,)), bias.eval())
-        self.assertAllClose(np.zeros((2, 3)), price_var.eval())
+        self.assertAllClose(np.zeros((3,)), self.evaluate(bias))
+        self.assertAllClose(np.zeros((2, 3)), self.evaluate(price_var))
         sess.run(price_var.assign([[1., 2., 3.], [10., 100., 1000.]]))
         sess.run(bias.assign([2., 3., 4.]))
         self.assertAllClose([[23., 205., 2007.], [67., 613., 6019.]],
-                            predictions.eval())
+                            self.evaluate(predictions))
 
   def test_raises_if_shape_mismatch(self):
     price = fc.numeric_column_v2('price', shape=2)
@@ -2542,11 +2553,11 @@ class OldLinearModelTest(test.TestCase):
       bias = get_linear_model_bias()
       price_var = get_linear_model_column_var(price)
       with _initialized_session() as sess:
-        self.assertAllClose([0.], bias.eval())
-        self.assertAllClose([[0.], [0.]], price_var.eval())
-        self.assertAllClose([[0.], [0.]], predictions.eval())
+        self.assertAllClose([0.], self.evaluate(bias))
+        self.assertAllClose([[0.], [0.]], self.evaluate(price_var))
+        self.assertAllClose([[0.], [0.]], self.evaluate(predictions))
         sess.run(price_var.assign([[10.], [100.]]))
-        self.assertAllClose([[210.], [650.]], predictions.eval())
+        self.assertAllClose([[210.], [650.]], self.evaluate(predictions))
 
   def test_dense_multi_column(self):
     price1 = fc.numeric_column_v2('price1', shape=2)
@@ -2558,14 +2569,14 @@ class OldLinearModelTest(test.TestCase):
       price1_var = get_linear_model_column_var(price1)
       price2_var = get_linear_model_column_var(price2)
       with _initialized_session() as sess:
-        self.assertAllClose([0.], bias.eval())
-        self.assertAllClose([[0.], [0.]], price1_var.eval())
-        self.assertAllClose([[0.]], price2_var.eval())
-        self.assertAllClose([[0.], [0.]], predictions.eval())
+        self.assertAllClose([0.], self.evaluate(bias))
+        self.assertAllClose([[0.], [0.]], self.evaluate(price1_var))
+        self.assertAllClose([[0.]], self.evaluate(price2_var))
+        self.assertAllClose([[0.], [0.]], self.evaluate(predictions))
         sess.run(price1_var.assign([[10.], [100.]]))
         sess.run(price2_var.assign([[1000.]]))
         sess.run(bias.assign([7.]))
-        self.assertAllClose([[3217.], [4657.]], predictions.eval())
+        self.assertAllClose([[3217.], [4657.]], self.evaluate(predictions))
 
   def test_fills_cols_to_vars(self):
     price1 = fc.numeric_column_v2('price1', shape=2)
@@ -2918,14 +2929,14 @@ class OldLinearModelTest(test.TestCase):
       price_var1 = get_linear_model_column_var(price, name='linear_model')
       price_var2 = get_linear_model_column_var(price, name='linear_model_1')
       with _initialized_session() as sess:
-        self.assertAllClose([0.], bias1.eval())
+        self.assertAllClose([0.], self.evaluate(bias1))
         sess.run(price_var1.assign([[10.]]))
         sess.run(bias1.assign([5.]))
-        self.assertAllClose([[15.], [55.]], predictions1.eval())
-        self.assertAllClose([0.], bias2.eval())
+        self.assertAllClose([[15.], [55.]], self.evaluate(predictions1))
+        self.assertAllClose([0.], self.evaluate(bias2))
         sess.run(price_var2.assign([[10.]]))
         sess.run(bias2.assign([5.]))
-        self.assertAllClose([[25.], [105.]], predictions2.eval())
+        self.assertAllClose([[25.], [105.]], self.evaluate(predictions2))
 
   def test_linear_model_v1_shared_embedding_all_other_v2(self):
     price = fc.numeric_column_v2('price')  # v2
@@ -2961,7 +2972,7 @@ class OldLinearModelTest(test.TestCase):
       fc_old.linear_model(features, all_cols)
       bias = get_linear_model_bias()
       with _initialized_session():
-        self.assertAllClose([0.], bias.eval())
+        self.assertAllClose([0.], self.evaluate(bias))
 
   def test_linear_model_v1_shared_embedding_with_v2_cat_all_other_v2(self):
     price = fc.numeric_column_v2('price')  # v2
@@ -2997,7 +3008,7 @@ class OldLinearModelTest(test.TestCase):
       fc_old.linear_model(features, all_cols)
       bias = get_linear_model_bias()
       with _initialized_session():
-        self.assertAllClose([0.], bias.eval())
+        self.assertAllClose([0.], self.evaluate(bias))
 
   def test_linear_model_v1_v2_mix(self):
     price = fc.numeric_column_v2('price')  # v2
@@ -3033,7 +3044,7 @@ class OldLinearModelTest(test.TestCase):
       fc_old.linear_model(features, all_cols)
       bias = get_linear_model_bias()
       with _initialized_session():
-        self.assertAllClose([0.], bias.eval())
+        self.assertAllClose([0.], self.evaluate(bias))
 
   def test_linear_model_v2_shared_embedding_all_other_v1(self):
     price = fc_old.numeric_column('price')  # v1
@@ -3197,7 +3208,7 @@ class DenseFeaturesTest(test.TestCase):
       features = features = {'a': [0.]}
       net = fc.DenseFeatures(fc.numeric_column_v2('a'))(features)
       with _initialized_session():
-        self.assertAllClose([[0.]], net.eval())
+        self.assertAllClose([[0.]], self.evaluate(net))
 
   def test_column_generator(self):
     with ops.Graph().as_default():
@@ -3205,7 +3216,7 @@ class DenseFeaturesTest(test.TestCase):
       columns = (fc.numeric_column_v2(key) for key in features)
       net = fc.DenseFeatures(columns)(features)
       with _initialized_session():
-        self.assertAllClose([[0., 1.]], net.eval())
+        self.assertAllClose([[0., 1.]], self.evaluate(net))
 
   def test_raises_if_duplicate_name(self):
     with self.assertRaisesRegexp(
@@ -3224,7 +3235,7 @@ class DenseFeaturesTest(test.TestCase):
       features = {'price': [[1.], [5.]]}
       net = fc.DenseFeatures([price])(features)
       with _initialized_session():
-        self.assertAllClose([[1.], [5.]], net.eval())
+        self.assertAllClose([[1.], [5.]], self.evaluate(net))
 
   def test_multi_dimension(self):
     price = fc.numeric_column_v2('price', shape=2)
@@ -3232,7 +3243,7 @@ class DenseFeaturesTest(test.TestCase):
       features = {'price': [[1., 2.], [5., 6.]]}
       net = fc.DenseFeatures([price])(features)
       with _initialized_session():
-        self.assertAllClose([[1., 2.], [5., 6.]], net.eval())
+        self.assertAllClose([[1., 2.], [5., 6.]], self.evaluate(net))
 
   def test_compute_output_shape(self):
     price1 = fc.numeric_column_v2('price1', shape=2)
@@ -3247,7 +3258,8 @@ class DenseFeaturesTest(test.TestCase):
       net = dense_features(features)
       with _initialized_session():
         self.assertAllClose(
-            [[1., 2., 3., 4., 5., 6.], [5., 6., 7., 8., 9., 10.]], net.eval())
+            [[1., 2., 3., 4., 5., 6.], [5., 6., 7., 8., 9., 10.]],
+            self.evaluate(net))
 
   def test_raises_if_shape_mismatch(self):
     price = fc.numeric_column_v2('price', shape=2)
@@ -3264,7 +3276,7 @@ class DenseFeaturesTest(test.TestCase):
       features = {'price': [[[1., 2.]], [[5., 6.]]]}
       net = fc.DenseFeatures([price])(features)
       with _initialized_session():
-        self.assertAllClose([[1., 2.], [5., 6.]], net.eval())
+        self.assertAllClose([[1., 2.], [5., 6.]], self.evaluate(net))
 
   def test_multi_column(self):
     price1 = fc.numeric_column_v2('price1', shape=2)
@@ -3276,7 +3288,7 @@ class DenseFeaturesTest(test.TestCase):
       }
       net = fc.DenseFeatures([price1, price2])(features)
       with _initialized_session():
-        self.assertAllClose([[1., 2., 3.], [5., 6., 4.]], net.eval())
+        self.assertAllClose([[1., 2., 3.], [5., 6., 4.]], self.evaluate(net))
 
   def test_cols_to_output_tensors(self):
     price1 = fc.numeric_column_v2('price1', shape=2)
@@ -3289,7 +3301,7 @@ class DenseFeaturesTest(test.TestCase):
       with _initialized_session():
         self.assertAllClose([[1., 2.], [5., 6.]], cols_dict[price1].eval())
         self.assertAllClose([[3.], [4.]], cols_dict[price2].eval())
-        self.assertAllClose([[1., 2., 3.], [5., 6., 4.]], net.eval())
+        self.assertAllClose([[1., 2., 3.], [5., 6., 4.]], self.evaluate(net))
 
   def test_column_order(self):
     price_a = fc.numeric_column_v2('price_a')
@@ -3302,8 +3314,8 @@ class DenseFeaturesTest(test.TestCase):
       net1 = fc.DenseFeatures([price_a, price_b])(features)
       net2 = fc.DenseFeatures([price_b, price_a])(features)
       with _initialized_session():
-        self.assertAllClose([[1., 3.]], net1.eval())
-        self.assertAllClose([[1., 3.]], net2.eval())
+        self.assertAllClose([[1., 3.]], self.evaluate(net1))
+        self.assertAllClose([[1., 3.]], self.evaluate(net2))
 
   def test_fails_for_categorical_column(self):
     animal = fc.categorical_column_with_identity_v2('animal', num_buckets=4)
@@ -3788,7 +3800,7 @@ class FunctionalInputLayerTest(test.TestCase):
       features = features = {'a': [0.]}
       net = fc_old.input_layer(features, fc.numeric_column_v2('a'))
       with _initialized_session():
-        self.assertAllClose([[0.]], net.eval())
+        self.assertAllClose([[0.]], self.evaluate(net))
 
   def test_column_generator(self):
     with ops.Graph().as_default():
@@ -3796,7 +3808,7 @@ class FunctionalInputLayerTest(test.TestCase):
       columns = (fc.numeric_column_v2(key) for key in features)
       net = fc_old.input_layer(features, columns)
       with _initialized_session():
-        self.assertAllClose([[0., 1.]], net.eval())
+        self.assertAllClose([[0., 1.]], self.evaluate(net))
 
   def test_raises_if_duplicate_name(self):
     with self.assertRaisesRegexp(
@@ -3814,7 +3826,7 @@ class FunctionalInputLayerTest(test.TestCase):
       features = {'price': [[1.], [5.]]}
       net = fc_old.input_layer(features, [price])
       with _initialized_session():
-        self.assertAllClose([[1.], [5.]], net.eval())
+        self.assertAllClose([[1.], [5.]], self.evaluate(net))
 
   def test_multi_dimension(self):
     price = fc.numeric_column_v2('price', shape=2)
@@ -3822,7 +3834,7 @@ class FunctionalInputLayerTest(test.TestCase):
       features = {'price': [[1., 2.], [5., 6.]]}
       net = fc_old.input_layer(features, [price])
       with _initialized_session():
-        self.assertAllClose([[1., 2.], [5., 6.]], net.eval())
+        self.assertAllClose([[1., 2.], [5., 6.]], self.evaluate(net))
 
   def test_raises_if_shape_mismatch(self):
     price = fc.numeric_column_v2('price', shape=2)
@@ -3839,7 +3851,7 @@ class FunctionalInputLayerTest(test.TestCase):
       features = {'price': [[[1., 2.]], [[5., 6.]]]}
       net = fc_old.input_layer(features, [price])
       with _initialized_session():
-        self.assertAllClose([[1., 2.], [5., 6.]], net.eval())
+        self.assertAllClose([[1., 2.], [5., 6.]], self.evaluate(net))
 
   def test_multi_column(self):
     price1 = fc.numeric_column_v2('price1', shape=2)
@@ -3848,7 +3860,7 @@ class FunctionalInputLayerTest(test.TestCase):
       features = {'price1': [[1., 2.], [5., 6.]], 'price2': [[3.], [4.]]}
       net = fc_old.input_layer(features, [price1, price2])
       with _initialized_session():
-        self.assertAllClose([[1., 2., 3.], [5., 6., 4.]], net.eval())
+        self.assertAllClose([[1., 2., 3.], [5., 6., 4.]], self.evaluate(net))
 
   def test_fills_cols_to_vars(self):
     # Provide three _DenseColumn's to input_layer: a _NumericColumn, a
@@ -3979,8 +3991,8 @@ class FunctionalInputLayerTest(test.TestCase):
       net1 = fc_old.input_layer(features, [price_a, price_b])
       net2 = fc_old.input_layer(features, [price_b, price_a])
       with _initialized_session():
-        self.assertAllClose([[1., 3.]], net1.eval())
-        self.assertAllClose([[1., 3.]], net2.eval())
+        self.assertAllClose([[1., 3.]], self.evaluate(net1))
+        self.assertAllClose([[1., 3.]], self.evaluate(net2))
 
   def test_fails_for_categorical_column(self):
     animal = fc.categorical_column_with_identity_v2('animal', num_buckets=4)
@@ -4573,13 +4585,12 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         dense_shape=(2, 2))
     id_tensor = fc._transform_features({'aaa': inputs}, [column], None)[column]
     with _initialized_session():
-      _assert_sparse_tensor_value(self,
-                                  sparse_tensor.SparseTensorValue(
-                                      indices=inputs.indices,
-                                      values=np.array(
-                                          (2, -1, 0), dtype=np.int64),
-                                      dense_shape=inputs.dense_shape),
-                                  id_tensor.eval())
+      _assert_sparse_tensor_value(
+          self,
+          sparse_tensor.SparseTensorValue(
+              indices=inputs.indices,
+              values=np.array((2, -1, 0), dtype=np.int64),
+              dense_shape=inputs.dense_shape), self.evaluate(id_tensor))
 
   def test_get_sparse_tensors_dense_input(self):
     column = fc.categorical_column_with_vocabulary_file_v2(
@@ -4763,13 +4774,14 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
       })
       wire_var, bias = model.variables
       with _initialized_session():
-        self.assertAllClose((0.,), bias.eval())
-        self.assertAllClose(((0.,), (0.,), (0.,), (0.,)), wire_var.eval())
-        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+        self.assertAllClose((0.,), self.evaluate(bias))
+        self.assertAllClose(((0.,), (0.,), (0.,), (0.,)),
+                            self.evaluate(wire_var))
+        self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
         wire_var.assign(((1.,), (2.,), (3.,), (4.,))).eval()
         # 'marlo' -> 2: wire_var[2] = 3
         # 'skywalker' -> 3, 'omar' -> 0: wire_var[3] + wire_var[0] = 4+1 = 5
-        self.assertAllClose(((3.,), (5.,)), predictions.eval())
+        self.assertAllClose(((3.,), (5.,)), self.evaluate(predictions))
 
   def test_old_linear_model(self):
     wire_column = fc.categorical_column_with_vocabulary_file_v2(
@@ -4789,13 +4801,14 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
       bias = get_linear_model_bias()
       wire_var = get_linear_model_column_var(wire_column)
       with _initialized_session():
-        self.assertAllClose((0.,), bias.eval())
-        self.assertAllClose(((0.,), (0.,), (0.,), (0.,)), wire_var.eval())
-        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+        self.assertAllClose((0.,), self.evaluate(bias))
+        self.assertAllClose(((0.,), (0.,), (0.,), (0.,)),
+                            self.evaluate(wire_var))
+        self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
         wire_var.assign(((1.,), (2.,), (3.,), (4.,))).eval()
         # 'marlo' -> 2: wire_var[2] = 3
         # 'skywalker' -> 3, 'omar' -> 0: wire_var[3] + wire_var[0] = 4+1 = 5
-        self.assertAllClose(((3.,), (5.,)), predictions.eval())
+        self.assertAllClose(((3.,), (5.,)), self.evaluate(predictions))
 
   def test_serialization(self):
     wire_column = fc.categorical_column_with_vocabulary_file_v2(
@@ -5032,8 +5045,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
           sparse_tensor.SparseTensorValue(
               indices=inputs.indices,
               values=np.array((2, -1, 0), dtype=np.int64),
-              dense_shape=inputs.dense_shape),
-          id_tensor.eval())
+              dense_shape=inputs.dense_shape), self.evaluate(id_tensor))
 
   def test_get_sparse_tensors_dense_input(self):
     column = fc.categorical_column_with_vocabulary_list_v2(
@@ -5185,13 +5197,14 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
       })
       wire_var, bias = model.variables
       with _initialized_session():
-        self.assertAllClose((0.,), bias.eval())
-        self.assertAllClose(((0.,), (0.,), (0.,), (0.,)), wire_var.eval())
-        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+        self.assertAllClose((0.,), self.evaluate(bias))
+        self.assertAllClose(((0.,), (0.,), (0.,), (0.,)),
+                            self.evaluate(wire_var))
+        self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
         wire_var.assign(((1.,), (2.,), (3.,), (4.,))).eval()
         # 'marlo' -> 2: wire_var[2] = 3
         # 'skywalker' -> 3, 'omar' -> 0: wire_var[3] + wire_var[0] = 4+1 = 5
-        self.assertAllClose(((3.,), (5.,)), predictions.eval())
+        self.assertAllClose(((3.,), (5.,)), self.evaluate(predictions))
 
   def test_old_linear_model(self):
     wire_column = fc.categorical_column_with_vocabulary_list_v2(
@@ -5210,13 +5223,14 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
       bias = get_linear_model_bias()
       wire_var = get_linear_model_column_var(wire_column)
       with _initialized_session():
-        self.assertAllClose((0.,), bias.eval())
-        self.assertAllClose(((0.,), (0.,), (0.,), (0.,)), wire_var.eval())
-        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+        self.assertAllClose((0.,), self.evaluate(bias))
+        self.assertAllClose(((0.,), (0.,), (0.,), (0.,)),
+                            self.evaluate(wire_var))
+        self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
         wire_var.assign(((1.,), (2.,), (3.,), (4.,))).eval()
         # 'marlo' -> 2: wire_var[2] = 3
         # 'skywalker' -> 3, 'omar' -> 0: wire_var[3] + wire_var[0] = 4+1 = 5
-        self.assertAllClose(((3.,), (5.,)), predictions.eval())
+        self.assertAllClose(((3.,), (5.,)), self.evaluate(predictions))
 
   def test_serialization(self):
     wire_column = fc.categorical_column_with_vocabulary_list_v2(
@@ -5349,8 +5363,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
           sparse_tensor.SparseTensorValue(
               indices=inputs.indices,
               values=np.array((0, 1, 0), dtype=np.int64),
-              dense_shape=inputs.dense_shape),
-          id_tensor.eval())
+              dense_shape=inputs.dense_shape), self.evaluate(id_tensor))
 
   def test_get_sparse_tensors_dense_input(self):
     column = fc.categorical_column_with_identity_v2(key='aaa', num_buckets=3)
@@ -5463,13 +5476,13 @@ class IdentityCategoricalColumnTest(test.TestCase):
       })
       weight_var, bias = model.variables
       with _initialized_session():
-        self.assertAllClose((0.,), bias.eval())
-        self.assertAllClose(((0.,), (0.,), (0.,)), weight_var.eval())
-        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+        self.assertAllClose((0.,), self.evaluate(bias))
+        self.assertAllClose(((0.,), (0.,), (0.,)), self.evaluate(weight_var))
+        self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
         weight_var.assign(((1.,), (2.,), (3.,))).eval()
         # weight_var[0] = 1
         # weight_var[2] + weight_var[1] = 3+2 = 5
-        self.assertAllClose(((1.,), (5.,)), predictions.eval())
+        self.assertAllClose(((1.,), (5.,)), self.evaluate(predictions))
 
   def test_old_linear_model(self):
     column = fc.categorical_column_with_identity_v2(key='aaa', num_buckets=3)
@@ -5485,13 +5498,13 @@ class IdentityCategoricalColumnTest(test.TestCase):
       bias = get_linear_model_bias()
       weight_var = get_linear_model_column_var(column)
       with _initialized_session():
-        self.assertAllClose((0.,), bias.eval())
-        self.assertAllClose(((0.,), (0.,), (0.,)), weight_var.eval())
-        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+        self.assertAllClose((0.,), self.evaluate(bias))
+        self.assertAllClose(((0.,), (0.,), (0.,)), self.evaluate(weight_var))
+        self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
         weight_var.assign(((1.,), (2.,), (3.,))).eval()
         # weight_var[0] = 1
         # weight_var[2] + weight_var[1] = 3+2 = 5
-        self.assertAllClose(((1.,), (5.,)), predictions.eval())
+        self.assertAllClose(((1.,), (5.,)), self.evaluate(predictions))
 
   def test_serialization(self):
     column = fc.categorical_column_with_identity_v2(key='aaa', num_buckets=3)
@@ -5597,7 +5610,8 @@ class IndicatorColumnTest(test.TestCase):
     })
     output = transformation_cache.get(animal, None)
     with self.cached_session():
-      self.assertAllEqual([[0., 0., 1., 0.], [0., 0., 1., 0.]], output.eval())
+      self.assertAllEqual([[0., 0., 1., 0.], [0., 0., 1., 0.]],
+                          self.evaluate(output))
 
   def test_2D_shape_succeeds(self):
     # TODO(ispir/cassandrax): Swith to categorical_column_with_keys when ready.
@@ -5612,7 +5626,8 @@ class IndicatorColumnTest(test.TestCase):
     })
     output = transformation_cache.get(animal, None)
     with self.cached_session():
-      self.assertAllEqual([[0., 0., 1., 0.], [0., 0., 1., 0.]], output.eval())
+      self.assertAllEqual([[0., 0., 1., 0.], [0., 0., 1., 0.]],
+                          self.evaluate(output))
 
   def test_multi_hot(self):
     animal = fc.indicator_column_v2(
@@ -5625,7 +5640,7 @@ class IndicatorColumnTest(test.TestCase):
     })
     output = transformation_cache.get(animal, None)
     with self.cached_session():
-      self.assertAllEqual([[0., 2., 0., 0.]], output.eval())
+      self.assertAllEqual([[0., 2., 0., 0.]], self.evaluate(output))
 
   def test_multi_hot2(self):
     animal = fc.indicator_column_v2(
@@ -5637,7 +5652,7 @@ class IndicatorColumnTest(test.TestCase):
     })
     output = transformation_cache.get(animal, None)
     with self.cached_session():
-      self.assertAllEqual([[0., 1., 1., 0.]], output.eval())
+      self.assertAllEqual([[0., 1., 1., 0.]], self.evaluate(output))
 
   def test_deep_copy(self):
     a = fc.categorical_column_with_hash_bucket_v2('a', 4)
@@ -5683,7 +5698,8 @@ class IndicatorColumnTest(test.TestCase):
     indicator_tensor = fc._transform_features(features, [a_indicator],
                                               None)[a_indicator]
     with _initialized_session():
-      self.assertAllEqual([[0, 0, 1], [1, 0, 0]], indicator_tensor.eval())
+      self.assertAllEqual([[0, 0, 1], [1, 0, 0]],
+                          self.evaluate(indicator_tensor))
 
   def test_transform_with_weighted_column(self):
     # Github issue 12557
@@ -5698,7 +5714,7 @@ class IndicatorColumnTest(test.TestCase):
     indicator_tensor = fc._transform_features(features, [indicator],
                                               None)[indicator]
     with _initialized_session():
-      self.assertAllEqual([[6., 4., 2.]], indicator_tensor.eval())
+      self.assertAllEqual([[6., 4., 2.]], self.evaluate(indicator_tensor))
 
   def test_transform_with_missing_value_in_weighted_column(self):
     # Github issue 12583
@@ -5713,7 +5729,7 @@ class IndicatorColumnTest(test.TestCase):
     indicator_tensor = fc._transform_features(features, [indicator],
                                               None)[indicator]
     with _initialized_session():
-      self.assertAllEqual([[0., 4., 2.]], indicator_tensor.eval())
+      self.assertAllEqual([[0., 4., 2.]], self.evaluate(indicator_tensor))
 
   def test_transform_with_missing_value_in_categorical_column(self):
     # Github issue 12583
@@ -5726,7 +5742,7 @@ class IndicatorColumnTest(test.TestCase):
     indicator_tensor = fc._transform_features(features, [indicator],
                                               None)[indicator]
     with _initialized_session():
-      self.assertAllEqual([[0., 1., 1.]], indicator_tensor.eval())
+      self.assertAllEqual([[0., 1., 1.]], self.evaluate(indicator_tensor))
 
   def test_linear_model(self):
     animal = fc.indicator_column_v2(
@@ -5743,10 +5759,10 @@ class IndicatorColumnTest(test.TestCase):
       weight_var, _ = model.variables
       with _initialized_session():
         # All should be zero-initialized.
-        self.assertAllClose([[0.], [0.], [0.], [0.]], weight_var.eval())
-        self.assertAllClose([[0.]], predictions.eval())
+        self.assertAllClose([[0.], [0.], [0.], [0.]], self.evaluate(weight_var))
+        self.assertAllClose([[0.]], self.evaluate(predictions))
         weight_var.assign([[1.], [2.], [3.], [4.]]).eval()
-        self.assertAllClose([[2. + 3.]], predictions.eval())
+        self.assertAllClose([[2. + 3.]], self.evaluate(predictions))
 
   def test_old_linear_model(self):
     animal = fc.indicator_column_v2(
@@ -5762,10 +5778,10 @@ class IndicatorColumnTest(test.TestCase):
       weight_var = get_linear_model_column_var(animal)
       with _initialized_session():
         # All should be zero-initialized.
-        self.assertAllClose([[0.], [0.], [0.], [0.]], weight_var.eval())
-        self.assertAllClose([[0.]], predictions.eval())
+        self.assertAllClose([[0.], [0.], [0.], [0.]], self.evaluate(weight_var))
+        self.assertAllClose([[0.]], self.evaluate(predictions))
         weight_var.assign([[1.], [2.], [3.], [4.]]).eval()
-        self.assertAllClose([[2. + 3.]], predictions.eval())
+        self.assertAllClose([[2. + 3.]], self.evaluate(predictions))
 
   def test_old_linear_model_old_categorical(self):
     animal = fc.indicator_column_v2(
@@ -5781,10 +5797,10 @@ class IndicatorColumnTest(test.TestCase):
       weight_var = get_linear_model_column_var(animal)
       with _initialized_session():
         # All should be zero-initialized.
-        self.assertAllClose([[0.], [0.], [0.], [0.]], weight_var.eval())
-        self.assertAllClose([[0.]], predictions.eval())
+        self.assertAllClose([[0.], [0.], [0.], [0.]], self.evaluate(weight_var))
+        self.assertAllClose([[0.]], self.evaluate(predictions))
         weight_var.assign([[1.], [2.], [3.], [4.]]).eval()
-        self.assertAllClose([[2. + 3.]], predictions.eval())
+        self.assertAllClose([[2. + 3.]], self.evaluate(predictions))
 
   def test_dense_features(self):
     animal = fc.indicator_column_v2(
@@ -5797,7 +5813,7 @@ class IndicatorColumnTest(test.TestCase):
       }
       net = fc.DenseFeatures([animal])(features)
       with _initialized_session():
-        self.assertAllClose([[0., 1., 1., 0.]], net.eval())
+        self.assertAllClose([[0., 1., 1., 0.]], self.evaluate(net))
 
   def test_input_layer(self):
     animal = fc.indicator_column_v2(
@@ -5810,7 +5826,7 @@ class IndicatorColumnTest(test.TestCase):
       }
       net = fc_old.input_layer(features, [animal])
       with _initialized_session():
-        self.assertAllClose([[0., 1., 1., 0.]], net.eval())
+        self.assertAllClose([[0., 1., 1., 0.]], self.evaluate(net))
 
   def test_input_layer_old_categorical(self):
     animal = fc.indicator_column_v2(
@@ -5823,7 +5839,7 @@ class IndicatorColumnTest(test.TestCase):
       }
       net = fc_old.input_layer(features, [animal])
       with _initialized_session():
-        self.assertAllClose([[0., 1., 1., 0.]], net.eval())
+        self.assertAllClose([[0., 1., 1., 0.]], self.evaluate(net))
 
   def test_serialization(self):
     parent = fc.categorical_column_with_identity_v2('animal', num_buckets=4)
@@ -6024,8 +6040,8 @@ class EmbeddingColumnTest(test.TestCase):
     output_a = outputs[a]
     output_embedded = outputs[a_embedded]
     with _initialized_session():
-      _assert_sparse_tensor_value(
-          self, output_a.eval(), output_embedded.eval())
+      _assert_sparse_tensor_value(self, self.evaluate(output_a),
+                                  self.evaluate(output_embedded))
 
   def test_get_dense_tensor(self):
     # Inputs.
@@ -6086,7 +6102,7 @@ class EmbeddingColumnTest(test.TestCase):
                           tuple([v.name for v in global_vars]))
     with _initialized_session():
       self.assertAllEqual(embedding_values, global_vars[0].eval())
-      self.assertAllEqual(expected_lookups, embedding_lookup.eval())
+      self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
 
   def test_get_dense_tensor_old_categorical(self):
     # Inputs.
@@ -6146,7 +6162,7 @@ class EmbeddingColumnTest(test.TestCase):
                           tuple([v.name for v in global_vars]))
     with _initialized_session():
       self.assertAllEqual(embedding_values, global_vars[0].eval())
-      self.assertAllEqual(expected_lookups, embedding_lookup.eval())
+      self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
 
   def test_get_dense_tensor_3d(self):
     # Inputs.
@@ -6209,7 +6225,7 @@ class EmbeddingColumnTest(test.TestCase):
                           tuple([v.name for v in global_vars]))
     with _initialized_session():
       self.assertAllEqual(embedding_values, global_vars[0].eval())
-      self.assertAllEqual(expected_lookups, embedding_lookup.eval())
+      self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
 
   def test_get_dense_tensor_placeholder_inputs(self):
     # Inputs.
@@ -6342,7 +6358,7 @@ class EmbeddingColumnTest(test.TestCase):
         ('embedding_weights:0',), tuple([v.name for v in global_vars]))
     with _initialized_session():
       self.assertAllEqual(embedding_values, global_vars[0].eval())
-      self.assertAllEqual(expected_lookups, embedding_lookup.eval())
+      self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
 
   def test_linear_model(self):
     # Inputs.
@@ -6397,11 +6413,13 @@ class EmbeddingColumnTest(test.TestCase):
       linear_weights = trainable_vars['linear_model/aaa_embedding/weights:0']
       with _initialized_session():
         # Predictions with all zero weights.
-        self.assertAllClose(np.zeros((1,)), bias.eval())
-        self.assertAllClose(zeros_embedding_values, embedding_weights.eval())
+        self.assertAllClose(np.zeros((1,)), self.evaluate(bias))
+        self.assertAllClose(zeros_embedding_values,
+                            self.evaluate(embedding_weights))
         self.assertAllClose(
-            np.zeros((embedding_dimension, 1)), linear_weights.eval())
-        self.assertAllClose(np.zeros((batch_size, 1)), predictions.eval())
+            np.zeros((embedding_dimension, 1)), self.evaluate(linear_weights))
+        self.assertAllClose(
+            np.zeros((batch_size, 1)), self.evaluate(predictions))
 
         # Predictions with all non-zero weights.
         embedding_weights.assign((
@@ -6416,7 +6434,8 @@ class EmbeddingColumnTest(test.TestCase):
         # example 3, ids [1], embedding[3] = [3, 5]
         # sum(embeddings * linear_weights)
         # = [4*7 + 6*11, 4*2 + 6*3.5, 4*0 + 6*0, 4*3 + 6*5] = [94, 29, 0, 42]
-        self.assertAllClose(((94.,), (29.,), (0.,), (42.,)), predictions.eval())
+        self.assertAllClose(((94.,), (29.,), (0.,), (42.,)),
+                            self.evaluate(predictions))
 
   def test_dense_features(self):
     # Inputs.
@@ -6478,7 +6497,7 @@ class EmbeddingColumnTest(test.TestCase):
                           tuple([v.name for v in trainable_vars]))
     with _initialized_session():
       self.assertAllEqual(embedding_values, trainable_vars[0].eval())
-      self.assertAllEqual(expected_lookups, dense_features.eval())
+      self.assertAllEqual(expected_lookups, self.evaluate(dense_features))
 
   def test_dense_features_not_trainable(self):
     # Inputs.
@@ -6539,7 +6558,7 @@ class EmbeddingColumnTest(test.TestCase):
         [], ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
     with _initialized_session():
       self.assertAllEqual(embedding_values, global_vars[0].eval())
-      self.assertAllEqual(expected_lookups, dense_features.eval())
+      self.assertAllEqual(expected_lookups, self.evaluate(dense_features))
 
   def test_input_layer(self):
     # Inputs.
@@ -6601,7 +6620,7 @@ class EmbeddingColumnTest(test.TestCase):
                           tuple([v.name for v in trainable_vars]))
     with _initialized_session():
       self.assertAllEqual(embedding_values, trainable_vars[0].eval())
-      self.assertAllEqual(expected_lookups, dense_features.eval())
+      self.assertAllEqual(expected_lookups, self.evaluate(dense_features))
 
   def test_old_linear_model(self):
     # Inputs.
@@ -6658,11 +6677,13 @@ class EmbeddingColumnTest(test.TestCase):
       linear_weights = trainable_vars['linear_model/aaa_embedding/weights:0']
       with _initialized_session():
         # Predictions with all zero weights.
-        self.assertAllClose(np.zeros((1,)), bias.eval())
-        self.assertAllClose(zeros_embedding_values, embedding_weights.eval())
+        self.assertAllClose(np.zeros((1,)), self.evaluate(bias))
+        self.assertAllClose(zeros_embedding_values,
+                            self.evaluate(embedding_weights))
         self.assertAllClose(
-            np.zeros((embedding_dimension, 1)), linear_weights.eval())
-        self.assertAllClose(np.zeros((batch_size, 1)), predictions.eval())
+            np.zeros((embedding_dimension, 1)), self.evaluate(linear_weights))
+        self.assertAllClose(
+            np.zeros((batch_size, 1)), self.evaluate(predictions))
 
         # Predictions with all non-zero weights.
         embedding_weights.assign((
@@ -6677,7 +6698,8 @@ class EmbeddingColumnTest(test.TestCase):
         # example 3, ids [1], embedding[3] = [3, 5]
         # sum(embeddings * linear_weights)
         # = [4*7 + 6*11, 4*2 + 6*3.5, 4*0 + 6*0, 4*3 + 6*5] = [94, 29, 0, 42]
-        self.assertAllClose(((94.,), (29.,), (0.,), (42.,)), predictions.eval())
+        self.assertAllClose(((94.,), (29.,), (0.,), (42.,)),
+                            self.evaluate(predictions))
 
   def test_old_linear_model_old_categorical(self):
     # Inputs.
@@ -6734,11 +6756,13 @@ class EmbeddingColumnTest(test.TestCase):
       linear_weights = trainable_vars['linear_model/aaa_embedding/weights:0']
       with _initialized_session():
         # Predictions with all zero weights.
-        self.assertAllClose(np.zeros((1,)), bias.eval())
-        self.assertAllClose(zeros_embedding_values, embedding_weights.eval())
+        self.assertAllClose(np.zeros((1,)), self.evaluate(bias))
+        self.assertAllClose(zeros_embedding_values,
+                            self.evaluate(embedding_weights))
         self.assertAllClose(
-            np.zeros((embedding_dimension, 1)), linear_weights.eval())
-        self.assertAllClose(np.zeros((batch_size, 1)), predictions.eval())
+            np.zeros((embedding_dimension, 1)), self.evaluate(linear_weights))
+        self.assertAllClose(
+            np.zeros((batch_size, 1)), self.evaluate(predictions))
 
         # Predictions with all non-zero weights.
         embedding_weights.assign((
@@ -6753,7 +6777,8 @@ class EmbeddingColumnTest(test.TestCase):
         # example 3, ids [1], embedding[3] = [3, 5]
         # sum(embeddings * linear_weights)
         # = [4*7 + 6*11, 4*2 + 6*3.5, 4*0 + 6*0, 4*3 + 6*5] = [94, 29, 0, 42]
-        self.assertAllClose(((94.,), (29.,), (0.,), (42.,)), predictions.eval())
+        self.assertAllClose(((94.,), (29.,), (0.,), (42.,)),
+                            self.evaluate(predictions))
 
   def test_serialization(self):
 
@@ -6993,10 +7018,10 @@ class SharedEmbeddingColumnTest(test.TestCase):
     output_b = outputs[b]
     output_b_embedded = outputs[b_embedded]
     with _initialized_session():
-      _assert_sparse_tensor_value(
-          self, output_a.eval(), output_a_embedded.eval())
-      _assert_sparse_tensor_value(
-          self, output_b.eval(), output_b_embedded.eval())
+      _assert_sparse_tensor_value(self, self.evaluate(output_a),
+                                  self.evaluate(output_a_embedded))
+      _assert_sparse_tensor_value(self, self.evaluate(output_b),
+                                  self.evaluate(output_b_embedded))
 
   def test_get_dense_tensor(self):
     # Inputs.
@@ -7062,9 +7087,9 @@ class SharedEmbeddingColumnTest(test.TestCase):
                           tuple([v.name for v in global_vars]))
     embedding_var = global_vars[0]
     with _initialized_session():
-      self.assertAllEqual(embedding_values, embedding_var.eval())
-      self.assertAllEqual(expected_lookups_a, embedding_lookup_a.eval())
-      self.assertAllEqual(expected_lookups_b, embedding_lookup_b.eval())
+      self.assertAllEqual(embedding_values, self.evaluate(embedding_var))
+      self.assertAllEqual(expected_lookups_a, self.evaluate(embedding_lookup_a))
+      self.assertAllEqual(expected_lookups_b, self.evaluate(embedding_lookup_b))
 
   def test_get_dense_tensor_placeholder_inputs(self):
     # Inputs.
@@ -7185,13 +7210,15 @@ class SharedEmbeddingColumnTest(test.TestCase):
           'linear_model/bbb_shared_embedding/weights:0']
       with _initialized_session():
         # Predictions with all zero weights.
-        self.assertAllClose(np.zeros((1,)), bias.eval())
-        self.assertAllClose(zeros_embedding_values, embedding_weights.eval())
+        self.assertAllClose(np.zeros((1,)), self.evaluate(bias))
+        self.assertAllClose(zeros_embedding_values,
+                            self.evaluate(embedding_weights))
         self.assertAllClose(
-            np.zeros((embedding_dimension, 1)), linear_weights_a.eval())
+            np.zeros((embedding_dimension, 1)), self.evaluate(linear_weights_a))
         self.assertAllClose(
-            np.zeros((embedding_dimension, 1)), linear_weights_b.eval())
-        self.assertAllClose(np.zeros((batch_size, 1)), predictions.eval())
+            np.zeros((embedding_dimension, 1)), self.evaluate(linear_weights_b))
+        self.assertAllClose(
+            np.zeros((batch_size, 1)), self.evaluate(predictions))
 
         # Predictions with all non-zero weights.
         embedding_weights.assign((
@@ -7209,7 +7236,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
         # example 1, ids [], embedding[1] = 0, 0]
         # sum(embeddings * linear_weights)
         # = [3*1 + 5*2, 3*0 +5*0] = [13, 0]
-        self.assertAllClose([[94. + 13.], [29.]], predictions.eval())
+        self.assertAllClose([[94. + 13.], [29.]], self.evaluate(predictions))
 
   def _test_dense_features(self, trainable=True):
     # Inputs.
@@ -7319,7 +7346,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
     shared_embedding_vars = global_vars
     with _initialized_session():
       self.assertAllEqual(embedding_values, shared_embedding_vars[0].eval())
-      self.assertAllEqual(expected_lookups, dense_features.eval())
+      self.assertAllEqual(expected_lookups, self.evaluate(dense_features))
 
   def test_dense_features(self):
     self._test_dense_features()
@@ -7493,15 +7520,13 @@ class WeightedCategoricalColumnTest(test.TestCase):
           sparse_tensor.SparseTensorValue(
               indices=inputs.indices,
               values=np.array(inputs.values, dtype=np.int64),
-              dense_shape=inputs.dense_shape),
-          id_tensor.eval())
+              dense_shape=inputs.dense_shape), self.evaluate(id_tensor))
       _assert_sparse_tensor_value(
           self,
           sparse_tensor.SparseTensorValue(
               indices=weights.indices,
               values=np.array(weights.values, dtype=np.float32),
-              dense_shape=weights.dense_shape),
-          weight_tensor.eval())
+              dense_shape=weights.dense_shape), self.evaluate(weight_tensor))
 
   def test_transform_features_dense_input(self):
     column = fc.weighted_categorical_column_v2(
@@ -7522,15 +7547,13 @@ class WeightedCategoricalColumnTest(test.TestCase):
           sparse_tensor.SparseTensorValue(
               indices=((0, 0), (1, 0), (1, 1)),
               values=np.array((0, 1, 0), dtype=np.int64),
-              dense_shape=(2, 2)),
-          id_tensor.eval())
+              dense_shape=(2, 2)), self.evaluate(id_tensor))
       _assert_sparse_tensor_value(
           self,
           sparse_tensor.SparseTensorValue(
               indices=weights.indices,
               values=np.array(weights.values, dtype=np.float32),
-              dense_shape=weights.dense_shape),
-          weight_tensor.eval())
+              dense_shape=weights.dense_shape), self.evaluate(weight_tensor))
 
   def test_transform_features_dense_weights(self):
     column = fc.weighted_categorical_column_v2(
@@ -7551,15 +7574,13 @@ class WeightedCategoricalColumnTest(test.TestCase):
           sparse_tensor.SparseTensorValue(
               indices=inputs.indices,
               values=np.array(inputs.values, dtype=np.int64),
-              dense_shape=inputs.dense_shape),
-          id_tensor.eval())
+              dense_shape=inputs.dense_shape), self.evaluate(id_tensor))
       _assert_sparse_tensor_value(
           self,
           sparse_tensor.SparseTensorValue(
               indices=((0, 0), (1, 0), (1, 1)),
               values=np.array((.5, 1., .1), dtype=np.float32),
-              dense_shape=(2, 2)),
-          weight_tensor.eval())
+              dense_shape=(2, 2)), self.evaluate(weight_tensor))
 
   def test_linear_model(self):
     column = fc.weighted_categorical_column_v2(
@@ -7582,14 +7603,14 @@ class WeightedCategoricalColumnTest(test.TestCase):
       })
       weight_var, bias = model.variables
       with _initialized_session():
-        self.assertAllClose((0.,), bias.eval())
-        self.assertAllClose(((0.,), (0.,), (0.,)), weight_var.eval())
-        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+        self.assertAllClose((0.,), self.evaluate(bias))
+        self.assertAllClose(((0.,), (0.,), (0.,)), self.evaluate(weight_var))
+        self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
         weight_var.assign(((1.,), (2.,), (3.,))).eval()
         # weight_var[0] * weights[0, 0] = 1 * .5 = .5
         # weight_var[2] * weights[1, 0] + weight_var[1] * weights[1, 1]
         # = 3*1 + 2*.1 = 3+.2 = 3.2
-        self.assertAllClose(((.5,), (3.2,)), predictions.eval())
+        self.assertAllClose(((.5,), (3.2,)), self.evaluate(predictions))
 
   def test_linear_model_mismatched_shape(self):
     column = fc.weighted_categorical_column_v2(
@@ -7635,7 +7656,7 @@ class WeightedCategoricalColumnTest(test.TestCase):
           rewriter_config_pb2.RewriterConfig.OFF)
       with _initialized_session(config):
         with self.assertRaisesRegexp(errors.OpError, 'Incompatible shapes'):
-          predictions.eval()
+          self.evaluate(predictions)
 
   def test_linear_model_mismatched_dense_shape(self):
     column = fc.weighted_categorical_column_v2(
@@ -7654,14 +7675,14 @@ class WeightedCategoricalColumnTest(test.TestCase):
       })
       weight_var, bias = model.variables
       with _initialized_session():
-        self.assertAllClose((0.,), bias.eval())
-        self.assertAllClose(((0.,), (0.,), (0.,)), weight_var.eval())
-        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+        self.assertAllClose((0.,), self.evaluate(bias))
+        self.assertAllClose(((0.,), (0.,), (0.,)), self.evaluate(weight_var))
+        self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
         weight_var.assign(((1.,), (2.,), (3.,))).eval()
         # weight_var[0] * weights[0, 0] = 1 * .5 = .5
         # weight_var[2] * weights[1, 0] + weight_var[1] * weights[1, 1]
         # = 3*1 + 2*.1 = 3+.2 = 3.2
-        self.assertAllClose(((.5,), (3.2,)), predictions.eval())
+        self.assertAllClose(((.5,), (3.2,)), self.evaluate(predictions))
 
   def test_old_linear_model(self):
     column = fc.weighted_categorical_column_v2(
@@ -7684,14 +7705,14 @@ class WeightedCategoricalColumnTest(test.TestCase):
       bias = get_linear_model_bias()
       weight_var = get_linear_model_column_var(column)
       with _initialized_session():
-        self.assertAllClose((0.,), bias.eval())
-        self.assertAllClose(((0.,), (0.,), (0.,)), weight_var.eval())
-        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+        self.assertAllClose((0.,), self.evaluate(bias))
+        self.assertAllClose(((0.,), (0.,), (0.,)), self.evaluate(weight_var))
+        self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
         weight_var.assign(((1.,), (2.,), (3.,))).eval()
         # weight_var[0] * weights[0, 0] = 1 * .5 = .5
         # weight_var[2] * weights[1, 0] + weight_var[1] * weights[1, 1]
         # = 3*1 + 2*.1 = 3+.2 = 3.2
-        self.assertAllClose(((.5,), (3.2,)), predictions.eval())
+        self.assertAllClose(((.5,), (3.2,)), self.evaluate(predictions))
 
   def test_old_linear_model_mismatched_shape(self):
     column = fc.weighted_categorical_column_v2(
@@ -7736,7 +7757,7 @@ class WeightedCategoricalColumnTest(test.TestCase):
           rewriter_config_pb2.RewriterConfig.OFF)
       with _initialized_session(config):
         with self.assertRaisesRegexp(errors.OpError, 'Incompatible shapes'):
-          predictions.eval()
+          self.evaluate(predictions)
 
   def test_old_linear_model_mismatched_dense_shape(self):
     column = fc.weighted_categorical_column_v2(
@@ -7755,14 +7776,14 @@ class WeightedCategoricalColumnTest(test.TestCase):
       bias = get_linear_model_bias()
       weight_var = get_linear_model_column_var(column)
       with _initialized_session():
-        self.assertAllClose((0.,), bias.eval())
-        self.assertAllClose(((0.,), (0.,), (0.,)), weight_var.eval())
-        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+        self.assertAllClose((0.,), self.evaluate(bias))
+        self.assertAllClose(((0.,), (0.,), (0.,)), self.evaluate(weight_var))
+        self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
         weight_var.assign(((1.,), (2.,), (3.,))).eval()
         # weight_var[0] * weights[0, 0] = 1 * .5 = .5
         # weight_var[2] * weights[1, 0] + weight_var[1] * weights[1, 1]
         # = 3*1 + 2*.1 = 3+.2 = 3.2
-        self.assertAllClose(((.5,), (3.2,)), predictions.eval())
+        self.assertAllClose(((.5,), (3.2,)), self.evaluate(predictions))
 
   def test_old_linear_model_old_categorical(self):
     column = fc.weighted_categorical_column_v2(
@@ -7785,14 +7806,14 @@ class WeightedCategoricalColumnTest(test.TestCase):
       bias = get_linear_model_bias()
       weight_var = get_linear_model_column_var(column)
       with _initialized_session():
-        self.assertAllClose((0.,), bias.eval())
-        self.assertAllClose(((0.,), (0.,), (0.,)), weight_var.eval())
-        self.assertAllClose(((0.,), (0.,)), predictions.eval())
+        self.assertAllClose((0.,), self.evaluate(bias))
+        self.assertAllClose(((0.,), (0.,), (0.,)), self.evaluate(weight_var))
+        self.assertAllClose(((0.,), (0.,)), self.evaluate(predictions))
         weight_var.assign(((1.,), (2.,), (3.,))).eval()
         # weight_var[0] * weights[0, 0] = 1 * .5 = .5
         # weight_var[2] * weights[1, 0] + weight_var[1] * weights[1, 1]
         # = 3*1 + 2*.1 = 3+.2 = 3.2
-        self.assertAllClose(((.5,), (3.2,)), predictions.eval())
+        self.assertAllClose(((.5,), (3.2,)), self.evaluate(predictions))
 
   # TODO(ptucker): Add test with embedding of weighted categorical.
 

@@ -76,7 +76,7 @@ class DecodeImageOpTest(test.TestCase):
 
         bad_channels = image_ops.decode_image(gif0, channels=1)
         with self.assertRaises(errors_impl.InvalidArgumentError):
-          bad_channels.eval()
+          self.evaluate(bad_channels)
 
   def testJpeg(self):
     # Read a real jpeg and verify shape
@@ -92,7 +92,7 @@ class DecodeImageOpTest(test.TestCase):
 
       bad_channels = image_ops.decode_image(jpeg0, channels=4)
       with self.assertRaises(errors_impl.InvalidArgumentError):
-        bad_channels.eval()
+        self.evaluate(bad_channels)
 
   def testPng(self):
     # Read some real PNGs, converting to different channel numbers
@@ -113,7 +113,7 @@ class DecodeImageOpTest(test.TestCase):
     decode = image_ops.decode_image(image_bytes)
     with self.cached_session():
       with self.assertRaises(errors_impl.InvalidArgumentError):
-        decode.eval()
+        self.evaluate(decode)
 
 
 if __name__ == "__main__":

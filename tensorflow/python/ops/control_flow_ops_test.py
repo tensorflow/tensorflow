@@ -155,9 +155,9 @@ class WithDependenciesTestCase(test_util.TensorFlowTestCase):
           constant_op.constant(7))
       with self.cached_session():
         variables.global_variables_initializer().run()
-        self.assertEquals(0, counter.eval())
-        self.assertEquals(7, const_with_dep.eval())
-        self.assertEquals(1, counter.eval())
+        self.assertEquals(0, self.evaluate(counter))
+        self.assertEquals(7, self.evaluate(const_with_dep))
+        self.assertEquals(1, self.evaluate(counter))
 
   def testListDependencies(self):
     with ops.Graph().as_default():
@@ -169,9 +169,9 @@ class WithDependenciesTestCase(test_util.TensorFlowTestCase):
           constant_op.constant(7))
       with self.cached_session():
         variables.global_variables_initializer().run()
-        self.assertEquals(0, counter.eval())
-        self.assertEquals(7, const_with_dep.eval())
-        self.assertEquals(1, counter.eval())
+        self.assertEquals(0, self.evaluate(counter))
+        self.assertEquals(7, self.evaluate(const_with_dep))
+        self.assertEquals(1, self.evaluate(counter))
 
 
 class SwitchTestCase(test_util.TensorFlowTestCase):
@@ -233,7 +233,7 @@ class SwitchTestCase(test_util.TensorFlowTestCase):
                        constant_op.constant(0.0)])
       with self.cached_session() as sess:
         sess.run(variables.global_variables_initializer())
-        self.assertAllEqual(10.0, cost.eval())
+        self.assertAllEqual(10.0, self.evaluate(cost))
 
   def doTestIndexedSlicesGradientInCondInWhileLoop(self, use_resource=False):
     with ops.Graph().as_default():

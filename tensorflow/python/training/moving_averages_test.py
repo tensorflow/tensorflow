@@ -43,11 +43,11 @@ class MovingAveragesTest(test.TestCase):
       assign = moving_averages.assign_moving_average(
           var, val, decay, zero_debias=False)
       variables.global_variables_initializer().run()
-      self.assertAllClose([10.0, 11.0], var.eval())
+      self.assertAllClose([10.0, 11.0], self.evaluate(var))
       assign.op.run()
       self.assertAllClose(
           [10.0 * 0.25 + 1.0 * (1.0 - 0.25), 11.0 * 0.25 + 2.0 * (1.0 - 0.25)],
-          var.eval())
+          self.evaluate(var))
 
   def testAssignMovingAverage(self):
     with self.cached_session():
@@ -56,11 +56,11 @@ class MovingAveragesTest(test.TestCase):
       decay = 0.25
       assign = moving_averages.assign_moving_average(var, val, decay)
       variables.global_variables_initializer().run()
-      self.assertAllClose([0.0, 0.0], var.eval())
+      self.assertAllClose([0.0, 0.0], self.evaluate(var))
       assign.op.run()
-      self.assertAllClose([
-          1.0 * (1.0 - 0.25) / (1 - 0.25), 2.0 * (1.0 - 0.25) / (1 - 0.25)
-      ], var.eval())
+      self.assertAllClose(
+          [1.0 * (1.0 - 0.25) / (1 - 0.25), 2.0 * (1.0 - 0.25) / (1 - 0.25)],
+          self.evaluate(var))
 
   def testAssignMovingAverageNewNamingMultipleCalls(self):
     with variable_scope.variable_scope("scope1") as vs1:
@@ -179,39 +179,39 @@ class ExponentialMovingAverageTest(test.TestCase):
     self.assertEqual("add/ExponentialMovingAverage:0", avg2.name)
 
     # Check initial values.
-    self.assertAllClose(tens, var0.eval())
-    self.assertAllClose(thirties, var1.eval())
-    self.assertAllClose(_Repeat(10.0 + 30.0, dim), tensor2.eval())
+    self.assertAllClose(tens, self.evaluate(var0))
+    self.assertAllClose(thirties, self.evaluate(var1))
+    self.assertAllClose(_Repeat(10.0 + 30.0, dim), self.evaluate(tensor2))
 
     # Check that averages are initialized correctly.
-    self.assertAllClose(tens, avg0.eval())
-    self.assertAllClose(thirties, avg1.eval())
+    self.assertAllClose(tens, self.evaluate(avg0))
+    self.assertAllClose(thirties, self.evaluate(avg1))
     # Note that averages of Tensor's initialize to zeros_like since no value
     # of the Tensor is known because the Op has not been run (yet).
-    self.assertAllClose(_Repeat(0.0, dim), avg2.eval())
+    self.assertAllClose(_Repeat(0.0, dim), self.evaluate(avg2))
 
     # Update the averages and check.
     update.run()
     dk = actual_decay
 
     expected = _Repeat(10.0 * dk + 10.0 * (1 - dk), dim)
-    self.assertAllClose(expected, avg0.eval())
+    self.assertAllClose(expected, self.evaluate(avg0))
     expected = _Repeat(30.0 * dk + 30.0 * (1 - dk), dim)
-    self.assertAllClose(expected, avg1.eval())
+    self.assertAllClose(expected, self.evaluate(avg1))
     expected = _Repeat(0.0 * dk + (10.0 + 30.0) * (1 - dk) / _Scale(dk, 1), dim)
-    self.assertAllClose(expected, avg2.eval())
+    self.assertAllClose(expected, self.evaluate(avg2))
 
     # Again, update the averages and check.
     update.run()
     expected = _Repeat((10.0 * dk + 10.0 * (1 - dk)) * dk + 10.0 * (1 - dk),
                        dim)
-    self.assertAllClose(expected, avg0.eval())
+    self.assertAllClose(expected, self.evaluate(avg0))
     expected = _Repeat((30.0 * dk + 30.0 * (1 - dk)) * dk + 30.0 * (1 - dk),
                        dim)
-    self.assertAllClose(expected, avg1.eval())
+    self.assertAllClose(expected, self.evaluate(avg1))
     expected = _Repeat(((0.0 * dk + (10.0 + 30.0) * (1 - dk)) * dk +
                         (10.0 + 30.0) * (1 - dk)) / _Scale(dk, 2), dim)
-    self.assertAllClose(expected, avg2.eval())
+    self.assertAllClose(expected, self.evaluate(avg2))
 
   def testAverageVariablesNoNumUpdates_Scalar(self):
     with self.cached_session():

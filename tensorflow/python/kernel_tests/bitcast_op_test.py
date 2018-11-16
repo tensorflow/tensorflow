@@ -30,7 +30,7 @@ class BitcastTest(test.TestCase):
   def _testBitcast(self, x, datatype, shape):
     with self.session(use_gpu=True):
       tf_ans = array_ops.bitcast(x, datatype)
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
       buff_after = memoryview(out).tobytes()
       buff_before = memoryview(x).tobytes()
       self.assertEqual(buff_before, buff_after)

@@ -102,7 +102,7 @@ class BroadcastMatrixBatchDimsTest(test.TestCase):
     self.assertTrue(isinstance(tensor, ops.Tensor))
 
     with self.cached_session():
-      self.assertAllClose(arr, tensor.eval())
+      self.assertAllClose(arr, self.evaluate(tensor))
 
   def test_static_dims_broadcast(self):
     # x.batch_shape = [3, 1, 2]
@@ -205,7 +205,7 @@ class CholeskySolveWithBroadcastTest(test.TestCase):
       result = linear_operator_util.cholesky_solve_with_broadcast(chol, rhs)
       self.assertAllEqual((2, 3, 7), result.get_shape())
       expected = linalg_ops.cholesky_solve(chol_broadcast, rhs)
-      self.assertAllClose(expected.eval(), result.eval())
+      self.assertAllClose(expected.eval(), self.evaluate(result))
 
   def test_dynamic_dims_broadcast_64bit(self):
     # batch_shape = [2, 2]
@@ -244,7 +244,7 @@ class MatmulWithBroadcastTest(test.TestCase):
       result = linear_operator_util.matmul_with_broadcast(x, y)
       self.assertAllEqual((2, 1, 7), result.get_shape())
       expected = math_ops.matmul(x, y_broadcast)
-      self.assertAllClose(expected.eval(), result.eval())
+      self.assertAllClose(expected.eval(), self.evaluate(result))
 
   def test_static_dims_broadcast_y_has_extra_dims(self):
     # Since the second arg has extra dims, and the domain dim of the first arg
@@ -261,7 +261,7 @@ class MatmulWithBroadcastTest(test.TestCase):
       result = linear_operator_util.matmul_with_broadcast(x, y)
       self.assertAllEqual((2, 3, 5, 5), result.get_shape())
       expected = math_ops.matmul(x_broadcast, y)
-      self.assertAllClose(expected.eval(), result.eval())
+      self.assertAllClose(expected.eval(), self.evaluate(result))
 
   def test_static_dims_broadcast_y_has_extra_dims_transpose_a_and_b(self):
     # Since the second arg has extra dims, and the domain dim of the first arg
@@ -280,7 +280,7 @@ class MatmulWithBroadcastTest(test.TestCase):
       self.assertAllEqual((2, 3, 5, 1), result.get_shape())
       expected = math_ops.matmul(
           x_broadcast, y, transpose_a=True, transpose_b=True)
-      self.assertAllClose(expected.eval(), result.eval())
+      self.assertAllClose(expected.eval(), self.evaluate(result))
 
   def test_static_dims_broadcast_y_has_extra_dims_transpose_dynamic(self):
     # Since the second arg has extra dims, and the domain dim of the first arg
@@ -344,7 +344,7 @@ class MatrixSolveWithBroadcastTest(test.TestCase):
           matrix, rhs)
       self.assertAllEqual((2, 3, 7), result.get_shape())
       expected = linalg_ops.matrix_solve(matrix, rhs_broadcast)
-      self.assertAllClose(expected.eval(), result.eval())
+      self.assertAllClose(expected.eval(), self.evaluate(result))
 
   def test_static_dims_broadcast_rhs_has_extra_dims(self):
     # Since the second arg has extra dims, and the domain dim of the first arg
@@ -362,7 +362,7 @@ class MatrixSolveWithBroadcastTest(test.TestCase):
       result = linear_operator_util.matrix_solve_with_broadcast(matrix, rhs)
       self.assertAllEqual((2, 3, 2), result.get_shape())
       expected = linalg_ops.matrix_solve(matrix_broadcast, rhs)
-      self.assertAllClose(expected.eval(), result.eval())
+      self.assertAllClose(expected.eval(), self.evaluate(result))
 
   def test_static_dims_broadcast_rhs_has_extra_dims_dynamic(self):
     # Since the second arg has extra dims, and the domain dim of the first arg
@@ -385,7 +385,7 @@ class MatrixSolveWithBroadcastTest(test.TestCase):
       self.assertAllEqual(3, result.shape.ndims)
       expected = linalg_ops.matrix_solve(matrix_broadcast, rhs)
       self.assertAllClose(
-          expected.eval(),
+          self.evaluate(expected),
           result.eval(feed_dict={
               matrix_ph: matrix,
               rhs_ph: rhs
@@ -408,7 +408,7 @@ class MatrixSolveWithBroadcastTest(test.TestCase):
           matrix, rhs, adjoint=True)
       self.assertAllEqual((2, 3, 2), result.get_shape())
       expected = linalg_ops.matrix_solve(matrix_broadcast, rhs, adjoint=True)
-      self.assertAllClose(expected.eval(), result.eval())
+      self.assertAllClose(expected.eval(), self.evaluate(result))
 
   def test_dynamic_dims_broadcast_64bit(self):
     # batch_shape = [2, 2]
@@ -447,7 +447,7 @@ class MatrixTriangularSolveWithBroadcastTest(test.TestCase):
           matrix, rhs)
       self.assertAllEqual((2, 3, 7), result.get_shape())
       expected = linalg_ops.matrix_triangular_solve(matrix, rhs_broadcast)
-      self.assertAllClose(expected.eval(), result.eval())
+      self.assertAllClose(expected.eval(), self.evaluate(result))
 
   def test_static_dims_broadcast_rhs_has_extra_dims(self):
     # Since the second arg has extra dims, and the domain dim of the first arg
@@ -466,7 +466,7 @@ class MatrixTriangularSolveWithBroadcastTest(test.TestCase):
           matrix, rhs)
       self.assertAllEqual((2, 3, 2), result.get_shape())
       expected = linalg_ops.matrix_triangular_solve(matrix_broadcast, rhs)
-      self.assertAllClose(expected.eval(), result.eval())
+      self.assertAllClose(expected.eval(), self.evaluate(result))
 
   def test_static_dims_broadcast_rhs_has_extra_dims_and_adjoint(self):
     # Since the second arg has extra dims, and the domain dim of the first arg
@@ -486,7 +486,7 @@ class MatrixTriangularSolveWithBroadcastTest(test.TestCase):
       self.assertAllEqual((2, 3, 2), result.get_shape())
       expected = linalg_ops.matrix_triangular_solve(
           matrix_broadcast, rhs, adjoint=True)
-      self.assertAllClose(expected.eval(), result.eval())
+      self.assertAllClose(expected.eval(), self.evaluate(result))
 
   def test_dynamic_dims_broadcast_64bit(self):
     # batch_shape = [2]

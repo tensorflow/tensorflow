@@ -110,7 +110,7 @@ class AudioFeatureGenerationTest(tf.test.TestCase):
           left_context=1,
           right_context=1)
       self.assertAllEqual(
-          filterbanks.eval(),
+          self.evaluate(filterbanks),
           [[479, 425, 479, 425, 436, 378], [479, 425, 436, 378, 410, 350],
            [436, 378, 410, 350, 391, 325], [410, 350, 391, 325, 391, 325]])
 
@@ -153,7 +153,7 @@ class AudioFeatureGenerationTest(tf.test.TestCase):
           frame_stride=3,
           zero_padding=True)
       self.assertAllEqual(
-          filterbanks.eval(),
+          self.evaluate(filterbanks),
           [[0, 0, 0, 0, 479, 425], [436, 378, 410, 350, 391, 325],
            [374, 308, 362, 292, 352, 275]])
 

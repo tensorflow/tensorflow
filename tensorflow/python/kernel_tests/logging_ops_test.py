@@ -52,7 +52,7 @@ class LoggingOpsTest(test.TestCase):
               math_ops.less(epsilon, y), ["Divide-by-zero"])
       ]):
         out = math_ops.div(z, y)
-      self.assertAllEqual(2.0, out.eval())
+      self.assertAllEqual(2.0, self.evaluate(out))
       # assert(epsilon < x)
       # z / x
       #
@@ -63,7 +63,7 @@ class LoggingOpsTest(test.TestCase):
       ]):
         out = math_ops.div(z, x)
       with self.assertRaisesOpError("less than x"):
-        out.eval()
+        self.evaluate(out)
 
 
 class PrintV2Test(test.TestCase):
@@ -387,8 +387,8 @@ class PrintGradientTest(test.TestCase):
       wx_print = logging_ops.Print(wx, [w, w, w])
       wx_grad = gradients_impl.gradients(wx, w)[0]
       wx_print_grad = gradients_impl.gradients(wx_print, w)[0]
-      wxg = wx_grad.eval()
-      wxpg = wx_print_grad.eval()
+      wxg = self.evaluate(wx_grad)
+      wxpg = self.evaluate(wx_print_grad)
     self.assertAllEqual(wxg, wxpg)
 
 

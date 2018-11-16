@@ -145,7 +145,7 @@ class SavedModelLoaderTest(test.TestCase):
         loader.restore_variables(sess, None)
 
       loader.restore_variables(sess, tf_saver.Saver())
-      self.assertEqual(55, z.eval())
+      self.assertEqual(55, self.evaluate(z))
 
   def test_run_init_op(self):
     loader = loader_impl.SavedModelLoader(SAVED_MODEL_WITH_MAIN_OP)
