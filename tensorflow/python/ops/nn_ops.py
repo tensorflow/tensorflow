@@ -3440,3 +3440,10 @@ def in_top_k(predictions, targets, k, name=None):
   """
   with ops.name_scope(name, "in_top_k"):
     return gen_nn_ops.in_top_kv2(predictions, targets, k, name=name)
+
+
+tf_export(v1=["nn.quantized_avg_pool"])(gen_nn_ops.quantized_avg_pool)
+tf_export(v1=["nn.quantized_conv2d"])(gen_nn_ops.quantized_conv2d)
+tf_export(v1=["nn.quantized_relu_x"])(gen_nn_ops.quantized_relu_x)
+tf_export(v1=["nn.quantized_max_pool"])(gen_nn_ops.quantized_max_pool)
+
