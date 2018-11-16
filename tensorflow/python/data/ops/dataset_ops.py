@@ -1876,11 +1876,6 @@ class _NestedDatasetComponent(object):
   corresponding position in the `output_classes`, `output_shapes`, and
   `output_types` properties.
 
-  NOTE(mrry): This class is not currently exposed via the public API. Support
-  for nested datasets can be enabled on a function-by-function basis by setting
-  `experimental_nested_dataset_support=True` in the `StructuredFunctionWrapper`
-  initializer.
-
   TODO(b/110122868): Add this class, or something equivalent, to the public API.
   We are considering revising the public API for accessing Dataset structure
   (`output_classes` etc.) based on experience with nested datasets and other
@@ -1963,7 +1958,6 @@ class StructuredFunctionWrapper(object):
                input_shapes=None,
                input_types=None,
                add_to_graph=True,
-               experimental_nested_dataset_support=False,
                defun_kwargs=None):
     """Creates a new `StructuredFunctionWrapper` for the given function.
 
@@ -1983,8 +1977,6 @@ class StructuredFunctionWrapper(object):
         argument defines the element types and structure for `func` arguments.
       add_to_graph: (Optional.) If `True`, the function will be added to the
         default graph.
-      experimental_nested_dataset_support: (Optional.) If `True`, the function
-        will support `tf.data.Dataset` objects as arguments and return values.
       defun_kwargs: (Optional.) A dictionary mapping string argument names to
         values. If supplied, will be passed to `function.Defun()` as keyword
         arguments.
@@ -2019,9 +2011,6 @@ class StructuredFunctionWrapper(object):
 
     ])
 
-    # TODO(b/110122868): Enable this support for all `tf.data` functions.
-    self._nested_dataset_support = experimental_nested_dataset_support
-
     if defun_kwargs is None:
       defun_kwargs = {}
 
@@ -2043,7 +2032,6 @@ class StructuredFunctionWrapper(object):
           arg.indices.set_shape([None, arg_shape.ndims])
           arg.dense_shape.set_shape([arg_shape.ndims])
         elif isinstance(arg_class, _NestedDatasetComponent):
-          assert self._nested_dataset_support
           arg = _VariantDataset(arg, arg_class)
         else:
           arg.set_shape(arg_shape)
@@ -2082,11 +2070,6 @@ class StructuredFunctionWrapper(object):
           flat_shapes.append(t.get_shape())
           flat_types.append(t.dtype)
         elif isinstance(t, DatasetV2):
-          if not self._nested_dataset_support:
-            raise NotImplementedError(
-                "The %s transformation does not currently support nested "
-                "datasets as outputs." % self._transformation_name)
-
           flat_ret.append(t._as_variant_tensor())  # pylint: disable=protected-access
           component = _NestedDatasetComponent(t)
           flat_classes.append(component)
@@ -2134,10 +2117,6 @@ class StructuredFunctionWrapper(object):
       if input_class is sparse_tensor_lib.SparseTensor:
         ret.append(dtypes.variant)
       elif isinstance(input_class, _NestedDatasetComponent):
-        if not self._nested_dataset_support:
-          raise NotImplementedError(
-              "The %s transformation does not currently support nested "
-              "datasets as inputs." % self._transformation_name)
         ret.append(dtypes.variant)
       else:
         assert isinstance(input_type, dtypes.DType)
@@ -2922,10 +2901,7 @@ class FlatMapDataset(UnaryDataset):
     self._input_dataset = input_dataset
 
     wrapped_func = StructuredFunctionWrapper(
-        map_func,
-        self._transformation_name(),
-        dataset=input_dataset,
-        experimental_nested_dataset_support=True)
+        map_func, self._transformation_name(), dataset=input_dataset)
     if not isinstance(wrapped_func.output_classes, _NestedDatasetComponent):
       raise TypeError("`map_func` must return a `Dataset` object.")
     self._output_classes = wrapped_func.output_classes.output_classes
