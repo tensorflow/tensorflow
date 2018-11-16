@@ -110,7 +110,7 @@ tf_module {
   }
   member_method {
     name: "split"
-    argspec: "args=[\'keyword_required\', \'sp_input\', \'num_split\', \'axis\', \'name\', \'split_dim\'], varargs=None, keywords=None, defaults=[\'KeywordRequired()\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'sp_input\', \'num_split\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "to_dense"

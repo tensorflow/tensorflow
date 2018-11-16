@@ -51,6 +51,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.sufficient_statistics": {
             "keep_dims": "keepdims"
         },
+        "tf.sparse.split": {
+            "split_dim": "axis",
+        },
         "tf.multinomial": {
             "output_dtype": "dtype",
         },
@@ -122,6 +125,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.contrib.data.unique": "tf.data.experimental.unique",
         "tf.quantize_v2": "tf.quantization.quantize",
         "tf.sparse_concat": "tf.sparse.concat",
+        "tf.sparse_split": "tf.sparse.split",
         "tf.multinomial": "tf.random.categorical",
         "tf.random.multinomial": "tf.random.categorical",
         "tf.load_file_system_library": "tf.load_library",
