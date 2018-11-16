@@ -154,7 +154,7 @@ class DefaultDistributionStrategyTest(test.TestCase):
     replica_ctx = distribution_strategy_context.get_replica_context()
     self.assertIs(distribution_strategy_context._get_default_replica_context(),
                   replica_ctx)
-    self.assertEqual("foo_bar", replica_ctx.merge_call(merge_fn, "bar"))
+    self.assertEqual("foo_bar", replica_ctx.merge_call(merge_fn, args=("bar",)))
     _assert_in_default_state(self)
 
 

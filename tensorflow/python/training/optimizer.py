@@ -565,7 +565,7 @@ class Optimizer(
     if distribute_ctx.has_distribution_strategy():
       grads_and_vars = get_filtered_grad_fn(lambda: grads_and_vars)()
       return distribute_ctx.get_replica_context().merge_call(
-          self._distributed_apply, grads_and_vars, global_step, name)
+          self._distributed_apply, args=(grads_and_vars, global_step, name))
 
     # No DistributionStrategy case.
     grads_and_vars = tuple(grads_and_vars)  # Make sure repeat iteration works.
