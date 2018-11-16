@@ -283,6 +283,7 @@ renames = {
     'tf.matrix_triangular_solve': 'tf.linalg.triangular_solve',
     'tf.model_variables': 'tf.compat.v1.model_variables',
     'tf.moving_average_variables': 'tf.compat.v1.moving_average_variables',
+    'tf.nn.conv3d_backprop_filter_v2': 'tf.nn.conv3d_backprop_filter',
     'tf.nn.ctc_beam_search_decoder_v2': 'tf.nn.ctc_beam_search_decoder',
     'tf.nn.dynamic_rnn': 'tf.compat.v1.nn.dynamic_rnn',
     'tf.nn.log_uniform_candidate_sampler': 'tf.random.log_uniform_candidate_sampler',
