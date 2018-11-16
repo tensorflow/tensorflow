@@ -59,6 +59,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Add additional renames not in renames_v2.py here.
     self.symbol_renames.update({
         "tf.sparse_concat": "tf.sparse.concat",
+        "tf.load_file_system_library": "tf.load_library",
     })
     # pylint: enable=line-too-long
 
