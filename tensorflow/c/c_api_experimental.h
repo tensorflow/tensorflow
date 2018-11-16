@@ -209,6 +209,10 @@ TF_CAPI_EXPORT extern void TF_AttrBuilderCheckCanRunOnDevice(
 TF_CAPI_EXPORT extern const char* TF_GetNumberAttrForOpListInput(
     const char* op_name, int input_index, TF_Status* status);
 
+// Platform specific initialization routine. Very few platforms actually require
+// this to be called.
+TF_CAPI_EXPORT void TF_InitMain(const char* usage, int* argc, char*** argv);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif
