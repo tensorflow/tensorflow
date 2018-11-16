@@ -279,6 +279,8 @@ strategies = [combinations.default_strategy,
               combinations.one_device_strategy,
               combinations.mirrored_strategy_with_gpu_and_cpu,
               combinations.mirrored_strategy_with_two_gpus,
+              combinations.core_mirrored_strategy_with_gpu_and_cpu,
+              combinations.core_mirrored_strategy_with_two_gpus,
               combinations.tpu_strategy,  # steps_per_run=2
               combinations.tpu_strategy_one_step]
 
@@ -288,7 +290,9 @@ def strategy_minus_tpu_combinations():
       distribution=[combinations.default_strategy,
                     combinations.one_device_strategy,
                     combinations.mirrored_strategy_with_gpu_and_cpu,
-                    combinations.mirrored_strategy_with_two_gpus],
+                    combinations.mirrored_strategy_with_two_gpus,
+                    combinations.core_mirrored_strategy_with_gpu_and_cpu,
+                    combinations.core_mirrored_strategy_with_two_gpus],
       mode=['graph'])
 
 
