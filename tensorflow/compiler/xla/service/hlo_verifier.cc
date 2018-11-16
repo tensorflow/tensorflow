@@ -1426,6 +1426,8 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
         return target_metadata_->ShapeSize(shape);
       }));
 
+  TF_RETURN_IF_ERROR(module->dynamic_parameter_binding().Verify(*module));
+
   return false;
 }
 
