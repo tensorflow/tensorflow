@@ -191,10 +191,9 @@ def _reduce_non_distributed_value(extended, reduce_op, value, destinations):
   # and equal to 0.
   if value == 0:
     return 0
-  # If the reduce op is MEAN or ONLY_FIRST_REPLICA, then this
-  # essentially means that the same value should be on all destinations.
-  if reduce_op in (reduce_util.ReduceOp.MEAN,
-                   reduce_util.ReduceOp.ONLY_FIRST_REPLICA):
+  # If there is only a single value and the reduce op is MEAN,
+  # that value should be on all destinations.
+  if reduce_op == reduce_util.ReduceOp.MEAN:
     return value
 
   cross_tower_ops_lib.validate_destinations(destinations)
@@ -587,9 +586,11 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     return ctx
 
   def _broadcast_to(self, tensor, destinations):
+    if isinstance(tensor, (float, int)):  # Fast path for Python constants.
+      return tensor
     # TODO(josh11b): In eager mode, use one thread per device, or async mode.
-    return self._get_cross_tower_ops().broadcast(tensor, destinations or
-                                                 self._devices)
+    return self._get_cross_tower_ops().broadcast(
+        tensor, destinations or self._devices)
 
   def _call_for_each_replica(self, fn, args, kwargs):
     return _call_for_each_replica(self._container_strategy(), fn, args, kwargs)
@@ -637,18 +638,10 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
       # be 0.
       return _reduce_non_distributed_value(self, reduce_op, value,
                                            destinations)
-    if reduce_op == reduce_util.ReduceOp.ONLY_FIRST_REPLICA:
-      value = value.get(self._devices[0])
-      if isinstance(value, (int, float)):
-        return value
-      return self.broadcast_to(value, destinations)
     return self._get_cross_tower_ops().reduce(
         reduce_op, value, destinations=destinations)
 
   def _batch_reduce_to(self, reduce_op, value_destination_pairs):
-    if reduce_op == reduce_util.ReduceOp.ONLY_FIRST_REPLICA:
-      return [self.broadcast_to(v.get(self._devices[0]), d)
-              for v, d in value_destination_pairs]
     return self._get_cross_tower_ops().batch_reduce(reduce_op,
                                                     value_destination_pairs)
 

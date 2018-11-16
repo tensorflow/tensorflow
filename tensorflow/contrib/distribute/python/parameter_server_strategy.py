@@ -22,7 +22,6 @@ from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import values
 from tensorflow.python.distribute import multi_worker_util
-from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
@@ -344,16 +343,10 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
       # pylint: disable=protected-access
       return mirrored_strategy._reduce_non_distributed_value(
           self, reduce_op, value, destinations)
-    if reduce_op == reduce_util.ReduceOp.ONLY_FIRST_REPLICA:
-      return self.broadcast_to(
-          value.get(self._compute_devices[0]), destinations)
     return self._cross_tower_ops.reduce(
         reduce_op, value, destinations=destinations)
 
   def _batch_reduce_to(self, reduce_op, value_destination_pairs):
-    if reduce_op == reduce_util.ReduceOp.ONLY_FIRST_REPLICA:
-      return [self.broadcast_to(v.get(self._compute_devices[0]), d)
-              for v, d in value_destination_pairs]
     for _, destinations in value_destination_pairs:
       self._verify_destinations_not_different_worker(destinations)
     return self._cross_tower_ops.batch_reduce(reduce_op,

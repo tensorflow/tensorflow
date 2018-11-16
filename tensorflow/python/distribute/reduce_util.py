@@ -29,7 +29,6 @@ class ReduceOp(enum.Enum):
 
   * `SUM`: Add all the values.
   * `MEAN`: Take the arithmetic mean ("average") of the values.
-  * `ONLY_FIRST_REPLICA`: Return the value on the first replica.
 
   TODO(priyag): Add the following types:
   * `MIN`: Return the minimum of all values.
@@ -38,21 +37,16 @@ class ReduceOp(enum.Enum):
 
   SUM = 0
   MEAN = 1
-  ONLY_FIRST_REPLICA = 2
 
   @staticmethod
   def from_variable_aggregation(aggregation):
     mapping = {
         variable_scope.VariableAggregation.SUM: ReduceOp.SUM,
         variable_scope.VariableAggregation.MEAN: ReduceOp.MEAN,
-        variable_scope.VariableAggregation.ONLY_FIRST_REPLICA:
-            ReduceOp.ONLY_FIRST_REPLICA
     }
 
     reduce_op = mapping.get(aggregation)
     if not reduce_op:
-      raise ValueError("Could not convert from `tf.VariableAggregation` to"
-                       "`tf.distribute.ReduceOp` type")
+      raise ValueError("Could not convert from `tf.VariableAggregation` %s to"
+                       "`tf.distribute.ReduceOp` type" % aggregation)
     return reduce_op
-
-

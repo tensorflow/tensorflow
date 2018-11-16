@@ -474,8 +474,6 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     else:
       raise ValueError("Multiple devices are not supported for TPUStrategy")
 
-    if reduce_op == reduce_util.ReduceOp.ONLY_FIRST_REPLICA:
-      return value[0]
     output = math_ops.add_n(value)
     if reduce_op == reduce_util.ReduceOp.MEAN:
       return output * (1. / len(value))

@@ -1141,7 +1141,6 @@ class DistributionStrategyExtended(object):
         DEPRECATED but still accepted values:
         `tf.VariableAggregation.SUM`,
         `tf.VariableAggregation.MEAN`,
-        `tf.VariableAggregation.ONLY_FIRST_REPLICA`.
       value: A per-replica value with one value per replica.
       destinations: A mirrored variable, a per-replica tensor, a device string,
         or list of device strings. The return value will be copied to all
@@ -1161,7 +1160,6 @@ class DistributionStrategyExtended(object):
       assert reduce_op in [
           variable_scope.VariableAggregation.SUM,
           variable_scope.VariableAggregation.MEAN,
-          variable_scope.VariableAggregation.ONLY_FIRST_REPLICA
       ]
       reduce_op = reduce_util.ReduceOp.from_variable_aggregation(reduce_op)
     return self._reduce_to(reduce_op, value, destinations)
@@ -1177,7 +1175,6 @@ class DistributionStrategyExtended(object):
         DEPRECATED but still accepted values:
         `tf.VariableAggregation.SUM`,
         `tf.VariableAggregation.MEAN`,
-        `tf.VariableAggregation.ONLY_FIRST_REPLICA`.
       value_destination_pairs: A sequence of (value, destinations)
         pairs. See `reduce_to()` for a description.
 
@@ -1192,7 +1189,6 @@ class DistributionStrategyExtended(object):
       assert reduce_op in [
           variable_scope.VariableAggregation.SUM,
           variable_scope.VariableAggregation.MEAN,
-          variable_scope.VariableAggregation.ONLY_FIRST_REPLICA
       ]
       reduce_op = reduce_util.ReduceOp.from_variable_aggregation(reduce_op)
     return self._batch_reduce_to(reduce_op, value_destination_pairs)

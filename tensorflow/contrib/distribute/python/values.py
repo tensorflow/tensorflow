@@ -318,6 +318,14 @@ class DistributedVariable(DistributedDelegate):
 ops.register_dense_tensor_like_type(DistributedVariable)
 
 
+def _apply_aggregation(strategy, value, aggregation, destinations):
+  if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+    return strategy.broadcast(strategy.unwrap(value)[0],
+                              destinations=destinations)
+  reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
+  return strategy.reduce(reduce_op, value=value, destinations=destinations)
+
+
 class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
   """Class for defining how to restore a MirroredVariable."""
 
@@ -373,14 +381,10 @@ class MirroredVariable(DistributedVariable, Mirrored,
       if self._aggregation == vs.VariableAggregation.NONE:
         raise ValueError("You must specify an aggregation method to update a "
                          "MirroredVariable in Replica Context.")
-      reduce_op = reduce_util.ReduceOp.from_variable_aggregation(
-          self._aggregation)
 
       def merge_fn(strategy, value, *other_args, **other_kwargs):
-        return strategy.update(
-            self, f,
-            strategy.reduce(reduce_op, value=value, destinations=self),
-            *other_args, **other_kwargs)
+        v = _apply_aggregation(strategy, value, self._aggregation, self)
+        return strategy.update(self, f, v, *other_args, **other_kwargs)
 
       return distribution_strategy_context.get_replica_context().merge_call(
           merge_fn, *args, **kwargs)
@@ -615,14 +619,10 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
       if self._aggregation == vs.VariableAggregation.NONE:
         raise ValueError("You must specify an aggregation method to update a "
                          "TPUMirroredVariable in Replica Context.")
-      reduce_op = reduce_util.ReduceOp.from_variable_aggregation(
-          self._aggregation)
 
       def merge_fn(strategy, value, *other_args, **other_kwargs):
-        return strategy.update(
-            self, f,
-            strategy.reduce(reduce_op, value=value, destinations=self),
-            *other_args, **other_kwargs)
+        v = _apply_aggregation(strategy, value, self._aggregation, self)
+        return strategy.update(self, f, v, *other_args, **other_kwargs)
 
       return distribution_strategy_context.get_replica_context().merge_call(
           merge_fn, *args, **kwargs)
@@ -1662,14 +1662,10 @@ class AggregatingVariable(checkpointable.CheckpointableBase):
       if self._aggregation == vs.VariableAggregation.NONE:
         raise ValueError("You must specify an aggregation method to update a "
                          "a variable in Replica Context.")
-      reduce_op = reduce_util.ReduceOp.from_variable_aggregation(
-          self._aggregation)
 
       def merge_fn(strategy, value, *other_args, **other_kwargs):
-        return strategy.update(
-            self, f,
-            strategy.reduce(reduce_op, value=value, destinations=self),
-            *other_args, **other_kwargs)
+        v = _apply_aggregation(strategy, value, self._aggregation, self)
+        return strategy.update(self, f, v, *other_args, **other_kwargs)
 
       return distribution_strategy_context.get_replica_context().merge_call(
           merge_fn, *args, **kwargs)
