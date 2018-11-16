@@ -198,11 +198,16 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     trt_convert.clear_test_values("my_trt_op_.*:ExecuteCalibration")
     trt_convert.clear_test_values("my_trt_op_.*:ExecuteNativeSegment")
 
+  def _GetGPUOptions(self):
+    gpu_options = config_pb2.GPUOptions()
+    gpu_options.allow_growth = True
+    return gpu_options
+
   def _GetConfigProto(self, run_params, graph_state):
     """Get config proto based on specific settings."""
     if graph_state != GraphState.ORIGINAL and run_params.use_optimizer:
       conversion_params = self.GetConversionParams(run_params)
-      rewriter_cfg = trt_convert.tensorrt_rewriter_config(
+      rewriter_cfg = trt_convert.get_tensorrt_rewriter_config(
           conversion_params.rewriter_config, conversion_params.max_batch_size,
           conversion_params.max_workspace_size_bytes,
           conversion_params.precision_mode,
@@ -215,13 +220,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     else:
       graph_options = config_pb2.GraphOptions()
 
-    gpu_options = config_pb2.GPUOptions()
-    gpu_options.allow_growth = True
-    if trt_convert.get_linked_tensorrt_version()[0] == 3:
-      gpu_options.per_process_gpu_memory_fraction = 0.50
-
     config = config_pb2.ConfigProto(
-        gpu_options=gpu_options, graph_options=graph_options)
+        gpu_options=self._GetGPUOptions(), graph_options=graph_options)
     return config
 
   def _ExpectTestValue(self, engine_name, method, expected_value):
@@ -291,6 +291,11 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     params = self._GetParamsCached()
     conversion_params = self.GetConversionParams(run_params)
     logging.info(conversion_params)
+
+    config_for_trt = config_pb2.ConfigProto(gpu_options=self._GetGPUOptions())
+    if conversion_params.rewriter_config is not None:
+      config_for_trt.graph_options.rewrite_options.CopyFrom(
+          conversion_params.rewriter_config)
     return trt_convert.create_inference_graph(
         input_graph_def=gdef,
         outputs=params.input_names + params.output_names,
@@ -301,7 +306,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         is_dynamic_op=conversion_params.is_dynamic_op,
         maximum_cached_engines=conversion_params.maximum_cached_engines,
         cached_engine_batch_sizes=conversion_params.cached_engine_batch_sizes,
-        rewriter_config=conversion_params.rewriter_config)
+        session_config=config_for_trt)
 
   def _WriteGraph(self, run_params, gdef, graph_state):
     if graph_state == GraphState.ORIGINAL:

@@ -47,9 +47,9 @@ from tensorflow.python.tools import saved_model_utils
 class TrtConvertTest(test_util.TensorFlowTestCase):
   """Class to test Tensorflow-TensorRT integration python API."""
 
-  def testTensorrtRewriterConfig(self):
-    """Test case for trt_convert.tensorrt_rewriter_config()."""
-    rewriter_cfg = trt_convert.tensorrt_rewriter_config(
+  def testGetTensorrtRewriterConfig(self):
+    """Test case for trt_convert.get_tensorrt_rewriter_config()."""
+    rewriter_cfg = trt_convert.get_tensorrt_rewriter_config(
         rewriter_config=None,
         max_batch_size=128,
         max_workspace_size_bytes=1234,
