@@ -78,7 +78,9 @@ _VARIABLE_OPS = set(["Variable",
 def _set_cpu0(device_string):
   """Creates a new device string based on `device_string` but using /CPU:0.
 
-  If the device is already on /CPU:0, this is a no-op.
+  If the device is already on /CPU:0, this is a no-op. In Distributed setting,
+  the job will be set to master, so that all the shards will be saved on master,
+  and the merge operation will be on master.
 
   Args:
     device_string: A device string.
@@ -89,6 +91,14 @@ def _set_cpu0(device_string):
   parsed_device = pydev.DeviceSpec.from_string(device_string)
   parsed_device.device_type = "CPU"
   parsed_device.device_index = 0
+  if parsed_device.job == "ps":
+    parsed_device.job = "master"
+    parsed_device.task = 0
+    parsed_device.replica = 0
+  else:
+    parsed_device.job = None
+    parsed_device.task = None
+    parsed_device.replica = None
   return parsed_device.to_string()
 
 
@@ -333,10 +343,11 @@ class BaseSaverBuilder(object):
     sharded_saves = []
     sharded_prefixes = []
     num_shards_tensor = constant_op.constant(num_shards, name="num_shards")
-    last_device = None
+    # All the shards will be saved on the same device save_op_dev 
+    # and merged on save_op_dev
+    save_op_dev = _set_cpu0(per_device[0][0])
     for shard, (device, saveables) in enumerate(per_device):
-      last_device = device
-      with ops.device(_set_cpu0(device)):
+      with ops.device(save_op_dev):
         sharded_filename = self.sharded_filename(tmp_checkpoint_prefix, shard,
                                                  num_shards_tensor)
         sharded_prefixes.append(sharded_filename)
@@ -344,7 +355,7 @@ class BaseSaverBuilder(object):
 
     with ops.control_dependencies([x.op for x in sharded_saves]):
       # Co-locates the merge step with the last device.
-      with ops.device(_set_cpu0(last_device)):
+      with ops.device(save_op_dev):
         # V2 format write path consists of a metadata merge step.  Once merged,
         # attempts to delete the temporary directory, "<user-fed prefix>_temp".
         merge_step = gen_io_ops.merge_v2_checkpoints(
@@ -867,7 +878,7 @@ class BulkSaverBuilder(BaseSaverBuilder):
 
     names, slices, dtypes = zip(*restore_specs)
     # Load all tensors onto CPU 0 for compatibility with existing code.
-    with ops.device("cpu:0"):
+    with ops.device(_set_cpu0(saveables[0].device)):
       return io_ops.restore_v2(filename_tensor, names, slices, dtypes)
 
 
