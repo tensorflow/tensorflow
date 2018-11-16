@@ -302,6 +302,147 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   return true;
 }
 
+// Removes each loop parameter (i.e. member of the while loop tuple) that is a
+// constant and is the same in the while loop body and the while loop init.
+static StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
+  HloModule* module = while_op->GetModule();
+  HloComputation* computation = while_op->parent();
+  auto* while_init = while_op->mutable_operand(0);
+  auto* while_body = while_op->while_body();
+  auto* while_cond = while_op->while_condition();
+  auto* while_body_root = while_body->root_instruction();
+  if (while_init->opcode() != HloOpcode::kTuple ||
+      while_body_root->opcode() != HloOpcode::kTuple) {
+    return false;
+  }
+
+  TF_RET_CHECK(while_cond->num_parameters() == 1);
+  TF_RET_CHECK(while_body->num_parameters() == 1);
+  TF_RET_CHECK(
+      ShapeUtil::Compatible(while_init->shape(), while_body_root->shape()));
+
+  absl::flat_hash_set<int64> constant_tuple_indices;
+  const auto& while_shape = while_init->shape();
+  for (int64 i = 0; i < while_shape.tuple_shapes_size(); ++i) {
+    auto* init_elem = while_init->operand(i);
+    auto* body_elem = while_body_root->operand(i);
+    if (init_elem->opcode() == HloOpcode::kConstant &&
+        body_elem->opcode() == HloOpcode::kConstant &&
+        init_elem->literal() == body_elem->literal()) {
+      constant_tuple_indices.insert(i);
+    }
+  }
+
+  if (constant_tuple_indices.empty()) {
+    return false;
+  }
+
+  // OK, we found some constant elements of the while parameter!  Eliminate
+  // them.
+  std::vector<Shape> new_while_shape_elems;
+  for (int64 i = 0; i < while_shape.tuple_shapes_size(); ++i) {
+    if (!constant_tuple_indices.count(i)) {
+      new_while_shape_elems.push_back(while_shape.tuple_shapes(i));
+    }
+  }
+  Shape new_while_shape = ShapeUtil::MakeTupleShape(new_while_shape_elems);
+
+  // `new_instrs` holds instructions created outside of a computation for
+  // cloning.  Elements added here just need to live until the end of the
+  // relevant CloneWithReplacement call.
+  std::vector<std::unique_ptr<HloInstruction>> new_instrs;
+  auto add_new_instr = [&](std::unique_ptr<HloInstruction> instr) {
+    new_instrs.push_back(std::move(instr));
+    return new_instrs.back().get();
+  };
+
+  // Returns a new tuple without the elements of constant_tuple_indices.
+  auto remove_constant_elems = [&](HloInstruction* instr) {
+    CHECK(ShapeUtil::Compatible(instr->shape(), while_shape));
+
+    std::vector<HloInstruction*> tuple_elems;
+    for (int64 i = 0; i < while_shape.tuple_shapes_size(); ++i) {
+      if (!constant_tuple_indices.count(i)) {
+        tuple_elems.push_back(
+            add_new_instr(HloInstruction::CreateGetTupleElement(
+                while_shape.tuple_shapes(i), instr, i)));
+      }
+    }
+    return HloInstruction::CreateTuple(tuple_elems);
+  };
+
+  auto add_constant_elems = [&](HloInstruction* instr) {
+    CHECK(ShapeUtil::Compatible(instr->shape(), new_while_shape));
+
+    std::vector<HloInstruction*> tuple_elems;
+    int64 j = 0;
+    for (int64 i = 0; i < while_shape.tuple_shapes_size(); ++i) {
+      if (constant_tuple_indices.count(i)) {
+        tuple_elems.push_back(while_init->mutable_operand(i));
+      } else {
+        tuple_elems.push_back(
+            add_new_instr(HloInstruction::CreateGetTupleElement(
+                while_shape.tuple_shapes(i), instr, j)));
+        ++j;
+      }
+    }
+    return HloInstruction::CreateTuple(tuple_elems);
+  };
+
+  // Special case: constant_tuple_indices covers the whole while parameter, so
+  // the new while shape is the empty tuple.  In this case, the value of the
+  // while loop is simply equal to the value of `init`.
+  //
+  // It's unfortunate to special-case this, but it's simpler than the
+  // alternative.  The problem is that if our while parameter has no
+  // non-constant elems, the tuple returned by `add_constant_elems` won't depend
+  // on instr (the loop body/cond parameter), and therefore
+  // CloneWithReplacementPairs will *leave the parameter out entirely*, creating
+  // invalid HLO.
+  if (ShapeUtil::IsEmptyTuple(new_while_shape)) {
+    TF_RETURN_IF_ERROR(computation->ReplaceInstruction(while_op, while_init));
+    return true;
+  }
+
+  std::unique_ptr<HloComputation> new_while_cond =
+      while_cond->CloneWithReplacementPairs({
+          while_cond->parameter_instruction(0),
+          add_constant_elems(add_new_instr(HloInstruction::CreateParameter(
+              0, new_while_shape,
+              while_cond->parameter_instruction(0)->name()))),
+      });
+
+  std::unique_ptr<HloComputation> new_while_body =
+      while_body->CloneWithReplacementPairs(
+          {
+              while_body->parameter_instruction(0),
+              add_constant_elems(add_new_instr(HloInstruction::CreateParameter(
+                  0, new_while_shape,
+                  while_cond->parameter_instruction(0)->name()))),
+          },
+          {
+              while_body->root_instruction(),
+              remove_constant_elems(
+                  add_new_instr(while_body->root_instruction()->Clone())),
+          });
+
+  // Create the final while loop, and add any new instructions created to
+  // `computation`.
+  new_instrs.clear();
+  TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
+      while_op,
+      add_constant_elems(
+          computation->AddInstruction(HloInstruction::CreateWhile(
+              new_while_shape,
+              module->AddEmbeddedComputation(std::move(new_while_cond)),
+              module->AddEmbeddedComputation(std::move(new_while_body)),
+              add_new_instr(remove_constant_elems(while_init)))))));
+  for (auto& instr : new_instrs) {
+    computation->AddInstruction(std::move(instr));
+  }
+  return true;
+}
+
 // Tries to remove a while loop from the graph.
 //
 //  - Loops with trip count of 0 can be replaced by the loop's "init" value.
@@ -519,14 +660,6 @@ static StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
     return false;
   }
 
-  // Cowardly refuse to perform this optimization in the presence of kDomain
-  // instructions, which may reference other instructions in the loop and
-  // therefore make this complicated.
-  if (ContainsInstrWithOpcode(while_body, {HloOpcode::kDomain}) ||
-      ContainsInstrWithOpcode(while_cond, {HloOpcode::kDomain})) {
-    return false;
-  }
-
   std::vector<Shape> flattened_shape_elems;
   ShapeUtil::ForEachSubshape(while_shape,
                              [&](const Shape& s, const ShapeIndex& /*index*/) {
@@ -650,19 +783,34 @@ StatusOr<bool> WhileLoopSimplifier::Run(HloModule* module) {
       continue;
     }
 
+    // TODO(b/119281462): Cowardly refuse to perform any of the following
+    // optimizations in the presence of kDomain instructions.  It seems that
+    // modifying a while loop's tuple doesn't work when kDomain is present.
+    if (ContainsInstrWithOpcode(while_op->while_body(), {HloOpcode::kDomain}) ||
+        ContainsInstrWithOpcode(while_op->while_condition(),
+                                {HloOpcode::kDomain})) {
+      continue;
+    }
+
+    // Each of the optimizations below modifies the while loop itself if it's
+    // successful, meaning that `while_op` is no longer valid after one of these
+    // transformations returns true.
+
     TF_ASSIGN_OR_RETURN(result, TryFlattenNestedTuples(while_op));
     changed |= result;
     if (result) {
-      // Successfully flattening nested tuples results in us cloning and
-      // replacing the while loop, meaning that `while_op` is no longer valid.
       continue;
     }
 
     TF_ASSIGN_OR_RETURN(result, TryRemoveDeadWhileParams(while_op));
     changed |= result;
     if (result) {
-      // Successfully removing dead while params results in us cloning and
-      // replacing the while loop, meaning that `while_op` is no longer valid.
+      continue;
+    }
+
+    TF_ASSIGN_OR_RETURN(result, TryRemoveConstantParams(while_op));
+    changed |= result;
+    if (result) {
       continue;
     }
   }

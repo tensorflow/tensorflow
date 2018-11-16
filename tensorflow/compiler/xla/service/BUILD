@@ -1746,6 +1746,7 @@ tf_cc_test(
         ":hlo",
         ":hlo_dce",
         ":hlo_matchers",
+        ":tuple_simplifier",
         ":while_loop_simplifier",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
