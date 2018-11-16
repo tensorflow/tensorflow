@@ -892,7 +892,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
       raise ValueError("No gradients provided for any variable: %s." %
                        ([str(v) for _, v in grads_and_vars],))
     return distribute_ctx.get_replica_context().merge_call(
-        self._distributed_apply, filtered, global_step=global_step, name=name)
+        self._distributed_apply, args=(filtered,),
+        kwargs={"global_step": global_step, "name": name})
 
   def _get_or_create_state(self, var_list=None):
     """Either looks up or creates `_OptimizerV2State`.

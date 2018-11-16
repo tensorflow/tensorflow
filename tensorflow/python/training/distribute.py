@@ -1073,7 +1073,7 @@ class DistributionStrategyExtended(object):
                                           initial_loop_values):
     raise NotImplementedError("must be implemented in descendants")
 
-  def call_for_each_replica(self, fn, args, kwargs):
+  def call_for_each_replica(self, fn, args=(), kwargs=None):
     """Run `fn` once per replica.
 
     `fn` may call `tf.get_replica_context()` to access methods such as
@@ -1117,6 +1117,8 @@ class DistributionStrategyExtended(object):
       Merged return value of `fn` across all replicas.
     """
     _require_cross_replica_context_extended(self)
+    if kwargs is None:
+      kwargs = {}
     return self._call_for_each_replica(fn, args, kwargs)
 
   def _call_for_each_replica(self, fn, args, kwargs):
@@ -1188,7 +1190,7 @@ class DistributionStrategyExtended(object):
         for t, v in value_destination_pairs
     ]
 
-  def update(self, var, fn, args, kwargs, group):
+  def update(self, var, fn, args=(), kwargs=None, group=True):
     """Run `fn` to update `var` using inputs mirrored to the same devices.
 
     If `var` is mirrored across multiple devices, then this implements
@@ -1226,12 +1228,15 @@ class DistributionStrategyExtended(object):
       for ensuring all elements are executed.
     """
     _require_cross_replica_context_extended(self)
+    if kwargs is None:
+      kwargs = {}
     return self._update(var, fn, args, kwargs, group)
 
   def _update(self, var, fn, args, kwargs, group):
     raise NotImplementedError("must be implemented in descendants")
 
-  def update_non_slot(self, colocate_with, fn, args, kwargs, group):
+  def update_non_slot(
+      self, colocate_with, fn, args=(), kwargs=None, group=True):
     """Runs `fn(*args, **kwargs)` on `colocate_with` devices.
 
     Args:
@@ -1246,6 +1251,8 @@ class DistributionStrategyExtended(object):
       Return value of `fn`, possibly merged across devices.
     """
     _require_cross_replica_context_extended(self)
+    if kwargs is None:
+      kwargs = {}
     return self._update_non_slot(colocate_with, fn, args, kwargs, group)
 
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
@@ -1383,7 +1390,7 @@ class ReplicaContext(object):
   def __exit__(self, exception_type, exception_value, traceback):
     _pop_per_thread_mode()
 
-  def merge_call(self, merge_fn, *args, **kwargs):
+  def merge_call(self, merge_fn, args=(), kwargs=None):
     """Merge args across replicas and run `merge_fn` in a cross-replica context.
 
     This allows communication and coordination when there are multiple calls
@@ -1412,20 +1419,8 @@ class ReplicaContext(object):
       unpacked.
     """
     require_replica_context(self)
-    # Handle old *args, **kwargs, and new args=(...), kwargs={...}, to
-    # allow transition.
-    a = kwargs.pop("args", None)
-    if a is not None:
-      if args:
-        raise ValueError(
-            "Can't pass *args and args=... to merge_call")
-      args = a
-    k = kwargs.pop("kwargs", None)
-    if k is not None:
-      if kwargs:
-        raise ValueError(
-            "Can't pass **kwargs and kwargs=... to merge_call")
-      kwargs = k
+    if kwargs is None:
+      kwargs = {}
     return self._merge_call(merge_fn, args, kwargs)
 
   def _merge_call(self, merge_fn, args, kwargs):

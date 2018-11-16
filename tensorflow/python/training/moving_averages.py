@@ -99,7 +99,7 @@ def assign_moving_average(variable, value, decay, zero_debias=True, name=None):
         value = strategy.reduce(ds_reduce_util.ReduceOp.MEAN, value, v)
         return strategy.update(v, update_fn, value)
 
-      return replica_context.merge_call(merge_fn, variable, value)
+      return replica_context.merge_call(merge_fn, args=(variable, value))
     else:
       strategy = distribution_strategy_context.get_cross_replica_context()
       return strategy.update(variable, update_fn, value)

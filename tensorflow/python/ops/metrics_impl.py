@@ -330,7 +330,7 @@ def _aggregate_across_replicas(metrics_collections, metric_value_fn, *args):
     return metric_value
 
   return distribution_strategy_context.get_replica_context().merge_call(
-      fn, *args)
+      fn, args=args)
 
 
 @tf_export('metrics.mean')

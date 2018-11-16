@@ -149,7 +149,8 @@ def result_wrapper(result_fn):
 
       # Wrapping result in merge_call. merge_call is used when we want to leave
       # replica mode and compute a value in cross replica mode.
-      result_t = replica_context.merge_call(merge_fn_wrapper, result_fn, *args)
+      result_t = replica_context.merge_call(
+          merge_fn_wrapper, args=(result_fn,) + args)
     check_is_tensor_or_operation(result_t,
                                  'Metric {0}\'s result'.format(metric_obj.name))
     return result_t

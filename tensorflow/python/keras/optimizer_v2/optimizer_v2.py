@@ -572,7 +572,7 @@ def merge_update_step(update_ops, local_step):
     return incre_op
 
   return distribution_strategy_context.get_replica_context().merge_call(
-      merge_update_step_fn, update_ops, local_step)
+      merge_update_step_fn, args=(update_ops, local_step))
 
 
 def merge_grads(grads_and_vars):
@@ -584,7 +584,7 @@ def merge_grads(grads_and_vars):
     return reduced_grads
 
   return distribution_strategy_context.get_replica_context().merge_call(
-      merge_grad_fn, grads_and_vars)
+      merge_grad_fn, args=(grads_and_vars,))
 
 
 def _var_key(var):

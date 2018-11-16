@@ -387,7 +387,7 @@ class MirroredVariable(DistributedVariable, Mirrored,
         return strategy.update(self, f, v, *other_args, **other_kwargs)
 
       return distribution_strategy_context.get_replica_context().merge_call(
-          merge_fn, *args, **kwargs)
+          merge_fn, args=args, kwargs=kwargs)
 
   def assign_sub(self, *args, **kwargs):
     assign_sub_fn = lambda var, *a, **kw: var.assign_sub(*a, **kw)
@@ -625,7 +625,7 @@ class TPUMirroredVariable(checkpointable.CheckpointableBase):
         return strategy.update(self, f, v, *other_args, **other_kwargs)
 
       return distribution_strategy_context.get_replica_context().merge_call(
-          merge_fn, *args, **kwargs)
+          merge_fn, args=args, kwargs=kwargs)
 
   @contextlib.contextmanager
   def _handle_graph(self, handle):
@@ -1591,7 +1591,7 @@ class MultiStepContext(object):
         self._last_step_outputs_reduce_ops[name] = reduce_op
 
       distribution_strategy_context.get_replica_context().merge_call(
-          merge_fn, output)
+          merge_fn, args=(output,))
 
   @property
   def non_tensor_outputs(self):
@@ -1608,7 +1608,7 @@ class MultiStepContext(object):
         # in a list as reduction doesn't make sense on non tensors.
         self._non_tensor_outputs[name] = distribution.unwrap(value)
       distribution_strategy_context.get_replica_context().merge_call(
-          merge_fn, output)
+          merge_fn, args=(output,))
 
 
 def value_container(val):
@@ -1677,7 +1677,7 @@ class AggregatingVariable(checkpointable.CheckpointableBase):
         return strategy.update(self, f, v, *other_args, **other_kwargs)
 
       return distribution_strategy_context.get_replica_context().merge_call(
-          merge_fn, *args, **kwargs)
+          merge_fn, args=args, kwargs=kwargs)
 
   def assign_sub(self, *args, **kwargs):
     assign_sub_fn = lambda var, *a, **kw: var.assign_sub(*a, **kw)
