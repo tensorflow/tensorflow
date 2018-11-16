@@ -37,7 +37,7 @@ constexpr char kDataFormat[] = "data_format";
 constexpr char kIsTraining[] = "is_training";
 
 struct RemapperContext {
-  RemapperContext(const GrapplerItem& item)
+  explicit RemapperContext(const GrapplerItem& item)
       : nodes_to_preserve(item.NodesToPreserve()),
         graph_view(&item.graph),
         graph_properties(item),
@@ -65,6 +65,13 @@ struct Conv2DWithBiasAddAndRelu {
   const NodeDef* conv2d = nullptr;
   const NodeDef* bias_add = nullptr;
   const NodeDef* relu = nullptr;
+};
+
+// Conv2D node followed by a Squeeze and BiasAdd.
+struct Conv2DWithSqueezeAndBiasAdd {
+  const NodeDef* conv2d = nullptr;
+  const NodeDef* squeeze = nullptr;
+  const NodeDef* bias_add = nullptr;
 };
 
 // Conv2D node followed by a FusedBatchNorm.
@@ -158,6 +165,54 @@ bool FindConv2DWithBiasAndRelu(const RemapperContext& ctx, const NodeDef* node,
   matched->conv2d = base.conv2d;
   matched->bias_add = base.bias_add;
   matched->relu = node;
+
+  return true;
+}
+
+bool FindConv2DWithSqueezeAndBias(const RemapperContext& ctx,
+                                  const NodeDef* node,
+                                  Conv2DWithSqueezeAndBiasAdd* matched) {
+  // Root of the pattern must be a BiasAdd.
+  if (node == nullptr) return false;
+  if (node->op() != "BiasAdd") return false;
+  if (!NodeIsOnCpu(node)) return false;
+  if (!IsFloatOrDoubleDataType(node)) return false;
+  if (!NoControlFaninOrFanout(ctx.graph_view, node)) return false;
+
+  // Input to the BiasAdd must be a Squeeze.
+  const auto bias_input_port = GraphView::InputPort(node, 0);
+  const auto squeeze = ctx.graph_view.GetRegularFanin(bias_input_port);
+  if (squeeze.node == nullptr) return false;
+  if (squeeze.node->op() != "Squeeze") return false;
+  if (!NodeIsOnCpu(squeeze.node)) return false;
+  if (!HaveSameDataType(node, squeeze.node, "T")) return false;
+  if (!NoControlFaninOrFanout(ctx.graph_view, squeeze.node)) return false;
+  if (!HasSingleFanoutNode(ctx.graph_view, squeeze.node)) return false;
+  if (IsInPreserveSet(ctx, squeeze.node)) return false;
+
+  // Squeeze must not squeeze output channel dimension.
+  std::vector<int32> dims;
+  if (!GetNodeAttr(*squeeze.node, "squeeze_dims", &dims).ok()) return false;
+  for (auto dim : dims) {
+    if (dim == 3) return false;
+  }
+
+  // Input to the Squeeze must be a Conv2D in NHWC format.
+  const auto squeeze_input_port = GraphView::InputPort(squeeze.node, 0);
+  const auto conv2d = ctx.graph_view.GetRegularFanin(squeeze_input_port);
+  if (conv2d.node == nullptr) return false;
+  if (conv2d.node->op() != "Conv2D") return false;
+  if (conv2d.node->attr().at("data_format").s() != "NHWC") return false;
+  if (!NodeIsOnCpu(conv2d.node)) return false;
+  if (!HaveSameDataType(node, conv2d.node, "T")) return false;
+  if (!NoControlFaninOrFanout(ctx.graph_view, conv2d.node)) return false;
+  if (!HasSingleFanoutNode(ctx.graph_view, conv2d.node)) return false;
+  if (IsInPreserveSet(ctx, conv2d.node)) return false;
+
+  // We successfully found a Conv2D+Squeeze+BiasAdd pattern.
+  matched->conv2d = conv2d.node;
+  matched->squeeze = squeeze.node;
+  matched->bias_add = node;
 
   return true;
 }
@@ -281,8 +336,6 @@ bool FindFusedBatchNorm(const RemapperContext& ctx, const NodeDef* node,
   return true;
 }
 
-#undef REMAPPER_REQUIRES
-
 void CopyConv2DAttributes(const NodeDef* conv2d, NodeDef* fused_conv2d,
                           const std::vector<string>& fused_ops = {},
                           int num_args = 1, float epsilon = 0.0) {
@@ -343,6 +396,37 @@ void AddFusedConv2DNode(
   CopyConv2DAttributes(matched.conv2d, fused_conv2d, {"BiasAdd", "Relu"});
 
   invalidated_nodes->insert(matched.relu);
+  invalidated_nodes->insert(matched.bias_add);
+  invalidated_nodes->insert(matched.conv2d);
+}
+
+void AddFusedConv2DNode(
+    const Conv2DWithSqueezeAndBiasAdd& matched, GraphDef* optimized_graph,
+    absl::flat_hash_set<const NodeDef*>* invalidated_nodes) {
+  VLOG(2) << "Fuse Conv2D with Squeeze and BiasAdd: "
+          << " bias_add=" << matched.bias_add->name()
+          << " squeeze=" << matched.squeeze->name()
+          << " conv2d=" << matched.conv2d->name();
+
+  // Replace Conv2D node with a fused Conv2D. Matched pattern guarantees that it
+  // has single consumer (only the squeeze node).
+  NodeDef* fused_conv2d = optimized_graph->add_node();
+  fused_conv2d->set_name(matched.conv2d->name());
+  fused_conv2d->set_op("_FusedConv2D");
+  fused_conv2d->set_device(matched.conv2d->device());
+  fused_conv2d->add_input(matched.conv2d->input(0));    // 0: input
+  fused_conv2d->add_input(matched.conv2d->input(1));    // 1: filter
+  fused_conv2d->add_input(matched.bias_add->input(1));  // 2: bias
+
+  CopyConv2DAttributes(matched.conv2d, fused_conv2d, {"BiasAdd"});
+
+  // Replace BiasAdd node with a Squeeze.
+  NodeDef* remapped_squeeze = optimized_graph->add_node();
+  *remapped_squeeze = *matched.squeeze;
+  remapped_squeeze->set_name(matched.bias_add->name());
+  remapped_squeeze->set_input(0, fused_conv2d->name());
+
+  invalidated_nodes->insert(matched.squeeze);
   invalidated_nodes->insert(matched.bias_add);
   invalidated_nodes->insert(matched.conv2d);
 }
@@ -552,6 +636,7 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
   Conv2DWithBiasAddAndRelu    conv2d_with_bias_and_relu;
   Conv2DWithBatchNorm         conv2d_with_batch_norm;
   Conv2DWithBatchNormAndRelu  conv2d_with_batch_norm_and_relu;
+  Conv2DWithSqueezeAndBiasAdd conv2d_with_squeeze_and_bias;
   // clang-format on
 
   // Processing graph in reverse-topological sorted order allows to remap
@@ -561,14 +646,15 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
   std::reverse(topo_sorted_graph.mutable_node()->begin(),
                topo_sorted_graph.mutable_node()->end());
 
-  RemapperContext ctx(item);
+  GrapplerItem topo_sorted_item(item, std::move(topo_sorted_graph));
+  RemapperContext ctx(topo_sorted_item);
 
   // Skip nodes that were invalidated by a remapper, e.g. do not process BiasAdd
   // and Relu nodes that were fused into a Conv2D node.
   absl::flat_hash_set<const NodeDef*> invalidated_nodes;
 
-  optimized_graph->mutable_node()->Reserve(item.graph.node_size());
-  for (const NodeDef& node : item.graph.node()) {
+  optimized_graph->mutable_node()->Reserve(topo_sorted_item.graph.node_size());
+  for (const NodeDef& node : topo_sorted_item.graph.node()) {
     // Check if node was invalidated by one of the previous remaps.
     if (invalidated_nodes.count(&node) > 0) continue;
 
@@ -581,6 +667,14 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
     // Remap Conv2D+BiasAdd+Relu into the _FusedConv2D.
     if (FindConv2DWithBiasAndRelu(ctx, &node, &conv2d_with_bias_and_relu)) {
       AddFusedConv2DNode(conv2d_with_bias_and_relu, optimized_graph,
+                         &invalidated_nodes);
+      continue;
+    }
+
+    // Remap Conv2D+Squeeze+BiasAdd into the _FusedConv2D+Squeeze.
+    if (FindConv2DWithSqueezeAndBias(ctx, &node,
+                                     &conv2d_with_squeeze_and_bias)) {
+      AddFusedConv2DNode(conv2d_with_squeeze_and_bias, optimized_graph,
                          &invalidated_nodes);
       continue;
     }
@@ -617,8 +711,8 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
     *optimized_graph->add_node() = node;
   }
 
-  *optimized_graph->mutable_library() = item.graph.library();
-  *optimized_graph->mutable_versions() = item.graph.versions();
+  *optimized_graph->mutable_library() = topo_sorted_item.graph.library();
+  *optimized_graph->mutable_versions() = topo_sorted_item.graph.versions();
 
   return Status::OK();
 }
