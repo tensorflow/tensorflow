@@ -4,7 +4,6 @@
 TENSORFLOW_API_INIT_FILES = [
     # BEGIN GENERATED FILES
     "__init__.py",
-    "app/__init__.py",
     "bitwise/__init__.py",
     "compat/__init__.py",
     "data/__init__.py",

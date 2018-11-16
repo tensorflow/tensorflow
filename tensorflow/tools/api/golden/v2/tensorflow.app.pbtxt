@@ -1,7 +1,0 @@
-path: "tensorflow.app"
-tf_module {
-  member_method {
-    name: "run"
-    argspec: "args=[\'main\', \'argv\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
-  }
-}
