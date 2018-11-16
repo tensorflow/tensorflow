@@ -1418,6 +1418,7 @@ def _create_local_cuda_repository(repository_ctx):
         flag: "-Wno-invalid-partial-specialization"
     """
     cuda_defines["%{host_compiler_includes}"] = host_compiler_includes
+    cuda_defines["%{extra_no_canonical_prefixes_flags}"] = ""
     _tpl(repository_ctx, "crosstool:BUILD", {
         "%{linker_files}": ":empty",
         "%{win_linker_files}": ":empty"
@@ -1439,6 +1440,14 @@ def _create_local_cuda_repository(repository_ctx):
             repository_ctx, cuda_config) +
         "\n  cxx_builtin_include_directory: \"%s\"" % cupti_header_dir +
         "\n  cxx_builtin_include_directory: \"%s\"" % cudnn_header_dir)
+
+    # For gcc, do not canonicalize system header paths; some versions of gcc
+    # pick the shortest possible path for system includes when creating the
+    # .d file - given that includes that are prefixed with "../" multiple
+    # time quickly grow longer than the root of the tree, this can lead to
+    # bazel's header check failing.
+    cuda_defines["%{extra_no_canonical_prefixes_flags}"] = (
+        "flag: \"-fno-canonical-system-headers\"")
     nvcc_path = str(
         repository_ctx.path("%s/bin/nvcc%s" % (
             cuda_config.cuda_toolkit_path,
