@@ -100,6 +100,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.contrib.data.sloppy_interleave": "tf.compat.v1.contrib.data.sloppy_interleave",
         "tf.contrib.data.unbatch": "tf.data.experimental.unbatch",
         "tf.contrib.data.unique": "tf.data.experimental.unique",
+        "tf.quantize_v2": "tf.quantization.quantize",
         "tf.sparse_concat": "tf.sparse.concat",
         "tf.load_file_system_library": "tf.load_library",
     })
@@ -132,6 +133,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "padding", "data_format", "dilations", "name"
         ],
         "tf.pad": ["tensor", "paddings", "mode", "name", "constant_values"],
+        "tf.quantize_v2": [
+            "input", "min_range", "max_range", "T", "mode", "name",
+            "round_mode"
+        ],
         "tf.shape": ["input", "name", "out_type"],
         "tf.size": ["input", "name", "out_type"],
         "tf.sparse.concat": [
