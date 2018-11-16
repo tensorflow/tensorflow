@@ -247,10 +247,9 @@ def model_iteration(model,
   inputs = training_utils.ModelInputs(inputs).as_list()
   targets = targets or []
   sample_weights = sample_weights or []
-  learning_phase_input = []
-  if not isinstance(K.symbolic_learning_phase(), int):
-    learning_phase_input = [True] if mode == 'train' else [False]
-  ins = inputs + targets + sample_weights + learning_phase_input
+  ins = inputs + targets + sample_weights
+  if mode == 'train' and not isinstance(K.symbolic_learning_phase(), int):
+    ins += [True]
   num_samples_or_steps = _get_num_samples_or_steps(ins, batch_size,
                                                    steps_per_epoch)
 
