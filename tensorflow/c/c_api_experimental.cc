@@ -8802,6 +8802,16 @@ const char* TF_GetNumberAttrForOpListInput(const char* op_name, int input_index,
   return input_arg.number_attr().c_str();
 }
 
+int TF_OpIsStateful(const char* op_type, TF_Status* status) {
+  const tensorflow::OpRegistrationData* op_reg_data;
+  status->status =
+      tensorflow::OpRegistry::Global()->LookUp(op_type, &op_reg_data);
+  if (!status->status.ok()) {
+    return 0;
+  }
+  return op_reg_data->op_def.is_stateful();
+}
+
 void TF_InitMain(const char* usage, int* argc, char*** argv) {
   tensorflow::port::InitMain(usage, argc, argv);
 }
