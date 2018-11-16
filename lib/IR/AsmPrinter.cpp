@@ -1168,7 +1168,6 @@ public:
   void print(const BasicBlock *block);
 
   void print(const Instruction *inst);
-  void print(const OperationInst *inst);
 
   void printSuccessorAndUseList(const Operation *term, unsigned index);
 
@@ -1277,13 +1276,6 @@ void CFGFunctionPrinter::print(const Instruction *inst) {
     os << "<<null instruction>>\n";
     return;
   }
-  switch (inst->getKind()) {
-  case Instruction::Kind::Operation:
-    return print(cast<OperationInst>(inst));
-  }
-}
-
-void CFGFunctionPrinter::print(const OperationInst *inst) {
   printOperation(inst);
 }
 

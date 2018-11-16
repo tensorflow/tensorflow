@@ -78,7 +78,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// This is the list of operations in the block.
-  using OperationListType = llvm::iplist<OperationInst>;
+  using OperationListType = llvm::iplist<Instruction>;
   OperationListType &getOperations() { return operations; }
   const OperationListType &getOperations() const { return operations; }
 
@@ -98,16 +98,16 @@ public:
   const_reverse_iterator rend() const { return operations.rend(); }
 
   bool empty() const { return operations.empty(); }
-  void push_back(OperationInst *inst) { operations.push_back(inst); }
-  void push_front(OperationInst *inst) { operations.push_front(inst); }
+  void push_back(Instruction *inst) { operations.push_back(inst); }
+  void push_front(Instruction *inst) { operations.push_front(inst); }
 
-  OperationInst &back() { return operations.back(); }
-  const OperationInst &back() const {
+  Instruction &back() { return operations.back(); }
+  const Instruction &back() const {
     return const_cast<BasicBlock *>(this)->back();
   }
 
-  OperationInst &front() { return operations.front(); }
-  const OperationInst &front() const {
+  Instruction &front() { return operations.front(); }
+  const Instruction &front() const {
     return const_cast<BasicBlock*>(this)->front();
   }
 
@@ -117,7 +117,7 @@ public:
 
   /// Get the terminator instruction of this block, or null if the block is
   /// malformed.
-  OperationInst *getTerminator() const;
+  Instruction *getTerminator() const;
 
   //===--------------------------------------------------------------------===//
   // Predecessors and successors.
@@ -189,7 +189,7 @@ public:
   ///
   /// This function invalidates the specified iterator.
   BasicBlock *splitBasicBlock(iterator splitBefore);
-  BasicBlock *splitBasicBlock(OperationInst *splitBeforeInst) {
+  BasicBlock *splitBasicBlock(Instruction *splitBeforeInst) {
     return splitBasicBlock(iterator(splitBeforeInst));
   }
 
@@ -202,7 +202,7 @@ public:
   void printAsOperand(raw_ostream &os, bool printType = true);
 
   /// getSublistAccess() - Returns pointer to member of operation list
-  static OperationListType BasicBlock::*getSublistAccess(OperationInst*) {
+  static OperationListType BasicBlock::*getSublistAccess(Instruction *) {
     return &BasicBlock::operations;
   }
 

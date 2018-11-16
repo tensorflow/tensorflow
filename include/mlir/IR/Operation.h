@@ -35,7 +35,7 @@ class Instruction;
 class Statement;
 
 /// Operations represent all of the arithmetic and other basic computation in
-/// MLIR.  This class is the common implementation details behind OperationInst
+/// MLIR.  This class is the common implementation details behind Instruction
 /// and OperationStmt.
 ///
 class Operation {
@@ -196,7 +196,7 @@ public:
   }
 
   /// The dyn_cast methods perform a dynamic cast from an Operation (like
-  /// OperationInst and OperationStmt) to a typed Op like DimOp.  This returns
+  /// Instruction and OperationStmt) to a typed Op like DimOp.  This returns
   /// a null OpPointer on failure.
   template <typename OpClass> OpPointer<OpClass> dyn_cast() {
     if (isa<OpClass>()) {
@@ -207,7 +207,7 @@ public:
   }
 
   /// The dyn_cast methods perform a dynamic cast from an Operation (like
-  /// OperationInst and OperationStmt) to a typed Op like DimOp.  This returns
+  /// Instruction and OperationStmt) to a typed Op like DimOp.  This returns
   /// a null ConstOpPointer on failure.
   template <typename OpClass> ConstOpPointer<OpClass> dyn_cast() const {
     if (isa<OpClass>()) {
@@ -218,7 +218,7 @@ public:
   }
 
   /// The cast methods perform a cast from an Operation (like
-  /// OperationInst and OperationStmt) to a typed Op like DimOp.  This aborts
+  /// Instruction and OperationStmt) to a typed Op like DimOp.  This aborts
   /// if the parameter to the template isn't an instance of the template type
   /// argument.
   template <typename OpClass> OpPointer<OpClass> cast() {
@@ -227,7 +227,7 @@ public:
   }
 
   /// The cast methods perform a cast from an Operation (like
-  /// OperationInst and OperationStmt) to a typed Op like DimOp.  This aborts
+  /// Instruction and OperationStmt) to a typed Op like DimOp.  This aborts
   /// if the parameter to the template isn't an instance of the template type
   /// argument.
   template <typename OpClass> ConstOpPointer<OpClass> cast() const {
@@ -243,7 +243,7 @@ public:
 
   enum class OperationKind { Instruction, Statement };
   // This is used to implement the dynamic casting logic, but you shouldn't
-  // call it directly.  Use something like isa<OperationInst>(someOp) instead.
+  // call it directly.  Use something like isa<Instruction>(someOp) instead.
   OperationKind getOperationKind() const {
     return nameAndIsInstruction.getInt() ? OperationKind::Instruction
                                          : OperationKind::Statement;
@@ -285,7 +285,6 @@ public:
   void dump() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
-  static bool classof(const Instruction *inst);
   static bool classof(const Statement *stmt);
   static bool classof(const IROperandOwner *ptr);
 
@@ -299,7 +298,7 @@ private:
   void operator=(const Operation&) = delete;
 
   /// This holds the name of the operation, and a bool.  The bool is true if
-  /// this operation is an OperationInst, false if it is a OperationStmt.
+  /// this operation is an Instruction, false if it is a OperationStmt.
   llvm::PointerIntPair<OperationName, 1, bool> nameAndIsInstruction;
 
   /// This holds general named attributes for the operation.

@@ -28,7 +28,7 @@
 
 namespace mlir {
 class Function;
-class OperationInst;
+class Instruction;
 class OperationStmt;
 class Operation;
 
@@ -67,10 +67,10 @@ public:
     return const_cast<SSAValue *>(this)->getFunction();
   }
 
-  /// If this value is the result of an OperationInst, return the instruction
+  /// If this value is the result of an Instruction, return the instruction
   /// that defines it.
-  OperationInst *getDefiningInst();
-  const OperationInst *getDefiningInst() const {
+  Instruction *getDefiningInst();
+  const Instruction *getDefiningInst() const {
     return const_cast<SSAValue *>(this)->getDefiningInst();
   }
 

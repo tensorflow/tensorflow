@@ -169,7 +169,7 @@ public:
     setInsertionPoint(block, insertPoint);
   }
 
-  CFGFuncBuilder(OperationInst *insertBefore)
+  CFGFuncBuilder(Instruction *insertBefore)
       : CFGFuncBuilder(insertBefore->getBlock(),
                        BasicBlock::iterator(insertBefore)) {}
 
@@ -210,7 +210,7 @@ public:
   }
 
   /// Set the insertion point to the specified operation.
-  void setInsertionPoint(OperationInst *inst) {
+  void setInsertionPoint(Instruction *inst) {
     setInsertionPoint(inst->getBlock(), BasicBlock::iterator(inst));
   }
 
@@ -219,7 +219,7 @@ public:
     setInsertionPoint(block, block->end());
   }
 
-  void insert(OperationInst *opInst) {
+  void insert(Instruction *opInst) {
     block->getOperations().insert(insertPoint, opInst);
   }
 
@@ -230,7 +230,7 @@ public:
   BasicBlock *createBlock(BasicBlock *insertBefore = nullptr);
 
   /// Create an operation given the fields represented as an OperationState.
-  OperationInst *createOperation(const OperationState &state);
+  Instruction *createOperation(const OperationState &state);
 
   /// Create operation of specific op type at the current insertion point
   /// without verifying to see if it is valid.
@@ -253,7 +253,7 @@ public:
     OpTy::build(this, &state, args...);
     auto *inst = createOperation(state);
 
-    // If the OperationInst we produce is valid, return it.
+    // If the Instruction we produce is valid, return it.
     if (!OpTy::verifyInvariants(inst)) {
       auto result = inst->dyn_cast<OpTy>();
       assert(result && "Builder didn't return the right type");
@@ -266,7 +266,7 @@ public:
     return OpPointer<OpTy>();
   }
 
-  OperationInst *cloneOperation(const OperationInst &srcOpInst) {
+  Instruction *cloneOperation(const Instruction &srcOpInst) {
     auto *op = srcOpInst.clone();
     insert(op);
     return op;
@@ -437,8 +437,8 @@ public:
       : Builder(mlFuncBuilder.getContext()), builder(mlFuncBuilder),
         kind(Function::Kind::MLFunc) {}
   FuncBuilder(Operation *op) : Builder(op->getContext()) {
-    if (isa<OperationInst>(op)) {
-      builder = builderUnion(cast<OperationInst>(op));
+    if (auto *inst = dyn_cast<Instruction>(op)) {
+      builder = builderUnion(inst);
       kind = Function::Kind::CFGFunc;
     } else {
       builder = builderUnion(cast<OperationStmt>(op));
@@ -473,11 +473,11 @@ public:
   }
 
   /// Set the insertion point to the specified operation. This requires that the
-  /// input operation is a OperationInst when building a CFG function and a
+  /// input operation is a Instruction when building a CFG function and a
   /// OperationStmt when building a ML function.
   void setInsertionPoint(Operation *op) {
     if (kind == Function::Kind::CFGFunc)
-      builder.cfg.setInsertionPoint(cast<OperationInst>(op));
+      builder.cfg.setInsertionPoint(cast<Instruction>(op));
     else
       builder.ml.setInsertionPoint(cast<OperationStmt>(op));
   }
@@ -487,7 +487,7 @@ private:
   union builderUnion {
     builderUnion(CFGFuncBuilder cfg) : cfg(cfg) {}
     builderUnion(MLFuncBuilder ml) : ml(ml) {}
-    builderUnion(OperationInst *op) : cfg(op) {}
+    builderUnion(Instruction *op) : cfg(op) {}
     builderUnion(OperationStmt *op) : ml(op) {}
     // Default initializer to allow deferring initialization of member.
     builderUnion() {}

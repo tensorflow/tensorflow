@@ -41,101 +41,21 @@ unsigned InstResult::getResultNumber() const {
 // Instruction
 //===----------------------------------------------------------------------===//
 
-// Instructions are deleted through the destroy() member because we don't have
-// a virtual destructor.
-Instruction::~Instruction() {
-  assert(block == nullptr && "instruction destroyed but still in a block");
-}
-
-/// Destroy this instruction or one of its subclasses.
-void Instruction::destroy() {
-  switch (getKind()) {
-  case Kind::Operation:
-    cast<OperationInst>(this)->destroy();
-    break;
-  }
-}
-
-void OperationInst::destroy() {
-  this->~OperationInst();
-  free(this);
-}
-
-CFGFunction *Instruction::getFunction() {
-  auto *block = getBlock();
-  return block ? block->getFunction() : nullptr;
-}
-
-unsigned Instruction::getNumOperands() const {
-  switch (getKind()) {
-  case Kind::Operation:
-    return cast<OperationInst>(this)->getNumOperands();
-  }
-}
-
-MutableArrayRef<InstOperand> Instruction::getInstOperands() {
-  switch (getKind()) {
-  case Kind::Operation:
-    return cast<OperationInst>(this)->getInstOperands();
-  }
-}
-
-/// This drops all operand uses from this instruction, which is an essential
-/// step in breaking cyclic dependences between references when they are to
-/// be deleted.
-void Instruction::dropAllReferences() {
-  for (auto &op : getInstOperands())
-    op.drop();
-
-  if (OperationInst *opInst = dyn_cast<OperationInst>(this)) {
-    if (opInst->isTerminator())
-      for (auto &dest : opInst->getBasicBlockOperands())
-        dest.drop();
-  }
-}
-
-/// Emit a note about this instruction, reporting up to any diagnostic
-/// handlers that may be listening.
-void Instruction::emitNote(const Twine &message) const {
-  getContext()->emitDiagnostic(getLoc(), message,
-                               MLIRContext::DiagnosticKind::Note);
-}
-
-/// Emit a warning about this operation, reporting up to any diagnostic
-/// handlers that may be listening.
-void Instruction::emitWarning(const Twine &message) const {
-  getContext()->emitDiagnostic(getLoc(), message,
-                               MLIRContext::DiagnosticKind::Warning);
-}
-
-/// Emit an error about fatal conditions with this instruction, reporting up to
-/// any diagnostic handlers that may be listening.  NOTE: This may terminate
-/// the containing application, only use when the IR is in an inconsistent
-/// state.
-void Instruction::emitError(const Twine &message) const {
-  getContext()->emitDiagnostic(getLoc(), message,
-                               MLIRContext::DiagnosticKind::Error);
-}
-
-//===----------------------------------------------------------------------===//
-// OperationInst
-//===----------------------------------------------------------------------===//
-
-/// Create a new OperationInst with the specified fields.
-OperationInst *OperationInst::create(Location location, OperationName name,
-                                     ArrayRef<CFGValue *> operands,
-                                     ArrayRef<Type> resultTypes,
-                                     ArrayRef<NamedAttribute> attributes,
-                                     ArrayRef<BasicBlock *> successors,
-                                     MLIRContext *context) {
+/// Create a new Instruction with the specified fields.
+Instruction *Instruction::create(Location location, OperationName name,
+                                 ArrayRef<CFGValue *> operands,
+                                 ArrayRef<Type> resultTypes,
+                                 ArrayRef<NamedAttribute> attributes,
+                                 ArrayRef<BasicBlock *> successors,
+                                 MLIRContext *context) {
   unsigned numSuccessors = successors.size();
   auto byteSize = totalSizeToAlloc<InstResult, BasicBlockOperand, unsigned>(
       resultTypes.size(), numSuccessors, numSuccessors);
   void *rawMem = malloc(byteSize);
 
-  // Initialize the OperationInst part of the instruction.
-  auto inst = ::new (rawMem) OperationInst(location, name, resultTypes.size(),
-                                           numSuccessors, attributes, context);
+  // Initialize the Instruction part of the instruction.
+  auto inst = ::new (rawMem) Instruction(location, name, resultTypes.size(),
+                                         numSuccessors, attributes, context);
 
   // Initialize the results and operands.
   auto instResults = inst->getInstResults();
@@ -193,7 +113,7 @@ OperationInst *OperationInst::create(Location location, OperationName name,
   return inst;
 }
 
-OperationInst *OperationInst::clone() const {
+Instruction *Instruction::clone() const {
   SmallVector<CFGValue *, 8> operands;
   SmallVector<Type, 8> resultTypes;
   SmallVector<BasicBlock *, 1> successors;
@@ -238,15 +158,17 @@ OperationInst *OperationInst::clone() const {
                 successors, getContext());
 }
 
-OperationInst::OperationInst(Location location, OperationName name,
-                             unsigned numResults, unsigned numSuccessors,
-                             ArrayRef<NamedAttribute> attributes,
-                             MLIRContext *context)
+Instruction::Instruction(Location location, OperationName name,
+                         unsigned numResults, unsigned numSuccessors,
+                         ArrayRef<NamedAttribute> attributes,
+                         MLIRContext *context)
     : Operation(/*isInstruction=*/true, name, attributes, context),
-      Instruction(Kind::Operation, location), numResults(numResults),
-      numSuccs(numSuccessors) {}
+      IROperandOwner(IROperandOwner::Kind::Instruction, location),
+      numResults(numResults), numSuccs(numSuccessors) {}
 
-OperationInst::~OperationInst() {
+Instruction::~Instruction() {
+  assert(block == nullptr && "instruction destroyed but still in a block");
+
   // Explicitly run the destructors for the results and successors.
   for (auto &result : getInstResults())
     result.~InstResult();
@@ -256,7 +178,53 @@ OperationInst::~OperationInst() {
       successor.~BasicBlockOperand();
 }
 
-void OperationInst::addSuccessorOperand(unsigned index, CFGValue *value) {
+/// Destroy this instruction.
+void Instruction::destroy() {
+  this->~Instruction();
+  free(this);
+}
+
+CFGFunction *Instruction::getFunction() {
+  auto *block = getBlock();
+  return block ? block->getFunction() : nullptr;
+}
+
+/// This drops all operand uses from this instruction, which is an essential
+/// step in breaking cyclic dependences between references when they are to
+/// be deleted.
+void Instruction::dropAllReferences() {
+  for (auto &op : getInstOperands())
+    op.drop();
+
+  if (isTerminator())
+    for (auto &dest : getBasicBlockOperands())
+      dest.drop();
+}
+
+/// Emit a note about this instruction, reporting up to any diagnostic
+/// handlers that may be listening.
+void Instruction::emitNote(const Twine &message) const {
+  getContext()->emitDiagnostic(getLoc(), message,
+                               MLIRContext::DiagnosticKind::Note);
+}
+
+/// Emit a warning about this operation, reporting up to any diagnostic
+/// handlers that may be listening.
+void Instruction::emitWarning(const Twine &message) const {
+  getContext()->emitDiagnostic(getLoc(), message,
+                               MLIRContext::DiagnosticKind::Warning);
+}
+
+/// Emit an error about fatal conditions with this instruction, reporting up to
+/// any diagnostic handlers that may be listening.  NOTE: This may terminate
+/// the containing application, only use when the IR is in an inconsistent
+/// state.
+void Instruction::emitError(const Twine &message) const {
+  getContext()->emitDiagnostic(getLoc(), message,
+                               MLIRContext::DiagnosticKind::Error);
+}
+
+void Instruction::addSuccessorOperand(unsigned index, CFGValue *value) {
   assert(isTerminator() && "Only terminators have successors.");
   assert(index < getNumSuccessors());
   assert(std::accumulate(getTrailingObjects<unsigned>() + index + 1,
@@ -267,47 +235,45 @@ void OperationInst::addSuccessorOperand(unsigned index, CFGValue *value) {
   ++getTrailingObjects<unsigned>()[index];
 }
 
-void OperationInst::addSuccessorOperands(unsigned index,
-                                         ArrayRef<CFGValue *> values) {
+void Instruction::addSuccessorOperands(unsigned index,
+                                       ArrayRef<CFGValue *> values) {
   operands.reserve(operands.size() + values.size());
   for (auto *value : values)
     addSuccessorOperand(index, value);
 }
 
-void llvm::ilist_traits<::mlir::OperationInst>::deleteNode(
-    OperationInst *inst) {
+void llvm::ilist_traits<::mlir::Instruction>::deleteNode(Instruction *inst) {
   inst->destroy();
 }
 
 mlir::BasicBlock *
-llvm::ilist_traits<::mlir::OperationInst>::getContainingBlock() {
+llvm::ilist_traits<::mlir::Instruction>::getContainingBlock() {
   size_t Offset(
       size_t(&((BasicBlock *)nullptr->*BasicBlock::getSublistAccess(nullptr))));
-  iplist<OperationInst> *Anchor(static_cast<iplist<OperationInst> *>(this));
+  iplist<Instruction> *Anchor(static_cast<iplist<Instruction> *>(this));
   return reinterpret_cast<BasicBlock *>(reinterpret_cast<char *>(Anchor) -
                                         Offset);
 }
 
 /// This is a trait method invoked when an instruction is added to a block.  We
 /// keep the block pointer up to date.
-void llvm::ilist_traits<::mlir::OperationInst>::addNodeToList(
-    OperationInst *inst) {
+void llvm::ilist_traits<::mlir::Instruction>::addNodeToList(Instruction *inst) {
   assert(!inst->getBlock() && "already in a basic block!");
   inst->block = getContainingBlock();
 }
 
 /// This is a trait method invoked when an instruction is removed from a block.
 /// We keep the block pointer up to date.
-void llvm::ilist_traits<::mlir::OperationInst>::removeNodeFromList(
-    OperationInst *inst) {
+void llvm::ilist_traits<::mlir::Instruction>::removeNodeFromList(
+    Instruction *inst) {
   assert(inst->block && "not already in a basic block!");
   inst->block = nullptr;
 }
 
 /// This is a trait method invoked when an instruction is moved from one block
 /// to another.  We keep the block pointer up to date.
-void llvm::ilist_traits<::mlir::OperationInst>::transferNodesFromList(
-    ilist_traits<OperationInst> &otherList, instr_iterator first,
+void llvm::ilist_traits<::mlir::Instruction>::transferNodesFromList(
+    ilist_traits<Instruction> &otherList, instr_iterator first,
     instr_iterator last) {
   // If we are transferring instructions within the same basic block, the block
   // pointer doesn't need to be updated.
@@ -321,7 +287,7 @@ void llvm::ilist_traits<::mlir::OperationInst>::transferNodesFromList(
 }
 
 /// Unlink this instruction from its BasicBlock and delete it.
-void OperationInst::erase() {
+void Instruction::erase() {
   assert(getBlock() && "Instruction has no parent");
   getBlock()->getOperations().erase(this);
 }
@@ -329,15 +295,15 @@ void OperationInst::erase() {
 /// Unlink this operation instruction from its current basic block and insert
 /// it right before `existingInst` which may be in the same or another block
 /// in the same function.
-void OperationInst::moveBefore(OperationInst *existingInst) {
+void Instruction::moveBefore(Instruction *existingInst) {
   assert(existingInst && "Cannot move before a null instruction");
   return moveBefore(existingInst->getBlock(), existingInst->getIterator());
 }
 
 /// Unlink this operation instruction from its current basic block and insert
 /// it right before `iterator` in the specified basic block.
-void OperationInst::moveBefore(BasicBlock *block,
-                               llvm::iplist<OperationInst>::iterator iterator) {
+void Instruction::moveBefore(BasicBlock *block,
+                             llvm::iplist<Instruction>::iterator iterator) {
   block->getOperations().splice(iterator, getBlock()->getOperations(),
                                 getIterator());
 }

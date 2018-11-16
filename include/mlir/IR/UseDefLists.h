@@ -79,11 +79,10 @@ public:
     OperationStmt,
     ForStmt,
     IfStmt,
-    OperationInst,
+    Instruction,
 
     /// These enums define ranges used for classof implementations.
     STMT_LAST = IfStmt,
-    INST_FIRST = OperationInst,
   };
 
   Kind getKind() const { return locationAndKind.getInt(); }

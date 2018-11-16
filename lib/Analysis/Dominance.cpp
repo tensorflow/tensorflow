@@ -49,17 +49,15 @@ bool DominanceInfo::properlyDominates(const Instruction *a,
     return false;
 
   // If one is a terminator, then the other dominates it.
-  auto *aOp = cast<OperationInst>(a);
-  if (aOp->isTerminator())
+  if (a->isTerminator())
     return false;
 
-  auto *bOp = cast<OperationInst>(b);
-  if (bOp->isTerminator())
+  if (b->isTerminator())
     return true;
 
   // Otherwise, do a linear scan to determine whether B comes after A.
-  auto aIter = BasicBlock::const_iterator(aOp);
-  auto bIter = BasicBlock::const_iterator(bOp);
+  auto aIter = BasicBlock::const_iterator(a);
+  auto bIter = BasicBlock::const_iterator(b);
   auto fIter = aBlock->begin();
   while (bIter != fIter) {
     --bIter;

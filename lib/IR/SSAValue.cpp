@@ -23,9 +23,9 @@
 
 using namespace mlir;
 
-/// If this value is the result of an OperationInst, return the instruction
+/// If this value is the result of an Instruction, return the instruction
 /// that defines it.
-OperationInst *SSAValue::getDefiningInst() {
+Instruction *SSAValue::getDefiningInst() {
   if (auto *result = dyn_cast<InstResult>(this))
     return result->getOwner();
   return nullptr;
@@ -77,7 +77,7 @@ MLIRContext *IROperandOwner::getContext() const {
   case Kind::IfStmt:
     return cast<IfStmt>(this)->getContext();
 
-  case Kind::OperationInst:
+  case Kind::Instruction:
     // If we have an instruction, we can efficiently get this from the function
     // the instruction is in.
     auto *fn = cast<Instruction>(this)->getFunction();

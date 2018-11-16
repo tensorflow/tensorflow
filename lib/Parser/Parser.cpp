@@ -1936,10 +1936,10 @@ SSAValue *FunctionParser::createForwardReferencePlaceholder(SMLoc loc,
   // cannot be created through normal user input, allowing us to distinguish
   // them.
   auto name = OperationName("placeholder", getContext());
-  auto *inst = OperationInst::create(getEncodedSourceLocation(loc), name,
-                                     /*operands=*/{}, type,
-                                     /*attributes=*/{},
-                                     /*successors=*/{}, getContext());
+  auto *inst = Instruction::create(getEncodedSourceLocation(loc), name,
+                                   /*operands=*/{}, type,
+                                   /*attributes=*/{},
+                                   /*successors=*/{}, getContext());
   forwardReferencePlaceholders[inst->getResult(0)] = loc;
   return inst->getResult(0);
 }
