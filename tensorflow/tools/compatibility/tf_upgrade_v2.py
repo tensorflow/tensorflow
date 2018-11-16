@@ -50,13 +50,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.nn.sufficient_statistics": {
             "keep_dims": "keepdims"
-        },
-        "tf.zeros_like": {
-            "tensor": "input",
-        },
-        "tf.ones_like": {
-            "tensor": "input",
-        },
+        }
     }
 
     # Mapping from function to the new name of the function
