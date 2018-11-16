@@ -32,6 +32,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.util import nest
+
 
 # NOTE(skyewm): TensorFlow uses protected class methods and fields to signify
 # that they aren't part of the official public API. These protected members
@@ -119,11 +121,12 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
     # correct output structure
     tensors = tuple(array_ops.identity(t) for t in tensors)
 
-    result = tuple(tensors[:num_cond_outputs])
-    if len(result) == 1:
-      return result[0]
-    else:
-      return result
+    # Packing output tensors in the same nested structure as the true and false
+    # functions return
+    result = nest.pack_sequence_as(
+        structure=true_graph.structured_outputs,
+        flat_sequence=tensors[:num_cond_outputs])
+    return result
 
 
 @ops.RegisterGradient("If")
@@ -455,6 +458,10 @@ def _check_same_outputs(true_graph, false_graph):
         "arguments, got:\n"
         "  true_fn: %s\n"
         "  false_fn: %s" % (true_output_types, false_output_types))
+
+  # Make sure both structured outputs for both graphs have the same structure
+  nest.assert_same_structure(true_graph.structured_outputs,
+                             false_graph.structured_outputs)
 
 
 def _get_output_shapes(true_graph_outputs, false_graph_outputs):

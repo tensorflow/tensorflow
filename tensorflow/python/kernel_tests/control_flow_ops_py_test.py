@@ -560,7 +560,6 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(4, count.eval())
 
   def testCond_6(self):
-
     with self.cached_session():
       v1 = variables.Variable([7])
 
@@ -583,6 +582,89 @@ class ControlFlowTest(test.TestCase):
       fn2 = lambda: [y, y]
       r = control_flow_ops.cond(pred, fn1, fn2)
       self.assertAllEqual([11, 12], sess.run(r))
+
+  def testCondListOutput(self):
+    with self.cached_session() as sess:
+      x = constant_op.constant(10)
+      y = constant_op.constant(200)
+      pred = math_ops.less(1, 2)
+      fn1 = lambda: [math_ops.add(x, y), math_ops.add(x, y)]
+      fn2 = lambda: [y, y]
+      r = control_flow_ops.cond(pred, fn1, fn2)
+      test_result = sess.run(r)
+      self.assertListEqual([210, 210], test_result)
+
+  def testTupleOutput(self):
+    with self.cached_session() as sess:
+      x = constant_op.constant(10)
+      y = constant_op.constant(200)
+      pred = math_ops.less(1, 2)
+      fn1 = lambda: (math_ops.add(x, y), math_ops.add(x, y))
+      fn2 = lambda: (y, y)
+      r = control_flow_ops.cond(pred, fn1, fn2)
+      test_result = sess.run(r)
+      self.assertTupleEqual((210, 210), test_result)
+
+  def testDictOutput(self):
+    with self.cached_session() as sess:
+      x = constant_op.constant(10)
+      y = constant_op.constant(200)
+      pred = math_ops.less(1, 2)
+      fn1 = lambda: {"a": math_ops.add(x, y), "b": math_ops.add(x, y)}
+      fn2 = lambda: {"a": y, "b": y}
+      r = control_flow_ops.cond(pred, fn1, fn2)
+      test_result = sess.run(r)
+      self.assertDictEqual({"a": 210, "b": 210}, test_result)
+
+  def testEmbeddedListOutput(self):
+    with self.cached_session() as sess:
+      x = constant_op.constant(10)
+      y = constant_op.constant(200)
+      pred = math_ops.less(1, 2)
+      fn1 = lambda: [[math_ops.add(x, y), math_ops.add(x, y)]]
+      fn2 = lambda: [[y, y]]
+      # Pass strict=True flag as cond_v2 allows for tensors to be
+      # in nested output structures as singletons
+      r = control_flow_ops.cond(pred, fn1, fn2, strict=True)
+      test_result = sess.run(r)
+      self.assertListEqual([[210, 210]], test_result)
+
+  def testEmbeddedTupleOutput(self):
+    with self.cached_session() as sess:
+      x = constant_op.constant(10)
+      y = constant_op.constant(200)
+      pred = math_ops.less(1, 2)
+      fn1 = lambda: ((math_ops.add(x, y), math_ops.add(x, y)))
+      fn2 = lambda: ((y, y))
+      r = control_flow_ops.cond(pred, fn1, fn2)
+      test_result = sess.run(r)
+      self.assertTupleEqual(((210, 210)), test_result)
+
+  def testEmbeddedDictOutput(self):
+    with self.cached_session() as sess:
+      x = constant_op.constant(10)
+      y = constant_op.constant(200)
+      pred = math_ops.less(1, 2)
+      fn1 = lambda: {"a": {"c": math_ops.add(x, y)},
+                     "b": {"d": math_ops.add(x, y)}}
+      fn2 = lambda: {"a": {"c": y},
+                     "b": {"d": y}}
+      r = control_flow_ops.cond(pred, fn1, fn2)
+      test_result = sess.run(r)
+      self.assertDictEqual({"a": {"c": 210}, "b": {"d": 210}}, test_result)
+
+  def testCheckNestedOutputStruct(self):
+    with self.cached_session() as sess:
+      x = constant_op.constant(10)
+      y = constant_op.constant(200)
+      pred = math_ops.less(1, 2)
+      fn1 = lambda: {"a": math_ops.add(x, y), "b": math_ops.add(x, y)}
+      fn2 = lambda: {"c": y, "d": y}
+      with self.assertRaisesRegexp(
+          ValueError,
+          "The two structures don't have the same nested structure"):
+        r = control_flow_ops.cond(pred, fn1, fn2)
+        test_result = sess.run(r)
 
   def testCondRef(self):
 
@@ -2116,7 +2198,7 @@ class ControlFlowTest(test.TestCase):
       def fn1():
         r = control_flow_ops.while_loop(c, b, [n],
                                         [tensor_shape.unknown_shape()])
-        return gradients_impl.gradients(r, x)
+        return gradients_impl.gradients(r, x)[0]
 
       r = control_flow_ops.cond(math_ops.less(1, 2), fn1, lambda: x)
       self.assertAllClose(9.0, r.eval(feed_dict={x: 1.0}))
