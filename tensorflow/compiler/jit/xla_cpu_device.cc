@@ -37,7 +37,7 @@ class XlaCpuDeviceFactory : public DeviceFactory {
 Status XlaCpuDeviceFactory::CreateDevices(const SessionOptions& session_options,
                                           const string& name_prefix,
                                           std::vector<Device*>* devices) {
-  legacy_flags::XlaDeviceFlags* flags = legacy_flags::GetXlaDeviceFlags();
+  XlaDeviceFlags* flags = GetXlaDeviceFlags();
   bool compile_on_demand = flags->tf_xla_compile_on_demand;
 
   XlaOpRegistry::DeviceRegistration registration;
