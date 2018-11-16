@@ -1053,18 +1053,23 @@ template struct PadInput<Eigen::GpuDevice, float, int, 4>;
 template struct PadInput<Eigen::GpuDevice, Eigen::half, int, 4>;
 
 // For 3d ops.
+template struct TransformFilter<Eigen::GpuDevice, double, int, 5>;
 template struct TransformFilter<Eigen::GpuDevice, float, int, 5>;
 template struct TransformFilter<Eigen::GpuDevice, Eigen::half, int, 5>;
 
+template struct ReverseTransformFilter<Eigen::GpuDevice, double, 5>;
 template struct ReverseTransformFilter<Eigen::GpuDevice, float, 5>;
 template struct ReverseTransformFilter<Eigen::GpuDevice, Eigen::half, 5>;
 
+template struct NHWCToNCHW<Eigen::GpuDevice, double, 5>;
 template struct NHWCToNCHW<Eigen::GpuDevice, float, 5>;
 template struct NHWCToNCHW<Eigen::GpuDevice, Eigen::half, 5>;
 
+template struct NCHWToNHWC<Eigen::GpuDevice, double, 5>;
 template struct NCHWToNHWC<Eigen::GpuDevice, float, 5>;
 template struct NCHWToNHWC<Eigen::GpuDevice, Eigen::half, 5>;
 
+template struct PadInput<Eigen::GpuDevice, double, int, 5>;
 template struct PadInput<Eigen::GpuDevice, float, int, 5>;
 template struct PadInput<Eigen::GpuDevice, Eigen::half, int, 5>;
 
