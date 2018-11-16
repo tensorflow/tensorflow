@@ -19,12 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
@@ -209,7 +210,9 @@ class DistributionTestBase(test.TestCase):
       with self.assertRaises(_TestException):
         dist.call_for_each_replica(_merge_call_merge_raises_fn)
 
-  def _input_fn_to_test_input_context(self, expected_num_replicas_in_sync,
+  def _input_fn_to_test_input_context(self,
+                                      dataset_fn,
+                                      expected_num_replicas_in_sync,
                                       expected_num_input_pipelines,
                                       expected_input_pipeline_id):
     # Use a list of one element as counter so that it can be captured by the
@@ -232,6 +235,31 @@ class DistributionTestBase(test.TestCase):
         self.assertEqual(worker_id_counter[0], input_context.input_pipeline_id)
         worker_id_counter[0] += 1
 
-      return dataset_ops.Dataset.from_tensors([[1.]]).repeat()
+      return dataset_fn()
 
     return _input_fn
+
+  def _test_input_fn_iterator(self, iterator, devices, expected_values,
+                              sess=None):
+    evaluate = lambda x: sess.run(x) if sess else self.evaluate(x)
+    evaluate(iterator.initialize())
+
+    for expected_value in expected_values:
+      next_element = iterator.get_next()
+      computed_value = evaluate(
+          [values.select_device(d, next_element) for d in devices])
+      self.assertEqual(expected_value, computed_value)
+
+    with self.assertRaises(errors.OutOfRangeError):
+      next_element = iterator.get_next()
+      evaluate([values.select_device(d, next_element) for d in devices])
+
+    # After re-initializing the iterator, should be able to iterate again.
+    evaluate(iterator.initialize())
+
+    for expected_value in expected_values:
+      next_element = iterator.get_next()
+      computed_value = evaluate(
+          [values.select_device(d, next_element) for d in devices])
+      self.assertEqual(expected_value, computed_value)
+

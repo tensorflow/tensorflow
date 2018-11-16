@@ -38,6 +38,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training import device_util
+from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.util import nest
 
@@ -573,7 +574,10 @@ class InputFunctionIteratorTestBase(test.TestCase):
   def _test_iterator(self, input_fn, worker_device_pairs, expected_values,
                      sess=None):
     devices = nest.flatten([ds for _, ds in worker_device_pairs])
-    iterator = values.InputFunctionIterator(input_fn, worker_device_pairs)
+    input_contexts = [
+        distribute_lib.InputContext() for _ in worker_device_pairs]
+    iterator = values.InputFunctionIterator(
+        input_fn, worker_device_pairs, input_contexts)
 
     evaluate = lambda x: sess.run(x) if sess else self.evaluate(x)
 
@@ -604,7 +608,7 @@ class InputFunctionIteratorSingleWorkerTest(InputFunctionIteratorTestBase):
   @test_util.run_in_graph_and_eager_modes
   def testOneDeviceCPU(self):
     worker_device_pairs = [("", ["/device:CPU:0"])]
-    input_fn = lambda: dataset_ops.Dataset.range(10)
+    input_fn = lambda _: dataset_ops.Dataset.range(10)
 
     expected_values = [[i] for i in range(10)]
 
@@ -616,7 +620,7 @@ class InputFunctionIteratorSingleWorkerTest(InputFunctionIteratorTestBase):
       self.skipTest("A GPU is not available for this test.")
 
     worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
-    input_fn = lambda: dataset_ops.Dataset.range(10)
+    input_fn = lambda _: dataset_ops.Dataset.range(10)
 
     expected_values = [[i, i+1] for i in range(0, 10, 2)]
 
@@ -628,7 +632,7 @@ class InputFunctionIteratorSingleWorkerTest(InputFunctionIteratorTestBase):
       self.skipTest("A GPU is not available for this test.")
 
     worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
-    def input_fn():
+    def input_fn(_):
       dataset1 = dataset_ops.Dataset.range(10)
       dataset2 = dataset_ops.Dataset.range(10).map(lambda x: x**2)
       return dataset_ops.Dataset.zip((dataset1, dataset2))
@@ -643,7 +647,7 @@ class InputFunctionIteratorSingleWorkerTest(InputFunctionIteratorTestBase):
       self.skipTest("A GPU is not available for this test.")
 
     worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
-    input_fn = lambda: dataset_ops.Dataset.range(11)
+    input_fn = lambda _: dataset_ops.Dataset.range(11)
 
     expected_values = [[i, i+1] for i in range(0, 10, 2)]
     self._test_iterator(input_fn, worker_device_pairs, expected_values)
@@ -675,7 +679,7 @@ class InputFunctionIteratorMultiWorkerTest(
   def testOneDevicePerWorker(self):
     worker_devices = self._cpu_devices()
     with context.graph_mode(), self.cached_session() as sess:
-      input_fn = lambda: dataset_ops.Dataset.range(4)
+      input_fn = lambda _: dataset_ops.Dataset.range(4)
       self._test_iterator(input_fn, worker_devices,
                           [[0, 0], [1, 1], [2, 2], [3, 3]], sess)
 
@@ -684,14 +688,14 @@ class InputFunctionIteratorMultiWorkerTest(
       self.skipTest("A GPU is not available for this test.")
     worker_devices = self._cpu_and_one_gpu_devices()
     with context.graph_mode(), self.cached_session() as sess:
-      input_fn = lambda: dataset_ops.Dataset.range(4)
+      input_fn = lambda _: dataset_ops.Dataset.range(4)
       self._test_iterator(input_fn, worker_devices,
                           [[0, 1, 0, 1], [2, 3, 2, 3]], sess)
 
   def testTupleDataset(self):
     worker_devices = self._cpu_devices()
     with context.graph_mode(), self.cached_session() as sess:
-      def input_fn():
+      def input_fn(_):
         dataset1 = dataset_ops.Dataset.range(4)
         dataset2 = dataset_ops.Dataset.range(4).map(lambda x: x**2)
         return dataset_ops.Dataset.zip((dataset1, dataset2))

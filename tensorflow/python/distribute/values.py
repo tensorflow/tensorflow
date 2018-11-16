@@ -1330,13 +1330,12 @@ class InputIterator(object):
 class InputFunctionIterator(InputIterator):
   """Iterator created from input function."""
 
-  def __init__(self, input_fn, worker_device_pairs):
+  def __init__(self, input_fn, worker_device_pairs, input_contexts):
     """Make an iterator for input provided via an input function.
 
     Currently implements PER_WORKER mode, in which the `input_fn` is called
     once on each worker.
 
-    TODO(priyag): Integrate with `InputContext` when it is submitted.
     TODO(priyag): Add other replication modes.
     TODO(priyag): Allow taking input function that returns a callable that
     returns nest of tensors.
@@ -1345,20 +1344,30 @@ class InputFunctionIterator(InputIterator):
       input_fn: Input function that returns a `tf.data.Dataset` object.
       worker_device_pairs: A list of (worker, list of devices on that worker)
         pairs.
+      input_contexts: A list of `InputContext` instances to be passed to call(s)
+        to `input_fn`. Length and order should match worker order in
+        `worker_device_pairs`.
     """
     if not worker_device_pairs:
       raise ValueError("Cannot create iterator when no devices given.")
+
+    if len(worker_device_pairs) != len(input_contexts):
+      raise ValueError(
+          "Number of worker_device_pairs (%d) is not same as number of"
+          "input_contexts (%d)" % (
+              len(worker_device_pairs), len(input_contexts)))
 
     self._worker_device_pairs = worker_device_pairs
     self._is_eager = context.executing_eagerly()
     self._iterators = []
 
-    for worker, worker_devices in worker_device_pairs:
+    for (worker, devices), ctx in zip(worker_device_pairs, input_contexts):
+      # TODO(priyag): We should probably explicitly specify CPU device on worker.
       with ops.device(worker):
-        result = input_fn()
+        result = input_fn(ctx)
         if not isinstance(result, dataset_ops.Dataset):
           raise ValueError("input_fn must return a tf.data.Dataset.")
-        iterator = _DatasetIterator(result, worker, worker_devices)
+        iterator = _DatasetIterator(result, worker, devices)
         self._iterators.append(iterator)
 
   def get_next(self, name=None):

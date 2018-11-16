@@ -983,15 +983,9 @@ class DistributionStrategyExtended(object):
     _require_distribution_strategy_scope_extended(self)
     return variable_scope.variable_creator_scope(create_colocated_variable)
 
-  def _call_dataset_fn(self, dataset_fn, input_context=None):
+  def _call_dataset_fn(self, dataset_fn):
     """Call the `dataset_fn` with `input_context` as argument."""
-    # This method is invoked by both `make_input_fn_iterator` and
-    # `distribute_dataset`. The `dataset_fn` for the former one accepts an
-    # input_context while the latter one doesn't.
-    if input_context:
-      result = dataset_fn(input_context)
-    else:
-      result = dataset_fn()
+    result = dataset_fn()
     if not isinstance(result, dataset_ops.Dataset):
       raise ValueError(
           "dataset_fn() must return a tf.data.Dataset when using a "
@@ -1516,7 +1510,7 @@ class _DefaultDistributionExtended(DistributionStrategyExtended):
   def _make_input_fn_iterator(self,
                               input_fn,
                               replication_mode=InputReplicationMode.PER_WORKER):
-    return self._call_dataset_fn(input_fn, InputContext())
+    return input_fn(InputContext()).make_initializable_iterator()
 
   def _broadcast_to(self, tensor, destinations):
     if destinations is None:
