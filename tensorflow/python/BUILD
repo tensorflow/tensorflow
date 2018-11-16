@@ -996,6 +996,7 @@ py_library(
         ":common_shapes",
         ":dtypes",
         ":tensor_shape",
+        ":util",
         "//third_party/py/numpy",
     ],
 )
