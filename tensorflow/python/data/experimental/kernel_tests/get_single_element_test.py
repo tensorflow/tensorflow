@@ -67,6 +67,17 @@ class GetSingleElementTest(test_base.DatasetTestBase, parameterized.TestCase):
         with self.assertRaisesRegexp(error, error_msg):
           sess.run(element, feed_dict={skip_t: skip, take_t: take})
 
+  def testWindow(self):
+    """Test that `get_single_element()` can consume a nested dataset."""
+    def flat_map_func(ds):
+      batched = ds.batch(2)
+      element = get_single_element.get_single_element(batched)
+      return dataset_ops.Dataset.from_tensors(element)
+
+    dataset = dataset_ops.Dataset.range(10).window(2).flat_map(flat_map_func)
+    self.assertDatasetProduces(
+        dataset, [[0, 1], [2, 3], [4, 5], [6, 7], [8, 9]])
+
 
 if __name__ == "__main__":
   test.main()
