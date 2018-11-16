@@ -183,6 +183,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.sparse.segment_sum": [
             "data", "indices", "segment_ids", "name", "num_segments"
         ],
+        "tf.strings.length": ["input", "name", "unit"],
     }
 
     # Specially handled functions.
