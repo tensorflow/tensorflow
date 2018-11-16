@@ -48,7 +48,7 @@ class TFRecordWriter(object):
     Returns:
       A `tf.Operation` that, when run, writes contents of `dataset` to a file.
     """
-    if not isinstance(dataset, dataset_ops.Dataset):
+    if not isinstance(dataset, dataset_ops.DatasetV2):
       raise TypeError("`dataset` must be a `tf.data.Dataset` object.")
     if (dataset.output_types != dtypes.string or
         dataset.output_shapes != tensor_shape.scalar()):
