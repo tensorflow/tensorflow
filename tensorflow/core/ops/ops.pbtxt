@@ -36955,7 +36955,7 @@ op {
   }
   output_arg {
     name: "char_values"
-    type: DT_UINT32
+    type: DT_INT32
   }
   output_arg {
     name: "char_to_byte_starts"
