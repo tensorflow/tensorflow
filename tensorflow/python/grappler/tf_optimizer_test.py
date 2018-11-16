@@ -75,12 +75,13 @@ class PyWrapOptimizeGraphTest(test.TestCase):
     optimized_graph = tf_optimizer.OptimizeGraph(config, mg)
 
     # Check that the nodes referenced in various collections have been preserved
-    self.assertEqual(len(optimized_graph.node), 5)
-    self.assertEqual(d.op.name, optimized_graph.node[0].name)
-    self.assertEqual(a1.op.name, optimized_graph.node[1].name)
-    self.assertEqual('Variable/initial_value', optimized_graph.node[2].name)
-    self.assertEqual(a2.op.name, optimized_graph.node[3].name)
-    self.assertEqual('Variable/Assign', optimized_graph.node[4].name)
+    optimized_graph_nodes = [node.name for node in optimized_graph.node]
+    expected_nodes = [
+        d.op.name, a1.op.name, a2.op.name, 'Variable/initial_value',
+        'Variable/Assign'
+    ]
+    self.assertEqual(len(optimized_graph_nodes), len(expected_nodes))
+    self.assertAllInSet(optimized_graph_nodes, expected_nodes)
 
   def testLoops(self):
     g = ops.Graph()
