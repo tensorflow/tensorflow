@@ -245,6 +245,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "TensorSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TextLineReader"
     mtype: "<type \'type\'>"
   }

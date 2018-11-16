@@ -121,11 +121,11 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "TensorInfo"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+    name: "TensorShape"
+    mtype: "<type \'type\'>"
   }
   member {
-    name: "TensorShape"
+    name: "TensorSpec"
     mtype: "<type \'type\'>"
   }
   member {

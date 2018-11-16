@@ -162,7 +162,7 @@ tf_export('Summary', 'summary.Summary')(Summary)
 tf_export('summary.SummaryDescription')(SummaryDescription)
 tf_export('SummaryMetadata')(SummaryMetadata)
 tf_export('summary.TaggedRunMetadata')(TaggedRunMetadata)
-tf_export('TensorInfo')(TensorInfo)
+tf_export(v1=['TensorInfo'])(TensorInfo)
 # pylint: enable=undefined-variable
 
 # Special dunders that we choose to export:
