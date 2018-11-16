@@ -100,8 +100,8 @@ private:
 ///
 /// This operation returns a single ssa value of memref type, which can be used
 /// by subsequent load and store operations.
-class AllocOp
-    : public Op<AllocOp, OpTrait::VariadicOperands, OpTrait::OneResult> {
+class AllocOp : public Op<AllocOp, OpTrait::VariadicOperands,
+                          OpTrait::OneResult, OpTrait::HasNoSideEffect> {
 public:
   /// The result of an alloc is always a MemRefType.
   MemRefType getType() const {
