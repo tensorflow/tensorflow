@@ -947,6 +947,16 @@ class CaseTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(errors.InvalidArgumentError, "Input error:"):
         sess.run(output, feed_dict={x: 4})
 
+  @test_util.run_in_graph_and_eager_modes
+  def testCase_dict(self):
+    x = constant_op.constant(2)
+    conditions = {
+        math_ops.equal(x, 1): lambda: constant_op.constant(2),
+        math_ops.equal(x, 2): lambda: constant_op.constant(4)
+    }
+    output = control_flow_ops.case(conditions, exclusive=True)
+    self.assertEqual(4, self.evaluate(output))
+
 
 class WhileLoopTestCase(test_util.TensorFlowTestCase):
 

@@ -43,87 +43,78 @@ const char* const kExpandDimsPrefix = "vectorized/expanddims/";
 // with shape [n, 12, 7, 5]: we need to manually expand the dimensions of A
 // *after* the leading dimension, i.e. expand A to the shape [n, 1, 1, 5] before
 // broadcasting.
-Status ExpandDimsForBroadcast(std::vector<WrappedTensor>* inputs, Graph* g) {
+Status ExpandDimsForBroadcast(VectorizerInput* inputs, Graph* g) {
   Status status;
   Scope parent = NewInternalScope(g, &status, nullptr);
-  Scope s = parent.NewSubScope(kExpandDimsPrefix);
+  Scope scope = parent.NewSubScope(kExpandDimsPrefix);
 
   // TODO(rachelim): We can potentially get rid of all these ops if shapes are
   // known statically
 
-  Output const_0 = ops::Const(s, 0);
-  Output const_1 = ops::Const(s, 1);
-
-  std::vector<Output> ranks;
-  ranks.reserve(inputs->size());
-
   // Get the stacked rank of each input
-  for (const auto& input : *inputs) {
-    Output rank = ops::Rank(s, Output(input.node, input.output_index));
+  auto get_stacked_rank = [&scope](const WrappedTensor& input) {
+    Output rank = ops::Rank(scope, Output(input.node, input.output_index));
 
     if (!input.stacked) {
       // If the input is unstacked, add 1
-      rank = ops::Add(s, rank, const_1);
+      rank = ops::Add(scope, rank, ops::Const(scope, 1));
     }
 
-    ranks.push_back(rank);
-  }
+    return rank;
+  };
 
-  // Pack the ranks into one tensor to get the max
-  Output packed_ranks = ops::Stack(s, ranks);
+  Output rank_0 = get_stacked_rank(inputs->at(0));
+  Output rank_1 = get_stacked_rank(inputs->at(1));
 
-  Output max_rank =
-      ops::Max(s, packed_ranks, const_0, ops::Max::Attrs().KeepDims(true));
-
-  std::vector<WrappedTensor> expanded_inputs;
-  expanded_inputs.reserve(inputs->size());
+  Output max_rank = ops::Maximum(scope, rank_0, rank_1);
 
   // For all inputs that are stacked, expand dimensions after dim 0.
-  for (size_t i = 0; i < inputs->size(); ++i) {
-    if (!inputs->at(i).stacked) {
-      expanded_inputs.push_back(inputs->at(i));
-      continue;
-    }
+  auto expand_dims_if_unstacked =
+      [&scope, &max_rank](const WrappedTensor& tensor, const Output& rank) {
+        if (!tensor.stacked)
+          return WrappedTensor(tensor.node, tensor.output_index, false);
 
-    Output input(inputs->at(i).node, inputs->at(i).output_index);
+        Output input(tensor.node, tensor.output_index);
 
-    // Number of dimensions to expand
-    Output rank_diff = ops::Sub(s, max_rank, ranks[i]);
+        Output rank_diff = ops::Sub(scope, max_rank, rank);
 
-    // [1] * rank_diff
-    Output ones = ops::Tile(s, ops::Const(s, {1}), rank_diff);
+        // [1] * rank_diff
+        Output ones = ops::Fill(
+            scope, ops::ExpandDims(scope, rank_diff, ops::Const(scope, 0)),
+            ops::Const(scope, 1));
 
-    Output const_vec_1 = ops::Const(s, {1});
+        Output shape = ops::Shape(scope, input);
 
-    Output shape = ops::Shape(s, input);
+        Output const_vec_1 = ops::Const(scope, {1});
+        // shape[:1]
+        Output concat_pre = ops::StridedSlice(
+            scope, shape, const_vec_1, const_vec_1, const_vec_1,
+            ops::StridedSlice::Attrs().BeginMask(1));
 
-    // shape[:1]
-    Output concat_pre =
-        ops::StridedSlice(s, shape, const_vec_1, const_vec_1, const_vec_1,
-                          ops::StridedSlice::Attrs().BeginMask(1));
+        // shape[1:]
+        Output concat_post = ops::StridedSlice(
+            scope, shape, const_vec_1, const_vec_1, const_vec_1,
+            ops::StridedSlice::Attrs().EndMask(1));
 
-    // shape[1:]
-    Output concat_post =
-        ops::StridedSlice(s, shape, const_vec_1, const_vec_1, const_vec_1,
-                          ops::StridedSlice::Attrs().EndMask(1));
+        // tf.concat([shape[:1], ones, shape[1:]], 0)
+        Output new_shape = ops::Concat(scope, {concat_pre, ones, concat_post},
+                                       ops::Const(scope, 0));
 
-    // tf.concat([shape[:1], ones, shape[1:]], 0)
-    Output new_shape = ops::Concat(s, {concat_pre, ones, concat_post}, const_0);
+        Output reshaped = ops::Reshape(scope, input, new_shape);
 
-    Output result = ops::Reshape(s, input, new_shape);
+        return WrappedTensor(reshaped.node(), 0, true);
+      };
 
-    expanded_inputs.push_back({result.node(), 0, true});
-  }
-
-  inputs->swap(expanded_inputs);
-  return status;
+  *inputs = VectorizerInput({expand_dims_if_unstacked(inputs->at(0), rank_0),
+                             expand_dims_if_unstacked(inputs->at(1), rank_1)});
+  return Status::OK();
 }
 
 // Vectorization helper for component-wise ops. Since these operations act
 // component-wise, the vectorized op is the same as the original.
 Status CwiseVectorizeHelper(const Node& node, Graph* outer_scope,
-                            std::vector<WrappedTensor>&& inputs,
-                            std::vector<WrappedTensor>* outputs) {
+                            VectorizerInput&& inputs,
+                            VectorizerOutput* outputs) {
   // Add new node with the same op type and attrs as the original node
   Node* new_node;
   auto node_builder = NodeBuilder(strings::StrCat("vectorized/", node.name()),
@@ -144,8 +135,8 @@ Status CwiseVectorizeHelper(const Node& node, Graph* outer_scope,
 class UnaryCwiseOpVectorizer : public Vectorizer {
  public:
   Status Vectorize(const Node& node, Graph* outer_scope,
-                   std::vector<WrappedTensor>&& inputs,
-                   std::vector<WrappedTensor>* outputs) override {
+                   VectorizerInput&& inputs,
+                   VectorizerOutput* outputs) override {
     if (inputs.size() != 1) {
       return errors::Internal("Failed to vectorize ", node.type_string(),
                               ". The op should have 1 input, but has ",
@@ -159,8 +150,8 @@ class UnaryCwiseOpVectorizer : public Vectorizer {
 class BinaryCwiseOpVectorizer : public Vectorizer {
  public:
   Status Vectorize(const Node& node, Graph* outer_scope,
-                   std::vector<WrappedTensor>&& inputs,
-                   std::vector<WrappedTensor>* outputs) override {
+                   VectorizerInput&& inputs,
+                   VectorizerOutput* outputs) override {
     if (inputs.size() != 2) {
       return errors::Internal("Failed to vectorize ", node.type_string(),
                               ". The op should have 2 input, but has ",

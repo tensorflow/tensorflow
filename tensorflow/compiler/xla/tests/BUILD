@@ -44,7 +44,7 @@ cc_library(
     testonly = True,
     srcs = ["xla_internal_test_main.cc"],
     deps = [
-        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "@com_google_absl//absl/strings",
@@ -117,12 +117,12 @@ cc_library(
     deps = [
         ":literal_test_util",
         ":test_utils",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:computation_layout",
         "//tensorflow/compiler/xla/service:hlo",
@@ -138,44 +138,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-    ],
-)
-
-cc_library(
-    name = "hlo_verified_test_base",
-    testonly = True,
-    srcs = ["hlo_verified_test_base.cc"],
-    hdrs = ["hlo_verified_test_base.h"],
-    deps = [
-        ":hlo_test_base",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service:hlo_verifier",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/memory",
-    ],
-)
-
-tf_cc_test(
-    name = "hlo_verified_test_base_test",
-    srcs = ["hlo_verified_test_base_test.cc"],
-    deps = [
-        ":hlo_test_base",
-        ":hlo_verified_test_base",
-        ":test_macros_cpu",
-        ":test_utils",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service:hlo_verifier",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
     ],
 )
 
@@ -868,7 +830,8 @@ xla_test(
     name = "convolution_test",
     timeout = "long",
     srcs = ["convolution_test.cc"],
-    shard_count = 25,
+    shard_count = 40,
+    tags = ["optonly"],
     deps = CONVOLUTION_TEST_DEPS + [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

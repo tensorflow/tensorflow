@@ -78,13 +78,16 @@ py_library(
         "//tensorflow/python:device",
         "//tensorflow/python:device_util",
         "//tensorflow/python:distribute",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
     ],
@@ -105,6 +108,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:context",
     ],
 )
@@ -116,6 +120,7 @@ gpu_py_test(
         ":combinations",
         ":multi_worker_test_base",
         ":parameter_server_strategy",
+        ":strategy_test_lib",
         ":values",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/core:protos_all_py",
@@ -127,6 +132,7 @@ gpu_py_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:layers",
         "//tensorflow/python:session",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
@@ -146,11 +152,12 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":values",
-        "//tensorflow/contrib/eager/python:datasets",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:distribute",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
     ],
@@ -341,8 +348,11 @@ py_library(
         "//tensorflow/contrib/tpu:tpu_lib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python/distribute:reduce_util",
     ],
 )
 
@@ -374,9 +384,6 @@ gpu_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_pip",
-        # TODO(b/118820960): Re-enable this test in guitar.
-        "manual",
-        "noguitar",
     ],
 )
 
@@ -470,6 +477,7 @@ gpu_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # http://b/119349471
         "no_pip",
     ],
 )
@@ -478,20 +486,11 @@ gpu_py_test(
     name = "keras_optimizer_v2_test",
     srcs = ["keras_optimizer_v2_test.py"],
     additional_deps = [
-        ":combinations",
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/contrib/optimizer_v2:training",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/feature_column",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
+        ":keras_test_lib",
     ],
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # http://b/119349471
         "no_pip",
     ],
 )
@@ -525,6 +524,7 @@ gpu_py_test(
         "noasan",
         "nomsan",
         "notsan",
+        "no_oss",  # http://b/119349471
     ],
 )
 
@@ -624,7 +624,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":values",
-        "//tensorflow/contrib/all_reduce:all_reduce_py",
         "//tensorflow/contrib/rccl:rccl_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
@@ -634,6 +633,7 @@ py_library(
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nccl_ops",
+        "//tensorflow/python/distribute:all_reduce",
     ],
 )
 
@@ -670,6 +670,7 @@ py_library(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
     ],
@@ -714,8 +715,6 @@ gpu_py_test(
     additional_deps = [
         ":input_ops",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/contrib/data/python/ops:batching",
-        "//tensorflow/contrib/data/python/ops:interleave_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
@@ -754,12 +753,13 @@ gpu_py_test(
     ],
     shard_count = 16,
     tags = [
+        "manual",  # TODO(b/119646053): Failing when run.
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/117919883): Fix python error.
         "no_pip",
         "no_windows_gpu",
-        # TODO(b/118815591): Re-enable this test in guitar.)
-        "noguitar",
+        "noguitar",  # TODO(b/119646053): Failing when run.
+        "notap",  # TODO(b/119646053): Failing when run.
         "notsan",
     ],
 )
@@ -770,7 +770,6 @@ py_library(
     srcs = ["metrics_v1_test.py"],
     deps = [
         ":combinations",
-        "//tensorflow/contrib/data/python/ops:batching",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:metrics",
         "//tensorflow/python:variables",

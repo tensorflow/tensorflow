@@ -352,6 +352,11 @@ def isfunction(object):  # pylint: disable=redefined-builtin
   return _inspect.isfunction(tf_decorator.unwrap(object)[1])
 
 
+def isframe(object):  # pylint: disable=redefined-builtin
+  """TFDecorator-aware replacement for inspect.ismodule."""
+  return _inspect.isframe(tf_decorator.unwrap(object)[1])
+
+
 def isgenerator(object):  # pylint: disable=redefined-builtin
   """TFDecorator-aware replacement for inspect.isgenerator."""
   return _inspect.isgenerator(tf_decorator.unwrap(object)[1])

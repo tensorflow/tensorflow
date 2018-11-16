@@ -40,6 +40,9 @@ public final class InterpreterTest {
   private static final File MODEL_FILE =
       new File("tensorflow/lite/java/src/testdata/add.bin");
 
+  private static final File MULTIPLE_INPUTS_MODEL_FILE =
+      new File("tensorflow/lite/testdata/multi_add.bin");
+
   private static final File FLEX_MODEL_FILE =
       new File("tensorflow/lite/testdata/multi_add_flex.bin");
 
@@ -164,20 +167,29 @@ public final class InterpreterTest {
 
   @Test
   public void testRunForMultipleInputsOutputs() {
-    Interpreter interpreter = new Interpreter(MODEL_FILE);
-    float[] oneD = {1.23f, 6.54f, 7.81f};
-    float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
-    float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
-    float[][][][] fourD = {threeD, threeD};
-    Object[] inputs = {fourD};
-    float[][][][] parsedOutputs = new float[2][8][8][3];
+    Interpreter interpreter = new Interpreter(MULTIPLE_INPUTS_MODEL_FILE);
+    assertThat(interpreter.getInputTensorCount()).isEqualTo(4);
+    assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+    assertThat(interpreter.getInputTensor(1).dataType()).isEqualTo(DataType.FLOAT32);
+    assertThat(interpreter.getInputTensor(2).dataType()).isEqualTo(DataType.FLOAT32);
+    assertThat(interpreter.getInputTensor(3).dataType()).isEqualTo(DataType.FLOAT32);
+    assertThat(interpreter.getOutputTensorCount()).isEqualTo(2);
+    assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
+    assertThat(interpreter.getOutputTensor(1).dataType()).isEqualTo(DataType.FLOAT32);
+
+    float[] input0 = {1.23f};
+    float[] input1 = {2.43f};
+    Object[] inputs = {input0, input1, input0, input1};
+    float[] parsedOutput0 = new float[1];
+    float[] parsedOutput1 = new float[1];
     Map<Integer, Object> outputs = new HashMap<>();
-    outputs.put(0, parsedOutputs);
+    outputs.put(0, parsedOutput0);
+    outputs.put(1, parsedOutput1);
     interpreter.runForMultipleInputsOutputs(inputs, outputs);
-    float[] outputOneD = parsedOutputs[0][0][0];
-    float[] expected = {3.69f, 19.62f, 23.43f};
-    assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
-    interpreter.close();
+    float[] expected0 = {4.89f};
+    float[] expected1 = {6.09f};
+    assertThat(parsedOutput0).usingTolerance(0.1f).containsExactly(expected0).inOrder();
+    assertThat(parsedOutput1).usingTolerance(0.1f).containsExactly(expected1).inOrder();
   }
 
   @Test

@@ -1,23 +1,11 @@
 path: "tensorflow.nn.rnn_cell"
 tf_module {
   member {
-    name: "BasicLSTMCell"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "DeviceWrapper"
     mtype: "<type \'type\'>"
   }
   member {
     name: "DropoutWrapper"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "GRUCell"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "LSTMCell"
     mtype: "<type \'type\'>"
   }
   member {

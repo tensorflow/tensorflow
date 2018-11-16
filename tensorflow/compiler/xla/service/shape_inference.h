@@ -291,6 +291,9 @@ class ShapeInference {
       const Shape& updates_shape, const ProgramShape& to_apply_shape,
       const ScatterDimensionNumbers& scatter_dim_numbers);
 
+  static StatusOr<Shape> InferGetDimensionSizeShape(const Shape& shape,
+                                                    int64 dimension);
+
  private:
   // Helper that infers the shape produced by performing an element-wise binary
   // operation with the given LHS and RHS shapes.

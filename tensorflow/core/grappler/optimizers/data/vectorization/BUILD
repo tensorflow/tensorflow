@@ -33,6 +33,7 @@ cc_library(
     deps = [
         ":wrapped_tensor",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/cc:ops",
         "//tensorflow/core:lib",
     ] + tf_protos_all(),
 )

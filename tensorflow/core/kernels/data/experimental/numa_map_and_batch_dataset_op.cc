@@ -201,7 +201,7 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(*mu_);
         if (num_parallel_calls_->value == kAutoTune) {
-          num_parallel_calls_->value = port::NumSchedulableCPUs();
+          num_parallel_calls_->value = ctx->runner_threadpool_size();
           num_parallel_calls_->tunable = true;
         }
         TF_RETURN_IF_ERROR(
@@ -244,7 +244,7 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         return model::MakeAsyncKnownRatioNode(
             std::move(args), dataset()->batch_size_,
             {model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
-                                  /*max=*/port::NumSchedulableCPUs())});
+                                  /*max=*/ctx->runner_threadpool_size())});
       }
 
       Status SaveInternal(IteratorStateWriter* writer) override {

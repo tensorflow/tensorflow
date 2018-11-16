@@ -36,7 +36,6 @@ from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_sparse_ops
-from tensorflow.python.ops import gen_spectral_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_math_ops import *
@@ -50,8 +49,8 @@ from tensorflow.python.util.tf_export import tf_export
 # Aliases for some automatically-generated names.
 linspace = gen_math_ops.lin_space
 
-arg_max = deprecation.deprecated(None, "Use `argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
-arg_min = deprecation.deprecated(None, "Use `argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
+arg_max = deprecation.deprecated(None, "Use `tf.math.argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
+arg_min = deprecation.deprecated(None, "Use `tf.math.argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
 tf_export("arg_max")(arg_max)
 tf_export("arg_min")(arg_min)
 
@@ -70,7 +69,7 @@ def _set_doc(doc):
 
 
 # pylint: disable=redefined-builtin
-@tf_export("math.argmax", "argmax")
+@tf_export(v1=["math.argmax", "argmax"])
 @deprecation.deprecated_args(None, "Use the `axis` argument instead",
                              "dimension")
 @_set_doc(
@@ -85,10 +84,37 @@ def argmax(input,
       "axis", axis, "dimension", dimension)
   if axis is None:
     axis = 0
+  return argmax_v2(input, axis, output_type, name)
+
+
+@tf_export("math.argmax", "argmax", v1=[])
+def argmax_v2(input,
+              axis=None,
+              output_type=dtypes.int64,
+              name=None):
+  """Returns the index with the largest value across axes of a tensor.
+
+  Note that in case of ties the identity of the return value is not guaranteed.
+
+  Args:
+    input: A `Tensor`. Must be one of the following types: `float32`, `float64`,
+    `int32`, `uint8`, `int16`, `int8`, `complex64`, `int64`, `qint8`, `quint8`,
+    `qint32`, `bfloat16`, `uint16`, `complex128`, `half`, `uint32`, `uint64`.
+    axis: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+      int32 or int64, must be in the range `-rank(input), rank(input))`.
+      Describes which axis of the input Tensor to reduce across. For vectors,
+      use axis = 0.
+    output_type: An optional `tf.DType` from: `tf.int32, tf.int64`.
+      Defaults to `tf.int64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `output_type`.
+  """
   return gen_math_ops.arg_max(input, axis, name=name, output_type=output_type)
 
 
-@tf_export("math.argmin", "argmin")
+@tf_export(v1=["math.argmin", "argmin"])
 @deprecation.deprecated_args(None, "Use the `axis` argument instead",
                              "dimension")
 @_set_doc(
@@ -103,6 +129,33 @@ def argmin(input,
       "axis", axis, "dimension", dimension)
   if axis is None:
     axis = 0
+  return argmin_v2(input, axis, output_type, name)
+
+
+@tf_export("math.argmin", "argmin", v1=[])
+def argmin_v2(input,
+              axis=None,
+              output_type=dtypes.int64,
+              name=None):
+  """Returns the index with the smallest value across axes of a tensor.
+
+  Note that in case of ties the identity of the return value is not guaranteed.
+
+  Args:
+    input: A `Tensor`. Must be one of the following types: `float32`, `float64`,
+    `int32`, `uint8`, `int16`, `int8`, `complex64`, `int64`, `qint8`, `quint8`,
+    `qint32`, `bfloat16`, `uint16`, `complex128`, `half`, `uint32`, `uint64`.
+    axis: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+      int32 or int64, must be in the range `-rank(input), rank(input))`.
+      Describes which axis of the input Tensor to reduce across. For vectors,
+      use axis = 0.
+    output_type: An optional `tf.DType` from: `tf.int32, tf.int64`.
+      Defaults to `tf.int64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `output_type`.
+  """
   return gen_math_ops.arg_min(input, axis, name=name, output_type=output_type)
 
 
@@ -713,8 +766,8 @@ def saturate_cast(value, dtype, name=None):
                                        name="max"))
     return cast(value, dtype, name=name)
 
-
-@tf_export("to_float")
+@deprecation.deprecated(date=None, instructions="Use tf.cast instead.")
+@tf_export(v1=["to_float"])
 def to_float(x, name="ToFloat"):
   """Casts a tensor to type `float32`.
 
@@ -732,7 +785,8 @@ def to_float(x, name="ToFloat"):
   return cast(x, dtypes.float32, name=name)
 
 
-@tf_export("to_double")
+@deprecation.deprecated(date=None, instructions="Use tf.cast instead.")
+@tf_export(v1=["to_double"])
 def to_double(x, name="ToDouble"):
   """Casts a tensor to type `float64`.
 
@@ -750,7 +804,8 @@ def to_double(x, name="ToDouble"):
   return cast(x, dtypes.float64, name=name)
 
 
-@tf_export("to_int32")
+@deprecation.deprecated(date=None, instructions="Use tf.cast instead.")
+@tf_export(v1=["to_int32"])
 def to_int32(x, name="ToInt32"):
   """Casts a tensor to type `int32`.
 
@@ -768,7 +823,8 @@ def to_int32(x, name="ToInt32"):
   return cast(x, dtypes.int32, name=name)
 
 
-@tf_export("to_int64")
+@deprecation.deprecated(date=None, instructions="Use tf.cast instead.")
+@tf_export(v1=["to_int64"])
 def to_int64(x, name="ToInt64"):
   """Casts a tensor to type `int64`.
 
@@ -786,7 +842,8 @@ def to_int64(x, name="ToInt64"):
   return cast(x, dtypes.int64, name=name)
 
 
-@tf_export("to_bfloat16")
+@deprecation.deprecated(date=None, instructions="Use tf.cast instead.")
+@tf_export(v1=["to_bfloat16"])
 def to_bfloat16(x, name="ToBFloat16"):
   """Casts a tensor to type `bfloat16`.
 
@@ -804,7 +861,8 @@ def to_bfloat16(x, name="ToBFloat16"):
   return cast(x, dtypes.bfloat16, name=name)
 
 
-@tf_export("to_complex64")
+@deprecation.deprecated(date=None, instructions="Use tf.cast instead.")
+@tf_export(v1=["to_complex64"])
 def to_complex64(x, name="ToComplex64"):
   """Casts a tensor to type `complex64`.
 
@@ -822,7 +880,8 @@ def to_complex64(x, name="ToComplex64"):
   return cast(x, dtypes.complex64, name=name)
 
 
-@tf_export("to_complex128")
+@deprecation.deprecated(date=None, instructions="Use tf.cast instead.")
+@tf_export(v1=["to_complex128"])
 def to_complex128(x, name="ToComplex128"):
   """Casts a tensor to type `complex128`.
 
@@ -1031,7 +1090,10 @@ def truediv(x, y, name=None):
   return _truediv_python3(x, y, name)
 
 
-@tf_export("div")
+@deprecation.deprecated(
+    date=None,
+    instructions="Deprecated in favor of operator or tf.math.divide.")
+@tf_export(v1=["div"])
 def div(x, y, name=None):
   """Divides x / y elementwise (using Python 2 division operator semantics).
 
@@ -1345,7 +1407,7 @@ def reduce_sum(input_tensor,
                                    name=name))
 
 
-@tf_export("math.count_nonzero", "count_nonzero")
+@tf_export(v1=["math.count_nonzero", "count_nonzero"])
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def count_nonzero(input_tensor,
@@ -1406,20 +1468,79 @@ def count_nonzero(input_tensor,
   """
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
                                                     "keep_dims", keep_dims)
+  axis = deprecation.deprecated_argument_lookup(
+      "axis", axis,
+      "reduction_indices", reduction_indices
+      )
   if keepdims is None:
     keepdims = False
 
-  with ops.name_scope(name, "count_nonzero", [input_tensor]):
-    input_tensor = ops.convert_to_tensor(input_tensor, name="input_tensor")
+  return count_nonzero_v2(input_tensor, axis, keepdims, dtype, name)
+
+
+@tf_export("math.count_nonzero", v1=[])
+def count_nonzero_v2(input,  # pylint: disable=redefined-builtin
+                     axis=None,
+                     keepdims=None,
+                     dtype=dtypes.int64,
+                     name=None):
+  """Computes number of nonzero elements across dimensions of a tensor.
+
+  Reduces `input` along the dimensions given in `axis`.
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
+
+  If `axis` has no entries, all dimensions are reduced, and a
+  tensor with a single element is returned.
+
+  **NOTE** Floating point comparison to zero is done by exact floating point
+  equality check.  Small values are **not** rounded to zero for purposes of
+  the nonzero check.
+
+  For example:
+
+  ```python
+  x = tf.constant([[0, 1, 0], [1, 1, 0]])
+  tf.count_nonzero(x)  # 3
+  tf.count_nonzero(x, 0)  # [1, 2, 0]
+  tf.count_nonzero(x, 1)  # [1, 2]
+  tf.count_nonzero(x, 1, keepdims=True)  # [[1], [2]]
+  tf.count_nonzero(x, [0, 1])  # 3
+  ```
+
+  **NOTE** Strings are compared against zero-length empty string `""`. Any
+  string with a size greater than zero is already considered as nonzero.
+
+  For example:
+  ```python
+  x = tf.constant(["", "a", "  ", "b", ""])
+  tf.count_nonzero(x) # 3, with "a", "  ", and "b" as nonzero strings.
+  ```
+
+  Args:
+    input: The tensor to reduce. Should be of numeric type, `bool`,
+      or `string`.
+    axis: The dimensions to reduce. If `None` (the default),
+      reduces all dimensions. Must be in the range
+      `[-rank(input), rank(input))`.
+    keepdims: If true, retains reduced dimensions with length 1.
+    dtype: The output dtype; defaults to `tf.int64`.
+    name: A name for the operation (optional).
+
+  Returns:
+    The reduced tensor (number of nonzero values).
+  """
+  with ops.name_scope(name, "count_nonzero", [input]):
+    input = ops.convert_to_tensor(input, name="input")
     # A scalar of 'zero' is enough as `not_equal` will broadcast.
-    zero = array_ops.zeros([], dtype=input_tensor.dtype)
+    zero = array_ops.zeros([], dtype=input.dtype)
     return cast(
         reduce_sum(
             # int64 reduction happens on GPU
-            to_int64(gen_math_ops.not_equal(input_tensor, zero)),
+            to_int64(gen_math_ops.not_equal(input, zero)),
             axis=axis,
-            keepdims=keepdims,
-            reduction_indices=reduction_indices),
+            keepdims=keepdims),
         dtype=dtype)
 
 
@@ -1493,6 +1614,100 @@ def reduce_mean(input_tensor,
                                                   reduction_indices),
                                    keepdims,
                                    name=name))
+
+
+@tf_export("math.reduce_variance")
+def reduce_variance(input_tensor, axis=None, keepdims=None, name=None):
+  """Computes the variance of elements across dimensions of a tensor.
+
+  Reduces `input_tensor` along the dimensions given in `axis`.
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
+
+  If `axis` is None, all dimensions are reduced, and a
+  tensor with a single element is returned.
+
+  For example:
+
+  ```python
+  x = tf.constant([[1., 2.], [3., 4.]])
+  tf.reduce_variance(x)  # 1.25
+  tf.reduce_variance(x, 0)  # [1., 1.]
+  tf.reduce_variance(x, 1)  # [0.25,  0.25]
+  ```
+
+  Args:
+    input_tensor: The tensor to reduce. Should have numeric type.
+    axis: The dimensions to reduce. If `None` (the default), reduces all
+      dimensions. Must be in the range `[-rank(input_tensor),
+      rank(input_tensor))`.
+    keepdims: If true, retains reduced dimensions with length 1.
+    name: A name scope for the associated operations (optional).
+
+  Returns:
+    The reduced tensor, of the same dtype as the input_tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.var
+
+  Please note that `np.var` has a `dtype` parameter that could be used to
+  specify the output type. By default this is `dtype=float64`. On the other
+  hand, `tf.reduce_variance` has an aggressive type inference from
+  `input_tensor`,
+  @end_compatibility
+  """
+  name = name if name else "reduce_variance"
+  with ops.name_scope(name):
+    means = reduce_mean(input_tensor, axis=axis, keepdims=True)
+    squared_deviations = square(input_tensor - means)
+    return reduce_mean(squared_deviations, axis=axis, keepdims=keepdims)
+
+
+@tf_export("math.reduce_std")
+def reduce_std(input_tensor, axis=None, keepdims=None, name=None):
+  """Computes the standard deviation of elements across dimensions of a tensor.
+
+  Reduces `input_tensor` along the dimensions given in `axis`.
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
+
+  If `axis` is None, all dimensions are reduced, and a
+  tensor with a single element is returned.
+
+  For example:
+
+  ```python
+  x = tf.constant([[1., 2.], [3., 4.]])
+  tf.reduce_std(x)  # 1.1180339887498949
+  tf.reduce_std(x, 0)  # [1., 1.]
+  tf.reduce_std(x, 1)  # [0.5,  0.5]
+  ```
+
+  Args:
+    input_tensor: The tensor to reduce. Should have numeric type.
+    axis: The dimensions to reduce. If `None` (the default), reduces all
+      dimensions. Must be in the range `[-rank(input_tensor),
+      rank(input_tensor))`.
+    keepdims: If true, retains reduced dimensions with length 1.
+    name: A name scope for the associated operations (optional).
+
+  Returns:
+    The reduced tensor, of the same dtype as the input_tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.std
+
+  Please note that `np.std` has a `dtype` parameter that could be used to
+  specify the output type. By default this is `dtype=float64`. On the other
+  hand, `tf.reduce_std` has an aggressive type inference from `input_tensor`,
+  @end_compatibility
+  """
+  name = name if name else "reduce_std"
+  with ops.name_scope(name):
+    variance = reduce_variance(input_tensor, axis=axis, keepdims=keepdims)
+    return sqrt(variance)
 
 
 @tf_export("math.reduce_prod", "reduce_prod")
@@ -2057,10 +2272,108 @@ def matmul(a,
           a, b, transpose_a=transpose_a, transpose_b=transpose_b, name=name)
 
 
+@tf_export("linalg.matvec")
+def matvec(a,
+           b,
+           transpose_a=False,
+           adjoint_a=False,
+           a_is_sparse=False,
+           b_is_sparse=False,
+           name=None):
+  """Multiplies matrix `a` by vector `b`, producing `a` * `b`.
+
+  The matrix `a` must, following any transpositions, be a tensor of rank >= 2,
+  and we must have `shape(b) = shape(a)[:-2] + [shape(a)[-1]]`.
+
+  Both `a` and `b` must be of the same type. The supported types are:
+  `float16`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
+
+  Matrix `a` can be transposed or adjointed (conjugated and transposed) on
+  the fly by setting one of the corresponding flag to `True`. These are `False`
+  by default.
+
+  If one or both of the inputs contain a lot of zeros, a more efficient
+  multiplication algorithm can be used by setting the corresponding
+  `a_is_sparse` or `b_is_sparse` flag to `True`. These are `False` by default.
+  This optimization is only available for plain matrices/vectors (rank-2/1
+  tensors) with datatypes `bfloat16` or `float32`.
+
+  For example:
+
+  ```python
+  # 2-D tensor `a`
+  # [[1, 2, 3],
+  #  [4, 5, 6]]
+  a = tf.constant([1, 2, 3, 4, 5, 6], shape=[2, 3])
+
+  # 1-D tensor `b`
+  # [7, 9, 11]
+  b = tf.constant([7, 9, 11], shape=[3])
+
+  # `a` * `b`
+  # [ 58,  64]
+  c = tf.matvec(a, b)
+
+
+  # 3-D tensor `a`
+  # [[[ 1,  2,  3],
+  #   [ 4,  5,  6]],
+  #  [[ 7,  8,  9],
+  #   [10, 11, 12]]]
+  a = tf.constant(np.arange(1, 13, dtype=np.int32),
+                  shape=[2, 2, 3])
+
+  # 2-D tensor `b`
+  # [[13, 14, 15],
+  #  [16, 17, 18]]
+  b = tf.constant(np.arange(13, 19, dtype=np.int32),
+                  shape=[2, 3])
+
+  # `a` * `b`
+  # [[ 86, 212],
+  #  [410, 563]]
+  c = tf.matvec(a, b)
+  ```
+
+  Args:
+    a: `Tensor` of type `float16`, `float32`, `float64`, `int32`, `complex64`,
+      `complex128` and rank > 1.
+    b: `Tensor` with same type and rank = `rank(a) - 1`.
+    transpose_a: If `True`, `a` is transposed before multiplication.
+    adjoint_a: If `True`, `a` is conjugated and transposed before
+      multiplication.
+    a_is_sparse: If `True`, `a` is treated as a sparse matrix.
+    b_is_sparse: If `True`, `b` is treated as a sparse matrix.
+    name: Name for the operation (optional).
+
+  Returns:
+    A `Tensor` of the same type as `a` and `b` where each inner-most vector is
+    the product of the corresponding matrices in `a` and vectors in `b`, e.g. if
+    all transpose or adjoint attributes are `False`:
+
+    `output`[..., i] = sum_k (`a`[..., i, k] * `b`[..., k]), for all indices i.
+
+    Note: This is matrix-vector product, not element-wise product.
+
+
+  Raises:
+    ValueError: If transpose_a and adjoint_a are both set to True.
+  """
+  with ops.name_scope(name, "MatVec", [a, b]) as name:
+    output = matmul(
+        a,
+        array_ops.expand_dims(b, axis=-1),
+        transpose_a=transpose_a,
+        adjoint_a=adjoint_a,
+        a_is_sparse=a_is_sparse,
+        b_is_sparse=b_is_sparse)
+    return array_ops.squeeze(output, axis=-1)
+
+
 _OverrideBinaryOperatorHelper(matmul, "matmul")
 
 sparse_matmul = gen_math_ops.sparse_mat_mul
-tf_export("sparse_matmul")(sparse_matmul)
+tf_export(v1=["sparse_matmul"])(sparse_matmul)
 
 
 @ops.RegisterStatistics("MatMul", "flops")
@@ -3103,13 +3416,3 @@ def bessel_i1e(x, name=None):
           indices=x.indices, values=x_i1e, dense_shape=x.dense_shape)
     else:
       return gen_math_ops.bessel_i1e(x, name=name)
-
-
-# FFT ops were moved to tf.spectral. tf.fft symbols were part of the TensorFlow
-# 1.0 API so we leave these here for backwards compatibility.
-fft = gen_spectral_ops.fft
-ifft = gen_spectral_ops.ifft
-fft2d = gen_spectral_ops.fft2d
-ifft2d = gen_spectral_ops.ifft2d
-fft3d = gen_spectral_ops.fft3d
-ifft3d = gen_spectral_ops.ifft3d

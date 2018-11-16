@@ -235,6 +235,9 @@ string AsControlDependency(const NodeDef& node);
 // for control dependency, given a node name
 string AsControlDependency(const string& node);
 
+// Returns true if the node is assigned to run on CPU device.
+bool NodeIsOnCpu(const NodeDef* node);
+
 // Returns the number of outputs of a node according to its OpDef. Note that
 // some of the outputs may be unconnected.
 int NumOutputs(const NodeDef& node, GraphDef* graph);
@@ -263,7 +266,7 @@ Status CheckAttrsExist(const NodeDef& node, absl::Span<const string> keys);
 
 // Returns the data type in attribute `attr_name` of `node`. If that attribute
 // doesn't exist, returns DT_INVALID.
-DataType GetDataTypeFromAttr(const NodeDef& node, const string& attr_name);
+DataType GetDataTypeFromAttr(const NodeDef& node, const string& type_attr);
 
 // Returns the last node in the simple chain starting at source and traversing
 // through the input(0) edge from each node as long as the next node satisfies

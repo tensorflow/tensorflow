@@ -70,6 +70,7 @@ using reference_ops::LessEqual;
 using reference_ops::LessEqualWithScaling;
 using reference_ops::LessWithScaling;
 using reference_ops::Mean;
+using reference_ops::ProcessBroadcastShapes;
 using reference_ops::RankOneSelect;
 using reference_ops::Relu1;
 using reference_ops::Relu6;
@@ -3151,12 +3152,12 @@ inline void LstmCell(
   // Combined memory state and final output calculation
   gemmlowp::ScopedProfilingLabel label2("MemoryStateAndFinalOutput");
   output_state_map =
-      input_gate_sm.unaryExpr(Eigen::internal::scalar_sigmoid_op<float>()) *
+      input_gate_sm.unaryExpr(Eigen::internal::scalar_logistic_op<float>()) *
           new_input_sm.tanh() +
-      forget_gate_sm.unaryExpr(Eigen::internal::scalar_sigmoid_op<float>()) *
+      forget_gate_sm.unaryExpr(Eigen::internal::scalar_logistic_op<float>()) *
           prev_state_map;
   output_activ_map =
-      output_gate_sm.unaryExpr(Eigen::internal::scalar_sigmoid_op<float>()) *
+      output_gate_sm.unaryExpr(Eigen::internal::scalar_logistic_op<float>()) *
       output_state_map.tanh();
 }
 
@@ -4367,7 +4368,7 @@ inline void Logistic(const RuntimeShape& input_shape, const float* input_data,
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);
   output_map.array() =
-      input_map.array().unaryExpr(Eigen::internal::scalar_sigmoid_op<float>());
+      input_map.array().unaryExpr(Eigen::internal::scalar_logistic_op<float>());
 }
 
 // Convenience version that allows, for example, generated-code calls to be

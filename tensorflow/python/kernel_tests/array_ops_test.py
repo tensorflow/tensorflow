@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
 import time
 import unittest
 
@@ -47,23 +48,24 @@ from tensorflow.python.platform import test as test_lib
 
 class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_in_graph_and_eager_modes
   def testNonBatchMatrix(self):
     matrix = [[1, 2, 3], [4, 5, 6]]  # Shape (2, 3)
     expected_transposed = [[1, 4], [2, 5], [3, 6]]  # Shape (3, 2)
-    with self.cached_session():
-      transposed = array_ops.matrix_transpose(matrix)
-      self.assertEqual((3, 2), transposed.get_shape())
-      self.assertAllEqual(expected_transposed, transposed.eval())
+    transposed = array_ops.matrix_transpose(matrix)
+    self.assertEqual((3, 2), transposed.get_shape())
+    self.assertAllEqual(expected_transposed, transposed)
 
+  @test_util.run_in_graph_and_eager_modes
   def testConjugate(self):
     m = [[1 + 1j, 2 + 2j, 3 + 3j], [4 + 4j, 5 + 5j, 6 + 6j]]
     expected_transposed = [[1 - 1j, 4 - 4j], [2 - 2j, 5 - 5j], [3 - 3j, 6 - 6j]]
-    with self.cached_session():
-      matrix = ops.convert_to_tensor(m)
-      transposed = array_ops.matrix_transpose(matrix, conjugate=True)
-      self.assertEqual((3, 2), transposed.get_shape())
-      self.assertAllEqual(expected_transposed, transposed.eval())
+    matrix = ops.convert_to_tensor(m)
+    transposed = array_ops.matrix_transpose(matrix, conjugate=True)
+    self.assertEqual((3, 2), transposed.get_shape())
+    self.assertAllEqual(expected_transposed, transposed)
 
+  @test_util.run_in_graph_and_eager_modes
   def testBatchMatrix(self):
     matrix_0 = [[1, 2, 3], [4, 5, 6]]
     matrix_0_t = [[1, 4], [2, 5], [3, 6]]
@@ -71,10 +73,9 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
     matrix_1_t = [[11, 44], [22, 55], [33, 66]]
     batch_matrix = [matrix_0, matrix_1]  # Shape (2, 2, 3)
     expected_transposed = [matrix_0_t, matrix_1_t]  # Shape (2, 3, 2)
-    with self.cached_session():
-      transposed = array_ops.matrix_transpose(batch_matrix)
-      self.assertEqual((2, 3, 2), transposed.get_shape())
-      self.assertAllEqual(expected_transposed, transposed.eval())
+    transposed = array_ops.matrix_transpose(batch_matrix)
+    self.assertEqual((2, 3, 2), transposed.get_shape())
+    self.assertAllEqual(expected_transposed, transposed)
 
   def testNonBatchMatrixDynamicallyDefined(self):
     matrix = [[1, 2, 3], [4, 5, 6]]  # Shape (2, 3)
@@ -103,11 +104,11 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
               batch_matrix_ph: batch_matrix
           }))
 
+  @test_util.run_in_graph_and_eager_modes
   def testTensorWithStaticRankLessThanTwoRaisesBecauseNotAMatrix(self):
     vector = [1, 2, 3]
-    with self.cached_session():
-      with self.assertRaisesRegexp(ValueError, "should be a "):
-        array_ops.matrix_transpose(vector)
+    with self.assertRaisesRegexp(ValueError, "should be a "):
+      array_ops.matrix_transpose(vector)
 
 
 class BooleanMaskTest(test_util.TensorFlowTestCase):
@@ -634,12 +635,21 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       bar2 = constant_op.constant(3)
       _ = checker[..., bar:bar2]
       _ = checker[..., bar]
-      with self.assertRaisesRegexp(
-          TypeError,
-          "Value passed to parameter 'begin' has DataType float32 not in "
-          "list of allowed values"):
-        _ = checker[..., 3.0]
       _ = checker[..., 3]
+      _ = checker[..., 2 ** 64 // 2**63]  # Test longs in Python 2
+
+  def testTensorIndexingTypeError(self):
+    with self.session(use_gpu=True):
+      checker = StridedSliceChecker(self, StridedSliceChecker.REF_TENSOR)
+      expected = re.escape(array_ops._SLICE_TYPE_ERROR)
+      with self.assertRaisesRegexp(TypeError, expected):
+        _ = checker["foo"]
+      with self.assertRaisesRegexp(TypeError, expected):
+        _ = checker[constant_op.constant("foo")]
+      with self.assertRaisesRegexp(TypeError, expected):
+        _ = checker[0.0]
+      with self.assertRaisesRegexp(TypeError, expected):
+        _ = checker[constant_op.constant(0.0)]
 
   def testExpand(self):
     with self.session(use_gpu=True):
@@ -1088,7 +1098,6 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           [[True, False, False, False, False], [True, True, True, False, False],
            [True, True, False, False, False]])
 
-  @test_util.enable_c_shapes
   def testOneDimensionalDtypeWithoutMaxlen(self):
     with self.cached_session():
       # test dtype and default maxlen:
@@ -1099,7 +1108,6 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           res.eval(),
           [[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]])
 
-  @test_util.enable_c_shapes
   def testOneDimensionalWithoutMaxlen(self):
     with self.cached_session():
       res = array_ops.sequence_mask(
@@ -1111,7 +1119,6 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
            [True, False, False, False],
            [True, True, True, True]])
 
-  @test_util.enable_c_shapes
   def testTwoDimensional(self):
     with self.cached_session():
       res = array_ops.sequence_mask(constant_op.constant([[1, 3, 2]]), 5)

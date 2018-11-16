@@ -222,6 +222,13 @@ class SoftmaxTest(test.TestCase):
       with self.assertRaises(errors_impl.InvalidArgumentError):
         nn_ops.softmax([1., 2., 3., 4.], axis=dim).eval()
 
+  def testInvalidAxis(self):
+    # Test case for GitHub issue 22793.
+    with self.cached_session():
+      ones = array_ops.ones(shape=[2, 3])
+      with self.assertRaises(errors_impl.InvalidArgumentError):
+        nn_ops.softmax(ones, axis=2).eval()
+
   def testLargeDims(self):
     # Make sure that we properly handle large inputs. See
     # https://github.com/tensorflow/tensorflow/issues/4425 for details

@@ -437,5 +437,32 @@ TEST(PartiallyDeclusterPassTest, DontDeclusterNonTensorFlowOps) {
   EXPECT_EQ(GetXlaClusterForNode(*n), "cluster_0");
 }
 
+TEST(PartiallyDeclusterPassTest, EliminatedUnusedNodes) {
+  const char* const kClusteredProducer0Name = "ClusteredProducer0";
+  const char* const kClusteredProducer1Name = "ClusteredProducer1";
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  {
+    GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
+    Node* input =
+        ops::SourceOp("FakeNullary", builder.opts().WithName("Input"));
+    Node* clustered_producer_0 =
+        ops::BinaryOp("FakeBinary", input, input,
+                      builder.opts().WithName(kClusteredProducer0Name));
+    Node* clustered_producer_1 =
+        ops::BinaryOp("FakeBinary", clustered_producer_0, input,
+                      builder.opts().WithName(kClusteredProducer1Name));
+    ops::BinaryOp("FakeBinary", clustered_producer_1, input,
+                  builder.opts().WithName("UnclusteredConsumer"));
+    clustered_producer_0->AddAttr(kXlaClusterAttr, "cluster_0");
+    clustered_producer_1->AddAttr(kXlaClusterAttr, "cluster_0");
+    TF_EXPECT_OK(GraphDefBuilderToGraph(builder, graph.get()));
+  }
+
+  TF_ASSERT_OK(PartiallyDecluster(&graph));
+  EXPECT_EQ(FindNodeByName(*graph, kClusteredProducer0Name), nullptr);
+  EXPECT_EQ(FindNodeByName(*graph, kClusteredProducer1Name), nullptr);
+}
+
 }  // namespace
 }  // namespace tensorflow

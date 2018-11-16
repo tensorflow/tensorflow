@@ -79,12 +79,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
 
     bool TrackAllocations() const override { return false; }
 
-    void SetMemory(OpKernelContext* ctx) override {
-      // Returning `false` from `TrackAllocations()` should prevent
-      // `TrackingAllocator` objects from being constructed.
-      DCHECK_EQ(0, ctx->wrapped_allocators().size())
-          << "Allocations were tracked but should not have been requested.";
-    }
+    void SetMemory(OpKernelContext* ctx) override {}
 
     void SetOutput(int slot, const Tensor* tensor) override {}
 

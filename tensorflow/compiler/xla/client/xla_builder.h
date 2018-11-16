@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -262,6 +263,18 @@ class XlaBuilder {
   // This tests whether a computation is a compile-time constant without
   // evaluating the computation.
   StatusOr<bool> IsConstant(const XlaOp& operand) const;
+
+  // Sets up binding which indicates that the `target_dim_num` in the subshape
+  // `target_param_index` of parameter `target_param_num` is a dynamic dimension
+  // and its real dynamic size is represented by `dynamic_param_index` in
+  // parameter `dynamic_param_num`.
+  //
+  // TODO(b/119520625): Remove this API once we have more dynamic shape infra
+  // ready.
+  Status SetDynamicBinding(int64 dynamic_size_param_num,
+                           ShapeIndex dynamic_size_param_index,
+                           int64 target_param_num,
+                           ShapeIndex target_param_index, int64 target_dim_num);
 
  private:
   // Build helper which takes the id of the root operation..
@@ -933,6 +946,8 @@ class XlaBuilder {
                       const XlaOp& grad_output, float epsilon,
                       int64 feature_index);
 
+  XlaOp GetDimensionSize(const XlaOp& operand, int64 dimension);
+
   StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr, HloOpcode opcode,
                                  absl::Span<const XlaOp> operands = {});
 
@@ -1016,6 +1031,9 @@ class XlaBuilder {
 
   // The instructions of this computation.
   std::vector<HloInstructionProto> instructions_;
+
+  // Dynamic parameter configuration of this computation.
+  DynamicParameterBinding dynamic_parameter_binding_;
 
   // A map from XlaOp::Handle to the index in the instructions_ vector where the
   // instruction is held.
@@ -1355,6 +1373,8 @@ class XlaBuilder {
                                 const string& outfeed_config);
   friend XlaOp CreateToken(XlaBuilder* builder);
   friend XlaOp AfterAll(XlaBuilder* builder, absl::Span<const XlaOp> tokens);
+
+  friend XlaOp GetDimensionSize(const XlaOp& operand, int64 dimension);
 };
 
 // RAII-style object: sets the current sharding assignment in builder on
@@ -2128,6 +2148,10 @@ XlaOp BatchNormGrad(const XlaOp& operand, const XlaOp& scale,
                     const XlaOp& batch_mean, const XlaOp& batch_var,
                     const XlaOp& grad_output, float epsilon,
                     int64 feature_index);
+
+// Returns the size of the given dimension of the operand. The operand must be
+// array shaped.
+XlaOp GetDimensionSize(const XlaOp& operand, int64 dimension);
 
 // Implementation details below this point.
 

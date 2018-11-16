@@ -51,6 +51,9 @@ cc_library(
         "@org_tensorflow//tensorflow/core:framework_headers_lib",
         "@org_tensorflow//tensorflow/core:core_cpu_headers_lib",
         "@ngraph//:ngraph_core",
+        "@com_google_absl//absl/container:container_memory",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/types:variant",
     ],
     copts = [
         "-I external/ngraph_tf/src",

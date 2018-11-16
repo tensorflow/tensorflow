@@ -37,7 +37,7 @@ class ResamplerOpsTest(xla_test.XLATestCase):
       out = sess.run(resampled, {input_image: image_np, warp: warp_np})
 
       self.assertAllCloseAccordingToType(
-          expected, out, half_rtol=1e-2, bfloat16_rtol=3e-2)
+          expected, out, rtol=5e-3, half_rtol=1e-2, bfloat16_rtol=3e-2)
 
   def _assertBackwardOpMatchesExpected(self, input_np, warp_np, grad_output_np,
                                        expected_grad_data, expected_grad_warp):

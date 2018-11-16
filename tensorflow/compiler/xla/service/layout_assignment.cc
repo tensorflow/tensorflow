@@ -2092,6 +2092,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kTrace:
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
+    case HloOpcode::kGetDimensionSize:
       return true;
   }
 }

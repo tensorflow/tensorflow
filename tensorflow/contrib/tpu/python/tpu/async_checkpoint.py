@@ -80,6 +80,8 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
     self._summary_writer = None
     self._global_step_tensor = None
 
+    self._last_checkpoint_step = None
+
   def _set_steps_per_run(self, steps_per_run):
     self._steps_per_run = steps_per_run
 
@@ -137,8 +139,7 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
 
     last_step = session.run(self._global_step_tensor)
 
-    # Save the last checkpoint synchronously if needed.
-    if last_step != self._timer.last_triggered_step():
+    if self._last_checkpoint_step != last_step:
       self._save(session, last_step, asynchronous=False)
 
     for l in self._listeners:
@@ -164,15 +165,17 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
           SessionLog(
               status=SessionLog.CHECKPOINT, checkpoint_path=self._save_path),
           step)
+
+      for l in self._listeners:
+        l.after_save(session, step)
+
       end_time = time.time()
       logging.info("Checkpoint actual writing time: (%.3f sec)",
                    end_time - start_time)
       logging.info("Checkpoint finished for %d into %s.", step, self._save_path)
 
-    for l in self._listeners:
-      l.before_save(session, step)
-
     if not asynchronous:
+      self._last_checkpoint_step = step
       _save_fn()
       return
 
@@ -182,6 +185,7 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
         logging.info("Saver thread still in progress, skipping checkpoint.")
         return
 
+    self._last_checkpoint_step = step
     self._save_thread = threading.Thread(target=_save_fn)
     self._save_thread.start()
 

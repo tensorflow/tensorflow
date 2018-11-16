@@ -185,8 +185,14 @@ def sparse_eye(num_rows,
         dense_shape=[num_rows, num_columns])
 
 
+@tf_export("sparse.concat", "sparse_concat", v1=[])
+def sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dim=False,
+                     concat_dim=None, name=None):
+  return sparse_concat(axis, sp_inputs, name, expand_nonconcat_dim, concat_dim)
+
+
 # pylint: disable=protected-access
-@tf_export("sparse.concat", "sparse_concat")
+@tf_export(v1=["sparse.concat", "sparse_concat"])
 @deprecation.deprecated_endpoints("sparse_concat")
 @deprecation.deprecated_args(
     None, "concat_dim is deprecated, use axis instead", "concat_dim")
@@ -705,7 +711,7 @@ class KeywordRequired(object):
     return "KeywordRequired()"
 
 
-@tf_export("sparse.split", "sparse_split")
+@tf_export("sparse.split", v1=["sparse.split", "sparse_split"])
 @deprecation.deprecated_endpoints("sparse_split")
 @deprecation.deprecated_args(
     None, "split_dim is deprecated, use axis instead", "split_dim")
@@ -888,7 +894,7 @@ def sparse_to_dense(sparse_indices,
       name=name)
 
 
-@tf_export("sparse.reduce_max", "sparse_reduce_max")
+@tf_export("sparse.reduce_max", v1=["sparse.reduce_max", "sparse_reduce_max"])
 @deprecation.deprecated_endpoints("sparse_reduce_max")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
@@ -956,7 +962,8 @@ def sparse_reduce_max(sp_input, axis=None, keepdims=None,
       math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims)
 
 
-@tf_export("sparse.reduce_max_sparse", "sparse_reduce_max_sparse")
+@tf_export("sparse.reduce_max_sparse",
+           v1=["sparse.reduce_max_sparse", "sparse_reduce_max_sparse"])
 @deprecation.deprecated_endpoints("sparse_reduce_max_sparse")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
@@ -1007,7 +1014,7 @@ def sparse_reduce_max_sparse(sp_input,
   return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
 
 
-@tf_export("sparse.reduce_sum", "sparse_reduce_sum")
+@tf_export("sparse.reduce_sum", v1=["sparse.reduce_sum", "sparse_reduce_sum"])
 @deprecation.deprecated_endpoints("sparse_reduce_sum")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
@@ -1062,7 +1069,8 @@ def sparse_reduce_sum(sp_input, axis=None, keepdims=None,
       math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims)
 
 
-@tf_export("sparse.reduce_sum_sparse", "sparse_reduce_sum_sparse")
+@tf_export("sparse.reduce_sum_sparse",
+           v1=["sparse.reduce_sum_sparse", "sparse_reduce_sum_sparse"])
 @deprecation.deprecated_endpoints("sparse_reduce_sum_sparse")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")

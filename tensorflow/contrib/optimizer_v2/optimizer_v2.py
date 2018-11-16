@@ -24,6 +24,7 @@ import abc
 
 import six
 
+from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -790,14 +791,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
         # Scale loss for number of replicas (callable-loss case). In this case,
         # we have to be careful to call distribute_lib.get_loss_reduction()
         # *after* loss() is evaluated, so we know what loss reduction it uses.
-        if scale_loss_by_num_replicas is None:
-          scale_loss_by_num_replicas = (
-              distribute_lib.get_loss_reduction() == variable_scope
-              .VariableAggregation.MEAN)
-        if scale_loss_by_num_replicas:
-          num_replicas = distribute_ctx.get_distribution_strategy().num_replicas
-          if num_replicas > 1:
-            loss_value *= 1. / num_replicas
+        loss_value = self._scale_loss(loss_value, scale_loss_by_num_replicas)
 
       if var_list is None:
         var_list = tape.watched_variables()
@@ -808,14 +802,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
                          "be a function when eager execution is enabled.")
 
     # Scale loss for number of replicas (non-callable-loss case).
-    if scale_loss_by_num_replicas is None:
-      scale_loss_by_num_replicas = (
-          distribute_lib.get_loss_reduction() == variable_scope
-          .VariableAggregation.MEAN)
-    if scale_loss_by_num_replicas:
-      num_replicas = distribute_ctx.get_distribution_strategy().num_replicas
-      if num_replicas > 1:
-        loss *= 1. / num_replicas
+    loss = self._scale_loss(loss, scale_loss_by_num_replicas)
 
     if gate_gradients not in [
         optimizer_v1.Optimizer.GATE_NONE, optimizer_v1.Optimizer.GATE_OP,
@@ -856,6 +843,19 @@ class OptimizerV2(optimizer_v1.Optimizer):
         if g is not None and v.dtype != dtypes.resource
     ])
     return grads_and_vars
+
+  @staticmethod
+  def _scale_loss(loss_value, scale_loss_by_num_replicas):
+    """Scale loss for the number of replicas."""
+    if scale_loss_by_num_replicas is None:
+      scale_loss_by_num_replicas = (
+          distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN)
+    if scale_loss_by_num_replicas:
+      num_replicas = \
+        distribute_ctx.get_distribution_strategy().num_replicas_in_sync
+      if num_replicas > 1:
+        loss_value *= 1. / num_replicas
+    return loss_value
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
     """Apply gradients to variables.
@@ -928,7 +928,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
   def _distributed_apply(self, distribution, grads_and_vars, global_step, name):
     """`apply_gradients` for use with a `DistributionStrategy`."""
     reduced_grads = distribution.batch_reduce(
-        variable_scope.VariableAggregation.SUM, grads_and_vars)
+        ds_reduce_util.ReduceOp.SUM, grads_and_vars)
     var_list = [v for _, v in grads_and_vars]
     grads_and_vars = zip(reduced_grads, var_list)
 

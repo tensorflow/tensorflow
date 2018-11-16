@@ -30,51 +30,97 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
   def __init__(self):
     # Maps from a function name to a dictionary that describes how to
     # map from an old argument keyword to the new argument keyword.
-    self.function_keyword_renames = {}
+    self.function_keyword_renames = {
+        "tf.expand_dims": {
+            "dim": "axis",
+        },
+        "tf.convert_to_tensor": {
+            "preferred_dtype": "dtype_hint"
+        },
+        "tf.math.count_nonzero": {
+            "input_tensor": "input",
+            "keep_dims": "keepdims",
+            "reduction_indices": "axis",
+        },
+        "tf.nn.pool": {
+            "dilation_rate": "dilations"
+        },
+        "tf.nn.separable_conv2d": {
+            "rate": "dilations"
+        },
+        "tf.nn.sufficient_statistics": {
+            "keep_dims": "keepdims"
+        },
+        "tf.nn.conv3d": {
+            "filter": "filters"
+        },
+        "tf.nn.conv3d_transpose": {
+            "value": "input",
+            "filter": "filters",
+        },
+        "tf.nn.convolution": {
+            "filter": "filters",
+            "dilation_rate": "dilations",
+        }
+    }
 
     # Mapping from function to the new name of the function
-    self.function_renames = renames_v2.renames
+    self.symbol_renames = renames_v2.renames
     # pylint: disable=line-too-long
-    self.function_renames.update({
-        "tf.FixedLengthRecordReader": "tf.compat.v1.FixedLengthRecordReader",
-        "tf.IdentityReader": "tf.compat.v1.IdentityReader",
-        "tf.LMDBReader": "tf.compat.v1.LMDBReader",
-        "tf.ReaderBase": "tf.compat.v1.ReaderBase",
-        "tf.TFRecordReader": "tf.compat.v1.TFRecordReader",
-        "tf.TextLineReader": "tf.compat.v1.TextLineReader",
-        "tf.WholeFileReader": "tf.compat.v1.WholeFileReader",
-        "tf.saved_model.builder.SavedModelBuilder": "tf.compat.v1.saved_model.Builder",
-        "tf.saved_model.loader.load": "tf.compat.v1.saved_model.load",
-        "tf.saved_model.main_op.main_op": "tf.compat.v1.saved_model.main_op",
-        "tf.saved_model.main_op.main_op_with_restore": "tf.compat.v1.saved_model.main_op_with_restore",
-        "tf.saved_model.simple_save": "tf.compat.v1.saved_model.simple_save",
-        "tf.saved_model.utils.build_tensor_info": "tf.compat.v1.saved_model.build_tensor_info",
-        "tf.saved_model.utils.get_tensor_from_tensor_info": "tf.compat.v1.saved_model.get_tensor_from_tensor_info",
-        "tf.train.QueueRunner": "tf.compat.v1.QueueRunner",
-        "tf.train.add_queue_runner": "tf.compat.v1.add_queue_runner",
-        "tf.train.batch": "tf.compat.v1.train.batch",
-        "tf.train.batch_join": "tf.compat.v1.train.batch_join",
-        "tf.train.input_producer": "tf.compat.v1.train.input_producer",
-        "tf.train.limit_epochs": "tf.compat.v1.train.limit_epochs",
-        "tf.train.maybe_batch": "tf.compat.v1.train.maybe_batch",
-        "tf.train.maybe_batch_join": "tf.compat.v1.train.maybe_batch_join",
-        "tf.train.maybe_shuffle_batch": "tf.compat.v1.train.maybe_shuffle_batch",
-        "tf.train.maybe_shuffle_batch_join": "tf.compat.v1.train.maybe_shuffle_batch_join",
-        "tf.train.queue_runner.QueueRunner": "tf.compat.v1.queue_runner.QueueRunner",
-        "tf.train.queue_runner.add_queue_runner": "tf.compat.v1.queue_runner.add_queue_runner",
-        "tf.train.queue_runner.start_queue_runners": "tf.compat.v1.queue_runner.start_queue_runners",
-        "tf.train.range_input_producer": "tf.compat.v1.train.range_input_producer",
-        "tf.train.shuffle_batch": "tf.compat.v1.train.shuffle_batch",
-        "tf.train.shuffle_batch_join": "tf.compat.v1.train.shuffle_batch_join",
-        "tf.train.slice_input_producer": "tf.compat.v1.train.slice_input_producer",
-        "tf.train.string_input_producer": "tf.compat.v1.train.string_input_producer",
-        "tf.train.start_queue_runners": "tf.compat.v1.start_queue_runners",
+    # Add additional renames not in renames_v2.py here.
+    self.symbol_renames.update({
+        "tf.contrib.data.AUTOTUNE": "tf.data.experimental.AUTOTUNE",
+        "tf.contrib.data.Counter": "tf.data.experimental.Counter",
+        "tf.contrib.data.CheckpointInputPipelineHook": "tf.data.experimental.CheckpointInputPipelineHook",
+        "tf.contrib.data.CsvDataset": "tf.data.experimental.CsvDataset",
+        "tf.contrib.data.Optional": "tf.data.experimental.Optional",
+        "tf.contrib.data.RandomDataset": "tf.data.experimental.RandomDataset",
+        "tf.contrib.data.Reducer": "tf.data.experimental.Reducer",
+        "tf.contrib.data.SqlDataset": "tf.data.experimental.SqlDataset",
+        "tf.contrib.data.StatsAggregator": "tf.data.experimental.StatsAggregator",
+        "tf.contrib.data.TFRecordWriter": "tf.data.experimental.TFRecordWriter",
+        "tf.contrib.data.assert_element_shape": "tf.data.experimental.assert_element_shape",
+        "tf.contrib.data.batch_and_drop_remainder": "tf.compat.v1.contrib.data.batch_and_drop_remainder",
+        "tf.contrib.data.bucket_by_sequence_length": "tf.data.experimental.bucket_by_sequence_length",
+        "tf.contrib.data.choose_from_datasets": "tf.data.experimental.choose_from_datasets",
+        "tf.contrib.data.copy_to_device": "tf.data.experimental.copy_to_device",
+        "tf.contrib.data.dense_to_sparse_batch": "tf.data.experimental.dense_to_sparse_batch",
+        "tf.contrib.data.enumerate_dataset": "tf.data.experimental.enumerate_dataset",
+        "tf.contrib.data.get_next_as_optional": "tf.data.experimental.get_next_as_optional",
+        "tf.contrib.data.get_single_element": "tf.data.experimental.get_single_element",
+        "tf.contrib.data.group_by_reducer": "tf.data.experimental.group_by_reducer",
+        "tf.contrib.data.group_by_window": "tf.data.experimental.group_by_window",
+        "tf.contrib.data.ignore_errors": "tf.data.experimental.ignore_errors",
+        "tf.contrib.data.latency_stats": "tf.data.experimental.latency_stats",
+        "tf.contrib.data.make_batched_features_dataset": "tf.data.experimental.make_batched_features_dataset",
+        "tf.contrib.data.make_csv_dataset": "tf.data.experimental.make_csv_dataset",
+        "tf.contrib.data.make_saveable_from_iterator": "tf.data.experimental.make_saveable_from_iterator",
+        "tf.contrib.data.map_and_batch": "tf.data.experimental.map_and_batch",
+        "tf.contrib.data.padded_batch_and_drop_remainder": "tf.compat.v1.contrib.data.padded_batch_and_drop_remainder",
+        "tf.contrib.data.parallel_interleave": "tf.data.experimental.parallel_interleave",
+        "tf.contrib.data.parse_example_dataset": "tf.data.experimental.parse_example_dataset",
+        "tf.contrib.data.prefetch_to_device": "tf.data.experimental.prefetch_to_device",
+        "tf.contrib.data.read_batch_features": "tf.compat.v1.contrib.data.read_batch_features",
+        "tf.contrib.data.reduce_dataset": "tf.compat.v1.contrib.data.reduce_dataset",
+        "tf.contrib.data.rejection_resample": "tf.data.experimental.rejection_resample",
+        "tf.contrib.data.sample_from_datasets": "tf.data.experimental.sample_from_datasets",
+        "tf.contrib.data.scan": "tf.data.experimental.scan",
+        "tf.contrib.data.set_stats_aggregator": "tf.data.experimental.set_stats_aggregator",
+        "tf.contrib.data.shuffle_and_repeat": "tf.data.experimental.shuffle_and_repeat",
+        "tf.contrib.data.sliding_window_batch": "tf.compat.v1.contrib.data.sliding_window_batch",
+        "tf.contrib.data.sloppy_interleave": "tf.compat.v1.contrib.data.sloppy_interleave",
+        "tf.contrib.data.unbatch": "tf.data.experimental.unbatch",
+        "tf.contrib.data.unique": "tf.data.experimental.unique",
+        "tf.quantize_v2": "tf.quantization.quantize",
+        "tf.sparse_concat": "tf.sparse.concat",
+        "tf.load_file_system_library": "tf.load_library",
     })
     # pylint: enable=line-too-long
 
-    # TODO(amitpatankar): Fix the function rename script
-    # to handle constants without hardcoding.
-    self.function_renames["QUANTIZED_DTYPES"] = "dtypes.QUANTIZED_DTYPES"
+    # For custom behavior and if auto-generate rename in renames_v2.py
+    # is incorrect, add the op name here to exclude it from renames_v2.py.
+    excluded_renames = [
+    ]
 
     # Variables that should be changed to functions.
     self.change_to_function = {}
@@ -82,7 +128,36 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Functions that were reordered should be changed to the new keyword args
     # for safety, if positional arguments are used. If you have reversed the
     # positional arguments yourself, this could do the wrong thing.
-    self.function_reorders = {}
+    # IMPORTANT: order here should correspond to OLD argument order.
+    # We just prepend "arg_name=" to all arguments in function calls.
+    self.function_reorders = {
+        "tf.argmax": ["input", "axis", "name", "dimension", "output_type"],
+        "tf.argmin": ["input", "axis", "name", "dimension", "output_type"],
+        "tf.boolean_mask": ["tensor", "mask", "name", "axis"],
+        "tf.convert_to_tensor": ["value", "dtype", "name", "preferred_dtype"],
+        "tf.nn.convolution": [
+            "input", "filter", "padding", "strides", "dilation_rate", "name",
+            "data_format"],
+        "tf.nn.crelu": ["features", "name", "axis"],
+        "tf.nn.pool": [
+            "input", "window_shape", "pooling_type", "padding", "dilation_rate",
+            "strides", "name", "data_format"
+        ],
+        "tf.nn.separable_conv2d": [
+            "input", "depthwise_filter", "pointwise_filter", "strides",
+            "padding", "data_format", "dilations", "name"
+        ],
+        "tf.pad": ["tensor", "paddings", "mode", "name", "constant_values"],
+        "tf.quantize_v2": [
+            "input", "min_range", "max_range", "T", "mode", "name",
+            "round_mode"
+        ],
+        "tf.shape": ["input", "name", "out_type"],
+        "tf.size": ["input", "name", "out_type"],
+        "tf.sparse.concat": [
+            "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
+        ],
+    }
 
     # Specially handled functions.
     self.function_handle = {}
@@ -95,18 +170,95 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "you need to inspect this usage manually.\n"
     )
 
+    # TODO(b/118888586): add default value change to update script.
+    default_loss_reduction_changed = (
+        "WARNING: default value of loss_reduction has been changed to "
+        "SUM_OVER_BATCH_SIZE.\n"
+    )
+
+    assert_return_type_comment = (
+        "WARNING: assert_* functions have been changed to return None, the "
+        "data argument has been removed, and arguments have been reordered."
+    )
+
+    assert_rank_comment = (
+        "WARNING: assert_rank_* functions have been changed to return None, and"
+        " the data and summarize arguments have been removed."
+    )
+
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
     self.function_warnings = {
-        "tf.train.exponential_decay": decay_function_comment,
-        "tf.train.piecewise_constant": decay_function_comment,
-        "tf.train.polynomial_decay": decay_function_comment,
-        "tf.train.natural_exp_decay": decay_function_comment,
-        "tf.train.inverse_time_decay": decay_function_comment,
-        "tf.train.cosine_decay": decay_function_comment,
-        "tf.train.cosine_decay_restarts": decay_function_comment,
-        "tf.train.linear_cosine_decay": decay_function_comment,
-        "tf.train.noisy_linear_cosine_decay": decay_function_comment,
+        "tf.assert_greater": assert_return_type_comment,
+        "tf.assert_equal": assert_return_type_comment,
+        "tf.assert_less": assert_return_type_comment,
+        "tf.assert_rank": assert_rank_comment,
+        "tf.debugging.assert_equal": assert_return_type_comment,
+        "tf.debugging.assert_greater": assert_return_type_comment,
+        "tf.debugging.assert_greater_equal": assert_return_type_comment,
+        "tf.debugging.assert_integer": assert_return_type_comment,
+        "tf.debugging.assert_less": assert_return_type_comment,
+        "tf.debugging.assert_less_equal": assert_return_type_comment,
+        "tf.debugging.assert_near": assert_return_type_comment,
+        "tf.debugging.assert_negative": assert_return_type_comment,
+        "tf.debugging.assert_non_negative": assert_return_type_comment,
+        "tf.debugging.assert_non_positive": assert_return_type_comment,
+        "tf.debugging.assert_none_equal": assert_return_type_comment,
+        "tf.debugging.assert_positive": assert_return_type_comment,
+        "tf.debugging.assert_rank": assert_rank_comment,
+        "tf.debugging.assert_rank_at_least": assert_rank_comment,
+        "tf.debugging.assert_rank_in": assert_rank_comment,
+        "tf.train.exponential_decay":
+            decay_function_comment,
+        "tf.train.piecewise_constant":
+            decay_function_comment,
+        "tf.train.polynomial_decay":
+            decay_function_comment,
+        "tf.train.natural_exp_decay":
+            decay_function_comment,
+        "tf.train.inverse_time_decay":
+            decay_function_comment,
+        "tf.train.cosine_decay":
+            decay_function_comment,
+        "tf.train.cosine_decay_restarts":
+            decay_function_comment,
+        "tf.train.linear_cosine_decay":
+            decay_function_comment,
+        "tf.train.noisy_linear_cosine_decay":
+            decay_function_comment,
+        "tf.estimator.LinearClassifier":
+            default_loss_reduction_changed,
+        "tf.estimator.LinearRegressor":
+            default_loss_reduction_changed,
+        "tf.estimator.DNNLinearCombinedClassifier":
+            default_loss_reduction_changed,
+        "tf.estimator.DNNLinearCombinedRegressor":
+            default_loss_reduction_changed,
+        "tf.estimator.DNNRegressor":
+            default_loss_reduction_changed,
+        "tf.estimator.DNNClassifier":
+            default_loss_reduction_changed,
+        "tf.estimator.BaselineClassifier":
+            default_loss_reduction_changed,
+        "tf.estimator.BaselineRegressor":
+            default_loss_reduction_changed,
+        "tf.nn.conv1d":
+        "WARNING: use_cudnn_on_gpu argument has been removed and \"value\" was "
+        "renamed to \"input\"",
+        "tf.nn.conv2d":
+        "WARNING: use_cudnn_on_gpu argument has been removed and \"filter\" "
+        "was renamed to \"filters\"",
+        "tf.nn.conv2d_backprop_filter":
+        "WARNING: use_cudnn_on_gpu argument has been removed",
+        "tf.nn.conv2d_backprop_input":
+        "WARNING: use_cudnn_on_gpu argument has been removed and \"filter\" "
+        "was renamed to \"filters\"",
+    }
+    # Right now we can't have both a rename and a warning.
+    self.symbol_renames = {
+        name: new_name
+        for name, new_name in self.symbol_renames.items()
+        if name not in self.function_warnings and name not in excluded_renames
     }
 
 

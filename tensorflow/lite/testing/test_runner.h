@@ -54,12 +54,12 @@ class TestRunner {
 
   // Define the contents of the given input tensor. The given 'id' is
   // guaranteed to be one of the ids returned by GetInputs().
-  virtual void SetInput(int id, const string& csv_values) = 0;
+  virtual void SetInput(int id, const string& values_as_string) = 0;
 
   // Define what should be expected for an output tensor after Invoke() runs.
   // The given 'id' is guaranteed to be one of the ids returned by
   // GetOutputs().
-  virtual void SetExpectation(int id, const string& csv_values) = 0;
+  virtual void SetExpectation(int id, const string& values_as_string) = 0;
 
   // Run the model.
   virtual void Invoke() = 0;

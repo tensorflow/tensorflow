@@ -35,6 +35,19 @@ from tensorflow.python.platform import test as test_lib
 # os.environ["TF_MATMUL_AUTOTUNE_ENABLE"] = "1" to enable it.
 
 
+class MatVecTest(test_lib.TestCase):
+  """Simple test for matvec, which is sugar on top of matmul."""
+
+  def testTwoByTwoCase(self):
+    a = np.array([[1, 2], [3, 4]])
+    b = np.array([5, 6])
+    with self.cached_session():
+      c = math_ops.matvec(a, b)
+      self.assertAllEqual((2,), c.shape)
+      c_ = c.eval()
+    self.assertAllEqual([5 + 2 * 6, 3 * 5 + 4 * 6], c_)
+
+
 def _AddTest(test, op_name, testcase_name, fn):
   test_name = "_".join(["test", op_name, testcase_name])
   if hasattr(test, test_name):

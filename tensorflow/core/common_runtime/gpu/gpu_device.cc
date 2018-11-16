@@ -110,13 +110,13 @@ using se::rocm::ScopedActivateExecutorContext;
 // corresponding stream have completed.  The following two classes
 // serve this purpose in two different compilation environments.
 
-class EigenGPUStreamDevice : public ::Eigen::StreamInterface {
+class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
  public:
-  EigenGPUStreamDevice()
+  EigenGpuStreamDevice()
       : scratch_(nullptr), semaphore_(nullptr), context_(nullptr) {
     Eigen::initializeDeviceProp();
   }
-  ~EigenGPUStreamDevice() override {}
+  ~EigenGpuStreamDevice() override {}
   void Reinitialize(OpKernelContext* context, const gpuStream_t* gpu_stream,
                     TfGpuId tf_gpu_id, ::tensorflow::Allocator* alloc,
                     char* scratch) {
@@ -127,7 +127,7 @@ class EigenGPUStreamDevice : public ::Eigen::StreamInterface {
     context_ = context;
     scratch_ = scratch;
     semaphore_ =
-        reinterpret_cast<unsigned int*>(scratch + EIGEN_GPU_SCRATCH_SIZE);
+        reinterpret_cast<unsigned int*>(scratch + Eigen::kGpuScratchSize);
     stream_ = gpu_stream;
     allocator_ = alloc;
     PlatformGpuId platform_gpu_id;
@@ -221,7 +221,7 @@ class EigenGPUStreamDevice : public ::Eigen::StreamInterface {
   mutable unsigned int* semaphore_;
   OpKernelContext* context_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(EigenGPUStreamDevice);
+  TF_DISALLOW_COPY_AND_ASSIGN(EigenGpuStreamDevice);
 };
 
 // This factory helps to ensure that different GPU device objects that refer to
@@ -728,7 +728,7 @@ class ConcretePerOpGpuDevice : public PerOpGpuDevice {
   const Eigen::GpuDevice& device() const override { return device_; }
 
  private:
-  EigenGPUStreamDevice stream_device_;
+  EigenGpuStreamDevice stream_device_;
   Eigen::GpuDevice device_;
 };
 
@@ -1243,6 +1243,7 @@ Status BaseGPUDeviceFactory::GetDeviceLocalities(
     int num_tf_gpus, const std::vector<InterconnectMap>& interconnects,
     LocalityMap* localities) {
   std::vector<TfGpuId> all_tf_gpu_ids;
+  all_tf_gpu_ids.reserve(num_tf_gpus);
   for (int i = 0; i < num_tf_gpus; ++i) {
     all_tf_gpu_ids.push_back(TfGpuId(i));
   }

@@ -25,8 +25,10 @@ from tensorflow.contrib.distribute.python import collective_all_reduce_strategy
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import cross_tower_utils
 from tensorflow.contrib.distribute.python import multi_worker_test_base
+from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import keras
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -54,8 +56,6 @@ class CollectiveAllReduceStrategyTestBase(
     self._run_options = config_pb2.RunOptions()
     self._run_options.experimental.collective_graph_key = 6
 
-    self._sess_config = config_pb2.ConfigProto()
-
     # We use a different key_base for each test so that collective keys won't be
     # reused.
     # TODO(yuefengz, tucker): enable it to reuse collective keys in different
@@ -66,9 +66,10 @@ class CollectiveAllReduceStrategyTestBase(
   def _get_test_object(self, task_type, task_id, num_gpus=0):
     distribution = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
         num_gpus_per_worker=num_gpus)
+    session_config = config_pb2.ConfigProto()
     if task_type and task_id is not None:
       distribution.configure(
-          session_config=self._sess_config,
+          session_config=session_config,
           cluster_spec=self._cluster_spec,
           task_type=task_type,
           task_id=task_id)
@@ -79,20 +80,23 @@ class CollectiveAllReduceStrategyTestBase(
         CollectiveAllReduceStrategyTestBase.collective_key_base,
         instance_key_with_id_start=num_gpus * 10000 +
         CollectiveAllReduceStrategyTestBase.collective_key_base)
-    distribution._collective_keys = collective_keys
-    distribution._cross_tower_ops._collective_keys = collective_keys
+    distribution.extended._collective_keys = collective_keys
+    distribution.extended._cross_tower_ops._collective_keys = collective_keys
     if task_type and task_id is not None:
-      return distribution, 'grpc://' + self._cluster_spec[task_type][task_id]
+      return distribution, 'grpc://' + self._cluster_spec[task_type][
+          task_id], session_config
     else:
-      return distribution, ''
+      return distribution, '', session_config
 
   def _test_minimize_loss_graph(self, task_type, task_id, num_gpus):
-    d, master_target = self._get_test_object(task_type, task_id, num_gpus)
+    d, master_target, config = self._get_test_object(task_type, task_id,
+                                                     num_gpus)
     with ops.Graph().as_default(), \
-         self.cached_session(config=self._sess_config,
+         self.cached_session(config=config,
                              target=master_target) as sess, \
          d.scope():
-      l = core.Dense(1, use_bias=False, name='gpu_%d' % d._num_gpus_per_worker)
+      l = core.Dense(1, use_bias=False,
+                     name='gpu_%d' % d.extended._num_gpus_per_worker)
 
       def loss_fn(x):
         y = array_ops.reshape(l(x), []) - constant_op.constant(1.)
@@ -117,7 +121,7 @@ class CollectiveAllReduceStrategyTestBase(
       def step():
         """Perform one optimization step."""
         # Run forward & backward to get gradients, variables list.
-        g_v = d.call_for_each_replica(grad_fn, one)
+        g_v = d.call_for_each_replica(grad_fn, args=[one])
         # Update the variables using the gradients and the update() function.
         before_list = []
         after_list = []
@@ -127,7 +131,7 @@ class CollectiveAllReduceStrategyTestBase(
           with ops.control_dependencies([fetched]):
             # TODO(yuefengz): support non-Mirrored variable as destinations.
             g = d.reduce(
-                variable_scope.VariableAggregation.SUM, g, destinations=v)
+                reduce_util.ReduceOp.SUM, g, destinations=v)
             with ops.control_dependencies(
                 d.update(v, update, g, grouped=False)):
               after_list.append(d.read_var(v))
@@ -135,7 +139,7 @@ class CollectiveAllReduceStrategyTestBase(
 
       before_out, after_out = step()
 
-      if context.num_gpus() < d._num_gpus_per_worker:
+      if context.num_gpus() < d.extended._num_gpus_per_worker:
         return True
 
       sess.run(
@@ -154,7 +158,8 @@ class CollectiveAllReduceStrategyTestBase(
       return error_after < error_before
 
   def _test_complex_model(self, task_type, task_id, num_gpus):
-    d, master_target = self._get_test_object(task_type, task_id, num_gpus)
+    d, master_target, config = self._get_test_object(task_type, task_id,
+                                                     num_gpus)
 
     def model_fn():
       """Mnist model with synthetic input."""
@@ -193,7 +198,7 @@ class CollectiveAllReduceStrategyTestBase(
       return train_op
 
     with ops.Graph().as_default(), \
-         self.cached_session(config=self._sess_config,
+         self.cached_session(config=config,
                              target=master_target) as sess:
       with d.scope():
         train_op = d.call_for_each_replica(model_fn)
@@ -204,10 +209,10 @@ class CollectiveAllReduceStrategyTestBase(
       return True
 
   def _test_variable_initialization(self, task_type, task_id, num_gpus):
-    distribution, master_target = self._get_test_object(task_type, task_id,
-                                                        num_gpus)
+    distribution, master_target, config = self._get_test_object(
+        task_type, task_id, num_gpus)
     with ops.Graph().as_default(), \
-         self.cached_session(config=self._sess_config,
+         self.cached_session(config=config,
                              target=master_target) as sess, \
          distribution.scope():
 
@@ -222,7 +227,7 @@ class CollectiveAllReduceStrategyTestBase(
       x = distribution.call_for_each_replica(model_fn)
       reduced_x = distribution.unwrap(
           distribution.reduce(
-              variable_scope.VariableAggregation.MEAN, x,
+              reduce_util.ReduceOp.MEAN, x,
               destinations='/cpu:0'))[0]
       x = distribution.unwrap(x)[0]
 
@@ -334,6 +339,31 @@ class LocalCollectiveAllReduceStrategy(CollectiveAllReduceStrategyTestBase,
     if context.num_gpus() < num_gpus:
       return
     self._test_complex_model(None, None, num_gpus)
+
+
+class InputContextTest(strategy_test_lib.DistributionTestBase):
+
+  def testInputContextPropertyLocal(self):
+    d = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
+        num_gpus_per_worker=2)
+    with context.graph_mode():
+      input_fn = self._input_fn_to_test_input_context(
+          expected_num_replicas_in_sync=2,
+          expected_num_input_pipelines=1,
+          expected_input_pipeline_id=0)
+      d.make_input_fn_iterator(input_fn)
+
+  def testInputContextPropertyMultiWorker(self):
+    d = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
+        num_gpus_per_worker=2)
+    cluster_spec = {'worker': ['worker1', 'worker2', 'worker3'], 'ps': ['ps1']}
+    d.configure(cluster_spec=cluster_spec, task_type='worker', task_id=1)
+    with context.graph_mode():
+      input_fn = self._input_fn_to_test_input_context(
+          expected_num_replicas_in_sync=6,
+          expected_num_input_pipelines=3,
+          expected_input_pipeline_id=1)  # because task_id = 1
+      d.make_input_fn_iterator(input_fn)
 
 
 if __name__ == '__main__':

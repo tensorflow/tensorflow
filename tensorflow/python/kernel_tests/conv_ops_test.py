@@ -1669,7 +1669,7 @@ class SeparableConv2DTest(test.TestCase):
 
       value = sess.run(conv)
     tf_logging.info("value = ", value)
-    self.assertArrayNear(expected, np.ravel(value), 1e-5)
+    self.assertArrayNear(expected, np.ravel(value), 1e-3)
     self.assertShapeEqual(value, conv)
 
   def _testSeparableConv2D(self, data_format):

@@ -118,6 +118,7 @@ gpu_py_test(
     size = "small",
     srcs = ["list_ops_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
@@ -1053,9 +1054,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "summary_ops_test",
+    name = "summary_v1_ops_test",
     size = "small",
-    srcs = ["summary_ops_test.py"],
+    srcs = ["summary_v1_ops_test.py"],
     additional_deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -1066,9 +1067,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "summary_tensor_op_test",
+    name = "summary_v1_tensor_op_test",
     size = "small",
-    srcs = ["summary_tensor_op_test.py"],
+    srcs = ["summary_v1_tensor_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -1077,7 +1078,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:summary_ops",
+        "//tensorflow/python:summary",
     ],
 )
 
@@ -1145,6 +1146,18 @@ tf_py_test(
     name = "unicode_transcode_op_test",
     size = "small",
     srcs = ["unicode_transcode_op_test.py"],
+    additional_deps = [
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:string_ops",
+    ],
+)
+
+tf_py_test(
+    name = "unicode_decode_op_test",
+    size = "small",
+    srcs = ["unicode_decode_op_test.py"],
     additional_deps = [
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
@@ -1448,6 +1461,7 @@ gpu_py_test(
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:math_ops",
@@ -2321,9 +2335,9 @@ gpu_py_test(
 )
 
 gpu_py_test(
-    name = "summary_audio_op_test",
+    name = "summary_v1_audio_op_test",
     size = "small",
-    srcs = ["summary_audio_op_test.py"],
+    srcs = ["summary_v1_audio_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
@@ -2334,9 +2348,9 @@ gpu_py_test(
 )
 
 gpu_py_test(
-    name = "summary_image_op_test",
+    name = "summary_v1_image_op_test",
     size = "small",
-    srcs = ["summary_image_op_test.py"],
+    srcs = ["summary_v1_image_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
@@ -2562,6 +2576,8 @@ gpu_py_test(
     ],
     shard_count = 4,
     tags = [
+        # TODO(b/118887316): Re-enable this test in Kokoro.
+        "no_oss",
         "optonly",  # times out
     ],
 )
@@ -2609,34 +2625,6 @@ gpu_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
     tags = ["manual"],
-)
-
-gpu_py_test(
-    name = "dct_ops_test",
-    srcs = ["dct_ops_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:spectral_ops",
-        "//tensorflow/python:spectral_ops_test_util",
-    ],
-)
-
-gpu_py_test(
-    name = "fft_ops_test",
-    size = "medium",
-    srcs = ["fft_ops_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:spectral_ops",
-        "//tensorflow/python:spectral_ops_test_util",
-    ],
-    shard_count = 4,
-    tags = ["optonly"],
 )
 
 gpu_py_test(
@@ -2885,7 +2873,7 @@ gpu_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
-    shard_count = 20,
+    shard_count = 30,
 )
 
 gpu_py_test(

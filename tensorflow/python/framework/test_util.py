@@ -53,7 +53,7 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape  # pylint: disable=unused-import
+from tensorflow.python.eager import tape
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -61,6 +61,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
@@ -113,8 +114,28 @@ def assert_ops_in_graph(expected_ops, graph):
   return actual_ops
 
 
-@tf_export("test.assert_equal_graph_def")
-def assert_equal_graph_def(actual, expected, checkpoint_v2=False):
+@tf_export("test.assert_equal_graph_def", v1=[])
+def assert_equal_graph_def_v2(actual, expected):
+  """Asserts that two `GraphDef`s are (mostly) the same.
+
+  Compares two `GraphDef` protos for equality, ignoring versions and ordering of
+  nodes, attrs, and control inputs.  Node names are used to match up nodes
+  between the graphs, so the naming of nodes must be consistent. This function
+  ignores randomized attribute values that may appear in V2 checkpoints.
+
+  Args:
+    actual: The `GraphDef` we have.
+    expected: The `GraphDef` we expected.
+
+  Raises:
+    AssertionError: If the `GraphDef`s do not match.
+    TypeError: If either argument is not a `GraphDef`.
+  """
+  assert_equal_graph_def(actual, expected, checkpoint_v2=True)
+
+
+@tf_export(v1=["test.assert_equal_graph_def"])
+def assert_equal_graph_def_v1(actual, expected, checkpoint_v2=False):
   """Asserts that two `GraphDef`s are (mostly) the same.
 
   Compares two `GraphDef` protos for equality, ignoring versions and ordering of
@@ -131,6 +152,10 @@ def assert_equal_graph_def(actual, expected, checkpoint_v2=False):
     AssertionError: If the `GraphDef`s do not match.
     TypeError: If either argument is not a `GraphDef`.
   """
+  assert_equal_graph_def(actual, expected, checkpoint_v2)
+
+
+def assert_equal_graph_def(actual, expected, checkpoint_v2=False):
   if not isinstance(actual, graph_pb2.GraphDef):
     raise TypeError(
         "Expected tf.GraphDef for actual, got %s" % type(actual).__name__)
@@ -633,6 +658,109 @@ def assert_no_new_tensors(f):
   return decorator
 
 
+def _find_reference_cycle(objects, idx):
+
+  def get_ignore_reason(obj, blacklist):
+    """Tests whether an object should be omitted from the dependency graph."""
+    if len(blacklist) > 100:
+      return "<depth limit>"
+    if tf_inspect.isframe(obj):
+      if "test_util.py" in tf_inspect.getframeinfo(obj)[0]:
+        return "<test code>"
+    for b in blacklist:
+      if b is obj:
+        return "<test code>"
+    if obj is blacklist:
+      return "<test code>"
+    return None
+
+  # Note: this function is meant to help with diagnostics. Its output is purely
+  # a human readable representation, so you may freely modify it to suit your
+  # needs.
+  def describe(obj, blacklist, leaves_only=False):
+    """Returns a custom human-readable summary of obj.
+
+    Args:
+      obj: the value to describe.
+      blacklist: same as blacklist in get_ignore_reason.
+      leaves_only: boolean flag used when calling describe recursively. Useful
+        for summarizing collections.
+    """
+    if get_ignore_reason(obj, blacklist):
+      return "{}{}".format(get_ignore_reason(obj, blacklist), type(obj))
+    if tf_inspect.isframe(obj):
+      return "frame: {}".format(tf_inspect.getframeinfo(obj))
+    elif tf_inspect.ismodule(obj):
+      return "module: {}".format(obj.__name__)
+    else:
+      if leaves_only:
+        return "{}, {}".format(type(obj), id(obj))
+      elif isinstance(obj, list):
+        return "list({}): {}".format(
+            id(obj), [describe(e, blacklist, leaves_only=True) for e in obj])
+      elif isinstance(obj, tuple):
+        return "tuple({}): {}".format(
+            id(obj), [describe(e, blacklist, leaves_only=True) for e in obj])
+      elif isinstance(obj, dict):
+        return "dict({}): {} keys".format(id(obj), len(obj.keys()))
+      elif tf_inspect.isfunction(obj):
+        return "function({}) {}; globals ID: {}".format(
+            id(obj), obj.__name__, id(obj.__globals__))
+      else:
+        return "{}, {}".format(type(obj), id(obj))
+
+  def build_ref_graph(obj, graph, reprs, blacklist):
+    """Builds a reference graph as <referrer> -> <list of refferents>.
+
+    Args:
+      obj: The object to start from. The graph will be built by recursively
+        adding its referrers.
+      graph: Dict holding the graph to be built. To avoid creating extra
+        references, the graph holds object IDs rather than actual objects.
+      reprs: Auxiliary structure that maps object IDs to their human-readable
+        description.
+      blacklist: List of objects to ignore.
+    """
+    referrers = gc.get_referrers(obj)
+    blacklist = blacklist + (referrers,)
+
+    obj_id = id(obj)
+    for r in referrers:
+      if get_ignore_reason(r, blacklist) is None:
+        r_id = id(r)
+        if r_id not in graph:
+          graph[r_id] = []
+        if obj_id not in graph[r_id]:
+          graph[r_id].append(obj_id)
+          build_ref_graph(r, graph, reprs, blacklist)
+          reprs[r_id] = describe(r, blacklist)
+
+  def find_cycle(el, graph, reprs, path):
+    """Finds and prints a single cycle in the dependency graph."""
+    if el not in graph:
+      return
+    for r in graph[el]:
+      if r in path:
+        logging.error("Reference cycle sample:")
+        for p in path + (r,):
+          logging.error(reprs.get(p, "unknown object " + str(p)))
+        return True
+      else:
+        if find_cycle(r, graph, reprs, path + (r,)):
+          return True
+    return False
+
+  obj = objects[idx]
+  graph = {}  # referrer ID -> object ID
+  reprs = {}  # object ID -> description
+  build_ref_graph(obj, graph, reprs, (objects, graph, reprs, get_ignore_reason,
+                                      describe, build_ref_graph, find_cycle))
+  for k in graph:
+    if find_cycle(k, graph, reprs, ()):
+      return True
+  return False
+
+
 def assert_no_garbage_created(f):
   """Test method decorator to assert that no garbage has been created.
 
@@ -648,6 +776,10 @@ def assert_no_garbage_created(f):
 
   def decorator(self, **kwargs):
     """Sets DEBUG_SAVEALL, runs the test, and checks for new garbage."""
+    # Force-load `distribution_strategy_context` to prevent GC at
+    # test time when using eager. Remove once b/117329403 is resolved.
+    tape.distribution_strategy_context.get_distribution_strategy()
+
     gc.disable()
     previous_debug_flags = gc.get_debug()
     gc.set_debug(gc.DEBUG_SAVEALL)
@@ -655,7 +787,8 @@ def assert_no_garbage_created(f):
     previous_garbage = len(gc.garbage)
     f(self, **kwargs)
     gc.collect()
-    if len(gc.garbage) > previous_garbage:
+    new_garbage = len(gc.garbage)
+    if new_garbage > previous_garbage:
       logging.error(
           "The decorated test created work for Python's garbage collector, "
           "likely due to a reference cycle. New objects in cycle(s):")
@@ -679,11 +812,19 @@ def assert_no_garbage_created(f):
           logging.error(obj)
           logging.error("  Object __repr__:")
           logging.error(repr(obj))
-        except Exception:
+        except Exception:  # pylint: disable=broad-except
           logging.error("(Exception while printing object)")
+
+    # When garbage is created, this call can help identify reference cycles,
+    # which are typically the cause of such garbage.
+    if new_garbage > previous_garbage:
+      for i in range(previous_garbage, new_garbage):
+        if _find_reference_cycle(gc.garbage, i):
+          break
+
     # This will fail if any garbage has been created, typically because of a
     # reference cycle.
-    self.assertEqual(previous_garbage, len(gc.garbage))
+    self.assertEqual(previous_garbage, new_garbage)
     # TODO(allenl): Figure out why this debug flag reset doesn't work. It would
     # be nice to be able to decorate arbitrary tests in a large test suite and
     # not hold on to every object in other tests.
@@ -839,20 +980,20 @@ def run_in_graph_and_eager_modes(func=None,
           "`run_test_in_graph_and_eager_modes` only supports test methods. "
           "Did you mean to use `run_all_in_graph_and_eager_modes`?")
 
-    def decorated(self, **kwargs):
+    def decorated(self, *args, **kwargs):
       try:
         with context.graph_mode():
           with self.test_session(use_gpu=use_gpu, config=config):
-            f(self, **kwargs)
+            f(self, *args, **kwargs)
       except unittest.case.SkipTest:
         pass
 
       def run_eagerly(self, **kwargs):
         if not use_gpu:
           with ops.device("/device:CPU:0"):
-            f(self, **kwargs)
+            f(self, *args, **kwargs)
         else:
-          f(self, **kwargs)
+          f(self, *args, **kwargs)
 
       if assert_no_eager_garbage:
         ops.reset_default_graph()
@@ -1154,6 +1295,9 @@ class TensorFlowTestCase(googletest.TestCase):
       return self._eval_helper(tensor())
     else:
       try:
+        if sparse_tensor.is_sparse(tensor):
+          return sparse_tensor.SparseTensorValue(tensor.indices, tensor.values,
+                                                 tensor.dense_shape)
         return tensor.numpy()
       except AttributeError as e:
         six.raise_from(ValueError("Unsupported type %s." % type(tensor)), e)

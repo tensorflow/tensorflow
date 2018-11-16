@@ -65,6 +65,7 @@ class MaterializedIndexedDataset(object):
             sparse.as_dense_types(self._output_shapes, self._output_classes)))
 
 
+# TODO(saeta): Add a `DatasetV1` wrapper if this is exposed via the public API.
 class IndexedDataset(dataset_ops.Dataset):
   """IndexedDataset is highly experimental!
   """
@@ -149,6 +150,7 @@ class IndexedDataset(dataset_ops.Dataset):
     raise NotImplementedError("IndexedDataset._as_variant_tensor")
 
 
+# TODO(saeta): Add a `DatasetV1` wrapper if this is exposed via the public API.
 class IdentityIndexedDataset(IndexedDataset):
   """IdentityIndexedDataset is a trivial indexed dataset used for testing.
   """

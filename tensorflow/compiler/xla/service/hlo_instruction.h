@@ -767,6 +767,9 @@ class HloInstruction {
   // when we plumb a primordial token from the entry computation.
   static std::unique_ptr<HloInstruction> CreateToken();
 
+  static std::unique_ptr<HloInstruction> CreateGetDimensionSize(
+      const Shape& shape, HloInstruction* operand, int64 dimension);
+
   // Returns the opcode for this instruction.
   HloOpcode opcode() const { return opcode_; }
 
@@ -880,11 +883,15 @@ class HloInstruction {
       return false;
     }
 
-    // Use an explicit loop rather than ContainerEquals, because copying around
-    // std::functions may be too expensive in some cases.
-    for (size_t i = 0; i < operands().size(); ++i) {
-      if (!eq_operands(operand(i), other.operand(i))) {
-        return false;
+    // Two AllReduces are Identical if they have the same all_reduce_id.
+    // Their operands don't have to be Identical.
+    if (!this->IsCrossModuleAllReduce()) {
+      // Use an explicit loop rather than ContainerEquals, because copying
+      // around std::functions may be too expensive in some cases.
+      for (size_t i = 0; i < operands().size(); ++i) {
+        if (!eq_operands(operand(i), other.operand(i))) {
+          return false;
+        }
       }
     }
 
@@ -954,16 +961,6 @@ class HloInstruction {
   Status Accept(
       const std::function<Status(const HloInstruction*)>& visitor_func) const;
 
-  // Visits all instructions rooted at this instruction using the given visitor
-  // in the given order. 'order' must contain at least the set of instructions
-  // rooted at this node (ie, those accessible from a DFS traversal from this
-  // instruction). Instructions contained in 'order' which are not in the set of
-  // instructions rooted at this node are ignored. 'order' must also be a valid
-  // topological sort of these instructions (defs appear before uses) though
-  // need not be a DFS post-order.
-  Status AcceptOrdered(DfsHloVisitor* visitor,
-                       const std::vector<const HloInstruction*>& order);
-
   // Visit this instruction and only this instruction with the given visitor.
   template <typename HloInstructionPtr>
   Status Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor);
@@ -1003,6 +1000,8 @@ class HloInstruction {
   HloComputation* while_body() const;
   void set_while_condition(HloComputation* while_condition);
   void set_while_body(HloComputation* while_body);
+
+  HloInstruction* while_init() const;
 
   // Gets/sets the true and false HloComputation for Conditional. The setters
   // should only be called by HloModule or HloComputation methods.
@@ -1324,6 +1323,9 @@ class HloInstruction {
   // Delegates to HloConcatenateInstruction::concatenate_dimension.
   int64 concatenate_dimension() const;
 
+  // Delegates to HloGetDimensionSizeInstruction::dimension.
+  int64 dimension() const;
+
   // Returns whether this instruction does a rank-2 transposition.
   bool IsRank2Transpose() const;
 
@@ -1442,6 +1444,7 @@ class HloInstruction {
 
   // Delegates to HloAllReduceInstruction::all_reduce_id.
   absl::optional<int64> all_reduce_id() const;
+  void set_all_reduce_id(const absl::optional<int64>& all_reduce_id);
 
   // Returns data on the window in a windowed operation such as
   // convolution.

@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.layers.pooling import max_pooling3d
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
@@ -1139,6 +1140,30 @@ class BackpropTest(test.TestCase):
       t.watch(c)
       g = f(c)
     self.assertAllEqual(self.evaluate(t.gradient(g, c)), 4.0)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testMaxPooling3DGradient(self):
+
+    def forward(a):
+      r = max_pooling3d(a, pool_size=pool_size, strides=strides, padding='SAME')
+      return r
+
+    input_sizes = [1, 3, 2, 4, 1]
+    pool_size = (2, 2, 1)
+    strides = (1, 1, 1)
+
+    total_size = np.prod(input_sizes)
+    x = np.arange(1, total_size + 1, dtype=np.float32)
+    aa = constant_op.constant(x, shape=input_sizes, dtype=dtypes.float32)
+    da = backprop.gradients_function(forward)(aa)
+
+    if not context.executing_eagerly():
+      tf_aa = constant_op.constant(x, shape=input_sizes, dtype=dtypes.float32)
+      tf_max = max_pooling3d(
+          tf_aa, pool_size=pool_size, strides=strides, padding='SAME')
+      tf_da = gradients.gradients(tf_max, [tf_aa])
+      self.assertAllEqual(da[0], tf_da[0].eval())
+
 
 if __name__ == '__main__':
   test.main()

@@ -140,6 +140,7 @@ java_test(
     srcs = ["src/test/java/org/tensorflow/lite/InterpreterTest.java"],
     data = [
         "src/testdata/add.bin",
+        "//tensorflow/lite:testdata/multi_add.bin",
         "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
     javacopts = JAVACOPTS,

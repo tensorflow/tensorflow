@@ -3,9 +3,9 @@
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
-
 package(default_visibility = ["//visibility:public"])
+
+exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "gpu_py_test")
@@ -146,6 +146,8 @@ py_library(
     deps = [
         ":backend",
         "//tensorflow/python/data",
+        "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/training/checkpointable:data_structures",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
@@ -318,7 +320,7 @@ py_test(
 
 py_test(
     name = "advanced_activations_test",
-    size = "small",
+    size = "medium",
     srcs = ["layers/advanced_activations_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -344,6 +346,7 @@ py_test(
     name = "convolutional_test",
     size = "large",
     srcs = ["layers/convolutional_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
@@ -368,7 +371,7 @@ gpu_py_test(
 
 py_test(
     name = "pooling_test",
-    size = "small",
+    size = "large",
     srcs = ["layers/pooling_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -381,6 +384,7 @@ py_test(
     name = "core_test",
     size = "medium",
     srcs = ["layers/core_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
@@ -401,9 +405,11 @@ gpu_py_test(
 
 py_test(
     name = "local_test",
-    size = "large",
+    size = "medium",
     srcs = ["layers/local_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -492,13 +498,24 @@ py_test(
 
 py_test(
     name = "recurrent_test",
-    size = "medium",
+    size = "large",
     srcs = ["layers/recurrent_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
+    ],
+)
+
+gpu_py_test(
+    name = "unified_rnn_test",
+    size = "medium",
+    srcs = ["layers/unified_rnn_test.py"],
+    additional_deps = [
+        ":keras",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
@@ -690,8 +707,9 @@ py_test(
 
 py_test(
     name = "training_test",
-    size = "enormous",
+    size = "medium",
     srcs = ["engine/training_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [
@@ -758,6 +776,7 @@ py_test(
     name = "model_subclassing_test",
     size = "medium",
     srcs = ["model_subclassing_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [
@@ -824,6 +843,7 @@ py_test(
     name = "models_test",
     size = "medium",
     srcs = ["models_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
     tags = ["notsan"],  # b/67509773
     deps = [

@@ -247,16 +247,6 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
             &current_element_iterator_);
       }
 
-      Status BuildCurrentElementIteratorLocked(OpKernelContext* ctx)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        IteratorContext::Params params;
-        params.env = ctx->env();
-        params.runner = *(ctx->runner());
-        params.lib = ctx->function_library();
-        IteratorContext iter_ctx(std::move(params));
-        return BuildCurrentElementIteratorLocked(&iter_ctx);
-      }
-
       mutex mu_;
       size_t element_index_ GUARDED_BY(mu_) = 0;
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);

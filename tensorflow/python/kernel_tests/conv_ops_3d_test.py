@@ -52,11 +52,11 @@ class Conv3DTest(test.TestCase):
   def _DtypesToTest(self, use_gpu):
     if use_gpu:
       if not test_util.GpuSupportsHalfMatMulAndConv():
-        return [dtypes.float32]
+        return [dtypes.float64, dtypes.float32]
       else:
         # It is important that float32 comes before float16 here,
         # as we will be using its gradients as reference for fp16 gradients.
-        return [dtypes.float32, dtypes.float16]
+        return [dtypes.float64, dtypes.float32, dtypes.float16]
     else:
       return [dtypes.float64, dtypes.float32, dtypes.float16]
 
@@ -636,6 +636,30 @@ class Conv3DTest(test.TestCase):
         out_depth=3,
         stride=[2, 3, 1],
         padding="SAME",
+        test_input=False)
+
+  # Test the fast path in gemm_pack_rhs/mkldnn_gemm_pack, when channel
+  # dimension is a multiple of packet size.
+  def testInputGradientValidPaddingStrideOneFastPath(self):
+    self.ConstructAndTestGradient(
+        batch=2,
+        input_shape=(3, 5, 4),
+        filter_shape=(2, 2, 2),
+        in_depth=8,
+        out_depth=2,
+        stride=1,
+        padding="VALID",
+        test_input=True)
+
+  def testFilterGradientValidPaddingStrideOneFastPath(self):
+    self.ConstructAndTestGradient(
+        batch=2,
+        input_shape=(4, 6, 5),
+        filter_shape=(2, 2, 2),
+        in_depth=8,
+        out_depth=2,
+        stride=1,
+        padding="VALID",
         test_input=False)
 
   # Testing for backprops

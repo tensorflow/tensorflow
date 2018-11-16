@@ -100,6 +100,11 @@ class ShapeIndex {
 
   string ToString() const;
 
+  template <typename H>
+  friend H AbslHashValue(H h, const ShapeIndex& index) {
+    return H::combine(std::move(h), index.indices_);
+  }
+
  private:
   container_type indices_;
 };
@@ -146,6 +151,9 @@ class ShapeIndexView {
   bool operator!=(const ShapeIndexView& other) const;
 
   string ToString() const;
+
+  // Returns true if this shape index starts with 'prefix'.
+  bool StartsWith(ShapeIndexView prefix) const;
 
  private:
   absl::Span<const int64> indices_;
@@ -464,9 +472,6 @@ class ShapeUtil {
 
   // Returns true if shape is an empty tuple.
   static bool IsEmptyTuple(const Shape& shape);
-
-  // Returns true if shape is the nil shape (an empty tuple).
-  static bool IsNil(const Shape& shape);
 
   // Returns the number of elements in the given tuple shape.
   // Precondition: IsTuple(shape)

@@ -21,9 +21,8 @@ from __future__ import print_function
 import collections as pycoll
 import threading
 
-from tensorflow.python import pywrap_tensorflow
-from tensorflow.contrib.all_reduce.python import all_reduce
 from tensorflow.contrib.distribute.python import values as value_lib
+from tensorflow.python.distribute import all_reduce
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -31,6 +30,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python import pywrap_tensorflow
 if pywrap_tensorflow.IsBuiltWithROCm():
   from tensorflow.contrib import rccl as nccl_ops
 else:
@@ -671,7 +671,5 @@ def contains_indexed_slices(value):
     return any(contains_indexed_slices(v) for v in value)
   elif isinstance(value, value_lib.DistributedValues):
     return contains_indexed_slices(list(value._index.values()))  # pylint: disable=protected-access
-  elif isinstance(value, value_lib.MapOutput):
-    return contains_indexed_slices(value.get())
   else:
     return False

@@ -94,6 +94,13 @@ std::map<string, string> kBrokenTests = {
     {R"(^\/div.*activation=True.*dtype=tf\.int32)", "112968789"},
     {R"(^\/floor_div.*activation=True.*dtype=tf\.int32)", "112968789"},
     {R"(^\/floor_mod.*activation=True.*dtype=tf\.int32)", "112968789"},
+    {R"(^\/floor_mod.*activation=True.*dtype=tf\.int64)", "112968789"},
+
+    {R"(^\/sub.*dtype=tf\.int64)", "119126484"},
+    {R"(^\/div.*dtype=tf\.int64)", "119126484"},
+    {R"(^\/mul.*dtype=tf\.int64)", "119126484"},
+    {R"(^\/add.*dtype=tf\.int64)", "119126484"},
+    {R"(^\/floor_div.*dtype=tf\.int64)", "119126484"},
 };
 
 // Allows test data to be unarchived into a temporary directory and makes

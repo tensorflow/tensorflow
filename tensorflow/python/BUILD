@@ -20,6 +20,8 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+exports_files(["platform/base.i"])
+
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow:tensorflow.bzl", "tf_gpu_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
@@ -81,6 +83,7 @@ py_library(
         "//tensorflow/python/tools:__pkg__",
         "//tensorflow/python/tools/api/generator:__pkg__",
         "//tensorflow/tools/api/tests:__pkg__",
+        "//tensorflow/tools/compatibility/update:__pkg__",
     ],
     deps = [
         ":array_ops",
@@ -121,7 +124,6 @@ py_library(
         ":session_ops",
         ":sets",
         ":sparse_ops",
-        ":spectral_ops",
         ":spectral_ops_test_util",
         ":standard_ops",
         ":state_ops",
@@ -142,12 +144,15 @@ py_library(
         "//tensorflow/python/compat",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:estimator_training",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/parallel_for",
+        "//tensorflow/python/ops/ragged",
+        "//tensorflow/python/ops/signal",
         "//tensorflow/python/profiler",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/tools:component_api_helper",
@@ -1536,6 +1541,7 @@ py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -1830,6 +1836,7 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "spectral_ops_gen",
+    visibility = ["//tensorflow/python/ops/signal:__pkg__"],
 )
 
 tf_gen_op_wrapper_private_py(
@@ -1851,6 +1858,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/contrib/text:__pkg__",
         "//learning/brain/contrib/text/python/ragged:__pkg__",
+        "//tensorflow/python/ops/ragged:__pkg__",
     ],
 )
 
@@ -1859,6 +1867,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/contrib/text:__pkg__",
         "//learning/brain/contrib/text/python/ragged:__pkg__",
+        "//tensorflow/python/ops/ragged:__pkg__",
     ],
 )
 
@@ -1867,6 +1876,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/contrib/text:__pkg__",
         "//learning/brain/contrib/text/python/ragged:__pkg__",
+        "//tensorflow/python/ops/ragged:__pkg__",
     ],
 )
 
@@ -2083,7 +2093,9 @@ py_library(
     srcs = ["ops/control_flow_util_v2.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "framework_ops",
+        ":control_flow_util",
+        ":framework_ops",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
     ],
@@ -2108,7 +2120,6 @@ py_library(
         ":graph_to_function_def",
         ":pywrap_tensorflow",
         ":util",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:function",
     ],
 )
@@ -2133,8 +2144,8 @@ py_library(
         ":list_ops",
         ":tensor_array_ops",
         ":tensor_shape",
+        ":tensor_util",
         ":util",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:function",
     ],
 )
@@ -2255,7 +2266,6 @@ py_library(
         ":platform",
         ":random_grad",
         ":resource_variable_ops",
-        ":spectral_grad",
         ":tensor_array_ops",
         ":tensor_util",
         ":unconnected_gradients",
@@ -2497,7 +2507,6 @@ py_library(
         ":nn_ops_gen",
         ":sparse_ops_gen",
         ":sparse_tensor",
-        ":spectral_ops_gen",
         ":state_ops",
         ":state_ops_gen",
         ":tensor_shape",
@@ -2807,33 +2816,6 @@ py_test(
 )
 
 py_library(
-    name = "spectral_grad",
-    srcs = ["ops/spectral_grad.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":array_ops",
-        ":framework",
-        ":framework_for_generated_wrappers",
-        ":math_ops",
-        ":spectral_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_library(
-    name = "spectral_ops",
-    srcs = ["ops/spectral_ops.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":array_ops",
-        ":dtypes",
-        ":framework_ops",
-        ":math_ops",
-        ":spectral_ops_gen",
-    ],
-)
-
-py_library(
     name = "spectral_ops_test_util",
     srcs = ["ops/spectral_ops_test_util.py"],
     srcs_version = "PY2AND3",
@@ -2950,7 +2932,6 @@ py_library(
         ":sparse_grad",
         ":sparse_ops",
         ":special_math_ops",
-        ":spectral_grad",
         ":state_grad",
         ":state_ops",
         ":stateless_random_ops",
@@ -2961,6 +2942,7 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
+        "//tensorflow/python/eager:wrap_function",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
     ],
@@ -2997,18 +2979,6 @@ py_library(
         ":framework_for_generated_wrappers",
         ":string_ops_gen",
         ":util",
-    ],
-)
-
-py_library(
-    name = "summary_ops",
-    srcs = ["ops/summary_ops.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":framework",
-        ":framework_for_generated_wrappers",
-        ":logging_ops_gen",
-        ":summary_op_util",
     ],
 )
 
@@ -3424,6 +3394,8 @@ py_library(
             # file):
             "training/basic_session_run_hooks.py",
             "training/checkpoint_management.py",
+            "training/distribute.py",
+            "training/distribution_strategy_context.py",
             "training/saveable_object.py",
             "training/saver.py",
             "training/session_run_hook.py",
@@ -3441,6 +3413,7 @@ py_library(
         ":control_flow_ops",
         ":data_flow_ops",
         ":device",
+        ":distribute",
         ":errors",
         ":framework",
         ":framework_for_generated_wrappers",
@@ -3473,6 +3446,7 @@ py_library(
         "@six_archive//:six",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:distribute_coordinator_context",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
@@ -3578,8 +3552,10 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":constant_op",
         ":control_flow_ops",
         ":device_util",
+        ":dtypes",
         ":framework_ops",
         ":platform",
         ":resource_variable_ops",
@@ -3587,7 +3563,9 @@ py_library(
         ":util",
         ":variable_scope",
         "//tensorflow/python/data",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/tools/docs:doc_controls",
     ],
 )
 
@@ -3598,7 +3576,9 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":client_testlib",
+        ":constant_op",
         ":distribute",
+        ":dtypes",
         ":variable_scope",
     ],
 )
@@ -4004,7 +3984,6 @@ tf_py_wrap_cc(
         "platform/stacktrace_handler.i",
         "pywrap_tfe.i",
         "training/quantize_training.i",
-        "training/server_lib.i",
         "util/kernel_registry.i",
         "util/port.i",
         "util/py_checkpoint_reader.i",
@@ -4900,7 +4879,7 @@ py_test(
         ":training",
         ":variable_scope",
         ":variables",
-        "//tensorflow/python/feature_column",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
     ],
 )
@@ -5012,7 +4991,6 @@ py_library(
     deps = [
         ":client",
         ":constant_op",
-        ":errors",
         ":framework",
         ":framework_for_generated_wrappers",
         ":lib",
@@ -5021,12 +4999,10 @@ py_library(
         ":protos_all_py",
         ":pywrap_tensorflow",
         ":summary_op_util",
-        ":summary_ops",
         ":summary_ops_gen",
         ":summary_ops_v2",
         ":util",
         "//tensorflow/python/eager:context",
-        "//third_party/py/numpy",
         "@six_archive//:six",
     ],
 )
@@ -5037,7 +5013,6 @@ py_tests(
     srcs = [
         "summary/plugin_asset_test.py",
         "summary/summary_test.py",
-        "summary/text_summary_test.py",
         "summary/writer/writer_test.py",
     ],
     additional_deps = [

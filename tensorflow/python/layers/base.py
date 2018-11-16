@@ -208,6 +208,9 @@ class Layer(base_layer.Layer):
         raise ValueError(
             'reuse argument not allowed when keras style layers are enabled, '
             'but saw: {}'.format(self._reuse))
+      self._keras_style = True
+    else:
+      self._keras_style = False
 
     self._graph = None
     self._call_has_scope_arg = 'scope' in self._call_fn_args
@@ -275,7 +278,7 @@ class Layer(base_layer.Layer):
 
   def _name_scope(self):
     """Determines op naming for the Layer."""
-    if _is_in_keras_style_scope():
+    if self._keras_style:
       return super(Layer, self)._name_scope()
     return self._current_scope.original_name_scope
 
@@ -349,7 +352,7 @@ class Layer(base_layer.Layer):
       ValueError: When trainable has been set to True with synchronization
         set as `ON_READ`.
     """
-    if _is_in_keras_style_scope():
+    if self._keras_style:
       return super(Layer, self).add_weight(
           name=name,
           shape=shape,
@@ -477,7 +480,7 @@ class Layer(base_layer.Layer):
     """
     scope = kwargs.pop('scope', None)
 
-    if _is_in_keras_style_scope():
+    if self._keras_style:
       if scope is not None:
         raise ValueError(
             'scope argument not allowed when keras style layers are enabled, '

@@ -776,6 +776,8 @@ class GradientTape(object):
         context.context().end_step()
       except AttributeError:
         pass
+      except TypeError:
+        pass
 
   def watch(self, tensor):
     """Ensures that `tensor` is being traced by this tape.
