@@ -176,9 +176,38 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "SUM_OVER_BATCH_SIZE.\n"
     )
 
+    assert_return_type_comment = (
+        "WARNING: assert_* functions have been changed to return None, the "
+        "data argument has been removed, and arguments have been reordered."
+    )
+
+    assert_rank_comment = (
+        "WARNING: assert_rank_* functions have been changed to return None, and"
+        " the data and summarize arguments have been removed."
+    )
+
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
     self.function_warnings = {
+        "tf.assert_greater": assert_return_type_comment,
+        "tf.assert_equal": assert_return_type_comment,
+        "tf.assert_less": assert_return_type_comment,
+        "tf.assert_rank": assert_rank_comment,
+        "tf.debugging.assert_equal": assert_return_type_comment,
+        "tf.debugging.assert_greater": assert_return_type_comment,
+        "tf.debugging.assert_greater_equal": assert_return_type_comment,
+        "tf.debugging.assert_integer": assert_return_type_comment,
+        "tf.debugging.assert_less": assert_return_type_comment,
+        "tf.debugging.assert_less_equal": assert_return_type_comment,
+        "tf.debugging.assert_near": assert_return_type_comment,
+        "tf.debugging.assert_negative": assert_return_type_comment,
+        "tf.debugging.assert_non_negative": assert_return_type_comment,
+        "tf.debugging.assert_non_positive": assert_return_type_comment,
+        "tf.debugging.assert_none_equal": assert_return_type_comment,
+        "tf.debugging.assert_positive": assert_return_type_comment,
+        "tf.debugging.assert_rank": assert_rank_comment,
+        "tf.debugging.assert_rank_at_least": assert_rank_comment,
+        "tf.debugging.assert_rank_in": assert_rank_comment,
         "tf.train.exponential_decay":
             decay_function_comment,
         "tf.train.piecewise_constant":
