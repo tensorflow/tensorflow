@@ -75,6 +75,25 @@ Status FunctionalizeControlFlow(Graph* graph,
   return FunctionalizeControlFlow(/*lookup_library=*/nullptr, graph, library);
 }
 
+Status FunctionalizeControlFlowForGraphDef(GraphDef* graph_def,
+                                           FunctionLibraryDefinition* library) {
+  return FunctionalizeControlFlowForGraphDef(/*lookup_library=*/nullptr,
+                                             graph_def, library);
+}
+
+Status FunctionalizeControlFlowForGraphDef(
+    const FunctionLibraryDefinition* lookup_library, GraphDef* graph_def,
+    FunctionLibraryDefinition* library) {
+  FunctionDefLibrary function_lib = graph_def->library();
+  Graph graph(OpRegistry::Global());
+
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph({}, *graph_def, &graph));
+  TF_RETURN_IF_ERROR(FunctionalizeControlFlow(lookup_library, &graph, library));
+  graph.ToGraphDef(graph_def);
+  std::swap(*graph_def->mutable_library(), function_lib);
+  return Status::OK();
+}
+
 Status FunctionalizeControlFlowForFunction(
     const string& func_name, const string& new_func_name,
     const protobuf::Map<string, tensorflow::AttrValue>& attrs,
