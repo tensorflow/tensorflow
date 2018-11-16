@@ -212,7 +212,9 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
       distribution=[
           combinations.one_device_strategy,
           combinations.mirrored_strategy_with_gpu_and_cpu,
-          combinations.mirrored_strategy_with_two_gpus
+          combinations.mirrored_strategy_with_two_gpus,
+          combinations.core_mirrored_strategy_with_gpu_and_cpu,
+          combinations.core_mirrored_strategy_with_two_gpus
       ],
       mode=["graph", "eager"])
   allreduce_combinations = combinations.combine(
@@ -232,7 +234,8 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
               cross_tower_ops_lib.AllReduceCrossDeviceOps(
                   "hierarchical_copy", 0, 100, 10))
       ],
-      distribution=[combinations.mirrored_strategy_with_two_gpus],
+      distribution=[combinations.mirrored_strategy_with_two_gpus,
+                    combinations.core_mirrored_strategy_with_two_gpus],
       mode=["graph", "eager"])
 
   @combinations.generate(reduction_to_one_combinations + allreduce_combinations)

@@ -343,6 +343,14 @@ mirrored_strategy_with_two_gpus = NamedDistribution(
     "Mirrored2GPUs",
     lambda: mirrored_lib.MirroredStrategy(["/gpu:0", "/gpu:1"]),
     required_gpus=2)
+core_mirrored_strategy_with_gpu_and_cpu = NamedDistribution(
+    "CoreMirroredCPUAndGPU",
+    lambda: mirrored_lib.CoreMirroredStrategy(["/gpu:0", "/cpu:0"]),
+    required_gpus=1)
+core_mirrored_strategy_with_two_gpus = NamedDistribution(
+    "CoreMirrored2GPUs",
+    lambda: mirrored_lib.CoreMirroredStrategy(["/gpu:0", "/gpu:1"]),
+    required_gpus=2)
 
 
 gradient_descent_optimizer_v1_fn = NamedObject(
@@ -373,8 +381,11 @@ def distributions_and_v1_optimizers():
   """A common set of combination with DistributionStrategies and Optimizers."""
   return combine(
       distribution=[
-          one_device_strategy, mirrored_strategy_with_gpu_and_cpu,
-          mirrored_strategy_with_two_gpus
+          one_device_strategy,
+          mirrored_strategy_with_gpu_and_cpu,
+          mirrored_strategy_with_two_gpus,
+          core_mirrored_strategy_with_gpu_and_cpu,
+          core_mirrored_strategy_with_two_gpus,
       ],
       optimizer_fn=optimizers_v1)
 
@@ -383,7 +394,10 @@ def distributions_and_v2_optimizers():
   """DistributionStrategies and V2 Optimizers."""
   return combine(
       distribution=[
-          one_device_strategy, mirrored_strategy_with_gpu_and_cpu,
-          mirrored_strategy_with_two_gpus
+          one_device_strategy,
+          mirrored_strategy_with_gpu_and_cpu,
+          mirrored_strategy_with_two_gpus,
+          core_mirrored_strategy_with_gpu_and_cpu,
+          core_mirrored_strategy_with_two_gpus,
       ],
       optimizer_fn=optimizers_v2)
