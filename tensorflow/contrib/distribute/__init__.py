@@ -25,13 +25,13 @@ from __future__ import print_function
 
 # pylint: disable=unused-import,wildcard-import
 from tensorflow.contrib.distribute.python.collective_all_reduce_strategy import CollectiveAllReduceStrategy
-from tensorflow.contrib.distribute.python.cross_tower_ops import *
 from tensorflow.contrib.distribute.python.mirrored_strategy import MirroredStrategy
 from tensorflow.contrib.distribute.python.monitor import Monitor
 from tensorflow.contrib.distribute.python.one_device_strategy import OneDeviceStrategy
 from tensorflow.contrib.distribute.python.parameter_server_strategy import ParameterServerStrategy
 from tensorflow.contrib.distribute.python.step_fn import *
 from tensorflow.contrib.distribute.python.tpu_strategy import TPUStrategy
+from tensorflow.python.distribute.cross_device_ops import *
 from tensorflow.python.distribute.distribute_config import DistributeConfig
 from tensorflow.python.distribute.distribute_coordinator import run_standard_tensorflow_server
 from tensorflow.python.training.distribute import *

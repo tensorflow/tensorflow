@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utilities for cross_tower_ops."""
+"""Utilities for cross_device_ops."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,8 +21,8 @@ from __future__ import print_function
 import collections as pycoll
 import threading
 
-from tensorflow.contrib.distribute.python import values as value_lib
 from tensorflow.python.distribute import all_reduce
+from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops

@@ -23,15 +23,15 @@ from __future__ import print_function
 
 import functools
 
-from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_ops_lib
-from tensorflow.contrib.distribute.python import values
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.contrib.tpu.python.tpu import training_loop
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
@@ -467,7 +467,7 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     # Validate that the destination is same as the host device
     # Note we don't do this when in replicate context as the reduction is
     # performed on the TPU device itself.
-    devices = cross_tower_ops_lib.get_devices_from(destinations)
+    devices = cross_device_ops_lib.get_devices_from(destinations)
     if len(devices) == 1:
       assert device_util.canonicalize(devices[0]) == device_util.canonicalize(
           self._host_device)

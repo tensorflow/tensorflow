@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import six
 
-from tensorflow.contrib.distribute.python import values
+from tensorflow.python.distribute import values
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops

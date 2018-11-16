@@ -22,9 +22,9 @@ import os
 
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import multi_worker_test_base
-from tensorflow.contrib.distribute.python import values
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.estimator import model_fn as model_fn_lib
