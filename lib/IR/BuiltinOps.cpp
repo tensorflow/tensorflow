@@ -334,8 +334,14 @@ bool ConstantOp::parse(OpAsmParser *parser, OperationState *result) {
   if (auto fnAttr = valueAttr.dyn_cast<FunctionAttr>())
     return parser->addTypeToList(fnAttr.getValue()->getType(), result->types);
 
-  return parser->parseColonType(type) ||
-         parser->addTypeToList(type, result->types);
+  if (auto intAttr = valueAttr.dyn_cast<IntegerAttr>()) {
+    type = intAttr.getType();
+  } else if (auto fpAttr = valueAttr.dyn_cast<FloatAttr>()) {
+    type = fpAttr.getType();
+  } else if (parser->parseColonType(type)) {
+    return true;
+  }
+  return parser->addTypeToList(type, result->types);
 }
 
 /// The constant op requires an attribute, and furthermore requires that it
@@ -389,7 +395,7 @@ Attribute ConstantOp::constantFold(ArrayRef<Attribute> operands,
 
 void ConstantFloatOp::build(Builder *builder, OperationState *result,
                             const APFloat &value, FloatType type) {
-  ConstantOp::build(builder, result, builder->getFloatAttr(value), type);
+  ConstantOp::build(builder, result, builder->getFloatAttr(type, value), type);
 }
 
 bool ConstantFloatOp::isClassFor(const Operation *op) {
@@ -405,8 +411,9 @@ bool ConstantIntOp::isClassFor(const Operation *op) {
 
 void ConstantIntOp::build(Builder *builder, OperationState *result,
                           int64_t value, unsigned width) {
-  ConstantOp::build(builder, result, builder->getIntegerAttr(value),
-                    builder->getIntegerType(width));
+  Type type = builder->getIntegerType(width);
+  ConstantOp::build(builder, result, builder->getIntegerAttr(type, value),
+                    type);
 }
 
 /// Build a constant int op producing an integer with the specified type,
@@ -414,7 +421,8 @@ void ConstantIntOp::build(Builder *builder, OperationState *result,
 void ConstantIntOp::build(Builder *builder, OperationState *result,
                           int64_t value, Type type) {
   assert(type.isa<IntegerType>() && "ConstantIntOp can only have integer type");
-  ConstantOp::build(builder, result, builder->getIntegerAttr(value), type);
+  ConstantOp::build(builder, result, builder->getIntegerAttr(type, value),
+                    type);
 }
 
 /// ConstantIndexOp only matches values whose result type is Index.
@@ -424,8 +432,9 @@ bool ConstantIndexOp::isClassFor(const Operation *op) {
 
 void ConstantIndexOp::build(Builder *builder, OperationState *result,
                             int64_t value) {
-  ConstantOp::build(builder, result, builder->getIntegerAttr(value),
-                    builder->getIndexType());
+  Type type = builder->getIndexType();
+  ConstantOp::build(builder, result, builder->getIntegerAttr(type, value),
+                    type);
 }
 
 //===----------------------------------------------------------------------===//

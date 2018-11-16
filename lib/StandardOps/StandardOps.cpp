@@ -85,7 +85,8 @@ Attribute AddFOp::constantFold(ArrayRef<Attribute> operands,
 
   if (auto lhs = operands[0].dyn_cast_or_null<FloatAttr>()) {
     if (auto rhs = operands[1].dyn_cast_or_null<FloatAttr>())
-      return FloatAttr::get(lhs.getValue() + rhs.getValue(), context);
+      if (lhs.getType() == rhs.getType())
+        return FloatAttr::get(lhs.getType(), lhs.getValue() + rhs.getValue());
   }
 
   return nullptr;
@@ -101,7 +102,8 @@ Attribute AddIOp::constantFold(ArrayRef<Attribute> operands,
 
   if (auto lhs = operands[0].dyn_cast_or_null<IntegerAttr>()) {
     if (auto rhs = operands[1].dyn_cast_or_null<IntegerAttr>())
-      return IntegerAttr::get(lhs.getValue() + rhs.getValue(), context);
+      if (lhs.getType() == rhs.getType())
+        return IntegerAttr::get(lhs.getType(), lhs.getValue() + rhs.getValue());
   }
 
   return nullptr;
@@ -504,7 +506,8 @@ void CmpIOp::build(Builder *build, OperationState *result,
   result->addOperands({lhs, rhs});
   result->types.push_back(getI1SameShape(build, lhs->getType()));
   result->addAttribute(getPredicateAttrName(),
-                       build->getIntegerAttr(static_cast<int64_t>(predicate)));
+                       build->getIntegerAttr(build->getIntegerType(64),
+                                             static_cast<int64_t>(predicate)));
 }
 
 bool CmpIOp::parse(OpAsmParser *parser, OperationState *result) {
@@ -526,8 +529,8 @@ bool CmpIOp::parse(OpAsmParser *parser, OperationState *result) {
     return parser->emitError(parser->getNameLoc(),
                              "unknown comparison predicate \"" +
                                  Twine(predicateName.getValue()) + "\"");
-  attrs[0].second =
-      parser->getBuilder().getIntegerAttr(static_cast<int64_t>(predicate));
+  auto builder = parser->getBuilder();
+  attrs[0].second = builder.getIntegerAttr(static_cast<int64_t>(predicate));
   result->attributes = attrs;
 
   // The result of comparison is formed from i1s in the same shape as type.
@@ -616,8 +619,9 @@ void DeallocOp::getCanonicalizationPatterns(OwningPatternList &results,
 void DimOp::build(Builder *builder, OperationState *result,
                   SSAValue *memrefOrTensor, unsigned index) {
   result->addOperands(memrefOrTensor);
-  result->addAttribute("index", builder->getIntegerAttr(index));
-  result->types.push_back(builder->getIndexType());
+  auto type = builder->getIndexType();
+  result->addAttribute("index", builder->getIntegerAttr(type, index));
+  result->types.push_back(type);
 }
 
 void DimOp::print(OpAsmPrinter *p) const {
@@ -630,14 +634,15 @@ bool DimOp::parse(OpAsmParser *parser, OperationState *result) {
   OpAsmParser::OperandType operandInfo;
   IntegerAttr indexAttr;
   Type type;
+  Type indexType = parser->getBuilder().getIndexType();
 
   return parser->parseOperand(operandInfo) || parser->parseComma() ||
-         parser->parseAttribute(indexAttr, "index", result->attributes) ||
+         parser->parseAttribute(indexAttr, indexType, "index",
+                                result->attributes) ||
          parser->parseOptionalAttributeDict(result->attributes) ||
          parser->parseColonType(type) ||
          parser->resolveOperand(operandInfo, type, result->operands) ||
-         parser->addTypeToList(parser->getBuilder().getIndexType(),
-                               result->types);
+         parser->addTypeToList(indexType, result->types);
 }
 
 bool DimOp::verify() const {
@@ -676,7 +681,7 @@ Attribute DimOp::constantFold(ArrayRef<Attribute> operands,
   }
 
   if (indexSize >= 0)
-    return IntegerAttr::get(indexSize, context);
+    return IntegerAttr::get(Type::getIndex(context), indexSize);
 
   return nullptr;
 }
@@ -1019,7 +1024,8 @@ Attribute MulFOp::constantFold(ArrayRef<Attribute> operands,
 
   if (auto lhs = operands[0].dyn_cast_or_null<FloatAttr>()) {
     if (auto rhs = operands[1].dyn_cast_or_null<FloatAttr>())
-      return FloatAttr::get(lhs.getValue() * rhs.getValue(), context);
+      if (lhs.getType() == rhs.getType())
+        return FloatAttr::get(lhs.getType(), lhs.getValue() * rhs.getValue());
   }
 
   return nullptr;
@@ -1040,7 +1046,8 @@ Attribute MulIOp::constantFold(ArrayRef<Attribute> operands,
 
     if (auto rhs = operands[1].dyn_cast_or_null<IntegerAttr>())
       // TODO: Handle the overflow case.
-      return IntegerAttr::get(lhs.getValue() * rhs.getValue(), context);
+      if (lhs.getType() == rhs.getType())
+        return IntegerAttr::get(lhs.getType(), lhs.getValue() * rhs.getValue());
   }
 
   // x*0 == 0
@@ -1161,7 +1168,8 @@ Attribute SubFOp::constantFold(ArrayRef<Attribute> operands,
 
   if (auto lhs = operands[0].dyn_cast_or_null<FloatAttr>()) {
     if (auto rhs = operands[1].dyn_cast_or_null<FloatAttr>())
-      return FloatAttr::get(lhs.getValue() - rhs.getValue(), context);
+      if (lhs.getType() == rhs.getType())
+        return FloatAttr::get(lhs.getType(), lhs.getValue() - rhs.getValue());
   }
 
   return nullptr;
@@ -1177,7 +1185,8 @@ Attribute SubIOp::constantFold(ArrayRef<Attribute> operands,
 
   if (auto lhs = operands[0].dyn_cast_or_null<IntegerAttr>()) {
     if (auto rhs = operands[1].dyn_cast_or_null<IntegerAttr>())
-      return IntegerAttr::get(lhs.getValue() - rhs.getValue(), context);
+      if (lhs.getType() == rhs.getType())
+        return IntegerAttr::get(lhs.getType(), lhs.getValue() - rhs.getValue());
   }
 
   return nullptr;

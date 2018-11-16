@@ -120,15 +120,29 @@ BoolAttr Builder::getBoolAttr(bool value) {
 }
 
 IntegerAttr Builder::getIntegerAttr(int64_t value) {
-  return IntegerAttr::get(value, context);
+  return IntegerAttr::get(getIntegerType(64), APInt(64, value));
+}
+
+IntegerAttr Builder::getIntegerAttr(Type type, int64_t value) {
+  if (type.isIndex())
+    return IntegerAttr::get(type, APInt(64, value));
+  return IntegerAttr::get(type, APInt(type.getBitWidth(), value));
+}
+
+IntegerAttr Builder::getIntegerAttr(Type type, const APInt &value) {
+  return IntegerAttr::get(type, value);
 }
 
 FloatAttr Builder::getFloatAttr(double value) {
-  return FloatAttr::get(APFloat(value), context);
+  return FloatAttr::get(getF32Type(), APFloat(value));
 }
 
-FloatAttr Builder::getFloatAttr(const APFloat &value) {
-  return FloatAttr::get(value, context);
+FloatAttr Builder::getFloatAttr(Type type, double value) {
+  return FloatAttr::get(type, APFloat(value));
+}
+
+FloatAttr Builder::getFloatAttr(Type type, const APFloat &value) {
+  return FloatAttr::get(type, value);
 }
 
 StringAttr Builder::getStringAttr(StringRef bytes) {

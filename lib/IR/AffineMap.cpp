@@ -19,6 +19,7 @@
 #include "AffineMapDetail.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Types.h"
 #include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -55,8 +56,8 @@ public:
       return constantFoldBinExpr(
           expr, [](int64_t lhs, uint64_t rhs) { return ceilDiv(lhs, rhs); });
     case AffineExprKind::Constant:
-      return IntegerAttr::get(expr.cast<AffineConstantExpr>().getValue(),
-                              expr.getContext());
+      return IntegerAttr::get(Type::getIndex(expr.getContext()),
+                              expr.cast<AffineConstantExpr>().getValue());
     case AffineExprKind::DimId:
       return operandConsts[expr.cast<AffineDimExpr>().getPosition()]
           .dyn_cast_or_null<IntegerAttr>();
@@ -77,7 +78,7 @@ private:
     auto rhs = constantFold(binOpExpr.getRHS());
     if (!lhs || !rhs)
       return nullptr;
-    return IntegerAttr::get(op(lhs.getInt(), rhs.getInt()), expr.getContext());
+    return IntegerAttr::get(lhs.getType(), op(lhs.getInt(), rhs.getInt()));
   }
 
   // The number of dimension operands in AffineMap containing this expression.

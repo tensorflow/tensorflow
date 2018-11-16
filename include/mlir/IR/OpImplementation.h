@@ -167,6 +167,9 @@ public:
   /// This parses... a comma!
   virtual bool parseComma() = 0;
 
+  /// Parse a type.
+  virtual bool parseType(Type &result) = 0;
+
   /// Parse a colon followed by a type.
   virtual bool parseColonType(Type &result) = 0;
 
@@ -213,22 +216,27 @@ public:
   }
 
   /// Parse an arbitrary attribute and return it in result.  This also adds the
-  /// attribute to the specified attribute list with the specified name.  this
-  /// captures the location of the attribute in 'loc' if it is non-null.
+  /// attribute to the specified attribute list with the specified name.
   virtual bool parseAttribute(Attribute &result, const char *attrName,
                               SmallVectorImpl<NamedAttribute> &attrs) = 0;
 
-  /// Parse an attribute of a specific kind, capturing the location into `loc`
-  /// if specified.
+  /// Parse an arbitrary attribute of a given type and return it in result. This
+  /// also adds the attribute to the specified attribute list with the specified
+  /// name.
+  virtual bool parseAttribute(Attribute &result, Type type,
+                              const char *attrName,
+                              SmallVectorImpl<NamedAttribute> &attrs) = 0;
+
+  /// Parse an attribute of a specific kind and type.
   template <typename AttrType>
-  bool parseAttribute(AttrType &result, const char *attrName,
+  bool parseAttribute(AttrType &result, Type type, const char *attrName,
                       SmallVectorImpl<NamedAttribute> &attrs) {
     llvm::SMLoc loc;
     getCurrentLocation(&loc);
 
     // Parse any kind of attribute.
     Attribute attr;
-    if (parseAttribute(attr, attrName, attrs))
+    if (parseAttribute(attr, type, attrName, attrs))
       return true;
 
     // Check for the right kind of attribute.

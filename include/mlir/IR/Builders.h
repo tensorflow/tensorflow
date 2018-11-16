@@ -97,9 +97,14 @@ public:
   // Attributes.
 
   BoolAttr getBoolAttr(bool value);
+  IntegerAttr getIntegerAttr(Type type, int64_t value);
+  IntegerAttr getIntegerAttr(Type type, const APInt &value);
+  FloatAttr getFloatAttr(Type type, double value);
+  FloatAttr getFloatAttr(Type type, const APFloat &value);
+  // Convenience methods that assumes fixed type.
+  // TODO(jpienaar): remove these.
   IntegerAttr getIntegerAttr(int64_t value);
   FloatAttr getFloatAttr(double value);
-  FloatAttr getFloatAttr(const APFloat &value);
   StringAttr getStringAttr(StringRef bytes);
   ArrayAttr getArrayAttr(ArrayRef<Attribute> value);
   AffineMapAttr getAffineMapAttr(AffineMap map);

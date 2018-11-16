@@ -158,12 +158,14 @@ public:
   IntegerAttr() = default;
   /* implicit */ IntegerAttr(Attribute::ImplType *ptr);
 
-  static IntegerAttr get(int64_t value, MLIRContext *context);
-  static IntegerAttr get(const APInt &value, MLIRContext *context);
+  static IntegerAttr get(Type type, int64_t value);
+  static IntegerAttr get(Type type, const APInt &value);
 
   APInt getValue() const;
   // TODO(jpienaar): Change callers to use getValue instead.
   int64_t getInt() const;
+
+  Type getType() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(Kind kind) { return kind == Kind::Integer; }
@@ -177,12 +179,14 @@ public:
   FloatAttr() = default;
   /* implicit */ FloatAttr(Attribute::ImplType *ptr);
 
-  static FloatAttr get(double value, MLIRContext *context);
-  static FloatAttr get(const APFloat &value, MLIRContext *context);
+  static FloatAttr get(Type type, double value);
+  static FloatAttr get(Type type, const APFloat &value);
 
   APFloat getValue() const;
 
   double getDouble() const;
+
+  Type getType() const;
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(Kind kind) { return kind == Kind::Float; }

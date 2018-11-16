@@ -196,7 +196,7 @@ public:
   // Attribute parsing.
   Function *resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
                                      FunctionType type);
-  Attribute parseAttribute();
+  Attribute parseAttribute(Type type = {});
 
   ParseResult parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes);
 
@@ -785,8 +785,8 @@ Function *Parser::resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
 /// Attribute parsing.
 ///
 ///  attribute-value ::= bool-literal
-///                    | integer-literal
-///                    | float-literal
+///                    | integer-literal (`:` integer-type)
+///                    | float-literal (`:` float-type)
 ///                    | string-literal
 ///                    | type
 ///                    | `[` (attribute-value (`,` attribute-value)*)? `]`
@@ -796,7 +796,7 @@ Function *Parser::resolveFunctionReference(StringRef nameStr, SMLoc nameLoc,
 ///                    | `sparse<` (tensor-type | vector-type)`,`
 ///                          attribute-value`, ` attribute-value `>`
 ///
-Attribute Parser::parseAttribute() {
+Attribute Parser::parseAttribute(Type type) {
   switch (getToken().getKind()) {
   case Token::kw_true:
     consumeToken(Token::kw_true);
@@ -811,14 +811,38 @@ Attribute Parser::parseAttribute() {
       return (emitError("floating point value too large for attribute"),
               nullptr);
     consumeToken(Token::floatliteral);
-    return builder.getFloatAttr(APFloat(val.getValue()));
+    if (!type) {
+      if (consumeIf(Token::colon)) {
+        if (!(type = parseType()))
+          return nullptr;
+      } else {
+        // Default to F32 when no type is specified.
+        type = builder.getF32Type();
+      }
+    }
+    if (!type.isa<FloatType>())
+      return (emitError("floating point value not valid for specified type"),
+              nullptr);
+    return builder.getFloatAttr(type, APFloat(val.getValue()));
   }
   case Token::integer: {
     auto val = getToken().getUInt64IntegerValue();
     if (!val.hasValue() || (int64_t)val.getValue() < 0)
       return (emitError("integer too large for attribute"), nullptr);
     consumeToken(Token::integer);
-    return builder.getIntegerAttr((int64_t)val.getValue());
+    if (!type) {
+      if (consumeIf(Token::colon)) {
+        if (!(type = parseType()))
+          return nullptr;
+      } else {
+        // Default to i64 if not type is specified.
+        type = builder.getIntegerType(64);
+      }
+    }
+    if (!type.isa<IntegerType>() && !type.isa<IndexType>())
+      return (emitError("integer value not valid for specified type"), nullptr);
+    int width = type.isIndex() ? 64 : type.getBitWidth();
+    return builder.getIntegerAttr(type, APInt(width, val.getValue()));
   }
 
   case Token::minus: {
@@ -828,7 +852,19 @@ Attribute Parser::parseAttribute() {
       if (!val.hasValue() || (int64_t)-val.getValue() >= 0)
         return (emitError("integer too large for attribute"), nullptr);
       consumeToken(Token::integer);
-      return builder.getIntegerAttr((int64_t)-val.getValue());
+      if (!type) {
+        if (consumeIf(Token::colon)) {
+          if (!(type = parseType()))
+            return nullptr;
+        } else {
+          // Default to i64 if not type is specified.
+          type = builder.getIntegerType(64);
+        }
+      }
+      if (!type.isa<IntegerType>() && !type.isa<IndexType>())
+        return (emitError("integer value not valid for type"), nullptr);
+      int width = type.isIndex() ? 64 : type.getBitWidth();
+      return builder.getIntegerAttr(type, -APInt(width, val.getValue()));
     }
     if (getToken().is(Token::floatliteral)) {
       auto val = getToken().getFloatingPointValue();
@@ -836,7 +872,18 @@ Attribute Parser::parseAttribute() {
         return (emitError("floating point value too large for attribute"),
                 nullptr);
       consumeToken(Token::floatliteral);
-      return builder.getFloatAttr(APFloat(-val.getValue()));
+      if (!type) {
+        if (consumeIf(Token::colon)) {
+          if (!(type = parseType()))
+            return nullptr;
+        } else {
+          // Default to F32 when no type is specified.
+          type = builder.getF32Type();
+        }
+      }
+      if (!type.isa<FloatType>())
+        return (emitError("floating point value not valid for type"), nullptr);
+      return builder.getFloatAttr(type, APFloat(-val.getValue()));
     }
 
     return (emitError("expected constant integer or floating point value"),
@@ -926,7 +973,7 @@ Attribute Parser::parseAttribute() {
     case Token::floatliteral:
     case Token::integer:
     case Token::minus: {
-      auto scalar = parseAttribute();
+      auto scalar = parseAttribute(type.getElementType());
       if (parseToken(Token::greater, "expected '>'"))
         return nullptr;
       return builder.getSplatElementsAttr(type, scalar);
@@ -2234,6 +2281,10 @@ public:
     return parser.parseToken(Token::comma, "expected ','");
   }
 
+  bool parseType(Type &result) override {
+    return !(result = parser.parseType());
+  }
+
   bool parseColonType(Type &result) override {
     return parser.parseToken(Token::colon, "expected ':'") ||
            !(result = parser.parseType());
@@ -2261,18 +2312,25 @@ public:
     return !(result = parser.parseType());
   }
 
-  /// Parse an arbitrary attribute and return it in result.  This also adds
-  /// the attribute to the specified attribute list with the specified name.
-  /// this captures the location of the attribute in 'loc' if it is non-null.
-  bool parseAttribute(Attribute &result, const char *attrName,
+  /// Parse an arbitrary attribute of a given type and return it in result. This
+  /// also adds the attribute to the specified attribute list with the specified
+  /// name.
+  bool parseAttribute(Attribute &result, Type type, const char *attrName,
                       SmallVectorImpl<NamedAttribute> &attrs) override {
-    result = parser.parseAttribute();
+    result = parser.parseAttribute(type);
     if (!result)
       return true;
 
     attrs.push_back(
         NamedAttribute(parser.builder.getIdentifier(attrName), result));
     return false;
+  }
+
+  /// Parse an arbitrary attribute and return it in result.  This also adds
+  /// the attribute to the specified attribute list with the specified name.
+  bool parseAttribute(Attribute &result, const char *attrName,
+                      SmallVectorImpl<NamedAttribute> &attrs) override {
+    return parseAttribute(result, Type(), attrName, attrs);
   }
 
   /// If a named attribute list is present, parse is into result.

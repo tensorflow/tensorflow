@@ -76,11 +76,17 @@ APInt IntegerAttr::getValue() const {
 
 int64_t IntegerAttr::getInt() const { return getValue().getSExtValue(); }
 
+Type IntegerAttr::getType() const {
+  return static_cast<ImplType *>(attr)->type;
+}
+
 FloatAttr::FloatAttr(Attribute::ImplType *ptr) : Attribute(ptr) {}
 
 APFloat FloatAttr::getValue() const {
   return static_cast<ImplType *>(attr)->getValue();
 }
+
+Type FloatAttr::getType() const { return static_cast<ImplType *>(attr)->type; }
 
 double FloatAttr::getDouble() const { return getValue().convertToDouble(); }
 
@@ -200,14 +206,13 @@ uint64_t DenseIntElementsAttr::readBits(const char *rawData, size_t bitPos,
 void DenseIntElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
   auto bitsWidth = static_cast<ImplType *>(attr)->bitsWidth;
   auto elementNum = getType().getNumElements();
-  auto context = getType().getContext();
   values.reserve(elementNum);
   if (bitsWidth == 64) {
     ArrayRef<int64_t> vs(
         {reinterpret_cast<const int64_t *>(getRawData().data()),
          getRawData().size() / 8});
     for (auto value : vs) {
-      auto attr = IntegerAttr::get(value, context);
+      auto attr = IntegerAttr::get(getType().getElementType(), value);
       values.push_back(attr);
     }
   } else {
@@ -215,7 +220,8 @@ void DenseIntElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
     for (size_t pos = 0; pos < elementNum * bitsWidth; pos += bitsWidth) {
       uint64_t bits = readBits(rawData, pos, bitsWidth);
       APInt value(bitsWidth, bits, /*isSigned=*/true);
-      auto attr = IntegerAttr::get(value.getSExtValue(), context);
+      auto attr =
+          IntegerAttr::get(getType().getElementType(), value.getSExtValue());
       values.push_back(attr);
     }
   }
@@ -226,12 +232,11 @@ DenseFPElementsAttr::DenseFPElementsAttr(Attribute::ImplType *ptr)
 
 void DenseFPElementsAttr::getValues(SmallVectorImpl<Attribute> &values) const {
   auto elementNum = getType().getNumElements();
-  auto context = getType().getContext();
   ArrayRef<double> vs({reinterpret_cast<const double *>(getRawData().data()),
                        getRawData().size() / 8});
   values.reserve(elementNum);
   for (auto v : vs) {
-    auto attr = FloatAttr::get(v, context);
+    auto attr = FloatAttr::get(getType().getElementType(), v);
     values.push_back(attr);
   }
 }

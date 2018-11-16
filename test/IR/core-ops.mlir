@@ -71,13 +71,13 @@ bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32, %idx : index):
   %i6 = muli %i2, %i2 : i32
 
   // CHECK: %c42_i32 = constant 42 : i32
-  %x = "constant"(){value: 42} : () -> i32
+  %x = "constant"(){value: 42: i32} : () -> i32
 
   // CHECK: %c42_i32_0 = constant 42 : i32
   %7 = constant 42 : i32
 
   // CHECK: %c43 = constant 43 {crazy: "foo"} : index
-  %8 = constant 43 {crazy: "foo"} : index
+  %8 = constant 43: index {crazy: "foo"}
 
   // CHECK: %cst = constant 4.300000e+01 : bf16
   %9 = constant 43.0 : bf16
@@ -128,8 +128,8 @@ bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32, %idx : index):
 // CHECK-LABEL: cfgfunc @affine_apply() {
 cfgfunc @affine_apply() {
 bb0:
-  %i = "constant"() {value: 0} : () -> index
-  %j = "constant"() {value: 1} : () -> index
+  %i = "constant"() {value: 0: index} : () -> index
+  %j = "constant"() {value: 1: index} : () -> index
 
   // CHECK: affine_apply #map0(%c0)
   %a = "affine_apply" (%i) { map: (d0) -> (d0 + 1) } :
@@ -195,7 +195,7 @@ mlfunc @calls(%arg0 : i32) {
 
 // CHECK-LABEL: mlfunc @extract_element(%arg0 : tensor<*xi32>, %arg1 : tensor<4x4xf32>) -> i32 {
 mlfunc @extract_element(%arg0 : tensor<*xi32>, %arg1 : tensor<4x4xf32>) -> i32 {
-  %c0 = "constant"() {value: 0} : () -> index
+  %c0 = "constant"() {value: 0: index} : () -> index
 
   // CHECK: %0 = extract_element %arg0[%c0, %c0, %c0, %c0] : tensor<*xi32>
   %0 = extract_element %arg0[%c0, %c0, %c0, %c0] : tensor<*xi32>

@@ -412,9 +412,14 @@ void ModulePrinter::printAttribute(Attribute attr) {
   case Attribute::Kind::Bool:
     os << (attr.cast<BoolAttr>().getValue() ? "true" : "false");
     break;
-  case Attribute::Kind::Integer:
-    os << attr.cast<IntegerAttr>().getValue();
+  case Attribute::Kind::Integer: {
+    auto intAttr = attr.cast<IntegerAttr>();
+    // Print all integer attributes as signed unless i1.
+    bool isSigned =
+        intAttr.getType().isIndex() || intAttr.getType().getBitWidth() != 1;
+    intAttr.getValue().print(os, isSigned);
     break;
+  }
   case Attribute::Kind::Float:
     printFloatValue(attr.cast<FloatAttr>().getValue(), os);
     break;

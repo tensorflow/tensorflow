@@ -174,31 +174,37 @@ struct MemRefTypeKeyInfo : DenseMapInfo<MemRefTypeStorage *> {
 
 struct FloatAttrKeyInfo : DenseMapInfo<FloatAttributeStorage *> {
   // Float attributes are uniqued based on wrapped APFloat.
-  using KeyTy = APFloat;
+  using KeyTy = std::pair<Type, APFloat>;
   using DenseMapInfo<FloatAttributeStorage *>::getHashValue;
   using DenseMapInfo<FloatAttributeStorage *>::isEqual;
 
-  static unsigned getHashValue(KeyTy key) { return llvm::hash_value(key); }
+  static unsigned getHashValue(KeyTy key) {
+    return hash_combine(key.first, llvm::hash_value(key.second));
+  }
 
   static bool isEqual(const KeyTy &lhs, const FloatAttributeStorage *rhs) {
     if (rhs == getEmptyKey() || rhs == getTombstoneKey())
       return false;
-    return lhs.bitwiseIsEqual(rhs->getValue());
+    return lhs.first == rhs->type && lhs.second.bitwiseIsEqual(rhs->getValue());
   }
 };
 
 struct IntegerAttrKeyInfo : DenseMapInfo<IntegerAttributeStorage *> {
   // Integer attributes are uniqued based on wrapped APInt.
-  using KeyTy = APInt;
+  using KeyTy = std::pair<Type, APInt>;
   using DenseMapInfo<IntegerAttributeStorage *>::getHashValue;
   using DenseMapInfo<IntegerAttributeStorage *>::isEqual;
 
-  static unsigned getHashValue(KeyTy key) { return llvm::hash_value(key); }
+  static unsigned getHashValue(KeyTy key) {
+    return hash_combine(key.first, llvm::hash_value(key.second));
+  }
 
   static bool isEqual(const KeyTy &lhs, const IntegerAttributeStorage *rhs) {
     if (rhs == getEmptyKey() || rhs == getTombstoneKey())
       return false;
-    return lhs == rhs->getValue();
+    assert(lhs.first.isIndex() ||
+           (lhs.first.getBitWidth() == lhs.second.getBitWidth()));
+    return lhs.first == rhs->type && lhs.second == rhs->getValue();
   }
 };
 
@@ -1074,11 +1080,12 @@ BoolAttr BoolAttr::get(bool value, MLIRContext *context) {
   return result;
 }
 
-IntegerAttr IntegerAttr::get(const APInt &value, MLIRContext *context) {
-  auto &impl = context->getImpl();
+IntegerAttr IntegerAttr::get(Type type, const APInt &value) {
+  auto &impl = type.getContext()->getImpl();
 
   // Look to see if the integer attribute has been created already.
-  auto existing = impl.integerAttrs.insert_as(nullptr, value);
+  IntegerAttrKeyInfo::KeyTy key({type, value});
+  auto existing = impl.integerAttrs.insert_as(nullptr, key);
 
   // If it has been created, return it.
   if (!existing.second)
@@ -1094,28 +1101,29 @@ IntegerAttr IntegerAttr::get(const APInt &value, MLIRContext *context) {
   // TODO: This uses 64 bit APInts by default without consideration of value.
   auto result = ::new (rawMem) IntegerAttributeStorage{
       {Attribute::Kind::Integer, /*isOrContainsFunction=*/false},
-      {},
-      /*numBits*/ 64,
+      type,
       elements.size()};
   std::uninitialized_copy(elements.begin(), elements.end(),
                           result->getTrailingObjects<uint64_t>());
   return *existing.first = result;
 }
 
-IntegerAttr IntegerAttr::get(int64_t value, MLIRContext *context) {
-  // TODO: This uses 64 bit APInts by default.
-  return get(APInt(64, value, /*isSigned=*/true), context);
+IntegerAttr IntegerAttr::get(Type type, int64_t value) {
+  // This uses 64 bit APInts by default for index type.
+  auto width = type.isIndex() ? 64 : type.getBitWidth();
+  return get(type, APInt(width, value));
 }
 
-FloatAttr FloatAttr::get(double value, MLIRContext *context) {
-  return get(APFloat(value), context);
+FloatAttr FloatAttr::get(Type type, double value) {
+  return get(type, APFloat(value));
 }
 
-FloatAttr FloatAttr::get(const APFloat &value, MLIRContext *context) {
-  auto &impl = context->getImpl();
+FloatAttr FloatAttr::get(Type type, const APFloat &value) {
+  auto &impl = type.getContext()->getImpl();
 
   // Look to see if the float attribute has been created already.
-  auto existing = impl.floatAttrs.insert_as(nullptr, value);
+  FloatAttrKeyInfo::KeyTy key({type, value});
+  auto existing = impl.floatAttrs.insert_as(nullptr, key);
 
   // If it has been created, return it.
   if (!existing.second)
@@ -1132,8 +1140,8 @@ FloatAttr FloatAttr::get(const APFloat &value, MLIRContext *context) {
       impl.allocator.Allocate(byteSize, alignof(FloatAttributeStorage));
   auto result = ::new (rawMem) FloatAttributeStorage{
       {Attribute::Kind::Float, /*isOrContainsFunction=*/false},
-      {},
       value.getSemantics(),
+      type,
       elements.size()};
   std::uninitialized_copy(elements.begin(), elements.end(),
                           result->getTrailingObjects<uint64_t>());

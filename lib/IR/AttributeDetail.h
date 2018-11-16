@@ -27,6 +27,7 @@
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Types.h"
+#include "llvm/ADT/APFloat.h"
 #include "llvm/Support/TrailingObjects.h"
 
 namespace mlir {
@@ -49,13 +50,20 @@ struct BoolAttributeStorage : public AttributeStorage {
 struct IntegerAttributeStorage final
     : public AttributeStorage,
       public llvm::TrailingObjects<IntegerAttributeStorage, uint64_t> {
-  const unsigned numBits;
+  IntegerAttributeStorage(AttributeStorage &&as, Type type, size_t numObjects)
+      : AttributeStorage(as), type(type), numObjects(numObjects) {
+    assert((type.isIndex() || type.isa<IntegerType>()) && "invalid type");
+  }
+
+  const Type type;
   size_t numObjects;
 
   /// Returns an APInt representing the stored value.
   APInt getValue() const {
-    auto val = APInt(numBits, {getTrailingObjects<uint64_t>(), numObjects});
-    return val;
+    if (type.isIndex())
+      return APInt(64, {getTrailingObjects<uint64_t>(), numObjects});
+    return APInt(type.getBitWidth(),
+                 {getTrailingObjects<uint64_t>(), numObjects});
   }
 };
 
@@ -63,7 +71,13 @@ struct IntegerAttributeStorage final
 struct FloatAttributeStorage final
     : public AttributeStorage,
       public llvm::TrailingObjects<FloatAttributeStorage, uint64_t> {
+  FloatAttributeStorage(AttributeStorage &&as,
+                        const llvm::fltSemantics &semantics, Type type,
+                        size_t numObjects)
+      : AttributeStorage(as), semantics(semantics),
+        type(type.cast<FloatType>()), numObjects(numObjects) {}
   const llvm::fltSemantics &semantics;
+  const FloatType type;
   size_t numObjects;
 
   /// Returns an APFloat representing the stored value.
