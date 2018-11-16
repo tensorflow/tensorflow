@@ -132,12 +132,6 @@ class Adam(optimizer_v2.OptimizerV2):
         use_locking=self._use_locking)
 
   def _resource_apply_sparse(self, grad, var, indices):
-
-    def _resource_scatter_add(x, i, v):
-      with ops.control_dependencies(
-          [resource_variable_ops.resource_scatter_add(x.handle, i, v)]):
-        return x.value()
-
     var_dtype = var.dtype.base_dtype
     local_step = math_ops.cast(self.iterations + 1, var_dtype)
     beta_1_t = math_ops.cast(self._get_hyper('beta_1'), var_dtype)
@@ -153,19 +147,24 @@ class Adam(optimizer_v2.OptimizerV2):
     m_scaled_g_values = grad * (1 - beta_1_t)
     m_t = state_ops.assign(m, m * beta_1_t, use_locking=self._use_locking)
     with ops.control_dependencies([m_t]):
-      m_t = _resource_scatter_add(m, indices, m_scaled_g_values)
+      m_t = self._resource_scatter_add(m, indices, m_scaled_g_values)
 
     # v_t = beta2 * v + (1 - beta2) * (g_t * g_t)
     v = self.get_slot(var, 'v')
     v_scaled_g_values = (grad * grad) * (1 - beta_2_t)
     v_t = state_ops.assign(v, v * beta_2_t, use_locking=self._use_locking)
     with ops.control_dependencies([v_t]):
-      v_t = _resource_scatter_add(v, indices, v_scaled_g_values)
+      v_t = self._resource_scatter_add(v, indices, v_scaled_g_values)
 
     v_sqrt = math_ops.sqrt(v_t)
     var_update = state_ops.assign_sub(
         var, lr * m_t / (v_sqrt + epsilon_t), use_locking=self._use_locking)
     return control_flow_ops.group(*[var_update, m_t, v_t])
+
+  def _resource_scatter_add(self, x, i, v):
+    with ops.control_dependencies(
+        [resource_variable_ops.resource_scatter_add(x.handle, i, v)]):
+      return x.value()
 
   def get_config(self):
     config = super(Adam, self).get_config()
