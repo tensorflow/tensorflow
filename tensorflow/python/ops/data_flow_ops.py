@@ -1148,7 +1148,7 @@ class Barrier(object):
         self._barrier_ref, name=name)
 
 
-@tf_export("ConditionalAccumulatorBase")
+@tf_export(v1=["ConditionalAccumulatorBase"])
 class ConditionalAccumulatorBase(object):
   """A conditional accumulator for aggregating gradients.
 
@@ -1227,7 +1227,7 @@ class ConditionalAccumulatorBase(object):
         name=name)
 
 
-@tf_export("ConditionalAccumulator")
+@tf_export(v1=["ConditionalAccumulator"])
 class ConditionalAccumulator(ConditionalAccumulatorBase):
   """A conditional accumulator for aggregating gradients.
 
