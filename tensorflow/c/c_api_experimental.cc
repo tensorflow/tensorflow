@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
@@ -8799,4 +8800,8 @@ const char* TF_GetNumberAttrForOpListInput(const char* op_name, int input_index,
 
   // The returned string is owned by OpRegistry, so liveness is not a concern.
   return input_arg.number_attr().c_str();
+}
+
+void TF_InitMain(const char* usage, int* argc, char*** argv) {
+  tensorflow::port::InitMain(usage, argc, argv);
 }
