@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/tuple_util.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 #include "tensorflow/compiler/xla/service/while_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -205,6 +206,37 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
         !instruction->control_predecessors().empty() ||
         !instruction->control_successors().empty()) {
       continue;
+    }
+
+    if (!hoist_size_inflating_ops_) {
+      // Check that hoisting the instruction doesn't cause a significant memory
+      // blow-up. LICM extends the live-range of the output of the hoisted
+      // instruction to be the entire while loop, which may be problematic on
+      // platforms where memory is limited. This can be especially harmful if
+      // the instruction has a significantly larger output than its input, e.g.
+      // kIota, kBroadcast or kConstant.
+      int64 input_size = 0, output_size = 0;
+
+      for (auto* operand : instruction->operands()) {
+        ShapeUtil::ForEachSubshape(
+            operand->shape(),
+            [&input_size](const Shape& subshape, const ShapeIndex& /*index*/) {
+              if (ShapeUtil::IsArray(subshape)) {
+                input_size += ShapeUtil::ByteSizeOfElements(subshape);
+              }
+            });
+      }
+      ShapeUtil::ForEachSubshape(
+          instruction->shape(),
+          [&output_size](const Shape& subshape, const ShapeIndex& /*index*/) {
+            if (ShapeUtil::IsArray(subshape)) {
+              output_size += ShapeUtil::ByteSizeOfElements(subshape);
+            }
+          });
+
+      if (output_size > input_size) {
+        continue;
+      }
     }
 
     auto is_invariant = [&](HloInstruction* op) {
