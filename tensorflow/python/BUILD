@@ -5778,6 +5778,7 @@ cuda_py_test(
         "no_oss",
         "noguitar",
         "notap",
+        "no_nccl"
     ],
 )
 
