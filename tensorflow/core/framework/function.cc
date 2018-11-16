@@ -1282,11 +1282,20 @@ GET_ATTR(bool)
 
 namespace {
 
+constexpr char kExperimentalApiImplements[] = "experimental_api_implements";
+
 absl::flat_hash_set<string> ReachableFunctions(
     const FunctionLibraryDefinition& flib,
     const protobuf::RepeatedPtrField<NodeDef>& nodes) {
   // Functions that are reachable from the graph.
   absl::flat_hash_set<string> reachable_funcs;
+
+  // For any functions, if it has attribute "experimental_api_implements" =
+  // "some_interface" and it is reachable, then it means any other
+  // function with same attribute name and value could also be potentially
+  // reachable, eg via experimental_implementation_selector swapping the
+  // nodedef.
+  absl::flat_hash_set<string> reachable_api_interface;
 
   // Functions might be reachable from the nested function calls, so we keep a
   // queue of functions that we have to check.
@@ -1334,6 +1343,11 @@ absl::flat_hash_set<string> ReachableFunctions(
     const string& func_name = func->signature().name();
     reachable_funcs.insert(func_name);
 
+    const auto attr_it = func->attr().find(kExperimentalApiImplements);
+    if (attr_it != func->attr().end()) {
+      reachable_api_interface.insert(attr_it->second.s());
+    }
+
     // Find all the functions called from the function body.
     const auto& func_body = func->node_def();
     std::for_each(func_body.begin(), func_body.end(), process_node);
@@ -1341,6 +1355,16 @@ absl::flat_hash_set<string> ReachableFunctions(
     // Check if the function has a registered gradient.
     const string grad_func_name = flib.FindGradient(func_name);
     if (!grad_func_name.empty()) add_to_func_queue(grad_func_name);
+  }
+
+  const FunctionDefLibrary library_proto = flib.ToProto();
+  for (const auto& it : library_proto.function()) {
+    const auto attr_it = it.attr().find(kExperimentalApiImplements);
+    if (attr_it != it.attr().end()) {
+      if (reachable_api_interface.contains(attr_it->second.s())) {
+        reachable_funcs.insert(it.signature().name());
+      }
+    }
   }
 
   return reachable_funcs;
