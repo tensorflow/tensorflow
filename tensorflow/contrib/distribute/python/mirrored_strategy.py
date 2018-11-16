@@ -503,25 +503,20 @@ class CoreMirroredExtended(distribute_lib.DistributionStrategyExtended):
       self,
       input_fn,
       replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
+    input_contexts = []
     if self._cluster_spec:
-      input_fns = []
-      for i in range(len(self._worker_devices)):
-        input_context = distribute_lib.InputContext(
-            num_input_pipelines=len(self._worker_devices),
-            input_pipeline_id=i,
-            num_replicas_in_sync=self._num_replicas_in_sync)
-        input_fns.append(
-            partial(self._call_dataset_fn, input_fn, input_context))
-
-      return values.MultiWorkerDataset(input_fns, self._worker_devices,
-                                       self._auto_shard_dataset)
+      num_workers = len(self._worker_devices)
+      worker_device_pairs = self._worker_devices
     else:
-      input_context = distribute_lib.InputContext(
-          num_input_pipelines=1,
-          input_pipeline_id=0,
-          num_replicas_in_sync=self._num_replicas_in_sync)
-      return values.PerReplicaDataset(
-          self._call_dataset_fn(input_fn, input_context), self._devices)
+      num_workers = 1
+      worker_device_pairs = [("/job:localhost", self._devices)]
+    for i in range(num_workers):
+      input_contexts.append(distribute_lib.InputContext(
+          num_input_pipelines=num_workers,
+          input_pipeline_id=i,
+          num_replicas_in_sync=self._num_replicas_in_sync))
+    return values.InputFunctionIterator(
+        input_fn, worker_device_pairs, input_contexts)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,

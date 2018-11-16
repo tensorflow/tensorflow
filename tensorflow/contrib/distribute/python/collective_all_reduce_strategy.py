@@ -234,8 +234,9 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         num_input_pipelines=self._num_workers,
         input_pipeline_id=input_pipeline_id,
         num_replicas_in_sync=self._num_replicas_in_sync)
-    return values.PerReplicaDataset(
-        self._call_dataset_fn(input_fn, input_context), self._devices, True)
+
+    return values.InputFunctionIterator(
+        input_fn, [(self._default_device, self._devices)], [input_context])
 
   def _configure(self,
                  session_config=None,
