@@ -50,6 +50,17 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.nn.sufficient_statistics": {
             "keep_dims": "keepdims"
+        },
+        "tf.nn.conv3d": {
+            "filter": "filters"
+        },
+        "tf.nn.conv3d_transpose": {
+            "value": "input",
+            "filter": "filters",
+        },
+        "tf.nn.convolution": {
+            "filter": "filters",
+            "dilation_rate": "dilations",
         }
     }
 
@@ -124,6 +135,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.argmin": ["input", "axis", "name", "dimension", "output_type"],
         "tf.boolean_mask": ["tensor", "mask", "name", "axis"],
         "tf.convert_to_tensor": ["value", "dtype", "name", "preferred_dtype"],
+        "tf.nn.convolution": [
+            "input", "filter", "padding", "strides", "dilation_rate", "name",
+            "data_format"],
+        "tf.nn.crelu": ["features", "name", "axis"],
         "tf.nn.pool": [
             "input", "window_shape", "pooling_type", "padding", "dilation_rate",
             "strides", "name", "data_format"
@@ -198,6 +213,17 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             default_loss_reduction_changed,
         "tf.estimator.BaselineRegressor":
             default_loss_reduction_changed,
+        "tf.nn.conv1d":
+        "WARNING: use_cudnn_on_gpu argument has been removed and \"value\" was "
+        "renamed to \"input\"",
+        "tf.nn.conv2d":
+        "WARNING: use_cudnn_on_gpu argument has been removed and \"filter\" "
+        "was renamed to \"filters\"",
+        "tf.nn.conv2d_backprop_filter":
+        "WARNING: use_cudnn_on_gpu argument has been removed",
+        "tf.nn.conv2d_backprop_input":
+        "WARNING: use_cudnn_on_gpu argument has been removed and \"filter\" "
+        "was renamed to \"filters\"",
     }
     # Right now we can't have both a rename and a warning.
     self.symbol_renames = {
