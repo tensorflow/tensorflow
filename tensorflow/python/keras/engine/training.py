@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import weakref
 import numpy as np
 
@@ -174,25 +175,66 @@ class Model(Network):
       metric_name = '%s_%s' % (self.output_names[output_index], metric_name)
     j = 1
     base_metric_name = metric_name
-    while metric_name in self.metrics_names:
+    while metric_name in self._compile_metrics_names:
       metric_name = '%s_%d' % (base_metric_name, j)
       j += 1
 
     return metric_name
 
+  @property
+  def metrics(self):
+    """Returns the model's metrics added using `compile`, `add_metric` APIs."""
+    metrics = []
+    if self._is_compiled:
+      metrics += self._compile_stateful_metric_functions
+    return metrics + super(Model, self).metrics
+
+  @property
+  def metrics_names(self):
+    """Returns the model's display labels for all outputs."""
+    metrics_names = []
+    if self._is_compiled:
+      metrics_names += self._compile_metrics_names  # Includes names of losses.
+
+    # Add metric names from layers.
+    for layer in self.layers:
+      metrics_names += [m.name for m in layer._metrics]  # pylint: disable=protected-access
+    metrics_names += [m.name for m in self._metrics]
+    return metrics_names
+
+  @property
+  def _all_metrics_tensors(self):
+    """Returns the network's symbolic metric tensors."""
+    metrics_tensors = {}
+    if self._is_compiled:
+      metrics_tensors.update(self._compile_metrics_tensors)
+    metrics_tensors.update(super(Model, self)._all_metrics_tensors)
+    return metrics_tensors
+
+  @property
+  def _all_stateful_metrics_tensors(self):
+    """Returns the network's symbolic metric tensors."""
+    metrics_tensors = {}
+    if self._is_compiled:
+      metrics_tensors.update(self._compile_stateful_metrics_tensors)
+    metrics_tensors.update(super(Model, self)._all_metrics_tensors)
+    return metrics_tensors
+
   def _init_metric_attributes(self):
     """Initialized model metric attributes."""
     # List of all metric names in the model.
-    self.metrics_names = ['loss']
-    # List of all aggregated metric result tensors. This includes aggregated
-    # loss result tensors.
-    self._stateful_metrics_tensors = []
-    # List of all metric result tensors (aggregated or not - based on the
-    # values given in compile.)
-    self.metrics_tensors = []
+    self._compile_metrics_names = ['loss']
     # List of stateful metric functions. Used for resetting metric state during
-    # training/eval. This includes loss functions.
-    self.stateful_metric_functions = []
+    # training/eval.
+    # This includes loss functions when there are multiple outputs.
+    self._compile_stateful_metric_functions = []
+    # Dict of all aggregated metric result tensors. This includes aggregated
+    # loss result tensors when there are multiple outputs.
+    self._compile_stateful_metrics_tensors = {}
+    # Dict of all metric result tensors (aggregated or not - based on the
+    # values given in compile.). This includes aggregated loss result tensors
+    # when there are multiple outputs.
+    self._compile_metrics_tensors = {}
 
   def _set_per_output_metric_attributes(self, metrics_dict, output_index):
     """Sets the metric attributes on the model for the given output.
@@ -201,24 +243,39 @@ class Model(Network):
       metrics_dict: A dict with metric names as keys and metric fns as values.
       output_index: The index of the model output for which the metric
         attributes are added.
-    """
-    for metric_name, (_, stateful_metric_fn) in metrics_dict.items():
-      metric_name = self._add_unique_metric_name(metric_name, output_index)
-      # Keep track of metric name.
-      self.metrics_names.append(metric_name)
 
-      # Keep track of stateful metric function.
-      self.stateful_metric_functions.append(stateful_metric_fn)
+    Returns:
+      Metrics dict updated with unique metric names as keys.
+    """
+    updated_metrics_dict = collections.OrderedDict()
+    for metric_name, (metric_fn, stateful_metric_fn) in metrics_dict.items():
+      metric_name = self._add_unique_metric_name(metric_name, output_index)
+      updated_metrics_dict[metric_name] = (metric_fn, stateful_metric_fn)
+      # Keep track of metric name, function and stateful function.
+      self._compile_metrics_names.append(metric_name)
+      self._compile_stateful_metric_functions.append(stateful_metric_fn)
+    return updated_metrics_dict
 
   def _set_metric_attributes(self, outputs, skip_target_indices=None):
     """Sets the metric attributes on the model for all the model outputs."""
     skip_target_indices = skip_target_indices or []
+    updated_per_output_metrics = []
+    updated_per_output_weighted_metrics = []
     for i in range(len(outputs)):
       if i in skip_target_indices:
+        updated_per_output_metrics.append(self._per_output_metrics[i])
+        updated_per_output_weighted_metrics.append(
+            self._per_output_weighted_metrics[i])
         continue
-      self._set_per_output_metric_attributes(self._per_output_metrics[i], i)
-      self._set_per_output_metric_attributes(
-          self._per_output_weighted_metrics[i], i)
+      updated_per_output_metrics.append(
+          self._set_per_output_metric_attributes(self._per_output_metrics[i],
+                                                 i))
+      updated_per_output_weighted_metrics.append(
+          self._set_per_output_metric_attributes(
+              self._per_output_weighted_metrics[i], i))
+
+    self._per_output_metrics = updated_per_output_metrics
+    self._per_output_weighted_metrics = updated_per_output_weighted_metrics
 
   def _handle_per_output_metrics(self,
                                  metrics_dict,
@@ -253,16 +310,16 @@ class Model(Network):
           weighted_metric_fn = training_utils.weighted_masked_objective(fn)
           return weighted_metric_fn(y_true, y_pred, weights=weights, mask=mask)
 
-        def _track_metric_tensors(stateless_result, stateful_result):
-          self.metrics_tensors.append(stateless_result)
-          self._stateful_metrics_tensors.append(stateful_result)
+        def _track_metric_tensors(name, stateless_result, stateful_result):
+          self._compile_metrics_tensors[name] = stateless_result
+          self._compile_stateful_metrics_tensors[name] = stateful_result
 
         if isinstance(metric_fn, metrics_module.Metric):
           # If the given metric fn is stateful, call the fn and return result.
           metric_result = _call_stateful_fn(metric_fn)
           metric_results.append(metric_result)
           if not self.run_eagerly:
-            _track_metric_tensors(metric_result, metric_result)
+            _track_metric_tensors(metric_name, metric_result, metric_result)
         elif self.run_eagerly:
           # In eager mode, if the given metric fn is not stateful, we invoke the
           # given fn or its stateful version based on the given flag.
@@ -276,7 +333,8 @@ class Model(Network):
           # stateless fns.
           stateful_metric_result = _call_stateful_fn(stateful_fn)
           metric_result = _call_stateless_fn(metric_fn)
-          _track_metric_tensors(metric_result, stateful_metric_result)
+          _track_metric_tensors(metric_name, metric_result,
+                                stateful_metric_result)
 
     return metric_results
 
@@ -304,6 +362,7 @@ class Model(Network):
     skip_target_indices = skip_target_indices or []
     metric_results = []
     with K.name_scope('metrics'):
+      # Invoke all metrics added using `compile`.
       for i in range(len(outputs)):
         if i in skip_target_indices:
           continue
@@ -325,6 +384,12 @@ class Model(Network):
                 output_mask,
                 weights=sample_weights[i],
                 return_stateful_result=return_stateful_result))
+
+    # Add metric results from the `add_metric` metrics in eager mode.
+    if context.executing_eagerly():
+      for m in self.metrics:
+        if m not in self._compile_stateful_metric_functions:
+          metric_results.append(m.result())
     return metric_results
 
   @property
@@ -461,10 +526,10 @@ class Model(Network):
       self._track_checkpointable(
           self.optimizer, name='optimizer', overwrite=True)
     self.loss = loss
-    self.metrics = metrics or []
+    self._compile_metrics = metrics or []
     self.loss_weights = loss_weights
     self.sample_weight_mode = sample_weight_mode
-    self.weighted_metrics = weighted_metrics
+    self._compile_weighted_metrics = weighted_metrics
     if self.run_eagerly and target_tensors is not None:
       raise ValueError(
           'target_tensors argument is not supported when '
@@ -573,7 +638,7 @@ class Model(Network):
       self.total_loss = None
       for i in range(len(self.outputs)):
         if len(self.outputs) > 1:
-          self.metrics_names.append(self.output_names[i] + '_loss')
+          self._compile_metrics_names.append(self.output_names[i] + '_loss')
 
       # Set metric attributes on model.
       self._set_metric_attributes(
@@ -666,7 +731,8 @@ class Model(Network):
 
           if len(self.outputs) > 1:
             # Keep track of the un-aggregated loss result tensor.
-            self.metrics_tensors.append(output_loss)
+            self._compile_metrics_tensors[self.output_names[i] +
+                                          '_loss'] = output_loss
 
             # Keep track of stateful result tensor and function for the loss.
             mean_wrapped_loss = metrics_module.MeanMetricWrapper(
@@ -677,10 +743,11 @@ class Model(Network):
                 y_pred,
                 weights=sample_weight,
                 mask=mask)
-            self._stateful_metrics_tensors.append(result_tensor)
-            self.stateful_metric_functions.append(mean_wrapped_loss)
+            self._compile_stateful_metrics_tensors[self.output_names[i] +
+                                                   '_loss'] = result_tensor
+            self._compile_stateful_metric_functions.append(mean_wrapped_loss)
 
-            self.metrics_names.append(self.output_names[i] + '_loss')
+            self._compile_metrics_names.append(self.output_names[i] + '_loss')
           if total_loss is None:
             total_loss = loss_weight * output_loss
           else:
@@ -782,18 +849,24 @@ class Model(Network):
         setattr(self, fn_name, fn)
 
   def _make_train_function(self):
+    metrics_tensors = [
+        self._all_metrics_tensors[m] for m in self.metrics_names[1:]
+    ]
     self._make_train_function_helper('train_function',
-                                     [self.total_loss] + self.metrics_tensors)
+                                     [self.total_loss] + metrics_tensors)
 
   def _make_fit_function(self):
     # TODO(psv/anjalisridhar): Remove updates after we fix b/118841692
     # Stateful metrics updates
     metric_updates = []
-    for m in self.stateful_metric_functions:
+    for m in self.metrics:
       metric_updates += m.updates
+
+    metrics_tensors = [
+        self._all_stateful_metrics_tensors[m] for m in self.metrics_names[1:]
+    ]
     self._make_train_function_helper(
-        '_fit_function', [self.total_loss] + self._stateful_metrics_tensors,
-        metric_updates)
+        '_fit_function', [self.total_loss] + metrics_tensors, metric_updates)
 
   def _make_test_function_helper(self, fn_name, outputs, metric_updates=None):
     if not hasattr(self, fn_name):
@@ -819,12 +892,18 @@ class Model(Network):
         setattr(self, fn_name, fn)
 
   def _make_test_function(self):
+    metrics_tensors = [
+        self._all_metrics_tensors[m] for m in self.metrics_names[1:]
+    ]
     self._make_test_function_helper('test_function',
-                                    [self.total_loss] + self.metrics_tensors)
+                                    [self.total_loss] + metrics_tensors)
 
   def _make_eval_function(self):
-    self._make_test_function_helper(
-        '_eval_function', [self.total_loss] + self._stateful_metrics_tensors)
+    metrics_tensors = [
+        self._all_stateful_metrics_tensors[m] for m in self.metrics_names[1:]
+    ]
+    self._make_test_function_helper('_eval_function',
+                                    [self.total_loss] + metrics_tensors)
 
   def _make_predict_function(self):
     if not hasattr(self, 'predict_function'):
@@ -1202,12 +1281,14 @@ class Model(Network):
             y = [y]
           target_tensors = [v for v in y if tensor_util.is_tensor(v)]
         is_compile_called = True
-        self.compile(optimizer=self.optimizer,
-                     loss=self.loss,
-                     metrics=self.metrics,
-                     loss_weights=self.loss_weights,
-                     target_tensors=target_tensors,
-                     run_eagerly=self.run_eagerly)
+        self.compile(
+            optimizer=self.optimizer,
+            loss=self.loss,
+            metrics=self._compile_metrics,
+            weighted_metrics=self._compile_weighted_metrics,
+            loss_weights=self.loss_weights,
+            target_tensors=target_tensors,
+            run_eagerly=self.run_eagerly)
 
     # In graph mode, if we had just set inputs and targets as symbolic tensors
     # by invoking build and compile on the model respectively, we do not have to

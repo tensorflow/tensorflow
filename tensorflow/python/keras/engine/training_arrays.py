@@ -299,8 +299,8 @@ def model_iteration(model,
     # Setup work for each epoch
     results = []
     epoch_logs = {}
-    if hasattr(model, 'stateful_metric_functions'):
-      for m in model.stateful_metric_functions:
+    if hasattr(model, 'metrics'):
+      for m in model.metrics:
         m.reset_states()
     callbacks.on_epoch_begin(epoch, epoch_logs, mode=mode)
     progbar.on_epoch_begin(epoch, epoch_logs)

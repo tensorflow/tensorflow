@@ -126,7 +126,7 @@ def configure_callbacks(callbacks,
   callback_metrics = []
   # When we have deferred build scenario with iterator input, we will compile
   # when we standardize first batch of data.
-  if mode != 'predict' and model._is_compiled:  # pylint: disable=protected-access
+  if mode != 'predict' and hasattr(model, 'metrics_names'):
     callback_metrics = copy.copy(model.metrics_names)
     if do_validation:
       callback_metrics += ['val_' + n for n in model.metrics_names]

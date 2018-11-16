@@ -545,9 +545,20 @@ class Metric(Layer):
     Returns:
       The metric value tensor.
     """
-    update_op = self.update_state(*args, **kwargs)  # pylint: disable=not-callable
+    update_op = self.update_state(*args, **kwargs)
     with ops.control_dependencies([update_op]):
-      return self.result()  # pylint: disable=not-callable
+      result_t = self.result()
+
+      # We are adding the metric object as metadata on the result tensor.
+      # This is required when we want to use a metric with `add_metric` API on
+      # a Model/Layer in graph mode. This metric instance will later be used
+      # to reset variable state after each epoch of training.
+      # Example:
+      #   model = Model()
+      #   model.add_metric(Mean()(values), name='mean')
+      if not context.executing_eagerly():
+        result_t._metric_obj = self  # pylint: disable=protected-access
+      return result_t
 
   def reset_states(self):
     """Resets all of the metric state variables.
@@ -731,7 +742,8 @@ class MeanMetricWrapper(Mean):
         matches, sample_weight=sample_weight)
 
   def get_config(self):
-    config = self._fn_kwargs
+    config = {'fn': self._fn}
+    config.update(self._fn_kwargs)
     base_config = super(MeanMetricWrapper, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -760,6 +772,12 @@ class BinaryAccuracy(MeanMetricWrapper):
     super(BinaryAccuracy, self).__init__(
         binary_accuracy, name, dtype=dtype, threshold=threshold)
 
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(BinaryAccuracy, cls).from_config(config)
+
 
 class CategoricalAccuracy(MeanMetricWrapper):
   """Calculates how often predictions matches labels.
@@ -783,6 +801,12 @@ class CategoricalAccuracy(MeanMetricWrapper):
     super(CategoricalAccuracy, self).__init__(
         categorical_accuracy, name, dtype=dtype)
 
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(CategoricalAccuracy, cls).from_config(config)
+
 
 class SparseCategoricalAccuracy(MeanMetricWrapper):
   """Calculates how often predictions matches integer labels.
@@ -799,6 +823,12 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
   def __init__(self, name='sparse_categorical_accuracy', dtype=None):
     super(SparseCategoricalAccuracy, self).__init__(
         sparse_categorical_accuracy, name, dtype=dtype)
+
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(SparseCategoricalAccuracy, cls).from_config(config)
 
 
 class _ConfusionMatrixConditionCount(Metric):

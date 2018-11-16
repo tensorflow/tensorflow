@@ -171,7 +171,7 @@ def fit_loop(
 
     for epoch in range(initial_epoch, epochs):
       # Reset stateful metrics
-      for m in model.stateful_metric_functions:
+      for m in model.metrics:
         m.reset_states()
       callbacks.on_epoch_begin(epoch)
       epoch_logs = {}
@@ -311,7 +311,8 @@ def _experimental_fit_loop(
   # Add initial dummy values for loss and other metric tensors.
   initial_loop_values = {}
   initial_loop_values['loss'] = constant_op.constant(1e7)
-  for name, tensor in zip(model.metrics_names[1:], model.metrics_tensors):
+  for name in model.metrics_names[1:]:
+    tensor = model._all_stateful_metrics_tensors[name]
     initial_loop_values[name] = array_ops.zeros(tensor.shape, tensor.dtype)
 
   if steps_per_epoch is None:
@@ -480,7 +481,7 @@ def test_loop(model, iterator, verbose=0, steps=None):
         len(model.outputs) * current_strategy.num_replicas_in_sync)]
     ins = dataset_inputs + dataset_targets + sample_weights
 
-    for m in model.stateful_metric_functions:
+    for m in model.metrics:
       m.reset_states()
 
     outs = []
@@ -590,7 +591,8 @@ def _experimental_test_loop(model, iterator, verbose=0, steps=None,
   # Add initial dummy values for loss and other metric tensors.
   initial_loop_values = {}
   initial_loop_values['loss'] = constant_op.constant(1e7)
-  for name, tensor in zip(model.metrics_names[1:], model.metrics_tensors):
+  for name in model.metrics_names[1:]:
+    tensor = model._all_stateful_metrics_tensors[name]
     initial_loop_values[name] = array_ops.zeros(tensor.shape, tensor.dtype)
 
   with current_strategy.scope():
@@ -867,10 +869,11 @@ def _clone_and_build_model(model, inputs=None, targets=None):
   cloned_model.compile(
       optimizer,
       model.loss,
-      metrics=metrics_module.clone_metrics(model.metrics),
+      metrics=metrics_module.clone_metrics(model._compile_metrics),
       loss_weights=model.loss_weights,
       sample_weight_mode=model.sample_weight_mode,
-      weighted_metrics=metrics_module.clone_metrics(model.weighted_metrics),
+      weighted_metrics=metrics_module.clone_metrics(
+          model._compile_weighted_metrics),
       target_tensors=targets)
   return cloned_model
 

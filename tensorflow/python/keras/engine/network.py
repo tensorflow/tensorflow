@@ -134,6 +134,11 @@ class Network(base_layer.Layer):
     self._updates = []  # Used in symbolic mode only.
     self._losses = []
     self._eager_losses = []
+    # A list of metric instances corresponding to the symbolic metric tensors
+    # added using the `add_metric` API.
+    self._metrics = []
+    # A dictionary that maps metric names to metric result tensors.
+    self._metrics_tensors = {}
     self._scope = None  # Never used.
     self._reuse = None  # Never used.
     self._call_is_graph_friendly = True
@@ -412,6 +417,13 @@ class Network(base_layer.Layer):
         else:
           if value not in self._non_trainable_weights:
             self._non_trainable_weights.append(value)
+
+    # Keeping track of metric instance created in subclassed model/layer.
+    # We do this so that we can maintain the correct order of metrics by adding
+    # the instance to the `metrics` list as soon as it is created.
+    from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
+    if isinstance(value, metrics_module.Metric):
+      self._metrics.append(value)
     super(Network, self).__setattr__(name, value)
 
   @property
@@ -696,6 +708,30 @@ class Network(base_layer.Layer):
         trainable=self.trainable,
         sub_layers=self._layers,
         extra_variables=self._non_trainable_weights + self._trainable_weights)
+
+  @property
+  def metrics(self):
+    """Returns the network's symbolic metrics.
+
+    Model overrides this function to include the metrics from `compile` API.
+    """
+    metrics = []
+    for layer in self.layers:
+      metrics += layer._metrics  # pylint: disable=protected-access
+    return metrics + self._metrics
+
+  @property
+  def _all_metrics_tensors(self):
+    """Returns the network's symbolic metric tensors."""
+    # TODO(psv): Remove this property.
+    metrics_tensors = {}
+    for layer in self.layers:
+      if isinstance(layer, Network):
+        metrics_tensors.update(layer._all_metrics_tensors)
+      else:
+        metrics_tensors.update(layer._metrics_tensors)
+    metrics_tensors.update(self._metrics_tensors)
+    return metrics_tensors
 
   @property
   def input_spec(self):
