@@ -256,11 +256,14 @@ def while_loop(cond,
     outputs = tuple(array_ops.identity(t) for t in outputs)
 
   # First var is loop counter.
-  if num_flattened_outputs == 1:
-    return outputs[1]
+  outputs = _pack_sequence_as(orig_loop_vars,
+                              outputs[1:1 + num_flattened_outputs])
+
+  flattened_outputs = nest.flatten(outputs)
+  if len(flattened_outputs) == 1:
+    return flattened_outputs[0]
   else:
-    return _pack_sequence_as(orig_loop_vars,
-                             outputs[1:1 + num_flattened_outputs])
+    return outputs
 
 
 @ops.RegisterGradient("While")

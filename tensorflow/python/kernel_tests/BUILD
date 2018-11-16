@@ -3315,7 +3315,9 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:while_v2",
     ],
     grpc_enabled = True,
 )
