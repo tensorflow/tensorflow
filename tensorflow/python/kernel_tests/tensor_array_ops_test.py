@@ -429,7 +429,7 @@ class TensorArrayTest(test.TestCase):
             handle=w0.handle, index=0, dtype=dtypes.float64, flow_in=w0.flow)
         with self.assertRaisesOpError(
             "TensorArray dtype is float but Op requested dtype double."):
-          r0_bad.eval()
+          self.evaluate(r0_bad)
 
       # Test reading from a negative index, which is not allowed
       with self.assertRaisesOpError("index -1"):
@@ -1212,7 +1212,7 @@ class TensorArrayTest(test.TestCase):
       w0 = ta.unstack(x)
       w1 = w0.write(3, 4.0)
       r = w1.stack()
-      self.assertAllEqual(np.array([1.0, 2.0, 3.0, 4.0]), r.eval())
+      self.assertAllEqual(np.array([1.0, 2.0, 3.0, 4.0]), self.evaluate(r))
       grad = gradients_impl.gradients(ys=[r], xs=[x])
       self.assertAllEqual(np.array([1.0, 1.0, 1.0]), sess.run(grad)[0])
 
@@ -1227,7 +1227,7 @@ class TensorArrayTest(test.TestCase):
       w0 = ta.split(x, [1, 1, 1])
       w1 = w0.write(3, [4.0])
       r = w1.concat()
-      self.assertAllEqual(np.array([1.0, 2.0, 3.0, 4.0]), r.eval())
+      self.assertAllEqual(np.array([1.0, 2.0, 3.0, 4.0]), self.evaluate(r))
       grad = gradients_impl.gradients(ys=[r], xs=[x])
       self.assertAllEqual(np.array([1.0, 1.0, 1.0]), sess.run(grad)[0])
 
@@ -1255,10 +1255,10 @@ class TensorArrayTest(test.TestCase):
       ta.unstack(array_ops.zeros([0, 3, 5])).mark_used()
       packed = ta.stack()
       concatenated = ta.concat()
-      self.assertAllEqual([0, 3, 5], packed.eval().shape)
+      self.assertAllEqual([0, 3, 5], self.evaluate(packed).shape)
       # Concatenating zero tensors along their first dimension gives a
       # first dimension of zero
-      self.assertAllEqual([0, 5], concatenated.eval().shape)
+      self.assertAllEqual([0, 5], self.evaluate(concatenated).shape)
 
   def testTensorArrayEvalEmptyWithDefault(self):
     self._testTensorArrayEvalEmptyWithDefault()

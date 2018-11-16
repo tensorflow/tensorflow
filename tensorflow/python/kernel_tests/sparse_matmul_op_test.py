@@ -58,7 +58,7 @@ class SparseMatMulTest(test.TestCase):
           transpose_b=tr_b,
           a_is_sparse=sp_a,
           b_is_sparse=sp_b)
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
       np_x = math_ops.cast(tf_x, dtypes.float32).eval()
       np_y = math_ops.cast(tf_y, dtypes.float32).eval()
 

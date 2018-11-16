@@ -157,7 +157,7 @@ class RaggedSegmentOpsTest(test_util.TensorFlowTestCase,
     segmented = segment_op(rt, segment_ids, num_segments)
     with self.test_session():
       self.assertNestedListAmostEqual(
-          segmented.eval().tolist(), expected, places=5)
+          self.evaluate(segmented).tolist(), expected, places=5)
 
   def testRaggedRankTwo(self):
     rt = ragged.constant([

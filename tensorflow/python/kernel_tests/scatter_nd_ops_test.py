@@ -144,7 +144,7 @@ class StatefulScatterNdTest(test.TestCase):
         tf_scatter(ref_var, indices, updates).eval()
 
         # Compare
-        self.assertAllClose(new, ref_var.eval())
+        self.assertAllClose(new, self.evaluate(ref_var))
 
   def _VariableRankTests(self, np_scatter, tf_scatter):
     for vtype in (np.int32, np.float16, np.float32, np.float64, np.complex64,
@@ -249,7 +249,7 @@ class StatefulScatterNdTest(test.TestCase):
   #             [[0]], dtype=tf.int64), [False])
   #     var.initializer.run()
   #     session.run([update0, update1])
-  #     self.assertAllEqual([False, True], var.eval())
+  #     self.assertAllEqual([False, True], self.evaluate(var))
 
   def testScatterOutOfRangeCpu(self):
     # TODO(simister): Re-enable once binary size increase due to
@@ -307,7 +307,7 @@ class StatefulScatterNdTest(test.TestCase):
     expected_result = np.zeros([2, 2], dtype=np.int32)
     with self.cached_session():
       ref.initializer.run()
-      self.assertAllEqual(expected_result, scatter_update.eval())
+      self.assertAllEqual(expected_result, self.evaluate(scatter_update))
 
   def testRank3InvalidShape1(self):
     indices = array_ops.zeros([3, 2, 2], dtypes.int32)
@@ -463,7 +463,7 @@ class ScatterNdTest(test.TestCase):
     self.assertAllEqual(scatter.get_shape().as_list(), shape)
     expected_result = np.zeros([2, 2], dtype=np.int32)
     with self.cached_session():
-      self.assertAllEqual(expected_result, scatter.eval())
+      self.assertAllEqual(expected_result, self.evaluate(scatter))
 
   def testUndefinedIndicesShape(self):
     indices = array_ops.placeholder(dtypes.int32, shape=None)
@@ -545,9 +545,9 @@ class ScatterNdTest(test.TestCase):
       expected_input_grad = np.array([[1, 2], [3, 4]],
                                      dtype=dtype.as_numpy_dtype())
       with self.cached_session():
-        self.assertAllEqual(expected_updates_grad, updates_grad.eval())
+        self.assertAllEqual(expected_updates_grad, self.evaluate(updates_grad))
         if self.non_aliasing_add_test:
-          self.assertAllEqual(expected_input_grad, input_grad.eval())
+          self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
 
   def testGradientsRank2SliceUpdate(self):
     for dtype in GRADIENT_TESTS_DTYPES:
@@ -565,9 +565,9 @@ class ScatterNdTest(test.TestCase):
       expected_input_grad = np.array([[3, 4], [1, 2]],
                                      dtype=dtype.as_numpy_dtype())
       with self.cached_session():
-        self.assertAllEqual(expected_updates_grad, updates_grad.eval())
+        self.assertAllEqual(expected_updates_grad, self.evaluate(updates_grad))
         if self.non_aliasing_add_test:
-          self.assertAllEqual(expected_input_grad, input_grad.eval())
+          self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
 
   def testGradientsRank3SliceUpdate(self):
     for dtype in GRADIENT_TESTS_DTYPES:
@@ -588,9 +588,9 @@ class ScatterNdTest(test.TestCase):
       expected_input_grad = np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]],
                                      dtype=dtype.as_numpy_dtype())
       with self.cached_session():
-        self.assertAllEqual(expected_updates_grad, updates_grad.eval())
+        self.assertAllEqual(expected_updates_grad, self.evaluate(updates_grad))
         if self.non_aliasing_add_test:
-          self.assertAllEqual(expected_input_grad, input_grad.eval())
+          self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
 
   def testGradientsRank7SliceUpdate(self):
     for dtype in GRADIENT_TESTS_DTYPES:
@@ -615,9 +615,9 @@ class ScatterNdTest(test.TestCase):
           [[[[[[[1, 2], [3, 4]]]], [[[[5, 6], [7, 8]]]]]]],
           dtype=dtype.as_numpy_dtype())
       with self.cached_session():
-        self.assertAllEqual(expected_updates_grad, updates_grad.eval())
+        self.assertAllEqual(expected_updates_grad, self.evaluate(updates_grad))
         if self.non_aliasing_add_test:
-          self.assertAllEqual(expected_input_grad, input_grad.eval())
+          self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
 
   def testScatterNdRepatedIndicesAdd(self):
     indices = array_ops.zeros([100000, 1], dtypes.int32)

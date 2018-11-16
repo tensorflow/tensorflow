@@ -43,7 +43,7 @@ class LogarithmOpTest(test.TestCase):
       # Verify that expm(logm(A)) == A.
       tf_ans = linalg_impl.matrix_exponential(
           gen_linalg_ops.matrix_logarithm(inp))
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
       self.assertAllClose(inp, out, rtol=1e-4, atol=1e-3)
 
   def _verifyLogarithmComplex(self, x):

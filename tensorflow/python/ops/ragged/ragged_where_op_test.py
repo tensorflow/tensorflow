@@ -170,7 +170,7 @@ class RaggedWhereOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(
         getattr(result, 'ragged_rank', 0), getattr(expected, 'ragged_rank', 0))
     with self.test_session():
-      result_value = result.eval()
+      result_value = self.evaluate(result)
       if hasattr(result_value, 'tolist'):
         result_value = result_value.tolist()
       if hasattr(expected, 'tolist'):

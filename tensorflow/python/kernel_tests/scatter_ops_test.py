@@ -286,7 +286,7 @@ class ScatterTest(test.TestCase):
 
         session.run([update0, update1])
 
-        self.assertAllEqual([False, True], var.eval())
+        self.assertAllEqual([False, True], self.evaluate(var))
 
   def testScatterOutOfRangeCpu(self):
     for op, _ in _TF_OPS_TO_NUMPY.items():

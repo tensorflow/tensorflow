@@ -123,7 +123,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
     xx = math_ops.matmul(x, x, adjoint_a=True)
     identity = array_ops.matrix_band_part(array_ops.ones_like(xx), 0, 0)
-    self.assertAllClose(identity.eval(), xx.eval(), atol=tol)
+    self.assertAllClose(identity.eval(), self.evaluate(xx), atol=tol)
 
   def Test(self):
     is_complex = dtype_ in (np.complex64, np.complex128)

@@ -51,7 +51,7 @@ class ExtractImagePatches(test.TestCase):
           rates=rates,
           padding=padding,
           name="im2col")
-      self.assertAllClose(patches, out_tensor.eval())
+      self.assertAllClose(patches, self.evaluate(out_tensor))
 
   def testKsize1x1Stride1x1Rate1x1(self):
     """Verifies that for 1x1 kernel the output equals the input."""

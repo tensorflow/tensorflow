@@ -89,7 +89,7 @@ class MatrixSetDiagTest(test.TestCase):
                                [1.0, 1.0, 3.0]])
       output = array_ops.matrix_set_diag(mat, v)
       self.assertEqual((3, 3), output.get_shape())
-      self.assertAllEqual(mat_set_diag, output.eval())
+      self.assertAllEqual(mat_set_diag, self.evaluate(output))
 
   def testRectangular(self):
     with self.session(use_gpu=True):
@@ -98,14 +98,14 @@ class MatrixSetDiagTest(test.TestCase):
       expected = np.array([[3.0, 1.0, 0.0], [1.0, 4.0, 1.0]])
       output = array_ops.matrix_set_diag(mat, v)
       self.assertEqual((2, 3), output.get_shape())
-      self.assertAllEqual(expected, output.eval())
+      self.assertAllEqual(expected, self.evaluate(output))
 
       v = np.array([3.0, 4.0])
       mat = np.array([[0.0, 1.0], [1.0, 0.0], [1.0, 1.0]])
       expected = np.array([[3.0, 1.0], [1.0, 4.0], [1.0, 1.0]])
       output = array_ops.matrix_set_diag(mat, v)
       self.assertEqual((3, 2), output.get_shape())
-      self.assertAllEqual(expected, output.eval())
+      self.assertAllEqual(expected, self.evaluate(output))
 
   def _testSquareBatch(self, dtype):
     with self.cached_session(use_gpu=True):
@@ -121,7 +121,7 @@ class MatrixSetDiagTest(test.TestCase):
 
       output = array_ops.matrix_set_diag(mat_batch, v_batch)
       self.assertEqual((2, 3, 3), output.get_shape())
-      self.assertAllEqual(mat_set_diag_batch, output.eval())
+      self.assertAllEqual(mat_set_diag_batch, self.evaluate(output))
 
   def testSquareBatch(self):
     self._testSquareBatch(np.float32)
@@ -140,7 +140,7 @@ class MatrixSetDiagTest(test.TestCase):
                                      [[-4.0, 0.0, 4.0], [0.0, -5.0, 0.0]]])
       output = array_ops.matrix_set_diag(mat_batch, v_batch)
       self.assertEqual((2, 2, 3), output.get_shape())
-      self.assertAllEqual(mat_set_diag_batch, output.eval())
+      self.assertAllEqual(mat_set_diag_batch, self.evaluate(output))
 
   def testInvalidShape(self):
     with self.assertRaisesRegexp(ValueError, "must be at least rank 2"):
@@ -273,9 +273,9 @@ class DiagTest(test.TestCase):
   def _diagOp(self, diag, dtype, expected_ans, use_gpu):
     with self.cached_session(use_gpu=use_gpu):
       tf_ans = array_ops.diag(ops.convert_to_tensor(diag.astype(dtype)))
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
       tf_ans_inv = array_ops.diag_part(expected_ans)
-      inv_out = tf_ans_inv.eval()
+      inv_out = self.evaluate(tf_ans_inv)
     self.assertAllClose(out, expected_ans)
     self.assertAllClose(inv_out, diag)
     self.assertShapeEqual(expected_ans, tf_ans)
@@ -421,7 +421,7 @@ class DiagPartOpTest(test.TestCase):
     with self.cached_session(use_gpu=use_gpu):
       tensor = ops.convert_to_tensor(tensor.astype(dtype))
       tf_ans_inv = array_ops.diag_part(tensor)
-      inv_out = tf_ans_inv.eval()
+      inv_out = self.evaluate(tf_ans_inv)
     self.assertAllClose(inv_out, expected_ans)
     self.assertShapeEqual(expected_ans, tf_ans_inv)
 
@@ -445,7 +445,7 @@ class DiagPartOpTest(test.TestCase):
         t = ops.convert_to_tensor(x.astype(np.float32))
         t.set_shape(shape)
         tf_ans = array_ops.diag_part(t)
-        out = tf_ans.eval()
+        out = self.evaluate(tf_ans)
       self.assertAllClose(out, expected_ans)
       self.assertShapeEqual(expected_ans, tf_ans)
 

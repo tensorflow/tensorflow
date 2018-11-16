@@ -974,7 +974,7 @@ class FunctionalOpsTest(test.TestCase):
           MLP,
           rewrite_with_while=rewrite_with_while)[0]
 
-      return ret.eval()
+      return self.evaluate(ret)
 
   def _npMLP(self, xval, wsval, bsval):
     for i in range(wsval.shape[0]):

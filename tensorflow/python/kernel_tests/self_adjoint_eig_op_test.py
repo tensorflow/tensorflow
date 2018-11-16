@@ -164,8 +164,8 @@ def _GetSelfAdjointEigTest(dtype_, shape_, compute_v_):
         self.assertAllClose(a_ev.eval(), a, atol=atol)
 
         # Compare to numpy.linalg.eigh.
-        CompareEigenDecompositions(self, np_e, np_v,
-                                   tf_e.eval(), tf_v.eval(), atol)
+        CompareEigenDecompositions(self, np_e, np_v, self.evaluate(tf_e),
+                                   self.evaluate(tf_v), atol)
       else:
         tf_e = linalg_ops.self_adjoint_eigvals(constant_op.constant(a))
         self.assertAllClose(

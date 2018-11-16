@@ -110,7 +110,7 @@ def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
       tol = 1e-5
     else:
       tol = 1e-14
-    self.assertAllClose(identity.eval(), xx.eval(), atol=tol)
+    self.assertAllClose(identity.eval(), self.evaluate(xx), atol=tol)
 
   def Test(self):
     np.random.seed(1)

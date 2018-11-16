@@ -132,8 +132,8 @@ class RMSPropOptimizerTest(test.TestCase):
         mom1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
         # Run 4 steps of RMSProp
         for _ in range(1, 5):
@@ -148,14 +148,14 @@ class RMSPropOptimizerTest(test.TestCase):
 
           # Validate updated params
           if centered:
-            self.assertAllCloseAccordingToType(mg0_np, mg0.eval())
-            self.assertAllCloseAccordingToType(mg1_np, mg1.eval())
-          self.assertAllCloseAccordingToType(rms0_np, rms0.eval())
-          self.assertAllCloseAccordingToType(rms1_np, rms1.eval())
-          self.assertAllCloseAccordingToType(mom0_np, mom0.eval())
-          self.assertAllCloseAccordingToType(mom1_np, mom1.eval())
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
-          self.assertAllCloseAccordingToType(var1_np, var1.eval())
+            self.assertAllCloseAccordingToType(mg0_np, self.evaluate(mg0))
+            self.assertAllCloseAccordingToType(mg1_np, self.evaluate(mg1))
+          self.assertAllCloseAccordingToType(rms0_np, self.evaluate(rms0))
+          self.assertAllCloseAccordingToType(rms1_np, self.evaluate(rms1))
+          self.assertAllCloseAccordingToType(mom0_np, self.evaluate(mom0))
+          self.assertAllCloseAccordingToType(mom1_np, self.evaluate(mom1))
+          self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
+          self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.float32, dtypes.float64]:
@@ -173,12 +173,13 @@ class RMSPropOptimizerTest(test.TestCase):
                 loss, var_list=[var0])
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
+        self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
         # Run 1 step of sgd
         sgd_op.run()
         # Validate updated params
-        self.assertAllCloseAccordingToType(
-            [[0., 1.]], var0.eval(), atol=0.01)
+        self.assertAllCloseAccordingToType([[0., 1.]],
+                                           self.evaluate(var0),
+                                           atol=0.01)
 
   def testMinimizeSparseResourceVariableCentered(self):
     for dtype in [dtypes.float32, dtypes.float64]:
@@ -196,12 +197,13 @@ class RMSPropOptimizerTest(test.TestCase):
                 loss, var_list=[var0])
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
+        self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
         # Run 1 step of sgd
         sgd_op.run()
         # Validate updated params
-        self.assertAllCloseAccordingToType(
-            [[-111, -138]], var0.eval(), atol=0.01)
+        self.assertAllCloseAccordingToType([[-111, -138]],
+                                           self.evaluate(var0),
+                                           atol=0.01)
 
   def testSparse(self):
     for (dtype, learning_rate, rho, momentum, epsilon, centered) in _TESTPARAMS:
@@ -256,8 +258,8 @@ class RMSPropOptimizerTest(test.TestCase):
         mom1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
         # Run 4 steps of RMSProp
         for _ in range(1, 5):
@@ -272,14 +274,14 @@ class RMSPropOptimizerTest(test.TestCase):
 
           # Validate updated params
           if centered:
-            self.assertAllCloseAccordingToType(mg0_np, mg0.eval())
-            self.assertAllCloseAccordingToType(mg1_np, mg1.eval())
-          self.assertAllCloseAccordingToType(rms0_np, rms0.eval())
-          self.assertAllCloseAccordingToType(rms1_np, rms1.eval())
-          self.assertAllCloseAccordingToType(mom0_np, mom0.eval())
-          self.assertAllCloseAccordingToType(mom1_np, mom1.eval())
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
-          self.assertAllCloseAccordingToType(var1_np, var1.eval())
+            self.assertAllCloseAccordingToType(mg0_np, self.evaluate(mg0))
+            self.assertAllCloseAccordingToType(mg1_np, self.evaluate(mg1))
+          self.assertAllCloseAccordingToType(rms0_np, self.evaluate(rms0))
+          self.assertAllCloseAccordingToType(rms1_np, self.evaluate(rms1))
+          self.assertAllCloseAccordingToType(mom0_np, self.evaluate(mom0))
+          self.assertAllCloseAccordingToType(mom1_np, self.evaluate(mom1))
+          self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
+          self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
   def testCallableParams(self):
     with context.eager_mode():

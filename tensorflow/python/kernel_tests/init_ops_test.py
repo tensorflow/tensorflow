@@ -349,7 +349,7 @@ class UniformUnitScalingInitializationTest(test.TestCase):
           shape=shape,
           initializer=init_ops.uniform_unit_scaling_initializer())
       variables.global_variables_initializer().run()
-      self.assertAllEqual(shape, x.eval().shape)
+      self.assertAllEqual(shape, self.evaluate(x).shape)
 
   def testDuplicatedInitializer(self):
     init = init_ops.uniform_unit_scaling_initializer()
@@ -435,7 +435,7 @@ class RangeTest(test.TestCase):
       tf_ans = math_ops.range(start, limit, delta, name="range")
       self.assertEqual([len(np.arange(start, limit, delta))],
                        tf_ans.get_shape())
-      return tf_ans.eval()
+      return self.evaluate(tf_ans)
 
   def testBasic(self):
     self.assertTrue(
@@ -524,7 +524,7 @@ class LinSpaceTest(test.TestCase):
       with self.session(graph=graph, force_gpu=self.force_gpu):
         tf_ans = math_ops.linspace(start, stop, num, name="linspace")
         self.assertEqual([num], tf_ans.get_shape())
-        return tf_ans.eval()
+        return self.evaluate(tf_ans)
 
   def testPositive(self):
     for self.force_gpu in self._gpu_modes():
@@ -706,7 +706,7 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
         with self.session(use_gpu=True) as sess:
           sess.run(my_ops)
           # Check the shape of the outputs
-          t = outputs.eval()
+          t = self.evaluate(outputs)
           self.assertAllEqual(t.shape, outputs_shape)
           # Check isometry of the delta-orthogonal kernel.
           self.assertAllClose(sess.run(ratio), gain, rtol=tol, atol=tol)
@@ -723,7 +723,7 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
                                         initializer=
                                         init_ops.convolutional_delta_orthogonal)
         x.initializer.run()
-        y = x.eval()[1, 1, :, :]
+        y = self.evaluate(x)[1, 1, :, :]
         determinant = np.linalg.det(y)
         value += determinant
         abs_value += np.abs(determinant)
@@ -844,7 +844,7 @@ class ConvolutionOrthogonal1dInitializerTest(test.TestCase):
       with self.session(use_gpu=True) as sess:
         sess.run(my_ops)
         # Check the shape of the outputs
-        t = outputs.eval()
+        t = self.evaluate(outputs)
         self.assertAllEqual(t.shape, outputs_shape)
         # Check isometry of the orthogonal kernel.
         self.assertAllClose(sess.run(ratio), gain, rtol=tol, atol=tol)
@@ -939,7 +939,7 @@ class ConvolutionOrthogonal2dInitializerTest(test.TestCase):
       with self.session(use_gpu=True) as sess:
         sess.run(my_ops)
         # Check the shape of the outputs
-        t = outputs.eval()
+        t = self.evaluate(outputs)
         self.assertAllEqual(t.shape, outputs_shape)
         # Check isometry of the orthogonal kernel.
         self.assertAllClose(sess.run(ratio), gain, rtol=tol, atol=tol)
@@ -1064,7 +1064,7 @@ class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
       with self.cached_session(use_gpu=True) as sess:
         sess.run(my_ops)
         # Check the shape of the outputs
-        t = outputs.eval()
+        t = self.evaluate(outputs)
         self.assertAllEqual(t.shape, outputs_shape)
         # Check isometry of the orthogonal kernel.
         self.assertAllClose(sess.run(ratio), gain, rtol=tol, atol=tol)

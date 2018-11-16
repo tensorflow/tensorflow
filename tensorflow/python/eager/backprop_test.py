@@ -215,7 +215,7 @@ class BackpropTest(test.TestCase):
       self.assertAllClose(tf_grad.values.eval(), grad.values)
 
       tf_opt.apply_gradients([(tf_grad, tf_embedding)]).run()
-      expected = tf_embedding.eval()
+      expected = self.evaluate(tf_embedding)
     opt.apply_gradients([(grad, embedding)])
     self.assertAllClose(expected, embedding.read_value())
 

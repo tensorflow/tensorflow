@@ -364,7 +364,7 @@ class FractionalAvgPoolGradTest(test.TestCase):
               padding = "VALID"
               output_tensor = nn_ops.avg_pool(input_tensor, window_size,
                                               stride_size, padding)
-              output_data = output_tensor.eval()
+              output_data = self.evaluate(output_tensor)
               num_elements = 1
               for dim_size in output_data.shape:
                 num_elements *= dim_size
@@ -373,7 +373,7 @@ class FractionalAvgPoolGradTest(test.TestCase):
               input_backprop_tensor = gen_nn_ops.avg_pool_grad(
                   input_tensor.get_shape(), output_backprop, window_size,
                   stride_size, padding)
-              input_backprop = input_backprop_tensor.eval()
+              input_backprop = self.evaluate(input_backprop_tensor)
               row_seq = list(range(0, num_rows + 1, row_window_size))
               col_seq = list(range(0, num_cols + 1, col_window_size))
               fap_input_backprop_tensor = gen_nn_ops.fractional_avg_pool_grad(
@@ -382,7 +382,7 @@ class FractionalAvgPoolGradTest(test.TestCase):
                   row_seq,
                   col_seq,
                   overlapping=False)
-              fap_input_backprop = fap_input_backprop_tensor.eval()
+              fap_input_backprop = self.evaluate(fap_input_backprop_tensor)
               self.assertShapeEqual(input_backprop, fap_input_backprop_tensor)
               self.assertAllClose(input_backprop, fap_input_backprop)
 
@@ -403,7 +403,7 @@ class FractionalAvgPoolGradTest(test.TestCase):
               padding = "VALID"
               output_tensor = nn_ops.avg_pool(input_tensor, window_size,
                                               stride_size, padding)
-              output_data = output_tensor.eval()
+              output_data = self.evaluate(output_tensor)
               num_elements = 1
               for dim_size in output_data.shape:
                 num_elements *= dim_size
@@ -412,7 +412,7 @@ class FractionalAvgPoolGradTest(test.TestCase):
               input_backprop_tensor = gen_nn_ops.avg_pool_grad(
                   input_tensor.get_shape(), output_backprop, window_size,
                   stride_size, padding)
-              input_backprop = input_backprop_tensor.eval()
+              input_backprop = self.evaluate(input_backprop_tensor)
               row_seq = list(range(0, num_rows, row_window_size - 1))
               col_seq = list(range(0, num_cols, col_window_size - 1))
               row_seq[-1] += 1
@@ -423,7 +423,7 @@ class FractionalAvgPoolGradTest(test.TestCase):
                   row_seq,
                   col_seq,
                   overlapping=True)
-              fap_input_backprop = fap_input_backprop_tensor.eval()
+              fap_input_backprop = self.evaluate(fap_input_backprop_tensor)
               self.assertShapeEqual(input_backprop, fap_input_backprop_tensor)
               self.assertAllClose(input_backprop, fap_input_backprop)
 
@@ -442,7 +442,7 @@ class FractionalAvgPoolGradTest(test.TestCase):
               pseudo_random=pseudo_random,
               overlapping=overlapping,
               seed=self._SEED)
-          output_data = output_tensor.eval()
+          output_data = self.evaluate(output_tensor)
           output_shape = output_data.shape
           # error_margin and delta setting is similar to avg_pool_grad.
           error_margin = 1e-4
@@ -473,7 +473,7 @@ class FractionalAvgPoolGradTest(test.TestCase):
                   pseudo_random=pseudo_random,
                   overlapping=overlapping,
                   seed=self._SEED)
-              output_data = output_tensor.eval()
+              output_data = self.evaluate(output_tensor)
               output_shape = output_data.shape
               # error_margin and delta setting is similar to avg_pool_grad.
               error_margin = 1e-4

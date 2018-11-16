@@ -318,7 +318,7 @@ class SplitOpTest(test.TestCase):
       inp_grads = [self._makeData((4, 1), dtype)for _ in range(4)]
       grad_tensors = [constant_op.constant(x) for x in inp_grads]
       grad = gradients_impl.gradients(s, [inp_tensor], grad_tensors)[0]
-      result = grad.eval()
+      result = self.evaluate(grad)
     for i in range(4):
       self.assertAllEqual(result[:, i:i + 1], inp_grads[i])
 
