@@ -174,6 +174,15 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.sparse.concat": [
             "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
         ],
+        "tf.sparse.segment_mean": [
+            "data", "indices", "segment_ids", "name", "num_segments"
+        ],
+        "tf.sparse.segment_sqrt_n": [
+            "data", "indices", "segment_ids", "name", "num_segments"
+        ],
+        "tf.sparse.segment_sum": [
+            "data", "indices", "segment_ids", "name", "num_segments"
+        ],
     }
 
     # Specially handled functions.

@@ -2984,8 +2984,7 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
     return summed / gen_math_ops.sqrt(N)
 
 
-@tf_export(
-    "sparse.segment_sum", v1=["sparse.segment_sum", "sparse_segment_sum"])
+@tf_export(v1=["sparse.segment_sum", "sparse_segment_sum"])
 @deprecation.deprecated_endpoints("sparse_segment_sum")
 def sparse_segment_sum(data, indices, segment_ids, name=None,
                        num_segments=None):
@@ -3059,8 +3058,17 @@ def sparse_segment_sum(data, indices, segment_ids, name=None,
         data=data, indices=indices, segment_ids=segment_ids, name=name)
 
 
-@tf_export(
-    "sparse.segment_mean", v1=["sparse.segment_mean", "sparse_segment_mean"])
+@tf_export("sparse.segment_sum", v1=[])
+def sparse_segment_sum_v2(data,
+                          indices,
+                          segment_ids,
+                          num_segments=None,
+                          name=None):
+  return sparse_segment_mean(
+      data, indices, segment_ids, name=name, num_segments=num_segments)
+
+
+@tf_export(v1=["sparse.segment_mean", "sparse_segment_mean"])
 @deprecation.deprecated_endpoints("sparse_segment_mean")
 def sparse_segment_mean(data,
                         indices,
@@ -3106,9 +3114,44 @@ def sparse_segment_mean(data,
         data=data, indices=indices, segment_ids=segment_ids, name=name)
 
 
-@tf_export(
-    "sparse.segment_sqrt_n",
-    v1=["sparse.segment_sqrt_n", "sparse_segment_sqrt_n"])
+@tf_export("sparse.segment_mean", v1=[])
+def sparse_segment_mean_v2(data,
+                           indices,
+                           segment_ids,
+                           num_segments=None,
+                           name=None):
+  r"""Computes the mean along sparse segments of a tensor.
+
+  Read [the section on
+  segmentation](https://tensorflow.org/api_guides/python/math_ops#Segmentation)
+  for an explanation of segments.
+
+  Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
+  dimension, selecting a subset of dimension 0, specified by `indices`.
+  `segment_ids` is allowed to have missing ids, in which case the output will
+  be zeros at those indices. In those cases `num_segments` is used to determine
+  the size of the output.
+
+  Args:
+    data: A `Tensor` with data that will be assembled in the output.
+    indices: A 1-D `Tensor` with indices into `data`. Has same rank as
+      `segment_ids`.
+    segment_ids: A 1-D `Tensor` with indices into the output `Tensor`. Values
+      should be sorted and can be repeated.
+    num_segments: An optional int32 scalar. Indicates the size of the output
+      `Tensor`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tensor` of the shape as data, except for dimension 0 which
+    has size `k`, the number of segments specified via `num_segments` or
+    inferred for the last element in `segments_ids`.
+  """
+  return sparse_segment_mean(
+      data, indices, segment_ids, name=name, num_segments=num_segments)
+
+
+@tf_export(v1=["sparse.segment_sqrt_n", "sparse_segment_sqrt_n"])
 @deprecation.deprecated_endpoints("sparse_segment_sqrt_n")
 def sparse_segment_sqrt_n(data,
                           indices,
@@ -3146,6 +3189,35 @@ def sparse_segment_sqrt_n(data,
         data=data, indices=indices, segment_ids=segment_ids, name=name)
 
 
+@tf_export("sparse.segment_sqrt_n", v1=[])
+def sparse_segment_sqrt_n_v2(data,
+                             indices,
+                             segment_ids,
+                             num_segments=None,
+                             name=None):
+  r"""Computes the sum along sparse segments of a tensor divided by the sqrt(N).
+
+  `N` is the size of the segment being reduced.
+
+  Args:
+    data: A `Tensor` with data that will be assembled in the output.
+    indices: A 1-D `Tensor` with indices into `data`. Has same rank as
+      `segment_ids`.
+    segment_ids: A 1-D `Tensor` with indices into the output `Tensor`. Values
+      should be sorted and can be repeated.
+    num_segments: An optional int32 scalar. Indicates the size of the output
+      `Tensor`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tensor` of the shape as data, except for dimension 0 which
+    has size `k`, the number of segments specified via `num_segments` or
+    inferred for the last element in `segments_ids`.
+  """
+  return sparse_segment_sqrt_n(
+      data, indices, segment_ids, name=name, num_segments=num_segments)
+
+
 @tf_export("tensordot", "linalg.tensordot")
 def tensordot(a, b, axes, name=None):
   r"""Tensor contraction of a and b along specified axes.
@@ -3179,12 +3251,11 @@ def tensordot(a, b, axes, name=None):
     a: `Tensor` of type `float32` or `float64`.
     b: `Tensor` with the same type as `a`.
     axes: Either a scalar `N`, or a list or an `int32` `Tensor` of shape [2, k].
-     If axes is a scalar, sum over the last N axes of a and the first N axes
-     of b in order.
-     If axes is a list or `Tensor` the first and second row contain the set of
-     unique integers specifying axes along which the contraction is computed,
-     for `a` and `b`, respectively. The number of axes for `a` and `b` must
-     be equal.
+      If axes is a scalar, sum over the last N axes of a and the first N axes of
+      b in order. If axes is a list or `Tensor` the first and second row contain
+      the set of unique integers specifying axes along which the contraction is
+      computed, for `a` and `b`, respectively. The number of axes for `a` and
+      `b` must be equal.
     name: A name for the operation (optional).
 
   Returns:
