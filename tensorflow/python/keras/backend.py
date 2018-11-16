@@ -3570,12 +3570,12 @@ def rnn(step_function,
           **while_loop_kwargs)
       new_states = final_outputs[2:]
 
-    last_time = final_outputs[0]
     output_ta = final_outputs[1]
 
     outputs = tuple(o.stack() for o in output_ta)
+    last_output = tuple(o[-1] for o in outputs)
+
     outputs = nest.pack_sequence_as(output_time_zero, outputs)
-    last_output = tuple(o.read(last_time - 1) for o in output_ta)
     last_output = nest.pack_sequence_as(output_time_zero, last_output)
 
   # static shape inference
