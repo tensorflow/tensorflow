@@ -126,25 +126,6 @@ class MirroredTwoDeviceDistributionTest(strategy_test_lib.DistributionTestBase):
       expected = sum(range(dist.num_replicas_in_sync))
       self.assertEqual(expected, self.evaluate(unwrapped[0]))
 
-  @test_util.run_in_graph_and_eager_modes
-  def testReduceOnlyFirstReplicaUpdates(self):
-    if not GPU_TEST:
-      self.skipTest("Not GPU test")
-
-    def run_fn():
-      return 3 + 5 * _replica_id()
-
-    dist = self._get_distribution_strategy()
-    with dist.scope():
-      result = dist.call_for_each_replica(run_fn)
-      reduced = dist.reduce(
-          reduce_util.ReduceOp.ONLY_FIRST_REPLICA,
-          result,
-          destinations="/device:CPU:0")
-      unwrapped = dist.unwrap(reduced)
-      self.assertEqual(1, len(unwrapped))
-      self.assertEqual(3, self.evaluate(unwrapped[0]))
-
   @test_util.run_in_graph_and_eager_modes()
   def testReduceToMultipleDestinations(self):
     if not GPU_TEST:
