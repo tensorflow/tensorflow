@@ -2299,7 +2299,7 @@ def _calc_bias_add_flops(graph, node):
   return ops.OpStats("flops", input_count)
 
 
-@tf_export("nn.xw_plus_b")
+@tf_export(v1=["nn.xw_plus_b"])
 def xw_plus_b(x, weights, biases, name=None):  # pylint: disable=invalid-name
   """Computes matmul(x, weights) + biases.
 
