@@ -842,8 +842,8 @@ Attributes have a name, and their values are represented by the following forms:
 
 ``` {.ebnf}
 attribute-value ::= bool-literal
-                  | integer-literal
-                  | float-literal
+                  | integer-literal ( `:` (index-type | integer-type) )?
+                  | float-literal ( `:` float-type )?
                   | string-literal
                   | affine-map
                   | type
