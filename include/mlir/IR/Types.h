@@ -408,10 +408,16 @@ public:
   TensorType() = default;
   /* implicit */ TensorType(Type::ImplType *ptr);
 
+  /// Return true if the specified element type is a TensorFlow type that is ok
+  /// in a tensor.
+  static bool isValidTFElementType(Type type) {
+    return type.isa<FloatType>() || type.isa<IntegerType>() ||
+           type.isa<OtherType>();
+  }
+
   /// Return true if the specified element type is ok in a tensor.
   static bool isValidElementType(Type type) {
-    return type.isa<FloatType>() || type.isa<VectorType>() ||
-           type.isa<IntegerType>() || type.isa<OtherType>() ||
+    return isValidTFElementType(type) || type.isa<VectorType>() ||
            type.isa<IndexType>();
   }
 
