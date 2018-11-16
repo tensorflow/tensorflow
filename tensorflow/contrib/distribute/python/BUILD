@@ -152,7 +152,6 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":values",
-        "//tensorflow/contrib/eager/python:datasets",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:distribute",
         "//tensorflow/python:dtypes",
@@ -715,8 +714,6 @@ cuda_py_test(
     additional_deps = [
         ":input_ops",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/contrib/data/python/ops:batching",
-        "//tensorflow/contrib/data/python/ops:interleave_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
@@ -769,7 +766,6 @@ py_library(
     srcs = ["metrics_v1_test.py"],
     deps = [
         ":combinations",
-        "//tensorflow/contrib/data/python/ops:batching",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:metrics",
         "//tensorflow/python:variables",
