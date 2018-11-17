@@ -1760,9 +1760,10 @@ class Model(Network):
           initial_epoch=initial_epoch,
           steps_per_epoch=steps_per_epoch,
           validation_steps=validation_steps)
-    elif self._distribution_strategy:
-      return training_distributed.fit_loop(
-          self, x,
+    elif training_distributed.should_run_experimental_loop(self):
+      return training_distributed.experimental_fit_loop(
+          self,
+          x,
           epochs=epochs,
           verbose=verbose,
           callbacks=callbacks,
@@ -1909,12 +1910,9 @@ class Model(Network):
           batch_size=batch_size,
           verbose=verbose,
           steps=steps)
-    elif self._distribution_strategy:
-      return training_distributed.test_loop(
-          self,
-          iterator=x,
-          verbose=verbose,
-          steps=steps)
+    elif training_distributed.should_run_experimental_loop(self):
+      return training_distributed.experimental_test_loop(
+          self, iterator=x, verbose=verbose, steps=steps)
     else:
       return training_arrays.test_loop(
           self,
@@ -2009,8 +2007,8 @@ class Model(Network):
     if self.run_eagerly:
       return training_eager.predict_loop(
           self, x, batch_size=batch_size, verbose=verbose, steps=steps)
-    elif self._distribution_strategy:
-      results = training_distributed.predict_loop(
+    elif training_distributed.should_run_experimental_loop(self):
+      results = training_distributed.experimental_predict_loop(
           self, x, verbose=verbose, steps=steps)
       return results
     else:
