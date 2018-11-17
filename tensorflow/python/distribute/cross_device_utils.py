@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections as pycoll
 import threading
 
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.distribute import all_reduce
 from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.framework import device as pydev
@@ -30,7 +31,10 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nccl_ops
+if pywrap_tensorflow.IsBuiltWithROCm():
+  from tensorflow.contrib import rccl as nccl_ops
+else:
+  from tensorflow.python.ops import nccl_ops
 
 
 def aggregate_gradients_using_nccl(replica_grads):

@@ -21,6 +21,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nccl_ops",
+        "//tensorflow/contrib/rccl:rccl_py",
     ],
 )
 
