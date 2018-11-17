@@ -587,7 +587,12 @@ class CoreMirroredExtended(distribute_lib.DistributionStrategyExtended):
     return ctx
 
   def _broadcast_to(self, tensor, destinations):
-    if isinstance(tensor, (float, int)):  # Fast path for Python constants.
+    # This is both a fast path for Python constants, and a way to delay
+    # converting Python values to a tensor until we know what type it
+    # should be converted to. Otherwise we have trouble with:
+    #   global_step.assign_add(1)
+    # since the `1` gets broadcast as an int32 but global_step is int64.
+    if isinstance(tensor, (float, int)):
       return tensor
     # TODO(josh11b): In eager mode, use one thread per device, or async mode.
     return self._get_cross_device_ops().broadcast(

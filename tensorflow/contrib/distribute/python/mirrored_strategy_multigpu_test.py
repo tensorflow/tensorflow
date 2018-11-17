@@ -162,6 +162,12 @@ class MirroredTwoDeviceDistributionTest(strategy_test_lib.DistributionTestBase):
     iterator = d.make_input_fn_iterator(input_fn)
     self._test_input_fn_iterator(iterator, d.worker_devices, expected_values)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testGlobalStepUpdate(self):
+    if not GPU_TEST:
+      self.skipTest("Not GPU test")
+    self._test_global_step_update(self._get_distribution_strategy())
+
 
 class MirroredStrategyVariableCreationTest(test.TestCase):
 
