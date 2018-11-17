@@ -137,8 +137,7 @@ class BufferAssignmentTest : public HloTestBase {
   }
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentWithInstructionSequence(
-      HloModule* module,
-      absl::Span<const HloInstruction* const> instruction_sequence,
+      HloModule* module, absl::Span<HloInstruction* const> instruction_sequence,
       int64 alignment = 1) {
     HloSchedule schedule(module);
     schedule.set_sequence(module->entry_computation(), instruction_sequence);
@@ -1853,7 +1852,7 @@ class WhileBufferAssignmentTest : public HloTestBase {
   std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
                                                         int64 alignment = 1) {
     HloSchedule schedule =
-        ScheduleModule(*module, ByteSizeOf).ConsumeValueOrDie();
+        ScheduleModule(module, ByteSizeOf).ConsumeValueOrDie();
     return BufferAssigner::Run(
                module, absl::make_unique<SequentialHloOrdering>(schedule),
                ByteSizeOf,
@@ -2162,7 +2161,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
   // nodes are traversed during BufferAssignment.
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(*module, [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape(),
                                      /*pointer_size=*/sizeof(void*));
       }));
@@ -2391,15 +2390,16 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
   RunCopyInsertion(module.get());
 
   HloSchedule schedule =
-      ScheduleModule(*module, ByteSizeOf).ConsumeValueOrDie();
+      ScheduleModule(module.get(), ByteSizeOf).ConsumeValueOrDie();
 
   // To trigger b/38494731, we want a specific Hlo schedule for the
   // root computation, so we overwrite that entry with a manually
   // crafted sequence.
-  schedule.set_sequence(module->entry_computation(),
-                        {input1, weights1, one, output1, while1->operand(0),
-                         while1, input0, weights0, zero, output0,
-                         while0->operand(0), while0, gte0, gte1, root_add});
+  schedule.set_sequence(
+      module->entry_computation(),
+      {input1, weights1, one, output1, while1->mutable_operand(0), while1,
+       input0, weights0, zero, output0, while0->mutable_operand(0), while0,
+       gte0, gte1, root_add});
 
   // If this ASSERT fails, we constructed a bogus sequence above and this test
   // itself is buggy.
