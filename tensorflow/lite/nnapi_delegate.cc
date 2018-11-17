@@ -140,13 +140,13 @@ NNAPIDelegate::~NNAPIDelegate() {
   // ANeuralNetworksShutdown();
 }
 
-// Adds the tensors of the subgraph to the NN API model.
-TfLiteStatus addTensorOperands(tflite::Subgraph* subgraph,
+// Adds the tensors of the interpreter to the NN API model.
+TfLiteStatus addTensorOperands(tflite::Interpreter* interpreter,
                                ANeuralNetworksModel* nn_model,
                                uint32_t* no_of_operands_added,
                                std::vector<int64_t>* nnapi_ids) {
   uint32_t next_id = 0;
-  for (size_t i = 0; i < subgraph->tensors_size(); i++) {
+  for (size_t i = 0; i < interpreter->tensors_size(); i++) {
     // Skip temporaries and RNN back-edges.
     if ((*nnapi_ids)[i] == kOperandNotNeeded) continue;
 
@@ -156,7 +156,7 @@ TfLiteStatus addTensorOperands(tflite::Subgraph* subgraph,
     // NNAPI requires 32-bit float scale to be zero, tflite doesn't care
     float scale = 0.0f;
     int32_t zeroPoint = 0;
-    TfLiteTensor* tensor = subgraph->tensor(i);
+    TfLiteTensor* tensor = interpreter->tensor(i);
     switch (tensor->type) {
       case kTfLiteNoType:
         // Tensors added during initialization of Ops don't have a type yet and
@@ -240,12 +240,12 @@ void MapAndAddTensorIds(const int* from_ids_buf, size_t from_ids_count,
 // Adds the operations and their parameters to the NN API model.
 // 'next-id' is the operand ID of the next operand of the model.
 TfLiteStatus AddOpsAndParams(
-    tflite::Subgraph* subgraph, ANeuralNetworksModel* nn_model,
+    tflite::Interpreter* interpreter, ANeuralNetworksModel* nn_model,
     uint32_t next_id, std::vector<int>* model_state_inputs,
     std::vector<int>* model_state_outputs,
     const std::vector<int64_t>& tensor_id_to_nnapi_id) {
-  for (size_t i = 0; i < subgraph->nodes_size(); i++) {
-    const auto* node_and_registration = subgraph->node_and_registration(i);
+  for (size_t i = 0; i < interpreter->nodes_size(); i++) {
+    const auto* node_and_registration = interpreter->node_and_registration(i);
     const TfLiteNode& node = node_and_registration->first;
     const TfLiteRegistration& registration = node_and_registration->second;
     tflite::BuiltinOperator builtin =
@@ -291,9 +291,9 @@ TfLiteStatus AddOpsAndParams(
     // For each state_out tensor, a corresponding state_in operand needs to be
     // created for NNAPI.
     auto duplicate_state_tensor_float32 =
-        [subgraph, &nn_model, &next_id, &augmented_inputs, &model_state_inputs,
-         &model_state_outputs](int tensor_id) {
-          const TfLiteTensor* tensor = subgraph->tensor(tensor_id);
+        [interpreter, &nn_model, &next_id, &augmented_inputs,
+         &model_state_inputs, &model_state_outputs](int tensor_id) {
+          const TfLiteTensor* tensor = interpreter->tensor(tensor_id);
           ANeuralNetworksOperandType operand_type{
               ANEURALNETWORKS_TENSOR_FLOAT32,
               static_cast<uint32_t>(tensor->dims->size),
@@ -388,11 +388,11 @@ TfLiteStatus AddOpsAndParams(
     };
 
     // LSTM in NNAPI requires scratch tensor as an output operand.
-    auto add_lstm_scratch_tensor_float32 = [subgraph, &node, &nn_model,
+    auto add_lstm_scratch_tensor_float32 = [interpreter, &node, &nn_model,
                                             &next_id, &augmented_outputs]() {
       if (node.temporaries->size == 0) return;
       int scratch_buffer_index = node.temporaries->data[0];
-      const TfLiteTensor* tensor = subgraph->tensor(scratch_buffer_index);
+      const TfLiteTensor* tensor = interpreter->tensor(scratch_buffer_index);
       ANeuralNetworksOperandType operand_type{
           ANEURALNETWORKS_TENSOR_FLOAT32,
           static_cast<uint32_t>(tensor->dims->size),
@@ -584,7 +584,7 @@ TfLiteStatus AddOpsAndParams(
         // The permutation input tensor value dictates the output dimensions.
         // TODO(b/110888333): Support dynamically-sized tensors in delegates.
         if ((node.inputs->size > 1) &&
-            (subgraph->tensor(node.inputs->data[1])->allocation_type !=
+            (interpreter->tensor(node.inputs->data[1])->allocation_type !=
              kTfLiteMmapRo)) {
           logError("NNAPI does not yet support dynamic tensors.");
           return kTfLiteError;
@@ -601,13 +601,14 @@ TfLiteStatus AddOpsAndParams(
           return kTfLiteError;
         }
         if ((node.inputs->size > 0) &&
-            (subgraph->tensor(node.inputs->data[0])->dims->size != 4)) {
+            (interpreter->tensor(node.inputs->data[0])->dims->size != 4)) {
           logError("NNAPI only supports input rank 4 for L2Normalization");
           return kTfLiteError;
         }
         break;
       case tflite::BuiltinOperator_HASHTABLE_LOOKUP:
-        if (subgraph->tensor(node.outputs->data[0])->type != kTfLiteFloat32) {
+        if (interpreter->tensor(node.outputs->data[0])->type !=
+            kTfLiteFloat32) {
           logError("NNAPI only support HASHTABLE_LOOKUP with float32 output",
                    builtin);
           return kTfLiteError;
@@ -706,7 +707,7 @@ TfLiteStatus AddOpsAndParams(
   return kTfLiteOk;
 }
 
-TfLiteStatus NNAPIDelegate::BuildGraph(Subgraph* subgraph) {
+TfLiteStatus NNAPIDelegate::BuildGraph(Interpreter* interpreter) {
   if (nn_model_ && nn_compiled_model_) return model_status_;
 
   // TODO(aselle): This is not correct. need to handle resize invalidation.
@@ -718,7 +719,7 @@ TfLiteStatus NNAPIDelegate::BuildGraph(Subgraph* subgraph) {
     // inputs and outputs and mark the mapping in tensor_id_to_nnapi_id with
     // kOperandIdNotSet. addTensorOperands will replace those with the
     // corresponding NNAPI operand ids and skip kOperandNotNeeded entries.
-    std::vector<int64_t> tensor_id_to_nnapi_id(subgraph->tensors_size(),
+    std::vector<int64_t> tensor_id_to_nnapi_id(interpreter->tensors_size(),
                                                kOperandNotNeeded);
     auto set_ids_to_not_set = [&tensor_id_to_nnapi_id](const int* buf,
                                                        size_t count) {
@@ -729,31 +730,35 @@ TfLiteStatus NNAPIDelegate::BuildGraph(Subgraph* subgraph) {
         }
       }
     };
-    for (size_t i = 0; i < subgraph->nodes_size(); i++) {
-      const auto* node_and_registration = subgraph->node_and_registration(i);
+    for (size_t i = 0; i < interpreter->nodes_size(); i++) {
+      const auto* node_and_registration = interpreter->node_and_registration(i);
       const TfLiteNode& node = node_and_registration->first;
       set_ids_to_not_set(node.inputs->data, node.inputs->size);
       set_ids_to_not_set(node.outputs->data, node.outputs->size);
     }
-    set_ids_to_not_set(subgraph->inputs().data(), subgraph->inputs().size());
-    set_ids_to_not_set(subgraph->outputs().data(), subgraph->outputs().size());
+    set_ids_to_not_set(interpreter->inputs().data(),
+                       interpreter->inputs().size());
+    set_ids_to_not_set(interpreter->outputs().data(),
+                       interpreter->outputs().size());
 
     uint32_t next_id = 0;
     RETURN_ERROR_IF_TFLITE_FAILED(addTensorOperands(
-        subgraph, nn_model_, &next_id, &tensor_id_to_nnapi_id));
+        interpreter, nn_model_, &next_id, &tensor_id_to_nnapi_id));
     RETURN_ERROR_IF_TFLITE_FAILED(
-        AddOpsAndParams(subgraph, nn_model_, next_id, &model_states_inputs_,
+        AddOpsAndParams(interpreter, nn_model_, next_id, &model_states_inputs_,
                         &model_states_outputs_, tensor_id_to_nnapi_id));
 
     std::vector<uint32_t> augmented_inputs;
-    MapAndAddTensorIds(subgraph->inputs().data(), subgraph->inputs().size(),
-                       &augmented_inputs, tensor_id_to_nnapi_id);
+    MapAndAddTensorIds(interpreter->inputs().data(),
+                       interpreter->inputs().size(), &augmented_inputs,
+                       tensor_id_to_nnapi_id);
     augmented_inputs.insert(augmented_inputs.end(),
                             model_states_inputs_.begin(),
                             model_states_inputs_.end());
     std::vector<uint32_t> augmented_outputs;
-    MapAndAddTensorIds(subgraph->outputs().data(), subgraph->outputs().size(),
-                       &augmented_outputs, tensor_id_to_nnapi_id);
+    MapAndAddTensorIds(interpreter->outputs().data(),
+                       interpreter->outputs().size(), &augmented_outputs,
+                       tensor_id_to_nnapi_id);
     MapAndAddTensorIds(model_states_outputs_.data(),
                        model_states_outputs_.size(), &augmented_outputs,
                        tensor_id_to_nnapi_id);
@@ -766,7 +771,7 @@ TfLiteStatus NNAPIDelegate::BuildGraph(Subgraph* subgraph) {
 
     if (GetAndroidSdkVersionCached() >= 28) {
       CHECK_NN(ANeuralNetworksModel_relaxComputationFloat32toFloat16(
-          nn_model_, subgraph->GetAllowFp16PrecisionForFp32()));
+          nn_model_, interpreter->GetAllowFp16PrecisionForFp32()));
     }
     CHECK_NN(ANeuralNetworksModel_finish(nn_model_));
   }
@@ -777,9 +782,9 @@ TfLiteStatus NNAPIDelegate::BuildGraph(Subgraph* subgraph) {
   return kTfLiteOk;
 }
 
-TfLiteStatus NNAPIDelegate::Invoke(Subgraph* subgraph) {
+TfLiteStatus NNAPIDelegate::Invoke(Interpreter* interpreter) {
   if (!nn_model_) {
-    model_status_ = BuildGraph(subgraph);
+    model_status_ = BuildGraph(interpreter);
     if (model_status_ != kTfLiteOk) {
       logError("Failed to build graph for NNAPI");
     }
@@ -792,19 +797,19 @@ TfLiteStatus NNAPIDelegate::Invoke(Subgraph* subgraph) {
   CHECK_NN(ANeuralNetworksExecution_create(nn_compiled_model_, &execution));
 
   // Currently perform deep copy of input buffer
-  for (size_t i = 0; i < subgraph->inputs().size(); i++) {
-    int input = subgraph->inputs()[i];
+  for (size_t i = 0; i < interpreter->inputs().size(); i++) {
+    int input = interpreter->inputs()[i];
     // TODO(aselle): Is this what we want or do we want input instead?
     // TODO(aselle): This should be called setInputValue maybe to be cons.
-    TfLiteTensor* tensor = subgraph->tensor(input);
+    TfLiteTensor* tensor = interpreter->tensor(input);
     CHECK_NN(ANeuralNetworksExecution_setInput(
         execution, i, nullptr, tensor->data.raw, tensor->bytes));
   }
 
   // Tell nn api where to place final data.
-  for (size_t i = 0; i < subgraph->outputs().size(); i++) {
-    int output = subgraph->outputs()[i];
-    TfLiteTensor* tensor = subgraph->tensor(output);
+  for (size_t i = 0; i < interpreter->outputs().size(); i++) {
+    int output = interpreter->outputs()[i];
+    TfLiteTensor* tensor = interpreter->tensor(output);
     CHECK_NN(ANeuralNetworksExecution_setOutput(
         execution, i, nullptr, tensor->data.raw, tensor->bytes));
   }
@@ -813,16 +818,16 @@ TfLiteStatus NNAPIDelegate::Invoke(Subgraph* subgraph) {
   // current invocation.
   for (size_t i = 0; i < model_states_outputs_.size(); i++) {
     int state_tensor_idx = model_states_outputs_[i];
-    TfLiteTensor* tensor = subgraph->tensor(state_tensor_idx);
+    TfLiteTensor* tensor = interpreter->tensor(state_tensor_idx);
     // Here we are using a deep copy for state_in tensors so that we are not
     // reading and writing into the same buffer during a invocation.
     // TODO(miaowang): using double shared buffer to minimize the copies.
     CHECK_NN(ANeuralNetworksExecution_setInput(
-        execution, i + subgraph->inputs().size(), nullptr, tensor->data.raw,
+        execution, i + interpreter->inputs().size(), nullptr, tensor->data.raw,
         tensor->bytes));
     // Tell NNAPI where to output the state_out.
     CHECK_NN(ANeuralNetworksExecution_setOutput(
-        execution, i + subgraph->outputs().size(), nullptr, tensor->data.raw,
+        execution, i + interpreter->outputs().size(), nullptr, tensor->data.raw,
         tensor->bytes));
   }
 
@@ -835,9 +840,9 @@ TfLiteStatus NNAPIDelegate::Invoke(Subgraph* subgraph) {
 
 #if 0
   printf("From the NN API:\n");
-  TfLiteTensor* tensor = subgraph->tensor(subgraph->outputs()[0]);
+  TfLiteTensor* tensor = interpreter->tensor(interpreter->outputs()[0]);
   if (float* data =
-          subgraph->typed_tensor<float>(subgraph->outputs()[0])) {
+          interpreter->typed_tensor<float>(interpreter->outputs()[0])) {
     size_t num = tensor->bytes / sizeof(float);
     for (float* p = data; p < data + num; p++) {
       printf(" %f", *p);
