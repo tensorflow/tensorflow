@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/placer.h"
+#include "tensorflow/core/common_runtime/tf_xla_stub.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -719,6 +720,8 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
            rewrite_metadata.feed_types.size());
   CHECK_EQ(options.callable_options.fetch_size(),
            rewrite_metadata.fetch_types.size());
+
+  TF_RETURN_IF_ERROR(CheckXlaJitOptimizerOptions(session_options_));
 
   // TODO(andydavis): Clarify optimization pass requirements around CostModel.
   GraphOptimizationPassOptions optimization_options;
