@@ -176,7 +176,7 @@ def set_report_options(opts, report_options=None):
 
   if (report_options is not None):
     for (option_name, value) in report_options.items():
-      opt = opts.profiling().options().add()
+      opt = opts.profiling.options.add()
       opt.option = option_name
       opt.value = value
 
