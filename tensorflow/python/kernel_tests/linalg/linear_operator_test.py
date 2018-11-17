@@ -208,6 +208,77 @@ class LinearOperatorTest(test.TestCase):
     operator = LinearOperatorMatmulSolve(matrix, is_square=True)
     self.assertTrue(operator.is_square)
 
+  def test_linear_operator_matmul_hints_closed(self):
+    matrix = array_ops.placeholder(dtypes.float32)
+    operator1 = LinearOperatorMatmulSolve(matrix)
+
+    operator_matmul = operator1.matmul(operator1)
+
+    self.assertEqual(None, operator_matmul.is_square)
+    self.assertEqual(None, operator_matmul.is_non_singular)
+    self.assertEqual(None, operator_matmul.is_self_adjoint)
+    self.assertEqual(None, operator_matmul.is_positive_definite)
+
+    operator2 = LinearOperatorMatmulSolve(
+        matrix,
+        is_non_singular=True,
+        is_self_adjoint=True,
+        is_positive_definite=True,
+        is_square=True,
+    )
+
+    operator_matmul = operator2.matmul(operator2)
+
+    self.assertTrue(operator_matmul.is_square)
+    self.assertTrue(operator_matmul.is_non_singular)
+    self.assertTrue(operator_matmul.is_self_adjoint)
+    self.assertEqual(None, operator_matmul.is_positive_definite)
+
+  def test_linear_operator_matmul_hints_false(self):
+    matrix = array_ops.placeholder(dtypes.float32)
+    operator1 = LinearOperatorMatmulSolve(
+        matrix,
+        is_non_singular=False,
+        is_self_adjoint=False,
+        is_positive_definite=False,
+        is_square=True,
+    )
+
+    operator_matmul = operator1.matmul(operator1)
+
+    self.assertTrue(operator_matmul.is_square)
+    self.assertFalse(operator_matmul.is_non_singular)
+    self.assertEqual(None, operator_matmul.is_self_adjoint)
+    self.assertEqual(None, operator_matmul.is_positive_definite)
+
+    operator2 = LinearOperatorMatmulSolve(
+        matrix,
+        is_non_singular=False,
+        is_self_adjoint=False,
+        is_positive_definite=False,
+        is_square=False,
+    )
+
+    operator_matmul = operator2.matmul(operator2)
+
+    self.assertEqual(None, operator_matmul.is_square)
+    self.assertEqual(None, operator_matmul.is_non_singular)
+    self.assertEqual(None, operator_matmul.is_self_adjoint)
+    self.assertEqual(None, operator_matmul.is_positive_definite)
+
+  def test_linear_operator_matmul_hint_infer_square(self):
+    matrix1 = array_ops.placeholder(shape=[2, 3], dtype=dtypes.float32)
+    matrix2 = array_ops.placeholder(shape=[3, 2], dtype=dtypes.float32)
+    matrix3 = array_ops.placeholder(shape=[3, 4], dtype=dtypes.float32)
+
+    operator1 = LinearOperatorMatmulSolve(matrix1, is_square=False)
+    operator2 = LinearOperatorMatmulSolve(matrix2, is_square=False)
+    operator3 = LinearOperatorMatmulSolve(matrix3, is_square=False)
+
+    self.assertTrue(operator1.matmul(operator2).is_square)
+    self.assertTrue(operator2.matmul(operator1).is_square)
+    self.assertFalse(operator1.matmul(operator3).is_square)
+
 
 if __name__ == "__main__":
   test.main()
