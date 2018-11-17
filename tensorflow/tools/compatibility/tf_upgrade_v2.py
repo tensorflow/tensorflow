@@ -164,6 +164,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "input", "window_shape", "pooling_type", "padding", "dilation_rate",
             "strides", "name", "data_format"
         ],
+        "tf.nn.depthwise_conv2d": [
+            "input", "filter", "strides", "padding", "rate", "name",
+            "data_format"
+        ],
         "tf.multinomial": [
             "logits", "num_samples", "seed", "name", "output_dtype"
         ],
