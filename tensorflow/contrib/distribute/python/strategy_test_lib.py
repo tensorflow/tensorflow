@@ -25,10 +25,13 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import distribution_strategy_context as ds_context
 from tensorflow.python.training import optimizer
@@ -263,3 +266,24 @@ class DistributionTestBase(test.TestCase):
           [values.select_device(d, next_element) for d in devices])
       self.assertEqual(expected_value, computed_value)
 
+  def _test_global_step_update(self, strategy):
+    with strategy.scope():
+      global_step = variable_scope.get_variable(
+          "global_step",
+          shape=[],
+          dtype=dtypes.int64,
+          initializer=init_ops.zeros_initializer(),
+          trainable=False,
+          aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA)
+      self.evaluate(variables.global_variables_initializer())
+
+      def model_fn():
+        train_op = global_step.assign_add(1)
+        value = global_step.read_value()
+        return train_op, value
+
+      train_ops, value = strategy.call_for_each_replica(model_fn)
+      self.evaluate(strategy.group(train_ops))
+      global_step_tensors = strategy.unwrap(value)
+      global_step_values = self.evaluate(global_step_tensors)
+      self.assertEqual([1] * len(global_step_tensors), global_step_values)

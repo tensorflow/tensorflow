@@ -651,6 +651,11 @@ class ParameterServerStrategyTest(ParameterServerStrategyTestBase,
     self._test_input_fn_iterator(None, None, num_gpus,
                                  input_fn, expected_values)
 
+  def testGlobalStepUpdate(self):
+    strategy = parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=context.num_gpus())
+    self._test_global_step_update(strategy)
+
 
 class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
                                            parameterized.TestCase):

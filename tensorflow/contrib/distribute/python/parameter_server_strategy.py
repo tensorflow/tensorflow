@@ -257,6 +257,13 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
         input_fn, worker_device_pairs, [input_context])
 
   def _broadcast_to(self, tensor, destinations):
+    # This is both a fast path for Python constants, and a way to delay
+    # converting Python values to a tensor until we know what type it
+    # should be converted to. Otherwise we have trouble with:
+    #   global_step.assign_add(1)
+    # since the `1` gets broadcast as an int32 but global_step is int64.
+    if isinstance(tensor, (float, int)):
+      return tensor
     if not cross_device_ops_lib.check_destinations(destinations):
       destinations = self._compute_devices
     return self._cross_device_ops.broadcast(tensor, destinations)
