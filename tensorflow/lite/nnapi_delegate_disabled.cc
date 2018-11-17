@@ -35,11 +35,13 @@ NNAPIDelegate::~NNAPIDelegate() {
 #undef UNUSED_MEMBER
 }
 
-TfLiteStatus NNAPIDelegate::BuildGraph(Subgraph* subgraph) {
+TfLiteStatus NNAPIDelegate::BuildGraph(Interpreter* interpreter) {
   return kTfLiteError;
 }
 
-TfLiteStatus NNAPIDelegate::Invoke(Subgraph* subgraph) { return kTfLiteError; }
+TfLiteStatus NNAPIDelegate::Invoke(Interpreter* interpreter) {
+  return kTfLiteError;
+}
 
 bool NNAPIDelegate::IsSupported() { return false; }
 

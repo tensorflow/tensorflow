@@ -38,7 +38,7 @@ class InterpreterTest : public ::testing::Test {
   }
 
  protected:
-  TfLiteContext* GetInterpreterContext() { return interpreter_.context_; }
+  TfLiteContext* GetInterpreterContext() { return &interpreter_.context_; }
 
   Interpreter interpreter_;
 };
