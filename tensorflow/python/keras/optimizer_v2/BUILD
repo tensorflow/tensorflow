@@ -134,6 +134,9 @@ py_test(
     name = "optimizer_v2_test",
     size = "medium",
     srcs = ["optimizer_v2_test.py"],
+    tags = [
+        "no_windows",
+    ],
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:array_ops",
