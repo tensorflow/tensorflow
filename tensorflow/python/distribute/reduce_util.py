@@ -35,8 +35,8 @@ class ReduceOp(enum.Enum):
   * `MAX`: Return the maximum of all values.
   """
 
-  SUM = 0
-  MEAN = 1
+  SUM = "SUM"
+  MEAN = "MEAN"
 
   @staticmethod
   def from_variable_aggregation(aggregation):
