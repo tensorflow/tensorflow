@@ -19,7 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+from absl.testing import parameterized
 
+from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.core.protobuf import config_pb2
@@ -569,15 +571,21 @@ class MultiWorkerDatasetTest(multi_worker_test_base.MultiWorkerTestBase):
         multi_worker_iterator.get_next()
 
 
-class InputFunctionIteratorTestBase(test.TestCase):
+class InputIteratorTestBase(test.TestCase):
 
-  def _test_iterator(self, input_fn, worker_device_pairs, expected_values,
-                     sess=None):
+  def _test_iterator(self, input_type, dataset_fn, worker_device_pairs,
+                     expected_values, sess=None, split_batch_by=None):
     devices = nest.flatten([ds for _, ds in worker_device_pairs])
-    input_contexts = [
-        distribute_lib.InputContext() for _ in worker_device_pairs]
-    iterator = values.InputFunctionIterator(
-        input_fn, worker_device_pairs, input_contexts)
+
+    if input_type == "input_fn":
+      input_contexts = [
+          distribute_lib.InputContext() for _ in worker_device_pairs]
+      input_fn = lambda _: dataset_fn()
+      iterator = values.InputFunctionIterator(input_fn, worker_device_pairs,
+                                              input_contexts)
+    else:
+      iterator = values.DatasetIterator(dataset_fn(), worker_device_pairs,
+                                        split_batch_by)
 
     evaluate = lambda x: sess.run(x) if sess else self.evaluate(x)
 
@@ -587,7 +595,7 @@ class InputFunctionIteratorTestBase(test.TestCase):
       next_element = iterator.get_next()
       computed_value = evaluate(
           [values.select_device(d, next_element) for d in devices])
-      self.assertEqual(expected_value, computed_value)
+      self.assertAllEqual(expected_value, computed_value)
 
     with self.assertRaises(errors.OutOfRangeError):
       next_element = iterator.get_next()
@@ -600,62 +608,89 @@ class InputFunctionIteratorTestBase(test.TestCase):
       next_element = iterator.get_next()
       computed_value = evaluate(
           [values.select_device(d, next_element) for d in devices])
-      self.assertEqual(expected_value, computed_value)
+      self.assertAllEqual(expected_value, computed_value)
 
 
-class InputFunctionIteratorSingleWorkerTest(InputFunctionIteratorTestBase):
+class InputIteratorSingleWorkerTest(InputIteratorTestBase,
+                                    parameterized.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes
-  def testOneDeviceCPU(self):
+  @combinations.generate(combinations.combine(
+      mode=["graph", "eager"],
+      input_type=["input_fn", "dataset"]))
+  def testOneDeviceCPU(self, input_type):
     worker_device_pairs = [("", ["/device:CPU:0"])]
-    input_fn = lambda _: dataset_ops.Dataset.range(10)
+    dataset_fn = lambda: dataset_ops.Dataset.range(10)
 
     expected_values = [[i] for i in range(10)]
 
-    self._test_iterator(input_fn, worker_device_pairs, expected_values)
+    self._test_iterator(input_type, dataset_fn, worker_device_pairs,
+                        expected_values)
 
-  @test_util.run_in_graph_and_eager_modes()
-  def testTwoDevicesOneGPUOneCPU(self):
-    if context.num_gpus() < 1:
-      self.skipTest("A GPU is not available for this test.")
-
+  @combinations.generate(combinations.combine(
+      mode=["graph", "eager"],
+      input_type=["input_fn", "dataset"],
+      required_gpus=1))
+  def testTwoDevicesOneGPUOneCPU(self, input_type):
     worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
-    input_fn = lambda _: dataset_ops.Dataset.range(10)
+    dataset_fn = lambda: dataset_ops.Dataset.range(10)
 
     expected_values = [[i, i+1] for i in range(0, 10, 2)]
 
-    self._test_iterator(input_fn, worker_device_pairs, expected_values)
+    self._test_iterator(input_type, dataset_fn, worker_device_pairs,
+                        expected_values)
 
-  @test_util.run_in_graph_and_eager_modes()
-  def testTupleDataset(self):
-    if context.num_gpus() < 1:
-      self.skipTest("A GPU is not available for this test.")
-
+  @combinations.generate(combinations.combine(
+      mode=["graph", "eager"],
+      input_type=["input_fn", "dataset"],
+      required_gpus=1))
+  def testTupleDataset(self, input_type):
     worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
-    def input_fn(_):
+    def dataset_fn():
       dataset1 = dataset_ops.Dataset.range(10)
       dataset2 = dataset_ops.Dataset.range(10).map(lambda x: x**2)
       return dataset_ops.Dataset.zip((dataset1, dataset2))
 
     expected_values = [[(i, i**2), (i+1, (i+1)**2)] for i in range(0, 10, 2)]
 
-    self._test_iterator(input_fn, worker_device_pairs, expected_values)
+    self._test_iterator(input_type, dataset_fn, worker_device_pairs,
+                        expected_values)
 
-  @test_util.run_in_graph_and_eager_modes()
-  def testUnevenDatasetBatches(self):
-    if context.num_gpus() < 1:
-      self.skipTest("A GPU is not available for this test.")
-
+  @combinations.generate(combinations.combine(
+      mode=["graph", "eager"],
+      input_type=["input_fn", "dataset"],
+      required_gpus=1))
+  def testUnevenDatasetBatches(self, input_type):
     worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
-    input_fn = lambda _: dataset_ops.Dataset.range(11)
+    dataset_fn = lambda: dataset_ops.Dataset.range(11)
 
     expected_values = [[i, i+1] for i in range(0, 10, 2)]
-    self._test_iterator(input_fn, worker_device_pairs, expected_values)
+    self._test_iterator(input_type, dataset_fn, worker_device_pairs,
+                        expected_values)
+
+  @combinations.generate(combinations.combine(
+      mode=["graph", "eager"],
+      input_type=["dataset"],
+      split_batch_by=[None, 2],
+      required_gpus=1))
+  def testBatchSplitting(self, input_type, split_batch_by):
+    worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
+    batch_size = 10
+    dataset_fn = lambda: dataset_ops.Dataset.range(100).batch(batch_size)
+
+    updated_batch_size = (
+        batch_size // split_batch_by if split_batch_by else batch_size)
+    expected_values = [[range(i, i+updated_batch_size),
+                        range(i+updated_batch_size, i+2*updated_batch_size)]
+                       for i in range(0, 100, updated_batch_size*2)]
+
+    self._test_iterator(input_type, dataset_fn, worker_device_pairs,
+                        expected_values, sess=None,
+                        split_batch_by=split_batch_by)
 
 
-class InputFunctionIteratorMultiWorkerTest(
-    multi_worker_test_base.MultiWorkerTestBase,
-    InputFunctionIteratorTestBase):
+class InputIteratorMultiWorkerTest(
+    multi_worker_test_base.MultiWorkerTestBase, InputIteratorTestBase,
+    parameterized.TestCase):
 
   def _cpu_devices(self):
     return [
@@ -676,32 +711,41 @@ class InputFunctionIteratorMultiWorkerTest(
         ])
     ]
 
-  def testOneDevicePerWorker(self):
+  @combinations.generate(combinations.combine(
+      mode=["graph", "eager"],
+      input_type=["input_fn", "dataset"]))
+  def testOneDevicePerWorker(self, input_type):
     worker_devices = self._cpu_devices()
     with context.graph_mode(), self.cached_session() as sess:
-      input_fn = lambda _: dataset_ops.Dataset.range(4)
-      self._test_iterator(input_fn, worker_devices,
+      dataset_fn = lambda: dataset_ops.Dataset.range(4)
+      self._test_iterator(input_type, dataset_fn, worker_devices,
                           [[0, 0], [1, 1], [2, 2], [3, 3]], sess)
 
-  def testTwoDevicesPerWorker(self):
-    if context.num_gpus() < 1:
-      self.skipTest("A GPU is not available for this test.")
+  @combinations.generate(combinations.combine(
+      mode=["graph", "eager"],
+      input_type=["input_fn", "dataset"],
+      required_gpus=1))
+  def testTwoDevicesPerWorker(self, input_type):
     worker_devices = self._cpu_and_one_gpu_devices()
     with context.graph_mode(), self.cached_session() as sess:
-      input_fn = lambda _: dataset_ops.Dataset.range(4)
-      self._test_iterator(input_fn, worker_devices,
+      dataset_fn = lambda: dataset_ops.Dataset.range(4)
+      self._test_iterator(input_type, dataset_fn, worker_devices,
                           [[0, 1, 0, 1], [2, 3, 2, 3]], sess)
 
-  def testTupleDataset(self):
+  @combinations.generate(combinations.combine(
+      mode=["graph", "eager"],
+      input_type=["input_fn", "dataset"]))
+  def testTupleDataset(self, input_type):
     worker_devices = self._cpu_devices()
     with context.graph_mode(), self.cached_session() as sess:
-      def input_fn(_):
+      def dataset_fn():
         dataset1 = dataset_ops.Dataset.range(4)
         dataset2 = dataset_ops.Dataset.range(4).map(lambda x: x**2)
         return dataset_ops.Dataset.zip((dataset1, dataset2))
 
       expected_values = [[(i, i**2), (i, i**2)] for i in range(0, 4)]
-      self._test_iterator(input_fn, worker_devices, expected_values, sess)
+      self._test_iterator(input_type, dataset_fn, worker_devices,
+                          expected_values, sess)
 
 
 class MirroredVariableTest(test.TestCase):

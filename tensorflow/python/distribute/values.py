@@ -27,6 +27,7 @@ import operator
 import weakref
 import six
 
+from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
 from tensorflow.python.distribute import input_ops
@@ -1327,48 +1328,16 @@ class InputIterator(object):
     raise NotImplementedError("must be implemented in descendants")
 
 
-class InputFunctionIterator(InputIterator):
-  """Iterator created from input function."""
+class InputIteratorImpl(InputIterator):
+  """Common implementation for all input iterators."""
 
-  def __init__(self, input_fn, worker_device_pairs, input_contexts):
-    """Make an iterator for input provided via an input function.
-
-    Currently implements PER_WORKER mode, in which the `input_fn` is called
-    once on each worker.
-
-    TODO(priyag): Add other replication modes.
-    TODO(priyag): Allow taking input function that returns a callable that
-    returns nest of tensors.
-
-    Args:
-      input_fn: Input function that returns a `tf.data.Dataset` object.
-      worker_device_pairs: A list of (worker, list of devices on that worker)
-        pairs.
-      input_contexts: A list of `InputContext` instances to be passed to call(s)
-        to `input_fn`. Length and order should match worker order in
-        `worker_device_pairs`.
-    """
+  def __init__(self, worker_device_pairs, iterators):
     if not worker_device_pairs:
-      raise ValueError("Cannot create iterator when no devices given.")
+      raise ValueError("Should have at least one worker for input iterator.")
 
-    if len(worker_device_pairs) != len(input_contexts):
-      raise ValueError(
-          "Number of worker_device_pairs (%d) is not same as number of"
-          "input_contexts (%d)" % (
-              len(worker_device_pairs), len(input_contexts)))
-
+    self._iterators = iterators
     self._worker_device_pairs = worker_device_pairs
     self._is_eager = context.executing_eagerly()
-    self._iterators = []
-
-    for (worker, devices), ctx in zip(worker_device_pairs, input_contexts):
-      # TODO(priyag): We should probably explicitly specify CPU device on worker.
-      with ops.device(worker):
-        result = input_fn(ctx)
-        if not isinstance(result, dataset_ops.Dataset):
-          raise ValueError("input_fn must return a tf.data.Dataset.")
-        iterator = _DatasetIterator(result, worker, devices)
-        self._iterators.append(iterator)
 
   def get_next(self, name=None):
     """Returns the next input from the iterator for all replicas."""
@@ -1410,30 +1379,116 @@ class InputFunctionIterator(InputIterator):
     return init_ops
 
   # TODO(priyag): Remove when we switch to using `MultiDeviceIterator` for TPUs.
-  def _output_classes(self):
+  @property
+  def output_classes(self):
     return self._iterators[0].output_classes
 
   # TODO(priyag): Remove when we switch to using `MultiDeviceIterator` for TPUs.
-  def _output_shapes(self):
+  @property
+  def output_shapes(self):
     return self._iterators[0].output_shapes
 
   # TODO(priyag): Remove when we switch to using `MultiDeviceIterator` for TPUs.
-  def _output_types(self):
+  @property
+  def output_types(self):
     return self._iterators[0].output_types
 
   # TODO(priyag): Remove when we switch to using `MultiDeviceIterator` for TPUs.
-  def _get_iterator(self, worker):
+  def get_iterator(self, worker):
     for i, (w, _) in enumerate(self._worker_device_pairs):
       if worker == w:
         return self._iterators[i]
     return None
 
 
-class _DatasetIterator(object):
+class InputFunctionIterator(InputIteratorImpl):
+  """Iterator created from input function."""
+
+  def __init__(self, input_fn, worker_device_pairs, input_contexts):
+    """Make an iterator for input provided via an input function.
+
+    Currently implements PER_WORKER mode, in which the `input_fn` is called
+    once on each worker.
+
+    TODO(priyag): Add other replication modes.
+    TODO(priyag): Allow taking input function that returns a callable that
+    returns nest of tensors.
+
+    Args:
+      input_fn: Input function that returns a `tf.data.Dataset` object.
+      worker_device_pairs: A list of (worker, list of devices on that worker)
+        pairs.
+      input_contexts: A list of `InputContext` instances to be passed to call(s)
+        to `input_fn`. Length and order should match worker order in
+        `worker_device_pairs`.
+    """
+    if len(worker_device_pairs) != len(input_contexts):
+      raise ValueError(
+          "Number of worker_device_pairs (%d) is not same as number of"
+          "input_contexts (%d)" % (
+              len(worker_device_pairs), len(input_contexts)))
+
+    iterators = []
+    for (worker, devices), ctx in zip(worker_device_pairs, input_contexts):
+      # TODO(priyag): We should probably explicitly specify CPU device on worker.
+      with ops.device(worker):
+        result = input_fn(ctx)
+        if not isinstance(result, dataset_ops.Dataset):
+          raise ValueError("input_fn must return a tf.data.Dataset.")
+        iterator = _SingleWorkerDatasetIterator(result, worker, devices)
+        iterators.append(iterator)
+
+    super(InputFunctionIterator, self).__init__(
+        worker_device_pairs, iterators)
+
+
+class DatasetIterator(InputIteratorImpl):
+  """Iterator created from input dataset."""
+
+  def __init__(self, dataset, worker_device_pairs, split_batch_by=None):
+    """Make an iterator for the dataset on given devices.
+
+    If `split_batch_by` is not None, we "split" each batch of the
+    dataset by `split_batch_by` value. To achieve this, we first unbatch the
+    input dataset and then rebatch it with the per replica batch size that is
+    calculated using `global_batch_size // split_batch_by`.
+    The currently supported datasets are as follows:
+    `dataset.batch()` is the last operation on the dataset OR
+    `dataset.apply(map_and_batch)` is the last operation on the dataset OR
+    `dataset.batch().prefetch()` are the last 2 operations on the dataset OR
+    `dataset.apply(map_and_batch).prefetch()` are the last 2 operations.
+
+    TODO(priyag): Support multi worker / host cases properly by cloning
+    and sharding the dataset on each worker. Current setup will only work in
+    some cases, such as in-graph multi worker GPU case. If the input pipeline
+    has random shuffling (with a different seed on each worker), each worker
+    will see random input from the same overall dataset in each step. Otherwise,
+    each worker will see the same input in each step.
+
+    Args:
+      dataset: `tf.data.Dataset` that will be used as the input source.
+      worker_device_pairs: A list of (worker, list of devices on that worker)
+        pairs.
+      split_batch_by: Optional integer. If present, we "split" each batch of the
+        dataset by `split_batch_by` value.
+    """
+    if split_batch_by:
+      dataset = _split_dataset_batch(dataset, split_batch_by)
+
+    iterators = []
+    for worker, worker_devices in worker_device_pairs:
+      with ops.device(worker):
+        iterator = _SingleWorkerDatasetIterator(dataset, worker, worker_devices)
+        iterators.append(iterator)
+
+    super(DatasetIterator, self).__init__(worker_device_pairs, iterators)
+
+
+class _SingleWorkerDatasetIterator(object):
   """Iterator for a single `tf.data.Dataset`."""
 
   def __init__(self, dataset, worker, devices):
-    """Create iterator for the given dataset.
+    """Create iterator for the `dataset` to fetch data to worker's `devices` .
 
     `MultiDeviceIterator` is used to prefetch input to the devices on the
     given worker. `MultiDeviceIterator` doesn't work in eager mode yet.
@@ -1508,6 +1563,45 @@ class _DatasetIterator(object):
   @property
   def output_types(self):
     return self._iterator.output_types
+
+
+def _split_dataset_batch(dataset, split_batch_by):
+  """Divide a batch-ed dataset's batches into smaller batches."""
+  # TODO(sourabhbajaj): Remove this in lieu of distributed datasets
+  # pylint: disable=protected-access
+  def _get_batch_dataset(d):
+    """Get the underlying batch dataset from the dataset object."""
+    if isinstance(d, dataset_ops.DatasetV1Adapter):
+      d = d._dataset
+
+    if isinstance(d, (dataset_ops.BatchDataset, batching._MapAndBatchDataset)):
+      return d
+    elif isinstance(d, dataset_ops.PrefetchDataset):
+      return _get_batch_dataset(d._input_dataset)
+    raise ValueError(
+        "Unable to get batched dataset from the input dataset. `batch` "
+        "`map_and_batch` need to be the last operations on the dataset. "
+        "The batch operations can be followed by a prefetch.")
+
+  batched_dataset = _get_batch_dataset(dataset)
+  batch_size = batched_dataset._batch_size
+  drop_remainder = batched_dataset._drop_remainder
+  # pylint: enable=protected-access
+
+  if tensor_util.is_tensor(batch_size):
+    batch_size = tensor_util.constant_value(batch_size)
+
+  if tensor_util.is_tensor(drop_remainder):
+    drop_remainder = tensor_util.constant_value(drop_remainder)
+
+  if batch_size % split_batch_by:
+    raise ValueError(
+        "Batch size %s cannot be sharded evenly across replicas %s" % (
+            batch_size, split_batch_by))
+  new_batch_size = batch_size // split_batch_by
+
+  dataset = dataset.apply(batching.unbatch())
+  return dataset.batch(new_batch_size, drop_remainder=drop_remainder)
 
 
 class MultiStepContext(object):

@@ -27,8 +27,6 @@ from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.contrib.tpu.python.tpu import training_loop
-from tensorflow.python.data.experimental.ops import batching
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
@@ -232,59 +230,14 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     return enqueue_op_per_host
 
   def _make_dataset_iterator(self, dataset):
-    """Make iterators for each of the TPU hosts.
-
-    We first unbatch the users input dataset and then rebatch it with the
-    per replica batch size that is calculated using
-    `global_batch_size // num_replicas_in_sync`. The currently supported cases
-    are as follows:
-    `dataset.batch()` is the last operation on the dataset.
-    `dataset.apply(map_and_batch)` is the last operation on the dataset.
-    `dataset.batch().prefetch()` are the last 2 operations on the dataset.
-    `dataset.apply(map_and_batch).prefetch()` are the last 2 operations.
-
-    Args:
-      dataset: The `tf.data` dataset passed by the user.
-
-    Returns:
-      iterator: InputIterator created for each of the host machines.
-    """
-    # TODO(sourabhbajaj): Remove this in lieu of distributed datasets
-    def _get_dataset_batch_size(dataset):
-      """Get the global batch size from the dataset object."""
-      # pylint: disable=protected-access
-      if isinstance(dataset, dataset_ops.DatasetV1Adapter):
-        dataset = dataset._dataset
-      if isinstance(dataset, dataset_ops.BatchDataset):
-        return tensor_util.constant_value(dataset._batch_size)
-      elif isinstance(dataset, batching._MapAndBatchDataset):
-        return dataset._batch_size
-      elif isinstance(dataset, dataset_ops.PrefetchDataset):
-        return _get_dataset_batch_size(dataset._input_dataset)
-      # pylint: enable=protected-access
-      raise ValueError(
-          "Unable to fetch the batch size from the input dataset. `batch` "
-          "`map_and_batch` need to be the last operations on the dataset. "
-          "The batch operations can be followed by a prefetch.")
-
-    global_batch_size = _get_dataset_batch_size(dataset)
-    if global_batch_size % self._num_replicas_in_sync:
-      raise ValueError(
-          "Batch size %s cannot be sharded evenly across replicas %s" % (
-              global_batch_size, self.num_replicas_in_sync))
-    per_replica_batch_size = global_batch_size // self._num_replicas_in_sync
-    dataset = dataset.apply(batching.unbatch())
-    dataset = dataset.batch(per_replica_batch_size, drop_remainder=True)
+    """Make iterators for each of the TPU hosts."""
 
     worker_devices = [
         (self.get_host(hid), [self.get_host_cpu_device(hid)])
         for hid in range(self.num_hosts)
     ]
-    distributed_dataset = values.MultiWorkerDataset(
-        functools.partial(self._call_dataset_fn, lambda: dataset),
-        worker_devices)
-    # TODO(priyag): Return distribution strategy specific InputIterator
-    return distributed_dataset.make_initializable_iterator()
+    return values.DatasetIterator(dataset, worker_devices,
+                                  self._num_replicas_in_sync)
 
   def _distribute_dataset(self, dataset_fn):
     worker_devices = [
