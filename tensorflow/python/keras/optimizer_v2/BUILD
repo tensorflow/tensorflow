@@ -17,6 +17,7 @@ py_library(
         "adam.py",
         "adamax.py",
         "gradient_descent.py",
+        "nadam.py",
         "optimizer_v2.py",
         "rmsprop.py",
     ],
@@ -95,6 +96,25 @@ cuda_py_test(
     name = "gradient_descent_test",
     size = "medium",
     srcs = ["gradient_descent_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+    ],
+    shard_count = 4,
+)
+
+cuda_py_test(
+    name = "nadam_test",
+    size = "medium",
+    srcs = ["nadam_test.py"],
     additional_deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
