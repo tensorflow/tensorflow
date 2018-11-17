@@ -99,7 +99,8 @@ def while_loop(cond,
     # Add loop counter needed for computing gradients.
     loop_vars = [loop_counter] + loop_vars
 
-    shape_invariants = [tensor_shape.scalar()] + shape_invariants
+    shape_invariants = type(shape_invariants)([tensor_shape.scalar()
+                                              ]) + shape_invariants
 
     # Automatic control dependencies are added in defuns, but not in v1
     # graphs. Propagate that behavior here.
@@ -132,9 +133,8 @@ def while_loop(cond,
     # the value of that tensor in each iteration is the same as it was at the
     # beginning of the loop execution.
     loop_vars = loop_vars + cond_graph.external_captures
-    shape_invariants = shape_invariants + [
-        t.shape for t in cond_graph.external_captures
-    ]
+    shape_invariants = shape_invariants + type(shape_invariants)(
+        [t.shape for t in cond_graph.external_captures])
 
     def wrapped_body(loop_counter, *args):
       """Loop body augmented with counter update.
@@ -207,8 +207,7 @@ def while_loop(cond,
     for intermediate_tensor in intermediate_tensors:
       tensor_list = list_ops.empty_tensor_list(
           element_dtype=intermediate_tensor.dtype,
-          element_shape=_get_tensor_convertible_shape(
-              intermediate_tensor.shape),
+          element_shape=intermediate_tensor.shape,
           max_num_elements=maximum_iterations)
       loop_vars.append(tensor_list)
       with cond_graph.as_default():
@@ -315,7 +314,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   for intermediate_tensor in intermediate_tensors:
     tensor_list = list_ops.empty_tensor_list(
         element_dtype=intermediate_tensor.dtype,
-        element_shape=_get_tensor_convertible_shape(intermediate_tensor.shape),
+        element_shape=intermediate_tensor.shape,
         max_num_elements=maximum_iterations)
 
     with body_grad_graph.as_default():
@@ -817,18 +816,6 @@ def _is_in_xla_context():
     outer_graph = outer_graph.outer_graph
   cur_ctxt = outer_graph._get_control_flow_context()  # pylint: disable=protected-access
   return control_flow_util.GetContainingXLAContext(cur_ctxt) is not None
-
-
-def _get_tensor_convertible_shape(shape):
-  assert isinstance(shape, tensor_shape.TensorShape)
-  if shape.is_fully_defined():
-    return shape
-  if not shape:  # Unknown shape.
-    return -1
-  # Partially defined shape.
-  shape_list = shape.as_list()
-  shape_list = [s if s is not None else -1 for s in shape_list]
-  return ops.convert_to_tensor(shape_list)
 
 
 def _graph_name(graph):

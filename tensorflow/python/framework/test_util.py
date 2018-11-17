@@ -66,6 +66,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
@@ -406,13 +407,40 @@ def enable_control_flow_v2(fn):
   def wrapper(*args, **kwargs):
     enable_cond_v2_old = control_flow_ops.ENABLE_COND_V2
     enable_while_v2_old = control_flow_ops.ENABLE_WHILE_V2
+    enable_tensor_array_v2_old = tensor_array_ops.ENABLE_TENSOR_ARRAY_V2
     control_flow_ops.ENABLE_COND_V2 = True
     control_flow_ops.ENABLE_WHILE_V2 = True
+    tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = True
     try:
       fn(*args, **kwargs)
     finally:
       control_flow_ops.ENABLE_COND_V2 = enable_cond_v2_old
       control_flow_ops.ENABLE_WHILE_V2 = enable_while_v2_old
+      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = enable_tensor_array_v2_old
+
+  return wrapper
+
+
+def enable_tensor_array_v2(fn):
+  """Decorator for enabling _GraphTensorArrayV2 on a test.
+
+  Note this enables _GraphTensorArrayV2 after running the test class's
+  setup/teardown methods.
+
+  Args:
+    fn: the function to be wrapped
+
+  Returns:
+    The wrapped function
+  """
+
+  def wrapper(*args, **kwargs):
+    enable_tensor_array_v2_old = tensor_array_ops.ENABLE_TENSOR_ARRAY_V2
+    tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = True
+    try:
+      fn(*args, **kwargs)
+    finally:
+      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = enable_tensor_array_v2_old
 
   return wrapper
 
