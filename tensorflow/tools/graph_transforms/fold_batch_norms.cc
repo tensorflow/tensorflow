@@ -73,9 +73,16 @@ Status FoldBatchNorms(const GraphDef& input_graph_def,
 
         // Make sure all the inputs really are vectors, with as many entries as
         // there are columns in the weights.
-        const int weights_cols_index = conv_node.op() == "Conv2D" ? 3 : \
-                            (conv_node.op() == "DepthwiseConv2dNative" ? 2 : 1);
-        const int64 weights_cols = weights.shape().dim_size(weights_cols_index);
+        int64 weights_cols;
+        if (conv_node.op() == "Conv2D") {
+          weights_cols = weights.shape().dim_size(3);
+        }
+        else if (conv_node.op() == "DepthwiseConv2dNative") {
+          weights_cols = weights.shape().dim_size(2) * weights.shape().dim_size(3);
+        }
+        else {
+          weights_cols = weights.shape().dim_size(1);
+        }
         if ((mul_values.shape().dims() != 1) ||
             (mul_values.shape().dim_size(0) != weights_cols)) {
           return errors::InvalidArgument(
