@@ -116,8 +116,16 @@ Status FuseScaleOffsetToConvWeights(const std::vector<float>& scale_values,
   CHECK_EQ("Const", weights_node.op());
 
   Tensor weights = GetNodeTensorAttr(weights_node, "value");
-  const int weights_cols_idx = conv_node.op() == "Conv2D" ? 3 : 2;
-  const int64 weights_cols = weights.shape().dim_size(weights_cols_idx);
+  int64 weights_cols;
+  if (conv_node.op() == "Conv2D") {
+    weights_cols = weights.shape().dim_size(3);
+  }
+  else if (conv_node.op() == "DepthwiseConv2dNative") {
+    weights_cols = weights.shape().dim_size(2) * weights.shape().dim_size(3);
+  }
+  else {
+    weights_cols = weights.shape().dim_size(1);
+  }
   CHECK_EQ(weights_cols, scale_values.size());
 
   // Multiply the original weights by the scale vector.
