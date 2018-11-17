@@ -104,11 +104,7 @@ class HloModule {
                                        HloCloneContext* context = nullptr);
 
   // Return a pointer to the entry computation of the module.
-  const HloComputation* entry_computation() const {
-    CHECK_NE(nullptr, entry_computation_);
-    return entry_computation_;
-  }
-  HloComputation* entry_computation() {
+  HloComputation* entry_computation() const {
     CHECK_NE(nullptr, entry_computation_);
     return entry_computation_;
   }
