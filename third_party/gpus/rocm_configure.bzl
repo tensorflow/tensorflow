@@ -237,10 +237,10 @@ def _hipcc_env(repository_ctx):
     """
     hipcc_env = ""
     for name in ["HIP_CLANG_PATH", "DEVICE_LIB_PATH", "HIP_VDI_HOME",\
-                 "HIPCC_VERBOSE", "HIP_AUTO_INCLUDE_HEADER"]:
+                 "HIPCC_VERBOSE", "HIPCC_COMPILE_FLAGS_APPEND"]:
         if name in repository_ctx.os.environ:
-            hipcc_env = hipcc_env + " " + name + "=" + \
-                    repository_ctx.os.environ[name].strip()
+            hipcc_env = hipcc_env + " " + name + "=\"" + \
+                    repository_ctx.os.environ[name].strip() + "\";"
     return hipcc_env.strip()
 
 def _crosstool_verbose(repository_ctx):

@@ -192,7 +192,7 @@ def InvokeHipcc(argv, log=False):
   # TODO(zhengxq): for some reason, 'gcc' needs this help to find 'as'.
   # Need to investigate and fix.
   cmd = 'PATH=' + PREFIX_DIR + ':$PATH '\
-        + HIPCC_ENV + ' '\
+        + HIPCC_ENV.replace(';', ' ') + ' '\
         + cmd
   if log: Log(cmd)
   if VERBOSE: print(cmd)
@@ -229,9 +229,9 @@ def main():
     for flag in gpu_compiler_flags:
       modified_gpu_compiler_flags.append("'" + flag + "'")
 
-    HIPCC_ENV_list = HIPCC_ENV.split('= ')
+    HIPCC_ENV_list = HIPCC_ENV.split('=;')
     HIPCC_ENV_dict = dict(zip(HIPCC_ENV_list[::2],HIPCC_ENV_list[1::2]))
-    cmd = HIPCC_ENV.split() + [HIPCC_PATH] + modified_gpu_compiler_flags
+    cmd = HIPCC_ENV.split(';') + [HIPCC_PATH] + modified_gpu_compiler_flags
     cmd_str = ' '.join(cmd)
     if args.rocm_log: Log('Link with hipcc: %s' %(cmd_str))
     if VERBOSE: print(cmd_str)
