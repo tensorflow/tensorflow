@@ -21,8 +21,10 @@ cuda_py_test(
     srcs = ["values_test.py"],
     additional_deps = [
         ":mirrored_strategy",
+        ":combinations",
         ":multi_worker_test_base",
         "//tensorflow/core:protos_all_py",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:device_util",
