@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s -loop-tile | FileCheck %s
+// RUN: mlir-opt %s -loop-tile -tile-size=32 | FileCheck %s
 
 // CHECK: #map0 = (d0) -> (d0 + 32)
 // CHECK: #map1 = (d0) -> (d0 + 32, 50)

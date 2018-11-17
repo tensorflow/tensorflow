@@ -42,7 +42,7 @@ namespace {
 struct LoopTiling : public FunctionPass {
   LoopTiling() : FunctionPass(&LoopTiling::passID) {}
   PassResult runOnMLFunction(MLFunction *f) override;
-  constexpr static unsigned kDefaultTileSize = 32;
+  constexpr static unsigned kDefaultTileSize = 4;
 
   static char passID;
 };

@@ -117,7 +117,7 @@ static bool doubleBuffer(const MLValue *oldMemRef, ForStmt *forStmt) {
   return true;
 }
 
-/// Returns false if this succeeds on at least one 'for' stmt.
+/// Returns success if the IR is in a valid state.
 PassResult PipelineDataTransfer::runOnMLFunction(MLFunction *f) {
   // Do a post order walk so that inner loop DMAs are processed first. This is
   // necessary since 'for' statements nested within would otherwise become
@@ -126,9 +126,9 @@ PassResult PipelineDataTransfer::runOnMLFunction(MLFunction *f) {
   // epilogue).
   forStmts.clear();
   walkPostOrder(f);
-  bool ret = true;
+  bool ret = false;
   for (auto *forStmt : forStmts) {
-    ret = ret & runOnForStmt(forStmt);
+    ret = ret | runOnForStmt(forStmt);
   }
   return ret ? failure() : success();
 }
@@ -293,9 +293,16 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
   // Get delays stored in map.
   std::vector<uint64_t> delays(forStmt->getStatements().size());
   unsigned s = 0;
-  for (const auto &stmt : *forStmt) {
+  for (auto &stmt : *forStmt) {
     assert(stmtDelayMap.find(&stmt) != stmtDelayMap.end());
     delays[s++] = stmtDelayMap[&stmt];
+    LLVM_DEBUG(
+        // Tagging statements with delays for debugging purposes.
+        if (auto *opStmt = dyn_cast<OperationStmt>(&stmt)) {
+          MLFuncBuilder b(opStmt);
+          opStmt->setAttr(b.getIdentifier("delay"),
+                          b.getIntegerAttr(delays[s - 1]));
+        });
   }
 
   if (!isStmtwiseShiftValid(*forStmt, delays)) {

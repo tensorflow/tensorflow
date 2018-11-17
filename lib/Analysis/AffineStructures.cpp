@@ -26,6 +26,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLValue.h"
+#include "mlir/IR/Statements.h"
 #include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/Support/Debug.h"
@@ -480,6 +481,10 @@ FlatAffineConstraints::FlatAffineConstraints(
   numSymbols = other.getNumSymbolIds();
   numIds = other.getNumIds();
 
+  auto otherIds = other.getIds();
+  ids.reserve(numReservedCols);
+  ids.insert(ids.end(), otherIds.begin(), otherIds.end());
+
   unsigned numReservedEqualities = other.getNumReservedEqualities();
   unsigned numReservedInequalities = other.getNumReservedInequalities();
 
@@ -506,6 +511,7 @@ FlatAffineConstraints::FlatAffineConstraints(IntegerSet set)
       numSymbols(set.getNumSymbols()) {
   equalities.reserve(set.getNumEqualities() * numReservedCols);
   inequalities.reserve(set.getNumInequalities() * numReservedCols);
+  ids.resize(numIds, None);
 
   for (unsigned i = 0, e = set.getNumConstraints(); i < e; ++i) {
     AffineExpr expr = set.getConstraint(i);
@@ -525,7 +531,8 @@ void FlatAffineConstraints::reset(unsigned numReservedInequalities,
                                   unsigned numReservedEqualities,
                                   unsigned newNumReservedCols,
                                   unsigned newNumDims, unsigned newNumSymbols,
-                                  unsigned newNumLocals) {
+                                  unsigned newNumLocals,
+                                  ArrayRef<MLValue *> idArgs) {
   assert(newNumReservedCols >= newNumDims + newNumSymbols + newNumLocals + 1 &&
          "minimum 1 column");
   numReservedCols = newNumReservedCols;
@@ -538,12 +545,20 @@ void FlatAffineConstraints::reset(unsigned numReservedInequalities,
     equalities.reserve(newNumReservedCols * numReservedEqualities);
   if (numReservedInequalities >= 1)
     inequalities.reserve(newNumReservedCols * numReservedInequalities);
+  ids.clear();
+  if (idArgs.empty()) {
+    ids.resize(numIds, None);
+  } else {
+    ids.reserve(idArgs.size());
+    ids.insert(ids.end(), idArgs.begin(), idArgs.end());
+  }
 }
 
 void FlatAffineConstraints::reset(unsigned newNumDims, unsigned newNumSymbols,
-                                  unsigned newNumLocals) {
+                                  unsigned newNumLocals,
+                                  ArrayRef<MLValue *> idArgs) {
   reset(0, 0, newNumDims + newNumSymbols + newNumLocals + 1, newNumDims,
-        newNumSymbols, newNumLocals);
+        newNumSymbols, newNumLocals, idArgs);
 }
 
 void FlatAffineConstraints::append(const FlatAffineConstraints &other) {
@@ -567,8 +582,8 @@ void FlatAffineConstraints::addLocalId(unsigned pos) {
   addId(IdKind::Local, pos);
 }
 
-void FlatAffineConstraints::addDimId(unsigned pos) {
-  addId(IdKind::Dimension, pos);
+void FlatAffineConstraints::addDimId(unsigned pos, MLValue *id) {
+  addId(IdKind::Dimension, pos, id);
 }
 
 void FlatAffineConstraints::addSymbolId(unsigned pos) {
@@ -577,7 +592,7 @@ void FlatAffineConstraints::addSymbolId(unsigned pos) {
 
 /// Adds a dimensional identifier. The added column is initialized to
 /// zero.
-void FlatAffineConstraints::addId(IdKind kind, unsigned pos) {
+void FlatAffineConstraints::addId(IdKind kind, unsigned pos, MLValue *id) {
   if (kind == IdKind::Dimension) {
     assert(pos <= getNumDimIds());
   } else if (kind == IdKind::Symbol) {
@@ -595,16 +610,16 @@ void FlatAffineConstraints::addId(IdKind kind, unsigned pos) {
     numReservedCols++;
   }
 
-  unsigned elimPos;
+  unsigned absolutePos;
 
   if (kind == IdKind::Dimension) {
-    elimPos = pos;
+    absolutePos = pos;
     numDims++;
   } else if (kind == IdKind::Symbol) {
-    elimPos = pos + getNumDimIds();
+    absolutePos = pos + getNumDimIds();
     numSymbols++;
   } else {
-    elimPos = pos + getNumDimIds() + getNumSymbolIds();
+    absolutePos = pos + getNumDimIds() + getNumSymbolIds();
   }
   numIds++;
 
@@ -615,41 +630,53 @@ void FlatAffineConstraints::addId(IdKind kind, unsigned pos) {
   int numCols = static_cast<int>(getNumCols());
   for (int r = numInequalities - 1; r >= 0; r--) {
     for (int c = numCols - 2; c >= 0; c--) {
-      if (c < elimPos)
+      if (c < absolutePos)
         atIneq(r, c) = inequalities[r * oldNumReservedCols + c];
       else
         atIneq(r, c + 1) = inequalities[r * oldNumReservedCols + c];
     }
-    atIneq(r, elimPos) = 0;
+    atIneq(r, absolutePos) = 0;
   }
 
   for (int r = numEqualities - 1; r >= 0; r--) {
     for (int c = numCols - 2; c >= 0; c--) {
-      // All values in column elimPositions < elimPos have the same coordinates
-      // in the 2-d view of the coefficient buffer.
-      if (c < elimPos)
+      // All values in column absolutePositions < absolutePos have the same
+      // coordinates in the 2-d view of the coefficient buffer.
+      if (c < absolutePos)
         atEq(r, c) = equalities[r * oldNumReservedCols + c];
       else
-        // Those at elimPosition >= elimPos, get a shifted elimPosition.
+        // Those at absolutePosition >= absolutePos, get a shifted
+        // absolutePosition.
         atEq(r, c + 1) = equalities[r * oldNumReservedCols + c];
     }
     // Initialize added dimension to zero.
-    atEq(r, elimPos) = 0;
+    atEq(r, absolutePos) = 0;
   }
+
+  // If an 'id' is provided, insert it; otherwise use None.
+  if (id) {
+    ids.insert(ids.begin() + absolutePos, id);
+  } else {
+    ids.insert(ids.begin() + absolutePos, None);
+  }
+  assert(ids.size() == getNumIds());
 }
 
 // This routine may add additional local variables if the flattened
 // expression corresponding to the map has such variables due to the presence of
 // mod's, ceildiv's, and floordiv's.
 void FlatAffineConstraints::composeMap(AffineValueMap *vMap, unsigned pos) {
-  assert(vMap->getNumOperands() == getNumIds() && "inconsistent map");
-  assert(vMap->getNumDims() == getNumDimIds() && "inconsistent map");
   assert(pos <= getNumIds() && "invalid position");
+  assert(vMap->getNumSymbols() == getNumSymbolIds());
 
   AffineMap map = vMap->getAffineMap();
 
   // We add one equality for each result connecting the result dim of the map to
   // the other identifiers.
+  // For eg: if the expression is 16*i0 + i1, and this is the r^th
+  // iteration/result of the value map, we are adding the equality:
+  //  d_r - 16*i0 - i1 = 0. Hence, when flattening say (i0 + 1, i0 + 8*i2), we
+  //  add two equalities overall: d_0 - i0 - 1 == 0, d1 - i0 - 8*i2 == 0.
   for (unsigned r = 0, e = map.getNumResults(); r < e; r++) {
     // Add dimension.
     addDimId(pos + r);
@@ -660,44 +687,60 @@ void FlatAffineConstraints::composeMap(AffineValueMap *vMap, unsigned pos) {
                                       map.getNumSymbols(), &eq, &cst);
     (void)ret;
     assert(ret && "unimplemented for semi-affine maps");
-    for (unsigned j = 0, e = eq.size(); j < e; j++) {
-      eq[j] = -eq[j];
-    }
     // Make the value map and the flat affine cst dimensions compatible.
     // A lot of this code will be refactored/cleaned up.
     for (unsigned l = 0, e = cst.getNumLocalIds(); l < e; l++) {
-      addLocalId(getNumLocalIds());
+      addLocalId(0);
     }
     // TODO(andydavis,bondhugula,ntv): we need common code to merge
     // dimensions/symbols.
-    assert(cst.getNumDimIds() <= getNumIds());
-    for (unsigned t = 0, e = getNumDimIds() - cst.getNumDimIds(); t < e; t++) {
+    for (unsigned t = 0, e = r + 1; t < e; t++) {
+      // TODO: Consider using a batched version to add a range of IDs.
       cst.addDimId(0);
-      eq.insert(eq.begin(), 0);
     }
-    // Set the ceofficient for this result to one.
-    eq[r] = 1;
-    // TODO(andydavis,bondhugula,ntv): we need common code to merge
-    // dimensions/symbols.
-    assert(cst.getNumSymbolIds() <= getNumSymbolIds());
-    for (unsigned t = 0, e = getNumSymbolIds() - cst.getNumSymbolIds(); t < e;
-         t++) {
-      eq.insert(eq.begin() + cst.getNumSymbolIds(), 0);
-      cst.addSymbolId(cst.getNumSymbolIds());
+
+    assert(cst.getNumDimIds() <= getNumDimIds());
+    for (unsigned t = 0, e = getNumDimIds() - cst.getNumDimIds(); t < e; t++) {
+      cst.addDimId(cst.getNumDimIds() - 1);
     }
     // TODO(andydavis,bondhugula,ntv): we need common code to merge
     // identifiers. All of this will be cleaned up. At this point, it's fine as
     // long as it stays *inside* the FlatAffineConstraints API methods.
-    assert(cst.getNumSymbolIds() <= getNumSymbolIds());
+    assert(cst.getNumLocalIds() <= getNumLocalIds());
     for (unsigned t = 0, e = getNumLocalIds() - cst.getNumLocalIds(); t < e;
          t++) {
-      eq.insert(eq.begin() + cst.getNumDimIds() + cst.getNumSymbolIds(), 0);
-      cst.addLocalId(0);
+      cst.addLocalId(cst.getNumLocalIds());
     }
     /// Finally, append cst to this constraint set.
     append(cst);
+
+    // eqToAdd is the equality corresponding to the flattened affine expression.
+    SmallVector<int64_t, 8> eqToAdd(getNumCols(), 0);
+    // Set the coefficient for this result to one.
+    eqToAdd[r] = 1;
+
+    // Dims and symbols.
+    for (unsigned i = 0, e = vMap->getNumOperands(); i < e; i++) {
+      unsigned loc;
+      bool ret = findId(*cast<MLValue>(vMap->getOperand(i)), &loc);
+      assert(ret && "id expected, but not found");
+      (void)ret;
+      // We need to negate 'eq' since the newly added dimension is going to be
+      // set to this one.
+      eqToAdd[loc] = -eq[i];
+    }
+    // Local vars common to eq and cst are at the beginning.
+    int j = getNumDimIds() + getNumSymbolIds();
+    int end = eq.size() - 1;
+    for (int i = vMap->getNumOperands(); i < end; i++, j++) {
+      eqToAdd[j] = -eq[i];
+    }
+
+    // Constant term.
+    eqToAdd[getNumCols() - 1] = -eq[eq.size() - 1];
+
     // Add the equality connecting the result of the map to this constraint set.
-    addEquality(eq);
+    addEquality(eqToAdd);
   }
 }
 
@@ -858,6 +901,7 @@ void FlatAffineConstraints::removeColumnRange(unsigned colStart,
   numDims -= numDimsEliminated;
   numSymbols -= numSymbolsEliminated;
   numIds = numIds - numColsEliminated;
+  ids.erase(ids.begin() + colStart, ids.begin() + colLimit);
 
   // No resize necessary. numReservedCols remains the same.
 }
@@ -1071,6 +1115,90 @@ void FlatAffineConstraints::addUpperBound(ArrayRef<int64_t> expr,
   }
 }
 
+bool FlatAffineConstraints::findId(const MLValue &operand, unsigned *pos) {
+  unsigned i = 0;
+  for (const auto &mayBeId : ids) {
+    if (mayBeId.hasValue() && mayBeId.getValue() == &operand) {
+      *pos = i;
+      return true;
+    }
+    i++;
+  }
+  return false;
+}
+
+// TODO(andydavis, bondhugula) AFFINE REFACTOR: merge with loop bounds
+// code in dependence analysis.
+bool FlatAffineConstraints::addBoundsFromForStmt(unsigned pos,
+                                                 ForStmt *forStmt) {
+  // Adds a lower or upper bound when the bounds aren't constant.
+  auto addLowerOrUpperBound = [&](bool lower) -> bool {
+    const auto &operands = lower ? forStmt->getLowerBoundOperands()
+                                 : forStmt->getUpperBoundOperands();
+    SmallVector<unsigned, 8> positions;
+
+    for (const auto &operand : operands) {
+      unsigned loc;
+      // TODO(andydavis, bondhugula) AFFINE REFACTOR: merge with loop bounds
+      // code in dependence analysis.
+      if (!findId(*operand, &loc)) {
+        addDimId(getNumDimIds(), operand);
+        loc = getNumDimIds() - 1;
+      }
+      positions.push_back(loc);
+    }
+
+    auto boundMap =
+        lower ? forStmt->getLowerBoundMap() : forStmt->getUpperBoundMap();
+
+    for (auto result : boundMap.getResults()) {
+      SmallVector<int64_t, 4> flattenedExpr;
+      SmallVector<int64_t, 4> ineq(getNumCols(), 0);
+      // TODO(andydavis, bondhugula) AFFINE REFACTOR: merge with loop bounds in
+      // dependence analysis.
+      FlatAffineConstraints cst;
+      if (!getFlattenedAffineExpr(result, boundMap.getNumDims(),
+                                  boundMap.getNumSymbols(), &flattenedExpr,
+                                  &cst)) {
+        LLVM_DEBUG(llvm::dbgs()
+                   << "semi-affine expressions not yet supported\n");
+        return false;
+      }
+      if (cst.getNumLocalIds() > 0) {
+        LLVM_DEBUG(
+            llvm::dbgs()
+            << "loop bounds with mod/floordiv expr's not yet supported\n");
+        return false;
+      }
+
+      ineq[pos] = lower ? 1 : -1;
+      for (unsigned j = 0, e = boundMap.getNumInputs(); j < e; j++) {
+        ineq[positions[j]] = lower ? -flattenedExpr[j] : flattenedExpr[j];
+      }
+      // Constant term.
+      ineq[getNumCols() - 1] = lower ? -flattenedExpr[flattenedExpr.size() - 1]
+                                     : flattenedExpr[flattenedExpr.size() - 1];
+      addInequality(ineq);
+    }
+    return true;
+  };
+
+  if (forStmt->hasConstantLowerBound()) {
+    addConstantLowerBound(pos, forStmt->getConstantLowerBound());
+  } else {
+    // Non-constant lower bound case.
+    if (!addLowerOrUpperBound(/*lower=*/true))
+      return false;
+  }
+
+  if (forStmt->hasConstantUpperBound()) {
+    addConstantUpperBound(pos, forStmt->getConstantUpperBound() - 1);
+    return true;
+  }
+  // Non-constant upper bound case.
+  return addLowerOrUpperBound(/*lower=*/false);
+}
+
 /// Sets the specified identifer to a constant value.
 void FlatAffineConstraints::setIdToConstant(unsigned pos, int64_t val) {
   unsigned offset = equalities.size();
@@ -1119,7 +1247,8 @@ bool FlatAffineConstraints::getDimensionBounds(unsigned pos, unsigned num,
   return true;
 }
 
-Optional<int64_t> FlatAffineConstraints::getConstantLowerBound(unsigned pos) {
+Optional<int64_t>
+FlatAffineConstraints::getConstantLowerBound(unsigned pos) const {
   assert(pos < getNumCols() - 1);
   Optional<int64_t> lb = None;
   for (unsigned r = 0; r < getNumInequalities(); r++) {
@@ -1143,7 +1272,71 @@ Optional<int64_t> FlatAffineConstraints::getConstantLowerBound(unsigned pos) {
   return lb;
 }
 
-Optional<int64_t> FlatAffineConstraints::getConstantUpperBound(unsigned pos) {
+/// Returns the extent of the specified identifier (upper bound - lower bound)
+/// if it found to be a constant; returns None if it's not a constant.
+/// 'lbPosition' is set to the row position of the corresponding lower bound.
+Optional<int64_t>
+FlatAffineConstraints::getConstantBoundDifference(unsigned pos,
+                                                  unsigned *lbPosition) const {
+  // Check if the identifier appears at all in any of the inequalities.
+  unsigned r, e;
+  for (r = 0, e = getNumInequalities(); r < e; r++) {
+    if (atIneq(r, pos) != 0)
+      break;
+  }
+  if (r == e) {
+    // If it doesn't appear, just remove the column and return.
+    // TODO(andydavis,bondhugula): refactor removeColumns to use it from here.
+    return None;
+  }
+
+  // Positions of constraints that are lower/upper bounds on the variable.
+  SmallVector<unsigned, 4> lbIndices, ubIndices;
+
+  // Gather all lower bounds and upper bounds of the variable. Since the
+  // canonical form c_1*x_1 + c_2*x_2 + ... + c_0 >= 0, a constraint is a lower
+  // bound for x_i if c_i >= 1, and an upper bound if c_i <= -1.
+  for (unsigned r = 0, e = getNumInequalities(); r < e; r++) {
+    if (atIneq(r, pos) >= 1)
+      // Lower bound.
+      lbIndices.push_back(r);
+    else if (atIneq(r, pos) <= -1)
+      // Upper bound.
+      ubIndices.push_back(r);
+  }
+
+  // TODO(bondhugula): eliminate all variables that aren't part of any of the
+  // lower/upper bounds - to make this more powerful.
+
+  Optional<int64_t> minDiff = None;
+  for (auto ubPos : ubIndices) {
+    for (auto lbPos : lbIndices) {
+      // Look for a lower bound and an upper bound that only differ by a
+      // constant, i.e., pairs of the form  0 <= c_pos - f(c_i's) <= diffConst.
+      // For example, if ii is the pos^th variable, we are looking for
+      // constraints like ii >= i, ii <= ii + 50, 50 being the difference. The
+      // minimum among all such constant differences is kept since that's the
+      // constant bounding the extent of the pos^th variable.
+      unsigned j;
+      for (j = 0; j < getNumCols() - 1; j++)
+        if (atIneq(ubPos, j) != -atIneq(lbPos, j)) {
+          break;
+        }
+      if (j < getNumCols() - 1)
+        continue;
+      int64_t mayDiff =
+          atIneq(ubPos, getNumCols() - 1) + atIneq(lbPos, getNumCols() - 1) + 1;
+      if (minDiff == None || mayDiff < minDiff) {
+        minDiff = mayDiff;
+        *lbPosition = lbPos;
+      }
+    }
+  }
+  return minDiff;
+}
+
+Optional<int64_t>
+FlatAffineConstraints::getConstantUpperBound(unsigned pos) const {
   assert(pos < getNumCols() - 1);
   Optional<int64_t> ub = None;
   for (unsigned r = 0; r < getNumInequalities(); r++) {
@@ -1196,8 +1389,17 @@ bool FlatAffineConstraints::isHyperRectangular(unsigned pos,
 void FlatAffineConstraints::print(raw_ostream &os) const {
   assert(inequalities.size() == getNumInequalities() * numReservedCols);
   assert(equalities.size() == getNumEqualities() * numReservedCols);
+  assert(ids.size() == getNumIds());
   os << "\nConstraints (" << getNumDimIds() << " dims, " << getNumSymbolIds()
      << " symbols, " << getNumLocalIds() << " locals): \n";
+  os << "(";
+  for (unsigned i = 0, e = getNumIds(); i < e; i++) {
+    if (ids[i] == None)
+      os << "None ";
+    else
+      os << "MLValue ";
+  }
+  os << ")\n";
   for (unsigned i = 0, e = getNumEqualities(); i < e; ++i) {
     for (unsigned j = 0; j < getNumCols(); ++j) {
       os << atEq(i, j) << " ";
@@ -1223,6 +1425,7 @@ void FlatAffineConstraints::clearAndCopyFrom(
     const FlatAffineConstraints &other) {
   FlatAffineConstraints copy(other);
   std::swap(*this, copy);
+  assert(copy.getNumIds() == copy.getIds().size());
 }
 
 void FlatAffineConstraints::removeId(unsigned pos) {
@@ -1245,6 +1448,7 @@ void FlatAffineConstraints::removeId(unsigned pos) {
       atEq(r, c) = atEq(r, c + 1);
     }
   }
+  ids.erase(ids.begin() + pos);
 }
 
 static std::pair<unsigned, unsigned>
@@ -1375,11 +1579,18 @@ void FlatAffineConstraints::FourierMotzkinEliminate(
   unsigned newNumDims = dimsSymbols.first;
   unsigned newNumSymbols = dimsSymbols.second;
 
+  SmallVector<Optional<MLValue *>, 8> newIds;
+  newIds.reserve(numIds - 1);
+  newIds.insert(newIds.end(), ids.begin(), ids.begin() + pos);
+  newIds.insert(newIds.end(), ids.begin() + pos + 1, ids.end());
+
   /// Create the new system which has one identifier less.
   FlatAffineConstraints newFac(
       lbIndices.size() * ubIndices.size() + nbIndices.size(),
       getNumEqualities(), getNumCols() - 1, newNumDims, newNumSymbols,
-      /*numLocals=*/getNumIds() - 1 - newNumDims - newNumSymbols);
+      /*numLocals=*/getNumIds() - 1 - newNumDims - newNumSymbols, newIds);
+
+  assert(newFac.getIds().size() == newFac.getNumIds());
 
   // This will be used to check if the elimination was integer exact.
   unsigned lcmProducts = 1;
@@ -1462,9 +1673,19 @@ void FlatAffineConstraints::FourierMotzkinEliminate(
 
 void FlatAffineConstraints::projectOut(unsigned pos, unsigned num) {
   // 'pos' can be at most getNumCols() - 2.
+  if (num == 0)
+    return;
   assert(pos <= getNumCols() - 2 && "invalid position");
   assert(pos + num < getNumCols() && "invalid range");
   for (unsigned i = 0; i < num; i++) {
     FourierMotzkinEliminate(pos);
   }
+}
+
+void FlatAffineConstraints::projectOut(MLValue *id) {
+  unsigned pos;
+  bool ret = findId(*id, &pos);
+  assert(ret);
+  (void)ret;
+  FourierMotzkinEliminate(pos);
 }

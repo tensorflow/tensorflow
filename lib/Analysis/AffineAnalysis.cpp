@@ -897,7 +897,7 @@ static void computeDirectionVector(
     dependenceDomain->addDimId(j);
   }
 
-  // Add equality contraints for each common loop, setting newly instroduced
+  // Add equality contraints for each common loop, setting newly introduced
   // variable at column 'j' to the 'dst' IV minus the 'src IV.
   SmallVector<int64_t, 4> eq;
   eq.resize(dependenceDomain->getNumCols());

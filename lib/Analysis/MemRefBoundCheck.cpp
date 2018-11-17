@@ -63,15 +63,15 @@ void MemRefBoundCheck::visitOperationStmt(OperationStmt *opStmt) {
   // TODO(bondhugula): extend this to store's and other memref dereferencing
   // op's.
   if (auto loadOp = opStmt->dyn_cast<LoadOp>()) {
-    FlatAffineConstraints memoryRegion;
-    if (!getMemoryRegion(opStmt, &memoryRegion))
+    MemRefRegion region;
+    if (!getMemRefRegion(opStmt, /*loopDepth=*/0, &region))
       return;
     LLVM_DEBUG(llvm::dbgs() << "Memory region");
-    LLVM_DEBUG(memoryRegion.dump());
+    LLVM_DEBUG(region.getConstraints()->dump());
     unsigned rank = loadOp->getMemRefType().getRank();
     // For each dimension, check for out of bounds.
     for (unsigned r = 0; r < rank; r++) {
-      FlatAffineConstraints ucst(memoryRegion);
+      FlatAffineConstraints ucst(*region.getConstraints());
       // Intersect memory region with constraint capturing out of bounds,
       // and check if the constraint system is feasible. If it is, there is at
       // least one point out of bounds.
@@ -91,7 +91,7 @@ void MemRefBoundCheck::visitOperationStmt(OperationStmt *opStmt) {
             Twine(r + 1));
       }
       // Check for less than negative index.
-      FlatAffineConstraints lcst(memoryRegion);
+      FlatAffineConstraints lcst(*region.getConstraints());
       std::fill(ineq.begin(), ineq.end(), 0);
       // d_i <= -1;
       lcst.addConstantUpperBound(r, -1);

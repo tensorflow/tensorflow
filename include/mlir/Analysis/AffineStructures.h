@@ -34,6 +34,7 @@ class AffineApplyOp;
 class AffineBound;
 class AffineCondition;
 class AffineMap;
+class ForStmt;
 class IntegerSet;
 class MLIRContext;
 class MLValue;
@@ -177,7 +178,6 @@ public:
   ArrayRef<MLValue *> getOperands() const;
   AffineMap getAffineMap() const;
 
-
 private:
   void forwardSubstitute(const AffineApplyOp &inputOp,
                          ArrayRef<bool> inputResultsToSubstitute);
@@ -244,13 +244,19 @@ public:
   FlatAffineConstraints(unsigned numReservedInequalities,
                         unsigned numReservedEqualities,
                         unsigned numReservedCols, unsigned numDims = 0,
-                        unsigned numSymbols = 0, unsigned numLocals = 0)
+                        unsigned numSymbols = 0, unsigned numLocals = 0,
+                        ArrayRef<Optional<MLValue *>> idArgs = {})
       : numReservedCols(numReservedCols), numDims(numDims),
         numSymbols(numSymbols) {
     assert(numReservedCols >= numDims + numSymbols + 1);
     equalities.reserve(numReservedCols * numReservedEqualities);
     inequalities.reserve(numReservedCols * numReservedInequalities);
     numIds = numDims + numSymbols + numLocals;
+    ids.reserve(numReservedCols);
+    if (idArgs.empty())
+      ids.resize(numIds, None);
+    else
+      ids.insert(ids.end(), idArgs.begin(), idArgs.end());
   }
 
   /// Constructs a constraint system with the specified number of
@@ -261,6 +267,7 @@ public:
         numSymbols(numSymbols) {
     assert(numReservedCols >= numDims + numSymbols + 1);
     numIds = numDims + numSymbols + numLocals;
+    ids.resize(numIds, None);
   }
 
   explicit FlatAffineConstraints(const HyperRectangularSet &set);
@@ -290,10 +297,10 @@ public:
   // Clears any existing data and reserves memory for the specified constraints.
   void reset(unsigned numReservedInequalities, unsigned numReservedEqualities,
              unsigned numReservedCols, unsigned numDims, unsigned numSymbols,
-             unsigned numLocals = 0);
+             unsigned numLocals = 0, ArrayRef<MLValue *> idArgs = {});
 
   void reset(unsigned numDims = 0, unsigned numSymbols = 0,
-             unsigned numLocals = 0);
+             unsigned numLocals = 0, ArrayRef<MLValue *> idArgs = {});
 
   /// Appends constraints from 'other' into this. This is equivalent to an
   /// intersection with no simplification of any sort attempted.
@@ -396,6 +403,12 @@ public:
   /// Adds a lower bound expression for the specified expression.
   void addLowerBound(ArrayRef<int64_t> expr, ArrayRef<int64_t> lb);
 
+  /// Adds constraints (lower and upper bounds) from the ForStmt into the
+  /// FlatAffineConstraints. 'forStmt's' MLValue is used to look up the right
+  /// identifier, and if it doesn't exist, a new one is added. Returns false for
+  /// the yet unimplemented/unsupported cases.
+  bool addBoundsFromForStmt(unsigned pos, ForStmt *forStmt);
+
   /// Adds an upper bound expression for the specified expression.
   void addUpperBound(ArrayRef<int64_t> expr, ArrayRef<int64_t> ub);
 
@@ -407,12 +420,17 @@ public:
   /// Sets the identifier at the specified position to a constant.
   void setIdToConstant(unsigned pos, int64_t val);
 
+  /// Looks up the identifier with the specified MLValue. Returns false if not
+  /// found.
+  bool findId(const MLValue &operand, unsigned *pos);
+
   // Add identifiers of the specified kind - specified positions are relative to
-  // the kind of identifier.
-  void addDimId(unsigned pos);
+  // the kind of identifier. 'id' is the MLValue corresponding to the
+  // identifier that can optionally be provided.
+  void addDimId(unsigned pos, MLValue *id = nullptr);
   void addSymbolId(unsigned pos);
   void addLocalId(unsigned pos);
-  void addId(IdKind kind, unsigned pos);
+  void addId(IdKind kind, unsigned pos, MLValue *id = nullptr);
 
   /// Composes the affine value map with this FlatAffineConstrains, adding the
   /// results of the map as dimensions at the specified position and with the
@@ -435,6 +453,9 @@ public:
   // value to mark exactness for example.
   void projectOut(unsigned pos, unsigned num);
 
+  /// Projects out the identifier that is associate with MLValue *.
+  void projectOut(MLValue *id);
+
   void removeId(IdKind idKind, unsigned pos);
   void removeId(unsigned pos);
 
@@ -453,19 +474,30 @@ public:
     return numIds - numDims - numSymbols;
   }
 
+  inline ArrayRef<Optional<MLValue *>> getIds() const {
+    return {ids.data(), ids.size()};
+  }
+
   /// Clears this list of constraints and copies other into it.
   void clearAndCopyFrom(const FlatAffineConstraints &other);
 
   /// Returns the constant lower bound of the specified identifier (through a
   /// scan through the constraints); returns None if the bound isn't trivially a
   /// constant.
-  Optional<int64_t> getConstantLowerBound(unsigned pos);
+  Optional<int64_t> getConstantLowerBound(unsigned pos) const;
 
   /// Returns the constant upper bound of the specified identifier (through a
   /// scan through the constraints); returns None if the bound isn't trivially a
   /// constant. Note that the upper bound for FlatAffineConstraints is
   /// inclusive.
-  Optional<int64_t> getConstantUpperBound(unsigned pos);
+  Optional<int64_t> getConstantUpperBound(unsigned pos) const;
+
+  /// Returns the extent (upper bound - lower bound) of the specified
+  /// identifier if it is found to be a constant; returns None if it's not a
+  /// constant. 'lbPosition' is set to the row position of the corresponding
+  /// lower bound.
+  Optional<int64_t> getConstantBoundDifference(unsigned pos,
+                                               unsigned *lbPosition) const;
 
   // Returns the lower and upper bounds of the specified dimensions as
   // AffineMap's. Returns false for the unimplemented cases for the moment.
@@ -509,6 +541,12 @@ private:
   /// Number of identifiers corresponding to symbols (unknown but constant for
   /// analysis).
   unsigned numSymbols;
+
+  /// MLValues corresponding to the (column) identifiers of this constraint
+  /// system appearing in the order the identifiers correspond to columns.
+  /// Temporary ones or those that aren't associated to any MLValue are to be
+  /// set to None.
+  SmallVector<Optional<MLValue *>, 8> ids;
 };
 
 } // end namespace mlir.

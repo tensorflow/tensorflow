@@ -43,15 +43,17 @@ class SSAValue;
 
 /// Replace all uses of oldMemRef with newMemRef while optionally remapping the
 /// old memref's indices using the supplied affine map and adding any additional
-/// indices. The new memref could be of a different shape or rank. Returns true
-/// on success and false if the replacement is not possible (whenever a memref
-/// is used as an operand in a non-deferencing scenario).
-/// Additional indices are added at the start.
+/// indices. The new memref could be of a different shape or rank. An optional
+/// argument 'domOpFilter' restricts the replacement to only those operations
+/// that are dominated by the former. Returns true on success and false if the
+/// replacement is not possible (whenever a memref is used as an operand in a
+/// non-deferencing scenario). Additional indices are added at the start.
 // TODO(mlir-team): extend this for SSAValue / CFGFunctions. Can also be easily
 // extended to add additional indices at any position.
 bool replaceAllMemRefUsesWith(const MLValue *oldMemRef, MLValue *newMemRef,
                               llvm::ArrayRef<MLValue *> extraIndices = {},
-                              AffineMap indexRemap = AffineMap::Null());
+                              AffineMap indexRemap = AffineMap::Null(),
+                              const Statement *domStmtFilter = nullptr);
 
 /// Creates and inserts into 'builder' a new AffineApplyOp, with the number of
 /// its results equal to the number of operands, as a composition
@@ -64,7 +66,7 @@ OperationStmt *
 createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
                             ArrayRef<MLValue *> operands,
                             ArrayRef<OperationStmt *> affineApplyOps,
-                            SmallVectorImpl<SSAValue *> &results);
+                            SmallVectorImpl<SSAValue *> *results);
 
 /// Given an operation statement, inserts a new single affine apply operation,
 /// that is exclusively used by this operation statement, and that provides all

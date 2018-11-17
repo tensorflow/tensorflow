@@ -717,6 +717,7 @@ void DmaStartOp::print(OpAsmPrinter *p) const {
   *p << " : " << getSrcMemRef()->getType();
   *p << ", " << getDstMemRef()->getType();
   *p << ", " << getTagMemRef()->getType();
+  p->printOptionalAttrDict(getAttrs());
 }
 
 // Parse DmaStartOp.
@@ -811,6 +812,7 @@ void DmaWaitOp::print(OpAsmPrinter *p) const {
   *p << "], ";
   p->printOperand(getNumElements());
   *p << " : " << getTagMemRef()->getType();
+  p->printOptionalAttrDict(getAttrs());
 }
 
 // Parse DmaWaitOp.

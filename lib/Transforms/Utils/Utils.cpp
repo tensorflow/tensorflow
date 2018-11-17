@@ -24,6 +24,7 @@
 
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
+#include "mlir/Analysis/Utils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/StmtVisitor.h"
@@ -47,13 +48,15 @@ static bool isMemRefDereferencingOp(const Operation &op) {
 /// old memref's indices to the new memref using the supplied affine map
 /// and adding any additional indices. The new memref could be of a different
 /// shape or rank, but of the same elemental type. Additional indices are added
-/// at the start for now.
+/// at the start. An optional argument 'domOpFilter' restricts the
+/// replacement to only those operations that are dominated by the former.
 // TODO(mlir-team): extend this for SSAValue / CFGFunctions. Can also be easily
 // extended to add additional indices at any position.
 bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
                                     MLValue *newMemRef,
                                     ArrayRef<MLValue *> extraIndices,
-                                    AffineMap indexRemap) {
+                                    AffineMap indexRemap,
+                                    const Statement *domStmtFilter) {
   unsigned newMemRefRank = newMemRef->getType().cast<MemRefType>().getRank();
   (void)newMemRefRank; // unused in opt mode
   unsigned oldMemRefRank = oldMemRef->getType().cast<MemRefType>().getRank();
@@ -82,6 +85,11 @@ bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
   for (auto it = oldMemRef->use_begin(); it != oldMemRef->use_end();) {
     StmtOperand &use = *(it++);
     auto *opStmt = cast<OperationStmt>(use.getOwner());
+
+    // Skip this use if it's not dominated by domStmtFilter.
+    if (domStmtFilter && !dominates(*domStmtFilter, *opStmt))
+      continue;
+
     assert(isMemRefDereferencingOp(*opStmt) &&
            "memref deferencing op expected");
 
@@ -172,7 +180,7 @@ OperationStmt *
 mlir::createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
                                   ArrayRef<MLValue *> operands,
                                   ArrayRef<OperationStmt *> affineApplyOps,
-                                  SmallVectorImpl<SSAValue *> &results) {
+                                  SmallVectorImpl<SSAValue *> *results) {
   // Create identity map with same number of dimensions as number of operands.
   auto map = builder->getMultiDimIdentityMap(operands.size());
   // Initialize AffineValueMap with identity map.
@@ -194,9 +202,9 @@ mlir::createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
   // Create new AffineApplyOp based on 'valueMap'.
   auto affineApplyOp =
       builder->create<AffineApplyOp>(loc, valueMap.getAffineMap(), outOperands);
-  results.resize(operands.size());
+  results->resize(operands.size());
   for (unsigned i = 0, e = operands.size(); i < e; ++i) {
-    results[i] = affineApplyOp->getResult(i);
+    (*results)[i] = affineApplyOp->getResult(i);
   }
   return cast<OperationStmt>(affineApplyOp->getOperation());
 }
@@ -247,8 +255,8 @@ OperationStmt *mlir::createAffineComputationSlice(OperationStmt *opStmt) {
   if (affineApplyOps.empty())
     return nullptr;
 
-  // Check if all uses of the affine apply op's lie in this op stmt
-  // itself, in which case there would be nothing to do.
+  // Check if all uses of the affine apply op's lie only in this op stmt, in
+  // which case there would be nothing to do.
   bool localized = true;
   for (auto *op : affineApplyOps) {
     for (auto *result : op->getResults()) {
@@ -266,7 +274,7 @@ OperationStmt *mlir::createAffineComputationSlice(OperationStmt *opStmt) {
   FuncBuilder builder(opStmt);
   SmallVector<SSAValue *, 4> results;
   auto *affineApplyStmt = createComposedAffineApplyOp(
-      &builder, opStmt->getLoc(), subOperands, affineApplyOps, results);
+      &builder, opStmt->getLoc(), subOperands, affineApplyOps, &results);
   assert(results.size() == subOperands.size() &&
          "number of results should be the same as the number of subOperands");
 
