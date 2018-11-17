@@ -939,7 +939,87 @@ def sparse_to_dense(sparse_indices,
       name=name)
 
 
-@tf_export("sparse.reduce_max", v1=["sparse.reduce_max", "sparse_reduce_max"])
+@tf_export("sparse.reduce_max", v1=[])
+def sparse_reduce_max_v2(
+    sp_input, axis=None, keepdims=None, output_is_sparse=False, name=None):
+  """Computes the max of elements across dimensions of a SparseTensor.
+
+  This Op takes a SparseTensor and is the sparse counterpart to
+  `tf.reduce_max()`.  In particular, this Op also returns a dense `Tensor`
+  if `output_is_sparse` is `False`, or a `SparseTensor` if `output_is_sparse`
+  is `True`.
+
+  Note: A gradient is not defined for this function, so it can't be used
+  in training models that need gradient descent.
+
+  Reduces `sp_input` along the dimensions given in `axis`.  Unless
+  `keepdims` is true, the rank of the tensor is reduced by 1 for each entry in
+  `axis`. If `keepdims` is true, the reduced dimensions are retained
+  with length 1.
+
+  If `axis` has no entries, all dimensions are reduced, and a tensor
+  with a single element is returned.  Additionally, the axes can be negative,
+  similar to the indexing rules in Python.
+
+  The values not defined in `sp_input` don't participate in the reduce max,
+  as opposed to be implicitly assumed 0 -- hence it can return negative values
+  for sparse `axis`. But, in case there are no values in
+  `axis`, it will reduce to 0. See second example below.
+
+  For example:
+
+  ```python
+  # 'x' represents [[1, ?, 2]
+  #                 [?, 3, ?]]
+  # where ? is implicitly-zero.
+  tf.sparse.reduce_max(x) ==> 3
+  tf.sparse.reduce_max(x, 0) ==> [1, 3, 2]
+  tf.sparse.reduce_max(x, 1) ==> [2, 3]  # Can also use -1 as the axis.
+  tf.sparse.reduce_max(x, 1, keepdims=True) ==> [[2], [3]]
+  tf.sparse.reduce_max(x, [0, 1]) ==> 3
+
+  # 'y' represents [[-7, ?]
+  #                 [ 4, 3]
+  #                 [ ?, ?]
+  tf.sparse.reduce_max(x, 1) ==> [-7, 4, 0]
+  ```
+
+  Args:
+    sp_input: The SparseTensor to reduce. Should have numeric type.
+    axis: The dimensions to reduce; list or scalar. If `None` (the
+      default), reduces all dimensions.
+    keepdims: If true, retain reduced dimensions with length 1.
+    output_is_sparse: If true, returns a `SparseTensor` instead of a dense
+      `Tensor` (the default).
+    name: A name for the operation (optional).
+
+
+  Returns:
+    The reduced Tensor or the reduced SparseTensor if `output_is_sparse` is
+    True.
+  """
+  if keepdims is None:
+    keepdims = False
+
+  # reduction_axes is the deprecated name for axis.
+  reduction_axes = None
+
+  if output_is_sparse:
+    output_ind, output_val, output_shape = (
+        gen_sparse_ops.sparse_reduce_max_sparse(
+            sp_input.indices, sp_input.values, sp_input.dense_shape,
+            math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims,
+            name=name))
+
+    return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
+
+  return gen_sparse_ops.sparse_reduce_max(
+      sp_input.indices, sp_input.values, sp_input.dense_shape,
+      math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims,
+      name=name)
+
+
+@tf_export(v1=["sparse.reduce_max", "sparse_reduce_max"])
 @deprecation.deprecated_endpoints("sparse_reduce_max")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
@@ -1007,8 +1087,7 @@ def sparse_reduce_max(sp_input, axis=None, keepdims=None,
       math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims)
 
 
-@tf_export("sparse.reduce_max_sparse",
-           v1=["sparse.reduce_max_sparse", "sparse_reduce_max_sparse"])
+@tf_export(v1=["sparse.reduce_max_sparse", "sparse_reduce_max_sparse"])
 @deprecation.deprecated_endpoints("sparse_reduce_max_sparse")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
