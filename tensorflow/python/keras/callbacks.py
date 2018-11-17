@@ -54,6 +54,7 @@ except ImportError:
   requests = None
 
 
+# pylint: disable=protected-access
 def configure_callbacks(callbacks,
                         model,
                         do_validation=False,
@@ -114,12 +115,7 @@ def configure_callbacks(callbacks,
   callback_list = CallbackList(callbacks)
 
   # Set callback model
-  callback_model = model._get_callback_model()  # pylint: disable=protected-access
-  if do_validation and val_inputs and not context.executing_eagerly():
-    # Need to create the eval_function before start of the first epoch
-    # because TensorBoard callback on_epoch_begin adds summary to the
-    # list of fetches of the eval_function
-    callback_model._make_eval_function()  # pylint: disable=protected-access
+  callback_model = model._get_callback_model()
   callback_list.set_model(callback_model)
 
   # Set callback parameters
@@ -146,21 +142,28 @@ def configure_callbacks(callbacks,
 
   # Pass validation data to callbacks
   # TODO(omalleyt): remove this once val hooks are ready.
-  if not val_inputs:
+  if model._distribution_strategy or not val_inputs:
     val_data = []
-  elif _is_generator_like(val_inputs):
-    val_data = val_inputs
   else:
-    val_data = val_inputs + val_targets
-    if val_sample_weights:
-      val_data += val_sample_weights
-    if not isinstance(K.learning_phase(), int):
-      val_data += [0.]
+    if not model.run_eagerly:
+      # Need to create the eval_function before start of the first epoch
+      # because TensorBoard callback on_epoch_begin adds summary to the
+      # list of fetches of the eval_function
+      callback_model._make_eval_function()
+    if _is_generator_like(val_inputs):
+      val_data = val_inputs
+    else:
+      val_data = val_inputs + val_targets
+      if val_sample_weights:
+        val_data += val_sample_weights
+      if not isinstance(K.symbolic_learning_phase(), int):
+        val_data += [False]
   for cbk in callbacks:
     cbk.validation_data = val_data
 
   callback_list.model.stop_training = False
   return callback_list
+# pylint: enable=protected-access
 
 
 def _is_generator_like(data):

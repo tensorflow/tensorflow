@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.python.framework import errors
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
+from tensorflow.python.keras.engine import training_distributed
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
@@ -178,6 +179,38 @@ def _make_logs(model, outputs, mode, prefix=''):
   return logs
 
 
+def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
+  """Prepare feed values to the model execution function.
+
+  Arguments:
+    model: Model to prepare feed values for.
+    inputs: List or dict of model inputs.
+    targets: Optional list of model targets.
+    sample_weights: Optional list of sample weight arrays.
+    mode: One of 'train'/'test'/'predict'.
+
+  Returns:
+    Feed values for the model in the given mode.
+  """
+  if model._distribution_strategy:
+    return training_distributed._prepare_feed_values(model, inputs, targets,
+                                                     sample_weights, mode)
+  inputs = training_utils.ModelInputs(inputs).as_list()
+  targets = targets or []
+  sample_weights = sample_weights or []
+  ins = inputs + targets + sample_weights
+  if mode == 'train' and not isinstance(K.symbolic_learning_phase(), int):
+    ins += [True]
+  return ins
+
+
+def _get_execution_function(model, mode):
+  """Get function to run one step of model execution."""
+  if model._distribution_strategy:
+    return training_distributed._get_execution_function(model, mode)
+  return model._get_execution_function(mode)
+
+
 def model_iteration(model,
                     inputs,
                     targets=None,
@@ -238,18 +271,18 @@ def model_iteration(model,
   if mode == 'train':
     _print_train_info(inputs, val_inputs, steps_per_epoch, verbose)
 
+  # Enter DistributionStrategy scope.
+  if model._distribution_strategy:
+    scope = model._distribution_strategy.scope()
+    scope.__enter__()
+
   # Get step function and loop type.
-  f = model._get_execution_function(mode)
+  f = _get_execution_function(model, mode)
   use_steps = steps_per_epoch is not None
   do_validation = val_inputs is not None
 
   # Prepare input data.
-  inputs = training_utils.ModelInputs(inputs).as_list()
-  targets = targets or []
-  sample_weights = sample_weights or []
-  ins = inputs + targets + sample_weights
-  if mode == 'train' and not isinstance(K.symbolic_learning_phase(), int):
-    ins += [True]
+  ins = _prepare_feed_values(model, inputs, targets, sample_weights, mode)
   num_samples_or_steps = _get_num_samples_or_steps(ins, batch_size,
                                                    steps_per_epoch)
 
@@ -289,6 +322,9 @@ def model_iteration(model,
   else:
     aggregator = MetricsAggregator(use_steps, num_samples_or_steps)
 
+  if model._distribution_strategy:
+    training_distributed._copy_weights_to_distributed_model(model)
+
   callbacks.model.stop_training = False
   callbacks._call_begin_hook(mode)
   progbar.on_train_begin()
@@ -321,11 +357,14 @@ def model_iteration(model,
                           'can generate at least `steps_per_epoch * epochs` '
                           'batches (in this case, %d batches). You may need to'
                           'use the repeat() function when building your '
-                          'dataset.' %
-                          steps_per_epoch * epochs)
+                          'dataset.' % steps_per_epoch * epochs)
           break
         if not isinstance(batch_outs, list):
           batch_outs = [batch_outs]
+
+        if model._distribution_strategy:
+          batch_outs = training_distributed._per_device_aggregate_batch(
+              batch_outs, model, mode)
 
         # Aggregate results.
         if step == 0:
@@ -416,6 +455,10 @@ def model_iteration(model,
     callbacks.on_epoch_end(epoch, epoch_logs, mode=mode)
     progbar.on_epoch_end(epoch, epoch_logs)
   callbacks._call_end_hook(mode)
+
+  if model._distribution_strategy:
+    training_distributed._copy_weights_to_original_model(model, mode)
+    scope.__exit__(None, None, None)
 
   if mode == 'train':
     return model.history
