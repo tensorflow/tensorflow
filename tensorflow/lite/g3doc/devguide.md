@@ -169,7 +169,7 @@ with tf.Session() as sess:
 ```
 
 For usage, see the Tensorflow Optimizing Converter
-[command-line examples](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/toco/g3doc/cmdline_examples.md).
+[command-line examples](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/convert/cmdline_examples.md).
 
 Refer to the
 [Ops compatibility guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/g3doc/tf_ops_compatibility.md)
