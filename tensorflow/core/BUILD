@@ -2977,6 +2977,19 @@ tf_cuda_library(
 )
 
 tf_cuda_library(
+    name = "tf_xla_stub",
+    srcs = ["common_runtime/tf_xla_stub.cc"],
+    hdrs = ["common_runtime/tf_xla_stub.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":lib",
+        ":proto_text",
+        ":session_options",
+    ],
+)
+
+tf_cuda_library(
     name = "core_cpu_internal",
     srcs = [
         "common_runtime/graph_execution_state.cc",
@@ -2989,6 +3002,7 @@ tf_cuda_library(
         ":framework",
         ":graph",
         ":lib",
+        ":tf_xla_stub",
         ":proto_text",
         ":protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",

@@ -46,14 +46,36 @@ cc_library(
 )
 
 cc_library(
+    name = "register_xla_cpu_jit",
+    srcs = ["register_xla_cpu_jit.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:tf_xla_stub",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "xla_cpu_jit",
     visibility = ["//visibility:public"],
     deps = [
         ":jit_compilation_passes",
+        ":register_xla_cpu_jit",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/core:tf_xla_stub",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "register_xla_gpu_jit",
+    srcs = ["register_xla_gpu_jit.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:tf_xla_stub",
     ],
     alwayslink = 1,
 )
@@ -63,6 +85,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = if_cuda([
         ":jit_compilation_passes",
+        ":register_xla_gpu_jit",
+        "//tensorflow/core:tf_xla_stub",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
@@ -78,6 +102,7 @@ cc_library(
     deps = [
         ":flags",
         ":jit_compilation_passes",
+        ":register_xla_cpu_jit",
         ":xla_device",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -96,6 +121,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":jit_compilation_passes",
+        ":register_xla_gpu_jit",
         ":xla_device",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla:xla_compiler",
