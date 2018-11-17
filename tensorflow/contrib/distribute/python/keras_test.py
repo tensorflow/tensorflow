@@ -220,7 +220,8 @@ def get_correctness_test_inputs(use_numpy, with_distribution,
   # TODO(b/118776054): Use global batch size for Keras/DS support.
   use_per_core_batch_size = (
       with_distribution and
-      not isinstance(with_distribution, tpu_strategy.TPUStrategy))
+      not isinstance(with_distribution, (
+          tpu_strategy.TPUStrategy, mirrored_strategy.CoreMirroredStrategy)))
   if use_per_core_batch_size:
     batch_size //= with_distribution.num_replicas_in_sync
 
@@ -541,7 +542,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       # to the number of replicas(2).
       # The global batch size and batch size are rounded integer values.
       self.assertEqual(10, distributed_training_utils.get_batch_dimension(
-          iterator._iterator))
+          iterator))
 
   @combinations.generate(strategy_combinations())
   def test_calling_model_with_numpy_arrays(self, distribution):
@@ -615,9 +616,9 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
     loss = 'mse'
     model.compile(optimizer, loss, distribute=distribution)
 
-    inputs = np.zeros((10, 3), np.float32)
-    targets = np.zeros((10, 4), np.float32)
-    sample_weights = np.ones((10), np.float32)
+    inputs = np.zeros((20, 3), np.float32)
+    targets = np.zeros((20, 4), np.float32)
+    sample_weights = np.ones((20), np.float32)
 
     model.fit(inputs, targets, sample_weight=sample_weights, epochs=1,
               steps_per_epoch=2, verbose=1)
@@ -1166,9 +1167,6 @@ class TestDistributionStrategyCorrectness(test.TestCase,
           eval_with_ds, eval_without_ds, atol=tolerance, rtol=tolerance)
       self.assertAllClose(
           predict_with_ds, predict_without_ds, atol=tolerance, rtol=tolerance)
-
-
-# TODO(priyag): Add a test for TPUStrategy with steps_per_run > 1.
 
 
 if __name__ == '__main__':

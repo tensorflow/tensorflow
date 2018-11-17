@@ -25,6 +25,7 @@ import enum
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.eager import context as eager_context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -1500,7 +1501,7 @@ class _DefaultDistributionExtended(DistributionStrategyExtended):
     return self._call_dataset_fn(dataset_fn)
 
   def _make_dataset_iterator(self, dataset):
-    return dataset.make_initializable_iterator()
+    return _DefaultDistributionExtended.DefaultInputIterator(dataset)
 
   def _make_input_fn_iterator(self,
                               input_fn,
@@ -1564,6 +1565,28 @@ class _DefaultDistributionExtended(DistributionStrategyExtended):
 
   def non_slot_devices(self, var_list):
     return min(var_list, key=lambda x: x.name)
+
+  # TODO(priyag): This should inherit from `InputIterator`, once dependency
+  # issues have been resolved.
+  class DefaultInputIterator(object):
+    """Default implementation of `InputIterator` for default strategy."""
+
+    def __init__(self, dataset):
+      self._dataset = dataset
+      if eager_context.executing_eagerly():
+        self._iterator = dataset.make_one_shot_iterator()
+      else:
+        self._iterator = dataset.make_initializable_iterator()
+
+    def get_next(self):
+      return self._iterator.get_next()
+
+    def initialize(self):
+      if eager_context.executing_eagerly():
+        self._iterator = self._dataset.make_one_shot_iterator()
+        return []
+      else:
+        return [self._iterator.initializer]
 
 
 # ------------------------------------------------------------------------------
