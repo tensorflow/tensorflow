@@ -208,7 +208,7 @@ class InputReplicationMode(enum.Enum):
   # many input pipelines as number of workers. Replicas will dequeue from the
   # local Dataset on their worker. Distribution Strategy doesn't manage any
   # state sharing between such separate input pipelines.
-  PER_WORKER = 0
+  PER_WORKER = "PER_WORKER"
 
 
 class InputContext(object):
