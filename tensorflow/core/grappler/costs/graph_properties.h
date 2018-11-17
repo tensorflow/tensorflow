@@ -63,8 +63,8 @@ class GraphProperties {
   // values strictly less than -1 to encode symbolic dimensions: although we
   // don't know the actual value of the symbolic dimension, we know that all the
   // dimensions denoted by the same negative value are the equal.
-  bool HasInputProperties(const string& name) const;
-  bool HasOutputProperties(const string& name) const;
+  bool HasInputProperties(const string& node_name) const;
+  bool HasOutputProperties(const string& node_name) const;
   const std::vector<OpInfo::TensorProperties>& GetInputProperties(
       const string& node_name) const;
   const std::vector<OpInfo::TensorProperties>& GetOutputProperties(
@@ -74,6 +74,10 @@ class GraphProperties {
   // shape information.
   void ClearInputProperties(const string& node_name);
   void ClearOutputProperties(const string& node_name);
+  // Returns true if we have *any* properties.
+  bool has_properties() const {
+    return input_properties_.size() > 0 || output_properties_.size() > 0;
+  }
 
  private:
   // Relaxes shapes <shapes_and_types>, determined from an EnqueueV2 node, into
@@ -119,8 +123,10 @@ class GraphProperties {
 
   // Data members
   const GrapplerItem& item_;
-  std::map<string, std::vector<OpInfo::TensorProperties>> input_properties_;
-  std::map<string, std::vector<OpInfo::TensorProperties>> output_properties_;
+  std::unordered_map<string, std::vector<OpInfo::TensorProperties>>
+      input_properties_;
+  std::unordered_map<string, std::vector<OpInfo::TensorProperties>>
+      output_properties_;
   const std::vector<OpInfo::TensorProperties> missing_properties_;
 };
 

@@ -638,6 +638,8 @@ class R4ReduceWindowTest : public ReduceWindowTestBase,
         /*computation=*/computation,
         /*window_dimensions=*/param.window_bounds,
         /*window_strides=*/param.strides,
+        /*base_dilations=*/{},
+        /*window_dilations=*/{},
         /*padding=*/padding);
 
     CHECK(reducer == kAdd || reducer == kMax);
@@ -1158,7 +1160,10 @@ class R2ReduceWindowTest : public ReduceWindowTestBase,
         /*init_value=*/init_value,
         /*computation=*/computation,
         /*window_dimensions=*/param.window_bounds,
-        /*window_strides=*/param.strides, /*padding=*/padding);
+        /*window_strides=*/param.strides,
+        /*base_dilations=*/{},
+        /*window_dilations=*/{},
+        /*padding=*/padding);
 
     auto reduce_func = param.reducer == kAdd
                            ? +[](float a, float b) { return a + b; }
@@ -1369,7 +1374,10 @@ TEST_P(R1ReduceWindowTest, DoIt) {
       /*init_value=*/init_value,
       /*computation=*/computation,
       /*window_dimensions=*/param.window_bounds,
-      /*window_strides=*/param.strides, /*padding=*/padding);
+      /*window_strides=*/param.strides,
+      /*base_dilations=*/{},
+      /*window_dilations=*/{},
+      /*padding=*/padding);
 
   auto reduce_func = param.reducer == kAdd
                          ? +[](float a, float b) { return a + b; }

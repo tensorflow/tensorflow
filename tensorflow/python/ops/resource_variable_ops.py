@@ -45,7 +45,6 @@ from tensorflow.python.util import compat
 
 
 def get_resource_handle_data(graph_op):
-  assert ops._USE_C_SHAPES  # pylint: disable=protected-access
   assert type(graph_op) == ops.Tensor  # pylint: disable=unidiomatic-typecheck
 
   handle_data = pywrap_tensorflow.GetHandleShapeAndType(
@@ -87,12 +86,7 @@ def eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
     # shape inference doesn't run in eager mode we copy this data here for when
     # the handle is captured by an eager mode function.
     # pylint: disable=protected-access
-    if ops._USE_C_SHAPES:
-      handle._handle_data = get_resource_handle_data(h)
-    else:
-      if h._handle_data is None:
-        ops.set_shape_and_handle_data_for_outputs(h.op)
-      handle._handle_data = h._handle_data
+    handle._handle_data = get_resource_handle_data(h)
     # pylint: enable=protected-access
   # Clean up op->graph->op reference cycles.
   ops.dismantle_graph(graph)
@@ -1510,3 +1504,21 @@ def is_resource_variable(var):
   """"Returns True if `var` is to be considered a ResourceVariable."""
   return isinstance(var, ResourceVariable) or hasattr(
       var, "_should_act_as_resource_variable")
+
+
+def copy_to_graph_uninitialized(var):
+  """Copies an existing variable to a new graph, with no initializer."""
+  # Like ResourceVariable.__deepcopy__, but does not set an initializer on the
+  # new variable.
+  # pylint: disable=protected-access
+  new_variable = ResourceVariable(
+      initial_value=array_ops.placeholder(
+          shape=var.shape, dtype=var.dtype,
+          name="unused_initial_variable_value"),
+      trainable=var.trainable,
+      constraint=var._constraint,
+      dtype=var.dtype,
+      name=var._shared_name)
+  new_variable._maybe_initialize_checkpointable()
+  # pylint: enable=protected-access
+  return new_variable

@@ -22,9 +22,14 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 namespace {
+
+bool NotBackedge(const Edge& edge) { return !edge.src()->IsNextIteration(); }
+
+namespace reduce_device_to_host_copies {
 Status FindNodesToDecluster(const Graph& graph,
                             absl::flat_hash_set<Node*>* result,
                             absl::Span<Node* const> post_order) {
@@ -132,10 +137,12 @@ Status PartiallyDeclusterNode(Graph* graph, Node* n) {
     graph->RemoveEdge(out_edge_to_clone);
   }
 
+  if (n->out_edges().empty()) {
+    graph->RemoveNode(n);
+  }
+
   return Status::OK();
 }
-
-bool NotBackedge(const Edge& edge) { return !edge.src()->IsNextIteration(); }
 
 // Clones nodes to outside their cluster to avoid device-to-host copies.  For
 // instance, converts this:
@@ -163,7 +170,7 @@ bool NotBackedge(const Edge& edge) { return !edge.src()->IsNextIteration(); }
 // where the ===> arrow has a hostmem source and destination and would entail a
 // device to host copy if the source and destination were not in the same XLA
 // cluster.
-Status PartiallyDeclusterToRemoveDeviceToHostCopies(Graph* graph) {
+Status PartiallyDeclusterGraph(Graph* graph) {
   // When deciding whether to decluster a particular node, we base our decision
   // on if we've decided that some of its consumers have to be declustered too.
   // Iterating the graph in post-order guarantees that consumers have been
@@ -190,6 +197,10 @@ Status PartiallyDeclusterToRemoveDeviceToHostCopies(Graph* graph) {
     }
   }
 
+  // Recompute post order since PartiallyDeclusterNode may have deleted nodes.
+  post_order.clear();
+  GetPostOrder(*graph, &post_order, /*stable_comparator=*/NodeComparatorName(),
+               /*edge_filter=*/NotBackedge);
   nodes_to_partially_decluster.clear();
   TF_RETURN_IF_ERROR(
       FindNodesToDecluster(*graph, &nodes_to_partially_decluster, post_order));
@@ -197,7 +208,9 @@ Status PartiallyDeclusterToRemoveDeviceToHostCopies(Graph* graph) {
 
   return Status::OK();
 }
+}  // namespace reduce_device_to_host_copies
 
+namespace reduce_recompilation {
 bool IsIntraClusterEdge(const Edge& edge) {
   absl::optional<absl::string_view> src_cluster_name =
       GetXlaClusterForNode(*edge.src());
@@ -206,18 +219,28 @@ bool IsIntraClusterEdge(const Edge& edge) {
   return src_cluster_name.has_value() && src_cluster_name == dst_cluster_name;
 }
 
-Status MustCompileNode(const Node* n, bool* result) {
+bool IsMustCompileDevice(const DeviceType& device_type) {
+  const XlaOpRegistry::DeviceRegistration* registration;
+  if (XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration)) {
+    return registration->autoclustering_policy ==
+           XlaOpRegistry::AutoclusteringPolicy::kAlways;
+  }
+
+  return false;
+}
+
+Status MustCompileNode(const Node* n, bool* must_compile) {
   DeviceType device_type("");
   TF_RETURN_IF_ERROR(
       DeviceToDeviceType(n->assigned_device_name(), &device_type));
 
-  const XlaOpRegistry::DeviceRegistration* registration;
-  if (!XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration)) {
-    *result = false;
-  } else {
-    *result = registration->requires_compilation;
+  if (IsMustCompileDevice(device_type)) {
+    *must_compile = true;
+    return Status::OK();
   }
 
+  // We must compile `n` if it does not have a TensorFlow kernel.
+  *must_compile = !FindKernelDef(device_type, n->def(), nullptr, nullptr).ok();
   return Status::OK();
 }
 
@@ -250,7 +273,7 @@ Status MustCompileNode(const Node* n, bool* result) {
 // regress performance in any significant manner.  We will have to revisit this
 // algorith with a more complex cost model if this assumption turns out to be
 // incorrect.
-Status DeclusterNodesToReduceRecompilations(Graph* graph) {
+Status PartiallyDeclusterGraph(Graph* graph) {
   std::vector<bool> compile_time_const_nodes(graph->num_node_ids());
   TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
       *graph, nullptr, &compile_time_const_nodes, IsIntraClusterEdge));
@@ -303,7 +326,7 @@ Status DeclusterNodesToReduceRecompilations(Graph* graph) {
 
   return Status::OK();
 }
-
+}  // namespace reduce_recompilation
 }  // namespace
 
 Status PartiallyDeclusterPass::Run(
@@ -315,8 +338,9 @@ Status PartiallyDeclusterPass::Run(
 
   Graph* graph = options.graph->get();
 
-  TF_RETURN_IF_ERROR(PartiallyDeclusterToRemoveDeviceToHostCopies(graph));
-  TF_RETURN_IF_ERROR(DeclusterNodesToReduceRecompilations(graph));
+  TF_RETURN_IF_ERROR(
+      reduce_device_to_host_copies::PartiallyDeclusterGraph(graph));
+  TF_RETURN_IF_ERROR(reduce_recompilation::PartiallyDeclusterGraph(graph));
 
   return Status::OK();
 }

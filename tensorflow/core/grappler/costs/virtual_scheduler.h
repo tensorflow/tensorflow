@@ -107,10 +107,10 @@ struct DeviceState {
       mem_usage_snapshot_at_peak;
 
   Costs device_costs;
-  std::map<string, Costs> op_to_cost;    // Per-op cost.
-  std::map<string, int64> op_to_memory;  // Per-op memory usage at peak usage.
-  int64 memory_usage;
-  int64 max_memory_usage;
+  std::map<string, Costs> op_to_cost;  // Per-op cost.
+
+  int64 memory_usage;      // Current temporary memory usage
+  int64 max_memory_usage;  // Max temporary memory usage
 
   DeviceState() {
     device_costs = Costs::ZeroCosts();
@@ -248,16 +248,34 @@ class CompositeNodeManager : public ReadyNodeManager {
   const NodeDef* curr_node_;
 };
 
+// Constructs a ready node manager from the given string.
+std::unique_ptr<ReadyNodeManager> ReadyNodeManagerFactory(
+    const string& ready_node_manager);
+
 // The virtual scheduler emulates execution of nodes in a graph, considering
 // dependencies, device, etc.
 class VirtualScheduler {
  public:
+  // TODO(pcma): Modify power_analyzer.cc to use new API's.
+  // DEPRECATED
   VirtualScheduler(const GrapplerItem* grappler_item,
                    const bool use_static_shapes, Cluster* cluster,
                    ReadyNodeManager* ready_nodes);
-  // Initializes NodeState and DeviceState from grappler_item_ and
-  // graph_properties_.
+  // DEPRECATED
   Status Init();
+
+  // Does not take ownership of cluster or ready_nodes.
+  VirtualScheduler(bool use_static_shapes, Cluster* cluster,
+                   ReadyNodeManager* ready_nodes);
+  // Initializes the scheduler for the specific grappler item.
+  // Should be called immediately after the c'tor or when the scheduler will be
+  // reused for a new grappler item. All internal states of the scheduler
+  // related to the previous grappler item will be reset/cleared.
+  //
+  // This function should be called at least once after the scheduler is
+  // constructed. An uninitialized or failed-to-initialize scheduler will cause
+  // undefined behavior.
+  Status Init(const GrapplerItem* item);
 
   OpContext GetCurrNode() const;
 
@@ -269,7 +287,11 @@ class VirtualScheduler {
   // Like the above, but writes detailed stats to RunMetadata.
   // If metadata is nullptr, then just calls and return Summary().
   Costs Summary(RunMetadata* metadata);
-  // Methods called from constructor.
+  // Generate RunMetadata's step_stats and partition_graphs fields from results
+  // of the virtual execution of the graph.
+  void GenerateRunMetadata(RunMetadata* metadata);
+
+  // DEPRECATED
   static ReadyNodeManager* ReadyNodeManagerFactory(
       const string& ready_node_manager);
 
@@ -283,18 +305,12 @@ class VirtualScheduler {
     return &node_map_;
   }
 
- protected:
-  // Returns the size of output at port_num (unit: bytes). A special case is
-  // port_num -1, which is for control dependency and assumed to be 4 bytes.
-  int64 CalculateOutputSize(
-      const std::vector<OpInfo::TensorProperties>& output_properties,
-      const int port_num) const;
-
  private:
   // Constants.
   const string kAttrInputSrc = "input_source_";
-  const string kAttrSrcDevice = "src_device_";
-  const string kAttrDstDevice = "dst_device_";
+  const string kAttrSrcDevice = "send_device";
+  const string kAttrDstDevice = "recv_device";
+  const string kAttrTensorName = "tensor_name";
   const string kChannelDevice = "Channel";
 
   // Methods called from Init(). Fails if initialize_ is set.
@@ -321,8 +337,11 @@ class VirtualScheduler {
   std::vector<std::unique_ptr<NodeDef>> additional_nodes_;
 
   // Stats:
-  std::map<string, int> op_counts_;  // Op counts with key with input shape.
-  // Individual op costs (with input shapes).
+  // Op counts with key with input shape.
+  // Example key: "[Op=AssignSub, input_shapes=[[7,1,160,160][7,1,160,160]]"
+  std::map<string, int> op_counts_;
+  // Individual op costs with key with input shape.
+  // Integer field for execution time in micro seconds.
   // Boolean field for whether the cost is accurate.
   std::map<string, std::pair<int, bool>> op_costs_;
 
@@ -330,8 +349,8 @@ class VirtualScheduler {
   std::map<string, Costs> op_to_cost_;  // Per-op cost.
 
   // Auxiliary data structures for constructing NodeState and DeviceState.
-  GraphProperties graph_properties_;
-  Cluster* cluster_;  // Not owned.
+  std::unique_ptr<GraphProperties> graph_properties_;  // Initialized in Init().
+  Cluster* cluster_;                                   // Not owned.
 
   const GrapplerItem* grappler_item_;  // Not owned.
   bool use_static_shapes_;

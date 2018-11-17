@@ -56,4 +56,14 @@ string ComputationLayout::ToString() const {
                       result_layout_.ToString());
 }
 
+ProgramShape ComputationLayout::ComputeProgramShape() const {
+  ProgramShape program_shape;
+  for (int64 i = 0; i < parameter_layouts_.size(); ++i) {
+    *program_shape.add_parameters() = parameter_layouts_[i].shape();
+    *program_shape.add_parameter_names() = absl::StrCat("p", i);
+  }
+  *program_shape.mutable_result() = result_layout_.shape();
+  return program_shape;
+}
+
 }  // namespace xla

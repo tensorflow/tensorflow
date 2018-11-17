@@ -50,6 +50,7 @@ norm = linalg_ops.norm
 qr = linalg_ops.qr
 set_diag = array_ops.matrix_set_diag
 solve = linalg_ops.matrix_solve
+sqrtm = linalg_ops.matrix_square_root
 svd = linalg_ops.svd
 tensordot = math_ops.tensordot
 trace = math_ops.trace

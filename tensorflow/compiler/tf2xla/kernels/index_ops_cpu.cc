@@ -48,9 +48,8 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
     // We require that the dimension argument is a constant, since it lets us
     // dispatch to a specialized custom-call function without any run-time
     // overhead, when compiling ahead-of-time.
-    xla::Literal literal;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInput(1, &literal));
-    const int32 dim = literal.Get<int32>({});
+    int64 dim;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &dim));
     OP_REQUIRES(ctx, dim >= 0, errors::InvalidArgument("dim must be >= 0"));
     OP_REQUIRES(
         ctx, dim < input_shape.dims(),
@@ -88,20 +87,30 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
           xla::ConstantLiteral(&b, xla::LiteralUtil::CreateR0<int32>(dim)));
     }
 
-    xla::Shape xla_shape =
-        xla::ShapeUtil::MakeShape(xla::S64, output_shape.dim_sizes());
+    // The argmax function expects row-major layout.
+    xla::Shape xla_shape = xla::ShapeUtil::MakeShapeWithDescendingLayout(
+        xla::S64, output_shape.dim_sizes());
+    std::vector<xla::Shape> arg_shapes;
+    for (const xla::XlaOp& arg : args) {
+      auto shape_status = b.GetShape(arg);
+      OP_REQUIRES_OK(ctx, shape_status.status());
+      xla::Shape arg_shape = shape_status.ConsumeValueOrDie();
+      *arg_shape.mutable_layout() = xla::LayoutUtil::MakeDescendingLayout(
+          xla::ShapeUtil::Rank(arg_shape));
+      arg_shapes.push_back(std::move(arg_shape));
+    }
 
     // Tell XLA to call the custom code, defined in
     // index_ops_kernel_argmax_float_1d.cc.
     xla::XlaOp output;
     switch (input_shape.dims()) {
       case 1:
-        output =
-            xla::CustomCall(&b, "argmax_float_1d_xla_impl", args, xla_shape);
+        output = xla::CustomCallWithLayout(&b, "argmax_float_1d_xla_impl", args,
+                                           xla_shape, arg_shapes);
         break;
       case 2:
-        output =
-            xla::CustomCall(&b, "argmax_float_2d_xla_impl", args, xla_shape);
+        output = xla::CustomCallWithLayout(&b, "argmax_float_2d_xla_impl", args,
+                                           xla_shape, arg_shapes);
         break;
       default:
         OP_REQUIRES(ctx, false,
@@ -120,7 +129,7 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
 REGISTER_XLA_OP(Name("ArgMax")
                     .TypeConstraint("T", DT_FLOAT)
                     .Device(DEVICE_CPU_XLA_JIT)
-                    .CompileTimeConstInput("dimension"),
+                    .CompileTimeConstantInput("dimension"),
                 ArgMaxCustomCallOp);
 
 }  // namespace

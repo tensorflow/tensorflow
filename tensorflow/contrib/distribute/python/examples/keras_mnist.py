@@ -23,8 +23,11 @@ import tensorflow as tf
 NUM_CLASSES = 10
 
 
-def get_input_datasets():
+def get_input_datasets(use_bfloat16=False):
   """Downloads the MNIST dataset and creates train and eval dataset objects.
+
+  Args:
+    use_bfloat16: Boolean to determine if input should be cast to bfloat16
 
   Returns:
     Train dataset, eval dataset and input shape.
@@ -32,6 +35,7 @@ def get_input_datasets():
   """
   # input image dimensions
   img_rows, img_cols = 28, 28
+  cast_dtype = tf.bfloat16 if use_bfloat16 else tf.float32
 
   # the data, split between train and test sets
   (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
@@ -57,12 +61,13 @@ def get_input_datasets():
   # train dataset
   train_ds = tf.data.Dataset.from_tensor_slices((x_train, y_train))
   train_ds = train_ds.repeat()
-  train_ds = train_ds.shuffle(100)
+  train_ds = train_ds.map(lambda x, y: (tf.cast(x, cast_dtype), y))
   train_ds = train_ds.batch(64, drop_remainder=True)
 
   # eval dataset
   eval_ds = tf.data.Dataset.from_tensor_slices((x_test, y_test))
   eval_ds = eval_ds.repeat()
+  eval_ds = eval_ds.map(lambda x, y: (tf.cast(x, cast_dtype), y))
   eval_ds = eval_ds.batch(64, drop_remainder=True)
 
   return train_ds, eval_ds, input_shape
@@ -113,7 +118,7 @@ def main(_):
                 distribute=strategy)
 
   # Train the model with the train dataset.
-  model.fit(x=train_ds, epochs=20, steps_per_epoch=310)
+  model.fit(x=train_ds, epochs=20, steps_per_epoch=468)
 
   # Evaluate the model with the eval dataset.
   score = model.evaluate(eval_ds, steps=10, verbose=0)

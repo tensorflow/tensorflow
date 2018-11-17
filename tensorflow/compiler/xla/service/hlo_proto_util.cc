@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/hlo_proto_util.h"
+#include "tensorflow/compiler/xla/service/hlo_verifier.h"
 
 #include <string>
 
@@ -36,17 +37,28 @@ HloProto MakeHloProto(const HloModule& module) {
   return proto;
 }
 
+StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
+    const HloModuleProto& proto, const HloModuleConfig& module_config) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      HloModule::CreateFromProto(proto, module_config));
+  TF_RETURN_IF_ERROR(
+      HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false)
+          .Run(module.get())
+          .status());
+  return std::move(module);
+}
+
 StatusOr<std::vector<const Shape*>> EntryComputationParameterShapes(
     const HloProto& hlo_proto) {
   if (!hlo_proto.has_hlo_module()) {
     return NotFound("HloProto missing HloModuleProto.");
   }
-  if (!hlo_proto.hlo_module().has_program_shape()) {
+  if (!hlo_proto.hlo_module().has_host_program_shape()) {
     return NotFound("HloProto missing program shape.");
   }
 
   std::vector<const Shape*> parameter_shapes;
-  const auto& program_shape = hlo_proto.hlo_module().program_shape();
+  const auto& program_shape = hlo_proto.hlo_module().host_program_shape();
   for (const Shape& shape : program_shape.parameters()) {
     parameter_shapes.push_back(&shape);
   }
@@ -57,14 +69,14 @@ StatusOr<const Shape*> EntryComputationOutputShape(const HloProto& hlo_proto) {
   if (!hlo_proto.has_hlo_module()) {
     return NotFound("HloProto missing HloModuleProto.");
   }
-  if (!hlo_proto.hlo_module().has_program_shape()) {
+  if (!hlo_proto.hlo_module().has_host_program_shape()) {
     return NotFound("HloProto missing program shape.");
   }
-  if (!hlo_proto.hlo_module().program_shape().has_result()) {
+  if (!hlo_proto.hlo_module().host_program_shape().has_result()) {
     return NotFound("HloProto missing result in its program shape");
   }
 
-  return &hlo_proto.hlo_module().program_shape().result();
+  return &hlo_proto.hlo_module().host_program_shape().result();
 }
 
 }  // namespace xla

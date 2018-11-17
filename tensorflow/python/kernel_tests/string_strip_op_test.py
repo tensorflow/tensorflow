@@ -23,7 +23,7 @@ from tensorflow.python.platform import test
 
 
 class StringStripOpTest(test.TestCase):
-  """ Test cases for tf.string_strip."""
+  """ Test cases for tf.strings.strip."""
 
   def test_string_strip(self):
     strings = ["pigs on the wing", "animals"]

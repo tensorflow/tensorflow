@@ -114,6 +114,11 @@ def _generate_placeholder_string(x, default_placeholder="{}"):
   return placeholder
 
 
+def _is_filepath(output_stream):
+  """Returns True if output_stream is a file path."""
+  return isinstance(output_stream, str) and output_stream.startswith("file://")
+
+
 # Temporarily disable pylint g-doc-args error to allow giving more context
 # about what the kwargs are.
 # Because we are using arbitrary-length positional arguments, python 2
@@ -198,9 +203,11 @@ def print_v2(*inputs, **kwargs):
       primitives, tensors, data structures such as dicts and lists that
       may contain tensors (with the data structures possibly nested in
       arbitrary ways), and printable python objects.
-    output_stream: The output stream or logging level to print to. Defaults to
-      sys.stderr, but sys.stdout, tf.logging.info, tf.logging.warning, and
-      tf.logging.error are also supported.
+    output_stream: The output stream, logging level, or file to print to.
+      Defaults to sys.stderr, but sys.stdout, tf.logging.info,
+      tf.logging.warning, and tf.logging.error are also supported. To print to
+      a file, pass a string started with "file://" followed by the file path,
+      e.g., "file:///tmp/foo.out".
     summarize: The first and last `summarize` elements within each dimension are
       recursively printed per Tensor. If None, then the first 3 and last 3
       elements of each dimension are printed for each tensor. If set to -1, it
@@ -241,13 +248,17 @@ def print_v2(*inputs, **kwargs):
       tf_logging.error: "log(error)",
   }
 
-  output_stream_string = output_stream_to_constant.get(output_stream)
-  if not output_stream_string:
-    raise ValueError(
-        "Unsupported output stream or logging level " +
-        str(output_stream) + ". Supported streams are sys.stdout, "
-                             "sys.stderr, tf.logging.info, "
-                             "tf.logging.warning, tf.logging.error")
+  if _is_filepath(output_stream):
+    output_stream_string = output_stream
+  else:
+    output_stream_string = output_stream_to_constant.get(output_stream)
+    if not output_stream_string:
+      raise ValueError(
+          "Unsupported output stream, logging level, or file." +
+          str(output_stream) + ". Supported streams are sys.stdout, "
+          "sys.stderr, tf.logging.info, "
+          "tf.logging.warning, tf.logging.error. " +
+          "File needs to be in the form of 'file://<filepath>'.")
 
   # If we are only printing a single string scalar, there is no need to format
   if (len(inputs) == 1 and tensor_util.is_tensor(inputs[0])
@@ -612,11 +623,12 @@ def scalar_summary(tags, values, collections=None, name=None):
     _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
   return val
 
-
 ops.NotDifferentiable("HistogramSummary")
 ops.NotDifferentiable("ImageSummary")
 ops.NotDifferentiable("AudioSummary")
 ops.NotDifferentiable("AudioSummaryV2")
 ops.NotDifferentiable("MergeSummary")
 ops.NotDifferentiable("ScalarSummary")
+ops.NotDifferentiable("TensorSummary")
+ops.NotDifferentiable("TensorSummaryV2")
 ops.NotDifferentiable("Timestamp")

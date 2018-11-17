@@ -62,7 +62,7 @@ class TimelineTest(test.TestCase):
         trace_level=config_pb2.RunOptions.FULL_TRACE)
     run_metadata = config_pb2.RunMetadata()
 
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       const1 = constant_op.constant(1.0, name='const1')
       const2 = constant_op.constant(2.0, name='const2')
       result = math_ops.add(const1, const2) + const1 * const2
@@ -93,7 +93,7 @@ class TimelineTest(test.TestCase):
         trace_level=config_pb2.RunOptions.FULL_TRACE)
     run_metadata = config_pb2.RunMetadata()
 
-    with self.test_session(force_gpu=True) as sess:
+    with self.session(force_gpu=True) as sess:
       const1 = constant_op.constant(1.0, name='const1')
       const2 = constant_op.constant(2.0, name='const2')
       result = math_ops.add(const1, const2) + const1 * const2

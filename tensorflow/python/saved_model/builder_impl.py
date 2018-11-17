@@ -36,13 +36,10 @@ from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated_args
-from tensorflow.python.util.deprecation import deprecated_endpoints
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("saved_model.Builder",
-           "saved_model.builder.SavedModelBuilder")
-@deprecated_endpoints("saved_model.builder.SavedModelBuilder")
+@tf_export(v1=["saved_model.Builder", "saved_model.builder.SavedModelBuilder"])
 class SavedModelBuilder(object):
   """Builds the `SavedModel` protocol buffer and saves variables and assets.
 
@@ -81,6 +78,11 @@ class SavedModelBuilder(object):
 
   builder.save()
   ```
+
+  Note: This function will only be available through the v1 compatibility
+  library as tf.compat.v1.saved_model.builder.SavedModelBuilder or
+  tf.compat.v1.saved_model.Builder. Tensorflow 2.0 will introduce a new
+  object-based method of creating SavedModels.
   """
 
   def __init__(self, export_dir):

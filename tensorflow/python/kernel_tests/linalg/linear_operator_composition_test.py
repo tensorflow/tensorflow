@@ -21,7 +21,6 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
@@ -29,7 +28,6 @@ from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.platform import test
 
 linalg = linalg_lib
-random_seed.set_random_seed(23)
 rng = np.random.RandomState(0)
 
 
@@ -44,8 +42,12 @@ class SquareLinearOperatorCompositionTest(
     self._rtol[dtypes.float32] = 1e-4
     self._rtol[dtypes.complex64] = 1e-4
 
+  @property
+  def _tests_to_skip(self):
+    # Cholesky not implemented.
+    return ["cholesky"]
+
   def _operator_and_matrix(self, build_info, dtype, use_placeholder):
-    sess = ops.get_default_session()
     shape = list(build_info.shape)
 
     # Either 1 or 2 matrices, depending.

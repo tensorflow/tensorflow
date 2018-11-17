@@ -80,7 +80,7 @@ class BatchNormalizationTest(test.TestCase):
     beta_val = np.random.random_sample(param_shape).astype(np.float32)
     gamma_val = np.random.random_sample(param_shape).astype(np.float32)
     for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with self.cached_session(use_gpu=use_gpu) as sess:
         x = constant_op.constant(x_val, name="x")
         m = constant_op.constant(m_val, name="m")
         v = constant_op.constant(v_val, name="v")
@@ -210,7 +210,7 @@ class BatchNormalizationTest(test.TestCase):
     gamma_val = np.random.random_sample(param_shape).astype(np.float32)
     backprop_val = np.random.random_sample(x_shape).astype(np.float32)
     for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with self.cached_session(use_gpu=use_gpu) as sess:
         x = constant_op.constant(x_val, name="x")
         m = constant_op.constant(m_val, name="m")
         v = constant_op.constant(v_val, name="v")
@@ -259,7 +259,7 @@ class BatchNormalizationTest(test.TestCase):
     beta_val = np.random.random_sample(param_shape).astype(np.float32)
     gamma_val = np.random.random_sample(param_shape).astype(np.float32)
     for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with self.cached_session(use_gpu=use_gpu) as sess:
         x = constant_op.constant(x_val, name="x")
         m = constant_op.constant(m_val, name="m")
         v = constant_op.constant(v_val, name="v")
@@ -302,7 +302,7 @@ class BatchNormalizationTest(test.TestCase):
     beta_val = np.random.random_sample(param_shape).astype(numpy_param_dtype)
     gamma_val = np.random.random_sample(param_shape).astype(numpy_param_dtype)
     for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with self.cached_session(use_gpu=use_gpu) as sess:
         x = constant_op.constant(x_val, name="x")
         m = constant_op.constant(m_val, name="m")
         v = constant_op.constant(v_val, name="v")
@@ -365,7 +365,7 @@ class SufficientStatisticsTest(test.TestCase):
     x_val = np.random.random_sample(x_shape).astype(np.float32)
     np_c, np_m, np_v, np_s = self._npSuffStats(x_val, axes, shift, keep_dims)
     for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with self.cached_session(use_gpu=use_gpu) as sess:
         if has_shape:
           x = constant_op.constant(x_val, name="x")
           x.set_shape(x_shape)
@@ -422,7 +422,7 @@ class NormalizeMomentsTest(test.TestCase):
       shift_v = None
     npm, npv = self._npNormalizeMoments(counts, mean_ss, variance_ss, shift_v)
     for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with self.cached_session(use_gpu=use_gpu) as sess:
         tf_counts = constant_op.constant(counts, name="counts")
         tf_mean_ss = constant_op.constant(mean_ss, name="mean_ss")
         tf_variance_ss = constant_op.constant(variance_ss, name="variance_ss")
@@ -507,8 +507,8 @@ class MomentsTest(test.TestCase):
       expected_variance = expected_x_squared - expected_mean_squared
 
       # Check that the moments are correct.
-      self.assertAllCloseAccordingToType(expected_mean, mean.eval())
-      self.assertAllCloseAccordingToType(expected_variance, var.eval())
+      self.assertAllCloseAccordingToType(expected_mean, self.evaluate(mean))
+      self.assertAllCloseAccordingToType(expected_variance, self.evaluate(var))
 
   def testBasic(self):
     for keep_dims in [False, True]:

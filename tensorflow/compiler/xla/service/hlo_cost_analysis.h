@@ -107,6 +107,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleConditional(const HloInstruction* conditional) override;
   Status HandleGather(const HloInstruction* gather) override;
   Status HandleScatter(const HloInstruction* scatter) override;
+  Status HandleGetDimensionSize(const HloInstruction* get_size) override;
   Status FinishVisit(const HloInstruction* root) override;
 
   Status Preprocess(const HloInstruction* hlo) override;
@@ -153,7 +154,24 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
 
   // Returns the properties computed from visiting the computation rooted at the
   // given hlo.
-  StatusOr<Properties> ProcessSubcomputation(HloComputation* computation);
+  //
+  // The difference between ProcessNestedSubcomputation and
+  // ProcessUnnestedSubcomputation is that we expect to get profile results for
+  // an unnested subcomputation's individual instructions, while we expect that
+  // a nested subcomputation is completely subsumed by its parent.
+  //
+  // For example, subcomputations inside kFusion and kMap are considered nested,
+  // while subcomputations inside kWhile and kConditional are considered
+  // unnested.
+  //
+  // Another way of thinking of this is, kFusion is implemented on the GPU
+  // backend using just one GPU kernel, while kWhile's body is implemented as a
+  // sequence of kernels, one for each HLO therein.  Backends don't necessarily
+  // need to follow this same implementation strategy, but we assume they do for
+  // the purposes of this platform-generic cost analysis.
+  StatusOr<Properties> ProcessNestedSubcomputation(HloComputation* computation);
+  StatusOr<Properties> ProcessUnnestedSubcomputation(
+      HloComputation* computation);
 
   // Utility function to handle all element-wise operations.
   Status HandleElementwiseOp(const HloInstruction* hlo_instruction);

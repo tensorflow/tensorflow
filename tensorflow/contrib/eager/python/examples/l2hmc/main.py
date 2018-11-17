@@ -71,7 +71,7 @@ def main(_):
     # Training
     if FLAGS.use_defun:
       # Use `tfe.deun` to boost performance when there are lots of small ops
-      loss_fn = tfe.defun(l2hmc.compute_loss)
+      loss_fn = tfe.function(l2hmc.compute_loss)
     else:
       loss_fn = l2hmc.compute_loss
 
@@ -104,7 +104,7 @@ def main(_):
   # Evaluation
   if FLAGS.use_defun:
     # Use tfe.deun to boost performance when there are lots of small ops
-    apply_transition = tfe.defun(dynamics.apply_transition)
+    apply_transition = tfe.function(dynamics.apply_transition)
   else:
     apply_transition = dynamics.apply_transition
 

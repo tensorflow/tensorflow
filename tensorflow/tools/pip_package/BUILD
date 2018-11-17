@@ -78,7 +78,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow/contrib/rpc:rpc_pip",
     "//tensorflow/contrib/session_bundle:session_bundle_pip",
     "//tensorflow/contrib/signal:signal_py",
-    "//tensorflow/contrib/signal:test_util",
     "//tensorflow/contrib/slim:slim",
     "//tensorflow/contrib/slim/python/slim/data:data_pip",
     "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
@@ -109,6 +108,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/data/kernel_tests:test_base",
     "//tensorflow/python/debug:debug_pip",
     "//tensorflow/python/eager:eager_pip",
+    "//tensorflow/python/kernel_tests/signal:test_util",
     "//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files",
     "//tensorflow/python/saved_model:saved_model",
     "//tensorflow/python/tools:tools_pip",
@@ -132,6 +132,7 @@ py_binary(
 filegroup(
     name = "licenses",
     data = [
+        "//third_party/icu/data:LICENSE",
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
         "//third_party/hadoop:LICENSE.txt",
@@ -153,6 +154,7 @@ filegroup(
         "@highwayhash//:LICENSE",
         "@icu//:icu4c/LICENSE",
         "@jpeg//:LICENSE.md",
+        "@keras_applications_archive//:LICENSE",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nasm//:LICENSE",
@@ -167,6 +169,34 @@ filegroup(
         "@zlib_archive//:zlib.h",
         "@org_python_pypi_backports_weakref//:LICENSE",
     ] + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_aws_support": [],
+        "//conditions:default": [
+            "@aws//:LICENSE",
+        ],
+    }) + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_gcp_support": [],
+        "//conditions:default": [
+            "@com_github_googleapis_googleapis//:LICENSE",
+            "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
+        ],
+    }) + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_kafka_support": [],
+        "//conditions:default": [
+            "@kafka//:LICENSE",
+        ],
+    }) + select({
         "//tensorflow/core/kernels:xsmm": [
             "@libxsmm_archive//:LICENSE.md",
         ],
@@ -189,16 +219,7 @@ filegroup(
         "@ngraph_tf//:LICENSE",
         "@nlohmann_json_lib//:LICENSE.MIT",
         "@tbb//:LICENSE",
-    ]) + tf_additional_license_deps() + select({
-        "//tensorflow:linux_s390x": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": [
-            "@aws//:LICENSE",
-            "@com_github_googleapis_googleapis//:LICENSE",
-            "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
-            "@kafka//:LICENSE",
-        ],
-    }),
+    ]) + tf_additional_license_deps(),
 )
 
 sh_binary(
@@ -207,15 +228,15 @@ sh_binary(
     data = select({
         "//tensorflow:windows": [
             ":simple_console_for_windows",
-            "//tensorflow/contrib/lite/python:interpreter_test_data",
-            "//tensorflow/contrib/lite/python:tflite_convert",
-            "//tensorflow/contrib/lite/toco/python:toco_from_protos",
+            "//tensorflow/lite/python:interpreter_test_data",
+            "//tensorflow/lite/python:tflite_convert",
+            "//tensorflow/lite/toco/python:toco_from_protos",
         ],
         "//conditions:default": COMMON_PIP_DEPS + [
             ":simple_console",
-            "//tensorflow/contrib/lite/python:interpreter_test_data",
-            "//tensorflow/contrib/lite/python:tflite_convert",
-            "//tensorflow/contrib/lite/toco/python:toco_from_protos",
+            "//tensorflow/lite/python:interpreter_test_data",
+            "//tensorflow/lite/python:tflite_convert",
+            "//tensorflow/lite/toco/python:toco_from_protos",
         ],
     }) + if_mkl_ml(["//third_party/mkl:intel_binary_blob"]),
 )

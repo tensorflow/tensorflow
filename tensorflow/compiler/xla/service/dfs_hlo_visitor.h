@@ -19,6 +19,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -107,6 +108,7 @@ class DfsHloVisitorBase {
   virtual Status HandleCrossReplicaSum(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllToAll(HloInstructionPtr hlo) = 0;
   virtual Status HandleCollectivePermute(HloInstructionPtr hlo) = 0;
+  virtual Status HandleGetDimensionSize(HloInstructionPtr hlo) = 0;
   virtual Status HandleCompare(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
@@ -263,21 +265,25 @@ class DfsHloVisitorBase {
     kVisited = 2,
   };
 
-  VisitState GetVisitState(int id) { return visit_state_.GetState(id); }
+  VisitState GetVisitState(int id) {
+    auto iter = visit_state_.find(id);
+    if (iter == visit_state_.end()) {
+      return VisitState::kNotVisited;
+    }
+    return iter->second;
+  }
   VisitState GetVisitState(const HloInstruction& instruction);
 
   // Resize internal state if necessary to hold state for ids <= num.
   // This call is purely a performance hint and can be omitted without
   // affecting correctness.
-  void ReserveVisitStates(int num) { visit_state_.Reserve(num); }
+  void ReserveVisitStates(int num) { visit_state_.reserve(num); }
 
   // Useful when we want to visit the same computation more than once with the
   // same visitor.
-  void ResetVisitStates() { visit_state_.Reset(); }
+  void ResetVisitStates() { visit_state_.clear(); }
 
-  void SetVisitState(int id, VisitState state) {
-    visit_state_.SetState(id, state);
-  }
+  void SetVisitState(int id, VisitState state) { visit_state_[id] = state; }
 
   // Sets the visitation state of the given instruction as kVisiting.
   //
@@ -326,44 +332,7 @@ class DfsHloVisitorBase {
   virtual Status Postprocess(HloInstructionPtr hlo);
 
  private:
-  class DFSVisitStates {
-   public:
-    DFSVisitStates() {}
-    void Reserve(uint64 num) {
-      states_.reserve((num + kStatesPerWord - 1) / kStatesPerWord);
-    }
-    VisitState GetState(uint64 id) {
-      uint64 word_index = id / kStatesPerWord;
-      if (word_index >= states_.size()) {
-        return VisitState::kNotVisited;
-      }
-      static_assert(static_cast<int>(VisitState::kVisited) < 3,
-                    "VisitState must fit in two bits");
-      uint64 w = states_[word_index];
-      uint32 shift = 2 * (id % kStatesPerWord);  // 2 bits per state
-      return static_cast<VisitState>((w >> shift) & 0x3);
-    }
-    void SetState(uint64 id, VisitState state) {
-      uint64 word_index = id / kStatesPerWord;
-      if (word_index >= states_.size()) {
-        states_.resize(word_index + 1, 0);
-      }
-      uint64* w = &states_[word_index];
-      uint32 shift = 2 * (id % kStatesPerWord);  // 2 bits per state
-      uint64 mask = 0x3ull << shift;
-      *w = (*w & ~mask) | (static_cast<uint64>(state) << shift);
-      DCHECK_EQ(GetState(id), state);
-    }
-    void Reset() { states_.clear(); }
-
-   private:
-    static const uint32 kStatesPerWord = sizeof(uint64) / 2 /*bits per entry*/;
-    // Map from id to two-bit states.  We store 32 such states per 64-bit
-    // value
-    std::vector<uint64> states_;
-  };
-
-  DFSVisitStates visit_state_;
+  absl::flat_hash_map<int, VisitState> visit_state_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DfsHloVisitorBase);
 };

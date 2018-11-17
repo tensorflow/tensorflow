@@ -72,7 +72,7 @@ class ShapeIndex {
   void push_back(int64 value) { indices_.push_back(value); }
   void pop_back() { indices_.pop_back(); }
 
-  // push_front is O(n^2), but shapes don't usually have a ton of dimensions.
+  // push_front is O(n), but shapes don't usually have a ton of dimensions.
   void push_front(int64 value) { indices_.insert(indices_.begin(), value); }
 
   using container_type = absl::InlinedVector<int64, 2>;
@@ -99,6 +99,11 @@ class ShapeIndex {
   }
 
   string ToString() const;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const ShapeIndex& index) {
+    return H::combine(std::move(h), index.indices_);
+  }
 
  private:
   container_type indices_;
@@ -146,6 +151,9 @@ class ShapeIndexView {
   bool operator!=(const ShapeIndexView& other) const;
 
   string ToString() const;
+
+  // Returns true if this shape index starts with 'prefix'.
+  bool StartsWith(ShapeIndexView prefix) const;
 
  private:
   absl::Span<const int64> indices_;
@@ -312,7 +320,10 @@ class ShapeUtil {
   static bool IsEffectiveScalar(const Shape& shape) {
     return IsArray(shape) && TrueRank(shape) == 0;
   }
-  static bool IsScalarF32(const Shape& shape);
+
+  // Returns whether "shape" is a scalar (array) with the given element_type.
+  static bool IsScalarWithElementType(const Shape& shape,
+                                      PrimitiveType element_type);
 
   // Extracts the size of the shape's dimension at dimension number
   // GetDimensionNumber(dimension_number).
@@ -362,6 +373,12 @@ class ShapeUtil {
   static Shape MakeShape(PrimitiveType element_type,
                          absl::Span<const int64> dimensions);
 
+  // Constructs a new shape with the given element type and sequence of
+  // dimensions. Method checks if the element type is valid and the shape's
+  // size fits in std::numeric_limits<int64>::max().
+  static StatusOr<Shape> MakeValidatedShape(PrimitiveType element_type,
+                                            absl::Span<const int64> dimensions);
+
   // Creates a Shape with element type corresponding to T and the given
   // dimensions
   template <typename T>
@@ -393,8 +410,8 @@ class ShapeUtil {
       const Shape& shape);
 
   // As MakeShape, but the object to write to is passed in.
-  static void PopulateShape(PrimitiveType element_type,
-                            absl::Span<const int64> dimensions, Shape* shape);
+  static Status PopulateShape(PrimitiveType element_type,
+                              absl::Span<const int64> dimensions, Shape* shape);
 
   // Validates that the provided shape satisfies invariants.
   static Status ValidateShape(const Shape& shape);
@@ -455,9 +472,6 @@ class ShapeUtil {
 
   // Returns true if shape is an empty tuple.
   static bool IsEmptyTuple(const Shape& shape);
-
-  // Returns true if shape is the nil shape (an empty tuple).
-  static bool IsNil(const Shape& shape);
 
   // Returns the number of elements in the given tuple shape.
   // Precondition: IsTuple(shape)

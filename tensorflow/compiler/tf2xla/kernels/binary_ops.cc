@@ -64,7 +64,7 @@ XLA_MAKE_BINARY(Complex, xla::Complex(lhs, rhs, extend_dimensions));
 // }
 static xla::XlaOp DivNoNanImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
                                xla::XlaOp y, const BCast& broadcast_helper) {
-  std::tie(x, y) = XlaBinaryOp::Broadcast(b, x, y, broadcast_helper);
+  std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
   auto zero = XlaHelpers::Zero(b, dtype);
   auto y_equals_0 = xla::Eq(y, zero);
   auto zeros = xla::ZerosLike(x);
@@ -84,7 +84,7 @@ XLA_MAKE_BINARY(DivNoNan,
 // }
 static xla::XlaOp FloorDivImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
                                xla::XlaOp y, const BCast& broadcast_helper) {
-  std::tie(x, y) = XlaBinaryOp::Broadcast(b, x, y, broadcast_helper);
+  std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
   if (DataTypeIsUnsigned(dtype)) {
     return xla::Div(x, y);
   }
@@ -105,7 +105,7 @@ XLA_MAKE_BINARY(FloorDiv,
 
 static xla::XlaOp XlogyImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
                             xla::XlaOp y, const BCast& broadcast_helper) {
-  std::tie(x, y) = XlaBinaryOp::Broadcast(b, x, y, broadcast_helper);
+  std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
   auto zero = XlaHelpers::Zero(b, dtype);
   auto is_zero = xla::Eq(x, zero);
   return xla::Select(is_zero, zero, xla::Mul(x, xla::Log(y)));
@@ -114,7 +114,7 @@ XLA_MAKE_BINARY(Xlogy, XlogyImpl(b, input_type(0), lhs, rhs, broadcast_helper));
 
 static xla::XlaOp XdivyImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
                             xla::XlaOp y, const BCast& broadcast_helper) {
-  std::tie(x, y) = XlaBinaryOp::Broadcast(b, x, y, broadcast_helper);
+  std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
   auto zero = XlaHelpers::Zero(b, dtype);
   auto is_zero = xla::Eq(x, zero);
   return xla::Select(is_zero, zero, xla::Div(x, y));
@@ -126,7 +126,7 @@ XLA_MAKE_BINARY(Xdivy, XdivyImpl(b, input_type(0), lhs, rhs, broadcast_helper));
 // return (x < T(0)) == (y < T(0)) ? trunc_mod : std::fmod(trunc_mod + y, y);
 static xla::XlaOp FloorModImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
                                xla::XlaOp y, const BCast& broadcast_helper) {
-  std::tie(x, y) = XlaBinaryOp::Broadcast(b, x, y, broadcast_helper);
+  std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
   auto zero = XlaHelpers::Zero(b, dtype);
   auto same_sign = xla::Eq(xla::Lt(x, zero), xla::Lt(y, zero));
   auto trunc_mod = xla::Rem(x, y);

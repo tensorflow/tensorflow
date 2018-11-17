@@ -33,7 +33,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
 
   def testBasicUpdate(self):
     for dtype in [dtypes.float32, dtypes.int32, dtypes.int64]:
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         x = array_ops.ones([7, 3], dtype)
         y = np.ones([7, 3], dtype.as_numpy_dtype)
         self.assertAllClose(x.eval(), y)
@@ -49,7 +49,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
         self.assertAllClose(x.eval(), y)
 
   def testBasicUpdateBool(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       x = array_ops.ones([7, 3], dtypes.bool)
       y = np.ones([7, 3], dtypes.bool.as_numpy_dtype)
       self.assertAllClose(x.eval(), y)
@@ -67,7 +67,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
 
   def testBasicAdd(self):
     for dtype in [dtypes.float32, dtypes.int32, dtypes.int64]:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         x = array_ops.ones([7, 3], dtype)
         y = np.ones([7, 3], dtype.as_numpy_dtype)
         self.assertAllClose(x.eval(), y)
@@ -86,7 +86,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
 
   def testBasicSub(self):
     for dtype in [dtypes.float32, dtypes.int32, dtypes.int64]:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         x = array_ops.ones([7, 3], dtype)
         y = np.ones([7, 3], dtype.as_numpy_dtype)
         self.assertAllClose(x.eval(), y)
@@ -104,7 +104,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
         self.assertAllClose(x.eval(), y)
 
   def testRandom(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       d0, d1, d2 = 100, 3, 5
       x = array_ops.zeros([d0, d1, d2])
       y = np.zeros([d0, d1, d2])
@@ -124,7 +124,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
         self.assertAllClose(x.eval(), y)
 
   def testRandom1D(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       d0 = 100
       x = array_ops.zeros([d0])
       y = np.zeros([d0])
@@ -144,7 +144,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
         self.assertAllClose(x.eval(), y)
 
   def testAlias(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       x = array_ops.ones([2, 3])
       y = inplace_ops.alias_inplace_add(x, [0], [[1, 2, 3]])
       with ops.control_dependencies([y]):
@@ -169,7 +169,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
         dtypes.float32, dtypes.float64, dtypes.int32, dtypes.int64, dtypes.bool,
         dtypes.uint8
     ]:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         test_shapes = [(), (1,), (2, 3), (0, 2), (2, 3, 5), (2, 0, 5)]
         for shape in test_shapes:
           val = inplace_ops.empty(shape, dtype).eval()
@@ -188,7 +188,7 @@ class InplaceOpsTest(test_util.TensorFlowTestCase):
           self.assertEqual(val.dtype, dtype.as_numpy_dtype)
           self.assertAllEqual(val, np.zeros(shape, dtype.as_numpy_dtype))
 
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       val = inplace_ops.empty((1, 2), dtypes.string, init=True).eval()
       self.assertEqual(val.tolist(), [[b"", b""]])
 

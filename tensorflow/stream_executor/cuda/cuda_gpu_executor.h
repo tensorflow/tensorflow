@@ -25,6 +25,7 @@ limitations under the License.
 #include <set>
 #include <unordered_map>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/stream_executor/cuda/cuda_kernel.h"
 #include "tensorflow/stream_executor/event.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -234,8 +235,8 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
   // filename by looking for compute-capability-specific suffixed versions; i.e.
   // looking for "foo.ptx" will check to see if "foo.ptx.cc30.ptx" is present if
   // we're on a compute capability 3.0 machine.
-  bool FindOnDiskForComputeCapability(port::StringPiece filename,
-                                      port::StringPiece canonical_suffix,
+  bool FindOnDiskForComputeCapability(absl::string_view filename,
+                                      absl::string_view canonical_suffix,
                                       string *found_filename) const;
 
   // Host callback landing routine invoked by CUDA.

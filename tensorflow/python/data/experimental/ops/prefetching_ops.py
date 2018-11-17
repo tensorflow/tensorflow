@@ -24,10 +24,11 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import sparse
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.framework import device as framework_device
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_dataset_ops
@@ -126,7 +127,8 @@ class _PrefetchToDeviceIterator(object):
           shared_name, self._input_dataset.output_classes)
     input_iterator_handle = self._input_iterator.string_handle()
 
-    @function.Defun(dtypes.string)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
+    # handle is a scalar `tf.Tensor` of type `tf.string`
     def _prefetch_fn(handle):
       """Prefetches one element from `input_iterator`."""
       remote_iterator = iterator_ops.Iterator.from_string_handle(
@@ -136,12 +138,14 @@ class _PrefetchToDeviceIterator(object):
       ret = remote_iterator.get_next()
       return nest.flatten(sparse.serialize_sparse_tensors(ret))
 
+    self._prefetch_fn = _prefetch_fn._get_concrete_function_internal()  # pylint: disable=protected-access
+
     iterator_device = ged_ops.experimental_iterator_get_device(
         self._input_iterator._iterator_resource)
 
     with ops.device(device):
       self._buffering_resource = function_buffering_resource(
-          f=_prefetch_fn,
+          f=self._prefetch_fn,
           target_device=iterator_device,
           string_arg=input_iterator_handle,
           buffer_size=buffer_size,
@@ -225,7 +229,7 @@ class _PrefetchToDeviceEagerIterator(iterator_ops.EagerIterator):
 
     self._device = device
 
-    @function.Defun(dtypes.string)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _prefetch_fn(handle):
       """Prefetches one element from `input_iterator`."""
       remote_iterator = iterator_ops.Iterator.from_string_handle(
@@ -233,11 +237,11 @@ class _PrefetchToDeviceEagerIterator(iterator_ops.EagerIterator):
       ret = remote_iterator.get_next()
       return nest.flatten(sparse.serialize_sparse_tensors(ret))
 
-    _prefetch_fn.add_to_graph(None)
+    self._prefetch_fn = _prefetch_fn._get_concrete_function_internal()  # pylint: disable=protected-access
 
     with ops.device(device):
       self._buffering_resource = function_buffering_resource(
-          f=_prefetch_fn,
+          f=self._prefetch_fn,
           output_types=self._flat_output_types,
           target_device=ged_ops.experimental_iterator_get_device(
               self._resource),
@@ -254,16 +258,14 @@ class _PrefetchToDeviceEagerIterator(iterator_ops.EagerIterator):
     # TODO(b/77291417): Fix
     with context.execution_mode(context.SYNC):
       with ops.device(self._device):
-        ret = ged_ops.experimental_function_buffering_resource_get_next(
+        flat_ret = ged_ops.experimental_function_buffering_resource_get_next(
             function_buffer_resource=self._buffering_resource,
             output_types=self._flat_output_types)
-      return sparse.deserialize_sparse_tensors(
-          nest.pack_sequence_as(self._output_types, ret), self._output_types,
-          self._output_shapes, self._output_classes)
+      return self._element_structure._from_tensor_list(flat_ret)
 # pylint: enable=protected-access
 
 
-class _PrefetchToDeviceDataset(dataset_ops.UnaryDataset):
+class _PrefetchToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
   """A `Dataset` whose iterator prefetches elements to another device."""
 
   def __init__(self, input_dataset, device, buffer_size):
@@ -320,18 +322,6 @@ class _PrefetchToDeviceDataset(dataset_ops.UnaryDataset):
     raise NotImplementedError("`prefetch_to_device()` must be the last "
                               "transformation in a dataset pipeline.")
 
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
-
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
-
 
 @tf_export("data.experimental.prefetch_to_device")
 def prefetch_to_device(device, buffer_size=None):
@@ -378,7 +368,7 @@ def copy_to_device(target_device, source_device="/cpu:0"):
 # TODO(rohanj): Use the _input_hostmem attr on the RemoteCall ops to indicate
 # all inputs to the Op are in host memory, thereby avoiding some unnecessary
 # Sends and Recvs.
-class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
+class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
   """A `Dataset` that copies elements to another device."""
 
   def __init__(self, input_dataset, target_device, source_device="/cpu:0"):
@@ -404,7 +394,7 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
         sparse.as_dense_types(self._input_dataset.output_types,
                               self._input_dataset.output_classes))
 
-    @function.Defun()
+    @function.defun()
     def _init_func():
       """Creates an iterator for the input dataset.
 
@@ -420,18 +410,20 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
           [gen_dataset_ops.make_iterator(ds_variant, resource)]):
         return gen_dataset_ops.iterator_to_string_handle(resource)
 
-    @function.Defun()
+    init_func_concrete = _init_func._get_concrete_function_internal()  # pylint: disable=protected-access
+
+    @function.defun()
     def _remote_init_func():
       return functional_ops.remote_call(
           target=self._source_device,
-          args=_init_func.captured_inputs,
+          args=init_func_concrete.captured_inputs,
           Tout=[dtypes.string],
-          f=_init_func)
+          f=init_func_concrete)
 
-    self._init_func = _remote_init_func
-    self._init_captured_args = _remote_init_func.captured_inputs
+    self._init_func = _remote_init_func._get_concrete_function_internal()  # pylint: disable=protected-access
+    self._init_captured_args = self._init_func.captured_inputs
 
-    @function.Defun(dtypes.string)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _next_func(string_handle):
       """Calls get_next for created iterator.
 
@@ -447,18 +439,21 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
       ret = iterator.get_next()
       return nest.flatten(sparse.serialize_sparse_tensors(ret))
 
-    @function.Defun(dtypes.string)
+    next_func_concrete = _next_func._get_concrete_function_internal()  # pylint: disable=protected-access
+
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _remote_next_func(string_handle):
       return functional_ops.remote_call(
           target=self._source_device,
-          args=[string_handle] + _next_func.captured_inputs,
+          args=[string_handle] +
+          next_func_concrete.captured_inputs,
           Tout=self._flat_output_types,
-          f=_next_func)
+          f=next_func_concrete)
 
-    self._next_func = _remote_next_func
-    self._next_captured_args = _remote_next_func.captured_inputs
+    self._next_func = _remote_next_func._get_concrete_function_internal()  # pylint: disable=protected-access
+    self._next_captured_args = self._next_func.captured_inputs
 
-    @function.Defun(dtypes.string)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _finalize_func(string_handle):
       """Destroys the iterator resource created.
 
@@ -476,21 +471,25 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
               iterator_resource, ignore_lookup_error=True)]):
         return array_ops.constant(0, dtypes.int64)
 
-    @function.Defun(dtypes.string)
+    finalize_func_concrete = _finalize_func._get_concrete_function_internal()  # pylint: disable=protected-access
+
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _remote_finalize_func(string_handle):
       return functional_ops.remote_call(
           target=self._source_device,
-          args=[string_handle] + _finalize_func.captured_inputs,
+          args=[string_handle] +
+          finalize_func_concrete.captured_inputs,
           Tout=[dtypes.int64],
-          f=_finalize_func)
+          f=finalize_func_concrete)
 
-    self._finalize_func = _remote_finalize_func
-    self._finalize_captured_args = _remote_finalize_func.captured_inputs
+    self._finalize_func = _remote_finalize_func._get_concrete_function_internal(  # pylint: disable=protected-access
+    )
+    self._finalize_captured_args = self._finalize_func.captured_inputs
 
     g = ops.get_default_graph()
-    _remote_init_func.add_to_graph(g)
-    _remote_next_func.add_to_graph(g)
-    _remote_finalize_func.add_to_graph(g)
+    self._init_func.add_to_graph(g)
+    self._next_func.add_to_graph(g)
+    self._finalize_func.add_to_graph(g)
     # pylint: enable=protected-scope
 
   # The one_shot_iterator implementation needs a 0 arg _make_dataset function
@@ -518,14 +517,70 @@ class _CopyToDeviceDataset(dataset_ops.UnaryDataset):
           output_types=self._flat_output_types,
           output_shapes=self._flat_output_shapes)
 
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
 
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
+class _MapOnGpuDataset(dataset_ops.UnaryDataset):
+  """A `Dataset` that maps a function over elements in its using a GPU."""
+
+  def __init__(self, input_dataset, map_func, use_inter_op_parallelism=True):
+    """See `Dataset.map()` for details."""
+    super(_MapOnGpuDataset, self).__init__(input_dataset)
+    self._input_dataset = input_dataset
+    self._use_inter_op_parallelism = use_inter_op_parallelism
+
+    wrapped_func = dataset_ops.StructuredFunctionWrapper(
+        map_func,
+        self._transformation_name(),
+        dataset=input_dataset,
+        defun_kwargs={"experimental_ints_on_device": True})
+    self._output_classes = wrapped_func.output_classes
+    self._output_shapes = wrapped_func.output_shapes
+    self._output_types = wrapped_func.output_types
+    self._map_func = wrapped_func.function
+
+  def _as_variant_tensor(self):
+    input_t = self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access
+    return ged_ops.experimental_map_dataset(
+        input_t,
+        self._map_func.captured_inputs,
+        f=self._map_func,
+        use_inter_op_parallelism=self._use_inter_op_parallelism,
+        **dataset_ops.flat_structure(self))
 
   @property
   def output_classes(self):
-    return self._input_dataset.output_classes
+    return self._output_classes
+
+  @property
+  def output_shapes(self):
+    return self._output_shapes
+
+  @property
+  def output_types(self):
+    return self._output_types
+
+  def _transformation_name(self):
+    return "map_on_gpu()"
+
+
+def map_on_gpu(map_func):
+  """Maps `map_func` across the elements of this dataset.
+
+  NOTE: This is a highly experimental version of `tf.data.Dataset.map` that runs
+  `map_func` on GPU. It must be used after applying the
+  `tf.data.experimental.copy_to_device` transformation with a GPU device
+  argument.
+
+  Args:
+    map_func: A function mapping a nested structure of tensors (having shapes
+      and types defined by `self.output_shapes` and `self.output_types`) to
+      another nested structure of tensors.
+
+  Returns:
+    A `Dataset` transformation function, which can be passed to
+    `tf.data.Dataset.apply`.
+  """
+
+  def _apply_fn(dataset):
+    return _MapOnGpuDataset(dataset, map_func)
+
+  return _apply_fn

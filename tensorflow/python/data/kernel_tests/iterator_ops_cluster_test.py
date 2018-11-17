@@ -134,7 +134,7 @@ class IteratorClusterTest(test.TestCase):
     get_next = iterator.get_next()
 
     with session.Session(worker[0].target) as sess:
-      sess.run(table.init)
+      sess.run(table.initializer)
       sess.run(init_op)
       self.assertAllEqual([0, 0, -1, 1, 2], sess.run(get_next))
 

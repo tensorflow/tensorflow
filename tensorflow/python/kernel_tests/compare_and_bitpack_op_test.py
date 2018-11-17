@@ -30,15 +30,15 @@ class CompareAndBitpackTest(test.TestCase):
                              x, threshold,
                              truth,
                              expected_err_re=None):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       ans = math_ops.compare_and_bitpack(x, threshold)
       if expected_err_re is None:
-        tf_ans = ans.eval()
+        tf_ans = self.evaluate(ans)
         self.assertShapeEqual(truth, ans)
         self.assertAllEqual(tf_ans, truth)
       else:
         with self.assertRaisesOpError(expected_err_re):
-          ans.eval()
+          self.evaluate(ans)
 
   def _testBasic(self, dtype):
     rows = 371

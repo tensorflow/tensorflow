@@ -1,6 +1,7 @@
 .DS_Store
 .ipynb_checkpoints
 node_modules
+/.bazelrc
 /.tf_configure.bazelrc
 /bazel-*
 /bazel_pip
@@ -23,10 +24,10 @@ Pods
 Podfile.lock
 *.pbxproj
 *.xcworkspacedata
-/tensorflow/contrib/lite/downloads/**
-/tensorflow/contrib/lite/gen/**
-/tensorflow/contrib/lite/examples/ios/simple/data/*.txt
-/tensorflow/contrib/lite/examples/ios/simple/data/*.tflite
+/tensorflow/lite/tools/make/downloads/**
+/tensorflow/lite/gen/**
+/tensorflow/lite/examples/ios/simple/data/*.txt
+/tensorflow/lite/examples/ios/simple/data/*.tflite
 xcuserdata/**
 /api_init_files_list.txt
 /estimator_api_init_files_list.txt

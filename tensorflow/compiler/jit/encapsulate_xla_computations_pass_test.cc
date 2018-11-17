@@ -256,7 +256,7 @@ TEST(EncapsulateXlaComputations, Encapsulate) {
 
   TF_ASSERT_OK(EncapsulateXlaComputationsPass::Encapsulate(&graph, &flib_def));
 
-  std::unordered_map<string, Node*> index = BuildNodeIndex(*graph);
+  std::unordered_map<string, Node*> index = graph->BuildNodeNameIndex();
   string function = index.at("launch0")->type_string();
 
   // Tests the outer graph is as expected.
@@ -291,7 +291,8 @@ TEST(EncapsulateXlaComputations, Encapsulate) {
   // function. Encapsulation should be deterministic to avoid recompilation.
   TF_ASSERT_OK(
       EncapsulateXlaComputationsPass::Encapsulate(&graph_copy, &flib_def));
-  std::unordered_map<string, Node*> index_copy = BuildNodeIndex(*graph_copy);
+  std::unordered_map<string, Node*> index_copy =
+      graph_copy->BuildNodeNameIndex();
   string function_copy = index_copy.at("launch0")->type_string();
   EXPECT_EQ(function, function_copy);
 }

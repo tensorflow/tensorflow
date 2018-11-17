@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
@@ -42,12 +43,9 @@ namespace {
 
 const char* kTupleContainer = "tuples";
 
-// Counter used to assign unique handles.
-mutex _uid_mutex(tensorflow::LINKER_INITIALIZED);
-int64 _uid GUARDED_BY(_uid_mutex) = 0;
 int64 get_uid() {
-  mutex_lock l(_uid_mutex);
-  return _uid++;
+  uint64 unsigned_rand = random::New64() & INT64_MAX;
+  return static_cast<int64>(unsigned_rand);
 }
 
 Status AllocateScopedShapedBuffer(
@@ -67,6 +65,9 @@ Status AllocateScopedShapedBuffer(
   // requests the host-shape sub-buffer at index i, that will correspond to the
   // right device-shape sub-buffer at the same index.
   xla::Shape on_device_shape = transfer_manager->HostShapeToDeviceShape(shape);
+  VLOG(3) << "Allocating literal buffer: host_shape="
+          << xla::ShapeUtil::HumanStringWithLayout(shape) << " device_shape="
+          << xla::ShapeUtil::HumanStringWithLayout(on_device_shape);
 
   // The ScopedShapedBuffer frees the buffers that have so far been allocated if
   // it goes out of scope. That's useful if we return early as the result of an

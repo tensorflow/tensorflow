@@ -194,8 +194,8 @@ Status GrpcServer::Init(
   MaybeMutateBuilder(&builder);
   master_impl_ = CreateMaster(&master_env_);
   master_service_ = NewGrpcMasterService(master_impl_.get(), config, &builder);
-  worker_impl_ =
-      worker_func ? worker_func(&worker_env_) : NewGrpcWorker(&worker_env_);
+  worker_impl_ = worker_func ? worker_func(&worker_env_, config)
+                             : NewGrpcWorker(&worker_env_, config);
   worker_service_ =
       NewGrpcWorkerService(worker_impl_.get(), &builder).release();
   eager_service_ = new eager::GrpcEagerServiceImpl(&worker_env_, &builder);
@@ -451,7 +451,11 @@ Status GrpcServer::Create(const ServerDef& server_def, Env* env,
   std::unique_ptr<GrpcServer> ret(
       new GrpcServer(server_def, env == nullptr ? Env::Default() : env));
   ServiceInitFunction service_func = nullptr;
-  TF_RETURN_IF_ERROR(ret->Init(service_func, NewRpcRendezvousMgr, nullptr));
+  Status s = ret->Init(service_func, NewRpcRendezvousMgr, nullptr);
+  if (!s.ok()) {
+    LOG(ERROR) << s;
+    return s;
+  }
   *out_server = std::move(ret);
   return Status::OK();
 }
@@ -462,7 +466,11 @@ Status GrpcServer::Create(const ServerDef& server_def, Env* env,
   std::unique_ptr<GrpcServer> ret(
       new GrpcServer(server_def, env == nullptr ? Env::Default() : env));
   ServiceInitFunction service_func = nullptr;
-  TF_RETURN_IF_ERROR(ret->Init(service_func, NewRpcRendezvousMgr, nullptr));
+  Status s = ret->Init(service_func, NewRpcRendezvousMgr, nullptr);
+  if (!s.ok()) {
+    LOG(ERROR) << s;
+    return s;
+  }
   *out_server = std::move(ret);
   return Status::OK();
 }

@@ -283,6 +283,8 @@ REGISTER_OP("XlaReduceWindow")
     .Input("init_value: T")
     .Input("window_dimensions: Tindices")
     .Input("window_strides: Tindices")
+    .Input("base_dilations: Tindices")
+    .Input("window_dilations: Tindices")
     .Input("padding: Tindices")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
@@ -354,10 +356,31 @@ Wraps the XLA Sort operator, documented at
  https://www.tensorflow.org/performance/xla/operation_semantics#sort
 .
 
-Sorts a tensor. Currently only rank 1 sorts in ascending order are supported.
+Sorts a tensor. Currently only sorts in ascending order are supported.
 
 input: A `Tensor` of type T.
 output: A `Tensor` of type T.
+)doc");
+
+REGISTER_OP("XlaKeyValueSort")
+    .Input("keys: K")
+    .Input("values: V")
+    .Output("sorted_keys: K")
+    .Output("sorted_values: V")
+    .Attr("K: realnumbertype")
+    .Attr("V: type")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Wraps the XLA Sort operator, documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#sort
+.
+
+Sorts a tensor. Currently only sorts in ascending order are supported.
+
+keys: A `Tensor` of type K.
+values: A `Tensor` of type V.
+sorted_keys: A `Tensor` of type K.
+sorted_values: A `Tensor` of type V.
 )doc");
 
 // TODO(b/37549631) setting the While Op to always be stateful is too

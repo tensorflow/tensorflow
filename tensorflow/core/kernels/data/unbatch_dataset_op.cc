@@ -12,16 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class UnbatchDatasetOp : public UnaryDatasetOpKernel {
@@ -41,11 +41,16 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
         : DatasetBase(DatasetContext(ctx)), input_(input) {
       input_->Ref();
       for (const PartialTensorShape& shape : input->output_shapes()) {
-        gtl::InlinedVector<int64, 4> partial_dim_sizes;
-        for (int i = 1; i < shape.dims(); ++i) {
-          partial_dim_sizes.push_back(shape.dim_size(i));
+        if (!shape.unknown_rank()) {
+          gtl::InlinedVector<int64, 4> partial_dim_sizes;
+          for (int i = 1; i < shape.dims(); ++i) {
+            partial_dim_sizes.push_back(shape.dim_size(i));
+          }
+          shapes_.emplace_back(std::move(partial_dim_sizes));
+        } else {
+          // If the input shape is unknown, the output shape will be unknown.
+          shapes_.emplace_back();
         }
-        shapes_.emplace_back(std::move(partial_dim_sizes));
       }
     }
 
@@ -140,6 +145,20 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        // Unbatch assumes that all input components have the same leading
+        // dimension. If it is statically known for any component, we model the
+        // transformation using `KnownRatio`. Otherwise, we use `UnknownRatio`.
+        for (auto& shape : dataset()->input_->output_shapes()) {
+          if (shape.dims() > 0 && shape.dim_size(0) > 0) {
+            return model::MakeKnownRatioNode(
+                std::move(args), 1.0 / static_cast<double>(shape.dim_size(0)));
+          }
+        }
+        return model::MakeUnknownRatioNode(std::move(args));
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (input_impl_) {

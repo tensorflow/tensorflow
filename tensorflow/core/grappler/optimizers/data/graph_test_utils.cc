@@ -19,10 +19,36 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
 namespace grappler {
 namespace graph_tests_utils {
+
+NodeDef MakeFilterNode(StringPiece name, StringPiece input_node_name,
+                       StringPiece function_name) {
+  return test::function::NDef(
+      name, "FilterDataset", {string(input_node_name)},
+      {{"predicate", FunctionDefHelper::FunctionRef(string(function_name))},
+       {"Targuments", {}},
+       {"output_shapes", gtl::ArraySlice<TensorShape>{}},
+       {"output_types", gtl::ArraySlice<TensorShape>{}}});
+}
+
+NodeDef MakeMapAndBatchNode(StringPiece name, StringPiece input_node_name,
+                            StringPiece batch_size_node_name,
+                            StringPiece num_parallel_calls_node_name,
+                            StringPiece drop_remainder_node_name,
+                            StringPiece function_name) {
+  return test::function::NDef(
+      name, "MapAndBatchDatasetV2",
+      {string(input_node_name), "", string(batch_size_node_name),
+       string(num_parallel_calls_node_name), string(drop_remainder_node_name)},
+      {{"f", FunctionDefHelper::FunctionRef(string(function_name))},
+       {"Targuments", {}},
+       {"output_shapes", gtl::ArraySlice<TensorShape>{}},
+       {"output_types", gtl::ArraySlice<TensorShape>{}}});
+}
 
 NodeDef MakeMapNode(StringPiece name, StringPiece input_node_name,
                     StringPiece function_name) {
@@ -34,14 +60,51 @@ NodeDef MakeMapNode(StringPiece name, StringPiece input_node_name,
        {"output_types", gtl::ArraySlice<DataType>{}}});
 }
 
-NodeDef MakeFilterNode(StringPiece name, StringPiece input_node_name,
-                       StringPiece function_name) {
+NodeDef MakeParallelInterleaveNode(StringPiece name,
+                                   StringPiece input_node_name,
+                                   StringPiece cycle_length_node_name,
+                                   StringPiece block_length_node_name,
+                                   StringPiece num_parallel_calls_node_name,
+                                   StringPiece function_name, bool sloppy) {
   return test::function::NDef(
-      name, "FilterDataset", {string(input_node_name)},
-      {{"predicate", FunctionDefHelper::FunctionRef(string(function_name))},
-       {"Targuments", {}},
-       {"output_shapes", gtl::ArraySlice<TensorShape>{}},
-       {"output_types", gtl::ArraySlice<TensorShape>{}}});
+      name, "ParallelInterleaveDatasetV2",
+      {string(input_node_name), "", string(cycle_length_node_name),
+       string(block_length_node_name), string(num_parallel_calls_node_name)},
+      {
+          {"f", FunctionDefHelper::FunctionRef(string(function_name))},
+          {"Targuments", {}},
+          {"output_shapes", gtl::ArraySlice<TensorShape>{}},
+          {"output_types", gtl::ArraySlice<TensorShape>{}},
+          {"sloppy", sloppy},
+      });
+}
+
+NodeDef MakeParallelMapNode(StringPiece name, StringPiece input_node_name,
+                            StringPiece num_parallel_calls_node_name,
+                            StringPiece function_name, bool sloppy) {
+  return test::function::NDef(
+      name, "ParallelMapDataset",
+      {string(input_node_name), string(num_parallel_calls_node_name)},
+      {
+          {"f", FunctionDefHelper::FunctionRef(string(function_name))},
+          {"Targuments", {}},
+          {"output_shapes", gtl::ArraySlice<TensorShape>{}},
+          {"output_types", gtl::ArraySlice<DataType>{}},
+          {"sloppy", sloppy},
+      });
+}
+
+NodeDef MakeParseExampleNode(StringPiece name, StringPiece input_node_name,
+                             StringPiece num_parallel_calls_node_name,
+                             bool sloppy) {
+  return test::function::NDef(
+      name, "ParseExampleDataset",
+      {string(input_node_name), string(num_parallel_calls_node_name)},
+      {
+          {"output_shapes", gtl::ArraySlice<TensorShape>{}},
+          {"output_types", gtl::ArraySlice<DataType>{}},
+          {"sloppy", sloppy},
+      });
 }
 
 }  // end namespace graph_tests_utils

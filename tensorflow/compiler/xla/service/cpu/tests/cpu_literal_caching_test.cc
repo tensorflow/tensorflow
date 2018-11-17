@@ -63,7 +63,7 @@ CHECK-NOT: private constant [48 x i8]
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text));
+                          ParseAndReturnVerifiedModule(hlo_text));
 
   CpuAotCompilationOptions options{
       /*triple=*/"x86_64-pc-linux", /*cpu_name=*/"", /*features=*/"",
@@ -104,14 +104,14 @@ ENTRY main {
 )";
 
   string filecheck_pattern = R"(
-CHECK: private constant [4 x i8]
-CHECK: private constant [8 x i8]
+CHECK-DAG: private constant [4 x i8]
+CHECK-DAG: private constant [8 x i8]
 CHECK-NOT: private constant [4 x i8]
 CHECK-NOT: private constant [8 x i8]
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text));
+                          ParseAndReturnVerifiedModule(hlo_text));
 
   CpuAotCompilationOptions options{
       /*triple=*/"x86_64-pc-linux", /*cpu_name=*/"", /*features=*/"",

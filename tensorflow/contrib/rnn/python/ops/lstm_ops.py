@@ -19,6 +19,8 @@ from __future__ import print_function
 
 import abc
 
+import six
+
 from tensorflow.contrib.rnn.ops import gen_lstm_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import dtypes
@@ -113,7 +115,7 @@ def _lstm_block_cell(x,
     ValueError: If cell_size is None.
   """
   if wci is None:
-    cell_size = cs_prev.get_shape().with_rank(2)[1].value
+    cell_size = cs_prev.get_shape().with_rank(2).dims[1].value
     if cell_size is None:
       raise ValueError("cell_size from `cs_prev` should not be None.")
     wci = array_ops.constant(0, dtype=dtypes.float32, shape=[cell_size])
@@ -154,7 +156,7 @@ def _block_lstm(seq_len_max,
 
   Args:
     seq_len_max: A `Tensor` of type `int64`.
-    x: A list of at least 1 `Tensor` objects of the same type in: `float32`.
+    x: A list of at least 1 `Tensor` objects of the same type.
     w: A `Tensor`. Must have the same type as `x`.
     b: A `Tensor`. Must have the same type as `x`.
     cs_prev: A `Tensor`. Must have the same type as `x`.
@@ -187,21 +189,22 @@ def _block_lstm(seq_len_max,
   Raises:
     ValueError: If `b` does not have a valid shape.
   """
-  batch_size = x[0].get_shape().with_rank(2)[0].value
-  cell_size4 = b.get_shape().with_rank(1)[0].value
+  dtype = x[0].dtype
+  batch_size = x[0].get_shape().with_rank(2).dims[0].value
+  cell_size4 = b.get_shape().with_rank(1).dims[0].value
   if cell_size4 is None:
     raise ValueError("`b` shape must not be None.")
   cell_size = cell_size4 / 4
   zero_state = None
   if cs_prev is None or h_prev is None:
     zero_state = array_ops.constant(
-        0, dtype=dtypes.float32, shape=[batch_size, cell_size])
+        0, dtype=dtype, shape=[batch_size, cell_size])
   if cs_prev is None:
     cs_prev = zero_state
   if h_prev is None:
     h_prev = zero_state
   if wci is None:
-    wci = array_ops.constant(0, dtype=dtypes.float32, shape=[cell_size])
+    wci = array_ops.constant(0, dtype=dtype, shape=[cell_size])
     wcf = wci
     wco = wci
 
@@ -238,13 +241,13 @@ def _LSTMBlockCellGrad(op, *grad):
   (i, cs, f, o, ci, co, _) = op.outputs
   (_, cs_grad, _, _, _, _, h_grad) = grad
 
-  batch_size = x.get_shape().with_rank(2)[0].value
+  batch_size = x.get_shape().with_rank(2).dims[0].value
   if batch_size is None:
     batch_size = -1
-  input_size = x.get_shape().with_rank(2)[1].value
+  input_size = x.get_shape().with_rank(2).dims[1].value
   if input_size is None:
     raise ValueError("input_size from `x` should not be None.")
-  cell_size = cs_prev.get_shape().with_rank(2)[1].value
+  cell_size = cs_prev.get_shape().with_rank(2).dims[1].value
   if cell_size is None:
     raise ValueError("cell_size from `cs_prev` should not be None.")
 
@@ -346,6 +349,7 @@ class LSTMBlockCell(LayerRNNCell):
                forget_bias=1.0,
                cell_clip=None,
                use_peephole=False,
+               dtype=None,
                reuse=None,
                name="lstm_cell"):
     """Initialize the basic LSTM cell.
@@ -355,6 +359,7 @@ class LSTMBlockCell(LayerRNNCell):
       forget_bias: float, The bias added to forget gates (see above).
       cell_clip: An optional `float`. Defaults to `-1` (no clipping).
       use_peephole: Whether to use peephole connections or not.
+      dtype: the variable dtype of this layer. Default to tf.float32.
       reuse: (optional) boolean describing whether to reuse variables in an
         existing scope.  If not `True`, and the existing scope already has the
         given variables, an error is raised.
@@ -366,7 +371,7 @@ class LSTMBlockCell(LayerRNNCell):
       When restoring from CudnnLSTM-trained checkpoints, must use
       CudnnCompatibleLSTMBlockCell instead.
     """
-    super(LSTMBlockCell, self).__init__(_reuse=reuse, name=name)
+    super(LSTMBlockCell, self).__init__(_reuse=reuse, dtype=dtype, name=name)
     self._num_units = num_units
     self._forget_bias = forget_bias
     self._use_peephole = use_peephole
@@ -391,10 +396,10 @@ class LSTMBlockCell(LayerRNNCell):
     return self._num_units
 
   def build(self, inputs_shape):
-    if not inputs_shape[1].value:
+    if not inputs_shape.dims[1].value:
       raise ValueError(
           "Expecting inputs_shape[1] to be set: %s" % str(inputs_shape))
-    input_size = inputs_shape[1].value
+    input_size = inputs_shape.dims[1].value
     self._kernel = self.add_variable(
         self._names["W"], [input_size + self._num_units, self._num_units * 4])
     self._bias = self.add_variable(
@@ -417,7 +422,7 @@ class LSTMBlockCell(LayerRNNCell):
       wcf = self._w_f_diag
       wco = self._w_o_diag
     else:
-      wci = wcf = wco = array_ops.zeros([self._num_units])
+      wci = wcf = wco = array_ops.zeros([self._num_units], dtype=self.dtype)
 
     (cs_prev, h_prev) = state
     (_, cs, _, _, _, _, h) = _lstm_block_cell(
@@ -437,6 +442,7 @@ class LSTMBlockCell(LayerRNNCell):
     return h, new_state
 
 
+@six.add_metaclass(abc.ABCMeta)
 class LSTMBlockWrapper(base_layer.Layer):
   """This is a helper class that provides housekeeping for LSTM cells.
 
@@ -509,10 +515,10 @@ class LSTMBlockWrapper(base_layer.Layer):
     inputs_shape = inputs.get_shape().with_rank(3)
     if not inputs_shape[2]:
       raise ValueError("Expecting inputs_shape[2] to be set: %s" % inputs_shape)
-    batch_size = inputs_shape[1].value
+    batch_size = inputs_shape.dims[1].value
     if batch_size is None:
       batch_size = array_ops.shape(inputs)[1]
-    time_len = inputs_shape[0].value
+    time_len = inputs_shape.dims[0].value
     if time_len is None:
       time_len = array_ops.shape(inputs)[0]
 
@@ -596,23 +602,26 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
                cell_clip=None,
                use_peephole=False,
                reuse=None,
+               dtype=None,
                name="lstm_fused_cell"):
     """Initialize the LSTM cell.
 
     Args:
       num_units: int, The number of units in the LSTM cell.
       forget_bias: float, The bias added to forget gates (see above).
-      cell_clip: clip the cell to this value. Default is no cell clipping.
+      cell_clip: clip the cell to this value. Defaults is no cell clipping.
       use_peephole: Whether to use peephole connections or not.
       reuse: (optional) boolean describing whether to reuse variables in an
         existing scope.  If not `True`, and the existing scope already has the
         given variables, an error is raised.
+      dtype: the dtype of variables of this layer.
       name: String, the name of the layer. Layers with the same name will
         share weights, but to avoid mistakes we require reuse=True in such
         cases.  By default this is "lstm_cell", for variable-name compatibility
         with `tf.nn.rnn_cell.LSTMCell`.
     """
-    super(LSTMBlockFusedCell, self).__init__(_reuse=reuse, name=name)
+    super(LSTMBlockFusedCell, self).__init__(
+        _reuse=reuse, name=name, dtype=dtype)
     self._num_units = num_units
     self._forget_bias = forget_bias
     self._cell_clip = cell_clip if cell_clip is not None else -1
@@ -627,7 +636,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
     return self._num_units
 
   def build(self, input_shape):
-    input_size = input_shape[2].value
+    input_size = input_shape.dims[2].value
     self._kernel = self.add_variable(
         "kernel", [input_size + self._num_units, self._num_units * 4])
     self._bias = self.add_variable(
@@ -669,7 +678,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
     """
 
     inputs_shape = inputs.get_shape().with_rank(3)
-    time_len = inputs_shape[0].value
+    time_len = inputs_shape.dims[0].value
     if time_len is None:
       time_len = array_ops.shape(inputs)[0]
 

@@ -213,27 +213,47 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
   def _record(self, f, r):
     return compat.as_bytes(str(f * 2 + r) * self._record_bytes)
 
-  def _createFiles(self):
+  def _createFiles(self, compression_type=None):
     filenames = []
     for i in range(self._num_files):
       fn = os.path.join(self.get_temp_dir(), "fixed_length_record.%d.txt" % i)
       filenames.append(fn)
-      with open(fn, "wb") as f:
-        f.write(b"H" * self._header_bytes)
-        for j in range(self._num_records):
-          f.write(self._record(i, j))
-        f.write(b"F" * self._footer_bytes)
+
+      contents = []
+      contents.append(b"H" * self._header_bytes)
+      for j in range(self._num_records):
+        contents.append(self._record(i, j))
+      contents.append(b"F" * self._footer_bytes)
+      contents = b"".join(contents)
+
+      if not compression_type:
+        with open(fn, "wb") as f:
+          f.write(contents)
+      elif compression_type == "GZIP":
+        with gzip.GzipFile(fn, "wb") as f:
+          f.write(contents)
+      elif compression_type == "ZLIB":
+        contents = zlib.compress(contents)
+        with open(fn, "wb") as f:
+          f.write(contents)
+      else:
+        raise ValueError("Unsupported compression_type", compression_type)
+
     return filenames
 
-  def testFixedLengthRecordDataset(self):
-    test_filenames = self._createFiles()
+  def _testFixedLengthRecordDataset(self, compression_type=None):
+    test_filenames = self._createFiles(compression_type=compression_type)
     filenames = array_ops.placeholder(dtypes.string, shape=[None])
     num_epochs = array_ops.placeholder(dtypes.int64, shape=[])
     batch_size = array_ops.placeholder(dtypes.int64, shape=[])
 
-    repeat_dataset = (readers.FixedLengthRecordDataset(
-        filenames, self._record_bytes, self._header_bytes, self._footer_bytes)
-                      .repeat(num_epochs))
+    repeat_dataset = (
+        readers.FixedLengthRecordDataset(
+            filenames,
+            self._record_bytes,
+            self._header_bytes,
+            self._footer_bytes,
+            compression_type=compression_type).repeat(num_epochs))
     batch_dataset = repeat_dataset.batch(batch_size)
 
     iterator = iterator_ops.Iterator.from_structure(batch_dataset.output_types)
@@ -292,6 +312,15 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
               sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+  def testFixedLengthRecordDatasetNoCompression(self):
+    self._testFixedLengthRecordDataset()
+
+  def testFixedLengthRecordDatasetGzipCompression(self):
+    self._testFixedLengthRecordDataset(compression_type="GZIP")
+
+  def testFixedLengthRecordDatasetZlibCompression(self):
+    self._testFixedLengthRecordDataset(compression_type="ZLIB")
 
   def testFixedLengthRecordDatasetBuffering(self):
     test_filenames = self._createFiles()

@@ -72,67 +72,115 @@ class DatasetOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     return interleave_fn
 
   @parameterized.named_parameters(
-      ("FixedLengthRecord", readers.FixedLengthRecordDataset("", 42)),
+      ("FixedLengthRecord",
+       lambda: readers.FixedLengthRecordDataset("", 42)),
       ("FromGenerator",
-       dataset_ops.Dataset.from_generator(make_gen.__func__(), dtypes.int32),
+       lambda: dataset_ops.Dataset.from_generator(
+           DatasetOpsTest.make_gen(), dtypes.int32),
        1),
-      ("FromSparseTensorSlices",
-       dataset_ops.Dataset.from_sparse_tensor_slices(
-           sparse_tensor.SparseTensor(
-               indices=np.array([[0, 0], [1, 0], [2, 0]]),
-               values=np.array([0, 0, 0]),
-               dense_shape=np.array([3, 1])))),
-      ("FromTensors", dataset_ops.Dataset.from_tensors([42])),
-      ("FromTensorSlices", dataset_ops.Dataset.from_tensors([42])),
-      ("Range", dataset_ops.Dataset.range(10)),
-      ("TextLine", readers.TextLineDataset("")),
-      ("TFRecord", readers.TFRecordDataset(""), 1),
+      ("FromTensors", lambda: dataset_ops.Dataset.from_tensors([42])),
+      ("FromTensorSlices", lambda: dataset_ops.Dataset.from_tensors([42])),
+      ("Range", lambda: dataset_ops.Dataset.range(10)),
+      ("TextLine", lambda: readers.TextLineDataset("")),
+      ("TFRecord", lambda: readers.TFRecordDataset(""), 1),
   )
-  def testDatasetSourceInputs(self, dataset, num_inputs=0):
-    self.assertEqual(num_inputs, len(dataset._inputs()))
+  def testDatasetSimpleSourceInputs(self, dataset_fn, num_inputs=0):
+    self.assertEqual(num_inputs, len(dataset_fn()._inputs()))
+
+  def testDatasetComplexSourceInputs(self):
+    dataset_fn = dataset_ops.Dataset.from_sparse_tensor_slices(
+        sparse_tensor.SparseTensor(
+            indices=np.array([[0, 0], [1, 0], [2, 0]]),
+            values=np.array([0, 0, 0]),
+            dense_shape=np.array([3, 1])))
+    self.assertEqual(0, len(dataset_fn._inputs()))
 
   @parameterized.named_parameters(
-      ("Apply", make_apply_fn.__func__(dataset_ops.Dataset.range(0)),
-       dataset_ops.Dataset.range(0)),
-      ("Batch", lambda x: x.batch(10), dataset_ops.Dataset.range(0)),
-      ("Cache", lambda x: x.cache(), dataset_ops.Dataset.range(0)),
-      ("Filter", lambda x: x.filter(lambda x: True),
-       dataset_ops.Dataset.range(0)),
-      ("FlatMap", lambda x: x.flat_map(lambda x: dataset_ops.Dataset.range(0)),
-       dataset_ops.Dataset.range(0)),
-      ("Interleave", make_interleave_fn.__func__(dataset_ops.Dataset.range(0)),
-       dataset_ops.Dataset.range(0)),
-      ("Map", lambda x: x.map(lambda x: x), dataset_ops.Dataset.range(0)),
-      ("PaddedBatch", lambda x: x.padded_batch(10, []),
-       dataset_ops.Dataset.range(0)),
-      ("ParallelInterleave",
-       make_interleave_fn.__func__(dataset_ops.Dataset.range(0), 2),
-       dataset_ops.Dataset.range(0)),
-      ("ParallelMap", lambda x: x.map(lambda x: x, num_parallel_calls=2),
-       dataset_ops.Dataset.range(0)),
-      ("Repeat", lambda x: x.repeat(), dataset_ops.Dataset.range(0)),
-      ("Shuffle", lambda x: x.shuffle(10), dataset_ops.Dataset.range(0)),
-      ("Skip", lambda x: x.skip(1), dataset_ops.Dataset.range(0)),
-      ("Take", lambda x: x.take(1), dataset_ops.Dataset.range(0)),
-      ("Window", lambda x: x.window(10), dataset_ops.Dataset.range(0)),
+      ("Batch",
+       lambda x: x.batch(10),
+       lambda: dataset_ops.Dataset.range(0)),
+      ("Cache",
+       lambda x: x.cache(),
+       lambda: dataset_ops.Dataset.range(0)),
+      ("Filter",
+       lambda x: x.filter(lambda x: True),
+       lambda: dataset_ops.Dataset.range(0)),
+      ("FlatMap",
+       lambda x: x.flat_map(lambda x: dataset_ops.Dataset.range(0)),
+       lambda: dataset_ops.Dataset.range(0)),
+      ("Map",
+       lambda x: x.map(lambda x: x),
+       lambda: dataset_ops.Dataset.range(0)),
+      ("PaddedBatch",
+       lambda x: x.padded_batch(10, []),
+       lambda: dataset_ops.Dataset.range(0)),
+      ("ParallelMap",
+       lambda x: x.map(lambda x: x, num_parallel_calls=2),
+       lambda: dataset_ops.Dataset.range(0)),
+      ("Repeat",
+       lambda x: x.repeat(),
+       lambda: dataset_ops.Dataset.range(0)),
+      ("Shuffle",
+       lambda x: x.shuffle(10),
+       lambda: dataset_ops.Dataset.range(0)),
+      ("Skip",
+       lambda x: x.skip(1),
+       lambda: dataset_ops.Dataset.range(0)),
+      ("Take",
+       lambda x: x.take(1),
+       lambda: dataset_ops.Dataset.range(0)),
+      ("Window",
+       lambda x: x.window(10),
+       lambda: dataset_ops.Dataset.range(0)),
   )
-  def testUnaryTransformationInputs(self, dataset_fn, input_dataset):
+  def testUnaryTransformationInputs(self, dataset_fn, input_dataset_fn):
+    input_dataset = input_dataset_fn()
+    self.assertEqual([input_dataset], dataset_fn(input_dataset)._inputs())
+
+  def testUnaryTransformationInputsApply(self):
+    input_dataset = dataset_ops.Dataset.range(0)
+    dataset_fn = self.make_apply_fn(dataset_ops.Dataset.range(0))
+    self.assertEqual([input_dataset], dataset_fn(input_dataset)._inputs())
+
+  @parameterized.named_parameters(
+      ("ParallelInterleave",
+       [lambda: dataset_ops.Dataset.range(0), 2],
+       lambda: dataset_ops.Dataset.range(0)),
+      ("Interleave",
+       [lambda: dataset_ops.Dataset.range(0), None],
+       lambda: dataset_ops.Dataset.range(0)),
+  )
+  def testUnaryTransformationInputsWithInterleaveFn(
+      self, interleave_fn_args, input_dataset_fn):
+    input_dataset = input_dataset_fn()
+    dataset_fn = self.make_interleave_fn(*interleave_fn_args)
     self.assertEqual([input_dataset], dataset_fn(input_dataset)._inputs())
 
   @parameterized.named_parameters(
       ("Concatenate", lambda x, y: x.concatenate(y),
-       dataset_ops.Dataset.range(0), dataset_ops.Dataset.range(1)))
-  def testBinaryTransformationInputs(self, dataset_fn, input1, input2):
+       lambda: dataset_ops.Dataset.range(0),
+       lambda: dataset_ops.Dataset.range(1)))
+  def testBinaryTransformationInputs(self, dataset_fn, input1_fn, input2_fn):
+    input1 = input1_fn()
+    input2 = input2_fn()
     self.assertEqual([input1, input2], dataset_fn(input1, input2)._inputs())
 
   @parameterized.named_parameters(
-      ("ZipOne", dataset_ops.Dataset.zip, (dataset_ops.Dataset.range(0))),
-      ("ZipNest", dataset_ops.Dataset.zip,
-       (dataset_ops.Dataset.range(0),
-        (dataset_ops.Dataset.range(1), dataset_ops.Dataset.range(2)))),
-      ("ZipTuple", dataset_ops.Dataset.zip,
-       (dataset_ops.Dataset.range(0), dataset_ops.Dataset.range(1))))
-  def testVariadicTransformationInputs(self, dataset_fn, input_datasets):
+      ("ZipOne",
+       dataset_ops.Dataset.zip,
+       lambda: (dataset_ops.Dataset.range(0))),
+      ("ZipNest",
+       dataset_ops.Dataset.zip,
+       lambda: (dataset_ops.Dataset.range(0),
+                (dataset_ops.Dataset.range(1),
+                 dataset_ops.Dataset.range(2)))),
+      ("ZipTuple",
+       dataset_ops.Dataset.zip,
+       lambda: (dataset_ops.Dataset.range(0),
+                dataset_ops.Dataset.range(1))),
+  )
+  def testVariadicTransformationInputs(self, dataset_fn, input_datasets_fn):
+    input_datasets = input_datasets_fn()
     self.assertEqual(
         nest.flatten(input_datasets),
         dataset_fn(input_datasets)._inputs())
@@ -178,7 +226,8 @@ class DatasetOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     ds = dataset_ops.Dataset.range(0).with_options(options1).with_options(
         options2)
     self.assertTrue(ds.options().experimental_autotune)
-    self.assertFalse(ds.options().experimental_filter_fusion)
+    # Explicitly check that flag is False since assertFalse allows None
+    self.assertIs(ds.options().experimental_filter_fusion, False)
 
   def testOptionsTwiceDifferentError(self):
     options1 = dataset_ops.Options()
@@ -188,6 +237,17 @@ class DatasetOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError,
                                  "Cannot merge incompatible values of option"):
       dataset_ops.Dataset.range(0).with_options(options1).with_options(options2)
+
+  def testOptionsMergeOptionsFromMultipleInputs(self):
+    options1 = dataset_ops.Options()
+    options1.experimental_autotune = True
+    options2 = dataset_ops.Options()
+    options2.experimental_filter_fusion = True
+    ds = dataset_ops.Dataset.zip(
+        (dataset_ops.Dataset.range(0).with_options(options1),
+         dataset_ops.Dataset.range(0).with_options(options2)))
+    self.assertTrue(ds.options().experimental_autotune)
+    self.assertTrue(ds.options().experimental_filter_fusion)
 
 
 if __name__ == "__main__":

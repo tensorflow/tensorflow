@@ -22,7 +22,6 @@ import collections
 import copy
 
 from tensorflow.contrib import learn
-from tensorflow.contrib import stateless
 from tensorflow.contrib.boosted_trees.lib.learner.batch import categorical_split_handler
 from tensorflow.contrib.boosted_trees.lib.learner.batch import ordinal_split_handler
 from tensorflow.contrib.boosted_trees.proto import learner_pb2
@@ -44,6 +43,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import stateless_random_ops as stateless
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
@@ -386,9 +386,20 @@ class GradientBoostedDecisionTreeModel(object):
         learner_pb2.LearnerConfig.GROWING_MODE_UNSPECIFIED):
       learner_config.growing_mode = learner_pb2.LearnerConfig.LAYER_BY_LAYER
 
+    if (learner_config.weak_learner_type == learner_pb2.LearnerConfig
+        .OBLIVIOUS_DECISION_TREE and learner_config.pruning_mode == learner_pb2
+        .LearnerConfig.PRUNING_MODE_UNSPECIFIED):
+      learner_config.pruning_mode = learner_pb2.LearnerConfig.PRE_PRUNE
+
     if (learner_config.pruning_mode ==
         learner_pb2.LearnerConfig.PRUNING_MODE_UNSPECIFIED):
       learner_config.pruning_mode = learner_pb2.LearnerConfig.POST_PRUNE
+
+    if (learner_config.weak_learner_type == learner_pb2.LearnerConfig
+        .OBLIVIOUS_DECISION_TREE and
+        learner_config.pruning_mode == learner_pb2.LearnerConfig.POST_PRUNE):
+      raise ValueError(
+          "Post pruning is not implmented for oblivious decision trees.")
 
     if learner_config.constraints.max_tree_depth == 0:
       # Use 6 as the default maximum depth.
@@ -418,6 +429,11 @@ class GradientBoostedDecisionTreeModel(object):
      sparse_float_shapes, sparse_int_indices,
      sparse_int_values, sparse_int_shapes) = extract_features(
          features, self._feature_columns, use_core_columns)
+    if (learner_config.weak_learner_type == learner_pb2.LearnerConfig
+        .OBLIVIOUS_DECISION_TREE and sparse_float_indices):
+      raise ValueError("Oblivious trees don't handle sparse float features yet."
+                      )
+
     logging.info("Active Feature Columns: " + str(fc_names))
     logging.info("Learner config: " + str(learner_config))
     self._fc_names = fc_names
@@ -976,7 +992,7 @@ class GradientBoostedDecisionTreeModel(object):
 
         # Get accumulated steps and examples for the current layer.
         _, _, _, _, acc_examples, acc_steps = (
-            steps_accumulator.serialize())
+            steps_accumulator.saveable.serialize())
         acc_examples = math_ops.cast(acc_examples[0], dtypes.int64)
         acc_steps = math_ops.cast(acc_steps[0], dtypes.int64)
         ensemble_update_ops.append(
@@ -1241,13 +1257,12 @@ class GradientBoostedDecisionTreeModel(object):
   def _get_replica_device_setter(self, worker_device):
     """Creates a replica device setter."""
     ps_tasks = self._num_ps_replicas
-    ps_ops = [
-        "Variable",
-        "VariableV2",
+    ps_ops = list(device_setter.STANDARD_PS_OPS)
+    ps_ops.extend([
         "DecisionTreeEnsembleResourceHandleOp",
         "StatsAccumulatorScalarResourceHandleOp",
         "StatsAccumulatorTensorResourceHandleOp",
-    ]
+    ])
     ps_strategy = _OpRoundRobinStrategy(ps_ops, ps_tasks)
     return device_setter.replica_device_setter(
         worker_device=worker_device,

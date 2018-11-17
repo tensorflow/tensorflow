@@ -930,7 +930,7 @@ class ImportGraphDefTest(test.TestCase):
           name="",
           return_elements=["id:0"])
       with self.cached_session():
-        self.assertEqual(5.0, t.eval())
+        self.assertEqual(5.0, self.evaluate(t))
 
   def testInvalidInputForReturnOperations(self):
     with ops.Graph().as_default():
@@ -1071,7 +1071,7 @@ class ImportGraphDefTest(test.TestCase):
       tensor_input = np.ones(input_shape, dtype=np.float32)
       t = constant_op.constant(tensor_input, shape=input_shape)
       g = array_ops.identity(t)
-      g.eval()
+      self.evaluate(g)
 
   def testVersion(self):
     v0 = versions.GRAPH_DEF_VERSION_MIN_CONSUMER
@@ -1255,7 +1255,7 @@ class ImportGraphDefTest(test.TestCase):
     z = TestFunc()
 
     with self.cached_session():
-      z_val = z.eval()
+      z_val = self.evaluate(z)
       self.assertEqual(z_val, -2.0)
 
   def testImportGraphWithFunctionTwice(self):

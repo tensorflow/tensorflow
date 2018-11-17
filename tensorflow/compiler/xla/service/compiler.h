@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/hlo_module_group.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -135,20 +136,33 @@ class Compiler {
       std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
       DeviceMemoryAllocator* device_allocator) = 0;
 
+  // Optimizes a HLO module group, a set of module which runs concurrently on
+  // multiple devices potentially communicating data between the modules.
+  virtual Status RunHloPassesOnModuleGroup(
+      HloModuleGroup* module_group,
+      absl::Span<se::StreamExecutor* const> executors,
+      DeviceMemoryAllocator* device_allocator) = 0;
+
   // Compiles the HLO module for execution on a device given by the executor,
   // and returns an executable object or an error status. No HLO passes are
   // applied to module. Generally a module should be passed through RunHloPasses
   // prior to calling this method because some HLO passes are required for
-  // correctness. Takes ownership of the HLO module and is free to transform it.
+  // correctness. Takes ownership of the HLO module.
   //
   // The compiler may optionally specialize to the individual device
   // (not just type of device) indicated by the executor.
   //
   // device_allocator is optional; see RunHloPasses.
-  //
-  // Use the overload below to compile computations that run in parallel.
   virtual StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
+      DeviceMemoryAllocator* device_allocator) = 0;
+
+  // Compiles a set of HLO modules that can run in parallel, potentially
+  // communicating data between the modules.
+  virtual StatusOr<std::vector<std::unique_ptr<Executable>>>
+  RunBackendOnModuleGroup(
+      std::unique_ptr<HloModuleGroup> module_group,
+      std::vector<std::vector<se::StreamExecutor*>> stream_exec,
       DeviceMemoryAllocator* device_allocator) = 0;
 
   // Compiles a set of HLO modules that can run in parallel, potentially
@@ -160,7 +174,7 @@ class Compiler {
   // TODO(b/68666782): Remove this method after adding support for multiple
   // modules to RunHloPasses and RunBackends.
   virtual StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::vector<std::unique_ptr<HloModule>> modules,
+      std::unique_ptr<HloModuleGroup> module_group,
       std::vector<std::vector<se::StreamExecutor*>> stream_exec,
       DeviceMemoryAllocator* device_allocator) = 0;
 
@@ -184,16 +198,16 @@ class Compiler {
   ComputeDefaultBackendConfig(const HloInstruction& hlo,
                               se::StreamExecutor* executor) const;
 
-  // Compiles the HLO module for ahead-of-time execution.  This is intended for
-  // use in static compilation.
+  // Compiles the HLO module group for ahead-of-time execution.  This is
+  // intended for use in static compilation.
   virtual StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
+  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                      const AotCompilationOptions& options) = 0;
 
   // Similar to CompileAheadOfTime above but AotCompilationMetadata
   // has an argument that can be populated during compilation.
   virtual StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
+  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                      const AotCompilationOptions& options,
                      std::unique_ptr<AotCompilationMetadata>* metadata);
 

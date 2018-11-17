@@ -48,7 +48,7 @@ class BetaincTest(test.TestCase):
       tf_x_s = constant_op.constant(x_s, dtype=dtype)
       tf_out_t = math_ops.betainc(tf_a_s, tf_b_s, tf_x_s)
       with self.cached_session():
-        tf_out = tf_out_t.eval()
+        tf_out = self.evaluate(tf_out_t)
       scipy_out = special.betainc(a_s, b_s, x_s).astype(np_dt)
 
       # the scipy version of betainc uses a double-only implementation.

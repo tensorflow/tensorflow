@@ -99,6 +99,9 @@ class QN(object):
   def is_symbol(self):
     return isinstance(self.qn[0], str)
 
+  def is_simple(self):
+    return len(self.qn) <= 1
+
   def is_composite(self):
     return len(self.qn) > 1
 

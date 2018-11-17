@@ -142,7 +142,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       v = resource_variable_ops.ResourceVariable(1.0)
     ops.reset_default_graph()
     v.assign(2.0)  # Note: this fails if we run convert_to_tensor on not the
-                   # variable graph.
+    # variable graph.
 
   def testFetchHandle(self):
     with self.cached_session():
@@ -736,7 +736,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
           # Needed in Eager since we get a unique container name by default.
           container=ops.get_default_graph()._container)
       w_read = resource_variable_ops.read_variable_op(w, v.dtype.base_dtype)
-      self.assertEqual(300.0, w_read.eval())
+      self.assertEqual(300.0, self.evaluate(w_read))
 
       x = resource_variable_ops.var_handle_op(
           dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var5",
@@ -907,6 +907,24 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     # eager execution (where the error is realized during kernel execution).
     with self.assertRaisesRegexp(Exception, r"shape.*2.*3"):
       state_ops.scatter_update(v, [0, 1], [0, 1, 2])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAssignIncompatibleShape(self):
+    v = resource_variable_ops.ResourceVariable([0, 1, 2, 3])
+    self.evaluate(v.initializer)
+    with self.assertRaisesRegexp(Exception, r"hapes must be equal"):
+      self.assertAllEqual(self.evaluate(v.assign_add(1)), [1, 2, 3, 4])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCopyToGraphUninitialized(self):
+    v = resource_variable_ops.ResourceVariable([0, 1, 2, 3])
+    copy_to_graph = ops.Graph()
+    with copy_to_graph.as_default():  # Intentionally testing v1 behavior
+      copied = resource_variable_ops.copy_to_graph_uninitialized(v)
+      self.assertEqual(v.name, copied.name)
+      with self.session(copy_to_graph) as session:
+        with self.assertRaises(errors.InvalidArgumentError):
+          session.run(copied.initializer)
 
 
 class _MixedPrecisionVariableTest(test_util.TensorFlowTestCase):

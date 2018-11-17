@@ -106,12 +106,13 @@ class ProximalAdagradOptimizerTest(test.TestCase):
         sgd_op = proximal_adagrad.ProximalAdagradOptimizer(1.0).minimize(loss)
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
+        self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
         # Run 1 step of sgd
         sgd_op.run()
         # Validate updated params
-        self.assertAllCloseAccordingToType(
-            [[0, 1]], var0.eval(), atol=0.01)
+        self.assertAllCloseAccordingToType([[0, 1]],
+                                           self.evaluate(var0),
+                                           atol=0.01)
 
   def testProximalAdagradWithL1(self):
     with self.cached_session() as sess:

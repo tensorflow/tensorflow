@@ -72,7 +72,6 @@ py_library(
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:random_ops",
-        "//tensorflow/python:spectral_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
@@ -80,6 +79,7 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/signal",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -299,7 +299,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "mvn_diag_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/mvn_diag_test.py"],
     additional_deps = [
         ":distributions_py",

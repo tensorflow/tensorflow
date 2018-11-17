@@ -195,13 +195,15 @@ class ListScheduler {
     return entry;
   }
 
-  // Returns the number of bytes freed if the HLO instruction is scheduled.
-  // If the instruction calls subcomputations, we count the memory used by the
-  // subcomputations as memory "defined" by the instruction. This is not
-  // entirely accurate, because subcomputation memory will be freed after the
-  // instruction finishes. But it is more accurate than not taking
-  // subcomputations into account at all. In the future, we may improve
-  // accounting for subcomputation memory (b/65409243).
+  // Returns the number of bytes freed *after* the HLO instruction finishes.
+  // The current List algorithm only considers two states for an instruction:
+  // right before it runs, and after it finishes. We don't represent memory
+  // usage during the execution of an instruction. But if the instruction calls
+  // subcomputations, they are only live during the instruction's execution.
+  // We end up counting the memory used by subcomputations as memory "defined"
+  // by the instruction. This is not entirely accurate, but it is more accurate
+  // than not taking subcomputations into account at all. In the future, we may
+  // improve accounting for subcomputation memory (b/65409243).
   int64 BytesFreedIfScheduled(const ReadyListEntry& entry) {
     int64 freed_bytes = 0;
     for (const auto& kv : entry.used_buffer_unscheduled_use_counts) {
@@ -223,7 +225,18 @@ class ListScheduler {
         }
       }
     }
-    return freed_bytes - entry.bytes_defined - max_subcomputation_bytes;
+    int64 bytes_defined;
+    if (max_subcomputation_bytes > 0 &&
+        (entry.instruction->opcode() == HloOpcode::kWhile ||
+         entry.instruction->opcode() == HloOpcode::kCall ||
+         entry.instruction->opcode() == HloOpcode::kConditional)) {
+      // The output buffer of while/call/conditional is always aliased with the
+      // output buffer of the root instruction in the body. Don't double count.
+      bytes_defined = max_subcomputation_bytes;
+    } else {
+      bytes_defined = entry.bytes_defined + max_subcomputation_bytes;
+    }
+    return freed_bytes - bytes_defined;
   }
 
   // Constructs the scheduling priority of the given instruction.
@@ -263,9 +276,8 @@ class ListScheduler {
     };
 
     for (auto* instruction : computation_.instructions()) {
-      // Instruction with no operands or control predecessors will
-      // not be in the map.
-      if (unscheduled_pred_count.count(instruction) == 0) {
+      if (instruction->operands().empty() &&
+          instruction->control_predecessors().empty()) {
         add_to_ready_queue(instruction);
       }
     }
@@ -356,9 +368,8 @@ class ListScheduler {
       buffer_uses_;
 
   // A map containing the count of unscheduled HLOs which using a particular
-  // LogicalBuffer.  We rely on iterator stability in this map, and that the map
-  // entries are std::pair's.
-  std::unordered_map<const LogicalBuffer*, int64> unscheduled_use_count_;
+  // LogicalBuffer.
+  absl::flat_hash_map<const LogicalBuffer*, int64> unscheduled_use_count_;
 
   // Set of instructions which have been scheduled.
   absl::flat_hash_set<const HloInstruction*> scheduled_instructions_;
@@ -590,6 +601,23 @@ HloMemoryScheduler::HloMemoryScheduler(
 StatusOr<bool> HloMemoryScheduler::Run(HloModule* module) {
   TF_ASSIGN_OR_RETURN(HloSchedule schedule,
                       ScheduleModule(*module, size_function_, algorithm_));
+  TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
+  return true;
+}
+
+StatusOr<bool> HloTrivialScheduler::Run(HloModule* module) {
+  HloSchedule schedule(module);
+  for (HloComputation* computation : module->MakeComputationPostOrder()) {
+    if (!computation->IsFusionComputation()) {
+      HloInstructionSequence& computation_sequence =
+          schedule.GetOrCreateSequence(computation);
+      TF_RETURN_IF_ERROR(computation->Accept(
+          [&computation_sequence](HloInstruction* instruction) {
+            computation_sequence.push_back(instruction);
+            return Status::OK();
+          }));
+    }
+  }
   TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
   return true;
 }

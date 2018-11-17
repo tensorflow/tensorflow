@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import numerics
 from tensorflow.python.platform import test
@@ -29,7 +30,7 @@ class ClipOpsTest(test.TestCase):
   def __init__(self, method_name="runTest"):
     super(ClipOpsTest, self).__init__(method_name)
 
-  def _testClipByNorm(self, inputs, max_norm, expected):
+  def _testClipTensorByNorm(self, inputs, max_norm, expected):
     with self.cached_session() as sess:
       input_op = constant_op.constant(inputs)
       clipped = clip_ops.clip_by_norm(input_op, max_norm)
@@ -37,13 +38,61 @@ class ClipOpsTest(test.TestCase):
       result, _ = sess.run([clipped, check_op])
     self.assertAllClose(result, expected)
 
-  def testClipByNorm(self):
+  def _testClipIndexedSlicesByNorm(self, values, indices, shape, max_norm,
+                                   axes):
+    with self.cached_session() as sess:
+      values = constant_op.constant(values)
+      indices = constant_op.constant(indices)
+      shape = constant_op.constant(shape)
+      # IndexedSlices mode
+      indixed_slices = ops.IndexedSlices(values, indices, shape)
+      clipped = clip_ops.clip_by_norm(indixed_slices, max_norm, axes)
+      # clipped should be IndexedSlices
+      self.assertIsInstance(clipped, ops.IndexedSlices)
+      clipped = ops.convert_to_tensor(clipped)
+
+      # Tensor mode
+      dense_tensor = ops.convert_to_tensor(indixed_slices)
+      dense_clipped = clip_ops.clip_by_norm(dense_tensor, max_norm, axes)
+      result, expected = sess.run([clipped, dense_clipped])
+    self.assertAllClose(result, expected)
+
+  def testClipTensorByNorm(self):
     # Simple example
-    self._testClipByNorm([[-3.0, 0.0, 0.0], [4.0, 0.0, 0.0]], 4.0,
-                         [[-2.4, 0.0, 0.0], [3.2, 0.0, 0.0]])
+    self._testClipTensorByNorm([[-3.0, 0.0, 0.0], [4.0, 0.0, 0.0]], 4.0,
+                               [[-2.4, 0.0, 0.0], [3.2, 0.0, 0.0]])
     # Zero norm
-    self._testClipByNorm([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], 4.0,
-                         [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
+    self._testClipTensorByNorm([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], 4.0,
+                               [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
+
+  def testClipIndexedSlicesByNorm(self):
+    values = [[[-3.0, 0.0, 0.0], [4.0, 0.0, 0.0]],
+              [[0.0, 2.0, 0.0], [0.0, 0.0, -1.0]]]
+    indices = [2, 6]
+    shape = [10, 2, 3]
+    # Axes == None
+    self._testClipIndexedSlicesByNorm(values, indices, shape, 4.0, None)
+
+    # Axes == 0
+    self._testClipIndexedSlicesByNorm(values, indices, shape, 4.0, 0)
+
+    # Axes == 1
+    self._testClipIndexedSlicesByNorm(values, indices, shape, 4.0, 1)
+
+    # Axes == 2
+    self._testClipIndexedSlicesByNorm(values, indices, shape, 4.0, 1)
+
+    # Axes == [0, 1]
+    self._testClipIndexedSlicesByNorm(values, indices, shape, 4.0, [0, 1])
+
+    # Axes == [0, 1]
+    self._testClipIndexedSlicesByNorm(values, indices, shape, 4.0, [0, 2])
+
+    # Axes == [0, 1]
+    self._testClipIndexedSlicesByNorm(values, indices, shape, 4.0, [1, 2])
+
+    # Axes == [0, 1]
+    self._testClipIndexedSlicesByNorm(values, indices, shape, 4.0, [0, 1, 2])
 
 
 if __name__ == "__main__":

@@ -223,6 +223,7 @@ REGISTER_OP("Substr")
     .Input("len: T")
     .Output("output: string")
     .Attr("T: {int32, int64}")
+    .Attr("unit: {'BYTE', 'UTF8_CHAR'} = 'BYTE'")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle pos_shape = c->input(1);
       ShapeHandle len_shape = c->input(2);
@@ -248,5 +249,38 @@ REGISTER_OP("UnicodeScript")
     .Input("input: int32")
     .Output("output: int32")
     .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("UnicodeTranscode")
+    .Input("input: string")
+    .Output("output: string")
+    .Attr("input_encoding: string")
+    .Attr("output_encoding: {'UTF-8', 'UTF-16-BE', 'UTF-32-BE'}")
+    .Attr("errors: {'strict', 'replace', 'ignore'} = 'replace'")
+    .Attr("replacement_char: int = 65533")  // 0xFFFD unicode replacement char
+    .Attr("replace_control_characters: bool = false")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("UnicodeDecodeWithOffsets")
+    .Input("input: string")
+    .Output("row_splits: int64")
+    .Output("char_values: int32")
+    .Output("char_to_byte_starts: int64")
+    .Attr("input_encoding: string")
+    .Attr("errors: {'strict', 'replace', 'ignore'} = 'replace'")
+    .Attr("replacement_char: int = 65533")  // 0xFFFD unicode replacement char
+    .Attr("replace_control_characters: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      // row_splits.shape == [input.size() + 1]
+      DimensionHandle num_row_splits;
+      DimensionHandle input_size = c->NumElements(c->input(0));
+      TF_RETURN_IF_ERROR(c->Add(input_size, 1, &num_row_splits));
+      c->set_output(0, c->Vector(num_row_splits));
+
+      // char_values.shape == offset_values.shape == [num_chars]
+      DimensionHandle num_chars = c->UnknownDim();
+      c->set_output(1, c->Vector(num_chars));
+      c->set_output(2, c->Vector(num_chars));
+      return Status::OK();
+    });
 
 }  // namespace tensorflow

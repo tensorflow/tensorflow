@@ -1,17 +1,5 @@
 path: "tensorflow.gfile"
 tf_module {
-  member {
-    name: "FastGFile"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "GFile"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "Open"
-    mtype: "<type \'type\'>"
-  }
   member_method {
     name: "Copy"
     argspec: "args=[\'oldpath\', \'newpath\', \'overwrite\'], varargs=None, keywords=None, defaults=[\'False\'], "
@@ -19,10 +7,6 @@ tf_module {
   member_method {
     name: "DeleteRecursively"
     argspec: "args=[\'dirname\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "Exists"
-    argspec: "args=[\'filename\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "Glob"

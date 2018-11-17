@@ -65,7 +65,7 @@ class CTCLossTest(test.TestCase):
 
     inputs_t = constant_op.constant(inputs)
 
-    with self.test_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=False) as sess:
       loss = ctc_ops.ctc_loss(
           inputs=inputs_t, labels=labels, sequence_length=seq_lens)
       grad = gradients_impl.gradients(loss, [inputs_t])[0]
@@ -233,7 +233,7 @@ class CTCLossTest(test.TestCase):
     # Transposing tensor to [batch_size x max_time x depth tensor]
     inputs_t_transposed = constant_op.constant(inputs.transpose(1, 0, 2))
 
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       loss = ctc_ops.ctc_loss(
           inputs=inputs_t, labels=labels, sequence_length=seq_lens)
       loss_transposed = ctc_ops.ctc_loss(
@@ -252,7 +252,7 @@ class CTCLossTest(test.TestCase):
     seq_lens = np.array([2, 2], dtype=np.int32)
     v = [1.0]
 
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       loss = ctc_ops.ctc_loss(
           inputs=inputs_t, labels=labels, sequence_length=seq_lens)
       # Taking ths second gradient should fail, since it is not
@@ -269,7 +269,7 @@ class CTCLossTest(test.TestCase):
         values=constant_op.constant([], shape=(0,), dtype=dtypes.int32),
         dense_shape=[5, 5])
 
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "batch_size must not be 0"):
         sess.run(ctc_ops.ctc_loss(labels, inputs, sequence_lengths))

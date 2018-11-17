@@ -51,7 +51,9 @@ def random_batch(batch_size):
 class ResNet50GraphTest(tf.test.TestCase):
 
   def testApply(self):
-    batch_size = 64
+    # Use small batches for tests because the OSS version runs
+    # in constrained GPU environment with 1-2GB of memory.
+    batch_size = 8
     with tf.Graph().as_default():
       images = tf.placeholder(tf.float32, image_shape(None))
       model = resnet50.ResNet50(data_format())
@@ -63,7 +65,7 @@ class ResNet50GraphTest(tf.test.TestCase):
         sess.run(init)
         np_images, _ = random_batch(batch_size)
         out = sess.run(predictions, feed_dict={images: np_images})
-        self.assertAllEqual([64, 1000], out.shape)
+        self.assertAllEqual([batch_size, 1000], out.shape)
 
   def testTrainWithSummary(self):
     with tf.Graph().as_default():
@@ -87,7 +89,9 @@ class ResNet50GraphTest(tf.test.TestCase):
       init = tf.global_variables_initializer()
       self.assertEqual(321, len(tf.global_variables()))
 
-      batch_size = 32
+      # Use small batches for tests because the OSS version runs
+      # in constrained GPU environment with 1-2GB of memory.
+      batch_size = 2
       with tf.Session() as sess:
         sess.run(init)
         sess.run(tf.contrib.summary.summary_writer_initializer_op())

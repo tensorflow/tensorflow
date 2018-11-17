@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/cc/ops/control_flow_ops.h"
+#include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/math_ops.h"
 
 namespace tensorflow {
@@ -27,12 +29,14 @@ namespace {
 using ::testing::_;
 
 using testing::matchers::AssignedDevice;
+using testing::matchers::Attr;
 using testing::matchers::ConstantValue;
 using testing::matchers::CtrlDeps;
 using testing::matchers::Inputs;
 using testing::matchers::Name;
 using testing::matchers::NodeWith;
 using testing::matchers::Op;
+using testing::matchers::Out;
 
 template <typename M, typename T>
 string Explain(const T& t, const M& m) {
@@ -61,7 +65,7 @@ TEST(NodeMatchers, CheckAgainstConstant) {
             "\nexpected op Add but found Placeholder");
   EXPECT_EQ(Explain(placeholder.node(), NodeWith(Name("add"))),
             "\nexpected name add but found placeholder");
-  EXPECT_EQ(Explain(placeholder.node(), NodeWith(Inputs(NodeWith()))),
+  EXPECT_EQ(Explain(placeholder.node(), NodeWith(Inputs(Out(NodeWith())))),
             "\nexpected 1 inputs but node has 0");
 }
 
@@ -74,18 +78,19 @@ TEST(NodeMatchers, CheckAgainstBinary) {
       ops::Placeholder(root.WithOpName("placeholder_b"), DT_FLOAT);
   Output add = ops::Add(root.WithOpName("add"), placeholder_a, placeholder_b);
 
-  EXPECT_THAT(add.node(), NodeWith(Op("Add"), Name("add"),
-                                   Inputs(NodeWith(Name("placeholder_a")),
-                                          NodeWith(Name("placeholder_b")))));
+  EXPECT_THAT(add.node(),
+              NodeWith(Op("Add"), Name("add"),
+                       Inputs(Out(NodeWith(Name("placeholder_a"))),
+                              Out(NodeWith(Name("placeholder_b"))))));
 
   EXPECT_EQ(Explain(add.node(), NodeWith(Inputs())),
             "\nexpected 0 inputs but node has 2");
   EXPECT_EQ(
-      Explain(add.node(), NodeWith(Inputs(NodeWith(Name("blah")), _))),
+      Explain(add.node(), NodeWith(Inputs(Out(NodeWith(Name("blah"))), _))),
       "\ninput 0 does not match expected:\nname: blah, \nsource does not match "
       "expected name: blah\n\t\nexpected name blah but found placeholder_a");
   EXPECT_EQ(
-      Explain(add.node(), NodeWith(Inputs(_, NodeWith(Name("blah"))))),
+      Explain(add.node(), NodeWith(Inputs(_, Out(NodeWith(Name("blah")))))),
       "\ninput 1 does not match expected:\nname: blah, \nsource does not match "
       "expected name: blah\n\t\nexpected name blah but found placeholder_b");
 }
@@ -172,6 +177,36 @@ TEST(NodeMatchers, AssignedDevice) {
                         "/job:localhost/replica:0/task:0/device:CPU:0"))),
             "\nexpected assigned_device "
             "/job:localhost/replica:0/task:0/device:CPU:0 but found \"\"");
+}
+
+TEST(NodeMatchers, OutputIndices) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  Output pred = ops::Placeholder(root.WithOpName("pred"), DT_BOOL);
+
+  Output data = ops::Placeholder(root.WithOpName("data"), DT_FLOAT);
+  ops::Switch sw(root.WithOpName("switch"), data, pred);
+  Output add = ops::Add(root.WithOpName("add"), sw.output_true,
+                        ops::Placeholder(root.WithOpName("addend"), DT_FLOAT));
+
+  EXPECT_THAT(add.node(), NodeWith(Inputs(Out(1, NodeWith(Op("Switch"))), _)));
+  EXPECT_EQ(
+      Explain(add.node(), NodeWith(Inputs(Out(0, NodeWith(Op("Switch"))), _))),
+      "\ninput 0 does not match expected:\nop: Switch, \nexpected output slot "
+      "to be 0 but found 1");
+}
+
+TEST(NodeMatchers, Attrs) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  Output enter = ops::internal::Enter(
+      root.WithOpName("enter"),
+      ops::Placeholder(root.WithOpName("data"), DT_FLOAT), "frame_name",
+      ops::internal::Enter::Attrs{}.IsConstant(true));
+  EXPECT_THAT(enter.node(), NodeWith(Attr("is_constant", true)));
+  EXPECT_EQ(Explain(enter.node(), NodeWith(Attr("is_constant", false))),
+            "attribute named is_constant does not match value; expected: "
+            "\"false\", found: \"true\"");
+  EXPECT_EQ(Explain(enter.node(), NodeWith(Attr("missing_attr", false))),
+            "did not find attribute named \"missing_attr\" in node");
 }
 
 }  // namespace

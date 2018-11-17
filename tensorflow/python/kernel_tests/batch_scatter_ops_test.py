@@ -51,7 +51,7 @@ class ScatterTest(test.TestCase):
                         repeat_indices=False,
                         updates_are_scalar=False):
     np.random.seed(8)
-    with self.test_session(use_gpu=False):
+    with self.cached_session(use_gpu=False):
       for indices_shape in (2,), (3, 7), (3, 4, 7):
         for extra_shape in (), (5,), (5, 9):
           # Generate random indices with no duplicates for easy numpy comparison
@@ -73,16 +73,6 @@ class ScatterTest(test.TestCase):
           tf_scatter(ref, indices, updates).eval()
           self.assertAllClose(ref.eval(), new)
 
-  def _VariableRankTests(self,
-                         tf_scatter):
-    vtypes = [np.float32, np.float64]
-    if tf_scatter != state_ops.scatter_div:
-      vtypes.append(np.int32)
-
-    for vtype in vtypes:
-      for itype in (np.int32, np.int64):
-        self._VariableRankTest(tf_scatter, vtype, itype)
-
   def testVariableRankUpdate(self):
     vtypes = [np.float32, np.float64]
     for vtype in vtypes:
@@ -91,7 +81,7 @@ class ScatterTest(test.TestCase):
             state_ops.batch_scatter_update, vtype, itype)
 
   def testBooleanScatterUpdate(self):
-    with self.test_session(use_gpu=False) as session:
+    with self.session(use_gpu=False) as session:
       var = variables.Variable([True, False])
       update0 = state_ops.batch_scatter_update(var, [1], [True])
       update1 = state_ops.batch_scatter_update(
@@ -101,12 +91,12 @@ class ScatterTest(test.TestCase):
 
       session.run([update0, update1])
 
-      self.assertAllEqual([False, True], var.eval())
+      self.assertAllEqual([False, True], self.evaluate(var))
 
   def testScatterOutOfRange(self):
     params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)
     updates = np.array([-3, -4, -5]).astype(np.float32)
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       ref = variables.Variable(params)
       ref.initializer.run()
 

@@ -262,6 +262,10 @@ class _WorkerContext(object):
           max_wait_secs=max_wait_secs)
 
   @property
+  def session_config(self):
+    return copy.deepcopy(self._session_config)
+
+  @property
   def has_barrier(self):
     """Whether the barrier is set or not."""
     return self._worker_barrier is not None
@@ -300,6 +304,11 @@ class _WorkerContext(object):
   def num_workers(self):
     """Returns number of workers in the cluster, including chief."""
     return self._num_workers
+
+  @property
+  def should_init(self):
+    """Whether to run init ops."""
+    return self._strategy.should_init
 
   @property
   def should_checkpoint(self):
@@ -341,7 +350,7 @@ def _run_single_worker(worker_fn,
       rpc_layer=rpc_layer,
       worker_barrier=worker_barrier)
   with context:
-    worker_fn(strategy)
+    return worker_fn(strategy)
 
 
 def _split_cluster_for_evaluator(cluster_spec, task_type):
@@ -448,6 +457,9 @@ def _run_between_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
   if eval_thread:
     eval_thread.join()
 
+  # TODO(yuefengz): we probably want to return results from all workers?
+  return None
+
 
 def _run_in_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
                          cluster_spec, session_config, rpc_layer):
@@ -463,7 +475,7 @@ def _run_in_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
         })
     eval_thread.start()
 
-  _run_single_worker(
+  worker_result = _run_single_worker(
       worker_fn,
       strategy,
       cluster_spec,
@@ -473,6 +485,7 @@ def _run_in_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
       rpc_layer=rpc_layer)
   if eval_thread:
     eval_thread.join()
+  return worker_result
 
 
 def _configure_session_config_for_std_servers(
@@ -692,6 +705,10 @@ def run_distribute_coordinator(worker_fn,
   Raises:
     ValueError: if `cluster_spec` is supplied but not a dict or a ClusterDef or
       a ClusterSpec.
+
+  Returns:
+    In the client job, return the value returned by `worker_fn` if
+    it is in-graph replication; return None otherwise.
   """
   tf_config = json.loads(os.environ.get("TF_CONFIG", "{}"))
   if not cluster_spec:
@@ -742,11 +759,12 @@ def run_distribute_coordinator(worker_fn,
     # know the client.
     if task_type in [_TaskType.CLIENT, None]:
       if strategy.between_graph:
-        _run_between_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
-                                  cluster_spec, session_config, rpc_layer)
+        return _run_between_graph_client(worker_fn, strategy, eval_fn,
+                                         eval_strategy, cluster_spec,
+                                         session_config, rpc_layer)
       else:
-        _run_in_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
-                             cluster_spec, session_config, rpc_layer)
+        return _run_in_graph_client(worker_fn, strategy, eval_fn, eval_strategy,
+                                    cluster_spec, session_config, rpc_layer)
     else:
       # If not a client job, run the standard server.
       _configure_session_config_for_std_servers(strategy, eval_strategy,

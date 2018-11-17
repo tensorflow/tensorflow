@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/clusters/single_machine.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -283,6 +284,37 @@ TEST_F(GraphPropertiesTest, Variables) {
     EXPECT_EQ(3, prop.shape().dim(0).size());
     EXPECT_EQ(7, prop.shape().dim(1).size());
   }
+}
+
+TEST_F(GraphPropertiesTest, ReadVariableOpAfterEnter) {
+  GrapplerItem item;
+  TF_CHECK_OK(NodeDefBuilder("Var", "VarHandleOp")
+                  .Attr("dtype", DT_FLOAT)
+                  .Attr("shape", TensorShape({3, 7}))
+                  .Finalize(item.graph.add_node()));
+  TF_CHECK_OK(NodeDefBuilder("Enter", "Enter")
+                  .Attr("T", DT_RESOURCE)
+                  .Attr("frame_name", "while_context")
+                  .Attr("is_constant", true)
+                  .Attr("parallel_iterations", 10)
+                  .Input("Var", 0, DT_RESOURCE)
+                  .Finalize(item.graph.add_node()));
+  TF_CHECK_OK(NodeDefBuilder("ReadVariableOpAfterEnter", "ReadVariableOp")
+                  .Attr("dtype", DT_FLOAT)
+                  .Input("Enter", 0, DT_RESOURCE)
+                  .Finalize(item.graph.add_node()));
+
+  // LOG(INFO) << item.graph.DebugString();
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(false));
+  const auto props = properties.GetOutputProperties("ReadVariableOpAfterEnter");
+  EXPECT_EQ(1, props.size());
+  const OpInfo::TensorProperties& prop = props[0];
+  EXPECT_EQ(DT_FLOAT, prop.dtype());
+  EXPECT_FALSE(prop.shape().unknown_rank());
+  EXPECT_EQ(2, prop.shape().dim_size());
+  EXPECT_EQ(3, prop.shape().dim(0).size());
+  EXPECT_EQ(7, prop.shape().dim(1).size());
 }
 
 TEST_F(GraphPropertiesTest, VarHandles) {
@@ -865,8 +897,8 @@ TEST_F(GraphPropertiesTest, TensorAsShapesPropagation) {
   EXPECT_TRUE(properties.GetOutputProperties("b1")[0].has_value());
   EXPECT_TRUE(properties.GetOutputProperties("c")[0].has_value());
   EXPECT_TRUE(properties.GetInputProperties("c1")[0].has_value());
-  // Note that we propagate tensro value of only 1D vector and scalar.
-  EXPECT_FALSE(properties.GetOutputProperties("c1")[0].has_value());
+  // Note that we propagate tensor value of only 1D vector and scalar.
+  EXPECT_TRUE(properties.GetOutputProperties("c1")[0].has_value());
 
   // Check values.
   ExpectTensorValues({5, 7}, properties.GetOutputProperties("a")[0].value());
@@ -883,7 +915,8 @@ TEST_F(GraphPropertiesTest, TensorAsShapesPropagation) {
                      properties.GetOutputProperties("c")[0].value());
   ExpectTensorValues({c_values},
                      properties.GetInputProperties("c1")[0].value());
-  // No output value for c1, as it's neither 1D vector nor scalar.
+  ExpectTensorValues({c_values},
+                     properties.GetOutputProperties("c1")[0].value());
 }
 
 TEST_F(GraphPropertiesTest, IdentityPassingShape) {
@@ -926,6 +959,50 @@ TEST_F(GraphPropertiesTest, PackWithConstInput) {
   const auto out_props = properties.GetOutputProperties("fill");
   const OpInfo::TensorProperties out_prop0 = out_props[0];
   EXPECT_EQ("float: [1,2,3,4]", PropToString(out_prop0));
+}
+
+TEST_F(GraphPropertiesTest, RankOp) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output c = ops::Const(s.WithOpName("Const"), 1, {4, 4, 4});
+  Output r = ops::Rank(s.WithOpName("Rank"), c);
+  Output i = ops::Identity(s.WithOpName("Identity"), r);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(false));
+  const auto rank_props = properties.GetOutputProperties("Rank");
+  const OpInfo::TensorProperties rank_prop0 = rank_props[0];
+  EXPECT_EQ("int32: []", PropToString(rank_prop0));
+  EXPECT_TRUE(rank_prop0.has_value());
+  ExpectTensorValues({3}, rank_prop0.value());
+  const auto identity_props = properties.GetOutputProperties("Identity");
+  const OpInfo::TensorProperties identity_props0 = identity_props[0];
+  EXPECT_EQ("int32: []", PropToString(identity_props0));
+  EXPECT_TRUE(identity_props0.has_value());
+  ExpectTensorValues({3}, identity_props0.value());
+}
+
+TEST_F(GraphPropertiesTest, SizeOp) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output c = ops::Const(s.WithOpName("Const"), 1, {1, 2, 3, 4});
+  Output r = ops::Size(s.WithOpName("Size"), c);
+  Output i = ops::Identity(s.WithOpName("Identity"), r);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(false));
+  const auto size_props = properties.GetOutputProperties("Size");
+  const OpInfo::TensorProperties size_props0 = size_props[0];
+  EXPECT_EQ("int32: []", PropToString(size_props0));
+  EXPECT_TRUE(size_props0.has_value());
+  ExpectTensorValues({24}, size_props0.value());
+  const auto identity_props = properties.GetOutputProperties("Identity");
+  const OpInfo::TensorProperties identity_props0 = identity_props[0];
+  EXPECT_EQ("int32: []", PropToString(identity_props0));
+  EXPECT_TRUE(identity_props0.has_value());
+  ExpectTensorValues({24}, identity_props0.value());
 }
 
 TEST_F(GraphPropertiesTest, PackWithIdentityInput) {
@@ -1340,6 +1417,8 @@ TEST_F(GraphPropertiesTest, SymbolicShapes) {
   Output zero = ops::Const(s.WithOpName("zero"), 0.0f, {});
   Output g = ops::Shape(s.WithOpName("g"), c);
   Output h = ops::Fill(s.WithOpName("h"), g, zero);
+  Output zero_idx = ops::Const(s.WithOpName("zero_idx"), {0}, {1});
+  Output j = ops::Sum(s.WithOpName("j"), a, zero_idx);
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
@@ -1382,6 +1461,10 @@ TEST_F(GraphPropertiesTest, SymbolicShapes) {
   ASSERT_EQ(2, shape_f.dim_size());
   EXPECT_EQ(shape_h.dim(0).size(), shape_c.dim(0).size());
   EXPECT_EQ(shape_h.dim(1).size(), shape_c.dim(1).size());
+
+  const auto shape_j = properties.GetOutputProperties("j").at(0).shape();
+  ASSERT_EQ(1, shape_j.dim_size());
+  EXPECT_EQ(shape_j.dim(0).size(), shape_a.dim(1).size());
 }
 
 TEST_F(GraphPropertiesTest, DoNotValidateColocationConstraints) {

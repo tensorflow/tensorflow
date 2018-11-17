@@ -26,7 +26,6 @@ limitations under the License.
 
 #include <stddef.h>
 
-#include "tensorflow/stream_executor/lib/casts.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace perftools {

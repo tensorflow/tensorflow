@@ -31,6 +31,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.linalg import linalg_impl
+from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
 
@@ -38,11 +39,11 @@ class LogarithmOpTest(test.TestCase):
 
   def _verifyLogarithm(self, x, np_type):
     inp = x.astype(np_type)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       # Verify that expm(logm(A)) == A.
       tf_ans = linalg_impl.matrix_exponential(
           gen_linalg_ops.matrix_logarithm(inp))
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
       self.assertAllClose(inp, out, rtol=1e-4, atol=1e-3)
 
   def _verifyLogarithmComplex(self, x):
@@ -120,7 +121,7 @@ class LogarithmOpTest(test.TestCase):
         self._verifyLogarithmComplex(matrix)
 
   def testConcurrentExecutesWithoutError(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       matrix1 = math_ops.cast(
           random_ops.random_normal([5, 5], seed=42), dtypes.complex64)
       matrix2 = math_ops.cast(
@@ -159,7 +160,7 @@ class MatrixLogarithmBenchmark(test.Benchmark):
   def benchmarkMatrixLogarithmOp(self):
     for shape in self.shapes:
       with ops.Graph().as_default(), \
-          session.Session() as sess, \
+          session.Session(config=benchmark.benchmark_config()) as sess, \
           ops.device("/cpu:0"):
         matrix = self._GenerateMatrix(shape)
         logm = gen_linalg_ops.matrix_logarithm(matrix)

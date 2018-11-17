@@ -19,6 +19,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -139,7 +139,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, IsFiniteZeroElementF32s) {
 }
 
 // A non-canonical quiet NaN value.
-static const float kNonCanonicalNaN = tensorflow::bit_cast<float>(0x7FD01234);
+static const float kNonCanonicalNaN = absl::bit_cast<float>(0x7FD01234);
 
 XLA_TEST_F(ArrayElementwiseOpTest, IsFiniteScalarF32) {
   XlaBuilder builder(TestName());
@@ -2478,8 +2478,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Ne) {
   Ne(v, m, /*broadcast_dimensions=*/{1});
 
   const string expected = R"(pred[2,2] {
-  { 00 },
-  { 01 }
+  { 0, 0 },
+  { 0, 1 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -2492,8 +2492,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Ge) {
   Ge(v, m, /*broadcast_dimensions=*/{1});
 
   const string expected = R"(pred[2,4] {
-  { 1100 },
-  { 0001 }
+  { 1, 1, 0, 0 },
+  { 0, 0, 0, 1 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -2506,8 +2506,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Gt) {
   Gt(v, m, /*broadcast_dimensions=*/{1});
 
   const string expected = R"(pred[2,4] {
-  { 0100 },
-  { 0000 }
+  { 0, 1, 0, 0 },
+  { 0, 0, 0, 0 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -2520,8 +2520,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Le) {
   Le(v, m, /*broadcast_dimensions=*/{1});
 
   const string expected = R"(pred[2,4] {
-  { 1011 },
-  { 1111 }
+  { 1, 0, 1, 1 },
+  { 1, 1, 1, 1 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -2534,8 +2534,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Lt) {
   Lt(v, m, /*broadcast_dimensions=*/{1});
 
   const string expected = R"(pred[2,4] {
-  { 0011 },
-  { 1110 }
+  { 0, 0, 1, 1 },
+  { 1, 1, 1, 0 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -2744,12 +2744,16 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareGtR3F32sWithDegenerateDim2) {
   Array3D<int> expected_3d(
       {{{0, 1}, {0, 0}, {0, 0}}, {{0, 1}, {1, 0}, {0, 1}}});
   const string expected = R"(pred[2,3,2] {
-{ { 01 },
-  { 00 },
-  { 00 } },
-{ { 01 },
-  { 10 },
-  { 01 } }
+{
+  { 0, 1 },
+  { 0, 0 },
+  { 0, 0 }
+},
+{
+  { 0, 1 },
+  { 1, 0 },
+  { 0, 1 }
+}
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }

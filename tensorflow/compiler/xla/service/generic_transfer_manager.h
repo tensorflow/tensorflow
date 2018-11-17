@@ -45,10 +45,9 @@ class GenericTransferManager : public TransferManager {
                                  MutableBorrowingLiteral literal,
                                  std::function<void(Status)> done) override;
 
-  Status TransferLiteralToDeviceAsync(se::Stream* stream,
-                                      const LiteralSlice& literal,
-                                      const ShapedBuffer& device_buffer,
-                                      TransferToDeviceHint hint) override;
+  Status TransferLiteralToDeviceAsync(
+      se::Stream* stream, const LiteralSlice& literal,
+      const ShapedBuffer& device_buffer) override;
 
   Status TransferLiteralToInfeed(se::StreamExecutor* executor,
                                  const LiteralSlice& literal) override;

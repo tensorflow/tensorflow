@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <iostream>
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -21,6 +22,31 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
+
+namespace {
+
+// If the following string is found at the beginning of an output stream, it
+// will be interpreted as a file path.
+const char kOutputStreamEscapeStr[] = "file://";
+
+// A mutex that guards appending strings to files.
+static mutex* file_mutex = new mutex();
+
+// Appends the given data to the specified file. It will create the file if it
+// doesn't already exist.
+Status AppendStringToFile(const std::string& fname, StringPiece data,
+                          Env* env) {
+  // TODO(ckluk): If opening and closing on every log causes performance issues,
+  // we can reimplement using reference counters.
+  mutex_lock l(*file_mutex);
+  std::unique_ptr<WritableFile> file;
+  TF_RETURN_IF_ERROR(env->NewAppendableFile(fname, &file));
+  Status a = file->Append(absl::StrCat(data, "\n"));
+  Status c = file->Close();
+  return a.ok() ? c : a;
+}
+
+}  // namespace
 
 class AssertOp : public OpKernel {
  public:
@@ -51,6 +77,14 @@ class AssertOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("Assert").Device(DEVICE_CPU), AssertOp);
+
+#if GOOGLE_CUDA
+REGISTER_KERNEL_BUILDER(Name("Assert")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("condition")
+                            .HostMemory("data"),
+                        AssertOp);
+#endif  // GOOGLE_CUDA
 
 class PrintOp : public OpKernel {
  public:
@@ -96,6 +130,9 @@ class PrintV2Op : public OpKernel {
   explicit PrintV2Op(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_stream", &output_stream_));
 
+    SetFilePathIfAny();
+    if (!file_path_.empty()) return;
+
     auto output_stream_index =
         std::find(std::begin(valid_output_streams_),
                   std::end(valid_output_streams_), output_stream_);
@@ -115,6 +152,11 @@ class PrintV2Op : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("input", &input_));
     const string& msg = input_->scalar<string>()();
 
+    if (!file_path_.empty()) {
+      // Outputs to a file at the specified path.
+      OP_REQUIRES_OK(ctx, AppendStringToFile(file_path_, msg, ctx->env()));
+      return;
+    }
     if (output_stream_ == "stdout") {
       std::cout << msg << std::endl;
     } else if (output_stream_ == "stderr") {
@@ -131,15 +173,29 @@ class PrintV2Op : public OpKernel {
       for (auto valid_stream : valid_output_streams_) {
         strings::StrAppend(&error_msg, " ", valid_stream);
       }
+      strings::StrAppend(&error_msg, ", or file://<filename>");
       OP_REQUIRES(ctx, false, errors::InvalidArgument(error_msg));
     }
   }
 
-  const char* valid_output_streams_[6] = {"stdout", "stderr", "log(info)",
+  const char* valid_output_streams_[5] = {"stdout", "stderr", "log(info)",
                                           "log(warning)", "log(error)"};
 
  private:
+  // Either output_stream_ or file_path_ (but not both) will be non-empty.
   string output_stream_;
+  string file_path_;
+
+  // If output_stream_ is a file path, extracts it to file_path_ and clears
+  // output_stream_; otherwise sets file_paths_ to "".
+  void SetFilePathIfAny() {
+    if (absl::StartsWith(output_stream_, kOutputStreamEscapeStr)) {
+      file_path_ = output_stream_.substr(strlen(kOutputStreamEscapeStr));
+      output_stream_ = "";
+    } else {
+      file_path_ = "";
+    }
+  }
 };
 
 REGISTER_KERNEL_BUILDER(Name("PrintV2").Device(DEVICE_CPU), PrintV2Op);

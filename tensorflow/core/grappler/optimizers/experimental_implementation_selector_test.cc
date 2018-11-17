@@ -133,6 +133,101 @@ TEST_F(ExperimentalImplementationSelectorTest, SwapImplementationEval) {
                                  test::AsScalar<float>(2.0f));
 }
 
+TEST_F(ExperimentalImplementationSelectorTest, SwapImplementationWithGradient) {
+  using test::function::NDef;
+  using FDH = FunctionDefHelper;
+  // boost_1 returns the doubled input and a const as the internal state, the
+  // state will be feed to gradient function to mimic the behavior of backward
+  // function of defun that use internal states as extra inputs.
+  FunctionDef boost_1 = FDH::Create(
+      "Boost1", {"x:float"}, {"z:float", "s:float"}, {},
+      {{{"boost"}, "Add", {"x", "x"}, {{"T", DT_FLOAT}}},
+       FDH::Const("one", 1.0f)},
+      /* Mapping between function returns and function node outputs. */
+      {{"z", "boost:z:0"}, {"s", "one:output:0"}});
+  auto* boost_1_attr = boost_1.mutable_attr();
+  (*boost_1_attr)["experimental_api_implements"].set_s("random_boost");
+  (*boost_1_attr)["experimental_api_preferred_device"].set_s("CPU");
+  (*boost_1_attr)["backward_function_name"].set_s("BoostCpuGradient");
+
+  FunctionDef boost_1_gradient = FDH::Create(
+      "Boost1Gradient", {"x:float", "s:float"}, {"dx:float"}, {},
+      {FDH::Const("two", 2.0f),
+       {{"grad"}, "Mul", {"x", "two:output:0"}, {{"T", DT_FLOAT}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"dx", "grad:z:0"}});
+  auto* boost_1_grad_attr = boost_1_gradient.mutable_attr();
+  (*boost_1_grad_attr)["experimental_api_implements"].set_s("random_boost");
+  (*boost_1_grad_attr)["experimental_api_preferred_device"].set_s("CPU");
+  (*boost_1_grad_attr)["forward_function_name"].set_s("BoostCpu");
+
+  // boost_2 return the input * 4, and with two extra internal states.
+  FunctionDef boost_2_func = FDH::Create(
+      "Boost2", {"x:float"}, {"z:float", "s1:float", "s2:float"}, {},
+      {FDH::Const("four", 4.0f),
+       {{"boost"}, "Mul", {"x", "four:output:0"}, {{"T", DT_FLOAT}}},
+       FDH::Const("one", 1.0f),
+       FDH::Const("two", 2.0f)},
+      /* Mapping between function returns and function node outputs. */
+      {{"z", "boost:z:0"}, {"s1", "one:output:0"}, {"s2", "two:output:0"}});
+  auto* boost_2_attr = boost_2_func.mutable_attr();
+  (*boost_2_attr)["experimental_api_implements"].set_s("random_boost");
+  (*boost_2_attr)["experimental_api_preferred_device"].set_s("GPU");
+  (*boost_2_attr)["backward_function_name"].set_s("BoostGpuGradient");
+
+  FunctionDef boost_2_gradient = FDH::Create(
+      "Boost2Gradient", {"x:float", "s1:float", "s2:float"}, {"dx:float"}, {},
+      {FDH::Const("four", 4.0f),
+       {{"grad"}, "Mul", {"x", "four:output:0"}, {{"T", DT_FLOAT}}}},
+      /* Mapping between function returns and function node outputs. */
+      {{"dx", "grad:z:0"}});
+  auto* boost_2_grad_attr = boost_2_gradient.mutable_attr();
+  (*boost_2_grad_attr)["experimental_api_implements"].set_s("random_boost");
+  (*boost_2_grad_attr)["experimental_api_preferred_device"].set_s("GPU");
+  (*boost_2_grad_attr)["forward_function_name"].set_s("BoostGpu");
+
+  // Define the forward function with f = boost2 function but with CPU device.
+  // Expect the grappler plugin to swap f and attributes to use the boost1.
+  const auto forward =
+      NDef("lstm/StatefulPartitionedCall", "StatefulPartitionedCall", {"input"},
+           {{"Tin", DataTypeSlice{DT_FLOAT}},
+            {"Tout", DataTypeSlice{DT_FLOAT, DT_FLOAT, DT_FLOAT}},
+            {"f", FDH::FunctionRef("Boost2")}},
+           CpuDevice);
+  const auto backward =
+      NDef("gradient/lstm/StatefulPartitionedCall", "StatefulPartitionedCall",
+           {"input", "lstm/StatefulPartitionedCall:1",
+            "lstm/StatefulPartitionedCall:2"},
+           {{"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT, DT_FLOAT}},
+            {"Tout", DataTypeSlice{DT_FLOAT}},
+            {"f", FDH::FunctionRef("Boost2Gradient")}},
+           CpuDevice);
+
+  ExperimentalImplementationSelector optimizer;
+  GraphDef output;
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("input", "Placeholder", {}, {{"dtype", DT_FLOAT}}, CpuDevice),
+       forward, backward,
+       NDef("output", "Identity", {"lstm/StatefulPartitionedCall:0"},
+            {{"T", DT_FLOAT}}, CpuDevice)},
+      // FunctionLib
+      {boost_1, boost_1_gradient, boost_2_func, boost_2_gradient});
+
+  const Tensor input = test::AsScalar<float>(1.0f);
+  item.fetch = {"output"};
+  item.feed.emplace_back("input", input);
+
+  const auto four_times_boosted_tensor = EvaluateFetchNodes(item);
+  test::ExpectTensorEqual<float>(four_times_boosted_tensor[0],
+                                 test::AsScalar<float>(4.0f));
+
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+  GrapplerItem optimized(item, std::move(output));
+  const auto twice_boosted_tensor = EvaluateFetchNodes(optimized);
+  test::ExpectTensorEqual<float>(twice_boosted_tensor[0],
+                                 test::AsScalar<float>(2.0f));
+}
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

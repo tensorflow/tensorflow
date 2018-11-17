@@ -370,7 +370,8 @@ def import_graph_def(graph_def,
 
   Returns:
     A list of `Operation` and/or `Tensor` objects from the imported graph,
-    corresponding to the names in `return_elements`.
+    corresponding to the names in `return_elements`,
+    and None if `returns_elements` is None.
 
   Raises:
     TypeError: If `graph_def` is not a `GraphDef` proto,
@@ -430,16 +431,15 @@ def import_graph_def(graph_def,
     #
     # TODO(skyewm): fetch the TF_Functions directly from the TF_Graph
     # TODO(skyewm): avoid sending serialized FunctionDefs back to the TF_Graph
-    # TODO(b/74620627): move this after _ProcessNewOps outside the lock once
-    # _USE_C_SHAPES is removed.
-    if graph_def.library and graph_def.library.function:
-      # pylint: disable=protected-access
-      functions = function._from_library(graph_def.library)
-      for f in functions:
-        f.add_to_graph(graph)
-      # pylint: enable=protected-access
 
     _ProcessNewOps(graph)
+
+  if graph_def.library and graph_def.library.function:
+    # pylint: disable=protected-access
+    functions = function._from_library(graph_def.library)
+    for f in functions:
+      f.add_to_graph(graph)
+    # pylint: enable=protected-access
 
   # Treat input mappings that don't appear in the graph as an error, because
   # they are likely to be due to a typo.

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/placer.h"
+#include "tensorflow/core/common_runtime/tf_xla_stub.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -76,7 +77,7 @@ GraphExecutionState::~GraphExecutionState() {
     GraphDef* graph_def, const GraphExecutionStateOptions& options,
     std::unique_ptr<GraphExecutionState>* out_state) {
 #ifndef __ANDROID__
-  VLOG(4) << "Graph proto is " << graph_def->DebugString();
+  VLOG(4) << "Graph proto is \n" << graph_def->DebugString();
 #endif  // __ANDROID__
 
   std::unique_ptr<GraphExecutionState> ret(
@@ -531,7 +532,8 @@ Status GraphExecutionState::InitBaseGraph(const BuildGraphOptions& options) {
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
 
-  Placer placer(new_graph.get(), device_set_, session_options_);
+  Placer placer(new_graph.get(), device_set_, session_options_,
+                /* default_device= */ nullptr);
   // TODO(mrry): Consider making the Placer cancelable.
   TF_RETURN_IF_ERROR(placer.Run());
 
@@ -551,10 +553,7 @@ Status GraphExecutionState::OptimizeGraph(
     return errors::InvalidArgument("Can't optimize a pruned graph");
   }
 
-  const RewriterConfig& rewrite_options =
-      session_options_->config.graph_options().rewrite_options();
-
-  if (grappler::MetaOptimizerEnabled(rewrite_options)) {
+  if (grappler::MetaOptimizerEnabled(session_options_->config)) {
     // Adding this functionality in steps. The first step is to make sure
     // we don't break dependencies. The second step will be to turn the
     // functionality on by default.
@@ -637,7 +636,7 @@ Status GraphExecutionState::OptimizeGraph(
     grappler::VirtualCluster cluster(device_set_);
     GraphDef new_graph;
     TF_RETURN_IF_ERROR(grappler::RunMetaOptimizer(
-        item, rewrite_options, cpu_device, &cluster, &new_graph));
+        item, session_options_->config, cpu_device, &cluster, &new_graph));
 
     // Merge optimized graph function library with an original library.
     // Optimized graph might have new functions specialized for it's
@@ -721,6 +720,8 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
            rewrite_metadata.feed_types.size());
   CHECK_EQ(options.callable_options.fetch_size(),
            rewrite_metadata.fetch_types.size());
+
+  TF_RETURN_IF_ERROR(CheckXlaJitOptimizerOptions(session_options_));
 
   // TODO(andydavis): Clarify optimization pass requirements around CostModel.
   GraphOptimizationPassOptions optimization_options;

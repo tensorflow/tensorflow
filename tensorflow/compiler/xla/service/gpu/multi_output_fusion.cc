@@ -140,6 +140,18 @@ bool GpuMultiOutputFusion::LegalToFuse(HloInstruction* instr1,
     return false;
   }
 
+  // The emitter only supports in-place DUS for fusions with a single DUS at the
+  // root. Don't sibling fuse DUS for now.
+  // TODO(b/119178699): Multi-output fusing DUS can improve performance if we
+  // share the input and output buffers and add support to the emitter.
+  if (instr1->fused_expression_root()->opcode() ==
+          HloOpcode::kDynamicUpdateSlice ||
+      (instr2->opcode() == HloOpcode::kFusion &&
+       instr2->fused_expression_root()->opcode() ==
+           HloOpcode::kDynamicUpdateSlice)) {
+    return false;
+  }
+
   // Do this check last, as it may be expensive.
   return !GpuInstructionFusion::FusionWouldBeTooLarge(instr1, instr2);
 }
@@ -178,6 +190,12 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
       HloInstruction* producer = consumer_operands[i];
       if (!producer->IsFusible()) {
         VLOG(3) << producer->name() << " is not fusible.";
+        continue;
+      }
+      // Never multi-output fuse constants.  To the extent that we want to fuse
+      // constants, that should be handled by the regular fusion pass.
+      if (producer->opcode() == HloOpcode::kConstant) {
+        VLOG(3) << producer->name() << " is a constant.";
         continue;
       }
       const bool is_loop_fusion =

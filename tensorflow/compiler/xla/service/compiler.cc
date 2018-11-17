@@ -45,7 +45,7 @@ Compiler::ComputeDefaultBackendConfig(const HloInstruction& hlo,
 // Define a default version where metadata is not used.
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 Compiler::CompileAheadOfTime(
-    std::vector<std::unique_ptr<HloModule>> modules,
+    std::unique_ptr<HloModuleGroup> module_group,
     const AotCompilationOptions& options,
     std::unique_ptr<AotCompilationMetadata>* metadata) {
   if (metadata != nullptr) {
@@ -53,7 +53,7 @@ Compiler::CompileAheadOfTime(
         "Populating AotCompilationMetadata is not implemented on this "
         "compiler.");
   }
-  return CompileAheadOfTime(std::move(modules), options);
+  return CompileAheadOfTime(std::move(module_group), options);
 }
 
 /* static */ std::map<se::Platform::Id, Compiler::CompilerFactory>*
@@ -110,6 +110,6 @@ Compiler::GetPlatformCompilers() {
 }
 
 AotCompilationOptions::AotCompilationOptions()
-    : debug_options_(legacy_flags::GetDebugOptionsFromFlags()) {}
+    : debug_options_(GetDebugOptionsFromFlags()) {}
 
 }  // namespace xla

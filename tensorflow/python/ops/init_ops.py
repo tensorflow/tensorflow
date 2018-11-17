@@ -340,8 +340,11 @@ class TruncatedNormal(Initializer):
     }
 
 
-@tf_export("initializers.uniform_unit_scaling",
-           "uniform_unit_scaling_initializer")
+@tf_export(
+    "initializers.uniform_unit_scaling",
+    v1=[
+        "initializers.uniform_unit_scaling", "uniform_unit_scaling_initializer"
+    ])
 @deprecation.deprecated_endpoints("uniform_unit_scaling_initializer")
 class UniformUnitScaling(Initializer):
   """Initializer that generates tensors without scaling variance.
@@ -401,8 +404,13 @@ class UniformUnitScaling(Initializer):
     return {"factor": self.factor, "seed": self.seed, "dtype": self.dtype.name}
 
 
-@tf_export("keras.initializers.VarianceScaling",
-           "initializers.variance_scaling", "variance_scaling_initializer")
+@tf_export(
+    "keras.initializers.VarianceScaling",
+    "initializers.variance_scaling",
+    v1=[
+        "keras.initializers.VarianceScaling", "initializers.variance_scaling",
+        "variance_scaling_initializer"
+    ])
 @deprecation.deprecated_endpoints("variance_scaling_initializer")
 class VarianceScaling(Initializer):
   """Initializer capable of adapting its scale to the shape of weights tensors.
@@ -495,8 +503,14 @@ class VarianceScaling(Initializer):
     }
 
 
-@tf_export("keras.initializers.Orthogonal", "initializers.orthogonal",
-           "orthogonal_initializer", "keras.initializers.orthogonal")
+@tf_export(
+    "keras.initializers.Orthogonal",
+    "initializers.orthogonal",
+    "keras.initializers.orthogonal",
+    v1=[
+        "keras.initializers.Orthogonal", "initializers.orthogonal",
+        "orthogonal_initializer", "keras.initializers.orthogonal"
+    ])
 @deprecation.deprecated_endpoints("orthogonal_initializer")
 class Orthogonal(Initializer):
   """Initializer that generates an orthogonal matrix.
@@ -566,9 +580,9 @@ class ConvolutionDeltaOrthogonal(Initializer):
 
 
   Args:
-    gain: Multiplicative factor to apply to the orthogonal matrix. Default is 1.
-      The 2-norm of an input is multiplied by a factor of 'sqrt(gain)' after
-      applying this convolution.
+    gain: Multiplicative factor to apply to the orthogonal
+      matrix. Default is 1. The 2-norm of an input is multiplied by a factor of
+      `gain` after applying this convolution.
     seed: A Python integer. Used to create random seeds. See
       `tf.set_random_seed` for behavior.
     dtype: The data type.
@@ -599,7 +613,7 @@ class ConvolutionDeltaOrthogonal(Initializer):
     d = array_ops.diag_part(r)
     q *= math_ops.sign(d)
     q = q[:shape[-2], :]
-    q *= math_ops.sqrt(math_ops.cast(self.gain, dtype=dtype))
+    q *= math_ops.cast(self.gain, dtype=dtype)
     if len(shape) == 3:
       weight = array_ops.scatter_nd([[(shape[0]-1)//2]],
                                     array_ops.expand_dims(q, 0), shape)
@@ -622,9 +636,9 @@ class ConvolutionOrthogonal(Initializer):
   Base class used to construct 1D, 2D and 3D orthogonal kernels for convolution.
 
   Args:
-    gain: multiplicative factor to apply to the orthogonal matrix. Default is 1.
-      The 2-norm of an input is multiplied by a factor of 'sqrt(gain)' after
-      applying this convolution.
+    gain: multiplicative factor to apply to the orthogonal
+      matrix. Default is 1. The 2-norm of an input is multiplied by a factor of
+      `gain` after applying this convolution.
     seed: A Python integer. Used to create random seeds. See
       `tf.set_random_seed` for behavior.
     dtype: The data type.
@@ -687,9 +701,9 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
   See algorithm 1 in [Xiao et al., 2018]: https://arxiv.org/abs/1806.05393
 
   Args:
-    gain: Multiplicative factor to apply to the orthogonal matrix. Default is 1.
-      This has the effect of scaling the output 2-norm by a factor of
-      `sqrt(gain)`.
+    gain: Multiplicative factor to apply to the orthogonal
+      matrix. Default is 1. This has the effect of scaling the output 2-norm by
+      a factor of `gain`.
     seed: A Python integer. Used to create random seeds. See
       `tf.set_random_seed` for behavior.
     dtype: The data type.
@@ -708,7 +722,7 @@ class ConvolutionOrthogonal2D(ConvolutionOrthogonal):
       raise ValueError("Kernel sizes must be equal.")
 
     kernel = self._orthogonal_kernel(shape[0], shape[2], shape[3])
-    kernel *= math_ops.sqrt(math_ops.cast(self.gain, dtype=dtype))
+    kernel *= math_ops.cast(self.gain, dtype=dtype)
     return kernel
 
   def _dict_to_tensor(self, x, k1, k2):
@@ -823,9 +837,9 @@ class ConvolutionOrthogonal1D(ConvolutionOrthogonal):
   See algorithm 1 in [Xiao et al., 2018]: https://arxiv.org/abs/1806.05393
 
   Args:
-    gain: Multiplicative factor to apply to the orthogonal matrix. Default is 1.
-      The 2-norm of an input is multiplied by a factor of 'sqrt(gain)' after
-      applying this convolution.
+    gain: Multiplicative factor to apply to the orthogonal
+      matrix. Default is 1. The 2-norm of an input is multiplied by a factor of
+      `gain` after applying this convolution.
     seed: A Python integer. Used to create random seeds. See
       `tf.set_random_seed`
       for behavior.
@@ -842,7 +856,7 @@ class ConvolutionOrthogonal1D(ConvolutionOrthogonal):
       raise ValueError("In_filters cannot be greater than out_filters.")
 
     kernel = self._orthogonal_kernel(shape[0], shape[-2], shape[-1])
-    kernel *= math_ops.sqrt(math_ops.cast(self.gain, dtype=dtype))
+    kernel *= math_ops.cast(self.gain, dtype=dtype)
     return kernel
 
   def _dict_to_tensor(self, x, k):
@@ -940,9 +954,9 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
   See algorithm 1 [Xiao et al., 2018] in: https://arxiv.org/abs/1806.05393
 
   Args:
-    gain: Multiplicative factor to apply to the orthogonal matrix. Default is 1.
-      The 2-norm of an input is multiplied by a factor of 'sqrt(gain)' after
-      applying this convolution.
+    gain: Multiplicative factor to apply to the orthogonal
+      matrix. Default is 1. The 2-norm of an input is multiplied by a factor of
+      `gain` after applying this convolution.
     seed: A Python integer. Used to create random seeds. See
       `tf.set_random_seed` for behavior.
     dtype: The data type.
@@ -961,7 +975,7 @@ class ConvolutionOrthogonal3D(ConvolutionOrthogonal):
       raise ValueError("Kernel sizes must be equal.")
 
     kernel = self._orthogonal_kernel(shape[0], shape[-2], shape[-1])
-    kernel *= math_ops.sqrt(math_ops.cast(self.gain, dtype=dtype))
+    kernel *= math_ops.cast(self.gain, dtype=dtype)
     return kernel
 
   def _dict_to_tensor(self, x, k1, k2, k3):
@@ -1134,9 +1148,7 @@ class GlorotUniform(VarianceScaling):
     dtype: The data type. Only floating point types are supported.
   """
 
-  def __init__(self,
-               seed=None,
-               dtype=dtypes.float32):
+  def __init__(self, seed=None, dtype=dtypes.float32):
     super(GlorotUniform, self).__init__(
         scale=1.0,
         mode="fan_avg",
@@ -1145,14 +1157,16 @@ class GlorotUniform(VarianceScaling):
         dtype=dtype)
 
   def get_config(self):
-    return {
-        "seed": self.seed,
-        "dtype": self.dtype.name
-    }
+    return {"seed": self.seed, "dtype": self.dtype.name}
 
 
-@tf_export("glorot_normal_initializer", "keras.initializers.glorot_normal",
-           "initializers.glorot_normal")
+@tf_export(
+    "keras.initializers.glorot_normal",
+    "initializers.glorot_normal",
+    v1=[
+        "glorot_normal_initializer", "keras.initializers.glorot_normal",
+        "initializers.glorot_normal"
+    ])
 @deprecation.deprecated_endpoints("glorot_normal_initializer")
 class GlorotNormal(VarianceScaling):
   """The Glorot normal initializer, also called Xavier normal initializer.
@@ -1166,14 +1180,11 @@ class GlorotNormal(VarianceScaling):
 
   Args:
     seed: A Python integer. Used to create random seeds. See
-      `tf.set_random_seed`
-      for behavior.
+      `tf.set_random_seed` for behavior.
     dtype: The data type. Only floating point types are supported.
   """
 
-  def __init__(self,
-               seed=None,
-               dtype=dtypes.float32):
+  def __init__(self, seed=None, dtype=dtypes.float32):
     super(GlorotNormal, self).__init__(
         scale=1.0,
         mode="fan_avg",
@@ -1182,10 +1193,7 @@ class GlorotNormal(VarianceScaling):
         dtype=dtype)
 
   def get_config(self):
-    return {
-        "seed": self.seed,
-        "dtype": self.dtype.name
-    }
+    return {"seed": self.seed, "dtype": self.dtype.name}
 
 
 # Aliases.

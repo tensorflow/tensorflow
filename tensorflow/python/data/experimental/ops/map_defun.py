@@ -27,7 +27,7 @@ def map_defun(fn, elems, output_dtypes, output_shapes):
   """Map a function on the list of tensors unpacked from `elems` on dimension 0.
 
   Args:
-    fn: A function (`function.Defun`) that takes a list of tensors and returns
+    fn: A function (`function.defun`) that takes a list of tensors and returns
       another list of tensors. The output list has the same types as
       output_dtypes. The elements of the output list have the same dimension 0
       as `elems`, and the remaining dimensions correspond to those of
@@ -47,10 +47,15 @@ def map_defun(fn, elems, output_dtypes, output_shapes):
   if not isinstance(elems, list):
     raise ValueError("`elems` must be a list of tensors.")
   if not isinstance(output_dtypes, list):
-    raise ValueError("`output_dtypes` must be a list of tensors.")
+    raise ValueError("`output_dtypes` must be a list of `tf.DType` objects.")
   if not isinstance(output_shapes, list):
-    raise ValueError("`output_shapes` must be a list of tensors.")
+    raise ValueError("`output_shapes` must be a list of `tf.TensorShape` "
+                     "objects.")
 
+  concrete_fn = fn._get_concrete_function_internal()  # pylint: disable=protected-access
+  # TODO(shivaniagrawal/rachelim): what about functions created without
+  # input_signature.
   elems = [ops.convert_to_tensor(e) for e in elems]
   output_shapes = [tensor_shape.TensorShape(s) for s in output_shapes]
-  return gen_dataset_ops.map_defun(elems, output_dtypes, output_shapes, fn)
+  return gen_dataset_ops.map_defun(elems, concrete_fn.captured_inputs,
+                                   output_dtypes, output_shapes, concrete_fn)

@@ -19,8 +19,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/util/ptr_util.h"
 
@@ -74,6 +76,8 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
     void RecordExecutorEnded() override {
       end_time_ns_ = Env::Default()->NowNanos();
     }
+
+    bool TrackAllocations() const override { return false; }
 
     void SetMemory(OpKernelContext* ctx) override {}
 
@@ -451,15 +455,17 @@ void CapturedFunction::RunAsync(IteratorContext* ctx,
   CancellationManager* c_mgr = new CancellationManager;
   f_opts.cancellation_manager = c_mgr;
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
-  if (ctx->model()) {
+  if (ctx->model() || ctx->stats_aggregator()) {
     stats_collector = MakeUnique<SimpleStepStatsCollector>();
   }
   f_opts.stats_collector = stats_collector.get();
 
   auto callback = std::bind(
-      [rets, step_container, c_mgr, frame](
+      [this, rets, step_container, c_mgr, frame](
           const FunctionLibraryRuntime::DoneCallback& done,
-          const std::shared_ptr<model::Model>& model, const string& prefix,
+          const std::shared_ptr<model::Model>& model,
+          const std::shared_ptr<StatsAggregator>& stats_aggregator,
+          const string& prefix,
           const std::shared_ptr<SimpleStepStatsCollector>& stats_collector,
           // Begin unbound arguments.
           Status s) {
@@ -469,6 +475,14 @@ void CapturedFunction::RunAsync(IteratorContext* ctx,
           s = frame->ConsumeRetvals(rets);
         }
         delete frame;
+
+        if (stats_aggregator) {
+          stats_aggregator->AddToHistogram(
+              strings::StrCat(
+                  str_util::Split(prefix, "::", str_util::SkipEmpty()).back(),
+                  "::", func_.name(), "::execution_time"),
+              {static_cast<float>(stats_collector->processing_time())});
+        }
         if (model) {
           model->AddProcessingTime(prefix, stats_collector->processing_time());
           model->RecordStart(prefix, false /* stop_output */);
@@ -478,8 +492,8 @@ void CapturedFunction::RunAsync(IteratorContext* ctx,
           model->RecordStop(prefix, false /* start_output */);
         }
       },
-      std::move(done), ctx->model(), prefix, std::move(stats_collector),
-      std::placeholders::_1);
+      std::move(done), ctx->model(), ctx->stats_aggregator(), prefix,
+      std::move(stats_collector), std::placeholders::_1);
 
   ctx->lib()->Run(f_opts, handle, frame, std::move(callback));
 }
