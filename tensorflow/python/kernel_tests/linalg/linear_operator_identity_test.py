@@ -445,6 +445,30 @@ class LinearOperatorScaledIdentityTest(
     self.assertTrue(operator.is_non_singular)
     self.assertTrue(operator.is_self_adjoint is None)
 
+  def test_identity_matmul(self):
+    operator1 = linalg_lib.LinearOperatorIdentity(num_rows=2)
+    operator2 = linalg_lib.LinearOperatorScaledIdentity(
+        num_rows=2, multiplier=3.)
+    self.assertTrue(isinstance(
+        operator1.matmul(operator1),
+        linalg_lib.LinearOperatorIdentity))
+
+    self.assertTrue(isinstance(
+        operator1.matmul(operator1),
+        linalg_lib.LinearOperatorIdentity))
+
+    operator_matmul = operator1.matmul(operator2)
+    self.assertTrue(isinstance(
+        operator_matmul,
+        linalg_lib.LinearOperatorScaledIdentity))
+    self.assertAllClose(3., self.evaluate(operator_matmul.multiplier))
+
+    operator_matmul = operator2.matmul(operator1)
+    self.assertTrue(isinstance(
+        operator_matmul,
+        linalg_lib.LinearOperatorScaledIdentity))
+    self.assertAllClose(3., self.evaluate(operator_matmul.multiplier))
+
   def test_scaled_identity_cholesky_type(self):
     operator = linalg_lib.LinearOperatorScaledIdentity(
         num_rows=2,
@@ -455,7 +479,6 @@ class LinearOperatorScaledIdentityTest(
     self.assertTrue(isinstance(
         operator.cholesky(),
         linalg_lib.LinearOperatorScaledIdentity))
-
 
 
 if __name__ == "__main__":
