@@ -314,9 +314,12 @@ void ConstantOp::build(Builder *builder, OperationState *result,
 }
 
 void ConstantOp::print(OpAsmPrinter *p) const {
-  *p << "constant " << getValue();
+  *p << "constant ";
   p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"value");
 
+  if (getAttrs().size() > 1)
+    *p << ' ';
+  *p << getValue();
   if (!getValue().isa<FunctionAttr>())
     *p << " : " << getType();
 }
@@ -325,8 +328,8 @@ bool ConstantOp::parse(OpAsmParser *parser, OperationState *result) {
   Attribute valueAttr;
   Type type;
 
-  if (parser->parseAttribute(valueAttr, "value", result->attributes) ||
-      parser->parseOptionalAttributeDict(result->attributes))
+  if (parser->parseOptionalAttributeDict(result->attributes) ||
+      parser->parseAttribute(valueAttr, "value", result->attributes))
     return true;
 
   // 'constant' taking a function reference doesn't get a redundant type

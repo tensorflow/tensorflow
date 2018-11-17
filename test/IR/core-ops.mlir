@@ -1,4 +1,6 @@
 // RUN: mlir-opt %s | FileCheck %s
+// Verify the printed output can be parsed.
+// RUN: mlir-opt %s | mlir-opt | FileCheck %s
 
 // CHECK: #map0 = (d0) -> (d0 + 1)
 
@@ -71,13 +73,13 @@ bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32, %idx : index):
   %i6 = muli %i2, %i2 : i32
 
   // CHECK: %c42_i32 = constant 42 : i32
-  %x = "constant"(){value: 42: i32} : () -> i32
+  %x = "constant"(){value: 42 : i32} : () -> i32
 
   // CHECK: %c42_i32_0 = constant 42 : i32
   %7 = constant 42 : i32
 
-  // CHECK: %c43 = constant 43 {crazy: "foo"} : index
-  %8 = constant 43: index {crazy: "foo"}
+  // CHECK: %c43 = constant {crazy: "foo"} 43 : index
+  %8 = constant {crazy: "foo"} 43: index
 
   // CHECK: %cst = constant 4.300000e+01 : bf16
   %9 = constant 43.0 : bf16
