@@ -712,7 +712,7 @@ class InputIteratorMultiWorkerTest(
     ]
 
   @combinations.generate(combinations.combine(
-      mode=["graph", "eager"],
+      mode=["graph"],
       input_type=["input_fn", "dataset"]))
   def testOneDevicePerWorker(self, input_type):
     worker_devices = self._cpu_devices()
@@ -722,7 +722,7 @@ class InputIteratorMultiWorkerTest(
                           [[0, 0], [1, 1], [2, 2], [3, 3]], sess)
 
   @combinations.generate(combinations.combine(
-      mode=["graph", "eager"],
+      mode=["graph"],
       input_type=["input_fn", "dataset"],
       required_gpus=1))
   def testTwoDevicesPerWorker(self, input_type):
@@ -733,7 +733,7 @@ class InputIteratorMultiWorkerTest(
                           [[0, 1, 0, 1], [2, 3, 2, 3]], sess)
 
   @combinations.generate(combinations.combine(
-      mode=["graph", "eager"],
+      mode=["graph"],
       input_type=["input_fn", "dataset"]))
   def testTupleDataset(self, input_type):
     worker_devices = self._cpu_devices()
