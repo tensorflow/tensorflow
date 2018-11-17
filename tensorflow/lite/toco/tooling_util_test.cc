@@ -109,6 +109,10 @@ TEST(NumElementsTest, Int) {
   EXPECT_TRUE(status.ok());
   EXPECT_EQ(count, 2146435072);
 
+  status = NumElements(std::vector<int>{1024, 0, 2048}, &count);
+  EXPECT_TRUE(status.ok());
+  EXPECT_EQ(count, 0);
+
   status = NumElements(std::vector<int>{1, 2, -3}, &count);
   EXPECT_EQ(status.error_message(), kNegativeValuesMessage);
 

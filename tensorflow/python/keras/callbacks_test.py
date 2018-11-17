@@ -672,8 +672,8 @@ class KerasCallbacksTest(test.TestCase):
           callbacks=cbks,
           epochs=20)
       loss = history.history['loss']
-      assert len(loss) == 1
-      assert loss[0] == np.inf
+      self.assertEqual(len(loss), 1)
+      self.assertEqual(loss[0], np.inf)
 
   def test_TensorBoard(self):
     np.random.seed(1337)

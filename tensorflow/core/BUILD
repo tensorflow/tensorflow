@@ -305,6 +305,7 @@ filegroup(
         "platform/env_time.h",
         "platform/logging.h",
         "platform/macros.h",
+        "platform/platform_strings.h",
         "platform/types.h",
     ],
     visibility = ["//visibility:private"],
@@ -388,6 +389,7 @@ cc_library(
         ":lib_platform",
         ":platform_base",
         "//tensorflow/core/platform/default/build_config:port",
+        "@com_google_absl//absl/base",
         "@snappy",
     ],
 )
@@ -521,6 +523,19 @@ cc_library(
         ":lib_platform",
         ":platform_env",
     ],
+)
+
+cc_library(
+    name = "platform_strings",
+    srcs = tf_platform_srcs([
+        "platform/platform_strings.cc",
+        "platform/platform_strings_computed.h",
+    ]),
+    hdrs = [
+        "platform/platform_strings.h",
+    ],
+    visibility = ["//tensorflow/core:__subpackages__"],
+    deps = [":lib"],
 )
 
 filegroup(
@@ -1062,6 +1077,7 @@ tf_gen_op_libs(
         "logging_ops",
         "manip_ops",
         "math_ops",
+        "mkl_nn_ops",
         "nccl_ops",
         "nn_ops",
         "no_op",
@@ -1234,7 +1250,7 @@ cc_library(
         ":training_ops_op_lib",
         ":user_ops_op_lib",
         ":word2vec_ops",
-    ] + tf_additional_cloud_op_deps(),
+    ] + if_mkl([":mkl_nn_ops_op_lib"]) + tf_additional_cloud_op_deps(),
     alwayslink = 1,
 )
 
@@ -1290,7 +1306,9 @@ cc_library(
         ":framework",
         ":lib",
         ":nn_ops_op_lib",
-    ],
+    ] + if_mkl([
+        ":mkl_nn_ops_op_lib",
+    ]),
     alwayslink = 1,
 )
 
@@ -1675,6 +1693,7 @@ cc_library(
 cc_library(
     name = "mobile_additional_lib_deps",
     deps = tf_additional_lib_deps() + [
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1779,6 +1798,7 @@ cc_library(
     deps = [
         ":protos_all_cc_impl",
         "//third_party/eigen3",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
@@ -1803,6 +1823,7 @@ cc_library(
     deps = [
         ":protos_all_cc_impl",
         "//third_party/eigen3",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
@@ -2184,6 +2205,7 @@ cc_library(
             "lib/**/*.cc",
             "platform/*.cc",
             "platform/profile_utils/**/*.cc",
+        ] + [
             "framework/resource_handle.cc",
             "util/env_var.cc",
         ],
@@ -2654,6 +2676,7 @@ tf_gpu_library(
         ":stats_calculator_portable",
         ":version_lib",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
@@ -2831,7 +2854,6 @@ tf_gpu_library(
         ":functional_ops_op_lib",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/kernels:required",
-        ":core_cpu_impl",
     ]),
     alwayslink = 1,
 )
@@ -3069,7 +3091,9 @@ tf_gpu_library(
     ],
     copts = tf_copts(),
     gpu_deps = if_cuda_is_configured(tf_additional_cupti_wrapper_deps() + tf_additional_device_tracer_cuda_deps()),
-    visibility = ["//visibility:private"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
     deps = [
         ":core_cpu_internal",
         ":lib",
@@ -3420,6 +3444,16 @@ tf_cc_test(
         ":test",
         ":test_main",
         "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "platform_strings_test",
+    size = "small",
+    srcs = ["platform/platform_strings_test.cc"],
+    deps = [
+        ":lib",
+        ":platform_strings",
     ],
 )
 
@@ -4115,6 +4149,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:immutable_constant_op",
         "//tensorflow/core/kernels:matmul_op",
+        "//tensorflow/core/kernels:topk_op",
         "//third_party/eigen3",
     ],
 )
@@ -4899,6 +4934,7 @@ transitive_hdrs(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:platform_strings",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:stream_executor",
     ],

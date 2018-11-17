@@ -28,7 +28,6 @@ from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import summary_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 
@@ -49,7 +48,7 @@ class XLACompileContextTest(test.TestCase):
     histogram_summary = summary.histogram('histogram_summary', dummy_tensor)
     image_summary = summary.image('image_summary', dummy_tensor)
     scalar_summary = summary.scalar('scalar_summary', dummy_tensor)
-    tensor_summary = summary_ops.tensor_summary('tensor_summary', dummy_tensor)
+    tensor_summary = summary.tensor_summary('tensor_summary', dummy_tensor)
     summary.merge(
         [
             audio_summary, histogram_summary, image_summary, scalar_summary,

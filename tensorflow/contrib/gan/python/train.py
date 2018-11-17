@@ -114,7 +114,7 @@ def gan_model(
     discriminator_gen_outputs = discriminator_fn(generated_data,
                                                  generator_inputs)
   with variable_scope.variable_scope(dis_scope, reuse=True):
-    real_data = ops.convert_to_tensor(real_data)
+    real_data = _convert_tensor_or_l_or_d(real_data)
     discriminator_real_outputs = discriminator_fn(real_data, generator_inputs)
 
   if check_shapes:

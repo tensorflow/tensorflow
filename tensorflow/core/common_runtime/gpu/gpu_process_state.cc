@@ -166,7 +166,9 @@ Allocator* GPUProcessState::GetGPUHostAllocator(int numa_node) {
       !process_state_->ProcessState::FLAGS_brain_mem_reg_gpu_dma) {
     return process_state_->GetCPUAllocator(numa_node);
   }
-  CHECK_GE(numa_node, 0);
+  if (numa_node == port::kNUMANoAffinity) {
+    numa_node = 0;
+  }
   {
     // Here we optimize the most common use case where gpu_host_allocators_
     // and gpu_host_al_ have already been populated and since we're only reading

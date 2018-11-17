@@ -51,7 +51,6 @@ from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import spectral_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.platform import tf_logging as logging

@@ -35,7 +35,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
-from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.lazy_loader import LazyLoader
 
 # This is to avoid a circular dependency:
@@ -296,7 +295,7 @@ def func_graph_from_py_func(name,
                             kwargs,
                             signature=None,
                             func_graph=None,
-                            experimental_autograph=False,
+                            autograph=False,
                             add_control_dependencies=True,
                             arg_names=None,
                             op_return_value=None):
@@ -316,7 +315,7 @@ def func_graph_from_py_func(name,
       inputs.
     func_graph: Optional. An instance of FuncGraph. If provided, we will use
       this graph else a new one is built and returned.
-    experimental_autograph: whether to use autograph to compile `python_func`.
+    autograph: whether to use autograph to compile `python_func`.
       See https://www.tensorflow.org/guide/autograph for more information.
     add_control_dependencies: If True, automatically adds control dependencies
       to ensure program order matches execution order and stateful ops always
@@ -388,29 +387,27 @@ def func_graph_from_py_func(name,
 
     this_tape = tape.push_new_tape()
     try:
-      if experimental_autograph:
+      if autograph:
         from tensorflow.python import autograph  # pylint: disable=g-import-not-at-top
         _, original_func = tf_decorator.unwrap(python_func)
 
-        # AutoGraph does not yet rebind the returned method, and must receive
-        # `self` explicitly.
-        # TODO(mdan): Have the result automatically bind it instead.
-        if (tf_inspect.ismethod(original_func) and
-            hasattr(original_func, "__self__")):
-          effective_func_args = (original_func.__self__,) + func_args
-        else:
-          effective_func_args = func_args
+        def wrapper(*args, **kwargs):
+          return autograph.converted_call(
+              original_func, None,
+              autograph.ConversionOptions(
+                  verbose=True,
+                  recursive=True,
+                  strip_decorators=(function.defun, def_function.function),
+                  optional_features=(),
+              ), *args, **kwargs)
 
-        func_outputs = autograph.converted_call(
-            original_func, None,
-            autograph.ConversionOptions(
-                verbose=True,
-                recursive=True,
-                strip_decorators=(function.defun, def_function.function),
-                optional_features=(),
-            ), *effective_func_args, **func_kwargs)
-      else:
-        func_outputs = python_func(*func_args, **func_kwargs)
+        # Wrapping around a decorator allows checks like tf_inspect.getargspec
+        # to be accurate.
+        converted_func = tf_decorator.make_decorator(original_func, wrapper)
+        tf_decorator.rewrap(python_func, original_func, converted_func)
+
+      func_outputs = python_func(*func_args, **func_kwargs)
+
       # invariant: `func_outputs` contains only Tensors and `None`s.
       func_outputs = nest.map_structure(convert, func_outputs)
 

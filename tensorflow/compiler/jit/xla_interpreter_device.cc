@@ -45,8 +45,8 @@ Status XlaInterpreterDeviceFactory::CreateDevices(
 
   XlaOpRegistry::DeviceRegistration registration;
   registration.compilation_device_name = DEVICE_INTERPRETER_XLA_JIT;
-  registration.requires_compilation = true;
-  registration.enable_jit_by_default = false;
+  registration.autoclustering_policy =
+      XlaOpRegistry::AutoclusteringPolicy::kAlways;
   registration.compile_resource_ops = true;
   XlaOpRegistry::RegisterCompilationDevice(DEVICE_XLA_INTERPRETER,
                                            registration);

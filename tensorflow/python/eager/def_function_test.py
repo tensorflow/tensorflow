@@ -27,6 +27,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
@@ -105,6 +106,23 @@ class DefFunctionTest(test.TestCase):
       return state[0] * x
 
     self.assertAllEqual(fn(constant_op.constant(1.0)), 2.0)
+
+  def testFunctionInitializationFunction(self):
+
+    state = []
+
+    @def_function.function
+    def fn(x):
+      if not state:
+        state.append(variables.Variable(2.0))
+      return state[0] * x
+
+    init_fn = fn.get_initialization_function(constant_op.constant(1.0))
+    self.assertEqual(len(state), 1)
+    self.assertFalse(
+        resource_variable_ops.var_is_initialized_op(state[0].handle))
+    init_fn()
+    self.assertEqual(state[0].numpy(), 2.0)
 
   def testVariableInitializerNotConstant(self):
 
@@ -194,6 +212,19 @@ class DefFunctionTest(test.TestCase):
     y = constant_op.constant([2.])
     model = _ModelWithOptimizer()
     model(x, y)
+
+  def test_concrete_function_from_signature(self):
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    def compute(x):
+      return 2. * x
+
+    concrete = compute.get_concrete_function()
+    self.assertAllClose(1., concrete(constant_op.constant(0.5)))
+    concrete = compute.get_concrete_function(
+        tensor_spec.TensorSpec(None, dtypes.float32))
+    self.assertAllClose(4., concrete(constant_op.constant(2.)))
 
 
 if __name__ == '__main__':

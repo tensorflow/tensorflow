@@ -90,7 +90,6 @@ class StandardSingleLossStep(StandardInputStep):
     super(StandardSingleLossStep, self).__init__(dataset_fn, distribution)
     self._loss_fn = loss_fn
     self._optimizer = optimizer
-    self._is_run_concurrently = False
     self._iterations_per_step = iterations_per_step
 
   def __call__(self):
@@ -101,14 +100,11 @@ class StandardSingleLossStep(StandardInputStep):
         gradients_fn = optimizer_lib.get_filtered_grad_fn(gradients_fn)
 
         grads_and_vars = self.distribution.call_for_each_replica(
-            gradients_fn,
-            ctx, *inputs,
-            run_concurrently=self._is_run_concurrently)
+            gradients_fn, args=(ctx,) + inputs)
         # If threads use layers, then we need to run the first step
         # sequentially, so that layers.build() is not executed in parallel.
         # Otherwise, multiple sets of mirrored variables are going to be
         # created.
-        self._is_run_concurrently = True
         return self._optimizer._distributed_apply(  # pylint: disable=protected-access
             self.distribution, grads_and_vars)
 

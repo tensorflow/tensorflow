@@ -45,7 +45,7 @@ from tensorflow.python.estimator import training as estimator_training
 from tensorflow.python.estimator.canned import dnn_linear_combined
 from tensorflow.python.estimator.canned import prediction_keys
 from tensorflow.python.estimator.export import export as export_lib
-from tensorflow.python.feature_column import feature_column
+from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary_iterator
@@ -300,10 +300,8 @@ class DistributeCoordinatorIntegrationTest(test.TestCase,
           required_gpus=[0, 1]))
   def test_complete_flow_standalone_client(self, train_distribute_cls,
                                            eval_distribute_cls):
-    try:
-      train_distribute = train_distribute_cls(num_gpus=context.num_gpus())
-    except TypeError:
-      train_distribute = train_distribute_cls(num_gpus_per_worker=2)
+    train_distribute = train_distribute_cls(
+        num_gpus_per_worker=context.num_gpus())
 
     if eval_distribute_cls:
       eval_distribute = eval_distribute_cls(

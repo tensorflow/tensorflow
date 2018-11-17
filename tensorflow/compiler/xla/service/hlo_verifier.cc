@@ -756,6 +756,12 @@ Status ShapeVerifier::HandleAfterAll(HloInstruction* token) {
   return CheckShape(token, ShapeInference::InferAfterAllShape(operand_shapes));
 }
 
+Status ShapeVerifier::HandleGetDimensionSize(HloInstruction* get_size) {
+  return CheckShape(get_size,
+                    ShapeInference::InferGetDimensionSizeShape(
+                        get_size->operand(0)->shape(), get_size->dimension()));
+}
+
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
                                  const Shape& inferred_shape) {
   // If allow_mixed_precision_ is false, check if there are operands with
@@ -1419,6 +1425,8 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
       *module, [this](const Shape& shape) {
         return target_metadata_->ShapeSize(shape);
       }));
+
+  TF_RETURN_IF_ERROR(module->dynamic_parameter_binding().Verify(*module));
 
   return false;
 }

@@ -22,7 +22,7 @@ import os
 import numpy as np
 import six
 
-from tensorflow.python.feature_column import feature_column as fc
+from tensorflow.python.feature_column import feature_column_lib as fc
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops

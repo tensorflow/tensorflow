@@ -283,7 +283,7 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   /** Gets the number of output tensors. */
   int getOutputTensorCount() {
-    return inputTensors.length;
+    return outputTensors.length;
   }
 
   /**

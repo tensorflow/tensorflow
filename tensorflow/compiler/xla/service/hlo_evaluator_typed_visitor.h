@@ -161,9 +161,6 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                          HloOpcodeString(hlo_instruction->opcode()));
   }
 
-  // TODO(b/35950897): many of the stl functions used in the handlers are not
-  // overloaded for every XLA primitive type.
-
   template <typename NativeT,
             typename std::enable_if<std::is_unsigned<NativeT>::value>::type* =
                 nullptr>
@@ -2722,17 +2719,8 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const auto shape = instruction->shape();
     const auto* lhs = instruction->operand(0);
     const auto* rhs = instruction->operand(1);
-
-    // TODO(b/35950897, b/27796129): add DCHECK back once implicit broadcast
-    // is removed.
-    if (!(ShapeUtil::SameDimensions(shape, rhs->shape()) &&
-          ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()))) {
-      return Unimplemented(
-          "Implicit broadcasting is currently unsupported in HLO evaluator "
-          "Shape Mismatch: %s vs %s vs %s: ",
-          ShapeUtil::HumanString(shape), ShapeUtil::HumanString(lhs->shape()),
-          ShapeUtil::HumanString(rhs->shape()));
-    }
+    TF_RET_CHECK(ShapeUtil::SameDimensions(shape, rhs->shape()));
+    TF_RET_CHECK(ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()));
 
     const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
     const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);
@@ -2756,19 +2744,9 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     const auto* lhs = instruction->operand(0);
     const auto* rhs = instruction->operand(1);
     const auto* ehs = instruction->operand(2);
-
-    // TODO(b/35950897, b/27796129): add DCHECK back once implicit
-    // broadcast is removed.
-    if (!(ShapeUtil::SameDimensions(shape, lhs->shape()) &&
-          ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()) &&
-          ShapeUtil::SameDimensions(rhs->shape(), ehs->shape()))) {
-      return Unimplemented(
-          "Implicit broadcasting is currently unsupported in HLO evaluator "
-          "Shape Mismatch: %s vs %s vs %s vs %s: ",
-          ShapeUtil::HumanString(shape), ShapeUtil::HumanString(lhs->shape()),
-          ShapeUtil::HumanString(rhs->shape()),
-          ShapeUtil::HumanString(ehs->shape()));
-    }
+    TF_RET_CHECK(ShapeUtil::SameDimensions(shape, lhs->shape()));
+    TF_RET_CHECK(ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()));
+    TF_RET_CHECK(ShapeUtil::SameDimensions(rhs->shape(), ehs->shape()));
 
     const Literal& lhs_literal = parent_->GetEvaluatedLiteralFor(lhs);
     const Literal& rhs_literal = parent_->GetEvaluatedLiteralFor(rhs);

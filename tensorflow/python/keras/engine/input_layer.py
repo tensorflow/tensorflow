@@ -84,7 +84,6 @@ class InputLayer(base_layer.Layer):
     self.sparse = sparse
     self.batch_size = batch_size
     self.supports_masking = True
-    self._can_use_graph_functions = True
 
     if isinstance(input_shape, tensor_shape.TensorShape):
       input_shape = tuple(input_shape.as_list())
@@ -192,6 +191,16 @@ def Input(  # pylint: disable=invalid-name
       x = Input(shape=(32,))
       y = Dense(16, activation='softmax')(x)
       model = Model(x, y)
+      ```
+
+      Note that even if eager execution is enabled,
+      `Input` produces a symbolic tensor (i.e. a placeholder).
+      This symbolic tensor can be used with other
+      TensorFlow ops, as such:
+
+      ```python
+      x = Input(shape=(32,))
+      y = tf.square(x)
       ```
 
   Raises:

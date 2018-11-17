@@ -1279,7 +1279,7 @@ class SequenceIndicatorColumnTest(test.TestCase, parameterized.TestCase):
 
     categorical_column = sfc.sequence_categorical_column_with_identity(
         key='aaa', num_buckets=vocabulary_size)
-    indicator_column = fc.indicator_column(categorical_column)
+    indicator_column = fc.indicator_column_v2(categorical_column)
 
     _, sequence_length = indicator_column._get_sequence_dense_tensor(
         _LazyBuilder({'aaa': sparse_input}))

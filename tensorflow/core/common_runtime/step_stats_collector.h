@@ -74,8 +74,7 @@ class NodeExecStatsInterface {
   // Records information about the memory allocated during the execution of this
   // node.
   //
-  // Takes ownership of the `TrackingAllocator` objects in
-  // `ctx->wrapped_allocators()`.
+  // Takes ownership of any `TrackingAllocator` objects stored in `ctx`.
   virtual void SetMemory(OpKernelContext* ctx) = 0;
 
   // Records information about the tensor produced by this node at the given

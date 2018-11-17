@@ -30,16 +30,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
 
-class MinimumMemoryForSequenceTest : public HloVerifiedTestBase {};
+class MinimumMemoryForSequenceTest : public HloTestBase {};
 
 TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
   const Shape tuple_shape =
       ShapeUtil::MakeTupleShape({scalar_shape, scalar_shape});
@@ -86,7 +86,7 @@ TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
     return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
   };
 
-  HloSchedule schedule(module);
+  HloSchedule schedule(module.get());
   schedule.set_sequence(cond_computation,
                         {cond_param, cond_iter, cond_data, cond_lt});
   schedule.set_sequence(body_computation, {body_param});
@@ -351,7 +351,7 @@ class HeapSimulatorTracker {
   HeapSimulator::Result result_;
 };
 
-class HeapSimulatorTest : public HloVerifiedTestBase {
+class HeapSimulatorTest : public HloTestBase {
  protected:
   HeapSimulatorTest() {}
   ~HeapSimulatorTest() override {}

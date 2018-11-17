@@ -58,7 +58,6 @@ class Pooling1D(Layer):
                padding='valid', data_format='channels_last',
                name=None, **kwargs):
     super(Pooling1D, self).__init__(name=name, **kwargs)
-    self._can_use_graph_functions = True
     if data_format is None:
       data_format = backend.image_data_format()
     if strides is None:
@@ -231,7 +230,6 @@ class Pooling2D(Layer):
                padding='valid', data_format=None,
                name=None, **kwargs):
     super(Pooling2D, self).__init__(name=name, **kwargs)
-    self._can_use_graph_functions = True
     if data_format is None:
       data_format = backend.image_data_format()
     if strides is None:
@@ -427,7 +425,6 @@ class Pooling3D(Layer):
                padding='valid', data_format='channels_last',
                name=None, **kwargs):
     super(Pooling3D, self).__init__(name=name, **kwargs)
-    self._can_use_graph_functions = True
     if data_format is None:
       data_format = backend.image_data_format()
     if strides is None:
@@ -599,7 +596,6 @@ class GlobalPooling1D(Layer):
 
   def __init__(self, data_format='channels_last', **kwargs):
     super(GlobalPooling1D, self).__init__(**kwargs)
-    self._can_use_graph_functions = True
     self.input_spec = InputSpec(ndim=3)
     self.data_format = conv_utils.normalize_data_format(data_format)
 
@@ -705,7 +701,6 @@ class GlobalPooling2D(Layer):
 
   def __init__(self, data_format=None, **kwargs):
     super(GlobalPooling2D, self).__init__(**kwargs)
-    self._can_use_graph_functions = True
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.input_spec = InputSpec(ndim=4)
 
@@ -804,7 +799,6 @@ class GlobalPooling3D(Layer):
 
   def __init__(self, data_format=None, **kwargs):
     super(GlobalPooling3D, self).__init__(**kwargs)
-    self._can_use_graph_functions = True
     self.data_format = conv_utils.normalize_data_format(data_format)
     self.input_spec = InputSpec(ndim=5)
 

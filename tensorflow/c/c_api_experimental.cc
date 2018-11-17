@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/c/c_api_experimental.h"
 
 #include "tensorflow/c/c_api_internal.h"
-#include "tensorflow/compiler/jit/legacy_flags/mark_for_compilation_pass_flags.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/graph.h"
@@ -51,8 +51,8 @@ void TF_EnableXLACompilation(TF_SessionOptions* options, unsigned char enable) {
     // These XLA flags are needed to trigger XLA properly from C (more generally
     // non-Python) clients. If this API is called again with `enable` set to
     // false, it is safe to keep these flag values as is.
-    tensorflow::legacy_flags::MarkForCompilationPassFlags* flags =
-        tensorflow::legacy_flags::GetMarkForCompilationPassFlags();
+    tensorflow::MarkForCompilationPassFlags* flags =
+        tensorflow::GetMarkForCompilationPassFlags();
     flags->tf_xla_cpu_global_jit = true;
     flags->tf_xla_min_cluster_size = 1;
   } else {
@@ -71,8 +71,8 @@ TF_Buffer* TF_CreateConfig(unsigned char enable_xla_compilation,
     // These XLA flags are needed to trigger XLA properly from C (more generally
     // non-Python) clients. If this API is called again with `enable` set to
     // false, it is safe to keep these flag values as is.
-    tensorflow::legacy_flags::MarkForCompilationPassFlags* flags =
-        tensorflow::legacy_flags::GetMarkForCompilationPassFlags();
+    tensorflow::MarkForCompilationPassFlags* flags =
+        tensorflow::GetMarkForCompilationPassFlags();
     flags->tf_xla_cpu_global_jit = true;
     flags->tf_xla_min_cluster_size = 1;
   } else {

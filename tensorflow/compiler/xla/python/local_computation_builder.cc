@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -56,6 +57,12 @@ tensorflow::mutex g_local_client_mutex(tensorflow::LINKER_INITIALIZED);
 int g_replica_count GUARDED_BY(g_local_client_mutex) = 1;
 LocalClient* g_local_client GUARDED_BY(g_local_client_mutex) = nullptr;
 
+string* GetPlatformNameString() {
+  static string* platform_name_string PT_GUARDED_BY(g_local_client_mutex) =
+      new string("Host");
+  return platform_name_string;
+}
+
 Status InitializeReplicaCount(int replica_count) {
   if (replica_count < 1) {
     return InvalidArgument("Replica count must be >= 1; got %d.",
@@ -72,17 +79,33 @@ Status InitializeReplicaCount(int replica_count) {
   return Status::OK();
 }
 
+Status InitializePlatformName(const string& platform_name) {
+  string* g_platform_name = GetPlatformNameString();
+  tensorflow::mutex_lock lock(g_local_client_mutex);
+  if (g_local_client != nullptr) {
+    return FailedPrecondition(
+        "Attempted to set the platform name to %s, but a local XLA service was "
+        "previously created with a platform name of %s.",
+        platform_name, *g_platform_name);
+  }
+  TF_RETURN_IF_ERROR(PlatformUtil::GetPlatform(platform_name).status());
+  *g_platform_name = platform_name;
+  return Status::OK();
+}
+
 int GetReplicaCount() {
   tensorflow::mutex_lock lock(g_local_client_mutex);
   return g_replica_count;
 }
 
 LocalClient* GetOrCreateLocalClient() {
+  string* platform_name = GetPlatformNameString();
   tensorflow::mutex_lock lock(g_local_client_mutex);
   if (g_local_client != nullptr) {
     return g_local_client;
   }
   LocalClientOptions options;
+  options.set_platform(PlatformUtil::GetPlatform(*platform_name).ValueOrDie());
   options.set_number_of_replicas(g_replica_count);
   g_local_client = ClientLibrary::GetOrCreateLocalClient(options).ValueOrDie();
   CHECK(g_local_client != nullptr);

@@ -141,8 +141,10 @@ int64 RecursiveElementCount(const Shape& shape) {
       total += RecursiveElementCount(ShapeUtil::GetTupleElementShape(shape, i));
     }
     return total;
-  } else {
+  } else if (ShapeUtil::IsArray(shape)) {
     return ShapeUtil::ElementsIn(shape);
+  } else {
+    return 0;
   }
 }
 

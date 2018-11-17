@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Target/TargetOptions.h"
@@ -83,10 +84,9 @@ string DumpModuleToString(const llvm::Module& module) {
   return AsString(buffer_string);
 }
 
-llvm::Value* EmitCallToIntrinsic(llvm::Intrinsic::ID intrinsic_id,
-                                 absl::Span<llvm::Value* const> operands,
-                                 absl::Span<llvm::Type* const> overloaded_types,
-                                 llvm::IRBuilder<>* b) {
+llvm::CallInst* EmitCallToIntrinsic(
+    llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
+    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b) {
   llvm::Module* module = ModuleFromIRBuilder(b);
   llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
       module, intrinsic_id, AsArrayRef(overloaded_types));
@@ -258,6 +258,17 @@ llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
   return llvm::ConstantDataArray::getString(
       module->getContext(), llvm::StringRef(data, literal.size_bytes()),
       /*AddNull=*/false);
+}
+
+llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
+                                               llvm::Type* tile_type,
+                                               absl::string_view name) {
+  const int kNVPTXSharedMemoryAddrSpace = 3;
+  return new llvm::GlobalVariable(
+      *module, tile_type,
+      /*isConstant=*/false, llvm::GlobalValue::PrivateLinkage,
+      llvm::UndefValue::get(tile_type), AsStringRef(name), nullptr,
+      llvm::GlobalValue::NotThreadLocal, kNVPTXSharedMemoryAddrSpace);
 }
 
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,

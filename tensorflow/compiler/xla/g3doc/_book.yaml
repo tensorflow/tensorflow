@@ -11,7 +11,7 @@ upper_tabs:
   lower_tabs:
     # Subsite tabs
     other:
-    - name: Guide
+    - name: Guide & Tutorials
       contents:
       - title: XLA overview
         path: /xla/overview
@@ -27,3 +27,7 @@ upper_tabs:
         path: /xla/shapes
       - title: Using AOT compilation
         path: /xla/tfcompile
+      - heading: Tutorials
+      - title: XLA compile API
+        path: /xla/tutorials/xla_compile
+        status: experimental

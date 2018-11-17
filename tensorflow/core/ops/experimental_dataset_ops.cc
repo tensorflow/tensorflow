@@ -75,6 +75,17 @@ REGISTER_OP("ExperimentalIgnoreErrorsDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("ExperimentalMapDataset")
+    .Input("input_dataset: variant")
+    .Input("other_arguments: Targuments")
+    .Output("handle: variant")
+    .Attr("f: func")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("use_inter_op_parallelism: bool = true")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("ExperimentalNonSerializableDataset")
     .Input("input_dataset: variant")
     .Output("handle: variant")

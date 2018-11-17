@@ -174,6 +174,20 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "inputs_test",
+    size = "small",
+    srcs = ["inputs_test.py"],
+    additional_deps = [
+        ":test_base",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
     name = "interleave_dataset_op_test",
     size = "small",
     srcs = ["interleave_dataset_op_test.py"],

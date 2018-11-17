@@ -205,7 +205,7 @@ bool GraphDefBuilderWrapper::HasAttr(const string& name,
 
 Status GetDatasetFromVariantTensor(const Tensor& tensor,
                                    DatasetBase** out_dataset) {
-  if (!(tensor.dtype() == DT_VARIANT ||
+  if (!(tensor.dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(tensor.shape()))) {
     return errors::InvalidArgument(
         "Dataset tensor must be a scalar of dtype DT_VARIANT.");

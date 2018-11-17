@@ -138,6 +138,9 @@ def convert_to_iterator(x=None,
 
   """
   if isinstance(x, iterator_ops.EagerIterator):
+    if steps_per_epoch is None:
+      raise ValueError('You must specify the number of steps (number of batches'
+                       'to draw from the iterator).')
     return x, steps_per_epoch
 
   if not _nested_any(sample_weights, lambda x: x is None):
@@ -224,9 +227,9 @@ def standardize_single_array(x):
     return None
   if x.shape is not None and len(x.shape) == 1:
     if tensor_util.is_tensor(x):
-      return array_ops.expand_dims(x, axis=1)
+      x = array_ops.expand_dims(x, axis=1)
     else:
-      return np.expand_dims(x, 1)
+      x = np.expand_dims(x, 1)
   return x
 
 
@@ -1053,9 +1056,11 @@ class ModelInputs(object):
     self._inputs = inputs
     self._is_dict = isinstance(self._inputs, dict)
     self._is_single_input = not isinstance(self._inputs, (list, tuple, dict))
+
     self._flattened_inputs = []
     self._input_names = []
-    if isinstance(self._inputs, dict):
+
+    if self._is_dict:
       for k in sorted(self._inputs.keys()):
         self._flattened_inputs.append(self._inputs[k])
         self._input_names.append(k)
@@ -1064,7 +1069,6 @@ class ModelInputs(object):
       self._input_names = [
           'input_%d' % (i + 1) for i in range(len(self._flattened_inputs))
       ]
-    assert len(self._input_names) == len(self._flattened_inputs)
 
   def get_input_names(self):
     """Returns keys to name inputs by.
@@ -1074,56 +1078,29 @@ class ModelInputs(object):
     """
     return self._input_names
 
-  def _get(self, return_single_as_list=False):
-    """Returns provided inputs, potentially transformed.
-
-    Inputs are returned in the same format they were provided i.e. lists
-    are returned as lists, single entries as single entries (unless
-    `return_single_as_list` is true), dictionaries as dictionaries.
-
-    Args:
-      return_single_as_list: Returns a list of size 1 for single entry case.
-    """
-    if self._is_dict:
-      return dict(zip(self._input_names, self._flattened_inputs))
-    if self._is_single_input and not return_single_as_list:
-      return self._flattened_inputs[0]
-    return self._flattened_inputs
-
-  def get_input_values(self):
-    """Returns input values passed in."""
-    if context.executing_eagerly():
-      for i in range(len(self._flattened_inputs)):
-        v = self._flattened_inputs[i]
-        if tensor_util.is_tensor(v):
-          v = cast_single_tensor(v)
-        else:
-          v = ops.convert_to_tensor(v, dtype=K.floatx())
-        self._flattened_inputs[i] = v
-    return self._get(return_single_as_list=False)
-
   def get_symbolic_inputs(self, return_single_as_list=False):
     """Returns inputs to be set as self.inputs for a model."""
     for i in range(len(self._flattened_inputs)):
       k = self._input_names[i]
       v = self._flattened_inputs[i]
-      if context.executing_eagerly():
-        v = K.placeholder((None,) + tuple(v.shape[1:]), name=k)
-      else:
-        if isinstance(v, list):
-          v = np.asarray(v)
-          if v.ndim == 1:
-            v = np.expand_dims(v, 1)
-        if isinstance(v, (np.ndarray)):
-          # We fix the placeholder shape except the batch size.
-          # This is suboptimal, but it is the best we can do with the info
-          # we have. The user should call `model._set_inputs(placeholders)`
-          # to specify custom placeholders if the need arises.
-          shape = (None,) + v.shape[1:]
-          v = K.placeholder(shape=shape, name=k)
+      if isinstance(v, (list, float, int)):
+        v = np.asarray(v)
+        if v.ndim == 1:
+          v = np.expand_dims(v, 1)
+      if isinstance(v, (np.ndarray, ops.EagerTensor)):
+        # We fix the placeholder shape except the batch size.
+        # This is suboptimal, but it is the best we can do with the info
+        # we have. The user should call `model._set_inputs(placeholders)`
+        # to specify custom placeholders if the need arises.
+        shape = (None,) + tuple(v.shape[1:])
+        v = K.placeholder(shape=shape, name=k)
       self._flattened_inputs[i] = v
 
-    return self._get(return_single_as_list)
+    if self._is_dict:
+      return dict(zip(self._input_names, self._flattened_inputs))
+    if self._is_single_input and not return_single_as_list:
+      return self._flattened_inputs[0]
+    return self._flattened_inputs
 
   def as_dict(self):
     """An iterable over a dictionary version of inputs."""

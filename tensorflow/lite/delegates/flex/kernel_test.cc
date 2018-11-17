@@ -30,7 +30,7 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteDelegate* delegate,
                             const std::vector<int>& supported_nodes) {
   TfLiteIntArray* size_and_nodes =
       ConvertVectorToTfLiteIntArray(supported_nodes);
-  TF_LITE_ENSURE_STATUS(context->ReplaceSubgraphsWithDelegateKernels(
+  TF_LITE_ENSURE_STATUS(context->ReplaceNodeSubsetsWithDelegateKernels(
       context, flex::GetKernel(), size_and_nodes, delegate));
   TfLiteIntArrayFree(size_and_nodes);
   return kTfLiteOk;

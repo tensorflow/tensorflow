@@ -131,7 +131,15 @@ def custom_gradient(f):
          a list of `Tensor`s - the derivatives of `Tensor`s in `y` with respect
          to the `Tensor`s in `x`.  `grad_ys` is a `Tensor` or sequence of
          `Tensor`s the same size as `y` holding the initial value gradients for
-         each `Tensor` in `y`. If `f` uses `Variable`s (that are not part of the
+         each `Tensor` in `y`. In a pure mathematical sense, a vector-argument
+         vector-valued function `f`'s derivatives should be its Jacobian matrix
+         `J`. Here we are expressing the Jacobian `J` as a function `grad_fn`
+         which defines how `J` will transform a vector `grad_ys` when
+         left-multiplied with it (`grad_ys * J`). This functional representation
+         of a matrix is convenient to use for chain-rule calculation
+         (in e.g. the back-propagation algorithm).
+
+         If `f` uses `Variable`s (that are not part of the
          inputs), i.e. through `get_variable`, then `grad_fn` should have
          signature `g(*grad_ys, variables=None)`, where `variables` is a list of
          the `Variable`s, and return a 2-tuple `(grad_xs, grad_vars)`, where

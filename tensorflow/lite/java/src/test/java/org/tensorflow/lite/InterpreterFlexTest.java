@@ -18,6 +18,8 @@ package org.tensorflow.lite;
 import static com.google.common.truth.Truth.assertThat;
 
 import java.io.File;
+import java.util.HashMap;
+import java.util.Map;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -38,9 +40,17 @@ public final class InterpreterFlexTest {
     try (Interpreter interpreter = new Interpreter(FLEX_MODEL_FILE)) {
       assertThat(interpreter.getInputTensorCount()).isEqualTo(4);
       assertThat(interpreter.getInputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
-      assertThat(interpreter.getOutputTensorCount()).isEqualTo(4);
+      assertThat(interpreter.getInputTensor(1).dataType()).isEqualTo(DataType.FLOAT32);
+      assertThat(interpreter.getInputTensor(2).dataType()).isEqualTo(DataType.FLOAT32);
+      assertThat(interpreter.getInputTensor(3).dataType()).isEqualTo(DataType.FLOAT32);
+      assertThat(interpreter.getOutputTensorCount()).isEqualTo(2);
       assertThat(interpreter.getOutputTensor(0).dataType()).isEqualTo(DataType.FLOAT32);
-      interpreter.run(new float[1], new float[1]);
+      assertThat(interpreter.getOutputTensor(1).dataType()).isEqualTo(DataType.FLOAT32);
+      Object[] inputs = new Object[] {new float[1], new float[1], new float[1], new float[1]};
+      Map<Integer, Object> outputs = new HashMap<>();
+      outputs.put(0, new float[1]);
+      outputs.put(1, new float[1]);
+      interpreter.runForMultipleInputsOutputs(inputs, outputs);
     }
   }
 

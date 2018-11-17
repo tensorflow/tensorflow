@@ -42,6 +42,7 @@ tensorflow/core/kernels/conv_grad_filter_ops.cc
 tensorflow/core/kernels/conv_grad_input_ops.cc
 tensorflow/core/kernels/conv_grad_ops.cc
 tensorflow/core/kernels/conv_ops.cc
+tensorflow/core/kernels/conv_ops_3d.cc
 tensorflow/core/kernels/conv_ops_fused.cc
 tensorflow/core/kernels/conv_ops_using_gemm.cc
 tensorflow/core/kernels/crop_and_resize_op.cc
@@ -163,6 +164,7 @@ tensorflow/core/kernels/pack_op.cc
 tensorflow/core/kernels/pad_op.cc
 tensorflow/core/kernels/padding_fifo_queue.cc
 tensorflow/core/kernels/padding_fifo_queue_op.cc
+tensorflow/core/kernels/pooling_ops_3d.cc
 tensorflow/core/kernels/pooling_ops_common.cc
 tensorflow/core/kernels/population_count_op.cc
 tensorflow/core/kernels/quantization_utils.cc
@@ -248,6 +250,7 @@ tensorflow/core/kernels/spectrogram_op.cc
 tensorflow/core/kernels/split_lib_cpu.cc
 tensorflow/core/kernels/split_op.cc
 tensorflow/core/kernels/split_v_op.cc
+tensorflow/core/kernels/stack.cc
 tensorflow/core/kernels/stack_ops.cc
 tensorflow/core/kernels/strided_slice_op.cc
 tensorflow/core/kernels/strided_slice_op_inst_0.cc

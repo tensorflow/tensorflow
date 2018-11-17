@@ -206,10 +206,17 @@ def _clone_sequential_model(model, input_tensors=None):
   def clone(layer):
     return layer.__class__.from_config(layer.get_config())
 
-  layers = [clone(layer) for layer in model.layers]
+  # Use model._layers to ensure that all layers are cloned. The model's layers
+  # property will exclude the initial InputLayer (if it exists) in the model,
+  # resulting in a different Sequential model structure.
+  layers = [clone(layer) for layer in model._layers]
   if input_tensors is None:
     return Sequential(layers=layers, name=model.name)
   else:
+    # If input tensors are provided, the original model's InputLayer is
+    # overwritten with a different InputLayer.
+    if isinstance(layers[0], InputLayer):
+      layers = layers[1:]
     if len(generic_utils.to_list(input_tensors)) != 1:
       raise ValueError('To clone a `Sequential` model, we expect '
                        ' at most one tensor '
@@ -452,7 +459,7 @@ def clone_and_build_model(
 
     if all([isinstance(clone, Sequential),
             not clone._is_graph_network,
-            model.built]):
+            getattr(model, '_build_input_shape', None) is not None]):
       # Set model inputs to build the model and add input/output properties.
       # TODO(kathywu): Add multiple placeholders to handle edge case where
       # sequential model has multiple inputs.

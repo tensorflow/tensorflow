@@ -20,8 +20,13 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import function
+from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import func_graph
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 class VariableHolder(object):
@@ -41,6 +46,40 @@ class VariableHolder(object):
       return self._fn(*args, **kwargs)
 
 
+# TODO(allenl): make this checkpointable
+class WrappedFunction(function.Function):
+  """Wraps a tf V1 piece of code in a function."""
+
+  def __init__(self, fn_graph, variable_holder, attrs=None, signature=None):
+    super(WrappedFunction, self).__init__(
+        fn_graph, attrs=attrs, signature=signature)
+    self._variable_holder = variable_holder
+
+  def prune(self, feeds, fetches):
+    flat_feeds, flat_fetches = nest.flatten(feeds), nest.flatten(fetches)
+    for f in flat_feeds + flat_fetches:
+      if not isinstance(f, ops.Tensor):
+        raise ValueError("Feeds and fetches must be tensors.")
+      if f.graph is not self._func_graph:
+        raise ValueError(
+            "Can only prune function whose feeds and fetches "
+            "are from this graph (%s). Tensor %s from graph %s" % (
+                self._func_graph, f, f.graph))
+    with self._func_graph.as_default():
+      pruned_graph = func_graph.FuncGraph("pruned")
+      sink_tensor = array_ops.identity_n(flat_fetches)[0]
+    lift_map = lift_to_graph.lift_to_graph(
+        sink_tensor, pruned_graph, sources=flat_feeds)
+    pruned_graph.outputs.extend(lift_map[x] for x in flat_fetches)
+    pruned_graph.inputs.extend(lift_map[x] for x in flat_feeds)
+    pruned_fn = WrappedFunction(
+        pruned_graph, variable_holder=self._variable_holder)
+    pruned_fn._num_positional_args = len(flat_feeds)  # pylint: disable=protected-access
+    pruned_fn._arg_keywords = []  # pylint: disable=protected-access
+    return pruned_fn
+
+
+@tf_export(v1=["wrap_function"])
 def wrap_function(fn, signature, name=None):
   """Wraps the TF 1.x function fn into a graph function.
 
@@ -73,6 +112,21 @@ def wrap_function(fn, signature, name=None):
   assert float(f_sub(1.0)) == 3.0
   ```
 
+  Both `tf.compat.v1.wrap_function` and `tf.function` create a callable
+  TensorFlow graph. But while `tf.function` runs all stateful operations
+  (e.g. `tf.print`) and sequences operations to provide the same semantics as
+  eager execution, `wrap_function` is closer to the behavior of `session.run` in
+  TensorFlow 1.x. It will not run any operations unless they are required to
+  compute the function's outputs, either through a data dependency or a control
+  dependency. Nor will it sequence operations.
+
+  Unlike `tf.function`, `wrap_function` will only trace the Python function
+  once. As with placeholders in TF 1.x, shapes and dtypes must be provided to
+  `wrap_function`'s `signature` argument.
+
+  Since it is only traced once, variables and state may be created inside the
+  function and owned by the function wrapper object.
+
   Args:
     fn: python function to be wrapped
     signature: the placeholder and python arguments to be passed to the
@@ -83,12 +137,11 @@ def wrap_function(fn, signature, name=None):
     the wrapped graph function.
   """
   holder = VariableHolder(fn)
-  fn = function.Function(
+  return WrappedFunction(
       func_graph.func_graph_from_py_func(
           name,
           holder,
           args=None, kwargs=None, signature=signature,
           add_control_dependencies=False),
+      variable_holder=holder,
       signature=signature)
-  fn._variable_holder = holder
-  return fn

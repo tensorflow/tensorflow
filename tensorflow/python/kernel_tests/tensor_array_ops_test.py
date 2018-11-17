@@ -1398,10 +1398,10 @@ class TensorArrayTest(test.TestCase):
     for d in dev_stats:
       if "/task:1/" in d:
         self.assertTrue(
-            [s for s in dev_stats[d] if "/TensorArray" in s.node_name])
+            [s for s in dev_stats[d] if "TensorArray" == s.node_name])
       else:
         self.assertFalse(
-            [s for s in dev_stats[d] if "/TensorArray" in s.node_name])
+            [s for s in dev_stats[d] if "TensorArray" == s.node_name])
 
   def testTensorArrayDisabledColocateWithFirstWriteCall(self):
     with ops.device("/job:worker/task:0/cpu:0"):
@@ -1428,10 +1428,10 @@ class TensorArrayTest(test.TestCase):
     for d in dev_stats:
       if "/task:0/" in d and "CPU" in d:  # Skip any GPU node stats
         self.assertTrue(
-            [s for s in dev_stats[d] if "/TensorArray" in s.node_name])
+            [s for s in dev_stats[d] if "TensorArray" == s.node_name])
       else:
         self.assertFalse(
-            [s for s in dev_stats[d] if "/TensorArray" in s.node_name])
+            [s for s in dev_stats[d] if "TensorArray" == s.node_name])
 
   @test_util.run_in_graph_and_eager_modes
   def testTensorArrayIdentity(self):

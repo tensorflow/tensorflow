@@ -1067,80 +1067,6 @@ struct LambdaFactory {
         return nullptr;
     }
   }
-
-  template <typename T>
-  std::function<T(T, T)> binary() {
-    switch (op) {
-      case OP_CATEGORY::ADD:
-        return [](T l, T r) -> T { return l + r; };
-      case OP_CATEGORY::SUB:
-        return [](T l, T r) -> T { return l - r; };
-      case OP_CATEGORY::MUL:
-        return [](T l, T r) -> T { return l * r; };
-      default:
-        LOG(WARNING) << "Not supported op for binary: " << static_cast<int>(op);
-    }
-    return [](T l, T r) -> T {
-      LOG(FATAL) << "Unsupported op type ";
-      return l;
-    };
-  }
-
-  template <typename T>
-  std::function<T(T)> broadcast_r(T val) {
-    VLOG(2) << "LAMBDA VAL : " << val;
-    switch (op) {
-      case OP_CATEGORY::ADD:
-        return [val](T l) -> T {
-          VLOG(2) << "LAMBDA VAL : " << val;
-          return l + val;
-        };
-      case OP_CATEGORY::SUB:
-        return [val](T l) -> T {
-          VLOG(2) << "LAMBDA VAL : " << val;
-          return l - val;
-        };
-      case OP_CATEGORY::MUL:
-        return [val](T l) -> T {
-          VLOG(2) << "LAMBDA VAL : " << val;
-          return l * val;
-        };
-      default:
-        LOG(WARNING) << "Not supported op for binary: " << static_cast<int>(op);
-    }
-    return [val](T l) -> T {
-      LOG(FATAL) << "Unsupported op type ";
-      return l;
-    };
-  }
-
-  template <typename T>
-  std::function<T(T)> broadcast_l(T val) {
-    VLOG(2) << "LAMBDA VAL : " << val;
-    switch (op) {
-      case OP_CATEGORY::ADD:
-        return [val](T l) -> T {
-          VLOG(2) << "LAMBDA VAL : " << val;
-          return val + l;
-        };
-      case OP_CATEGORY::SUB:
-        return [val](T l) -> T {
-          VLOG(2) << "LAMBDA VAL : " << val;
-          return val - l;
-        };
-      case OP_CATEGORY::MUL:
-        return [val](T l) -> T {
-          VLOG(2) << "LAMBDA VAL : " << val;
-          return val * l;
-        };
-      default:
-        LOG(ERROR) << "Not supported op for binary: " << static_cast<int>(op);
-    }
-    return [val](T l) -> T {
-      LOG(FATAL) << "Unsupported op type ";
-      return l;
-    };
-  }
 };
 
 template <>
@@ -1552,6 +1478,7 @@ tensorflow::Status ConvertPlugin(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   // prepare input
   std::vector<nvinfer1::ITensor*> all_inputs;
+  all_inputs.reserve(inputs.size());
   for (auto input : inputs) {
     all_inputs.emplace_back(const_cast<nvinfer1::ITensor*>(input.tensor()));
   }

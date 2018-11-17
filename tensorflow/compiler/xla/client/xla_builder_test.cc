@@ -18,7 +18,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -43,7 +43,7 @@ class XlaBuilderTest : public ::testing::Test {
     const HloModuleProto& proto = computation.proto();
     TF_ASSIGN_OR_RETURN(const auto& config,
                         HloModule::CreateModuleConfigFromProto(
-                            proto, legacy_flags::GetDebugOptionsFromFlags()));
+                            proto, GetDebugOptionsFromFlags()));
     return HloModule::CreateFromProto(proto, config);
   }
 
@@ -54,7 +54,7 @@ class XlaBuilderTest : public ::testing::Test {
     const HloModuleProto& proto = computation.proto();
     TF_ASSIGN_OR_RETURN(const auto& config,
                         HloModule::CreateModuleConfigFromProto(
-                            proto, legacy_flags::GetDebugOptionsFromFlags()));
+                            proto, GetDebugOptionsFromFlags()));
     return HloModule::CreateFromProto(proto, config);
   }
 
@@ -347,6 +347,15 @@ TEST_F(XlaBuilderTest, CollectivePermute) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kCollectivePermute);
+}
+
+TEST_F(XlaBuilderTest, GetDimensionSize) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {5, 7}), "x");
+  GetDimensionSize(x, 1);
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kGetDimensionSize);
 }
 
 TEST_F(XlaBuilderTest, ReportError) {

@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -1186,7 +1187,8 @@ Status Partition(const PartitionOptions& opts, Graph* g,
   for (auto& it : *partitions) {
     GraphDef* gdef = &it.second;
     *gdef->mutable_versions() = g->versions();
-    *gdef->mutable_library() = flib_def->ToProto();
+    // Prune unreachable functions from `flib_def` before adding them to `gdef`.
+    *gdef->mutable_library() = flib_def->ReachableDefinitions(*gdef).ToProto();
 
     // Traverse the graph to fill every send/recv op's incarnation
     // information.

@@ -32,17 +32,26 @@ class LinearOperatorDiagTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(
+      self, build_info, dtype, use_placeholder,
+      ensure_self_adjoint_and_pd=False):
     shape = list(build_info.shape)
     diag = linear_operator_test_util.random_sign_uniform(
         shape[:-1], minval=1., maxval=2., dtype=dtype)
+
+    if ensure_self_adjoint_and_pd:
+      # Abs on complex64 will result in a float32, so we cast back up.
+      diag = math_ops.cast(math_ops.abs(diag), dtype=dtype)
 
     lin_op_diag = diag
 
     if use_placeholder:
       lin_op_diag = array_ops.placeholder_with_default(diag, shape=None)
 
-    operator = linalg.LinearOperatorDiag(lin_op_diag)
+    operator = linalg.LinearOperatorDiag(
+        lin_op_diag,
+        is_self_adjoint=True if ensure_self_adjoint_and_pd else None,
+        is_positive_definite=True if ensure_self_adjoint_and_pd else None)
 
     matrix = array_ops.matrix_diag(diag)
 
@@ -144,6 +153,17 @@ class LinearOperatorDiagTest(
       mat_solve = linalg_ops.matrix_solve(mat, x)
       self.assertAllEqual(operator_solve.get_shape(), mat_solve.get_shape())
       self.assertAllClose(*sess.run([operator_solve, mat_solve]))
+
+  def test_diag_cholesky_type(self):
+    diag = [1., 3., 5., 8.]
+    operator = linalg.LinearOperatorDiag(
+        diag,
+        is_positive_definite=True,
+        is_self_adjoint=True,
+    )
+    self.assertTrue(isinstance(
+        operator.cholesky(),
+        linalg.LinearOperatorDiag))
 
 
 if __name__ == "__main__":

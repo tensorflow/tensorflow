@@ -17,7 +17,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
@@ -45,11 +45,12 @@ class PyWrapOptimizeGraphTest(test.TestCase):
     train_op.append(d)
     mg = meta_graph.create_meta_graph_def(graph=ops.get_default_graph())
 
-    rewriter_config = rewriter_config_pb2.RewriterConfig()
+    config = config_pb2.ConfigProto()
+    rewriter_config = config.graph_options.rewrite_options
     rewriter_config.optimizers.append('constfold')
     rewriter_config.min_graph_nodes = -1
 
-    graph = tf_optimizer.OptimizeGraph(rewriter_config, mg)
+    graph = tf_optimizer.OptimizeGraph(config, mg)
 
     self.assertEqual(len(graph.node), 1)
     self.assertItemsEqual([node.name for node in graph.node], ['d'])
@@ -68,9 +69,10 @@ class PyWrapOptimizeGraphTest(test.TestCase):
 
     # Optimize the graph.
     mg = meta_graph.create_meta_graph_def(graph=g)
-    rewriter_config = rewriter_config_pb2.RewriterConfig()
+    config = config_pb2.ConfigProto()
+    rewriter_config = config.graph_options.rewrite_options
     rewriter_config.min_graph_nodes = -1
-    optimized_graph = tf_optimizer.OptimizeGraph(rewriter_config, mg)
+    optimized_graph = tf_optimizer.OptimizeGraph(config, mg)
 
     # Check that the nodes referenced in various collections have been preserved
     self.assertEqual(len(optimized_graph.node), 5)
@@ -110,9 +112,10 @@ class PyWrapOptimizeGraphTest(test.TestCase):
 
     # Optimize the graph.
     mg = meta_graph.create_meta_graph_def(graph=g)
-    rewriter_config = rewriter_config_pb2.RewriterConfig()
+    config = config_pb2.ConfigProto()
+    rewriter_config = config.graph_options.rewrite_options
     rewriter_config.min_graph_nodes = -1
-    optimized_graph = tf_optimizer.OptimizeGraph(rewriter_config, mg)
+    optimized_graph = tf_optimizer.OptimizeGraph(config, mg)
     mg.graph_def.CopyFrom(optimized_graph)
 
     # Check that the nodes referenced in various collections have been preserved

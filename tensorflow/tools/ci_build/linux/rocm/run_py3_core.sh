@@ -54,12 +54,8 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     -//tensorflow/python/kernel_tests:conv_ops_3d_test_gpu \
     -//tensorflow/python/kernel_tests:conv_ops_test \
     -//tensorflow/python/kernel_tests:conv_ops_test_gpu \
-    -//tensorflow/python/kernel_tests:dct_ops_test \
-    -//tensorflow/python/kernel_tests:dct_ops_test_gpu \
     -//tensorflow/python/kernel_tests:depthwise_conv_op_test \
     -//tensorflow/python/kernel_tests:depthwise_conv_op_test_gpu \
-    -//tensorflow/python/kernel_tests:fft_ops_test \
-    -//tensorflow/python/kernel_tests:fft_ops_test_gpu \
     -//tensorflow/python/kernel_tests:list_ops_test \
     -//tensorflow/python/kernel_tests:list_ops_test_gpu \
     -//tensorflow/python/kernel_tests:matmul_op_test \
@@ -78,5 +74,12 @@ bazel test --test_sharding_strategy=disabled --config=rocm --test_tag_filters=-n
     -//tensorflow/python:layers_normalization_test_gpu \
     -//tensorflow/python:layout_optimizer_test \
     -//tensorflow/python:nn_fused_batchnorm_test \
-    -//tensorflow/python:nn_fused_batchnorm_test_gpu
-
+    -//tensorflow/python:nn_fused_batchnorm_test_gpu \
+    -//tensorflow/python/eager:backprop_test \
+    -//tensorflow/python/eager:backprop_test_gpu \
+    -//tensorflow/python/kernel_tests:qr_op_test \
+    -//tensorflow/python/kernel_tests:qr_op_test_gpu \
+    -//tensorflow/python/kernel_tests/signal:dct_ops_test \
+    -//tensorflow/python/kernel_tests/signal:fft_ops_test \
+    -//tensorflow/python/kernel_tests/signal:spectral_ops_test \
+    -//tensorflow/python/keras:convolutional_test

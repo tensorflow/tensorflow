@@ -44,7 +44,8 @@ def _ShapeTensor(shape):
   return ops.convert_to_tensor(shape, dtype=dtype, name="shape")
 
 
-@tf_export("random.normal", "random_normal")
+@tf_export("random.normal", v1=["random.normal", "random_normal"])
+@deprecation.deprecated_endpoints("random_normal")
 def random_normal(shape,
                   mean=0.0,
                   stddev=1.0,
@@ -182,7 +183,8 @@ ops.NotDifferentiable("ParameterizedTruncatedNormal")
 ops.NotDifferentiable("TruncatedNormal")
 
 
-@tf_export("random.uniform", "random_uniform")
+@tf_export("random.uniform", v1=["random.uniform", "random_uniform"])
+@deprecation.deprecated_endpoints("random_uniform")
 def random_uniform(shape,
                    minval=0,
                    maxval=None,
@@ -247,7 +249,8 @@ def random_uniform(shape,
 ops.NotDifferentiable("RandomUniform")
 
 
-@tf_export("random.shuffle", "random_shuffle")
+@tf_export("random.shuffle", v1=["random.shuffle", "random_shuffle"])
+@deprecation.deprecated_endpoints("random_shuffle")
 def random_shuffle(value, seed=None, name=None):
   """Randomly shuffles a tensor along its first dimension.
 
@@ -278,7 +281,8 @@ def random_shuffle(value, seed=None, name=None):
       value, seed=seed1, seed2=seed2, name=name)
 
 
-@tf_export("image.random_crop", "random_crop")
+@tf_export("image.random_crop", v1=["image.random_crop", "random_crop"])
+@deprecation.deprecated_endpoints("random_crop")
 def random_crop(value, size, seed=None, name=None):
   """Randomly crops a tensor to a given size.
 

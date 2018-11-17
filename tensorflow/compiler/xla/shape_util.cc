@@ -74,6 +74,11 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndexView& shape_index) {
   return out;
 }
 
+bool ShapeIndexView::StartsWith(ShapeIndexView prefix) const {
+  return size() >= prefix.size() &&
+         indices_.subspan(0, prefix.size()) == prefix.indices_;
+}
+
 namespace {
 
 // Returns whether the given primitive type corresponds to an array shape.
@@ -365,10 +370,6 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ bool ShapeUtil::IsEmptyTuple(const Shape& shape) {
   return IsTuple(shape) && TupleElementCount(shape) == 0;
-}
-
-/* static */ bool ShapeUtil::IsNil(const Shape& shape) {
-  return IsEmptyTuple(shape);
 }
 
 /* static */ int64 ShapeUtil::TupleElementCount(const Shape& shape) {

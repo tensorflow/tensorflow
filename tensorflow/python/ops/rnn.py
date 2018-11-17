@@ -32,6 +32,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -480,7 +481,10 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
   return (outputs, output_states)
 
 
-@tf_export("nn.dynamic_rnn")
+@deprecation.deprecated(
+    None,
+    "Please use `keras.layers.RNN(cell)`, which is equivalent to this API")
+@tf_export(v1=["nn.dynamic_rnn"])
 def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
                 dtype=None, parallel_iterations=None, swap_memory=False,
                 time_major=False, scope=None):
@@ -891,7 +895,7 @@ def _dynamic_rnn_loop(cell,
   return (final_outputs, final_state)
 
 
-@tf_export("nn.raw_rnn")
+@tf_export(v1=["nn.raw_rnn"])
 def raw_rnn(cell, loop_fn,
             parallel_iterations=None, swap_memory=False, scope=None):
   """Creates an `RNN` specified by RNNCell `cell` and loop function `loop_fn`.
@@ -1210,7 +1214,10 @@ def raw_rnn(cell, loop_fn,
     return (emit_ta, final_state, final_loop_state)
 
 
-@tf_export("nn.static_rnn")
+@deprecation.deprecated(
+    None, "Please use `keras.layers.RNN(cell, unroll=True)`, "
+    "which is equivalent to this API")
+@tf_export(v1=["nn.static_rnn"])
 def static_rnn(cell,
                inputs,
                initial_state=None,

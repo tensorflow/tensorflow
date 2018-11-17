@@ -102,7 +102,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     }
 
     # Mapping from function to the new name of the function
-    self.function_renames = {
+    self.symbol_renames = {
         "tf.inv": "tf.reciprocal",
         "tf.contrib.deprecated.scalar_summary": "tf.summary.scalar",
         "tf.contrib.deprecated.histogram_summary": "tf.summary.histogram",

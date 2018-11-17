@@ -46,6 +46,9 @@ Let's see how to scale to multiple GPUs on one machine using `MirroredStrategy` 
 Take a very simple model consisting of a single layer:
 
 ```python
+import tensorflow as tf
+from tensorflow import keras
+
 inputs = tf.keras.layers.Input(shape=(1,))
 predictions = tf.keras.layers.Dense(1)(inputs)
 model = tf.keras.models.Model(inputs=inputs, outputs=predictions)
@@ -90,8 +93,8 @@ Similarly, we can also call `evaluate` and `predict` as before using appropriate
 datasets.
 
 ```python
-model.evaluate(eval_dataset)
-model.predict(predict_dataset)
+model.evaluate(eval_dataset, steps=1)
+model.predict(predict_dataset, steps=1)
 ```
 
 That's all you need to train your model with Keras on multiple GPUs with

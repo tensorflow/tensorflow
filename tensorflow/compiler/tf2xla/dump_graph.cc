@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/tf2xla/dump_graph_flags.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 
@@ -61,8 +61,7 @@ string MakeUniqueFilename(string name) {
 string WriteTextProtoToUniqueFile(
     Env* env, const string& name, const char* proto_type,
     const ::tensorflow::protobuf::Message& proto) {
-  const string& dirname =
-      legacy_flags::GetDumpGraphFlags()->tf_dump_graph_prefix;
+  const string& dirname = GetDumpGraphFlags()->tf_dump_graph_prefix;
   Status status = env->RecursivelyCreateDir(dirname);
   if (!status.ok()) {
     LOG(WARNING) << "Failed to create " << dirname << " for dumping "

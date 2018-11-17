@@ -873,7 +873,7 @@ Kernels under tensorflow/core/kernels
 |   O    |        | save_restore_tensor.h
 |   O    |        | save_restore_v2_ops.cc
 |   O    |        | save_v2_op_test.cc
-|   O    |        | scan_ops.cc
+|   X    |cub     | scan_ops.cc
 |   O    |        | scan_ops.h
 |   O    |        | scan_ops_gpu.cu.cc
 |   O    |        | scatter_functor.cc

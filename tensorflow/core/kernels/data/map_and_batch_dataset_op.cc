@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/inplace_ops_functor.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -262,9 +263,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(*mu_);
         if (num_parallel_calls_->value == kAutoTune) {
-          // TODO(jsimsa): Surface the number of threads used by `ctx->runner()`
-          // and use it here for the default.
-          num_parallel_calls_->value = port::NumSchedulableCPUs();
+          num_parallel_calls_->value = ctx->runner_threadpool_size();
           num_parallel_calls_->tunable = true;
         }
         TF_RETURN_IF_ERROR(
@@ -298,7 +297,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         return model::MakeAsyncKnownRatioNode(
             std::move(args), dataset()->batch_size_,
             {model::MakeParameter("parallelism", num_parallel_calls_, /*min=*/1,
-                                  /*max=*/port::NumSchedulableCPUs())});
+                                  /*max=*/ctx->runner_threadpool_size())});
       }
 
       Status SaveInternal(IteratorStateWriter* writer) override {
@@ -414,32 +413,36 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         auto done = [this, ctx, result, return_values, offset](Status status) {
           result->UpdateStatus(status, offset);
           if (status.ok()) {
-            EnsureOutputAllocated(ctx, result, return_values);
-            for (size_t i = 0; i < return_values->size(); ++i) {
-              const Tensor& tensor = return_values->at(i);
-              Tensor* batch = &(result->output)[i];
-              if (tensor.NumElements() !=
-                  (batch->NumElements() / batch->dim_size(0))) {
-                TensorShape batch_shape = batch->shape();
-                batch_shape.RemoveDim(0);
-                result->UpdateStatus(
-                    errors::InvalidArgument(
-                        "Cannot add tensor to the batch: number of elements "
-                        "does "
-                        "not match. Shapes are: [tensor]: ",
-                        tensor.shape().DebugString(),
-                        ", [batch]: ", batch_shape.DebugString()),
-                    offset);
-                break;
-              }
-              // TODO(mrry): Add a version of DoParallelConcat that allows us to
-              // move `tensor` where possible, to speed up string tensor
-              // batching.
-              Status copy_status = ::tensorflow::functor::DoParallelConcat(
-                  *dataset()->device_, tensor, offset, batch);
-              if (!copy_status.ok()) {
-                result->UpdateStatus(copy_status, offset);
-                break;
+            Status allocate_status =
+                EnsureOutputAllocated(ctx, result, return_values);
+            if (!allocate_status.ok()) {
+              result->UpdateStatus(allocate_status, offset);
+            } else {
+              for (size_t i = 0; i < return_values->size(); ++i) {
+                const Tensor& tensor = return_values->at(i);
+                Tensor* batch = &(result->output)[i];
+                if (tensor.NumElements() !=
+                    (batch->NumElements() / batch->dim_size(0))) {
+                  TensorShape batch_shape = batch->shape();
+                  batch_shape.RemoveDim(0);
+                  result->UpdateStatus(
+                      errors::InvalidArgument(
+                          "Cannot add tensor to the batch: number of elements "
+                          "does not match. Shapes are: [tensor]: ",
+                          tensor.shape().DebugString(),
+                          ", [batch]: ", batch_shape.DebugString()),
+                      offset);
+                  break;
+                }
+                // TODO(mrry): Add a version of DoParallelConcat that allows us
+                // to move `tensor` where possible, to speed up string tensor
+                // batching.
+                Status copy_status = ::tensorflow::functor::DoParallelConcat(
+                    *dataset()->device_, tensor, offset, batch);
+                if (!copy_status.ok()) {
+                  result->UpdateStatus(copy_status, offset);
+                  break;
+                }
               }
             }
             {
@@ -487,13 +490,13 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         }
       }
 
-      void EnsureOutputAllocated(
+      Status EnsureOutputAllocated(
           const std::shared_ptr<IteratorContext>& ctx,
           const std::shared_ptr<BatchResult>& result,
           const std::shared_ptr<std::vector<Tensor>>& return_values) {
         mutex_lock l(result->mu);
         if (result->output_allocated) {
-          return;
+          return Status::OK();
         }
         const size_t num_components = return_values->size();
         for (size_t i = 0; i < num_components; ++i) {
@@ -504,8 +507,13 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           result->output.emplace_back(ctx->allocator(attr),
                                       return_values->at(i).dtype(),
                                       component_shape);
+          if (!result->output.back().IsInitialized()) {
+            return errors::ResourceExhausted(
+                "Failed to allocate memory for the batch of component ", i);
+          }
         }
         result->output_allocated = true;
+        return Status::OK();
       }
 
       Status ProcessResult(IteratorContext* ctx,

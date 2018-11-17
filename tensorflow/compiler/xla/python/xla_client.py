@@ -1371,6 +1371,18 @@ def initialize_replica_count(replica_count):
   c_api.InitializeReplicaCount(replica_count)
 
 
+def initialize_platform_name(platform_name):
+  """Initializes the desired platform name to use on XLA service init.
+
+  Args:
+    platform_name: string name of platform.
+
+  Raises:
+    A runtime exception if the XLA service has already been initialized.
+  """
+  c_api.InitializePlatformName(platform_name)
+
+
 def get_replica_count():
   """Returns the current replica count used for the XLA service.
 

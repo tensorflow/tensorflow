@@ -104,6 +104,8 @@ typedef gtl::InlinedVector<DataType, 4> DataTypeVector;
 typedef gtl::ArraySlice<DataType> DataTypeSlice;
 
 typedef gtl::InlinedVector<DeviceType, 4> DeviceTypeVector;
+typedef gtl::InlinedVector<std::pair<DeviceType, int32>, 4>
+    PrioritizedDeviceTypeVector;
 
 // Convert the enums to strings for errors:
 string DataTypeString(DataType dtype);

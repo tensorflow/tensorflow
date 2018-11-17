@@ -46,7 +46,11 @@ namespace tensorflow {
 
 // A few string constant used throughout this module.
 static constexpr const char* const kArgOp = FunctionLibraryDefinition::kArgOp;
+static constexpr const char* const kDeviceArgOp =
+    FunctionLibraryDefinition::kDeviceArgOp;
 static constexpr const char* const kRetOp = FunctionLibraryDefinition::kRetOp;
+static constexpr const char* const kDeviceRetOp =
+    FunctionLibraryDefinition::kDeviceRetOp;
 static constexpr const char* const kGradientOp =
     FunctionLibraryDefinition::kGradientOp;
 static constexpr const char* const kNodeLabel = "Func";
@@ -382,8 +386,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   Status FunctionDefToBody(const FunctionDef& fdef, AttrSlice attrs,
                            const FunctionLibraryDefinition* lib_def,
                            FunctionBody** fbody);
-  Status CreateItem(Handle handle, Item** item);
-  Status GetOrCreateItem(Handle handle, Item** item);
+  Status CreateItem(Item** item);
+  Status GetOrCreateItem(LocalHandle local_handle, Item** item);
   Status InstantiateSymbolicGradient(const NameAttrList& func,
                                      const FunctionLibraryDefinition* lib_def,
                                      FunctionBody** g_body);
@@ -391,7 +395,11 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   AttrValueMap FixAttrs(const AttrSlice& attrs);
   void RunRemote(const Options& opts, Handle handle,
                  gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
-                 Executor::Args* exec_args, Item* item, DoneCallback done);
+                 Item* item, DoneCallback done);
+
+  void ExecutorArgsFromOptions(const FunctionLibraryRuntime::Options& run_opts,
+                               CallFrameInterface* frame,
+                               Executor::Args* exec_args);
 
   TF_DISALLOW_COPY_AND_ASSIGN(FunctionLibraryRuntimeImpl);
 };
@@ -687,13 +695,14 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
     TF_RETURN_IF_ERROR(FunctionDefToBody(*fdef, attrs, lib_def, &fbody));
   }
 
+  LocalHandle local_handle;
   {
     mutex_lock l(mu_);
     *handle = parent_->GetHandle(key);
     if (*handle != kInvalidHandle) {
       delete fbody;
-      ++items_[parent_->GetHandleOnDevice(device_name_, *handle)]
-            ->instantiation_counter;
+      local_handle = parent_->GetHandleOnDevice(device_name_, *handle);
+      ++items_[local_handle]->instantiation_counter;
     } else {
       *handle = parent_->AddHandle(key, device_name_, next_handle_);
       Item* item = new Item;
@@ -705,26 +714,24 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
         item->overlay_flr =
             new FunctionLibraryRuntimeOverlay(this, options.overlay_lib);
       }
-      items_.emplace(next_handle_, std::unique_ptr<Item>(item));
-      next_handle_++;
+      local_handle = next_handle_++;
+      items_.emplace(local_handle, std::unique_ptr<Item>(item));
     }
   }
 
   if (options.create_kernels_eagerly) {
     Item* item;
-    TF_RETURN_IF_ERROR(GetOrCreateItem(*handle, &item));
+    TF_RETURN_IF_ERROR(GetOrCreateItem(local_handle, &item));
   }
 
   return Status::OK();
 }
 
 Status FunctionLibraryRuntimeImpl::ReleaseHandle(Handle handle) {
-  if (!parent_->IsInstantiatedOnDevice(device_name_, handle)) {
+  LocalHandle h = parent_->GetHandleOnDevice(device_name_, handle);
+  if (h == kInvalidLocalHandle) {
     return parent_->ReleaseHandle(handle);
   }
-
-  LocalHandle h = parent_->GetHandleOnDevice(device_name_, handle);
-  CHECK_NE(h, kInvalidLocalHandle);
   mutex_lock l(mu_);
   CHECK_EQ(1, items_.count(h));
   std::unique_ptr<Item>& item = items_[h];
@@ -785,7 +792,7 @@ void PruneFunctionBody(Graph* g) {
 }
 }  // namespace
 
-Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
+Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   const FunctionBody* fbody;
   const FunctionLibraryDefinition* lib_def;
   string executor_type;
@@ -839,13 +846,13 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   return Status::OK();
 }
 
-Status FunctionLibraryRuntimeImpl::GetOrCreateItem(Handle handle, Item** item) {
-  LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, handle);
+Status FunctionLibraryRuntimeImpl::GetOrCreateItem(LocalHandle local_handle,
+                                                   Item** item) {
   {
     tf_shared_lock l(mu_);
     auto iter = items_.find(local_handle);
     if (iter == items_.end()) {
-      return errors::NotFound("Function handle ", handle,
+      return errors::Internal("Local function handle ", local_handle,
                               " is not valid. Likely an internal error.");
     }
     *item = iter->second.get();
@@ -855,22 +862,37 @@ Status FunctionLibraryRuntimeImpl::GetOrCreateItem(Handle handle, Item** item) {
   }
   // NOTE: We need to call CreateItem out of mu_ because creating an
   // executor needs to call CreateKernel.
-  return CreateItem(handle, item);
+  return CreateItem(item);
+}
+
+void FunctionLibraryRuntimeImpl::ExecutorArgsFromOptions(
+    const FunctionLibraryRuntime::Options& run_opts, CallFrameInterface* frame,
+    Executor::Args* exec_args) {
+  // Inherit the step_id from the caller.
+  exec_args->step_id = run_opts.step_id;
+  exec_args->rendezvous = run_opts.rendezvous;
+  exec_args->stats_collector = run_opts.stats_collector;
+  exec_args->cancellation_manager = run_opts.cancellation_manager;
+  exec_args->step_container = run_opts.step_container;
+  if (run_opts.runner) {
+    exec_args->runner = *run_opts.runner;
+  } else {
+    exec_args->runner = default_runner_;
+  }
+  exec_args->collective_executor = run_opts.collective_executor;
+  exec_args->call_frame = frame;
 }
 
 void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
                                            gtl::ArraySlice<Tensor> args,
                                            std::vector<Tensor>* rets,
-                                           Executor::Args* exec_args,
                                            Item* item, DoneCallback done) {
-  DCHECK(exec_args->call_frame == nullptr);
   string target_device = parent_->GetDeviceName(handle);
   string source_device = opts.source_device;
   Rendezvous* rendezvous = opts.rendezvous;
   DeviceContext* device_context;
   Status s = parent_->GetDeviceContext(target_device, &device_context);
   if (!s.ok()) {
-    delete exec_args;
     done(s);
     return;
   }
@@ -878,7 +900,6 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
   s = parent_->GetDeviceIncarnation(source_device, &src_incarnation);
   s.Update(parent_->GetDeviceIncarnation(target_device, &target_incarnation));
   if (!s.ok()) {
-    delete exec_args;
     done(s);
     return;
   }
@@ -886,13 +907,8 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
   const FunctionBody* fbody = GetFunctionBody(handle);
   FunctionCallFrame* frame =
       new FunctionCallFrame(fbody->arg_types, fbody->ret_types);
-  exec_args->call_frame = frame;
-  if (!s.ok()) {
-    delete frame;
-    delete exec_args;
-    done(s);
-    return;
-  }
+  Executor::Args* exec_args = new Executor::Args;
+  ExecutorArgsFromOptions(opts, frame, exec_args);
 
   std::vector<AllocatorAttributes> args_alloc_attrs, rets_alloc_attrs;
   args_alloc_attrs.reserve(fbody->arg_types.size());
@@ -938,10 +954,10 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
           return;
         }
         item->exec->RunAsync(
-            *exec_args, [frame, rets, done, source_device, target_device,
-                         target_incarnation, rendezvous, device_context,
-                         remote_args, exec_args, rets_alloc_attrs,
-                         allow_dead_tensors](const Status& status) {
+            *exec_args,
+            [frame, rets, done, source_device, target_device,
+             target_incarnation, rendezvous, device_context, remote_args,
+             rets_alloc_attrs, allow_dead_tensors](const Status& status) {
               Status s = status;
               if (s.ok()) {
                 s = frame->ConsumeRetvals(rets, allow_dead_tensors);
@@ -949,7 +965,6 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
               delete frame;
               if (!s.ok()) {
                 delete remote_args;
-                delete exec_args;
                 done(s);
                 return;
               }
@@ -957,9 +972,9 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
                   target_device, source_device, "ret_", target_incarnation,
                   *rets, device_context, rets_alloc_attrs, rendezvous);
               delete remote_args;
-              delete exec_args;
               done(s);
             });
+        delete exec_args;
       });
 }
 
@@ -982,7 +997,8 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     };
   }
 
-  if (!parent_->IsInstantiatedOnDevice(device_name_, handle)) {
+  LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, handle);
+  if (local_handle == kInvalidLocalHandle) {
     parent_->Run(run_opts, handle, args, rets, done);
     return;
   }
@@ -992,54 +1008,43 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   }
   DCHECK(run_opts.runner != nullptr);
 
-  Executor::Args* exec_args = new Executor::Args;
-  // Inherit the step_id from the caller.
-  exec_args->step_id = run_opts.step_id;
-  exec_args->rendezvous = run_opts.rendezvous;
-  exec_args->stats_collector = run_opts.stats_collector;
-  exec_args->cancellation_manager = run_opts.cancellation_manager;
-  exec_args->step_container = run_opts.step_container;
-  exec_args->runner = *run_opts.runner;
-  exec_args->collective_executor = run_opts.collective_executor;
-
   Item* item = nullptr;
-  Status s = GetOrCreateItem(handle, &item);
+  Status s = GetOrCreateItem(local_handle, &item);
   if (!s.ok()) {
-    delete exec_args;
     done(s);
     return;
   }
 
   if (run_opts.remote_execution) {
     // NOTE(mrry): `RunRemote()` will set `exec_args->call_frame` for us.
-    RunRemote(run_opts, handle, args, rets, exec_args, item, done);
+    RunRemote(run_opts, handle, args, rets, item, done);
     return;
   }
 
   const FunctionBody* fbody = GetFunctionBody(handle);
   FunctionCallFrame* frame =
       new FunctionCallFrame(fbody->arg_types, fbody->ret_types);
-  exec_args->call_frame = frame;
   s = frame->SetArgs(args);
   if (!s.ok()) {
     delete frame;
-    delete exec_args;
     done(s);
     return;
   }
 
-  bool allow_dead_tensors = opts.allow_dead_tensors;
+  Executor::Args exec_args;
+  ExecutorArgsFromOptions(run_opts, frame, &exec_args);
+
+  bool allow_dead_tensors = run_opts.allow_dead_tensors;
   item->exec->RunAsync(
       // Executor args
-      *exec_args,
+      exec_args,
       // Done callback.
-      [frame, rets, done, exec_args, allow_dead_tensors](const Status& status) {
+      [frame, rets, done, allow_dead_tensors](const Status& status) {
         Status s = status;
         if (s.ok()) {
           s = frame->ConsumeRetvals(rets, allow_dead_tensors);
         }
         delete frame;
-        delete exec_args;
         done(s);
       });
 }
@@ -1051,8 +1056,8 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     done(errors::Cancelled(""));
     return;
   }
-  if (!parent_->IsInstantiatedOnDevice(device_name_, handle) ||
-      opts.remote_execution) {
+  LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, handle);
+  if (local_handle == kInvalidLocalHandle || opts.remote_execution) {
     done(errors::Unimplemented("Remote calling with CallFrameInterface"));
     return;
   }
@@ -1073,7 +1078,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   }
 
   Item* item = nullptr;
-  Status s = GetOrCreateItem(handle, &item);
+  Status s = GetOrCreateItem(local_handle, &item);
   if (!s.ok()) {
     done(s);
     return;
@@ -1084,16 +1089,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
   DCHECK(run_opts.runner != nullptr);
 
   Executor::Args exec_args;
-  // Inherit the step_id from the caller.
-  exec_args.step_id = run_opts.step_id;
-  exec_args.rendezvous = run_opts.rendezvous;
-  exec_args.stats_collector = run_opts.stats_collector;
-  exec_args.cancellation_manager = run_opts.cancellation_manager;
-  exec_args.collective_executor = run_opts.collective_executor;
-  exec_args.step_container = run_opts.step_container;
-  exec_args.runner = *run_opts.runner;
-  exec_args.call_frame = frame;
-
+  ExecutorArgsFromOptions(run_opts, frame, &exec_args);
   item->exec->RunAsync(exec_args, std::move(done));
 }
 
@@ -1105,7 +1101,8 @@ bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) {
 
 string FunctionLibraryRuntimeImpl::DebugString(Handle handle) {
   Item* item = nullptr;
-  Status s = GetOrCreateItem(handle, &item);
+  LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, handle);
+  Status s = GetOrCreateItem(local_handle, &item);
   if (s.ok()) {
     return tensorflow::DebugString(item->graph);
   } else {
@@ -1640,9 +1637,9 @@ FunctionBody::FunctionBody(const FunctionDef& f, DataTypeSlice arg_t,
   this->ret_nodes.resize(ret_types.size());
   for (Node* n : this->graph->op_nodes()) {
     gtl::InlinedVector<Node*, 4>* node_vec;
-    if (n->type_string() == kRetOp) {
+    if (n->type_string() == kRetOp || n->type_string() == kDeviceRetOp) {
       node_vec = &this->ret_nodes;
-    } else if (n->type_string() == kArgOp) {
+    } else if (n->type_string() == kArgOp || n->type_string() == kDeviceArgOp) {
       node_vec = &this->arg_nodes;
     } else {
       continue;

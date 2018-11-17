@@ -68,7 +68,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":xla_proto",
-        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
+        "//tensorflow/compiler/xla:debug_options_flags",
     ],
 )
 
@@ -733,6 +733,72 @@ tf_cc_test(
         ":test",
         "//tensorflow/core:test_main",
     ],
+)
+
+cc_library(
+    name = "parse_flags_from_env",
+    srcs = ["parse_flags_from_env.cc"],
+    hdrs = ["parse_flags_from_env.h"],
+    deps =
+        [
+            "//tensorflow/compiler/xla:types",
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+            "@com_google_absl//absl/strings",
+            "@com_google_absl//absl/strings:str_format",
+            "@com_google_absl//absl/types:span",
+        ],
+)
+
+tf_cc_test(
+    name = "parse_flags_from_env_test",
+    srcs = ["parse_flags_from_env_test.cc"],
+    deps =
+        [
+            ":parse_flags_from_env",
+            "//tensorflow/compiler/xla:types",
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:test",
+            "@com_google_absl//absl/strings:str_format",
+        ],
+)
+
+cc_library(
+    name = "debug_options_flags",
+    srcs = [
+        "debug_options_flags.cc",
+        "debug_options_parsers.h",
+    ],
+    hdrs = ["debug_options_flags.h"],
+    deps =
+        [
+            ":parse_flags_from_env",
+            "//tensorflow/compiler/xla:xla_proto",
+            "//tensorflow/compiler/xla/service:hlo",
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+            "@com_google_absl//absl/strings",
+        ],
+)
+
+tf_cc_test(
+    name = "debug_options_parsers_test",
+    size = "small",
+    srcs = [
+        "debug_options_parsers.h",
+        "debug_options_parsers_test.cc",
+    ],
+    deps =
+        [
+            "//tensorflow/compiler/xla:xla_proto",
+            "//tensorflow/compiler/xla/service:hlo",
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:test",
+            "@com_google_absl//absl/strings",
+            "@com_google_absl//absl/strings:str_format",
+        ],
 )
 
 # -----------------------------------------------------------------------------

@@ -56,6 +56,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:reduce_util",
     ],
 )
 

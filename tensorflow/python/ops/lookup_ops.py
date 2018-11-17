@@ -45,7 +45,7 @@ from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("initialize_all_tables")
+@tf_export(v1=["initialize_all_tables"])
 @deprecated(None, "Use `tf.tables_initializer` instead.")
 def initialize_all_tables(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
@@ -60,7 +60,7 @@ def initialize_all_tables(name="init_all_tables"):
   return tables_initializer(name)
 
 
-@tf_export("initializers.tables_initializer", "tables_initializer")
+@tf_export(v1=["initializers.tables_initializer", "tables_initializer"])
 def tables_initializer(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
 
@@ -170,6 +170,11 @@ class InitializableLookupTableBase(LookupInterface):
   @property
   def initializer(self):
     return self._init_op
+
+  @property
+  @deprecated("2018-12-15", "Use `initializer` instead.")
+  def init(self):
+    return self.initializer
 
   @property
   def default_value(self):
@@ -829,6 +834,11 @@ class IdTableWithHashBuckets(LookupInterface):
       return self._table._init_op  # pylint: disable=protected-access
     with ops.name_scope(None, "init"):
       return control_flow_ops.no_op()
+
+  @property
+  @deprecated("2018-12-15", "Use `initializer` instead.")
+  def init(self):
+    return self.initializer
 
   @property
   def resource_handle(self):
