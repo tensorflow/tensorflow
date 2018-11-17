@@ -99,7 +99,7 @@ def get_tensorrt_rewriter_config(rewriter_config=None,
       based on which the TRTEngineOp is created.
     cached_engine_batch_sizes: a list of batch sizes used to create cached
       engines, only used when is_dynamic_op is True. The length of the list
-      should be smaller than maximum_cached_engines, and the dynamic TRT op will
+      should be <= maximum_cached_engines, and the dynamic TRT op will
       use this list to determine the batch sizes of the cached engines, instead
       of making the decision on the fly. This is useful when we know the most
       common batch size(s) the application is going to generate.
@@ -156,7 +156,7 @@ def get_tensorrt_rewriter_config(rewriter_config=None,
     if len(cached_engine_batch_sizes) > maximum_cached_engines:
       raise ValueError("cached_engine_batch_sizes should not contain more than "
                        "maximum_cached_engines items.")
-    optimizer.parameter_map["cached_engine_batches"].list.i.extend(
+    optimizer.parameter_map["cached_engine_batch_sizes"].list.i.extend(
         cached_engine_batch_sizes)
   optimizer.parameter_map["use_calibration"].b = use_calibration
   return rewriter_config_with_trt
@@ -199,7 +199,7 @@ def create_inference_graph(input_graph_def,
       based on which the TRTEngineOp is created.
     cached_engine_batch_sizes: a list of batch sizes used to create cached
       engines, only used when is_dynamic_op is True. The length of the list
-      should be smaller than maximum_cached_engines, and the dynamic TRT op will
+      should be <= maximum_cached_engines, and the dynamic TRT op will
       use this list to determine the batch sizes of the cached engines, instead
       of making the decision on the fly. This is useful when we know the most
       common batch size(s) the application is going to generate.
