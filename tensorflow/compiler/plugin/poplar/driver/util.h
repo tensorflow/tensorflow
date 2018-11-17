@@ -49,6 +49,8 @@ bool IsPopOpsCall(const xla::HloInstruction*, const std::string& postfix = "");
 // synthetic data means that *no data* will be copied to/from the device.
 bool UseSyntheticData();
 
+std::string GetDebugName(const HloInstruction*);
+
 }  // namespace poplarplugin
 }  // namespace xla
 

@@ -100,5 +100,10 @@ bool UseSyntheticData() {
   return false;
 }
 
+std::string GetDebugName(const HloInstruction* inst) {
+  const std::string& tf_core_name = inst->metadata().op_name();
+  return tf_core_name + "/" + inst->name();
+}
+
 }  // namespace poplarplugin
 }  // namespace xla

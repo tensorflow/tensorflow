@@ -588,7 +588,7 @@ StatusOr<poplar::program::Program> CreateSimpleSelectAndScatter(
   poplar::Tensor identity_val;
   TF_ASSIGN_OR_RETURN(
       identity_val,
-      AddConstantTensor(graph, prog, std::make_pair(inst, 0), partial_shape,
+      AddConstantTensor(graph, std::make_pair(inst, 0), partial_shape,
                         identity_literal, res, tensor_map));
   prog.add(poplar::program::Copy(identity_val, partial));
 

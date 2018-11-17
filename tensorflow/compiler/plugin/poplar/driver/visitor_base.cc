@@ -232,17 +232,16 @@ Status BaseVisitor::HandleConstant(HloInstruction* inst) {
 
   poplar::Tensor t;
   TF_ASSIGN_OR_RETURN(
-      t, AddConstantTensor(graph, sequence, std::make_pair(inst, 0),
-                           GetOutputShape(inst), inst->literal(), resources_,
-                           tensor_map));
+      t, AddConstantTensor(graph, std::make_pair(inst, 0), GetOutputShape(inst),
+                           inst->literal(), resources_, tensor_map));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, t));
   return Status::OK();
 }
 
 Status BaseVisitor::HandleGetTupleElement(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  ArgVector inputs =
-      FindTupleInInstructionInput(tensor_map, inst, 0, inst->tuple_index());
+  ArgVector inputs = FindTupleInInstructionInput(
+      tensor_map, resources_, inst, 0, inst->tuple_index(), sequence);
   for (unsigned int i = 0; i < inputs.size(); i++) {
     poplar::Tensor out;
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, inputs[i]));

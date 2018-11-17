@@ -58,17 +58,18 @@ StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
                                    const TensorMap& tensor_map);
 
 StatusOr<poplar::Tensor> AddConstantTensor(poplar::Graph& graph,
-                                           poplar::program::Sequence& seq,
                                            const TensorSource& src,
                                            const xla::Shape& shape,
                                            const xla::Literal& literal,
                                            CompilerResources& resources,
                                            const TensorMap& tensor_map);
 
-StatusOr<poplar::Tensor> AddIotaTensor(
-    poplar::Graph& graph, poplar::program::Sequence& sequence,
-    const TensorSource& src, const xla::Shape& shape, int64 iota_dimension,
-    CompilerResources& resources, const TensorMap& tensor_map);
+StatusOr<poplar::Tensor> AddIotaTensor(poplar::Graph& graph,
+                                       const TensorSource& src,
+                                       const xla::Shape& shape,
+                                       int64 iota_dimension,
+                                       CompilerResources& resources,
+                                       const TensorMap& tensor_map);
 
 template <typename T>
 poplar::Tensor TileTensor(const T& multiples, const poplar::Tensor& in);
@@ -83,6 +84,66 @@ StatusOr<poplar::Tensor> ReverseTensor(const poplar::Tensor& in,
 StatusOr<poplar::Tensor> BroadcastTensor(
     const poplar::Tensor& in, const xla::Shape& out,
     const std::vector<int64>& dimensions = {});
+
+Status AddOutputTensor(TensorMap& map, const HloInstruction* inst, int64 n,
+                       const poplar::Tensor& tensor);
+
+/* Returns a pair of numbers representing the half-open range of indicies
+ * which a particular input to a tuple represents in the flattened output.
+ *
+ * eg.
+ *   a = tuple(f32[], tuple(f32[], f32[]), f32)(b c d)
+ *
+ *   a is a tuple containing a scalar, a tuple of 2 scalars, and another scalar
+ *   and flattened it has 4 tensors
+ *
+ *   FindTupleInputIndices(a, 0) = (0,1)
+ *   FindTupleInputIndices(a, 1) = (1,3)
+ *   FindTupleInputIndices(a, 2) = (3,4)
+ */
+std::pair<int64, int64> FindTupleInputIndices(const HloInstruction* tuple,
+                                              int64 input);
+
+/* This returns the vector of all poplar tensors which are part of the n'th
+ * member of the tuple which is the input to the instruction.
+ */
+ArgVector FindTupleInInstructionInput(TensorMap& map, CompilerResources& res,
+                                      const HloInstruction* inst, int64 input,
+                                      int64 n, poplar::program::Sequence& seq);
+
+/* This returns the single poplar tensor which is the non-tuple input to the
+ * input to the instruction
+ */
+StatusOr<poplar::Tensor> FindInstructionInput(TensorMap& map,
+                                              CompilerResources& res,
+                                              const HloInstruction* inst,
+                                              int64 input,
+                                              poplar::program::Sequence& seq);
+
+/* This returns a vector of all poplar tensors which are part of the tuple
+ * or non-tuple on the input to the instruction
+ */
+ArgVector FindInstructionInputs(TensorMap& map, CompilerResources& res,
+                                const HloInstruction* inst, int64 input,
+                                poplar::program::Sequence& seq);
+
+/* This returns a vector of poplar tensors which are all of the outputs from
+ * the given instruction
+ */
+OutVector FindInstructionOutputs(const TensorMap& map,
+                                 const HloInstruction* inst);
+
+/* This returns a vector of poplar tensors which are all of the outputs from
+ * the given instruction - any wide constants are expanded - TODO T5364
+ */
+OutVector FindExpandedInstructionOutputs(TensorMap& map, CompilerResources& res,
+                                         const HloInstruction* inst,
+                                         poplar::program::Sequence& seq);
+
+/* Generate a JSON struture describing the tensor mappings
+ */
+std::string GetTensorMappingJson(const poplar::Graph& graph,
+                                 const TensorMaps& tensor_map);
 
 }  // namespace poplarplugin
 }  // namespace xla

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_inline_call.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 
 namespace xla {
 namespace poplarplugin {

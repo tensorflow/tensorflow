@@ -36,7 +36,8 @@ namespace poplarplugin {
 
 struct CompilerResources;
 
-using TensorMap = std::map<std::pair<std::string, int64>, poplar::Tensor>;
+using TensorKey = std::pair<std::string, int64>;
+using TensorMap = std::map<TensorKey, poplar::Tensor>;
 using TensorMaps = std::map<std::string, TensorMap>;
 
 using OutVector = std::vector<poplar::Tensor>;
@@ -54,8 +55,6 @@ StatusOr<popops::expr::BinaryOpType> LookupBinaryFn(const HloInstruction*);
 
 Status SetVertexField(poplar::Graph& graph, const poplar::FieldRef& field,
                       const Literal& literal);
-
-std::string GetDebugName(const HloInstruction*);
 
 poplar::Graph& GetGraph(CompilerResources&, const HloInstruction*);
 
@@ -93,59 +92,6 @@ poplar::Tensor RemoveGroupsDimensionFromWeights(const poplin::ConvParams& p,
 poplar::Tensor AddGroupsDimensionToWeights(const poplin::ConvParams& p,
                                            const poplar::Tensor& t,
                                            bool flipped);
-
-Status AddOutputTensor(TensorMap& map, const HloInstruction* inst, int64 n,
-                       const poplar::Tensor& tensor);
-
-/* Returns a pair of numbers representing the half-open range of indicies
- * which a particular input to a tuple represents in the flattened output.
- *
- * eg.
- *   a = tuple(f32[], tuple(f32[], f32[]), f32)(b c d)
- *
- *   a is a tuple containing a scalar, a tuple of 2 scalars, and another scalar
- *   and flattened it has 4 tensors
- *
- *   FindTupleInputIndices(a, 0) = (0,1)
- *   FindTupleInputIndices(a, 1) = (1,3)
- *   FindTupleInputIndices(a, 2) = (3,4)
- */
-std::pair<int64, int64> FindTupleInputIndices(const HloInstruction* tuple,
-                                              int64 input);
-
-/* This returns the vector of all poplar tensors which are part of the n'th
- * member of the tuple which is the input to the instruction.
- */
-ArgVector FindTupleInInstructionInput(const TensorMap& map,
-                                      const HloInstruction* inst, int64 input,
-                                      int64 n);
-
-/* This returns the single poplar tensor which is the non-tuple input to the
- * input to the instruction
- */
-StatusOr<poplar::Tensor> FindInstructionInput(const TensorMap& map,
-                                              CompilerResources& res,
-                                              const HloInstruction* inst,
-                                              int64 input,
-                                              poplar::program::Sequence& seq);
-
-/* This returns a vector of all poplar tensors which are part of the tuple
- * or non-tuple on the input to the instruction
- */
-ArgVector FindInstructionInputs(const TensorMap& map, CompilerResources& res,
-                                const HloInstruction* inst, int64 input,
-                                poplar::program::Sequence& seq);
-
-/* This returns a vector of poplar tensors which are all of the outputs from
- * the given instruction
- */
-OutVector FindInstructionOutputs(const TensorMap& map,
-                                 const HloInstruction* inst);
-
-/* Generate a JSON struture describing the tensor mappings
- */
-std::string GetTensorMappingJson(const poplar::Graph& graph,
-                                 const TensorMaps& tensor_map);
 
 /* Sometimes an inplace op cannot be performed because the input/output tensor
  * is not parallel writable or because further analysis has shown that the op

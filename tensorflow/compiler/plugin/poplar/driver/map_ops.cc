@@ -5,6 +5,8 @@
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/custom_ops/custom_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_arithmetic_expr.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_inline_call.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_map.h"

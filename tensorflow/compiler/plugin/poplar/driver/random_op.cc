@@ -2,6 +2,7 @@
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 #include <poprand/RandomGen.hpp>

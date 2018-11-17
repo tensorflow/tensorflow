@@ -99,7 +99,9 @@ Status EntryVisitor::FinishVisit(HloInstruction* root) {
   // outputs
   uint64 from_tensor_index = 0;
   uint64 to_tensor_index = 0;
-  auto out_tensors = FindInstructionOutputs(tensor_map, root);
+  // TODO see T5364
+  auto out_tensors =
+      FindExpandedInstructionOutputs(tensor_map, resources_, root, sequence);
   for (uint64 idx = 0; idx < entry_outputs.size(); idx++) {
     auto& out_info = entry_outputs[idx];
     poplar::program::Sequence& seq =
