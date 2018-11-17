@@ -40,6 +40,7 @@ cuda_py_test(
         "//tensorflow/python/estimator:estimator_py",
     ],
     tags = [
+        "no_oss",
         "no_pip",
     ],
 )
