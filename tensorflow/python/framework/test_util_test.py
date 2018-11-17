@@ -111,6 +111,14 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     else:
       print("GoogleCuda is disabled")
 
+  def testIsBuiltWithROCm(self):
+    # The test doesn't assert anything. It ensures the py wrapper
+    # function is generated correctly.
+    if test_util.IsBuiltWithROCm():
+      print("Tensorflow build has ROCm support")
+    else:
+      print("Tensorflow build does not have ROCm support")
+
   def testIsMklEnabled(self):
     # This test doesn't assert anything.
     # It ensures the py wrapper function is generated correctly.
