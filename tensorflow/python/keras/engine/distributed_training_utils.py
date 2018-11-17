@@ -391,6 +391,16 @@ def validate_inputs(x, y, distribution_strategy):
               'Found unknown shape {} in input {}.'.format(s, i))
 
 
+# TODO(b/118776054): Currently we support global batch size for TPUStrategy
+# and CoreMirroredStrategy only. Remove this check when contrib MirroredStrategy
+# is no longer needed.
+def global_batch_size_supported(distribution_strategy):
+  strategy_name = distribution_strategy.__class__.__name__
+  # TODO(priyag): Change this to whatever condition makes sense when
+  # CoreMirroredStrategy is moved to core and renamed.
+  return strategy_name in ('TPUStrategy', 'CoreMirroredStrategy')
+
+
 def get_input_batch_params(first_x_value, batch_size, distribution_strategy):
   """Calculate the number of batches and steps/steps_per_epoch.
 
@@ -413,7 +423,7 @@ def get_input_batch_params(first_x_value, batch_size, distribution_strategy):
     # Default the global batch size to the minimum of 32 and the size of
     # the numpy array. 32 is chosen to guarantee backward compatibility.
     batch_size = min(first_x_value.shape[0], 32)
-    if distribution_strategy.__class__.__name__ != 'TPUStrategy':
+    if not global_batch_size_supported(distribution_strategy):
       if batch_size % distribution_strategy.num_replicas_in_sync:
         raise ValueError(
             'The batch size (%s) could not be sharded evenly across the sync '
@@ -428,12 +438,10 @@ def get_input_batch_params(first_x_value, batch_size, distribution_strategy):
   if not num_batches:
     raise ValueError('Please specify a batch_size that is smaller than '
                      'the number of input samples %d.' % first_x_value.shape[0])
-  # TODO(b/118776054): Use global batch size for Keras/DS support.
-  # The Keras API supports using the global batch size which is currently only
-  # supported in TPU Strategy. For other strategies we use a per_replica
-  # batch size so the number of steps required to run needs to be divide by
-  # the number of replicas.
-  if distribution_strategy.__class__.__name__ == 'TPUStrategy':
+
+  # Number of steps required to run needs to be divide by the number of replicas
+  # if global batch size is not supported.
+  if global_batch_size_supported(distribution_strategy):
     steps = num_batches
   else:
     steps = num_batches // distribution_strategy.num_replicas_in_sync
@@ -479,7 +487,7 @@ def get_batch_size(distribution_strategy, num_samples, steps):
   # The Keras API supports using the global batch size which is currently only
   # supported in TPU Strategy. For other strategies we use a per_replica
   # batch size so we need to divide it by the number of replicas.
-  if distribution_strategy.__class__.__name__ == 'TPUStrategy':
+  if global_batch_size_supported(distribution_strategy):
     return global_batch_size
 
   num_replicas = distribution_strategy.num_replicas_in_sync

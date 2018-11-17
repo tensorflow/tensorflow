@@ -499,6 +499,14 @@ class CoreMirroredExtended(distribute_lib.DistributionStrategyExtended):
       return values.PerReplicaDataset(
           self._call_dataset_fn(dataset_fn), self._devices)
 
+  def _make_dataset_iterator(self, dataset):
+    if self._cluster_spec:
+      worker_device_pairs = self._worker_devices
+    else:
+      worker_device_pairs = [("/job:localhost", self._devices)]
+    return values.DatasetIterator(dataset, worker_device_pairs,
+                                  self._num_replicas_in_sync)
+
   def _make_input_fn_iterator(
       self,
       input_fn,
@@ -880,6 +888,24 @@ class MirroredExtended(CoreMirroredExtended):
     super(MirroredExtended, self).__init__(
         container_strategy, devices, num_gpus, num_gpus_per_worker,
         cross_device_ops, auto_shard_dataset)
+
+  def _make_dataset_iterator(self, dataset):
+    """Make iterator from dataset without splitting the batch.
+
+    This implementation is different than the one in
+    `tf.distribute.MirroredStrategy` for purposes of backward compatibility.
+    We treat the incoming dataset's batch size as per replica batch size.
+
+    Args:
+      dataset: `tf.data.Dataset` for input.
+    Returns:
+      An `InputIterator` which returns inputs for each step of the computation.
+    """
+    if self._cluster_spec:
+      worker_device_pairs = self._worker_devices
+    else:
+      worker_device_pairs = [("/job:localhost", self._devices)]
+    return values.DatasetIterator(dataset, worker_device_pairs)
 
 
 class MirroredReplicaContext(distribute_lib.ReplicaContext):

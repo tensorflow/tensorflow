@@ -67,9 +67,8 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
       return next_creator(*args, **kwargs)
 
   def _make_dataset_iterator(self, dataset):
-    distributed_dataset = values.PerReplicaDataset(dataset, [self._device])
-    # TODO(priyag): Return distribution strategy specific InputIterator
-    return distributed_dataset.make_initializable_iterator()
+    """Make iterator from dataset without splitting the batch."""
+    return values.DatasetIterator(dataset, [("/job:localhost", [self._device])])
 
   def _distribute_dataset(self, dataset_fn):
     return values.PerReplicaDataset(
