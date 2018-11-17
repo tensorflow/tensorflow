@@ -33,7 +33,7 @@ namespace gpu {
 
 class GpuHloScheduleTest : public HloTestBase {
  protected:
-  using HloVec = std::vector<HloInstruction*>;
+  using HloVec = std::vector<const HloInstruction*>;
 
   // Pre-canned shapes.
   Shape f32_2x2_ = ShapeUtil::MakeShape(F32, {2, 2});

@@ -111,7 +111,7 @@ IrEmitter::IrEmitter(
 StatusOr<llvm::Function*> IrEmitter::EmitComputation(
     HloComputation* computation, const string& function_name_prefix,
     bool is_top_level_computation,
-    const std::vector<HloInstruction*>* instruction_order) {
+    const std::vector<const HloInstruction*>* instruction_order) {
   string function_name = name_uniquer_.GetUniqueName(function_name_prefix);
   VLOG(2) << "Emitting IR for CPU function [" << function_name_prefix
           << "]; ordered? " << (instruction_order != nullptr);

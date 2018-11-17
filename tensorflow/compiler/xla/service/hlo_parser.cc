@@ -47,11 +47,11 @@ const double kF16max = 65504;
 
 // Creates and returns a schedule created using the order of the instructions in
 // the HloComputation::instructions() vectors in the module.
-HloSchedule ScheduleFromInstructionOrder(HloModule* module) {
+HloSchedule ScheduleFromInstructionOrder(const HloModule* module) {
   HloSchedule schedule(module);
-  for (HloComputation* computation : module->computations()) {
+  for (const HloComputation* computation : module->computations()) {
     if (!computation->IsFusionComputation()) {
-      for (HloInstruction* instruction : computation->instructions()) {
+      for (const HloInstruction* instruction : computation->instructions()) {
         schedule.GetOrCreateSequence(computation).push_back(instruction);
       }
     }

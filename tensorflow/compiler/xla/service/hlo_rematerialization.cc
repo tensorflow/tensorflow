@@ -130,10 +130,10 @@ using ItemList = absl::InlinedVector<Item*, 3>;
 // before arbitrary elements.
 class InstructionList {
  public:
-  explicit InstructionList(const HloInstructionSequence& order) {
+  explicit InstructionList(const std::vector<const HloInstruction*>& order) {
     int64 position = 0;
     Item* last = nullptr;
-    for (HloInstruction* inst : order.instructions()) {
+    for (const HloInstruction* inst : order) {
       // Add a new item to the linked list.
       Item* item = new Item;
       item->next = nullptr;
@@ -151,7 +151,7 @@ class InstructionList {
       // to be monotonically increasing through the list, and so is still useful
       // for quickly(-ish) determining the order of arbitrary instructions in
       // the list.
-      item->instruction = inst;
+      item->instruction = const_cast<HloInstruction*>(inst);
       item->position = position;
       position++;
 
@@ -927,7 +927,7 @@ Item* PickRematerializationCandidate(
 
 StatusOr<int64> HloRematerialization::ComputePeakMemory(
     const HloComputation* computation,
-    const HloInstructionSequence& order) const {
+    const std::vector<const HloInstruction*>& order) const {
   InstructionList instruction_list(order);
   MemoryUsageTracker tracker(computation, size_function_, *points_to_analysis_,
                              instruction_list);
@@ -971,7 +971,8 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
           << HumanReadableNumBytes(computation_peak_memory_.at(computation));
   CHECK(!ContainsKey(rematerialized_computations_, computation));
 
-  InstructionList instruction_list(schedule->sequence(computation));
+  InstructionList instruction_list(
+      schedule->sequence(computation).instructions());
   MemoryUsageTracker memory_tracker(computation, size_function_,
                                     *points_to_analysis_, instruction_list);
   bool changed = false;
@@ -1183,7 +1184,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
   sequence.clear();
   for (auto* item = instruction_list.first(); item != nullptr;
        item = instruction_list.next(item)) {
-    HloInstruction* instruction = item->instruction;
+    const HloInstruction* instruction = item->instruction;
     sequence.push_back(instruction);
   }
   rematerialized_computations_.insert(computation);
@@ -1234,8 +1235,10 @@ StatusOr<bool> HloRematerialization::Run(HloModule* module) {
         if (node.context() == CallContext::kSequential) {
           TF_ASSIGN_OR_RETURN(
               computation_peak_memory_[node.computation()],
-              ComputePeakMemory(node.computation(), module->schedule().sequence(
-                                                        node.computation())));
+              ComputePeakMemory(node.computation(),
+                                module->schedule()
+                                    .sequence(node.computation())
+                                    .instructions()));
         }
         return Status::OK();
       },
