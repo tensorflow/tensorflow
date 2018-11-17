@@ -1530,9 +1530,13 @@ def is_numeric_tensor(tensor):
 
 
 @tf_export(
-    'debugging.is_non_decreasing',
-    v1=['debugging.is_non_decreasing', 'is_non_decreasing'])
-@deprecation.deprecated_endpoints('is_non_decreasing')
+    'math.is_non_decreasing',
+    v1=[
+        'math.is_non_decreasing', 'debugging.is_non_decreasing',
+        'is_non_decreasing'
+    ])
+@deprecation.deprecated_endpoints('debugging.is_non_decreasing',
+                                  'is_non_decreasing')
 def is_non_decreasing(x, name=None):
   """Returns `True` if `x` is non-decreasing.
 
@@ -1560,9 +1564,13 @@ def is_non_decreasing(x, name=None):
 
 
 @tf_export(
-    'debugging.is_strictly_increasing',
-    v1=['debugging.is_strictly_increasing', 'is_strictly_increasing'])
-@deprecation.deprecated_endpoints('is_strictly_increasing')
+    'math.is_strictly_increasing',
+    v1=[
+        'math.is_strictly_increasing', 'debugging.is_strictly_increasing',
+        'is_strictly_increasing'
+    ])
+@deprecation.deprecated_endpoints('debugging.is_strictly_increasing',
+                                  'is_strictly_increasing')
 def is_strictly_increasing(x, name=None):
   """Returns `True` if `x` is strictly increasing.
 
