@@ -2515,8 +2515,6 @@ class ControlFlowTest(test.TestCase):
       r = gradients_impl.gradients(r, v)[0]
       self.assertAllClose(512.0, self.evaluate(r))
 
-  @test_util.disable_control_flow_v2("unsupported: resource creation in body. "
-                                     "Enable with new TAs b/117675481")
   def testNestedWhileGrad_ParallelIterations(self):
     # Make sure the stack pushes and pops of an inner loop are executed in
     # the sequential order of the iterations of its outer loop.
@@ -2695,8 +2693,6 @@ class ControlFlowTest(test.TestCase):
           c, b, [i0, constant_op.constant(0.0)])
       self.assertAllClose(600.0, sess.run(output_grad)[1])
 
-  @test_util.disable_control_flow_v2("unsupported: resource creation in body. "
-                                     "Enable with new TAs b/117675481")
   def testWhileAndTensorArray(self):
     with self.cached_session() as sess:
       param = constant_op.constant(2.0)
