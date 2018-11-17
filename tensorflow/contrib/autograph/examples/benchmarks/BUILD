@@ -19,6 +19,8 @@ py_test(
     srcs = ["cartpole_benchmark.py"],
     tags = [
         "local",
+        "manual",
+        "no_oss",
         "notap",
         "nozapfhahn",
     ],
