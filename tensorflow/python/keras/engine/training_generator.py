@@ -137,7 +137,7 @@ def fit_generator(model,
     # Construct epoch logs.
     epoch_logs = {}
     while epoch < epochs:
-      for m in model.stateful_metric_functions:
+      for m in model.metrics:
         m.reset_states()
       callbacks.on_epoch_begin(epoch)
       steps_done = 0
@@ -240,14 +240,9 @@ def evaluate_generator(model,
   if not context.executing_eagerly():
     model._make_test_function()
 
-  if hasattr(model, 'metrics'):
-    for m in model.stateful_metric_functions:
+  if hasattr(model, '_compile_metrics'):
+    for m in model.metrics:
       m.reset_states()
-    stateful_metric_indices = [
-        i for i, name in enumerate(model.metrics_names)
-        if str(name) in model.stateful_metric_names]
-  else:
-    stateful_metric_indices = []
 
   steps_done = 0
   all_outs = []
@@ -329,13 +324,12 @@ def evaluate_generator(model,
   if not isinstance(outs, list):
     return np.average(np.asarray(all_outs), weights=batch_sizes)
   else:
-    averages = []
-    for i in range(len(outs)):
-      if i not in stateful_metric_indices:
-        averages.append(
-            np.average([out[i] for out in all_outs], weights=batch_sizes))
-      else:
-        averages.append(np.float64(all_outs[-1][i]))
+    averages = [float(all_outs[-1][0])]  # index 0 = 'loss'
+    averages.extend([
+        np.average([out[i]
+                    for out in all_outs], weights=batch_sizes)
+        for i in range(1, len(outs))
+    ])
     return averages
 
 
@@ -348,7 +342,7 @@ def predict_generator(model,
                       verbose=0):
   """See docstring for `Model.predict_generator`."""
   if not context.executing_eagerly():
-    model._make_test_function()
+    model._make_predict_function()
 
   steps_done = 0
   all_outs = []

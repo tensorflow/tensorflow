@@ -107,7 +107,7 @@ class MatrixSolveLsOpTest(test_lib.TestCase):
         b = np.tile(b, batch_shape + (1, 1))
         np_ans = np.tile(np_ans, batch_shape + (1, 1))
         np_r_norm = np.tile(np_r_norm, batch_shape)
-      with self.test_session(use_gpu=fast) as sess:
+      with self.cached_session(use_gpu=fast) as sess:
         if use_placeholder:
           a_ph = array_ops.placeholder(dtypes.as_dtype(dtype))
           b_ph = array_ops.placeholder(dtypes.as_dtype(dtype))
@@ -135,7 +135,7 @@ class MatrixSolveLsOpTest(test_lib.TestCase):
 
   def testWrongDimensions(self):
     # The matrix and right-hand sides should have the same number of rows.
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       matrix = constant_op.constant([[1., 0.], [0., 1.]])
       rhs = constant_op.constant([[1., 0.]])
       with self.assertRaises(ValueError):
@@ -146,7 +146,7 @@ class MatrixSolveLsOpTest(test_lib.TestCase):
     empty0 = np.empty([3, 0])
     empty1 = np.empty([0, 2])
     for fast in [True, False]:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         tf_ans = linalg_ops.matrix_solve_ls(empty0, empty0, fast=fast).eval()
         self.assertEqual(tf_ans.shape, (0, 0))
         tf_ans = linalg_ops.matrix_solve_ls(empty0, full, fast=fast).eval()

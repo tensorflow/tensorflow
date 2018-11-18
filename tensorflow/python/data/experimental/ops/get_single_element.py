@@ -60,7 +60,7 @@ def get_single_element(dataset):
     InvalidArgumentError (at runtime): if `dataset` does not contain exactly
       one element.
   """
-  if not isinstance(dataset, dataset_ops.Dataset):
+  if not isinstance(dataset, dataset_ops.DatasetV2):
     raise TypeError("`dataset` must be a `tf.data.Dataset` object.")
 
   nested_ret = nest.pack_sequence_as(

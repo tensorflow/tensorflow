@@ -56,6 +56,7 @@ def simple_scoped_fn(a, x):
     return math_ops.multiply(math_ops.add(a, x), two)
 
 
+@test_util.with_control_flow_v2
 class FunctionalOpsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
@@ -481,6 +482,7 @@ class FunctionalOpsTest(test.TestCase):
     y = functional_ops.map_fn(lambda e: e, x)
     self.assertIs(None, y.get_shape().dims)
 
+  @test_util.disable_control_flow_v2("b/119323354")
   @test_util.run_in_graph_and_eager_modes
   def testMapEmptyScalar(self):
     map_return = functional_ops.map_fn(lambda x: 1, constant_op.constant([]))
@@ -489,6 +491,7 @@ class FunctionalOpsTest(test.TestCase):
 
   # TODO(akshayka): this test fails in eager: the iterable is of length 0 so
   # so the body of the while loop never executes
+  @test_util.disable_control_flow_v2("b/119323354")
   def testMapEmptyTensor(self):
     with self.cached_session():
       map_return = functional_ops.map_fn(lambda x: array_ops.zeros([3, 2]),
@@ -829,6 +832,49 @@ class FunctionalOpsTest(test.TestCase):
           self.assertAllEqual(5050.,
                               sess.run([result, c], feed_dict={n: 100.})[0])
 
+  # pylint: disable=cell-var-from-loop
+  def testWhileCapturedInputs(self):
+    for use_gpu in (True, False):
+      with ops.Graph().as_default() as g:
+        v = variables.Variable(1.0)
+
+        def TestCond(n, *args):
+          del args
+          return n < 10
+
+        @function.Defun(*[dtypes.float32] * 2)
+        def TestUnary(n, x):
+          return math_ops.add(n, 1), x + n + v
+
+        @function.Defun(*[dtypes.float32] * 3)
+        def TestBinary(n, x, x2):
+          return math_ops.add(n, 1), x + n + v, x2 + v
+
+        with self.session(graph=g, use_gpu=use_gpu) as sess:
+          result_unary = functional_ops.While(
+              [1.0, 0.],
+              function.Defun(*[dtypes.float32] * 2)(TestCond), TestUnary)
+          result_binary = functional_ops.While(
+              [1.0, 0., 0.],
+              function.Defun(*[dtypes.float32] * 3)(TestCond), TestBinary)
+          sess.run(variables.global_variables_initializer())
+          assert len(result_unary) == 2
+          self.assertEqual([10.0, 54.0], sess.run(result_unary))
+          assert len(result_binary) == 3
+          self.assertEqual([10.0, 54.0, 9.0], sess.run(result_binary))
+
+          def TestCondCapture(n, *args):
+            del args
+            return math_ops.to_float(n) + v < 10
+
+          with self.assertRaises(ValueError):
+            _ = functional_ops.While(
+                [1],
+                function.Defun(dtypes.int32)(TestCondCapture),
+                function.Defun(dtypes.int32, dtypes.float32)(TestUnary))
+
+  # pylint: enable=cell-var-from-loop
+
   def _tfSum(self, use_gpu, rewrite_with_while):
     with ops.Graph().as_default() as g:
       with self.session(graph=g, use_gpu=use_gpu) as sess:
@@ -931,7 +977,7 @@ class FunctionalOpsTest(test.TestCase):
           MLP,
           rewrite_with_while=rewrite_with_while)[0]
 
-      return ret.eval()
+      return self.evaluate(ret)
 
   def _npMLP(self, xval, wsval, bsval):
     for i in range(wsval.shape[0]):
@@ -1153,6 +1199,20 @@ class PartitionedCallTest(test.TestCase):
           functional_ops.partitioned_call(
               args=defined.captured_inputs, f=defined))
       self.assertAllEqual(expected, result)
+
+  # Use an invalid executor name to test the plumbing of the executor_type attr.
+  def testExecutorTypeAttrExecutorNotFound(self):
+    @function.Defun(dtypes.int32)
+    def AddFive(x):
+      return x + 5
+
+    op = functional_ops.partitioned_call(
+        args=[constant_op.constant([1, 2, 3], dtype=dtypes.int32)],
+        f=AddFive,
+        executor_type="NON_EXISTENT_EXECUTOR")
+    with self.assertRaisesRegexp(errors.NotFoundError,
+                                 "NON_EXISTENT_EXECUTOR"):
+      self.evaluate(op)
 
 
 if __name__ == "__main__":

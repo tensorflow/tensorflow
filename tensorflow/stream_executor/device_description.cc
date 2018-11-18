@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/stream_executor/lib/human_readable.h"
 #include "tensorflow/stream_executor/lib/mathutil.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 
 namespace stream_executor {
 
@@ -67,20 +67,20 @@ std::unique_ptr<std::map<string, string>> DeviceDescription::ToMap() const {
 
   const ThreadDim &thread_dim = thread_dim_limit();
   result["ThreadDim Limit"] =
-      port::StrCat(thread_dim.x, ",", thread_dim.y, ",", thread_dim.z);
+      absl::StrCat(thread_dim.x, ",", thread_dim.y, ",", thread_dim.z);
   const BlockDim &block_dim = block_dim_limit();
   result["BlockDim Limit"] =
-      port::StrCat(block_dim.x, ",", block_dim.y, ",", block_dim.z);
+      absl::StrCat(block_dim.x, ",", block_dim.y, ",", block_dim.z);
 
-  result["Threads Per Core Limit"] = port::StrCat(threads_per_core_limit());
-  result["Threads Per Block Limit"] = port::StrCat(threads_per_block_limit());
+  result["Threads Per Core Limit"] = absl::StrCat(threads_per_core_limit());
+  result["Threads Per Block Limit"] = absl::StrCat(threads_per_block_limit());
   result["Registers Per Block Limit"] =
-      port::StrCat(registers_per_block_limit());
+      absl::StrCat(registers_per_block_limit());
 
-  result["Device Address Bits"] = port::StrCat(device_address_bits());
+  result["Device Address Bits"] = absl::StrCat(device_address_bits());
   result["Device Memory Size"] =
       port::HumanReadableNumBytes::ToString(device_memory_size());
-  result["Memory Bandwidth"] = port::StrCat(
+  result["Memory Bandwidth"] = absl::StrCat(
       port::HumanReadableNumBytes::ToString(memory_bandwidth_), "/s");
 
   result["Shared Memory Per Core"] =
@@ -88,14 +88,14 @@ std::unique_ptr<std::map<string, string>> DeviceDescription::ToMap() const {
   result["Shared Memory Per Block"] =
       port::HumanReadableNumBytes::ToString(shared_memory_per_block_);
 
-  result["Clock Rate GHz"] = port::StrCat(clock_rate_ghz());
+  result["Clock Rate GHz"] = absl::StrCat(clock_rate_ghz());
 
-  result["CUDA Compute Capability"] = port::StrCat(
+  result["CUDA Compute Capability"] = absl::StrCat(
       cuda_compute_capability_major_, ".", cuda_compute_capability_minor_);
 
-  result["NUMA Node"] = port::StrCat(numa_node());
-  result["Core Count"] = port::StrCat(core_count());
-  result["ECC Enabled"] = port::StrCat(ecc_enabled());
+  result["NUMA Node"] = absl::StrCat(numa_node());
+  result["Core Count"] = absl::StrCat(core_count());
+  result["ECC Enabled"] = absl::StrCat(ecc_enabled());
   return owned_result;
 }
 

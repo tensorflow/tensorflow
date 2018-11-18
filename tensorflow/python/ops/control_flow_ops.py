@@ -14,8 +14,7 @@
 # ==============================================================================
 """Control Flow Operations.
 
-See the [Control
-Flow](https://tensorflow.org/api_guides/python/control_flow_ops) guide.
+See the [autograph](https://www.tensorflow.org/guide/autographs) guide.
 """
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
@@ -31,6 +30,7 @@ import six
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import control_flow_pb2
+from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -71,8 +71,8 @@ cond_v2 = LazyLoader("cond_v2", globals(),
 while_v2 = LazyLoader("while_v2", globals(),
                       "tensorflow.python.ops.while_v2")
 
-ENABLE_COND_V2 = os.getenv("TF_ENABLE_COND_V2", "0") != "0"
-ENABLE_WHILE_V2 = os.getenv("TF_ENABLE_WHILE_V2", "0") != "0"
+ENABLE_COND_V2 = tf2.enabled() or os.getenv("TF_ENABLE_COND_V2", "0") != "0"
+ENABLE_WHILE_V2 = tf2.enabled() or os.getenv("TF_ENABLE_WHILE_V2", "0") != "0"
 
 # We override the 'tuple' for a control flow op, so we keep python's
 # existing 'tuple' for later use in this module.
@@ -1484,6 +1484,7 @@ def ZerosLikeOutsideLoop(op, index):
       return array_ops.zeros_like(val, optimize=False)
 
 
+@six.add_metaclass(abc.ABCMeta)
 class ControlFlowContext(object):
   """The base class for control flow context.
 
@@ -1830,7 +1831,15 @@ class CondContext(ControlFlowContext):
       result.op._set_control_flow_context(self)
       # pylint: enable=protected-access
 
-      self._values.add(result.name)
+      # Mark Switch output as seen by this context and any outer contexts,
+      # just like what we do for normal op outputs in _AddOpInternal() below.
+      ctxt = self
+      while ctxt is not None:
+        # pylint: disable=protected-access
+        ctxt._values.add(result.name)
+        ctxt = ctxt._outer_context
+        # pylint: enable=protected-access
+
       self._external_values[val.name] = result
     return result
 
@@ -1967,7 +1976,7 @@ def _UnpackIfSingleton(res):
 
 # pylint: disable=redefined-outer-name
 # pylint: disable=g-doc-args
-@tf_export("cond")
+@tf_export(v1=["cond"])
 @deprecation.deprecated_args(
     None, "fn1/fn2 are deprecated in favor of the true_fn/false_fn arguments.",
     "fn1", "fn2")
@@ -2162,6 +2171,77 @@ def cond(pred,
 
 # pylint: enable=g-doc-args
 # pylint: enable=redefined-outer-name
+
+
+@tf_export("cond", v1=[])
+def cond_for_tf_v2(pred,
+                   true_fn=None,
+                   false_fn=None,
+                   name=None):
+  """Return `true_fn()` if the predicate `pred` is true else `false_fn()`.
+
+  `true_fn` and `false_fn` both return lists of output tensors. `true_fn` and
+  `false_fn` must have the same non-zero number and type of outputs.
+
+  **WARNING**: Any Tensors or Operations created outside of `true_fn` and
+  `false_fn` will be executed regardless of which branch is selected at runtime.
+
+  Although this behavior is consistent with the dataflow model of TensorFlow,
+  it has frequently surprised users who expected a lazier semantics.
+  Consider the following simple program:
+
+  ```python
+  z = tf.multiply(a, b)
+  result = tf.cond(x < y, lambda: tf.add(x, z), lambda: tf.square(y))
+  ```
+
+  If `x < y`, the `tf.add` operation will be executed and `tf.square`
+  operation will not be executed. Since `z` is needed for at least one
+  branch of the `cond`, the `tf.multiply` operation is always executed,
+  unconditionally.
+
+  Note that `cond` calls `true_fn` and `false_fn` *exactly once* (inside the
+  call to `cond`, and not at all during `Session.run()`). `cond`
+  stitches together the graph fragments created during the `true_fn` and
+  `false_fn` calls with some additional graph nodes to ensure that the right
+  branch gets executed depending on the value of `pred`.
+
+  `tf.cond` supports nested structures as implemented in
+  `tensorflow.python.util.nest`. Both `true_fn` and `false_fn` must return the
+  same (possibly nested) value structure of lists, tuples, and/or named tuples.
+  Singleton lists and tuples form the only exceptions to this: when returned by
+  `true_fn` and/or `false_fn`, they are implicitly unpacked to single values.
+
+  Args:
+    pred: A scalar determining whether to return the result of `true_fn` or
+      `false_fn`.
+    true_fn: The callable to be performed if pred is true.
+    false_fn: The callable to be performed if pred is false.
+    name: Optional name prefix for the returned tensors.
+
+  Returns:
+    Tensors returned by the call to either `true_fn` or `false_fn`. If the
+    callables return a singleton list, the element is extracted from the list.
+
+  Raises:
+    TypeError: if `true_fn` or `false_fn` is not callable.
+    ValueError: if `true_fn` and `false_fn` do not return the same number of
+      tensors, or return tensors of different types.
+
+  Example:
+
+  ```python
+  x = tf.constant(2)
+  y = tf.constant(5)
+  def f1(): return tf.multiply(x, 17)
+  def f2(): return tf.add(y, 23)
+  r = tf.cond(tf.less(x, y), f1, f2)
+  # r is set to f1().
+  # Operations in f2 (e.g., tf.add) are not executed.
+  ```
+
+  """
+  return cond(pred, true_fn=true_fn, false_fn=false_fn, strict=True, name=name)
 
 
 def _resource_safe_shape(t):
@@ -3230,7 +3310,12 @@ def while_loop(cond,
   """
   if ENABLE_WHILE_V2 and not context.executing_eagerly():
     return while_v2.while_loop(
-        cond, body, loop_vars, shape_invariants=shape_invariants, name=name)
+        cond,
+        body,
+        loop_vars,
+        shape_invariants=shape_invariants,
+        maximum_iterations=maximum_iterations,
+        name=name)
 
   with ops.name_scope(name, "while", loop_vars):
     if not loop_vars:
@@ -3602,12 +3687,22 @@ def _case_verify_and_canonicalize_args(pred_fn_pairs, exclusive, name,
   if isinstance(pred_fn_pairs, collections.OrderedDict):
     pred_fn_pairs = pred_fn_pairs.items()
   elif isinstance(pred_fn_pairs, dict):
-    pred_fn_pairs = sorted(pred_fn_pairs.items(), key=lambda item: item[0].name)
-    if not exclusive:
-      logging.warn(
-          "%s: An unordered dictionary of predicate/fn pairs was "
-          "provided, but exclusive=False. The order of conditional "
-          "tests is deterministic but not guaranteed.", name)
+    if context.executing_eagerly():
+      # No name to sort on in eager mode. Use dictionary traversal order,
+      # which is nondeterministic in versions of Python < 3.6
+      if not exclusive:
+        raise ValueError("Unordered dictionaries are not supported for the "
+                         "`pred_fn_pairs` argument when `exclusive=False` and "
+                         "eager mode is enabled.")
+      pred_fn_pairs = list(pred_fn_pairs.items())
+    else:
+      pred_fn_pairs = sorted(
+          pred_fn_pairs.items(), key=lambda item: item[0].name)
+      if not exclusive:
+        logging.warn(
+            "%s: An unordered dictionary of predicate/fn pairs was "
+            "provided, but exclusive=False. The order of conditional "
+            "tests is deterministic but not guaranteed.", name)
   for pred_fn_pair in pred_fn_pairs:
     if not isinstance(pred_fn_pair, _basetuple) or len(pred_fn_pair) != 2:
       raise TypeError("Each entry in pred_fn_pairs must be a 2-tuple")
@@ -3703,7 +3798,7 @@ def case(pred_fn_pairs,
   operation returns the tensors generated by `default`.
 
   `tf.case` supports nested structures as implemented in
-  `tensorflow.python.util.nest`. All of the callables must return the same
+  `tf.contrib.framework.nest`. All of the callables must return the same
   (possibly nested) value structure of lists, tuples, and/or named tuples.
   Singleton lists and tuples form the only exceptions to this: when returned by
   a callable, they are implicitly unpacked to single values. This
@@ -3713,6 +3808,12 @@ def case(pred_fn_pairs,
   conditional tests is not guaranteed. However, the order is guaranteed to be
   deterministic, so that variables created in conditional branches are created
   in fixed order across runs.
+
+  @compatibility{eager}
+  Unordered dictionaries are not supported in eager mode when `exclusive=False`.
+  Use a list of tuples instead.
+  @end_compatibility
+
 
   **Example 1:**
 
@@ -3728,7 +3829,7 @@ def case(pred_fn_pairs,
   ```python
   f1 = lambda: tf.constant(17)
   f2 = lambda: tf.constant(23)
-  r = case([(tf.less(x, y), f1)], default=f2)
+  r = tf.case([(tf.less(x, y), f1)], default=f2)
   ```
 
   **Example 2:**
@@ -3736,7 +3837,7 @@ def case(pred_fn_pairs,
   Pseudocode:
 
   ```
-  if (x < y && x > z) raise OpError("Only one predicate may evaluate true");
+  if (x < y && x > z) raise OpError("Only one predicate may evaluate to True");
   if (x < y) return 17;
   else if (x > z) return 23;
   else return -1;
@@ -3748,7 +3849,7 @@ def case(pred_fn_pairs,
   def f1(): return tf.constant(17)
   def f2(): return tf.constant(23)
   def f3(): return tf.constant(-1)
-  r = case({tf.less(x, y): f1, tf.greater(x, z): f2},
+  r = tf.case({tf.less(x, y): f1, tf.greater(x, z): f2},
            default=f3, exclusive=True)
   ```
 
@@ -3786,6 +3887,12 @@ class XLAControlFlowContext(ControlFlowContext):
   def __init__(self):
     super(XLAControlFlowContext, self).__init__()
     self._name = "XLAControlFlowContext"
+
+  def to_control_flow_context_def(self, context_def, export_scope=None):
+    # pylint: disable=useless-super-delegation
+    # NOTE(slebedev): the method is required by `ControlFlowContext`.
+    super(XLAControlFlowContext, self).to_control_flow_context_def(
+        context_def, export_scope)
 
   def IsXLAContext(self):
     return True

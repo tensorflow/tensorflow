@@ -1122,8 +1122,11 @@ Status Encapsulator::Subgraph::BuildFunctionDef(
                                       fdef);
   }
 
-  if (!reuse_existing_functions || library->Find(name) == nullptr) {
+  const FunctionDef* original_fdef = library->Find(name);
+  if (!reuse_existing_functions || original_fdef == nullptr) {
     TF_RETURN_IF_ERROR(library->AddFunctionDef(fdef));
+  } else if (!FunctionDefsEqual(*original_fdef, fdef)) {
+    TF_RETURN_IF_ERROR(library->ReplaceFunction(name, fdef));
   }
   return Status::OK();
 }

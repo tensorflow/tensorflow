@@ -56,8 +56,8 @@ _TENSORFLOW_DOC_SOURCES = {
     'resource_loader': DocSource(
         docstring_module_name='platform.resource_loader'),
     'sets': DocSource(docstring_module_name='ops.sets'),
+    'signal': DocSource(docstring_module_name='ops.signal.signal'),
     'sparse': DocSource(docstring_module_name='ops.sparse_ops'),
-    'spectral': DocSource(docstring_module_name='ops.spectral_ops'),
     'strings': DocSource(docstring_module_name='ops.string_ops'),
     'sysconfig': DocSource(docstring_module_name='platform.sysconfig'),
     'test': DocSource(docstring_module_name='platform.test'),

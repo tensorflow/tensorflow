@@ -2673,5 +2673,23 @@ TEST_F(ScatterGatherShapeInferenceTest,
       << statusor.status();
 }
 
+TEST_F(ScatterGatherShapeInferenceTest,
+       InvalidScatterDimNumbers_InsufficientWindowDims) {
+  StatusOr<Shape> statusor = ShapeInference::InferScatterShape(
+      f32_5d_tensor_50_49_48_47_46_, s64_scalar_,
+      ShapeUtil::MakeShape(F32, {30, 29, 28, 27}), to_apply_,
+      HloScatterInstruction::MakeScatterDimNumbers(
+          /*update_window_dims=*/{0, 1, 2, 3},
+          /*inserted_window_dims=*/{},
+          /*scatter_dims_to_operand_dims=*/{0},
+          /*index_vector_dim=*/0));
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(
+      statusor.status().error_message(),
+      HasSubstr(
+          "Scatter op has window of size 4; doesn't match operand of rank 5."))
+      << statusor.status();
+}
+
 }  // namespace
 }  // namespace xla

@@ -24,11 +24,12 @@ from tensorflow.python.data.experimental.ops import prefetching_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
@@ -58,7 +59,7 @@ class FunctionBufferingResourceTest(test_base.DatasetTestBase):
   def _create_ops(self, ds, ds_iterator, buffer_name, device0, device1):
     ds_iterator_handle = ds_iterator.string_handle()
 
-    @function.Defun(dtypes.string)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _remote_fn(h):
       remote_iterator = iterator_ops.Iterator.from_string_handle(
           h, ds.output_types, ds.output_shapes)
@@ -67,7 +68,7 @@ class FunctionBufferingResourceTest(test_base.DatasetTestBase):
     target = constant_op.constant(device0)
     with ops.device(device1):
       buffer_resource_handle = prefetching_ops.function_buffering_resource(
-          f=_remote_fn,
+          f=_remote_fn.get_concrete_function(),
           output_types=[dtypes.float32],
           target_device=target,
           string_arg=ds_iterator_handle,
@@ -210,7 +211,7 @@ class FunctionBufferingResourceTest(test_base.DatasetTestBase):
     ds_iterator = ds.make_one_shot_iterator()
     ds_iterator_handle = ds_iterator.string_handle()
 
-    @function.Defun(dtypes.string)
+    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _remote_fn(h):
       remote_iterator = iterator_ops.Iterator.from_string_handle(
           h, ds.output_types, ds.output_shapes)
@@ -219,7 +220,7 @@ class FunctionBufferingResourceTest(test_base.DatasetTestBase):
     target = constant_op.constant(device0)
     with ops.device(device1):
       buffer_resource_handle = prefetching_ops.function_buffering_resource(
-          f=_remote_fn,
+          f=_remote_fn.get_concrete_function(),
           output_types=[dtypes.string],
           target_device=target,
           string_arg=ds_iterator_handle,

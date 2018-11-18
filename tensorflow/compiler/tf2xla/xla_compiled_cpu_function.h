@@ -287,11 +287,6 @@ class XlaCompiledCpuFunction {
 
   // Argument i needs to be placed in buffer_table_[arg_index_to_temp_index_[i]]
   // for XLA generated code to be able to find it.
-  //
-  // For now we need to keep around the args_ array because there is code that
-  // depends on args() returning a void**.  However, in the future we may remove
-  // args_ in favor of using buffer_table_ as the sole storage for the
-  // arguments.
   const int32* const arg_index_table_;
 
   // The number of incoming arguments.

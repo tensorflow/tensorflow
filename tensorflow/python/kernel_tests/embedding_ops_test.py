@@ -61,7 +61,7 @@ class ScatterAddSubTest(test.TestCase):
       scatter_op: ScatterAdd or ScatterSub.
     """
     super(ScatterAddSubTest, self).setUp()
-    with self.test_session(use_gpu=False):
+    with self.cached_session(use_gpu=False):
       # Create a random parameter array of given shape
       p_init = np.random.rand(*shape).astype("f")
       # Create the shape of the update array. All dimensions except the last
@@ -76,7 +76,7 @@ class ScatterAddSubTest(test.TestCase):
       # p = init
       variables.global_variables_initializer().run()
       # p += vals
-      result = p2.eval()
+      result = self.evaluate(p2)
     # Compute the expected 'p' using numpy operations.
     for i, ind in enumerate(indices):
       if scatter_op == state_ops.scatter_add:
@@ -278,7 +278,7 @@ class EmbeddingLookupTest(test.TestCase):
       norms = math_ops.sqrt(
           math_ops.reduce_sum(embeddings * embeddings, axis=1))
       normalized = embeddings / array_ops.stack([norms, norms], axis=1)
-      self.assertAllEqual(embedding.eval(), 2 * normalized.eval())
+      self.assertAllEqual(embedding.eval(), 2 * self.evaluate(normalized))
 
   def testSimpleShardedPartitionedVariable(self):
     with self.cached_session() as sess:
@@ -319,7 +319,7 @@ class EmbeddingLookupTest(test.TestCase):
       p_var_val = sess.run(list(p_variable))
       # Actual test
       print(ops.get_default_graph().as_graph_def())
-      tf_result = embedding.eval()
+      tf_result = self.evaluate(embedding)
     np_result, _, _ = _EmbeddingResult(params, id_vals, num_shards, vocab_size)
     self.assertAllEqual(params_values, p_var_val)
     self.assertAllEqual(np_result, tf_result)
@@ -969,7 +969,7 @@ class SafeEmbeddingLookupSparseTest(test.TestCase):
 class DynamicStitchOpTest(test.TestCase):
 
   def testCint32Cpu(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       indices = [
           ops.convert_to_tensor([0, 1, 2]),
           ops.convert_to_tensor([2, 3])
@@ -982,7 +982,7 @@ class DynamicStitchOpTest(test.TestCase):
           data_flow_ops.dynamic_stitch(indices, values).eval(), [12, 23, 1, 2])
 
   def testCint32Gpu(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       indices = [
           ops.convert_to_tensor([0, 1, 2]),
           ops.convert_to_tensor([2, 3])
@@ -995,7 +995,7 @@ class DynamicStitchOpTest(test.TestCase):
           data_flow_ops.dynamic_stitch(indices, values).eval(), [12, 23, 1, 2])
 
   def testInt32Cpu(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       indices = [
           ops.convert_to_tensor([0, 1, 2]),
           ops.convert_to_tensor([2, 3])
@@ -1008,7 +1008,7 @@ class DynamicStitchOpTest(test.TestCase):
           data_flow_ops.dynamic_stitch(indices, values).eval(), [12, 23, 1, 2])
 
   def testInt32Gpu(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       indices = [
           ops.convert_to_tensor([0, 1, 2]),
           ops.convert_to_tensor([2, 3])
@@ -1021,7 +1021,7 @@ class DynamicStitchOpTest(test.TestCase):
           data_flow_ops.dynamic_stitch(indices, values).eval(), [12, 23, 1, 2])
 
   def testSumGradArgs(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       indices = [
           ops.convert_to_tensor([0, 1, 2, 3]),
           ops.convert_to_tensor([2, 3])
@@ -1050,7 +1050,7 @@ class DynamicStitchOpTest(test.TestCase):
 class ParallelDynamicStitchOpTest(test.TestCase):
 
   def testCint32Cpu(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       indices = [
           ops.convert_to_tensor([0, 1, 4, 6]),
           ops.convert_to_tensor([2, 3, 5])
@@ -1064,7 +1064,7 @@ class ParallelDynamicStitchOpTest(test.TestCase):
           [12, 23, 1, 2, 34, 3, 45])
 
   def testInt32Cpu(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       indices = [
           ops.convert_to_tensor([0, 1, 5, 6, 7]),
           ops.convert_to_tensor([2, 4, 3])
@@ -1078,7 +1078,7 @@ class ParallelDynamicStitchOpTest(test.TestCase):
           [12, 23, 1, 2, 3, 34, 45, 56])
 
   def testSimple(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       indices = [ops.convert_to_tensor([0, 1]), ops.convert_to_tensor([2, 3])]
       values = [ops.convert_to_tensor([2, 3]), ops.convert_to_tensor([1, 1])]
       self.assertAllEqual(

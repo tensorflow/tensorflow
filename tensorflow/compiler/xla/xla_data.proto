@@ -78,28 +78,6 @@ enum PrimitiveType {
   // Next = 18
 }
 
-// Describes the value held inside padding elements.
-enum PaddingValue {
-  INVALID_PAD = 0;
-
-  // Zero padding must be 0-values that correspond to the shape's element type.
-  ZERO_PAD = 1;
-
-  // One padding must be 1-values that correspond to the shape's element type.
-  ONE_PAD = 2;
-
-  // "Lowest" padding must be the lowest values in the shape's element type,
-  // used as padding for operations like max-accumulation.
-  LOWEST_PAD = 3;
-
-  // "Highest" padding must be the largest values in the shape's element type,
-  // used as padding for operations like min-accumulation.
-  HIGHEST_PAD = 4;
-
-  // Unknown padding could be anything; e.g. floating NaNs!
-  UNKNOWN_PAD = 5;
-}
-
 // Describes the padding configuration for Pad operation. The padding amount on
 // both edges as well as between the elements are specified for each dimension.
 message PaddingConfig {
@@ -123,8 +101,7 @@ message PaddingConfig {
 // A format specifies the method used by a layout to store an array in memory.
 enum Format {
   INVALID_FORMAT = 0;
-  // The default layout, with exactly one storage location per element (ignoring
-  // padding).
+  // The default layout, with exactly one storage location per element.
   DENSE = 1;
   // A sparsely encoded layout, providing only the index/value pairs of non-zero
   // elements.
@@ -132,8 +109,7 @@ enum Format {
 }
 
 // A layout describes how the array is placed in (1D) memory space.  This
-// includes the minor-to-major ordering of dimensions within a shape, as well as
-// any padding present in those dimensions.
+// includes the minor-to-major ordering of dimensions within a shape.
 //
 // Clients must specify the layouts of input Literals to the
 // computation. Layouts specified in interior operations which take Shapes (for
@@ -151,16 +127,11 @@ message Layout {
   // (slowest varying index). This field is required.
   repeated int64 minor_to_major = 1;
 
-  // The width to which the layout of each dimension is padded up to. If
-  // present, the size of the padded_dimensions must equal the rank of the
-  // shape. The padding appears at the end of a dimension, not at the
-  // beginning. This kind of padding, unlike padding in e.g. convolution, is not
-  // part of the shape. This field must be unset unless the format is DENSE.
-  repeated int64 padded_dimensions = 2;
+  reserved 2;
+  reserved "padded_dimensions";
 
-  // Describes the values in the padding specified by padded_dimensions. This
-  // field must be unset unless the format is DENSE.
-  PaddingValue padding_value = 3;
+  reserved 3;
+  reserved "padding_value";
 
   // The maximum number of elements that can be stored for SPARSE formats.  This
   // can be used to determine the maximum size in bytes of arrays stored in
@@ -361,11 +332,13 @@ message LiteralProto {
   repeated double f64s = 9;
   repeated float c64s = 12;  // Stored as interleaved real, imag floats.
   repeated LiteralProto tuple_literals = 10;
-  // The F16s and BF16s are encoded in little endian byte order
+  // The F16s, BF16s, U16s and S16s are encoded in little endian byte order
   bytes f16s = 11;
   bytes bf16s = 13;
+  bytes u16s = 16;
+  bytes s16s = 17;
   repeated int64 sparse_indices = 14;
-  // Next = 16
+  // Next = 18
 }
 
 message WindowDimension {

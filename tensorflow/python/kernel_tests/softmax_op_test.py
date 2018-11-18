@@ -59,12 +59,12 @@ class SoftmaxTest(test.TestCase):
     # this bug in future.
     name = "arbitrary"
     np_softmax = self._npSoftmax(np_features, dim=dim, log=log)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       if log:
         tf_softmax = nn_ops.log_softmax(np_features, axis=dim, name=name)
       else:
         tf_softmax = nn_ops.softmax(np_features, axis=dim, name=name)
-      out = tf_softmax.eval()
+      out = self.evaluate(tf_softmax)
     self.assertAllCloseAccordingToType(np_softmax, out)
     self.assertShapeEqual(np_softmax, tf_softmax)
     if not log:
@@ -111,9 +111,9 @@ class SoftmaxTest(test.TestCase):
       type = np.float64  # pylint: disable=redefined-builtin
     max = np.finfo(type).max  # pylint: disable=redefined-builtin
     features = np.array([[1., 1., 1., 1.], [max, 1., 2., 3.]]).astype(type)
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       tf_log_softmax = nn_ops.log_softmax(features)
-      out = tf_log_softmax.eval()
+      out = self.evaluate(tf_log_softmax)
     self.assertAllClose(
         np.array([[-1.386294, -1.386294, -1.386294, -1.386294],
                   [0, -max, -max, -max]]),
@@ -222,6 +222,13 @@ class SoftmaxTest(test.TestCase):
       with self.assertRaises(errors_impl.InvalidArgumentError):
         nn_ops.softmax([1., 2., 3., 4.], axis=dim).eval()
 
+  def testInvalidAxis(self):
+    # Test case for GitHub issue 22793.
+    with self.cached_session():
+      ones = array_ops.ones(shape=[2, 3])
+      with self.assertRaises(errors_impl.InvalidArgumentError):
+        nn_ops.softmax(ones, axis=2).eval()
+
   def testLargeDims(self):
     # Make sure that we properly handle large inputs. See
     # https://github.com/tensorflow/tensorflow/issues/4425 for details
@@ -230,7 +237,7 @@ class SoftmaxTest(test.TestCase):
       np_softmax = self._npSoftmax(ones)
 
       for use_gpu in [True, False]:
-        with self.test_session(use_gpu=use_gpu) as sess:
+        with self.cached_session(use_gpu=use_gpu) as sess:
           x = array_ops.placeholder(dtypes.float32)
           y = nn_ops.softmax(x)
           tf_softmax = sess.run(y, feed_dict={x: ones})

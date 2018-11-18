@@ -25,7 +25,7 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class GeneratorDatasetOp::Dataset : public DatasetBase {
@@ -123,6 +123,12 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
         finalized_ = true;
       }
       return s;
+    }
+
+   protected:
+    std::shared_ptr<model::Node> CreateNode(
+        IteratorContext* ctx, model::Node::Args args) const override {
+      return model::MakeSourceNode(std::move(args));
     }
 
    private:

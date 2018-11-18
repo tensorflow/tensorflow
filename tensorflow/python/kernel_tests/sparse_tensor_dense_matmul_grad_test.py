@@ -72,7 +72,7 @@ class SparseTensorDenseMatMulGradientTest(test.TestCase):
     matmul = sparse_ops.sparse_tensor_dense_matmul(
         sp_t, dense_t, adjoint_a=adjoint_a, adjoint_b=adjoint_b, name=name)
 
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       dense_t_shape = [m, k] if adjoint_b else [k, m]
       sp_t_val_shape = [nnz]
       err = gradient_checker.compute_gradient_error(

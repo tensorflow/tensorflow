@@ -40,6 +40,8 @@ class HloModuleGroup {
   // Construct a module group containing any number of modules.
   HloModuleGroup(absl::string_view name,
                  absl::Span<std::unique_ptr<HloModule>> modules);
+  HloModuleGroup(absl::string_view name,
+                 std::vector<std::unique_ptr<HloModule>>&& modules);
 
   // Returns the modules contained in the group.
   const std::vector<HloModule*>& modules() const { return module_ptrs_; }

@@ -137,6 +137,11 @@ message RewriterConfig {
   // meta-optimizer or when manually specified through the optimizers field.
   AutoParallelOptions auto_parallel = 5;
 
+  // If true, any optimization pass failing will cause the MetaOptimizer to
+  // stop with an error. By default - or when set to false, failing passes are
+  // skipped silently.
+  bool fail_on_optimizer_errors = 21;
+
   ScopedAllocatorOptions scoped_allocator_opts = 16;
 
   // If non-empty, will use this as an alternative way to specify a list of

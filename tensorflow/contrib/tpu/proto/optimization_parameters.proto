@@ -154,6 +154,14 @@ message OptimizationParameters {
   // updates; not present means no limits are applied.
   ClippingLimits gradient_clipping_limits = 7;
 
+  // Amount of weight decay to apply; see weight_decay_optimizers.py for
+  // details. Almost all optimizers are supported with this option (MDL Adagrad
+  // Light does not work, and SGD does not behave as expected if it is enabled).
+  // Although there is no check, users who want weight decay will probably also
+  // want to enable gradient accumulation as well so that the decay will happen
+  // once per minibatch.
+  float weight_decay_factor = 16;
+
   // Whether to use gradient accumulation (do two passes over the input
   // gradients: one to accumulate them into a temporary array and another to
   // apply them using the actual optimization algorithm). This feature is

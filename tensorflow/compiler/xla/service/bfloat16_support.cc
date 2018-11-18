@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/bfloat16_support.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 
@@ -107,6 +108,21 @@ bool BFloat16Support::EffectiveOperandPrecisionIsOutputPrecision(
     case HloOpcode::kSelect:
     case HloOpcode::kTupleSelect:
       return operand_index == 1 || operand_index == 2;
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceWindow: {
+      HloComputation* reduce_comp = hlo.called_computations()[0];
+      for (HloInstruction* inst : reduce_comp->instructions()) {
+        if (inst->opcode() == HloOpcode::kParameter) {
+          continue;
+        }
+        for (int64 i = 0; i < inst->operand_count(); ++i) {
+          if (!EffectiveOperandPrecisionIsOutputPrecision(*inst, i)) {
+            return false;
+          }
+        }
+      }
+      return true;
+    }
     default:
       break;
   }

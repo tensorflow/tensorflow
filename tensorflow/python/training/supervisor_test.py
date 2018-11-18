@@ -799,7 +799,7 @@ class SupervisorTest(test.TestCase):
       v = variables.VariableV1([10.10], name="foo")
       sav = saver_lib.Saver([v])
       sav.restore(sess, save_path)
-      self.assertEqual(1.0, v.eval()[0])
+      self.assertEqual(1.0, self.evaluate(v)[0])
 
   # Same as testStandardServicesNoGlobalStep but with a global step.
   # We should get a summary about the step time.
@@ -863,7 +863,7 @@ class SupervisorTest(test.TestCase):
       v = variables.VariableV1([-12], name="global_step")
       sav = saver_lib.Saver([v])
       sav.restore(sess, save_path)
-      self.assertEqual(123, v.eval()[0])
+      self.assertEqual(123, self.evaluate(v)[0])
 
   def testNoQueueRunners(self):
     with ops.Graph().as_default(), self.cached_session() as sess:

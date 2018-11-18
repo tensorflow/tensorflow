@@ -248,6 +248,10 @@ class CompositeNodeManager : public ReadyNodeManager {
   const NodeDef* curr_node_;
 };
 
+// Constructs a ready node manager from the given string.
+std::unique_ptr<ReadyNodeManager> ReadyNodeManagerFactory(
+    const string& ready_node_manager);
+
 // The virtual scheduler emulates execution of nodes in a graph, considering
 // dependencies, device, etc.
 class VirtualScheduler {
@@ -287,7 +291,7 @@ class VirtualScheduler {
   // of the virtual execution of the graph.
   void GenerateRunMetadata(RunMetadata* metadata);
 
-  // Methods called from constructor.
+  // DEPRECATED
   static ReadyNodeManager* ReadyNodeManagerFactory(
       const string& ready_node_manager);
 
@@ -304,8 +308,9 @@ class VirtualScheduler {
  private:
   // Constants.
   const string kAttrInputSrc = "input_source_";
-  const string kAttrSrcDevice = "src_device_";
-  const string kAttrDstDevice = "dst_device_";
+  const string kAttrSrcDevice = "send_device";
+  const string kAttrDstDevice = "recv_device";
+  const string kAttrTensorName = "tensor_name";
   const string kChannelDevice = "Channel";
 
   // Methods called from Init(). Fails if initialize_ is set.

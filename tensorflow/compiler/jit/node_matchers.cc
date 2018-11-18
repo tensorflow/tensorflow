@@ -204,11 +204,12 @@ struct NodeMatcher : public ::testing::MatcherInterface<const Node*> {
         }
         return false;
       }
-      if (!AreAttrValuesEqual(it->second, attr_kv_pair.second)) {
+      if (attr_kv_pair.second &&
+          !AreAttrValuesEqual(it->second, *attr_kv_pair.second)) {
         if (listener->IsInterested()) {
           *listener << "attribute named " << attr_kv_pair.first
                     << " does not match value; expected: \""
-                    << SummarizeAttrValue(attr_kv_pair.second)
+                    << SummarizeAttrValue(*attr_kv_pair.second)
                     << "\", found: \"" << SummarizeAttrValue(it->second)
                     << "\"";
         }
@@ -278,12 +279,14 @@ struct NodeMatcher : public ::testing::MatcherInterface<const Node*> {
     if (!attrs.empty()) {
       printed_something = true;
       std::vector<string> attrs_str;
-      absl::c_transform(attrs, std::back_inserter(attrs_str),
-                        [](const std::pair<string, AttrValue>& attr_kv_pair) {
-                          return absl::StrCat(
-                              attr_kv_pair.first, "->",
-                              SummarizeAttrValue(attr_kv_pair.second));
-                        });
+      absl::c_transform(
+          attrs, std::back_inserter(attrs_str),
+          [](const std::pair<string, absl::optional<AttrValue>>& attr_kv_pair) {
+            return absl::StrCat(attr_kv_pair.first, "->",
+                                attr_kv_pair.second
+                                    ? SummarizeAttrValue(*attr_kv_pair.second)
+                                    : "*");
+          });
       *os << " and attr values matching [" << absl::StrJoin(attrs_str, ", ")
           << "]";
     }
@@ -327,7 +330,7 @@ struct NodeMatcher : public ::testing::MatcherInterface<const Node*> {
   absl::optional<std::vector<::testing::Matcher<OutEdge>>> input_matchers;
   absl::optional<::testing::Matcher<absl::Span<const Node* const>>>
       control_dep_set;
-  std::map<string, AttrValue> attrs;
+  std::map<string, absl::optional<AttrValue>> attrs;
 };
 
 // Matches a dst and dst_output on an input edge.  Today we only use this with
@@ -472,9 +475,35 @@ std::pair<string, AttrValue> impl::AttrLiteralHelper(
   return {bool_attr.first, attr_value};
 }
 
+std::pair<string, AttrValue> impl::AttrLiteralHelper(
+    const std::pair<string, absl::Span<const int>>& int_list_attr) {
+  AttrValue attr_value;
+  AttrValue::ListValue* list = attr_value.mutable_list();
+  for (int i : int_list_attr.second) {
+    list->add_i(i);
+  }
+  return {int_list_attr.first, attr_value};
+}
+
+std::pair<string, AttrValue> impl::AttrLiteralHelper(
+    const std::pair<string, absl::Span<const string>>& string_list_attr) {
+  AttrValue attr_value;
+  AttrValue::ListValue* list = attr_value.mutable_list();
+  for (string s : string_list_attr.second) {
+    list->add_s(s);
+  }
+  return {string_list_attr.first, attr_value};
+}
+
 impl::NodeMatcherProperties impl::Attr(std::pair<string, AttrValue> attr) {
   impl::NodeMatcherProperties props;
   props.set_attr(std::move(attr));
+  return props;
+}
+
+impl::NodeMatcherProperties impl::Attr(string name) {
+  impl::NodeMatcherProperties props;
+  props.set_attr({std::move(name), absl::nullopt});
   return props;
 }
 
@@ -486,9 +515,9 @@ NodeMatcherProperties ConstantValue(
   return props;
 }
 
-::testing::Matcher<const Node*> Const(
+::testing::Matcher<impl::OutEdge> Const(
     const ::tensorflow::Input::Initializer& val) {
-  return NodeWith(ConstantValue(val));
+  return Out(NodeWith(ConstantValue(val)));
 }
 ::testing::Matcher<impl::OutEdge> Out(
     int oidx, ::testing::Matcher<const Node*> node_matcher) {

@@ -294,7 +294,7 @@ class FunctionCallFrame : public CallFrameInterface {
 class FunctionLibraryDefinition : public OpRegistryInterface {
  public:
   // Note: This constructor grabs `lib_def`'s lock in shared mode.
-  explicit FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
+  FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
   FunctionLibraryDefinition(const OpRegistryInterface* default_registry,
                             const FunctionDefLibrary& lib_def);
   ~FunctionLibraryDefinition() override;
@@ -379,6 +379,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Ops created for function arguments bear the name given by `kArgOp`; those
   // created for return values bear the name given by `kRetOp`.
   static constexpr const char* const kArgOp = "_Arg";
+  static constexpr const char* const kDeviceArgOp = "_DeviceArg";
   static constexpr const char* const kRetOp = "_Retval";
   static constexpr const char* const kDeviceRetOp = "_DeviceRetval";
 
@@ -409,6 +410,11 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   const OpRegistryInterface* default_registry() const {
     return default_registry_;
   }
+
+  // Returns a copy of `*this` with only the subset of functions that are
+  // reachable from the nodes of `graph` or `func`.
+  FunctionLibraryDefinition ReachableDefinitions(const GraphDef& graph) const;
+  FunctionLibraryDefinition ReachableDefinitions(const FunctionDef& func) const;
 
  private:
   // Shape inference for functions is handled separately by ShapeRefiner.

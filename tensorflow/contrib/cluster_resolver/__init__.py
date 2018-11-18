@@ -24,6 +24,7 @@ from tensorflow.contrib.cluster_resolver.python.training.cluster_resolver import
 from tensorflow.contrib.cluster_resolver.python.training.cluster_resolver import SimpleClusterResolver
 from tensorflow.contrib.cluster_resolver.python.training.cluster_resolver import UnionClusterResolver
 from tensorflow.contrib.cluster_resolver.python.training.gce_cluster_resolver import GceClusterResolver
+from tensorflow.contrib.cluster_resolver.python.training.slurm_cluster_resolver import SlurmClusterResolver
 from tensorflow.contrib.cluster_resolver.python.training.tpu_cluster_resolver import TPUClusterResolver
 # pylint: enable=wildcard-import,unused-import
 
@@ -35,6 +36,7 @@ _allowed_symbols = [
     'UnionClusterResolver',
     'GceClusterResolver',
     'TPUClusterResolver',
+    'SlurmClusterResolver',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

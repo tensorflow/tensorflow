@@ -119,7 +119,7 @@ class ReduceJoinTest(UnicodeTestCase):
           axis=axis,
           keep_dims=keep_dims,
           separator=separator)
-      output_array = output.eval()
+      output_array = self.evaluate(output)
 
     self.assertAllEqualUnicode(truth, output_array)
     self.assertAllEqual(truth_shape, output.get_shape())
@@ -149,10 +149,10 @@ class ReduceJoinTest(UnicodeTestCase):
       if not axis:
         truth = constant_op.constant(truth)
       truth_squeezed = array_ops.squeeze(truth, axis=axis)
-      output_array = output.eval()
-      output_keep_dims_array = output_keep_dims.eval()
-      truth_array = truth.eval()
-      truth_squeezed_array = truth_squeezed.eval()
+      output_array = self.evaluate(output)
+      output_keep_dims_array = self.evaluate(output_keep_dims)
+      truth_array = self.evaluate(truth)
+      truth_squeezed_array = self.evaluate(truth_squeezed)
     self.assertAllEqualUnicode(truth_array, output_keep_dims_array)
     self.assertAllEqualUnicode(truth_squeezed_array, output_array)
     self.assertAllEqual(truth.get_shape(), output_keep_dims.get_shape())
@@ -318,11 +318,11 @@ class ReduceJoinTest(UnicodeTestCase):
 
       # Reduction that drops the dim of size 0.
       output = string_ops.reduce_join(inputs=inputs, axis=0)
-      self.assertAllEqualUnicode([""], output.eval())
+      self.assertAllEqualUnicode([""], self.evaluate(output))
 
       # Reduction that keeps the dim of size 0.
       output = string_ops.reduce_join(inputs=inputs, axis=1)
-      output_shape = output.eval().shape
+      output_shape = self.evaluate(output).shape
       self.assertAllEqual([0], output_shape)
 
   def testInvalidArgsUnknownShape(self):

@@ -30,7 +30,7 @@ class TraceTest(test.TestCase):
 
   def compare(self, x):
     np_ans = np.trace(x, axis1=-2, axis2=-1)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       tf_ans = math_ops.trace(x).eval()
     self.assertAllClose(tf_ans, np_ans)
 

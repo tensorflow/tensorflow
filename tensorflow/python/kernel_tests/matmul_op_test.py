@@ -35,6 +35,19 @@ from tensorflow.python.platform import test as test_lib
 # os.environ["TF_MATMUL_AUTOTUNE_ENABLE"] = "1" to enable it.
 
 
+class MatVecTest(test_lib.TestCase):
+  """Simple test for matvec, which is sugar on top of matmul."""
+
+  def testTwoByTwoCase(self):
+    a = np.array([[1, 2], [3, 4]])
+    b = np.array([5, 6])
+    with self.cached_session():
+      c = math_ops.matvec(a, b)
+      self.assertAllEqual((2,), c.shape)
+      c_ = self.evaluate(c)
+    self.assertAllEqual([5 + 2 * 6, 3 * 5 + 4 * 6], c_)
+
+
 def _AddTest(test, op_name, testcase_name, fn):
   test_name = "_".join(["test", op_name, testcase_name])
   if hasattr(test, test_name):
@@ -72,12 +85,12 @@ def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     # np.matrix(a_np_) * np.matrix(b_np_)
     effective_a_np = _GetTransposedMatrices(a_np_, "a", kwargs_)
     effective_b_np = _GetTransposedMatrices(b_np_, "b", kwargs_)
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.session(use_gpu=use_gpu) as sess:
       if use_static_shape_:
         a = constant_op.constant(effective_a_np)
         b = constant_op.constant(effective_b_np)
         res = math_ops.matmul(a, b, **kwargs_)
-        tf_val = res.eval()
+        tf_val = self.evaluate(res)
       else:
         a = array_ops.placeholder(a_np_.dtype)
         b = array_ops.placeholder(b_np_.dtype)
@@ -115,7 +128,7 @@ def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     epsilon = np.finfo(a_np_.dtype).eps
     delta = epsilon**(1.0 / 3.0)
     tol = 20 * delta
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       a = constant_op.constant(effective_a_np)
       b = constant_op.constant(effective_b_np)
       res = math_ops.matmul(a, b, **kwargs_)
@@ -207,7 +220,7 @@ class MatMulInfixOperatorTest(test_lib.TestCase):
     c = infix_matmul(a, b)
     d = math_ops.matmul(a, b)
     with self.cached_session():
-      self.assertAllEqual(c.eval(), d.eval())
+      self.assertAllEqual(c.eval(), self.evaluate(d))
 
 
 if __name__ == "__main__":

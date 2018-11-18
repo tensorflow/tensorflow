@@ -23,8 +23,8 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
@@ -85,6 +85,25 @@ ProgramShape GetProgramShapeWithLayout(const HloModule& module) {
 
 }  // namespace
 
+Status VerifiedHloModule::Verify() {
+  if (computation_count() == 0) {
+    // The computation was never built. Nothing to verify.
+    return Status::OK();
+  }
+  return verifier_.Run(this).status();
+}
+
+void VerifiedHloModule::VerifyOrAddFailure(const string& message) {
+  Status status = Verify();
+  if (!status.ok()) {
+    ADD_FAILURE() << "HloVerifier failed on module " << name()
+                  << (message.empty() ? "" : absl::StrCat(" (", message, ")"))
+                  << ": " << status;
+    LOG(ERROR) << "Contents of bad module:";
+    XLA_LOG_LINES(tensorflow::ERROR, ToString());
+  }
+}
+
 HloTestBase::HloTestBase(bool verifier_layout_sensitive,
                          bool allow_mixed_precision_in_hlo_verifier,
                          std::function<bool(const HloInstruction*)>
@@ -100,15 +119,38 @@ HloTestBase::HloTestBase(se::Platform* test_platform,
                          bool allow_mixed_precision_in_hlo_verifier,
                          std::function<bool(const HloInstruction*)>
                              instruction_can_change_layout_func)
-    : test_runner_(test_platform), reference_runner_(reference_platform) {
+    : test_runner_(test_platform),
+      reference_runner_(reference_platform),
+      verifier_layout_sensitive_(verifier_layout_sensitive),
+      allow_mixed_precision_in_hlo_verifier_(
+          allow_mixed_precision_in_hlo_verifier) {
   hlo_verifier_ = absl::make_unique<HloVerifier>(
       /*layout_sensitive=*/verifier_layout_sensitive,
       /*allow_mixed_precision=*/allow_mixed_precision_in_hlo_verifier,
       instruction_can_change_layout_func);
 }
 
-std::unique_ptr<HloModule> HloTestBase::CreateNewModule(const string& name) {
+std::unique_ptr<HloModule> HloTestBase::CreateNewUnverifiedModule(
+    const string& name) {
   return absl::make_unique<HloModule>(name, GetModuleConfigForTest());
+}
+
+std::unique_ptr<VerifiedHloModule> HloTestBase::CreateNewVerifiedModule(
+    const string& name) {
+  return absl::make_unique<VerifiedHloModule>(
+      name, GetModuleConfigForTest(), verifier_layout_sensitive_,
+      allow_mixed_precision_in_hlo_verifier_);
+}
+
+StatusOr<std::unique_ptr<VerifiedHloModule>>
+HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
+                                          const HloModuleConfig& config) {
+  auto module = absl::make_unique<VerifiedHloModule>(
+      TestName(), config, verifier_layout_sensitive_,
+      allow_mixed_precision_in_hlo_verifier_);
+  TF_RETURN_IF_ERROR(ParseHloString(hlo_text, module.get()));
+  TF_RETURN_IF_ERROR(module->Verify());
+  return std::move(module);
 }
 
 /* static */
@@ -135,7 +177,7 @@ PrecisionConfig HloTestBase::DefaultPrecisionConfig(int operands) {
 }
 
 DebugOptions HloTestBase::GetDebugOptionsForTest() {
-  auto debug_options = legacy_flags::GetDebugOptionsFromFlags();
+  auto debug_options = GetDebugOptionsFromFlags();
   // TODO(b/38354253): Change tests to use Parameters instead of Constants.
   debug_options.add_xla_disable_hlo_passes("constant_folding");
   debug_options.set_xla_gpu_max_kernel_unroll_factor(1);

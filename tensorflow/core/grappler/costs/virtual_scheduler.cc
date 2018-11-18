@@ -275,7 +275,23 @@ bool CompositeNodeManager::Empty() const {
   return empty && send_manager_.Empty() && recv_manager_.Empty();
 }
 
-// TODO(pcma): Modify to return unique_ptr instead
+std::unique_ptr<ReadyNodeManager> ReadyNodeManagerFactory(
+    const string& ready_node_manager) {
+  if (ready_node_manager == "FIFO") {
+    return absl::make_unique<FIFOManager>();
+  } else if (ready_node_manager == "LIFO") {
+    return absl::make_unique<LIFOManager>();
+  } else if (ready_node_manager == "FirstReady") {
+    return absl::make_unique<FirstReadyManager>();
+  } else if (ready_node_manager == "Composite") {
+    return absl::make_unique<CompositeNodeManager>();
+  }
+  LOG(FATAL) << "Not a valid ready node manager: " << ready_node_manager;
+  return nullptr;
+}
+
+// TODO(pcma): Delete this deprecated API after power_analyzer.cc is modeified
+// to use the new factory API
 ReadyNodeManager* VirtualScheduler::ReadyNodeManagerFactory(
     const string& ready_node_manager) {
   if (ready_node_manager == "FIFO") {
@@ -623,6 +639,8 @@ std::pair<const NodeDef*, const NodeDef*> VirtualScheduler::CreateSendRecv(
   send->set_device(ChannelDeviceName(from, to));
   auto& send_attr = *(send->mutable_attr());
   send_attr[kAttrInputSrc].set_s(input_name);
+  // Use input_name as tensor_name.
+  send_attr[kAttrTensorName].set_s(input_name);
   send_attr[kAttrSrcDevice].set_s(DeviceName(from));
   send_attr[kAttrDstDevice].set_s(DeviceName(to));
 
@@ -634,6 +652,8 @@ std::pair<const NodeDef*, const NodeDef*> VirtualScheduler::CreateSendRecv(
   recv->set_device(DeviceName(to));
   auto& recv_attr = *(recv->mutable_attr());
   recv_attr[kAttrInputSrc].set_s(input_name);
+  // Use input_name as tensor_name.
+  recv_attr[kAttrTensorName].set_s(input_name);
 
   // NodeState for _Send op.
   auto& send_node_state = GetNodeStateOrCreateIt(send);
@@ -1006,7 +1026,8 @@ Costs VirtualScheduler::Summary() const {
       bool is_cost_accurate;
       std::tie(cost, is_cost_accurate) = op_costs_.at(item.first);
       VLOG(2) << "Node: " << item.first << ", Count: " << item.second
-              << ", Individual Cost: " << (is_cost_accurate ? "" : "~") << cost;
+              << ", Individual Cost: " << (is_cost_accurate ? "" : "~") << cost
+              << " us";
     }
   }
 

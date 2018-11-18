@@ -58,7 +58,7 @@ class QueueRunnerTest(test.TestCase):
         t.join()
       self.assertEqual(0, len(qr.exceptions_raised))
       # The variable should be 3.
-      self.assertEqual(3, var.eval())
+      self.assertEqual(3, self.evaluate(var))
 
   def testTwoOps(self):
     with self.cached_session() as sess:
@@ -80,8 +80,8 @@ class QueueRunnerTest(test.TestCase):
       for t in threads:
         t.join()
       self.assertEqual(0, len(qr.exceptions_raised))
-      self.assertEqual(3, var0.eval())
-      self.assertEqual(30, var1.eval())
+      self.assertEqual(3, self.evaluate(var0))
+      self.assertEqual(30, self.evaluate(var1))
 
   def testExceptionsCaptured(self):
     with self.cached_session() as sess:
@@ -121,11 +121,11 @@ class QueueRunnerTest(test.TestCase):
       # It should have terminated cleanly.
       self.assertEqual(0, len(qr.exceptions_raised))
       # The 2 values should be in queue1.
-      self.assertEqual(10.0, dequeue1.eval())
-      self.assertEqual(10.0, dequeue1.eval())
+      self.assertEqual(10.0, self.evaluate(dequeue1))
+      self.assertEqual(10.0, self.evaluate(dequeue1))
       # And queue1 should now be closed.
       with self.assertRaisesRegexp(errors_impl.OutOfRangeError, "is closed"):
-        dequeue1.eval()
+        self.evaluate(dequeue1)
 
   def testRespectCoordShouldStop(self):
     with self.cached_session() as sess:
@@ -149,7 +149,7 @@ class QueueRunnerTest(test.TestCase):
       coord.join()
       self.assertEqual(0, len(qr.exceptions_raised))
       # The variable should be 0.
-      self.assertEqual(0, var.eval())
+      self.assertEqual(0, self.evaluate(var))
 
   def testRequestStopOnException(self):
     with self.cached_session() as sess:
@@ -263,7 +263,7 @@ class QueueRunnerTest(test.TestCase):
         t.join()
       self.assertEqual(0, len(qr.exceptions_raised))
       # The variable should be 3.
-      self.assertEqual(3, var.eval())
+      self.assertEqual(3, self.evaluate(var))
 
   def testStartQueueRunnersRaisesIfNotASession(self):
     zero64 = constant_op.constant(0, dtype=dtypes.int64)
@@ -310,7 +310,7 @@ class QueueRunnerTest(test.TestCase):
         t.join()
       self.assertEqual(0, len(qr.exceptions_raised))
       # The variable should be 3.
-      self.assertEqual(3, var.eval())
+      self.assertEqual(3, self.evaluate(var))
 
   def testQueueRunnerSerializationRoundTrip(self):
     graph = ops.Graph()

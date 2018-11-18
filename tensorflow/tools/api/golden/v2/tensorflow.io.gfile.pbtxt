@@ -1,0 +1,7 @@
+path: "tensorflow.io.gfile"
+tf_module {
+  member_method {
+    name: "exists"
+    argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=None"
+  }
+}

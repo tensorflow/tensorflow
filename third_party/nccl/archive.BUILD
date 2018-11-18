@@ -7,10 +7,10 @@ exports_files(["LICENSE.txt"])
 
 load(
     "@local_config_nccl//:build_defs.bzl",
-    "device_link",
     "gen_nccl_h",
     "nccl_library",
     "rdc_copts",
+    "rdc_library",
 )
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
@@ -136,9 +136,9 @@ nccl_library(
     linkstatic = True,
 )
 
-device_link(
+rdc_library(
     name = "device_code",
-    srcs = [
+    deps = [
         ":functions",
         ":max",
         ":min",
@@ -167,13 +167,8 @@ nccl_library(
     copts = cuda_default_copts(),
     deps = [
         ":device_code",
-        ":functions",
         ":include_hdrs",
-        ":max",
-        ":min",
-        ":prod",
         ":src_hdrs",
-        ":sum",
     ],
     visibility = ["//visibility:public"],
 )

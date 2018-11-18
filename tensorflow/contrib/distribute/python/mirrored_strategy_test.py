@@ -26,7 +26,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.training import distribution_strategy_context
+from tensorflow.python.training import distribution_strategy_context as ds_context
 
 
 class MirroredOneCPUDistributionTest(strategy_test_lib.DistributionTestBase):
@@ -40,14 +40,8 @@ class MirroredOneCPUDistributionTest(strategy_test_lib.DistributionTestBase):
   def testMinimizeLossGraph(self):
     self._test_minimize_loss_graph(self._get_distribution_strategy())
 
-  def testMapReduce(self):
-    self._test_map_reduce(self._get_distribution_strategy())
-
-  def testDeviceIndex(self):
-    self._test_device_index(self._get_distribution_strategy())
-
-  def testTowerId(self):
-    self._test_tower_id(self._get_distribution_strategy())
+  def testReplicaId(self):
+    self._test_replica_id(self._get_distribution_strategy())
 
   @test_util.run_in_graph_and_eager_modes
   def testCallAndMergeExceptions(self):
@@ -60,19 +54,18 @@ class VariableCreatorStackTest(test.TestCase):
     devices = ["/device:CPU:0", "/device:GPU:0"]
     dist = mirrored_strategy.MirroredStrategy(devices)
 
-    def model_fn(device_id):
-      assert isinstance(device_id, int)
+    def model_fn():
+      replica_id_str = str(self.evaluate(_replica_id()))
 
       def thread_creator_fn(next_creator, *args, **kwargs):
-        return next_creator(*args, **kwargs) + ":thread_" + str(device_id)
+        return next_creator(*args, **kwargs) + ":thread_" + replica_id_str
 
       with variable_scope.variable_creator_scope(thread_creator_fn):
         # Create a variable in this scope.
         v = variable_scope.variable(1.0)
 
         # This will pause the current thread, and execute the other thread.
-        distribution_strategy_context.get_tower_context().merge_call(
-            lambda _: _)
+        ds_context.get_replica_context().merge_call(lambda _: _)
       return v
 
     def main_thread_creator(next_creator, *args, **kwargs):
@@ -83,10 +76,17 @@ class VariableCreatorStackTest(test.TestCase):
     with context.graph_mode(), \
         dist.scope(), \
         variable_scope.variable_creator_scope(main_thread_creator):
-      result = dist.call_for_each_tower(model_fn, dist.worker_device_index)
+      result = dist.call_for_each_replica(model_fn)
       result = dist.unwrap(result)
       expected = ["main_thread:thread_0", "main_thread:thread_1"]
-      self.assertEquals(expected, result)
+      self.assertEqual(expected, result)
+
+
+def _replica_id():
+  replica_id = ds_context.get_replica_context().replica_id_in_sync_group
+  if not isinstance(replica_id, ops.Tensor):
+    replica_id = constant_op.constant(replica_id)
+  return replica_id
 
 
 class MultiWorkerMirroredStrategyTest(test.TestCase):

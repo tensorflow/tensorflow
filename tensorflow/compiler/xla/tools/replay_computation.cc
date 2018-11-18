@@ -47,8 +47,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/testing.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -191,16 +191,16 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
 
   // Run the computation num_runs times, and return the result from the last
   // execution.
-  const bool xla_hlo_profile =
-      legacy_flags::GetDebugOptionsFromFlags().xla_hlo_profile();
+  const bool xla_hlo_profile = GetDebugOptionsFromFlags().xla_hlo_profile();
   StreamExecutorMemoryAllocator allocator(
       client->platform(),
       {client->platform()->ExecutorForDevice(0).ValueOrDie()});
-  absl::optional<ScopedShapedBuffer> result;
+  absl::optional<ScopedShapedBuffer> final_result;
   for (int i = 0; i < opts.num_runs; ++i) {
     // If xla_hlo_profile is enabled, print a noisy message before the last run,
     // making it easier to separate this profile from the others in the logspam.
-    if (xla_hlo_profile && i == opts.num_runs - 1) {
+    bool is_final_result = i == opts.num_runs - 1;
+    if (xla_hlo_profile && is_final_result) {
       LOG(INFO) << "\n\n***** Final run below ******";
     }
     ExecutionProfile profile;
@@ -208,14 +208,22 @@ StatusOr<Literal> ReplayComputation(const HloSnapshot& module,
     run_options.set_execution_profile(&profile);
     run_options.set_allocator(&allocator);
 
-    TF_ASSIGN_OR_RETURN(result, executable->Run(argument_ptrs, run_options));
+    TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
+                        executable->Run(argument_ptrs, run_options));
     LOG(INFO) << "Done executing in "
               << static_cast<double>(profile.compute_time_ns()) / 1e9
               << "s: " << module.hlo().hlo_module().name();
+
+    // Save the result if this is for the final iteration.  Otherwise discard
+    // the result before rerunning the computation, so as to free up the
+    // relevant memory.
+    if (is_final_result) {
+      final_result = std::move(result);
+    }
   }
 
   TF_ASSIGN_OR_RETURN(Literal result_literal,
-                      client->ShapedBufferToLiteral(*result));
+                      client->ShapedBufferToLiteral(*final_result));
   return result_literal;
 }
 

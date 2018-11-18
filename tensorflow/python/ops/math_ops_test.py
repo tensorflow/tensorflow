@@ -69,6 +69,26 @@ class ReduceTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(ValueError, "must be at most rank 1"):
       math_ops.reduce_sum(x, axis)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testReduceVar(self):
+    x = np.array([[0, 0, 0], [0, 0, 0]], "float32")
+    self.assertAllClose(self.evaluate(math_ops.reduce_variance(x)), 0)
+    self.assertAllClose(
+        self.evaluate(math_ops.reduce_variance(x, axis=0)), [0, 0, 0])
+
+    x = np.array([[0, 2, 1, 1], [1, 2, 0, 1]], "float32")
+    self.assertAllClose(self.evaluate(math_ops.reduce_variance(x)), 0.5)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testReduceStd(self):
+    x = np.array([[0, 0, 0], [0, 0, 0]], "float32")
+    self.assertAllClose(self.evaluate(math_ops.reduce_std(x)), 0)
+    self.assertAllClose(
+        self.evaluate(math_ops.reduce_std(x, axis=0)), [0, 0, 0])
+
+    x = np.array([[1, 2, 1, 1], [1, 1, 0, 1]], "float32")
+    self.assertAllClose(self.evaluate(math_ops.reduce_std(x)), 0.5)
+
 
 class LogSumExpTest(test_util.TensorFlowTestCase):
 
@@ -87,7 +107,7 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
         y_tf = math_ops.reduce_logsumexp(x_np, reduction_indices=[0])
         y_np = log(np.sum(exp(x_np), axis=0))
         self.assertShapeEqual(y_np, y_tf)
-        y_tf_np = y_tf.eval()
+        y_tf_np = self.evaluate(y_tf)
         self.assertAllClose(y_tf_np, y_np)
 
   def testReductionIndices2(self):
@@ -97,7 +117,7 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
         y_tf = math_ops.reduce_logsumexp(x_np, reduction_indices=0)
         y_np = log(np.sum(exp(x_np), axis=0))
         self.assertShapeEqual(y_np, y_tf)
-        y_tf_np = y_tf.eval()
+        y_tf_np = self.evaluate(y_tf)
         self.assertAllClose(y_tf_np, y_np)
 
   def testKeepDims(self):
@@ -175,7 +195,7 @@ class ModTest(test_util.TensorFlowTestCase):
         with self.cached_session(use_gpu=True):
           x_tf = constant_op.constant(x_np, shape=x_np.shape)
           y_tf = math_ops.mod(x_tf, denom)
-          y_tf_np = y_tf.eval()
+          y_tf_np = self.evaluate(y_tf)
           y_np = np.fmod(x_np, denom)
         self.assertAllClose(y_tf_np, y_np, atol=1e-2)
 
@@ -188,7 +208,7 @@ class ModTest(test_util.TensorFlowTestCase):
         with self.cached_session(use_gpu=True):
           x_tf = constant_op.constant(x_np, shape=x_np.shape)
           y_tf = math_ops.mod(x_tf, denom)
-          y_tf_np = y_tf.eval()
+          y_tf_np = self.evaluate(y_tf)
           y_np = np.mod(x_np, denom)
         self.assertAllClose(y_tf_np, y_np)
 
@@ -447,8 +467,9 @@ class DivAndModTest(test_util.TensorFlowTestCase):
         c_grad = gradients.gradients(math_ops.div(a, b), [a, b])
         self.assertAllEqual([x.eval() for x in c_grad], [.25, -.125])
         c_grad = gradients.gradients(math_ops.floordiv(a, b), [a, b])
-        self.assertAllEqual([None if x is None else x.eval()
-                             for x in c_grad], [None, None])
+        self.assertAllEqual(
+            [None if x is None else self.evaluate(x) for x in c_grad],
+            [None, None])
 
   def testConsistent(self):
     nums, divs = self.intTestData()

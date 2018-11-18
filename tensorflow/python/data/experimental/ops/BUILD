@@ -4,13 +4,6 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_gen_op_wrapper_py",
-    "tf_kernel_library",
-)
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
-
 py_library(
     name = "counter",
     srcs = ["counter.py"],
@@ -89,6 +82,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:io_ops",
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:tensor_shape",
@@ -279,6 +273,16 @@ py_library(
 )
 
 py_library(
+    name = "stats_aggregator",
+    srcs = ["stats_aggregator.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
     name = "stats_ops",
     srcs = ["stats_ops.py"],
     srcs_version = "PY2AND3",
@@ -290,6 +294,15 @@ py_library(
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
+    ],
+)
+
+py_library(
+    name = "stats_options",
+    srcs = ["stats_options.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":stats_aggregator",
     ],
 )
 
@@ -352,9 +365,12 @@ py_library(
     deps = [
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_spec",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
     ],
 )
 

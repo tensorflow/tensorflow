@@ -36,8 +36,7 @@ NodeDef MakeMapAndBatchNode(const NodeDef& map_node, const NodeDef& batch_node,
                             MutableGraphView* graph) {
   NodeDef new_node;
   new_node.set_op(kFusedOpName);
-  graph_utils::SetUniqueGraphNodeName(kFusedOpName, graph->GetGraph(),
-                                      &new_node);
+  graph_utils::SetUniqueGraphNodeName(kFusedOpName, graph->graph(), &new_node);
 
   // Set the `input` input argument.
   new_node.add_input(map_node.input(0));
@@ -114,7 +113,7 @@ Status MapAndBatchFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
 
     auto* new_node =
         graph.AddNode(MakeMapAndBatchNode(*map_node, batch_node, &graph));
-    graph.ReplaceInput(batch_node, *new_node);
+    graph.UpdateFanouts(batch_node.name(), new_node->name());
 
     // Mark the `Map` and `Batch` nodes for removal.
     nodes_to_delete.insert(map_node->name());

@@ -264,7 +264,10 @@ Status HloSchedule::Verify() const {
     }
 
     TF_RET_CHECK(instruction_position.size() ==
-                 computation->instruction_count());
+                 computation->instruction_count())
+        << "Schedule for computation " << computation->name() << " has "
+        << instruction_position.size() << " instructions, expected "
+        << computation->instruction_count();
     for (const HloInstruction* instruction : computation->instructions()) {
       TF_RET_CHECK(instruction_position.count(instruction) == 1)
           << "Instruction " << instruction->name() << " is not in schedule";

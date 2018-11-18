@@ -502,8 +502,8 @@ Status CreateHloProfilingArtifacts(
 
   HloCostAnalysis cost_analysis(shape_size_bytes);
   TF_RETURN_IF_ERROR(entry_computation.Accept(&cost_analysis));
-  *hlo_profile_printer_data =
-      CreateHloProfilePrinterData(**hlo_profile_index_map, cost_analysis);
+  *hlo_profile_printer_data = CreateHloProfilePrinterData(
+      **hlo_profile_index_map, cost_analysis, entry_computation.name());
   *computation_to_profile_idx =
       (*hlo_profile_index_map)->computation_to_profile_idx();
 

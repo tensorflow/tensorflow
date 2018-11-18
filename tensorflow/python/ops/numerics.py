@@ -51,7 +51,7 @@ def verify_tensor_all_finite(t, msg, name=None):
   return out
 
 
-@tf_export("add_check_numerics_ops")
+@tf_export(v1=["add_check_numerics_ops"])
 def add_check_numerics_ops():
   """Connect a `check_numerics` to every floating point tensor.
 

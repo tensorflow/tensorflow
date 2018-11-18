@@ -587,7 +587,7 @@ def central_crop(image, central_fraction):
     # Helper method to return the `idx`-th dimension of `tensor`, along with
     # a boolean signifying if the dimension is dynamic.
     def _get_dim(tensor, idx):
-      static_shape = tensor.get_shape()[idx].value
+      static_shape = tensor.get_shape().dims[idx].value
       if static_shape is not None:
         return static_shape, False
       return array_ops.shape(tensor)[idx], True
@@ -1014,8 +1014,8 @@ def resize_images(images,
       raise ValueError('\'size\' must be a 1-D Tensor of 2 elements: '
                        'new_height, new_width')
     size_const_as_shape = tensor_util.constant_value_as_shape(size)
-    new_height_const = size_const_as_shape[0].value
-    new_width_const = size_const_as_shape[1].value
+    new_height_const = size_const_as_shape.dims[0].value
+    new_width_const = size_const_as_shape.dims[1].value
 
     if preserve_aspect_ratio:
       # Get the current shapes of the image, even if dynamic.
@@ -1036,8 +1036,8 @@ def resize_images(images,
       size = ops.convert_to_tensor([scaled_height_const, scaled_width_const],
                                    dtypes.int32, name='size')
       size_const_as_shape = tensor_util.constant_value_as_shape(size)
-      new_height_const = size_const_as_shape[0].value
-      new_width_const = size_const_as_shape[1].value
+      new_height_const = size_const_as_shape.dims[0].value
+      new_width_const = size_const_as_shape.dims[1].value
 
     # If we can determine that the height and width will be unmodified by this
     # transformation, we avoid performing the resize.
@@ -2210,7 +2210,7 @@ def non_max_suppression_with_overlaps(overlaps,
     overlap_threshold = ops.convert_to_tensor(
         overlap_threshold, name='overlap_threshold')
     # pylint: disable=protected-access
-    return gen_image_ops._non_max_suppression_v3(
+    return gen_image_ops.non_max_suppression_with_overlaps(
         overlaps, scores, max_output_size, overlap_threshold, score_threshold)
     # pylint: enable=protected-access
 
@@ -2345,7 +2345,8 @@ def _verify_compatible_image_shapes(img1, img2):
   shape1[-3:].assert_is_compatible_with(shape2[-3:])
 
   if shape1.ndims is not None and shape2.ndims is not None:
-    for dim1, dim2 in zip(reversed(shape1[:-3]), reversed(shape2[:-3])):
+    for dim1, dim2 in zip(reversed(shape1.dims[:-3]),
+                          reversed(shape2.dims[:-3])):
       if not (dim1 == 1 or dim2 == 1 or dim1.is_compatible_with(dim2)):
         raise ValueError(
             'Two images are not compatible: %s and %s' % (shape1, shape2))

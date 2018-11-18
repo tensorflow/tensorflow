@@ -136,7 +136,7 @@ class CumsumOp : public ScanOp {
 };
 REGISTER_XLA_OP(Name("Cumsum")
                     .TypeConstraint("T", kScanOpTypes)
-                    .CompileTimeConstInput("axis"),
+                    .CompileTimeConstantInput("axis"),
                 CumsumOp);
 
 class CumprodOp : public ScanOp {
@@ -145,7 +145,7 @@ class CumprodOp : public ScanOp {
 };
 REGISTER_XLA_OP(Name("Cumprod")
                     .TypeConstraint("T", kScanOpTypes)
-                    .CompileTimeConstInput("axis"),
+                    .CompileTimeConstantInput("axis"),
                 CumprodOp);
 
 }  // anonymous namespace

@@ -240,6 +240,11 @@ def train_and_evaluate(estimator, train_spec, eval_spec, executor_cls):
       hooks = list(train_spec.hooks)
     else:
       hooks = []
+
+    # Prevent estimator.train from calling distribute coordinator again. This
+    # function calls estimator.train which will use distribute coordinator path
+    # again if `_distribute_coordinator_mode` is set.
+    local_estimator._config._distribute_coordinator_mode = None  # pylint: disable=protected-access
     local_estimator.train(
         input_fn=train_spec.input_fn,
         max_steps=train_spec.max_steps,
@@ -254,6 +259,11 @@ def train_and_evaluate(estimator, train_spec, eval_spec, executor_cls):
         local_estimator._config, dc_context.get_current_worker_context())
     logging.info('Updated config: %s', str(vars(local_estimator._config)))
     local_estimator._eval_distribution = strategy
+
+    # Prevent estimator.evaluate from calling distribute coordinator again. This
+    # function calls estimator.evaluate which will use distribute coordinator
+    # path again if `_distribute_coordinator_mode` is set.
+    local_estimator._config._distribute_coordinator_mode = None  # pylint: disable=protected-access
 
     executor = executor_cls(local_estimator, train_spec, eval_spec)
     executor._start_continuous_evaluation()
@@ -277,3 +287,102 @@ def train_and_evaluate(estimator, train_spec, eval_spec, executor_cls):
       mode=run_config._distribute_coordinator_mode,
       cluster_spec=cluster_spec,
       session_config=run_config.session_config)
+
+
+# TODO(yuefengz): maybe merge the following two functions?
+# pylint: disable=protected-access
+def estimator_train(estimator, train_distributed_fn, hooks):
+  """Run distribute coordinator for Estimator's `train` method."""
+  assert estimator._config._distribute_coordinator_mode
+  run_config = estimator._config
+  assert estimator._config.cluster_spec
+  cluster_spec = estimator._config.cluster_spec
+  assert estimator._config._train_distribute
+
+  if 'evaluator' in cluster_spec:
+    raise ValueError("'evaluator' job is not supported if you don't use "
+                     '`train_and_evaluate`')
+
+  if (estimator._config._distribute_coordinator_mode !=  # pylint: disable=protected-access
+      dc.CoordinatorMode.STANDALONE_CLIENT):
+    raise ValueError('Only `STANDALONE_CLIENT` mode is supported when you call '
+                     '`estimator.train`')
+
+  if estimator._config._train_distribute.between_graph:
+    # TODO(yuefengz): remove this limitation once we figure out how to merge
+    # return values from `_worker_fn`s.
+    raise ValueError('`Estimator.train` API is not supported for %s with '
+                     '`STANDALONE_CLIENT` mode.' %
+                     estimator._config._train_distribute.__class__.__name__)
+
+  def _worker_fn(strategy):
+    """Function for worker task."""
+    local_estimator = copy.deepcopy(estimator)
+    local_estimator._config._train_distribute = strategy
+    context = dc_context.get_current_worker_context()
+    _init_run_config_from_worker_context(local_estimator._config, context)
+    logging.info('Updated config: %s', str(vars(local_estimator._config)))
+    local_estimator._train_distribution = strategy
+
+    if context.is_chief:
+      chief_hooks = hooks
+    else:
+      chief_hooks = []
+    train_distributed_fn(local_estimator, strategy, chief_hooks)
+    return local_estimator
+
+  return dc.run_distribute_coordinator(
+      _worker_fn,
+      estimator._config.train_distribute,
+      mode=run_config._distribute_coordinator_mode,
+      cluster_spec=cluster_spec,
+      session_config=run_config.session_config)
+
+
+def estimator_evaluate(estimator, evaluate_distributed_fn, hooks):
+  """Run distribute coordinator for Estimator's `evaluate` method."""
+  assert estimator._config._distribute_coordinator_mode
+  run_config = estimator._config
+  assert estimator._config.cluster_spec
+  cluster_spec = estimator._config.cluster_spec
+  assert estimator._config._eval_distribute
+
+  if 'evaluator' in cluster_spec:
+    raise ValueError("'evaluator' job is not supported if you don't use "
+                     '`train_and_evaluate`')
+
+  if (estimator._config._distribute_coordinator_mode !=
+      dc.CoordinatorMode.STANDALONE_CLIENT):
+    raise ValueError('Only `STANDALONE_CLIENT` mode is supported when you call '
+                     '`Estimator.train`')
+
+  if estimator._config._eval_distribute.between_graph:
+    # TODO(yuefengz): remove this limitation once we figure out how to merge
+    # return values from `_worker_fn`s.
+    raise ValueError('`Estimator.evaluate` API is not supported for %s with '
+                     '`STANDALONE_CLIENT` mode.' %
+                     estimator._config._eval_distribute.__class__.__name__)
+
+  def _worker_fn(strategy):
+    """Function for evaluation."""
+    local_estimator = copy.deepcopy(estimator)
+    local_estimator._config._eval_distribute = strategy
+    context = dc_context.get_current_worker_context()
+    _init_run_config_from_worker_context(local_estimator._config, context)
+    logging.info('Updated config: %s', str(vars(local_estimator._config)))
+    local_estimator._eval_distribution = strategy
+
+    if context.is_chief:
+      chief_hooks = hooks
+    else:
+      chief_hooks = []
+    return evaluate_distributed_fn(local_estimator, strategy, chief_hooks)
+
+  return dc.run_distribute_coordinator(
+      _worker_fn,
+      estimator._config.eval_distribute,
+      mode=run_config._distribute_coordinator_mode,
+      cluster_spec=cluster_spec,
+      session_config=run_config.session_config)
+
+# pylint: enable=protected-access

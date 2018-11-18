@@ -86,12 +86,18 @@ class MultiDeviceIterator : public ResourceBase {
   void GetNextFromShard(IteratorContext* ctx, int shard_num,
                         int64 incarnation_id,
                         MultiDeviceIteratorCallback callback) {
-    if (lib_ != nullptr) {
-      ctx->set_lib(lib_);
+    if (ctx->lib() == lib_) {
+      tf_shared_lock l(mu_);
+      multi_device_buffer_->GetNextFromShard(ctx, shard_num, incarnation_id,
+                                             std::move(callback));
+    } else {
+      IteratorContext::Params params(ctx);
+      params.lib = lib_;
+      IteratorContext iter_ctx(std::move(params));
+      tf_shared_lock l(mu_);
+      multi_device_buffer_->GetNextFromShard(
+          &iter_ctx, shard_num, incarnation_id, std::move(callback));
     }
-    tf_shared_lock l(mu_);
-    multi_device_buffer_->GetNextFromShard(ctx, shard_num, incarnation_id,
-                                           std::move(callback));
   }
 
   const DataTypeVector& output_types() const { return output_types_; }
@@ -200,7 +206,7 @@ class MultiDeviceIterator : public ResourceBase {
         EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (!background_thread_) {
         background_thread_.reset(ctx->env()->StartThread(
-            {}, "multi_device_iterator_background_thread",
+            {}, "tf_data_multi_device_iterator",
             std::bind(&MultiDeviceIterator::MultiDeviceBuffer::BackgroundThread,
                       this, new IteratorContext(*ctx))));
       }
@@ -455,8 +461,9 @@ class MultiDeviceIteratorInitOp : public OpKernel {
     core::ScopedUnref unref(resource);
 
     std::unique_ptr<IteratorBase> iterator;
-    IteratorContext iter_ctx(ctx);
-    iter_ctx.set_lib(resource->lib());
+    IteratorContext::Params params(ctx);
+    params.lib = resource->lib();
+    IteratorContext iter_ctx(std::move(params));
     OP_REQUIRES_OK(
         ctx, dataset->MakeIterator(std::move(iter_ctx), "Iterator", &iterator));
     int64 incarnation_id;
@@ -478,11 +485,8 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
  public:
   explicit MultiDeviceIteratorGetNextFromShardOp(OpKernelConstruction* ctx)
       : AsyncOpKernel(ctx),
-        thread_pool_(new thread::ThreadPool(
-            ctx->env(), ThreadOptions(),
-            strings::StrCat("multi_device_iterator_get_next_thread_",
-                            SanitizeThreadSuffix(name())),
-            1 /* num_threads */, false /* low_latency_hint */)) {}
+        background_worker_(ctx->env(),
+                           "tf_data_multi_device_iterator_get_next") {}
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     const Tensor* tensor_shard_num;
@@ -497,18 +501,8 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
     MultiDeviceIterator* iterator;
     OP_REQUIRES_OK_ASYNC(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
-    thread_pool_->Schedule(std::bind(
+    background_worker_.Schedule(std::bind(
         [ctx, iterator, shard_num, incarnation_id](DoneCallback done) {
-          IteratorContext::Params params;
-          params.env = ctx->env();
-          params.runner = *(ctx->runner());
-          params.function_library = iterator->function_library();
-          DeviceBase* device = ctx->function_library()->device();
-          params.allocator_getter = [device](AllocatorAttributes attrs) {
-            return device->GetAllocator(attrs);
-          };
-          IteratorContext iter_ctx(std::move(params));
-
           MultiDeviceIteratorCallback callback = std::bind(
               [ctx](const HostBufferElement& elem, DoneCallback done) {
                 // iterator->Unref();
@@ -526,6 +520,9 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
               },
               std::placeholders::_1, std::move(done));
 
+          IteratorContext::Params params(ctx);
+          params.function_library = iterator->function_library();
+          IteratorContext iter_ctx(std::move(params));
           iterator->GetNextFromShard(&iter_ctx, shard_num, incarnation_id,
                                      callback);
           iterator->Unref();
@@ -534,7 +531,7 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
   }
 
  private:
-  std::unique_ptr<thread::ThreadPool> thread_pool_;
+  BackgroundWorker background_worker_;
 };
 
 REGISTER_KERNEL_BUILDER(

@@ -104,23 +104,6 @@ class LayoutUtil {
   //        more minor, and so on until dimension N-1 which is the minor.
   static bool IsMonotonicWithDim0Major(const Layout& layout);
 
-  // Returns whether the layout of the given shape has padding (a
-  // padded_dimension value in Layout is greater than the corresponding
-  // dimension size).
-  static bool IsPadded(const Shape& shape);
-
-  // Returns the padded_dimensions array for the given Shape.  Requires that the
-  // shape is an array and has a dense layout.
-  static absl::Span<const int64> PaddedDimensions(const Shape& shape);
-
-  // Returns the given index of the padded_dimensions array for the given Shape.
-  // Requires that the shape is an array and has a dense layout.
-  static int64 PaddedDimension(const Shape& shape, int64 index);
-
-  // Returns the padding_value for the given Shape.  Requires that the shape is
-  // an array and has a dense layout.
-  static PaddingValue GetPaddingValue(const Shape& shape);
-
   // Returns whether the given Shape is an array (i.e. not a tuple) and has a
   // sparse format layout.
   static bool IsSparseArray(const Shape& shape);

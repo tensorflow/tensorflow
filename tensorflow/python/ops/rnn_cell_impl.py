@@ -276,11 +276,11 @@ class RNNCell(base_layer.Layer):
               batch_size, partial=True)
         else:
           static_batch_size = batch_size
-        if inputs.shape[0].value != static_batch_size:
+        if inputs.shape.dims[0].value != static_batch_size:
           raise ValueError(
               "batch size from input tensor is different from the "
               "input param. Input tensor batch: {}, batch_size: {}".format(
-                  inputs.shape[0].value, batch_size))
+                  inputs.shape.dims[0].value, batch_size))
 
       if dtype is not None and inputs.dtype != dtype:
         raise ValueError(
@@ -288,7 +288,7 @@ class RNNCell(base_layer.Layer):
             "input param. Input tensor dtype: {}, dtype: {}".format(
                 inputs.dtype, dtype))
 
-      batch_size = inputs.shape[0].value or array_ops.shape(inputs)[0]
+      batch_size = inputs.shape.dims[0].value or array_ops.shape(inputs)[0]
       dtype = inputs.dtype
     if None in [batch_size, dtype]:
       raise ValueError(
@@ -462,7 +462,7 @@ class BasicRNNCell(LayerRNNCell):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export("nn.rnn_cell.GRUCell")
+@tf_export(v1=["nn.rnn_cell.GRUCell"])
 class GRUCell(LayerRNNCell):
   """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078).
 
@@ -488,6 +488,8 @@ class GRUCell(LayerRNNCell):
       `trainable` etc when constructing the cell from configs of get_config().
   """
 
+  @deprecated(None, "This class is equivalent as tf.keras.layers.GRUCell,"
+                    " and will be replaced by that in Tensorflow 2.0.")
   def __init__(self,
                num_units,
                activation=None,
@@ -610,8 +612,7 @@ class LSTMStateTuple(_LSTMStateTuple):
     return c.dtype
 
 
-# TODO(scottzhu): Stop exporting this class in TF 2.0.
-@tf_export("nn.rnn_cell.BasicLSTMCell")
+@tf_export(v1=["nn.rnn_cell.BasicLSTMCell"])
 class BasicLSTMCell(LayerRNNCell):
   """DEPRECATED: Please use `tf.nn.rnn_cell.LSTMCell` instead.
 
@@ -634,10 +635,8 @@ class BasicLSTMCell(LayerRNNCell):
   better performance on CPU.
   """
 
-  @deprecated(None, "This class is deprecated, please use "
-                    "tf.nn.rnn_cell.LSTMCell, which supports all the feature "
-                    "this cell currently has. Please replace the existing code "
-                    "with tf.nn.rnn_cell.LSTMCell(name='basic_lstm_cell').")
+  @deprecated(None, "This class is equivalent as tf.keras.layers.LSTMCell,"
+                    " and will be replaced by that in Tensorflow 2.0.")
   def __init__(self,
                num_units,
                forget_bias=1.0,
@@ -779,7 +778,7 @@ class BasicLSTMCell(LayerRNNCell):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export("nn.rnn_cell.LSTMCell")
+@tf_export(v1=["nn.rnn_cell.LSTMCell"])
 class LSTMCell(LayerRNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
@@ -807,6 +806,8 @@ class LSTMCell(LayerRNNCell):
   better performance on CPU.
   """
 
+  @deprecated(None, "This class is equivalent as tf.keras.layers.LSTMCell,"
+                    " and will be replaced by that in Tensorflow 2.0.")
   def __init__(self, num_units,
                use_peepholes=False, cell_clip=None,
                initializer=None, num_proj=None, proj_clip=None,
@@ -986,8 +987,8 @@ class LSTMCell(LayerRNNCell):
       c_prev = array_ops.slice(state, [0, 0], [-1, self._num_units])
       m_prev = array_ops.slice(state, [0, self._num_units], [-1, num_proj])
 
-    input_size = inputs.get_shape().with_rank(2)[1]
-    if input_size.value is None:
+    input_size = inputs.get_shape().with_rank(2).dims[1].value
+    if input_size is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
 
     # i = input_gate, j = new_input, f = forget_gate, o = output_gate
@@ -1465,6 +1466,30 @@ class MultiRNNCell(RNNCell):
         # We know here that state_size of each cell is not a tuple and
         # presumably does not contain TensorArrays or anything else fancy
         return super(MultiRNNCell, self).zero_state(batch_size, dtype)
+
+  @property
+  def trainable_weights(self):
+    if not self.trainable:
+      return []
+    weights = []
+    for cell in self._cells:
+      if isinstance(cell, base_layer.Layer):
+        weights += cell.trainable_weights
+    return weights
+
+  @property
+  def non_trainable_weights(self):
+    weights = []
+    for cell in self._cells:
+      if isinstance(cell, base_layer.Layer):
+        weights += cell.non_trainable_weights
+    if not self.trainable:
+      trainable_weights = []
+      for cell in self._cells:
+        if isinstance(cell, base_layer.Layer):
+          trainable_weights += cell.trainable_weights
+      return trainable_weights + weights
+    return weights
 
   def call(self, inputs, state):
     """Run this multi-layer cell on inputs, starting from state."""

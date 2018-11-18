@@ -44,6 +44,10 @@ tf_module {
     name: "VarLenFeature"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "gfile"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "decode_base64"
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
@@ -111,6 +115,10 @@ tf_module {
   member_method {
     name: "serialize_sparse"
     argspec: "args=[\'sp_input\', \'name\', \'out_type\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'string\'>\"], "
+  }
+  member_method {
+    name: "serialize_tensor"
+    argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "tf_record_iterator"

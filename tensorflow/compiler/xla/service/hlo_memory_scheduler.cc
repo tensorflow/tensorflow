@@ -605,6 +605,23 @@ StatusOr<bool> HloMemoryScheduler::Run(HloModule* module) {
   return true;
 }
 
+StatusOr<bool> HloTrivialScheduler::Run(HloModule* module) {
+  HloSchedule schedule(module);
+  for (HloComputation* computation : module->MakeComputationPostOrder()) {
+    if (!computation->IsFusionComputation()) {
+      HloInstructionSequence& computation_sequence =
+          schedule.GetOrCreateSequence(computation);
+      TF_RETURN_IF_ERROR(computation->Accept(
+          [&computation_sequence](HloInstruction* instruction) {
+            computation_sequence.push_back(instruction);
+            return Status::OK();
+          }));
+    }
+  }
+  TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
+  return true;
+}
+
 StatusOr<bool> HloDescheduler::Run(HloModule* module) {
   bool changed = module->has_schedule();
   module->clear_schedule();

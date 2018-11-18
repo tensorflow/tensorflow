@@ -26,6 +26,19 @@ limitations under the License.
 
 namespace tensorflow {
 
+/*static*/ absl::string_view XlaResource::KindToString(XlaResource::Kind kind) {
+  switch (kind) {
+    case XlaResource::kInvalid:
+      return "invalid";
+    case XlaResource::kVariable:
+      return "variable";
+    case XlaResource::kStack:
+      return "stack";
+    case XlaResource::kTensorArray:
+      return "tensorarray";
+  }
+}
+
 XlaResource::XlaResource(Kind kind, int arg_num, string name, DataType type,
                          TensorShape shape, const xla::XlaOp& initial_value,
                          int64 tensor_array_size,

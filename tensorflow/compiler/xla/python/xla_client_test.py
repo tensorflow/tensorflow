@@ -37,7 +37,7 @@ class LocalComputationTest(unittest.TestCase):
 
   def _Execute(self, c, arguments):
     compiled_c = c.Build().CompileWithExampleArguments(arguments)
-    return compiled_c.Execute(arguments)
+    return compiled_c.ExecuteWithPythonValues(arguments)
 
   def _ExecuteAndAssertWith(self, assert_func, c, arguments, expected):
     assert expected is not None
@@ -355,7 +355,7 @@ class LocalBufferTest(LocalComputationTest):
   def _Execute(self, c, arguments):
     compiled_c = c.Build().CompileWithExampleArguments(arguments)
     arg_buffers = [xla_client.LocalBuffer.from_pyval(arg) for arg in arguments]
-    result_buffer = compiled_c.ExecuteWithLocalBuffers(arg_buffers)
+    result_buffer = compiled_c.Execute(arg_buffers)
     return result_buffer.to_py()
 
   def testConstantSum(self):
@@ -388,7 +388,7 @@ class LocalBufferTest(LocalComputationTest):
     arg_buffer = xla_client.LocalBuffer.from_pyval(arg)
     arg_buffer.delete()
     with self.assertRaises(ValueError):
-      compiled_c.ExecuteWithLocalBuffers([arg_buffer])
+      compiled_c.Execute([arg_buffer])
 
   def testDestructureTupleEmpty(self):
     t = ()
@@ -439,6 +439,13 @@ class LocalBufferTest(LocalComputationTest):
     np.testing.assert_equal(NumpyArrayF32([1.0, 2.0]), got[0])
     np.testing.assert_equal(NumpyArrayS32([3, 4]), got[1])
 
+  def testShape(self):
+    pyval = np.array([[1., 2.]], np.float32)
+    local_buffer = xla_client.LocalBuffer.from_pyval(pyval)
+    xla_shape = local_buffer.shape()
+    self.assertEqual(xla_shape.dimensions(), (1, 2,))
+    self.assertEqual(np.dtype(xla_shape.element_type()), np.dtype(np.float32))
+
 
 class SingleOpTest(LocalComputationTest):
   """Tests for single ops.
@@ -478,7 +485,7 @@ class SingleOpTest(LocalComputationTest):
       x = c.Constant(np.array(template, dtype=src_dtype))
       c.ConvertElementType(x, xla_types[dst_dtype])
 
-      result = c.Build().Compile().Execute()
+      result = c.Build().Compile().ExecuteWithPythonValues()
       expected = np.array(template, dtype=dst_dtype)
 
       self.assertEqual(result.shape, expected.shape)
@@ -505,7 +512,7 @@ class SingleOpTest(LocalComputationTest):
       x = c.Constant(np.array(template, dtype=src_dtype))
       c.BitcastConvertType(x, dst_etype)
 
-      result = c.Build().Compile().Execute()
+      result = c.Build().Compile().ExecuteWithPythonValues()
       expected = np.array(template, src_dtype).view(dst_dtype)
 
       self.assertEqual(result.shape, expected.shape)
@@ -987,7 +994,7 @@ class SingleOpTest(LocalComputationTest):
     c.Tuple(
         c.ConstantS32Scalar(42), c.Constant(NumpyArrayF32([1.0, 2.0])),
         c.Constant(NumpyArrayBool([True, False, False, True])))
-    result = c.Build().Compile().Execute()
+    result = c.Build().Compile().ExecuteWithPythonValues()
     self.assertIsInstance(result, tuple)
     np.testing.assert_equal(result[0], 42)
     np.testing.assert_allclose(result[1], [1.0, 2.0])
@@ -1007,12 +1014,19 @@ class SingleOpTest(LocalComputationTest):
     self._ExecuteAndCompareExact(
         c, expected=[[10, 20, 30, 40], [10, 20, 30, 40], [10, 20, 30, 40]])
 
+  def testBroadcastInDim(self):
+    c = self._NewComputation()
+    c.BroadcastInDim(c.Constant(NumpyArrayS32([1, 2])), [2, 2], [0])
+    self._ExecuteAndCompareExact(c, expected=[[1, 1], [2, 2]])
+    c.BroadcastInDim(c.Constant(NumpyArrayS32([1, 2])), [2, 2], [1])
+    self._ExecuteAndCompareExact(c, expected=[[1, 2], [1, 2]])
+
   def testRngNormal(self):
     shape = (2, 3)
     c = self._NewComputation()
     c.RngNormal(c.Constant(NumpyArrayF32(0.)), c.Constant(NumpyArrayF32(1.)),
                 dims=shape)
-    result = c.Build().Compile().Execute()
+    result = c.Build().Compile().ExecuteWithPythonValues()
     # since the result is random, we just check shape and uniqueness
     self.assertEqual(result.shape, shape)
     self.assertEqual(len(np.unique(result)), np.prod(shape))
@@ -1023,7 +1037,7 @@ class SingleOpTest(LocalComputationTest):
     c = self._NewComputation()
     c.RngUniform(c.Constant(NumpyArrayF32(lo)), c.Constant(NumpyArrayF32(hi)),
                  dims=shape)
-    result = c.Build().Compile().Execute()
+    result = c.Build().Compile().ExecuteWithPythonValues()
     # since the result is random, we just check shape, uniqueness, and range
     self.assertEqual(result.shape, shape)
     self.assertEqual(len(np.unique(result)), np.prod(shape))
@@ -1036,7 +1050,7 @@ class SingleOpTest(LocalComputationTest):
     c = self._NewComputation()
     c.RngUniform(c.Constant(NumpyArrayS32(lo)), c.Constant(NumpyArrayS32(hi)),
                  dims=shape)
-    result = c.Build().Compile().Execute()
+    result = c.Build().Compile().ExecuteWithPythonValues()
     # since the result is random, we just check shape, integrality, and range
     self.assertEqual(result.shape, shape)
     self.assertEqual(result.dtype, np.int32)
@@ -1473,7 +1487,7 @@ class EmbeddedComputationsTest(LocalComputationTest):
       xla_client.transfer_to_infeed(item)
 
     for item in to_infeed:
-      result = compiled_c.Execute()
+      result = compiled_c.ExecuteWithPythonValues()
       self.assertEqual(result, item)
 
   def testInfeedThenOutfeedS32(self):
@@ -1509,6 +1523,21 @@ class ErrorTest(LocalComputationTest):
         RuntimeError, r"Invalid argument shape.*xla_client_test.py.*"
         r"expected s32\[\], got f32\[\]",
         lambda: c.Build().CompileWithExampleArguments([self.f32_scalar_2]))
+
+
+class ComputationRootTest(LocalComputationTest):
+  """Tests related to setting the root of the computation."""
+
+  def testComputationRootDifferentFromLastOp(self):
+    c = self._NewComputation()
+    x = c.ParameterFromNumpy(NumpyArrayF32(2.0))
+    result = c.Add(x, c.ConstantF32Scalar(3.14))
+    extra = c.Add(result, c.ConstantF32Scalar(1.618))  # pylint: disable=unused-variable
+
+    arg = NumpyArrayF32(1.0)
+    compiled_c = c.Build(result).CompileWithExampleArguments([arg])
+    ans = compiled_c.ExecuteWithPythonValues([arg])
+    np.testing.assert_allclose(ans, 4.14)
 
 
 if __name__ == "__main__":

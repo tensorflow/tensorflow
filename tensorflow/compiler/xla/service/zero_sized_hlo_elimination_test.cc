@@ -45,7 +45,8 @@ class ZeroSizedHloEliminationTest : public HloTestBase {
                 0, ShapeUtil::MakeShape(F32, {3, 0}), "zero sized param"))) {}
 
   StatusOr<bool> RunZeroSizedElimination() {
-    auto module = CreateNewModule("zero_sized_elimination_test_module");
+    auto module =
+        CreateNewUnverifiedModule("zero_sized_elimination_test_module");
     module->AddEntryComputation(builder_.Build());
     return ZeroSizedHloElimination{}.Run(module.get());
   }

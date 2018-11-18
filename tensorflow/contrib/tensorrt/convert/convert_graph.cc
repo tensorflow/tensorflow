@@ -81,12 +81,13 @@ std::vector<int> GetLoadedTensorRTVersion() {
   return {ver_major, ver_minor, ver_patch};
 }
 
-namespace {
+TrtCandidateSelector::TrtCandidateSelector(
+    const grappler::GraphProperties& graph_properties)
+    : graph_properties_(graph_properties) {}
 
-bool IsTensorRTCandidate(const tensorflow::Node* node) {
+Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
+  // TODO(laigd): move this set to TrtNodeValidator where it should belong.
   // LINT.IfChange
-  // TODO(jie): Segmentation shouldn't associated with op name.
-  //            Split it into a registration for each kernel.
   static const std::set<string> candidate_ops = {
     "Identity",
     "Snapshot",
@@ -115,7 +116,8 @@ bool IsTensorRTCandidate(const tensorflow::Node* node) {
     "Sqrt",
     "Abs",
     "Neg",
-#if NV_TENSORRT_MAJOR > 3
+    "Transpose",
+    "Reshape",
     "MatMul",
     "BatchMatMul",
     "Softmax",
@@ -126,13 +128,29 @@ bool IsTensorRTCandidate(const tensorflow::Node* node) {
     "Prod",
     "Max",
     "Min",
-#endif
-    // TODO(ben,jie): ...
   };
   // LINT.ThenChange(//tensorflow/contrib/tensorrt/convert/convert_nodes.cc)
-  return (candidate_ops.count(node->type_string()) ||
-          PluginFactoryTensorRT::GetInstance()->IsPlugin(node->type_string()));
+  const bool is_supported_op_type =
+      (candidate_ops.count(node->type_string()) ||
+       PluginFactoryTensorRT::GetInstance()->IsPlugin(node->type_string()));
+  if (!is_supported_op_type) {
+    return errors::Unimplemented("Op type ", node->type_string(),
+                                 " is not supported.");
+  }
+
+  std::vector<const Edge*> input_edges;
+  TF_RETURN_IF_ERROR(node->input_edges(&input_edges));
+  std::vector<std::pair<const NodeDef*, int>> input_node_and_ports;
+  input_node_and_ports.reserve(input_edges.size());
+  for (const Edge* input_edge : input_edges) {
+    input_node_and_ports.emplace_back(&input_edge->src()->def(),
+                                      input_edge->src_output());
+  }
+  return validator_.ValidateNode(node->def(), input_node_and_ports,
+                                 graph_properties_);
 }
+
+namespace {
 
 tensorflow::Status BuildNodeMap(
     const tensorflow::Graph& graph,
@@ -246,7 +264,9 @@ tensorflow::Status ConvertGraphDefToTensorRT(
 #endif
 
   // Create RewriterConfig.
-  tensorflow::RewriterConfig rw_cfg;
+  tensorflow::ConfigProto config_proto;
+  auto& rw_cfg =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
   // TODO(aaroey): use only const folding and layout for the time being since
   // new optimizers break the graph for trt.
   rw_cfg.add_optimizers("constfold");
@@ -269,7 +289,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   }
 
   // Run optimizer.
-  tensorflow::grappler::MetaOptimizer meta_opt(nullptr, rw_cfg);
+  tensorflow::grappler::MetaOptimizer meta_opt(nullptr, config_proto);
   TF_RETURN_IF_ERROR(meta_opt.Optimize(cluster.get(), item, new_graph_def));
 
   if (VLOG_IS_ON(5)) {
@@ -846,9 +866,15 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
   }
   segment_options.minimum_segment_size = params.minimum_segment_size;
   tensorflow::tensorrt::segment::SegmentNodesVector initial_segments;
+  TrtCandidateSelector candidate_selector(*params.graph_properties);
   TF_RETURN_IF_ERROR(tensorrt::segment::SegmentGraph(
-      &graph, IsTensorRTCandidate, InputEdgeValidator(*params.graph_properties),
-      OutputEdgeValidator(), segment_options, &initial_segments));
+      &graph,
+      std::bind(&TrtCandidateSelector::IsTensorRTCandidate, &candidate_selector,
+                std::placeholders::_1),
+      // Input validation is already done by TrtCandidateSelector, so we don't
+      // need to check the input edges.
+      [](const Edge* edge) { return true; }, OutputEdgeValidator(),
+      segment_options, &initial_segments));
   if (initial_segments.size() > 1) {
     VLOG(0) << "MULTIPLE tensorrt candidate conversion: "
             << initial_segments.size();
@@ -900,7 +926,7 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
     converted_segments.push_back(std::move(curr_segment));
 
     if (VLOG_IS_ON(8)) {
-      string fname = curr_engine.engine_name;
+      string fname = engine_segments.back().engine_name;
       StrAppend(&fname, ".pb");
       std::fstream f;
       f.open(fname.c_str(), std::fstream::out | std::fstream::binary);
@@ -945,9 +971,16 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
                                 &graph, alloc.get(), &engine_nodes);
     // If status is ok, we successfully added the node to the graph and can
     // remove segment ops. Otherwise graph is not modified.
-    const string msg = StrCat("Engine ", engine.engine_name,
-                              " creation for segment ", i, ", composed of ",
-                              converted_segments.at(i).first.size(), " nodes");
+    string msg = StrCat("Engine ", engine.engine_name, " creation for segment ",
+                        i, ", composed of ",
+                        converted_segments.at(i).first.size(), " nodes");
+    if (VLOG_IS_ON(1)) {
+      StrAppend(&msg, " (");
+      for (const string& node_name : converted_segments.at(i).first) {
+        StrAppend(&msg, node_name, ", ");
+      }
+      StrAppend(&msg, ")");
+    }
     if (status.ok()) {
       LOG(INFO) << msg << " succeeded.";
       for (auto node_name : converted_segments.at(i).first) {

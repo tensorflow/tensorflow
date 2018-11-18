@@ -265,7 +265,7 @@ def _compute_gradient_list(x,
   return ret
 
 
-@tf_export("test.compute_gradient")
+@tf_export(v1=["test.compute_gradient"])
 def compute_gradient(x,
                      x_shape,
                      y,
@@ -327,7 +327,7 @@ def compute_gradient(x,
     return ret
 
 
-@tf_export("test.compute_gradient_error")
+@tf_export(v1=["test.compute_gradient_error"])
 def compute_gradient_error(x,
                            x_shape,
                            y,

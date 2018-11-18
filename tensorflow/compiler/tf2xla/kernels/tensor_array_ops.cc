@@ -188,7 +188,7 @@ class TensorArrayOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayOp);
 };
 
-REGISTER_XLA_OP(Name("TensorArrayV3").CompileTimeConstInput("size"),
+REGISTER_XLA_OP(Name("TensorArrayV3").CompileTimeConstantInput("size"),
                 TensorArrayOp);
 
 class TensorArrayWriteOp : public XlaOpKernel {
@@ -551,7 +551,7 @@ class TensorArraySplitOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(TensorArraySplitOp);
 };
 
-REGISTER_XLA_OP(Name("TensorArraySplitV3").CompileTimeConstInput("lengths"),
+REGISTER_XLA_OP(Name("TensorArraySplitV3").CompileTimeConstantInput("lengths"),
                 TensorArraySplitOp);
 
 class TensorArraySizeOp : public XlaOpKernel {

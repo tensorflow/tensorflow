@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
@@ -108,21 +109,16 @@ class ExpandDimsOp : public XlaOpKernel {
   explicit ExpandDimsOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
 
   void Compile(XlaOpKernelContext* ctx) override {
-    const TensorShape input_shape = ctx->InputShape(0);
-    const TensorShape dim_shape = ctx->InputShape(1);
+    const TensorShape input_shape = ctx->InputShape("input");
+    const TensorShape dim_shape = ctx->InputShape("dim");
 
-    // TODO(phawkins): the standard implementation of ExpandDimsOp seems to
-    // accept legacy scalars, even when they should be forbidden by the graphdef
-    // version.
-    OP_REQUIRES(ctx, dim_shape.num_elements() == 1,
+    std::vector<int64> dims;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputReshapedToIntVector("dim", &dims));
+    OP_REQUIRES(ctx, dims.size() == 1,
                 errors::InvalidArgument(absl::StrCat(
                     "dim input to ExpandDims must be a scalar; got ",
                     dim_shape.DebugString())));
-
-    xla::Literal literal;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputReshaped(1, {1}, &literal));
-
-    int dim = literal.data<int32>()[0];
+    int dim = dims[0];
 
     OP_REQUIRES(ctx,
                 (dim >= -1 - input_shape.dims() && dim <= input_shape.dims()),
@@ -148,10 +144,11 @@ class ExpandDimsOp : public XlaOpKernel {
     dim = std::min<int32>(dim, existing_dims_size);
     new_shape.emplace(new_shape.begin() + dim, 1);
 
-    ctx->SetOutput(0, xla::Reshape(ctx->Input(0), new_shape));
+    ctx->SetOutput(0, xla::Reshape(ctx->Input("input"), new_shape));
   }
 };
-REGISTER_XLA_OP(Name("ExpandDims").CompileTimeConstInput("dim"), ExpandDimsOp);
+REGISTER_XLA_OP(Name("ExpandDims").CompileTimeConstantInput("dim"),
+                ExpandDimsOp);
 
 class SqueezeOp : public XlaOpKernel {
  public:

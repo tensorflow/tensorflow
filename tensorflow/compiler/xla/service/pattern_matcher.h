@@ -90,8 +90,8 @@ namespace xla {
 // are provided below.
 //
 // Example nullary instruction:
-//   Param()                        == Op().WithOpcode(HloOpcode::kParam)
-//   Param(&a)                      == Op(&a).WithOpcode(HloOpcode::kParam)
+//   Parameter()                    == Op().WithOpcode(HloOpcode::kParameter)
+//   Parameter(&a)                  == Op(&a).WithOpcode(HloOpcode::kParameter)
 //
 // Example unary instruction:
 //   Abs()                             == Op().WithOpcode(HloOpcode::kAbs)
@@ -751,6 +751,21 @@ class HloInstructionPatternOpcodeImpl {
 };
 
 // An HloInstructionPattern implementation that matches only if the instruction
+// has the given number of operands.
+class HloInstructionPatternNumOperandsImpl {
+ public:
+  explicit constexpr HloInstructionPatternNumOperandsImpl(int64 num_operands)
+      : num_operands_(num_operands) {}
+
+  bool Match(const ::xla::HloInstruction* inst, MatchOption /*option*/) const {
+    return inst->operand_count() == num_operands_;
+  }
+
+ private:
+  int64 num_operands_;
+};
+
+// An HloInstructionPattern implementation that matches only if the instruction
 // has a shape that matches a given pattern.
 template <typename ShapeType, typename ShapeImpl>
 class HloInstructionPatternShapeImpl {
@@ -907,6 +922,11 @@ class HloInstructionPattern {
     return AppendImpl(HloInstructionPatternOpcodeImpl(opcode, false));
   }
 
+  auto WithNumOperands(int64 num_operands) const -> decltype(
+      this->AppendImpl(HloInstructionPatternNumOperandsImpl(num_operands))) {
+    return AppendImpl(HloInstructionPatternNumOperandsImpl(num_operands));
+  }
+
   // Modifies the pattern to match only if the instruction does not have the
   // given opcode.
   auto WithoutOpcode(HloOpcode opcode) const
@@ -1047,8 +1067,10 @@ XLA_UNOP_PATTERN(RoundNearestAfz)
 XLA_UNOP_PATTERN(Bitcast)
 XLA_UNOP_PATTERN(Broadcast)
 XLA_UNOP_PATTERN(Ceil)
+XLA_UNOP_PATTERN(Convert)
 XLA_UNOP_PATTERN(Copy)
 XLA_UNOP_PATTERN(Cos)
+XLA_UNOP_PATTERN(CrossReplicaSum)
 XLA_UNOP_PATTERN(Exp)
 XLA_UNOP_PATTERN(Fft)
 XLA_UNOP_PATTERN(Floor)
@@ -1062,7 +1084,6 @@ XLA_UNOP_PATTERN(Negate)
 XLA_UNOP_PATTERN(Real)
 XLA_UNOP_PATTERN(Recv)
 XLA_UNOP_PATTERN(RecvDone)
-XLA_UNOP_PATTERN(Reduce)
 XLA_UNOP_PATTERN(ReducePrecision)
 XLA_UNOP_PATTERN(Reshape)
 XLA_UNOP_PATTERN(Reverse)
@@ -1185,6 +1206,58 @@ XLA_BINOP_PATTERN(ShiftRightLogical)
 XLA_TERNOP_PATTERN(Clamp);
 XLA_TERNOP_PATTERN(Select);
 #undef XLA_TERNOP_PATTERN
+
+namespace detail {
+template <typename Matcher, typename FirstArg>
+inline auto WithOperands(Matcher&& m, int64 operand_num, FirstArg&& first_arg)
+    -> decltype(m.WithOperand(operand_num, std::forward<FirstArg>(first_arg))) {
+  return m.WithOperand(operand_num, std::forward<FirstArg>(first_arg));
+}
+
+template <typename Matcher, typename FirstArg, typename... Args>
+inline auto WithOperands(Matcher&& m, int64 operand_num, FirstArg&& first_arg,
+                         Args&&... args)
+    -> decltype(WithOperands(m.WithOperand(operand_num,
+                                           std::forward<FirstArg>(first_arg)),
+                             operand_num + 1, std::forward<Args>(args)...)) {
+  return WithOperands(
+      m.WithOperand(operand_num, std::forward<FirstArg>(first_arg)),
+      operand_num + 1, std::forward<Args>(args)...);
+}
+}  // namespace detail
+
+#define XLA_VARIADIC_OP_PATTERN(NAME)                                         \
+  inline auto NAME()->decltype(Op().WithOpcode(HloOpcode::k##NAME)) {         \
+    return Op().WithOpcode(HloOpcode::k##NAME);                               \
+  }                                                                           \
+                                                                              \
+  template <typename... Args>                                                 \
+  inline auto NAME(Args&&... args)                                            \
+      ->decltype(detail::WithOperands(Op().WithOpcode(HloOpcode::k##NAME)     \
+                                          .WithNumOperands(sizeof...(Args)),  \
+                                      0, std::forward<Args>(args)...)) {      \
+    return detail::WithOperands(                                              \
+        Op().WithOpcode(HloOpcode::k##NAME).WithNumOperands(sizeof...(Args)), \
+        /*operand_num=*/0, std::forward<Args>(args)...);                      \
+  }                                                                           \
+                                                                              \
+  template <typename HloInstructionType, typename... Args>                    \
+  inline auto NAME(HloInstructionType** matched_inst, Args&&... args)         \
+      ->decltype(detail::WithOperands(Op(matched_inst)                        \
+                                          .WithOpcode(HloOpcode::k##NAME)     \
+                                          .WithNumOperands(sizeof...(Args)),  \
+                                      0, std::forward<Args>(args)...)) {      \
+    return detail::WithOperands(Op(matched_inst)                              \
+                                    .WithOpcode(HloOpcode::k##NAME)           \
+                                    .WithNumOperands(sizeof...(Args)),        \
+                                /*operand_num=*/0,                            \
+                                std::forward<Args>(args)...);                 \
+  }
+
+// We could implement all ops as "variadic" ops, but it would make the
+// already-bad compile errors even worse.
+XLA_VARIADIC_OP_PATTERN(Concatenate);
+XLA_VARIADIC_OP_PATTERN(Reduce);
 
 namespace detail {
 struct PatternFriend {

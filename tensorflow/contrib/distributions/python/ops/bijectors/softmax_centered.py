@@ -110,7 +110,7 @@ class SoftmaxCentered(bijector.Bijector):
 
     # Set shape hints.
     if x.shape.ndims is not None:
-      shape = x.shape[:-1].concatenate(x.shape[-1] + 1)
+      shape = x.shape[:-1].concatenate(x.shape.dims[-1] + 1)
       y.shape.assert_is_compatible_with(shape)
       y.set_shape(shape)
 
@@ -135,7 +135,7 @@ class SoftmaxCentered(bijector.Bijector):
 
     # Set shape hints.
     if y.shape.ndims is not None:
-      shape = y.shape[:-1].concatenate(y.shape[-1] - 1)
+      shape = y.shape[:-1].concatenate(y.shape.dims[-1] - 1)
       x.shape.assert_is_compatible_with(shape)
       x.set_shape(shape)
 

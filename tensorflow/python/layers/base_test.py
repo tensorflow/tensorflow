@@ -25,6 +25,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine import base_layer as keras_base_layer
 from tensorflow.python.layers import base as base_layers
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.ops import array_ops
@@ -58,6 +59,29 @@ class BaseLayerTest(test.TestCase):
     layer = base_layers.Layer(name='my_layer', dtype='int64')
     layer.add_variable('my_var', [2, 2])
     self.assertEqual(layer.name, 'my_layer')
+
+  @test_util.run_in_graph_and_eager_modes
+  def testKerasStyleAddWeight(self):
+    keras_layer = keras_base_layer.Layer(name='keras_layer')
+    with ops.name_scope('foo'):
+      keras_variable = keras_layer.add_variable(
+          'my_var', [2, 2], initializer=init_ops.zeros_initializer())
+    self.assertEqual(keras_variable.name, 'foo/my_var:0')
+
+    with ops.name_scope('baz'):
+      old_style_layer = base_layers.Layer(name='my_layer')
+      # Test basic variable creation.
+      variable = old_style_layer.add_variable(
+          'my_var', [2, 2], initializer=init_ops.zeros_initializer())
+    self.assertEqual(variable.name, 'my_layer/my_var:0')
+
+    with base_layers.keras_style_scope():
+      layer = base_layers.Layer(name='my_layer')
+    # Test basic variable creation.
+    with ops.name_scope('bar'):
+      variable = layer.add_variable(
+          'my_var', [2, 2], initializer=init_ops.zeros_initializer())
+    self.assertEqual(variable.name, 'bar/my_var:0')
 
   @test_util.run_in_graph_and_eager_modes
   def testAddWeight(self):
@@ -132,11 +156,6 @@ class BaseLayerTest(test.TestCase):
             regularizer=regularizer)
     self.assertEqual(
         len(ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)), 3)
-
-  def testNoEagerActivityRegularizer(self):
-    with context.eager_mode():
-      with self.assertRaisesRegexp(ValueError, 'activity_regularizer'):
-        core_layers.Dense(1, activity_regularizer=lambda *args, **kwargs: 0.)
 
   @test_util.run_in_graph_and_eager_modes
   def testCall(self):
