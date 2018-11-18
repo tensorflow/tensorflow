@@ -2741,7 +2741,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
         noise_shape, seed=seed, dtype=x.dtype)
     # 0. if [keep_prob, 1.0) and 1. if [1.0, 1.0 + keep_prob)
     binary_tensor = math_ops.floor(random_tensor)
-    ret = math_ops.div(x, keep_prob) * binary_tensor
+    ret = math_ops.divide(x, keep_prob) * binary_tensor
     if not context.executing_eagerly():
       ret.set_shape(x.get_shape())
     return ret
