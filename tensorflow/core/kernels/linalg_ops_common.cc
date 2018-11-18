@@ -247,6 +247,7 @@ void LinearAlgebraOp<Scalar>::ComputeTensorSlice(
 }
 
 // Explicitly instantiate LinearAlgebraOp for the scalar types we expect to use.
+template class LinearAlgebraOp<Eigen::half>;
 template class LinearAlgebraOp<float>;
 template class LinearAlgebraOp<double>;
 template class LinearAlgebraOp<complex64>;
