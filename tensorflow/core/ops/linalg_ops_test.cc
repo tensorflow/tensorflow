@@ -184,6 +184,12 @@ TEST(LinalgOpsTest, Qr_ShapeFn) {
                      .Input({"input", 0, DT_FLOAT})
                      .Attr("full_matrices", full_matrices)
                      .Finalize(&op.node_def));
+
+
+    TF_ASSERT_OK(NodeDefBuilder("test", "Qr")
+                     .Input({"input", 0, DT_DOUBLE})
+                     .Attr("full_matrices", full_matrices)
+                     .Finalize(&op.node_def));
   };
 
   // Defining `P` = min(`M`, `N`), if full_matrices = False, then Q should be
