@@ -13,16 +13,12 @@
 data flow graphs.  The graph nodes represent mathematical operations, while
 the graph edges represent the multidimensional data arrays (tensors) that flow
 between them.  This flexible architecture enables you to deploy computation to one
-or more CPUs or GPUs in a desktop, server, or mobile device without rewriting
+or more CPUs/GPUs in a desktop, server, or mobile device without rewriting
 code.  TensorFlow also includes [TensorBoard](https://www.tensorflow.org/guide/summaries_and_tensorboard), a data visualization toolkit.
 
-TensorFlow was originally developed by researchers and engineers
-working on the Google Brain team within Google's Machine Intelligence Research
-organization for the purposes of conducting machine learning and deep neural
-networks research.  The system is general enough to be applicable in a wide
-variety of other domains, as well.
+TensorFlow was originally developed by researchers and engineers working on the Goole Brain team. The team works on Google's Machine Intelligence Research organization for the purposes of conducting machine learning and deep neural networks reseach. The system is general to be applicable in a wide variety of other domains, as well.
 
-TensorFlow provides stable Python API and C APIs as well as without API backwards compatibility guarantee like C++, Go, Java, JavaScript and Swift.
+TensorFlow provides stable APIs for following language: Python, C, C++, Go, Java, JavaScript, and Swift.
 
 Keep up to date with release announcements and security updates by
 subscribing to
