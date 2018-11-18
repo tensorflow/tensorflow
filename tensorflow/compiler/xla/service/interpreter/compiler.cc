@@ -58,7 +58,8 @@ StatusOr<std::unique_ptr<HloModule>> InterpreterCompiler::RunHloPasses(
 }
 
 Status InterpreterCompiler::RunHloPassesOnModuleGroup(
-    HloModuleGroup* module_group, se::StreamExecutor* executor,
+    HloModuleGroup* module_group,
+    absl::Span<se::StreamExecutor* const> executors,
     DeviceMemoryAllocator* device_allocator) {
   return Unimplemented("Module group compilation not supported on Interpreter");
 }

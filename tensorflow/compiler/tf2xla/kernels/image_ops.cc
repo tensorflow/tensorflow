@@ -563,7 +563,7 @@ class NonMaxSuppressionOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(
-    Name("NonMaxSuppressionV4").CompileTimeConstInput("max_output_size"),
+    Name("NonMaxSuppressionV4").CompileTimeConstantInput("max_output_size"),
     NonMaxSuppressionOp);
 
 }  // namespace

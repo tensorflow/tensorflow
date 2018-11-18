@@ -299,6 +299,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 #endif
     csinfo_.relu = "Relu";
     csinfo_.relu_grad = "ReluGrad";
+    csinfo_.relu6 = "Relu6";
+    csinfo_.relu6_grad = "Relu6Grad";
 #ifdef INTEL_MKL_QUANTIZED
     csinfo_.requantize = "Requantize";
 #endif
@@ -458,6 +460,12 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.relu_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.relu_grad),
                       CopyAttrsDataType, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.relu6,
+                      mkl_op_registry::GetMklOpName(csinfo_.relu6),
+                      CopyAttrsDataType, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.relu6_grad,
+                      mkl_op_registry::GetMklOpName(csinfo_.relu6_grad),
+                      CopyAttrsDataType, AlwaysRewrite});
 #ifdef INTEL_MKL_QUANTIZED
     rinfo_.push_back({csinfo_.requantize,
                       mkl_op_registry::GetMklOpName(csinfo_.requantize),
@@ -606,6 +614,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string quant_conv2d_with_bias_signed_sum_and_relu_and_requantize;
     string relu;
     string relu_grad;
+    string relu6;
+    string relu6_grad;
     string requantize;
     string tanh;
     string tanh_grad;

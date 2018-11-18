@@ -56,7 +56,8 @@ REQUIRED_PACKAGES = [
     'numpy >= 1.13.3',
     'six >= 1.10.0',
     'protobuf >= 3.6.1',
-    'tensorboard >= 1.11.0, < 1.12.0',
+    'tensorboard >= 1.12.0, < 1.13.0',
+    'tensorflow_estimator >= 1.10.0',
     'termcolor >= 1.1.0',
 ]
 
@@ -85,8 +86,9 @@ else:
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.12.0a0, < 1.13.0a0'
-      break
+      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.13.0a0, < 1.14.0a0'
+    if 'tensorflow_estimator' in pkg:
+      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly'
 
 # weakref.finalize and enum were introduced in Python 3.4
 if sys.version_info < (3, 4):
@@ -96,9 +98,9 @@ if sys.version_info < (3, 4):
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
     'freeze_graph = tensorflow.python.tools.freeze_graph:run_main',
-    'toco_from_protos = tensorflow.contrib.lite.toco.python.toco_from_protos:main',
-    'tflite_convert = tensorflow.contrib.lite.python.tflite_convert:main',
-    'toco = tensorflow.contrib.lite.python.tflite_convert:main',
+    'toco_from_protos = tensorflow.lite.toco.python.toco_from_protos:main',
+    'tflite_convert = tensorflow.lite.python.tflite_convert:main',
+    'toco = tensorflow.lite.python.tflite_convert:main',
     'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
     # We need to keep the TensorBoard command, even though the console script
     # is now declared by the tensorboard pip package. If we remove the

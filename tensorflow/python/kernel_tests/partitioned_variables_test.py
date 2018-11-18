@@ -328,7 +328,7 @@ class PartitionedVariablesTestCase(test.TestCase):
       vs = partitioned_variables.create_partitioned_variables([4], [4], rnd_par)
       variables.global_variables_initializer().run()
       val = array_ops.concat(vs, 0).eval()
-      rnd = rnd_par.eval()
+      rnd = self.evaluate(rnd_par)
       self.assertAllClose(rnd, val)
       self.assertEqual([dtypes.int32] * 4, [v.dtype.base_dtype for v in vs])
       self._TestSaveSpec(vs, ["4 0,1", "4 1,1", "4 2,1", "4 3,1"])
@@ -340,7 +340,7 @@ class PartitionedVariablesTestCase(test.TestCase):
                                                               rnd_par)
       variables.global_variables_initializer().run()
       val = array_ops.concat(vs, 1).eval()
-      rnd = rnd_par.eval()
+      rnd = self.evaluate(rnd_par)
       self.assertAllClose(rnd, val)
       self.assertEqual([dtypes.int32] * 2, [v.dtype.base_dtype for v in vs])
       self._TestSaveSpec(vs, ["2 4 0,2:0,2", "2 4 0,2:2,2"])
@@ -414,7 +414,7 @@ class PartitionedVariablesTestCase(test.TestCase):
           rnd.get_shape(), [1, 10], rnd.initialized_value())
       variables.global_variables_initializer().run()
       val = array_ops.concat(vs, 1).eval()
-      rnd = rnd.eval()
+      rnd = self.evaluate(rnd)
       self.assertAllClose(rnd, val)
       self.assertEqual([dtypes.float32] * 10, [v.dtype.base_dtype for v in vs])
       self._TestSaveSpec(vs, [
@@ -434,7 +434,7 @@ class PartitionedVariablesTestCase(test.TestCase):
           for i in xrange(1, 10)
       ]
       variables.global_variables_initializer().run()
-      rnd_val = rnd.eval()
+      rnd_val = self.evaluate(rnd)
       # Only check the slice save specs for the first 5 tf.
       save_specs = [
           # One slice
@@ -469,7 +469,7 @@ class PartitionedVariablesTestCase(test.TestCase):
           rnd.get_shape(), [1, 1], rnd.initialized_value())
       variables.global_variables_initializer().run()
       val = array_ops.concat(vs, 0).eval()
-      rnd = rnd.eval()
+      rnd = self.evaluate(rnd)
       self.assertAllClose(rnd, val)
       self._TestSaveSpec(vs, ["10 43 0,10:0,43"])
 
@@ -480,7 +480,7 @@ class PartitionedVariablesTestCase(test.TestCase):
           rnd.get_shape(), [10, 1], rnd.initialized_value())
       variables.global_variables_initializer().run()
       val = array_ops.concat(vs, 0).eval()
-      rnd = rnd.eval()
+      rnd = self.evaluate(rnd)
       self.assertAllClose(rnd, val)
       self._TestSaveSpec(vs, [
           "10 43 0,1:0,43", "10 43 1,1:0,43", "10 43 2,1:0,43",
@@ -510,7 +510,7 @@ class PartitionedVariablesTestCase(test.TestCase):
       var0, var1 = partitioned_variables.create_partitioned_variables(
           [20, 12], [1, 2], init_ops.random_uniform_initializer())
       variables.global_variables_initializer().run()
-      val0, val1 = var0.eval().flatten(), var1.eval().flatten()
+      val0, val1 = self.evaluate(var0).flatten(), self.evaluate(var1).flatten()
       self.assertTrue(np.linalg.norm(val0 - val1) > 1e-6)
     # Negative test that proves that slices have the same values if
     # the random initializer uses a seed.
@@ -518,7 +518,7 @@ class PartitionedVariablesTestCase(test.TestCase):
       var0, var1 = partitioned_variables.create_partitioned_variables(
           [20, 12], [1, 2], init_ops.random_uniform_initializer(seed=201))
       variables.global_variables_initializer().run()
-      val0, val1 = var0.eval().flatten(), var1.eval().flatten()
+      val0, val1 = self.evaluate(var0).flatten(), self.evaluate(var1).flatten()
       self.assertAllClose(val0, val1)
 
   def testSomeErrors(self):
@@ -600,7 +600,7 @@ class PartitionedVariablesTestCase(test.TestCase):
   def testMetaGraphSaveLoad(self):
     save_prefix = os.path.join(self.get_temp_dir(), "ckpt")
     save_graph = ops.Graph()
-    with save_graph.as_default(), self.test_session(
+    with save_graph.as_default(), self.session(
         graph=save_graph) as session:
       partitioner = partitioned_variables.fixed_size_partitioner(5, axis=0)
       with variable_scope.variable_scope("root", partitioner=partitioner):
@@ -620,7 +620,7 @@ class PartitionedVariablesTestCase(test.TestCase):
             save_graph.get_tensor_by_name(v0.name + ":0"))
 
     restore_graph = ops.Graph()
-    with restore_graph.as_default(), self.test_session(
+    with restore_graph.as_default(), self.session(
         graph=restore_graph) as session:
       saver = saver_lib.import_meta_graph(save_path + ".meta")
       saver.restore(sess=session, save_path=save_path)

@@ -22,6 +22,9 @@ from __future__ import print_function
 
 import abc
 
+import six
+
+from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -35,7 +38,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import distribute as distribute_lib
-from tensorflow.python.training import distribution_strategy_context
+from tensorflow.python.training import distribution_strategy_context as distribute_ctx
 from tensorflow.python.training import slot_creator
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.util import nest
@@ -84,6 +87,7 @@ def _var_key(var):
   return var._unique_id  # pylint: disable=protected-access
 
 
+@six.add_metaclass(abc.ABCMeta)
 class _OptimizableVariable(object):
   """Interface for abstracting over variables in the optimizers."""
 
@@ -340,10 +344,10 @@ class Optimizer(
     self._deferred_slot_restorations = {}
 
     # TODO(isaprykin): When using a DistributionStrategy, and when an
-    # optimizer is created in each tower, it might be dangerous to
-    # rely on some Optimer methods.  When such methods are called on a
-    # per-tower optimizer, an exception needs to be thrown.  We do
-    # allow creation per-tower optimizers however, because the
+    # optimizer is created in each replica, it might be dangerous to
+    # rely on some Optimizer methods.  When such methods are called on a
+    # per-replica optimizer, an exception needs to be thrown.  We do
+    # allow creation per-replica optimizers however, because the
     # compute_gradients()->apply_gradients() sequence is safe.
 
   def get_name(self):
@@ -458,16 +462,11 @@ class Optimizer(
           tape.watch(var_list)
         loss_value = loss()
 
-        # Scale loss if using a "mean" loss reduction and multiple towers.
+        # Scale loss if using a "mean" loss reduction and multiple replicas.
         # Have to be careful to call distribute_lib.get_loss_reduction()
         # *after* loss() is evaluated, so we know what loss reduction it uses.
         # TODO(josh11b): Test that we handle weight decay in a reasonable way.
-        if (distribute_lib.get_loss_reduction() ==
-            variable_scope.VariableAggregation.MEAN):
-          num_towers = distribution_strategy_context.get_distribution_strategy(
-          ).num_towers
-          if num_towers > 1:
-            loss_value *= (1. / num_towers)
+        loss_value = self._scale_loss(loss_value)
 
       if var_list is None:
         var_list = tape.watched_variables()
@@ -483,13 +482,8 @@ class Optimizer(
           "`loss` passed to Optimizer.compute_gradients should "
           "be a function when eager execution is enabled.")
 
-    # Scale loss if using a "mean" loss reduction and multiple towers.
-    if (distribute_lib.get_loss_reduction() ==
-        variable_scope.VariableAggregation.MEAN):
-      num_towers = distribution_strategy_context.get_distribution_strategy(
-      ).num_towers
-      if num_towers > 1:
-        loss *= (1. / num_towers)
+    # Scale loss if using a "mean" loss reduction and multiple replicas.
+    loss = self._scale_loss(loss)
 
     if gate_gradients not in [Optimizer.GATE_NONE, Optimizer.GATE_OP,
                               Optimizer.GATE_GRAPH]:
@@ -525,6 +519,15 @@ class Optimizer(
          if g is not None and v.dtype != dtypes.resource])
     return grads_and_vars
 
+  @staticmethod
+  def _scale_loss(loss_value):
+    if distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
+      num_replicas = \
+        distribute_ctx.get_distribution_strategy().num_replicas_in_sync
+      if num_replicas > 1:
+        loss_value *= (1. / num_replicas)
+    return loss_value
+
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
     """Apply gradients to variables.
 
@@ -553,16 +556,16 @@ class Optimizer(
     # methods: _create_slots(), _prepare(), _apply_dense(), and _apply_sparse().
 
     # Handle DistributionStrategy case.
-    if distribution_strategy_context.get_cross_tower_context():
+    if distribute_ctx.get_cross_replica_context():
       raise RuntimeError("Use `_distributed_apply()` instead of "
-                         "`apply_gradients()` in a cross-tower context.")
+                         "`apply_gradients()` in a cross-replica context.")
     # TODO(isaprykin): Get rid of `has_distribution_strategy()` check by
     # always calling _distributed_apply(), using the default distribution
     # as needed.
-    if distribution_strategy_context.has_distribution_strategy():
+    if distribute_ctx.has_distribution_strategy():
       grads_and_vars = get_filtered_grad_fn(lambda: grads_and_vars)()
-      return distribution_strategy_context.get_tower_context().merge_call(
-          self._distributed_apply, grads_and_vars, global_step, name)
+      return distribute_ctx.get_replica_context().merge_call(
+          self._distributed_apply, args=(grads_and_vars, global_step, name))
 
     # No DistributionStrategy case.
     grads_and_vars = tuple(grads_and_vars)  # Make sure repeat iteration works.
@@ -637,16 +640,16 @@ class Optimizer(
                          grads_and_vars,
                          global_step=None,
                          name=None):
-    """A version of `apply_gradients` for cross-tower context.
+    """A version of `apply_gradients` for cross-replica context.
 
     This is a version of `apply_gradients()` for when you are using a
-    `DistributionStrategy` and are in a cross-tower context. If in a
-    tower context, use `apply_gradients()` as normal.
+    `DistributionStrategy` and are in a cross-replica context. If in a
+    replica context, use `apply_gradients()` as normal.
 
     Args:
       distribution: A `DistributionStrategy` object.
       grads_and_vars: List of (gradient, variable) pairs as returned by
-        `compute_gradients()`, and then aggregated across towers.
+        `compute_gradients()`, and then aggregated across replicas.
       global_step: Optional (mirrored) `Variable` to increment by one
         after the variables have been updated.
       name: Optional name for the returned operation.  Default to the
@@ -654,14 +657,14 @@ class Optimizer(
 
     Returns:
       An `Operation` that applies the specified gradients across all
-      towers. If `global_step` was not None, that operation also
-      increments `global_step`.
+      replicas. If `global_step` was not None, that operation also
+      increments `global_step`
     """
     reduced_grads = distribution.batch_reduce(
-        variable_scope.VariableAggregation.SUM, grads_and_vars)
+        ds_reduce_util.ReduceOp.SUM, grads_and_vars)
     var_list = [v for _, v in grads_and_vars]
     grads_and_vars = zip(reduced_grads, var_list)
-    # Note that this is called in a cross-tower context.
+    # Note that this is called in a cross-replica context.
     self._create_slots(var_list)
 
     def update(v, g):
@@ -803,8 +806,7 @@ class Optimizer(
     v = self._non_slot_dict.get(key, None)
     if v is None:
       self._maybe_initialize_checkpointable()
-      distribution_strategy = (
-          distribution_strategy_context.get_distribution_strategy())
+      distribution_strategy = distribute_ctx.get_distribution_strategy()
       with distribution_strategy.colocate_vars_with(colocate_with):
         if eager:
           restored_initial_value = self._preload_simple_restoration(

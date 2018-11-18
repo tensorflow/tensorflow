@@ -137,10 +137,18 @@ if platform.system() != "Windows":
     """
     return gen_tpu_ops.collective_permute(x, source_target_pairs, name=name)
 
+  @ops.RegisterGradient("CollectivePermute")
+  def _collective_permute_grad(op, grad):
+    # The gradient of a collective permute operation is also a collective
+    # permute, but with source/target pairs reversed. The gradient with respect
+    # to input argument `source_target_pairs` is `None`.
+    source_target_pairs = op.inputs[1][:, ::-1]
+    return [gen_tpu_ops.collective_permute(grad, source_target_pairs), None]
+
   @ops.RegisterGradient("CrossReplicaSum")
   def _cross_replica_sum_grad(op, grad):
     # The gradient of a cross replica sum is also a cross-replica sum.
-    # The graident with respect to group_assignment is None.
+    # The gradient with respect to group_assignment is None.
     return [gen_tpu_ops.cross_replica_sum(grad, op.inputs[1]), None]
 
   # This extra type checking exists to give a more helpful error message in

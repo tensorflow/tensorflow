@@ -41,7 +41,8 @@ class SumOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP(Name("Sum").CompileTimeConstInput("reduction_indices"), SumOp);
+REGISTER_XLA_OP(Name("Sum").CompileTimeConstantInput("reduction_indices"),
+                SumOp);
 
 class ProdOp : public XlaReductionOp {
  public:
@@ -59,7 +60,7 @@ class ProdOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP(Name("Prod").CompileTimeConstInput("reduction_indices"),
+REGISTER_XLA_OP(Name("Prod").CompileTimeConstantInput("reduction_indices"),
                 ProdOp);
 
 class MinOp : public XlaReductionOp {
@@ -77,7 +78,8 @@ class MinOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP(Name("Min").CompileTimeConstInput("reduction_indices"), MinOp);
+REGISTER_XLA_OP(Name("Min").CompileTimeConstantInput("reduction_indices"),
+                MinOp);
 
 class MaxOp : public XlaReductionOp {
  public:
@@ -94,7 +96,8 @@ class MaxOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP(Name("Max").CompileTimeConstInput("reduction_indices"), MaxOp);
+REGISTER_XLA_OP(Name("Max").CompileTimeConstantInput("reduction_indices"),
+                MaxOp);
 
 class MeanOp : public XlaReductionOp {
  public:
@@ -119,7 +122,7 @@ class MeanOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP(Name("Mean").CompileTimeConstInput("reduction_indices"),
+REGISTER_XLA_OP(Name("Mean").CompileTimeConstantInput("reduction_indices"),
                 MeanOp);
 
 class AllOp : public XlaReductionOp {
@@ -137,7 +140,8 @@ class AllOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP(Name("All").CompileTimeConstInput("reduction_indices"), AllOp);
+REGISTER_XLA_OP(Name("All").CompileTimeConstantInput("reduction_indices"),
+                AllOp);
 
 class AnyOp : public XlaReductionOp {
  public:
@@ -154,7 +158,8 @@ class AnyOp : public XlaReductionOp {
   }
 };
 
-REGISTER_XLA_OP(Name("Any").CompileTimeConstInput("reduction_indices"), AnyOp);
+REGISTER_XLA_OP(Name("Any").CompileTimeConstantInput("reduction_indices"),
+                AnyOp);
 
 }  // namespace
 }  // namespace tensorflow

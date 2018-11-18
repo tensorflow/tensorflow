@@ -72,7 +72,6 @@ py_library(
         "//tensorflow/contrib/metrics:metrics_py",
         "//tensorflow/contrib/mixed_precision:mixed_precision",
         "//tensorflow/contrib/model_pruning",
-        "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_py",
         "//tensorflow/contrib/nn:nn_py",
         "//tensorflow/contrib/opt:opt_py",
@@ -179,9 +178,7 @@ cc_library(
         "//tensorflow/contrib/tensor_forest:stats_ops_kernels",
         "//tensorflow/contrib/tensor_forest:tensor_forest_kernels",
         "//tensorflow/contrib/text:all_kernels",
-    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_cuda([
-        "//tensorflow/contrib/nccl:nccl_kernels",
-    ]) + select({
+    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
@@ -215,7 +212,6 @@ cc_library(
         "//tensorflow/contrib/hadoop:dataset_ops_op_lib",
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_op_lib",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_op_lib",
-        "//tensorflow/contrib/nccl:nccl_ops_op_lib",
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_ops_op_lib",
         "//tensorflow/contrib/rnn:all_ops",
         "//tensorflow/contrib/seq2seq:beam_search_ops_op_lib",

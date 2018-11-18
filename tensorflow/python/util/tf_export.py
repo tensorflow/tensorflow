@@ -50,6 +50,10 @@ from tensorflow.python.util import tf_decorator
 ESTIMATOR_API_NAME = 'estimator'
 TENSORFLOW_API_NAME = 'tensorflow'
 
+# List of subpackage names used by TensorFlow components. Have to check that
+# TensorFlow core repo does not export any symbols under these names.
+SUBPACKAGE_NAMESPACES = [ESTIMATOR_API_NAME]
+
 _Attributes = collections.namedtuple(
     'ExportedApiAttributes', ['names', 'constants'])
 
@@ -78,14 +82,21 @@ class SymbolAlreadyExposedError(Exception):
   pass
 
 
-def get_canonical_name_for_symbol(symbol, api_name=TENSORFLOW_API_NAME):
-  """Get canonical name for the API symbol.
+class InvalidSymbolNameError(Exception):
+  """Raised when trying to export symbol as an invalid or unallowed name."""
+  pass
 
-  Canonical name is the first non-deprecated endpoint name.
+
+def get_canonical_name_for_symbol(
+    symbol, api_name=TENSORFLOW_API_NAME,
+    add_prefix_to_v1_names=False):
+  """Get canonical name for the API symbol.
 
   Args:
     symbol: API function or class.
     api_name: API name (tensorflow or estimator).
+    add_prefix_to_v1_names: Specifies whether a name available only in V1
+      should be prefixed with compat.v1.
 
   Returns:
     Canonical name for the API symbol (for e.g. initializers.zeros) if
@@ -98,26 +109,42 @@ def get_canonical_name_for_symbol(symbol, api_name=TENSORFLOW_API_NAME):
   if api_names_attr not in undecorated_symbol.__dict__:
     return None
   api_names = getattr(undecorated_symbol, api_names_attr)
-  # TODO(annarev): may be add a separate deprecated attribute
-  # for estimator names.
   deprecated_api_names = undecorated_symbol.__dict__.get(
       '_tf_deprecated_api_names', [])
-  return get_canonical_name(api_names, deprecated_api_names)
+
+  canonical_name = get_canonical_name(api_names, deprecated_api_names)
+  if canonical_name:
+    return canonical_name
+
+  # If there is no V2 canonical name, get V1 canonical name.
+  api_names_attr = API_ATTRS_V1[api_name].names
+  api_names = getattr(undecorated_symbol, api_names_attr)
+  v1_canonical_name = get_canonical_name(api_names, deprecated_api_names)
+  if add_prefix_to_v1_names:
+    return 'compat.v1.%s' % v1_canonical_name
+  return v1_canonical_name
 
 
 def get_canonical_name(api_names, deprecated_api_names):
-  """Get first non-deprecated endpoint name.
+  """Get preferred endpoint name.
 
   Args:
     api_names: API names iterable.
     deprecated_api_names: Deprecated API names iterable.
   Returns:
-    Canonical name if there is at least one non-deprecated endpoint.
-    Otherwise returns None.
+    Returns one of the following in decreasing preference:
+    - first non-deprecated endpoint
+    - first endpoint
+    - None
   """
-  return next(
+  non_deprecated_name = next(
       (name for name in api_names if name not in deprecated_api_names),
       None)
+  if non_deprecated_name:
+    return non_deprecated_name
+  if api_names:
+    return api_names[0]
+  return None
 
 
 class api_export(object):  # pylint: disable=invalid-name
@@ -144,6 +171,37 @@ class api_export(object):  # pylint: disable=invalid-name
     self._api_name = kwargs.get('api_name', TENSORFLOW_API_NAME)
     self._overrides = kwargs.get('overrides', [])
     self._allow_multiple_exports = kwargs.get('allow_multiple_exports', False)
+
+    self._validate_symbol_names()
+
+  def _validate_symbol_names(self):
+    """Validate you are exporting symbols under an allowed package.
+
+    We need to ensure things exported by tf_export, estimator_export, etc.
+    export symbols under disjoint top-level package names.
+
+    For TensorFlow, we check that it does not export anything under subpackage
+    names used by components (estimator, keras, etc.).
+
+    For each component, we check that it exports everything under its own
+    subpackage.
+
+    Raises:
+      InvalidSymbolNameError: If you try to export symbol under disallowed name.
+    """
+    all_symbol_names = set(self._names) | set(self._names_v1)
+    if self._api_name == TENSORFLOW_API_NAME:
+      for subpackage in SUBPACKAGE_NAMESPACES:
+        if any(n.startswith(subpackage) for n in all_symbol_names):
+          raise InvalidSymbolNameError(
+              '@tf_export is not allowed to export symbols under %s.*' % (
+                  subpackage))
+    else:
+      if not all(n.startswith(self._api_name) for n in all_symbol_names):
+        raise InvalidSymbolNameError(
+            'Can only export symbols under package name of component. '
+            'e.g. tensorflow_estimator must export all symbols under '
+            'tf.estimator')
 
   def __call__(self, func):
     """Calls this decorator.
@@ -217,5 +275,4 @@ class api_export(object):  # pylint: disable=invalid-name
 
 
 tf_export = functools.partial(api_export, api_name=TENSORFLOW_API_NAME)
-estimator_export = functools.partial(
-    api_export, api_name=ESTIMATOR_API_NAME, allow_multiple_exports=True)
+estimator_export = functools.partial(api_export, api_name=ESTIMATOR_API_NAME)

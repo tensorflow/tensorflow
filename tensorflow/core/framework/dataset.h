@@ -30,8 +30,10 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/tracing.h"
 
 // Polymorphic datasets should support all primitive TensorFlow
@@ -272,55 +274,65 @@ class StatsAggregator;
 class IteratorContext {
  public:
   struct Params {
-    // Interface to operating system functionality.
-    Env* env;
+    explicit Params(IteratorContext* ctx)
+        : allocator_getter(ctx->allocator_getter()),
+          env(ctx->env()),
+          function_library(ctx->function_library()),
+          lib(ctx->lib()),
+          model(ctx->model()),
+          runner(*(ctx->runner())),
+          runner_threadpool_size(ctx->runner_threadpool_size()),
+          stats_aggregator(ctx->stats_aggregator()) {}
 
-    // Function call support.
-    std::function<void(std::function<void()>)> runner = nullptr;
-
-    // The `StatsAggregator` object to record statistics about the iterator.
-    std::shared_ptr<StatsAggregator> stats_aggregator = nullptr;
-
-    // The FunctionLibraryRuntime object to be used to make function calls.
-    FunctionLibraryRuntime* lib = nullptr;
-    std::shared_ptr<const FunctionLibraryDefinition> function_library = nullptr;
+    explicit Params(OpKernelContext* ctx)
+        : env(ctx->env()),
+          lib(ctx->function_library()),
+          runner(*(ctx->runner())) {
+      // NOTE: need reinterpret_cast because function.h forward-declares Device.
+      DeviceBase* device =
+          reinterpret_cast<DeviceBase*>(ctx->function_library()->device());
+      allocator_getter = [device](AllocatorAttributes attrs) {
+        return device->GetAllocator(attrs);
+      };
+      thread::ThreadPool* thread_pool =
+          ctx->device()->tensorflow_device_thread_pool();
+      if (thread_pool) {
+        runner_threadpool_size = thread_pool->NumThreads();
+      } else {
+        runner_threadpool_size = port::NumSchedulableCPUs();
+      }
+    }
 
     // The Allocator to be used to allocate the output of an iterator.
     std::function<Allocator*(AllocatorAttributes)> allocator_getter = nullptr;
 
+    // Interface to operating system functionality.
+    Env* env = nullptr;
+
+    // The FunctionLibraryDefinition used to look up user-defined functions.
+    std::shared_ptr<const FunctionLibraryDefinition> function_library = nullptr;
+
+    // The FunctionLibraryRuntime object to be used to make function calls.
+    FunctionLibraryRuntime* lib = nullptr;
+
     // If non-null, identifies the object used for performance modeling.
     std::shared_ptr<model::Model> model = nullptr;
+
+    // Function call support.
+    std::function<void(std::function<void()>)> runner = nullptr;
+
+    // Number of threads used for executing user-defined functions.
+    int32 runner_threadpool_size = 0;
+
+    // The `StatsAggregator` object to record statistics about the iterator.
+    std::shared_ptr<StatsAggregator> stats_aggregator = nullptr;
   };
 
+  explicit IteratorContext(IteratorContext* ctx) : params_(Params{ctx}) {}
+
+  explicit IteratorContext(OpKernelContext* ctx) : params_(Params{ctx}) {}
+
   explicit IteratorContext(Params params) : params_(std::move(params)) {}
-
-  explicit IteratorContext(OpKernelContext* ctx) {
-    params_.env = ctx->env();
-    params_.runner = *(ctx->runner());
-    params_.lib = ctx->function_library();
-    // NOTE: must use reinterpret_cast because function.h forward-declares
-    // Device.
-    DeviceBase* device =
-        reinterpret_cast<DeviceBase*>(ctx->function_library()->device());
-    params_.allocator_getter = [device](AllocatorAttributes attrs) {
-      return device->GetAllocator(attrs);
-    };
-  }
-
-  Env* env() const { return params_.env; }
-
-  std::function<void(std::function<void()>)>* runner() {
-    return &params_.runner;
-  }
-
-
-  std::shared_ptr<const FunctionLibraryDefinition> function_library() {
-    return params_.function_library;
-  }
-
-  FunctionLibraryRuntime* lib() { return params_.lib; }
-
-  void set_lib(FunctionLibraryRuntime* lib) { params_.lib = lib; }
 
   Allocator* allocator(AllocatorAttributes attrs) {
     return params_.allocator_getter(attrs);
@@ -330,11 +342,25 @@ class IteratorContext {
     return params_.allocator_getter;
   }
 
+  Env* env() const { return params_.env; }
+
+  std::shared_ptr<const FunctionLibraryDefinition> function_library() {
+    return params_.function_library;
+  }
+
+  FunctionLibraryRuntime* lib() { return params_.lib; }
+
+  const std::shared_ptr<model::Model>& model() { return params_.model; }
+
+  std::function<void(std::function<void()>)>* runner() {
+    return &params_.runner;
+  }
+
+  int32 runner_threadpool_size() { return params_.runner_threadpool_size; }
+
   std::shared_ptr<StatsAggregator> stats_aggregator() {
     return params_.stats_aggregator;
   }
-
-  std::shared_ptr<model::Model> model() { return params_.model; }
 
   Params params() { return params_; }
 
@@ -346,20 +372,20 @@ class IteratorContext {
 class SerializationContext {
  public:
   struct Params {
-    bool allow_stateful_functions = false;
     const FunctionLibraryDefinition* flib_def = nullptr;           // Not owned.
     std::vector<std::pair<string, Tensor>>* input_list = nullptr;  // Not owned.
+    bool optimization_only = false;
   };
 
   explicit SerializationContext(Params params) : params_(std::move(params)) {}
-
-  bool allow_stateful_functions() { return params_.allow_stateful_functions; }
 
   const FunctionLibraryDefinition& flib_def() { return *params_.flib_def; }
 
   std::vector<std::pair<string, Tensor>>* input_list() {
     return params_.input_list;
   }
+
+  bool optimization_only() { return params_.optimization_only; }
 
  private:
   Params params_;
@@ -429,6 +455,10 @@ class IteratorBase {
   }
 
  protected:
+  // Returns a node that models this iterator.
+  virtual std::shared_ptr<model::Node> CreateNode(
+      IteratorContext* ctx, model::Node::Args args) const = 0;
+
   // This is needed so that sub-classes of IteratorBase can call
   // `SaveInternal` on their input iterators.
   Status SaveInput(IteratorStateWriter* writer,
@@ -456,6 +486,7 @@ class IteratorBase {
 
  private:
   friend class DatasetBase;  // for access to `AddCleanupFunction`
+  friend class DatasetBaseIterator;  // for access to `node_`
 
   // Registers a cleanup function to be called upon object destruction.
   //
@@ -464,7 +495,11 @@ class IteratorBase {
     cleanup_fns_.push_back(std::move(cleanup_fn));
   }
 
+  // Associates the given performance modeling `Node` with this iterator.
+  void SetNode(std::shared_ptr<model::Node> node) { node_ = node.get(); }
+
   std::vector<std::function<void()>> cleanup_fns_;
+  model::Node* node_ = nullptr;  // Not owned.
 };
 
 // Represents runtime information needed to construct a dataset.
@@ -511,22 +546,22 @@ class DatasetBase : public core::RefCounted {
   //
   // The prefix identifies the sequence of iterators leading up to the newly
   // created iterator.
-  Status MakeIterator(IteratorContext* ctx, const string& prefix,
+  Status MakeIterator(IteratorContext* ctx, const string& output_prefix,
                       std::unique_ptr<IteratorBase>* iterator) const {
-    *iterator = MakeIteratorInternal(prefix);
-    if (ctx->model()) {
-      ctx->model()->AddNode((*iterator)->prefix(), prefix);
-      std::shared_ptr<model::Model> model = ctx->model();
+    *iterator = MakeIteratorInternal(output_prefix);
+    if (const auto& model = ctx->model()) {
       const string& prefix = (*iterator)->prefix();
+      (*iterator)->SetNode(model->AddNode(MakeNodeFactory(ctx, iterator->get()),
+                                          prefix, output_prefix));
       (*iterator)->AddCleanupFunction(
           [model, prefix]() { model->RemoveNode(prefix); });
     }
     return (*iterator)->Initialize(ctx);
   }
 
-  Status MakeIterator(IteratorContext&& ctx, const string& prefix,
+  Status MakeIterator(IteratorContext&& ctx, const string& output_prefix,
                       std::unique_ptr<IteratorBase>* iterator) const {
-    return MakeIterator(&ctx, prefix, iterator);
+    return MakeIterator(&ctx, output_prefix, iterator);
   }
 
   // Returns a vector of DataType values, representing the respective
@@ -553,9 +588,7 @@ class DatasetBase : public core::RefCounted {
    public:
     DatasetGraphDefBuilder(GraphDefBuilder* b) : GraphDefBuilderWrapper(b) {}
     Status AddInputDataset(SerializationContext* ctx,
-                           const DatasetBase* dataset, Node** output) {
-      return dataset->AsGraphDefInternal(ctx, this, output);
-    }
+                           const DatasetBase* dataset, Node** output);
   };
 
   // TODO(jsimsa): Consolidate overloading into a single method.
@@ -567,6 +600,14 @@ class DatasetBase : public core::RefCounted {
       const string& prefix) const = 0;
 
  private:
+  // Returns a factory for nodes that represent the given iterator.
+  static model::Node::Factory MakeNodeFactory(IteratorContext* ctx,
+                                              IteratorBase* iterator) {
+    return [ctx, iterator](model::Node::Args args) {
+      return iterator->CreateNode(ctx, std::move(args));
+    };
+  }
+
   const string name_;
 };
 
@@ -631,51 +672,42 @@ class DatasetBaseIterator : public IteratorBase {
     return strings::StrCat(params_.prefix, ":", name);
   }
 
-  // When performance modeling is enabled, this method adds a constant parameter
-  // to the model node corresponding to this iterator.
-  void AddConstantParameter(IteratorContext* ctx, const string& name,
-                            int64 value) {
-    if (ctx->model()) {
-      ctx->model()->AddConstantParameter(prefix(), name, value);
-    }
-  }
-
-  // When performance modeling is enabled, this method adds a tunable parameter
-  // to the model node corresponding to this iterator.
-  //
-  // The performance modeling logic may use `state` to set the value of the
-  // tunable parameter at any point during the lifetime of this iterator. When
-  // it does, it acquires `state->mu` and notifies `state->cond_var`.
-  void AddTunableParameter(IteratorContext* ctx, const string& name,
-                           std::shared_ptr<model::SharedState> state, int64 min,
-                           int64 max) {
-    if (ctx->model()) {
-      ctx->model()->AddTunableParameter(prefix(), name, std::move(state), min,
-                                        max);
-    }
+  // By default we model iterators using an unknown node, which acts as
+  // pass-through with respect to performance modeling.
+  std::shared_ptr<model::Node> CreateNode(
+      IteratorContext* ctx, model::Node::Args args) const override {
+    return model::MakeUnknownNode(std::move(args));
   }
 
   // When performance modeling is enabled, this method records the fact that
   // this iterator has produced an element.
   void RecordElement(IteratorContext* ctx) {
-    if (ctx->model()) {
-      ctx->model()->RecordElement(prefix());
+    if (node_) {
+      node_->record_element();
     }
   }
 
   // When performance modeling is enabled, this method records the fact that
   // a thread of this iterator has started work.
   void RecordStart(IteratorContext* ctx, bool stop_output = false) {
-    if (ctx->model()) {
-      ctx->model()->RecordStart(prefix(), stop_output);
+    if (node_) {
+      int64 now_nanos = Env::Default()->NowNanos();
+      if (stop_output && node_->output()) {
+        node_->output()->record_stop(now_nanos);
+      }
+      node_->record_start(now_nanos);
     }
   }
 
   // When performance modeling is enabled, this method records the fact that
   // a thread of this iterator has stopped work.
   void RecordStop(IteratorContext* ctx, bool start_output = false) {
-    if (ctx->model()) {
-      ctx->model()->RecordStop(prefix(), start_output);
+    if (node_) {
+      int64 now_nanos = Env::Default()->NowNanos();
+      node_->record_stop(now_nanos);
+      if (start_output && node_->output()) {
+        node_->output()->record_start(now_nanos);
+      }
     }
   }
 

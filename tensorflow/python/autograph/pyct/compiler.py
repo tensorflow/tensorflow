@@ -123,26 +123,15 @@ def ast_to_object(nodes,
   compiled_nodes = imp.load_source(module_name, f.name)
 
   # TODO(znado): Clean this up so we don't need to attach it to the namespace.
-  # TODO(znado): This does not work for classes because their methods share a
-  # namespace.
-  # This attaches the source map which is needed for error handling.  Note that
-  # api.to_graph copies this source map into an attribute of the function.
-  #
-  # We need this so the ag_source_map__ variable is available to the call to
-  # rewrite_graph_construction_error in the except block inside each function
-  # that handles graph construction errors.
-  #
   # We cannot get the rewritten function name until it is too late so templating
-  # is hard, and this cleanly fixes the
-  # issues encountered with nested functions because this is attached to the
-  # outermost one.
+  # is hard, and this cleanly fixes the issues encountered with nested functions
+  # because this is attached to the outermost one.
   if include_source_map:
     # TODO(mdan): This name should be decided by the caller.
     source_map_name = 'ag_source_map__'
-    if source_map_name in compiled_nodes.__dict__:
-      raise ValueError('cannot convert %s because is has namespace attribute '
-                       '"%s", which is reserved for AutoGraph.' %
-                       (compiled_nodes, source_map_name))
+    assert source_map_name not in compiled_nodes.__dict__, (
+        'cannot convert %s because is has namespace attribute "%s", which is '
+        'reserved for AutoGraph.') % (compiled_nodes, source_map_name)
     compiled_nodes.__dict__[source_map_name] = source_map
 
   return compiled_nodes, source

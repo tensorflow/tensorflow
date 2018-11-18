@@ -78,7 +78,7 @@ class CumsumTest(test.TestCase):
 
   def _compare(self, x, axis, exclusive, reverse):
     np_out = handle_options(np.cumsum, x, axis, exclusive, reverse)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       tf_out = math_ops.cumsum(x, axis, exclusive, reverse).eval()
 
     self.assertAllClose(np_out, tf_out)
@@ -98,7 +98,7 @@ class CumsumTest(test.TestCase):
     for dtype in self.valid_dtypes:
       x = np.arange(1, 6).reshape([5]).astype(dtype)
       for axis_dtype in [dtypes.int64, dtypes.int32]:
-        with self.test_session(use_gpu=True):
+        with self.cached_session(use_gpu=True):
           axis = constant_op.constant(0, axis_dtype)
           tf_out = math_ops.cumsum(x, axis).eval()
 
@@ -126,10 +126,15 @@ class CumsumTest(test.TestCase):
       for axis in range(-6, 6, 3):
         self._compareAll(x, axis)
 
+  def testLarge(self):
+    for dtype in self.valid_dtypes:
+      x = np.ones([1000000], dtype=dtype) / 1024
+      self._compareAll(x, 0)
+
   def testInvalidAxis(self):
     x = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
     input_tensor = ops.convert_to_tensor(x)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaisesWithPredicateMatch(
           errors_impl.InvalidArgumentError,
           lambda e: "Expected scan axis in the range [-2, 2)" in str(e)):
@@ -145,7 +150,7 @@ class CumsumTest(test.TestCase):
 
   def _compareGradient(self, shape, axis, exclusive, reverse):
     x = np.arange(0, 50).reshape(shape).astype(np.float64)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       t = ops.convert_to_tensor(x)
       result = math_ops.cumsum(t, axis, exclusive, reverse)
       jacob_t, jacob_n = gradient_checker.compute_gradient(
@@ -184,7 +189,7 @@ class CumprodTest(test.TestCase):
 
   def _compare(self, x, axis, exclusive, reverse):
     np_out = handle_options(np.cumprod, x, axis, exclusive, reverse)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       tf_out = math_ops.cumprod(x, axis, exclusive, reverse).eval()
 
     self.assertAllClose(np_out, tf_out)
@@ -204,7 +209,7 @@ class CumprodTest(test.TestCase):
     for dtype in self.valid_dtypes:
       x = np.arange(1, 6).reshape([5]).astype(dtype)
       for axis_dtype in [dtypes.int64, dtypes.int32]:
-        with self.test_session(use_gpu=True):
+        with self.cached_session(use_gpu=True):
           axis = constant_op.constant(0, axis_dtype)
           tf_out = math_ops.cumprod(x, axis).eval()
 
@@ -235,7 +240,7 @@ class CumprodTest(test.TestCase):
   def testInvalidAxis(self):
     x = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
     input_tensor = ops.convert_to_tensor(x)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaisesWithPredicateMatch(
           errors_impl.InvalidArgumentError,
           lambda e: "Expected scan axis in the range [-2, 2)" in str(e)):
@@ -251,7 +256,7 @@ class CumprodTest(test.TestCase):
 
   def _compareGradient(self, shape, axis, exclusive, reverse):
     x = np.arange(1, 9).reshape(shape).astype(np.float64)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       t = ops.convert_to_tensor(x)
       result = math_ops.cumprod(t, axis, exclusive, reverse)
       jacob_t, jacob_n = gradient_checker.compute_gradient(

@@ -34,29 +34,47 @@ from tensorflow.python.util.deprecation import deprecated_argument_lookup
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("losses.Reduction")
-class Reduction(object):
+@tf_export("losses.Reduction", v1=[])
+class ReductionV2(object):
   """Types of loss reduction.
 
   Contains the following values:
 
   * `NONE`: Un-reduced weighted losses with the same shape as input.
   * `SUM`: Scalar sum of weighted losses.
-  * `MEAN`: Scalar `SUM` divided by sum of weights.
   * `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses.
-  * `SUM_OVER_NONZERO_WEIGHTS`: Scalar `SUM` divided by number of non-zero
-     weights.
-  * `SUM_BY_NONZERO_WEIGHTS`: Same as `SUM_OVER_NONZERO_WEIGHTS`.
   """
 
   NONE = "none"
-
   SUM = "weighted_sum"
-
-  MEAN = "weighted_mean"
-
   SUM_OVER_BATCH_SIZE = "weighted_sum_over_batch_size"
 
+  @classmethod
+  def all(cls):
+    return (cls.NONE, cls.SUM, cls.SUM_OVER_BATCH_SIZE)
+
+  @classmethod
+  def validate(cls, key):
+    if key not in cls.all():
+      raise ValueError("Invalid Reduction Key %s." % key)
+
+
+@tf_export(v1=["losses.Reduction"])
+class Reduction(ReductionV2):
+  """Types of loss reduction.
+
+  Contains the following values:
+
+  * `NONE`: Un-reduced weighted losses with the same shape as input.
+  * `SUM`: Scalar sum of weighted losses.
+  * `MEAN`: Scalar `SUM` divided by sum of weights. DEPRECATED.
+  * `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses.
+  * `SUM_OVER_NONZERO_WEIGHTS`: Scalar `SUM` divided by number of non-zero
+     weights. DEPRECATED.
+  * `SUM_BY_NONZERO_WEIGHTS`: Same as `SUM_OVER_NONZERO_WEIGHTS`.
+  """
+
+  MEAN = "weighted_mean"
   SUM_BY_NONZERO_WEIGHTS = "weighted_sum_by_nonzero_weights"
   SUM_OVER_NONZERO_WEIGHTS = SUM_BY_NONZERO_WEIGHTS
 
@@ -73,7 +91,7 @@ class Reduction(object):
   @classmethod
   def validate(cls, key):
     if key not in cls.all():
-      raise ValueError("Invalid ReductionKey %s." % key)
+      raise ValueError("Invalid Reduction Key %s." % key)
 
 
 def _safe_div(numerator, denominator, name="value"):
@@ -206,7 +224,7 @@ def compute_weighted_loss(
   Reduction.validate(reduction)
   with ops.name_scope(scope, "weighted_loss", (losses, weights)):
     # Save the `reduction` argument for loss normalization when distributing
-    # to multiple towers.
+    # to multiple replicas.
     # TODO(josh11b): Associate it with the returned op for more precision.
     ops.get_default_graph()._last_loss_reduction = reduction  # pylint: disable=protected-access
 

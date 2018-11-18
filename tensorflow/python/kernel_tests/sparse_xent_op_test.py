@@ -63,7 +63,7 @@ class SparseXentTest(test.TestCase):
 
   def _testXent(self, np_features, np_labels):
     np_loss, np_backprop = self._npXent(np_features, np_labels)
-    with self.test_session(use_gpu=True) as sess:
+    with self.cached_session(use_gpu=True) as sess:
       loss, backprop = gen_nn_ops.sparse_softmax_cross_entropy_with_logits(
           np_features, np_labels)
       tf_loss, tf_backprop = sess.run([loss, backprop])
@@ -72,7 +72,7 @@ class SparseXentTest(test.TestCase):
 
   def testSingleClass(self):
     for label_dtype in np.int32, np.int64:
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         loss, backprop = gen_nn_ops.sparse_softmax_cross_entropy_with_logits(
             np.array([[1.], [-1.], [0.]]).astype(np.float32),
             np.array([0, 0, 0]).astype(label_dtype))
@@ -86,7 +86,7 @@ class SparseXentTest(test.TestCase):
     labels = [4, 3, 0, -1]
 
     if test.is_built_with_cuda() and test.is_gpu_available():
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         loss, backprop = (
             gen_nn_ops.sparse_softmax_cross_entropy_with_logits(
                 features, labels))
@@ -100,7 +100,7 @@ class SparseXentTest(test.TestCase):
         self.assertAllClose(
             [np.nan, 1.3862, 3.4420, np.nan], tf_loss, rtol=1e-3, atol=1e-3)
 
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       loss, backprop = (
           gen_nn_ops.sparse_softmax_cross_entropy_with_logits(features, labels))
       with self.assertRaisesOpError("Received a label value of"):
@@ -141,19 +141,19 @@ class SparseXentTest(test.TestCase):
         np.array([1.3862, 3.4420]), np_loss, rtol=1.e-3, atol=1.e-3)
 
   def testShapeMismatch(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaisesRegexp(ValueError, ".*Rank mismatch:*"):
         nn_ops.sparse_softmax_cross_entropy_with_logits(
             labels=[[0, 2]], logits=[[0., 1.], [2., 3.], [2., 3.]])
 
   def testScalar(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaisesRegexp(ValueError, ".*Logits cannot be scalars*"):
         nn_ops.sparse_softmax_cross_entropy_with_logits(
             labels=constant_op.constant(0), logits=constant_op.constant(1.0))
 
   def testLabelsPlaceholderScalar(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       labels = array_ops.placeholder(np.int32)
       y = nn_ops.sparse_softmax_cross_entropy_with_logits(
           labels=labels, logits=[[7.]])
@@ -161,10 +161,10 @@ class SparseXentTest(test.TestCase):
         y.eval(feed_dict={labels: 0})
 
   def testVector(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       loss = nn_ops.sparse_softmax_cross_entropy_with_logits(
           labels=constant_op.constant(0), logits=constant_op.constant([1.0]))
-      self.assertAllClose(0.0, loss.eval())
+      self.assertAllClose(0.0, self.evaluate(loss))
 
   def testFloat(self):
     for label_dtype in np.int32, np.int64:
@@ -188,7 +188,7 @@ class SparseXentTest(test.TestCase):
     self._testXent(np.zeros((0, 3)), np.zeros((0,), dtype=np.int32))
 
   def testGradient(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       l = constant_op.constant([3, 0, 1], name="l")
       f = constant_op.constant(
           [0.1, 0.2, 0.3, 0.4, 0.1, 0.4, 0.9, 1.6, 0.1, 0.8, 2.7, 6.4],
@@ -222,7 +222,7 @@ class SparseXentTest(test.TestCase):
     np_loss, np_backprop = self._npXent(np.array(features), np.array(labels))
     # manually reshape loss
     np_loss = np.reshape(np_loss, np.array(labels).shape)
-    with self.test_session(use_gpu=True) as sess:
+    with self.cached_session(use_gpu=True) as sess:
       loss = nn_ops.sparse_softmax_cross_entropy_with_logits(
           labels=labels, logits=features)
       backprop = loss.op.inputs[0].op.outputs[1]
@@ -242,7 +242,7 @@ class SparseXentTest(test.TestCase):
     self._testHighDim(features, labels)
 
   def testScalarHandling(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    ".*labels must be 1-D.*"):
         labels = array_ops.placeholder(dtypes.int32, shape=[None, 1])

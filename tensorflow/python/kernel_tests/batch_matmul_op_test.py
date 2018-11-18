@@ -83,10 +83,10 @@ class BatchMatmulOpTest(test.TestCase):
     y = y_in if not adjoint_b else y_in.reshape(y_t_shape)
     is_floating = x.dtype != np.int32
     tol = 100 * np.finfo(x.dtype).eps if is_floating else 0
-    with self.test_session(use_gpu=is_floating) as sess:
+    with self.cached_session(use_gpu=is_floating) as sess:
       if static_shape:
         z0 = math_ops.matmul(x, y, adjoint_a=adjoint_a, adjoint_b=adjoint_b)
-        z0_val = z0.eval()
+        z0_val = self.evaluate(z0)
       else:
         x_ph = array_ops.placeholder(x.dtype)
         y_ph = array_ops.placeholder(y.dtype)
@@ -154,7 +154,7 @@ class BatchMatmulGradientTest(test.TestCase):
     y = y_in if not adjoint_b else y_in.reshape(y_t_shape)
     epsilon = np.finfo(x.dtype).eps
     delta = epsilon**(1.0 / 3.0)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       inx = constant_op.constant(x)
       iny = constant_op.constant(y)
       z = math_ops.matmul(inx, iny, adjoint_a, adjoint_b)

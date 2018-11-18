@@ -58,8 +58,8 @@ class GenerateVocabRemappingTest(test.TestCase):
     expected_remapping = range(0, 3)
     expected_num_present = 3
     with self.cached_session():
-      self.assertAllEqual(expected_remapping, remapping.eval())
-      self.assertAllEqual(expected_num_present, num_present.eval())
+      self.assertAllEqual(expected_remapping, self.evaluate(remapping))
+      self.assertAllEqual(expected_num_present, self.evaluate(num_present))
 
   def test_generate_remapping_with_shifted_vocab(self):
     """Tests where vocab is the same, but shifted / ordered differently."""
@@ -71,8 +71,8 @@ class GenerateVocabRemappingTest(test.TestCase):
     expected_remapping = [2, 0, 1]
     expected_num_present = 3
     with self.cached_session():
-      self.assertAllEqual(expected_remapping, remapping.eval())
-      self.assertAllEqual(expected_num_present, num_present.eval())
+      self.assertAllEqual(expected_remapping, self.evaluate(remapping))
+      self.assertAllEqual(expected_num_present, self.evaluate(num_present))
 
   def test_generate_remapping_with_offset(self):
     """Tests offset and num_new_vocab logic."""
@@ -84,8 +84,8 @@ class GenerateVocabRemappingTest(test.TestCase):
     expected_remapping = [0]
     expected_num_present = 1
     with self.cached_session():
-      self.assertAllEqual(expected_remapping, remapping.eval())
-      self.assertAllEqual(expected_num_present, num_present.eval())
+      self.assertAllEqual(expected_remapping, self.evaluate(remapping))
+      self.assertAllEqual(expected_num_present, self.evaluate(num_present))
 
   def test_generate_remapping_with_old_vocab_size(self):
     """Tests where old_vocab_size is specified."""
@@ -99,8 +99,8 @@ class GenerateVocabRemappingTest(test.TestCase):
     expected_remapping = [-1, 0, 1]
     expected_num_present = 2
     with self.cached_session():
-      self.assertAllEqual(expected_remapping, remapping.eval())
-      self.assertAllEqual(expected_num_present, num_present.eval())
+      self.assertAllEqual(expected_remapping, self.evaluate(remapping))
+      self.assertAllEqual(expected_num_present, self.evaluate(num_present))
 
 
 class LoadAndRemapMatrixTest(test.TestCase):
@@ -142,7 +142,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
         num_cols=self.old_num_cols)
     with self.cached_session():
       self.assertAllClose(self.matrix_value[row_remapping],
-                          remapped_matrix.eval())
+                          self.evaluate(remapped_matrix))
 
     # No row remapping, new weight matrix has third col, then first col.
     row_remapping = list(range(self.old_num_rows))
@@ -157,7 +157,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
         num_cols=len(col_remapping))
     with self.cached_session():
       self.assertAllClose(self.matrix_value[row_remapping][:, col_remapping],
-                          remapped_matrix.eval())
+                          self.evaluate(remapped_matrix))
 
     # Both row and column remappings.
     row_remapping = [1, 0, 4]
@@ -172,7 +172,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
         num_cols=len(col_remapping))
     with self.cached_session():
       self.assertAllClose(self.matrix_value[row_remapping][:, col_remapping],
-                          remapped_matrix.eval())
+                          self.evaluate(remapped_matrix))
 
   def test_load_and_remap_with_init(self):
     """Tests the op's load and remap where there are missing entries."""
@@ -190,7 +190,8 @@ class LoadAndRemapMatrixTest(test.TestCase):
         [33, init_val, init_val, init_val, 1, init_val], [3, 2])
 
     with self.cached_session():
-      self.assertAllClose(expected_remapped_matrix, remapped_matrix.eval())
+      self.assertAllClose(expected_remapped_matrix,
+                          self.evaluate(remapped_matrix))
 
   def test_load_and_remap_all_missing_rows(self):
     """Tests when all the rows are missing and need to be initialized."""
@@ -207,7 +208,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
     with self.cached_session():
       self.assertAllClose(
           np.reshape(initializing_values, (num_rows, self.old_num_cols)),
-          remapped_matrix.eval())
+          self.evaluate(remapped_matrix))
 
   def test_load_and_remap_all_missing_rows_and_cols(self):
     """Tests when all the rows & cols are missing and need to be initialized."""
@@ -225,7 +226,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
     with self.cached_session():
       self.assertAllClose(
           np.reshape(initializing_values, (num_rows, num_cols)),
-          remapped_matrix.eval())
+          self.evaluate(remapped_matrix))
 
   def test_load_and_remap_invalid_remapping(self):
     """Tests that errors are raised when an ID maps to multiple new IDs.
@@ -244,7 +245,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
         num_rows=len(invalid_remapping),
         num_cols=self.old_num_cols)
     with self.cached_session(), self.assertRaises(errors.UnimplementedError):
-      remapped_matrix.eval()
+      self.evaluate(remapped_matrix)
 
     # Invalid column remapping.
     remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
@@ -256,7 +257,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
         num_rows=self.old_num_rows,
         num_cols=len(invalid_remapping))
     with self.cached_session(), self.assertRaises(errors.UnimplementedError):
-      remapped_matrix.eval()
+      self.evaluate(remapped_matrix)
 
   def test_load_and_remap_incorrect_initializing_values(self):
     """Tests that errors are raised with incorrect number of init values."""
@@ -273,7 +274,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
         num_rows=3,
         num_cols=2)
     with self.cached_session(), self.assertRaises(errors.InvalidArgumentError):
-      remapped_matrix.eval()
+      self.evaluate(remapped_matrix)
 
     remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
         ckpt_path=[self.bundle_file],
@@ -285,7 +286,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
         num_rows=3,
         num_cols=2)
     with self.cached_session(), self.assertRaises(errors.InvalidArgumentError):
-      remapped_matrix.eval()
+      self.evaluate(remapped_matrix)
 
 
 class LoadAndRemapMatrixWithMaxRowsTest(test.TestCase):
@@ -324,7 +325,7 @@ class LoadAndRemapMatrixWithMaxRowsTest(test.TestCase):
           num_rows=num_rows,
           num_cols=num_cols,
           max_rows_in_memory=max_rows_in_memory)
-      self.assertAllClose(np_value[::-1], remapped_matrix.eval())
+      self.assertAllClose(np_value[::-1], self.evaluate(remapped_matrix))
 
       # Tests loading the tensor (except for the first and last rows), with
       # uninitialized values. Requires num_rows to be at least 3 since we're
@@ -348,7 +349,7 @@ class LoadAndRemapMatrixWithMaxRowsTest(test.TestCase):
           np.vstack([
               np.tile(42, [prefix_rows, num_cols]), np_value[1:-1],
               np.tile(42, [suffix_rows, num_cols])
-          ]), remapped_matrix.eval())
+          ]), self.evaluate(remapped_matrix))
 
       # Tests when everything is taken from initializing_values.
       new_rows = 7
@@ -365,7 +366,7 @@ class LoadAndRemapMatrixWithMaxRowsTest(test.TestCase):
           max_rows_in_memory=max_rows_in_memory)
       self.assertAllClose(
           np.reshape(initializing_values, (new_rows, num_cols)),
-          remapped_matrix.eval())
+          self.evaluate(remapped_matrix))
 
   def test_loading_rows_divisible_by_max_rows(self):
     """Tests loading normal var when rows are evenly divisible by max_rows."""

@@ -115,7 +115,8 @@ class LoadAndRemapWrappersTest(test.TestCase):
         axis=1)
 
     with self.cached_session():
-      self.assertAllClose(expected_remapped_matrix, remapped_matrix.eval())
+      self.assertAllClose(expected_remapped_matrix,
+                          self.evaluate(remapped_matrix))
 
   def test_load_and_remap_output_layer_weight_initializer_linear(self):
     """Tests for the output layer initializer in the linear multi-class case."""

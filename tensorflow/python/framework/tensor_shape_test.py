@@ -212,7 +212,7 @@ class ShapeTest(test_util.TensorFlowTestCase):
     s = tensor_shape.TensorShape(None)
     with self.assertRaises(ValueError):
       s.assert_is_fully_defined()
-    self.assertIs(None, s.ndims)
+    self.assertIs(None, s.rank)
     with self.assertRaises(ValueError):
       len(s)
     self.assertFalse(s)
@@ -225,7 +225,7 @@ class ShapeTest(test_util.TensorFlowTestCase):
     s = tensor_shape.TensorShape([tensor_shape.Dimension(
         3), tensor_shape.Dimension(4), tensor_shape.Dimension(7)])
     s.assert_is_fully_defined()
-    self.assertEqual(3, s.ndims)
+    self.assertEqual(3, s.rank)
     self.assertEqual(3, len(s))
     self.assertTrue(s)
     s.assert_has_rank(3)
@@ -239,23 +239,23 @@ class ShapeTest(test_util.TensorFlowTestCase):
     s.assert_is_compatible_with([3, 4, 7])
     s.assert_same_rank([6, 3, 7])
     for d1, d2 in zip(s, [3, 4, 7]):
-      assert d1.value == d2
+      assert tensor_shape.dimension_value(d1) == d2
 
   def testPartiallyDefinedShape(self):
     s = tensor_shape.TensorShape([tensor_shape.Dimension(
         3), tensor_shape.Dimension(None), tensor_shape.Dimension(7)])
     with self.assertRaises(ValueError):
       s.assert_is_fully_defined()
-    self.assertEqual(3, s.ndims)
+    self.assertEqual(3, s.rank)
     self.assertEqual(3, len(s))
     self.assertTrue(s)
     s.assert_has_rank(3)
     self.assertEqual(tensor_shape.Dimension(3), s[0])
-    self.assertEqual(tensor_shape.Dimension(None).value, s[1].value)
-    self.assertEqual(tensor_shape.Dimension(7), s[2])
+    self.assertEqual(tensor_shape.Dimension(None).value, s.dims[1].value)
+    self.assertEqual(tensor_shape.Dimension(7), s.dims[2])
     s.assert_same_rank([6, 3, 7])
     for d1, d2 in zip(s, [3, None, 7]):
-      assert d1.value == d2
+      assert tensor_shape.dimension_value(d1) == d2
 
   def testMergeFullShapes(self):
     self.assertEqual([3, 4, 7],
@@ -283,7 +283,9 @@ class ShapeTest(test_util.TensorFlowTestCase):
     tensor_shape.TensorShape([1, 2, 3]).assert_is_compatible_with(known[1:4])
 
     unknown = tensor_shape.TensorShape(None)
-    self.assertEqual(tensor_shape.Dimension(None).value, unknown[2].value)
+    self.assertEqual(
+        tensor_shape.Dimension(None).value,
+        tensor_shape.dimension_value(unknown[2]))
     tensor_shape.TensorShape(
         [None, None, None]).assert_is_compatible_with(unknown[1:4])
 
@@ -358,29 +360,34 @@ class ShapeTest(test_util.TensorFlowTestCase):
         make_tensor_shape_proto([-1, 37, 42]))
     partial_shape = tensor_shape.TensorShape([None, 37, 42])
     self.assertNotEqual(partial_proto_shape, partial_shape)
-    self.assertEqual(partial_proto_shape[0].value, None)
-    self.assertEqual(partial_proto_shape[1].value, 37)
-    self.assertEqual(partial_proto_shape[2].value, 42)
+    self.assertEqual(tensor_shape.dimension_value(partial_proto_shape[0]), None)
+    self.assertEqual(tensor_shape.dimension_value(partial_proto_shape[1]), 37)
+    self.assertEqual(tensor_shape.dimension_value(partial_proto_shape[2]), 42)
     self.assertTrue(partial_shape.is_compatible_with(partial_proto_shape))
 
   def testStr(self):
     self.assertEqual("<unknown>", str(tensor_shape.unknown_shape()))
-    self.assertEqual("(?,)", str(tensor_shape.unknown_shape(ndims=1)))
-    self.assertEqual("(?, ?)", str(tensor_shape.unknown_shape(ndims=2)))
-    self.assertEqual("(?, ?, ?)", str(tensor_shape.unknown_shape(ndims=3)))
-
+    self.assertEqual(
+        "(None,)",
+        str(tensor_shape.unknown_shape(rank=1)).replace("?", "None"))
+    self.assertEqual(
+        "(None, None)",
+        str(tensor_shape.unknown_shape(rank=2)).replace("?", "None"))
+    self.assertEqual(
+        "(None, None, None)",
+        str(tensor_shape.unknown_shape(rank=3)).replace("?", "None"))
+    self.assertEqual(
+        "(32, None, 1, 9)",
+        str(tensor_shape.TensorShape([32, None, 1, 9])).replace("?", "None"))
     self.assertEqual("()", str(tensor_shape.scalar()))
     self.assertEqual("(7,)", str(tensor_shape.vector(7)))
     self.assertEqual("(3, 8)", str(tensor_shape.matrix(3, 8)))
     self.assertEqual("(4, 5, 2)", str(tensor_shape.TensorShape([4, 5, 2])))
 
-    self.assertEqual("(32, ?, 1, 9)",
-                     str(tensor_shape.TensorShape([32, None, 1, 9])))
-
   def testAsProto(self):
     self.assertTrue(tensor_shape.unknown_shape().as_proto().unknown_rank)
     self.assertFalse(
-        tensor_shape.unknown_shape(ndims=3).as_proto().unknown_rank)
+        tensor_shape.unknown_shape(rank=3).as_proto().unknown_rank)
     self.assertFalse(
         tensor_shape.TensorShape([1, 2, 3]).as_proto().unknown_rank)
     self.assertFalse(

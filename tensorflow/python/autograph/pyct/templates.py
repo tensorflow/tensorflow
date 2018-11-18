@@ -90,7 +90,8 @@ class ReplaceTransformer(gast.NodeTransformer):
     # we could allow changing just node arg, so that we end up with bar=baz.
     raise ValueError(
         'a keyword argument may only be replaced by another keyword or a '
-        'non-empty list of keywords. Found: %s' % repl)
+        'non-empty list of keywords. Found: {} for keyword {}'.format(
+            repl, node.arg))
 
   def visit_FunctionDef(self, node):
     node = self.generic_visit(node)
@@ -143,6 +144,12 @@ class ReplaceTransformer(gast.NodeTransformer):
       self._check_has_context(node)
     elif isinstance(node, (gast.Str, gast.Num)):
       pass
+    elif isinstance(node, gast.Call):
+      self._check_inner_children_have_context(node.func)
+      for a in node.args:
+        self._check_inner_children_have_context(a)
+      for k in node.keywords:
+        self._check_inner_children_have_context(k.value)
     else:
       raise ValueError('unexpected node type "%s"' % node)
 

@@ -156,8 +156,7 @@ class ListTest(test.TestCase):
 
   def test_stack_tensor_list_empty(self):
     l = list_ops.empty_tensor_list(
-        element_shape=-1,
-        element_dtype=dtypes.variant)
+        element_shape=None, element_dtype=dtypes.variant)
 
     opts = data_structures.ListStackOpts(
         element_dtype=dtypes.int32, original_call=None)

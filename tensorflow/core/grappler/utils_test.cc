@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/utils.h"
+
+#include <unistd.h>
+#include <memory>
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -24,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -350,8 +354,55 @@ TEST_F(UtilsTest, NumNonControlOutputs) {
   EXPECT_EQ(1, NumNonControlDataOutputs(*add_node, node_map));
 }
 
+TEST(CheckAttrExists, All) {
+  NodeDef node;
+  node.set_name("node");
+  (*node.mutable_attr())["apple"].set_i(7);
+  (*node.mutable_attr())["pear"].set_b(true);
+
+  TF_EXPECT_OK(CheckAttrExists(node, "apple"));
+  TF_EXPECT_OK(CheckAttrExists(node, "pear"));
+
+  TF_EXPECT_OK(CheckAttrsExist(node, {}));
+  TF_EXPECT_OK(CheckAttrsExist(node, {"apple"}));
+  TF_EXPECT_OK(CheckAttrsExist(node, {"pear"}));
+  TF_EXPECT_OK(CheckAttrsExist(node, {"apple", "pear"}));
+  TF_EXPECT_OK(CheckAttrsExist(node, {"pear", "apple"}));
+
+  Status status = CheckAttrExists(node, "banana");
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.ToString(),
+            "Invalid argument: Node 'node' lacks 'banana' attr: name: \"node\" "
+            "attr { key: \"apple\" value { i: 7 } } attr { key: \"pear\" value "
+            "{ b: true } }");
+  EXPECT_FALSE(CheckAttrsExist(node, {""}).ok());
+  EXPECT_FALSE(CheckAttrsExist(node, {"pear", "cherry"}).ok());
+  EXPECT_FALSE(CheckAttrsExist(node, {"banana", "apple"}).ok());
+}
+
 TEST_F(UtilsTest, DeleteNodes) {
   // TODO(rmlarsen): write forgotten test.
+}
+
+TEST(IsKernelRegisteredForNode, All) {
+  NodeDef node;
+  node.set_name("foo");
+  node.set_op("NoOp");
+  node.set_device("/cpu:0");
+  TF_EXPECT_OK(IsKernelRegisteredForNode(node));
+  node.set_device("/gpu:0");
+  TF_EXPECT_OK(IsKernelRegisteredForNode(node));
+
+  // Bad device name.
+  node.set_device("");
+  EXPECT_FALSE(IsKernelRegisteredForNode(node).ok());
+
+  // Check an op that is only defined on CPU.
+  node.set_op("MatchingFiles");
+  node.set_device("/cpu:0");
+  TF_EXPECT_OK(IsKernelRegisteredForNode(node));
+  node.set_device("/gpu:0");
+  EXPECT_FALSE(IsKernelRegisteredForNode(node).ok());
 }
 
 #define BM_NodePositionIfSameNode(I, N, NAME)               \

@@ -62,7 +62,7 @@ class SavedModelTest(test.TestCase):
   def _init_and_validate_variable(self, sess, variable_name, variable_value):
     v = variables.VariableV1(variable_value, name=variable_name)
     sess.run(variables.global_variables_initializer())
-    self.assertEqual(variable_value, v.eval())
+    self.assertEqual(variable_value, self.evaluate(v))
 
   def _build_asset_collection(self, asset_file_name, asset_file_contents,
                               asset_file_tensor_name, asset_subdir=""):
@@ -461,7 +461,7 @@ class SavedModelTest(test.TestCase):
       v = variables.VariableV1(42, name="v")
       ops.add_to_collection("foo_vars", v)
       sess.run(variables.global_variables_initializer())
-      self.assertEqual(42, v.eval())
+      self.assertEqual(42, self.evaluate(v))
       builder.add_meta_graph_and_variables(sess, ["foo"])
 
     # Graph with the same single variable added to a different collection.
@@ -471,7 +471,7 @@ class SavedModelTest(test.TestCase):
       v = variables.VariableV1(43, name="v")
       ops.add_to_collection("bar_vars", v)
       sess.run(variables.global_variables_initializer())
-      self.assertEqual(43, v.eval())
+      self.assertEqual(43, self.evaluate(v))
       builder.add_meta_graph(["bar"])
 
     # Save the SavedModel to disk.
@@ -1420,8 +1420,11 @@ class SavedModelTest(test.TestCase):
     sess = session.Session(graph=ops.Graph())
     with self.assertRaisesRegexp(
         errors.InvalidArgumentError,
-        ".*No OpKernel was registered to support Op \'TestAttr\' with these "
-        "attrs..*"):
+        "No OpKernel was registered to support Op 'TestAttr' used by node "
+        "test_attr \\(defined at .*\\) with these attrs: \\[.*\\]\n"
+        "Registered devices:.*\n"
+        "Registered kernels:.*"
+    ):
       loader.load(sess, ["foo"], export_dir)
 
 

@@ -22,6 +22,7 @@ import glob
 import os.path
 import shutil
 import time
+import warnings
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import summary_pb2
@@ -273,6 +274,21 @@ class FileWriterTestCase(test.TestCase):
     sw.close()
     self._assertRecent(time_before_close)
 
+  def testUseAfterClose(self):
+    test_dir = self._CleanTestDir("use_after_close")
+    sw = self._FileWriter(test_dir)
+    sw.close()
+    with warnings.catch_warnings(record=True) as triggered:
+      warnings.simplefilter("always")
+      self.assertFalse(triggered)
+      sw.add_summary(summary_pb2.Summary())
+      sw.add_session_log(event_pb2.SessionLog())
+      sw.add_graph(ops.Graph())
+
+    self.assertEqual(len(triggered), 3)
+    for w in triggered:
+      self.assertEqual(w.category, UserWarning)
+
   def testWithStatement(self):
     test_dir = self._CleanTestDir("with_statement")
     with self._FileWriter(test_dir) as sw:
@@ -293,12 +309,11 @@ class FileWriterTestCase(test.TestCase):
       summ = summary_pb2.Summary(
           value=[summary_pb2.Summary.Value(
               tag="i", simple_value=1.0)])
-      sw.add_summary(summ.SerializeToString(), i.eval())
+      sw.add_summary(summ.SerializeToString(), self.evaluate(i))
       sw.add_summary(
           summary_pb2.Summary(
-              value=[summary_pb2.Summary.Value(
-                  tag="l", simple_value=2.0)]),
-          l.eval())
+              value=[summary_pb2.Summary.Value(tag="l", simple_value=2.0)]),
+          self.evaluate(l))
       sw.close()
 
     rr = self._EventsReader(test_dir)

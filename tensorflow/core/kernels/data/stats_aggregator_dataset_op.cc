@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <memory>
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
@@ -163,22 +163,22 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
         mutex_lock l(mu_);
         StatsAggregatorResource* stats_aggregator_resource =
             dataset()->stats_aggregator_resource_;
-        IteratorContext::Params params;
-        params.env = ctx->env();
-        params.runner = *(ctx->runner());
+        IteratorContext::Params params(ctx);
         params.stats_aggregator = std::shared_ptr<StatsAggregator>(
             new StatsAggregatorWithTagAndPrefix(
                 stats_aggregator_resource->stats_aggregator(), dataset()->tag_,
                 dataset()->prefix_));
-        params.lib = ctx->lib();
-        params.function_library = ctx->function_library();
-        params.allocator_getter = ctx->allocator_getter();
-        IteratorContext set_stats_aggregator_ctx(params);
-        return input_impl_->GetNext(&set_stats_aggregator_ctx, out_tensors,
-                                    end_of_sequence);
+        IteratorContext iter_ctx(std::move(params));
+        return input_impl_->GetNext(&iter_ctx, out_tensors, end_of_sequence);
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         return errors::Unimplemented(dataset()->DebugString(),
                                      " does not support checkpointing");

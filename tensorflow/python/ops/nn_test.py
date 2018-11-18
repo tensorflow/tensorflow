@@ -57,7 +57,7 @@ class ZeroFractionTest(test_lib.TestCase):
       x_tf = constant_op.constant(x_np)
       x_tf.set_shape(x_shape)
       y_tf = nn_impl.zero_fraction(x_tf)
-      y_tf_np = y_tf.eval()
+      y_tf_np = self.evaluate(y_tf)
     eps = 1e-8
     self.assertAllClose(y_tf_np, y_np, eps)
 
@@ -66,6 +66,26 @@ class ZeroFractionTest(test_lib.TestCase):
       x = np.zeros(0)
       y = nn_impl.zero_fraction(x).eval()
       self.assertTrue(np.isnan(y))
+
+  def testZeroFraction2_27Zeros(self):
+    sparsity = nn_impl.zero_fraction(
+        array_ops.zeros([int(2**27 * 1.01)], dtype=dtypes.int8))
+    with self.cached_session():
+      self.assertAllClose(1.0, self.evaluate(sparsity))
+
+  def testZeroFraction2_27Ones(self):
+    sparsity = nn_impl.zero_fraction(
+        array_ops.ones([int(2**27 * 1.01)], dtype=dtypes.int8))
+    with self.cached_session():
+      self.assertAllClose(0.0, self.evaluate(sparsity))
+
+  def testUnknownSize(self):
+    value = array_ops.placeholder(dtype=dtypes.float32)
+    sparsity = nn_impl.zero_fraction(value)
+    with self.cached_session() as sess:
+      self.assertAllClose(
+          0.25,
+          sess.run(sparsity, {value: [[0., 1.], [0.3, 2.]]}))
 
 
 class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
@@ -95,7 +115,7 @@ class SoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     arr = np.linspace(0., 1, 12).reshape(3, 4)
     x_neg_axis = nn_ops.softmax(arr, axis=-2)
     y_pos_axis = nn_ops.softmax(arr, axis=0)
-    z_gt_axis = nn_ops.softmax(arr, axis=4)
+    z_gt_axis = nn_ops.softmax(arr, axis=0)
     x_neg_axis_tf = self.evaluate(x_neg_axis)
     y_pos_axis_tf = self.evaluate(y_pos_axis)
     z_gt_axis_tf = self.evaluate(z_gt_axis)
@@ -180,7 +200,7 @@ class LogSoftmaxTest(test_lib.TestCase, parameterized.TestCase):
     arr = np.linspace(0., 1, 12).reshape(3, 4)
     x_neg_axis = nn_ops.log_softmax(arr, axis=-2)
     y_pos_axis = nn_ops.log_softmax(arr, axis=0)
-    z_gt_axis = nn_ops.log_softmax(arr, axis=4)
+    z_gt_axis = nn_ops.log_softmax(arr, axis=0)
     x_neg_axis_tf = self.evaluate(x_neg_axis)
     y_pos_axis_tf = self.evaluate(y_pos_axis)
     z_gt_axis_tf = self.evaluate(z_gt_axis)
@@ -289,7 +309,7 @@ class DropoutTest(test_lib.TestCase):
         final_count = 0
         self.assertEqual([x_dim, y_dim], dropout.get_shape())
         for _ in xrange(0, num_iter):
-          value = dropout.eval()
+          value = self.evaluate(dropout)
           final_count += np.count_nonzero(value)
           # Verifies that there are only two values: 0 and 1/keep_prob.
           sorted_value = np.unique(np.sort(value))
@@ -317,7 +337,7 @@ class DropoutTest(test_lib.TestCase):
         self.assertEqual([x_dim, y_dim], dropout.get_shape())
         final_count = 0
         for _ in xrange(0, num_iter):
-          value = dropout.eval()
+          value = self.evaluate(dropout)
           final_count += np.count_nonzero(value)
           # Verifies that there are only two values: 0 and 1/keep_prob.
           sorted_value = np.unique(np.sort(value))
@@ -341,7 +361,7 @@ class DropoutTest(test_lib.TestCase):
         dropout = nn_ops.dropout(t, keep_prob, noise_shape=[x_dim, 1])
         self.assertEqual([x_dim, y_dim], dropout.get_shape())
         for _ in xrange(0, num_iter):
-          value = dropout.eval()
+          value = self.evaluate(dropout)
           # Verifies that each y column as only one type of activation.
           for i in xrange(x_dim):
             sorted_value = np.unique(np.sort(value[i, :]))
@@ -397,7 +417,7 @@ class DropoutTest(test_lib.TestCase):
         self.assertEqual([x_dim, y_dim], dropout.get_shape())
         final_count = 0
         for _ in xrange(0, num_iter):
-          value = dropout.eval()
+          value = self.evaluate(dropout)
           final_count += np.count_nonzero(value)
           # Verifies that there are only two values: 0 and 1/keep_prob.
           sorted_value = np.unique(np.sort(value))
@@ -652,7 +672,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
         # Test that the exponentiated logits of accidental hits are near 0.
         # First we need to find the hits in this random test run:
         labels_reshape = labels.reshape((batch_size, num_true))
-        got_logits = logits_tensor.eval()
+        got_logits = self.evaluate(logits_tensor)
         for row in xrange(batch_size):
           row_labels = labels_reshape[row, :]
           for col in xrange(len(sampled)):
@@ -774,7 +794,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
           sampled_values=sampled_vals,
           partition_strategy="div")
 
-      self.assertAllClose(exp_nce_loss, got_nce_loss.eval(), 1e-4)
+      self.assertAllClose(exp_nce_loss, self.evaluate(got_nce_loss), 1e-4)
 
       # Test with sharded weights and sharded biases.
       weight_shards, bias_shards = self._ShardTestEmbeddings(
@@ -790,7 +810,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
           sampled_values=sampled_vals,
           partition_strategy="div")
 
-      self.assertAllClose(exp_nce_loss, got_nce_loss.eval(), 1e-4)
+      self.assertAllClose(exp_nce_loss, self.evaluate(got_nce_loss), 1e-4)
 
   def testSampledSoftmaxLoss(self):
     # A simple test to verify the numerics.
@@ -833,7 +853,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
           partition_strategy="div")
 
       self.assertAllClose(exp_sampled_softmax_loss,
-                          got_sampled_softmax_loss.eval(), 1e-4)
+                          self.evaluate(got_sampled_softmax_loss), 1e-4)
 
       # Test with sharded weights and sharded biases.
       weight_shards, bias_shards = self._ShardTestEmbeddings(
@@ -851,7 +871,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
           partition_strategy="div")
 
       self.assertAllClose(exp_sampled_softmax_loss,
-                          got_sampled_softmax_loss.eval(), 1e-4)
+                          self.evaluate(got_sampled_softmax_loss), 1e-4)
 
   def testSampledSoftmaxLossBf16(self):
     # A simple test to verify the numerics for bfloat16.
@@ -902,7 +922,7 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
               partition_strategy="div"), dtypes.float32)
 
       self.assertAllClose(exp_sampled_softmax_loss,
-                          got_sampled_softmax_loss.eval(), 1e-1)
+                          self.evaluate(got_sampled_softmax_loss), 1e-1)
 
 
 class CReluTest(test_lib.TestCase):

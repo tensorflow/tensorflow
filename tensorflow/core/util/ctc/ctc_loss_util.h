@@ -47,4 +47,4 @@ inline float LogSumExp(float log_prob_1, float log_prob_2) {
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_CTC_CTC_LOSS_UTIL_H_
-// LINT.ThenChange(//tensorflow/contrib/lite/experimental/kernels/ctc_loss_util.h)
+// LINT.ThenChange(//tensorflow/lite/experimental/kernels/ctc_loss_util.h)

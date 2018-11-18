@@ -112,7 +112,8 @@ class GANEstimator(estimator.Estimator):
                get_eval_metric_ops_fn=None,
                add_summaries=None,
                use_loss_summaries=True,
-               config=None):
+               config=None,
+               warm_start_from=None):
     """Initializes a GANEstimator instance.
 
     Args:
@@ -151,6 +152,8 @@ class GANEstimator(estimator.Estimator):
       use_loss_summaries: If `True`, add loss summaries. If `False`, does not.
         If `None`, uses defaults.
       config: `RunConfig` object to configure the runtime settings.
+      warm_start_from: A filepath to a checkpoint or saved model, or a
+        WarmStartSettings object to configure initialization.
 
     Raises:
       ValueError: If loss functions aren't callable.
@@ -187,7 +190,8 @@ class GANEstimator(estimator.Estimator):
           get_hooks_fn, use_loss_summaries)
 
     super(GANEstimator, self).__init__(
-        model_fn=_model_fn, model_dir=model_dir, config=config)
+        model_fn=_model_fn, model_dir=model_dir, config=config,
+        warm_start_from=warm_start_from)
 
 
 def _get_gan_model(

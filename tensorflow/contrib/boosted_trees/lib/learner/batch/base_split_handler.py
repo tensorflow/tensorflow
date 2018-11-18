@@ -19,14 +19,16 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+
+import six
+
 from tensorflow.contrib.boosted_trees.python.ops import batch_ops_utils
 from tensorflow.python.ops import control_flow_ops
 
 
+@six.add_metaclass(abc.ABCMeta)
 class BaseSplitHandler(object):
   """Abstract Base class defining split handlers interface."""
-
-  __metaclass__ = abc.ABCMeta
 
   def __init__(self,
                l1_regularization,

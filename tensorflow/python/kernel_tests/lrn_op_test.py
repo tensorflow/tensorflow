@@ -54,7 +54,7 @@ class LRNOpTest(test.TestCase):
     return output
 
   def _RunAndVerify(self, dtype):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       # random shape
       shape = np.random.randint(1, 16, size=4)
       # Make depth at least 2 to make it meaningful
@@ -100,7 +100,7 @@ class LRNOpTest(test.TestCase):
         self._RunAndVerify(dtypes.float16)
 
   def testGradientsZeroInput(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       shape = [4, 4, 4, 4]
       p = array_ops.placeholder(dtypes.float32, shape=shape)
       inp_array = np.zeros(shape).astype("f")
@@ -113,7 +113,7 @@ class LRNOpTest(test.TestCase):
     self.assertShapeEqual(expected, grad)
 
   def _RunAndVerifyGradients(self, dtype):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       # random shape
       shape = np.random.randint(1, 5, size=4)
       # Make depth at least 2 to make it meaningful

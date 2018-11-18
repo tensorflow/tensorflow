@@ -24,12 +24,13 @@ from tensorflow.python import keras
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
+from tensorflow.python.training import gradient_descent
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
+@tf_test_util.run_all_in_graph_and_eager_modes
 class SimpleRNNLayerTest(test.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_return_sequences_SimpleRNN(self):
     num_samples = 2
     timesteps = 3
@@ -41,7 +42,6 @@ class SimpleRNNLayerTest(test.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_dynamic_behavior_SimpleRNN(self):
     num_samples = 2
     timesteps = 3
@@ -55,7 +55,6 @@ class SimpleRNNLayerTest(test.TestCase):
     y = np.random.random((num_samples, units))
     model.train_on_batch(x, y)
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_dropout_SimpleRNN(self):
     num_samples = 2
     timesteps = 3
@@ -68,7 +67,6 @@ class SimpleRNNLayerTest(test.TestCase):
                 'recurrent_dropout': 0.1},
         input_shape=(num_samples, timesteps, embedding_dim))
 
-  @tf_test_util.run_in_graph_and_eager_modes
   def test_implementation_mode_SimpleRNN(self):
     num_samples = 2
     timesteps = 3
@@ -80,6 +78,47 @@ class SimpleRNNLayerTest(test.TestCase):
           kwargs={'units': units,
                   'implementation': mode},
           input_shape=(num_samples, timesteps, embedding_dim))
+
+  def test_constraints_SimpleRNN(self):
+    embedding_dim = 4
+    layer_class = keras.layers.SimpleRNN
+    k_constraint = keras.constraints.max_norm(0.01)
+    r_constraint = keras.constraints.max_norm(0.01)
+    b_constraint = keras.constraints.max_norm(0.01)
+    layer = layer_class(
+        5,
+        return_sequences=False,
+        weights=None,
+        input_shape=(None, embedding_dim),
+        kernel_constraint=k_constraint,
+        recurrent_constraint=r_constraint,
+        bias_constraint=b_constraint)
+    layer.build((None, None, embedding_dim))
+    self.assertEqual(layer.cell.kernel.constraint, k_constraint)
+    self.assertEqual(layer.cell.recurrent_kernel.constraint, r_constraint)
+    self.assertEqual(layer.cell.bias.constraint, b_constraint)
+
+  def test_with_masking_layer_SimpleRNN(self):
+    layer_class = keras.layers.SimpleRNN
+    inputs = np.random.random((2, 3, 4))
+    targets = np.abs(np.random.random((2, 3, 5)))
+    targets /= targets.sum(axis=-1, keepdims=True)
+    model = keras.models.Sequential()
+    model.add(keras.layers.Masking(input_shape=(3, 4)))
+    model.add(layer_class(units=5, return_sequences=True, unroll=False))
+    model.compile(loss='categorical_crossentropy',
+                  optimizer=RMSPropOptimizer(0.01))
+    model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
+
+  def test_from_config_SimpleRNN(self):
+    layer_class = keras.layers.SimpleRNN
+    for stateful in (False, True):
+      l1 = layer_class(units=1, stateful=stateful)
+      l2 = layer_class.from_config(l1.get_config())
+      assert l1.get_config() == l2.get_config()
+
+
+class SimpleRNNLayerGraphOnlyTest(test.TestCase):
 
   def test_statefulness_SimpleRNN(self):
     num_samples = 2
@@ -99,7 +138,8 @@ class SimpleRNNLayerTest(test.TestCase):
       layer = layer_class(
           units, return_sequences=False, stateful=True, weights=None)
       model.add(layer)
-      model.compile(optimizer='sgd', loss='mse')
+      model.compile(optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+                    loss='mse')
       out1 = model.predict(np.ones((num_samples, timesteps)))
       self.assertEqual(out1.shape, (num_samples, units))
 
@@ -162,48 +202,6 @@ class SimpleRNNLayerTest(test.TestCase):
       x = keras.backend.variable(np.ones((2, 3, 2)))
       layer(x)
       self.assertEqual(len(layer.get_losses_for(x)), 1)
-
-  def test_constraints_SimpleRNN(self):
-    embedding_dim = 4
-    layer_class = keras.layers.SimpleRNN
-    with self.cached_session():
-      k_constraint = keras.constraints.max_norm(0.01)
-      r_constraint = keras.constraints.max_norm(0.01)
-      b_constraint = keras.constraints.max_norm(0.01)
-      layer = layer_class(
-          5,
-          return_sequences=False,
-          weights=None,
-          input_shape=(None, embedding_dim),
-          kernel_constraint=k_constraint,
-          recurrent_constraint=r_constraint,
-          bias_constraint=b_constraint)
-      layer.build((None, None, embedding_dim))
-      self.assertEqual(layer.cell.kernel.constraint, k_constraint)
-      self.assertEqual(layer.cell.recurrent_kernel.constraint, r_constraint)
-      self.assertEqual(layer.cell.bias.constraint, b_constraint)
-
-  @tf_test_util.run_in_graph_and_eager_modes
-  def test_with_masking_layer_SimpleRNN(self):
-    layer_class = keras.layers.SimpleRNN
-    with self.cached_session():
-      inputs = np.random.random((2, 3, 4))
-      targets = np.abs(np.random.random((2, 3, 5)))
-      targets /= targets.sum(axis=-1, keepdims=True)
-      model = keras.models.Sequential()
-      model.add(keras.layers.Masking(input_shape=(3, 4)))
-      model.add(layer_class(units=5, return_sequences=True, unroll=False))
-      model.compile(loss='categorical_crossentropy',
-                    optimizer=RMSPropOptimizer(0.01))
-      model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
-
-  def test_from_config_SimpleRNN(self):
-    layer_class = keras.layers.SimpleRNN
-    for stateful in (False, True):
-      l1 = layer_class(units=1, stateful=stateful)
-      l2 = layer_class.from_config(l1.get_config())
-      assert l1.get_config() == l2.get_config()
-
 
 if __name__ == '__main__':
   test.main()

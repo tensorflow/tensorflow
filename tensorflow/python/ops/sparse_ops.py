@@ -16,7 +16,7 @@
 # pylint: disable=g-short-docstring-punctuation
 """Sparse Tensor Representation.
 
-See the [Sparse Ops](https://tensorflow.org/api_guides/python/sparse_ops) guide.
+See also `tf.SparseTensor`.
 """
 
 from __future__ import absolute_import
@@ -31,6 +31,7 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -184,8 +185,14 @@ def sparse_eye(num_rows,
         dense_shape=[num_rows, num_columns])
 
 
+@tf_export("sparse.concat", "sparse_concat", v1=[])
+def sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dim=False,
+                     concat_dim=None, name=None):
+  return sparse_concat(axis, sp_inputs, name, expand_nonconcat_dim, concat_dim)
+
+
 # pylint: disable=protected-access
-@tf_export("sparse.concat", "sparse_concat")
+@tf_export(v1=["sparse.concat", "sparse_concat"])
 @deprecation.deprecated_endpoints("sparse_concat")
 @deprecation.deprecated_args(
     None, "concat_dim is deprecated, use axis instead", "concat_dim")
@@ -704,7 +711,7 @@ class KeywordRequired(object):
     return "KeywordRequired()"
 
 
-@tf_export("sparse.split", "sparse_split")
+@tf_export(v1=["sparse.split", "sparse_split"])
 @deprecation.deprecated_endpoints("sparse_split")
 @deprecation.deprecated_args(
     None, "split_dim is deprecated, use axis instead", "split_dim")
@@ -776,6 +783,51 @@ def sparse_split(keyword_required=KeywordRequired(),
         sparse_tensor.SparseTensor(output_inds[i], output_vals[i],
                                    output_shapes[i]))
   return sparse_tensors
+
+
+@tf_export("sparse.split", v1=[])
+def sparse_split_v2(sp_input=None,
+                    num_split=None,
+                    axis=None,
+                    name=None):
+  """Split a `SparseTensor` into `num_split` tensors along `axis`.
+
+  If the `sp_input.dense_shape[axis]` is not an integer multiple of `num_split`
+  each slice starting from 0:`shape[axis] % num_split` gets extra one
+  dimension. For example, if `axis = 1` and `num_split = 2` and the
+  input is:
+
+      input_tensor = shape = [2, 7]
+      [    a   d e  ]
+      [b c          ]
+
+  Graphically the output tensors are:
+
+      output_tensor[0] =
+      [    a ]
+      [b c   ]
+
+      output_tensor[1] =
+      [ d e  ]
+      [      ]
+
+  Args:
+    sp_input: The `SparseTensor` to split.
+    num_split: A Python integer. The number of ways to split.
+    axis: A 0-D `int32` `Tensor`. The dimension along which to split.
+    name: A name for the operation (optional).
+
+  Returns:
+    `num_split` `SparseTensor` objects resulting from splitting `value`.
+
+  Raises:
+    TypeError: If `sp_input` is not a `SparseTensor`.
+  """
+  return sparse_split(sp_input=sp_input,
+                      num_split=num_split,
+                      axis=axis,
+                      name=name,
+                      split_dim=None)
 
 
 @tf_export("sparse.slice", v1=["sparse.slice", "sparse_slice"])
@@ -887,7 +939,87 @@ def sparse_to_dense(sparse_indices,
       name=name)
 
 
-@tf_export("sparse.reduce_max", "sparse_reduce_max")
+@tf_export("sparse.reduce_max", v1=[])
+def sparse_reduce_max_v2(
+    sp_input, axis=None, keepdims=None, output_is_sparse=False, name=None):
+  """Computes the max of elements across dimensions of a SparseTensor.
+
+  This Op takes a SparseTensor and is the sparse counterpart to
+  `tf.reduce_max()`.  In particular, this Op also returns a dense `Tensor`
+  if `output_is_sparse` is `False`, or a `SparseTensor` if `output_is_sparse`
+  is `True`.
+
+  Note: A gradient is not defined for this function, so it can't be used
+  in training models that need gradient descent.
+
+  Reduces `sp_input` along the dimensions given in `axis`.  Unless
+  `keepdims` is true, the rank of the tensor is reduced by 1 for each entry in
+  `axis`. If `keepdims` is true, the reduced dimensions are retained
+  with length 1.
+
+  If `axis` has no entries, all dimensions are reduced, and a tensor
+  with a single element is returned.  Additionally, the axes can be negative,
+  similar to the indexing rules in Python.
+
+  The values not defined in `sp_input` don't participate in the reduce max,
+  as opposed to be implicitly assumed 0 -- hence it can return negative values
+  for sparse `axis`. But, in case there are no values in
+  `axis`, it will reduce to 0. See second example below.
+
+  For example:
+
+  ```python
+  # 'x' represents [[1, ?, 2]
+  #                 [?, 3, ?]]
+  # where ? is implicitly-zero.
+  tf.sparse.reduce_max(x) ==> 3
+  tf.sparse.reduce_max(x, 0) ==> [1, 3, 2]
+  tf.sparse.reduce_max(x, 1) ==> [2, 3]  # Can also use -1 as the axis.
+  tf.sparse.reduce_max(x, 1, keepdims=True) ==> [[2], [3]]
+  tf.sparse.reduce_max(x, [0, 1]) ==> 3
+
+  # 'y' represents [[-7, ?]
+  #                 [ 4, 3]
+  #                 [ ?, ?]
+  tf.sparse.reduce_max(x, 1) ==> [-7, 4, 0]
+  ```
+
+  Args:
+    sp_input: The SparseTensor to reduce. Should have numeric type.
+    axis: The dimensions to reduce; list or scalar. If `None` (the
+      default), reduces all dimensions.
+    keepdims: If true, retain reduced dimensions with length 1.
+    output_is_sparse: If true, returns a `SparseTensor` instead of a dense
+      `Tensor` (the default).
+    name: A name for the operation (optional).
+
+
+  Returns:
+    The reduced Tensor or the reduced SparseTensor if `output_is_sparse` is
+    True.
+  """
+  if keepdims is None:
+    keepdims = False
+
+  # reduction_axes is the deprecated name for axis.
+  reduction_axes = None
+
+  if output_is_sparse:
+    output_ind, output_val, output_shape = (
+        gen_sparse_ops.sparse_reduce_max_sparse(
+            sp_input.indices, sp_input.values, sp_input.dense_shape,
+            math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims,
+            name=name))
+
+    return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
+
+  return gen_sparse_ops.sparse_reduce_max(
+      sp_input.indices, sp_input.values, sp_input.dense_shape,
+      math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims,
+      name=name)
+
+
+@tf_export(v1=["sparse.reduce_max", "sparse_reduce_max"])
 @deprecation.deprecated_endpoints("sparse_reduce_max")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
@@ -955,7 +1087,7 @@ def sparse_reduce_max(sp_input, axis=None, keepdims=None,
       math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims)
 
 
-@tf_export("sparse.reduce_max_sparse", "sparse_reduce_max_sparse")
+@tf_export(v1=["sparse.reduce_max_sparse", "sparse_reduce_max_sparse"])
 @deprecation.deprecated_endpoints("sparse_reduce_max_sparse")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
@@ -1006,7 +1138,7 @@ def sparse_reduce_max_sparse(sp_input,
   return sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
 
 
-@tf_export("sparse.reduce_sum", "sparse_reduce_sum")
+@tf_export("sparse.reduce_sum", v1=["sparse.reduce_sum", "sparse_reduce_sum"])
 @deprecation.deprecated_endpoints("sparse_reduce_sum")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
@@ -1061,7 +1193,8 @@ def sparse_reduce_sum(sp_input, axis=None, keepdims=None,
       math_ops._ReductionDims(sp_input, axis, reduction_axes), keepdims)
 
 
-@tf_export("sparse.reduce_sum_sparse", "sparse_reduce_sum_sparse")
+@tf_export("sparse.reduce_sum_sparse",
+           v1=["sparse.reduce_sum_sparse", "sparse_reduce_sum_sparse"])
 @deprecation.deprecated_endpoints("sparse_reduce_sum_sparse")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
@@ -1411,7 +1544,9 @@ def sparse_retain(sp_input, to_retain):
   # Shape checking, if shape is known at graph construction time
   retain_shape = to_retain.get_shape()
   retain_shape.assert_has_rank(1)
-  sp_input.values.get_shape()[0].merge_with(retain_shape[0])
+  if sp_input.values.get_shape().dims is not None:
+    sp_input.values.get_shape().dims[0].merge_with(
+        tensor_shape.dimension_at_index(retain_shape, 0))
 
   where_true = array_ops.reshape(array_ops.where(to_retain), [-1])
   new_indices = array_ops.gather(sp_input.indices, where_true)

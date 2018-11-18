@@ -389,7 +389,7 @@ void ContractEdge(SimpleEdge* edge, SimpleGraph* graph,
 
 tensorflow::Status SegmentGraph(
     const tensorflow::Graph* tf_graph,
-    const std::function<bool(const tensorflow::Node*)>& candidate_fn,
+    const std::function<Status(const tensorflow::Node*)>& candidate_fn,
     const std::function<bool(const tensorflow::Edge*)>& input_candidate_fn,
     const std::function<bool(const tensorflow::Edge*)>& output_candidate_fn,
     const SegmentOptions& options, SegmentNodesVector* segments) {
@@ -409,9 +409,16 @@ tensorflow::Status SegmentGraph(
   std::vector<UnionFind<SimpleNode*>> node_segments;
   for (int i = 0; i < graph->num_node_ids(); ++i) {
     SimpleNode* node = graph->FindNodeId(i);
-    if (options.exclude_node_list.count(node->name()) != 0 ||
-        !candidate_fn(node->tf_node())) {
+    if (options.exclude_node_list.count(node->name()) != 0) {
+      VLOG(1) << "Not a TF-TRT candidate: " << node->name()
+              << " (excluded by segmenter option).";
       node = nullptr;
+    } else {
+      const Status status = candidate_fn(node->tf_node());
+      if (!status.ok()) {
+        VLOG(1) << "Not a TF-TRT candidate: " << node->name() << ": " << status;
+        node = nullptr;
+      }
     }
     node_segments.emplace_back(node);
   }

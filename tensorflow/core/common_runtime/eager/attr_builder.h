@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -44,7 +43,11 @@ typedef std::unordered_map<string, uint32> AttrTypeMap;
 Status OpDefForOp(const char* op_name, const OpDef** op_def);
 
 // Returns the AttrTypeMap for the TensorFlow operation named op_name.
-Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out);
+// If op_name is not registered in global op registry, AttrTypeMapForOp assumes
+// the op to be a function and returns the default attributes for a function.
+// `is_function` is set to true in this case.
+Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
+                        bool* is_function);
 
 // Looks for 'attr_name' in 'm' and sets 'out' and 'is_list'.
 Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
@@ -156,7 +159,6 @@ AttrBuilder& AttrBuilder::Set(StringPiece attr_name, bool&& value);
 template <>
 AttrBuilder& AttrBuilder::Set(StringPiece attr_name,
                               tensorflow::DataType&& value);
-
 
 }  // namespace tensorflow
 

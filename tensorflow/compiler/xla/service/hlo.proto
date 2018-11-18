@@ -251,6 +251,41 @@ message HloInputOutputAliasProto {
   repeated AliasEntryProto entries = 1;
 }
 
+message DynamicParameterBindingProto {
+  // A list of bindings which indicates that the `target_dim_num` in
+  // the subshape `target_param_index` of parameter `target_param_num`
+  // is a dynamic dimension and its real dynamic size is represented
+  // by `dynamic_param_index` in parameter `dynamic_param_num`.
+  //
+  // As an example, imagine we have a program:
+  //
+  // ENTRY main {
+  //   a = f32[] parameter(0)
+  //   b = f32[10] parameter(1)
+  //   ROOT root = (f32[], f32[10]) tuple(%a, %b)
+  // }
+  //
+  // Let's say 'b' (param index 1) is a dynamic shape whose input has
+  // an upperbound of 10 and real size is determined at runtime.'a'
+  // represents the real size of b's first dimension.
+  //
+  // In this case, the fields are set in the following way:
+  // dynamic_param_num = 1
+  // dynamic_param_index = {}
+  // target_param_num = 0
+  // target_param_index = {}
+  // target_param_dim = 0
+  message Binding {
+    int64 dynamic_param_num = 1;
+    repeated int64 dynamic_param_index = 2;
+    int64 target_param_num = 3;
+    repeated int64 target_param_index = 4;
+    int64 target_param_dim_num = 5;
+  }
+
+  repeated Binding entries = 1;
+}
+
 // Serialization of HloModule.
 message HloModuleProto {
   string name = 1;
@@ -272,6 +307,8 @@ message HloModuleProto {
 
   // Describes alias information between inputs and outputs.
   HloInputOutputAliasProto input_output_alias = 8;
+
+  DynamicParameterBindingProto dynamic_parameter_binding = 9;
 }
 
 // Serialization of LogicalBuffer.

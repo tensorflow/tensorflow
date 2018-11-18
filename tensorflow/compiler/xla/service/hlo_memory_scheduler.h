@@ -108,6 +108,15 @@ class HloMemoryScheduler : public HloModulePass {
   MemorySchedulerAlgorithm algorithm_;
 };
 
+// A pass which produces a naive, but correct schedule. The schedule is produced
+// using a DFS traversal of the graph with no attempt to minimize memory use.
+class HloTrivialScheduler : public HloModulePass {
+ public:
+  absl::string_view name() const override { return "hlo-trivial-scheduler"; }
+
+  StatusOr<bool> Run(HloModule* module) override;
+};
+
 // A trivial pass which clears the schedule currently set on the
 // HloModule. After this pass runs HloModudle::has_schedule will return false.
 class HloDescheduler : public HloModulePass {

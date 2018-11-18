@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -216,7 +217,7 @@ class XlaBuilder {
   // compile-time constant (see `IsConstant`), returns an error.
   //
   // This will copy the needed ops/computations to the subgraph.
-  StatusOr<XlaComputation> BuildConstantSubGraph(const XlaOp& root_op) const;
+  StatusOr<XlaComputation> BuildConstantSubGraph(const XlaOp& root_op);
 
   // Returns the first error that was encountered while building the
   // computation. When an error is encountered, by default we return a vacuous
@@ -262,6 +263,18 @@ class XlaBuilder {
   // This tests whether a computation is a compile-time constant without
   // evaluating the computation.
   StatusOr<bool> IsConstant(const XlaOp& operand) const;
+
+  // Sets up binding which indicates that the `target_dim_num` in the subshape
+  // `target_param_index` of parameter `target_param_num` is a dynamic dimension
+  // and its real dynamic size is represented by `dynamic_param_index` in
+  // parameter `dynamic_param_num`.
+  //
+  // TODO(b/119520625): Remove this API once we have more dynamic shape infra
+  // ready.
+  Status SetDynamicBinding(int64 dynamic_size_param_num,
+                           ShapeIndex dynamic_size_param_index,
+                           int64 target_param_num,
+                           ShapeIndex target_param_index, int64 target_dim_num);
 
  private:
   // Build helper which takes the id of the root operation..
@@ -339,23 +352,6 @@ class XlaBuilder {
   XlaOp Broadcast(const XlaOp& operand,
                   absl::Span<const int64> broadcast_sizes);
 
-  // Performs in-dimension-style broadcast.
-  //
-  // Operand specifies the input to be broadcast. "shape" is expected output
-  // shape. "broadcast_dimensions" are the dimensions to be broadcasting into.
-  // Dimension numbers in broadcast_dimensions map to individual dimensions
-  // of the operand, and specify what dimension of the output shape they
-  // should be broadcast.
-  // e.g.
-  // Say operand = [1, 2], i.e., a 1D tensor with 2 elements.
-  // and dimension of shape is [2,2].
-  // Specifying {1} as brodcast_dimension will generate output
-  // [1 , 2]
-  // [1 , 2]
-  // On the other hand, specifying {0} as broadcast_dimension
-  // will generate output
-  // [1 , 1]
-  // [2 , 2]
   XlaOp BroadcastInDim(const XlaOp& operand, const Shape& shape,
                        const absl::Span<const int64> broadcast_dimensions);
 
@@ -950,6 +946,8 @@ class XlaBuilder {
                       const XlaOp& grad_output, float epsilon,
                       int64 feature_index);
 
+  XlaOp GetDimensionSize(const XlaOp& operand, int64 dimension);
+
   StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr, HloOpcode opcode,
                                  absl::Span<const XlaOp> operands = {});
 
@@ -1016,7 +1014,13 @@ class XlaBuilder {
                               absl::Span<const int64> lhs_dilation,
                               absl::Span<const int64> rhs_dilation) const;
 
+  int64 GetNextId() { return ++next_id_; }
+
   string name_;  // Name to use for the built computation.
+
+  // The next sequential ID for every instruction/computation contained within
+  // this computation.
+  int64 next_id_ = 0;
 
   // The first error encountered while building the computation.
   // This is OK until the first error is encountered.
@@ -1027,6 +1031,9 @@ class XlaBuilder {
 
   // The instructions of this computation.
   std::vector<HloInstructionProto> instructions_;
+
+  // Dynamic parameter configuration of this computation.
+  DynamicParameterBinding dynamic_parameter_binding_;
 
   // A map from XlaOp::Handle to the index in the instructions_ vector where the
   // instruction is held.
@@ -1366,6 +1373,8 @@ class XlaBuilder {
                                 const string& outfeed_config);
   friend XlaOp CreateToken(XlaBuilder* builder);
   friend XlaOp AfterAll(XlaBuilder* builder, absl::Span<const XlaOp> tokens);
+
+  friend XlaOp GetDimensionSize(const XlaOp& operand, int64 dimension);
 };
 
 // RAII-style object: sets the current sharding assignment in builder on
@@ -1480,23 +1489,21 @@ XlaOp ConstantR1(XlaBuilder* builder, int64 length, NativeT value);
 //   output[i0, ..., iN, j0, ..., jM] = operand[j0, ..., jM]
 XlaOp Broadcast(const XlaOp& operand, absl::Span<const int64> broadcast_sizes);
 
-// Performs in-dimension-style broadcast.
+// This op broadcasts the `operand` to an output with the given `shape`.
+// `broadcast_dimensions` are the dimensions to be broadcasting into, i.e., the
+// i'th dimension of the operand is mapped to the broadcast_dimensions[i]'th
+// dimension of the output. This also requires that the i'th input dimension is
+// either 1 or is the same as the output dimension it's broadcasting into.
 //
-// Operand specifies the input to be broadcast. "shape" is expected output
-// shape. "broadcast_dimensions" are the dimensions to be broadcasting into.
-// Dimension numbers in broadcast_dimensions map to individual dimensions
-// of the operand, and specify what dimension of the output shape they
-// should be broadcast.
-// e.g.
-// Say operand = [1, 2], i.e., a 1D tensor with 2 elements.
-// and dimension of shape is [2,2].
-// Specifying {1} as brodcast_dimension will generate output
-// [1 , 2]
-// [1 , 2]
-// On the other hand, specifying {0} as broadcast_dimension
-// will generate output
-// [1 , 1]
-// [2 , 2]
+// For example, say operand = {1, 2}, i.e., a 1D tensor in shape s32[2]; the
+// output shape is s32[2,2]:
+// - Specifying {1} as brodcast_dimension will generate output
+//   {{1, 2},
+//    {1, 2}}
+// - On the other hand, specifying {0} as broadcast_dimension
+//   will generate output
+//   {{1 , 1},
+//    {2 , 2}}
 XlaOp BroadcastInDim(const XlaOp& operand, const Shape& shape,
                      const absl::Span<const int64> broadcast_dimensions);
 
@@ -2141,6 +2148,10 @@ XlaOp BatchNormGrad(const XlaOp& operand, const XlaOp& scale,
                     const XlaOp& batch_mean, const XlaOp& batch_var,
                     const XlaOp& grad_output, float epsilon,
                     int64 feature_index);
+
+// Returns the size of the given dimension of the operand. The operand must be
+// array shaped.
+XlaOp GetDimensionSize(const XlaOp& operand, int64 dimension);
 
 // Implementation details below this point.
 

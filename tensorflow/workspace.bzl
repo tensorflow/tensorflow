@@ -27,6 +27,7 @@ load("//third_party/icu:workspace.bzl", icu = "repo")
 load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
 load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
+load("//third_party/keras_applications_archive:workspace.bzl", keras_applications = "repo")
 
 def initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
@@ -34,6 +35,7 @@ def initialize_third_party():
     flatbuffers()
     highwayhash()
     icu()
+    keras_applications()
     kissfft()
     jpeg()
     nasm()
@@ -110,33 +112,33 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "mkl_dnn",
         build_file = clean_dep("//third_party/mkl_dnn:mkldnn.BUILD"),
-        sha256 = "363cc9239eacf8e7917753c6d8c94f767e4cd049160d0654a61ef32d5e1b3049",
-        strip_prefix = "mkl-dnn-4e333787e0d66a1dca1218e99a891d493dbc8ef1",
+        sha256 = "b100f57af4a2b59a3a37a1ba38f77b644d2107d758a1a7f4e51310063cd21e73",
+        strip_prefix = "mkl-dnn-733fc908874c71a5285043931a1cf80aa923165c",
         urls = [
-            "https://mirror.bazel.build/github.com/intel/mkl-dnn/archive/4e333787e0d66a1dca1218e99a891d493dbc8ef1.tar.gz",
-            "https://github.com/intel/mkl-dnn/archive/4e333787e0d66a1dca1218e99a891d493dbc8ef1.tar.gz",
+            "https://mirror.bazel.build/github.com/intel/mkl-dnn/archive/733fc908874c71a5285043931a1cf80aa923165c.tar.gz",
+            "https://github.com/intel/mkl-dnn/archive/733fc908874c71a5285043931a1cf80aa923165c.tar.gz",
         ],
     )
 
     tf_http_archive(
         name = "com_google_absl",
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
-        sha256 = "225b683f2f866cd12b868e43b5af00e032e70e3f78ff332108b0ce15d41f6091",
-        strip_prefix = "abseil-cpp-a00bdd176d66ef0b417d9576052a19091fbdf891",
+        sha256 = "28a6cb644dcebe7d3e0ee347706fec2e6975fae2bceb0add834c77140c7b6632",
+        strip_prefix = "abseil-cpp-f6ae816808cd913e0e2b3e2af14f328fa1071af0",
         urls = [
-            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/a00bdd176d66ef0b417d9576052a19091fbdf891.tar.gz",
-            "https://github.com/abseil/abseil-cpp/archive/a00bdd176d66ef0b417d9576052a19091fbdf891.tar.gz",
+            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/f6ae816808cd913e0e2b3e2af14f328fa1071af0.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/f6ae816808cd913e0e2b3e2af14f328fa1071af0.tar.gz",
         ],
     )
 
     tf_http_archive(
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
-        sha256 = "d956415d784fa4e42b6a2a45c32556d6aec9d0a3d8ef48baee2522ab762556a9",
-        strip_prefix = "eigen-eigen-fd6845384b86",
+        sha256 = "1e045bef75e9b17d459b60cc30b34408f3fdab300c5053d3919d1a5921f3c86a",
+        strip_prefix = "eigen-eigen-af2071407280",
         urls = [
-            "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/fd6845384b86.tar.gz",
-            "https://bitbucket.org/eigen/eigen/get/fd6845384b86.tar.gz",
+            "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/af2071407280.tar.gz",
+            "https://bitbucket.org/eigen/eigen/get/af2071407280.tar.gz",
         ],
     )
 
@@ -161,17 +163,6 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         urls = [
             "https://mirror.bazel.build/github.com/hfp/libxsmm/archive/1.9.tar.gz",
             "https://github.com/hfp/libxsmm/archive/1.9.tar.gz",
-        ],
-    )
-
-    tf_http_archive(
-        name = "ortools_archive",
-        build_file = clean_dep("//third_party:ortools.BUILD"),
-        sha256 = "d025a95f78b5fc5eaa4da5f395f23d11c23cf7dbd5069f1f627f002de87b86b9",
-        strip_prefix = "or-tools-6.7.2/src",
-        urls = [
-            "https://mirror.bazel.build/github.com/google/or-tools/archive/v6.7.2.tar.gz",
-            "https://github.com/google/or-tools/archive/v6.7.2.tar.gz",
         ],
     )
 
@@ -348,19 +339,19 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         name = "org_python_license",
         licenses = ["notice"],  # Python 2.0
         sha256_urls = {
-            "b5556e921715ddb9242c076cae3963f483aa47266c5e37ea4c187f77cc79501c": [
-                "https://mirror.bazel.build/docs.python.org/2.7/_sources/license.txt",
-                "https://docs.python.org/2.7/_sources/license.txt",
+            "7ca8f169368827781684f7f20876d17b4415bbc5cb28baa4ca4652f0dda05e9f": [
+                "https://mirror.bazel.build/docs.python.org/2.7/_sources/license.rst.txt",
+                "https://docs.python.org/2.7/_sources/license.rst.txt",
             ],
         },
     )
 
     PROTOBUF_URLS = [
-        "https://mirror.bazel.build/github.com/google/protobuf/archive/v3.6.0.tar.gz",
-        "https://github.com/google/protobuf/archive/v3.6.0.tar.gz",
+        "https://mirror.bazel.build/github.com/google/protobuf/archive/v3.6.1.tar.gz",
+        "https://github.com/google/protobuf/archive/v3.6.1.tar.gz",
     ]
-    PROTOBUF_SHA256 = "50a5753995b3142627ac55cfd496cebc418a2e575ca0236e29033c67bd5665f4"
-    PROTOBUF_STRIP_PREFIX = "protobuf-3.6.0"
+    PROTOBUF_SHA256 = "3d4e589d81b2006ca603c1ab712c9715a76227293032d05b26fca603f90b3f5b"
+    PROTOBUF_STRIP_PREFIX = "protobuf-3.6.1"
 
     tf_http_archive(
         name = "protobuf_archive",
@@ -481,11 +472,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "llvm",
         build_file = clean_dep("//third_party/llvm:llvm.autogenerated.BUILD"),
-        sha256 = "a4f8bfe7e3e69069934a87e612a1d4d3b8b6af13e0f1213a42a6046e1bcd50d8",
-        strip_prefix = "llvm-d3429e96fe1e45b1dc0106463832523f37faf271",
+        sha256 = "286465fc41ade5c1c44e4a6dce9681106664fcdd12264dc9be63fc22bbee3c9c",
+        strip_prefix = "llvm-0478924a3727c74fd482d07eed45a8347540576e",
         urls = [
-            "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/d3429e96fe1e45b1dc0106463832523f37faf271.tar.gz",
-            "https://github.com/llvm-mirror/llvm/archive/d3429e96fe1e45b1dc0106463832523f37faf271.tar.gz",
+            "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/0478924a3727c74fd482d07eed45a8347540576e.tar.gz",
+            "https://github.com/llvm-mirror/llvm/archive/0478924a3727c74fd482d07eed45a8347540576e.tar.gz",
         ],
     )
 
@@ -782,11 +773,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "tflite_ovic_testdata",
         build_file = clean_dep("//third_party:tflite_ovic_testdata.BUILD"),
-        sha256 = "a9a705d8d519220178e2e65d383fdb21da37fdb31d1e909b0a1acdac46479e9c",
+        sha256 = "21288dccc517acee47fa9648d4d3da28bf0fef5381911ed7b4d2ee36366ffa20",
         strip_prefix = "ovic",
         urls = [
-            "https://mirror.bazel.build/storage.googleapis.com/download.tensorflow.org/data/ovic.zip",
-            "https://storage.googleapis.com/download.tensorflow.org/data/ovic.zip",
+            "https://mirror.bazel.build/storage.googleapis.com/download.tensorflow.org/data/ovic_2018_10_23.zip",
+            "https://storage.googleapis.com/download.tensorflow.org/data/ovic_2018_10_23.zip",
         ],
     )
 
@@ -814,11 +805,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "ngraph",
         build_file = clean_dep("//third_party/ngraph:ngraph.BUILD"),
-        sha256 = "bf9dcc88e5c66021e3aac80491a231711211540d613bf9b6bd28db3f5bb86b62",
-        strip_prefix = "ngraph-0.8.1",
+        sha256 = "2b28f9c9f063b96825a96d56d7f7978c9a1c55c9b25175c20dd49a8a77cb0305",
+        strip_prefix = "ngraph-0.9.1",
         urls = [
-            "https://mirror.bazel.build/github.com/NervanaSystems/ngraph/archive/v0.8.1.tar.gz",
-            "https://github.com/NervanaSystems/ngraph/archive/v0.8.1.tar.gz",
+            "https://mirror.bazel.build/github.com/NervanaSystems/ngraph/archive/v0.9.1.tar.gz",
+            "https://github.com/NervanaSystems/ngraph/archive/v0.9.1.tar.gz",
         ],
     )
 
@@ -836,11 +827,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "ngraph_tf",
         build_file = clean_dep("//third_party/ngraph:ngraph_tf.BUILD"),
-        sha256 = "402f84c748c113780a60f35f39aab118435285543aee4900d712b76fbf8a21ee",
-        strip_prefix = "ngraph-tf-0.6.1",
+        sha256 = "89accbc702e68a09775f1011a99dd16561038fd1ce59d566d64450176abaae5c",
+        strip_prefix = "ngraph-tf-0.7.0",
         urls = [
-            "https://mirror.bazel.build/github.com/NervanaSystems/ngraph-tf/archive/v0.6.1.tar.gz",
-            "https://github.com/NervanaSystems/ngraph-tf/archive/v0.6.1.tar.gz",
+            "https://mirror.bazel.build/github.com/NervanaSystems/ngraph-tf/archive/v0.7.0.tar.gz",
+            "https://github.com/NervanaSystems/ngraph-tf/archive/v0.7.0.tar.gz",
         ],
     )
 

@@ -37,6 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import lookup_ops
@@ -352,7 +353,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(table.init)
+      sess.run(table.initializer)
       sess.run(init_op)
       sess.run(get_next)
       sess.run(get_next)
@@ -484,6 +485,31 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         i += 1
       self.assertLess(i, 99)
 
+  def testStatefulOperationInShortCircuit(self):
+    counter_var = variable_scope.get_variable(
+        "counter", (), dtypes.int32, use_resource=True)
+
+    def increment_fn(x):
+      counter_var.assign_add(1)
+      return x
+
+    iterator = (dataset_ops.Dataset.range(10)
+                .map(increment_fn)
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.cached_session() as sess:
+      sess.run(counter_var.initializer)
+      sess.run(init_op)
+      for i in range(10):
+        self.assertEqual(i, sess.run(counter_var))
+        self.assertEqual(i, sess.run(get_next))
+      self.assertEqual(10, sess.run(counter_var))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+      self.assertEqual(10, sess.run(counter_var))
+
   def testMapDict(self):
     iterator = (dataset_ops.Dataset.range(10)
                 .map(lambda x: {"foo": x * 2, "bar": x ** 2})
@@ -545,6 +571,136 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.cached_session() as sess:
       sess.run(init_op)
       self.assertAllEqual(row ** 2, sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testCaseAndCondInMap(self):
+
+    def control_map_fn(x, y):
+
+      def multiply():
+        return x * 2
+
+      def divide():
+        return x // 2
+
+      def defaults_two():
+        return control_flow_ops.cond(
+            math_ops.equal(math_ops.mod(x, 2), 0),
+            multiply,
+            divide,
+            name="cond_mult")
+
+      pred_fn_pairs = {
+          math_ops.logical_or(math_ops.equal(y, 2), math_ops.equal(y, 3)):
+              defaults_two,
+      }
+
+      return control_flow_ops.case(
+          pred_fn_pairs, default=multiply, exclusive=True)
+
+    def build_dataset(row, num):
+      iterator = (
+          dataset_ops.Dataset.from_tensor_slices(row).map(
+              lambda x: control_map_fn(x, num)).make_initializable_iterator())
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      return init_op, get_next
+
+    with self.cached_session() as sess:
+      row = np.arange(6)
+      for num in [2, 3, 4]:
+        init_op, get_next = build_dataset(row, num)
+        sess.run(init_op)
+        for i in range(6):
+          self.assertEqual(
+              (i // 2 if i % 2 else i * 2) if (num == 2 or num == 3) else i * 2,
+              sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+  def testCaseInWhileInMap(self):
+
+    def control_map_fn(x, y):
+
+      def multiply():
+        return x * 2
+
+      def divide():
+        return x // 2
+
+      pred_fn_pairs = {
+          math_ops.logical_or(math_ops.equal(y, 2), math_ops.equal(y, 3)):
+              divide,
+      }
+
+      return control_flow_ops.case(
+          pred_fn_pairs, default=multiply, exclusive=True)
+
+    def build_dataset(row, num):
+      # pylint: disable=g-long-lambda
+      iterator = (
+          dataset_ops.Dataset.from_tensors(row).map(
+              lambda elems: functional_ops.map_fn(lambda x:
+                                                  control_map_fn(x, num), elems)
+              ).make_initializable_iterator())
+      init_op = iterator.initializer
+      get_next = iterator.get_next()
+      return init_op, get_next
+
+    with self.cached_session() as sess:
+      row = np.arange(6)
+      for num in [2, 3, 4]:
+        init_op, get_next = build_dataset(row, num)
+        sess.run(init_op)
+        self.assertAllEqual(
+            [x // 2 if (num == 2 or num == 3) else x * 2 for x in row],
+            sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
+
+  def testCaseAndCondInWhileInMap(self):
+
+    def control_map_fn(x, y):
+
+      def multiply():
+        return x * 2
+
+      def divide():
+        return x // 2
+
+      def defaults_two():
+        return control_flow_ops.cond(
+            math_ops.equal(math_ops.mod(x, 2), 0),
+            multiply,
+            divide,
+            name="cond_mult")
+
+      pred_fn_pairs = {
+          math_ops.logical_or(math_ops.equal(y, 2), math_ops.equal(y, 3)):
+              defaults_two,
+      }
+
+      return control_flow_ops.case(
+          pred_fn_pairs, default=multiply, exclusive=True)
+
+    row = np.arange(6)
+    num = 2
+    # pylint: disable=g-long-lambda
+    iterator = (
+        dataset_ops.Dataset.from_tensors(row).map(
+            lambda elems: functional_ops.map_fn(lambda x:
+                                                control_map_fn(x, num), elems)
+            ).make_initializable_iterator())
+    # pylint: enable=g-long-lambda
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with self.cached_session() as sess:
+      sess.run(init_op)
+      self.assertAllEqual([(x // 2 if x % 2 else x * 2) if
+                           (num == 2 or num == 3) else x * 2 for x in row],
+                          sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -745,12 +901,14 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         break
     self.assertTrue(found_warning)
 
-  def testNestedDatasetError(self):
-    dataset = dataset_ops.Dataset.from_tensors([1.0, 2.0, 3.0])
-    with self.assertRaisesRegexp(
-        NotImplementedError, r"The Dataset.map\(\) transformation does not "
-        "currently support nested datasets as outputs."):
-      _ = dataset.map(dataset_ops.Dataset.from_tensor_slices)
+  def testNestedDatasetMap(self):
+    # TODO(b/110122868): When iterators can yield a `tf.data.Dataset`, remove
+    # the `get_single_element()` call.
+    dataset = dataset_ops.Dataset.from_tensors([1.0, 2.0, 3.0]).map(
+        dataset_ops.Dataset.from_tensor_slices).map(
+            lambda ds: ds.batch(3)).flat_map(lambda x: x)
+
+    self.assertDatasetProduces(dataset, [[1.0, 2.0, 3.0]])
 
   def testReturnValueError(self):
     dataset = dataset_ops.Dataset.from_tensors([1.0, 2.0, 3.0])

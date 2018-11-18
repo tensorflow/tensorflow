@@ -25,15 +25,15 @@ from __future__ import print_function
 
 import collections
 
-from tensorflow.core.framework import attr_value_pb2
-from tensorflow.python.eager import function
+from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.util import nest
+
 
 # NOTE(skyewm): TensorFlow uses protected class methods and fields to signify
 # that they aren't part of the official public API. These protected members
@@ -52,22 +52,28 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
     name = "cond"
 
   with ops.name_scope(name) as scope:
-    with ops.name_scope(None):
-      # Find the outer most graph for uniquing function names.
-      # TODO(jpienaar): Make this work in eager mode.
-      graph = ops.get_default_graph()
-      while isinstance(graph, function.FuncGraph):
-        graph = graph.outer_graph
+    true_name = util.unique_fn_name(scope, "true")
+    false_name = util.unique_fn_name(scope, "false")
 
-      true_name = graph.unique_name(("%strue" % scope).replace("/", "_"))
-      false_name = graph.unique_name(("%sfalse" % scope).replace("/", "_"))
+    # Automatic control dependencies are added in defuns, but not in v1
+    # graphs. Propagate that behavior here.
+    add_control_dependencies = util.in_defun()
+    pred = ops.convert_to_tensor(pred)
 
-    true_graph = function.func_graph_from_py_func(
-        true_name, true_fn, [], {},
-        func_graph=util.CondBranchFuncGraph(true_name))
-    false_graph = function.func_graph_from_py_func(
-        false_name, false_fn, [], {},
-        func_graph=util.CondBranchFuncGraph(false_name))
+    true_graph = func_graph_module.func_graph_from_py_func(
+        true_name,
+        true_fn, [], {},
+        func_graph=util.CondBranchFuncGraph(
+            true_name, read_only_collections=False),
+        add_control_dependencies=add_control_dependencies,
+        op_return_value=pred)
+    false_graph = func_graph_module.func_graph_from_py_func(
+        false_name,
+        false_fn, [], {},
+        func_graph=util.CondBranchFuncGraph(
+            false_name, read_only_collections=False),
+        add_control_dependencies=add_control_dependencies,
+        op_return_value=pred)
     _check_same_outputs(true_graph, false_graph)
 
     # Add inputs to true_graph and false_graph to make them match. Note that
@@ -102,29 +108,21 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
                                          false_graph.outputs),
         name=scope)
 
-    # Set the flag to enable lowering on the `if` op if necessary
-    # Lowering allows cond_v2 to avoid some of the limitations of Functions,
-    # allowing users to specify devices & colocation inside of cond_v2 branches,
-    # and enabling non-strict evaluation & partial pruning of cond_v2 branches.
-    # This brings cond_v2 closer to feature parity with tf.cond.
-    #
-    # However, we do not lower `If` in the XLA context because it is easier for
-    # XLA to apply its own optimizations when dealing with un-lowered `If`
-    # operators than with lowered switch/merge control flow.
-    #
     # TODO(b/110167197) this approach requires cond_v2 to have at least 1 output
-    if_op = tensors[0].op
-    if not control_flow_util.IsInXLAContext(if_op):
-      # pylint: disable=protected-access
-      if_op._set_attr("_lower_using_switch_merge",
-                      attr_value_pb2.AttrValue(b=True))
-      # pylint: enable=protected-access
+    util.maybe_set_lowering_attr(tensors[0].op)
 
-    result = tuple(tensors[:num_cond_outputs])
-    if len(result) == 1:
-      return result[0]
-    else:
-      return result
+    # Return identities for each output of the If op, rather than the output of
+    # the If op directly. This makes pruning work if the output of cond() is
+    # fetched: the lowering pass converts the If outputs into IdentityN outputs,
+    # which if fetched will cause all ops in the taken branch to be run (since
+    # it takes all merge ops as input). After lowering, each output identity op
+    # will end up with only the appropriate merge op as input.
+    # TODO(b/79984175): this doesn't have to be a tuple once we covert to the
+    # correct output structure
+    tensors = tuple(array_ops.identity(t) for t in tensors)
+
+    return func_graph_module.pack_sequence_as(true_graph.structured_outputs,
+                                              tensors[:num_cond_outputs])
 
 
 @ops.RegisterGradient("If")
@@ -140,9 +138,9 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
   # graphs. These functions will capture tensors from the forward pass
   # functions.
   true_grad_graph = _create_grad_func(
-      true_graph, grads, _get_grad_fn_name(true_graph))
+      true_graph, grads, util.unique_grad_fn_name(true_graph.name))
   false_grad_graph = _create_grad_func(
-      false_graph, grads, _get_grad_fn_name(false_graph))
+      false_graph, grads, util.unique_grad_fn_name(false_graph.name))
 
   assert ([t.dtype for t in true_grad_graph.outputs] ==
           [t.dtype for t in false_grad_graph.outputs])
@@ -182,6 +180,11 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
       util.create_new_tf_function(false_grad_graph),
       output_shapes=_get_output_shapes(true_grad_graph.outputs,
                                        false_grad_graph.outputs))
+
+  util.maybe_set_lowering_attr(tensors[0].op)
+
+  # See comment in cond_v2.
+  tensors = [array_ops.identity(t) for t in tensors]
 
   # The predicate has no gradient.
   return [None] + tensors[:num_grad_outputs]
@@ -229,7 +232,7 @@ def _grad_fn(func_graph, grads):
   func_graph's outputs w.r.t. its inputs.
 
   Args:
-    func_graph: function.FuncGraph. The corresponding forward-pass function.
+    func_graph: FuncGraph. The corresponding forward-pass function.
     grads: The list of input gradient Tensors.
 
   Returns:
@@ -243,7 +246,7 @@ def _grad_fn(func_graph, grads):
   ys = []
   grad_ys = []
   for y, grad_y in zip(func_graph.outputs, grads):
-    if not gradients_impl._IsTrainable(y):
+    if not gradients_impl.IsTrainable(y):
       continue
     ys.append(y)
     grad_ys.append(grad_y)
@@ -268,9 +271,10 @@ def _grad_fn(func_graph, grads):
 
 def _create_grad_func(func_graph, grads, name):
   """Returns the FuncGraph representation of _grad_fn."""
-  return function.func_graph_from_py_func(
-      name, lambda: _grad_fn(func_graph, grads), [], {},
-      func_graph=util.CondBranchFuncGraph(name))
+  return func_graph_module.func_graph_from_py_func(
+      name,
+      lambda: _grad_fn(func_graph, grads), [], {},
+      func_graph=util.CondBranchFuncGraph(name, read_only_collections=False))
 
 
 def _resolve_grad_inputs(cond_graph, grad_graph):
@@ -287,8 +291,8 @@ def _resolve_grad_inputs(cond_graph, grad_graph):
      `cond_graph.outer_graph` is also correctly captured.
 
   Args:
-    cond_graph: function.FuncGraph. The forward-pass function.
-    grad_graph: function.FuncGraph. The gradients function.
+    cond_graph: FuncGraph. The forward-pass function.
+    grad_graph: FuncGraph. The gradients function.
 
   Returns:
     A list of inputs tensors to be passed to grad_graph.
@@ -359,8 +363,8 @@ def _pad_params(true_graph, false_graph, true_params, false_params):
   There is no merging of params.
 
   Args:
-    true_graph: function.FuncGraph
-    false_graph: function.FuncGraph
+    true_graph: FuncGraph
+    false_graph: FuncGraph
     true_params: a list of Tensors from true_graph
     false_params: a list of Tensors from false_graph
 
@@ -385,8 +389,8 @@ def _make_inputs_match(true_graph, false_graph, true_inputs, false_inputs):
   graph to avoid duplicating shared arguments.
 
   Args:
-    true_graph: function.FuncGraph
-    false_graph: function.FuncGraph
+    true_graph: FuncGraph
+    false_graph: FuncGraph
     true_inputs: a list of Tensors in the outer graph. The inputs for
       true_graph.
     false_inputs: a list of Tensors in the outer graph. The inputs for
@@ -428,7 +432,7 @@ def _create_dummy_params(func_graph, template_tensors):
   """Creates tensors in func_graph to represent template_tensors.
 
   Args:
-    func_graph: function.FuncGraph.
+    func_graph: FuncGraph.
     template_tensors: a list of tensors in the outer graph.
 
   Returns:
@@ -439,35 +443,25 @@ def _create_dummy_params(func_graph, template_tensors):
             for t in template_tensors]
 
 
-def _get_grad_fn_name(func_graph):
-  """Returns a unique name to use for the grad function of `func_graph`.
-
-  Ensures this name is unique in the entire hierarchy.
-
-  Args:
-    func_graph: The FuncGraph.
-
-  Returns:
-    A string, the name to use for the gradient function.
-  """
-  name = "%s_grad" % func_graph.name
-  outer_most_graph = func_graph
-  while isinstance(outer_most_graph, function.FuncGraph):
-    outer_most_graph = outer_most_graph.outer_graph
-  return outer_most_graph.unique_name(name)
-
-
 def _check_same_outputs(true_graph, false_graph):
   """Raises an error if true_graph and false_graph have different outputs."""
   true_output_types = [t.dtype for t in true_graph.outputs]
   false_output_types = [t.dtype for t in false_graph.outputs]
   if (len(true_graph.outputs) != len(false_graph.outputs) or
       true_output_types != false_output_types):
-    raise ValueError(
+    raise TypeError(
         "true_fn() and false_fn() must return the same number and type of "
         "arguments, got:\n"
         "  true_fn: %s\n"
         "  false_fn: %s" % (true_output_types, false_output_types))
+
+  # Make sure `structured_outputs` for both graphs have the same structure.
+  try:
+    nest.assert_same_structure(true_graph.structured_outputs,
+                               false_graph.structured_outputs)
+  except (ValueError, TypeError) as e:
+    raise ValueError("Outputs of true_fn and false_fn must have the same "
+                     "structure: %s" % str(e))
 
 
 def _get_output_shapes(true_graph_outputs, false_graph_outputs):

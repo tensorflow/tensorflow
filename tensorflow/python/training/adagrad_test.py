@@ -107,13 +107,14 @@ class AdagradOptimizerTest(test.TestCase):
         sgd_op = adagrad.AdagradOptimizer(1.0).minimize(loss)
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllCloseAccordingToType(
-            [[1.0, 2.0], [3.0, 4.0]], var0.eval())
+        self.assertAllCloseAccordingToType([[1.0, 2.0], [3.0, 4.0]],
+                                           self.evaluate(var0))
         # Run 1 step of sgd
         sgd_op.run()
         # Validate updated params
-        self.assertAllCloseAccordingToType(
-            [[0, 1], [3, 4]], var0.eval(), atol=0.01)
+        self.assertAllCloseAccordingToType([[0, 1], [3, 4]],
+                                           self.evaluate(var0),
+                                           atol=0.01)
 
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -128,16 +129,18 @@ class AdagradOptimizerTest(test.TestCase):
             zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
         # Run 3 steps of adagrad
         for _ in range(3):
           ada_update.run()
         # Validate updated params
         self.assertAllCloseAccordingToType(
-            np.array([-1.6026098728179932, -0.6026098728179932]), var0.eval())
+            np.array([-1.6026098728179932, -0.6026098728179932]),
+            self.evaluate(var0))
         self.assertAllCloseAccordingToType(
-            np.array([2.715679168701172, 3.715679168701172]), var1.eval())
+            np.array([2.715679168701172, 3.715679168701172]),
+            self.evaluate(var1))
 
   def testSparseBasic(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -159,16 +162,16 @@ class AdagradOptimizerTest(test.TestCase):
             zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllClose([[1.0], [2.0]], var0.eval())
-        self.assertAllClose([[3.0], [4.0]], var1.eval())
+        self.assertAllClose([[1.0], [2.0]], self.evaluate(var0))
+        self.assertAllClose([[3.0], [4.0]], self.evaluate(var1))
         # Run 3 step of sgd
         for _ in range(3):
           ada_update.run()
         # Validate updated params
         self.assertAllCloseAccordingToType(
-            np.array([[-1.6026098728179932], [2.0]]), var0.eval())
+            np.array([[-1.6026098728179932], [2.0]]), self.evaluate(var0))
         self.assertAllCloseAccordingToType(
-            np.array([[3.0], [3.715679168701172]]), var1.eval())
+            np.array([[3.0], [3.715679168701172]]), self.evaluate(var1))
 
   def testSparseRepeatedIndices(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -193,12 +196,12 @@ class AdagradOptimizerTest(test.TestCase):
             [(grad_aggregated, aggregated_update_var)])
         variables.global_variables_initializer().run()
         self.assertAllClose(aggregated_update_var.eval(),
-                            repeated_index_update_var.eval())
+                            self.evaluate(repeated_index_update_var))
         for _ in range(3):
           repeated_update.run()
           aggregated_update.run()
           self.assertAllClose(aggregated_update_var.eval(),
-                              repeated_index_update_var.eval())
+                              self.evaluate(repeated_index_update_var))
 
   def testSparseRepeatedIndicesResourceVariable(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -217,12 +220,12 @@ class AdagradOptimizerTest(test.TestCase):
             2.0).minimize(loss_aggregated)
         variables.global_variables_initializer().run()
         self.assertAllCloseAccordingToType(
-            var_repeated.eval(), var_aggregated.eval())
+            self.evaluate(var_repeated), self.evaluate(var_aggregated))
         for _ in range(3):
           update_op_repeated.run()
           update_op_aggregated.run()
           self.assertAllCloseAccordingToType(
-              var_repeated.eval(), var_aggregated.eval())
+              self.evaluate(var_repeated), self.evaluate(var_aggregated))
 
   def testSparseStability(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -253,12 +256,12 @@ class AdagradOptimizerTest(test.TestCase):
           init.run()
           ada_update.run()
           self.assertAllCloseAccordingToType(
-              np.array([[0.1, 0.1, 0.1, 0.1, 0.1, 0.1]]), slot0.eval())
+              np.array([[0.1, 0.1, 0.1, 0.1, 0.1, 0.1]]), self.evaluate(slot0))
           self.assertAllCloseAccordingToType(
               np.array([[
                   0.00891194, -0.10712013, 0.11047515, 0.22636929, -0.0144573,
                   -0.01029443
-              ]]), var0.eval())
+              ]]), self.evaluate(var0))
 
   def testSharing(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -282,17 +285,19 @@ class AdagradOptimizerTest(test.TestCase):
         variables.global_variables_initializer().run()
 
         # Fetch params to validate initial values.
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
         # Mix the first and the second adagrad for 3 steps.
         ada_update1.run()
         ada_update2.run()
         ada_update1.run()
         # Validate updated params (the same as with only 1 Adagrad).
         self.assertAllCloseAccordingToType(
-            np.array([-1.6026098728179932, -0.6026098728179932]), var0.eval())
+            np.array([-1.6026098728179932, -0.6026098728179932]),
+            self.evaluate(var0))
         self.assertAllCloseAccordingToType(
-            np.array([2.715679168701172, 3.715679168701172]), var1.eval())
+            np.array([2.715679168701172, 3.715679168701172]),
+            self.evaluate(var1))
 
   def testDynamicShapeVariable_Ok(self):
     with self.cached_session():

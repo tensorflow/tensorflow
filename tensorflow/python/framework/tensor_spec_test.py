@@ -92,9 +92,14 @@ class TensorSpecTest(test_util.TensorFlowTestCase):
         repr(desc1),
         "TensorSpec(shape=(1,), dtype=tf.float32, name='beep')")
     desc2 = tensor_spec.TensorSpec([1, None], dtypes.int32)
-    self.assertEqual(
-        repr(desc2),
-        "TensorSpec(shape=(1, ?), dtype=tf.int32, name=None)")
+    if desc2.shape._v2_behavior:
+      self.assertEqual(
+          repr(desc2),
+          "TensorSpec(shape=(1, None), dtype=tf.int32, name=None)")
+    else:
+      self.assertEqual(
+          repr(desc2),
+          "TensorSpec(shape=(1, ?), dtype=tf.int32, name=None)")
 
   def testFromTensorSpec(self):
     spec_1 = tensor_spec.TensorSpec((1, 2), dtypes.int32)
@@ -129,22 +134,6 @@ class TensorSpecTest(test_util.TensorFlowTestCase):
     self.assertEqual(bounded_spec.dtype, spec.dtype)
     self.assertEqual(bounded_spec.name, spec.name)
 
-  def testIsDiscrete(self):
-    discrete_spec = tensor_spec.TensorSpec((1, 2), dtypes.int32)
-    continuous_spec = tensor_spec.TensorSpec((1, 2), dtypes.float32)
-    self.assertTrue(discrete_spec.is_discrete)
-    self.assertFalse(continuous_spec.is_discrete)
-
-  def testIsContinuous(self):
-    discrete_spec = tensor_spec.TensorSpec((1, 2), dtypes.int32)
-    continuous_spec = tensor_spec.TensorSpec((1, 2), dtypes.float32)
-    self.assertFalse(discrete_spec.is_continuous)
-    self.assertTrue(continuous_spec.is_continuous)
-
-  def testIsBounded(self):
-    unbounded_spec = tensor_spec.TensorSpec((1, 2), dtypes.int32)
-    self.assertFalse(unbounded_spec.is_bounded())
-
   def testSerialization(self):
     desc = tensor_spec.TensorSpec([1, 5], dtypes.float32, "test")
     self.assertEqual(pickle.loads(pickle.dumps(desc)), desc)
@@ -159,11 +148,6 @@ class BoundedTensorSpecTest(test_util.TensorFlowTestCase):
   def testInvalidMaximum(self):
     with self.assertRaisesRegexp(ValueError, "not compatible"):
       tensor_spec.BoundedTensorSpec((3, 5), dtypes.uint8, 0, (1, 1, 1))
-
-  def testIsBounded(self):
-    bounded_spec = tensor_spec.BoundedTensorSpec(
-        (1, 2), dtypes.int32, minimum=0, maximum=1)
-    self.assertTrue(bounded_spec.is_bounded())
 
   def testMinimumMaximumAttributes(self):
     spec = tensor_spec.BoundedTensorSpec(

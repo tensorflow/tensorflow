@@ -231,20 +231,22 @@ xla::XlaOp ResizeUsingDilationAndConvolution(xla::XlaBuilder* builder,
     num_extended[0] = upper_padding[0] / (dims.kernel_size[0]);
     num_extended[1] = upper_padding[1] / (dims.kernel_size[1]);
 
+    const int64 batch_dim_size =
+        builder->GetShape(input).ValueOrDie().dimensions(0);
     if (num_extended[0] > 0) {
-      auto slice =
-          xla::Slice(input_data, {0, in_size[0] - 1, 0, 0},
-                     {1, in_size[0], in_size[1], channels}, {1, 1, 1, 1});
+      auto slice = xla::Slice(
+          input_data, {0, in_size[0] - 1, 0, 0},
+          {batch_dim_size, in_size[0], in_size[1], channels}, {1, 1, 1, 1});
       for (int i = 0; i < num_extended[0]; i++) {
         input_data = xla::ConcatInDim(builder, {input_data, slice}, 1);
       }
     }
 
     if (num_extended[1] > 0) {
-      auto slice =
-          xla::Slice(input_data, {0, 0, in_size[1] - 1, 0},
-                     {1, in_size[0] + num_extended[0], in_size[1], channels},
-                     {1, 1, 1, 1});
+      auto slice = xla::Slice(
+          input_data, {0, 0, in_size[1] - 1, 0},
+          {batch_dim_size, in_size[0] + num_extended[0], in_size[1], channels},
+          {1, 1, 1, 1});
       for (int i = 0; i < num_extended[1]; i++) {
         input_data = xla::ConcatInDim(builder, {input_data, slice}, 2);
       }
@@ -511,7 +513,7 @@ class ResizeBilinearOp : public XlaOpKernel {
   bool align_corners_;
 };
 
-REGISTER_XLA_OP(Name("ResizeBilinear").CompileTimeConstInput("size"),
+REGISTER_XLA_OP(Name("ResizeBilinear").CompileTimeConstantInput("size"),
                 ResizeBilinearOp);
 
 class ResizeBilinearGradOp : public XlaOpKernel {

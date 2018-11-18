@@ -91,16 +91,16 @@ Status ParseOneProfileOutputLine(
   string match_usecs = "([0-9.]+) usec";
   string match_flops = "([^ ]*)";
   string match_trops = "([^ ]*)";
-  string match_bytes_per_sec = "([0-9.TGMKi]+)B/s";
-  string match_bytes_per_cycle = "([0-9.TGMKi]+)B/cycle";
+  string match_bytes_per_sec = "([0-9.TGMKi]*)(?:B/s)?";
+  string match_bytes_per_cycle = "([0-9.TGMKi]*)(?:B/cycle)?";
 
   // The underlined part is what we're trying to match with match_opcode:
   //
   //   %dot33 = f32[256,256]{1,0} dot(...)
   //                              ^^^
 
-  string match_opcode =
-      expect_hlo ? "%[^=]+= [^ ]+ ([^(]+)\\(.*" : "(\\[total\\])";
+  string match_opcode = expect_hlo ? "%[^=]+= [^ ]+ ([^(]+)\\(.*"
+                                   : "(\\[total\\])( \\[entry\\])?";
   string regexp_pattern = absl::StrCat(
       " +", match_cycles, separator, match_usecs, separator, match_flops,
       separator, match_trops, separator, match_bytes_per_sec, separator,
@@ -123,6 +123,10 @@ Status ParseOneProfileOutputLine(
   }
 
   return Status::OK();
+}
+
+bool IsExtraMetricProfileOutputLine(const string& line) {
+  return RE2::FullMatch(line, "Extra metric \\S+: \\d+");
 }
 
 // Returns void so that we can ASSERT.
@@ -210,14 +214,26 @@ XLA_TEST_F(HloProfileTest, ProfileSingleComputation) {
 
   absl::flat_hash_map<string, ParsedProfileOutputLine> parsed_profile_lines;
 
-  TF_ASSERT_OK(ParseOneProfileOutputLine(
-      profile_output_lines[1], /*expect_hlo=*/false, &parsed_profile_lines));
+  int line_no = 0;
 
-  TF_ASSERT_OK(ParseOneProfileOutputLine(
-      profile_output_lines[2], /*expect_hlo=*/true, &parsed_profile_lines));
+  // Skip extra metrics.
+  while (IsExtraMetricProfileOutputLine(profile_output_lines[line_no])) {
+    line_no++;
+  }
 
-  TF_ASSERT_OK(ParseOneProfileOutputLine(
-      profile_output_lines[3], /*expect_hlo=*/true, &parsed_profile_lines));
+  line_no++;  // Skip 'Execution profile for ....'
+
+  TF_ASSERT_OK(ParseOneProfileOutputLine(profile_output_lines[line_no++],
+                                         /*expect_hlo=*/false,
+                                         &parsed_profile_lines));
+
+  TF_ASSERT_OK(ParseOneProfileOutputLine(profile_output_lines[line_no++],
+                                         /*expect_hlo=*/true,
+                                         &parsed_profile_lines));
+
+  TF_ASSERT_OK(ParseOneProfileOutputLine(profile_output_lines[line_no++],
+                                         /*expect_hlo=*/true,
+                                         &parsed_profile_lines));
 
   TF_ASSERT_OK_AND_ASSIGN(ParsedProfileOutputLine total_profile,
                           MaybeFind(parsed_profile_lines, "[total]"));
@@ -291,6 +307,7 @@ XLA_TEST_F(HloProfileTest, ProfileWhileComputation) {
   string profile_output;
   ExecuteAndFetchProfile(&profile_output, client, computation, matrix_shape,
                          matrix_shape);
+  SCOPED_TRACE(profile_output);
 
   std::vector<string> profile_output_lines =
       absl::StrSplit(profile_output, '\n');
@@ -302,14 +319,13 @@ XLA_TEST_F(HloProfileTest, ProfileWhileComputation) {
 
   ASSERT_NE(while_body_profile_start, profile_output_lines.cend());
 
-  auto while_body_profile_end = std::find_if(
-      while_body_profile_start, profile_output_lines.end(),
-      [](absl::string_view s) {
-        return absl::StartsWith(s, "********** microseconds report **********");
-      });
+  auto while_body_profile_end =
+      std::find_if(while_body_profile_start, profile_output_lines.end(),
+                   [](absl::string_view s) {
+                     return absl::StartsWith(s, "********** microseconds ");
+                   });
 
-  // We emit a blank line before the "********** microseconds report **********"
-  // line.
+  // We emit a blank line before the "microseconds report" line.
   while_body_profile_end--;
 
   ASSERT_NE(while_body_profile_end, profile_output_lines.end());
@@ -364,7 +380,7 @@ static std::pair<int, char**> AddXlaHloProfileFlag(int argc, char** argv) {
 
 GTEST_API_ int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
+  xla::AppendDebugOptionsFlags(&flag_list);
   std::tie(argc, argv) = AddXlaHloProfileFlag(argc, argv);
 
   auto usage = tensorflow::Flags::Usage(argv[0], flag_list);

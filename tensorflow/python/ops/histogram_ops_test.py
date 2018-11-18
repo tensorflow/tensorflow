@@ -39,7 +39,7 @@ class BinValuesFixedWidth(test.TestCase):
       bins = histogram_ops.histogram_fixed_width_bins(
           values, value_range, nbins=5)
       self.assertEqual(dtypes.int32, bins.dtype)
-      self.assertAllClose(expected_bins, bins.eval())
+      self.assertAllClose(expected_bins, self.evaluate(bins))
 
   def test_1d_values_int32_output(self):
     # Bins will be:
@@ -51,7 +51,7 @@ class BinValuesFixedWidth(test.TestCase):
       bins = histogram_ops.histogram_fixed_width_bins(
           values, value_range, nbins=5, dtype=dtypes.int64)
       self.assertEqual(dtypes.int32, bins.dtype)
-      self.assertAllClose(expected_bins, bins.eval())
+      self.assertAllClose(expected_bins, self.evaluate(bins))
 
   def test_1d_float64_values_int32_output(self):
     # Bins will be:
@@ -63,7 +63,7 @@ class BinValuesFixedWidth(test.TestCase):
       bins = histogram_ops.histogram_fixed_width_bins(
           values, value_range, nbins=5)
       self.assertEqual(dtypes.int32, bins.dtype)
-      self.assertAllClose(expected_bins, bins.eval())
+      self.assertAllClose(expected_bins, self.evaluate(bins))
 
   def test_2d_values(self):
     # Bins will be:
@@ -76,7 +76,7 @@ class BinValuesFixedWidth(test.TestCase):
       bins = histogram_ops.histogram_fixed_width_bins(
           values, value_range, nbins=5)
       self.assertEqual(dtypes.int32, bins.dtype)
-      self.assertAllClose(expected_bins, bins.eval())
+      self.assertAllClose(expected_bins, self.evaluate(bins))
 
 
 class HistogramFixedWidthTest(test.TestCase):
@@ -110,7 +110,7 @@ class HistogramFixedWidthTest(test.TestCase):
     with self.session(use_gpu=True):
       hist = histogram_ops.histogram_fixed_width(values, value_range, nbins=5)
       self.assertEqual(dtypes.int32, hist.dtype)
-      self.assertAllClose(expected_bin_counts, hist.eval())
+      self.assertAllClose(expected_bin_counts, self.evaluate(hist))
 
   def test_1d_values_int64_output(self):
     # Bins will be:
@@ -122,7 +122,7 @@ class HistogramFixedWidthTest(test.TestCase):
       hist = histogram_ops.histogram_fixed_width(
           values, value_range, nbins=5, dtype=dtypes.int64)
       self.assertEqual(dtypes.int64, hist.dtype)
-      self.assertAllClose(expected_bin_counts, hist.eval())
+      self.assertAllClose(expected_bin_counts, self.evaluate(hist))
 
   def test_1d_float64_values(self):
     # Bins will be:
@@ -133,7 +133,7 @@ class HistogramFixedWidthTest(test.TestCase):
     with self.session(use_gpu=True):
       hist = histogram_ops.histogram_fixed_width(values, value_range, nbins=5)
       self.assertEqual(dtypes.int32, hist.dtype)
-      self.assertAllClose(expected_bin_counts, hist.eval())
+      self.assertAllClose(expected_bin_counts, self.evaluate(hist))
 
   def test_2d_values(self):
     # Bins will be:
@@ -144,7 +144,7 @@ class HistogramFixedWidthTest(test.TestCase):
     with self.session(use_gpu=True):
       hist = histogram_ops.histogram_fixed_width(values, value_range, nbins=5)
       self.assertEqual(dtypes.int32, hist.dtype)
-      self.assertAllClose(expected_bin_counts, hist.eval())
+      self.assertAllClose(expected_bin_counts, self.evaluate(hist))
 
   def test_shape_inference(self):
     value_range = [0.0, 5.0]
@@ -155,12 +155,12 @@ class HistogramFixedWidthTest(test.TestCase):
       hist = histogram_ops.histogram_fixed_width(values, value_range, nbins=5)
       self.assertAllEqual(hist.shape.as_list(), (5,))
       self.assertEqual(dtypes.int32, hist.dtype)
-      self.assertAllClose(expected_bin_counts, hist.eval())
+      self.assertAllClose(expected_bin_counts, self.evaluate(hist))
 
       hist = histogram_ops.histogram_fixed_width(
           values, value_range, nbins=placeholder)
       self.assertEquals(hist.shape.ndims, 1)
-      self.assertIs(hist.shape[0].value, None)
+      self.assertIs(hist.shape.dims[0].value, None)
       self.assertEqual(dtypes.int32, hist.dtype)
       self.assertAllClose(expected_bin_counts, hist.eval({placeholder: 5}))
 

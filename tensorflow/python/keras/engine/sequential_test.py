@@ -23,6 +23,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import testing_utils
@@ -269,9 +270,8 @@ class TestSequential(test.TestCase, parameterized.TestCase):
     self.assertIn('build_input_shape', config)
 
     new_model = keras.models.Sequential.from_config(config)
-    self.assertTrue(new_model.built)
-    self.assertEqual(len(model.layers), 2)
-    self.assertEqual(len(model.weights), 4)
+    self.assertEqual(len(new_model.layers), 2)
+    self.assertEqual(len(new_model.weights), 4)
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_sequential_shape_inference_deferred(self):
@@ -318,6 +318,15 @@ class TestSequential(test.TestCase, parameterized.TestCase):
          'sequential/dense_1/kernel:0', 'sequential/dense_1/bias:0'],
         [v.name for v in model.variables])
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_input_assumptions_propagation(self):
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(1))
+    if context.executing_eagerly():
+      with self.assertRaisesRegexp(ValueError,
+                                   'expected min_ndim=2, found ndim=0'):
+        model(1.0)
+
 
 class TestSequentialEagerIntegration(test.TestCase):
 
@@ -352,6 +361,25 @@ class TestSequentialEagerIntegration(test.TestCase):
     x = np.random.random((2, 6))
     y = np.random.random((2, 5))
     model.fit(x, y, epochs=1)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_sequential_model_fails_with_dict_inputs(self):
+    num_classes = 5
+    model = testing_utils.get_small_sequential_mlp(
+        num_hidden=10, num_classes=num_classes)
+    model.compile(
+        rmsprop.RMSPropOptimizer(learning_rate=0.001),
+        metrics=['acc'],
+        weighted_metrics=['mae'],
+        loss='categorical_crossentropy')
+
+    x = {'dense_input': np.random.random((10, 1))}
+    y = np.random.randint(num_classes, size=(10, 1))
+
+    with self.assertRaisesRegexp(
+        ValueError, 'Passing a dictionary input to a Sequential Model which '
+        'doesn\'t have FeatureLayer as the first layer is an error'):
+      model.fit(x, y, batch_size=5, epochs=1)
 
 
 if __name__ == '__main__':

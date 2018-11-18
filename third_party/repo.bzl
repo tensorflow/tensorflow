@@ -26,7 +26,7 @@ def _wrap_bash_cmd(ctx, cmd):
         bazel_sh = _get_env_var(ctx, "BAZEL_SH")
         if not bazel_sh:
             fail("BAZEL_SH environment variable is not set")
-        cmd = [bazel_sh, "-l", "-c", " ".join(cmd)]
+        cmd = [bazel_sh, "-l", "-c", " ".join(["\"%s\"" % s for s in cmd])]
     return cmd
 
 def _get_env_var(ctx, name):

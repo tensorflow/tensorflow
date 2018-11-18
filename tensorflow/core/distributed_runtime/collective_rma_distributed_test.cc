@@ -104,7 +104,7 @@ class FakeWorker : public TestWorkerInterface {
             // bytes in the response.
             RecvBufRespExtra extra;
             int64 num_bytes = h->prod_value->TotalBytes();
-            extra.set_tensor_content(string(
+            extra.add_tensor_content(string(
                 reinterpret_cast<const char*>(DMAHelper::base(h->prod_value)),
                 num_bytes));
             response->mutable_transport_options()->PackFrom(extra);

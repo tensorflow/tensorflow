@@ -84,6 +84,7 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"CollectiveReduce", NC_COLLECTIVE},
         {"CollectiveBcastSend", NC_COLLECTIVE},
         {"CollectiveBcastRecv", NC_COLLECTIVE},
+        {"FakeParam", NC_FAKE_PARAM},
     });
 
 #undef REF_CLASS
@@ -281,6 +282,14 @@ Status Node::input_node(int idx, const Node** const_n) const {
   Node* n;
   TF_RETURN_IF_ERROR(input_node(idx, &n));
   *const_n = n;
+  return Status::OK();
+}
+
+Status Node::input_tensor(int idx, OutputTensor* t) const {
+  const Edge* e;
+  TF_RETURN_IF_ERROR(input_edge(idx, &e));
+  DCHECK(e != nullptr);
+  *t = OutputTensor(e->src(), e->src_output());
   return Status::OK();
 }
 
@@ -529,7 +538,7 @@ Status Graph::UpdateEdge(Node* new_src, int new_src_index, Node* dst,
   const Edge* e = FindEdge(dst, dst_index);
   if (e == nullptr) {
     return errors::InvalidArgument("Couldn't find edge to ",
-                                   dst->DebugString());
+                                   FormatNodeForError(*dst));
   }
   RemoveEdge(e);
   AddEdge(new_src, new_src_index, dst, dst_index);

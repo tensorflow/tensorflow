@@ -132,7 +132,17 @@ class CUPTIManager {
  public:
   CUPTIManager() {
     cupti_wrapper_.reset(new perftools::gputools::profiler::CuptiWrapper());
-    CUPTI_CALL(ActivityRegisterCallbacks(BufferRequested, BufferCompleted));
+  }
+
+  static CUPTIManager *Create() {
+    auto manager = absl::make_unique<CUPTIManager>();
+    CUptiResult status = manager->cupti_wrapper_->ActivityRegisterCallbacks(
+        BufferRequested, BufferCompleted);
+    if (status != CUPTI_SUCCESS) {
+      LOG(ERROR) << "Failed to initialize CUPTI: " << status;
+      return nullptr;
+    }
+    return manager.release();
   }
 
   // Enables tracing and delivers event callbacks to 'client'.
@@ -254,7 +264,7 @@ void CUPTIManager::InternalBufferCompleted(CUcontext ctx, uint32_t streamId,
 }
 
 CUPTIManager *GetCUPTIManager() {
-  static CUPTIManager *manager = new CUPTIManager();
+  static CUPTIManager *manager = CUPTIManager::Create();
   return manager;
 }
 
@@ -291,7 +301,7 @@ class DeviceTracerImpl : public DeviceTracer,
                          public CUPTIClient,
                          public tracing::TraceCollector {
  public:
-  DeviceTracerImpl();
+  DeviceTracerImpl(CUPTIManager *cupti_manager);
   ~DeviceTracerImpl() override;
 
   // DeviceTracer interface:
@@ -389,10 +399,9 @@ class DeviceTracerImpl : public DeviceTracer,
   TF_DISALLOW_COPY_AND_ASSIGN(DeviceTracerImpl);
 };
 
-DeviceTracerImpl::DeviceTracerImpl() {
+DeviceTracerImpl::DeviceTracerImpl(CUPTIManager *cupti_manager)
+    : cupti_manager_(cupti_manager) {
   VLOG(1) << "DeviceTracer created.";
-  cupti_manager_ = GetCUPTIManager();
-  CHECK(cupti_manager_);
   cupti_wrapper_.reset(new perftools::gputools::profiler::CuptiWrapper());
   enabled_ = false;
 }
@@ -646,7 +655,12 @@ Status DeviceTracerImpl::Collect(StepStatsCollector *collector) {
 }  // namespace devicetracer
 
 std::unique_ptr<DeviceTracer> CreateDeviceTracer() {
-  std::unique_ptr<DeviceTracer> tracer(new devicetracer::DeviceTracerImpl());
+  devicetracer::CUPTIManager *cupti_manager = devicetracer::GetCUPTIManager();
+  if (cupti_manager == nullptr) {
+    return nullptr;
+  }
+  std::unique_ptr<DeviceTracer> tracer(
+      new devicetracer::DeviceTracerImpl(cupti_manager));
   return tracer;
 }
 

@@ -136,6 +136,16 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
     # - my_trt_op_1 should have ["weights","conv", "div"]
     return ["my_trt_op_0", "my_trt_op_1"]
 
+  def ShouldRunTest(self, run_params):
+    # TODO(aaroey): LayoutOptimizer adds Transpose(Const, Const) to the graph
+    # which breaks the conversion. We should fix it as:
+    # - Detect the invalid NodeDef earlier before adding them to segment
+    # - Let it able to change the RewriterConfig when calling
+    #   create_inference_graph().
+    # It will be good to add debugging feature for Grappler to print the graph
+    # after running each optimizer.
+    return False
+
 
 class PartiallyConvertedTestA(trt_test.TfTrtIntegrationTestBase):
 

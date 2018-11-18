@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 #include <memory>
 
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -35,24 +36,16 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#include "tensorflow/core/util/mkl_util.h"
-
-#ifndef INTEL_MKL_ML_ONLY
-#include "mkldnn.hpp"
-
+using mkldnn::convolution_direct;
+using mkldnn::convolution_forward;
 using mkldnn::prop_kind;
 using mkldnn::stream;
 
-using mkldnn::convolution_direct;
-using mkldnn::convolution_forward;
-#endif
-
 namespace tensorflow {
-
-#ifndef INTEL_MKL_ML_ONLY
 
 class MklDnnConvUtil {
  protected:
@@ -543,7 +536,6 @@ class MklConvBackpropCommonOp : public OpKernel {
   TensorFormat data_format_;  // NCHW or NHWC
 };
 
-#endif  // INTEL_MKL_ML_ONLY
 
 /////////////////////////////////////////////////////////////////////
 ///  Dummy Mkl op that is just used for operators that are intermediate

@@ -108,7 +108,7 @@ def _define_help_flags():
     _define_help_flags_called = True
 
 
-@tf_export('app.run')
+@tf_export(v1=['app.run'])
 def run(main=None, argv=None):
   """Runs the program with an optional 'main' function and 'argv' list."""
 

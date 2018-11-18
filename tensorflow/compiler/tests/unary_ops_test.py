@@ -359,6 +359,11 @@ class UnaryOpsTest(xla_test.XLATestCase):
           expected=np.array([[0, 6, 5]], dtype=dtype))
 
       self._assertOpOutputMatchesExpected(
+          nn_ops.leaky_relu,
+          np.array([[-2, -1, 0, 1, 2]], dtype=dtype),
+          expected=np.array([[-0.4, -0.2, 0.0, 1.0, 2.0]], dtype=dtype))
+
+      self._assertOpOutputMatchesExpected(
           nn_ops.softmax,
           np.array([1, 2, 3, 4], dtype=dtype),
           expected=np.array([0.032058604, 0.087144323, 0.23688284, 0.64391428],
@@ -724,6 +729,15 @@ class UnaryOpsTest(xla_test.XLATestCase):
         lambda x: array_ops.bitcast(x, dtypes.int32),
         np.array([1e-45, 1.0], np.float32),
         expected=np.array([1, 0x3f800000], np.int32))
+    if np.int64 in self.numeric_types:
+      self._assertOpOutputMatchesExpected(
+          lambda x: array_ops.bitcast(x, dtypes.int64),
+          np.array([1, 0x100000003f800000], np.uint64),
+          expected=np.array([1, 0x100000003f800000], np.int64))
+      self._assertOpOutputMatchesExpected(
+          lambda x: array_ops.bitcast(x, dtypes.uint64),
+          np.array([1, 0x100000003f800000], np.int64),
+          expected=np.array([1, 0x100000003f800000], np.uint64))
 
   def testInvertPermutation(self):
     self._assertOpOutputMatchesExpected(

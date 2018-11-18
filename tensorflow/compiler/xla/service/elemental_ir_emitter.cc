@@ -1815,8 +1815,6 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
     // Clamp the gather index so that the gather region fits in the operand.
     // gather_dim_component_extended_inbound =
     //     clamp(gather_dim_component_extended, 0, largest_valid_start_index);
-
-    // TODO(b/111078873): This is implementation defined behavior.
     bool is_signed = ShapeUtil::ElementIsSigned(indices_shape);
     auto gather_dim_component_extended_inbound = EmitIntegralMin(
         index.GetConstantWithIndexType(largest_valid_start_index),

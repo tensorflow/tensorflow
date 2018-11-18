@@ -272,7 +272,7 @@ class PyFuncTest(test.TestCase):
 
       with self.assertRaisesRegexp(errors.UnimplementedError,
                                    "Unsupported numpy type"):
-        y.eval()
+        self.evaluate(y)
 
   def testBadReturnType(self):
     with self.cached_session():
@@ -285,7 +285,7 @@ class PyFuncTest(test.TestCase):
 
       with self.assertRaisesRegexp(errors.UnimplementedError,
                                    "Unsupported object type"):
-        z.eval()
+        self.evaluate(z)
 
   def testReturnInput(self):
     with self.cached_session():
@@ -335,7 +335,7 @@ class PyFuncTest(test.TestCase):
       val = [[1, 2], [3, 4]]
       x, = script_ops.py_func(lambda: np.array(val, order="F"), [],
                               [dtypes.int64])
-      self.assertAllEqual(val, x.eval())
+      self.assertAllEqual(val, self.evaluate(x))
 
   def testParallel(self):
     # Tests that tf.py_func's can run in parallel if they release the GIL.
@@ -644,7 +644,7 @@ class PyFuncTest(test.TestCase):
       y = script_ops.eager_py_func(func=f, inp=[x], Tout=dtypes.float32)
       z = script_ops.eager_py_func(func=g, inp=[y], Tout=dtypes.float32)
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       output = sess.run(z, feed_dict={x: 3.0})
       self.assertEqual(output, 18.0)
 

@@ -159,6 +159,7 @@ TF_CALL_ALL_TYPES(REGISTER_SELECT);
       Name("Select").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       SelectOp<GPUDevice, type>);
 
+REGISTER_SELECT_GPU(bool);
 REGISTER_SELECT_GPU(Eigen::half);
 REGISTER_SELECT_GPU(float);
 REGISTER_SELECT_GPU(double);

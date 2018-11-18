@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Monte Carlo integration and helpers."""
+"""Monte Carlo integration and helpers.
+
+Use [tfp.monte_carlo](/probability/api_docs/python/tfp/monte_carlo) instead.
+"""
 
 from __future__ import absolute_import
 from __future__ import division

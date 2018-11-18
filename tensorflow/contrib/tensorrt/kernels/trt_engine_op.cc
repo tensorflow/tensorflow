@@ -333,11 +333,9 @@ bool TRTEngineOp::ExecuteTrtEngine(
       case nvinfer1::DataType::kINT8:
         LOG(ERROR) << "INT8 inputs are not supported yet!";
         return kRetry;
-#if NV_TENSORRT_MAJOR > 3
       case nvinfer1::DataType::kINT32:
         buffers[binding_index] = (void*)(input_tensor.flat<int32>().data());
         break;
-#endif
       default:
         LOG(ERROR) << "Unknown TRT data type: " << int(dtype);
         return kRetry;
@@ -387,12 +385,10 @@ bool TRTEngineOp::ExecuteTrtEngine(
       case nvinfer1::DataType::kINT8:
         LOG(WARNING) << "int8 is not supported yet!";
         return kRetry;
-#if NV_TENSORRT_MAJOR > 3
       case nvinfer1::DataType::kINT32:
         buffers[binding_index] =
             reinterpret_cast<void*>(output_tensor->flat<int32>().data());
         break;
-#endif
       default:
         LOG(WARNING) << "Unknown TRT data type: " << static_cast<int>(dtype);
         return kRetry;
@@ -457,13 +453,11 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
       return null_pair;
     }
     TrtUniquePtrType<IRuntime> infer(nvinfer1::createInferRuntime(logger));
-#if NV_TENSORRT_MAJOR > 3
     auto allocator = GetAllocator(ctx);
     if (allocator == nullptr) {
       return null_pair;
     }
     infer->setGpuAllocator(allocator);
-#endif
     TrtUniquePtrType<nvinfer1::ICudaEngine> static_engine(
         infer->deserializeCudaEngine(serialized_segment_.c_str(),
                                      serialized_segment_.size(),
@@ -487,12 +481,10 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
   if (engine_it == engine_map_.end() &&
       engine_map_.size() < (size_t)max_cached_engines_) {
     nvinfer1::IGpuAllocator* allocator = nullptr;
-#if NV_TENSORRT_MAJOR > 3
     allocator = GetAllocator(ctx);
     if (allocator == nullptr) {
       return null_pair;
     }
-#endif
     std::vector<tensorflow::PartialTensorShape> shapes;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       shapes.emplace_back(ctx->input(i).shape());

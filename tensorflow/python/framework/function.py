@@ -756,20 +756,17 @@ class _FuncGraph(ops.Graph):
       ph = array_ops.placeholder(
           tensor.dtype, shape=tensor.get_shape(), name=name)
     # pylint: disable=protected-access
-    if ops._USE_C_SHAPES:
-      if isinstance(tensor, ops.EagerTensor):
-        handle_data = tensor._handle_data
-        if handle_data:
-          handle_data = handle_data.SerializeToString()
-      else:
-        handle_data = c_api.GetHandleShapeAndType(tensor.graph._c_graph,
-                                                  tensor._as_tf_output())
-
+    if isinstance(tensor, ops.EagerTensor):
+      handle_data = tensor._handle_data
       if handle_data:
-        c_api.SetHandleShapeAndType(ph.graph._c_graph, ph._as_tf_output(),
-                                    compat.as_bytes(handle_data))
+        handle_data = handle_data.SerializeToString()
     else:
-      ph._handle_data = tensor._handle_data
+      handle_data = c_api.GetHandleShapeAndType(tensor.graph._c_graph,
+                                                tensor._as_tf_output())
+
+    if handle_data:
+      c_api.SetHandleShapeAndType(ph.graph._c_graph, ph._as_tf_output(),
+                                  compat.as_bytes(handle_data))
     # pylint: enable=protected-access
     self.inputs.append(ph)
     self._captured[tensor] = ph
@@ -878,7 +875,7 @@ def func_graph_from_py_func(func, arg_names, arg_types, name=None,
       if not isinstance(outputs, (list, tuple)):
         outputs = (outputs,)
       if any([_ is None for _ in outputs]):
-        raise ValueError("Function can not return None.")
+        raise ValueError("Function %s can not return None." % name)
     # Ensures each output is a Tensor in the function graph.
     outputs = [ops.convert_to_tensor(t) for t in outputs]
     outputs = [func_graph.capture(t) if t.graph is not func_graph else t

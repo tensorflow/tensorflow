@@ -101,9 +101,12 @@ def list_variables(ckpt_dir_or_file):
   return result
 
 
-@tf_export("train.init_from_checkpoint")
+@tf_export(v1=["train.init_from_checkpoint"])
 def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
-  """Initializes current variables with tensors loaded from given checkpoint.
+  """Replaces `tf.Variable` initializers so they load from a checkpoint file.
+
+  Values are not loaded immediately, but when the initializer is run
+  (typically by running a `tf.global_variables_initializer` op).
 
   Note: This overrides default initialization ops of specified variables and
   redefines dtype.
@@ -180,11 +183,11 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
     tf.errors.OpError: If missing checkpoints or tensors in checkpoints.
     ValueError: If missing variables in current graph.
   """
-  if distribution_strategy_context.get_cross_tower_context():
+  if distribution_strategy_context.get_cross_replica_context():
     _init_from_checkpoint(None, ckpt_dir_or_file, assignment_map)
   else:
-    distribution_strategy_context.get_tower_context().merge_call(
-        _init_from_checkpoint, ckpt_dir_or_file, assignment_map)
+    distribution_strategy_context.get_replica_context().merge_call(
+        _init_from_checkpoint, args=(ckpt_dir_or_file, assignment_map))
 
 
 def _init_from_checkpoint(_, ckpt_dir_or_file, assignment_map):
@@ -315,13 +318,13 @@ def _set_checkpoint_initializer(variable,
         saveable_objects.append(s)
 
     assert len(saveable_objects) == 1  # Should be only one variable.
-    init_op = saveable_objects[0].restore([restore_op], restored_shapes=None)
+  init_op = saveable_objects[0].restore([restore_op], restored_shapes=None)
 
-    # pylint:disable=protected-access
-    variable._initializer_op = init_op
-    restore_op.set_shape(variable.shape)
-    variable._initial_value = restore_op
-    # pylint:enable=protected-access
+  # pylint:disable=protected-access
+  variable._initializer_op = init_op
+  restore_op.set_shape(variable.shape)
+  variable._initial_value = restore_op
+  # pylint:enable=protected-access
 
 
 def _set_variable_or_list_initializer(variable_or_list, ckpt_file,

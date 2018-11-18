@@ -79,9 +79,9 @@ Status LowerIfWhilePass::Run(const GraphOptimizationPassOptions& options) {
         TF_RETURN_IF_ERROR(RewriteWhileNode(n, g, *flib));
       } else {
         return errors::Internal(
-            "Node:", n->name(), " of type ", n->type_string(), " has '",
-            LowerIfWhilePass::kLowerUsingSwitchMergeAttr,
-            "' attr set but it does not support lowering.\n", n->DebugString());
+            "Node ", FormatNodeForError(*n), " of type ", n->type_string(),
+            " has '", LowerIfWhilePass::kLowerUsingSwitchMergeAttr,
+            "' attr set but it does not support lowering.\n");
       }
     }
   }

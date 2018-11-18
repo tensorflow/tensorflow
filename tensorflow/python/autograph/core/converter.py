@@ -64,6 +64,7 @@ from __future__ import division
 from __future__ import print_function
 
 from enum import Enum
+from enum import IntEnum
 
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import naming
@@ -89,6 +90,17 @@ from tensorflow.python.autograph.pyct.static_analysis import type_info
 # TODO(mdan): Add a test specific to this converter.
 
 
+class Verbosity(IntEnum):
+  """Different levels of verbosity for printing errors.
+
+  Attributes:
+   * BRIEF: No logging, minimal error messages.
+   * VERBOSE: Detailed logging of generated code, detailed error messages.
+ """
+  BRIEF = 0
+  VERBOSE = 1
+
+
 class Feature(Enum):
   """Constants to use when selecting AutoGraph features."""
 
@@ -96,7 +108,16 @@ class Feature(Enum):
 
   AUTO_CONTROL_DEPS = (
       'Insert of control dependencies in the generated code.')
+  DECORATORS = (
+      'Allow decorators in local functions. Note that special decorators,'
+      ' like ag.convert or tf.function are allowed regardless of this toggle.')
+  ERROR_REWRITING = (
+      'Rewrite errors that occur in the generated code to indicate the source'
+      ' code to which the failing code corresponds.')
   LISTS = 'Convert list idioms, like initializers, slices, append, etc.'
+  NAME_SCOPES = (
+      'Insert name scopes that name ops according to context, like the'
+      ' function they were defined in.')
 
   def __repr__(self):
     return self.name
@@ -108,7 +129,7 @@ class ConversionOptions(object):
   Attributes:
     recursive: bool, whether to recursively convert any user functions or
       classes that the converted function may use.
-    verbose: bool, whether to log the converted code.
+    verbose: Verbosity, the level of verbosity to use.
     strip_decorators: Tuple[Callable], contains decorators that should be in
       excluded from the compiled output. By default, when converting a function
       before the decorators are applied, the compiled output will include those
@@ -123,16 +144,19 @@ class ConversionOptions(object):
 
   def __init__(self,
                recursive=False,
-               verbose=False,
+               verbose=Verbosity.VERBOSE,
                strip_decorators=None,
                force_conversion=False,
+               internal_convert_user_code=True,
                optional_features=Feature.ALL):
     self.recursive = recursive
     self.verbose = verbose
     self.strip_decorators = strip_decorators or ()
     self.force_conversion = force_conversion
+    # TODO(mdan): Rename to conversion_recursion_depth?
+    self.internal_convert_user_code = internal_convert_user_code
 
-    if not isinstance(optional_features, (set, list, tuple)):
+    if isinstance(optional_features, Feature):
       optional_features = (optional_features,)
     optional_features = frozenset(optional_features)
     self.optional_features = optional_features
@@ -141,7 +165,7 @@ class ConversionOptions(object):
     return (Feature.ALL in self.optional_features or
             feature in self.optional_features)
 
-  def to_ast(self, namespace):
+  def to_ast(self, namespace, internal_convert_user_code=None):
     """Returns a representation of this object as an AST node.
 
     The AST node encodes a constructor that would create an object with the
@@ -150,6 +174,8 @@ class ConversionOptions(object):
     Args:
       namespace: Dict[str, Any], the namespace to use when serializing values to
         names.
+      internal_convert_user_code: Optional[bool], allows ovrriding the
+        corresponding value.
 
     Returns:
       ast.Node
@@ -160,7 +186,8 @@ class ConversionOptions(object):
           verbose=verbose_val,
           strip_decorators=strip_decorators_val,
           force_conversion=force_conversion_val,
-          optional_features=optional_features_val)
+          optional_features=optional_features_val,
+          internal_convert_user_code=internal_convert_user_code_val)
     """
 
     def as_qualified_name(o):
@@ -180,15 +207,20 @@ class ConversionOptions(object):
           for v in Feature.__members__
           if v in values)))
 
+    if internal_convert_user_code is not None:
+      internal_convert_user_code = self.internal_convert_user_code
+
     expr_ast = templates.replace(
         template,
         constructor_name=parser.parse_expression(
             as_qualified_name(ConversionOptions)),
         recursive_val=parser.parse_expression(str(self.recursive)),
-        verbose_val=parser.parse_expression(str(self.verbose)),
+        verbose_val=parser.parse_expression(str(int(self.verbose))),
         strip_decorators_val=list_of_names(self.strip_decorators),
         force_conversion_val=parser.parse_expression(
             str(self.force_conversion)),
+        internal_convert_user_code_val=parser.parse_expression(
+            str(internal_convert_user_code)),
         optional_features_val=list_of_features(self.optional_features))
     return expr_ast[0].value
 
