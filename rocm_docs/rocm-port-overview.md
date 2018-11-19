@@ -121,3 +121,31 @@ XLA support for LLVM AMDGPU backend is still highly experimental at this point. 
   - **XXX**: replaced logic dependent to *Libdevice* to *ROCm Device Libs*
 - **tensorflow/compiler/xla/service/platform_util.cc**
   - added logic to check ROCm platform ISA version
+
+---
+## Fusion Support
+
+This release introduces support for automatically "fusing" certain sequences of ops/nodes in the Tensorflow graph, into a single op/node. This is only done for ops/nodes that have been placed on the GPU partition by Tensorflow. This idea here is to improve performance because the optimized GPU kernel implementation for the single fused node will perform better than the plural GPU kernel implementations (one for each node/op) of the individual node/op sequence.
+
+The ROCm Fusion feature is disabled by default, and can be enabled by the setting the env var `TF_ROCM_FUSION_ENABLE` to `1`.  The current release supports the fusion of following op/node sequences
+
+1. Convolution --> Bias --> Activation (forward and inference)
+2. BatchNorm --> Activation (forward, backward, and inferece)
+3. Add + Relu
+4. AddN + ReluGrad
+
+By default you will only see a single message durung runtime that indicates that ROCm Fusion is turned ON
+```
+2018-11-14 23:03:09.721057: I tensorflow/core/graph/gpu_fusion_pass.cc:434] ROCm Fusion is enabled.
+```
+Setting the env var `TF_CPP_MIN_VLOG_LEVEL` to `2` will enable the display of verbose ROCm fusion details.
+
+
+For the Convolution+Bias+Activation and BatchNorm+Activation fusion nodes, it is possible that the runtime is unable to create a custom kernel implementation for the fused node, and errors out. Should this happen, you will need to disable the fusion 
+
+When ROCm Fusion is enabled, the following env-vars can be used to disable individual fusions
+
+- set `TF_ROCM_FUSION_DISABLE_CBA` to `1` to disable to Convolution+Bias+Activation fusion (forward and inference)
+- set `TF_ROCM_FUSION_DISABLE_BNA` to `1` to disable to BatchNorm+Activation fusions (forward, backward and inference)
+- set `TF_ROCM_FUSION_DISABLE_ADDRELU` to `1` to disable to Add+Relu fusion
+- set `TF_ROCM_FUSION_DISABLE_ADDNRELUGRAD` to `1` to disable to AddN+ReluGrad fusion
