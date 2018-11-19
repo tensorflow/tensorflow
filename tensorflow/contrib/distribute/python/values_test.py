@@ -35,6 +35,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
@@ -588,7 +589,7 @@ class InputIteratorTestBase(test.TestCase):
 
     evaluate = lambda x: sess.run(x) if sess else self.evaluate(x)
 
-    evaluate(iterator.initialize())
+    evaluate(control_flow_ops.group(iterator.initialize()))
 
     for expected_value in expected_values:
       next_element = iterator.get_next()
@@ -601,7 +602,7 @@ class InputIteratorTestBase(test.TestCase):
       evaluate([values.select_device(d, next_element) for d in devices])
 
     # After re-initializing the iterator, should be able to iterate again.
-    evaluate(iterator.initialize())
+    evaluate(control_flow_ops.group(iterator.initialize()))
 
     for expected_value in expected_values:
       next_element = iterator.get_next()
