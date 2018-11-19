@@ -37,11 +37,13 @@ using tflite::QuantizationParams;
 enum class OperatorType : uint8 {
   kNone,
   // General-purpose neural network operators.
+  kAbs,
   kAdd,
   kAddN,
   kAveragePool,
   kBatchMatMul,
   kBatchNormalization,
+  kCeil,
   kConv,
   kConcatenation,
   kDepthwiseConv,
@@ -1656,6 +1658,26 @@ struct CastOperator : Operator {
 // TensorFlow equivalent: Floor
 struct FloorOperator : Operator {
   FloorOperator() : Operator(OperatorType::kFloor) {}
+};
+
+// Ceil operator.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Ceil
+struct CeilOperator : Operator {
+  CeilOperator() : Operator(OperatorType::kCeil) {}
+};
+
+// Abs operator.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Abs
+struct AbsOperator : Operator {
+  AbsOperator() : Operator(OperatorType::kAbs) {}
 };
 
 // Gather operator. It gathers slices from params according to indices.

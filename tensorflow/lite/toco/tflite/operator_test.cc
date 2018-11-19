@@ -114,6 +114,8 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<DequantizeOperator>("DEQUANTIZE",
                                           OperatorType::kDequantize);
   CheckSimpleOperator<FloorOperator>("FLOOR", OperatorType::kFloor);
+  CheckSimpleOperator<CeilOperator>("CEIL", OperatorType::kCeil);
+  CheckSimpleOperator<AbsOperator>("ABS", OperatorType::kAbs);
   CheckSimpleOperator<ReluOperator>("RELU", OperatorType::kRelu);
   CheckSimpleOperator<Relu1Operator>("RELU_N1_TO_1", OperatorType::kRelu1);
   CheckSimpleOperator<Relu6Operator>("RELU6", OperatorType::kRelu6);

@@ -489,6 +489,12 @@ TfLiteStatus AddOpsAndParams(
       case tflite::BuiltinOperator_FLOOR:
         nn_op_type = ANEURALNETWORKS_FLOOR;
         break;
+      case tflite::BuiltinOperator_CEIL:
+        nn_op_type = ANEURALNETWORKS_CEIL;
+        break;
+      case tflite::BuiltinOperator_ABS:
+        nn_op_type = ANEURALNETWORKS_ABS;
+        break;
       case tflite::BuiltinOperator_LOGISTIC:
         nn_op_type = ANEURALNETWORKS_LOGISTIC;
         break;

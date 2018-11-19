@@ -520,11 +520,12 @@ enum BuiltinOperator {
   BuiltinOperator_MIRROR_PAD = 100,
   BuiltinOperator_ABS = 101,
   BuiltinOperator_SPLIT_V = 102,
+  BuiltinOperator_CEIL = 103,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_SPLIT_V
+  BuiltinOperator_MAX = BuiltinOperator_CEIL
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[102] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[103] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -627,7 +628,9 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[102] {
     BuiltinOperator_SQUARED_DIFFERENCE,
     BuiltinOperator_MIRROR_PAD,
     BuiltinOperator_ABS,
-    BuiltinOperator_SPLIT_V
+    BuiltinOperator_SPLIT_V,
+    BuiltinOperator_CEIL
+
   };
   return values;
 }
@@ -737,6 +740,7 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "MIRROR_PAD",
     "ABS",
     "SPLIT_V",
+    "CEIL",
     nullptr
   };
   return names;
