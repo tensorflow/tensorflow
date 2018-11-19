@@ -124,6 +124,7 @@ TfLiteRegistration* Register_ZEROS_LIKE();
 TfLiteRegistration* Register_FLOOR_MOD();
 TfLiteRegistration* Register_RANGE();
 TfLiteRegistration* Register_LEAKY_RELU();
+TfLiteRegistration* Register_SQUARED_DIFFERENCE();
 
 TfLiteStatus UnsupportedTensorFlowOp(TfLiteContext* context, TfLiteNode* node) {
   context->ReportError(
@@ -258,6 +259,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_FLOOR_MOD, Register_FLOOR_MOD());
   AddBuiltin(BuiltinOperator_RANGE, Register_RANGE());
   AddBuiltin(BuiltinOperator_LEAKY_RELU, Register_LEAKY_RELU());
+  AddBuiltin(BuiltinOperator_SQUARED_DIFFERENCE, Register_SQUARED_DIFFERENCE());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

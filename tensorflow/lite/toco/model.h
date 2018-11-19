@@ -123,6 +123,7 @@ enum class OperatorType : uint8 {
   kSplit,
   kSqrt,
   kSquare,
+  kSquaredDifference,
   kSum,
   kSwitch,
   kTile,
@@ -1301,6 +1302,17 @@ struct TensorFlowSqrtOperator : Operator {
 // TensorFlow equivalent: Square
 struct TensorFlowSquareOperator : Operator {
   TensorFlowSquareOperator() : Operator(OperatorType::kSquare) {}
+};
+
+// Element-wise squared difference ((x-y)*(x-y)) operator.
+//
+// Inputs:
+//   inputs[0]: required: the left-hand side array
+//   inputs[1]: required: the right-hand side array
+//
+// TensorFlow equivalent: SquaredDifference
+struct SquaredDifferenceOperator : Operator {
+  SquaredDifferenceOperator() : Operator(OperatorType::kSquaredDifference) {}
 };
 
 // Transposes a tensor.

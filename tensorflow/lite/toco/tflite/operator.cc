@@ -1236,6 +1236,25 @@ class LeakyRelu
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+class SquaredDifference
+    : public BuiltinOperator<
+          SquaredDifferenceOperator, ::tflite::SquaredDifferenceOptions,
+          ::tflite::BuiltinOptions_SquaredDifferenceOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateSquaredDifferenceOptions(*builder);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {}
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
 std::unique_ptr<flexbuffers::Builder> WriteFlexOpOptions(
     const string& tensorflow_node_def) {
   auto fbb = absl::make_unique<flexbuffers::Builder>();
@@ -1536,6 +1555,9 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
                                    OperatorType::kUnpack));
   ops.push_back(MakeUnique<LeakyRelu>(::tflite::BuiltinOperator_LEAKY_RELU,
                                       OperatorType::kLeakyRelu));
+  ops.push_back(MakeUnique<SquaredDifference>(
+      ::tflite::BuiltinOperator_SQUARED_DIFFERENCE,
+      OperatorType::kSquaredDifference));
 
   // Custom Operators.
   ops.push_back(

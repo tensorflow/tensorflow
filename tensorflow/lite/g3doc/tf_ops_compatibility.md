@@ -75,6 +75,7 @@ counterparts:
     0D tensor*
 *   [tf.squeeze](https://www.tensorflow.org/api_docs/python/tf/squeeze) - *as
     long as axis is not provided*
+*   [tf.squared_difference](https://www.tensorflow.org/versions/master/api_docs/python/tf/squared_difference)
 *   [tf.strided_slice](https://www.tensorflow.org/api_docs/python/tf/strided_slice) -
     *as long as ellipsis_mask and new_axis_mask are not used*
 *   [tf.transpose](https://www.tensorflow.org/versions/master/api_docs/python/tf/transpose) -

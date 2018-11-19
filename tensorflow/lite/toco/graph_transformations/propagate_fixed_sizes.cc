@@ -1760,6 +1760,7 @@ void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
     case OperatorType::kEqual:
     case OperatorType::kNotEqual:
     case OperatorType::kPow:
+    case OperatorType::kSquaredDifference:
       ProcessSimpleBinaryOperator(model, op);
       break;
     case OperatorType::kAddN:
