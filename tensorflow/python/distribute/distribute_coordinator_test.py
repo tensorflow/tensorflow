@@ -235,7 +235,7 @@ class DistributeCoordinatorTestBase(test.TestCase):
         result = math_ops.add_n(xs)
 
       variables.global_variables_initializer().run()
-      result_value = self.evaluate(result)
+      result_value = sess.run(result)
     self.assertEqual(result_value, expected)
     if result_value == expected:
       self._result_correct += 1
@@ -294,7 +294,7 @@ class DistributeCoordinatorTestBase(test.TestCase):
           if len(uninit_vars) == 0:
             break
 
-      self.evaluate(train_op)
+      sess.run(train_op)
 
       # Synchronize workers after one step to make sure they all have finished
       # training.
@@ -327,7 +327,7 @@ class DistributeCoordinatorTestBase(test.TestCase):
 
     # The monitored session will run init or ready ops.
     with monitored_session.MonitoredSession() as sess:
-      self.evaluate(train_op)
+      sess.run(train_op)
 
       # Synchronize workers after one step to make sure they all have finished
       # training.
