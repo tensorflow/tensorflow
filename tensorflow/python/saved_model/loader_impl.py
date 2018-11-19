@@ -99,22 +99,29 @@ def _get_asset_tensors(export_dir, meta_graph_def_to_load, import_scope=None):
   collection_def = meta_graph_def_to_load.collection_def
 
   asset_tensor_dict = {}
-  if constants.ASSETS_KEY in collection_def:
-    # Location of the assets for SavedModel.
-    assets_directory = os.path.join(
-        compat.as_bytes(export_dir),
-        compat.as_bytes(constants.ASSETS_DIRECTORY))
+  asset_protos = []
+
+  if meta_graph_def_to_load.asset_file_def:
+    asset_protos = meta_graph_def_to_load.asset_file_def
+  elif constants.ASSETS_KEY in collection_def:
     assets_any_proto = collection_def[constants.ASSETS_KEY].any_list.value
-    # Process each asset and add it to the asset tensor dictionary.
     for asset_any_proto in assets_any_proto:
       asset_proto = meta_graph_pb2.AssetFileDef()
       asset_any_proto.Unpack(asset_proto)
-      tensor_name = asset_proto.tensor_info.name
-      if import_scope:
-        tensor_name = "%s/%s" % (import_scope, tensor_name)
-      asset_tensor_dict[tensor_name] = os.path.join(
-          compat.as_bytes(assets_directory),
-          compat.as_bytes(asset_proto.filename))
+      asset_protos.append(asset_proto)
+
+  # Location of the assets for SavedModel.
+  assets_directory = os.path.join(
+      compat.as_bytes(export_dir), compat.as_bytes(constants.ASSETS_DIRECTORY))
+  # Process each asset and add it to the asset tensor dictionary.
+  for asset_proto in asset_protos:
+    tensor_name = asset_proto.tensor_info.name
+    if import_scope:
+      tensor_name = "%s/%s" % (import_scope, tensor_name)
+    asset_tensor_dict[tensor_name] = os.path.join(
+        compat.as_bytes(assets_directory),
+        compat.as_bytes(asset_proto.filename))
+
   return asset_tensor_dict
 
 
