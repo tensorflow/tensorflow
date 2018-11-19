@@ -3684,13 +3684,13 @@ def in_train_phase(x, alt, training=None):
   if training is None:
     training = learning_phase()
 
-  if training is 1 or training is True:
+  if training == 1 or training is True:
     if callable(x):
       return x()
     else:
       return x
 
-  elif training is 0 or training is False:
+  elif training == 0 or training is False:
     if callable(alt):
       return alt()
     else:
