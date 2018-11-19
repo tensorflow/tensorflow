@@ -256,6 +256,9 @@ struct RangeOptionsT;
 struct LeakyReluOptions;
 struct LeakyReluOptionsT;
 
+struct SquaredDifferenceOptions;
+struct SquaredDifferenceOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -504,11 +507,12 @@ enum BuiltinOperator {
   BuiltinOperator_RANGE = 96,
   BuiltinOperator_RESIZE_NEAREST_NEIGHBOR = 97,
   BuiltinOperator_LEAKY_RELU = 98,
+  BuiltinOperator_SQUARED_DIFFERENCE = 99,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_LEAKY_RELU
+  BuiltinOperator_MAX = BuiltinOperator_SQUARED_DIFFERENCE
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[98] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[99] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -607,7 +611,8 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[98] {
     BuiltinOperator_FLOOR_MOD,
     BuiltinOperator_RANGE,
     BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
-    BuiltinOperator_LEAKY_RELU
+    BuiltinOperator_LEAKY_RELU,
+    BuiltinOperator_SQUARED_DIFFERENCE
   };
   return values;
 }
@@ -713,6 +718,7 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "RANGE",
     "RESIZE_NEAREST_NEIGHBOR",
     "LEAKY_RELU",
+    "SQUARED_DIFFERENCE",
     nullptr
   };
   return names;
@@ -800,11 +806,12 @@ enum BuiltinOptions {
   BuiltinOptions_RangeOptions = 73,
   BuiltinOptions_ResizeNearestNeighborOptions = 74,
   BuiltinOptions_LeakyReluOptions = 75,
+  BuiltinOptions_SquaredDifferenceOptions = 76,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_LeakyReluOptions
+  BuiltinOptions_MAX = BuiltinOptions_SquaredDifferenceOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[76] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[77] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -881,7 +888,8 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[76] {
     BuiltinOptions_FloorModOptions,
     BuiltinOptions_RangeOptions,
     BuiltinOptions_ResizeNearestNeighborOptions,
-    BuiltinOptions_LeakyReluOptions
+    BuiltinOptions_LeakyReluOptions,
+    BuiltinOptions_SquaredDifferenceOptions
   };
   return values;
 }
@@ -964,6 +972,7 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "RangeOptions",
     "ResizeNearestNeighborOptions",
     "LeakyReluOptions",
+    "SquaredDifferenceOptions",
     nullptr
   };
   return names;
@@ -1276,6 +1285,10 @@ template<> struct BuiltinOptionsTraits<ResizeNearestNeighborOptions> {
 
 template<> struct BuiltinOptionsTraits<LeakyReluOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_LeakyReluOptions;
+};
+
+template<> struct BuiltinOptionsTraits<SquaredDifferenceOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_SquaredDifferenceOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -1908,6 +1921,14 @@ struct BuiltinOptionsUnion {
   const LeakyReluOptionsT *AsLeakyReluOptions() const {
     return type == BuiltinOptions_LeakyReluOptions ?
       reinterpret_cast<const LeakyReluOptionsT *>(value) : nullptr;
+  }
+  SquaredDifferenceOptionsT *AsSquaredDifferenceOptions() {
+    return type == BuiltinOptions_SquaredDifferenceOptions ?
+      reinterpret_cast<SquaredDifferenceOptionsT *>(value) : nullptr;
+  }
+  const SquaredDifferenceOptionsT *AsSquaredDifferenceOptions() const {
+    return type == BuiltinOptions_SquaredDifferenceOptions ?
+      reinterpret_cast<const SquaredDifferenceOptionsT *>(value) : nullptr;
   }
 };
 
@@ -6708,6 +6729,46 @@ inline flatbuffers::Offset<LeakyReluOptions> CreateLeakyReluOptions(
 
 flatbuffers::Offset<LeakyReluOptions> CreateLeakyReluOptions(flatbuffers::FlatBufferBuilder &_fbb, const LeakyReluOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct SquaredDifferenceOptionsT : public flatbuffers::NativeTable {
+  typedef SquaredDifferenceOptions TableType;
+  SquaredDifferenceOptionsT() {
+  }
+};
+
+struct SquaredDifferenceOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef SquaredDifferenceOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  SquaredDifferenceOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(SquaredDifferenceOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<SquaredDifferenceOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const SquaredDifferenceOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct SquaredDifferenceOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit SquaredDifferenceOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  SquaredDifferenceOptionsBuilder &operator=(const SquaredDifferenceOptionsBuilder &);
+  flatbuffers::Offset<SquaredDifferenceOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<SquaredDifferenceOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<SquaredDifferenceOptions> CreateSquaredDifferenceOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  SquaredDifferenceOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<SquaredDifferenceOptions> CreateSquaredDifferenceOptions(flatbuffers::FlatBufferBuilder &_fbb, const SquaredDifferenceOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -7066,6 +7127,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const LeakyReluOptions *builtin_options_as_LeakyReluOptions() const {
     return builtin_options_type() == BuiltinOptions_LeakyReluOptions ? static_cast<const LeakyReluOptions *>(builtin_options()) : nullptr;
   }
+  const SquaredDifferenceOptions *builtin_options_as_SquaredDifferenceOptions() const {
+    return builtin_options_type() == BuiltinOptions_SquaredDifferenceOptions ? static_cast<const SquaredDifferenceOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -7395,6 +7459,10 @@ template<> inline const ResizeNearestNeighborOptions *Operator::builtin_options_
 
 template<> inline const LeakyReluOptions *Operator::builtin_options_as<LeakyReluOptions>() const {
   return builtin_options_as_LeakyReluOptions();
+}
+
+template<> inline const SquaredDifferenceOptions *Operator::builtin_options_as<SquaredDifferenceOptions>() const {
+  return builtin_options_as_SquaredDifferenceOptions();
 }
 
 struct OperatorBuilder {
@@ -9914,6 +9982,29 @@ inline flatbuffers::Offset<LeakyReluOptions> CreateLeakyReluOptions(flatbuffers:
       _alpha);
 }
 
+inline SquaredDifferenceOptionsT *SquaredDifferenceOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new SquaredDifferenceOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void SquaredDifferenceOptions::UnPackTo(SquaredDifferenceOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<SquaredDifferenceOptions> SquaredDifferenceOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const SquaredDifferenceOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateSquaredDifferenceOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<SquaredDifferenceOptions> CreateSquaredDifferenceOptions(flatbuffers::FlatBufferBuilder &_fbb, const SquaredDifferenceOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const SquaredDifferenceOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateSquaredDifferenceOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -10472,6 +10563,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const LeakyReluOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_SquaredDifferenceOptions: {
+      auto ptr = reinterpret_cast<const SquaredDifferenceOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -10790,6 +10885,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const LeakyReluOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_SquaredDifferenceOptions: {
+      auto ptr = reinterpret_cast<const SquaredDifferenceOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -11096,6 +11195,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const LeakyReluOptionsT *>(value);
       return CreateLeakyReluOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_SquaredDifferenceOptions: {
+      auto ptr = reinterpret_cast<const SquaredDifferenceOptionsT *>(value);
+      return CreateSquaredDifferenceOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -11400,6 +11503,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_LeakyReluOptions: {
       value = new LeakyReluOptionsT(*reinterpret_cast<LeakyReluOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_SquaredDifferenceOptions: {
+      value = new SquaredDifferenceOptionsT(*reinterpret_cast<SquaredDifferenceOptionsT *>(u.value));
       break;
     }
     default:
@@ -11781,6 +11888,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_LeakyReluOptions: {
       auto ptr = reinterpret_cast<LeakyReluOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_SquaredDifferenceOptions: {
+      auto ptr = reinterpret_cast<SquaredDifferenceOptionsT *>(value);
       delete ptr;
       break;
     }
