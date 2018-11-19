@@ -3677,7 +3677,7 @@ LaunchDimensions IrEmitterUnnested::EmitHlo021Tile(
   constexpr int kNumRows = 4;
   KernelMappingScheme mapping_scheme(
       reduced_output_dims, /*tile_size_y=*/kWarpSize,
-      /*tile_size_x=*/kWarpSize, /*req_block_sizes=*/{2, 2, 2},
+      /*tile_size_x=*/kWarpSize, /*req_block_sizes=*/{1, 1, 1},
       /*num_threads_y=*/kNumRows,
       /*num_threads_x=*/kWarpSize, &b_);
   TileElementGenerator element_generator;
