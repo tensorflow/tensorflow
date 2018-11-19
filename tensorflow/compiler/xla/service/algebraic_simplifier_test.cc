@@ -45,15 +45,18 @@ using ::testing::ElementsAre;
 
 namespace op = xla::testing::opcode_matchers;
 
-AlgebraicSimplifier::ValidBitcastCallback bitcasting_callback() {
+AlgebraicSimplifierOptions::ValidBitcastCallback bitcasting_callback() {
   return [](const Shape&, const Shape&) { return true; };
 }
 
-AlgebraicSimplifier::ValidBitcastCallback non_bitcasting_callback() {
+AlgebraicSimplifierOptions::ValidBitcastCallback non_bitcasting_callback() {
   return [](const Shape&, const Shape&) { return false; };
 }
 
-class AlgebraicSimplifierTest : public HloTestBase {};
+class AlgebraicSimplifierTest : public HloTestBase {
+ protected:
+  AlgebraicSimplifierOptions default_options_{non_bitcasting_callback()};
+};
 
 // Test that A + 0 is simplified to A
 TEST_F(AlgebraicSimplifierTest, AddZero) {
@@ -70,8 +73,7 @@ TEST_F(AlgebraicSimplifierTest, AddZero) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kAdd);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
@@ -92,8 +94,7 @@ TEST_F(AlgebraicSimplifierTest, MulZero) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kMultiply);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   EXPECT_EQ(computation->root_instruction(), zero);
 }
@@ -115,8 +116,7 @@ TEST_F(AlgebraicSimplifierTest, SelectTrue) {
   auto computation = module->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kSelect);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   EXPECT_EQ(computation->root_instruction(), param0);
 }
@@ -138,8 +138,7 @@ TEST_F(AlgebraicSimplifierTest, SelectFalse) {
   auto computation = module->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kSelect);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   EXPECT_EQ(computation->root_instruction(), param1);
 }
@@ -159,8 +158,7 @@ TEST_F(AlgebraicSimplifierTest, SelectIdentical) {
   auto computation = module->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kSelect);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   EXPECT_EQ(computation->root_instruction(), param1);
 }
@@ -196,8 +194,7 @@ TEST_F(AlgebraicSimplifierTest, TwoReducesToOne) {
   builder.AddInstruction(HloInstruction::CreateReduce(r1f32, reduce0, zero,
                                                       dims1, add_computation));
   m->AddEntryComputation(builder.Build());
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Reduce(param, zero));
@@ -219,8 +216,7 @@ TEST_F(AlgebraicSimplifierTest, AddConstOnLHS) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kAdd);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_THAT(root, op::Add(param0, op::Constant()));
@@ -246,8 +242,7 @@ TEST_F(AlgebraicSimplifierTest, AddReassociateMergeConstants) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kAdd);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_THAT(root, op::Add(param0, op::Add(constant1, constant2)));
@@ -269,8 +264,7 @@ TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR0Operand) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kAdd);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
@@ -306,8 +300,7 @@ TEST_F(AlgebraicSimplifierTest, InlineTrivialMap) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kMap);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_THAT(root, op::Add(param0, op::Broadcast(zero)));
@@ -329,8 +322,7 @@ TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR1Operand) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kAdd);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
@@ -345,8 +337,7 @@ TEST_F(AlgebraicSimplifierTest, ConstantToBroadcast) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Constant());
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_THAT(root, op::Broadcast(op::Constant()));
@@ -362,8 +353,7 @@ TEST_F(AlgebraicSimplifierTest, ConstantNotToBroadcast) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Constant());
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_THAT(root, op::Constant());
@@ -378,8 +368,7 @@ TEST_F(AlgebraicSimplifierTest, IotaToBroadcast) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Constant());
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_THAT(root, op::Iota());
@@ -400,8 +389,7 @@ TEST_F(AlgebraicSimplifierTest, SubZero) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kSubtract);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
@@ -422,8 +410,7 @@ TEST_F(AlgebraicSimplifierTest, SubConstCanonicalization) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kSubtract);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_THAT(root, op::Add(param0, op::Negate(constant)));
@@ -450,8 +437,7 @@ TEST_F(AlgebraicSimplifierTest, LhsDivOfDiv) {
   EXPECT_THAT(computation->root_instruction(),
               op::Divide(op::Divide(param0, param1), param2));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
@@ -479,8 +465,7 @@ TEST_F(AlgebraicSimplifierTest, RhsDivOfDiv) {
   EXPECT_THAT(computation->root_instruction(),
               op::Divide(param0, op::Divide(param1, param2)));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
@@ -513,8 +498,7 @@ TEST_F(AlgebraicSimplifierTest, DivOfDivAndDiv) {
       computation->root_instruction(),
       op::Divide(op::Divide(param0, param1), op::Divide(param2, param3)));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(
@@ -541,8 +525,7 @@ TEST_F(AlgebraicSimplifierTest, DivOfExp) {
   EXPECT_THAT(computation->root_instruction(),
               op::Divide(param0, op::Exp(param1)));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
@@ -570,8 +553,7 @@ TEST_F(AlgebraicSimplifierTest, DivOfPower) {
   EXPECT_THAT(computation->root_instruction(),
               op::Divide(param0, op::Power(param1, param2)));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
@@ -600,8 +582,7 @@ TEST_F(AlgebraicSimplifierTest, DivOfBroadcastingPower) {
   EXPECT_THAT(computation->root_instruction(),
               op::Divide(param0, op::Power(param1, param2)));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   ASSERT_THAT(computation->root_instruction(),
@@ -623,8 +604,7 @@ TEST_F(AlgebraicSimplifierTest, DivideByConstant) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
@@ -648,8 +628,7 @@ TEST_F(AlgebraicSimplifierTest, PowerOfPower) {
                                                       inner_power, exp2));
 
   auto computation = m->AddEntryComputation(builder.Build());
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   EXPECT_THAT(computation->root_instruction(),
               op::Power(base, op::Multiply(exp1, exp2)));
@@ -673,8 +652,7 @@ TEST_F(AlgebraicSimplifierTest, PowerOfPowerComplex) {
                                                       inner_power, exp2));
 
   m->AddEntryComputation(builder.Build());
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
 }
 
@@ -693,8 +671,7 @@ TEST_F(AlgebraicSimplifierTest, DivOneScalar) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root, div);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
@@ -715,8 +692,7 @@ TEST_F(AlgebraicSimplifierTest, DivOneArray) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root, div);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
@@ -740,8 +716,7 @@ TEST_F(AlgebraicSimplifierTest, ComplexOfRealImagC) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root, cplx);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
@@ -765,8 +740,7 @@ TEST_F(AlgebraicSimplifierTest, RealOfComplex) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root, real);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
@@ -790,8 +764,7 @@ TEST_F(AlgebraicSimplifierTest, ImagOfComplex) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root, imag);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, param1);
@@ -818,8 +791,7 @@ TEST_F(AlgebraicSimplifierTest, SelectMakeTuple) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root, add);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_THAT(root, op::Add(param1, param2));
@@ -846,8 +818,7 @@ TEST_F(AlgebraicSimplifierTest, ExpDiv) {
   EXPECT_THAT(computation->root_instruction(),
               op::Divide(op::Exp(param0), op::Exp(param1)));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
@@ -875,8 +846,7 @@ TEST_F(AlgebraicSimplifierTest, ExpMul) {
   EXPECT_THAT(computation->root_instruction(),
               op::Multiply(op::Exp(param0), op::Exp(param1)));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
@@ -902,8 +872,7 @@ TEST_F(AlgebraicSimplifierTest, PowExp) {
   EXPECT_THAT(computation->root_instruction(),
               op::Power(op::Exp(param0), param1));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
@@ -929,8 +898,7 @@ TEST_F(AlgebraicSimplifierTest, LnPow) {
   EXPECT_THAT(computation->root_instruction(),
               op::Log(op::Power(param0, param1)));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
@@ -953,8 +921,7 @@ TEST_F(AlgebraicSimplifierTest, LnExp) {
 
   EXPECT_THAT(computation->root_instruction(), op::Log(op::Exp(param0)));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_EQ(computation->root_instruction(), param0);
@@ -983,8 +950,7 @@ TEST_F(AlgebraicSimplifierTest, LnExpDiv) {
   EXPECT_THAT(computation->root_instruction(),
               op::Log(op::Divide(op::Exp(param0), op::Exp(param1))));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), op::Subtract(param0, param1));
@@ -1007,8 +973,7 @@ TEST_F(AlgebraicSimplifierTest, Pow0Scalar) {
 
   EXPECT_THAT(computation->root_instruction(), op::Power(param0, zero));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   HloInstruction* root = computation->root_instruction();
@@ -1032,8 +997,7 @@ TEST_F(AlgebraicSimplifierTest, Pow0Vector) {
 
   EXPECT_THAT(computation->root_instruction(), op::Power(param0, zero));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   HloInstruction* root = computation->root_instruction();
@@ -1061,8 +1025,7 @@ TEST_F(AlgebraicSimplifierTest, Pow1) {
 
   EXPECT_THAT(computation->root_instruction(), op::Power(param0, one));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_EQ(computation->root_instruction(), param0);
@@ -1084,8 +1047,7 @@ TEST_F(AlgebraicSimplifierTest, Pow2) {
 
   EXPECT_THAT(computation->root_instruction(), op::Power(param0, two));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), op::Multiply(param0, param0));
@@ -1107,8 +1069,7 @@ TEST_F(AlgebraicSimplifierTest, PowNegative1) {
 
   EXPECT_THAT(computation->root_instruction(), op::Power(param0, negative_one));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   HloInstruction* root = computation->root_instruction();
@@ -1153,8 +1114,7 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedConvolution) {
       ShapeUtil::MakeShape(F32, {3, 3, 3}), lhs, rhs, /*feature_group_count=*/1,
       window, dnums, DefaultPrecisionConfig(2)));
   m->AddEntryComputation(builder.Build());
-  HloPassFix<AlgebraicSimplifier> simplifier(/*is_layout_sensitive=*/false,
-                                             non_bitcasting_callback());
+  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               op::Convolution(lhs, rhs));
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
@@ -1196,8 +1156,7 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedReduceWindow) {
           HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f))),
       window, add_computation));
   m->AddEntryComputation(builder.Build());
-  HloPassFix<AlgebraicSimplifier> simplifier(/*is_layout_sensitive=*/false,
-                                             non_bitcasting_callback());
+  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               op::ReduceWindow(param, op::Constant()));
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
@@ -1226,8 +1185,7 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedPad) {
   m->AddEntryComputation(builder.Build());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               op::Pad(param, op::Constant()));
-  HloPassFix<AlgebraicSimplifier> simplifier(/*is_layout_sensitive=*/false,
-                                             non_bitcasting_callback());
+  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               op::Broadcast(op::Constant()));
@@ -1253,8 +1211,7 @@ TEST_F(AlgebraicSimplifierTest, ReshapeBroadcast) {
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               op::Reshape(op::Broadcast(op::Reshape(op))));
 
-  HloPassFix<AlgebraicSimplifier> simplifier(/*is_layout_sensitive=*/false,
-                                             non_bitcasting_callback());
+  HloPassFix<AlgebraicSimplifier> simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(m->entry_computation()->root_instruction(), op);
@@ -1273,8 +1230,7 @@ TEST_F(AlgebraicSimplifierTest, ConvertBetweenSameType) {
 
   EXPECT_THAT(computation->root_instruction(), op::Convert(input));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), input);
@@ -1294,8 +1250,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveCopy) {
 
   EXPECT_THAT(computation->root_instruction(), op::Copy(param0));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), param0);
@@ -1316,14 +1271,16 @@ TEST_F(AlgebraicSimplifierTest, CopyEqualsBitcast) {
   auto computation = m->AddEntryComputation(builder.Build());
   EXPECT_THAT(computation->root_instruction(), op::Copy(param));
 
-  AlgebraicSimplifier simplifier1(/*is_layout_sensitive=*/true,
-                                  non_bitcasting_callback());
+  AlgebraicSimplifierOptions options(non_bitcasting_callback());
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier1(options);
   ASSERT_FALSE(simplifier1.Run(m.get()).ValueOrDie());
   // Verify that the copy is not replaced.
   EXPECT_THAT(computation->root_instruction(), op::Copy(param));
 
-  AlgebraicSimplifier simplifier2(/*is_layout_sensitive=*/true,
-                                  bitcasting_callback());
+  AlgebraicSimplifierOptions options2(bitcasting_callback());
+  options2.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier2(options2);
   ASSERT_TRUE(simplifier2.Run(m.get()).ValueOrDie());
   // Verify that the copy is replaced.
   EXPECT_THAT(computation->root_instruction(), op::Bitcast(param));
@@ -1343,8 +1300,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveUnaryConcatenate) {
 
   EXPECT_THAT(computation->root_instruction(), op::Concatenate(param0));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), param0);
@@ -1375,8 +1331,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveEmptyConcatenateOperands) {
       computation->root_instruction(),
       op::Concatenate(empty_literal, param0, param0, empty_slice, param1));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
@@ -1423,8 +1378,7 @@ TEST_F(AlgebraicSimplifierTest, SimplifyReduceOfConcat) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(
@@ -1455,8 +1409,7 @@ TEST_F(AlgebraicSimplifierTest, OnlyEmptyConcatenateOperands) {
   EXPECT_THAT(computation->root_instruction(),
               op::Concatenate(empty_literal, empty_slice));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_EQ(computation->root_instruction(), empty_literal);
@@ -1479,8 +1432,7 @@ TEST_F(AlgebraicSimplifierTest, ConcatenateOfBroadcastBecomesPad) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   EXPECT_THAT(computation->root_instruction(), op::Pad(param0, param1));
 }
@@ -1504,8 +1456,9 @@ TEST_F(AlgebraicSimplifierTest, CopyWithDifferentLayout) {
 
   EXPECT_THAT(computation->root_instruction(), op::Copy(param0));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/true,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifierOptions options(non_bitcasting_callback());
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
   EXPECT_FALSE(simplifier.Run(m.get()).ValueOrDie());
 
   // Copy has not been removed.
@@ -1531,8 +1484,9 @@ TEST_F(AlgebraicSimplifierTest, CopyWithSameLayout) {
 
   EXPECT_THAT(computation->root_instruction(), op::Copy(param0));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/true,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifierOptions options(non_bitcasting_callback());
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   // Copy has been removed.
@@ -1559,8 +1513,9 @@ TEST_F(AlgebraicSimplifierTest, NoBitcastAdded) {
 
   EXPECT_THAT(computation->root_instruction(), op::Reshape(param0));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/true,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifierOptions options(non_bitcasting_callback());
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
   EXPECT_FALSE(simplifier.Run(m.get()).ValueOrDie());
 
   // Reshape is not replaced with a bitcast.
@@ -1588,8 +1543,8 @@ TEST_F(AlgebraicSimplifierTest, ReshapeOfTransposeOfRngToRng) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 bitcasting_callback());
+  AlgebraicSimplifier simplifier(
+      (AlgebraicSimplifierOptions(bitcasting_callback())));
   EXPECT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   // Verify that that reshape(transpose(rng)) is replace by a single rng of the
@@ -1639,8 +1594,9 @@ TEST_F(AlgebraicSimplifierTest, ReshapeReplacedWithBitcast) {
               op::Tuple(transformable_reshape, dimensions_wrong_reshape,
                         layout_wrong_reshape));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/true,
-                                 bitcasting_callback());
+  AlgebraicSimplifierOptions options(bitcasting_callback());
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
   simplifier.Run(m.get()).ValueOrDie();
 
   // Verify that only the first reshape is replaced.
@@ -1667,8 +1623,8 @@ TEST_F(AlgebraicSimplifierTest, FailureToSinkReshapeDoesntAffectChangedBit) {
   builder.AddInstruction(
       HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {4}), add));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 bitcasting_callback());
+  AlgebraicSimplifier simplifier(
+      (AlgebraicSimplifierOptions(bitcasting_callback())));
   m->AddEntryComputation(builder.Build());
   EXPECT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 }
@@ -1692,8 +1648,8 @@ TEST_F(AlgebraicSimplifierTest, FailureToSinkBroadcastDoesntAffectChangedBit) {
       HloInstruction::CreateBroadcast(ShapeUtil::MakeShape(F32, {2, 2, 2}), add,
                                       /*broadcast_dimensions=*/{0, 1}));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 bitcasting_callback());
+  AlgebraicSimplifier simplifier(
+      (AlgebraicSimplifierOptions(bitcasting_callback())));
   m->AddEntryComputation(builder.Build());
   EXPECT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 }
@@ -1717,8 +1673,9 @@ TEST_F(AlgebraicSimplifierTest, TransposeEqualsBitcast1) {
 
   EXPECT_THAT(computation->root_instruction(), op::Transpose(param));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/true,
-                                 bitcasting_callback());
+  AlgebraicSimplifierOptions options(bitcasting_callback());
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   // Verify that the reshape is replaced.
@@ -1744,8 +1701,9 @@ TEST_F(AlgebraicSimplifierTest, TransposeEqualsBitcast2) {
 
   EXPECT_THAT(computation->root_instruction(), op::Transpose(param));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/true,
-                                 bitcasting_callback());
+  AlgebraicSimplifierOptions options(bitcasting_callback());
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   // Verify that the reshape is replaced.
@@ -1771,8 +1729,7 @@ TEST_F(AlgebraicSimplifierTest, ReshapesMerged) {
   EXPECT_THAT(computation->root_instruction(),
               op::Reshape(op::Reshape(param0)));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), op::Reshape(param0));
@@ -1798,8 +1755,9 @@ TEST_F(AlgebraicSimplifierTest, CopiesMerged) {
 
   EXPECT_THAT(computation->root_instruction(), op::Copy(op::Copy(param0)));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/true,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifierOptions options(non_bitcasting_callback());
+  options.set_is_layout_sensitive(true);
+  AlgebraicSimplifier simplifier(options);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), op::Copy(param0));
@@ -1823,8 +1781,7 @@ TEST_F(AlgebraicSimplifierTest, TransposesMerged) {
 
   EXPECT_THAT(computation->root_instruction(), op::Transpose(transpose1));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), op::Transpose(param0));
@@ -1848,8 +1805,7 @@ TEST_F(AlgebraicSimplifierTest, ReshapeAndBroadcastMerged) {
   EXPECT_THAT(computation->root_instruction(),
               op::Broadcast(op::Reshape(param0)));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), op::Broadcast(param0));
@@ -1871,8 +1827,7 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshapeMerged) {
   EXPECT_THAT(computation->root_instruction(),
               op::Reshape(op::Broadcast(param0)));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), op::Broadcast(param0));
@@ -1893,8 +1848,7 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_1_3x1_3) {
   EXPECT_THAT(computation->root_instruction(),
               op::Reshape(op::Broadcast(param)));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   EXPECT_FALSE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
@@ -1916,8 +1870,7 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_4_3x2x4_6x1x1x4) {
   EXPECT_THAT(computation->root_instruction(),
               op::Reshape(op::Broadcast(param)));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), op::Broadcast(param));
@@ -1940,8 +1893,7 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_1_3x2x1_6x1x1x1) {
   EXPECT_THAT(computation->root_instruction(),
               op::Reshape(op::Broadcast(param)));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), op::Broadcast(param));
@@ -1966,8 +1918,7 @@ TEST_F(AlgebraicSimplifierTest, BroadcastAndReshape_4_3x2x4x2_6x8) {
   EXPECT_THAT(computation->root_instruction(),
               op::Reshape(op::Broadcast(param)));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   EXPECT_FALSE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(),
@@ -1986,8 +1937,7 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshapeMerged) {
 
   EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), op::Iota());
@@ -2006,8 +1956,7 @@ TEST_F(AlgebraicSimplifierTest, IotaEffectiveScalar) {
 
   EXPECT_THAT(computation->root_instruction(), op::Iota());
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   auto root = computation->root_instruction();
@@ -2029,8 +1978,7 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshape_1_3x2_6) {
 
   EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   EXPECT_FALSE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
@@ -2048,8 +1996,7 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshape_4_3x2x4_6x1x1x4) {
 
   EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), op::Iota());
@@ -2070,8 +2017,7 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshape_1_3x2x2_6x1x1x2) {
 
   EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), op::Iota());
@@ -2093,8 +2039,7 @@ TEST_F(AlgebraicSimplifierTest, IotaAndReshape_4_3x2x4x2_6x8) {
 
   EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   EXPECT_FALSE(simplifier.Run(m.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Iota()));
@@ -2122,8 +2067,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopPad) {
 
   EXPECT_THAT(computation->root_instruction(), op::Pad(param, zero));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), param);
@@ -2153,8 +2097,7 @@ TEST_F(AlgebraicSimplifierTest, NegativePadding) {
   auto module = CreateNewVerifiedModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
 
   auto has_negative_padding = [](const HloInstruction* pad) {
     for (auto& padding_dimension : pad->padding_config().dimensions()) {
@@ -2189,8 +2132,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopReshape) {
 
   EXPECT_THAT(computation->root_instruction(), op::Reshape(param));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), param);
@@ -2212,8 +2154,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopSlice) {
 
   EXPECT_THAT(computation->root_instruction(), op::Slice(param));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), param);
@@ -2241,8 +2182,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfSliceToSlice) {
 
   EXPECT_THAT(computation->root_instruction(), op::Slice(op::Slice(param)));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), op::Slice(param));
@@ -2273,8 +2213,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfReshapeToReshapeOfSlice) {
 
   EXPECT_THAT(computation->root_instruction(), op::Slice(op::Reshape(param)));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 
   EXPECT_THAT(computation->root_instruction(), op::Reshape(op::Slice(param)));
@@ -2298,8 +2237,7 @@ TEST_F(AlgebraicSimplifierTest, SliceOfReshapeUnchanged) {
 
   EXPECT_THAT(computation->root_instruction(), op::Slice(op::Reshape(param)));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
 }
 
@@ -2312,8 +2250,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopSort) {
   builder.AddInstruction(HloInstruction::CreateSort(keys_shape, 0, keys));
   auto module = CreateNewVerifiedModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   EXPECT_THAT(computation->root_instruction(), keys);
 }
@@ -2334,8 +2271,7 @@ TEST_F(AlgebraicSimplifierTest, ReplaceEffectiveScalarKeyValueSortWithTuple) {
       keys, {values0, values1}));
   auto module = CreateNewVerifiedModule();
   HloComputation* computation = module->AddEntryComputation(builder.Build());
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   EXPECT_THAT(computation->root_instruction(),
               op::Tuple(keys, values0, values1));
@@ -2356,8 +2292,7 @@ TEST_F(AlgebraicSimplifierTest, AndTrue) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kAnd);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
@@ -2378,8 +2313,7 @@ TEST_F(AlgebraicSimplifierTest, AndTrue2) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kAnd);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
@@ -2400,8 +2334,7 @@ TEST_F(AlgebraicSimplifierTest, AndFalse) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kAnd);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, const_false);
@@ -2422,8 +2355,7 @@ TEST_F(AlgebraicSimplifierTest, AndFalse2) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kAnd);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, const_false);
@@ -2444,8 +2376,7 @@ TEST_F(AlgebraicSimplifierTest, OrTrue) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kOr);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, const_true);
@@ -2466,8 +2397,7 @@ TEST_F(AlgebraicSimplifierTest, OrTrue2) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kOr);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, const_true);
@@ -2488,8 +2418,7 @@ TEST_F(AlgebraicSimplifierTest, OrFalse) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kOr);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
@@ -2510,8 +2439,7 @@ TEST_F(AlgebraicSimplifierTest, OrFalse2) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kOr);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_EQ(root, param0);
@@ -2641,8 +2569,7 @@ TEST_P(ConvInputPaddingTest, DoTest) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   if (testcase.expected_conv_window.empty()) {
     ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
   } else {
@@ -2759,8 +2686,7 @@ TEST_P(ConvFilterPaddingTest, DoIt) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   if (testcase.expected_conv_window.empty()) {
     ASSERT_FALSE(simplifier.Run(module.get()).ValueOrDie());
   } else {
@@ -2908,8 +2834,9 @@ TEST_F(AlgebraicSimplifierTest, ConvertConvToMatmul) {
     auto module = CreateNewUnverifiedModule();
     auto* computation = module->AddEntryComputation(b.Build());
 
-    AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/true,
-                                   bitcasting_callback());
+    AlgebraicSimplifierOptions simplifier_options(bitcasting_callback());
+    simplifier_options.set_is_layout_sensitive(true);
+    AlgebraicSimplifier simplifier(simplifier_options);
     if (!simplifier.Run(module.get()).ValueOrDie()) {
       return "NO_CHANGE";
     }
@@ -3032,8 +2959,7 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToSlice) {
   EXPECT_EQ(root, slice);
   EXPECT_TRUE(ShapeUtil::Equal(root->shape(), slice_shape));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
 
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 
@@ -3071,8 +2997,7 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToTransposeReshape) {
   EXPECT_EQ(root, reshape);
   EXPECT_TRUE(ShapeUtil::Equal(root->shape(), reshape_shape));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 
   root = computation->root_instruction();
@@ -3138,8 +3063,7 @@ TEST_F(AlgebraicSimplifierTest, FoldPadIntoReduceWindow) {
   auto computation = module->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root, reduce_window);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 
   // Running simplification again should not result in any further changes.
@@ -3224,8 +3148,7 @@ TEST_F(AlgebraicSimplifierTest, FoldConvertedPadIntoReduceWindow) {
   auto computation = module->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root, reduce_window);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 
   // Running simplification again should not result in any further changes.
@@ -3258,8 +3181,7 @@ TEST_F(AlgebraicSimplifierTest, ReversalOfTrivialDimensionsToBitcast) {
   auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 
   HloInstruction* root = computation->root_instruction();
@@ -3295,8 +3217,7 @@ TEST_F(AlgebraicSimplifierTest, IteratorInvalidation) {
 
   m->AddEmbeddedComputation(std::move(dot_computation));
   m->AddEntryComputation(call_builder.Build());
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 }
 
@@ -3313,8 +3234,7 @@ TEST_F(AlgebraicSimplifierTest, ConstantTupleBecomesTupleOfConstants) {
 
   auto computation = m->AddEntryComputation(builder.Build());
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   EXPECT_THAT(computation->root_instruction(),
               op::Tuple(op::Constant(), op::Constant()));
@@ -3337,8 +3257,7 @@ TEST_F(AlgebraicSimplifierTest, TrivialDynamicSlice) {
       /*slice_sizes=*/{10, 100, 1000}));
 
   auto computation = m->AddEntryComputation(builder.Build());
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   EXPECT_THAT(computation->root_instruction(), op::Parameter());
 }
@@ -3371,8 +3290,7 @@ TEST_F(AlgebraicSimplifierTest, TrivialDynamicUpdateSlice) {
           3, ShapeUtil::MakeShape(U32, {3}), "update_indices"))));
 
   auto computation = m->AddEntryComputation(builder.Build());
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   EXPECT_THAT(computation->root_instruction(),
               op::DynamicSlice(op::Parameter(), op::Parameter()));
@@ -3394,8 +3312,7 @@ TEST_F(AlgebraicSimplifierTest, MergeBroadcasts) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_THAT(root, op::Broadcast(op::Constant()));
@@ -3421,8 +3338,7 @@ TEST_F(AlgebraicSimplifierTest, MergeBroadcasts2) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_THAT(root, op::Broadcast(op::Parameter(0)));
@@ -3442,8 +3358,7 @@ TEST_F(AlgebraicSimplifierTest, MergeBroadcastAndIota) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_THAT(root, op::Iota());
@@ -3464,8 +3379,7 @@ TEST_F(AlgebraicSimplifierTest, MergeBroadcastAndIota2) {
   auto computation = m->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   root = computation->root_instruction();
   EXPECT_THAT(root, op::Iota());
@@ -3486,8 +3400,8 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadLow) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 bitcasting_callback());
+  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Reshape(op::Constant()));
@@ -3507,8 +3421,8 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadHigh) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 bitcasting_callback());
+  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Reshape(op::Constant()));
@@ -3528,8 +3442,8 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadMidNonScalar) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 bitcasting_callback());
+  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifier simplifier(options);
   EXPECT_FALSE(simplifier.Run(module.get()).ValueOrDie());
 }
 
@@ -3547,8 +3461,8 @@ TEST_F(AlgebraicSimplifierTest, SliceOfPadMidScalar) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 bitcasting_callback());
+  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Parameter());
@@ -3569,8 +3483,8 @@ TEST_F(AlgebraicSimplifierTest, SliceOfConcatScalarInput) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 bitcasting_callback());
+  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Parameter(1));
@@ -3591,8 +3505,8 @@ TEST_F(AlgebraicSimplifierTest, SliceOfConcatNonScalarInput) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 bitcasting_callback());
+  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Slice(op::Parameter(2)));
@@ -3613,8 +3527,8 @@ TEST_F(AlgebraicSimplifierTest, NegateNegate) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 bitcasting_callback());
+  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Parameter(0));
@@ -3633,8 +3547,8 @@ TEST_F(AlgebraicSimplifierTest, NotNot) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 bitcasting_callback());
+  AlgebraicSimplifierOptions options(bitcasting_callback());
+  AlgebraicSimplifier simplifier(options);
   EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Parameter(0));
@@ -3733,8 +3647,7 @@ TEST_P(PadReduceWindowEffectiveBroadcastTest, DoIt) {
       output_shape, pad, zero, window, add_computation));
 
   auto computation = m->AddEntryComputation(builder.Build());
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   TF_ASSERT_OK_AND_ASSIGN(bool run_successful, simplifier.Run(m.get()));
   ASSERT_TRUE(run_successful);
 
@@ -3815,8 +3728,7 @@ TEST_P(DotStrengthReductionTest, DotStrengthReduction) {
   builder.AddInstruction(HloInstruction::CreateDot(
       dot_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
   auto computation = module->AddEntryComputation(builder.Build());
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   TF_ASSERT_OK_AND_ASSIGN(bool changed, simplifier.Run(module.get()));
   const bool dot_should_be_transformed = m == 1 || k == 1 || n == 1;
   const bool computation_should_be_modified =
@@ -3845,7 +3757,7 @@ struct DotOfConcatTestSpec {
 };
 
 class DotOfConcatSimplificationTest
-    : public HloTestBase,
+    : public AlgebraicSimplifierTest,
       public ::testing::WithParamInterface<DotOfConcatTestSpec> {};
 
 // Test that we transform
@@ -3893,8 +3805,7 @@ TEST_P(DotOfConcatSimplificationTest, ConstantLHS) {
       dot_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto computation = m->AddEntryComputation(builder.Build());
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   TF_ASSERT_OK_AND_ASSIGN(bool run_successful, simplifier.Run(m.get()));
   ASSERT_TRUE(run_successful);
 
@@ -3958,8 +3869,7 @@ TEST_P(DotOfConcatSimplificationTest, ConstantRHS) {
       dot_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto computation = m->AddEntryComputation(builder.Build());
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   TF_ASSERT_OK_AND_ASSIGN(bool run_successful, simplifier.Run(m.get()));
   ASSERT_TRUE(run_successful);
   EXPECT_TRUE(
@@ -4000,8 +3910,7 @@ TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceZeroUpdate) {
   const HloComputation* const computation =
       m->AddEntryComputation(builder.Build());
 
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   EXPECT_THAT(computation->root_instruction(), operand);
 }
@@ -4021,7 +3930,7 @@ struct DotOfGatherTestSpec {
 };
 
 class DotOfGatherSimplificationTest
-    : public HloTestBase,
+    : public AlgebraicSimplifierTest,
       public ::testing::WithParamInterface<DotOfGatherTestSpec> {};
 
 // input: dot(DS(ctA), ctB))
@@ -4078,8 +3987,7 @@ TEST_P(DotOfGatherSimplificationTest, ConstantRHS) {
       dot_shape, ds, rhs, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto computation = m->AddEntryComputation(builder.Build());
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   TF_ASSERT_OK_AND_ASSIGN(bool run_successful, simplifier.Run(m.get()));
   ASSERT_TRUE(run_successful);
   EXPECT_TRUE(
@@ -4149,8 +4057,7 @@ TEST_P(DotOfGatherSimplificationTest, ConstantLHS) {
       dot_shape, lhs, ds, dot_dnums, DefaultPrecisionConfig(2)));
 
   auto computation = m->AddEntryComputation(builder.Build());
-  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
-                                 non_bitcasting_callback());
+  AlgebraicSimplifier simplifier(default_options_);
   TF_ASSERT_OK_AND_ASSIGN(bool run_successful, simplifier.Run(m.get()));
   ASSERT_TRUE(run_successful);
   EXPECT_TRUE(

@@ -268,10 +268,10 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,
         /*rewrite_grad_op=*/true);
-    pass.AddPass<AlgebraicSimplifier>(
-        /*is_layout_sensitive=*/false,
-        [](const Shape&, const Shape&) { return false; },
-        /*enable_dot_strength_reduction=*/false);
+    AlgebraicSimplifierOptions options(
+        [](const Shape&, const Shape&) { return false; });
+    options.set_enable_dot_strength_reduction(false);
+    pass.AddPass<AlgebraicSimplifier>(options);
     pass.AddPass<HloDCE>();
 
     // BatchNormExpander can create zero-sized ops, so zero-sized HLO
@@ -334,10 +334,11 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     pass.AddInvariantChecker<HloVerifier>(
         /*layout_sensitive=*/true,
         /*allow_mixed_precision=*/false);
-    pass.AddPass<HloPassFix<AlgebraicSimplifier>>(
-        /*is_layout_sensitive=*/true,
-        [](const Shape&, const Shape&) { return true; },
-        /*enable_dot_strength_reduction=*/false);
+    AlgebraicSimplifierOptions options(
+        [](const Shape&, const Shape&) { return true; });
+    options.set_is_layout_sensitive(true);
+    options.set_enable_dot_strength_reduction(false);
+    pass.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
     pass.AddPass<HloDCE>();
     pass.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
   }
