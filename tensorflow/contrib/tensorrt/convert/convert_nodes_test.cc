@@ -36,6 +36,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
+#include "tensorflow/core/public/session.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -341,28 +343,46 @@ TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
                                           graph_properties, &output));
     ValidateWeights<float>(output.weights(), {2}, {1.0, 2.0});
   }
-  // Convert non-Const. We test the case where the non-batch dimemsion is
-  // unknown as well, to make sure the validator allows that.
-  for (const int32 non_batch_dim : {-1, 2}) {
-    const int32 batch_size = 12;
 
+  // Helper method to run ConvertToTensorOrWeights() with predefined parameters.
+  auto convert_to_tensor_or_weights = [this](const std::vector<int64>& dims,
+                                             TRT_TensorOrWeights* output) {
     Scope s = Scope::NewRootScope();
-    ops::Placeholder::Attrs attrs;
-    TF_EXPECT_OK(TensorShapeUtils::MakeShape(
-        std::vector<int32>{batch_size, non_batch_dim}, &attrs.shape_));
+    const auto attrs = ops::Placeholder::Shape(PartialTensorShape{dims});
     auto feed = ops::Placeholder(s.WithOpName("feed"), DT_FLOAT, attrs);
     auto add = ops::Add(s.WithOpName("add"), feed, feed);
 
     grappler::GrapplerItem item;
     TF_EXPECT_OK(s.ToGraphDef(&item.graph));
-
     grappler::GraphProperties graph_properties(item);
     TF_EXPECT_OK(graph_properties.InferStatically(true));
-
-    auto& node_def = add.operation.node()->def();
+    const NodeDef& node_def = add.operation.node()->def();
+    return this->ConvertToTensorOrWeights(node_def, /*output_port=*/0,
+                                          graph_properties, output);
+  };
+  // Convert non-Const with #dims > nvinfer1::Dims::MAX_DIMS+1.
+  {
     TRT_TensorOrWeights output;
-    ExpectStatus(ConvertToTensorOrWeights(node_def, /*output_port=*/0,
-                                          graph_properties, &output));
+    ExpectStatus(
+        convert_to_tensor_or_weights(
+            std::vector<int64>(nvinfer1::Dims::MAX_DIMS + 2, 1), &output),
+        error::OUT_OF_RANGE, "Input tensor rank is greater than 9");
+  }
+  // Convert non-Const with #dims < 2.
+  {
+    TRT_TensorOrWeights output;
+    ExpectStatus(
+        convert_to_tensor_or_weights({1}, &output), error::INVALID_ARGUMENT,
+        "Input tensor with rank<2 is not supported since the first dimension "
+        "is treated as batch dimension by TRT");
+  }
+  // Convert non-Const. We test the case where the non-batch dimemsion is
+  // unknown as well, to make sure the validator allows that.
+  for (const int32 non_batch_dim : {-1, 2}) {
+    const int32 batch_size = 12;
+    TRT_TensorOrWeights output;
+    ExpectStatus(
+        convert_to_tensor_or_weights({batch_size, non_batch_dim}, &output));
     EXPECT_EQ(true, output.is_tensor());
     EXPECT_EQ(batch_size, output.batch_size());
     EXPECT_NE(nullptr, output.tensor());
@@ -691,6 +711,7 @@ class OpConverterTest : public ::testing::Test {
     validator_inputs_.clear();
   }
 
+  // TODO(laigd): test fp16 and int8 support.
   void BuildAndRun(const char* input_name, const std::vector<float>& input_data,
                    const char* output_name, std::vector<float>* output_data) {
     // Mark the output tensor as TRT engine output.
@@ -1070,15 +1091,14 @@ TEST_F(OpConverterTest, ConvertMatMul) {
         "Input expects tensor and weights, at my_matmul");
   }
 
-  // Get the NodeDef for Reshape.
+  // Get the NodeDef for MatMul.
   auto get_matmul_nodedef = [](DataType dtype, bool transpose_a,
                                bool transpose_b) -> NodeDef {
     Scope s = Scope::NewRootScope();
     auto input = ops::Placeholder(s.WithOpName("input"), dtype);
     auto weights = ops::Placeholder(s.WithOpName("weights"), dtype);
-    ops::MatMul::Attrs matmul_attrs;
-    matmul_attrs.transpose_a_ = transpose_a;
-    matmul_attrs.transpose_b_ = transpose_b;
+    const auto matmul_attrs =
+        ops::MatMul::TransposeA(transpose_a).TransposeB(transpose_b);
     auto matmul =
         ops::MatMul(s.WithOpName("my_matmul"), input, weights, matmul_attrs);
     return matmul.operation.node()->def();
@@ -1094,43 +1114,123 @@ TEST_F(OpConverterTest, ConvertMatMul) {
         node_def, error::UNIMPLEMENTED,
         "Data type is not supported, for node my_matmul got int32");
   }
-  {
-    // transpose_a is set.
-    for (bool transpose_b : {false, true}) {
-      Reset();
-      NodeDef node_def =
-          get_matmul_nodedef(DT_FLOAT, /*transpose_a=*/true, transpose_b);
-      AddTestTensor("input", {2}, /*batch_size=*/1);
-      AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
-      RunValidationAndConversion(
-          node_def, error::INVALID_ARGUMENT,
-          "transpose_a is not supported for TensorRT FullyConnected");
+  // transpose_a is set.
+  for (bool transpose_b : {false, true}) {
+    Reset();
+    NodeDef node_def =
+        get_matmul_nodedef(DT_FLOAT, /*transpose_a=*/true, transpose_b);
+    AddTestTensor("input", {2}, /*batch_size=*/1);
+    AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "transpose_a is not supported for TensorRT FullyConnected");
+  }
+  // OK.
+  for (bool transpose_b : {false, true}) {
+    Reset();
+    NodeDef node_def =
+        get_matmul_nodedef(DT_FLOAT, /*transpose_a=*/false, transpose_b);
+    AddTestTensor("input", {2}, /*batch_size=*/1);
+    AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
+    RunConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(GetTensorOrWeights("my_matmul", &output));
+    EXPECT_TRUE(output.is_tensor());
+    EXPECT_TRUE(TrtDimsEqualsArray({2}, output.tensor()->getDimensions()))
+        << output.DebugString();
+
+    std::vector<float> output_data(2);
+    BuildAndRun("input", {0, 1}, "my_matmul", &output_data);
+    if (transpose_b) {
+      EXPECT_THAT(output_data, ElementsAre(1, 3));
+    } else {
+      EXPECT_THAT(output_data, ElementsAre(2, 3));
     }
   }
-  {
-    // OK.
-    for (bool transpose_b : {false, true}) {
-      Reset();
-      NodeDef node_def =
-          get_matmul_nodedef(DT_FLOAT, /*transpose_a=*/false, transpose_b);
-      AddTestTensor("input", {2}, /*batch_size=*/1);
-      AddTestWeights<float>("weights", {2, 2}, {0, 1, 2, 3});
-      RunConversion(node_def);
+}
+
+template <DataType dtype>
+void TestConvertBiasAdd(OpConverterTest* test) {
+  // Get the NodeDef for BiasAdd.
+  auto get_biasadd_nodedef = [](const string& data_format) -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), dtype);
+    auto weights = ops::Placeholder(s.WithOpName("weights"), dtype);
+    const auto biasadd_attrs = ops::BiasAdd::DataFormat(data_format);
+    auto biasadd =
+        ops::BiasAdd(s.WithOpName("my_biasadd"), input, weights, biasadd_attrs);
+    return biasadd.operation.node()->def();
+  };
+
+  typedef typename EnumToDataType<dtype>::Type CType;
+  for (const string& data_format : {"NHWC", "NCHW"}) {
+    for (const int trt_input_rank : {1, 2, 3, 4}) {
+      test->Reset();
+      NodeDef node_def = get_biasadd_nodedef(data_format);
+
+      // Add input, dims_array will be like {2, 1, ..., 1, 3}
+      std::vector<int32> dims_array(trt_input_rank, 1);
+      if (trt_input_rank == 1) {
+        dims_array[0] = (data_format == "NHWC" ? 3 : 2);
+      } else {
+        dims_array[0] = 2;
+        dims_array[trt_input_rank - 1] = 3;
+      }
+      test->AddTestTensor("input", dims_array, /*batch_size=*/1);
+
+      // Add bias weights.
+      const int channel_size = (data_format == "NHWC" ? 3 : 2);
+      std::vector<CType> bias(channel_size);
+      std::iota(bias.begin(), bias.end(), 1);  // bias will be {1, 2, 3, ...}
+      test->AddTestWeights<CType>("weights", {channel_size}, bias);
+
+      // Run the conversion.
+      test->RunValidationAndConversion(node_def);
       TRT_TensorOrWeights output;
-      TF_EXPECT_OK(GetTensorOrWeights("my_matmul", &output));
+      TF_EXPECT_OK(test->GetTensorOrWeights("my_biasadd", &output));
       EXPECT_TRUE(output.is_tensor());
-      EXPECT_TRUE(TrtDimsEqualsArray({2}, output.tensor()->getDimensions()))
+      EXPECT_TRUE(
+          TrtDimsEqualsArray(dims_array, output.tensor()->getDimensions()))
           << output.DebugString();
 
-      std::vector<float> output_data(2);
-      BuildAndRun("input", {0, 1}, "my_matmul", &output_data);
-      if (transpose_b) {
-        EXPECT_THAT(output_data, ElementsAre(1, 3));
+      // Build and run the engine.
+      const int num_input = TrtDimsNumElements(GetTestDims(dims_array));
+      ASSERT_EQ(trt_input_rank > 1 ? 6 : (data_format == "NHWC" ? 3 : 2),
+                num_input);
+      std::vector<CType> output_data(num_input);
+      test->BuildAndRun("input", std::vector<CType>(num_input, CType(0)),
+                        "my_biasadd", &output_data);
+      if (trt_input_rank == 1) {
+        if (data_format == "NHWC") {
+          EXPECT_THAT(output_data, ElementsAre(1, 2, 3));
+        } else {
+          EXPECT_THAT(output_data, ElementsAre(1, 2));
+        }
       } else {
-        EXPECT_THAT(output_data, ElementsAre(2, 3));
+        if (data_format == "NHWC") {
+          EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 1, 2, 3));
+        } else {
+          EXPECT_THAT(output_data, ElementsAre(1, 1, 1, 2, 2, 2));
+        }
       }
     }
   }
+}
+
+TEST_F(OpConverterTest, ConvertBiasAdd) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_biasadd", "BiasAdd", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Input expects tensor and weights, at my_biasadd");
+  }
+
+  // OK.
+  TestConvertBiasAdd<DT_FLOAT>(this);
+  // TODO(laigd): uncomment this after cl/220663893 is submitted.
+  // TestConvertBiasAdd<DT_INT32>(this);
+  // TestConvertBiasAdd<DT_HALF>(this);
 }
 
 }  // namespace convert
