@@ -97,7 +97,7 @@ class RangeSamplerOpsTest(test.TestCase):
           true_classes, self.NUM_TRUE, self.NUM_SAMPLED, True)
       accidental_hits = candidate_sampling_ops.compute_accidental_hits(
           true_classes, sampled_candidates, self.NUM_TRUE)
-      indices, ids, weights = sess.run(accidental_hits)
+      indices, ids, weights = self.evaluate(accidental_hits)
 
     self.assertEqual(1, accidental_hits[0].get_shape().ndims)
     self.assertEqual(1, accidental_hits[1].get_shape().ndims)

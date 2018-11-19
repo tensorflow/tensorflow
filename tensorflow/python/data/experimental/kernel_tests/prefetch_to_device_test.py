@@ -57,7 +57,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
     with self.test_session(config=worker_config) as sess:
       for i in range(10):
-        self.assertEqual(i, sess.run(next_element))
+        self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -87,7 +87,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
 
     with self.cached_session() as sess:
       for i in range(10):
-        self.assertEqual(i, sess.run(next_element))
+        self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -117,7 +117,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
     with self.test_session(config=worker_config) as sess:
       for i in range(10):
-        self.assertEqual({"a": i}, sess.run(next_element))
+        self.assertEqual({"a": i}, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -150,7 +150,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
     with self.test_session(config=worker_config) as sess:
       for i in range(10):
-        actual = sess.run(next_element)
+        actual = self.evaluate(next_element)
         self.assertAllEqual([i], actual.values)
         self.assertAllEqual([[0, 0]], actual.indices)
         self.assertAllEqual([2, 2], actual.dense_shape)
@@ -170,7 +170,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
 
     with self.cached_session() as sess:
       for i in range(10):
-        self.assertEqual(i, sess.run(next_element))
+        self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -199,12 +199,12 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
 
     worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
     with self.test_session(config=worker_config) as sess:
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       for i in range(5):
-        self.assertEqual(i, sess.run(next_element))
-      sess.run(iterator.initializer)
+        self.assertEqual(i, self.evaluate(next_element))
+      self.evaluate(iterator.initializer)
       for i in range(10):
-        self.assertEqual(i, sess.run(next_element))
+        self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -220,12 +220,12 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       for i in range(5):
-        self.assertEqual(i, sess.run(next_element))
-      sess.run(iterator.initializer)
+        self.assertEqual(i, self.evaluate(next_element))
+      self.evaluate(iterator.initializer)
       for i in range(10):
-        self.assertEqual(i, sess.run(next_element))
+        self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 

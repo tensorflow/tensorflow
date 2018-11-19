@@ -44,9 +44,9 @@ class EnumerateDatasetTest(test_base.DatasetTestBase):
                      [t.shape for t in get_next[1]])
 
     with self.cached_session() as sess:
-      sess.run(init_op)
-      self.assertEqual((20, (b"a", 1, 37.0)), sess.run(get_next))
-      self.assertEqual((21, (b"b", 2, 38.0)), sess.run(get_next))
+      self.evaluate(init_op)
+      self.assertEqual((20, (b"a", 1, 37.0)), self.evaluate(get_next))
+      self.assertEqual((21, (b"b", 2, 38.0)), self.evaluate(get_next))
 
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)

@@ -505,7 +505,7 @@ class TensorArrayTest(xla_test.XLATestCase):
                 [-0.5, 1.5],  # read(0) gradient
                 [20.0, 30.0, 40.0, 50.0],  # concat gradient
             ])
-      grad_vals = sess.run(grad_r)  # 2 + 2 entries
+      grad_vals = self.evaluate(grad_r)  # 2 + 2 entries
 
       self.assertAllClose([2.0 - 0.5 + 20.0, 3.0 + 1.5 + 30.0], grad_vals[0])
       self.assertAllEqual([4.0 + 40.0, 5.0 + 50.0], grad_vals[1])

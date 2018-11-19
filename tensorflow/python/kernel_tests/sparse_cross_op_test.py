@@ -43,7 +43,7 @@ class SparseCrossOpTest(test.TestCase):
         'batch2-FC1-F2_X_batch2-FC2-F1', 'batch2-FC1-F2_X_batch2-FC2-F2'
     ]])
     with self.cached_session() as sess:
-      self._assert_sparse_tensor_equals(expected_out, sess.run(op))
+      self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
   def test_dense(self):
     """Tests only dense inputs."""
@@ -63,7 +63,7 @@ class SparseCrossOpTest(test.TestCase):
         'batch2-FC1-F2_X_batch2-FC2-F1', 'batch2-FC1-F2_X_batch2-FC2-F2'
     ]])
     with self.cached_session() as sess:
-      self._assert_sparse_tensor_equals(expected_out, sess.run(op))
+      self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
   def test_integer_mixed_string_sparse(self):
     """Tests mixed type."""
@@ -77,7 +77,7 @@ class SparseCrossOpTest(test.TestCase):
         '55555_X_batch2-FC2-F2'
     ]])
     with self.cached_session() as sess:
-      self._assert_sparse_tensor_equals(expected_out, sess.run(op))
+      self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
   def test_integer_mixed_string_dense(self):
     """Tests mixed dense inputs."""
@@ -95,7 +95,7 @@ class SparseCrossOpTest(test.TestCase):
         '999999_X_batch2-FC2-F1', '999999_X_batch2-FC2-F2'
     ]])
     with self.cached_session() as sess:
-      self._assert_sparse_tensor_equals(expected_out, sess.run(op))
+      self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
   def test_sparse_cross_dense(self):
     """Tests sparse and dense inputs."""
@@ -112,7 +112,7 @@ class SparseCrossOpTest(test.TestCase):
             'batch2-FC1-F2_X_batch2-FC2-F1', 'batch2-FC1-F2_X_batch2-FC2-F2'
         ]])
     with self.cached_session() as sess:
-      self._assert_sparse_tensor_equals(expected_out, sess.run(op))
+      self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
   def test_integer_sparse_input(self):
     """Tests mixed type sparse and dense inputs."""
@@ -128,7 +128,7 @@ class SparseCrossOpTest(test.TestCase):
             '5555_X_batch2-FC2-F1', '5555_X_batch2-FC2-F2'
         ]])
     with self.cached_session() as sess:
-      self._assert_sparse_tensor_equals(expected_out, sess.run(op))
+      self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
   def test_permutation_3x3x3(self):
     """Tests 3x3x3 permutation."""
@@ -170,7 +170,7 @@ class SparseCrossOpTest(test.TestCase):
         'batch1-FC1-F3_X_batch1-FC2-F3_X_batch1-FC3-F3'
     ]])
     with self.cached_session() as sess:
-      self._assert_sparse_tensor_equals(expected_out, sess.run(op))
+      self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
   def test_permutation_3x1x2(self):
     """Tests 3x1x2 permutation."""
@@ -189,7 +189,7 @@ class SparseCrossOpTest(test.TestCase):
         'batch1-FC1-F3_X_batch1-FC2-F1_X_batch1-FC3-F2'
     ]])
     with self.cached_session() as sess:
-      self._assert_sparse_tensor_equals(expected_out, sess.run(op))
+      self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
   def test_large_batch(self):
     """Tests with large batch size to force multithreading."""
@@ -222,7 +222,7 @@ class SparseCrossOpTest(test.TestCase):
 
     expected_out = self._sparse_tensor(col_out)
     with self.cached_session() as sess:
-      self._assert_sparse_tensor_equals(expected_out, sess.run(op))
+      self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
   def test_one_column_empty(self):
     """Tests when one column is empty.
@@ -235,7 +235,7 @@ class SparseCrossOpTest(test.TestCase):
         self._sparse_tensor([['batch1-FC3-F1', 'batch1-FC3-F2']])
     ])
     with self.cached_session() as sess:
-      self._assert_sparse_tensor_empty(sess.run(op))
+      self._assert_sparse_tensor_empty(self.evaluate(op))
 
   def test_some_columns_empty(self):
     """Tests when more than one columns are empty.
@@ -254,7 +254,7 @@ class SparseCrossOpTest(test.TestCase):
         'batch1-FC1-F2_X_batch1-FC2-F1_X_batch1-FC3-F2'
     ]], 2)
     with self.cached_session() as sess:
-      self._assert_sparse_tensor_equals(expected_out, sess.run(op))
+      self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
   def test_all_columns_empty(self):
     """Tests when all columns are empty.
@@ -267,7 +267,7 @@ class SparseCrossOpTest(test.TestCase):
         self._sparse_tensor([])
     ])
     with self.cached_session() as sess:
-      self._assert_sparse_tensor_empty(sess.run(op))
+      self._assert_sparse_tensor_empty(self.evaluate(op))
 
   def test_hashed_zero_bucket_no_hash_key(self):
     op = sparse_ops.sparse_cross_hashed([
@@ -278,7 +278,7 @@ class SparseCrossOpTest(test.TestCase):
     # Check actual hashed output to prevent unintentional hashing changes.
     expected_out = self._sparse_tensor([[1971693436396284976]])
     with self.cached_session() as sess:
-      self._assert_sparse_tensor_equals(expected_out, sess.run(op))
+      self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
   def test_hashed_zero_bucket(self):
     op = sparse_ops.sparse_cross_hashed(
@@ -291,7 +291,7 @@ class SparseCrossOpTest(test.TestCase):
     # Check actual hashed output to prevent unintentional hashing changes.
     expected_out = self._sparse_tensor([[4847552627144134031]])
     with self.cached_session() as sess:
-      self._assert_sparse_tensor_equals(expected_out, sess.run(op))
+      self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
   # TODO(sibyl-Aix6ihai): Add benchmark to compare Hashed vs Non-hashed.
   def test_hashed_no_hash_key(self):
@@ -305,7 +305,7 @@ class SparseCrossOpTest(test.TestCase):
     # Check actual hashed output to prevent unintentional hashing changes.
     expected_out = self._sparse_tensor([[83]])
     with self.cached_session() as sess:
-      self._assert_sparse_tensor_equals(expected_out, sess.run(op))
+      self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
   def test_hashed_output(self):
     op = sparse_ops.sparse_cross_hashed(
@@ -319,7 +319,7 @@ class SparseCrossOpTest(test.TestCase):
     # Check actual hashed output to prevent unintentional hashing changes.
     expected_out = self._sparse_tensor([[31]])
     with self.cached_session() as sess:
-      self._assert_sparse_tensor_equals(expected_out, sess.run(op))
+      self._assert_sparse_tensor_equals(expected_out, self.evaluate(op))
 
   def test_hashed__has_no_collision(self):
     """Tests that fingerprint concatenation has no collisions."""
@@ -345,7 +345,7 @@ class SparseCrossOpTest(test.TestCase):
         ],
         num_buckets=1000)
     with self.cached_session() as sess:
-      out = sess.run(op)
+      out = self.evaluate(op)
       self.assertEqual(6, len(out.values))
       self.assertAllEqual([[0, i] for i in range(6)], out.indices)
       self.assertTrue(all(x < 1000 and x >= 0 for x in out.values))

@@ -45,11 +45,11 @@ class LogicalOperatorsTest(test.TestCase):
   def test_and_tf(self):
     with self.cached_session() as sess:
       t = logical.and_(self._tf_true, self._tf_true)
-      self.assertEqual(sess.run(t), True)
+      self.assertEqual(self.evaluate(t), True)
       t = logical.and_(self._tf_true, lambda: True)
-      self.assertEqual(sess.run(t), True)
+      self.assertEqual(self.evaluate(t), True)
       t = logical.and_(self._tf_false, lambda: True)
-      self.assertEqual(sess.run(t), False)
+      self.assertEqual(self.evaluate(t), False)
       # TODO(mdan): Add a test for ops with side effects.
 
   def test_or_python(self):
@@ -63,11 +63,11 @@ class LogicalOperatorsTest(test.TestCase):
   def test_or_tf(self):
     with self.cached_session() as sess:
       t = logical.or_(self._tf_false, self._tf_true)
-      self.assertEqual(sess.run(t), True)
+      self.assertEqual(self.evaluate(t), True)
       t = logical.or_(self._tf_false, lambda: True)
-      self.assertEqual(sess.run(t), True)
+      self.assertEqual(self.evaluate(t), True)
       t = logical.or_(self._tf_true, lambda: True)
-      self.assertEqual(sess.run(t), True)
+      self.assertEqual(self.evaluate(t), True)
       # TODO(mdan): Add a test for ops with side effects.
 
   def test_not_python(self):
@@ -78,7 +78,7 @@ class LogicalOperatorsTest(test.TestCase):
   def test_not_tf(self):
     with self.cached_session() as sess:
       t = logical.not_(self._tf_false())
-      self.assertEqual(sess.run(t), True)
+      self.assertEqual(self.evaluate(t), True)
 
 
 if __name__ == '__main__':

@@ -98,8 +98,8 @@ class QuantileOpsTest(test_util.TensorFlowTestCase):
           quantile_accumulator_handle, num_features=2)
       quantiles = boosted_trees_ops.boosted_trees_bucketize(
           [self._feature_0, self._feature_1], buckets)
-      sess.run(summary_op)
-      sess.run(flush_op)
+      self.evaluate(summary_op)
+      self.evaluate(flush_op)
       self.assertAllClose(self._feature_0_boundaries, buckets[0].eval())
       self.assertAllClose(self._feature_1_boundaries, buckets[1].eval())
 

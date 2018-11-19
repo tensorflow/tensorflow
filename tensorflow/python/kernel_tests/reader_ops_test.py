@@ -724,7 +724,7 @@ class AsyncReaderTest(test.TestCase):
         thread_data.append(thread_data_t(t, queue, output))
 
       # Start all readers. They are all blocked waiting for queue entries.
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       for d in thread_data:
         d.thread.start()
 

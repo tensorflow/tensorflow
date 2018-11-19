@@ -61,7 +61,7 @@ class SavedModelTest(test.TestCase):
 
   def _init_and_validate_variable(self, sess, variable_name, variable_value):
     v = variables.VariableV1(variable_value, name=variable_name)
-    sess.run(variables.global_variables_initializer())
+    self.evaluate(variables.global_variables_initializer())
     self.assertEqual(variable_value, self.evaluate(v))
 
   def _build_asset_collection(self, asset_file_name, asset_file_contents,
@@ -385,7 +385,7 @@ class SavedModelTest(test.TestCase):
       a = ops.get_default_graph().get_tensor_by_name(constant_5_name)
       b = constant_op.constant(6.0)
       c = a * b
-      self.assertEqual(30.0, sess.run(c))
+      self.assertEqual(30.0, self.evaluate(c))
 
     # Restore the graph with tag "bar".
     with self.session(graph=ops.Graph()) as sess:
@@ -394,7 +394,7 @@ class SavedModelTest(test.TestCase):
       a = ops.get_default_graph().get_tensor_by_name(constant_6_name)
       b = constant_op.constant(5.0)
       c = a * b
-      self.assertEqual(30.0, sess.run(c))
+      self.assertEqual(30.0, self.evaluate(c))
 
   def testNoOverwrite(self):
     export_dir = self._get_export_dir("test_no_overwrite")
@@ -460,7 +460,7 @@ class SavedModelTest(test.TestCase):
     with self.session(graph=ops.Graph()) as sess:
       v = variables.VariableV1(42, name="v")
       ops.add_to_collection("foo_vars", v)
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       self.assertEqual(42, self.evaluate(v))
       builder.add_meta_graph_and_variables(sess, ["foo"])
 
@@ -470,7 +470,7 @@ class SavedModelTest(test.TestCase):
     with self.session(graph=ops.Graph()) as sess:
       v = variables.VariableV1(43, name="v")
       ops.add_to_collection("bar_vars", v)
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       self.assertEqual(43, self.evaluate(v))
       builder.add_meta_graph(["bar"])
 
@@ -794,7 +794,7 @@ class SavedModelTest(test.TestCase):
         add_v1_v2 = math_ops.add(v1._ref(), v2._ref())
         custom_main_op = control_flow_ops.group(state_ops.assign(v3, add_v1_v2))
 
-      sess.run(custom_main_op)
+      self.evaluate(custom_main_op)
       builder.add_meta_graph_and_variables(
           sess, ["foo"], main_op=custom_main_op)
 
@@ -828,7 +828,7 @@ class SavedModelTest(test.TestCase):
       assign_v3 = state_ops.assign(v3, math_ops.add(v1, v2))
       legacy_init_op = control_flow_ops.group(assign_v3, name="legacy_init_op")
 
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       builder.add_meta_graph_and_variables(
           sess, ["foo"], legacy_init_op=legacy_init_op)
 
@@ -871,7 +871,7 @@ class SavedModelTest(test.TestCase):
       assign_v2 = state_ops.assign(v2, v1)
       init_op = control_flow_ops.group(assign_v2, name="init_op")
 
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
 
       ops.add_to_collection(key, control_flow_ops.no_op())
       # ValueError should be raised since the LEGACY_INIT_OP_KEY collection
@@ -894,10 +894,10 @@ class SavedModelTest(test.TestCase):
       v2 = variables.VariableV1(2, name="v2")
       ops.add_to_collection("v", v2)
 
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       train_op = state_ops.assign_add(v1, v2)
 
-      sess.run(train_op)
+      self.evaluate(train_op)
       # TODO(karmel): remove explicit call when in the public method.
       builder._add_train_op(train_op)
       builder.add_meta_graph_and_variables(sess, ["foo"])
@@ -923,10 +923,10 @@ class SavedModelTest(test.TestCase):
       v2 = variables.VariableV1(2, name="v2")
       ops.add_to_collection("v", v2)
 
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       train_op = control_flow_ops.group()
 
-      sess.run(train_op)
+      self.evaluate(train_op)
       # TODO(karmel): remove explicit call when in the public method.
       builder._add_train_op(train_op)
       builder.add_meta_graph_and_variables(sess, ["foo"])
@@ -952,11 +952,11 @@ class SavedModelTest(test.TestCase):
       v2 = variables.VariableV1(2, name="v2")
       ops.add_to_collection("v", v2)
 
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       builder.add_meta_graph_and_variables(sess, ["pre_foo"])
 
       train_op = state_ops.assign_add(v1, v2)
-      sess.run(train_op)
+      self.evaluate(train_op)
       # TODO(karmel): remove explicit call when in the public method.
       builder._add_train_op(train_op)
       builder.add_meta_graph(["foo"])
@@ -1086,7 +1086,7 @@ class SavedModelTest(test.TestCase):
       ops.add_to_collection("v", v3)
       ops.add_to_collection("init_op", init_op)
 
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       self.assertEqual(1, ops.get_collection("v")[0].eval())
       self.assertEqual(2, ops.get_collection("v")[1].eval())
 
@@ -1141,7 +1141,7 @@ class SavedModelTest(test.TestCase):
 
     with self.session(graph=ops.Graph()) as sess:
       variables.VariableV1(1, name="v1")
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       custom_saver = training.Saver(name="my_saver")
       builder.add_meta_graph_and_variables(sess, ["tag"], saver=custom_saver)
 
@@ -1163,7 +1163,7 @@ class SavedModelTest(test.TestCase):
 
     with self.session(graph=ops.Graph()) as sess:
       variables.VariableV1(1, name="v1")
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       training.Saver(name="my_saver")
       builder.add_meta_graph_and_variables(sess, ["tag"])
 
@@ -1185,7 +1185,7 @@ class SavedModelTest(test.TestCase):
 
     with self.session(graph=ops.Graph()) as sess:
       variables.VariableV1(1, name="v1")
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       builder.add_meta_graph_and_variables(sess, ["tag_0"])
 
       saver_1 = training.Saver()
@@ -1296,7 +1296,7 @@ class SavedModelTest(test.TestCase):
       real_num = variables.VariableV1(1.0, dtype=dtypes.float32, name="real")
       imag_num = variables.VariableV1(2.0, dtype=dtypes.float32, name="imag")
       math_ops.complex(real_num, imag_num, name="complex")
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       builder.add_meta_graph_and_variables(
           sess, ["foo"], strip_default_attrs=True)
 
@@ -1306,7 +1306,7 @@ class SavedModelTest(test.TestCase):
       real_num = variables.VariableV1(1.0, dtype=dtypes.float32, name="real")
       imag_num = variables.VariableV1(2.0, dtype=dtypes.float32, name="imag")
       math_ops.complex(real_num, imag_num, name="complex")
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       builder.add_meta_graph(["bar"], strip_default_attrs=False)
 
     # Save the SavedModel to disk in text format.
@@ -1368,7 +1368,7 @@ class SavedModelTest(test.TestCase):
     with session.Session(graph=ops.Graph()) as sess:
       variables.VariableV1(1.0, dtype=dtypes.float64, name="var")
       test_ops.test_attr(T=dtypes.float32, name="test_attr")
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       builder.add_meta_graph_and_variables(sess, ["foo"])
 
     # Save the SavedModel to disk in text format.

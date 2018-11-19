@@ -108,7 +108,7 @@ class ShuffleAndRepeatTest(test_base.DatasetTestBase):
           shuffle_ops.shuffle_and_repeat(buffer_size=21))
       get_next_op = ds.make_one_shot_iterator().get_next()
       with self.session(graph=g) as sess:
-        sess.run(get_next_op)
+        self.evaluate(get_next_op)
 
 
 if __name__ == "__main__":

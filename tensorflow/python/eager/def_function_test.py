@@ -149,9 +149,9 @@ class DefFunctionTest(test.TestCase):
 
       result = fn(3.0)
 
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllEqual(sess.run(state[0]), 2.0)
-      self.assertAllEqual(sess.run(result), 6.0)
+      self.assertAllEqual(self.evaluate(result), 6.0)
 
   def testLegacyGraphModeVariablesNonTrivialInitializer(self):
     with ops.Graph().as_default(), self.test_session() as sess:
@@ -168,9 +168,9 @@ class DefFunctionTest(test.TestCase):
 
       result = fn(3.0)
 
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllEqual(sess.run(state[0]), 6.0)
-      self.assertAllEqual(sess.run(result), 18.0)
+      self.assertAllEqual(self.evaluate(result), 18.0)
 
   def testLegacyGraphModeInputDependentInitializerFails(self):
     with ops.Graph().as_default():

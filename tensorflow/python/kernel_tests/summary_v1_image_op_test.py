@@ -70,7 +70,7 @@ class SummaryV1ImageOpTest(test.TestCase):
 
           # Summarize
           summ = summary.image("img", const)
-          value = sess.run(summ)
+          value = self.evaluate(summ)
           self.assertEqual([], summ.get_shape())
           image_summ = self._AsSummary(value)
 
@@ -97,7 +97,7 @@ class SummaryV1ImageOpTest(test.TestCase):
 
         # Summarize
         summ = summary.image("img", tf_images)
-        value = sess.run(summ)
+        value = self.evaluate(summ)
         self.assertEqual([], summ.get_shape())
         image_summ = self._AsSummary(value)
 

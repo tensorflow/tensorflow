@@ -152,11 +152,11 @@ class StageTest(test.TestCase):
 
     with self.session(use_gpu=True, graph=G) as sess:
       sess.run(stage, feed_dict={x: -1})
-      self.assertEqual(sess.run(size), 1)
+      self.assertEqual(self.evaluate(size), 1)
       sess.run(stage, feed_dict={x: -1})
-      self.assertEqual(sess.run(size), 2)
+      self.assertEqual(self.evaluate(size), 2)
       sess.run(clear)
-      self.assertEqual(sess.run(size), 0)
+      self.assertEqual(self.evaluate(size), 0)
 
   def testCapacity(self):
     capacity = 3
@@ -210,14 +210,14 @@ class StageTest(test.TestCase):
                                              capacity))
 
       # Should have capacity elements in the staging area
-      self.assertTrue(sess.run(size) == capacity)
+      self.assertTrue(self.evaluate(size) == capacity)
 
       # Clear the staging area completely
       for i in range(n):
-        self.assertTrue(sess.run(ret) == [i])
+        self.assertTrue(self.evaluate(ret) == [i])
 
       # It should now be empty
-      self.assertTrue(sess.run(size) == 0)
+      self.assertTrue(self.evaluate(size) == 0)
 
   def testMemoryLimit(self):
     memory_limit = 512 * 1024  # 512K
@@ -274,13 +274,13 @@ class StageTest(test.TestCase):
                                              capacity))
 
       # Should have capacity elements in the staging area
-      self.assertTrue(sess.run(size) == capacity)
+      self.assertTrue(self.evaluate(size) == capacity)
 
       # Clear the staging area completely
       for i in range(n):
-        self.assertTrue(np.all(sess.run(ret)[0] == i))
+        self.assertTrue(np.all(self.evaluate(ret)[0] == i))
 
-      self.assertTrue(sess.run(size) == 0)
+      self.assertTrue(self.evaluate(size) == 0)
 
 
 if __name__ == '__main__':

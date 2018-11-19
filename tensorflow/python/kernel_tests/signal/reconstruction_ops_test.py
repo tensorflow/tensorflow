@@ -56,7 +56,7 @@ class ReconstructionOpsTest(test.TestCase):
     reconstruction = reconstruction_ops.overlap_and_add(signal, 2)
 
     with self.session(use_gpu=True) as sess:
-      output = sess.run(reconstruction)
+      output = self.evaluate(reconstruction)
 
       expected_output = np.array([1, 1, 2, 2, 3, 2, 2, 1, 1])
 
@@ -99,7 +99,7 @@ class ReconstructionOpsTest(test.TestCase):
     reconstruction = reconstruction_ops.overlap_and_add(signal, self.frame_hop)
 
     with self.session(use_gpu=True) as sess:
-      output = sess.run(reconstruction)
+      output = self.evaluate(reconstruction)
       string_output = [np.base_repr(x, self.bases[0]) for x in output]
 
       self.assertEqual(string_output, self.expected_string)
@@ -109,7 +109,7 @@ class ReconstructionOpsTest(test.TestCase):
     reconstruction = reconstruction_ops.overlap_and_add(signal, self.frame_hop)
 
     with self.session(use_gpu=True) as sess:
-      output = sess.run(reconstruction)
+      output = self.evaluate(reconstruction)
 
       accumulator = True
       for i in range(self.batch_size):
@@ -125,7 +125,7 @@ class ReconstructionOpsTest(test.TestCase):
     reconstruction = reconstruction_ops.overlap_and_add(signal, self.frame_hop)
 
     with self.session(use_gpu=True) as sess:
-      output = sess.run(reconstruction)
+      output = self.evaluate(reconstruction)
 
       string_output = [np.base_repr(int(x), self.bases[0]) for x in
                        np.squeeze(output)]

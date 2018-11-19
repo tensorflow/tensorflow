@@ -109,8 +109,8 @@ class SmartCaseTest(test_util.TensorFlowTestCase):
                               exclusive=True)
     with session.Session() as sess:
       # No feed_dict necessary
-      self.assertEqual(sess.run(y), 1)
-      self.assertEqual(sess.run(z), 1)
+      self.assertEqual(self.evaluate(y), 1)
+      self.assertEqual(self.evaluate(z), 1)
 
   def testFalse(self):
     conditions = [(False, raise_exception)]
@@ -121,8 +121,8 @@ class SmartCaseTest(test_util.TensorFlowTestCase):
                               default=lambda: constant_op.constant(1),
                               exclusive=True)
     with session.Session() as sess:
-      self.assertEqual(sess.run(y), 1)
-      self.assertEqual(sess.run(z), 1)
+      self.assertEqual(self.evaluate(y), 1)
+      self.assertEqual(self.evaluate(z), 1)
 
   def testMix(self):
     x = array_ops.placeholder(dtype=dtypes.int32, shape=[])

@@ -154,7 +154,7 @@ class SparseMergeTest(test_util.TensorFlowTestCase):
                        sparse_tensor.SparseTensor.from_value(values_v)):
           sp_output = sparse_ops.sparse_merge(indices, values, vocab_size)
 
-          output = sess.run(sp_output)
+          output = self.evaluate(sp_output)
           self._AssertResultsSorted(output, vocab_size)
 
   def testInt64AndFloat32(self):
@@ -163,7 +163,7 @@ class SparseMergeTest(test_util.TensorFlowTestCase):
       indices, values = self._SparseTensor_3x50(np.int64, np.float32)
       sp_output = sparse_ops.sparse_merge(indices, values, vocab_size)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
       self._AssertResultsSorted(output, vocab_size)
 
   def testInt64AndFloat64(self):
@@ -172,7 +172,7 @@ class SparseMergeTest(test_util.TensorFlowTestCase):
       indices, values = self._SparseTensor_3x50(np.int64, np.float64)
       sp_output = sparse_ops.sparse_merge(indices, values, vocab_size)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
       self._AssertResultsSorted(output, vocab_size)
 
   def testInt32AndFloat32NonCanonicalOrder(self):
@@ -182,7 +182,7 @@ class SparseMergeTest(test_util.TensorFlowTestCase):
       sp_output = sparse_ops.sparse_merge(
           indices, values, vocab_size, already_sorted=True)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
       self._AssertResultsNotSorted(output, vocab_size)
 
   def testInt64AndFloat32NonCanonicalOrder(self):
@@ -192,7 +192,7 @@ class SparseMergeTest(test_util.TensorFlowTestCase):
       sp_output = sparse_ops.sparse_merge(
           indices, values, vocab_size, already_sorted=True)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
       self._AssertResultsNotSorted(output, vocab_size)
 
   def testInt64AndFloat64NonCanonicalOrder(self):
@@ -203,7 +203,7 @@ class SparseMergeTest(test_util.TensorFlowTestCase):
       sp_output = sparse_ops.sparse_merge(
           indices, values, vocab_size_tensor, already_sorted=True)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
       self._AssertResultsNotSorted(output, vocab_size)
 
   def testShouldSetLastDimensionInDynamicShape(self):
@@ -261,7 +261,7 @@ class SparseMergeHighDimTest(test_util.TensorFlowTestCase):
       indices, values = self._SparseTensor_3x50(np.int64, np.float32)
       sp_output = sparse_ops.sparse_merge(indices, values, vocab_size)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
       self._AssertResultsSorted(output, vocab_size)
 
   def testInt64AndFloat64(self):
@@ -270,7 +270,7 @@ class SparseMergeHighDimTest(test_util.TensorFlowTestCase):
       indices, values = self._SparseTensor_3x50(np.int64, np.float64)
       sp_output = sparse_ops.sparse_merge(indices, values, vocab_size)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
       self._AssertResultsSorted(output, vocab_size)
 
   def testInt64AndFloat64Shape(self):
@@ -279,7 +279,7 @@ class SparseMergeHighDimTest(test_util.TensorFlowTestCase):
       indices, values = self._SparseTensor_3x50(np.int64, np.float64)
       sp_output = sparse_ops.sparse_merge(indices, values, vocab_size)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
       self._AssertResultsSorted(output, vocab_size)
 
 
@@ -302,7 +302,7 @@ class SparseRetainTest(test_util.TensorFlowTestCase):
         to_retain = np.array([1, 0, 0, 1, 1, 0], dtype=np.bool)
         sp_output = sparse_ops.sparse_retain(sp_input, to_retain)
 
-        output = sess.run(sp_output)
+        output = self.evaluate(sp_output)
 
         self.assertAllEqual(output.indices, [[0, 0], [1, 4], [3, 2]])
         self.assertAllEqual(output.values, [0, 14, 32])
@@ -314,7 +314,7 @@ class SparseRetainTest(test_util.TensorFlowTestCase):
       to_retain = np.zeros((6,), dtype=np.bool)
       sp_output = sparse_ops.sparse_retain(sp_input, to_retain)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
 
       self.assertAllEqual(output.indices, np.array([]).reshape((0, 2)))
       self.assertAllEqual(output.values, [])
@@ -365,7 +365,7 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
       new_shape = np.array([3, 6, 7], dtype=np.int64)
       sp_output = sparse_ops.sparse_reset_shape(sp_input, new_shape)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
 
       self.assertAllEqual(output.indices, [[0, 0, 0], [0, 1, 0], [0, 1, 3],
                                            [1, 1, 4], [1, 3, 2], [1, 3, 3]])
@@ -378,7 +378,7 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
       new_shape = np.array([3, 6, 7], dtype=np.int64)
       sp_output = sparse_ops.sparse_reset_shape(sp_input, new_shape)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
 
       self.assertAllEqual(output.indices, [[0, 0, 0], [0, 1, 0], [0, 1, 3],
                                            [1, 1, 4], [1, 3, 2], [1, 3, 3]])
@@ -404,7 +404,7 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
       sp_input = self._SparseTensor_2x5x6()
       sp_output = sparse_ops.sparse_reset_shape(sp_input)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
 
       self.assertAllEqual(output.indices, [[0, 0, 0], [0, 1, 0], [0, 1, 3],
                                            [1, 1, 4], [1, 3, 2], [1, 3, 3]])
@@ -416,7 +416,7 @@ class SparseResetShapeTest(test_util.TensorFlowTestCase):
       sp_input = self._SparseTensor_2x5x6_Empty()
       sp_output = sparse_ops.sparse_reset_shape(sp_input)
 
-      output = sess.run(sp_output)
+      output = self.evaluate(sp_output)
 
       self.assertAllEqual(output.indices.shape, [0, 3])
       self.assertAllEqual(output.values.shape, [0])
@@ -591,8 +591,8 @@ class SparseAddTest(test_util.TensorFlowTestCase):
     sp_output = sparse_ops.sparse_add(sp_input, sp_input)
 
     with self.session(use_gpu=False) as sess:
-      sess.run(variables.global_variables_initializer())
-      output = sess.run(sp_output)
+      self.evaluate(variables.global_variables_initializer())
+      output = self.evaluate(sp_output)
       self.assertAllEqual(output.values, [2])
 
 

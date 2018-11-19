@@ -109,7 +109,7 @@ class Conv3DTest(test.TestCase):
         results.append(result)
 
       with self.cached_session() as sess:
-        values = sess.run(results)
+        values = self.evaluate(results)
         for value in values:
           print("expected = ", expected)
           print("actual = ", value)
@@ -184,8 +184,8 @@ class Conv3DTest(test.TestCase):
         computed_results.append(computed)
         tolerance = 1e-2 if use_gpu else 1e-5
         with self.cached_session() as sess:
-          expected_values = sess.run(expected_results)
-          computed_values = sess.run(computed_results)
+          expected_values = self.evaluate(expected_results)
+          computed_values = self.evaluate(computed_results)
           for e_value, c_value in zip(expected_values, computed_values):
             print("expected = ", e_value)
             print("actual = ", c_value)
@@ -715,8 +715,8 @@ class Conv3DTest(test.TestCase):
         expected_grad = gradients_impl.gradients(expected, t1
                                                  if mode == "input" else t2)[0]
         # "values" consists of two tensors for two backprops
-        actual_value = sess.run(actual_grad)
-        expected_value = sess.run(expected_grad)
+        actual_value = self.evaluate(actual_grad)
+        expected_value = self.evaluate(expected_grad)
         self.assertShapeEqual(actual_value, actual_grad)
         self.assertShapeEqual(expected_value, expected_grad)
       print("expected = ", expected_value)

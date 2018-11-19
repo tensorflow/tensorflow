@@ -81,7 +81,7 @@ class SparseReshapeTest(test.TestCase):
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(input_val, [5, 6])
 
-      output_val = sess.run(sp_output)
+      output_val = self.evaluate(sp_output)
       self.assertAllEqual(output_val.indices, input_val.indices)
       self.assertAllEqual(output_val.values, input_val.values)
       self.assertAllEqual(output_val.dense_shape, input_val.dense_shape)
@@ -151,7 +151,7 @@ class SparseReshapeTest(test.TestCase):
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(input_val, [2, 3, 5])
 
-      output_val = sess.run(sp_output)
+      output_val = self.evaluate(sp_output)
       self.assertAllEqual(output_val.indices,
                           np.array([[0, 0, 0], [0, 1, 1], [0, 1, 4], [0, 2, 0],
                                     [1, 1, 0], [1, 1, 1]]))
