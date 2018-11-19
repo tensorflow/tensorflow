@@ -501,17 +501,17 @@ Status PoplarExecutor::ConfigurePoplarDevice(
                         std::to_string(*max_compilation_threads));
     }
 
-    option_flags_.list([](const std::string& opt, const std::string& val) {
-      VLOG(1) << "Engine option: " << opt << " = " << val;
-    });
+    for (auto opt : option_flags_) {
+      VLOG(1) << "Engine option: " << opt.first << " = " << opt.second;
+    }
 
-    conv_options_.list([](const std::string& opt, const std::string& val) {
-      VLOG(1) << "Convolution option: " << opt << " = " << val;
-    });
+    for (auto opt : conv_options_) {
+      VLOG(1) << "Convolution option: " << opt.first << " = " << opt.second;
+    }
 
-    report_options_.list([](const std::string& opt, const std::string& val) {
-      VLOG(1) << "Report option: " << opt << " = " << val;
-    });
+    for (auto opt : report_options_) {
+      VLOG(1) << "Report option: " << opt.first << " = " << opt.second;
+    }
 
     // Cache Target hash
     std::vector<int64> poplar_target;
