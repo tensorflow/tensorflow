@@ -9,6 +9,7 @@ TENSORFLOW_API_INIT_FILES = [
     "data/__init__.py",
     "data/experimental/__init__.py",
     "debugging/__init__.py",
+    "distribute/__init__.py",
     "dtypes/__init__.py",
     "errors/__init__.py",
     "experimental/__init__.py",

@@ -181,6 +181,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "distribute"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "double"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }

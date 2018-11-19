@@ -216,7 +216,10 @@ py_library(
 py_library(
     name = "reduce_util",
     srcs = ["reduce_util.py"],
-    deps = [],
+    deps = [
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+    ],
 )
 
 py_library(

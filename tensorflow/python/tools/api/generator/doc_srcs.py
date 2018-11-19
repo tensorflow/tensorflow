@@ -35,10 +35,11 @@ DocSource.__new__.__defaults__ = (None,) * len(DocSource._fields)
 
 _TENSORFLOW_DOC_SOURCES = {
     'app': DocSource(docstring_module_name='platform.app'),
+    'bitwise': DocSource(docstring_module_name='ops.bitwise_ops'),
     'compat': DocSource(docstring_module_name='util.compat'),
+    'distribute': DocSource(docstring_module_name='training.distribute'),
     'distributions': DocSource(
         docstring_module_name='ops.distributions.distributions'),
-    'bitwise': DocSource(docstring_module_name='ops.bitwise_ops'),
     'errors': DocSource(docstring_module_name='framework.errors'),
     'gfile': DocSource(docstring_module_name='platform.gfile'),
     'graph_util': DocSource(docstring_module_name='framework.graph_util'),
