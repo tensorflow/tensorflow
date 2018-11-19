@@ -866,7 +866,7 @@ tf_module {
   }
   member_method {
     name: "ones_like"
-    argspec: "args=[\'tensor\', \'dtype\', \'name\', \'optimize\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\'], "
+    argspec: "args=[\'input\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "pad"
@@ -1170,6 +1170,6 @@ tf_module {
   }
   member_method {
     name: "zeros_like"
-    argspec: "args=[\'tensor\', \'dtype\', \'name\', \'optimize\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\'], "
+    argspec: "args=[\'input\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
 }
