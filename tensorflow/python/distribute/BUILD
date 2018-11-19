@@ -109,7 +109,6 @@ py_library(
 
 py_test(
     name = "distribute_coordinator_test",
-    size = "large",
     srcs = ["distribute_coordinator_test.py"],
     srcs_version = "PY2AND3",
     tags = [
