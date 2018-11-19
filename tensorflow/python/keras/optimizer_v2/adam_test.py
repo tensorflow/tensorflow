@@ -41,7 +41,7 @@ def adam_update_numpy(param,
                       alpha=0.001,
                       beta1=0.9,
                       beta2=0.999,
-                      epsilon=1e-8):
+                      epsilon=1e-7):
   alpha_t = alpha * np.sqrt(1 - beta2**t) / (1 - beta1**t)
 
   m_t = beta1 * m + (1 - beta1) * g_t

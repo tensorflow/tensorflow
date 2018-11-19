@@ -374,12 +374,16 @@ class OptimizerV2(optimizer_v1.Optimizer):
     else:
       super(OptimizerV2, self).__setattr__(name, value)
 
-  def add_slot(self, var, slot_name):
+  def add_slot(self, var, slot_name, initializer="zeros"):
     var_key = _var_key(var)
     slot_dict = self._slots.setdefault(var_key, {})
     if slot_name not in slot_dict:
       slot_key = _get_slot_key_from_var(var, slot_name)
-      weight = self.add_weight(name=slot_key, shape=var.shape, dtype=var.dtype)
+      weight = self.add_weight(
+          name=slot_key,
+          shape=var.shape,
+          dtype=var.dtype,
+          initializer=initializer)
       slot_dict[slot_name] = weight
       self._weights.append(weight)
 

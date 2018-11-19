@@ -56,7 +56,7 @@ class RMSProp(optimizer_v2.OptimizerV2):
                learning_rate=0.001,
                rho=0.9,
                momentum=0.0,
-               epsilon=1e-10,
+               epsilon=1e-7,
                centered=False,
                name="RMSProp"):
     """Construct a new RMSProp optimizer.
