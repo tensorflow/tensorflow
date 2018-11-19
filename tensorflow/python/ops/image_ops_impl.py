@@ -37,6 +37,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 ops.NotDifferentiable('RandomCrop')
@@ -2808,3 +2809,33 @@ def sobel_edges(image):
   output = array_ops.reshape(output, shape=shape)
   output.set_shape(static_image_shape.concatenate([num_kernels]))
   return output
+
+
+resize_area_deprecation = deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.AREA...)` instead.'))
+tf_export(v1=['image.resize_area'])(
+    resize_area_deprecation(gen_image_ops.resize_area))
+
+resize_bicubic_deprecation = deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.BICUBIC...)` instead.'))
+tf_export(v1=['image.resize_bicubic'])(
+    resize_bicubic_deprecation(gen_image_ops.resize_bicubic))
+
+resize_bilinear_deprecation = deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.BILINEAR...)` instead.'))
+tf_export(v1=['image.resize_bilinear'])(
+    resize_bilinear_deprecation(gen_image_ops.resize_bilinear))
+
+resize_nearest_neighbor_deprecation = deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.NEAREST_NEIGHBOR...)` '
+        'instead.'))
+tf_export(v1=['image.resize_nearest_neighbor'])(
+    resize_nearest_neighbor_deprecation(gen_image_ops.resize_nearest_neighbor))
