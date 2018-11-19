@@ -65,11 +65,22 @@ class AlgebraicSimplifierOptions {
     return enable_conv_simplification_;
   }
 
+  // If enable_permutation_sort_replacement is true, a sort op that is known to
+  // sort a permutation will be replaced with a scatter op.
+  void set_enable_permutation_sort_replacement(
+      bool enable_permutation_sort_replacement) {
+    enable_permutation_sort_replacement_ = enable_permutation_sort_replacement;
+  }
+  bool enable_permutation_sort_replacement() const {
+    return enable_permutation_sort_replacement_;
+  }
+
  private:
   ValidBitcastCallback valid_bitcast_callback_;
   bool is_layout_sensitive_{false};
   bool enable_dot_strength_reduction_{true};
   bool enable_conv_simplification_{true};
+  bool enable_permutation_sort_replacement_{false};
 };
 
 // A pass which performs algebraic simplifications.
@@ -77,7 +88,7 @@ class AlgebraicSimplifier : public HloModulePass {
  public:
   // If is_layout_sensitive is true, then the simplifier preserves layout during
   // transformation. Otherwise, layout is ignored.
-  AlgebraicSimplifier(const AlgebraicSimplifierOptions& options)
+  explicit AlgebraicSimplifier(const AlgebraicSimplifierOptions& options)
       : options_(options) {}
   ~AlgebraicSimplifier() override = default;
   absl::string_view name() const override { return "algsimp"; }

@@ -179,6 +179,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
 
       AlgebraicSimplifierOptions options(
           [](const Shape&, const Shape&) { return false; });
+      options.set_enable_permutation_sort_replacement(true);
       pass.AddPass<AlgebraicSimplifier>(options);
       pass.AddPass<TupleSimplifier>();
       pass.AddPass<WhileLoopConstantSinking>();
@@ -253,6 +254,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
           return true;
         });
     options.set_is_layout_sensitive(true);
+    options.set_enable_permutation_sort_replacement(true);
     pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
     // Choose the fastest algorithm for each conv.
