@@ -14,6 +14,7 @@ py_library(
     name = "optimizer_v2",
     srcs = [
         "adadelta.py",
+        "adagrad.py",
         "adam.py",
         "adamax.py",
         "gradient_descent.py",
@@ -33,6 +34,25 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:reduce_util",
     ],
+)
+
+cuda_py_test(
+    name = "adagrad_test",
+    size = "medium",
+    srcs = ["adagrad_test.py"],
+    additional_deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:resources",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+    ],
+    shard_count = 4,
 )
 
 cuda_py_test(

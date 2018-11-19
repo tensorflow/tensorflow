@@ -43,7 +43,7 @@ class AdaMax(adam.Adam):
                learning_rate=0.001,
                beta_1=0.9,
                beta_2=0.999,
-               epsilon=1e-8,
+               epsilon=1e-7,
                name='AdaMax'):
     """Construct a new AdaMax optimizer.
 
