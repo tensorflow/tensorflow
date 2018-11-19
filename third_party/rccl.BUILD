@@ -34,7 +34,7 @@ genrule(
     cmd = ("sed " +
            "-e 's/@rccl_VERSION_MAJOR@/0/g' " +
            "-e 's/@rccl_VERSION_MINOR@/7/g' " +
-           "-e 's/@rccl_VERSION_PATCH@/1/g' " +
+           "-e 's/@rccl_VERSION_PATCH@/2/g' " +
            "-e 's/@rccl_VERSION_TWEAK@//g' " +
            "$< >$@"),
 )
