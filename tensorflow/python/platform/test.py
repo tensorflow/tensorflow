@@ -95,8 +95,12 @@ def is_built_with_cuda():
   """Returns whether TensorFlow was built with CUDA (GPU) support."""
   return _test_util.IsGoogleCudaEnabled()
 
-
 @tf_export('test.is_built_with_rocm')
 def is_built_with_rocm():
   """Returns whether TensorFlow was built with ROCm (GPU) support."""
   return _test_util.IsBuiltWithROCm()
+
+@tf_export('test.is_built_with_gpu_support')
+def is_built_with_gpu_support():
+  """Returns whether TensorFlow was built with ROCm (GPU) support."""
+  return is_built_with_cuda() or is_built_with_rocm()
