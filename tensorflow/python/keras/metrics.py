@@ -27,7 +27,6 @@ import weakref
 from enum import Enum
 import six
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
@@ -171,32 +170,6 @@ def weakmethod(method):
 
   del method
   return inner
-
-
-def safe_div(numerator, denominator):
-  """Computes a safe divide which returns 0 if the denominator is zero.
-
-  Note that the function contains an additional conditional check that is
-  necessary for avoiding situations where the loss is zero causing NaNs to
-  creep into the gradient computation.
-
-  Args:
-    numerator: An arbitrary `Tensor`.
-    denominator: A `Tensor` whose shape matches `numerator` and whose values are
-      assumed to be non-negative.
-
-  Returns:
-    The element-wise value of the numerator divided by the denominator.
-  """
-  if compat.forward_compatible(2018, 11, 1):
-    return math_ops.div_no_nan(numerator, denominator)
-  return array_ops.where(
-      math_ops.greater(denominator, 0),
-      math_ops.div(numerator,
-                   array_ops.where(
-                       math_ops.equal(denominator, 0),
-                       array_ops.ones_like(denominator), denominator)),
-      array_ops.zeros_like(numerator))
 
 
 def squeeze_or_expand_dimensions(y_pred, y_true, sample_weight):
@@ -697,7 +670,7 @@ class Mean(Metric):
       return ops.convert_to_tensor(update_count_op)
 
   def result(self):
-    return safe_div(self.total, self.count)
+    return math_ops.div_no_nan(self.total, self.count)
 
 
 class MeanMetricWrapper(Mean):
