@@ -104,13 +104,13 @@ class DeviceFunctionsTest(test.TestCase):
 
   def testNestedDeviceFunctions(self):
     with ops.Graph().as_default():
-      var_0 = variables.Variable(0)
+      var_0 = variables.VariableV1(0)
       with ops.device(test_device_func_pin_variable_to_cpu):
-        var_1 = variables.Variable(1)
+        var_1 = variables.VariableV1(1)
         with ops.device(lambda op: "/device:GPU:0"):
-          var_2 = variables.Variable(2)
+          var_2 = variables.VariableV1(2)
         with ops.device("/device:GPU:0"):  # Implicit merging device function.
-          var_3 = variables.Variable(3)
+          var_3 = variables.VariableV1(3)
 
     self.assertDeviceEqual(var_0.device, None)
     self.assertDeviceEqual(var_1.device, "/device:CPU:0")
@@ -211,7 +211,7 @@ class DeviceFunctionsTest(test.TestCase):
       with session.Session() as sess:
         init = variables.variables_initializer([variable_node])
         sess.run(init)
-        output = sess.run(output_node)
+        output = self.evaluate(output_node)
         self.assertNear(4.0, output, 0.00001)
         variable_graph_def = sess.graph.as_graph_def()
 
@@ -242,8 +242,8 @@ class DeviceFunctionsTest(test.TestCase):
         output_node = math_ops_lib.multiply(
             variable_node, 2.0, name="output_node")
         with session.Session() as sess:
-          sess.run(variable_node.initializer)
-          output = sess.run(output_node)
+          self.evaluate(variable_node.initializer)
+          output = self.evaluate(output_node)
           self.assertNear(2.0, output, 0.00001)
           variable_graph_def = sess.graph.as_graph_def()
           # First get the constant_graph_def when variable_names_whitelist is
@@ -256,7 +256,7 @@ class DeviceFunctionsTest(test.TestCase):
 
           # Then initialize the unused variable, and get another
           # constant_graph_def when variable_names_whitelist is not set.
-          sess.run(another_variable.initializer)
+          self.evaluate(another_variable.initializer)
           constant_graph_def_without_variable_whitelist = (
               graph_util.convert_variables_to_constants(
                   sess, variable_graph_def, ["output_node"]))
@@ -295,7 +295,7 @@ class DeviceFunctionsTest(test.TestCase):
             ["Variable", "VariableV2", "VarHandleOp", "ReadVariableOp"])
       with session.Session() as sess:
         output_node = sess.graph.get_tensor_by_name("output_node:0")
-        output = sess.run(output_node)
+        output = self.evaluate(output_node)
         self.assertNear(2.0, output, 0.00001)
 
   def create_node_def(self, op, name, inputs):

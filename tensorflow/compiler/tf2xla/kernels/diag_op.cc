@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/numeric.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
@@ -29,7 +29,7 @@ namespace {
 
 // Create a diagonal / batch diagonal matrix with 'input' on the diagonal.
 xla::XlaOp CreateDiagonal(xla::XlaOp input, int64 last_dim_size,
-                          gtl::ArraySlice<int64> other_dims,
+                          absl::Span<const int64> other_dims,
                           xla::PrimitiveType element_type) {
   xla::XlaBuilder* builder = input.builder();
   // Create two matrices that have the following forms, and compare them:
@@ -177,8 +177,8 @@ class MatrixDiagOp : public XlaOpKernel {
 
     int last_dim = dims.size() - 1;
     int64 last_dim_size = input_shape.dim_size(last_dim);
-    tensorflow::gtl::ArraySlice<int64> other_dims(dims);
-    other_dims.pop_back();
+    absl::Span<const int64> other_dims(dims);
+    other_dims.remove_suffix(1);
 
     xla::XlaOp input = ctx->Input(0);
     xla::XlaOp diag = CreateDiagonal(input, last_dim_size, other_dims,

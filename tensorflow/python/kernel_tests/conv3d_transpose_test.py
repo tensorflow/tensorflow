@@ -32,7 +32,7 @@ from tensorflow.python.platform import test
 class Conv3DTransposeTest(test.TestCase):
 
   def testConv3DTransposeSingleStride(self):
-    with self.test_session():
+    with self.cached_session():
       strides = [1, 1, 1, 1, 1]
 
       # Input, output: [batch, depth, height, width, channel]
@@ -48,7 +48,7 @@ class Conv3DTransposeTest(test.TestCase):
           1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
       output = nn_ops.conv3d_transpose(
           x, f, y_shape, strides=strides, padding="SAME")
-      value = output.eval()
+      value = self.evaluate(output)
 
       # We count the number of cells being added at the locations in the output.
       # At the center, #cells = kernel_depth * kernel_height * kernel_width
@@ -82,7 +82,7 @@ class Conv3DTransposeTest(test.TestCase):
                 self.assertAllClose(target, value[n, d, h, w, k])
 
   def testConv3DTransposeSame(self):
-    with self.test_session():
+    with self.cached_session():
       strides = [1, 2, 2, 2, 1]
 
       # Input, output: [batch, depth, height, width, depth]
@@ -98,7 +98,7 @@ class Conv3DTransposeTest(test.TestCase):
           1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
       output = nn_ops.conv3d_transpose(
           x, f, y_shape, strides=strides, padding="SAME")
-      value = output.eval()
+      value = self.evaluate(output)
 
       for n in xrange(x_shape[0]):
         for k in xrange(f_shape[3]):
@@ -134,7 +134,7 @@ class Conv3DTransposeTest(test.TestCase):
   def testConv3DTransposeOutputShapeType(self):
     # Test case for GitHub issue 18887
     for dtype in [dtypes.int32, dtypes.int64]:
-      with self.test_session():
+      with self.cached_session():
         x_shape = [2, 5, 6, 4, 3]
         y_shape = [2, 5, 6, 4, 2]
         f_shape = [3, 3, 3, 2, 3]
@@ -146,10 +146,10 @@ class Conv3DTransposeTest(test.TestCase):
         output = nn_ops.conv3d_transpose(
             x_value, f_value, constant_op.constant(y_shape, dtype=dtype),
             strides=strides, padding="SAME")
-        output.eval()
+        self.evaluate(output)
 
   def testConv3DTransposeValid(self):
-    with self.test_session():
+    with self.cached_session():
       strides = [1, 2, 2, 2, 1]
 
       # Input, output: [batch, depth, height, width, depth]
@@ -165,7 +165,7 @@ class Conv3DTransposeTest(test.TestCase):
           1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
       output = nn_ops.conv3d_transpose(
           x, f, y_shape, strides=strides, padding="VALID")
-      value = output.eval()
+      value = self.evaluate(output)
 
       cache_values = np.zeros(y_shape, dtype=np.float32)
 
@@ -209,7 +209,7 @@ class Conv3DTransposeTest(test.TestCase):
     np.random.seed(1)  # Make it reproducible.
     x_val = np.random.random_sample(x_shape).astype(np.float64)
     f_val = np.random.random_sample(f_shape).astype(np.float64)
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant(x_val, name="x", dtype=dtypes.float32)
       f = constant_op.constant(f_val, name="f", dtype=dtypes.float32)
       output = nn_ops.conv3d_transpose(

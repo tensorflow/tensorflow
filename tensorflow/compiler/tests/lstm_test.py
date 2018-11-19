@@ -73,7 +73,7 @@ class LSTMTest(test.TestCase):
 
   def _RunLSTMCell(self, basename, init_weights, m_prev_scalar, c_prev_scalar,
                    pad_scalar):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       num_inputs = 1
       num_nodes = 1
 
@@ -88,7 +88,7 @@ class LSTMTest(test.TestCase):
                  (basename, m_prev_scalar, c_prev_scalar, pad_scalar))
 
       # Initialize variables and run the unrolled LSTM step.
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       return sess.run([m, c])
 
   def testLSTMCell(self):
@@ -156,7 +156,7 @@ class LSTMTest(test.TestCase):
 
   def _RunLSTMLayer(self, basename, init_weights, m_init_scalar, c_init_scalar,
                     pad_scalar):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       num_inputs = 1
       num_nodes = 1
       seq_length = 3
@@ -173,7 +173,7 @@ class LSTMTest(test.TestCase):
                  (basename, m_init_scalar, c_init_scalar, pad_scalar))
 
       # Initialize variables and run the unrolled LSTM layer.
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       return sess.run(out_seq)
 
   def testLSTMLayer(self):

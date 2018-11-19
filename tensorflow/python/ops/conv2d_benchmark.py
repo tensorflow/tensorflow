@@ -63,9 +63,9 @@ def build_graph(device, dtype, data_format, input_shape, filter_shape, strides,
     An array of tensors to run()
   """
   with ops.device("/%s:0" % device):
-    inp = variables.Variable(
+    inp = variables.VariableV1(
         random_ops.truncated_normal(input_shape, dtype=dtype))
-    filt = variables.Variable(
+    filt = variables.VariableV1(
         random_ops.truncated_normal(filter_shape, dtype=dtype))
 
     outputs = []
@@ -175,7 +175,8 @@ class Conv2DBenchmark(test.Benchmark):
 
     data_types = [dtypes.float32, dtypes.float16]
     data_formats = ["NHWC", "NCHW"]
-    in_channels = list(range(3, 16))
+    in_channels = list(range(1, 10)) + list(range(10, 20, 2)) + list(
+        range(20, 33, 4))
     out_channels = [4, 16, 32]
     hw_strides = [[2, 2]]
     paddings = ["VALID", "SAME"]

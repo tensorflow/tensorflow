@@ -48,7 +48,7 @@ class TensordotTest(test_lib.TestCase):
     with self.assertRaises(ValueError):
       math_ops.tensordot(a, b, (a_axes, b_axes))
     # Invalid dynamic shapes.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "Matrix size-incompatible"):
         a_ph = array_ops.placeholder(dtypes.float32)
@@ -80,7 +80,7 @@ class TensordotTest(test_lib.TestCase):
     output = math_ops.tensordot(a_ph, b_ph, axes_ph)
     # Note: We don't support scalar Tensor values for axes.
     for axes_value in 1, [1], [0, 1], [[1]], [[0, 1]], [[0], [7]]:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         with self.assertRaises(errors_impl.InvalidArgumentError):
           _ = sess.run(
               [output], feed_dict={
@@ -92,7 +92,7 @@ class TensordotTest(test_lib.TestCase):
   # Test case for 11950
   def test_valid_axis(self):
     for axes_value in [1, 2], [[1], [2]], [[], []], 0:
-      with self.test_session() as sess:
+      with self.cached_session():
         np_a = np.ones((3, 3))
         np_b = np.array([2, 3, 1])[None, None]
         np_ans = np.tensordot(np_a, np_b, axes_value)
@@ -165,7 +165,7 @@ def _get_tensordot_tests(dtype_, rank_a_, rank_b_, num_dims_, dynamic_shape_):
     for _ in range(num_trials):
       a_np, b_np, a_dims_np, b_dims_np = _generate_random_tensors_and_dims()
       np_ans = np.tensordot(a_np, b_np, axes=(a_dims_np, b_dims_np))
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         if dynamic_shape_:
           a = array_ops.placeholder(dtype_)
           b = array_ops.placeholder(dtype_)
@@ -201,7 +201,7 @@ def _get_tensordot_tests(dtype_, rank_a_, rank_b_, num_dims_, dynamic_shape_):
       all_axes.append(a_np.ndim - 1)
     for axes in all_axes:
       np_ans = np.tensordot(a_np, b_np, axes=axes)
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         if dynamic_shape_:
           a = array_ops.placeholder(dtype_)
           b = array_ops.placeholder(dtype_)

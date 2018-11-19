@@ -21,39 +21,14 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/kernels/constant_op.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
-
-// HostConst: forced to generate output on the host.
-// Only used by testlib; no op is registered for this kernel
-// externally (i.e., in array_ops.cc)
-REGISTER_KERNEL_BUILDER(Name("HostConst").Device(DEVICE_CPU), HostConstantOp);
-REGISTER_KERNEL_BUILDER(
-    Name("HostConst").Device(DEVICE_GPU).HostMemory("output"), HostConstantOp);
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(
-    Name("HostConst").Device(DEVICE_SYCL).HostMemory("output"), HostConstantOp);
-#endif  // TENSORFLOW_USE_SYCL
-
-// Register the HostConst Op
-// Returns a constant tensor on the host.  Useful for writing C++ tests
-// and benchmarks which run on GPU but require arguments pinned to the host.
-// Used by test::graph::HostConstant.
-// value: Attr `value` is the tensor to return.
-REGISTER_OP("HostConst")
-    .Output("output: dtype")
-    .Attr("value: tensor")
-    .Attr("dtype: type")
-    .SetShapeFn(shape_inference::UnknownShape);
-
 namespace test {
 namespace graph {
 
@@ -144,6 +119,17 @@ Node* Assign(Graph* g, Node* var, Node* val) {
                   .Input(var)
                   .Input(val)
                   .Attr("use_locking", true)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Cumsum(Graph* g, Node* data, Node* axes, bool exclusive, bool reverse) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Cumsum")
+                  .Input(data)
+                  .Input(axes)
+                  .Attr("exclusive", exclusive)
+                  .Attr("reverse", reverse)
                   .Finalize(g, &ret));
   return ret;
 }
@@ -506,6 +492,33 @@ Node* DiagPart(Graph* g, Node* in, DataType type) {
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "DiagPart")
                   .Input(in)
                   .Attr("T", type)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* CheckNumerics(Graph* g, Node* in, const string& message) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "CheckNumerics")
+                  .Input(in)
+                  .Attr("message", message)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Arg(Graph* g, int64 index, DataType type) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "_Arg")
+                  .Attr("T", type)
+                  .Attr("index", index)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Retval(Graph* g, int64 index, Node* in) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "_Retval")
+                  .Input(in)
+                  .Attr("index", index)
                   .Finalize(g, &ret));
   return ret;
 }

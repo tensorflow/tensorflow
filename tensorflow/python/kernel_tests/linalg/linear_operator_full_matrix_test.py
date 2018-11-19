@@ -20,7 +20,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
@@ -28,14 +27,15 @@ from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.platform import test
 
 linalg = linalg_lib
-random_seed.set_random_seed(23)
 
 
 class SquareLinearOperatorFullMatrixTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(
+      self, build_info, dtype, use_placeholder,
+      ensure_self_adjoint_and_pd=False):
     shape = list(build_info.shape)
 
     matrix = linear_operator_test_util.random_positive_definite_matrix(
@@ -46,7 +46,12 @@ class SquareLinearOperatorFullMatrixTest(
     if use_placeholder:
       lin_op_matrix = array_ops.placeholder_with_default(matrix, shape=None)
 
-    operator = linalg.LinearOperatorFullMatrix(lin_op_matrix, is_square=True)
+    # Set the hints to none to test non-symmetric PD code paths.
+    operator = linalg.LinearOperatorFullMatrix(
+        lin_op_matrix,
+        is_square=True,
+        is_self_adjoint=True if ensure_self_adjoint_and_pd else None,
+        is_positive_definite=True if ensure_self_adjoint_and_pd else None)
 
     return operator, matrix
 
@@ -65,7 +70,7 @@ class SquareLinearOperatorFullMatrixTest(
     self.assertTrue(operator.is_square)
 
   def test_assert_non_singular_raises_if_cond_too_big_but_finite(self):
-    with self.test_session():
+    with self.cached_session():
       tril = linear_operator_test_util.random_tril_matrix(
           shape=(50, 50), dtype=np.float32)
       diag = np.logspace(-2, 2, 50).astype(np.float32)
@@ -80,7 +85,7 @@ class SquareLinearOperatorFullMatrixTest(
         operator.assert_non_singular().run()
 
   def test_assert_non_singular_raises_if_cond_infinite(self):
-    with self.test_session():
+    with self.cached_session():
       matrix = [[1., 1.], [1., 1.]]
       # We don't pass the is_self_adjoint hint here, which means we take the
       # generic code path.
@@ -91,14 +96,14 @@ class SquareLinearOperatorFullMatrixTest(
   def test_assert_self_adjoint(self):
     matrix = [[0., 1.], [0., 1.]]
     operator = linalg.LinearOperatorFullMatrix(matrix)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("not equal to its adjoint"):
         operator.assert_self_adjoint().run()
 
   def test_assert_positive_definite(self):
     matrix = [[1., 1.], [1., 1.]]
     operator = linalg.LinearOperatorFullMatrix(matrix, is_self_adjoint=True)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("Cholesky decomposition was not success"):
         operator.assert_positive_definite().run()
 
@@ -125,7 +130,13 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
   def _dtypes_to_test(self):
     return [dtypes.float32, dtypes.float64]
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(
+      self, build_info, dtype, use_placeholder,
+      ensure_self_adjoint_and_pd=False):
+
+    # Matrix is always symmetric and positive definite in this class.
+    del ensure_self_adjoint_and_pd
+
     shape = list(build_info.shape)
 
     matrix = linear_operator_test_util.random_positive_definite_matrix(
@@ -136,7 +147,11 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
     if use_placeholder:
       lin_op_matrix = array_ops.placeholder_with_default(matrix, shape=None)
 
-    operator = linalg.LinearOperatorFullMatrix(lin_op_matrix, is_square=True)
+    operator = linalg.LinearOperatorFullMatrix(
+        lin_op_matrix,
+        is_square=True,
+        is_self_adjoint=True,
+        is_positive_definite=True)
 
     return operator, matrix
 
@@ -158,7 +173,7 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
     matrix = [[1., 1.], [1., 1.]]
     operator = linalg.LinearOperatorFullMatrix(
         matrix, is_self_adjoint=True, is_positive_definite=True)
-    with self.test_session():
+    with self.cached_session():
       # Cholesky decomposition may fail, so the error is not specific to
       # non-singular.
       with self.assertRaisesOpError(""):
@@ -168,7 +183,7 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
     matrix = [[0., 1.], [0., 1.]]
     operator = linalg.LinearOperatorFullMatrix(
         matrix, is_self_adjoint=True, is_positive_definite=True)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("not equal to its adjoint"):
         operator.assert_self_adjoint().run()
 
@@ -176,7 +191,7 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
     matrix = [[1., 1.], [1., 1.]]
     operator = linalg.LinearOperatorFullMatrix(
         matrix, is_self_adjoint=True, is_positive_definite=True)
-    with self.test_session():
+    with self.cached_session():
       # Cholesky decomposition may fail, so the error is not specific to
       # non-singular.
       with self.assertRaisesOpError(""):

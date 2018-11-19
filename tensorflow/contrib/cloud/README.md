@@ -1,8 +1,8 @@
 # Cloud #
 
-## BigTable ##
+## Cloud Bigtable ##
 
-[Google Cloud BigTable](https://cloud.google.com/bigtable/) is a high
+[Google Cloud Bigtable](https://cloud.google.com/bigtable/) is a high
 performance storage system that can store and serve training data. This contrib
 package contains an experimental integration with TensorFlow.
 

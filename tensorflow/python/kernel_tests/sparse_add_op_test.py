@@ -85,13 +85,13 @@ class SparseAddTest(test.TestCase):
         constant_op.constant(shape, dtypes.int64))
 
   def testAddSelf(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       for sp_a in (self._SparseTensorValue_3x3(), self._SparseTensor_3x3()):
         for sp_b in (self._SparseTensorValue_3x3(), self._SparseTensor_3x3()):
           sp_sum = sparse_ops.sparse_add(sp_a, sp_b)
           self.assertAllEqual((3, 3), sp_sum.get_shape())
 
-          sum_out = sess.run(sp_sum)
+          sum_out = self.evaluate(sp_sum)
 
           self.assertEqual(sp_sum.dense_shape.get_shape(), [2])
           self.assertAllEqual(sum_out.indices, [[0, 1], [1, 0], [2, 0], [2, 1]])
@@ -99,12 +99,12 @@ class SparseAddTest(test.TestCase):
           self.assertAllEqual(sum_out.dense_shape, [3, 3])
 
   def testAddSelfAndNegation(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_a = self._SparseTensor_3x3()
       sp_b = self._SparseTensor_3x3(negate=True)
 
       sp_sum = sparse_ops.sparse_add(sp_a, sp_b, 0.1)
-      sum_out = sess.run(sp_sum)
+      sum_out = self.evaluate(sp_sum)
 
       self.assertEqual(sp_sum.dense_shape.get_shape(), [2])
       self.assertAllEqual(sum_out.indices, np.empty([0, 2]))
@@ -112,7 +112,7 @@ class SparseAddTest(test.TestCase):
       self.assertAllEqual(sum_out.dense_shape, [3, 3])
 
   def testSmallValuesShouldVanish(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_a = self._SparseTensor_3x3()
       sp_b = self._SparseTensor_3x3_v2()
 
@@ -123,7 +123,7 @@ class SparseAddTest(test.TestCase):
 
       # two values should vanish: |.1| < .21, and |-.2| < .21
       sp_sum = sparse_ops.sparse_add(sp_a, sp_b, thresh=0.21)
-      sum_out = sess.run(sp_sum)
+      sum_out = self.evaluate(sp_sum)
 
       self.assertEqual(sp_sum.dense_shape.get_shape(), [2])
       self.assertAllEqual(sum_out.indices, [[0, 1], [2, 0]])
@@ -132,7 +132,7 @@ class SparseAddTest(test.TestCase):
 
       # only .1 vanishes
       sp_sum = sparse_ops.sparse_add(sp_a, sp_b, thresh=0.11)
-      sum_out = sess.run(sp_sum)
+      sum_out = self.evaluate(sp_sum)
 
       self.assertEqual(sp_sum.dense_shape.get_shape(), [2])
       self.assertAllEqual(sum_out.indices, [[0, 1], [2, 0], [2, 1]])
@@ -141,7 +141,7 @@ class SparseAddTest(test.TestCase):
 
   def testGradients(self):
     np.random.seed(1618)  # Make it reproducible.
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       for n in [10, 31]:
         for m in [4, 17]:
           sp_a, nnz_a = self._randomTensor([n, m], np.float32)
@@ -162,7 +162,7 @@ class SparseAddTest(test.TestCase):
         rand_vals_np = np.random.randn(n, m).astype(dtype)
         dense_np = np.random.randn(n, m).astype(dtype)
 
-        with self.test_session(use_gpu=False):
+        with self.cached_session(use_gpu=False):
           sparse, unused_nnz = _sparsify(rand_vals_np, index_dtype=index_dtype)
           s = sparse_ops.sparse_add(sparse,
                                     constant_op.constant(dense_np)).eval()
@@ -181,7 +181,7 @@ class SparseAddTest(test.TestCase):
     rand_vals_np = np.random.randn(n, m).astype(np.float32)
     dense_np = np.random.randn(n, m).astype(np.float32)
 
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       sparse, nnz = _sparsify(rand_vals_np)
       dense = constant_op.constant(dense_np, dtype=dtypes.float32)
       s = sparse_ops.sparse_add(sparse, dense)
@@ -191,7 +191,7 @@ class SparseAddTest(test.TestCase):
       self.assertLess(err, 1e-3)
 
   def testInvalidSparseTensor(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       shape = [2, 2]
       val = [0]
       dense = constant_op.constant(np.zeros(shape, dtype=np.int32))

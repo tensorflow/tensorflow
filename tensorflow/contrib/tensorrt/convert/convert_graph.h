@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -29,6 +30,26 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
+
+// Helper class for the segmenter to determine whether given TF node is
+// supported by TRT.
+class TrtCandidateSelector {
+ public:
+  TrtCandidateSelector(const grappler::GraphProperties& graph_properties);
+
+  // Returns OK iff 'node' is a TF-TRT conversion candidate, which will be added
+  // to TRT subgraph and later converted into TRT engine.
+  Status IsTensorRTCandidate(const tensorflow::Node* node);
+
+ private:
+  // The TF-TRT node converter used to verify whether individual node is
+  // supported. It will operate in validation-only mode.
+  TrtNodeValidator validator_;
+
+  // GraphProperties of the graph whose nodes are to be validated by
+  // IsTensorRTCandidate().
+  const grappler::GraphProperties& graph_properties_;
+};
 
 struct ConversionParams {
   ConversionParams()
@@ -84,6 +105,11 @@ std::vector<int> GetLinkedTensorRTVersion();
 
 // Return runtime time TensorRT library version information.
 std::vector<int> GetLoadedTensorRTVersion();
+
+// Helper method for the conversion, expose for testing.
+std::pair<int, tensorflow::Allocator*> GetDeviceAndAllocator(
+    const ConversionParams& params, const EngineInfo& engine);
+
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow

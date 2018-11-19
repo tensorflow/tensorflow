@@ -26,7 +26,7 @@ from tensorflow.python.tools.api.generator import create_python_api
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('test_op', 'test_op1')
+@tf_export('test_op', 'test_op1', 'test.test_op2')
 def test_op():
   pass
 
@@ -57,9 +57,10 @@ class CreatePythonApiTest(test.TestCase):
 
   def testFunctionImportIsAdded(self):
     imports = create_python_api.get_api_init_text(
-        package=create_python_api._DEFAULT_PACKAGE,
+        packages=[create_python_api._DEFAULT_PACKAGE],
         output_package='tensorflow',
-        api_name='tensorflow', api_version=1)
+        api_name='tensorflow',
+        api_version=1)
     expected_import = (
         'from tensorflow.python.test_module '
         'import test_op as test_op1')
@@ -72,12 +73,16 @@ class CreatePythonApiTest(test.TestCase):
     self.assertTrue(
         expected_import in str(imports),
         msg='%s not in %s' % (expected_import, str(imports)))
+    # Also check that compat.v1 is not added to imports.
+    self.assertFalse('compat.v1' in imports,
+                     msg='compat.v1 in %s' % str(imports.keys()))
 
   def testClassImportIsAdded(self):
     imports = create_python_api.get_api_init_text(
-        package=create_python_api._DEFAULT_PACKAGE,
+        packages=[create_python_api._DEFAULT_PACKAGE],
         output_package='tensorflow',
-        api_name='tensorflow', api_version=2)
+        api_name='tensorflow',
+        api_version=2)
     expected_import = ('from tensorflow.python.test_module '
                        'import TestClass')
     self.assertTrue(
@@ -86,13 +91,26 @@ class CreatePythonApiTest(test.TestCase):
 
   def testConstantIsAdded(self):
     imports = create_python_api.get_api_init_text(
-        package=create_python_api._DEFAULT_PACKAGE,
+        packages=[create_python_api._DEFAULT_PACKAGE],
         output_package='tensorflow',
-        api_name='tensorflow', api_version=1)
+        api_name='tensorflow',
+        api_version=1)
     expected = ('from tensorflow.python.test_module '
                 'import _TEST_CONSTANT')
     self.assertTrue(expected in str(imports),
                     msg='%s not in %s' % (expected, str(imports)))
+
+  def testCompatModuleIsAdded(self):
+    imports = create_python_api.get_api_init_text(
+        packages=[create_python_api._DEFAULT_PACKAGE],
+        output_package='tensorflow',
+        api_name='tensorflow',
+        api_version=2,
+        compat_api_versions=[1])
+    self.assertTrue('compat.v1' in imports,
+                    msg='compat.v1 not in %s' % str(imports.keys()))
+    self.assertTrue('compat.v1.test' in imports,
+                    msg='compat.v1.test not in %s' % str(imports.keys()))
 
 
 if __name__ == '__main__':

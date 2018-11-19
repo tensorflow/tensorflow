@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_FUNCTION_TESTLIB_H_
-#define TENSORFLOW_FRAMEWORK_FUNCTION_TESTLIB_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_FUNCTION_TESTLIB_H_
+#define TENSORFLOW_CORE_FRAMEWORK_FUNCTION_TESTLIB_H_
 
 #include <string>
 
@@ -48,7 +48,7 @@ class Attrs {
 
 // Helper to construct a NodeDef.
 NodeDef NDef(
-    const string& name, const string& op, gtl::ArraySlice<string> inputs,
+    StringPiece name, StringPiece op, gtl::ArraySlice<string> inputs,
     gtl::ArraySlice<std::pair<string, FunctionDefHelper::AttrValueWrapper>>
         attrs = {},
     const string& device = "");
@@ -62,6 +62,9 @@ GraphDef GDef(gtl::ArraySlice<NodeDef> nodes,
 
 // x:T -> x * 2.
 FunctionDef XTimesTwo();
+
+// x:T -> x + x.
+FunctionDef XAddX();
 
 // x:T -> x * 2, where x is int32.
 FunctionDef XTimesTwoInt32();
@@ -78,11 +81,26 @@ FunctionDef WXPlusB();
 // x:T -> x:T, T is a type which we automatically converts to a bool.
 FunctionDef NonZero();
 
+// x: T -> bool.
+FunctionDef IsZero();
+
+// x: T -> int64
+FunctionDef RandomUniform();
+
 // x:T, y:T -> y:T, x:T
 FunctionDef Swap();
 
 // Contains malformed control flow which can't be run by the executor.
 FunctionDef InvalidControlFlow();
+
+// x:T -> x <= N.
+FunctionDef LessThanOrEqualToN(int64 N);
+
+// x:T, y:T -> x+1, x*y
+FunctionDef XPlusOneXTimesY();
+
+// x:T, y:T -> x <= N
+FunctionDef XYXLessThanOrEqualToN(int64 N);
 
 void FunctionTestSchedClosure(std::function<void()> fn);
 
@@ -90,4 +108,4 @@ void FunctionTestSchedClosure(std::function<void()> fn);
 }  // end namespace test
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_FUNCTION_TESTLIB_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_FUNCTION_TESTLIB_H_

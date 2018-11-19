@@ -20,16 +20,15 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
-#include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
+#include "tensorflow/compiler/tf2xla/xla_expression.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -41,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/validate.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
@@ -52,12 +52,12 @@ namespace {
 Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
                         const std::vector<const XlaExpression*>& expressions,
                         std::vector<XlaCompiler::Argument>* args) {
-  auto builder = ctx->builder();
   auto client = ctx->compiler()->client();
-  std::vector<bool> compile_time_constant_flags(expressions.size());
+  std::vector<bool> arg_must_be_compile_time_constant(expressions.size());
 
   TF_RETURN_IF_ERROR(
-      BackwardsConstAnalysis(*graph, &compile_time_constant_flags));
+      BackwardsConstAnalysis(*graph, &arg_must_be_compile_time_constant,
+                             /*compile_time_const_nodes=*/nullptr));
 
   args->resize(expressions.size());
   for (int i = 0; i < args->size(); ++i) {
@@ -65,24 +65,31 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
     arg.type = ctx->input_type(i);
     arg.shape = ctx->InputShape(i);
 
-    if (arg.type == DT_RESOURCE) {
-      return errors::InvalidArgument(
-          "Resource as function argument is not yet implemented.");
-    } else if (expressions[i]->has_constant_value()) {
-      arg.kind = XlaCompiler::Argument::kConstant;
-      arg.constant_value = expressions[i]->constant_value();
-    } else if (compile_time_constant_flags[i]) {
-      arg.kind = XlaCompiler::Argument::kConstant;
-      TF_RET_CHECK(expressions[i]->resource() == nullptr)
-          << "Input with resource is not yet implemented.";
-      TF_ASSIGN_OR_RETURN(auto constant_graph, builder->BuildConstantSubGraph(
-                                                   expressions[i]->handle()));
-      TF_ASSIGN_OR_RETURN(auto literal,
-                          client->ComputeConstant(constant_graph));
-      TF_RETURN_IF_ERROR(
-          LiteralToHostTensor(*literal, arg.type, &arg.constant_value));
-    } else {
-      arg.kind = XlaCompiler::Argument::kParameter;
+    switch (expressions[i]->kind()) {
+      case XlaExpression::Kind::kConstant:
+        arg.kind = XlaCompiler::Argument::kConstant;
+        arg.constant_value = expressions[i]->constant_value();
+        break;
+      case XlaExpression::Kind::kXlaOp:
+        if (arg_must_be_compile_time_constant[i]) {
+          TF_ASSIGN_OR_RETURN(absl::optional<Tensor> value,
+                              expressions[i]->ResolveConstant(client));
+          if (!value.has_value()) {
+            return errors::InvalidArgument(
+                "Argument to function must be a compile-time constant, but "
+                "unable to resolve argument value to a constant.");
+          }
+          arg.kind = XlaCompiler::Argument::kConstant;
+          arg.constant_value = *value;
+        } else {
+          arg.kind = XlaCompiler::Argument::kParameter;
+        }
+        break;
+      case XlaExpression::Kind::kResource:
+        return errors::Unimplemented(
+            "Resource as function argument is not yet implemented.");
+      case XlaExpression::Kind::kInvalid:
+        return errors::InvalidArgument("Invalid function argument");
     }
   }
   return Status::OK();
@@ -126,7 +133,7 @@ Status GraphCompiler::Compile() {
     TF_RET_CHECK(!n->IsRecv() && !n->IsSend() && !n->IsSwitch())
         << "Not supported node: " << n->DebugString();
     params.op_kernel = op_kernel.get();
-    gtl::InlinedVector<AllocatorAttributes, 4> output_attr(n->num_outputs());
+    absl::InlinedVector<AllocatorAttributes, 4> output_attr(n->num_outputs());
     params.output_attr_array = output_attr.data();
 
     // tensor_inputs_ is a buffer reused across graph traversal. We clean up and
@@ -145,6 +152,7 @@ Status GraphCompiler::Compile() {
     }
 
     OpKernelContext op_context(&params, n->num_outputs());
+    VLOG(3) << "Translating " << params.op_kernel->name();
     if (IsFunctional(n)) {
       TF_RETURN_IF_ERROR(CompileFunctionalNode(n, &op_context));
     } else {
@@ -163,7 +171,7 @@ Status GraphCompiler::Compile() {
       outputs[o] = op_context.release_output(o);
       if (outputs[o].tensor == nullptr) {
         return errors::Internal("Missing xla_context ", o, "-th output from ",
-                                SummarizeNode(*n));
+                                FormatNodeForError(*n));
       }
     }
   }

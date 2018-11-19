@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_JAVA_SAVEDMODELBUNDLE_JNI_H_
-#define TENSORFLOW_JAVA_SAVEDMODELBUNDLE_JNI_H_
+#ifndef TENSORFLOW_JAVA_SRC_MAIN_NATIVE_SAVED_MODEL_BUNDLE_JNI_H_
+#define TENSORFLOW_JAVA_SRC_MAIN_NATIVE_SAVED_MODEL_BUNDLE_JNI_H_
 
 #include <jni.h>
 
@@ -34,4 +34,4 @@ JNIEXPORT jobject JNICALL Java_org_tensorflow_SavedModelBundle_load(
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
-#endif  // TENSORFLOW_JAVA_SAVEDMODELBUNDLE_JNI_H_
+#endif  // TENSORFLOW_JAVA_SRC_MAIN_NATIVE_SAVED_MODEL_BUNDLE_JNI_H_

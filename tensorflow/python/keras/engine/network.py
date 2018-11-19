@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import functools
 import json
 import os
 import weakref
@@ -30,7 +29,9 @@ from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
@@ -42,11 +43,11 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.training.checkpointable import data_structures
 from tensorflow.python.training.checkpointable import layer_utils as checkpointable_layer_utils
 from tensorflow.python.training.checkpointable import util as checkpointable_utils
-from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
 
@@ -111,11 +112,16 @@ class Network(base_layer.Layer):
     self.trainable = True
     self._is_compiled = False
     self._expects_training_arg = False
-    # A list of "extra" variables assigned to attributes of this class, included
-    # in self.weights and self.variables. Always empty for graph networks (but
-    # included in base_init to avoid excessive special casing when retrieving
-    # the value).
-    self._extra_variables = []
+    # In many internal cases one needs to compute both the model's output
+    # and its output mask without relying on `__call__` (which would do both and
+    # set mask metadata), but for models, computing the mask requires to
+    # recompute the output.
+    # Hence the pattern `output = model.call(); mask = model.compute_mask()`
+    # would be redundant, and internal logic
+    # (susceptible to use `call` directly) should prefer using the
+    # internal method `output, mask = _call_and_compute_mask()`.
+    # This is True for Sequential networks and graph networks.
+    self._compute_output_and_mask_jointly = False
 
     self.supports_masking = False
     if not hasattr(self, 'optimizer'):
@@ -123,10 +129,19 @@ class Network(base_layer.Layer):
       self.optimizer = None
 
     # Private attributes to implement compatibility with Layer.
+    self._trainable_weights = []
+    self._non_trainable_weights = []
     self._updates = []  # Used in symbolic mode only.
-    self._losses = []   # Used in symbolic mode only.
+    self._losses = []
+    self._eager_losses = []
+    # A list of metric instances corresponding to the symbolic metric tensors
+    # added using the `add_metric` API.
+    self._metrics = []
+    # A dictionary that maps metric names to metric result tensors.
+    self._metrics_tensors = {}
     self._scope = None  # Never used.
     self._reuse = None  # Never used.
+    self._call_is_graph_friendly = True
     if context.executing_eagerly():
       self._graph = None
     else:
@@ -144,10 +159,6 @@ class Network(base_layer.Layer):
 
     self._checkpointable_saver = checkpointable_utils.CheckpointableSaver(
         weakref.ref(self))
-    # A zero-argument function which should be called and set back to None as
-    # soon as the network is built (only applicable to subclassed Models). Runs
-    # restore operations when graph building.
-    self._in_progress_restore_finalizer = None
 
   @checkpointable.no_automatic_dependency_tracking
   def _init_graph_network(self, inputs, outputs, name=None):
@@ -162,23 +173,6 @@ class Network(base_layer.Layer):
     else:
       self.outputs = [outputs]
 
-    # User-provided argument validation.
-    if context.executing_eagerly():
-      # Check that all inputs/outputs are DeferredTensors.
-      for tensor in self.inputs:
-        if not isinstance(tensor, base_layer.DeferredTensor):  # pylint: disable=protected-access
-          raise TypeError('When eager execution is enabled, '
-                          'inputs must come from a call to '
-                          '`tf.keras.Input` (called after '
-                          'tf.enable_eager_execution()). '
-                          'Received invalid input: ' + str(tensor))
-      for tensor in self.outputs:
-        if not isinstance(tensor, base_layer.DeferredTensor):  # pylint: disable=protected-access
-          raise TypeError('When eager execution is enabled, '
-                          'outputs must come from a call to '
-                          'a layer (called after '
-                          'tf.enable_eager_execution()). '
-                          'Received invalid output: ' + str(tensor))
     # Check for redundancy in inputs.
     if len(set(self.inputs)) != len(self.inputs):
       raise ValueError('The list of inputs passed to the model '
@@ -190,7 +184,7 @@ class Network(base_layer.Layer):
       if not hasattr(x, '_keras_history'):
         cls_name = self.__class__.__name__
         raise ValueError('Input tensors to a ' + cls_name + ' ' +
-                         'must come from `tf.layers.Input`. '
+                         'must come from `tf.keras.Input`. '
                          'Received: ' + str(x) +
                          ' (missing previous layer metadata).')
       # Check that x is an input tensor.
@@ -200,14 +194,14 @@ class Network(base_layer.Layer):
           layer._inbound_nodes and layer._inbound_nodes[0].inbound_layers):
         cls_name = self.__class__.__name__
         logging.warning(cls_name + ' inputs must come from '
-                        '`tf.layers.Input` (thus holding past layer metadata), '
+                        '`tf.keras.Input` (thus holding past layer metadata), '
                         'they cannot be the output of '
                         'a previous non-Input layer. '
                         'Here, a tensor specified as '
                         'input to "' + self.name + '" was not an Input tensor, '
                         'it was generated by layer ' + layer.name + '.\n'
                         'Note that input tensors are '
-                        'instantiated via `tensor = tf.layers.Input(shape)`.\n'
+                        'instantiated via `tensor = tf.keras.Input(shape)`.\n'
                         'The tensor that caused the issue was: ' + str(x.name))
     for x in self.outputs:
       if not hasattr(x, '_keras_history'):
@@ -218,11 +212,12 @@ class Network(base_layer.Layer):
 
     self._base_init(name=name)
     self._compute_previous_mask = (
-        'mask' in tf_inspect.getargspec(self.call).args or
+        'mask' in tf_inspect.getfullargspec(self.call).args or
         hasattr(self, 'compute_mask'))
     # A Network does not create weights of its own, thus it is already
     # built.
     self.built = True
+    self._compute_output_and_mask_jointly = True
     self._is_graph_network = True
 
     self._input_layers = []
@@ -274,23 +269,6 @@ class Network(base_layer.Layer):
         input_tensors=self.inputs,
         output_tensors=self.outputs)
 
-    # Fill in the output mask cache.
-    masks = []
-    for x in self.inputs:
-      mask = x._keras_mask if hasattr(x, '_keras_mask') else None  # pylint: disable=protected-access
-      masks.append(mask)
-    mask_cache_key = (generic_utils.object_list_uid(self.inputs) + '_' +
-                      generic_utils.object_list_uid(masks))
-    masks = []
-    for x in self.outputs:
-      mask = x._keras_mask if hasattr(x, '_keras_mask') else None  # pylint: disable=protected-access
-      masks.append(mask)
-    if len(masks) == 1:
-      mask = masks[0]
-    else:
-      mask = masks
-    self._output_mask_cache[mask_cache_key] = mask
-
     # Build self.input_names and self.output_names.
     self.input_names = []
     self.output_names = []
@@ -302,9 +280,7 @@ class Network(base_layer.Layer):
       if layer.is_placeholder:
         self._feed_input_names.append(layer.name)
         self._feed_input_shapes.append(backend.int_shape(self.inputs[i]))
-        # layer.input gives an error in eager mode
-        if not context.executing_eagerly():
-          self._feed_inputs.append(layer.input)
+        self._feed_inputs.append(layer.input)
     for layer in self._output_layers:
       self.output_names.append(layer.name)
 
@@ -312,15 +288,21 @@ class Network(base_layer.Layer):
   def _init_subclassed_network(self, name=None):
     self._base_init(name=name)
     self._is_graph_network = False
-    call_argspec = tf_inspect.getargspec(self.call)
+    call_argspec = tf_inspect.getfullargspec(self.call)
     if 'training' in call_argspec.args:
       self._expects_training_arg = True
     else:
       self._expects_training_arg = False
     self._call_convention = self._determine_call_convention(call_argspec)
-    self.outputs = None
-    self.inputs = None
+    self.outputs = []
+    self.inputs = []
     self.built = False
+
+  @property
+  def _static_graph_friendly(self):
+    if self._is_graph_network:
+      return all(layer._static_graph_friendly for layer in self.layers)
+    return self._call_is_graph_friendly
 
   def _determine_call_convention(self, call_argspec):
     """Decides how `self.call()` is invoked. See base_layer.CallConvention."""
@@ -403,10 +385,10 @@ class Network(base_layer.Layer):
     no_dependency = isinstance(value, data_structures.NoDependency)
     value = data_structures.sticky_attribute_assignment(
         checkpointable=self, value=value, name=name)
-    if isinstance(value, (
-        base_layer.Layer,
-        Network,
-        data_structures.CheckpointableDataStructure)):
+    if (isinstance(value, (base_layer.Layer,
+                           Network,
+                           data_structures.CheckpointableDataStructure))
+        or checkpointable_layer_utils.has_weights(value)):
       try:
         is_graph_network = self._is_graph_network
       except AttributeError:
@@ -428,29 +410,21 @@ class Network(base_layer.Layer):
             # simply by assigning them to attributes.
           not self._is_graph_network
           and isinstance(value, variables.Variable)):
-        self._extra_variables.append(value)
+        if value.trainable:
+          # Could already be added via `add_weight`.
+          if value not in self._trainable_weights:
+            self._trainable_weights.append(value)
+        else:
+          if value not in self._non_trainable_weights:
+            self._non_trainable_weights.append(value)
+
+    # Keeping track of metric instance created in subclassed model/layer.
+    # We do this so that we can maintain the correct order of metrics by adding
+    # the instance to the `metrics` list as soon as it is created.
+    from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
+    if isinstance(value, metrics_module.Metric):
+      self._metrics.append(value)
     super(Network, self).__setattr__(name, value)
-
-  def add_variable(self, name, shape, dtype=None, initializer=None,
-                   regularizer=None, trainable=True, constraint=None):
-    if self._is_graph_network:
-      raise NotImplementedError('`add_variable` is not supported on Networks.')
-    else:
-      raise NotImplementedError(
-          '`add_variable` is not supported on Networks. However, you may '
-          'assign variables to attributes and they will show up in the weights '
-          'and variables properties.')
-
-  def add_loss(self, *args, **kwargs):
-    if context.executing_eagerly():
-      raise NotImplementedError('`add_loss` is not supported on Networks '
-                                'when eager execution is enabled.')
-    super(Network, self).add_loss(*args, **kwargs)
-
-  @property
-  def uses_learning_phase(self):
-    return any(
-        [getattr(x, '_uses_learning_phase', False) for x in self.outputs])
 
   @property
   def stateful(self):
@@ -516,13 +490,9 @@ class Network(base_layer.Layer):
       masks = [None for _ in range(len(inputs))]
     else:
       masks = generic_utils.to_list(mask)
-    cache_key = (generic_utils.object_list_uid(inputs)
-                 + '_' + generic_utils.object_list_uid(masks))
-    if cache_key in self._output_mask_cache:
-      return self._output_mask_cache[cache_key]
-    else:
-      _, output_masks = self._run_internal_graph(inputs, mask=masks)
-      return output_masks
+
+    _, output_masks = self._run_internal_graph(inputs, mask=masks)
+    return output_masks
 
   @property
   def layers(self):
@@ -564,25 +534,38 @@ class Network(base_layer.Layer):
 
   @property
   def _unfiltered_updates(self):
-    if context.executing_eagerly():
-      return []
     updates = []
     for layer in self.layers:
       if isinstance(layer, Network):
         updates += layer._unfiltered_updates
       else:
         updates += layer.updates
+    updates += self._updates
     return updates
 
   @property
   def _unfiltered_losses(self):
     losses = []
+    if context.executing_eagerly():
+      losses.extend(self._eager_losses)
+    else:
+      losses.extend(self._losses)
     for layer in self.layers:
       if isinstance(layer, Network):
         losses += layer._unfiltered_losses
       else:
         losses += layer.losses
     return losses
+
+  @checkpointable.no_automatic_dependency_tracking
+  def _clear_losses(self):
+    """Used every step in eager to reset losses."""
+    self._eager_losses = []
+    for layer in self.layers:
+      if isinstance(layer, Network):
+        layer._clear_losses()
+      else:
+        layer._eager_losses = []
 
   @property
   def updates(self):
@@ -634,9 +617,6 @@ class Network(base_layer.Layer):
     Returns:
         A list of update ops.
     """
-    if context.executing_eagerly():
-      return []
-
     if not self.trainable and not self.stateful:
       return []
 
@@ -652,7 +632,7 @@ class Network(base_layer.Layer):
       else:
         relevant_inputs.append(inputs)
     if not relevant_inputs:
-      return updates
+      return list(set(updates))
 
     reachable = tf_utils.get_reachable_from_inputs(relevant_inputs, updates)
     relevant_conditional_updates = [x for x in updates if x in reachable]
@@ -660,8 +640,7 @@ class Network(base_layer.Layer):
         x for x in updates if x._unconditional_update]  # pylint: disable=protected-access
     # A layer could be used multiple times in a nested structure,
     # so the updates list must be de-duped.
-    return list(set(
-        relevant_conditional_updates + unconditional_updates + self._updates))
+    return list(set(relevant_conditional_updates + unconditional_updates))
 
   @property
   def losses(self):
@@ -678,8 +657,26 @@ class Network(base_layer.Layer):
         A list of loss tensors.
     """
     losses = self._unfiltered_losses
+
     if context.executing_eagerly():
       return losses
+
+    # TODO(kaftan/fchollet): Clean this up / make it obsolete.
+    # This is a super ugly, confusing check necessary to
+    # handle the case where we are executing in a function graph in eager mode
+    # but the model was constructed symbolically in a separate graph scope.
+    # We need to capture the losses created in the current graph function,
+    # and filter out the incorrect loss tensors created when symbolically
+    # building the graph.
+    # We have to use this check because the code after it that checks
+    # for reachable inputs only captures the part of the model that was
+    # built symbolically, and captures the wrong tensors from a different
+    # func graph (causing a crash later on when trying to execute the
+    # graph function)
+    with ops.init_scope():
+      if context.executing_eagerly():
+        return [loss for loss in losses
+                if loss.graph == ops.get_default_graph()]
 
     relevant_inputs = []
     for i in range(0, len(self._inbound_nodes)):
@@ -702,15 +699,39 @@ class Network(base_layer.Layer):
   def trainable_weights(self):
     return checkpointable_layer_utils.gather_trainable_weights(
         trainable=self.trainable,
-        sub_layers=self.layers,
-        extra_variables=self._extra_variables)
+        sub_layers=self._layers,
+        extra_variables=self._trainable_weights)
 
   @property
   def non_trainable_weights(self):
     return checkpointable_layer_utils.gather_non_trainable_weights(
         trainable=self.trainable,
-        sub_layers=self.layers,
-        extra_variables=self._extra_variables)
+        sub_layers=self._layers,
+        extra_variables=self._non_trainable_weights + self._trainable_weights)
+
+  @property
+  def metrics(self):
+    """Returns the network's symbolic metrics.
+
+    Model overrides this function to include the metrics from `compile` API.
+    """
+    metrics = []
+    for layer in self.layers:
+      metrics += layer._metrics  # pylint: disable=protected-access
+    return metrics + self._metrics
+
+  @property
+  def _all_metrics_tensors(self):
+    """Returns the network's symbolic metric tensors."""
+    # TODO(psv): Remove this property.
+    metrics_tensors = {}
+    for layer in self.layers:
+      if isinstance(layer, Network):
+        metrics_tensors.update(layer._all_metrics_tensors)
+      else:
+        metrics_tensors.update(layer._metrics_tensors)
+    metrics_tensors.update(self._metrics_tensors)
+    return metrics_tensors
 
   @property
   def input_spec(self):
@@ -739,6 +760,93 @@ class Network(base_layer.Layer):
       return specs[0]
     return specs
 
+  @base_layer.default
+  def build(self, input_shape):
+    """Builds the model based on input shapes received.
+
+    This is to be used for subclassed models, which do not know at instantiation
+    time what their inputs look like.
+
+    Args:
+     input_shape: Single tuple, TensorShape, or list of shapes, where shapes
+         are tuples, integers, or TensorShapes.
+
+    Raises:
+      ValueError:
+        1. In case of invalid user-provided data (not of type tuple,
+           list, or TensorShape).
+        2. If the model requires call arguments that are agnostic
+           to the input shapes (positional or kwarg in call signature).
+        3. If not all layers were properly built.
+        4. If float type inputs are not supported within the layers.
+
+      In each of these cases, the user should build their model by calling it
+      on real tensor data.
+    """
+    if self._is_graph_network:
+      self.built = True
+      return
+
+    # If subclass network
+    if input_shape is None:
+      raise ValueError('Input shape must be defined when calling build on a '
+                       'model subclass network.')
+    valid_types = (tuple, list, tensor_shape.TensorShape)
+    if not isinstance(input_shape, valid_types):
+      raise ValueError('Specified input shape is not one of the valid types. '
+                       'Please specify a batch input shape of type tuple or '
+                       'list of input shapes. User provided '
+                       'input type: {}'.format(type(input_shape)))
+
+    if input_shape and not self.inputs:
+      # We create placeholders for the `None`s in the shape and build the model
+      # in a Graph. Since tf.Variable is compatible with both eager execution
+      # and graph building, the variables created after building the model in
+      # a Graph are still valid when executing eagerly.
+      with context.graph_mode():
+        graph = func_graph.FuncGraph('graph')
+        with graph.as_default():
+          if isinstance(input_shape, list):
+            x = [base_layer.generate_placeholders_from_shape(shape)
+                 for shape in input_shape]
+          else:
+            x = base_layer.generate_placeholders_from_shape(input_shape)
+
+          kwargs = {}
+          num_call_args = len(tf_inspect.getfullargspec(self.call).args)
+          if self._expects_training_arg and num_call_args == 3:
+            # Has call signature of call(self, input, training)
+            kwargs['training'] = False
+          elif num_call_args > 2:
+            # Has invalid call signature of call(self, input, *args, **kwargs)
+            raise ValueError('Currently, you cannot build your model if it has '
+                             'positional or keyword arguments that are not '
+                             'inputs to the model, but are required for its '
+                             '`call` method. Instead, in order to instantiate '
+                             'and build your model, `call` your model on real '
+                             'tensor data with all expected call arguments.')
+
+          try:
+            self.call(x, **kwargs)
+          except (errors.InvalidArgumentError, TypeError):
+            raise ValueError('You cannot build your model by calling `build` '
+                             'if your layers do not support float type inputs. '
+                             'Instead, in order to instantiate and build your '
+                             'model, `call` your model on real tensor data (of '
+                             'the correct dtype).')
+
+    if self._layers:
+      self._track_layers(self._layers)
+    if self.layers:
+      for layer in self.layers:
+        if not layer.built:
+          raise ValueError('Layer: {} was not built in your model. Calling '
+                           '`build` manually on a subclassed model is only '
+                           'allowed for models with a static topology. '
+                           'In this case, you can build your model by '
+                           'calling it on real tensor data.'.format(layer))
+    self.built = True
+
   def call(self, inputs, training=None, mask=None):
     """Calls the model on new inputs.
 
@@ -757,29 +865,33 @@ class Network(base_layer.Layer):
         A tensor if there is a single output, or
         a list of tensors if there are more than one outputs.
     """
-    inputs = nest.flatten(inputs)
+    if not self._is_graph_network:
+      raise NotImplementedError('When subclassing the `Model` class, you should'
+                                ' implement a `call` method.')
+
+    inputs = generic_utils.to_list(inputs)
     if mask is None:
       masks = [None for _ in range(len(inputs))]
     else:
-      masks = nest.flatten(mask)
-
-    if not context.executing_eagerly():
-      # Try to retrieve cached outputs if the layer has already been called
-      # on these exact inputs.
-      cache_key = (generic_utils.object_list_uid(inputs)
-                   + '_' + generic_utils.object_list_uid(masks))
-      if cache_key in self._output_tensor_cache:
-        # Cache hit.
-        return self._output_tensor_cache[cache_key]
-    # Actually apply the network graph to the new inputs.
+      masks = generic_utils.to_list(mask)
     outputs, _ = self._run_internal_graph(inputs,
                                           training=training,
                                           mask=masks)
     return outputs
 
+  def _call_and_compute_mask(self, inputs, training=None, mask=None):
+    inputs = generic_utils.to_list(inputs)
+    if mask is None:
+      masks = [None for _ in range(len(inputs))]
+    else:
+      masks = generic_utils.to_list(mask)
+    return self._run_internal_graph(inputs,
+                                    training=training,
+                                    mask=masks)
+
   def compute_output_shape(self, input_shape):
     if not self._is_graph_network:
-      raise NotImplementedError
+      return super(Network, self).compute_output_shape(input_shape)
 
     if isinstance(input_shape, list):
       input_shapes = []
@@ -800,9 +912,10 @@ class Network(base_layer.Layer):
                        ' tensor inputs.')
 
     cache_key = generic_utils.object_list_uid(input_shapes)
-    if cache_key not in self._output_shape_cache:
-      # Cache miss. We have to run the network graph manually (recursive calls
-      # to `compute_output_shape`).
+    if cache_key in self._output_shape_cache:
+      # Cache hit.
+      output_shapes = self._output_shape_cache[cache_key]
+    else:
       layers_to_output_shapes = {}
       for i in range(len(input_shapes)):
         layer = self._input_layers[i]
@@ -864,9 +977,6 @@ class Network(base_layer.Layer):
           output_shapes.append(layers_to_output_shapes[shape_key])
         # Store in cache.
         self._output_shape_cache[cache_key] = output_shapes
-    else:
-      # Cache hit.
-      output_shapes = self._output_shape_cache[cache_key]
 
     if isinstance(output_shapes, list):
       if len(output_shapes) == 1:
@@ -889,7 +999,7 @@ class Network(base_layer.Layer):
         mask: List of masks (tensors or None).
 
     Returns:
-        Three lists: output_tensors, output_masks, output_shapes
+        Two lists: output_tensors, output_masks
     """
     # Note: masking support is relevant mainly for Keras.
     # It cannot be factored out without having the fully reimplement the network
@@ -906,8 +1016,6 @@ class Network(base_layer.Layer):
     # Dictionary mapping reference tensors to tuples
     # (computed tensor, compute mask)
     # we assume a 1:1 mapping from tensor to mask
-    # TODO(fchollet): raise exception when a `.compute_mask()` call
-    # does not return a list the same size as `call`
     tensor_map = {}
     for x, y, mask in zip(self.inputs, inputs, masks):
       tensor_map[str(id(x))] = (y, mask)
@@ -936,55 +1044,73 @@ class Network(base_layer.Layer):
               kwargs = node.arguments
             else:
               kwargs = {}
+            # Ensure `training` arg propagation if applicable.
+            if 'training' in tf_inspect.getfullargspec(layer.call).args:
+              kwargs.setdefault('training', training)
+
             if len(computed_data) == 1:
               computed_tensor, computed_mask = computed_data[0]
               # Ensure mask propagation if applicable.
-              if 'mask' in tf_inspect.getargspec(layer.call).args:
+              if 'mask' in tf_inspect.getfullargspec(layer.call).args:
                 kwargs.setdefault('mask', computed_mask)
-              if 'training' in tf_inspect.getargspec(layer.call).args:
-                kwargs.setdefault('training', training)
 
-              output_tensors = nest.flatten(
-                  layer.call(computed_tensor, **kwargs))
-              if hasattr(layer, 'compute_mask'):
-                output_masks = layer.compute_mask(computed_tensor,
-                                                  computed_mask)
-                if output_masks is None:
-                  output_masks = [None for _ in output_tensors]
-                else:
-                  output_masks = nest.flatten(output_masks)
+              # Compute outputs and masks.
+              if (isinstance(layer, Network) and
+                  layer._compute_output_and_mask_jointly):
+                output_tensors, output_masks = layer._call_and_compute_mask(
+                    computed_tensor, **kwargs)
               else:
-                output_masks = [None for _ in output_tensors]
+                if context.executing_eagerly():
+                  output_tensors = layer(computed_tensor, **kwargs)
+                else:
+                  output_tensors = layer.call(computed_tensor, **kwargs)
+                if hasattr(layer, 'compute_mask'):
+                  output_masks = layer.compute_mask(computed_tensor,
+                                                    computed_mask)
+                else:
+                  output_masks = [None for _ in output_tensors]
               computed_tensors = [computed_tensor]
-              computed_masks = [computed_mask]
+
             else:
               computed_tensors = [x[0] for x in computed_data]
               computed_masks = [x[1] for x in computed_data]
-              if 'mask' in tf_inspect.getargspec(layer.call).args:
+              # Ensure mask propagation if applicable.
+              if 'mask' in tf_inspect.getfullargspec(layer.call).args:
                 kwargs.setdefault('mask', computed_masks)
-              if 'training' in tf_inspect.getargspec(layer.call).args:
-                kwargs.setdefault('training', training)
 
-              output_tensors = nest.flatten(
-                  layer.call(computed_tensors, **kwargs))
-
-              if hasattr(layer, 'compute_mask'):
-                output_masks = layer.compute_mask(computed_tensors,
-                                                  computed_masks)
-                if output_masks is None:
-                  output_masks = [None for _ in output_tensors]
-                else:
-                  output_masks = nest.flatten(output_masks)
+              # Compute outputs and masks.
+              if (isinstance(layer, Network) and
+                  layer._compute_output_and_mask_jointly):
+                output_tensors, output_masks = layer._call_and_compute_mask(
+                    computed_tensors, **kwargs)
               else:
-                output_masks = [None for _ in output_tensors]
+                if context.executing_eagerly():
+                  output_tensors = layer(computed_tensors, **kwargs)
+                else:
+                  output_tensors = layer.call(computed_tensors, **kwargs)
+                if hasattr(layer, 'compute_mask'):
+                  output_masks = layer.compute_mask(computed_tensors,
+                                                    computed_masks)
+                else:
+                  output_masks = [None for _ in output_tensors]
+
+            output_tensors = generic_utils.to_list(output_tensors)
+            if output_masks is None:
+              output_masks = [None for _ in output_tensors]
+            else:
+              output_masks = generic_utils.to_list(output_masks)
 
             if not context.executing_eagerly():
-              if layer.activity_regularizer is not None:
-                regularization_losses = [
-                    layer.activity_regularizer(x) for x in output_tensors
-                ]
-                # Apply activity regularizer if any:
-                layer.add_loss(regularization_losses, computed_tensors)
+              # Set mask metadata.
+              for x, m in zip(output_tensors, output_masks):
+                try:
+                  x._keras_mask = m
+                except AttributeError:
+                  pass
+
+              # Apply activity regularizer if any.
+              layer._handle_activity_regularization(computed_tensors,
+                                                    output_tensors)
 
           # Update tensor_map.
           for x, y, mask in zip(reference_output_tensors, output_tensors,
@@ -1008,18 +1134,10 @@ class Network(base_layer.Layer):
       if output_masks is not None:
         output_masks = output_masks[0]
 
-    if not context.executing_eagerly():
-      # Update cache;
-      # keys are based on ids on input tensors and inputs masks.
-      cache_key = (generic_utils.object_list_uid(inputs)
-                   + '_' + generic_utils.object_list_uid(masks))
-      self._output_tensor_cache[cache_key] = output_tensors
-      self._output_mask_cache[cache_key] = output_masks
-
-      if output_shapes is not None:
-        input_shapes = [backend.int_shape(x) for x in inputs]
-        cache_key = generic_utils.object_list_uid(input_shapes)
-        self._output_shape_cache[cache_key] = output_shapes
+    if output_shapes is not None:
+      input_shapes = [backend.int_shape(x) for x in inputs]
+      cache_key = generic_utils.object_list_uid(input_shapes)
+      self._output_shape_cache[cache_key] = output_shapes
 
     return output_tensors, output_masks
 
@@ -1272,7 +1390,9 @@ class Network(base_layer.Layer):
     ```
     """
     if not self._is_graph_network:
-      raise NotImplementedError
+      raise NotImplementedError(
+          'Currently `save` requires model to be a graph network. Consider '
+          'using `save_weights`, in order to save the weights of the model.')
 
     from tensorflow.python.keras.models import save_model  # pylint: disable=g-import-not-at-top
     save_model(self, filepath, overwrite, include_optimizer)
@@ -1362,7 +1482,22 @@ class Network(base_layer.Layer):
         session = None
       else:
         session = backend.get_session()
+      optimizer = getattr(self, 'optimizer', None)
+      if (optimizer
+          and not isinstance(optimizer, checkpointable.CheckpointableBase)):
+        logging.warning(
+            ('This model was compiled with a Keras optimizer (%s) but is being '
+             'saved in TensorFlow format with `save_weights`. The model\'s '
+             'weights will be saved, but unlike with TensorFlow optimizers in '
+             'the TensorFlow format the optimizer\'s state will not be '
+             'saved.\n\nConsider using a TensorFlow optimizer from `tf.train`.')
+            % (optimizer,))
       self._checkpointable_saver.save(filepath, session=session)
+      # Record this checkpoint so it's visible from tf.train.latest_checkpoint.
+      checkpoint_management.update_checkpoint_state(
+          save_dir=os.path.dirname(filepath),
+          model_checkpoint_path=filepath,
+          all_model_checkpoint_paths=[filepath])
 
   def load_weights(self, filepath, by_name=False):
     """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.
@@ -1423,13 +1558,10 @@ class Network(base_layer.Layer):
             'load_weights).')
       if not context.executing_eagerly():
         session = backend.get_session()
-        finalizer = functools.partial(status.run_restore_ops, session=session)
-        if self.built:
-          finalizer()
-        else:
-          # Hold on to this status object until the network is built (for
-          # subclassed Models). Then we'll run restore ops if necessary.
-          self._in_progress_restore_finalizer = finalizer
+        # Restore existing variables (if any) immediately, and set up a
+        # streaming restore for any variables created in the future.
+        checkpointable_utils.streaming_restore(status=status, session=session)
+      status.assert_nontrivial_match()
       return status
     if h5py is None:
       raise ImportError(
@@ -1446,14 +1578,6 @@ class Network(base_layer.Layer):
         saving.load_weights_from_hdf5_group_by_name(f, self.layers)
       else:
         saving.load_weights_from_hdf5_group(f, self.layers)
-
-  def _post_build_cleanup(self):
-    super(Network, self)._post_build_cleanup()
-    if self._in_progress_restore_finalizer is not None:
-      # Runs queued restore operations left over from load_weights when graph
-      # building.
-      self._in_progress_restore_finalizer()
-      self._in_progress_restore_finalizer = None
 
   def _updated_config(self):
     """Util shared between different serialization methods.
@@ -1488,7 +1612,10 @@ class Network(base_layer.Layer):
     def get_json_type(obj):
       # If obj is any numpy type
       if type(obj).__module__ == np.__name__:
-        return obj.item()
+        if isinstance(obj, np.ndarray):
+          return obj.tolist()
+        else:
+          return obj.item()
 
       # If obj is a python 'type'
       if type(obj).__name__ == type.__name__:
@@ -1543,10 +1670,11 @@ class Network(base_layer.Layer):
         ValueError: if `summary()` is called before the model is built.
     """
     if not self.built:
-      raise ValueError('This model has never been called, thus its weights '
-                       'have not yet been created, so no summary can be '
-                       'displayed. Build the model first '
-                       '(e.g. by calling it on some data).')
+      raise ValueError('This model has not yet been built. '
+                       'Build the model first by calling `build()` or calling '
+                       '`fit()` with some data, or specify '
+                       'an `input_shape` argument in the first layer(s) for '
+                       'automatic build.')
     layer_utils.print_summary(self,
                               line_length=line_length,
                               positions=positions,
@@ -1554,7 +1682,8 @@ class Network(base_layer.Layer):
 
 
 def _is_hdf5_filepath(filepath):
-  return filepath.endswith('.h5') or filepath.endswith('.keras')
+  return (filepath.endswith('.h5') or filepath.endswith('.keras') or
+          filepath.endswith('.hdf5'))
 
 
 def _make_node_key(layer_name, node_index):

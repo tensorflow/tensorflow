@@ -674,19 +674,21 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result);
 
-  template <typename Type, typename BiasType, typename ScaleType,
-            int cudnn_data_type, int cudnn_compute_type>
+  template <typename AccumulatorType, typename ElementType, typename BiasType,
+            typename ScaleType>
   port::Status DoFusedConvolveImpl(
       Stream* stream, const dnn::BatchDescriptor& conv_input_descriptor,
-      const DeviceMemory<Type>& conv_input_data, ScaleType conv_input_scale,
+      const DeviceMemory<ElementType>& conv_input_data,
+      ScaleType conv_input_scale,
       const dnn::FilterDescriptor& filter_descriptor,
-      const DeviceMemory<Type>& filter_data,
+      const DeviceMemory<ElementType>& filter_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
-      const DeviceMemory<Type>& side_input_data, ScaleType side_input_scale,
-      const dnn::BatchDescriptor& bias_descriptor,
+      const DeviceMemory<ElementType>& side_input_data,
+      ScaleType side_input_scale, const dnn::BatchDescriptor& bias_descriptor,
       const DeviceMemory<BiasType>& biases, dnn::ActivationMode activation_mode,
       const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemory<Type>* output_data, ScratchAllocator* scratch_allocator,
+      DeviceMemory<ElementType>* output_data,
+      ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
       dnn::ProfileResult* output_profile_result);
 

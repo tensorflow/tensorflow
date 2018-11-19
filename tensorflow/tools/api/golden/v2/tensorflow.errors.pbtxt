@@ -1,0 +1,151 @@
+path: "tensorflow.errors"
+tf_module {
+  member {
+    name: "ABORTED"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "ALREADY_EXISTS"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "AbortedError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "AlreadyExistsError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CANCELLED"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "CancelledError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "DATA_LOSS"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "DEADLINE_EXCEEDED"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "DataLossError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "DeadlineExceededError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "FAILED_PRECONDITION"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "FailedPreconditionError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "INTERNAL"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "INVALID_ARGUMENT"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "InternalError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "InvalidArgumentError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "NOT_FOUND"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "NotFoundError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "OK"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "OUT_OF_RANGE"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "OpError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "OutOfRangeError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "PERMISSION_DENIED"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "PermissionDeniedError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RESOURCE_EXHAUSTED"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "ResourceExhaustedError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "UNAUTHENTICATED"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "UNAVAILABLE"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "UNIMPLEMENTED"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "UNKNOWN"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "UnauthenticatedError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "UnavailableError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "UnimplementedError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "UnknownError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "raise_exception_on_not_ok_status"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "error_code_from_exception_type"
+    argspec: "args=[\'cls\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "exception_type_from_error_code"
+    argspec: "args=[\'error_code\'], varargs=None, keywords=None, defaults=None"
+  }
+}

@@ -30,7 +30,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
 
   def testCalculateBestGainsWithoutRegularization(self):
     """Testing Gain calculation without any regularization."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       max_splits = 7
       node_id_range = [1, 3]  # node 1 through 2 will be processed.
       stats_summary_list = [
@@ -65,10 +65,10 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
           min_node_weight=0,
           max_splits=max_splits)
 
-      self.assertAllEqual([[1, 2], [1, 2]], sess.run(node_ids_list))
+      self.assertAllEqual([[1, 2], [1, 2]], self.evaluate(node_ids_list))
       self.assertAllClose([[0.004775, 0.41184], [0.02823, 0.41184]],
                           sess.run(gains_list))
-      self.assertAllEqual([[1, 1], [1, 1]], sess.run(thresholds_list))
+      self.assertAllEqual([[1, 1], [1, 1]], self.evaluate(thresholds_list))
       # The left node contrib will be later added to the previous node value to
       # make the left node value, and the same for right node contrib.
       self.assertAllClose([[[-.416667], [.568966]], [[-.6], [-.75]]],
@@ -78,7 +78,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
 
   def testCalculateBestGainsWithL2(self):
     """Testing Gain calculation with L2."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       max_splits = 7
       node_id_range = [1, 3]  # node 1 through 2 will be processed.
       stats_summary_list = [
@@ -113,10 +113,10 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
           min_node_weight=0,
           max_splits=max_splits)
 
-      self.assertAllEqual([[1, 2], [1, 2]], sess.run(node_ids_list))
+      self.assertAllEqual([[1, 2], [1, 2]], self.evaluate(node_ids_list))
       self.assertAllClose([[0., 0.33931375], [0.01879096, 0.33931375]],
                           sess.run(gains_list))
-      self.assertAllEqual([[0, 1], [1, 1]], sess.run(thresholds_list))
+      self.assertAllEqual([[0, 1], [1, 1]], self.evaluate(thresholds_list))
       # The left node contrib will be later added to the previous node value to
       # make the left node value, and the same for right node contrib.
       self.assertAllClose([[[0.], [.485294]], [[-.5], [-.6]]],
@@ -126,7 +126,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
 
   def testCalculateBestGainsWithL1(self):
     """Testing Gain calculation with L1."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       max_splits = 7
       node_id_range = [1, 3]  # node 1 through 2 will be processed.
       stats_summary_list = [
@@ -162,9 +162,9 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
           min_node_weight=0,
           max_splits=max_splits)
 
-      self.assertAllEqual([[0, 1], [1, 1]], sess.run(thresholds_list))
+      self.assertAllEqual([[0, 1], [1, 1]], self.evaluate(thresholds_list))
 
-      self.assertAllEqual([[1, 2], [1, 2]], sess.run(node_ids_list))
+      self.assertAllEqual([[1, 2], [1, 2]], self.evaluate(node_ids_list))
       self.assertAllClose([[[0.0], [0.3965517]], [[-0.4], [-0.5]]],
                           sess.run(left_node_contribs_list))
 
@@ -177,7 +177,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
 
   def testCalculateBestGainsWithTreeComplexity(self):
     """Testing Gain calculation with L2."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       max_splits = 7
       node_id_range = [1, 3]  # node 1 through 2 will be processed.
       stats_summary_list = [
@@ -214,12 +214,12 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
           min_node_weight=0,
           max_splits=max_splits)
 
-      self.assertAllEqual([[1, 2], [1, 2]], sess.run(node_ids_list))
+      self.assertAllEqual([[1, 2], [1, 2]], self.evaluate(node_ids_list))
 
       self.assertAllClose([[-3., -2.66068625], [-2.98120904, -2.66068625]],
                           sess.run(gains_list))
 
-      self.assertAllEqual([[0, 1], [1, 1]], sess.run(thresholds_list))
+      self.assertAllEqual([[0, 1], [1, 1]], self.evaluate(thresholds_list))
       # The left node contrib will be later added to the previous node value to
       # make the left node value, and the same for right node contrib.
       self.assertAllClose([[[0.], [.485294]], [[-.5], [-.6]]],
@@ -229,7 +229,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
 
   def testCalculateBestGainsWithMinNodeWeight(self):
     """Testing Gain calculation without any regularization."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       max_splits = 7
       node_id_range = [1, 3]  # node 1 through 2 will be processed.
       stats_summary_list = [
@@ -266,9 +266,9 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
 
       # We can't split node 1 on feature 1 and node 2 on feature 2 because of
       # the min node weight.
-      self.assertAllEqual([[2], [1]], sess.run(node_ids_list))
-      self.assertAllClose([[0.384314], [0.098013]], sess.run(gains_list))
-      self.assertAllEqual([[1], [1]], sess.run(thresholds_list))
+      self.assertAllEqual([[2], [1]], self.evaluate(node_ids_list))
+      self.assertAllClose([[0.384314], [0.098013]], self.evaluate(gains_list))
+      self.assertAllEqual([[1], [1]], self.evaluate(thresholds_list))
       self.assertAllClose([[[0.4852941]], [[-.6]]],
                           sess.run(left_node_contribs_list))
       self.assertAllClose([[[-0.75]], [[-0.014925]]],
@@ -276,7 +276,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
 
   def testCalculateBestGainsWithMinNodeWeightNoSplitOnFeturePossible(self):
     """Testing Gain calculation without any regularization."""
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       max_splits = 7
       node_id_range = [1, 3]  # node 1 through 2 will be processed.
       stats_summary_list = [
@@ -311,9 +311,9 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
            max_splits=max_splits)
 
       # We can't split either of the nodes on the first feature
-      self.assertEqual(2, len(sess.run(node_ids_list)))
-      self.assertAllEqual([], sess.run(node_ids_list)[0])
-      self.assertAllEqual([1], sess.run(node_ids_list)[1])
+      self.assertEqual(2, len(self.evaluate(node_ids_list)))
+      self.assertAllEqual([], self.evaluate(node_ids_list)[0])
+      self.assertAllEqual([1], self.evaluate(node_ids_list)[1])
 
       # Now check when we can't split on any feature
       (node_ids_list, _, _, _,
@@ -325,11 +325,11 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
            tree_complexity=0.0,
            min_node_weight=10,
            max_splits=max_splits)
-      self.assertAllEqual([[], []], sess.run(node_ids_list))
+      self.assertAllEqual([[], []], self.evaluate(node_ids_list))
 
   def testMakeStatsSummarySimple(self):
     """Simple test for MakeStatsSummary."""
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose([[[[1., 5.], [2., 6.]], [[3., 7.], [4., 8.]]]],
                           boosted_trees_ops.make_stats_summary(
                               node_ids=[0, 0, 1, 1],
@@ -341,7 +341,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
 
   def testMakeStatsSummaryAccumulate(self):
     """Tests that Summary actually accumulates."""
-    with self.test_session():
+    with self.cached_session():
       max_splits = 3
       num_buckets = 4
       node_ids = [1, 1, 2, 2, 1, 1, 2, 0]
@@ -359,11 +359,11 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
               [[0., 0.], [.15, .36], [.06, .07], [.1, .2]],  # node 1
               [[-.33, .58], [0., 0.], [.3, .4], [0., 0.]],  # node 2
           ]],
-          result.eval())
+          self.evaluate(result))
 
   def testMakeStatsSummaryMultipleFeatures(self):
     """Tests that MakeStatsSummary works for multiple features."""
-    with self.test_session():
+    with self.cached_session():
       max_splits = 3
       num_buckets = 4
       node_ids = [1, 1, 2, 2, 1, 1, 2, 0]
@@ -389,10 +389,10 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
                   [[.3, .4], [0., 0.], [-.4, .5], [.07, .08]],  # node 2
               ],  # feature 1
           ],
-          result.eval())
+          self.evaluate(result))
 
   def _verify_precision(self, length):
-    with self.test_session():
+    with self.cached_session():
       max_splits = 1
       num_buckets = 1
       node_ids = array_ops.fill([length], 0)
@@ -408,7 +408,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
           node_ids, gradients, hessians, [bucketized_features], max_splits,
           num_buckets)  # shape=[max_splits, num_buckets, num_features, 2]
 
-      self.assertAllClose([[[[2., 0.2]]]], result.eval())
+      self.assertAllClose([[[[2., 0.2]]]], self.evaluate(result))
 
   def testMakeStatsSummaryNumericalPrecisionSmallBatch(self):
     """Tests numeric precision."""

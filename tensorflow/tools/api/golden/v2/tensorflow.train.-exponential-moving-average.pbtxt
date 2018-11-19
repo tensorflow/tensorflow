@@ -1,0 +1,29 @@
+path: "tensorflow.train.ExponentialMovingAverage"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.moving_averages.ExponentialMovingAverage\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "name"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'decay\', \'num_updates\', \'zero_debias\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'ExponentialMovingAverage\'], "
+  }
+  member_method {
+    name: "apply"
+    argspec: "args=[\'self\', \'var_list\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "average"
+    argspec: "args=[\'self\', \'var\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "average_name"
+    argspec: "args=[\'self\', \'var\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "variables_to_restore"
+    argspec: "args=[\'self\', \'moving_avg_variables\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

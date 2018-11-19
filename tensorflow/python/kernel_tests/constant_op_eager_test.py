@@ -523,7 +523,7 @@ class OnesLikeTest(test.TestCase):
 class FillTest(test.TestCase):
 
   def _compare(self, dims, val, np_ans, use_gpu):
-    ctx = context.get_default_context()
+    ctx = context.context()
     device = "GPU:0" if (use_gpu and ctx.num_gpus()) else "CPU:0"
     with ops.device(device):
       tf_ans = array_ops.fill(dims, val, name="fill")

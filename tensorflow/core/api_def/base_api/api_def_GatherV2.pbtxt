@@ -54,5 +54,7 @@ params.shape[axis + 1:]` where:
 Note that on CPU, if an out of bound index is found, an error is returned.
 On GPU, if an out of bound index is found, a 0 is stored in the
 corresponding output value.
+
+See also `tf.batch_gather` and `tf.gather_nd`.
 END
 }

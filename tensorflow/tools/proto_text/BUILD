@@ -39,6 +39,7 @@ cc_binary(
         ":gen_proto_text_functions_lib",
         "@protobuf_archive//:protobuf",
         "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:lib_proto_compiler",
     ] + if_ios(["//tensorflow/core/platform/default/build_config:logging"]),
 )
 
@@ -49,7 +50,6 @@ cc_library(
     copts = if_ios(["-DGOOGLE_LOGGING"]),
     linkopts = select({
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
         "//tensorflow:darwin": [
             "-lm",
             "-lpthread",

@@ -20,15 +20,13 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
-GetCpuCastFromUint32(DataType dst_dtype) {
+CastFunctorType GetCpuCastFromUint32(DataType dst_dtype) {
   CURRY_TYPES3(CAST_CASE, CPUDevice, uint32);
   return nullptr;
 }
 
 #if GOOGLE_CUDA
-std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
-GetGpuCastFromUint32(DataType dst_dtype) {
+CastFunctorType GetGpuCastFromUint32(DataType dst_dtype) {
   CURRY_TYPES3_NO_BF16(CAST_CASE, GPUDevice, uint32);
   return nullptr;
 }
@@ -36,8 +34,7 @@ GetGpuCastFromUint32(DataType dst_dtype) {
 
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-std::function<void(OpKernelContext*, const Tensor&, Tensor*)>
-GetSyclCastFromUint32(DataType dst_dtype) {
+CastFunctorType GetSyclCastFromUint32(DataType dst_dtype) {
   CURRY_TYPES3_NO_HALF(CAST_CASE, SYCLDevice, uint32);
   return nullptr;
 }

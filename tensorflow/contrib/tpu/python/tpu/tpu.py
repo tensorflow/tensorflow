@@ -21,11 +21,13 @@ from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.contrib.compiler import xla
 from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu_function
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python.compat import compat as api_compat
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -42,9 +44,9 @@ _BLACKLISTED_OPS = set([
     "Placeholder",
 ])
 
-# These operations will currently fail to compile, but we should be able to
-# support them eventually via CPU offload or extending our operation set.
-_NOT_IMPLEMENTED_OPS = set([
+# XLA doesn't currently support reading of intermediate tensors, thus some ops
+# are not supported.
+_UNSUPPORTED_OPS = set([
     "AudioSummary",
     "AudioSummaryV2",
     "HistogramSummary",
@@ -75,13 +77,13 @@ def initialize_system(embedding_config=None, job=None):
   """Initializes a distributed TPU system for use with TensorFlow.
 
   Args:
-    embedding_config: If not None, an `EmbeddingLayerConfiguration` proto
+    embedding_config: If not None, a `TPUEmbeddingConfiguration` proto
       describing the desired configuration of the hardware embedding lookup
       tables. If embedding_config is None, no hardware embeddings can be used.
-    job: The job (the XXX in TensorFlow device specification /job:XXX)
-      that contains the TPU devices that will be initialized. If job=None
-      it is assumed there is only one job in the TensorFlow flock, and an
-      error will be returned if this assumption does not hold.
+    job: The job (the XXX in TensorFlow device specification /job:XXX) that
+      contains the TPU devices that will be initialized. If job=None it is
+      assumed there is only one job in the TensorFlow flock, and an error will
+      be returned if this assumption does not hold.
   Returns:
     A serialized `TopologyProto` that describes the TPU system. Note:
       the topology must be evaluated using `Session.run` before it can be used.
@@ -118,9 +120,9 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
   tpu.replicate() computation with the attribute "_tpu_replicate=XYZ", where XYZ
   is a unique name.
 
-  We use a `ControlFlowContext` to perform the annotation since it
-  integrates with Tensorflow constructs like ResourceVariables. For example,
-  if a `ResourceVariable` is constructed inside a tpu.replicate() block, the
+  We use a `ControlFlowContext` to perform the annotation since it integrates
+  with Tensorflow constructs like ResourceVariables. For example, if a
+  `ResourceVariable` is constructed inside a tpu.replicate() block, the
   `ResourceVariable` implementation can use
   `with ops.control_dependencies(None)` to build the variable's definition
   outside the replicated computation.
@@ -149,23 +151,25 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._gradient_colocation_stack = []
     self._host_compute_core = []
     self._name = name
+    self._name_as_bytes = compat.as_bytes(name)
     self._unsupported_ops = []
     self._pivot = pivot
     self._replicated_vars = {}
 
-  def get_replicated_var_handle(self, var):
+  def get_replicated_var_handle(self, name, vars_):
     """Returns a variable handle for replicated TPU variable 'var'.
 
-    This is an method used by an experimental replicated variable
-    implementation and is not intended as a public API.
+    This is a method used by an experimental replicated variable implementation
+    and is not intended as a public API.
 
     Args:
-      var: The replicated TPU variable.
+      name: The common name of the variable.
+      vars_: The replicated TPU variables.
 
     Returns:
       The handle of the TPU replicated input node.
     """
-    handle = self._replicated_vars.get(var)
+    handle = self._replicated_vars.get(name)
     if handle is not None:
       return handle
 
@@ -181,10 +185,10 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     saved_context = graph._get_control_flow_context()
     graph._set_control_flow_context(self.outer_context)
     handle = tpu_ops.tpu_replicated_input(
-        [v.handle for v in var._vars], name=var.name + "/handle")
+        [v.handle for v in vars_], name=name + "/handle")
     graph._set_control_flow_context(saved_context)
     # pylint: enable=protected-access
-    self._replicated_vars[var] = handle
+    self._replicated_vars[name] = handle
     return handle
 
   def report_unsupported_operations(self):
@@ -210,28 +214,24 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
           if gradient_uid == "__unsupported__":
             raise NotImplementedError(
                 "No gradient_uid calling gradient within outside_compilation")
-          # When we take the gradient of an op X in an
-          # outside_compilation cluster C in a forward computation we
-          # would like to put the ops corresponding to the gradient of
-          # X into a new outside_compilation cluster C'. However, if
-          # we take the gradient of X twice, the second one should get
-          # yet another new outside_compilation cluster C''.
+          # When we take the gradient of an op X in an outside_compilation
+          # cluster C in a forward computation we would like to put the ops
+          # corresponding to the gradient of X into a new outside_compilation
+          # cluster C'. However, if we take the gradient of X twice, the second
+          # one should get yet another new outside_compilation cluster C''.
           #
-          # The mechanism we adopt is to use a 'root_cluster' which is
-          # the cluster that X was in before we took gradients, and a
-          # 'gradient_uid' which is different for every invocation of
-          # gradients, and put the gradient of X in cluster
-          # 'root_cluster.gradient_uid'.
+          # The mechanism we adopt is to use a 'root_cluster' which is the
+          # cluster that X was in before we took gradients, and a 'gradient_uid'
+          # which is different for every invocation of gradients, and put the
+          # gradient of X in cluster 'root_cluster.gradient_uid'.
           #
-          # When taking a gradient of a gradient, some ops will be
-          # colocated with Op in the forward pass (e.g., cluster
-          # root_cluster) and some in the backward pass (e.g., cluster
-          # root_cluster.initial_gradient_uid). We need all of the
-          # grad-of-grad ops to be in the same cluster to avoid cyclic
-          # dependencies between clusters. We adopt a heuristic that
-          # puts any op clustered with root_cluster.<xxx> in
-          # root_cluster.gradient_uid, even if xxx was
-          # initial_gradient_uid.
+          # When taking a gradient of a gradient, some ops will be colocated
+          # with Op in the forward pass (e.g., cluster root_cluster) and some in
+          # the backward pass (e.g., cluster root_cluster.initial_gradient_uid).
+          # We need all of the grad-of-grad ops to be in the same cluster to
+          # avoid cyclic dependencies between clusters. We adopt a heuristic
+          # that puts any op clustered with root_cluster.<xxx> in
+          # root_cluster.gradient_uid, even if xxx was initial_gradient_uid.
           self._in_gradient_colocation = op
           parts = outside_attr.split(".")
           cluster = parts[0] + "." + gradient_uid
@@ -314,23 +314,22 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       # Capture the device function stack at the time of first entry
       # since that is the stack that will be used outside_compilation.
       graph = ops.get_default_graph()
-      self._outer_device_function_stack = list(graph._device_function_stack)  # pylint: disable=protected-access
+      # pylint: disable=protected-access
+      self._outer_device_function_stack = graph._device_function_stack.copy()
+      # pylint: enable=protected-access
     super(TPUReplicateContext, self).Enter()
 
   def HostComputeCore(self):
     return self._host_compute_core
 
   def AddOp(self, op):
-    self._AddOpInternal(op)
-
-  def _AddOpInternal(self, op):
     # pylint: disable=protected-access
     if op.type in _BLACKLISTED_OPS:
       logging.error("Operation of type %s (%s) is not supported on the TPU. "
                     "Execution will fail if this op is used in the graph. " %
                     (op.type, op.name))
 
-    if op.type in _NOT_IMPLEMENTED_OPS:
+    if op.type in _UNSUPPORTED_OPS:
       self._unsupported_ops.append(op)
 
     if any(x.dtype._is_ref_dtype for x in op.inputs):
@@ -340,7 +339,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     if _TPU_REPLICATE_ATTR in op.node_def.attr:
       raise ValueError("TPU computations cannot be nested")
     op._set_attr(_TPU_REPLICATE_ATTR,
-                 attr_value_pb2.AttrValue(s=compat.as_bytes(self._name)))
+                 attr_value_pb2.AttrValue(s=self._name_as_bytes))
     if self._outside_compilation_cluster:
       op._set_attr(
           _OUTSIDE_COMPILATION_ATTR,
@@ -354,11 +353,12 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
     # Remove any control edges from outer control flow contexts. These may cause
     # mismatched frame errors.
-    control_inputs, external_inputs = self._RemoveExternalControlEdges(op)
+    (internal_control_inputs,
+     external_control_inputs) = self._RemoveExternalControlEdges(op)
 
     if not op.inputs:
       # Add a control edge from the control pivot to this op.
-      if not control_inputs:
+      if not internal_control_inputs:
         # pylint: disable=protected-access
         op._add_control_input(self.GetControlPivot())
         # pylint: enable=protected-access
@@ -369,19 +369,16 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
         if real_x != x:
           op._update_input(index, real_x)  # pylint: disable=protected-access
 
-    if external_inputs:
+    if external_control_inputs:
       # Use an identity to pull control inputs as data inputs. Note that we
       # ignore ops which don't have outputs. TODO(phawkins): fix that.
-      with ops.control_dependencies(None):
-        self.Enter()
-        external_inputs = [
-            array_ops.identity(x.outputs[0]).op
-            for x in external_inputs
-            if x.outputs
-        ]
-        self.Exit()
+      external_control_inputs = [
+          array_ops.identity(x.outputs[0]).op
+          for x in external_control_inputs
+          if x.outputs
+      ]
       # pylint: disable=protected-access
-      op._add_control_inputs(external_inputs)
+      op._add_control_inputs(external_control_inputs)
       # pylint: enable=protected-access
 
     # Mark op's outputs as seen by this context and any outer contexts.
@@ -397,6 +394,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       self._outer_context.AddInnerOp(op)
 
   def AddValue(self, val):
+    """Add `val` to the current context and its outer context recursively."""
     if val.name in self._values:
       # Use the real value if it comes from outer context.
       result = self._external_values.get(val.name)
@@ -413,7 +411,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     return result
 
   def AddInnerOp(self, op):
-    self._AddOpInternal(op)
+    self.AddOp(op)
     if self._outer_context:
       self._outer_context.AddInnerOp(op)
 
@@ -560,10 +558,17 @@ def split_compile_and_replicate(computation,
         "topology":
             device_assignment.topology.serialized(),
         "device_assignment":
-            device_assignment.core_assignment.flatten().tolist(),
-        "computation_shape":
-            device_assignment.computation_shape.tolist()
+            device_assignment.core_assignment.flatten().tolist()
     }
+    # TODO(phawkins): remove this case after the forward compatibility window
+    # expires on 2018-10-5.
+    if api_compat.forward_compatible(2018, 10, 5):
+      metadata_kwargs["num_cores_per_replica"] = (
+          device_assignment.num_cores_per_replica)
+    else:
+      metadata_kwargs["computation_shape"] = [
+          device_assignment.num_cores_per_replica
+      ]
 
   if ((not isinstance(inputs, list)) or
       any(not isinstance(inp, (list, tuple)) for inp in inputs)):
@@ -594,7 +599,7 @@ def split_compile_and_replicate(computation,
           "input types {}, replica {} had input types {}".format(
               input_types, i, types))
 
-  arg_error = tpu_function.check_function_argument_count(
+  arg_error = xla.check_function_argument_count(
       computation, input_arity, infeed_queue)
   if arg_error is not None:
     if infeed_queue is None:
@@ -654,13 +659,33 @@ def split_compile_and_replicate(computation,
       # TODO(phawkins): consider removing this code. It will
       # be less confusing to clients if they knowingly choose to use resource
       # variables.
+      # Partitioned variables is not supported (b/112311320).
       vscope = variable_scope.get_variable_scope()
       saved_use_resource = vscope.use_resource
+      saved_custom_getter = vscope.custom_getter
+
+      def custom_getter(getter, name, *args, **kwargs):
+        """Variables on TPU have a few restrictions."""
+        partitioner = kwargs["partitioner"]
+        if partitioner is not None:
+          kwargs["partitioner"] = None
+          logging.warning(
+              "Partitioned variables are not supported on TPU. Got "
+              "`partitioner` that is {} for variable {}. "
+              "Setting `partitioner` to `None`."
+              .format(partitioner, name))
+        if saved_custom_getter is None:
+          return getter(name, *args, **kwargs)
+        else:
+          return saved_custom_getter(getter, name, *args, **kwargs)
+
       vscope.set_use_resource(True)
+      vscope.set_custom_getter(custom_getter)
 
       outputs = computation(*computation_inputs)
 
       vscope.set_use_resource(saved_use_resource)
+      vscope.set_custom_getter(saved_custom_getter)
 
     # If the computation returns `None`, make it an empty tuple.
     if outputs is None:
@@ -763,11 +788,10 @@ def shard(computation,
           name=None):
   """Shards `computation` for parallel execution.
 
-  `inputs` must be a list of Tensors or None (equivalent to an empty
-  list), each of which has a corresponding split axis (from
-  `input_shard_axes`). Each input is split into `num_shards` pieces
-  along the corresponding axis, and computation is applied to each
-  shard in parallel.
+  `inputs` must be a list of Tensors or None (equivalent to an empty list), each
+  of which has a corresponding split axis (from `input_shard_axes`). Each input
+  is split into `num_shards` pieces along the corresponding axis, and
+  computation is applied to each shard in parallel.
 
   Tensors are broadcast to all shards if they are lexically captured by
   `computation`. e.g.,
@@ -789,10 +813,9 @@ def shard(computation,
   Args:
     computation: A Python function that builds a computation to apply to each
       shard of the input.
-    inputs: A list of input tensors or None (equivalent to an empty
-      list). Each input tensor has a corresponding shard axes, given
-      by `input_shard_axes`, which must have size divisible by
-      `num_shards`.
+    inputs: A list of input tensors or None (equivalent to an empty list). Each
+      input tensor has a corresponding shard axes, given by `input_shard_axes`,
+      which must have size divisible by `num_shards`.
     num_shards: The number of shards.
     input_shard_axes: A list of dimensions along which to shard `inputs`, or
       `None`. `None` means "shard all inputs along dimension 0". If not `None`,
@@ -826,8 +849,12 @@ def shard(computation,
   if num_shards <= 0:
     raise ValueError("num_shards must be a positive integer.")
 
+  inputs = [] if inputs is None else inputs
+  if not isinstance(inputs, list):
+    raise TypeError("tpu.shard()'s inputs must be a list of Tensors or None.")
+
   # Converts inputs to Tensors.
-  inputs = [] if inputs is None else [ops.convert_to_tensor(x) for x in inputs]
+  inputs = [ops.convert_to_tensor(x) for x in inputs]
 
   if input_shard_axes is None:
     input_shard_axes = [0] * len(inputs)
@@ -911,9 +938,9 @@ def batch_parallel(computation,
 
   Convenience wrapper around shard().
 
-  `inputs` must be a list of Tensors or None (equivalent to an empty
-  list). Each input is split into `num_shards` pieces along the 0-th
-  dimension, and computation is applied to each shard in parallel.
+  `inputs` must be a list of Tensors or None (equivalent to an empty list).
+  Each input is split into `num_shards` pieces along the 0-th dimension, and
+  computation is applied to each shard in parallel.
 
   Tensors are broadcast to all shards if they are lexically captured by
   `computation`. e.g.,
@@ -931,9 +958,8 @@ def batch_parallel(computation,
   Args:
     computation: A Python function that builds a computation to apply to each
       shard of the input.
-    inputs: A list of input tensors or None (equivalent to an empty
-      list). The 0-th dimension of each Tensor must have size
-      divisible by `num_shards`.
+    inputs: A list of input tensors or None (equivalent to an empty list). The
+      0-th dimension of each Tensor must have size divisible by `num_shards`.
     num_shards: The number of shards.
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
       of arguments as inputs to `computation`.
@@ -966,10 +992,17 @@ def rewrite(computation,
   """Rewrites `computation` for execution on a TPU system.
 
   Args:
-    computation: A Python function that builds a computation to apply
-      to the input. If the function takes n inputs, 'inputs' should be
-      a list of n tensors. If the function returns m outputs, rewrite
-      will return a list of m tensors.
+    computation: A Python function that builds a computation to apply to the
+      input. If the function takes n inputs, 'inputs' should be a list of n
+      tensors.
+
+      `computation` may return a list of operations and tensors. Tensors must
+      come before operations in the returned list.  The return value of
+      `rewrite` is a list of tensors corresponding to the tensors from the
+      output of `computation`.
+
+      All `Operation`s returned from `computation` will be executed when
+      evaluating any of the returned output tensors.
     inputs: A list of input tensors or `None` (equivalent to an empty list).
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
       of arguments as inputs to `computation`.
@@ -1004,6 +1037,19 @@ _BLACKLISTED_INFERENCE_OPS = set([
     "Variable",
     "VariableV2",
 ])
+
+
+def under_tpu_inference_context():
+  """Check if it is currently under `tpu.rewrite_for_inference()`."""
+  graph = ops.get_default_graph()
+
+  context = graph._get_control_flow_context()  # pylint: disable=protected-access
+  while context:
+    if isinstance(context, _TPUInferenceContext):
+      return True
+    context = context.outer_context
+
+  return False
 
 
 class _TPUInferenceContext(control_flow_ops.XLAControlFlowContext):
@@ -1048,12 +1094,12 @@ class _TPUInferenceContext(control_flow_ops.XLAControlFlowContext):
 def validate_inference_rewrite_for_variables(graph):
   """Validates whether rewrite_for_inference() 'worked' for variables.
 
-     The rewrite_for_inference() method is supposed to append
-     GuaranteeConstOps after ReadVariableOps, but this mechanism works only
-     if you are using tf.get_variable() to create and access variables in your
-     tpu computation. This validation method can be called immediately after
-     calling tpu.rewrite_for_inference() to check whether GuaranteeConstOps
-     where added to the graph.
+     The rewrite_for_inference() method is supposed to append GuaranteeConstOps
+     after ReadVariableOps, but this mechanism works only if you are using
+     tf.get_variable() to create and access variables in your tpu computation.
+     This validation method can be called immediately after calling
+     tpu.rewrite_for_inference() to check whether GuaranteeConstOps where added
+     to the graph.
 
      Typical usages:
        tpu.validate_inference_rewrite_for_variables(tf.get_default_graph())
@@ -1067,10 +1113,9 @@ def validate_inference_rewrite_for_variables(graph):
   """
   if not any([x.type == "GuaranteeConst" for x in graph.get_operations()]):
     raise RuntimeError(
-        "No GuaranteeConst ops found in the graph after "
-        "running tpu.rewrite_for_inference(...). Please "
-        "check that you are using tf.get_variable() to "
-        "create and access variables in your tpu "
+        "No GuaranteeConst ops found in the graph after running "
+        "tpu.rewrite_for_inference(...). Please check that you are using "
+        "tf.get_variable() to create and access variables in your tpu "
         "computation.")
 
 
@@ -1086,16 +1131,16 @@ def rewrite_for_inference(computation,
      in your computation, it moves the ReadVariableOps outside the TPU
      computation, and adds GuaranteeConst ops just after the ReadVariableOps.
      This mechanism works only if you are using tf.get_variable() to create and
-     access variables in your tpu computation. You can validate whether
-     this worked, by calling validate_inference_rewrite_for_variables() method
+     access variables in your tpu computation. You can validate whether this
+     worked, by calling validate_inference_rewrite_for_variables() method
      immediately after this method to check whether GuaranteeConstOps where
      added to the graph.
 
   Args:
-    computation: A Python function that builds a computation to apply
-      to the input. If the function takes n inputs, 'inputs' should be
-      a list of n tensors. If the function returns m outputs, rewrite
-      will return a list of m tensors.
+    computation: A Python function that builds a computation to apply to the
+      input. If the function takes n inputs, 'inputs' should be a list of n
+      tensors. If the function returns m outputs, rewrite will return a list of
+      m tensors.
     inputs: A list of input tensors or `None` (equivalent to an empty list).
     infeed_queue: If not `None`, the `InfeedQueue` from which to append a tuple
       of arguments as inputs to `computation`.

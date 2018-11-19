@@ -241,7 +241,7 @@ class FileIO(object):
     self._writable_file = None
 
 
-@tf_export("gfile.Exists")
+@tf_export(v1=["gfile.Exists"])
 def file_exists(filename):
   """Determines whether a path exists or not.
 
@@ -255,9 +255,26 @@ def file_exists(filename):
   Raises:
     errors.OpError: Propagates any errors reported by the FileSystem API.
   """
+  return file_exists_v2(filename)
+
+
+@tf_export("io.gfile.exists", v1=[])
+def file_exists_v2(path):
+  """Determines whether a path exists or not.
+
+  Args:
+    path: string, a path
+
+  Returns:
+    True if the path exists, whether its a file or a directory.
+    False if the path does not exist and there are no filesystem errors.
+
+  Raises:
+    errors.OpError: Propagates any errors reported by the FileSystem API.
+  """
   try:
     with errors.raise_exception_on_not_ok_status() as status:
-      pywrap_tensorflow.FileExists(compat.as_bytes(filename), status)
+      pywrap_tensorflow.FileExists(compat.as_bytes(path), status)
   except errors.NotFoundError:
     return False
   return True

@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/variable_ops.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -148,7 +149,7 @@ class StridedSliceOp : public OpKernel {
       // NDIM and T
       if (is_simple_slice && std::is_same<Device, CPUDevice>::value &&
           input_dims == 2 && processing_shape.dims() == 2 &&
-          final_shape.dims() == 2) {
+          final_shape.dims() == 2 && new_axis_mask == 0) {
         MemCpyFunctor<T> functor;
         if (functor.Copy(input, begin, end, result)) {
           return;
@@ -299,34 +300,40 @@ class StridedSliceAssignOp : public OpKernel {
     gtl::InlinedVector<int64, 4> end;
     gtl::InlinedVector<int64, 4> strides;
 
-    Tensor old_lhs;
+    Tensor* old_lhs = nullptr;
+    Tensor tmp;
     if (context->input_dtype(0) == DT_RESOURCE) {
       Var* v;
       OP_REQUIRES_OK(context,
                      LookupResource(context, HandleFromInput(context, 0), &v));
-      old_lhs = *v->tensor();
-      OP_REQUIRES(context, old_lhs.dtype() == DataTypeToEnum<T>::value,
+      core::ScopedUnref scoped_unref(v);
+      mutex_lock ml(*v->mu());
+      OP_REQUIRES_OK(context,
+                     PrepareToUpdateVariable<Device, T>(context, v->tensor()));
+      old_lhs = v->tensor();
+      OP_REQUIRES(context, old_lhs->dtype() == DataTypeToEnum<T>::value,
                   errors::InvalidArgument(
-                      "l-value dtype ", DataTypeString(old_lhs.dtype()),
+                      "l-value dtype ", DataTypeString(old_lhs->dtype()),
                       " does not match r-value dtype ",
                       DataTypeString(DataTypeToEnum<T>::value)));
     } else {
       context->forward_ref_input_to_ref_output(0, 0);
-      old_lhs = context->mutable_input(0, true);
+      tmp = context->mutable_input(0, true);
+      old_lhs = &tmp;
     }
 
     OP_REQUIRES_OK(
-        context,
-        ValidateStridedSliceOp(
-            &context->input(1), &context->input(2), context->input(3),
-            old_lhs.shape(), begin_mask, end_mask, ellipsis_mask, new_axis_mask,
-            shrink_axis_mask, &processing_shape, &final_shape, &is_identity,
-            &is_simple_slice, &slice_dim0, &begin, &end, &strides));
+        context, ValidateStridedSliceOp(
+                     &context->input(1), &context->input(2), context->input(3),
+                     old_lhs->shape(), begin_mask, end_mask, ellipsis_mask,
+                     new_axis_mask, shrink_axis_mask, &processing_shape,
+                     &final_shape, &is_identity, &is_simple_slice, &slice_dim0,
+                     &begin, &end, &strides));
 
     if (processing_shape.num_elements()) {
       const Tensor& input = context->input(4);
       TensorShape input_shape = input.shape();
-      TensorShape original_shape = old_lhs.shape();
+      TensorShape original_shape = old_lhs->shape();
       // TODO(aselle): This check is too strong, we only should need
       // input_shape to be broadcastable to final_shape
       OP_REQUIRES(
@@ -341,12 +348,12 @@ class StridedSliceAssignOp : public OpKernel {
       // scalar shape
 
 // Handle general dimensions
-#define HANDLE_DIM(NDIM)                                                 \
-  if (processing_dims == NDIM) {                                         \
-    HandleStridedSliceAssignCase<Device, T, NDIM>()(                     \
-        context, begin, end, strides, processing_shape, is_simple_slice, \
-        &old_lhs);                                                       \
-    return;                                                              \
+#define HANDLE_DIM(NDIM)                                                       \
+  if (processing_dims == NDIM) {                                               \
+    HandleStridedSliceAssignCase<Device, T, NDIM>()(context, begin, end,       \
+                                                    strides, processing_shape, \
+                                                    is_simple_slice, old_lhs); \
+    return;                                                                    \
   }
       HANDLE_DIM(0);
       HANDLE_DIM(1);
@@ -440,6 +447,8 @@ TF_CALL_ALL_TYPES(REGISTER_STRIDED_SLICE);
                           StridedSliceAssignOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_bool(REGISTER_GPU);
+TF_CALL_int8(REGISTER_GPU);
 TF_CALL_complex64(REGISTER_GPU);
 TF_CALL_complex128(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);

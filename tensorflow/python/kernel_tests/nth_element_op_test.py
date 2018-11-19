@@ -32,10 +32,10 @@ class NthElementTest(test.TestCase):
 
   def _validateNthElement(self, inputs, dtype, n, reverse, expected_values):
     np_expected_values = np.array(expected_values)
-    with self.test_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=False) as sess:
       inputs_op = ops.convert_to_tensor(inputs, dtype=dtype)
       values_op = nn_ops.nth_element(inputs_op, n, reverse=reverse)
-      values = sess.run(values_op)
+      values = self.evaluate(values_op)
 
       self.assertShapeEqual(np_expected_values, values_op)
       self.assertAllClose(np_expected_values, values)
@@ -117,7 +117,7 @@ class NthElementTest(test.TestCase):
       nn_ops.nth_element(5, 0)
 
   def testInvalidInputAtEval(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       v = array_ops.placeholder(dtype=dtypes.float32)
       with self.assertRaisesOpError("Input must be >= 1-D"):
         nn_ops.nth_element(v, 0).eval(feed_dict={v: 5.0})
@@ -132,7 +132,7 @@ class NthElementTest(test.TestCase):
 
   def testInvalidNAtEval(self):
     inputs = [[0.1, 0.2], [0.3, 0.4]]
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       n = array_ops.placeholder(dtypes.int32)
       values = nn_ops.nth_element(inputs, n)
       with self.assertRaisesOpError("Need n >= 0, got -7"):
@@ -146,14 +146,14 @@ class NthElementTest(test.TestCase):
 
   def testNTooLargeAtEval(self):
     inputs = [[0.1, 0.2], [0.3, 0.4]]
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       n = array_ops.placeholder(dtypes.int32)
       values = nn_ops.nth_element(inputs, n)
       with self.assertRaisesOpError(r"Input must have at least n\+1 columns"):
         values.eval(feed_dict={n: 2})
 
   def testGradients(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       inputs = array_ops.placeholder(dtypes.float32, shape=[3, 5])
       values = nn_ops.nth_element(inputs, 3)
       grad = sess.run(

@@ -120,7 +120,8 @@ TEST(MathOpsTest, BroadcastBinaryOps_ShapeFn) {
                               "Maximum",    "Minimum",
                               "Mod",        "Mul",
                               "NotEqual",   "Pow",
-                              "Sub",        "SquaredDifference"}) {
+                              "Sub",        "SquaredDifference",
+                              "DivNoNan"}) {
     ShapeInferenceTestOp op(op_name);
     INFER_OK(op, "?;?", "?");
     INFER_OK(op, "[1,2];?", "?");
@@ -542,5 +543,32 @@ TEST(MathOpsTest, HistogramFixedWidth_ShapeFn) {
   INFER_OK(op, "?;?;?", "[?]");
   INFER_OK(op, "[?];[2];[]", "[?]");
   INFER_OK(op, "[?];[2];?", "[?]");
+}
+
+TEST(MathOpsTest, QuantizedAdd_ShapeFn) {
+  ShapeInferenceTestOp op("QuantizedAdd");
+
+  INFER_OK(op, "?;?;?;?;?;?", "?;[];[]");
+  INFER_OK(op, "?;?;[];[];[];[]", "?;[];[]");
+  INFER_OK(op, "[1,2];?;[];[];[];[]", "?;[];[]");
+  INFER_OK(op, "[];[2];[];[];[];[]", "[d1_0];[];[]");
+
+  // Rank checks on input scalars.
+  INFER_ERROR("must be rank 0", op, "?;?;[1];?;?;?");
+  INFER_ERROR("must be rank 0", op, "?;?;?;[2];?;?");
+  INFER_ERROR("must be rank 0", op, "?;?;?;?;[3];?");
+  INFER_ERROR("must be rank 0", op, "?;?;?;?;?;[4]");
+}
+
+TEST(MathOpsTest, Bincount_ShapeFn) {
+  ShapeInferenceTestOp op("Bincount");
+
+  // size should be scalar.
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;[1];?");
+
+  INFER_OK(op, "?;?;?", "[?]");
+  INFER_OK(op, "?;[];?", "[?]");
+  INFER_OK(op, "[?];[];?", "[?]");
+  INFER_OK(op, "[?];[];[?]", "[?]");
 }
 }  // end namespace tensorflow

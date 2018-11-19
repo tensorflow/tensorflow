@@ -38,7 +38,10 @@ from __future__ import print_function
 
 import abc
 
+import six
 
+
+@six.add_metaclass(abc.ABCMeta)
 class DataProvider(object):
   """Maps a list of requested data items to tensors from a data source.
 
@@ -46,7 +49,6 @@ class DataProvider(object):
   method which returns arbitrary types of data. No assumption is made about the
   source of the data nor the mechanism for providing it.
   """
-  __metaclass__ = abc.ABCMeta
 
   def __init__(self, items_to_tensors, num_samples):
     """Constructs the Data Provider.

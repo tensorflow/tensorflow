@@ -311,7 +311,7 @@ int KeypointDetector::AddExtraCandidatesForBoxes(
           return num_keypoints_added;
         }
 
-        Keypoint curr_keypoint = keypoints[num_keypoints_added++];
+        Keypoint& curr_keypoint = keypoints[num_keypoints_added++];
         curr_keypoint.pos_ = Point2f(
             box.left_ + box.GetWidth() * (i + 0.5f) / kNumToAddAsCandidates,
             box.top_ + box.GetHeight() * (j + 0.5f) / kNumToAddAsCandidates);

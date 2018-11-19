@@ -18,9 +18,9 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace xla {
 namespace {
@@ -60,7 +59,7 @@ TEST_F(BatchNormExpanderTest, BatchNormTraining) {
       param0, param1, param2,
       /*epsilon=*/0.001, /*feature_index=*/3));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kBatchNormTraining);
@@ -102,7 +101,7 @@ TEST_F(BatchNormExpanderTest, BatchNormGrad) {
       param1, param2, param3, param4,
       /*epsilon=*/0.001, /*feature_index=*/3));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kBatchNormGrad);
@@ -127,19 +126,19 @@ ENTRY entry {
     epsilon=0.001, feature_index=1, sharding={maximal device=1}
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(module_str));
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
   BatchNormExpander rewriter(/*rewrite_training_op=*/true,
                              /*rewrite_inference_op=*/true,
                              /*rewrite_grad_op=*/true);
-  ASSERT_TRUE(rewriter.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(rewriter.Run(m.get()).ValueOrDie());
 
-  for (auto* instruction : module->entry_computation()->instructions()) {
+  for (auto* instruction : m->entry_computation()->instructions()) {
     if (instruction->opcode() == HloOpcode::kParameter) {
       continue;
     }
-    ASSERT_TRUE(instruction->has_sharding());
-    TF_ASSERT_OK_AND_ASSIGN(int device, instruction->sharding().UniqueDevice());
-    EXPECT_EQ(device, 1);
+    auto device = instruction->sharding_unique_device();
+    ASSERT_TRUE(device);
+    EXPECT_EQ(*device, 1);
   }
 }
 

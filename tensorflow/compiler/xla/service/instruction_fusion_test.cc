@@ -117,7 +117,7 @@ TEST_F(InstructionFusionTest, PotentialBitcastReshapeOfParameterUnfused) {
   auto reshape1 = builder.AddInstruction(
       HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {1, 1}), param0));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(reshape1, computation->root_instruction());
   EXPECT_FALSE(
@@ -133,7 +133,7 @@ TEST_F(InstructionFusionTest, PotentialBitcastSimpleReshapeOfParameterUnfused) {
   auto reshape1 = builder.AddInstruction(
       HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {1, 1}), param0));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(reshape1, computation->root_instruction());
   EXPECT_FALSE(
@@ -149,7 +149,7 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfParameterUnfused) {
   auto transpose1 = builder.AddInstruction(HloInstruction::CreateTranspose(
       ShapeUtil::MakeShape(S32, {}), param0, {}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(transpose1, computation->root_instruction());
   EXPECT_FALSE(
@@ -158,7 +158,7 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfParameterUnfused) {
           .ValueOrDie());
 }
 
-TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusable) {
+TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusible) {
   HloComputation::Builder builder(TestName());
   auto shape = ShapeUtil::MakeShape(F32, {16, 16});
   auto param0 =
@@ -172,7 +172,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusable) {
   HloInstruction* unary = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, binary1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(unary, computation->root_instruction());
   EXPECT_FALSE(
@@ -216,7 +216,7 @@ TEST_F(InstructionFusionTest, FuseCheapNonDuplicatableOps) {
   EXPECT_EQ(Count(*module, HloOpcode::kAdd), 1) << module->ToString();
 }
 
-TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusableRecursively) {
+TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
   // Make sure we do not duplicate the add, as we cannot fuse through the rng.
   //
   // p0 -> add -------------------------> sub
@@ -309,7 +309,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusableRecursively) {
   EXPECT_EQ(Count(*module, HloOpcode::kAdd), 2) << module->ToString();
 
   // A variant of the above that allows the algorithm to put add2 into the set
-  // of unfusable ops to short-circuit the decision whether add1 should be fused
+  // of unfusible ops to short-circuit the decision whether add1 should be fused
   // into sub2.
   //
   //             /---------------\
@@ -361,7 +361,7 @@ TEST_F(InstructionFusionTest, AllowUnaryDuplication) {
   HloInstruction* unary2 = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, unary1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(unary2, computation->root_instruction());
   EXPECT_TRUE(
@@ -385,7 +385,7 @@ TEST_F(InstructionFusionTest, AllowEffectiveUnaryDuplication) {
   HloInstruction* unary = builder.AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, binary1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(unary, computation->root_instruction());
   EXPECT_TRUE(

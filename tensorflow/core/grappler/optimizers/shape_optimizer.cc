@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/shape_optimizer.h"
 
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/grappler/optimizers/symbolic_shapes.h"
-
+#include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/symbolic_shapes.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
@@ -33,8 +33,8 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   *optimized_graph = item.graph;
 
   GraphProperties properties(item);
-  TF_RETURN_IF_ERROR(properties.InferStatically(false));
-  GraphView graph(optimized_graph);
+  bool inferred_properties = false;
+  MutableGraphView graph(optimized_graph);
 
   // The product of all the dimensions in a tensor shape can be expressed more
   // simply as the size of the tensor.
@@ -42,8 +42,8 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     if (!IsShape(node)) {
       continue;
     }
-    for (GraphView::InputPort fanout :
-         graph.GetFanout(GraphView::OutputPort(&node, 0))) {
+    for (MutableGraphView::InputPort fanout :
+         graph.GetFanout(MutableGraphView::OutputPort(&node, 0))) {
       if (fanout.node->op() != "Prod") {
         continue;
       }
@@ -53,8 +53,13 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
         // rewrite the whole expression directly as a Size operation.
         continue;
       }
-      const GraphView::OutputPort reduce_indices =
-          graph.GetRegularFanin(GraphView::InputPort(fanout.node, 1));
+      const MutableGraphView::OutputPort reduce_indices =
+          graph.GetRegularFanin(MutableGraphView::InputPort(fanout.node, 1));
+      if (!inferred_properties) {
+        // Infer properties lazily in case they are not needed.
+        TF_RETURN_IF_ERROR(properties.InferStatically(false));
+        inferred_properties = true;
+      }
       const auto& prop =
           properties.GetOutputProperties(reduce_indices.node->name());
       if (prop.size() < reduce_indices.port_id) {
@@ -85,12 +90,17 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     // is possible whenever the symbolic dimensions in the numerator and
     // denominator cancel each other.
     if (node.op() == "Div") {
-      const GraphView::OutputPort input1 =
-          graph.GetRegularFanin(GraphView::InputPort(&node, 0));
-      const GraphView::OutputPort input2 =
-          graph.GetRegularFanin(GraphView::InputPort(&node, 1));
+      const MutableGraphView::OutputPort input1 =
+          graph.GetRegularFanin(MutableGraphView::InputPort(&node, 0));
+      const MutableGraphView::OutputPort input2 =
+          graph.GetRegularFanin(MutableGraphView::InputPort(&node, 1));
       if (!IsSize(*input1.node) || !IsSize(*input2.node)) {
         continue;
+      }
+      if (!inferred_properties) {
+        // Infer properties lazily in case they are not needed.
+        TF_RETURN_IF_ERROR(properties.InferStatically(false));
+        inferred_properties = true;
       }
       const auto& prop1 = properties.GetInputProperties(input1.node->name());
       const auto& prop2 = properties.GetInputProperties(input2.node->name());

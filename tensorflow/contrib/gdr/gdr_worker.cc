@@ -39,9 +39,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-GdrWorker::GdrWorker(WorkerEnv* worker_env,
+GdrWorker::GdrWorker(WorkerEnv* worker_env, const ConfigProto& config,
                      RemoteMemoryManager* remote_memory_manager)
-    : GrpcWorker(worker_env),
+    : GrpcWorker(worker_env, config),
       remote_memory_manager_(remote_memory_manager),
       recv_tensor_recent_request_ids_(100000) {}
 

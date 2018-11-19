@@ -47,10 +47,10 @@ class SavedModelLoaderTest(test.TestCase):
   def setUp(self):
     """Write test SavedModels to a temp directory."""
     with session.Session(graph=ops.Graph()) as sess:
-      x = variables.Variable(5, name="x")
-      y = variables.Variable(11, name="y")
+      x = variables.VariableV1(5, name="x")
+      y = variables.VariableV1(11, name="y")
       z = x + y
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
 
       foo_sig_def = signature_def_utils.build_signature_def(
           {"foo_input": utils.build_tensor_info(x)},
@@ -79,13 +79,13 @@ class SavedModelLoaderTest(test.TestCase):
 
   def test_load_function(self):
     loader = loader_impl.SavedModelLoader(SIMPLE_ADD_SAVED_MODEL)
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, ["foo_graph"])
       self.assertEqual(5, sess.graph.get_tensor_by_name("x:0").eval())
       self.assertEqual(11, sess.graph.get_tensor_by_name("y:0").eval())
 
     loader2 = loader_impl.SavedModelLoader(SAVED_MODEL_WITH_MAIN_OP)
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       loader2.load(sess, ["foo_graph"])
       self.assertEqual(5, sess.graph.get_tensor_by_name("x:0").eval())
       self.assertEqual(7, sess.graph.get_tensor_by_name("y:0").eval())
@@ -101,7 +101,7 @@ class SavedModelLoaderTest(test.TestCase):
     with self.assertRaises(KeyError):
       graph.get_tensor_by_name("z:0")
 
-    with self.test_session(graph=graph) as sess:
+    with self.session(graph=graph) as sess:
       # Check that x and y are not initialized
       with self.assertRaises(errors.FailedPreconditionError):
         sess.run(x)
@@ -110,8 +110,9 @@ class SavedModelLoaderTest(test.TestCase):
 
   def test_load_with_import_scope(self):
     loader = loader_impl.SavedModelLoader(SAVED_MODEL_WITH_MAIN_OP)
-    with self.test_session(graph=ops.Graph()) as sess:
-      saver = loader.load_graph(sess.graph, ["foo_graph"], import_scope="baz")
+    with self.session(graph=ops.Graph()) as sess:
+      saver, _ = loader.load_graph(
+          sess.graph, ["foo_graph"], import_scope="baz")
 
       # The default saver should not work when the import scope is set.
       with self.assertRaises(errors.NotFoundError):
@@ -125,32 +126,32 @@ class SavedModelLoaderTest(test.TestCase):
 
     # Test combined load function.
     loader = loader_impl.SavedModelLoader(SAVED_MODEL_WITH_MAIN_OP)
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, ["foo_graph"], import_scope="baa")
       self.assertEqual(5, sess.graph.get_tensor_by_name("baa/x:0").eval())
       self.assertEqual(7, sess.graph.get_tensor_by_name("baa/y:0").eval())
 
   def test_restore_variables(self):
     loader = loader_impl.SavedModelLoader(SAVED_MODEL_WITH_MAIN_OP)
-    with self.test_session(graph=ops.Graph()) as sess:
-      x = variables.Variable(0, name="x")
-      y = variables.Variable(0, name="y")
+    with self.session(graph=ops.Graph()) as sess:
+      x = variables.VariableV1(0, name="x")
+      y = variables.VariableV1(0, name="y")
       z = x * y
 
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
 
       # There are variables to restore, so a saver must be created.
       with self.assertRaises(ValueError):
         loader.restore_variables(sess, None)
 
       loader.restore_variables(sess, tf_saver.Saver())
-      self.assertEqual(55, z.eval())
+      self.assertEqual(55, self.evaluate(z))
 
   def test_run_init_op(self):
     loader = loader_impl.SavedModelLoader(SAVED_MODEL_WITH_MAIN_OP)
     graph = ops.Graph()
-    saver = loader.load_graph(graph, ["foo_graph"])
-    with self.test_session(graph=graph) as sess:
+    saver, _ = loader.load_graph(graph, ["foo_graph"])
+    with self.session(graph=graph) as sess:
       loader.restore_variables(sess, saver)
       self.assertEqual(5, sess.graph.get_tensor_by_name("x:0").eval())
       self.assertEqual(11, sess.graph.get_tensor_by_name("y:0").eval())
@@ -185,8 +186,10 @@ class SavedModelLoaderTest(test.TestCase):
     """
     path = _get_export_dir("no_variable_saved_model")
     with session.Session(graph=ops.Graph()) as sess:
-      x = variables.Variable(5, name="x", collections=["not_global_variable"])
-      y = variables.Variable(11, name="y", collections=["not_global_variable"])
+      x = variables.VariableV1(
+          5, name="x", collections=["not_global_variable"])
+      y = variables.VariableV1(
+          11, name="y", collections=["not_global_variable"])
       self.assertFalse(variables._all_saveable_objects())
       z = x + y
       sess.run(variables.variables_initializer([x, y]))
@@ -202,16 +205,28 @@ class SavedModelLoaderTest(test.TestCase):
       builder.save()
 
     loader = loader_impl.SavedModelLoader(path)
-    with self.test_session(graph=ops.Graph()) as sess:
-      saver = loader.load_graph(sess.graph, ["foo_graph"])
+    with self.session(graph=ops.Graph()) as sess:
+      saver, _ = loader.load_graph(sess.graph, ["foo_graph"])
       self.assertFalse(variables._all_saveable_objects())
       self.assertIsNotNone(saver)
 
-    with self.test_session(graph=ops.Graph()) as sess:
+    with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, ["foo_graph"])
       self.assertEqual(5, sess.graph.get_tensor_by_name("x:0").eval())
       self.assertEqual(11, sess.graph.get_tensor_by_name("y:0").eval())
 
+  def test_load_saved_model_graph_with_return_elements(self):
+    """Ensure that the correct elements are returned."""
+    loader = loader_impl.SavedModelLoader(SIMPLE_ADD_SAVED_MODEL)
+    graph = ops.Graph()
+    _, ret = loader.load_graph(graph, ["foo_graph"],
+                               return_elements=["y:0", "x:0"])
+
+    self.assertEqual(graph.get_tensor_by_name("y:0"), ret[0])
+    self.assertEqual(graph.get_tensor_by_name("x:0"), ret[1])
+
+    with self.assertRaisesRegexp(ValueError, "not found in graph"):
+      loader.load_graph(graph, ["foo_graph"], return_elements=["z:0"])
 
 if __name__ == "__main__":
   test.main()

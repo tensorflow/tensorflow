@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -70,7 +71,7 @@ class OpRegistryInterface;
 class ResourceMgr;
 class ScopedStepContainer;
 class CollectiveExecutor;
-class StepStatsCollector;
+class StepStatsCollectorInterface;
 
 class OpKernel {
  public:
@@ -113,6 +114,7 @@ class OpKernel {
 
   // Returns nullptr iff this op kernel is synchronous.
   virtual AsyncOpKernel* AsAsync() { return nullptr; }
+  virtual const AsyncOpKernel* AsAsync() const { return nullptr; }
 
   // Returns true iff this op kernel is considered "expensive". The
   // runtime may use this flag to optimize graph execution for example
@@ -197,6 +199,7 @@ class AsyncOpKernel : public OpKernel {
   virtual void ComputeAsync(OpKernelContext* context, DoneCallback done) = 0;
 
   AsyncOpKernel* AsAsync() final { return this; }
+  const AsyncOpKernel* AsAsync() const final { return this; }
 
   void Compute(OpKernelContext* context) final;
 
@@ -370,18 +373,37 @@ class OpKernelConstruction {
 template <typename ListType, typename ElementType>
 class OpArgIterator {
  public:
-  typedef OpArgIterator<ListType, ElementType> ME;
+  using iterator_category = std::forward_iterator_tag;
+  using value_type = ElementType;
+  using pointer = ElementType*;
+  using reference = ElementType&;
+  using difference_type = ptrdiff_t;
+
   OpArgIterator(const ListType* list, int i) : list_(list), i_(i) {}
-  bool operator==(const ME& rhs) {
+
+  bool operator==(const OpArgIterator& rhs) {
     DCHECK(list_ == rhs.list_);
     return i_ == rhs.i_;
   }
-  bool operator!=(const ME& rhs) {
+
+  bool operator!=(const OpArgIterator& rhs) {
     DCHECK(list_ == rhs.list_);
     return i_ != rhs.i_;
   }
-  void operator++() { ++i_; }
-  ElementType& operator*() { return (*list_)[i_]; }
+
+  OpArgIterator operator++() {  // prefix ++it
+    ++i_;
+    return *this;
+  }
+
+  OpArgIterator operator++(int) {  // postfix it++
+    OpArgIterator old_value = *this;
+    ++i_;
+    return old_value;
+  }
+
+  reference operator*() { return (*list_)[i_]; }
+  pointer operator->() { return &(*list_)[i_]; }
 
  private:
   const ListType* const list_;
@@ -392,7 +414,7 @@ class OpArgIterator {
 // that are passed to the op as a single named argument.
 class OpInputList {
  public:
-  typedef OpArgIterator<OpInputList, const Tensor&> Iterator;
+  typedef OpArgIterator<OpInputList, const Tensor> Iterator;
   OpInputList() : ctx_(nullptr), start_(0), stop_(0) {}
   OpInputList(OpKernelContext* ctx, int start, int stop)
       : ctx_(ctx), start_(start), stop_(stop) {}
@@ -466,6 +488,17 @@ struct TensorValue {
 
   mutex* mutex_if_ref;  // nullptr if not a ref, != nullptr if a ref
   Tensor* tensor;
+};
+
+// Used to store partitioned graphs from function-calling ops.
+struct GraphCollector {
+  mutex mu;
+  std::vector<GraphDef> graphs GUARDED_BY(mu);
+
+  void CollectGraph(const GraphDef& graph) {
+    mutex_lock ml(mu);
+    graphs.push_back(graph);
+  }
 };
 
 class OpKernelContext {
@@ -567,7 +600,8 @@ class OpKernelContext {
     CallFrameInterface* call_frame = nullptr;
     FunctionLibraryRuntime* function_library = nullptr;
     std::function<void(std::function<void()>)>* runner = nullptr;
-    StepStatsCollector* stats_collector = nullptr;
+    StepStatsCollectorInterface* stats_collector = nullptr;
+    GraphCollector* graph_collector = nullptr;
 
     // TensorSliceReaderCache support.
     checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache = nullptr;
@@ -689,6 +723,9 @@ class OpKernelContext {
   // status to a non-OK value and returns false.
   // Usage: if (!context->ValidateInputsAreSameShape(this)) return;
   bool ValidateInputsAreSameShape(OpKernel* op);
+
+  // If non-null, kernels should populate with any partition subgraphs created.
+  GraphCollector* graph_collector() { return params_->graph_collector; }
 
   // Input to output forwarding.
 
@@ -902,12 +939,6 @@ class OpKernelContext {
   // Returns nullptr if allocate_output() or set_output() have not been called.
   Status mutable_output(StringPiece name, Tensor** tensor);
 
-  // Transfers ownership of an output tensor to the caller.
-  // NOTE: For non-reference outputs, the caller takes responsibility
-  // for deletion. For reference outputs, the caller does NOT take
-  // responsibility for deletion.
-  Status release_output(StringPiece name, TensorValue* value);
-
   // Records device specific state about how the input tensors were
   // computed.
   //
@@ -951,9 +982,10 @@ class OpKernelContext {
     return params_->output_attr_array[index];
   }
 
-  gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators() const {
+  gtl::InlinedVector<WrappedAllocator, 4> ConsumeWrappedAllocators() {
     mutex_lock lock(mu_);
-    gtl::InlinedVector<WrappedAllocator, 4> retrieved = wrapped_allocators_;
+    gtl::InlinedVector<WrappedAllocator, 4> retrieved;
+    retrieved.swap(wrapped_allocators_);
     return retrieved;
   }
 
@@ -988,7 +1020,7 @@ class OpKernelContext {
   std::function<void(std::function<void()>)>* runner() const {
     return params_->runner;
   }
-  StepStatsCollector* stats_collector() const {
+  StepStatsCollectorInterface* stats_collector() const {
     return params_->stats_collector;
   }
 
@@ -1205,7 +1237,7 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
 //           * def has all attrs specified (e.g. using AddDefaultsToNodeDef()).
 Status SupportedDeviceTypesForNode(
     const std::vector<DeviceType>& prioritized_types, const NodeDef& def,
-    DeviceTypeVector* device_types);
+    PrioritizedDeviceTypeVector* device_types);
 
 // Returns a message with a description of the kernels registered for op
 // `op_name`.
@@ -1289,7 +1321,8 @@ class Name : public KernelDefBuilder {
             return new __VA_ARGS__(context);                             \
           });
 
-void* GlobalKernelRegistry();
+// Checks whether a given kernel is registered on device_type.
+bool KernelDefAvailable(const DeviceType& device_type, const NodeDef& node_def);
 
 // If node_def has a corresponding kernel registered on device_type,
 // returns OK and fill in the kernel def and kernel_class_name. <def> and
@@ -1304,24 +1337,64 @@ void LogAllRegisteredKernels();
 // Gets a list of all registered kernels.
 KernelList GetAllRegisteredKernels();
 
+// Gets a list of all registered kernels for which predicate returns true
+KernelList GetFilteredRegisteredKernels(
+    const std::function<bool(const KernelDef&)>& predicate);
+
+// Gets a list of all registered kernels for a given op
+KernelList GetRegisteredKernelsForOp(StringPiece op_name);
+
 namespace kernel_factory {
+
+// OpKernelFactory is responsible for creating OpKernels when TensorFlow needs
+// them. You register factories with the TensorFlow core by constructing an
+// OpKernelRegistrar and passing the factory as a constructor parameter.
+class OpKernelFactory {
+ public:
+  virtual OpKernel* Create(OpKernelConstruction* context) = 0;
+  virtual ~OpKernelFactory() = default;
+};
 
 class OpKernelRegistrar {
  public:
-  typedef OpKernel* (*Factory)(OpKernelConstruction*);
-
+  // Registers the given kernel factory with TensorFlow. TF will call the
+  // factory Create() method when it determines that a kernel matching the given
+  // KernelDef is required.
   OpKernelRegistrar(const KernelDef* kernel_def, StringPiece kernel_class_name,
-                    Factory factory) {
+                    std::unique_ptr<OpKernelFactory> factory) {
     // Perform the check in the header to allow compile-time optimization
     // to a no-op, allowing the linker to remove the kernel symbols.
     if (kernel_def != nullptr) {
-      InitInternal(kernel_def, kernel_class_name, factory);
+      InitInternal(kernel_def, kernel_class_name, std::move(factory));
+    }
+  }
+
+  // Registers the given factory function with TensorFlow. This is equivalent
+  // to registering a factory whose Create function invokes `create_fn`.
+  OpKernelRegistrar(const KernelDef* kernel_def, StringPiece kernel_class_name,
+                    OpKernel* (*create_fn)(OpKernelConstruction*)) {
+    // Perform the check in the header to allow compile-time optimization
+    // to a no-op, allowing the linker to remove the kernel symbols.
+    if (kernel_def != nullptr) {
+      struct PtrOpKernelFactory : public OpKernelFactory {
+        explicit PtrOpKernelFactory(
+            OpKernel* (*create_func)(OpKernelConstruction*))
+            : create_func_(create_func) {}
+
+        OpKernel* Create(OpKernelConstruction* context) override {
+          return (*create_func_)(context);
+        }
+
+        OpKernel* (*create_func_)(OpKernelConstruction*);
+      };
+      InitInternal(kernel_def, kernel_class_name,
+                   absl::make_unique<PtrOpKernelFactory>(create_fn));
     }
   }
 
  private:
   void InitInternal(const KernelDef* kernel_def, StringPiece kernel_class_name,
-                    Factory factory);
+                    std::unique_ptr<OpKernelFactory> factory);
 };
 
 }  // namespace kernel_factory
@@ -1535,21 +1608,36 @@ inline void OpOutputList::set_ref(int i, mutex* mu, Tensor* tensor_for_ref) {
 //   ...
 // }
 
-#define OP_REQUIRES(CTX, EXP, STATUS)                  \
-  do {                                                 \
-    if (!TF_PREDICT_TRUE(EXP)) {                       \
-      (CTX)->CtxFailure(__FILE__, __LINE__, (STATUS)); \
-      return;                                          \
-    }                                                  \
+// Generate a fatal error if OP_REQUIRES or OP_REQUIRES_OK are used in
+// AsyncOpKernel implementations. If these macros are used and the condition
+// does not hold, the `done` callback will never be called and the system will
+// deadlock, so a crash failure is preferable. Since the OP_REQUIRES[_OK] macros
+// are legal to use in AsyncOpKernel constructors, we use overload resolution
+// to distinguish between OpKernelConstruction* and OpKernelContext* context
+// types.
+class XlaOpKernelContext;
+inline void CheckNotInComputeAsync(XlaOpKernelContext*, const char*) {}
+inline void CheckNotInComputeAsync(OpKernelConstruction*, const char*) {}
+void CheckNotInComputeAsync(OpKernelContext* ctx,
+                            const char* correct_macro_name);
+
+#define OP_REQUIRES(CTX, EXP, STATUS)                     \
+  do {                                                    \
+    if (!TF_PREDICT_TRUE(EXP)) {                          \
+      CheckNotInComputeAsync((CTX), "OP_REQUIRES_ASYNC"); \
+      (CTX)->CtxFailure(__FILE__, __LINE__, (STATUS));    \
+      return;                                             \
+    }                                                     \
   } while (0)
 
-#define OP_REQUIRES_OK(CTX, ...)                            \
-  do {                                                      \
-    ::tensorflow::Status _s(__VA_ARGS__);                   \
-    if (!TF_PREDICT_TRUE(_s.ok())) {                        \
-      (CTX)->CtxFailureWithWarning(__FILE__, __LINE__, _s); \
-      return;                                               \
-    }                                                       \
+#define OP_REQUIRES_OK(CTX, ...)                             \
+  do {                                                       \
+    ::tensorflow::Status _s(__VA_ARGS__);                    \
+    if (!TF_PREDICT_TRUE(_s.ok())) {                         \
+      CheckNotInComputeAsync((CTX), "OP_REQUIRES_OK_ASYNC"); \
+      (CTX)->CtxFailureWithWarning(__FILE__, __LINE__, _s);  \
+      return;                                                \
+    }                                                        \
   } while (0)
 
 #define OP_REQUIRES_ASYNC(CTX, EXP, STATUS, CALLBACK)  \

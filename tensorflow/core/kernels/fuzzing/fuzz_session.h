@@ -39,8 +39,7 @@ limitations under the License.
   void BuildGraph(const Scope& scope) override {                         \
     auto op_node =                                                       \
         tensorflow::ops::Placeholder(scope.WithOpName("input1"), dtype); \
-    std::ignore =                                                        \
-        tensorflow::ops::opName(scope.WithOpName("output"), op_node);    \
+    (void)tensorflow::ops::opName(scope.WithOpName("output"), op_node);  \
   }
 
 namespace tensorflow {

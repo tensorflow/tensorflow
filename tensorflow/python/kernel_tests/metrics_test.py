@@ -192,7 +192,7 @@ class MeanTest(test.TestCase):
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
   def testBasic(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       values_queue = data_flow_ops.FIFOQueue(
           4, dtypes=dtypes_lib.float32, shapes=(1, 2))
       _enqueue_vector(sess, values_queue, [0, 1])
@@ -203,13 +203,13 @@ class MeanTest(test.TestCase):
 
       mean, update_op = metrics.mean(values)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       for _ in range(4):
-        sess.run(update_op)
-      self.assertAlmostEqual(1.65, sess.run(mean), 5)
+        self.evaluate(update_op)
+      self.assertAlmostEqual(1.65, self.evaluate(mean), 5)
 
   def testUpdateOpsReturnsCurrentValue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       values_queue = data_flow_ops.FIFOQueue(
           4, dtypes=dtypes_lib.float32, shapes=(1, 2))
       _enqueue_vector(sess, values_queue, [0, 1])
@@ -220,14 +220,14 @@ class MeanTest(test.TestCase):
 
       mean, update_op = metrics.mean(values)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
 
-      self.assertAlmostEqual(0.5, sess.run(update_op), 5)
-      self.assertAlmostEqual(1.475, sess.run(update_op), 5)
-      self.assertAlmostEqual(12.4 / 6.0, sess.run(update_op), 5)
-      self.assertAlmostEqual(1.65, sess.run(update_op), 5)
+      self.assertAlmostEqual(0.5, self.evaluate(update_op), 5)
+      self.assertAlmostEqual(1.475, self.evaluate(update_op), 5)
+      self.assertAlmostEqual(12.4 / 6.0, self.evaluate(update_op), 5)
+      self.assertAlmostEqual(1.65, self.evaluate(update_op), 5)
 
-      self.assertAlmostEqual(1.65, sess.run(mean), 5)
+      self.assertAlmostEqual(1.65, self.evaluate(mean), 5)
 
   def testUnweighted(self):
     values = _test_values((3, 2, 4, 1))
@@ -253,7 +253,7 @@ class MeanTest(test.TestCase):
         metrics.mean(values, weights=np.ones((3, 2, 4, 1))),
         metrics.mean(values, weights=np.ones((3, 2, 4, 1, 1))),)
     expected = np.mean(values)
-    with self.test_session():
+    with self.cached_session():
       variables.local_variables_initializer().run()
       for mean_result in mean_results:
         mean, update_op = mean_result
@@ -266,7 +266,7 @@ class MeanTest(test.TestCase):
         np.sum(np.multiply(weights, np.ones_like(values)))
     )
     mean, update_op = metrics.mean(values, weights=weights)
-    with self.test_session():
+    with self.cached_session():
       variables.local_variables_initializer().run()
       self.assertAlmostEqual(expected, update_op.eval(), places=5)
       self.assertAlmostEqual(expected, mean.eval(), places=5)
@@ -330,7 +330,7 @@ class MeanTest(test.TestCase):
 
       # Dynamic shapes.
       with self.assertRaisesRegexp(errors_impl.OpError, expected_error_msg):
-        with self.test_session():
+        with self.cached_session():
           _, update_op = metrics.mean(values_placeholder, invalid_weight)
           variables.local_variables_initializer().run()
           update_op.eval(feed_dict={values_placeholder: values})
@@ -359,7 +359,7 @@ class MeanTensorTest(test.TestCase):
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
   def testBasic(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       values_queue = data_flow_ops.FIFOQueue(
           4, dtypes=dtypes_lib.float32, shapes=(1, 2))
       _enqueue_vector(sess, values_queue, [0, 1])
@@ -370,13 +370,13 @@ class MeanTensorTest(test.TestCase):
 
       mean, update_op = metrics.mean_tensor(values)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       for _ in range(4):
-        sess.run(update_op)
-      self.assertAllClose([[-0.9 / 4., 3.525]], sess.run(mean))
+        self.evaluate(update_op)
+      self.assertAllClose([[-0.9 / 4., 3.525]], self.evaluate(mean))
 
   def testMultiDimensional(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       values_queue = data_flow_ops.FIFOQueue(
           2, dtypes=dtypes_lib.float32, shapes=(2, 2, 2))
       _enqueue_vector(
@@ -391,13 +391,14 @@ class MeanTensorTest(test.TestCase):
 
       mean, update_op = metrics.mean_tensor(values)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       for _ in range(2):
-        sess.run(update_op)
-      self.assertAllClose([[[1, 2], [1, 2]], [[2, 3], [5, 6]]], sess.run(mean))
+        self.evaluate(update_op)
+      self.assertAllClose([[[1, 2], [1, 2]], [[2, 3], [5, 6]]],
+                          self.evaluate(mean))
 
   def testUpdateOpsReturnsCurrentValue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       values_queue = data_flow_ops.FIFOQueue(
           4, dtypes=dtypes_lib.float32, shapes=(1, 2))
       _enqueue_vector(sess, values_queue, [0, 1])
@@ -408,17 +409,17 @@ class MeanTensorTest(test.TestCase):
 
       mean, update_op = metrics.mean_tensor(values)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
 
-      self.assertAllClose([[0, 1]], sess.run(update_op), 5)
-      self.assertAllClose([[-2.1, 5.05]], sess.run(update_op), 5)
-      self.assertAllClose([[2.3 / 3., 10.1 / 3.]], sess.run(update_op), 5)
-      self.assertAllClose([[-0.9 / 4., 3.525]], sess.run(update_op), 5)
+      self.assertAllClose([[0, 1]], self.evaluate(update_op), 5)
+      self.assertAllClose([[-2.1, 5.05]], self.evaluate(update_op), 5)
+      self.assertAllClose([[2.3 / 3., 10.1 / 3.]], self.evaluate(update_op), 5)
+      self.assertAllClose([[-0.9 / 4., 3.525]], self.evaluate(update_op), 5)
 
-      self.assertAllClose([[-0.9 / 4., 3.525]], sess.run(mean), 5)
+      self.assertAllClose([[-0.9 / 4., 3.525]], self.evaluate(mean), 5)
 
   def testBinaryWeighted1d(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Create the queue that populates the values.
       values_queue = data_flow_ops.FIFOQueue(
           4, dtypes=dtypes_lib.float32, shapes=(1, 2))
@@ -439,13 +440,13 @@ class MeanTensorTest(test.TestCase):
 
       mean, update_op = metrics.mean_tensor(values, weights)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       for _ in range(4):
-        sess.run(update_op)
-      self.assertAllClose([[3.25, 0.5]], sess.run(mean), 5)
+        self.evaluate(update_op)
+      self.assertAllClose([[3.25, 0.5]], self.evaluate(mean), 5)
 
   def testWeighted1d(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Create the queue that populates the values.
       values_queue = data_flow_ops.FIFOQueue(
           4, dtypes=dtypes_lib.float32, shapes=(1, 2))
@@ -466,13 +467,13 @@ class MeanTensorTest(test.TestCase):
 
       mean, update_op = metrics.mean_tensor(values, weights)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       for _ in range(4):
-        sess.run(update_op)
-      self.assertAllClose([[0.8, 3.52]], sess.run(mean), 5)
+        self.evaluate(update_op)
+      self.assertAllClose([[0.8, 3.52]], self.evaluate(mean), 5)
 
   def testWeighted2d_1(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Create the queue that populates the values.
       values_queue = data_flow_ops.FIFOQueue(
           4, dtypes=dtypes_lib.float32, shapes=(1, 2))
@@ -493,13 +494,13 @@ class MeanTensorTest(test.TestCase):
 
       mean, update_op = metrics.mean_tensor(values, weights)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       for _ in range(4):
-        sess.run(update_op)
-      self.assertAllClose([[-2.1, 0.5]], sess.run(mean), 5)
+        self.evaluate(update_op)
+      self.assertAllClose([[-2.1, 0.5]], self.evaluate(mean), 5)
 
   def testWeighted2d_2(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Create the queue that populates the values.
       values_queue = data_flow_ops.FIFOQueue(
           4, dtypes=dtypes_lib.float32, shapes=(1, 2))
@@ -520,10 +521,10 @@ class MeanTensorTest(test.TestCase):
 
       mean, update_op = metrics.mean_tensor(values, weights)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       for _ in range(4):
-        sess.run(update_op)
-      self.assertAllClose([[0, 0.5]], sess.run(mean), 5)
+        self.evaluate(update_op)
+      self.assertAllClose([[0, 0.5]], self.evaluate(mean), 5)
 
 
 class AccuracyTest(test.TestCase):
@@ -575,12 +576,12 @@ class AccuracyTest(test.TestCase):
         (10, 3), maxval=3, dtype=dtypes_lib.int64, seed=1)
     accuracy, update_op = metrics.accuracy(labels, predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
-        sess.run(update_op)
+        self.evaluate(update_op)
 
       # Then verify idempotency.
       initial_accuracy = accuracy.eval()
@@ -588,7 +589,7 @@ class AccuracyTest(test.TestCase):
         self.assertEqual(initial_accuracy, accuracy.eval())
 
   def testMultipleUpdates(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Create the queue that populates the predictions.
       preds_queue = data_flow_ops.FIFOQueue(
           4, dtypes=dtypes_lib.float32, shapes=(1, 1))
@@ -609,29 +610,29 @@ class AccuracyTest(test.TestCase):
 
       accuracy, update_op = metrics.accuracy(labels, predictions)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       for _ in xrange(3):
-        sess.run(update_op)
-      self.assertEqual(0.5, sess.run(update_op))
+        self.evaluate(update_op)
+      self.assertEqual(0.5, self.evaluate(update_op))
       self.assertEqual(0.5, accuracy.eval())
 
   def testEffectivelyEquivalentSizes(self):
     predictions = array_ops.ones((40, 1))
     labels = array_ops.ones((40,))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       accuracy, update_op = metrics.accuracy(labels, predictions)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       self.assertEqual(1.0, update_op.eval())
       self.assertEqual(1.0, accuracy.eval())
 
   def testEffectivelyEquivalentSizesWithScalarWeight(self):
     predictions = array_ops.ones((40, 1))
     labels = array_ops.ones((40,))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       accuracy, update_op = metrics.accuracy(labels, predictions, weights=2.0)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       self.assertEqual(1.0, update_op.eval())
       self.assertEqual(1.0, accuracy.eval())
 
@@ -642,10 +643,10 @@ class AccuracyTest(test.TestCase):
     weights = array_ops.expand_dims(ops.convert_to_tensor([100, 1, 1]),
                                     1)  # shape 3, 1
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       accuracy, update_op = metrics.accuracy(labels, predictions, weights)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       # if streaming_accuracy does not flatten the weight, accuracy would be
       # 0.33333334 due to an intended broadcast of weight. Due to flattening,
       # it will be higher than .95
@@ -662,11 +663,11 @@ class AccuracyTest(test.TestCase):
         dtype=dtypes_lib.int32, name='weights')
     feed_dict = {weights_placeholder: weights}
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       accuracy, update_op = metrics.accuracy(labels, predictions,
                                              weights_placeholder)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       # if streaming_accuracy does not flatten the weight, accuracy would be
       # 0.33333334 due to an intended broadcast of weight. Due to flattening,
       # it will be higher than .95
@@ -674,7 +675,7 @@ class AccuracyTest(test.TestCase):
       self.assertGreater(accuracy.eval(feed_dict=feed_dict), .95)
 
   def testMultipleUpdatesWithWeightedValues(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Create the queue that populates the predictions.
       preds_queue = data_flow_ops.FIFOQueue(
           4, dtypes=dtypes_lib.float32, shapes=(1, 1))
@@ -704,10 +705,10 @@ class AccuracyTest(test.TestCase):
 
       accuracy, update_op = metrics.accuracy(labels, predictions, weights)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       for _ in xrange(3):
-        sess.run(update_op)
-      self.assertEqual(1.0, sess.run(update_op))
+        self.evaluate(update_op)
+      self.assertEqual(1.0, self.evaluate(update_op))
       self.assertEqual(1.0, accuracy.eval())
 
 
@@ -746,12 +747,12 @@ class PrecisionTest(test.TestCase):
         (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
     precision, update_op = metrics.precision(labels, predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
-        sess.run(update_op)
+        self.evaluate(update_op)
 
       # Then verify idempotency.
       initial_precision = precision.eval()
@@ -765,9 +766,9 @@ class PrecisionTest(test.TestCase):
     labels = constant_op.constant(inputs)
     precision, update_op = metrics.precision(labels, predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(1, sess.run(update_op))
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
+      self.assertAlmostEqual(1, self.evaluate(update_op))
       self.assertAlmostEqual(1, precision.eval())
 
   def testSomeCorrect_multipleInputDtypes(self):
@@ -778,8 +779,8 @@ class PrecisionTest(test.TestCase):
           constant_op.constant([0, 1, 1, 0], shape=(1, 4)), dtype=dtype)
       precision, update_op = metrics.precision(labels, predictions)
 
-      with self.test_session() as sess:
-        sess.run(variables.local_variables_initializer())
+      with self.cached_session() as sess:
+        self.evaluate(variables.local_variables_initializer())
         self.assertAlmostEqual(0.5, update_op.eval())
         self.assertAlmostEqual(0.5, precision.eval())
 
@@ -789,7 +790,7 @@ class PrecisionTest(test.TestCase):
     precision, update_op = metrics.precision(
         labels, predictions, weights=constant_op.constant([[2], [5]]))
 
-    with self.test_session():
+    with self.cached_session():
       variables.local_variables_initializer().run()
       weighted_tp = 2.0 + 5.0
       weighted_positives = (2.0 + 2.0) + (5.0 + 5.0)
@@ -806,7 +807,7 @@ class PrecisionTest(test.TestCase):
     }
     precision, update_op = metrics.precision(labels, predictions, weights=2)
 
-    with self.test_session():
+    with self.cached_session():
       variables.local_variables_initializer().run()
       weighted_tp = 2.0 + 2.0
       weighted_positives = (2.0 + 2.0) + (2.0 + 2.0)
@@ -826,7 +827,7 @@ class PrecisionTest(test.TestCase):
     precision, update_op = metrics.precision(
         labels, predictions, weights=constant_op.constant([[2], [5]]))
 
-    with self.test_session():
+    with self.cached_session():
       variables.local_variables_initializer().run()
       weighted_tp = 2.0 + 5.0
       weighted_positives = (2.0 + 2.0) + (5.0 + 5.0)
@@ -844,7 +845,7 @@ class PrecisionTest(test.TestCase):
         predictions,
         weights=constant_op.constant([[1, 2, 3, 4], [4, 3, 2, 1]]))
 
-    with self.test_session():
+    with self.cached_session():
       variables.local_variables_initializer().run()
       weighted_tp = 3.0 + 4.0
       weighted_positives = (1.0 + 3.0) + (4.0 + 2.0)
@@ -864,7 +865,7 @@ class PrecisionTest(test.TestCase):
         predictions,
         weights=constant_op.constant([[1, 2, 3, 4], [4, 3, 2, 1]]))
 
-    with self.test_session():
+    with self.cached_session():
       variables.local_variables_initializer().run()
       weighted_tp = 3.0 + 4.0
       weighted_positives = (1.0 + 3.0) + (4.0 + 2.0)
@@ -881,9 +882,9 @@ class PrecisionTest(test.TestCase):
     labels = constant_op.constant(1 - inputs)
     precision, update_op = metrics.precision(labels, predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      sess.run(update_op)
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
+      self.evaluate(update_op)
       self.assertAlmostEqual(0, precision.eval())
 
   def testZeroTrueAndFalsePositivesGivesZeroPrecision(self):
@@ -891,9 +892,9 @@ class PrecisionTest(test.TestCase):
     labels = constant_op.constant([0, 0, 0, 0])
     precision, update_op = metrics.precision(labels, predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      sess.run(update_op)
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
+      self.evaluate(update_op)
       self.assertEqual(0.0, precision.eval())
 
 
@@ -933,12 +934,12 @@ class RecallTest(test.TestCase):
         (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
     recall, update_op = metrics.recall(labels, predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
-        sess.run(update_op)
+        self.evaluate(update_op)
 
       # Then verify idempotency.
       initial_recall = recall.eval()
@@ -952,9 +953,9 @@ class RecallTest(test.TestCase):
     labels = constant_op.constant(np_inputs)
     recall, update_op = metrics.recall(labels, predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      sess.run(update_op)
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
+      self.evaluate(update_op)
       self.assertEqual(1, recall.eval())
 
   def testSomeCorrect_multipleInputDtypes(self):
@@ -965,8 +966,8 @@ class RecallTest(test.TestCase):
           constant_op.constant([0, 1, 1, 0], shape=(1, 4)), dtype=dtype)
       recall, update_op = metrics.recall(labels, predictions)
 
-      with self.test_session() as sess:
-        sess.run(variables.local_variables_initializer())
+      with self.cached_session() as sess:
+        self.evaluate(variables.local_variables_initializer())
         self.assertAlmostEqual(0.5, update_op.eval())
         self.assertAlmostEqual(0.5, recall.eval())
 
@@ -976,8 +977,8 @@ class RecallTest(test.TestCase):
     weights = constant_op.constant([[2], [5]])
     recall, update_op = metrics.recall(labels, predictions, weights=weights)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
       weighted_tp = 2.0 + 5.0
       weighted_t = (2.0 + 2.0) + (5.0 + 5.0)
       expected_precision = weighted_tp / weighted_t
@@ -990,8 +991,8 @@ class RecallTest(test.TestCase):
     weights = constant_op.constant([[1, 2, 3, 4], [4, 3, 2, 1]])
     recall, update_op = metrics.recall(labels, predictions, weights=weights)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
       weighted_tp = 3.0 + 1.0
       weighted_t = (2.0 + 3.0) + (4.0 + 1.0)
       expected_precision = weighted_tp / weighted_t
@@ -1005,9 +1006,9 @@ class RecallTest(test.TestCase):
     labels = constant_op.constant(1 - np_inputs)
     recall, update_op = metrics.recall(labels, predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      sess.run(update_op)
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
+      self.evaluate(update_op)
       self.assertEqual(0, recall.eval())
 
   def testZeroTruePositivesAndFalseNegativesGivesZeroRecall(self):
@@ -1015,9 +1016,9 @@ class RecallTest(test.TestCase):
     labels = array_ops.zeros((1, 4))
     recall, update_op = metrics.recall(labels, predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      sess.run(update_op)
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
+      self.evaluate(update_op)
       self.assertEqual(0, recall.eval())
 
 
@@ -1055,12 +1056,12 @@ class AUCTest(test.TestCase):
         (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
     auc, update_op = metrics.auc(labels, predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
-        sess.run(update_op)
+        self.evaluate(update_op)
 
       # Then verify idempotency.
       initial_auc = auc.eval()
@@ -1073,18 +1074,18 @@ class AUCTest(test.TestCase):
   def allCorrectAsExpected(self, curve):
     inputs = np.random.randint(0, 2, size=(100, 1))
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(inputs, dtype=dtypes_lib.float32)
       labels = constant_op.constant(inputs)
       auc, update_op = metrics.auc(labels, predictions, curve=curve)
 
-      sess.run(variables.local_variables_initializer())
-      self.assertEqual(1, sess.run(update_op))
+      self.evaluate(variables.local_variables_initializer())
+      self.assertEqual(1, self.evaluate(update_op))
 
       self.assertEqual(1, auc.eval())
 
   def testSomeCorrect_multipleLabelDtypes(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for label_dtype in (
           dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
         predictions = constant_op.constant(
@@ -1093,55 +1094,55 @@ class AUCTest(test.TestCase):
             constant_op.constant([0, 1, 1, 0], shape=(1, 4)), dtype=label_dtype)
         auc, update_op = metrics.auc(labels, predictions)
 
-        sess.run(variables.local_variables_initializer())
-        self.assertAlmostEqual(0.5, sess.run(update_op))
+        self.evaluate(variables.local_variables_initializer())
+        self.assertAlmostEqual(0.5, self.evaluate(update_op))
 
         self.assertAlmostEqual(0.5, auc.eval())
 
   def testWeighted1d(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(
           [1, 0, 1, 0], shape=(1, 4), dtype=dtypes_lib.float32)
       labels = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
       weights = constant_op.constant([2], shape=(1, 1))
       auc, update_op = metrics.auc(labels, predictions, weights=weights)
 
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.5, sess.run(update_op), 5)
+      self.evaluate(variables.local_variables_initializer())
+      self.assertAlmostEqual(0.5, self.evaluate(update_op), 5)
 
       self.assertAlmostEqual(0.5, auc.eval(), 5)
 
   def testWeighted2d(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(
           [1, 0, 1, 0], shape=(1, 4), dtype=dtypes_lib.float32)
       labels = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
       weights = constant_op.constant([1, 2, 3, 4], shape=(1, 4))
       auc, update_op = metrics.auc(labels, predictions, weights=weights)
 
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.7, sess.run(update_op), 5)
+      self.evaluate(variables.local_variables_initializer())
+      self.assertAlmostEqual(0.7, self.evaluate(update_op), 5)
 
       self.assertAlmostEqual(0.7, auc.eval(), 5)
 
   # Regarding the AUC-PR tests: note that the preferred method when
   # calculating AUC-PR is summation_method='careful_interpolation'.
   def testCorrectAUCPRSpecialCase(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(
           [0.1, 0.4, 0.35, 0.8], shape=(1, 4), dtype=dtypes_lib.float32)
       labels = constant_op.constant([0, 0, 1, 1], shape=(1, 4))
       auc, update_op = metrics.auc(labels, predictions, curve='PR',
                                    summation_method='careful_interpolation')
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       # expected ~= 0.79726744594
       expected = 1 - math.log(1.5) / 2
-      self.assertAlmostEqual(expected, sess.run(update_op), delta=1e-3)
+      self.assertAlmostEqual(expected, self.evaluate(update_op), delta=1e-3)
       self.assertAlmostEqual(expected, auc.eval(), delta=1e-3)
 
   def testCorrectAnotherAUCPRSpecialCase(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(
           [0.1, 0.4, 0.35, 0.8, 0.1, 0.135, 0.81],
           shape=(1, 7),
@@ -1150,14 +1151,14 @@ class AUCTest(test.TestCase):
       auc, update_op = metrics.auc(labels, predictions, curve='PR',
                                    summation_method='careful_interpolation')
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       # expected ~= 0.61350593198
       expected = (2.5 - 2 * math.log(4./3) - 0.25 * math.log(7./5)) / 3
-      self.assertAlmostEqual(expected, sess.run(update_op), delta=1e-3)
+      self.assertAlmostEqual(expected, self.evaluate(update_op), delta=1e-3)
       self.assertAlmostEqual(expected, auc.eval(), delta=1e-3)
 
   def testThirdCorrectAUCPRSpecialCase(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(
           [0.0, 0.1, 0.2, 0.33, 0.3, 0.4, 0.5],
           shape=(1, 7),
@@ -1166,27 +1167,27 @@ class AUCTest(test.TestCase):
       auc, update_op = metrics.auc(labels, predictions, curve='PR',
                                    summation_method='careful_interpolation')
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       # expected ~= 0.90410597584
       expected = 1 - math.log(4./3) / 3
-      self.assertAlmostEqual(expected, sess.run(update_op), delta=1e-3)
+      self.assertAlmostEqual(expected, self.evaluate(update_op), delta=1e-3)
       self.assertAlmostEqual(expected, auc.eval(), delta=1e-3)
 
   def testIncorrectAUCPRSpecialCase(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(
           [0.1, 0.4, 0.35, 0.8], shape=(1, 4), dtype=dtypes_lib.float32)
       labels = constant_op.constant([0, 0, 1, 1], shape=(1, 4))
       auc, update_op = metrics.auc(labels, predictions, curve='PR',
                                    summation_method='trapezoidal')
 
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.79166, sess.run(update_op), delta=1e-3)
+      self.evaluate(variables.local_variables_initializer())
+      self.assertAlmostEqual(0.79166, self.evaluate(update_op), delta=1e-3)
 
       self.assertAlmostEqual(0.79166, auc.eval(), delta=1e-3)
 
   def testAnotherIncorrectAUCPRSpecialCase(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(
           [0.1, 0.4, 0.35, 0.8, 0.1, 0.135, 0.81],
           shape=(1, 7),
@@ -1195,13 +1196,13 @@ class AUCTest(test.TestCase):
       auc, update_op = metrics.auc(labels, predictions, curve='PR',
                                    summation_method='trapezoidal')
 
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.610317, sess.run(update_op), delta=1e-3)
+      self.evaluate(variables.local_variables_initializer())
+      self.assertAlmostEqual(0.610317, self.evaluate(update_op), delta=1e-3)
 
       self.assertAlmostEqual(0.610317, auc.eval(), delta=1e-3)
 
   def testThirdIncorrectAUCPRSpecialCase(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(
           [0.0, 0.1, 0.2, 0.33, 0.3, 0.4, 0.5],
           shape=(1, 7),
@@ -1210,43 +1211,43 @@ class AUCTest(test.TestCase):
       auc, update_op = metrics.auc(labels, predictions, curve='PR',
                                    summation_method='trapezoidal')
 
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.90277, sess.run(update_op), delta=1e-3)
+      self.evaluate(variables.local_variables_initializer())
+      self.assertAlmostEqual(0.90277, self.evaluate(update_op), delta=1e-3)
 
       self.assertAlmostEqual(0.90277, auc.eval(), delta=1e-3)
 
   def testAllIncorrect(self):
     inputs = np.random.randint(0, 2, size=(100, 1))
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(inputs, dtype=dtypes_lib.float32)
       labels = constant_op.constant(1 - inputs, dtype=dtypes_lib.float32)
       auc, update_op = metrics.auc(labels, predictions)
 
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0, sess.run(update_op))
+      self.evaluate(variables.local_variables_initializer())
+      self.assertAlmostEqual(0, self.evaluate(update_op))
 
       self.assertAlmostEqual(0, auc.eval())
 
   def testZeroTruePositivesAndFalseNegativesGivesOneAUC(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = array_ops.zeros([4], dtype=dtypes_lib.float32)
       labels = array_ops.zeros([4])
       auc, update_op = metrics.auc(labels, predictions)
 
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(1, sess.run(update_op), 6)
+      self.evaluate(variables.local_variables_initializer())
+      self.assertAlmostEqual(1, self.evaluate(update_op), 6)
 
       self.assertAlmostEqual(1, auc.eval(), 6)
 
   def testRecallOneAndPrecisionOneGivesOnePRAUC(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = array_ops.ones([4], dtype=dtypes_lib.float32)
       labels = array_ops.ones([4])
       auc, update_op = metrics.auc(labels, predictions, curve='PR')
 
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(1, sess.run(update_op), 6)
+      self.evaluate(variables.local_variables_initializer())
+      self.assertAlmostEqual(1, self.evaluate(update_op), 6)
 
       self.assertAlmostEqual(1, auc.eval(), 6)
 
@@ -1301,7 +1302,7 @@ class AUCTest(test.TestCase):
         scale=1.0, size=num_samples)):
       expected_auc = self.np_auc(predictions, labels, weights)
 
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         enqueue_ops = [[] for i in range(num_batches)]
         tf_predictions = _enqueue_as_batches(predictions, enqueue_ops)
         tf_labels = _enqueue_as_batches(labels, enqueue_ops)
@@ -1317,9 +1318,9 @@ class AUCTest(test.TestCase):
                                      num_thresholds=500,
                                      weights=tf_weights)
 
-        sess.run(variables.local_variables_initializer())
+        self.evaluate(variables.local_variables_initializer())
         for i in range(num_batches):
-          sess.run(update_op)
+          self.evaluate(update_op)
 
         # Since this is only approximate, we can't expect a 6 digits match.
         # Although with higher number of samples/thresholds we should see the
@@ -1370,12 +1371,12 @@ class SpecificityAtSensitivityTest(test.TestCase):
     specificity, update_op = metrics.specificity_at_sensitivity(
         labels, predictions, sensitivity=0.7)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
-        sess.run(update_op)
+        self.evaluate(update_op)
 
       # Then verify idempotency.
       initial_specificity = specificity.eval()
@@ -1390,9 +1391,9 @@ class SpecificityAtSensitivityTest(test.TestCase):
     specificity, update_op = metrics.specificity_at_sensitivity(
         labels, predictions, sensitivity=0.7)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertEqual(1, sess.run(update_op))
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
+      self.assertEqual(1, self.evaluate(update_op))
       self.assertEqual(1, specificity.eval())
 
   def testSomeCorrectHighSensitivity(self):
@@ -1405,9 +1406,9 @@ class SpecificityAtSensitivityTest(test.TestCase):
     specificity, update_op = metrics.specificity_at_sensitivity(
         labels, predictions, sensitivity=0.8)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(1.0, sess.run(update_op))
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
+      self.assertAlmostEqual(1.0, self.evaluate(update_op))
       self.assertAlmostEqual(1.0, specificity.eval())
 
   def testSomeCorrectLowSensitivity(self):
@@ -1420,10 +1421,10 @@ class SpecificityAtSensitivityTest(test.TestCase):
     specificity, update_op = metrics.specificity_at_sensitivity(
         labels, predictions, sensitivity=0.4)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
 
-      self.assertAlmostEqual(0.6, sess.run(update_op))
+      self.assertAlmostEqual(0.6, self.evaluate(update_op))
       self.assertAlmostEqual(0.6, specificity.eval())
 
   def testWeighted1d_multipleLabelDtypes(self):
@@ -1439,10 +1440,10 @@ class SpecificityAtSensitivityTest(test.TestCase):
       specificity, update_op = metrics.specificity_at_sensitivity(
           labels, predictions, weights=weights, sensitivity=0.4)
 
-      with self.test_session() as sess:
-        sess.run(variables.local_variables_initializer())
+      with self.cached_session() as sess:
+        self.evaluate(variables.local_variables_initializer())
 
-        self.assertAlmostEqual(0.6, sess.run(update_op))
+        self.assertAlmostEqual(0.6, self.evaluate(update_op))
         self.assertAlmostEqual(0.6, specificity.eval())
 
   def testWeighted2d(self):
@@ -1457,10 +1458,10 @@ class SpecificityAtSensitivityTest(test.TestCase):
     specificity, update_op = metrics.specificity_at_sensitivity(
         labels, predictions, weights=weights, sensitivity=0.4)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
 
-      self.assertAlmostEqual(8.0 / 15.0, sess.run(update_op))
+      self.assertAlmostEqual(8.0 / 15.0, self.evaluate(update_op))
       self.assertAlmostEqual(8.0 / 15.0, specificity.eval())
 
 
@@ -1507,12 +1508,12 @@ class SensitivityAtSpecificityTest(test.TestCase):
     sensitivity, update_op = metrics.sensitivity_at_specificity(
         labels, predictions, specificity=0.7)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
-        sess.run(update_op)
+        self.evaluate(update_op)
 
       # Then verify idempotency.
       initial_sensitivity = sensitivity.eval()
@@ -1527,9 +1528,9 @@ class SensitivityAtSpecificityTest(test.TestCase):
     specificity, update_op = metrics.sensitivity_at_specificity(
         labels, predictions, specificity=0.7)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertEqual(1, sess.run(update_op))
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
+      self.assertEqual(1, self.evaluate(update_op))
       self.assertEqual(1, specificity.eval())
 
   def testSomeCorrectHighSpecificity(self):
@@ -1542,9 +1543,9 @@ class SensitivityAtSpecificityTest(test.TestCase):
     specificity, update_op = metrics.sensitivity_at_specificity(
         labels, predictions, specificity=0.8)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.8, sess.run(update_op))
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
+      self.assertAlmostEqual(0.8, self.evaluate(update_op))
       self.assertAlmostEqual(0.8, specificity.eval())
 
   def testSomeCorrectLowSpecificity(self):
@@ -1557,9 +1558,9 @@ class SensitivityAtSpecificityTest(test.TestCase):
     specificity, update_op = metrics.sensitivity_at_specificity(
         labels, predictions, specificity=0.4)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.6, sess.run(update_op))
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
+      self.assertAlmostEqual(0.6, self.evaluate(update_op))
       self.assertAlmostEqual(0.6, specificity.eval())
 
   def testWeighted_multipleLabelDtypes(self):
@@ -1576,9 +1577,9 @@ class SensitivityAtSpecificityTest(test.TestCase):
       specificity, update_op = metrics.sensitivity_at_specificity(
           labels, predictions, weights=weights, specificity=0.4)
 
-      with self.test_session() as sess:
-        sess.run(variables.local_variables_initializer())
-        self.assertAlmostEqual(0.675, sess.run(update_op))
+      with self.cached_session() as sess:
+        self.evaluate(variables.local_variables_initializer())
+        self.assertAlmostEqual(0.675, self.evaluate(update_op))
         self.assertAlmostEqual(0.675, specificity.eval())
 
 
@@ -1638,8 +1639,8 @@ class PrecisionRecallThresholdsTest(test.TestCase):
                                                     thresholds)
     rec, rec_op = metrics.recall_at_thresholds(labels, predictions, thresholds)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
 
       # Run several updates, then verify idempotency.
       sess.run([prec_op, rec_op])
@@ -1654,7 +1655,7 @@ class PrecisionRecallThresholdsTest(test.TestCase):
   def testAllCorrect(self):
     inputs = np.random.randint(0, 2, size=(100, 1))
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(inputs, dtype=dtypes_lib.float32)
       labels = constant_op.constant(inputs)
       thresholds = [0.5]
@@ -1663,14 +1664,14 @@ class PrecisionRecallThresholdsTest(test.TestCase):
       rec, rec_op = metrics.recall_at_thresholds(labels, predictions,
                                                  thresholds)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       sess.run([prec_op, rec_op])
 
       self.assertEqual(1, prec.eval())
       self.assertEqual(1, rec.eval())
 
   def testSomeCorrect_multipleLabelDtypes(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for label_dtype in (
           dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
         predictions = constant_op.constant(
@@ -1683,7 +1684,7 @@ class PrecisionRecallThresholdsTest(test.TestCase):
         rec, rec_op = metrics.recall_at_thresholds(labels, predictions,
                                                    thresholds)
 
-        sess.run(variables.local_variables_initializer())
+        self.evaluate(variables.local_variables_initializer())
         sess.run([prec_op, rec_op])
 
         self.assertAlmostEqual(0.5, prec.eval())
@@ -1692,7 +1693,7 @@ class PrecisionRecallThresholdsTest(test.TestCase):
   def testAllIncorrect(self):
     inputs = np.random.randint(0, 2, size=(100, 1))
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(inputs, dtype=dtypes_lib.float32)
       labels = constant_op.constant(1 - inputs, dtype=dtypes_lib.float32)
       thresholds = [0.5]
@@ -1701,14 +1702,14 @@ class PrecisionRecallThresholdsTest(test.TestCase):
       rec, rec_op = metrics.recall_at_thresholds(labels, predictions,
                                                  thresholds)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       sess.run([prec_op, rec_op])
 
       self.assertAlmostEqual(0, prec.eval())
       self.assertAlmostEqual(0, rec.eval())
 
   def testWeights1d(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(
           [[1, 0], [1, 0]], shape=(2, 2), dtype=dtypes_lib.float32)
       labels = constant_op.constant([[0, 1], [1, 0]], shape=(2, 2))
@@ -1729,7 +1730,7 @@ class PrecisionRecallThresholdsTest(test.TestCase):
       rec_low = array_ops.reshape(rec_low, shape=())
       rec_high = array_ops.reshape(rec_high, shape=())
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       sess.run([prec_op, rec_op])
 
       self.assertAlmostEqual(1.0, prec_low.eval(), places=5)
@@ -1738,7 +1739,7 @@ class PrecisionRecallThresholdsTest(test.TestCase):
       self.assertAlmostEqual(0.0, rec_high.eval(), places=5)
 
   def testWeights2d(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(
           [[1, 0], [1, 0]], shape=(2, 2), dtype=dtypes_lib.float32)
       labels = constant_op.constant([[0, 1], [1, 0]], shape=(2, 2))
@@ -1759,7 +1760,7 @@ class PrecisionRecallThresholdsTest(test.TestCase):
       rec_low = array_ops.reshape(rec_low, shape=())
       rec_high = array_ops.reshape(rec_high, shape=())
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       sess.run([prec_op, rec_op])
 
       self.assertAlmostEqual(1.0, prec_low.eval(), places=5)
@@ -1768,7 +1769,7 @@ class PrecisionRecallThresholdsTest(test.TestCase):
       self.assertAlmostEqual(0.0, rec_high.eval(), places=5)
 
   def testExtremeThresholds(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(
           [1, 0, 1, 0], shape=(1, 4), dtype=dtypes_lib.float32)
       labels = constant_op.constant([0, 1, 1, 1], shape=(1, 4))
@@ -1783,7 +1784,7 @@ class PrecisionRecallThresholdsTest(test.TestCase):
       [rec_low, rec_high] = array_ops.split(
           value=rec, num_or_size_splits=2, axis=0)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       sess.run([prec_op, rec_op])
 
       self.assertAlmostEqual(0.75, prec_low.eval())
@@ -1792,7 +1793,7 @@ class PrecisionRecallThresholdsTest(test.TestCase):
       self.assertAlmostEqual(0.0, rec_high.eval())
 
   def testZeroLabelsPredictions(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = array_ops.zeros([4], dtype=dtypes_lib.float32)
       labels = array_ops.zeros([4])
       thresholds = [0.5]
@@ -1801,7 +1802,7 @@ class PrecisionRecallThresholdsTest(test.TestCase):
       rec, rec_op = metrics.recall_at_thresholds(labels, predictions,
                                                  thresholds)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       sess.run([prec_op, rec_op])
 
       self.assertAlmostEqual(0, prec.eval(), 6)
@@ -1842,7 +1843,7 @@ class PrecisionRecallThresholdsTest(test.TestCase):
     labels = labels.astype(np.float32)
     predictions = predictions.astype(np.float32)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Reshape the data so its easy to queue up:
       predictions_batches = predictions.reshape((batch_size, num_batches))
       labels_batches = labels.reshape((batch_size, num_batches))
@@ -1869,7 +1870,7 @@ class PrecisionRecallThresholdsTest(test.TestCase):
       rec, rec_op = metrics.recall_at_thresholds(tf_labels, tf_predictions,
                                                  thresholds)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       for _ in range(int(num_samples / batch_size)):
         sess.run([prec_op, rec_op])
       # Since this is only approximate, we can't expect a 6 digits match.
@@ -2801,12 +2802,12 @@ class MeanAbsoluteErrorTest(test.TestCase):
     labels = random_ops.random_normal((10, 3), seed=2)
     error, update_op = metrics.mean_absolute_error(labels, predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
-        sess.run(update_op)
+        self.evaluate(update_op)
 
       # Then verify idempotency.
       initial_error = error.eval()
@@ -2822,9 +2823,9 @@ class MeanAbsoluteErrorTest(test.TestCase):
 
     error, update_op = metrics.mean_absolute_error(labels, predictions, weights)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertEqual(3, sess.run(update_op))
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
+      self.assertEqual(3, self.evaluate(update_op))
       self.assertEqual(3, error.eval())
 
 
@@ -2866,12 +2867,12 @@ class MeanRelativeErrorTest(test.TestCase):
     error, update_op = metrics.mean_relative_error(labels, predictions,
                                                    normalizer)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
-        sess.run(update_op)
+        self.evaluate(update_op)
 
       # Then verify idempotency.
       initial_error = error.eval()
@@ -2891,9 +2892,9 @@ class MeanRelativeErrorTest(test.TestCase):
     error, update_op = metrics.mean_relative_error(
         labels, predictions, normalizer=labels)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertEqual(expected_error, sess.run(update_op))
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
+      self.assertEqual(expected_error, self.evaluate(update_op))
       self.assertEqual(expected_error, error.eval())
 
   def testSingleUpdateNormalizedByZeros(self):
@@ -2907,9 +2908,9 @@ class MeanRelativeErrorTest(test.TestCase):
     error, update_op = metrics.mean_relative_error(
         labels, predictions, normalizer=array_ops.zeros_like(labels))
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertEqual(0.0, sess.run(update_op))
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
+      self.assertEqual(0.0, self.evaluate(update_op))
       self.assertEqual(0.0, error.eval())
 
 
@@ -2945,12 +2946,12 @@ class MeanSquaredErrorTest(test.TestCase):
     labels = random_ops.random_normal((10, 3), seed=2)
     error, update_op = metrics.mean_squared_error(labels, predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
-        sess.run(update_op)
+        self.evaluate(update_op)
 
       # Then verify idempotency.
       initial_error = error.eval()
@@ -2963,9 +2964,9 @@ class MeanSquaredErrorTest(test.TestCase):
 
     error, update_op = metrics.mean_squared_error(labels, predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertEqual(0, sess.run(update_op))
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
+      self.assertEqual(0, self.evaluate(update_op))
       self.assertEqual(0, error.eval())
 
   def testSingleUpdateWithError(self):
@@ -2976,9 +2977,9 @@ class MeanSquaredErrorTest(test.TestCase):
 
     error, update_op = metrics.mean_squared_error(labels, predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertEqual(6, sess.run(update_op))
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
+      self.assertEqual(6, self.evaluate(update_op))
       self.assertEqual(6, error.eval())
 
   def testSingleUpdateWithErrorAndWeights(self):
@@ -2990,13 +2991,13 @@ class MeanSquaredErrorTest(test.TestCase):
 
     error, update_op = metrics.mean_squared_error(labels, predictions, weights)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertEqual(13, sess.run(update_op))
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
+      self.assertEqual(13, self.evaluate(update_op))
       self.assertEqual(13, error.eval())
 
   def testMultipleBatchesOfSizeOne(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Create the queue that populates the predictions.
       preds_queue = data_flow_ops.FIFOQueue(
           2, dtypes=dtypes_lib.float32, shapes=(1, 3))
@@ -3013,14 +3014,14 @@ class MeanSquaredErrorTest(test.TestCase):
 
       error, update_op = metrics.mean_squared_error(labels, predictions)
 
-      sess.run(variables.local_variables_initializer())
-      sess.run(update_op)
-      self.assertAlmostEqual(208.0 / 6, sess.run(update_op), 5)
+      self.evaluate(variables.local_variables_initializer())
+      self.evaluate(update_op)
+      self.assertAlmostEqual(208.0 / 6, self.evaluate(update_op), 5)
 
       self.assertAlmostEqual(208.0 / 6, error.eval(), 5)
 
   def testMetricsComputedConcurrently(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Create the queue that populates one set of predictions.
       preds_queue0 = data_flow_ops.FIFOQueue(
           2, dtypes=dtypes_lib.float32, shapes=(1, 3))
@@ -3054,7 +3055,7 @@ class MeanSquaredErrorTest(test.TestCase):
       mse1, update_op1 = metrics.mean_squared_error(
           labels1, predictions1, name='msd1')
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       sess.run([update_op0, update_op1])
       sess.run([update_op0, update_op1])
 
@@ -3063,7 +3064,7 @@ class MeanSquaredErrorTest(test.TestCase):
       self.assertAlmostEqual(79.0 / 6, mse1, 5)
 
   def testMultipleMetricsOnMultipleBatchesOfSizeOne(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Create the queue that populates the predictions.
       preds_queue = data_flow_ops.FIFOQueue(
           2, dtypes=dtypes_lib.float32, shapes=(1, 3))
@@ -3081,7 +3082,7 @@ class MeanSquaredErrorTest(test.TestCase):
       mae, ma_update_op = metrics.mean_absolute_error(labels, predictions)
       mse, ms_update_op = metrics.mean_squared_error(labels, predictions)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       sess.run([ma_update_op, ms_update_op])
       sess.run([ma_update_op, ms_update_op])
 
@@ -3122,12 +3123,12 @@ class RootMeanSquaredErrorTest(test.TestCase):
     labels = random_ops.random_normal((10, 3), seed=2)
     error, update_op = metrics.root_mean_squared_error(labels, predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
-        sess.run(update_op)
+        self.evaluate(update_op)
 
       # Then verify idempotency.
       initial_error = error.eval()
@@ -3135,20 +3136,20 @@ class RootMeanSquaredErrorTest(test.TestCase):
         self.assertEqual(initial_error, error.eval())
 
   def testSingleUpdateZeroError(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(
           0.0, shape=(1, 3), dtype=dtypes_lib.float32)
       labels = constant_op.constant(0.0, shape=(1, 3), dtype=dtypes_lib.float32)
 
       rmse, update_op = metrics.root_mean_squared_error(labels, predictions)
 
-      sess.run(variables.local_variables_initializer())
-      self.assertEqual(0, sess.run(update_op))
+      self.evaluate(variables.local_variables_initializer())
+      self.assertEqual(0, self.evaluate(update_op))
 
       self.assertEqual(0, rmse.eval())
 
   def testSingleUpdateWithError(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(
           [2, 4, 6], shape=(1, 3), dtype=dtypes_lib.float32)
       labels = constant_op.constant(
@@ -3156,12 +3157,12 @@ class RootMeanSquaredErrorTest(test.TestCase):
 
       rmse, update_op = metrics.root_mean_squared_error(labels, predictions)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       self.assertAlmostEqual(math.sqrt(6), update_op.eval(), 5)
       self.assertAlmostEqual(math.sqrt(6), rmse.eval(), 5)
 
   def testSingleUpdateWithErrorAndWeights(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(
           [2, 4, 6, 8], shape=(1, 4), dtype=dtypes_lib.float32)
       labels = constant_op.constant(
@@ -3171,8 +3172,8 @@ class RootMeanSquaredErrorTest(test.TestCase):
       rmse, update_op = metrics.root_mean_squared_error(labels, predictions,
                                                         weights)
 
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(math.sqrt(13), sess.run(update_op))
+      self.evaluate(variables.local_variables_initializer())
+      self.assertAlmostEqual(math.sqrt(13), self.evaluate(update_op))
 
       self.assertAlmostEqual(math.sqrt(13), rmse.eval(), 5)
 
@@ -3220,12 +3221,12 @@ class MeanCosineDistanceTest(test.TestCase):
     labels = random_ops.random_normal((10, 3), seed=2)
     error, update_op = metrics.mean_cosine_distance(labels, predictions, dim=1)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
-        sess.run(update_op)
+        self.evaluate(update_op)
 
       # Then verify idempotency.
       initial_error = error.eval()
@@ -3242,9 +3243,9 @@ class MeanCosineDistanceTest(test.TestCase):
 
     error, update_op = metrics.mean_cosine_distance(labels, predictions, dim=2)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertEqual(0, sess.run(update_op))
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
+      self.assertEqual(0, self.evaluate(update_op))
       self.assertEqual(0, error.eval())
 
   def testSingleUpdateWithError1(self):
@@ -3258,9 +3259,9 @@ class MeanCosineDistanceTest(test.TestCase):
 
     error, update_op = metrics.mean_cosine_distance(labels, predictions, dim=2)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(1, sess.run(update_op), 5)
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
+      self.assertAlmostEqual(1, self.evaluate(update_op), 5)
       self.assertAlmostEqual(1, error.eval(), 5)
 
   def testSingleUpdateWithError2(self):
@@ -3279,9 +3280,9 @@ class MeanCosineDistanceTest(test.TestCase):
         np_labels, shape=(3, 1, 3), dtype=dtypes_lib.float32)
     error, update_op = metrics.mean_cosine_distance(labels, predictions, dim=2)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(1.0, sess.run(update_op), 5)
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
+      self.assertAlmostEqual(1.0, self.evaluate(update_op), 5)
       self.assertAlmostEqual(1.0, error.eval(), 5)
 
   def testSingleUpdateWithErrorAndWeights1(self):
@@ -3298,9 +3299,9 @@ class MeanCosineDistanceTest(test.TestCase):
     error, update_op = metrics.mean_cosine_distance(
         labels, predictions, dim=2, weights=weights)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
-      self.assertEqual(0, sess.run(update_op))
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
+      self.assertEqual(0, self.evaluate(update_op))
       self.assertEqual(0, error.eval())
 
   def testSingleUpdateWithErrorAndWeights2(self):
@@ -3317,8 +3318,8 @@ class MeanCosineDistanceTest(test.TestCase):
     error, update_op = metrics.mean_cosine_distance(
         labels, predictions, dim=2, weights=weights)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
       self.assertEqual(1.5, update_op.eval())
       self.assertEqual(1.5, error.eval())
 
@@ -3352,7 +3353,7 @@ class PcntBelowThreshTest(test.TestCase):
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
   def testOneUpdate(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       values = constant_op.constant(
           [2, 4, 6, 8], shape=(1, 4), dtype=dtypes_lib.float32)
 
@@ -3360,7 +3361,7 @@ class PcntBelowThreshTest(test.TestCase):
       pcnt1, update_op1 = metrics.percentage_below(values, 7, name='medium')
       pcnt2, update_op2 = metrics.percentage_below(values, 1, name='low')
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       sess.run([update_op0, update_op1, update_op2])
 
       pcnt0, pcnt1, pcnt2 = sess.run([pcnt0, pcnt1, pcnt2])
@@ -3369,7 +3370,7 @@ class PcntBelowThreshTest(test.TestCase):
       self.assertAlmostEqual(0.0, pcnt2, 5)
 
   def testSomePresentOneUpdate(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       values = constant_op.constant(
           [2, 4, 6, 8], shape=(1, 4), dtype=dtypes_lib.float32)
       weights = constant_op.constant(
@@ -3382,7 +3383,7 @@ class PcntBelowThreshTest(test.TestCase):
       pcnt2, update_op2 = metrics.percentage_below(
           values, 1, weights=weights, name='low')
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       self.assertListEqual([1.0, 0.5, 0.0],
                            sess.run([update_op0, update_op1, update_op2]))
 
@@ -3445,12 +3446,12 @@ class MeanIOUTest(test.TestCase):
     mean_iou, update_op = metrics.mean_iou(
         labels, predictions, num_classes=num_classes)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
-        sess.run(update_op)
+        self.evaluate(update_op)
 
       # Then verify idempotency.
       initial_mean_iou = mean_iou.eval()
@@ -3459,7 +3460,7 @@ class MeanIOUTest(test.TestCase):
 
   def testMultipleUpdates(self):
     num_classes = 3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Create the queue that populates the predictions.
       preds_queue = data_flow_ops.FIFOQueue(
           5, dtypes=dtypes_lib.int32, shapes=(1, 1))
@@ -3482,15 +3483,15 @@ class MeanIOUTest(test.TestCase):
 
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       for _ in range(5):
-        sess.run(update_op)
+        self.evaluate(update_op)
       desired_output = np.mean([1.0 / 2.0, 1.0 / 4.0, 0.])
       self.assertEqual(desired_output, miou.eval())
 
   def testMultipleUpdatesWithWeights(self):
     num_classes = 2
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Create the queue that populates the predictions.
       preds_queue = data_flow_ops.FIFOQueue(
           6, dtypes=dtypes_lib.int32, shapes=(1, 1))
@@ -3529,7 +3530,7 @@ class MeanIOUTest(test.TestCase):
 
       variables.local_variables_initializer().run()
       for _ in range(6):
-        sess.run(update_op)
+        self.evaluate(update_op)
       desired_output = np.mean([2.0 / 3.0, 1.0 / 2.0])
       self.assertAlmostEqual(desired_output, mean_iou.eval())
 
@@ -3538,7 +3539,7 @@ class MeanIOUTest(test.TestCase):
     # one class, and thus there is one row and one column with
     # zero entries in the confusion matrix.
     num_classes = 3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Create the queue that populates the predictions.
       # There is no prediction for class 2.
       preds_queue = data_flow_ops.FIFOQueue(
@@ -3563,9 +3564,9 @@ class MeanIOUTest(test.TestCase):
 
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       for _ in range(5):
-        sess.run(update_op)
+        self.evaluate(update_op)
       desired_output = np.mean([1.0 / 3.0, 2.0 / 4.0])
       self.assertAlmostEqual(desired_output, miou.eval())
 
@@ -3585,9 +3586,9 @@ class MeanIOUTest(test.TestCase):
         ],
         0)
     num_classes = 2
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       confusion_matrix = update_op.eval()
       self.assertAllEqual([[3, 0], [2, 5]], confusion_matrix)
       desired_miou = np.mean([3. / 5., 5. / 7.])
@@ -3597,9 +3598,9 @@ class MeanIOUTest(test.TestCase):
     predictions = array_ops.zeros([40])
     labels = array_ops.zeros([40])
     num_classes = 1
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       self.assertEqual(40, update_op.eval()[0])
       self.assertEqual(1.0, miou.eval())
 
@@ -3607,9 +3608,9 @@ class MeanIOUTest(test.TestCase):
     predictions = array_ops.zeros([40])
     labels = array_ops.ones([40])
     num_classes = 2
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual([[0, 0], [40, 0]], update_op.eval())
       self.assertEqual(0., miou.eval())
 
@@ -3637,10 +3638,10 @@ class MeanIOUTest(test.TestCase):
                         0, shape=[1])
         ],
         0)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       miou, update_op = metrics.mean_iou(
           labels, predictions, num_classes, weights=weights)
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual([[2, 0], [2, 4]], update_op.eval())
       desired_miou = np.mean([2. / 4., 4. / 6.])
       self.assertAlmostEqual(desired_miou, miou.eval())
@@ -3657,9 +3658,9 @@ class MeanIOUTest(test.TestCase):
         [[0, 0, 2, 1, 1, 1],
          [1, 1, 2, 0, 0, 0]]])
     num_classes = 3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual([[7, 4, 3], [3, 5, 2], [0, 0, 0]], update_op.eval())
       self.assertAlmostEqual(
           1 / 3 * (7 / (7 + 3 + 7) + 5 / (5 + 4 + 5) + 0 / (0 + 5 + 0)),
@@ -3669,9 +3670,9 @@ class MeanIOUTest(test.TestCase):
     labels = constant_op.constant([0])
     predictions = constant_op.constant([0])
     num_classes = 2
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual([[1, 0], [0, 0]], update_op.eval())
       self.assertAlmostEqual(1, miou.eval())
 
@@ -3687,9 +3688,9 @@ class MeanIOUTest(test.TestCase):
         [[0, 0, 0, 1, 1, 1],
          [1, 1, 1, 0, 0, 0]]])
     num_classes = 3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual([[9, 5, 0], [3, 7, 0], [0, 0, 0]], update_op.eval())
       self.assertAlmostEqual(
           1 / 2 * (9 / (9 + 3 + 5) + 7 / (7 + 5 + 3)), miou.eval())
@@ -3751,12 +3752,12 @@ class MeanPerClassAccuracyTest(test.TestCase):
     mean_accuracy, update_op = metrics.mean_per_class_accuracy(
         labels, predictions, num_classes=num_classes)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
       for _ in range(10):
-        sess.run(update_op)
+        self.evaluate(update_op)
 
       # Then verify idempotency.
       initial_mean_accuracy = mean_accuracy.eval()
@@ -3764,7 +3765,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
         self.assertEqual(initial_mean_accuracy, mean_accuracy.eval())
 
     num_classes = 3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Create the queue that populates the predictions.
       preds_queue = data_flow_ops.FIFOQueue(
           5, dtypes=dtypes_lib.int32, shapes=(1, 1))
@@ -3788,15 +3789,15 @@ class MeanPerClassAccuracyTest(test.TestCase):
       mean_accuracy, update_op = metrics.mean_per_class_accuracy(
           labels, predictions, num_classes)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       for _ in range(5):
-        sess.run(update_op)
+        self.evaluate(update_op)
       desired_output = np.mean([1.0, 1.0 / 3.0, 0.0])
       self.assertAlmostEqual(desired_output, mean_accuracy.eval())
 
   def testMultipleUpdatesWithWeights(self):
     num_classes = 2
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Create the queue that populates the predictions.
       preds_queue = data_flow_ops.FIFOQueue(
           6, dtypes=dtypes_lib.int32, shapes=(1, 1))
@@ -3835,7 +3836,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
 
       variables.local_variables_initializer().run()
       for _ in range(6):
-        sess.run(update_op)
+        self.evaluate(update_op)
       desired_output = np.mean([2.0 / 2.0, 0.5 / 1.5])
       self.assertAlmostEqual(desired_output, mean_accuracy.eval())
 
@@ -3844,7 +3845,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
     # one class, and thus there is one row and one column with
     # zero entries in the confusion matrix.
     num_classes = 3
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Create the queue that populates the predictions.
       # There is no prediction for class 2.
       preds_queue = data_flow_ops.FIFOQueue(
@@ -3870,9 +3871,9 @@ class MeanPerClassAccuracyTest(test.TestCase):
       mean_accuracy, update_op = metrics.mean_per_class_accuracy(
           labels, predictions, num_classes)
 
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       for _ in range(5):
-        sess.run(update_op)
+        self.evaluate(update_op)
       desired_output = np.mean([1.0 / 2.0, 2.0 / 3.0, 0.])
       self.assertAlmostEqual(desired_output, mean_accuracy.eval())
 
@@ -3880,10 +3881,10 @@ class MeanPerClassAccuracyTest(test.TestCase):
     predictions = array_ops.zeros([40])
     labels = array_ops.zeros([40])
     num_classes = 1
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       mean_accuracy, update_op = metrics.mean_per_class_accuracy(
           labels, predictions, num_classes)
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       self.assertEqual(1.0, update_op.eval()[0])
       self.assertEqual(1.0, mean_accuracy.eval())
 
@@ -3891,10 +3892,10 @@ class MeanPerClassAccuracyTest(test.TestCase):
     predictions = array_ops.zeros([40])
     labels = array_ops.ones([40])
     num_classes = 2
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       mean_accuracy, update_op = metrics.mean_per_class_accuracy(
           labels, predictions, num_classes)
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual([0.0, 0.0], update_op.eval())
       self.assertEqual(0., mean_accuracy.eval())
 
@@ -3910,10 +3911,10 @@ class MeanPerClassAccuracyTest(test.TestCase):
         constant_op.constant(0, shape=[1]), constant_op.constant(1, shape=[8]),
         constant_op.constant(0, shape=[1])
     ], 0)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       mean_accuracy, update_op = metrics.mean_per_class_accuracy(
           labels, predictions, num_classes, weights=weights)
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       desired_accuracy = np.array([2. / 2., 4. / 6.], dtype=np.float32)
       self.assertAllEqual(desired_accuracy, update_op.eval())
       desired_mean_accuracy = np.mean(desired_accuracy)
@@ -3944,8 +3945,8 @@ class FalseNegativesTest(test.TestCase):
     tn, tn_update_op = metrics.false_negatives(
         labels=labels, predictions=predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllClose(0., tn.eval())
       self.assertAllClose(3., tn_update_op.eval())
       self.assertAllClose(3., tn.eval())
@@ -3963,8 +3964,8 @@ class FalseNegativesTest(test.TestCase):
     tn, tn_update_op = metrics.false_negatives(
         labels=labels, predictions=predictions, weights=weights)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllClose(0., tn.eval())
       self.assertAllClose(5., tn_update_op.eval())
       self.assertAllClose(5., tn.eval())
@@ -3993,8 +3994,8 @@ class FalseNegativesAtThresholdsTest(test.TestCase):
     fn, fn_update_op = metrics.false_negatives_at_thresholds(
         predictions=predictions, labels=labels, thresholds=[0.15, 0.5, 0.85])
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual((0, 0, 0), fn.eval())
       self.assertAllEqual((0, 2, 3), fn_update_op.eval())
       self.assertAllEqual((0, 2, 3), fn.eval())
@@ -4012,8 +4013,8 @@ class FalseNegativesAtThresholdsTest(test.TestCase):
         weights=((3.0,), (5.0,), (7.0,)),
         thresholds=[0.15, 0.5, 0.85])
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual((0.0, 0.0, 0.0), fn.eval())
       self.assertAllEqual((0.0, 8.0, 11.0), fn_update_op.eval())
       self.assertAllEqual((0.0, 8.0, 11.0), fn.eval())
@@ -4043,8 +4044,8 @@ class FalsePositivesTest(test.TestCase):
     tn, tn_update_op = metrics.false_positives(
         labels=labels, predictions=predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllClose(0., tn.eval())
       self.assertAllClose(7., tn_update_op.eval())
       self.assertAllClose(7., tn.eval())
@@ -4062,8 +4063,8 @@ class FalsePositivesTest(test.TestCase):
     tn, tn_update_op = metrics.false_positives(
         labels=labels, predictions=predictions, weights=weights)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllClose(0., tn.eval())
       self.assertAllClose(14., tn_update_op.eval())
       self.assertAllClose(14., tn.eval())
@@ -4092,8 +4093,8 @@ class FalsePositivesAtThresholdsTest(test.TestCase):
     fp, fp_update_op = metrics.false_positives_at_thresholds(
         predictions=predictions, labels=labels, thresholds=[0.15, 0.5, 0.85])
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual((0, 0, 0), fp.eval())
       self.assertAllEqual((7, 4, 2), fp_update_op.eval())
       self.assertAllEqual((7, 4, 2), fp.eval())
@@ -4113,8 +4114,8 @@ class FalsePositivesAtThresholdsTest(test.TestCase):
                  (19.0, 23.0, 29.0, 31.0)),
         thresholds=[0.15, 0.5, 0.85])
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual((0.0, 0.0, 0.0), fp.eval())
       self.assertAllEqual((125.0, 42.0, 12.0), fp_update_op.eval())
       self.assertAllEqual((125.0, 42.0, 12.0), fp.eval())
@@ -4144,8 +4145,8 @@ class TrueNegativesTest(test.TestCase):
     tn, tn_update_op = metrics.true_negatives(
         labels=labels, predictions=predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllClose(0., tn.eval())
       self.assertAllClose(3., tn_update_op.eval())
       self.assertAllClose(3., tn.eval())
@@ -4163,8 +4164,8 @@ class TrueNegativesTest(test.TestCase):
     tn, tn_update_op = metrics.true_negatives(
         labels=labels, predictions=predictions, weights=weights)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllClose(0., tn.eval())
       self.assertAllClose(4., tn_update_op.eval())
       self.assertAllClose(4., tn.eval())
@@ -4193,8 +4194,8 @@ class TrueNegativesAtThresholdsTest(test.TestCase):
     tn, tn_update_op = metrics.true_negatives_at_thresholds(
         predictions=predictions, labels=labels, thresholds=[0.15, 0.5, 0.85])
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual((0, 0, 0), tn.eval())
       self.assertAllEqual((2, 5, 7), tn_update_op.eval())
       self.assertAllEqual((2, 5, 7), tn.eval())
@@ -4212,8 +4213,8 @@ class TrueNegativesAtThresholdsTest(test.TestCase):
         weights=((0.0, 2.0, 3.0, 5.0),),
         thresholds=[0.15, 0.5, 0.85])
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual((0.0, 0.0, 0.0), tn.eval())
       self.assertAllEqual((5.0, 15.0, 23.0), tn_update_op.eval())
       self.assertAllEqual((5.0, 15.0, 23.0), tn.eval())
@@ -4243,8 +4244,8 @@ class TruePositivesTest(test.TestCase):
     tn, tn_update_op = metrics.true_positives(
         labels=labels, predictions=predictions)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllClose(0., tn.eval())
       self.assertAllClose(7., tn_update_op.eval())
       self.assertAllClose(7., tn.eval())
@@ -4262,8 +4263,8 @@ class TruePositivesTest(test.TestCase):
     tn, tn_update_op = metrics.true_positives(
         labels=labels, predictions=predictions, weights=weights)
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllClose(0., tn.eval())
       self.assertAllClose(12., tn_update_op.eval())
       self.assertAllClose(12., tn.eval())
@@ -4292,8 +4293,8 @@ class TruePositivesAtThresholdsTest(test.TestCase):
     tp, tp_update_op = metrics.true_positives_at_thresholds(
         predictions=predictions, labels=labels, thresholds=[0.15, 0.5, 0.85])
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual((0, 0, 0), tp.eval())
       self.assertAllEqual((3, 1, 0), tp_update_op.eval())
       self.assertAllEqual((3, 1, 0), tp.eval())
@@ -4309,8 +4310,8 @@ class TruePositivesAtThresholdsTest(test.TestCase):
         predictions=predictions, labels=labels, weights=37.0,
         thresholds=[0.15, 0.5, 0.85])
 
-    with self.test_session() as sess:
-      sess.run(variables.local_variables_initializer())
+    with self.cached_session() as sess:
+      self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual((0.0, 0.0, 0.0), tp.eval())
       self.assertAllEqual((111.0, 37.0, 0.0), tp_update_op.eval())
       self.assertAllEqual((111.0, 37.0, 0.0), tp.eval())

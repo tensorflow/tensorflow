@@ -61,15 +61,16 @@ class SoftmaxOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& logits_in = context->input(0);
-    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(logits_in.shape()),
-                errors::InvalidArgument("logits must be 2-dimensional"));
+    OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(logits_in.shape()),
+                errors::InvalidArgument("logits must have >= 1 dimension, got ",
+                                        logits_in.shape().DebugString()));
     Tensor* softmax_out = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, logits_in.shape(), &softmax_out));
     if (logits_in.NumElements() > 0) {
       functor::SoftmaxFunctor<Device, T> functor;
-      functor(context->eigen_device<Device>(), logits_in.matrix<T>(),
-              softmax_out->matrix<T>(), log_);
+      functor(context->eigen_device<Device>(), logits_in.flat_inner_dims<T>(),
+              softmax_out->flat_inner_dims<T>(), log_);
     }
   }
 

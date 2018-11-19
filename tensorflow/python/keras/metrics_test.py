@@ -22,6 +22,7 @@ import os
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -40,7 +41,7 @@ from tensorflow.python.training.checkpointable import util as checkpointable_uti
 class KerasMetricsTest(test.TestCase):
 
   def test_metrics(self):
-    with self.test_session():
+    with self.cached_session():
       y_a = K.variable(np.random.random((6, 7)))
       y_b = K.variable(np.random.random((6, 7)))
       for metric in [metrics.binary_accuracy, metrics.categorical_accuracy]:
@@ -48,14 +49,50 @@ class KerasMetricsTest(test.TestCase):
         self.assertEqual(K.eval(output).shape, (6,))
 
   def test_sparse_categorical_accuracy(self):
-    with self.test_session():
+    with self.cached_session():
       metric = metrics.sparse_categorical_accuracy
-      y_a = K.variable(np.random.randint(0, 7, (6,)))
-      y_b = K.variable(np.random.random((6, 7)))
-      self.assertEqual(K.eval(metric(y_a, y_b)).shape, (6,))
+      y_true = K.variable(np.random.randint(0, 7, (6,)))
+      y_pred = K.variable(np.random.random((6, 7)))
+      self.assertEqual(K.eval(metric(y_true, y_pred)).shape, (6,))
+
+      # Test correctness if the shape of y_true is (num_samples,)
+      y_true = K.variable([1., 0., 0., 0.])
+      y_pred = K.variable([[0.8, 0.2], [0.6, 0.4], [0.7, 0.3], [0.9, 0.1]])
+      print(K.eval(metric(y_true, y_pred)))
+      self.assertAllEqual(K.eval(metric(y_true, y_pred)), [0., 1., 1., 1.])
+
+      # Test correctness if the shape of y_true is (num_samples, 1)
+      y_true = K.variable([[1.], [0.], [0.], [0.]])
+      y_pred = K.variable([[0.8, 0.2], [0.6, 0.4], [0.7, 0.3], [0.9, 0.1]])
+      print(K.eval(metric(y_true, y_pred)))
+      self.assertAllEqual(K.eval(metric(y_true, y_pred)), [0., 1., 1., 1.])
+
+  def test_sparse_categorical_accuracy_float(self):
+    with self.cached_session():
+      metric = metrics.sparse_categorical_accuracy
+      y_true = K.variable(np.random.random((6,)))
+      y_pred = K.variable(np.random.random((6, 7)))
+      self.assertEqual(K.eval(metric(y_true, y_pred)).shape, (6,))
+
+  def test_sparse_categorical_accuracy_eager(self):
+    """Tests that ints passed in via Eager return results. See b/113504761."""
+    with context.eager_mode():
+      metric = metrics.sparse_categorical_accuracy
+      y_true = np.arange(6).reshape([6, 1])
+      y_pred = np.arange(36).reshape([6, 6])
+      self.assertAllEqual(metric(y_true, y_pred), [0., 0., 0., 0., 0., 1.])
+
+  def test_sparse_categorical_accuracy_float_eager(self):
+    """Tests that floats passed in via Eager return results. See b/113504761."""
+    with context.eager_mode():
+      metric = metrics.sparse_categorical_accuracy
+      y_true = np.arange(6, dtype=np.float32).reshape([6, 1])
+      y_pred = np.arange(36).reshape([6, 6])
+      self.assertAllEqual(metric(y_true, y_pred), [0., 0., 0., 0., 0., 1.])
 
   def test_sparse_top_k_categorical_accuracy(self):
-    with self.test_session():
+    with self.cached_session():
+      # Test correctness if the shape of y_true is (num_samples, 1)
       y_pred = K.variable(np.array([[0.3, 0.2, 0.1], [0.1, 0.2, 0.7]]))
       y_true = K.variable(np.array([[1], [0]]))
       result = K.eval(
@@ -68,8 +105,21 @@ class KerasMetricsTest(test.TestCase):
           metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=1))
       self.assertEqual(result, 0.)
 
+      # Test correctness if the shape of y_true is (num_samples,)
+      y_pred = K.variable(np.array([[0.3, 0.2, 0.1], [0.1, 0.2, 0.7]]))
+      y_true = K.variable(np.array([1, 0]))
+      result = K.eval(
+          metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=3))
+      self.assertEqual(result, 1)
+      result = K.eval(
+          metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=2))
+      self.assertEqual(result, 0.5)
+      result = K.eval(
+          metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=1))
+      self.assertEqual(result, 0.)
+
   def test_top_k_categorical_accuracy(self):
-    with self.test_session():
+    with self.cached_session():
       y_pred = K.variable(np.array([[0.3, 0.2, 0.1], [0.1, 0.2, 0.7]]))
       y_true = K.variable(np.array([[0, 1, 0], [1, 0, 0]]))
       result = K.eval(metrics.top_k_categorical_accuracy(y_true, y_pred, k=3))
@@ -80,7 +130,7 @@ class KerasMetricsTest(test.TestCase):
       self.assertEqual(result, 0.)
 
   def test_stateful_metrics(self):
-    with self.test_session():
+    with self.cached_session():
       np.random.seed(1334)
 
       class BinaryTruePositives(layers.Layer):
@@ -189,16 +239,16 @@ class KerasMetricsTest(test.TestCase):
       self.assertAllClose(
           val_outs[2], history.history['val_true_positives'][-1], atol=1e-5)
 
-  @test_util.run_in_graph_and_eager_modes
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def test_mean(self):
     m = metrics.Mean(name='my_mean')
 
     # check config
     self.assertEqual(m.name, 'my_mean')
     self.assertTrue(m.stateful)
-    self.assertEqual(m.dtype, dtypes.float64)
+    self.assertEqual(m.dtype, dtypes.float32)
     self.assertEqual(len(m.variables), 2)
-    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(variables.variables_initializer(m.variables))
 
     # check initial state
     self.assertEqual(self.evaluate(m.total), 0)
@@ -212,7 +262,7 @@ class KerasMetricsTest(test.TestCase):
     # check update_state() and result() + state accumulation + tensor input
     update_op = m.update_state(ops.convert_n_to_tensor([1, 5]))
     self.evaluate(update_op)
-    self.assertEqual(self.evaluate(m.result()), 106 / 3)
+    self.assertAlmostEqual(self.evaluate(m.result()), 106 / 3, 2)
     self.assertEqual(self.evaluate(m.total), 106)  # 100 + 1 + 5
     self.assertEqual(self.evaluate(m.count), 3)
 
@@ -223,8 +273,9 @@ class KerasMetricsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_mean_with_sample_weight(self):
-    m = metrics.Mean()
-    self.evaluate(variables.global_variables_initializer())
+    m = metrics.Mean(dtype=dtypes.float64)
+    self.assertEqual(m.dtype, dtypes.float64)
+    self.evaluate(variables.variables_initializer(m.variables))
 
     # check scalar weight
     result_t = m(100, sample_weight=0.5)
@@ -257,12 +308,19 @@ class KerasMetricsTest(test.TestCase):
     self.assertAlmostEqual(self.evaluate(m.total), 57.5, 2)  # 55.5 + 1 + 1
     self.assertAlmostEqual(self.evaluate(m.count), 5.1, 2)  # 3.9 + 1.2
 
+    # check values reduced to the dimensions of weight
+    result_t = m([[[1., 2.], [3., 2.], [0.5, 4.]]], sample_weight=[0.5])
+    result = np.round(self.evaluate(result_t), decimals=2)  # 58.5 / 5.6
+    self.assertEqual(result, 10.45)
+    self.assertEqual(np.round(self.evaluate(m.total), decimals=2), 58.54)
+    self.assertEqual(np.round(self.evaluate(m.count), decimals=2), 5.6)
+
   def test_mean_graph_with_placeholder(self):
-    with context.graph_mode(), self.test_session() as sess:
+    with context.graph_mode(), self.cached_session() as sess:
       m = metrics.Mean()
       v = array_ops.placeholder(dtypes.float32)
       w = array_ops.placeholder(dtypes.float32)
-      sess.run(variables.global_variables_initializer())
+      sess.run(variables.variables_initializer(m.variables))
 
       # check __call__()
       result_t = m(v, sample_weight=w)
@@ -283,7 +341,7 @@ class KerasMetricsTest(test.TestCase):
     checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
     m = metrics.Mean()
     checkpoint = checkpointable_utils.Checkpoint(mean=m)
-    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(variables.variables_initializer(m.variables))
 
     # update state
     self.evaluate(m(100.))
@@ -307,6 +365,372 @@ class KerasMetricsTest(test.TestCase):
     self.evaluate(restore_update)
     self.assertEqual(200., self.evaluate(restore_mean.result()))
     self.assertEqual(3, self.evaluate(restore_mean.count))
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_binary_accuracy(self):
+    acc_obj = metrics.BinaryAccuracy(name='my acc')
+
+    # check config
+    self.assertEqual(acc_obj.name, 'my acc')
+    self.assertTrue(acc_obj.stateful)
+    self.assertEqual(len(acc_obj.variables), 2)
+    self.assertEqual(acc_obj.dtype, dtypes.float32)
+    self.evaluate(variables.variables_initializer(acc_obj.variables))
+
+    # verify that correct value is returned
+    update_op = acc_obj.update_state([[1], [0]], [[1], [0]])
+    self.evaluate(update_op)
+    result = self.evaluate(acc_obj.result())
+    self.assertEqual(result, 1)  # 2/2
+
+    # check y_pred squeeze
+    update_op = acc_obj.update_state([[1], [1]], [[[1]], [[0]]])
+    self.evaluate(update_op)
+    result = self.evaluate(acc_obj.result())
+    self.assertAlmostEqual(result, 0.75, 2)  # 3/4
+
+    # check y_true squeeze
+    result_t = acc_obj([[[1]], [[1]]], [[1], [0]])
+    result = self.evaluate(result_t)
+    self.assertAlmostEqual(result, 0.67, 2)  # 4/6
+
+    # check with sample_weight
+    result_t = acc_obj([[1], [1]], [[1], [0]], [[0.5], [0.2]])
+    result = self.evaluate(result_t)
+    self.assertAlmostEqual(result, 0.67, 2)  # 4.5/6.7
+
+    # check incompatible shapes
+    with self.assertRaisesRegexp(ValueError,
+                                 r'Shapes \(1,\) and \(2,\) are incompatible'):
+      acc_obj.update_state([1, 1], [1])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_binary_accuracy_threshold(self):
+    acc_obj = metrics.BinaryAccuracy(threshold=0.7)
+    self.evaluate(variables.variables_initializer(acc_obj.variables))
+    result_t = acc_obj([[1], [1], [0], [0]], [[0.9], [0.6], [0.4], [0.8]])
+    result = self.evaluate(result_t)
+    self.assertAlmostEqual(result, 0.5, 2)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_categorical_accuracy(self):
+    acc_obj = metrics.CategoricalAccuracy(name='my acc')
+
+    # check config
+    self.assertEqual(acc_obj.name, 'my acc')
+    self.assertTrue(acc_obj.stateful)
+    self.assertEqual(len(acc_obj.variables), 2)
+    self.assertEqual(acc_obj.dtype, dtypes.float32)
+    self.evaluate(variables.variables_initializer(acc_obj.variables))
+
+    # verify that correct value is returned
+    update_op = acc_obj.update_state([[0, 0, 1], [0, 1, 0]],
+                                     [[0.1, 0.1, 0.8], [0.05, 0.95, 0]])
+    self.evaluate(update_op)
+    result = self.evaluate(acc_obj.result())
+    self.assertEqual(result, 1)  # 2/2
+
+    # check with sample_weight
+    result_t = acc_obj([[0, 0, 1], [0, 1, 0]],
+                       [[0.1, 0.1, 0.8], [0.05, 0, 0.95]], [[0.5], [0.2]])
+    result = self.evaluate(result_t)
+    self.assertAlmostEqual(result, 0.93, 2)  # 2.5/2.7
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_result(self):
+
+    class InvalidResult(metrics.Metric):
+
+      def __init__(self, name='invalid-result', dtype=dtypes.float64):
+        super(InvalidResult, self).__init__(name=name, dtype=dtype)
+
+      def update_state(self, *args, **kwargs):
+        pass
+
+      def result(self):
+        return 1
+
+    invalid_result_obj = InvalidResult()
+    with self.assertRaisesRegexp(
+        TypeError,
+        'Metric invalid-result\'s result must be a Tensor or Operation, given:'
+    ):
+      invalid_result_obj.result()
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_invalid_update(self):
+
+    class InvalidUpdate(metrics.Metric):
+
+      def __init__(self, name='invalid-update', dtype=dtypes.float64):
+        super(InvalidUpdate, self).__init__(name=name, dtype=dtype)
+
+      def update_state(self, *args, **kwargs):
+        return [1]
+
+      def result(self):
+        pass
+
+    invalid_update_obj = InvalidUpdate()
+    with self.assertRaisesRegexp(
+        TypeError,
+        'Metric invalid-update\'s update must be a Tensor or Operation, given:'
+    ):
+      invalid_update_obj.update_state()
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class FalsePositivesTest(test.TestCase):
+
+  def test_config(self):
+    fp_obj = metrics.FalsePositives(name='my_fp', thresholds=[0.4, 0.9])
+    self.assertEqual(fp_obj.name, 'my_fp')
+    self.assertEqual(len(fp_obj.variables), 1)
+    self.assertEqual(fp_obj.thresholds, [0.4, 0.9])
+
+  def test_unweighted(self):
+    fp_obj = metrics.FalsePositives()
+    self.evaluate(variables.variables_initializer(fp_obj.variables))
+
+    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
+    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
+                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+
+    update_op = fp_obj.update_state(y_true, y_pred)
+    self.evaluate(update_op)
+    result = fp_obj.result()
+    self.assertAllClose([7.], result)
+
+  def test_weighted(self):
+    fp_obj = metrics.FalsePositives()
+    self.evaluate(variables.variables_initializer(fp_obj.variables))
+    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
+    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
+                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+    sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
+    result = fp_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAllClose([14.], self.evaluate(result))
+
+  def test_unweighted_with_thresholds(self):
+    fp_obj = metrics.FalsePositives(thresholds=[0.15, 0.5, 0.85])
+    self.evaluate(variables.variables_initializer(fp_obj.variables))
+
+    y_pred = constant_op.constant(((0.9, 0.2, 0.8, 0.1), (0.2, 0.9, 0.7, 0.6),
+                                   (0.1, 0.2, 0.4, 0.3), (0, 1, 0.7, 0.3)))
+    y_true = constant_op.constant(((0, 1, 1, 0), (1, 0, 0, 0), (0, 0, 0, 0),
+                                   (1, 1, 1, 1)))
+
+    update_op = fp_obj.update_state(y_true, y_pred)
+    self.evaluate(update_op)
+    result = fp_obj.result()
+    self.assertAllClose([7., 4., 2.], result)
+
+  def test_weighted_with_thresholds(self):
+    fp_obj = metrics.FalsePositives(thresholds=[0.15, 0.5, 0.85])
+    self.evaluate(variables.variables_initializer(fp_obj.variables))
+
+    y_pred = constant_op.constant(((0.9, 0.2, 0.8, 0.1), (0.2, 0.9, 0.7, 0.6),
+                                   (0.1, 0.2, 0.4, 0.3), (0, 1, 0.7, 0.3)))
+    y_true = constant_op.constant(((0, 1, 1, 0), (1, 0, 0, 0), (0, 0, 0, 0),
+                                   (1, 1, 1, 1)))
+    sample_weight = ((1.0, 2.0, 3.0, 5.0), (7.0, 11.0, 13.0, 17.0),
+                     (19.0, 23.0, 29.0, 31.0), (5.0, 15.0, 10.0, 0))
+
+    result = fp_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAllClose([125., 42., 12.], self.evaluate(result))
+
+  def test_threshold_limit(self):
+    with self.assertRaisesRegexp(
+        ValueError,
+        r'Threshold values must be in \[0, 1\]. Invalid values: \[-1, 2\]'):
+      metrics.FalsePositives(thresholds=[-1, 0.5, 2])
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class FalseNegativesTest(test.TestCase):
+
+  def test_config(self):
+    fn_obj = metrics.FalseNegatives(name='my_fn', thresholds=[0.4, 0.9])
+    self.assertEqual(fn_obj.name, 'my_fn')
+    self.assertEqual(len(fn_obj.variables), 1)
+    self.assertEqual(fn_obj.thresholds, [0.4, 0.9])
+
+  def test_unweighted(self):
+    fn_obj = metrics.FalseNegatives()
+    self.evaluate(variables.variables_initializer(fn_obj.variables))
+
+    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
+    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
+                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+
+    update_op = fn_obj.update_state(y_true, y_pred)
+    self.evaluate(update_op)
+    result = fn_obj.result()
+    self.assertAllClose([3.], result)
+
+  def test_weighted(self):
+    fn_obj = metrics.FalseNegatives()
+    self.evaluate(variables.variables_initializer(fn_obj.variables))
+    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
+    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
+                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+    sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
+    result = fn_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAllClose([5.], self.evaluate(result))
+
+  def test_unweighted_with_thresholds(self):
+    fn_obj = metrics.FalseNegatives(thresholds=[0.15, 0.5, 0.85])
+    self.evaluate(variables.variables_initializer(fn_obj.variables))
+
+    y_pred = constant_op.constant(((0.9, 0.2, 0.8, 0.1), (0.2, 0.9, 0.7, 0.6),
+                                   (0.1, 0.2, 0.4, 0.3), (0, 1, 0.7, 0.3)))
+    y_true = constant_op.constant(((0, 1, 1, 0), (1, 0, 0, 0), (0, 0, 0, 0),
+                                   (1, 1, 1, 1)))
+
+    update_op = fn_obj.update_state(y_true, y_pred)
+    self.evaluate(update_op)
+    result = fn_obj.result()
+    self.assertAllClose([1., 4., 6.], result)
+
+  def test_weighted_with_thresholds(self):
+    fn_obj = metrics.FalseNegatives(thresholds=[0.15, 0.5, 0.85])
+    self.evaluate(variables.variables_initializer(fn_obj.variables))
+
+    y_pred = constant_op.constant(((0.9, 0.2, 0.8, 0.1), (0.2, 0.9, 0.7, 0.6),
+                                   (0.1, 0.2, 0.4, 0.3), (0, 1, 0.7, 0.3)))
+    y_true = constant_op.constant(((0, 1, 1, 0), (1, 0, 0, 0), (0, 0, 0, 0),
+                                   (1, 1, 1, 1)))
+    sample_weight = ((3.0,), (5.0,), (7.0,), (4.0,))
+
+    result = fn_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAllClose([4., 16., 23.], self.evaluate(result))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class TrueNegativesTest(test.TestCase):
+
+  def test_config(self):
+    tn_obj = metrics.TrueNegatives(name='my_tn', thresholds=[0.4, 0.9])
+    self.assertEqual(tn_obj.name, 'my_tn')
+    self.assertEqual(len(tn_obj.variables), 1)
+    self.assertEqual(tn_obj.thresholds, [0.4, 0.9])
+
+  def test_unweighted(self):
+    tn_obj = metrics.TrueNegatives()
+    self.evaluate(variables.variables_initializer(tn_obj.variables))
+
+    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
+    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
+                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+
+    update_op = tn_obj.update_state(y_true, y_pred)
+    self.evaluate(update_op)
+    result = tn_obj.result()
+    self.assertAllClose([3.], result)
+
+  def test_weighted(self):
+    tn_obj = metrics.TrueNegatives()
+    self.evaluate(variables.variables_initializer(tn_obj.variables))
+    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
+    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
+                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+    sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
+    result = tn_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAllClose([4.], self.evaluate(result))
+
+  def test_unweighted_with_thresholds(self):
+    tn_obj = metrics.TrueNegatives(thresholds=[0.15, 0.5, 0.85])
+    self.evaluate(variables.variables_initializer(tn_obj.variables))
+
+    y_pred = constant_op.constant(((0.9, 0.2, 0.8, 0.1), (0.2, 0.9, 0.7, 0.6),
+                                   (0.1, 0.2, 0.4, 0.3), (0, 1, 0.7, 0.3)))
+    y_true = constant_op.constant(((0, 1, 1, 0), (1, 0, 0, 0), (0, 0, 0, 0),
+                                   (1, 1, 1, 1)))
+
+    update_op = tn_obj.update_state(y_true, y_pred)
+    self.evaluate(update_op)
+    result = tn_obj.result()
+    self.assertAllClose([2., 5., 7.], result)
+
+  def test_weighted_with_thresholds(self):
+    tn_obj = metrics.TrueNegatives(thresholds=[0.15, 0.5, 0.85])
+    self.evaluate(variables.variables_initializer(tn_obj.variables))
+
+    y_pred = constant_op.constant(((0.9, 0.2, 0.8, 0.1), (0.2, 0.9, 0.7, 0.6),
+                                   (0.1, 0.2, 0.4, 0.3), (0, 1, 0.7, 0.3)))
+    y_true = constant_op.constant(((0, 1, 1, 0), (1, 0, 0, 0), (0, 0, 0, 0),
+                                   (1, 1, 1, 1)))
+    sample_weight = ((0.0, 2.0, 3.0, 5.0),)
+
+    result = tn_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAllClose([5., 15., 23.], self.evaluate(result))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class TruePositivesTest(test.TestCase):
+
+  def test_config(self):
+    tp_obj = metrics.TruePositives(name='my_tp', thresholds=[0.4, 0.9])
+    self.assertEqual(tp_obj.name, 'my_tp')
+    self.assertEqual(len(tp_obj.variables), 1)
+    self.assertEqual(tp_obj.thresholds, [0.4, 0.9])
+
+  def test_unweighted(self):
+    tp_obj = metrics.TruePositives()
+    self.evaluate(variables.variables_initializer(tp_obj.variables))
+
+    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
+    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
+                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+
+    update_op = tp_obj.update_state(y_true, y_pred)
+    self.evaluate(update_op)
+    result = tp_obj.result()
+    self.assertAllClose([7.], result)
+
+  def test_weighted(self):
+    tp_obj = metrics.TruePositives()
+    self.evaluate(variables.variables_initializer(tp_obj.variables))
+    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
+                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
+    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
+                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+    sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
+    result = tp_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertAllClose([12.], self.evaluate(result))
+
+  def test_unweighted_with_thresholds(self):
+    tp_obj = metrics.TruePositives(thresholds=[0.15, 0.5, 0.85])
+    self.evaluate(variables.variables_initializer(tp_obj.variables))
+
+    y_pred = constant_op.constant(((0.9, 0.2, 0.8, 0.1), (0.2, 0.9, 0.7, 0.6),
+                                   (0.1, 0.2, 0.4, 0.3), (0, 1, 0.7, 0.3)))
+    y_true = constant_op.constant(((0, 1, 1, 0), (1, 0, 0, 0), (0, 0, 0, 0),
+                                   (1, 1, 1, 1)))
+
+    update_op = tp_obj.update_state(y_true, y_pred)
+    self.evaluate(update_op)
+    result = tp_obj.result()
+    self.assertAllClose([6., 3., 1.], result)
+
+  def test_weighted_with_thresholds(self):
+    tp_obj = metrics.TruePositives(thresholds=[0.15, 0.5, 0.85])
+    self.evaluate(variables.variables_initializer(tp_obj.variables))
+
+    y_pred = constant_op.constant(((0.9, 0.2, 0.8, 0.1), (0.2, 0.9, 0.7, 0.6),
+                                   (0.1, 0.2, 0.4, 0.3), (0, 1, 0.7, 0.3)))
+    y_true = constant_op.constant(((0, 1, 1, 0), (1, 0, 0, 0), (0, 0, 0, 0),
+                                   (1, 1, 1, 1)))
+
+    result = tp_obj(y_true, y_pred, sample_weight=37.)
+    self.assertAllClose([222., 111., 37.], self.evaluate(result))
 
 
 if __name__ == '__main__':

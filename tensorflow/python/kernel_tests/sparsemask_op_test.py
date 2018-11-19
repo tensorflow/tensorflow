@@ -34,7 +34,7 @@ class SparseMaskTest(test.TestCase):
     out_values = values[1:, :]
     out_indices = np.array([2, 3, 4], dtype=np.int32)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       values_tensor = ops.convert_to_tensor(values)
       indices_tensor = ops.convert_to_tensor(indices)
       mask_indices_tensor = ops.convert_to_tensor(mask_indices)

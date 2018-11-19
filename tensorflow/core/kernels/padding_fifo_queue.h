@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_PADDING_FIFO_QUEUE_H_
-#define TENSORFLOW_KERNELS_PADDING_FIFO_QUEUE_H_
+#ifndef TENSORFLOW_CORE_KERNELS_PADDING_FIFO_QUEUE_H_
+#define TENSORFLOW_CORE_KERNELS_PADDING_FIFO_QUEUE_H_
 
 #include <deque>
 #include <vector>
@@ -86,4 +86,4 @@ class PaddingFIFOQueue : public FIFOQueue {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_PADDING_FIFO_QUEUE_H_
+#endif  // TENSORFLOW_CORE_KERNELS_PADDING_FIFO_QUEUE_H_

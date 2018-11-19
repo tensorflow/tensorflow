@@ -73,10 +73,11 @@ void InitMask(se::StreamExecutor* exec, void* ptr, int64* mask) {
 // -----------------------------------------------------------------------------
 // GPUDebugAllocator
 // -----------------------------------------------------------------------------
-GPUDebugAllocator::GPUDebugAllocator(VisitableAllocator* allocator,
-                                     CudaGpuId cuda_gpu_id)
+GPUDebugAllocator::GPUDebugAllocator(Allocator* allocator,
+                                     PlatformGpuId platform_gpu_id)
     : base_allocator_(allocator) {
-  stream_exec_ = GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie();
+  stream_exec_ =
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
 }
 
 GPUDebugAllocator::~GPUDebugAllocator() { delete base_allocator_; }
@@ -109,14 +110,6 @@ void GPUDebugAllocator::DeallocateRaw(void* ptr) {
   }
   // Deallocate the memory
   base_allocator_->DeallocateRaw(ptr);
-}
-
-void GPUDebugAllocator::AddAllocVisitor(Visitor visitor) {
-  return base_allocator_->AddAllocVisitor(visitor);
-}
-
-void GPUDebugAllocator::AddFreeVisitor(Visitor visitor) {
-  return base_allocator_->AddFreeVisitor(visitor);
 }
 
 bool GPUDebugAllocator::TracksAllocationSizes() { return true; }
@@ -158,10 +151,11 @@ bool GPUDebugAllocator::CheckFooter(void* ptr) {
 // -----------------------------------------------------------------------------
 // GPUNanResetAllocator
 // -----------------------------------------------------------------------------
-GPUNanResetAllocator::GPUNanResetAllocator(VisitableAllocator* allocator,
-                                           CudaGpuId cuda_gpu_id)
+GPUNanResetAllocator::GPUNanResetAllocator(Allocator* allocator,
+                                           PlatformGpuId platform_gpu_id)
     : base_allocator_(allocator) {
-  stream_exec_ = GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie();
+  stream_exec_ =
+      GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie();
 }
 
 GPUNanResetAllocator::~GPUNanResetAllocator() { delete base_allocator_; }
@@ -198,14 +192,6 @@ void GPUNanResetAllocator::DeallocateRaw(void* ptr) {
 
   // Deallocate the memory
   base_allocator_->DeallocateRaw(ptr);
-}
-
-void GPUNanResetAllocator::AddAllocVisitor(Visitor visitor) {
-  return base_allocator_->AddAllocVisitor(visitor);
-}
-
-void GPUNanResetAllocator::AddFreeVisitor(Visitor visitor) {
-  return base_allocator_->AddFreeVisitor(visitor);
 }
 
 size_t GPUNanResetAllocator::RequestedSize(const void* ptr) {

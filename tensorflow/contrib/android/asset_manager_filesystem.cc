@@ -28,7 +28,7 @@ string RemoveSuffix(const string& name, const string& suffix) {
   string output(name);
   StringPiece piece(output);
   str_util::ConsumeSuffix(&piece, suffix);
-  return piece.ToString();
+  return string(piece);
 }
 
 // Closes the given AAsset when variable is destructed.
@@ -231,7 +231,7 @@ string AssetManagerFileSystem::NormalizeDirectoryPath(const string& fname) {
 string AssetManagerFileSystem::RemoveAssetPrefix(const string& name) {
   StringPiece piece(name);
   str_util::ConsumePrefix(&piece, prefix_);
-  return piece.ToString();
+  return string(piece);
 }
 
 bool AssetManagerFileSystem::DirectoryExists(const std::string& fname) {

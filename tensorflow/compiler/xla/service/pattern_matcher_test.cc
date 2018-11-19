@@ -211,5 +211,225 @@ TEST(PatternMatcherTest, GetTupleElement) {
   EXPECT_TRUE(Match(root, match::GetTupleElement(match::Op(), 1)));
 }
 
+TEST(PatternMatcherTest, AnyOf) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module ENTRY test { ROOT constant = f16[] constant(1) })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloString(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  EXPECT_TRUE(
+      Match(root, match::AnyOf<HloInstruction>(match::ConstantScalar(0),
+                                               match::ConstantScalar(1))));
+  EXPECT_TRUE(
+      Match(root, match::AnyOf<HloInstruction>(match::ConstantScalar(1),
+                                               match::ConstantScalar(0))));
+  EXPECT_FALSE(
+      Match(root, match::AnyOf<HloInstruction>(match::ConstantScalar(0),
+                                               match::ConstantScalar(2))));
+}
+
+TEST(PatternMatcherTest, ConstantScalar) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module ENTRY test { ROOT constant = f16[] constant(42) })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloString(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  EXPECT_TRUE(Match(root, match::ConstantScalar(42)));
+  EXPECT_FALSE(Match(root, match::ConstantScalar(41)));
+  EXPECT_FALSE(Match(root, match::ConstantScalar(0)));
+}
+
+TEST(PatternMatcherTest, NoMatchConstantScalar) {
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module ENTRY test { ROOT v = f16[] parameter(0) })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloString(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  EXPECT_FALSE(Match(root, match::ConstantScalar(42)));
+}
+
+TEST(PatternMatcherTest, MultiplyAnyOrder) {
+  using match::ConstantScalar;
+  using match::MultiplyAnyOrder;
+
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      lhs = f16[] constant(42)
+      rhs = f16[] constant(52)
+      ROOT multiply = f16[] multiply(lhs, rhs)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloString(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+  const HloInstruction* instr;
+
+  EXPECT_TRUE(Match(
+      root, MultiplyAnyOrder(&instr, ConstantScalar(42), ConstantScalar(52))));
+  EXPECT_TRUE(Match(
+      root, MultiplyAnyOrder(&instr, ConstantScalar(52), ConstantScalar(42))));
+}
+
+TEST(PatternMatcherTest, AnyOfShortCircuit) {
+  using match::AnyOf;
+  using match::Multiply;
+  using match::Op;
+
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      lhs = f16[] constant(42)
+      rhs = f16[] constant(52)
+      ROOT multiply = f16[] multiply(lhs, rhs)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloString(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  {
+    const HloInstruction* mul = nullptr;
+    const HloInstruction* any = nullptr;
+
+    ASSERT_TRUE(Match(
+        root, AnyOf<HloInstruction>(Multiply(&mul, Op(), Op()), Op(&any))));
+    EXPECT_NE(nullptr, mul);
+    EXPECT_EQ(nullptr, any);
+  }
+  {
+    const HloInstruction* mul = nullptr;
+    const HloInstruction* any = nullptr;
+
+    ASSERT_TRUE(Match(
+        root, AnyOf<HloInstruction>(Op(&any), Multiply(&mul, Op(), Op()))));
+    EXPECT_NE(nullptr, any);
+    EXPECT_EQ(nullptr, mul);
+  }
+}
+
+TEST(PatternMatcherTest, AllOf) {
+  using match::AllOf;
+  using match::Broadcast;
+  using match::Constant;
+  using match::Op;
+
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module ENTRY test { ROOT constant = f16[] constant(1) })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloString(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  auto scalar_pattern = Constant().WithShape(match::Shape().IsScalar());
+  auto f16_pattern = Constant().WithShape(match::Shape().WithElementType(F16));
+  ASSERT_TRUE(Match(root, scalar_pattern));
+  ASSERT_TRUE(Match(root, f16_pattern));
+  EXPECT_TRUE(Match(root, AllOf<HloInstruction>(scalar_pattern, f16_pattern)));
+  EXPECT_TRUE(Match(root, AllOf<HloInstruction>(f16_pattern, scalar_pattern)));
+  EXPECT_FALSE(
+      Match(root, AllOf<HloInstruction>(Broadcast(Op()), f16_pattern)));
+  EXPECT_FALSE(
+      Match(root, AllOf<HloInstruction>(Broadcast(Op()), scalar_pattern)));
+}
+
+TEST(PatternMatcherTest, AllOfNoCaptureIfNotMatch) {
+  using match::AllOf;
+  using match::Broadcast;
+  using match::Constant;
+  using match::Op;
+
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      ROOT v = f16[] constant(42)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloString(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  const HloInstruction* constant = nullptr;
+  ASSERT_FALSE(
+      Match(root, AllOf<HloInstruction>(Constant(&constant), Broadcast(Op()))));
+  EXPECT_EQ(nullptr, constant);
+  ASSERT_TRUE(Match(root, Constant(&constant)));
+  EXPECT_NE(nullptr, constant);
+}
+
+TEST(PatternMatcherTest, TestNoCapture) {
+  using match::Constant;
+
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      ROOT v = f16[] constant(42)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloString(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  const HloInstruction* constant = nullptr;
+  ASSERT_TRUE(Match(root, Constant(&constant), {/*capture=*/false}));
+  EXPECT_EQ(nullptr, constant);
+}
+
+TEST(PatternMatcherTest, TestCaptureMatchedSubPatternForAnyOf) {
+  using match::Add;
+  using match::AddAnyOrder;
+  using match::AnyOf;
+  using match::Op;
+
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      u = f16[] parameter(0)
+      v = f16[] parameter(1)
+      ROOT add = f16[] add(u, v)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloString(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+
+  const HloInstruction* addend0 = nullptr;
+  const HloInstruction* addend1 = nullptr;
+  const HloInstruction* addend2 = nullptr;
+  auto add2_pattern = Add(Op(&addend0), Op(&addend1));
+  auto add3_pattern = AnyOf<HloInstruction>(
+      AddAnyOrder(add2_pattern, Op(&addend2)), add2_pattern, Op(&addend0));
+
+  ASSERT_TRUE(Match(root, add3_pattern));
+  EXPECT_NE(nullptr, addend0);
+  EXPECT_NE(nullptr, addend1);
+  EXPECT_EQ(nullptr, addend2);
+}
+
+TEST(PatternMatcherTest, TestConcat) {
+  using match::Concatenate;
+  using match::ConstantScalar;
+  using match::Op;
+  using match::Reshape;
+
+  constexpr char kModuleStr[] = R"(
+    HloModule test_module
+    ENTRY test {
+      c1 = u32[] constant(1)
+      c2 = u32[] constant(2)
+      c3 = u32[] constant(3)
+      c4 = u32[] constant(4)
+      r1 = u32[1] reshape(c1)
+      r2 = u32[1] reshape(c2)
+      r3 = u32[1] reshape(c3)
+      r4 = u32[1] reshape(c4)
+      ROOT concat = u32[4] concatenate(r1, r2, r3, r4), dimensions={0}
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloString(kModuleStr));
+  auto* root = hlo_module->entry_computation()->root_instruction();
+  ASSERT_TRUE(Match(
+      root,
+      Concatenate(Reshape(ConstantScalar(1)), Reshape(ConstantScalar(2)),
+                  Reshape(ConstantScalar(3)), Reshape(ConstantScalar(4)))));
+  ASSERT_FALSE(Match(
+      root,
+      Concatenate(Reshape(ConstantScalar(2)), Reshape(ConstantScalar(1)),
+                  Reshape(ConstantScalar(3)), Reshape(ConstantScalar(4)))));
+  ASSERT_FALSE(Match(
+      root, Concatenate(Reshape(ConstantScalar(1)), Reshape(ConstantScalar(2)),
+                        Reshape(ConstantScalar(3)))));
+  ASSERT_FALSE(Match(
+      root, Concatenate(Reshape(ConstantScalar(2)), Reshape(ConstantScalar(3)),
+                        Reshape(ConstantScalar(4)))));
+}
+
 }  // namespace
 }  // namespace xla

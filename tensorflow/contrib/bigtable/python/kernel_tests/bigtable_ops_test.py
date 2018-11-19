@@ -44,7 +44,7 @@ class BigtableOpsTest(test.TestCase):
   def setUp(self):
     self._client = gen_bigtable_test_ops.bigtable_test_client()
     table = gen_bigtable_ops.bigtable_table(self._client, "testtable")
-    self._table = bigtable.BigTable("testtable", None, table)
+    self._table = bigtable.BigtableTable("testtable", None, table)
 
   def _makeSimpleDataset(self):
     output_rows = dataset_ops.Dataset.from_tensor_slices(self.COMMON_ROW_KEYS)
@@ -61,7 +61,7 @@ class BigtableOpsTest(test.TestCase):
     n = itr.get_next()
     expected = list(self.COMMON_ROW_KEYS)
     expected.reverse()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._writeCommonValues(sess)
       sess.run(itr.initializer)
       for i in range(3):
@@ -84,7 +84,7 @@ class BigtableOpsTest(test.TestCase):
     expected_keys.reverse()
     expected_values = list(self.COMMON_VALUES)
     expected_values.reverse()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._writeCommonValues(sess)
       sess.run(itr.initializer)
       for i in range(3):
@@ -125,7 +125,7 @@ class BigtableOpsTest(test.TestCase):
     expected_keys = list(self.COMMON_ROW_KEYS)
     expected_values = list(self.COMMON_VALUES)
     expected_tuples = zip(expected_keys, expected_values)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._writeCommonValues(sess)
       sess.run(itr.initializer)
       for i, elem in enumerate(expected_tuples):
@@ -144,7 +144,7 @@ class BigtableOpsTest(test.TestCase):
     itr = ds.make_initializable_iterator()
     n = itr.get_next()
     expected_key = self.COMMON_ROW_KEYS[0]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._writeCommonValues(sess)
       sess.run(itr.initializer)
       output = sess.run(n)
@@ -163,7 +163,7 @@ class BigtableOpsTest(test.TestCase):
   def runSampleKeyPairsTest(self, ds, expected_key_pairs):
     itr = ds.make_initializable_iterator()
     n = itr.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._writeCommonValues(sess)
       sess.run(itr.initializer)
       for i, elems in enumerate(expected_key_pairs):
@@ -219,7 +219,7 @@ class BigtableOpsTest(test.TestCase):
     ds = bigtable_api._BigtableSampleKeyPairsDataset(
         self._table, prefix="r", start="r1", end="")
     itr = ds.make_initializable_iterator()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(itr.initializer)
 
@@ -227,7 +227,7 @@ class BigtableOpsTest(test.TestCase):
     ds = bigtable_api._BigtableSampleKeyPairsDataset(
         self._table, prefix="r", start="", end="r3")
     itr = ds.make_initializable_iterator()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(itr.initializer)
 
@@ -235,7 +235,7 @@ class BigtableOpsTest(test.TestCase):
     ds = self._table.parallel_scan_prefix(prefix="r", cf1="c1")
     itr = ds.make_initializable_iterator()
     n = itr.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._writeCommonValues(sess)
       sess.run(itr.initializer)
       expected_values = list(zip(self.COMMON_ROW_KEYS, self.COMMON_VALUES))
@@ -253,7 +253,7 @@ class BigtableOpsTest(test.TestCase):
     ds = self._table.parallel_scan_range(start="r1", end="r4", cf1="c1")
     itr = ds.make_initializable_iterator()
     n = itr.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._writeCommonValues(sess)
       sess.run(itr.initializer)
       expected_values = list(zip(self.COMMON_ROW_KEYS, self.COMMON_VALUES))

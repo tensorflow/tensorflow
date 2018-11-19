@@ -30,18 +30,21 @@ namespace tensorflow {
 namespace {
 const char* kDeviceNamePrefix = "/job:localhost/replica:0/task:0";
 
-int64 GetTotalGPUMemory(CudaGpuId gpu_id) {
+int64 GetTotalGPUMemory(PlatformGpuId gpu_id) {
   se::StreamExecutor* se =
-      GpuIdUtil::ExecutorForCudaGpuId(GPUMachineManager(), gpu_id).ValueOrDie();
+      GpuIdUtil::ExecutorForPlatformGpuId(GPUMachineManager(), gpu_id)
+          .ValueOrDie();
 
   int64 total_memory, available_memory;
   CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
   return total_memory;
 }
 
-Status GetComputeCapability(CudaGpuId gpu_id, int* cc_major, int* cc_minor) {
+Status GetComputeCapability(PlatformGpuId gpu_id, int* cc_major,
+                            int* cc_minor) {
   se::StreamExecutor* se =
-      GpuIdUtil::ExecutorForCudaGpuId(GPUMachineManager(), gpu_id).ValueOrDie();
+      GpuIdUtil::ExecutorForPlatformGpuId(GPUMachineManager(), gpu_id)
+          .ValueOrDie();
   if (!se->GetDeviceDescription().cuda_compute_capability(cc_major, cc_minor)) {
     *cc_major = 0;
     *cc_minor = 0;
@@ -223,7 +226,7 @@ TEST_F(GPUDeviceTest, MultipleVirtualDevices) {
 // error.
 TEST_F(GPUDeviceTest, UnifiedMemoryUnavailableOnPrePascalGpus) {
   int cc_major, cc_minor;
-  TF_ASSERT_OK(GetComputeCapability(CudaGpuId(0), &cc_major, &cc_minor));
+  TF_ASSERT_OK(GetComputeCapability(PlatformGpuId(0), &cc_major, &cc_minor));
   // Exit early while running on Pascal or later GPUs.
   if (cc_major >= 6) {
     return;
@@ -244,10 +247,10 @@ TEST_F(GPUDeviceTest, UnifiedMemoryUnavailableOnPrePascalGpus) {
 // more memory than what is available on the device.
 TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
   static constexpr double kGpuMemoryFraction = 1.2;
-  static constexpr CudaGpuId kCudaGpuId(0);
+  static constexpr PlatformGpuId kPlatformGpuId(0);
 
   int cc_major, cc_minor;
-  TF_ASSERT_OK(GetComputeCapability(kCudaGpuId, &cc_major, &cc_minor));
+  TF_ASSERT_OK(GetComputeCapability(kPlatformGpuId, &cc_major, &cc_minor));
   // Exit early if running on pre-Pascal GPUs.
   if (cc_major < 6) {
     LOG(INFO)
@@ -262,7 +265,7 @@ TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
   ASSERT_EQ(1, devices.size());
 
   int64 memory_limit = devices[0]->attributes().memory_limit();
-  ASSERT_EQ(memory_limit, static_cast<int64>(GetTotalGPUMemory(kCudaGpuId) *
+  ASSERT_EQ(memory_limit, static_cast<int64>(GetTotalGPUMemory(kPlatformGpuId) *
                                              kGpuMemoryFraction));
 
   AllocatorAttributes allocator_attributes = AllocatorAttributes();

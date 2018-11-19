@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_IO_RANDOM_INPUTSTREAM_H_
-#define TENSORFLOW_LIB_IO_RANDOM_INPUTSTREAM_H_
+#ifndef TENSORFLOW_CORE_LIB_IO_RANDOM_INPUTSTREAM_H_
+#define TENSORFLOW_CORE_LIB_IO_RANDOM_INPUTSTREAM_H_
 
 #include "tensorflow/core/lib/io/inputstream_interface.h"
 #include "tensorflow/core/platform/file_system.h"
@@ -54,4 +54,4 @@ class RandomAccessInputStream : public InputStreamInterface {
 }  // namespace io
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_IO_RANDOM_INPUTSTREAM_H_
+#endif  // TENSORFLOW_CORE_LIB_IO_RANDOM_INPUTSTREAM_H_

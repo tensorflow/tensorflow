@@ -243,7 +243,7 @@ class LoggingTensorHookTest(test.TestCase):
           tensors=[t.name], at_end=True)
       hook.begin()
       mon_sess = monitored_session._HookedSession(sess, [hook])
-      sess.run(variables_lib.global_variables_initializer())
+      self.evaluate(variables_lib.global_variables_initializer())
       self.logged_message = ''
       for _ in range(3):
         mon_sess.run(train_op)
@@ -261,7 +261,7 @@ class LoggingTensorHookTest(test.TestCase):
         tensors=[t.name], every_n_iter=10, at_end=at_end)
     hook.begin()
     mon_sess = monitored_session._HookedSession(sess, [hook])
-    sess.run(variables_lib.global_variables_initializer())
+    self.evaluate(variables_lib.global_variables_initializer())
     mon_sess.run(train_op)
     self.assertRegexpMatches(str(self.logged_message), t.name)
     for _ in range(3):
@@ -308,7 +308,7 @@ class LoggingTensorHookTest(test.TestCase):
           tensors={'foo': t}, every_n_iter=1)
       hook.begin()
       mon_sess = monitored_session._HookedSession(sess, [hook])
-      sess.run(variables_lib.global_variables_initializer())
+      self.evaluate(variables_lib.global_variables_initializer())
       mon_sess.run(train_op)
       self.assertRegexpMatches(str(self.logged_message), 'foo')
       # in first run, elapsed time is None.
@@ -322,7 +322,7 @@ class LoggingTensorHookTest(test.TestCase):
         tensors=[t.name], every_n_secs=1.0, at_end=at_end)
     hook.begin()
     mon_sess = monitored_session._HookedSession(sess, [hook])
-    sess.run(variables_lib.global_variables_initializer())
+    self.evaluate(variables_lib.global_variables_initializer())
 
     mon_sess.run(train_op)
     self.assertRegexpMatches(str(self.logged_message), t.name)
@@ -366,7 +366,7 @@ class LoggingTensorHookTest(test.TestCase):
           formatter=lambda items: 'qqq=%s' % items[t.name])
       hook.begin()
       mon_sess = monitored_session._HookedSession(sess, [hook])
-      sess.run(variables_lib.global_variables_initializer())
+      self.evaluate(variables_lib.global_variables_initializer())
       mon_sess.run(train_op)
       self.assertEqual(self.logged_message[0], 'qqq=42.0')
 
@@ -921,7 +921,7 @@ class StepCounterHookTest(test.TestCase):
       hook = basic_session_run_hooks.StepCounterHook(
           summary_writer=summary_writer, every_n_steps=10)
       hook.begin()
-      sess.run(variables_lib.global_variables_initializer())
+      self.evaluate(variables_lib.global_variables_initializer())
       mon_sess = monitored_session._HookedSession(sess, [hook])
       with test.mock.patch.object(tf_logging, 'warning') as mock_log:
         for _ in range(30):
@@ -950,7 +950,7 @@ class StepCounterHookTest(test.TestCase):
           summary_writer=summary_writer, every_n_steps=None, every_n_secs=0.1)
 
       hook.begin()
-      sess.run(variables_lib.global_variables_initializer())
+      self.evaluate(variables_lib.global_variables_initializer())
       mon_sess = monitored_session._HookedSession(sess, [hook])
       mon_sess.run(train_op)
       time.sleep(0.2)
@@ -987,7 +987,7 @@ class StepCounterHookTest(test.TestCase):
           summary_writer=summary_writer, every_n_steps=1, every_n_secs=None)
 
       hook.begin()
-      sess.run(variables_lib.global_variables_initializer())
+      self.evaluate(variables_lib.global_variables_initializer())
       mon_sess = monitored_session._HookedSession(sess, [hook])
       mon_sess.run(train_op)
       mon_sess.run(train_op)
@@ -1007,7 +1007,7 @@ class StepCounterHookTest(test.TestCase):
     with ops.Graph().as_default(), session_lib.Session() as sess:
       variables.get_or_create_global_step()
       train_op = training_util._increment_global_step(0)  # keep same.
-      sess.run(variables_lib.global_variables_initializer())
+      self.evaluate(variables_lib.global_variables_initializer())
       hook = basic_session_run_hooks.StepCounterHook(
           every_n_steps=1, every_n_secs=None)
       hook.begin()
@@ -1034,7 +1034,7 @@ class StepCounterHookTest(test.TestCase):
         summary_writer=self.summary_writer, every_n_steps=every_n_steps)
     self.hook._set_steps_per_run(steps_per_run)
     self.hook.begin()
-    sess.run(variables_lib.global_variables_initializer())
+    self.evaluate(variables_lib.global_variables_initializer())
     self.mon_sess = monitored_session._HookedSession(sess, [self.hook])
 
   def test_steps_per_run_less_than_every_n_steps(self):
@@ -1145,9 +1145,9 @@ class SummarySaverHookTest(test.TestCase):
         summary_writer=self.summary_writer,
         summary_op=self.summary_op)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       hook.begin()
-      sess.run(variables_lib.global_variables_initializer())
+      self.evaluate(variables_lib.global_variables_initializer())
       mon_sess = monitored_session._HookedSession(sess, [hook])
       for _ in range(30):
         mon_sess.run(self.train_op)
@@ -1177,9 +1177,9 @@ class SummarySaverHookTest(test.TestCase):
         summary_writer=self.summary_writer,
         summary_op=[self.summary_op, self.summary_op2])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       hook.begin()
-      sess.run(variables_lib.global_variables_initializer())
+      self.evaluate(variables_lib.global_variables_initializer())
       mon_sess = monitored_session._HookedSession(sess, [hook])
       for _ in range(10):
         mon_sess.run(self.train_op)
@@ -1205,9 +1205,9 @@ class SummarySaverHookTest(test.TestCase):
         summary_writer=self.summary_writer,
         summary_op=self.summary_op)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       hook.begin()
-      sess.run(variables_lib.global_variables_initializer())
+      self.evaluate(variables_lib.global_variables_initializer())
       mon_sess = monitored_session._HookedSession(sess, [hook])
       for _ in range(4):
         mon_sess.run(self.train_op)
@@ -1240,9 +1240,9 @@ class SummarySaverHookTest(test.TestCase):
         summary_writer=self.summary_writer,
         summary_op=self.summary_op)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       hook.begin()
-      sess.run(variables_lib.global_variables_initializer())
+      self.evaluate(variables_lib.global_variables_initializer())
       mon_sess = monitored_session._HookedSession(sess, [hook])
       for _ in range(8):
         mon_sess.run(self.train_op)
@@ -1285,7 +1285,7 @@ class GlobalStepWaiterHookTest(test.TestCase):
       hook = basic_session_run_hooks.GlobalStepWaiterHook(wait_until_step=1000)
       hook.begin()
       with session_lib.Session() as sess:
-        sess.run(variables_lib.global_variables_initializer())
+        self.evaluate(variables_lib.global_variables_initializer())
         waiter = threading.Thread(
             target=hook.before_run,
             args=(session_run_hook.SessionRunContext(
@@ -1388,9 +1388,9 @@ class ResourceSummarySaverHookTest(test.TestCase):
         summary_writer=self.summary_writer,
         summary_op=self.summary_op)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       hook.begin()
-      sess.run(variables_lib.global_variables_initializer())
+      self.evaluate(variables_lib.global_variables_initializer())
       mon_sess = monitored_session._HookedSession(sess, [hook])
       for _ in range(30):
         mon_sess.run(self.train_op)
@@ -1454,58 +1454,58 @@ class ProfilerHookTest(test.TestCase):
     with self.assertRaises(ValueError):
       basic_session_run_hooks.ProfilerHook(save_secs=None, save_steps=None)
 
-  def test_save_secs_saves_in_first_step(self):
+  def test_save_secs_does_not_save_in_first_step(self):
     with self.graph.as_default():
       hook = basic_session_run_hooks.ProfilerHook(
           save_secs=2, output_dir=self.output_dir)
       with monitored_session.SingularMonitoredSession(hooks=[hook]) as sess:
         sess.run(self.train_op)
-        self.assertEqual(1, self._count_timeline_files())
+        self.assertEqual(0, self._count_timeline_files())
 
   @test.mock.patch.object(time, 'time')
   def test_save_secs_saves_periodically(self, mock_time):
     # Pick a fixed start time.
-    current_time = 1484863632.320497
+    current_time = 1484863632.
 
     with self.graph.as_default():
       mock_time.return_value = current_time
       hook = basic_session_run_hooks.ProfilerHook(
           save_secs=2, output_dir=self.output_dir)
       with monitored_session.SingularMonitoredSession(hooks=[hook]) as sess:
-        sess.run(self.train_op)  # Saved.
-        self.assertEqual(1, self._count_timeline_files())
         sess.run(self.train_op)  # Not saved.
-        self.assertEqual(1, self._count_timeline_files())
+        self.assertEqual(0, self._count_timeline_files())
         # Simulate 2.5 seconds of sleep.
         mock_time.return_value = current_time + 2.5
         sess.run(self.train_op)  # Saved.
+        self.assertEqual(1, self._count_timeline_files())
 
         # Pretend some small amount of time has passed.
-        mock_time.return_value = current_time + 0.1
+        mock_time.return_value = current_time + 2.6
         sess.run(self.train_op)  # Not saved.
         # Edge test just before we should save the timeline.
-        mock_time.return_value = current_time + 1.9
+        mock_time.return_value = current_time + 4.4
         sess.run(self.train_op)  # Not saved.
-        self.assertEqual(2, self._count_timeline_files())
+        self.assertEqual(1, self._count_timeline_files())
 
         mock_time.return_value = current_time + 4.5
         sess.run(self.train_op)  # Saved.
-        self.assertEqual(3, self._count_timeline_files())
+        self.assertEqual(2, self._count_timeline_files())
 
-  def test_save_steps_saves_in_first_step(self):
+  def test_save_steps_does_not_save_in_first_step(self):
     with self.graph.as_default():
       hook = basic_session_run_hooks.ProfilerHook(
-          save_secs=2, output_dir=self.output_dir)
+          save_steps=1, output_dir=self.output_dir)
       with monitored_session.SingularMonitoredSession(hooks=[hook]) as sess:
-        sess.run(self.train_op)  # Saved.
         sess.run(self.train_op)  # Not saved.
-        self.assertEqual(1, self._count_timeline_files())
+        self.assertEqual(0, self._count_timeline_files())
 
   def test_save_steps_saves_periodically(self):
     with self.graph.as_default():
       hook = basic_session_run_hooks.ProfilerHook(
           save_steps=2, output_dir=self.output_dir)
       with monitored_session.SingularMonitoredSession(hooks=[hook]) as sess:
+        self.assertEqual(0, self._count_timeline_files())
+        sess.run(self.train_op)  # Not saved.
         self.assertEqual(0, self._count_timeline_files())
         sess.run(self.train_op)  # Saved.
         self.assertEqual(1, self._count_timeline_files())
@@ -1515,20 +1515,19 @@ class ProfilerHookTest(test.TestCase):
         self.assertEqual(2, self._count_timeline_files())
         sess.run(self.train_op)  # Not saved.
         self.assertEqual(2, self._count_timeline_files())
-        sess.run(self.train_op)  # Saved.
-        self.assertEqual(3, self._count_timeline_files())
 
-  def test_run_metadata_saves_in_first_step(self):
+  def test_run_metadata_saves(self):
     writer_cache.FileWriterCache.clear()
     fake_summary_writer.FakeSummaryWriter.install()
     fake_writer = writer_cache.FileWriterCache.get(self.output_dir)
     with self.graph.as_default():
       hook = basic_session_run_hooks.ProfilerHook(
-          save_secs=2, output_dir=self.output_dir)
+          save_steps=1, output_dir=self.output_dir)
       with monitored_session.SingularMonitoredSession(hooks=[hook]) as sess:
+        sess.run(self.train_op)  # Not saved.
         sess.run(self.train_op)  # Saved.
         self.assertEqual(
-            list(fake_writer._added_run_metadata.keys()), ['step_1'])
+            list(fake_writer._added_run_metadata.keys()), ['step_2'])
     fake_summary_writer.FakeSummaryWriter.uninstall()
 
 

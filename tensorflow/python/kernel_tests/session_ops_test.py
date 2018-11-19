@@ -31,13 +31,13 @@ from tensorflow.python.platform import test
 class SessionOpsTest(test.TestCase):
 
   def testHandleBasic(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Return a handle.
       a = constant_op.constant(10)
       b = constant_op.constant(5)
       c = math_ops.multiply(a, b)
       h = session_ops.get_session_handle(c)
-      h = sess.run(h)
+      h = self.evaluate(h)
 
       # Feed a tensor handle.
       f, x = session_ops.get_session_tensor(h.handle, dtypes.int32)
@@ -45,19 +45,19 @@ class SessionOpsTest(test.TestCase):
       self.assertEqual(500, sess.run(y, feed_dict={f: h.handle}))
 
   def testHandleEval(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Return a handle.
       a = constant_op.constant(10)
       b = constant_op.constant(5)
       c = math_ops.multiply(a, b)
       h = session_ops.get_session_handle(c)
-      h = sess.run(h)
+      h = self.evaluate(h)
 
       # Get the tensor from its handle.
       self.assertEqual(50, h.eval())
 
   def testHandleAndValue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Return a handle and a value.
       a = constant_op.constant(10)
       b = constant_op.constant(5)
@@ -70,7 +70,7 @@ class SessionOpsTest(test.TestCase):
       self.assertEqual(500, v)
 
   def testHandleCond(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Return a handle and a value
       a = constant_op.constant(10)
       b = constant_op.constant(5)
@@ -90,11 +90,11 @@ class SessionOpsTest(test.TestCase):
       self.assertEqual(5000, result)
 
   def testHandleForLoop(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Initialize a handle.
       a = constant_op.constant(0)
       h = session_ops.get_session_handle(a)
-      h = sess.run(h)
+      h = self.evaluate(h)
 
       # Do some computation.
       f, x = session_ops.get_session_tensor(h.handle, dtypes.int32)
@@ -107,11 +107,11 @@ class SessionOpsTest(test.TestCase):
       self.assertEqual(100, h.eval())
 
   def testHandleWhileLoop(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Initialize a handle.
       a = constant_op.constant(0)
       h = session_ops.get_session_handle(a)
-      h = sess.run(h)
+      h = self.evaluate(h)
 
       # Do some computation.
       f, x = session_ops.get_session_tensor(h.handle, dtypes.int32)
@@ -127,13 +127,13 @@ class SessionOpsTest(test.TestCase):
       self.assertEqual(101, h.eval())
 
   def testHandleMover(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Return a handle.
       a = constant_op.constant(10)
       b = constant_op.constant(5)
       c = math_ops.multiply(a, b)
       h = session_ops.get_session_handle(c)
-      h = sess.run(h)
+      h = self.evaluate(h)
 
       # Feed a tensor handle.
       f, x = session_ops.get_session_tensor(h.handle, dtypes.int32)
@@ -144,11 +144,11 @@ class SessionOpsTest(test.TestCase):
       with ops.device(test.gpu_device_name()):
         a = constant_op.constant(10)
         h = session_ops.get_session_handle(a)
-        h = sess.run(h)
+        h = self.evaluate(h)
         self.assertEqual(100, sess.run(y, feed_dict={f: h.handle}))
 
   def testHandleDelete(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Return a handle.
       a = constant_op.constant(10)
       b = constant_op.constant(5)
@@ -157,13 +157,13 @@ class SessionOpsTest(test.TestCase):
       sess.run(h).delete()
 
   def testHandleDeleteRaw(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Return a handle.
       a = constant_op.constant(10)
       b = constant_op.constant(5)
       c = math_ops.multiply(a, b)
       h = session_ops.get_session_handle(c)
-      h = sess.run(h)
+      h = self.evaluate(h)
 
       # Delete using a raw tensor handle.
       raw_h = h.get_raw_handle()
@@ -171,7 +171,7 @@ class SessionOpsTest(test.TestCase):
       sess.run(x, feed_dict={f: raw_h})
 
   def testMultiDevices(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with ops.device(test.gpu_device_name()):
         a = constant_op.constant(1.0)
         a_handle = sess.run(session_ops.get_session_handle(a))
@@ -189,7 +189,7 @@ class SessionOpsTest(test.TestCase):
       self.assertEqual(3.0, c_handle.eval())
 
   def testHandleGC(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # initial values live on CPU
       with ops.device("/cpu:0"):
         one = constant_op.constant(1, dtype=dtypes.float32)
@@ -213,14 +213,14 @@ class SessionOpsTest(test.TestCase):
                        add_h2: x_handle.handle})
 
   def testHandlePlacement(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       a = constant_op.constant(1.0)
       a_handle_op = session_ops.get_session_handle(a)
       b = constant_op.constant(2.0)
       b_handle_op = session_ops.get_session_handle(b)
 
-      a_handle = sess.run(a_handle_op)
-      b_handle = sess.run(b_handle_op)
+      a_handle = self.evaluate(a_handle_op)
+      b_handle = self.evaluate(b_handle_op)
 
       a_p, a_t = session_ops.get_session_tensor(a_handle.handle, dtypes.float32)
       b_p, b_t = session_ops.get_session_tensor(b_handle.handle, dtypes.float32)
@@ -233,7 +233,7 @@ class SessionOpsTest(test.TestCase):
       self.assertEqual(3.0, c_handle.eval())
 
   def testFeedOneHandleDirectly(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       a = constant_op.constant(10.0)
       b = constant_op.constant(5.0)
       c = math_ops.multiply(a, b)
@@ -244,7 +244,7 @@ class SessionOpsTest(test.TestCase):
       self.assertAllClose(2500.0, sess.run(d, feed_dict={c: h_c}))
 
   def testDirectHandleFeedOverlappingWithFetches(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       a = constant_op.constant(10.0)
       b = constant_op.constant(5.0)
       c = math_ops.multiply(a, b)
@@ -270,7 +270,7 @@ class SessionOpsTest(test.TestCase):
       self.assertAllClose(50.0, d_val)
 
   def testFeedTwoHandlesDirectly(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       a = constant_op.constant(10.0)
       b = constant_op.constant(5.0)
       c = math_ops.multiply(a, b)
@@ -284,14 +284,14 @@ class SessionOpsTest(test.TestCase):
       self.assertAllClose(-48.0, sess.run(e, feed_dict={c: h_d, d: h_c}))
 
   def testFeedHandleToVariableDirectly(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       a = variables.Variable(12.0)
       inc_a = state_ops.assign_add(a, 2.0)
       b = math_ops.add(a, 5.0)
-      sess.run(a.initializer)
+      self.evaluate(a.initializer)
 
       h_a_read = sess.run(session_ops.get_session_handle(a.read_value()))
-      self.assertAllClose(12.0, sess.run(a))
+      self.assertAllClose(12.0, self.evaluate(a))
 
       self.assertAllClose(17.0, sess.run(b, feed_dict={a: h_a_read}))
       sess.run(inc_a)

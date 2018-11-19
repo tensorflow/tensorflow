@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
@@ -33,13 +33,13 @@ int StreamAssignment::StreamNumberForHlo(const HloInstruction& hlo) const {
 }
 
 void StreamAssignment::AssignStreamToHlo(const HloInstruction* hlo,
-                                         int stream_no) {
-  CHECK_GE(stream_no, 0);
-  if (stream_no >= stream_count_) {
-    stream_count_ = stream_no + 1;
+                                         int stream_num) {
+  CHECK_GE(stream_num, 0);
+  if (stream_num >= stream_count_) {
+    stream_count_ = stream_num + 1;
   }
-  InsertOrDie(&hlo_to_stream_number_, hlo, stream_no);
-  VLOG(2) << "Assign stream #" << stream_no << " to " << hlo->ToString();
+  InsertOrDie(&hlo_to_stream_number_, hlo, stream_num);
+  VLOG(2) << "Assign stream #" << stream_num << " to " << hlo->ToString();
 }
 
 namespace {
@@ -49,6 +49,12 @@ namespace {
 bool CanRunConcurrently(const HloInstruction& a, const HloInstruction& b,
                         const HloReachabilityMap& reachability) {
   return !reachability.IsConnected(&a, &b);
+}
+
+constexpr int kInvalidStreamNum = -1;
+//  Returns true iff `stream_num` is an invalid stream number.
+inline bool IsStreamNumValid(int stream_num) {
+  return stream_num != kInvalidStreamNum;
 }
 
 // Returns which existing stream to assign to `hlo`, or -1 if a stream is not
@@ -62,7 +68,7 @@ int ComputeStreamToAssign(
   if (hlo.opcode() == HloOpcode::kParameter ||
       hlo.opcode() == HloOpcode::kConstant) {
     // kParameter and kConstant do not need a thunk.
-    return -1;
+    return kInvalidStreamNum;
   }
 
   if (hlo.GetModule()
@@ -75,17 +81,17 @@ int ComputeStreamToAssign(
   if (!ImplementedAsGemm(hlo)) {
     // If `hlo` is not implemented as a GEMM, keep it close to its operands to
     // avoid excessive synchronization.
-    int stream_no = -1;
+    int stream_num = -1;
     for (const auto* operand : hlo.operands()) {
       if (stream_assignment.HasStreamAssigned(*operand)) {
-        stream_no =
-            std::max(stream_no, stream_assignment.StreamNumberForHlo(*operand));
+        stream_num = std::max(stream_num,
+                              stream_assignment.StreamNumberForHlo(*operand));
       }
     }
-    if (stream_no == -1) {
-      stream_no = 0;
+    if (!IsStreamNumValid(stream_num)) {
+      stream_num = 0;
     }
-    return stream_no;
+    return stream_num;
   }
 
   // Assign different streams to concurrent GEMMs. The code below uses a
@@ -94,17 +100,17 @@ int ComputeStreamToAssign(
   // `hlo` a different stream.
   std::set<int> forbidden_stream_numbers;
   for (const auto* seen_gemm : seen_gemms) {
-    int stream_no = stream_assignment.StreamNumberForHlo(*seen_gemm);
-    if (!forbidden_stream_numbers.count(stream_no) &&
+    int stream_num = stream_assignment.StreamNumberForHlo(*seen_gemm);
+    if (!forbidden_stream_numbers.count(stream_num) &&
         CanRunConcurrently(*seen_gemm, hlo, reachability)) {
-      forbidden_stream_numbers.insert(stream_no);
+      forbidden_stream_numbers.insert(stream_num);
     }
   }
 
-  for (int stream_no = 0; stream_no < stream_assignment.StreamCount();
-       ++stream_no) {
-    if (!forbidden_stream_numbers.count(stream_no)) {
-      return stream_no;
+  for (int stream_num = 0; stream_num < stream_assignment.StreamCount();
+       ++stream_num) {
+    if (!forbidden_stream_numbers.count(stream_num)) {
+      return stream_num;
     }
   }
   return stream_assignment.StreamCount();
@@ -113,16 +119,32 @@ int ComputeStreamToAssign(
 }  // namespace
 
 std::unique_ptr<StreamAssignment> AssignStreams(const HloModule& module) {
-  auto stream_assignment = MakeUnique<StreamAssignment>();
+  auto stream_assignment = absl::make_unique<StreamAssignment>();
   const HloComputation& computation = *module.entry_computation();
   std::unique_ptr<HloReachabilityMap> reachability =
-      computation.ComputeReachability();
+      HloReachabilityMap::Build(&computation);
   std::vector<const HloInstruction*> seen_gemms;
+  // The execution of different RNG Hlo instructions in the same module updates
+  // a common global variable. To avoid a race condition, we simply assign all
+  // RNG kernels to the same stream to make them run sequentially.
+  //
+  // TODO(b/111791052): If we remove such a common variable, we will need to
+  // clean up the code here.
+  int stream_num_for_rng = kInvalidStreamNum;
   for (const auto* hlo : computation.MakeInstructionPostOrder()) {
-    int stream_no = ComputeStreamToAssign(*hlo, *stream_assignment,
-                                          *reachability, seen_gemms);
-    if (stream_no != -1) {
-      stream_assignment->AssignStreamToHlo(hlo, stream_no);
+    // If we ever enable fusion of RNG instructions, we will need to extend this
+    // code to look inside a fused instruction.
+    int stream_num = (hlo->opcode() == HloOpcode::kRng &&
+                      IsStreamNumValid(stream_num_for_rng))
+                         ? stream_num_for_rng
+                         : ComputeStreamToAssign(*hlo, *stream_assignment,
+                                                 *reachability, seen_gemms);
+    if (IsStreamNumValid(stream_num)) {
+      stream_assignment->AssignStreamToHlo(hlo, stream_num);
+      if (hlo->opcode() == HloOpcode::kRng &&
+          !IsStreamNumValid(stream_num_for_rng)) {
+        stream_num_for_rng = stream_num;
+      }
     }
     if (ImplementedAsGemm(*hlo)) {
       seen_gemms.push_back(hlo);

@@ -21,7 +21,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -32,7 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -49,61 +50,73 @@ namespace {
 static std::array<bool, 2> use_bf16_params{true, false};
 
 class HloEvaluatorTest : public ::testing::WithParamInterface<bool>,
-                         public HloVerifiedTestBase {
+                         public HloTestBase {
  protected:
-  HloEvaluatorTest() : use_bfloat16_(GetParam()) {
-    evaluator_ = MakeUnique<HloEvaluator>();
+  HloEvaluatorTest() : HloTestBase(), use_bfloat16_(GetParam()) {
+    evaluator_ = absl::make_unique<HloEvaluator>();
   }
 
-  std::unique_ptr<Literal> Evaluate(
-      tensorflow::gtl::ArraySlice<const Literal*> arg_literals = {}) {
+  Literal Evaluate(absl::Span<const Literal* const> arg_literals = {}) {
     if (use_bfloat16_) {
       // In BF16 mode, we convert all F32 type to BF16 and evaluate the module.
       auto type_converter = HloElementTypeConverter(F32, BF16);
-      type_converter.Run(&module()).ValueOrDie();
+      type_converter.Run(m_.get()).ValueOrDie();
     }
-    return evaluator_->Evaluate(*module().entry_computation(), arg_literals)
+    return evaluator_->Evaluate(*m_->entry_computation(), arg_literals)
+        .ConsumeValueOrDie();
+  }
+
+  // Evaluate function that takes in a local module instead of using m_
+  // that is in HloTestBase. Once m_ in HloTestBase is
+  // removed, this should be the default Evaluate function.
+  Literal EvaluateWithModule(
+      HloModule* module, absl::Span<const Literal* const> arg_literals = {}) {
+    if (use_bfloat16_) {
+      // In BF16 mode, we convert all F32 type to BF16 and evaluate the module.
+      auto type_converter = HloElementTypeConverter(F32, BF16);
+      type_converter.Run(module).ValueOrDie();
+    }
+    return evaluator_->Evaluate(*module->entry_computation(), arg_literals)
         .ConsumeValueOrDie();
   }
 
   std::unique_ptr<HloEvaluator> evaluator_;
 
-  void TestUnaryOp(HloOpcode opcode, std::unique_ptr<Literal> expected,
-                   std::unique_ptr<Literal> input, float aabs = 0) {
+  void TestUnaryOp(HloOpcode opcode, Literal expected, Literal input,
+                   float aabs = 0) {
     HloComputation::Builder b(TestName());
     auto c1 =
         b.AddInstruction(HloInstruction::CreateConstant(std::move(input)));
-    b.AddInstruction(
-        HloInstruction::CreateUnary(expected->shape(), opcode, c1));
-    module().AddEntryComputation(b.Build());
+    b.AddInstruction(HloInstruction::CreateUnary(expected.shape(), opcode, c1));
+    m_->AddEntryComputation(b.Build());
 
-    std::unique_ptr<Literal> result = Evaluate();
+    Literal result = Evaluate();
 
-    auto element_type = expected->shape().element_type();
+    auto element_type = expected.shape().element_type();
     if (element_type == F32 || element_type == F64) {
       ErrorSpec error(aabs);
-      EXPECT_TRUE(LiteralTestUtil::Near(*expected, *result, error));
+      EXPECT_TRUE(LiteralTestUtil::Near(expected, result, error));
     } else {
-      EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+      EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
     }
   }
 
-  void TestBinaryOp(HloOpcode opcode, std::unique_ptr<Literal> expected,
-                    std::unique_ptr<Literal> lhs,
-                    std::unique_ptr<Literal> rhs) {
+  void TestBinaryOp(HloOpcode opcode, Literal expected, Literal lhs,
+                    Literal rhs) {
     HloComputation::Builder b(TestName());
     auto c1 = b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs)));
     auto c2 = b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs)));
     b.AddInstruction(
-        HloInstruction::CreateBinary(expected->shape(), opcode, c1, c2));
-    module().AddEntryComputation(b.Build());
+        HloInstruction::CreateBinary(expected.shape(), opcode, c1, c2));
+    m_->AddEntryComputation(b.Build());
 
-    std::unique_ptr<Literal> result = Evaluate();
+    Literal result = Evaluate();
 
-    EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
   }
 
   bool use_bfloat16_;
+  std::unique_ptr<HloModule> m_ = CreateNewVerifiedModule();
 };
 
 #define XLA_TYPED_TEST_P(test_case_name, test_name, test_type1) \
@@ -116,20 +129,20 @@ TEST_P(HloEvaluatorTest, DoesClamp) {
   auto value = LiteralUtil::CreateR2<float>({{0.f, 5.f}, {0.f, 4.f}});
   auto high = LiteralUtil::CreateR2<float>({{2.f, 4.f}, {4.f, 4.f}});
 
-  Shape shape = low->shape();
+  Shape shape = low.shape();
   HloComputation::Builder b(TestName());
   auto c1 = b.AddInstruction(HloInstruction::CreateConstant(std::move(low)));
   auto c2 = b.AddInstruction(HloInstruction::CreateConstant(std::move(value)));
   auto c3 = b.AddInstruction(HloInstruction::CreateConstant(std::move(high)));
   b.AddInstruction(
       HloInstruction::CreateTernary(shape, HloOpcode::kClamp, c1, c2, c3));
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   auto expected = LiteralUtil::CreateR2<float>({{0, 4}, {2, 4}});
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, DISABLED_DoesClampSpecialBroadcast) {
@@ -137,20 +150,20 @@ TEST_P(HloEvaluatorTest, DISABLED_DoesClampSpecialBroadcast) {
   auto value = LiteralUtil::CreateR2<float>({{-1.f, 0.f}, {1.f, 2.f}});
   auto high = LiteralUtil::CreateR0<float>(1.f);
 
-  Shape shape = value->shape();
+  Shape shape = value.shape();
   HloComputation::Builder b(TestName());
   auto c1 = b.AddInstruction(HloInstruction::CreateConstant(std::move(low)));
   auto c2 = b.AddInstruction(HloInstruction::CreateConstant(std::move(value)));
   auto c3 = b.AddInstruction(HloInstruction::CreateConstant(std::move(high)));
   b.AddInstruction(
       HloInstruction::CreateTernary(shape, HloOpcode::kClamp, c1, c2, c3));
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   auto expected = LiteralUtil::CreateR2<float>({{0, 0}, {1, 1}});
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 // Verifies that HloEvaluator evaluates a HLO instruction that performs select
@@ -160,7 +173,7 @@ TEST_P(HloEvaluatorTest, DoesSelect) {
   auto on_true = LiteralUtil::CreateR2<float>({{2.f, 4.f}, {4.f, 4.f}});
   auto on_false = LiteralUtil::CreateR2<float>({{0.f, 5.f}, {0.f, 4.f}});
 
-  Shape shape = on_true->shape();
+  Shape shape = on_true.shape();
   HloComputation::Builder b(TestName());
   auto c1 = b.AddInstruction(HloInstruction::CreateConstant(std::move(pred)));
   auto c2 =
@@ -169,13 +182,13 @@ TEST_P(HloEvaluatorTest, DoesSelect) {
       b.AddInstruction(HloInstruction::CreateConstant(std::move(on_false)));
   b.AddInstruction(
       HloInstruction::CreateTernary(shape, HloOpcode::kSelect, c1, c2, c3));
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate({});
+  Literal result = Evaluate({});
 
   auto expected = LiteralUtil::CreateR2<float>({{2, 5}, {0, 4}});
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
@@ -294,7 +307,7 @@ TEST_P(HloEvaluatorTest, DoesTraverseInstructions) {
   auto lhs = LiteralUtil::CreateR2<int64>({{1, 0}, {-100, 4}});
   auto rhs = LiteralUtil::CreateR2<int64>({{2, 4}, {4, 4}});
   auto rhs2 = LiteralUtil::CreateR2<int64>({{1, -20}, {-100, 4}});
-  std::vector<const Literal*> args = {lhs.get(), rhs.get(), rhs2.get()};
+  std::vector<const Literal*> args = {&lhs, &rhs, &rhs2};
 
   Shape shape = ShapeUtil::MakeShape(S64, {2, 2});
 
@@ -310,13 +323,13 @@ TEST_P(HloEvaluatorTest, DoesTraverseInstructions) {
       b.AddInstruction(HloInstruction::CreateParameter(2, shape, "rhs2"));
   b.AddInstruction(HloInstruction::CreateBinary(shape, HloOpcode::kAdd,
                                                 lhs_instruction, param_rhs2));
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate(args);
+  Literal result = Evaluate(args);
 
   auto expected = LiteralUtil::CreateR2<int64>({{4, -16}, {-196, 12}});
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 // Verifies Reshape operation is correctly evaluated.
@@ -326,7 +339,7 @@ TEST_P(HloEvaluatorTest, DoesReshape) {
   TF_ASSERT_OK_AND_ASSIGN(auto literal,
                           LiteralUtil::CreateRandomLiteral<F32>(
                               ShapeUtil::MakeShape(F32, dimensions), 0.0, 1.0));
-  auto literal_clone = literal->CloneToUnique();
+  auto literal_clone = literal.Clone();
   HloInstruction* literal_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(literal)));
 
@@ -334,16 +347,15 @@ TEST_P(HloEvaluatorTest, DoesReshape) {
   const int64 permutation[] = {1, 2, 0, 4, 3};
   b.AddInstruction(
       HloInstruction::CreateTranspose(shape, literal_instruction, permutation));
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate({});
+  Literal result = Evaluate({});
 
   using NativeT = typename primitive_util::PrimitiveTypeToNative<F32>::type;
-  result->EachCell<NativeT>(
-      [&](tensorflow::gtl::ArraySlice<int64> indices, NativeT value) {
-        std::vector<int64> rindexes = Permute(permutation, indices);
-        EXPECT_NEAR(value, literal_clone->Get<NativeT>(rindexes), 0.031250);
-      });
+  result.EachCell<NativeT>([&](absl::Span<const int64> indices, NativeT value) {
+    std::vector<int64> rindexes = Permute(permutation, indices);
+    EXPECT_NEAR(value, literal_clone.Get<NativeT>(rindexes), 0.031250);
+  });
 }
 
 // Verifies Broadcast operation is correctly evaluated.
@@ -355,12 +367,12 @@ TEST_P(HloEvaluatorTest, DoesBroadcast) {
   HloInstruction* literal_instruction = b.AddInstruction(
       HloInstruction::CreateConstant(std::move(input_literal)));
   b.AddInstruction(HloInstruction::CreateBroadcast(
-      output_literal->shape(), literal_instruction, {1, 2}));
-  module().AddEntryComputation(b.Build());
+      output_literal.shape(), literal_instruction, {1, 2}));
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate({});
+  Literal result = Evaluate({});
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*result, *output_literal));
+  EXPECT_TRUE(LiteralTestUtil::Equal(result, output_literal));
 }
 
 TEST_P(HloEvaluatorTest, DoesBroadcastScalar) {
@@ -373,13 +385,13 @@ TEST_P(HloEvaluatorTest, DoesBroadcastScalar) {
       HloInstruction::CreateConstant(std::move(input_literal)));
   // Broadcast dimension should be empty in the case of scalars.
   b.AddInstruction(HloInstruction::CreateBroadcast(
-      output_literal->shape(), literal_instruction,
+      output_literal.shape(), literal_instruction,
       /*broadcast_dimensions=*/{}));
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate({});
+  Literal result = Evaluate({});
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*result, *output_literal));
+  EXPECT_TRUE(LiteralTestUtil::Equal(result, output_literal));
 }
 
 TEST_P(HloEvaluatorTest, DoesConcatenateSimple) {
@@ -395,13 +407,13 @@ TEST_P(HloEvaluatorTest, DoesConcatenateSimple) {
   Shape shape = ShapeUtil::MakeShape(S64, {4, 2});
   b.AddInstruction(HloInstruction::CreateConcatenate(shape, operands, 0));
 
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   auto expected = LiteralUtil::CreateR2<int64>(
       {{-1, -2}, {100, 200}, {-2, -3}, {-100, -200}});
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, ConcatenateHandlesShapeWithZeroElement) {
@@ -417,12 +429,12 @@ TEST_P(HloEvaluatorTest, ConcatenateHandlesShapeWithZeroElement) {
   Shape shape = ShapeUtil::MakeShape(S64, {2});
   b.AddInstruction(HloInstruction::CreateConcatenate(shape, operands, 0));
 
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   auto expected = LiteralUtil::CreateR1<int64>({100, 200});
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, ConvertWithSameLayout) {
@@ -431,17 +443,17 @@ TEST_P(HloEvaluatorTest, ConvertWithSameLayout) {
   auto input_literal = LiteralUtil::CreateR2<int32>({{1, 2}, {3, 4}, {5, 6}});
   auto expected =
       LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}});
-  ASSERT_TRUE(LayoutUtil::LayoutsInShapesEqual(input_literal->shape(),
-                                               expected->shape()));
+  ASSERT_TRUE(LayoutUtil::LayoutsInShapesEqual(input_literal.shape(),
+                                               expected.shape()));
 
   HloInstruction* constant = b.AddInstruction(
       HloInstruction::CreateConstant(std::move(input_literal)));
-  b.AddInstruction(HloInstruction::CreateConvert(expected->shape(), constant));
-  module().AddEntryComputation(b.Build());
+  b.AddInstruction(HloInstruction::CreateConvert(expected.shape(), constant));
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*result, *expected));
+  EXPECT_TRUE(LiteralTestUtil::Equal(result, expected));
 }
 
 TEST_P(HloEvaluatorTest, ConvertWithDifferentLayout) {
@@ -451,17 +463,17 @@ TEST_P(HloEvaluatorTest, ConvertWithDifferentLayout) {
       {{1, 2}, {3, 4}, {5, 6}}, LayoutUtil::MakeLayout({0, 1}));
   auto expected = LiteralUtil::CreateR2WithLayout<float>(
       {{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}}, LayoutUtil::MakeLayout({1, 0}));
-  ASSERT_FALSE(LayoutUtil::LayoutsInShapesEqual(input_literal->shape(),
-                                                expected->shape()));
+  ASSERT_FALSE(LayoutUtil::LayoutsInShapesEqual(input_literal.shape(),
+                                                expected.shape()));
 
   HloInstruction* constant = b.AddInstruction(
       HloInstruction::CreateConstant(std::move(input_literal)));
-  b.AddInstruction(HloInstruction::CreateConvert(expected->shape(), constant));
-  module().AddEntryComputation(b.Build());
+  b.AddInstruction(HloInstruction::CreateConvert(expected.shape(), constant));
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*result, *expected));
+  EXPECT_TRUE(LiteralTestUtil::Equal(result, expected));
 }
 
 PaddingConfig CreatePaddingConfig(
@@ -492,14 +504,14 @@ TEST_P(HloEvaluatorTest, Pad2DIntegerArrayWithZeroDimension) {
   Shape shape = ShapeUtil::MakeShape(S32, {5, 2});
   b.AddInstruction(HloInstruction::CreatePad(
       shape, operand_instruction, padding_value_instruction, padding_config));
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   auto expected = LiteralUtil::CreateR2<int32>(
       {{10, 10}, {10, 10}, {10, 10}, {10, 10}, {10, 10}});
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, Pad4DFloatArrayWithInteriorPadding) {
@@ -519,11 +531,11 @@ TEST_P(HloEvaluatorTest, Pad4DFloatArrayWithInteriorPadding) {
       CreatePaddingConfig({{{1, 0, 2}}, {{0, 2, 1}}, {{0, 0, 0}}, {{0, 0, 0}}});
   b.AddInstruction(HloInstruction::CreatePad(
       shape, input_instruction, pad_instruction, r4_padding_on_dim0_dim1));
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
-  auto expected_array = MakeUnique<Array4D<float>>(8, 5, 1, 1);
+  auto expected_array = absl::make_unique<Array4D<float>>(8, 5, 1, 1);
   expected_array->Fill(kPadValue);
   (*expected_array)(1, 0, 0, 0) = 1.0f;
   (*expected_array)(1, 2, 0, 0) = 2.0f;
@@ -534,7 +546,7 @@ TEST_P(HloEvaluatorTest, Pad4DFloatArrayWithInteriorPadding) {
 
   auto expected = LiteralUtil::CreateR4FromArray4D<float>(*expected_array);
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, NegativePadding2D) {
@@ -547,7 +559,7 @@ TEST_P(HloEvaluatorTest, NegativePadding2D) {
   //  { 9, 10, 11 },
   //  { 13, 14, 15 },
   // }
-  auto input_array = MakeUnique<Array2D<float>>(4, 3);
+  auto input_array = absl::make_unique<Array2D<float>>(4, 3);
   input_array->FillUnique(1.0f);
   auto input = LiteralUtil::CreateR2FromArray2D<float>(*input_array);
   HloInstruction* input_instruction =
@@ -563,12 +575,12 @@ TEST_P(HloEvaluatorTest, NegativePadding2D) {
                                              pad_value_instruction,
                                              r2_padding_on_dim0_dim1));
 
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   // f32[1,5] { 7.0, 2.718, 2.718, 2.718, 2.718 }
-  auto expected_array = MakeUnique<Array2D<float>>(1, 5);
+  auto expected_array = absl::make_unique<Array2D<float>>(1, 5);
   (*expected_array)(0, 0) = 7.0f;
   (*expected_array)(0, 1) = 2.718f;
   (*expected_array)(0, 2) = 2.718f;
@@ -576,7 +588,7 @@ TEST_P(HloEvaluatorTest, NegativePadding2D) {
   (*expected_array)(0, 4) = 2.718f;
   auto expected = LiteralUtil::CreateR2FromArray2D<float>(*expected_array);
 
-  EXPECT_TRUE(LiteralTestUtil::Near(*expected, *result, ErrorSpec(0.031250)));
+  EXPECT_TRUE(LiteralTestUtil::Near(expected, result, ErrorSpec(0.031250)));
 }
 
 TEST_P(HloEvaluatorTest, NegativeAndInteriorPadding2D) {
@@ -588,7 +600,7 @@ TEST_P(HloEvaluatorTest, NegativeAndInteriorPadding2D) {
   //  { 9, 10, 11 },
   //  { 13, 14, 15 },
   // }
-  auto input_array = MakeUnique<Array2D<float>>(4, 3);
+  auto input_array = absl::make_unique<Array2D<float>>(4, 3);
   input_array->FillUnique(1.0f);
   auto input = LiteralUtil::CreateR2FromArray2D<float>(*input_array);
   HloInstruction* input_instruction =
@@ -608,14 +620,14 @@ TEST_P(HloEvaluatorTest, NegativeAndInteriorPadding2D) {
                                              pad_value_instruction,
                                              r2_padding_on_dim0_dim1));
 
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
-  auto expected_array = MakeUnique<Array2D<float>>(0, 9);
+  auto expected_array = absl::make_unique<Array2D<float>>(0, 9);
   auto expected = LiteralUtil::CreateR2FromArray2D<float>(*expected_array);
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, DotRank2AndRank1) {
@@ -628,7 +640,7 @@ TEST_P(HloEvaluatorTest, DotRank2AndRank1) {
   //  { 3 },
   //  { 4 },
   // }
-  auto lhs_array = MakeUnique<Array2D<float>>(4, 1);
+  auto lhs_array = absl::make_unique<Array2D<float>>(4, 1);
   lhs_array->FillUnique(1.0f);
   auto lhs_literal = LiteralUtil::CreateR2FromArray2D<float>(*lhs_array);
   HloInstruction* lhs_instruction =
@@ -645,10 +657,11 @@ TEST_P(HloEvaluatorTest, DotRank2AndRank1) {
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
   b.AddInstruction(HloInstruction::CreateDot(shape, lhs_instruction,
-                                             rhs_instruction, dot_dnums));
-  module().AddEntryComputation(b.Build());
+                                             rhs_instruction, dot_dnums,
+                                             DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   // clang-format off
   auto expected_array = Array2D<float>({
@@ -660,7 +673,7 @@ TEST_P(HloEvaluatorTest, DotRank2AndRank1) {
   // clang-format on
   auto expected = LiteralUtil::CreateR2FromArray2D<float>(expected_array);
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, DotRank1AndRank2) {
@@ -679,7 +692,7 @@ TEST_P(HloEvaluatorTest, DotRank1AndRank2) {
   //  { 3, 4 },
   //  { 5, 6 },
   // }
-  auto rhs_array = MakeUnique<Array2D<float>>(3, 2);
+  auto rhs_array = absl::make_unique<Array2D<float>>(3, 2);
   rhs_array->FillUnique(1.0f);
   auto rhs_literal = LiteralUtil::CreateR2FromArray2D<float>(*rhs_array);
   HloInstruction* rhs_instruction =
@@ -690,14 +703,15 @@ TEST_P(HloEvaluatorTest, DotRank1AndRank2) {
   dot_dnums.add_lhs_contracting_dimensions(0);
   dot_dnums.add_rhs_contracting_dimensions(0);
   b.AddInstruction(HloInstruction::CreateDot(shape, lhs_instruction,
-                                             rhs_instruction, dot_dnums));
-  module().AddEntryComputation(b.Build());
+                                             rhs_instruction, dot_dnums,
+                                             DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   auto expected = LiteralUtil::CreateR1<float>({22.f, 28.f});
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, DotRank2AndRank2) {
@@ -710,7 +724,7 @@ TEST_P(HloEvaluatorTest, DotRank2AndRank2) {
   //  { 9, 10, 11 },
   //  { 13, 14, 15 },
   // }
-  auto lhs_array = MakeUnique<Array2D<float>>(4, 3);
+  auto lhs_array = absl::make_unique<Array2D<float>>(4, 3);
   lhs_array->FillUnique(1.0f);
   auto lhs_literal = LiteralUtil::CreateR2FromArray2D<float>(*lhs_array);
   HloInstruction* lhs_instruction =
@@ -722,7 +736,7 @@ TEST_P(HloEvaluatorTest, DotRank2AndRank2) {
   //  { 3, 4 },
   //  { 5, 6 },
   // }
-  auto rhs_array = MakeUnique<Array2D<float>>(3, 2);
+  auto rhs_array = absl::make_unique<Array2D<float>>(3, 2);
   rhs_array->FillUnique(1.0f);
   auto rhs_literal = LiteralUtil::CreateR2FromArray2D<float>(*rhs_array);
   HloInstruction* rhs_instruction =
@@ -733,10 +747,11 @@ TEST_P(HloEvaluatorTest, DotRank2AndRank2) {
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
   b.AddInstruction(HloInstruction::CreateDot(shape, lhs_instruction,
-                                             rhs_instruction, dot_dnums));
-  module().AddEntryComputation(b.Build());
+                                             rhs_instruction, dot_dnums,
+                                             DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   auto expected_array = Array2D<float>({
       {22.f, 28.f},
@@ -746,7 +761,7 @@ TEST_P(HloEvaluatorTest, DotRank2AndRank2) {
   });
   auto expected = LiteralUtil::CreateR2FromArray2D<float>(expected_array);
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, SimpleConv1D) {
@@ -784,17 +799,18 @@ TEST_P(HloEvaluatorTest, SimpleConv1D) {
   dnums.set_kernel_input_feature_dimension(1);
   dnums.add_kernel_spatial_dimensions(2);
 
-  const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 3});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 3});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, window, dnums));
-  module().AddEntryComputation(b.Build());
+      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      window, dnums, DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   Array3D<float> expected_array = {{{11.f, 18.f, 9.f}}};
   auto expected = LiteralUtil::CreateR3FromArray3D<float>(expected_array);
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, Simple4x4Conv2DWith2x2Kernel) {
@@ -838,12 +854,13 @@ TEST_P(HloEvaluatorTest, Simple4x4Conv2DWith2x2Kernel) {
   ConvolutionDimensionNumbers dnums =
       XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
-  const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 4, 4});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 4, 4});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, window, dnums));
-  module().AddEntryComputation(b.Build());
+      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      window, dnums, DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   Array4D<float> expected_array(1, 1, 4, 4);
   // clang-format off
@@ -856,7 +873,7 @@ TEST_P(HloEvaluatorTest, Simple4x4Conv2DWith2x2Kernel) {
   // clang-format on
   auto expected = LiteralUtil::CreateR4FromArray4D<float>(expected_array);
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, Conv2DGeneralDimensionsReversed) {
@@ -921,22 +938,23 @@ TEST_P(HloEvaluatorTest, Conv2DGeneralDimensionsReversed) {
   dnums.add_kernel_spatial_dimensions(3);
   dnums.add_kernel_spatial_dimensions(1);
 
-  const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, window, dnums));
-  module().AddEntryComputation(b.Build());
+      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      window, dnums, DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   // clang-format off
   // Result dimensions: [feature=1, height=1, batch=1, width=2]
   Array4D<float> expected_array({{{{2514, 2685}}}});
-  Array4D<float> expected_array_bf16({{{{2512, 2672}}}});
+  Array4D<float> expected_array_bf16({{{{2512, 2688}}}});
   // clang-format on
   auto expected = LiteralUtil::CreateR4FromArray4D<float>(
       use_bfloat16_ ? expected_array_bf16 : expected_array);
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, Conv2DGeneralDimensions) {
@@ -998,22 +1016,23 @@ TEST_P(HloEvaluatorTest, Conv2DGeneralDimensions) {
   dnums.add_kernel_spatial_dimensions(3);
   dnums.add_kernel_spatial_dimensions(1);
 
-  const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, window, dnums));
-  module().AddEntryComputation(b.Build());
+      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      window, dnums, DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   // clang-format off
   // Result dimensions: [feature=1, height=1, batch=1, width=2]
   Array4D<float> expected_array({{{{2514, 2685}}}});
-  Array4D<float> expected_array_bf16({{{{2512, 2672}}}});
+  Array4D<float> expected_array_bf16({{{{2512, 2688}}}});
   // clang-format on
   auto expected = LiteralUtil::CreateR4FromArray4D<float>(
       use_bfloat16_ ? expected_array_bf16 : expected_array);
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, DilatedBaseConv2DWithHighPadding) {
@@ -1057,12 +1076,13 @@ TEST_P(HloEvaluatorTest, DilatedBaseConv2DWithHighPadding) {
   ConvolutionDimensionNumbers dnums =
       XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
-  const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 7, 7});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 7, 7});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, window, dnums));
-  module().AddEntryComputation(b.Build());
+      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      window, dnums, DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   Array4D<float> expected_array(1, 1, 7, 7);
   expected_array.FillWithYX(Array2D<float>({
@@ -1076,7 +1096,7 @@ TEST_P(HloEvaluatorTest, DilatedBaseConv2DWithHighPadding) {
   }));
   auto expected = LiteralUtil::CreateR4FromArray4D<float>(expected_array);
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, DilatedBaseConv2DWithLowAndHighPadding) {
@@ -1120,12 +1140,13 @@ TEST_P(HloEvaluatorTest, DilatedBaseConv2DWithLowAndHighPadding) {
   ConvolutionDimensionNumbers dnums =
       XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
-  const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 8, 8});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 8, 8});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, window, dnums));
-  module().AddEntryComputation(b.Build());
+      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      window, dnums, DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   Array4D<float> expected_array(1, 1, 8, 8);
   expected_array.FillWithYX(Array2D<float>({
@@ -1140,7 +1161,7 @@ TEST_P(HloEvaluatorTest, DilatedBaseConv2DWithLowAndHighPadding) {
   }));
   auto expected = LiteralUtil::CreateR4FromArray4D<float>(expected_array);
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest,
@@ -1191,12 +1212,13 @@ TEST_P(HloEvaluatorTest,
   ConvolutionDimensionNumbers dnums =
       XlaBuilder::CreateDefaultConvDimensionNumbers(2);
 
-  const Shape& shape = ShapeUtil::MakeShape(F32, {1, 1, 9, 3});
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 9, 3});
   b.AddInstruction(HloInstruction::CreateConvolve(
-      shape, lhs_instruction, rhs_instruction, window, dnums));
-  module().AddEntryComputation(b.Build());
+      shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
+      window, dnums, DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   Array4D<float> expected_array(1, 1, 9, 3);
   expected_array.FillWithYX(Array2D<float>({
@@ -1212,14 +1234,76 @@ TEST_P(HloEvaluatorTest,
   }));
   auto expected = LiteralUtil::CreateR4FromArray4D<float>(expected_array);
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
-class HloEvaluatorPreciseReduceTest : public HloVerifiedTestBase {};
+TEST_P(HloEvaluatorTest, Conv2DGroupedConvolution) {
+  HloComputation::Builder b(TestName());
+  std::vector<int64> input_dims = {1, 2, 2, 4};
+  std::vector<int64> filter_dims = {2, 2, 2, 8};
+  Shape input_shape = ShapeUtil::MakeShapeWithType<float>(input_dims);
+  Shape filter_shape = ShapeUtil::MakeShapeWithType<float>(filter_dims);
+  // Tensorflow dimension numbers for 2D convolution.
+  ConvolutionDimensionNumbers dnums;
+  dnums.set_input_batch_dimension(0);
+  dnums.set_output_batch_dimension(0);
+  dnums.add_input_spatial_dimensions(1);
+  dnums.add_output_spatial_dimensions(1);
+  dnums.add_input_spatial_dimensions(2);
+  dnums.add_output_spatial_dimensions(2);
+  dnums.set_input_feature_dimension(3);
+  dnums.set_output_feature_dimension(3);
+  dnums.add_kernel_spatial_dimensions(0);
+  dnums.add_kernel_spatial_dimensions(1);
+  dnums.set_kernel_input_feature_dimension(2);
+  dnums.set_kernel_output_feature_dimension(3);
+
+  Window window;
+  WindowDimension dim;
+  dim.set_size(2);
+  dim.set_stride(1);
+  dim.set_padding_low(0);
+  dim.set_padding_high(0);
+  dim.set_window_dilation(1);
+  dim.set_base_dilation(1);
+  *window.add_dimensions() = dim;
+  *window.add_dimensions() = dim;
+
+  std::vector<float> input_elems(ShapeUtil::ElementsIn(input_shape));
+  std::iota(input_elems.begin(), input_elems.end(), -7);
+  auto input_r1 = LiteralUtil::CreateR1<float>(input_elems);
+  auto input_r4 = input_r1.Reshape(input_dims).ConsumeValueOrDie();
+  HloInstruction* lhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(input_r4)));
+
+  std::vector<float> filter_elems(ShapeUtil::ElementsIn(filter_shape));
+  std::iota(filter_elems.begin(), filter_elems.end(), -31);
+  auto filter_r1 = LiteralUtil::CreateR1<float>(filter_elems);
+  auto filter_r4 = filter_r1.Reshape(filter_dims).ConsumeValueOrDie();
+  HloInstruction* rhs_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(filter_r4)));
+
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 8});
+  b.AddInstruction(HloInstruction::CreateConvolve(
+      shape, lhs_instruction, rhs_instruction,
+      /*feature_group_count=*/2, window, dnums, DefaultPrecisionConfig(2)));
+  m_->AddEntryComputation(b.Build());
+
+  Literal result = Evaluate();
+
+  Array4D<float> expected_array(1, 1, 1, 8);
+  expected_array.FillWithYX(
+      Array2D<float>({{668, 664, 660, 656, 668, 680, 692, 704}}));
+  auto expected = LiteralUtil::CreateR4FromArray4D<float>(expected_array);
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+class HloEvaluatorPreciseReduceTest : public HloTestBase {};
 
 // Tests that Reduce doesn't lose precision when adding many numbers (because
 // it accumulates its result in a double).
 TEST_F(HloEvaluatorPreciseReduceTest, AddReductionPrecisionTest) {
+  auto m = CreateNewVerifiedModule();
   HloComputation::Builder b(TestName());
 
   constexpr int kNumElements = 1 << 25;  // float += 1 saturates at 1<<24
@@ -1237,17 +1321,16 @@ TEST_F(HloEvaluatorPreciseReduceTest, AddReductionPrecisionTest) {
       HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
   add_computation.AddInstruction(HloInstruction::CreateBinary(
       scalar_shape, HloOpcode::kAdd, param_lhs, param_rhs));
-  auto add_func = module().AddEmbeddedComputation(add_computation.Build());
+  auto add_func = m->AddEmbeddedComputation(add_computation.Build());
 
   HloInstruction* reduce_instruction = b.AddInstruction(
       HloInstruction::CreateReduce(scalar_shape, arg_instruction, init_value,
                                    /*dimensions_to_reduce=*/{0}, add_func));
-  module().AddEntryComputation(b.Build());
+  m->AddEntryComputation(b.Build());
 
   HloEvaluator hlo_eval;
-  std::unique_ptr<Literal> result =
-      hlo_eval.Evaluate(reduce_instruction).ConsumeValueOrDie();
-  LiteralTestUtil::ExpectR0Equal<float>(kNumElements, *result);
+  Literal result = hlo_eval.Evaluate(reduce_instruction).ConsumeValueOrDie();
+  LiteralTestUtil::ExpectR0Equal<float>(kNumElements, result);
 }
 
 // Reducing many numbers should be fast because it doesn't create
@@ -1256,7 +1339,7 @@ void BM_ReducePrecisely(int num_iters) {
   tensorflow::testing::StopTiming();
   HloComputation::Builder b("BM_ReducePrecisely");
   HloModuleConfig config;
-  config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+  config.set_debug_options(GetDebugOptionsFromFlags());
   HloModule module("BM_ReducePrecisely", config);
 
   constexpr int kNumElements = 1 << 25;  // float += 1 saturates at 1<<24
@@ -1297,7 +1380,7 @@ TEST_P(HloEvaluatorTest, ReduceAdd) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto arg_array = MakeUnique<Array2D<float>>(2, 3);
+  auto arg_array = absl::make_unique<Array2D<float>>(2, 3);
   arg_array->FillUnique(1.0f);
   auto arg_literal = LiteralUtil::CreateR2FromArray2D<float>(*arg_array);
 
@@ -1315,20 +1398,20 @@ TEST_P(HloEvaluatorTest, ReduceAdd) {
       HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
   add_computation.AddInstruction(HloInstruction::CreateBinary(
       scalar_shape, HloOpcode::kAdd, param_lhs, param_rhs));
-  auto add_func = module().AddEmbeddedComputation(add_computation.Build());
+  auto add_func = m_->AddEmbeddedComputation(add_computation.Build());
 
   Shape shape = ShapeUtil::MakeShape(F32, {2});
   b.AddInstruction(
       HloInstruction::CreateReduce(shape, arg_instruction, init_value,
                                    /*dimensions_to_reduce=*/{1}, add_func));
 
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   auto expected = LiteralUtil::CreateR1<float>({6, 18});
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, ReduceWindowMax) {
@@ -1339,7 +1422,7 @@ TEST_P(HloEvaluatorTest, ReduceWindowMax) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto arg_array = MakeUnique<Array2D<float>>(2, 3);
+  auto arg_array = absl::make_unique<Array2D<float>>(2, 3);
   arg_array->FillUnique(1.0f);
   auto arg_literal = LiteralUtil::CreateR2FromArray2D<float>(*arg_array);
 
@@ -1357,7 +1440,7 @@ TEST_P(HloEvaluatorTest, ReduceWindowMax) {
       HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
   max_computation.AddInstruction(HloInstruction::CreateBinary(
       scalar_shape, HloOpcode::kMaximum, param_lhs, param_rhs));
-  auto max_func = module().AddEmbeddedComputation(max_computation.Build());
+  auto max_func = m_->AddEmbeddedComputation(max_computation.Build());
 
   Window window;
   WindowDimension dim;
@@ -1374,12 +1457,64 @@ TEST_P(HloEvaluatorTest, ReduceWindowMax) {
   b.AddInstruction(HloInstruction::CreateReduceWindow(
       shape, arg_instruction, init_value, window, max_func));
 
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   auto expected = LiteralUtil::CreateR2<float>({{6, 7}});
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_P(HloEvaluatorTest, ReduceWindowMaxWindowDilation) {
+  HloComputation::Builder b(TestName());
+
+  // arg:
+  // f32[3,3] {
+  //  { 1, 2, 3 },
+  //  { 5, 6, 7 },
+  //  { 9, 10, 11 },
+  // }
+  auto arg_array = absl::make_unique<Array2D<float>>(3, 3);
+  arg_array->FillUnique(1.0f);
+  auto arg_literal = LiteralUtil::CreateR2FromArray2D<float>(*arg_array);
+
+  HloInstruction* arg_instruction =
+      b.AddInstruction(HloInstruction::CreateConstant(std::move(arg_literal)));
+
+  auto init_value = b.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.f)));
+
+  HloComputation::Builder max_computation("max");
+  Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+  auto param_lhs = max_computation.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
+  auto param_rhs = max_computation.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
+  max_computation.AddInstruction(HloInstruction::CreateBinary(
+      scalar_shape, HloOpcode::kMaximum, param_lhs, param_rhs));
+  auto max_func = m_->AddEmbeddedComputation(max_computation.Build());
+
+  Window window;
+  WindowDimension dim;
+  dim.set_size(2);
+  dim.set_stride(1);
+  dim.set_padding_low(0);
+  dim.set_padding_high(0);
+  dim.set_window_dilation(2);
+  dim.set_base_dilation(1);
+  *window.add_dimensions() = dim;
+  *window.add_dimensions() = dim;
+
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 1});
+  b.AddInstruction(HloInstruction::CreateReduceWindow(
+      shape, arg_instruction, init_value, window, max_func));
+
+  m_->AddEntryComputation(b.Build());
+
+  Literal result = Evaluate();
+
+  auto expected = LiteralUtil::CreateR2<float>({{11}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, ReduceWindowAdd) {
@@ -1390,7 +1525,7 @@ TEST_P(HloEvaluatorTest, ReduceWindowAdd) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto arg_array = MakeUnique<Array2D<float>>(2, 3);
+  auto arg_array = absl::make_unique<Array2D<float>>(2, 3);
   arg_array->FillUnique(1.0f);
   auto arg_literal = LiteralUtil::CreateR2FromArray2D<float>(*arg_array);
 
@@ -1408,7 +1543,7 @@ TEST_P(HloEvaluatorTest, ReduceWindowAdd) {
       HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
   add_computation.AddInstruction(HloInstruction::CreateBinary(
       scalar_shape, HloOpcode::kAdd, param_lhs, param_rhs));
-  auto add_func = module().AddEmbeddedComputation(add_computation.Build());
+  auto add_func = m_->AddEmbeddedComputation(add_computation.Build());
 
   Window window;
   WindowDimension dim;
@@ -1431,12 +1566,12 @@ TEST_P(HloEvaluatorTest, ReduceWindowAdd) {
   b.AddInstruction(HloInstruction::CreateReduceWindow(
       shape, arg_instruction, init_value, window, add_func));
 
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   auto expected = LiteralUtil::CreateR2<float>({{1, 3, 5}, {5, 11, 13}});
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, ReduceWindowAdd6D) {
@@ -1444,7 +1579,7 @@ TEST_P(HloEvaluatorTest, ReduceWindowAdd6D) {
 
   // arg: f32[4,4,4,4,4,4] full of ones. Using small dims to limit run-time.
   std::vector<int64> input_dims(6, 4);
-  std::unique_ptr<Literal> arg_literal =
+  Literal arg_literal =
       LiteralUtil::CreateFullWithDescendingLayout<float>(input_dims, 1.0f);
 
   HloInstruction* arg_instruction =
@@ -1461,7 +1596,7 @@ TEST_P(HloEvaluatorTest, ReduceWindowAdd6D) {
       HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
   add_computation.AddInstruction(HloInstruction::CreateBinary(
       scalar_shape, HloOpcode::kAdd, param_lhs, param_rhs));
-  auto add_func = module().AddEmbeddedComputation(add_computation.Build());
+  auto add_func = m_->AddEmbeddedComputation(add_computation.Build());
 
   Window window;
 
@@ -1492,14 +1627,14 @@ TEST_P(HloEvaluatorTest, ReduceWindowAdd6D) {
   b.AddInstruction(HloInstruction::CreateReduceWindow(
       shape, arg_instruction, init_value, window, add_func));
 
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   std::vector<int64> output_dims = {4, 3, 3, 3, 4, 4};
-  std::unique_ptr<Literal> result_literal =
+  Literal result_literal =
       LiteralUtil::CreateFullWithDescendingLayout<float>(output_dims, 8.0f);
-  EXPECT_TRUE(LiteralTestUtil::Equal(*result_literal, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(result_literal, result));
 }
 
 TEST_P(HloEvaluatorTest, StridedSlice) {
@@ -1511,7 +1646,7 @@ TEST_P(HloEvaluatorTest, StridedSlice) {
   //  { 9, 10, 11, 12, 13 },
   //  { 17, 18, 19, 20, 21 },
   // }
-  auto operand_array = MakeUnique<Array2D<float>>(3, 5);
+  auto operand_array = absl::make_unique<Array2D<float>>(3, 5);
   operand_array->FillUnique(1.0f);
   auto operand_literal =
       LiteralUtil::CreateR2FromArray2D<float>(*operand_array);
@@ -1524,16 +1659,16 @@ TEST_P(HloEvaluatorTest, StridedSlice) {
                                                /*start_indices=*/{0, 2},
                                                /*limit_indices=*/{3, 5},
                                                /*strides=*/{2, 3}));
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   auto expected = LiteralUtil::CreateR2<float>({
       {3},
       {19},
   });
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, DynamicSlice) {
@@ -1544,7 +1679,7 @@ TEST_P(HloEvaluatorTest, DynamicSlice) {
   //  { 1, 2, 3, 4 },
   //  { 5, 6, 7, 8 },
   // }
-  auto operand_array = MakeUnique<Array2D<float>>(2, 4);
+  auto operand_array = absl::make_unique<Array2D<float>>(2, 4);
   operand_array->FillUnique(1.0f);
   auto operand_literal =
       LiteralUtil::CreateR2FromArray2D<float>(*operand_array);
@@ -1558,16 +1693,16 @@ TEST_P(HloEvaluatorTest, DynamicSlice) {
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   b.AddInstruction(HloInstruction::CreateDynamicSlice(shape, operand,
                                                       start_indices, {2, 3}));
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   auto expected = LiteralUtil::CreateR2<float>({
       {2, 3, 4},
       {6, 7, 8},
   });
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 // Verifies that the HloEvaluator's implementation goes along with existing
@@ -1580,7 +1715,7 @@ TEST_P(HloEvaluatorTest, DynamicSliceModSlice) {
   //  { 1, 2, 3, 4 },
   //  { 5, 6, 7, 8 },
   // }
-  auto operand_array = MakeUnique<Array2D<float>>(2, 4);
+  auto operand_array = absl::make_unique<Array2D<float>>(2, 4);
   operand_array->FillUnique(1.0f);
   auto operand_literal =
       LiteralUtil::CreateR2FromArray2D<float>(*operand_array);
@@ -1594,16 +1729,16 @@ TEST_P(HloEvaluatorTest, DynamicSliceModSlice) {
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   b.AddInstruction(HloInstruction::CreateDynamicSlice(shape, operand,
                                                       start_indices, {2, 3}));
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   auto expected = LiteralUtil::CreateR2<float>({
       {2, 3, 4},
       {6, 7, 8},
   });
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, DynamicSliceUpdate) {
@@ -1614,7 +1749,7 @@ TEST_P(HloEvaluatorTest, DynamicSliceUpdate) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto operand_array = MakeUnique<Array2D<double>>(2, 3);
+  auto operand_array = absl::make_unique<Array2D<double>>(2, 3);
   operand_array->FillUnique(1.0);
   auto operand_literal =
       LiteralUtil::CreateR2FromArray2D<double>(*operand_array);
@@ -1631,16 +1766,16 @@ TEST_P(HloEvaluatorTest, DynamicSliceUpdate) {
   Shape shape = ShapeUtil::MakeShape(F64, {2, 3});
   b.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
       shape, operand, update, start_indices));
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   auto expected = LiteralUtil::CreateR2<double>({
       {1, -2, -3},
       {5, -6, -7},
   });
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, SetAndGetTuples) {
@@ -1651,7 +1786,7 @@ TEST_P(HloEvaluatorTest, SetAndGetTuples) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto operand_array = MakeUnique<Array2D<double>>(2, 3);
+  auto operand_array = absl::make_unique<Array2D<double>>(2, 3);
   operand_array->FillUnique(1.0);
   auto operand_literal2 =
       LiteralUtil::CreateR2FromArray2D<double>(*operand_array);
@@ -1667,16 +1802,16 @@ TEST_P(HloEvaluatorTest, SetAndGetTuples) {
   Shape shape = ShapeUtil::MakeShape(F64, {2, 3});
   b.AddInstruction(HloInstruction::CreateGetTupleElement(shape, tuple, 1));
 
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   auto expected = LiteralUtil::CreateR2<double>({
       {1, 2, 3},
       {5, 6, 7},
   });
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, SetAndGetNestedTuples) {
@@ -1687,7 +1822,7 @@ TEST_P(HloEvaluatorTest, SetAndGetNestedTuples) {
   //  { 1, 2, 3 },
   //  { 5, 6, 7 },
   // }
-  auto operand_array = MakeUnique<Array2D<double>>(2, 3);
+  auto operand_array = absl::make_unique<Array2D<double>>(2, 3);
   operand_array->FillUnique(1.0);
 
   HloInstruction* operand2 = b.AddInstruction(HloInstruction::CreateConstant(
@@ -1706,18 +1841,16 @@ TEST_P(HloEvaluatorTest, SetAndGetNestedTuples) {
   b.AddInstruction(
       HloInstruction::CreateGetTupleElement(tuple2->shape(), outer_tuple, 1));
 
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   auto result_inner_literal =
       LiteralUtil::CreateR2FromArray2D<double>(*operand_array);
-  auto expected = LiteralUtil::MakeTuple({
-      result_inner_literal.get(),
-      result_inner_literal.get(),
-  });
+  auto expected =
+      LiteralUtil::MakeTuple({&result_inner_literal, &result_inner_literal});
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, Reverse) {
@@ -1746,9 +1879,9 @@ TEST_P(HloEvaluatorTest, Reverse) {
 
   const Shape shape = ShapeUtil::MakeShape(F32, {4, 3, 2, 1});
   b.AddInstruction(HloInstruction::CreateReverse(shape, operand, {0, 1}));
-  module().AddEntryComputation(b.Build());
+  m_->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result = Evaluate();
+  Literal result = Evaluate();
 
   // clang-format off
   auto expected = LiteralUtil::CreateR4FromArray4D<float>({
@@ -1770,7 +1903,7 @@ TEST_P(HloEvaluatorTest, Reverse) {
   });
   // clang-format on
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected, *result));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
 TEST_P(HloEvaluatorTest, EvaluateWithSubstitutions) {
@@ -1786,12 +1919,13 @@ TEST_P(HloEvaluatorTest, EvaluateWithSubstitutions) {
 
   // Evaluate add with param0 = {1, 2, 3, 4}, square = {10, 20, 30, 40}.
   HloEvaluator evaluator;
+  Literal param0_literal = LiteralUtil::CreateR1<float>({1, 2, 3, 4});
+  Literal square_literal = LiteralUtil::CreateR1<float>({10, 20, 30, 40});
   auto result = evaluator.EvaluateWithSubstitutions(
-      add, {{param0, LiteralUtil::CreateR1<float>({1, 2, 3, 4}).get()},
-            {square, LiteralUtil::CreateR1<float>({10, 20, 30, 40}).get()}});
+      add, {{param0, &param0_literal}, {square, &square_literal}});
   TF_ASSERT_OK(result.status());
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *LiteralUtil::CreateR1<float>({11, 22, 33, 44}), *result.ValueOrDie()));
+      LiteralUtil::CreateR1<float>({11, 22, 33, 44}), result.ValueOrDie()));
 }
 
 // Check that EvaluateWithSubstitutions works if one of the operands to the op
@@ -1811,11 +1945,12 @@ TEST_P(HloEvaluatorTest, EvaluateWithSubstitutionsWithConstantOperand) {
 
   // Evaluate add with square = {10, 20, 30, 40}.
   HloEvaluator evaluator;
-  auto result = evaluator.EvaluateWithSubstitutions(
-      add, {{square, LiteralUtil::CreateR1<float>({10, 20, 30, 40}).get()}});
+  Literal square_literal = LiteralUtil::CreateR1<float>({10, 20, 30, 40});
+  auto result =
+      evaluator.EvaluateWithSubstitutions(add, {{square, &square_literal}});
   TF_ASSERT_OK(result.status());
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *LiteralUtil::CreateR1<float>({11, 22, 33, 44}), *result.ValueOrDie()));
+      LiteralUtil::CreateR1<float>({11, 22, 33, 44}), result.ValueOrDie()));
 }
 
 TEST_P(HloEvaluatorTest, EvaluateGather_TensorFlowGatherV1) {
@@ -1826,21 +1961,20 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2] parameter(1)
   ROOT gather = s32[2,3] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1, 3}
+      slice_sizes={1, 3}
 }
 )";
-  ParseAndVerifyModule(hlo_text);
-  std::unique_ptr<Literal> operand =
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR1<int32>({0, 2});
+  Literal start_indices = LiteralUtil::CreateR1<int32>({0, 2});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *LiteralUtil::CreateR2<int32>({{1, 2, 3}, {7, 8, 9}}),
-      *Evaluate({operand.get(), gather_indices.get()})));
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {7, 8, 9}}),
+      Evaluate({&operand, &start_indices})));
 }
 
 TEST_P(HloEvaluatorTest, EvaluateGather_TensorFlowGatherV2) {
@@ -1851,21 +1985,20 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2] parameter(1)
   ROOT gather = s32[3,2] gather(operand, indices),
-      output_window_dims={0},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={0},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=1,
-      window_bounds={3, 1}
+      slice_sizes={3, 1}
 }
 )";
-  ParseAndVerifyModule(hlo_text);
-  std::unique_ptr<Literal> operand =
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR1<int32>({0, 2});
+  Literal start_indices = LiteralUtil::CreateR1<int32>({0, 2});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *LiteralUtil::CreateR2<int32>({{1, 3}, {4, 6}, {7, 9}}),
-      *Evaluate({operand.get(), gather_indices.get()})));
+      LiteralUtil::CreateR2<int32>({{1, 3}, {4, 6}, {7, 9}}),
+      Evaluate({&operand, &start_indices})));
 }
 
 TEST_P(HloEvaluatorTest, EvaluateGather_TensorFlowGatherMultipleBatchDims) {
@@ -1876,22 +2009,21 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2,2] parameter(1)
   ROOT gather = s32[2,3,2] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={1},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=2,
-      window_bounds={3, 1}
+      slice_sizes={3, 1}
 }
 )";
-  ParseAndVerifyModule(hlo_text);
-  std::unique_ptr<Literal> operand =
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR2<int32>({{0, 2}, {2, 1}});
+  Literal start_indices = LiteralUtil::CreateR2<int32>({{0, 2}, {2, 1}});
   EXPECT_TRUE(LiteralTestUtil::Equal(
-      *LiteralUtil::CreateR3<int32>(
+      LiteralUtil::CreateR3<int32>(
           {{{1, 3}, {4, 6}, {7, 9}}, {{3, 2}, {6, 5}, {9, 8}}}),
-      *Evaluate({operand.get(), gather_indices.get()})));
+      Evaluate({&operand, &start_indices})));
 }
 
 TEST_P(HloEvaluatorTest, EvaluateGather_TensorFlowGatherNd) {
@@ -1902,23 +2034,22 @@ ENTRY main {
   operand = s32[3,3,2] parameter(0)
   indices = s32[2,2] parameter(1)
   ROOT gather = s32[2,2] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0,1},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1},
+      collapsed_slice_dims={0,1},
+      start_index_map={0,1},
       index_vector_dim=1,
-      window_bounds={1,1,2}
+      slice_sizes={1,1,2}
 }
 )";
-  ParseAndVerifyModule(hlo_text);
-  std::unique_ptr<Literal> operand =
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
       LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
                                     {{-4, 4}, {-5, 5}, {-6, 6}},  //
                                     {{-7, 7}, {-8, 8}, {-9, 9}}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
+  Literal start_indices = LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
   EXPECT_TRUE(
-      LiteralTestUtil::Equal(*LiteralUtil::CreateR2<int32>({{-1, 1}, {-4, 4}}),
-                             *Evaluate({operand.get(), gather_indices.get()})));
+      LiteralTestUtil::Equal(LiteralUtil::CreateR2<int32>({{-1, 1}, {-4, 4}}),
+                             Evaluate({&operand, &start_indices})));
 }
 
 TEST_P(HloEvaluatorTest,
@@ -1930,23 +2061,22 @@ ENTRY main {
   operand = s32[3,3,2] parameter(0)
   indices = s32[2,2] parameter(1)
   ROOT gather = s32[2,2] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0,1},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1},
+      collapsed_slice_dims={0,1},
+      start_index_map={0,1},
       index_vector_dim=0,
-      window_bounds={1,1,2}
+      slice_sizes={1,1,2}
 }
 )";
-  ParseAndVerifyModule(hlo_text);
-  std::unique_ptr<Literal> operand =
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
       LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
                                     {{-4, 4}, {-5, 5}, {-6, 6}},  //
                                     {{-7, 7}, {-8, 8}, {-9, 9}}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
+  Literal start_indices = LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
   EXPECT_TRUE(
-      LiteralTestUtil::Equal(*LiteralUtil::CreateR2<int32>({{-2, 2}, {-1, 1}}),
-                             *Evaluate({operand.get(), gather_indices.get()})));
+      LiteralTestUtil::Equal(LiteralUtil::CreateR2<int32>({{-2, 2}, {-1, 1}}),
+                             Evaluate({&operand, &start_indices})));
 }
 
 TEST_P(HloEvaluatorTest, EvaluateGather_DynamicSlice) {
@@ -1957,21 +2087,19 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2] parameter(1)
   ROOT gather = s32[1,1] gather(operand, indices),
-      output_window_dims={0,1},
-      elided_window_dims={},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={0,1},
+      collapsed_slice_dims={},
+      start_index_map={0,1},
       index_vector_dim=0,
-      window_bounds={1,1}
+      slice_sizes={1,1}
 }
 )";
-  ParseAndVerifyModule(hlo_text);
-  std::unique_ptr<Literal> operand =
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR1<int32>({1, 1});
-  EXPECT_TRUE(
-      LiteralTestUtil::Equal(*LiteralUtil::CreateR2<int32>({{5}}),
-                             *Evaluate({operand.get(), gather_indices.get()})));
+  Literal start_indices = LiteralUtil::CreateR1<int32>({1, 1});
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR2<int32>({{5}}),
+                                     Evaluate({&operand, &start_indices})));
 }
 
 TEST_P(HloEvaluatorTest, EvaluateGather_BatchDynamicSlice) {
@@ -1982,21 +2110,20 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[2,2] parameter(1)
   ROOT gather = s32[2,1,1] gather(operand, indices),
-      output_window_dims={1,2},
-      elided_window_dims={},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={1,2},
+      collapsed_slice_dims={},
+      start_index_map={0,1},
       index_vector_dim=0,
-      window_bounds={1,1}
+      slice_sizes={1,1}
 }
 )";
-  ParseAndVerifyModule(hlo_text);
-  std::unique_ptr<Literal> operand =
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR2<int32>({{2, 1}, {1, 1}});
+  Literal start_indices = LiteralUtil::CreateR2<int32>({{2, 1}, {1, 1}});
   EXPECT_TRUE(
-      LiteralTestUtil::Equal(*LiteralUtil::CreateR3<int32>({{{8}}, {{5}}}),
-                             *Evaluate({operand.get(), gather_indices.get()})));
+      LiteralTestUtil::Equal(LiteralUtil::CreateR3<int32>({{{8}}, {{5}}}),
+                             Evaluate({&operand, &start_indices})));
 }
 
 TEST_P(HloEvaluatorTest, EvaluateGather_ZeroDimBounds) {
@@ -2007,20 +2134,18 @@ ENTRY main {
   operand = s32[3,0] parameter(0)
   indices = s32[2] parameter(1)
   ROOT gather = s32[2,0] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1, 0}
+      slice_sizes={1, 0}
 }
 )";
-  ParseAndVerifyModule(hlo_text);
-  std::unique_ptr<Literal> operand = LiteralUtil::CreateR2<int32>({{}, {}, {}});
-  std::unique_ptr<Literal> gather_indices =
-      LiteralUtil::CreateR1<int32>({0, 2});
-  EXPECT_TRUE(
-      LiteralTestUtil::Equal(*LiteralUtil::CreateR2<int32>({{}, {}}),
-                             *Evaluate({operand.get(), gather_indices.get()})));
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand = LiteralUtil::CreateR2<int32>({{}, {}, {}});
+  Literal start_indices = LiteralUtil::CreateR1<int32>({0, 2});
+  EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR2<int32>({{}, {}}),
+                                     Evaluate({&operand, &start_indices})));
 }
 
 TEST_P(HloEvaluatorTest, EvaluateGather_NoOutputWindowDims) {
@@ -2031,21 +2156,554 @@ ENTRY main {
   operand = s32[3] parameter(0)
   indices = s32[2,2,1] parameter(1)
   ROOT gather = s32[2,2] gather(operand, indices),
-      output_window_dims={},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=2,
-      window_bounds={1}
+      slice_sizes={1}
 }
 )";
-  ParseAndVerifyModule(hlo_text);
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
 
-  std::unique_ptr<Literal> operand = LiteralUtil::CreateR1<int32>({0, 1, 2});
-  std::unique_ptr<Literal> gather_indices =
+  Literal operand = LiteralUtil::CreateR1<int32>({0, 1, 2});
+  Literal start_indices =
       LiteralUtil::CreateR3<int32>({{{0}, {1}}, {{2}, {1}}});
   EXPECT_TRUE(
-      LiteralTestUtil::Equal(*LiteralUtil::CreateR2<int32>({{0, 1}, {2, 1}}),
-                             *Evaluate({operand.get(), gather_indices.get()})));
+      LiteralTestUtil::Equal(LiteralUtil::CreateR2<int32>({{0, 1}, {2, 1}}),
+                             Evaluate({&operand, &start_indices})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_TensorFlowScatterV1_Update) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = s32[2,3] parameter(2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal scatter_indices = LiteralUtil::CreateR1<int32>({0, 2});
+  Literal updates = LiteralUtil::CreateR2<int32>({{10, 20, 30}, {70, 80, 90}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32>({{10, 20, 30}, {4, 5, 6}, {70, 80, 90}}),
+      Evaluate({&operand, &scatter_indices, &updates})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_TensorFlowScatterV2_Update) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatterV2
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = s32[3,2] parameter(2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={0},
+      inserted_window_dims={1},
+      scatter_dims_to_operand_dims={1},
+      index_vector_dim=1
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal scatter_indices = LiteralUtil::CreateR1<int32>({0, 2});
+  Literal updates =
+      LiteralUtil::CreateR2<int32>({{10, 30}, {40, 60}, {70, 90}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32>({{10, 2, 30}, {40, 5, 60}, {70, 8, 90}}),
+      Evaluate({&operand, &scatter_indices, &updates})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_TensorFlowScatter_Add) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatter
+
+add_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(s32[] lhs, s32[] rhs)
+}
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = s32[2,3] parameter(2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=add_s32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal scatter_indices = LiteralUtil::CreateR1<int32>({0, 2});
+  Literal updates = LiteralUtil::CreateR2<int32>({{10, 20, 30}, {70, 80, 90}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32>({{11, 22, 33}, {4, 5, 6}, {77, 88, 99}}),
+      Evaluate({&operand, &scatter_indices, &updates})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_TensorFlowScatter_Mul) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatter
+
+mul_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT mul = s32[] multiply(s32[] lhs, s32[] rhs)
+}
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = s32[2,3] parameter(2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=mul_s32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal scatter_indices = LiteralUtil::CreateR1<int32>({0, 2});
+  Literal updates = LiteralUtil::CreateR2<int32>({{10, 20, 30}, {70, 80, 90}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32>({{10, 40, 90}, {4, 5, 6}, {490, 640, 810}}),
+      Evaluate({&operand, &scatter_indices, &updates})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_TensorFlowScatter_F32) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatter
+
+add_f32 (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(f32[] lhs, f32[] rhs)
+}
+
+ENTRY main {
+  operand = f32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = f32[2,3] parameter(2)
+  ROOT scatter = f32[3,3] scatter(operand, indices, updates),
+      to_apply=add_f32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand = LiteralUtil::CreateR2<float>(
+      {{1.1, 2.2, 3.3}, {4.4, 5.5, 6.6}, {7.7, 8.8, 9.9}});
+  Literal scatter_indices = LiteralUtil::CreateR1<int32>({2, 1});
+  Literal updates =
+      LiteralUtil::CreateR2<float>({{0.4, 1.1, 0.7}, {2.3, 3.1, 1.6}});
+  EXPECT_TRUE(LiteralTestUtil::Near(
+      LiteralUtil::CreateR2<float>(
+          {{1.1, 2.2, 3.3}, {6.7, 8.6, 8.2}, {8.1, 9.9, 10.6}}),
+      Evaluate({&operand, &scatter_indices, &updates}), ErrorSpec{0.1, 0.01}));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_TensorFlowScatter_RepeatedIndices) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatter
+
+add_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(s32[] lhs, s32[] rhs)
+}
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = s32[2,3] parameter(2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=add_s32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal scatter_indices = LiteralUtil::CreateR1<int32>({1, 1});
+  Literal updates = LiteralUtil::CreateR2<int32>({{10, 20, 30}, {70, 80, 90}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {84, 105, 126}, {7, 8, 9}}),
+      Evaluate({&operand, &scatter_indices, &updates})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_TensorFlowScatter_MultipleBatchDims) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatterMultipleBatchDims
+
+add_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(s32[] lhs, s32[] rhs)
+}
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2,2] parameter(1)
+  updates = s32[2,3,2] parameter(2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=add_s32,
+      update_window_dims={1},
+      inserted_window_dims={1},
+      scatter_dims_to_operand_dims={1},
+      index_vector_dim=2
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal scatter_indices = LiteralUtil::CreateR2<int32>({{0, 2}, {2, 1}});
+  Literal updates = LiteralUtil::CreateR3<int32>(
+      {{{10, 30}, {40, 60}, {70, 90}}, {{5, 5}, {5, 5}, {5, 5}}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32>({{11, 7, 38}, {44, 10, 71}, {77, 13, 104}}),
+      Evaluate({&operand, &scatter_indices, &updates})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_TensorFlowScatterNd) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatterNd
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,3,2] parameter(0)
+  indices = s32[2,2] parameter(1)
+  updates = s32[2,2] parameter(2)
+  ROOT scatter = s32[3,3,2] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1},
+      inserted_window_dims={0,1},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=1
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
+      LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                    {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
+  Literal scatter_indices = LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
+  Literal updates = LiteralUtil::CreateR2<int32>({{-10, 10}, {-40, 40}});
+  Literal expected =
+      LiteralUtil::CreateR3<int32>({{{-10, 10}, {-2, 2}, {-3, 3}},  //
+                                    {{-40, 40}, {-5, 5}, {-6, 6}},  //
+                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      expected, Evaluate({&operand, &scatter_indices, &updates})));
+}
+
+TEST_P(HloEvaluatorTest,
+       EvaluateScatter_TensorFlowScatterNd_NonDefaultIndexVectorDim) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatterNdNonDefaultIndexVectorDim
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,3,2] parameter(0)
+  indices = s32[2,2] parameter(1)
+  updates = s32[2,2] parameter(2)
+  ROOT scatter = s32[3,3,2] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1},
+      inserted_window_dims={0,1},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=0
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
+      LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                    {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
+  Literal scatter_indices = LiteralUtil::CreateR2<int32>({{0, 0}, {1, 0}});
+  Literal updates = LiteralUtil::CreateR2<int32>({{-10, 10}, {-20, 20}});
+  Literal expected =
+      LiteralUtil::CreateR3<int32>({{{-20, 20}, {-10, 10}, {-3, 3}},  //
+                                    {{-4, 4}, {-5, 5}, {-6, 6}},      //
+                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      expected, Evaluate({&operand, &scatter_indices, &updates})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_DynamicUpdateSlice) {
+  const char* hlo_text = R"(
+HloModule DynamicUpdateSlice
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = s32[1,1] parameter(2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={0,1},
+      inserted_window_dims={},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=0
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal scatter_indices = LiteralUtil::CreateR1<int32>({1, 1});
+  Literal updates = LiteralUtil::CreateR2<int32>({{10}});
+  Literal expected =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 10, 6}, {7, 8, 9}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      expected, Evaluate({&operand, &scatter_indices, &updates})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_BatchDynamicUpdateSlice) {
+  const char* hlo_text = R"(
+HloModule BatchDynamicUpdateSlice
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2,2] parameter(1)
+  updates = s32[2,1,1] parameter(2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1,2},
+      inserted_window_dims={},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=0
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal scatter_indices = LiteralUtil::CreateR2<int32>({{2, 1}, {1, 1}});
+  Literal updates = LiteralUtil::CreateR3<int32>({{{10}}, {{20}}});
+  Literal expected =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 20, 6}, {7, 10, 9}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      expected, Evaluate({&operand, &scatter_indices, &updates})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_ZeroDimBounds) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatter_ZeroDimBounds
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,0] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = s32[2,0] parameter(2)
+  ROOT scatter = s32[3,0] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand = LiteralUtil::CreateR2<int32>({{}, {}, {}});
+  Literal scatter_indices = LiteralUtil::CreateR1<int32>({0, 2});
+  Literal updates = LiteralUtil::CreateR2<int32>({{}, {}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      operand, Evaluate({&operand, &scatter_indices, &updates})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_NoUpdateWindowDims) {
+  const string hlo_text = R"(
+HloModule Scatter_NoUpdateWindowDims
+
+add_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(s32[] lhs, s32[] rhs)
+}
+
+ENTRY main {
+  operand = s32[3] parameter(0)
+  indices = s32[2,2,1] parameter(1)
+  updates = s32[2,2] parameter(2)
+  ROOT scatter = s32[3] scatter(operand, indices, updates),
+      to_apply=add_s32,
+      update_window_dims={},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=2
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+
+  Literal operand = LiteralUtil::CreateR1<int32>({0, 1, 2});
+  Literal scatter_indices =
+      LiteralUtil::CreateR3<int32>({{{0}, {1}}, {{2}, {1}}});
+  Literal updates = LiteralUtil::CreateR2<int32>({{10, 20}, {30, 40}});
+  Literal expected = LiteralUtil::CreateR1<int32>({10, 61, 32});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      expected, Evaluate({&operand, &scatter_indices, &updates})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_NegativeIndices) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatter_NegativeIndices
+
+add_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(s32[] lhs, s32[] rhs)
+}
+
+ENTRY main {
+  operand = s32[3,3] parameter(0)
+  indices = s32[2] parameter(1)
+  updates = s32[2,3] parameter(2)
+  ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+      to_apply=add_s32,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  // No updates should happen for the negative indices.
+  Literal scatter_indices = LiteralUtil::CreateR1<int32>({-1, 2});
+  Literal updates = LiteralUtil::CreateR2<int32>({{10, 20, 30}, {70, 80, 90}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {77, 88, 99}}),
+      EvaluateWithModule(module.get(),
+                         {&operand, &scatter_indices, &updates})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_OobIndices) {
+  const string hlo_text = R"(
+HloModule BatchDynamicUpdateSlice
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,3]{1,0} parameter(0)
+  indices = s32[6,2]{1,0} parameter(1)
+  updates = s32[6,1,1]{2,1,0} parameter(2)
+  ROOT scatter = s32[3,3]{1,0} scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1,2},
+      inserted_window_dims={},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=1
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  // No updates should happen for the OOB indices.
+  Literal scatter_indices = LiteralUtil::CreateR2<int32>(
+      {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {2147483647, 1}, {1, 2}});
+  Literal updates = LiteralUtil::CreateR3<int32>(
+      {{{10}}, {{20}}, {{30}}, {{40}}, {{50}}, {{60}}});
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 30, 60}, {7, 20, 9}}),
+      EvaluateWithModule(module.get(),
+                         {&operand, &scatter_indices, &updates})));
+}
+
+TEST_P(HloEvaluatorTest, EvaluateScatter_OobUpdateWindow) {
+  const char* hlo_text = R"(
+HloModule TensorFlowScatterNd_OobUpdateWindow
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  ROOT rhs = s32[] parameter(1)
+}
+
+ENTRY main {
+  operand = s32[3,3,2] parameter(0)
+  indices = s32[1,2] parameter(1)
+  updates = s32[1,2,2] parameter(2)
+  ROOT scatter = s32[3,3,2] scatter(operand, indices, updates),
+      to_apply=update_s32,
+      update_window_dims={1,2},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=1
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  Literal operand =
+      LiteralUtil::CreateR3<int32>({{{-1, 1}, {-2, 2}, {-3, 3}},  //
+                                    {{-4, 4}, {-5, 5}, {-6, 6}},  //
+                                    {{-7, 7}, {-8, 8}, {-9, 9}}});
+  Literal scatter_indices = LiteralUtil::CreateR2<int32>({{0, 2}});
+  Literal updates = LiteralUtil::CreateR3<int32>({{{-10, 10}, {-40, 40}}});
+  // Given the update window size of 2,2 and the index of 0,2, the update window
+  // will be OOB. So, nothing should be updated.
+  Literal expected = operand.Clone();
+  EXPECT_TRUE(LiteralTestUtil::Equal(
+      expected, EvaluateWithModule(module.get(),
+                                   {&operand, &scatter_indices, &updates})));
 }
 
 // Verifies that HloEvaluator evaluates a HLO instruction that performs
@@ -2062,6 +2720,49 @@ TEST_P(HloEvaluatorTest, DoesCompareBF16) {
       LiteralUtil::CreateR2<bool>({{false, true, true}, {false, true, true}});
   TestBinaryOp(HloOpcode::kGe, std::move(expected), std::move(lhs),
                std::move(rhs));
+}
+
+TEST_P(HloEvaluatorTest, Bf16Reduction) {
+  const string hlo_text = R"(
+HloModule Bf16Reduction
+
+add_bf16 (lhs: bf16[], rhs: bf16[]) -> bf16[] {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(bf16[] lhs, bf16[] rhs)
+}
+
+ENTRY main {
+  arg0 = bf16[4]{0} parameter(0)
+  init = bf16[] constant(0)
+  ROOT %reduce = bf16[] reduce(arg0, init), dimensions={0}, to_apply=add_bf16
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+
+  Literal arg = LiteralUtil::CreateR1<bfloat16>(
+      {bfloat16(1.0f), bfloat16(3.0f), bfloat16(-2.0f), bfloat16(42.0f)});
+  Literal expected = LiteralUtil::CreateR0<bfloat16>(bfloat16(44.0f));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, Evaluate({&arg})));
+}
+
+TEST_P(HloEvaluatorTest, SliceWithDifferentLayout) {
+  // Regression test for b/114735354.
+  const string hlo_text = R"(
+HloModule SliceWithDifferentLayout
+
+ENTRY main {
+  arg = f32[2,2,2]{0,1,2} parameter(0)
+  ROOT %slice = f32[2,2,2]{1,0,2} slice(f32[2,2,2]{0,1,2} %arg), slice={[0:2], [0:2], [0:2]}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+
+  Literal arg = LiteralUtil::CreateR3WithLayout<float>(
+      {{{1.0f, 2.0f}, {3.0f, 4.0f}}, {{5.0f, 6.0f}, {7.0f, 8.0f}}},
+      LayoutUtil::MakeLayout({0, 1, 2}));
+  Literal actual = Evaluate({&arg});
+  EXPECT_TRUE(LiteralTestUtil::Equal(arg, actual));
 }
 
 INSTANTIATE_TEST_CASE_P(HloEvaluatorTest_Instantiation, HloEvaluatorTest,

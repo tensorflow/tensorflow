@@ -46,7 +46,7 @@ class ChainBijectorTest(test.TestCase):
   """Tests the correctness of the Y = Chain(bij1, bij2, bij3) transformation."""
 
   def testBijector(self):
-    with self.test_session():
+    with self.cached_session():
       chain = Chain((Exp(), Softplus()))
       self.assertEqual("chain_of_exp_of_softplus", chain.name)
       x = np.asarray([[[1., 2.],
@@ -61,7 +61,7 @@ class ChainBijectorTest(test.TestCase):
           chain.forward_log_det_jacobian(x, event_ndims=1).eval())
 
   def testBijectorIdentity(self):
-    with self.test_session():
+    with self.cached_session():
       chain = Chain()
       self.assertEqual("identity", chain.name)
       x = np.asarray([[[1., 2.],
@@ -74,13 +74,13 @@ class ChainBijectorTest(test.TestCase):
           0., chain.forward_log_det_jacobian(x, event_ndims=1).eval())
 
   def testScalarCongruency(self):
-    with self.test_session():
+    with self.cached_session():
       chain = Chain((Exp(), Softplus()))
       assert_scalar_congruency(
           chain, lower_x=1e-3, upper_x=1.5, rtol=0.05)
 
   def testShapeGetters(self):
-    with self.test_session():
+    with self.cached_session():
       chain = Chain([
           SoftmaxCentered(validate_args=True),
           SoftmaxCentered(validate_args=True),
@@ -195,7 +195,7 @@ class ChainBijectorTest(test.TestCase):
         dtype=np.float32, shape=[None, 10], name="samples")
     ildj = chain.inverse_log_det_jacobian(samples, event_ndims=0)
     self.assertTrue(ildj is not None)
-    with self.test_session():
+    with self.cached_session():
       ildj.eval({samples: np.zeros([2, 10], np.float32)})
 
 

@@ -53,9 +53,6 @@ _summary_type_map = {
 }
 
 
-# TODO(joelshor): For now, this only supports 1:1 generator:discriminator
-# training sequentially. Find a nice way to expose options to the user without
-# exposing internals.
 class GANEstimator(estimator.Estimator):
   """An estimator for Generative Adversarial Networks (GANs).
 
@@ -115,7 +112,8 @@ class GANEstimator(estimator.Estimator):
                get_eval_metric_ops_fn=None,
                add_summaries=None,
                use_loss_summaries=True,
-               config=None):
+               config=None,
+               warm_start_from=None):
     """Initializes a GANEstimator instance.
 
     Args:
@@ -154,6 +152,8 @@ class GANEstimator(estimator.Estimator):
       use_loss_summaries: If `True`, add loss summaries. If `False`, does not.
         If `None`, uses defaults.
       config: `RunConfig` object to configure the runtime settings.
+      warm_start_from: A filepath to a checkpoint or saved model, or a
+        WarmStartSettings object to configure initialization.
 
     Raises:
       ValueError: If loss functions aren't callable.
@@ -187,10 +187,11 @@ class GANEstimator(estimator.Estimator):
       return _get_estimator_spec(
           mode, gan_model, generator_loss_fn, discriminator_loss_fn,
           get_eval_metric_ops_fn, generator_optimizer, discriminator_optimizer,
-          get_hooks_fn)
+          get_hooks_fn, use_loss_summaries)
 
     super(GANEstimator, self).__init__(
-        model_fn=_model_fn, model_dir=model_dir, config=config)
+        model_fn=_model_fn, model_dir=model_dir, config=config,
+        warm_start_from=warm_start_from)
 
 
 def _get_gan_model(
@@ -214,15 +215,17 @@ def _get_gan_model(
 def _get_estimator_spec(
     mode, gan_model, generator_loss_fn, discriminator_loss_fn,
     get_eval_metric_ops_fn, generator_optimizer, discriminator_optimizer,
-    get_hooks_fn=None):
+    get_hooks_fn=None, use_loss_summaries=True):
   """Get the EstimatorSpec for the current mode."""
   if mode == model_fn_lib.ModeKeys.PREDICT:
     estimator_spec = model_fn_lib.EstimatorSpec(
         mode=mode, predictions=gan_model.generated_data)
   else:
     gan_loss = tfgan_tuples.GANLoss(
-        generator_loss=generator_loss_fn(gan_model),
-        discriminator_loss=discriminator_loss_fn(gan_model))
+        generator_loss=generator_loss_fn(
+            gan_model, add_summaries=use_loss_summaries),
+        discriminator_loss=discriminator_loss_fn(
+            gan_model, add_summaries=use_loss_summaries))
     if mode == model_fn_lib.ModeKeys.EVAL:
       estimator_spec = _get_eval_estimator_spec(
           gan_model, gan_loss, get_eval_metric_ops_fn)

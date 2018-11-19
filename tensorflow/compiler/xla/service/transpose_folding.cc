@@ -108,7 +108,7 @@ Status FoldTransposeIntoDot(InstructionOperandsPair pair) {
   }
 
   std::unique_ptr<HloInstruction> new_dot = HloInstruction::CreateDot(
-      dot->shape(), new_lhs, new_rhs, new_dim_numbers);
+      dot->shape(), new_lhs, new_rhs, new_dim_numbers, dot->precision_config());
   return dot->parent()->ReplaceWithNewInstruction(dot, std::move(new_dot));
 }
 
@@ -177,7 +177,8 @@ bool FoldTransposeIntoConvolution(InstructionOperandsPair pair) {
   }
 
   auto new_conv = HloInstruction::CreateConvolve(
-      convolution.shape(), new_lhs, new_rhs, convolution.window(), new_dnums);
+      convolution.shape(), new_lhs, new_rhs, convolution.feature_group_count(),
+      convolution.window(), new_dnums, convolution.precision_config());
   TF_CHECK_OK(convolution.parent()->ReplaceWithNewInstruction(
       &convolution, std::move(new_conv)));
 

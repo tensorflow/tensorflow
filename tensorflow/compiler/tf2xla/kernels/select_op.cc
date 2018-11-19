@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 
@@ -66,8 +66,8 @@ class SelectOp : public XlaOpKernel {
       // XLA. It seems we have to broadcast on the left and then Reshape
       // to get the dimensions in the right order.
       const auto dim_sizes = then_shape.dim_sizes();
-      gtl::ArraySlice<int64> bdims = dim_sizes;
-      bdims.pop_front();
+      absl::Span<const int64> bdims = dim_sizes;
+      bdims.remove_prefix(1);
       cond_handle = xla::Broadcast(cond_handle, bdims);
 
       std::vector<int64> dim_order(then_shape.dims());

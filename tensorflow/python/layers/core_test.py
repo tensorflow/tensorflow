@@ -60,7 +60,7 @@ class DenseTest(test.TestCase):
     self.assertEqual(dense.name, 'dense_2')
 
   def testVariableInput(self):
-    with self.test_session():
+    with self.cached_session():
       v = variable_scope.get_variable(
           'X', initializer=init_ops.zeros_initializer(), shape=(1, 1))
       x = core_layers.Dense(1)(v)
@@ -197,7 +197,8 @@ class DenseTest(test.TestCase):
     _ = dense(inputs)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(dense.losses, loss_keys)
+    self.evaluate([v.initializer for v in dense.variables])
+    self.assertAllEqual(self.evaluate(dense.losses), self.evaluate(loss_keys))
 
   def testKernelRegularizerWithReuse(self):
     regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
@@ -218,10 +219,11 @@ class DenseTest(test.TestCase):
     _ = dense(inputs)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(dense.losses, loss_keys)
+    self.evaluate([v.initializer for v in dense.variables])
+    self.assertAllEqual(self.evaluate(dense.losses), self.evaluate(loss_keys))
 
   def testFunctionalDense(self):
-    with self.test_session():
+    with self.cached_session():
       inputs = random_ops.random_uniform((5, 3), seed=1)
       outputs = core_layers.dense(
           inputs, 2, activation=nn_ops.relu, name='my_dense')
@@ -240,7 +242,7 @@ class DenseTest(test.TestCase):
 
   # TODO(alive): get this to  work in eager mode.
   def testFunctionalDenseTwiceReuse(self):
-    with self.test_session():
+    with self.cached_session():
       inputs = random_ops.random_uniform((5, 3), seed=1)
       core_layers.dense(inputs, 2, name='my_dense')
       vars1 = variables.trainable_variables()
@@ -250,7 +252,7 @@ class DenseTest(test.TestCase):
 
   # TODO(alive): get this to  work in eager mode.
   def testFunctionalDenseTwiceReuseFromScope(self):
-    with self.test_session():
+    with self.cached_session():
       with variable_scope.variable_scope('scope'):
         inputs = random_ops.random_uniform((5, 3), seed=1)
         core_layers.dense(inputs, 2, name='my_dense')
@@ -262,7 +264,8 @@ class DenseTest(test.TestCase):
 
   def testFunctionalDenseInitializerFromScope(self):
     with variable_scope.variable_scope(
-        'scope', initializer=init_ops.ones_initializer()), self.test_session():
+        'scope',
+        initializer=init_ops.ones_initializer()), self.cached_session():
       inputs = random_ops.random_uniform((5, 3), seed=1)
       core_layers.dense(inputs, 2)
       variables.global_variables_initializer().run()
@@ -305,7 +308,7 @@ class DenseTest(test.TestCase):
     self.assertEqual(called[0], 2)
 
   def testFunctionalDenseInScope(self):
-    with self.test_session():
+    with self.cached_session():
       with variable_scope.variable_scope('test'):
         inputs = random_ops.random_uniform((5, 3), seed=1)
         core_layers.dense(inputs, 2, name='my_dense')
@@ -391,7 +394,7 @@ class DropoutTest(test.TestCase):
     self.assertAllClose(np.ones((5, 3)), np_output)
 
   def testDynamicLearningPhase(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       dp = core_layers.Dropout(0.5, seed=1)
       inputs = array_ops.ones((5, 5))
       training = array_ops.placeholder(dtype='bool')
@@ -424,7 +427,7 @@ class DropoutTest(test.TestCase):
     self.assertAllClose(np_output[:, 0, :], np_output[:, 1, :])
 
   def testFunctionalDropout(self):
-    with self.test_session():
+    with self.cached_session():
       inputs = array_ops.ones((5, 5))
       dropped = core_layers.dropout(inputs, 0.5, training=True, seed=1)
       variables.global_variables_initializer().run()
@@ -435,12 +438,12 @@ class DropoutTest(test.TestCase):
       self.assertAllClose(np.ones((5, 5)), np_output)
 
   def testDynamicRate(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       rate = array_ops.placeholder(dtype='float32', name='rate')
       dp = core_layers.Dropout(rate, name='dropout')
       inputs = array_ops.ones((5, 5))
       dropped = dp.apply(inputs, training=True)
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       np_output = sess.run(dropped, feed_dict={rate: 0.5})
       self.assertAlmostEqual(0., np_output.min())
       np_output = sess.run(dropped, feed_dict={rate: 0.0})
@@ -450,7 +453,7 @@ class DropoutTest(test.TestCase):
 class FlattenTest(test.TestCase):
 
   def testCreateFlatten(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = array_ops.placeholder(shape=(None, 2, 3), dtype='float32')
       y = core_layers.Flatten()(x)
       np_output = sess.run(y, feed_dict={x: np.zeros((3, 2, 3))})
@@ -473,6 +476,40 @@ class FlattenTest(test.TestCase):
     shape = core_layers.Flatten().compute_output_shape((None, 3, None))
     self.assertEqual(shape.as_list(), [None, None])
 
+  def testDataFormat5d(self):
+    np_input_channels_last = np.arange(
+        120, dtype='float32').reshape([1, 5, 4, 3, 2])
+
+    with self.test_session() as sess:
+      x = array_ops.placeholder(shape=(1, 5, 4, 3, 2), dtype='float32')
+      y = core_layers.Flatten(data_format='channels_last')(x)
+      np_output_cl = sess.run(y, feed_dict={x: np_input_channels_last})
+
+      x = array_ops.placeholder(shape=(1, 2, 5, 4, 3), dtype='float32')
+      y = core_layers.Flatten(data_format='channels_first')(x)
+      np_input_channels_first = np.transpose(np_input_channels_last,
+                                             [0, 4, 1, 2, 3])
+      np_output_cf = sess.run(y, feed_dict={x: np_input_channels_first})
+
+      self.assertAllEqual(np_output_cl, np_output_cf)
+
+  def testDataFormat4d(self):
+    np_input_channels_last = np.arange(
+        24, dtype='float32').reshape([1, 4, 3, 2])
+
+    with self.test_session() as sess:
+      x = array_ops.placeholder(shape=(1, 4, 3, 2), dtype='float32')
+      y = core_layers.Flatten(data_format='channels_last')(x)
+      np_output_cl = sess.run(y, feed_dict={x: np_input_channels_last})
+
+      x = array_ops.placeholder(shape=(1, 2, 4, 3), dtype='float32')
+      y = core_layers.Flatten(data_format='channels_first')(x)
+      np_input_channels_first = np.transpose(np_input_channels_last,
+                                             [0, 3, 1, 2])
+      np_output_cf = sess.run(y, feed_dict={x: np_input_channels_first})
+
+      self.assertAllEqual(np_output_cl, np_output_cf)
+
   def testFunctionalFlatten(self):
     x = array_ops.placeholder(shape=(None, 2, 3), dtype='float32')
     y = core_layers.flatten(x, name='flatten')
@@ -484,7 +521,7 @@ class FlattenTest(test.TestCase):
       core_layers.Flatten()(x)
 
   def testFlattenUnknownAxes(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       x = array_ops.placeholder(shape=(5, None, None), dtype='float32')
       y = core_layers.Flatten()(x)
       np_output = sess.run(y, feed_dict={x: np.zeros((5, 2, 3))})

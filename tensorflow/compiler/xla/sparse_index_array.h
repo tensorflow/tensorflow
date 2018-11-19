@@ -20,10 +20,11 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 
@@ -64,7 +65,7 @@ class SparseIndexArray {
   SparseIndexArray(int64 max_indices, int64 rank,
                    std::vector<int64> indices = {});
   SparseIndexArray(int64 max_indices, int64 rank,
-                   tensorflow::gtl::ArraySlice<int64> indices);
+                   absl::Span<const int64> indices);
 
   // Returns the number of elements represented by the indices stored in the
   // array.
@@ -72,12 +73,12 @@ class SparseIndexArray {
 
   // Returns a slice that refers to the given sparse index number. The argument
   // must be in the range [0, element_count()).
-  tensorflow::gtl::ArraySlice<int64> At(int64 sparse_element_number) const;
-  tensorflow::gtl::MutableArraySlice<int64> At(int64 sparse_element_number);
+  absl::Span<const int64> At(int64 sparse_element_number) const;
+  absl::Span<int64> At(int64 sparse_element_number);
 
   // Adds the given index at the end of the array.  The new size of the
   // SparseIndexArray must not exceed `max_indices`.
-  void Append(tensorflow::gtl::ArraySlice<int64> index);
+  void Append(absl::Span<const int64> index);
 
   // Removes all indices from the array.
   void Clear();
@@ -95,8 +96,8 @@ class SparseIndexArray {
   int64 max_indices() const { return max_indices_; }
 
   // Returns a pointer to the int64 array that holds the sparse indices.
-  tensorflow::gtl::MutableArraySlice<int64> mutable_data() { return &indices_; }
-  tensorflow::gtl::ArraySlice<int64> data() const { return indices_; }
+  absl::Span<int64> mutable_data() { return absl::MakeSpan(indices_); }
+  absl::Span<const int64> data() const { return indices_; }
 
   // Sorts this sparse index array along with the set of corresponding values.
   // The indices and values are sorted in the lexicographic order of the
@@ -114,7 +115,7 @@ class SparseIndexArray {
   //   std::cout << v[0] << ", " << v[1] << ", " << v[2] << std::endl;
   //
   template <typename NativeT>
-  void SortWithValues(tensorflow::gtl::MutableArraySlice<NativeT> values);
+  void SortWithValues(absl::Span<NativeT> values);
 
  private:
   std::vector<int64> indices_;
@@ -123,8 +124,7 @@ class SparseIndexArray {
 };
 
 template <typename NativeT>
-void SparseIndexArray::SortWithValues(
-    tensorflow::gtl::MutableArraySlice<NativeT> values) {
+void SparseIndexArray::SortWithValues(absl::Span<NativeT> values) {
   int64 num_elements = index_count();
   CHECK_EQ(values.size(), num_elements);
   std::vector<int64> sort_order;
@@ -139,7 +139,7 @@ void SparseIndexArray::SortWithValues(
 
   // Reorder the array elements according to sort_order.  Work through the array
   // and follow cycles so we can do the reorder in-place.
-  tensorflow::gtl::InlinedVector<int64, 8> saved_index(rank());
+  absl::InlinedVector<int64, 8> saved_index(rank());
   for (int64 i = 0; i < num_elements; ++i) {
     // sort_order[i] == -1 indicates the element has already been copied.
     if (sort_order[i] < 0) {

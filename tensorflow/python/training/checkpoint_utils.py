@@ -24,12 +24,12 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import saver
 from tensorflow.python.util.tf_export import tf_export
 
@@ -101,9 +101,12 @@ def list_variables(ckpt_dir_or_file):
   return result
 
 
-@tf_export("train.init_from_checkpoint")
+@tf_export(v1=["train.init_from_checkpoint"])
 def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
-  """Initializes current variables with tensors loaded from given checkpoint.
+  """Replaces `tf.Variable` initializers so they load from a checkpoint file.
+
+  Values are not loaded immediately, but when the initializer is run
+  (typically by running a `tf.global_variables_initializer` op).
 
   Note: This overrides default initialization ops of specified variables and
   redefines dtype.
@@ -180,11 +183,11 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
     tf.errors.OpError: If missing checkpoints or tensors in checkpoints.
     ValueError: If missing variables in current graph.
   """
-  if distribute_lib.get_cross_tower_context():
+  if distribution_strategy_context.get_cross_replica_context():
     _init_from_checkpoint(None, ckpt_dir_or_file, assignment_map)
   else:
-    distribute_lib.get_tower_context().merge_call(
-        _init_from_checkpoint, ckpt_dir_or_file, assignment_map)
+    distribution_strategy_context.get_replica_context().merge_call(
+        _init_from_checkpoint, args=(ckpt_dir_or_file, assignment_map))
 
 
 def _init_from_checkpoint(_, ckpt_dir_or_file, assignment_map):
@@ -278,7 +281,7 @@ def _init_from_checkpoint(_, ckpt_dir_or_file, assignment_map):
 def _get_checkpoint_filename(ckpt_dir_or_file):
   """Returns checkpoint filename given directory or specific checkpoint file."""
   if gfile.IsDirectory(ckpt_dir_or_file):
-    return saver.latest_checkpoint(ckpt_dir_or_file)
+    return checkpoint_management.latest_checkpoint(ckpt_dir_or_file)
   return ckpt_dir_or_file
 
 
@@ -308,33 +311,20 @@ def _set_checkpoint_initializer(variable,
     restore_op = io_ops.restore_v2(
         ckpt_file, [tensor_name], [slice_spec], [base_type], name=name)[0]
 
-    # TODO(priyag, allenl): Use `SaveableObject.restore` instead here.
-    if resource_variable_ops.is_resource_variable(variable):
-      init_op = variable.assign(restore_op, read_value=False)
-    else:
-      init_op = state_ops.assign(variable, restore_op)
+    names_to_saveables = saver.BaseSaverBuilder.OpListToDict([variable])
+    saveable_objects = []
+    for name, op in names_to_saveables.items():
+      for s in saver.BaseSaverBuilder.SaveableObjectsForOp(op, name):
+        saveable_objects.append(s)
 
-    # pylint:disable=protected-access
-    # We need special handling for `DistributedVariable`s as they contain
-    # mutliple actual variables. `assign` on a `DistributedVariable` returns a
-    # combined `init_op` which contains initializers for all the contained
-    # variables. We then set each underlying variable's `_initializer_op` using
-    # the corresponding `init_op`.
-    # TODO(priyag): Use `isinstance` checks when `DistributedVariable` class
-    # moves out of contrib.
-    if any(base.__name__ == "DistributedVariable"
-           for base in  variable.__class__.__bases__):
-      assert distribute_lib.get_cross_tower_context()
-      assert hasattr(variable, "_index")
-      for (d, v) in six.iteritems(variable._index):
-        v._initializer_op = init_op._index[d]
-        restore_op.set_shape(v.shape)
-        v._initial_value = restore_op
-    else:
-      variable._initializer_op = init_op
-      restore_op.set_shape(variable.shape)
-      variable._initial_value = restore_op
-    # pylint:enable=protected-access
+    assert len(saveable_objects) == 1  # Should be only one variable.
+  init_op = saveable_objects[0].restore([restore_op], restored_shapes=None)
+
+  # pylint:disable=protected-access
+  variable._initializer_op = init_op
+  restore_op.set_shape(variable.shape)
+  variable._initial_value = restore_op
+  # pylint:enable=protected-access
 
 
 def _set_variable_or_list_initializer(variable_or_list, ckpt_file,

@@ -16,6 +16,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import os
 
 import numpy
@@ -23,6 +24,7 @@ import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
@@ -31,8 +33,10 @@ from tensorflow.python.layers import core as non_keras_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.training.checkpointable import data_structures
 from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.checkpointable import util
 
 
 class HasList(training.Model):
@@ -95,6 +99,11 @@ class ListTests(test.TestCase):
     model.load_weights(save_path)
     self.assertAllEqual([[1., 2., 3.], [4., 5., 6.]],
                         self.evaluate(model.variables[0]))
+    v = variables.Variable(1.)
+    model.var_list = [v]
+    self.assertIn(v, model.variables)
+    self.assertIn(v, model.trainable_variables)
+    self.assertNotIn(v, model.non_trainable_variables)
 
   def testUpdatesForwarded(self):
     with context.graph_mode():
@@ -147,6 +156,23 @@ class ListTests(test.TestCase):
   def testNoPop(self):
     with self.assertRaises(AttributeError):
       data_structures.List().pop()
+
+  @test_util.run_in_graph_and_eager_modes
+  def testTensorConversion(self):
+
+    class ListToTensor(training.Model):
+
+      def __init__(self):
+        super(ListToTensor, self).__init__()
+        self.l = [1., 2., 3.]
+
+    self.assertAllEqual(
+        [1., 2., 3.],
+        self.evaluate(constant_op.constant(ListToTensor().l)))
+
+    self.assertAllEqual(
+        [1., 2., 3.],
+        self.evaluate(array_ops.pack(ListToTensor().l)))
 
   def testNesting(self):
     with context.graph_mode():
@@ -303,6 +329,222 @@ class MappingTests(test.TestCase):
                         data_structures.Mapping()])
     self.assertEqual(2, len(has_mappings))
     self.assertNotIn(data_structures.Mapping(), has_mappings)
+    # In contrast to Mapping, dict wrappers are not hashable
+    a = tracking.Checkpointable()
+    a.d = {}
+    self.assertEqual({}, a.d)
+    self.assertFalse({} != a.d)  # pylint: disable=g-explicit-bool-comparison
+    self.assertNotEqual({1: 2}, a.d)
+    with self.assertRaisesRegexp(TypeError, "unhashable"):
+      set([a.d])
+
+  def testDictWrapperBadKeys(self):
+    a = tracking.Checkpointable()
+    a.d = {}
+    a.d[1] = data_structures.List()
+    model = training.Model()
+    model.sub = a
+    save_path = os.path.join(self.get_temp_dir(), "ckpt")
+    with self.assertRaisesRegexp(ValueError, "non-string key"):
+      model.save_weights(save_path)
+
+  def testDictWrapperNoDependency(self):
+    a = tracking.Checkpointable()
+    a.d = data_structures.NoDependency({})
+    a.d[1] = [3]
+    self.assertEqual([a], util.list_objects(a))
+    model = training.Model()
+    model.sub = a
+    save_path = os.path.join(self.get_temp_dir(), "ckpt")
+    model.save_weights(save_path)
+    model.load_weights(save_path)
+
+  def testNonStringKeyNotCheckpointableValue(self):
+    a = tracking.Checkpointable()
+    a.d = {}
+    a.d["a"] = [3]
+    a.d[1] = data_structures.NoDependency([3])
+    self.assertEqual([a, a.d, a.d["a"]], util.list_objects(a))
+    model = training.Model()
+    model.sub = a
+    save_path = os.path.join(self.get_temp_dir(), "ckpt")
+    model.save_weights(save_path)
+    model.load_weights(save_path)
+
+  def testNonAppendNotCheckpointable(self):
+    # Non-append mutations (deleting or overwriting values) are OK when the
+    # values aren't tracked.
+    a = tracking.Checkpointable()
+    a.d = {}
+    a.d["a"] = [3]
+    a.d[1] = 3
+    a.d[1] = 2
+    self.assertEqual(2, a.d[1])
+    del a.d[1]
+    a.d[2] = data_structures.NoDependency(tracking.Checkpointable())
+    second = tracking.Checkpointable()
+    a.d[2] = data_structures.NoDependency(second)
+    self.assertIs(second, a.d[2])
+    self.assertEqual([a, a.d, a.d["a"]], util.list_objects(a))
+    model = training.Model()
+    model.sub = a
+    save_path = os.path.join(self.get_temp_dir(), "ckpt")
+    model.save_weights(save_path)
+    model.load_weights(save_path)
+
+  def testDelNoSave(self):
+    model = training.Model()
+    model.d = {}
+    model.d["a"] = []
+    del model.d["a"]
+    save_path = os.path.join(self.get_temp_dir(), "ckpt")
+    with self.assertRaisesRegexp(ValueError, "overwritten or deleted"):
+      model.save_weights(save_path)
+
+  def testPopNoSave(self):
+    model = training.Model()
+    model.d = {}
+    model.d["a"] = []
+    model.d.pop("a")
+    save_path = os.path.join(self.get_temp_dir(), "ckpt")
+    with self.assertRaisesRegexp(ValueError, "overwritten or deleted"):
+      model.save_weights(save_path)
+
+  def testExternalModificationNoSave(self):
+    model = training.Model()
+    external_reference = {}
+    model.d = external_reference
+    external_reference["a"] = []
+    save_path = os.path.join(self.get_temp_dir(), "ckpt")
+    with self.assertRaisesRegexp(ValueError, "modified outside the wrapper"):
+      model.save_weights(save_path)
+
+  def testOverwriteNoSave(self):
+    model = training.Model()
+    model.d = {}
+    model.d["a"] = {}
+    model.d["a"] = {}
+    save_path = os.path.join(self.get_temp_dir(), "ckpt")
+    with self.assertRaisesRegexp(ValueError, "overwritten or deleted"):
+      model.save_weights(save_path)
+
+  def testIter(self):
+    model = training.Model()
+    model.d = {1: 3}
+    model.d[1] = 3
+    self.assertEqual([1], list(model.d))
+    new_dict = {}
+    # This update() is super tricky. If the dict wrapper subclasses dict,
+    # CPython will access its storage directly instead of calling any
+    # methods/properties on the object. So the options are either not to
+    # subclass dict (in which case update will call normal iter methods, but the
+    # object won't pass isinstance checks) or to subclass dict and keep that
+    # storage updated (no shadowing all its methods like _ListWrapper).
+    new_dict.update(model.d)
+    self.assertEqual({1: 3}, new_dict)
+
+  def testListShallowCopy(self):
+    root = tracking.Checkpointable()
+    orig_list = [[1.]]
+    root.a = orig_list
+    copied = copy.copy(root.a)
+    self.assertAllEqual([[1.]], copied)
+    self.assertIsNot(root.a, copied)
+    self.assertIs(root.a[0], copied[0])
+
+    # Dirtiness should be inherited
+    util.list_objects(root.a)
+    orig_list.append(1.)
+    with self.assertRaises(ValueError):
+      util.list_objects(root.a)
+    with self.assertRaises(ValueError):
+      util.list_objects(copy.copy(root.a))
+
+  def testListDeepCopy(self):
+    root = tracking.Checkpointable()
+    orig_list = [[1.]]
+    root.a = orig_list
+    copied = copy.deepcopy(root.a)
+    self.assertAllEqual([[1.]], copied)
+    self.assertIsNot(root.a, copied)
+    self.assertIsNot(root.a[0], copied[0])
+
+    # Dirtiness should be inherited
+    util.list_objects(root.a)
+    orig_list.append(1.)
+    with self.assertRaises(ValueError):
+      util.list_objects(root.a)
+    with self.assertRaises(ValueError):
+      util.list_objects(copy.deepcopy(root.a))
+
+  def testDictShallowCopy(self):
+    root = tracking.Checkpointable()
+    orig_dict = {"a": [1.]}
+    root.a = orig_dict
+    copied = copy.copy(root.a)
+    self.assertAllEqual([1.], copied["a"])
+    self.assertIsNot(root.a, copied)
+    self.assertIs(root.a["a"], copied["a"])
+
+    # Dirtiness should be inherited
+    util.list_objects(root.a)
+    orig_dict["b"] = []
+    with self.assertRaises(ValueError):
+      util.list_objects(root.a)
+    with self.assertRaises(ValueError):
+      util.list_objects(copy.copy(root.a))
+
+  def testDictDeepCopy(self):
+    root = tracking.Checkpointable()
+    orig_dict = {"a": [1.]}
+    root.a = orig_dict
+    copied = copy.deepcopy(root.a)
+    self.assertAllEqual([1.], copied["a"])
+    self.assertIsNot(root.a, copied)
+    self.assertIsNot(root.a["a"], copied["a"])
+
+    # Dirtiness should be inherited
+    util.list_objects(root.a)
+    orig_dict["b"] = []
+    with self.assertRaises(ValueError):
+      util.list_objects(root.a)
+    with self.assertRaises(ValueError):
+      util.list_objects(copy.deepcopy(root.a))
+
+  def testShallowCopyCheckpointable(self):
+    original = tracking.Checkpointable()
+    original_sub = tracking.Checkpointable()
+    original.a = [[1.]]
+    original.b = {"a": original_sub}
+    shallow_copied = copy.copy(original)
+    self.assertIs(original_sub, shallow_copied.b["a"])
+    self.assertIsNot(original, shallow_copied)
+    self.assertEqual([[1.]], shallow_copied.a)
+    shallow_deps = util.list_objects(shallow_copied)
+    self.assertIn(shallow_copied.a, shallow_deps)
+    self.assertIn(shallow_copied.b, shallow_deps)
+    self.assertIn(shallow_copied.b["a"], shallow_deps)
+
+  def testDeepCopyCheckpointable(self):
+    original = tracking.Checkpointable()
+    original_sub = tracking.Checkpointable()
+    original.a = [[1.]]
+    original.b = {"a": original_sub}
+    deep_copied = copy.deepcopy(original)
+    self.assertIsNot(original, deep_copied)
+    self.assertIsNot(original_sub, deep_copied.b["a"])
+    self.assertEqual([[1.]], deep_copied.a)
+    self.assertIsInstance(deep_copied.b["a"], tracking.Checkpointable)
+    deps = util.list_objects(deep_copied)
+    self.assertIn(deep_copied.a, deps)
+    self.assertIn(deep_copied.b, deps)
+    self.assertIn(deep_copied.b["a"], deps)
+    self.assertNotIn(original_sub, deps)
+
+  def testConstructableFromSequence(self):
+    result = data_structures._DictWrapper([(1, 2), (3, 4)])
+    self.assertIsInstance(result, dict)
+    self.assertEqual({1: 2, 3: 4}, result)
 
 if __name__ == "__main__":
   test.main()

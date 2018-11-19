@@ -73,7 +73,7 @@ class ClipGradientNormsTest(test.TestCase):
     # Ensure the variable passed through.
     self.assertEqual(gradients_to_variables[1], variable)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       actual_gradient = sess.run(gradients_to_variables[0])
     np_testing.assert_almost_equal(actual_gradient, self._clipped_grad_vec)
 
@@ -164,7 +164,7 @@ class MultiplyGradientsTest(test.TestCase):
     # Ensure the variable passed through.
     self.assertEqual(grad_to_var[1], variable)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       actual_gradient = sess.run(grad_to_var[0])
     np_testing.assert_almost_equal(actual_gradient, self._multiplied_grad_vec,
                                    5)
@@ -188,7 +188,7 @@ class MultiplyGradientsTest(test.TestCase):
     self.assertEqual(grad_to_var[0].indices, indices)
     self.assertEqual(grad_to_var[0].dense_shape, dense_shape)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       actual_gradient = sess.run(grad_to_var[0].values)
     np_testing.assert_almost_equal(actual_gradient, self._multiplied_grad_vec,
                                    5)
@@ -204,7 +204,7 @@ class MultiplyGradientsTest(test.TestCase):
     [grad_to_var] = learning.multiply_gradients([grad_to_var],
                                                 gradient_multipliers)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables_lib.global_variables_initializer())
       gradient_true_flag = sess.run(grad_to_var[0])
       sess.run(multiplier_flag.assign(False))

@@ -30,17 +30,17 @@ from tensorflow.python.platform import test
 class ReshapeTest(test.TestCase):
 
   def _testReshape(self, x, y, use_gpu=False):
-    with self.test_session(use_gpu=use_gpu):
+    with self.cached_session(use_gpu=use_gpu):
       np_ans = x.reshape(y)
       tf_ans = array_ops.reshape(x, y)
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
       self.assertEqual(tf_ans.get_shape(), out.shape)
       self.assertShapeEqual(np_ans, tf_ans)
 
       # Repeat with an int64 shape tensor.
       y64 = constant_op.constant(y, dtype=dtypes.int64)
       tf_ans = array_ops.reshape(x, y64)
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
       self.assertEqual(tf_ans.get_shape(), out.shape)
       self.assertShapeEqual(np_ans, tf_ans)
 
@@ -94,7 +94,7 @@ class ReshapeTest(test.TestCase):
   def testFloatReshapeGradThreeDimensions(self):
     x = np.arange(1., 25.).reshape([2, 3, 4]).astype(np.float32)
     s = list(np.shape(x))
-    with self.test_session():
+    with self.cached_session():
       input_tensor = constant_op.constant(x)
       reshape_out = array_ops.reshape(input_tensor, [1, 8, 3])
       err = gradient_checker.compute_gradient_error(

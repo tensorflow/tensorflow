@@ -54,16 +54,39 @@ def _add_deprecated_function_notice_to_docstring(doc, date, instructions):
       '(deprecated)', main_text)
 
 
-def _add_deprecated_arg_notice_to_docstring(doc, date, instructions):
+def _add_deprecated_arg_notice_to_docstring(doc, date, instructions,
+                                            deprecated_names):
   """Adds a deprecation notice to a docstring for deprecated arguments."""
+
+  deprecation_string = ', '.join(sorted(deprecated_names))
+
   return decorator_utils.add_notice_to_docstring(
-      doc, instructions,
-      'DEPRECATED FUNCTION ARGUMENTS',
+      doc, instructions, 'DEPRECATED FUNCTION ARGUMENTS',
       '(deprecated arguments)', [
-          'SOME ARGUMENTS ARE DEPRECATED. '
-          'They will be removed %s.' % (
-              'in a future version' if date is None else ('after %s' % date)),
-          'Instructions for updating:'])
+          'SOME ARGUMENTS ARE DEPRECATED: `(%s)`. '
+          'They will be removed %s.' %
+          (deprecation_string, 'in a future version' if date is None else
+           ('after %s' % date)), 'Instructions for updating:'
+      ])
+
+
+def _add_deprecated_arg_value_notice_to_docstring(doc, date, instructions,
+                                                  deprecated_name_value_dict):
+  """Adds a deprecation notice to a docstring for deprecated arguments."""
+
+  deprecation_string = ', '.join(
+      '%s=%r' % (key, value)
+      for key, value in sorted(deprecated_name_value_dict.items()))
+
+  when = 'in a future version' if date is None else ('after %s' % date)
+
+  return decorator_utils.add_notice_to_docstring(
+      doc, instructions, 'DEPRECATED FUNCTION ARGUMENT VALUES',
+      '(deprecated argument values)', [
+          'SOME ARGUMENT VALUES ARE DEPRECATED: `(%s)`. '
+          'They will be removed %s.' % (deprecation_string, when),
+          'Instructions for updating:'
+      ])
 
 
 def _validate_deprecation_args(date, instructions):
@@ -388,13 +411,13 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples,
     Args:
       names_to_ok_vals: dict from string arg_name to a list of values,
         possibly empty, which should not elicit a warning.
-      arg_spec: Output from tf_inspect.getargspec on the called function.
+      arg_spec: Output from tf_inspect.getfullargspec on the called function.
 
     Returns:
       Dictionary from arg_name to DeprecatedArgSpec.
     """
-    arg_name_to_pos = dict(
-        (name, pos) for (pos, name) in enumerate(arg_spec.args))
+    arg_name_to_pos = {
+        name: pos for pos, name in enumerate(arg_spec.args)}
     deprecated_positional_args = {}
     for arg_name, spec in iter(names_to_ok_vals.items()):
       if arg_name in arg_name_to_pos:
@@ -403,21 +426,22 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples,
             pos, spec.has_ok_value, spec.ok_value)
     return deprecated_positional_args
 
+  deprecated_arg_names = _get_arg_names_to_ok_vals()
+
   def deprecated_wrapper(func):
     """Deprecation decorator."""
     decorator_utils.validate_callable(func, 'deprecated_args')
-    deprecated_arg_names = _get_arg_names_to_ok_vals()
 
-    arg_spec = tf_inspect.getargspec(func)
+    arg_spec = tf_inspect.getfullargspec(func)
     deprecated_positions = _get_deprecated_positional_arguments(
         deprecated_arg_names, arg_spec)
 
     is_varargs_deprecated = arg_spec.varargs in deprecated_arg_names
-    is_kwargs_deprecated = arg_spec.keywords in deprecated_arg_names
+    is_kwargs_deprecated = arg_spec.varkw in deprecated_arg_names
 
     if (len(deprecated_positions) + is_varargs_deprecated + is_kwargs_deprecated
         != len(deprecated_arg_names_or_tuples)):
-      known_args = arg_spec.args + [arg_spec.varargs, arg_spec.keywords]
+      known_args = arg_spec.args + [arg_spec.varargs, arg_spec.varkw]
       missing_args = [arg_name for arg_name in deprecated_arg_names
                       if arg_name not in known_args]
       raise ValueError('The following deprecated arguments are not present '
@@ -467,7 +491,7 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples,
         if is_varargs_deprecated and len(args) > len(arg_spec.args):
           invalid_args.append(arg_spec.varargs)
         if is_kwargs_deprecated and kwargs:
-          invalid_args.append(arg_spec.keywords)
+          invalid_args.append(arg_spec.varkw)
         for arg_name in deprecated_arg_names:
           if (arg_name in kwargs and
               not (deprecated_positions[arg_name].has_ok_value and
@@ -486,9 +510,11 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples,
                 'in a future version' if date is None else ('after %s' % date),
                 instructions)
       return func(*args, **kwargs)
-    return tf_decorator.make_decorator(func, new_func, 'deprecated',
-                                       _add_deprecated_arg_notice_to_docstring(
-                                           func.__doc__, date, instructions))
+
+    doc = _add_deprecated_arg_notice_to_docstring(
+        func.__doc__, date, instructions, sorted(deprecated_arg_names.keys()))
+    return tf_decorator.make_decorator(func, new_func, 'deprecated', doc)
+
   return deprecated_wrapper
 
 
@@ -551,9 +577,11 @@ def deprecated_arg_values(date, instructions, warn_once=True,
                   func.__module__, arg_name, arg_value, 'in a future version'
                   if date is None else ('after %s' % date), instructions)
       return func(*args, **kwargs)
-    return tf_decorator.make_decorator(func, new_func, 'deprecated',
-                                       _add_deprecated_arg_notice_to_docstring(
-                                           func.__doc__, date, instructions))
+
+    doc = _add_deprecated_arg_value_notice_to_docstring(
+        func.__doc__, date, instructions, deprecated_kwargs)
+    return tf_decorator.make_decorator(func, new_func, 'deprecated', doc)
+
   return deprecated_wrapper
 
 

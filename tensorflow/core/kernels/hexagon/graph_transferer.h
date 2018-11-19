@@ -228,4 +228,4 @@ class GraphTransferer {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFERER_H
+#endif  // TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFERER_H_

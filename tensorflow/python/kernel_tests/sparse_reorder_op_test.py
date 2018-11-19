@@ -56,17 +56,17 @@ class SparseReorderTest(test.TestCase):
     self.assertAllEqual((5, 6), sp_output.get_shape())
 
   def testAlreadyInOrder(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       input_val = self._SparseTensorValue_5x6(np.arange(6))
       sp_output = sparse_ops.sparse_reorder(input_val)
 
-      output_val = sess.run(sp_output)
+      output_val = self.evaluate(sp_output)
       self.assertAllEqual(output_val.indices, input_val.indices)
       self.assertAllEqual(output_val.values, input_val.values)
       self.assertAllEqual(output_val.dense_shape, input_val.dense_shape)
 
   def testFeedAlreadyInOrder(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6(np.arange(6))
       sp_output = sparse_ops.sparse_reorder(sp_input)
@@ -78,12 +78,12 @@ class SparseReorderTest(test.TestCase):
 
   def testOutOfOrder(self):
     expected_output_val = self._SparseTensorValue_5x6(np.arange(6))
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       for _ in range(5):  # To test various random permutations
         input_val = self._SparseTensorValue_5x6(np.random.permutation(6))
         sp_output = sparse_ops.sparse_reorder(input_val)
 
-        output_val = sess.run(sp_output)
+        output_val = self.evaluate(sp_output)
         self.assertAllEqual(output_val.indices, expected_output_val.indices)
         self.assertAllEqual(output_val.values, expected_output_val.values)
         self.assertAllEqual(output_val.dense_shape,
@@ -91,7 +91,7 @@ class SparseReorderTest(test.TestCase):
 
   def testFeedOutOfOrder(self):
     expected_output_val = self._SparseTensorValue_5x6(np.arange(6))
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       for _ in range(5):  # To test various random permutations
         sp_input = self._SparseTensorPlaceholder()
         input_val = self._SparseTensorValue_5x6(np.random.permutation(6))
@@ -104,7 +104,7 @@ class SparseReorderTest(test.TestCase):
                             expected_output_val.dense_shape)
 
   def testGradients(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       for _ in range(5):  # To test various random permutations
         input_val = self._SparseTensorValue_5x6(np.random.permutation(6))
         sp_input = sparse_tensor.SparseTensor(input_val.indices,

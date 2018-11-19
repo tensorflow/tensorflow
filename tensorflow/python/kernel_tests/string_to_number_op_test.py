@@ -29,7 +29,7 @@ _ERROR_MESSAGE = "StringToNumberOp could not correctly convert string: "
 class StringToNumberOpTest(test.TestCase):
 
   def _test(self, tf_type, good_pairs, bad_pairs):
-    with self.test_session():
+    with self.cached_session():
       # Build a small testing graph.
       input_string = array_ops.placeholder(dtypes.string)
       output = parsing_ops.string_to_number(

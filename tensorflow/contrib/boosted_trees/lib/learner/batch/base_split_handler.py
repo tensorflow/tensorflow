@@ -19,14 +19,16 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+
+import six
+
 from tensorflow.contrib.boosted_trees.python.ops import batch_ops_utils
 from tensorflow.python.ops import control_flow_ops
 
 
+@six.add_metaclass(abc.ABCMeta)
 class BaseSplitHandler(object):
   """Abstract Base class defining split handlers interface."""
-
-  __metaclass__ = abc.ABCMeta
 
   def __init__(self,
                l1_regularization,
@@ -130,6 +132,10 @@ class BaseSplitHandler(object):
         self: scheduled_updates
     }, stamp_token, None)
     return control_flow_ops.group(update_1, *update_2[self])
+
+  @abc.abstractmethod
+  def reset(self, stamp_token, next_stamp_token):
+    """Resets the state maintained by the handler."""
 
   @abc.abstractmethod
   def make_splits(self, stamp_token, next_stamp_token, class_id):

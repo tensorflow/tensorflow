@@ -69,6 +69,10 @@ Status EventsWriter::InitIfNeeded() {
                       static_cast<int64>(time_in_seconds),
                       port::Hostname().c_str(), file_suffix_.c_str());
 
+  // Reset recordio_writer (which has a reference to recordio_file_) so final
+  // Flush() and Close() call have access to recordio_file_.
+  recordio_writer_.reset();
+
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       env_->NewWritableFile(filename_, &recordio_file_),
       "Creating writable file ", filename_);

@@ -19,19 +19,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -64,49 +64,22 @@ void XlaContext::set_args(std::vector<XlaExpression> args) {
 
 XlaContext::XlaContext(
     XlaCompiler* compiler, xla::XlaBuilder* builder,
-    bool allow_cpu_custom_calls, bool resolve_compile_time_constants,
-    bool is_entry_computation,
-    const std::function<xla::StatusOr<TensorShape>(
+    bool allow_cpu_custom_calls,
+    const std::function<xla::StatusOr<xla::Shape>(
         const TensorShape&, DataType)>* shape_representation_fn)
     : compiler_(compiler),
       builder_(builder),
       allow_cpu_custom_calls_(allow_cpu_custom_calls),
-      resolve_compile_time_constants_(resolve_compile_time_constants),
-      is_entry_computation_(is_entry_computation),
       shape_representation_fn_(shape_representation_fn) {}
 
 string XlaContext::DebugString() { return "TLA JIT context"; }
 
-// This is called by the Retval Op to associate a computed value
-// with a specific return value of the subgraph.
-void XlaContext::AddRetval(int retval_index, DataType type,
-                           const TensorShape& shape, const xla::XlaOp& handle) {
-  VLOG(1) << "Added retval index " << retval_index << " to XLA computation";
-  // Add the return value to the list being built up.
-  if (retvals_.size() <= retval_index) {
-    retvals_.resize(retval_index + 1);
+void XlaContext::SetRetval(int index, const XlaExpression& expression) {
+  if (retvals_.size() <= index) {
+    retvals_.resize(index + 1);
   }
-  XlaExpression e;
-  e.set_handle(handle);
-  retvals_[retval_index] = Retval{type, shape, e};
+  retvals_[index] = expression;
 }
-
-Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
-                                  const xla::LiteralSlice& literal) {
-  VLOG(1) << "Adding retval index " << retval_index
-          << " with non-data-dependent tensor to XLA computation";
-  if (retvals_.size() <= retval_index) {
-    retvals_.resize(retval_index + 1);
-  }
-  Tensor value;
-  TF_RETURN_IF_ERROR(LiteralToHostTensor(literal, dtype, &value));
-  XlaExpression e;
-  e.set_constant_value(value);
-  retvals_[retval_index] = Retval{dtype, value.shape(), e};
-  return Status::OK();
-}
-
-xla::XlaBuilder* XlaContext::builder() { return builder_; }
 
 Status XlaContext::CreateResource(
     XlaResource::Kind kind, int arg_num, string name, DataType type,
@@ -114,12 +87,13 @@ Status XlaContext::CreateResource(
     const std::set<string>& tensor_array_gradients, XlaResource** resource) {
   resources_.emplace_back(
       new XlaResource(kind, arg_num, std::move(name), type, std::move(shape),
-                      handle, tensor_array_size, tensor_array_gradients));
+                      handle, tensor_array_size, tensor_array_gradients,
+                      /*tensor_array_multiple_writes_aggregate=*/false));
   *resource = resources_.back().get();
   return Status::OK();
 }
 
-xla::StatusOr<TensorShape> XlaContext::RepresentationShape(
+xla::StatusOr<xla::Shape> XlaContext::RepresentationShape(
     const TensorShape& shape, DataType type) const {
   return (*shape_representation_fn_)(shape, type);
 }

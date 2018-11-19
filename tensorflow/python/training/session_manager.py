@@ -24,7 +24,8 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import saver as saver_mod
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -182,6 +183,12 @@ class SessionManager(object):
     """
     self._target = master
     sess = session.Session(self._target, graph=self._graph, config=config)
+    # TODO(jhseu): Delete once tpu.initialize_system() goes away.
+    initialize_ops = (
+        distribution_strategy_context.get_distribution_strategy().initialize()
+    )
+    if initialize_ops:
+      sess.run(initialize_ops)
 
     if checkpoint_dir and checkpoint_filename_with_path:
       raise ValueError("Can not provide both checkpoint_dir and "
@@ -197,13 +204,13 @@ class SessionManager(object):
 
     # Waits up until max_wait_secs for checkpoint to become available.
     wait_time = 0
-    ckpt = saver_mod.get_checkpoint_state(checkpoint_dir)
+    ckpt = checkpoint_management.get_checkpoint_state(checkpoint_dir)
     while not ckpt or not ckpt.model_checkpoint_path:
       if wait_for_checkpoint and wait_time < max_wait_secs:
         logging.info("Waiting for checkpoint to be available.")
         time.sleep(self._recovery_wait_secs)
         wait_time += self._recovery_wait_secs
-        ckpt = saver_mod.get_checkpoint_state(checkpoint_dir)
+        ckpt = checkpoint_management.get_checkpoint_state(checkpoint_dir)
       else:
         return sess, False
 

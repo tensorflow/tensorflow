@@ -13,14 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
+
 #include "tensorflow/contrib/tensorrt/custom_plugin_examples/inc_op_kernel.h"
 
 #include <vector>
 
+#define EIGEN_USE_GPU
 #include "tensorflow/core/framework/op_kernel.h"
-
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
 #include "cuda/include/cuda_runtime_api.h"
 #include "tensorflow/core/platform/stream_executor.h"
 
@@ -80,5 +81,5 @@ REGISTER_KERNEL_BUILDER(Name("IncPluginTRT").Device(DEVICE_GPU), IncPluginTRT);
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
 #endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA

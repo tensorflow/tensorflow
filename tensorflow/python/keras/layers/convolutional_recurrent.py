@@ -391,10 +391,6 @@ class ConvRNN2D(RNN):
     else:
       output = last_output
 
-    # Properly set learning phase
-    if getattr(last_output, '_uses_learning_phase', False):
-      output._uses_learning_phase = True
-
     if self.return_state:
       if not isinstance(states, (list, tuple)):
         states = [states]
@@ -723,11 +719,6 @@ class ConvLSTM2DCell(Layer):
     c = f * c_tm1 + i * self.activation(x_c + h_c)
     o = self.recurrent_activation(x_o + h_o)
     h = o * self.activation(c)
-
-    if 0 < self.dropout + self.recurrent_dropout:
-      if training is None:
-        h._uses_learning_phase = True
-
     return h, [h, c]
 
   def input_conv(self, x, w, b=None, padding='valid'):

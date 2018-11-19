@@ -23,7 +23,7 @@ genrule(
     cmd = """
       for i in $(OUTS); do
         i=$${i##*/}
-        ln -vsf /usr/include/jsoncpp/json/$$i $(@D)/include/json/$$i
+        ln -sf $(INCLUDEDIR)/jsoncpp/json/$$i $(@D)/include/json/$$i
       done
     """,
 )

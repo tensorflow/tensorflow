@@ -79,7 +79,7 @@ def _Index(struct, index):
   """
   index = ops.convert_to_tensor(index)
   index.get_shape().assert_has_rank(0)
-  return nest.map_structure(lambda x: x[index], struct)
+  return nest.map_structure(lambda x: array_ops.gather(x, index), struct)
 
 
 def _Update(struct_acc, struct_x, t):
@@ -274,8 +274,16 @@ def _ConvertNoneGradientToZeros(xs, dxs):
 class _Recurrent(object):
   """A helper class to construct a recurrent neural net."""
 
-  def __init__(self, cell_fn, cell_grad, theta, state0, inputs,
-               max_input_length, extras, use_tpu):
+  def __init__(self,
+               cell_fn,
+               cell_grad,
+               theta,
+               state0,
+               inputs,
+               max_input_length,
+               extras,
+               use_tpu,
+               aligned_end=False):
     """RNN helper class.
 
     Args:
@@ -294,6 +302,8 @@ class _Recurrent(object):
         and shapes of this `extras`.
       use_tpu: A boolean indicating whether the computation is mean to
         run on a TPU.
+      aligned_end: A boolean indicating whether the sequence is aligned at
+        the end.
     """
     self._theta = theta
     self._state = state0
@@ -303,6 +313,7 @@ class _Recurrent(object):
     self._cell_fn = cell_fn
     self._cell_grad = cell_grad
     self._extras = extras
+    self._aligned_end = aligned_end
 
     # pylint: disable=unbalanced-tuple-unpacking
 
@@ -417,10 +428,11 @@ class _Recurrent(object):
       acc_state = _EmptyAcc(slen_dim, state0)
       acc_extras = _EmptyAcc(slen_dim, extras)
 
-      dev_t = array_ops.constant(0, dtype=dev_t_type)
+      t = slen_dim - max_input_length if self._aligned_end else 0
+      dev_t = math_ops.to_int32(t) if use_tpu else math_ops.to_int64(t)
       run = functional_ops.For(
-          start=0,
-          limit=max_input_length,
+          start=t,
+          limit=slen_dim if self._aligned_end else max_input_length,
           delta=1,
           inputs=[dev_t] + _Flatten(
               [theta, state0, inputs, acc_state, acc_extras]),
@@ -551,13 +563,16 @@ class _Recurrent(object):
       d_theta = _EmptyLike(theta)
       d_inputs = _EmptyLike(inputs)
 
+      slen_dim = _SeqLenDim(inputs)
+
       # Loop backwards. Note the loop's limit is open-ended, so goes through
       # t=0.
-      t = max_input_length - 1
+      t = slen_dim - 1 if self._aligned_end else max_input_length - 1
       dev_t = math_ops.to_int32(t) if use_tpu else math_ops.to_int64(t)
+      limit = slen_dim - max_input_length - 1 if self._aligned_end else -1
       run = functional_ops.For(
           start=t,
-          limit=-1,
+          limit=limit,
           delta=-1,
           inputs=[dev_t] + _Flatten([
               theta, state0, inputs, acc_state, acc_extras, d_theta, d_state1,
@@ -641,7 +656,8 @@ def Recurrent(theta,
               cell_grad=None,
               extras=None,
               max_input_length=None,
-              use_tpu=False):
+              use_tpu=False,
+              aligned_end=False):
   """Compute a recurrent neural net.
 
   Roughly, Recurrent() computes the following:
@@ -684,6 +700,8 @@ def Recurrent(theta,
       truncate the computation if the inputs have been allocated to a
       larger size. A scalar tensor.
     use_tpu: whether or not we are on TPU.
+    aligned_end: A boolean indicating whether the sequence is aligned at
+      the end.
 
   Returns:
     accumulate_state and the final state.
@@ -717,4 +735,5 @@ def Recurrent(theta,
       inputs=inputs,
       max_input_length=max_input_length,
       extras=extras,
-      use_tpu=use_tpu).Compute()
+      use_tpu=use_tpu,
+      aligned_end=aligned_end).Compute()

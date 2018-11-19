@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -26,7 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class ZipDatasetTest(test.TestCase):
+class ZipDatasetTest(test_base.DatasetTestBase):
 
   def testZipDataset(self):
     component_placeholders = [
@@ -45,7 +46,7 @@ class ZipDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       equal_length_components = [
           np.tile(np.array([[1], [2], [3], [4]]), 20),
           np.tile(np.array([[12], [13], [14], [15]]), 22),
@@ -54,7 +55,7 @@ class ZipDatasetTest(test.TestCase):
       sess.run(init_op, feed_dict={ph: value for ph, value in zip(
           component_placeholders, equal_length_components)})
       for i in range(4):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         for component, result_component in zip(
             equal_length_components, results):
           self.assertAllEqual(component[i], result_component)
@@ -65,7 +66,7 @@ class ZipDatasetTest(test.TestCase):
       sess.run(init_op, feed_dict={ph: value for ph, value in zip(
           component_placeholders, variable_length_components)})
       for i in range(2):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         for component, result_component in zip(
             variable_length_components, results):
           self.assertAllEqual(component[i], result_component)
@@ -93,7 +94,7 @@ class ZipDatasetTest(test.TestCase):
     self.assertEqual([22], get_next[1][0].shape)
     self.assertEqual([], get_next[1][1].shape)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       equal_length_components = [
           np.tile(np.array([[1], [2], [3], [4]]), 20),
           np.tile(np.array([[12], [13], [14], [15]]), 22),
@@ -102,7 +103,7 @@ class ZipDatasetTest(test.TestCase):
       sess.run(init_op, feed_dict={ph: value for ph, value in zip(
           component_placeholders, equal_length_components)})
       for i in range(4):
-        result1, (result2, result3) = sess.run(get_next)
+        result1, (result2, result3) = self.evaluate(get_next)
         self.assertAllEqual(equal_length_components[0][i], result1)
         self.assertAllEqual(equal_length_components[1][i], result2)
         self.assertAllEqual(equal_length_components[2][i], result3)

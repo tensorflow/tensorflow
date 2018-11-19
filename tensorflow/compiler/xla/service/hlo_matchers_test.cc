@@ -157,9 +157,8 @@ TEST(HloMatchersTest, ShardingMatcher) {
   Array<int64> assignment({2});
   assignment.SetValues({0, 1});
   auto sharding = HloSharding::Tuple(
-      tuple_shape,
-      {HloSharding::Tile(ShapeUtil::MakeShape(F32, {5}), assignment),
-       HloSharding::AssignDevice(1), HloSharding::Replicate()});
+      tuple_shape, {HloSharding::Tile(assignment), HloSharding::AssignDevice(1),
+                    HloSharding::Replicate()});
   p2->set_sharding(sharding);
 
   EXPECT_THAT(p0.get(), op::NoSharding());
@@ -172,8 +171,7 @@ TEST(HloMatchersTest, ShardingMatcher) {
 
   EXPECT_THAT(
       p2.get(),
-      op::Sharding(
-          "{{f32[5] devices=[2]0,1}, {maximal device=1}, {replicated}}"));
+      op::Sharding("{{devices=[2]0,1}, {maximal device=1}, {replicated}}"));
 
   EXPECT_THAT(Explain(p0.get(), op::Sharding(HloSharding::AssignDevice(1))),
               "%param.0 = f32[5]{0} parameter(0) has no sharding (expected: "

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_DOT_OP_EMITTER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_DOT_OP_EMITTER_H_
 
+#include "absl/strings/string_view.h"
 #include "llvm/IR/IRBuilder.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -38,7 +38,7 @@ bool PotentiallyImplementedAsEigenDot(
 // Returns the index for an operand to `hlo` that should ideally be column
 // major.  Returns nullopt if there is no such operand or if `hlo` is not a dot
 // or a fusion containing a dot.
-tensorflow::gtl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
+absl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
     const HloInstruction& hlo);
 
 // Returns true to indicate that we can generate a tiled LLVM IR implementation
@@ -61,7 +61,7 @@ class DotOpEmitter {
       const HloInstruction& dot, const llvm_ir::IrArray& target_array,
       const llvm_ir::IrArray& lhs_array, const llvm_ir::IrArray& rhs_array,
       const llvm_ir::IrArray* addend_array,
-      llvm::Value* executable_run_options_value, llvm::IRBuilder<>* ir_builder,
+      llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
       const HloModuleConfig& hlo_module_config,
       const TargetMachineFeatures& target_machine_features);
 
@@ -70,8 +70,7 @@ class DotOpEmitter {
                const llvm_ir::IrArray& lhs_array,
                const llvm_ir::IrArray& rhs_array,
                const llvm_ir::IrArray* addend_array,
-               llvm::Value* executable_run_options_value,
-               llvm::IRBuilder<>* ir_builder,
+               llvm::Value* executable_run_options_value, llvm::IRBuilder<>* b,
                const HloModuleConfig& hlo_module_config,
                const TargetMachineFeatures& target_machine_features);
 
@@ -88,17 +87,6 @@ class DotOpEmitter {
 
   // Emits a call to the CPU runtime to perform the matrix multiply.
   Status EmitCallToRuntime();
-
-  // Emits a series of nested loops for iterating over an operand array in the
-  // dot operation. Loops are constructed in major to minor dimension layout
-  // order. No loop is emitted for the given reduction_dimension. The function
-  // returns an IrArray index for the given operand_array containing the indvars
-  // of the loops. All dimensions of the index are filled except for the
-  // reduction dimension. name_suffix is the string to append to the names of
-  // LLVM constructs (eg, basic blocks) constructed by this method.
-  llvm_ir::IrArray::Index EmitOperandArrayLoopNest(
-      llvm_ir::ForLoopNest* loop_nest, const llvm_ir::IrArray& operand_array,
-      int64 reduction_dimension, tensorflow::StringPiece name_suffix);
 
   // Represents the dimensions of a matrix-matrix multiply operation.
   struct MatMultDims {
@@ -133,7 +121,7 @@ class DotOpEmitter {
   // of rank 2 as well).
   MatMultDims GetMatMultDims() const;
 
-  bool EmitExperimentalGebpDotIfEnabled(const MatMultDims& mat_mult_dims);
+  bool EmitSmallGemmIfProfitable(const MatMultDims& mat_mult_dims);
 
   // When doing a tiled GEMV in LLVM IR, a "tile" consists of this many vector
   // registers.
@@ -171,7 +159,7 @@ class DotOpEmitter {
   const llvm_ir::IrArray& rhs_array_;
   const llvm_ir::IrArray* addend_array_;
   llvm::Value* executable_run_options_value_;
-  llvm::IRBuilder<>* ir_builder_;
+  llvm::IRBuilder<>* b_;
   const HloModuleConfig& hlo_module_config_;
   const TargetMachineFeatures& target_machine_features_;
 };

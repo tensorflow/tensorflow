@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -29,10 +29,12 @@ namespace xla {
 // computation, suitable for consumption by humans.
 class HumanReadableProfileBuilder {
  public:
-  explicit HumanReadableProfileBuilder(tensorflow::StringPiece computation_name,
+  explicit HumanReadableProfileBuilder(absl::string_view computation_name,
+                                       bool is_entry_computation,
                                        int64 total_cycles,
                                        double clock_rate_ghz)
-      : computation_name_(std::string(computation_name)),
+      : computation_name_(computation_name),
+        is_entry_computation_(is_entry_computation),
         total_cycles_(total_cycles),
         clock_rate_ghz_(clock_rate_ghz) {
     CHECK_GE(clock_rate_ghz, 1e-9);
@@ -43,15 +45,13 @@ class HumanReadableProfileBuilder {
   // Adds an operation to the profile.  If you don't know the number of
   // floating-point ops or bytes touched by the op, or if you don't know how
   // fast it would run optimally, pass -1 for that param.
-  void AddOp(tensorflow::StringPiece op_name,
-             tensorflow::StringPiece short_name,
-             tensorflow::StringPiece category, int64 cycles, int64 flop_count,
+  void AddOp(absl::string_view op_name, absl::string_view short_name,
+             absl::string_view category, int64 cycles, int64 flop_count,
              int64 transcendental_count, int64 bytes_accessed,
              float optimal_seconds) {
-    op_infos_.push_back({std::string(op_name), std::string(short_name),
-                         std::string(category), cycles, flop_count,
-                         transcendental_count, bytes_accessed,
-                         optimal_seconds});
+    op_infos_.push_back({string(op_name), string(short_name), string(category),
+                         cycles, flop_count, transcendental_count,
+                         bytes_accessed, optimal_seconds});
   }
 
   // Gets the human-readable profile.
@@ -77,6 +77,7 @@ class HumanReadableProfileBuilder {
   }
 
   string computation_name_;
+  bool is_entry_computation_;
   int64 total_cycles_;
   double clock_rate_ghz_;
   std::vector<OpInfo> op_infos_;

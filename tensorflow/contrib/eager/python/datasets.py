@@ -18,20 +18,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.data.python.ops import prefetching_ops
+from tensorflow.python.data.experimental.ops import prefetching_ops
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import gen_dataset_ops
-from tensorflow.python.training.checkpointable import base as checkpointable
-from tensorflow.python.training.saver import BaseSaverBuilder
 
 
-class Iterator(iterator_ops.EagerIterator, checkpointable.CheckpointableBase):
+class Iterator(iterator_ops.EagerIterator):
   """An iterator producing tf.Tensor objects from a tf.data.Dataset.
 
   NOTE: Unlike the iterator created by the
-  @{tf.data.Dataset.make_one_shot_iterator} method, this class enables
+  `tf.data.Dataset.make_one_shot_iterator` method, this class enables
   additional experimental functionality, such as prefetching to the GPU.
   """
 
@@ -55,11 +53,16 @@ class Iterator(iterator_ops.EagerIterator, checkpointable.CheckpointableBase):
       TypeError: If `dataset` is an unsupported type.
       RuntimeError: When invoked without eager execution enabled.
     """
-    if isinstance(dataset, prefetching_ops._PrefetchToDeviceDataset):  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    if (isinstance(dataset, prefetching_ops._PrefetchToDeviceDataset)
+        or (isinstance(dataset, dataset_ops.DatasetV1Adapter)
+            and isinstance(
+                dataset._dataset, prefetching_ops._PrefetchToDeviceDataset))):
       raise TypeError(
-          "`tf.contrib.data.prefetch_to_device()` is not compatible with "
+          "`tf.data.experimental.prefetch_to_device()` is not compatible with "
           "`tf.contrib.eager.Iterator`. Use `for ... in dataset:` to iterate "
           "over the dataset instead.")
+    # pylint: enable=protected-access
 
     if not context.context().device_spec.device_type:
       is_remote_device = False
@@ -82,30 +85,3 @@ class Iterator(iterator_ops.EagerIterator, checkpointable.CheckpointableBase):
     # TODO(b/77291417): Fix
     with context.execution_mode(context.SYNC):
       return super(Iterator, self)._next_internal()
-
-  # TODO(shivaniagrawal): Expose checkpointable stateful objects from dataset
-  # attributes(potential).
-
-  class _Saveable(BaseSaverBuilder.SaveableObject):
-    """SaveableObject for saving/restoring iterator state."""
-
-    def __init__(self, iterator_resource, name):
-      serialized_iterator = gen_dataset_ops.serialize_iterator(
-          iterator_resource)
-      specs = [
-          BaseSaverBuilder.SaveSpec(serialized_iterator, "", name + "_STATE")
-      ]
-      # pylint: disable=protected-access
-      super(Iterator._Saveable, self).__init__(iterator_resource, specs, name)
-
-    def restore(self, restored_tensors, restored_shapes):
-      with ops.colocate_with(self.op):
-        return gen_dataset_ops.deserialize_iterator(self.op,
-                                                    restored_tensors[0])
-
-  def _gather_saveables_for_checkpoint(self):
-
-    def _saveable_factory(name):
-      return self._Saveable(self._resource, name)
-
-    return {"ITERATOR": _saveable_factory}

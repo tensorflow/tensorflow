@@ -19,6 +19,7 @@ from __future__ import print_function
 import os
 
 import numpy
+import six
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
@@ -144,6 +145,30 @@ class InterfaceTests(test.TestCase):
       checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
 
   @test_util.run_in_graph_and_eager_modes
+  def testDictionariesBasic(self):
+    a = training.Model()
+    b = training.Model()
+    a.attribute = {"b": b}
+    c = training.Model()
+    a.attribute["c"] = []
+    a.attribute["c"].append(c)
+    a_deps = util.list_objects(a)
+    self.assertIn(b, a_deps)
+    self.assertIn(c, a_deps)
+    self.assertIs(b, a.attribute["b"])
+    six.assertCountEqual(
+        self,
+        ["b", "c"],
+        [dep.name for dep in a.attribute._checkpoint_dependencies])
+    self.assertEqual([b, c], a.layers)
+    self.assertEqual([b, c], a.attribute.layers)
+    self.assertEqual([c], a.attribute["c"].layers)
+    checkpoint = util.Checkpoint(a=a)
+    save_path = checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
+    with self.cached_session():
+      checkpoint.restore(save_path).assert_consumed().initialize_or_restore()
+
+  @test_util.run_in_graph_and_eager_modes
   def testNoDepList(self):
     a = training.Model()
     a.l1 = data_structures.NoDependency([])
@@ -159,13 +184,71 @@ class InterfaceTests(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testAssertions(self):
     a = tracking.Checkpointable()
-    a.l = [numpy.zeros([2, 2])]
-    self.assertAllEqual([numpy.zeros([2, 2])], a.l)
-    self.assertAllClose([numpy.zeros([2, 2])], a.l)
-    nest.map_structure(self.assertAllClose, a.l, [numpy.zeros([2, 2])])
-    a.tensors = [array_ops.ones([2, 2]), array_ops.zeros([3, 3])]
-    self.assertAllClose([numpy.ones([2, 2]), numpy.zeros([3, 3])],
+    a.l = {"k": [numpy.zeros([2, 2])]}
+    self.assertAllEqual(nest.flatten({"k": [numpy.zeros([2, 2])]}),
+                        nest.flatten(a.l))
+    self.assertAllClose({"k": [numpy.zeros([2, 2])]}, a.l)
+    nest.map_structure(self.assertAllClose, a.l, {"k": [numpy.zeros([2, 2])]})
+    a.tensors = {"k": [array_ops.ones([2, 2]), array_ops.zeros([3, 3])]}
+    self.assertAllClose({"k": [numpy.ones([2, 2]), numpy.zeros([3, 3])]},
                         self.evaluate(a.tensors))
+
+
+class _DummyResource(tracking.TrackableResource):
+
+  def __init__(self, handle_name):
+    self._handle_name = handle_name
+    super(_DummyResource, self).__init__()
+
+  def create_resource(self):
+    return self._handle_name
+
+
+class ResourceTrackerTest(test.TestCase):
+
+  def testBasic(self):
+    resource_tracker = tracking.ResourceTracker()
+    with tracking.resource_tracker_scope(resource_tracker):
+      dummy_resource1 = _DummyResource("test1")
+      dummy_resource2 = _DummyResource("test2")
+
+    self.assertEqual(2, len(resource_tracker.resources))
+    self.assertEqual("test1", resource_tracker.resources[0].resource_handle)
+    self.assertEqual("test2", resource_tracker.resources[1].resource_handle)
+
+  def testTwoScopes(self):
+    resource_tracker1 = tracking.ResourceTracker()
+    with tracking.resource_tracker_scope(resource_tracker1):
+      dummy_resource1 = _DummyResource("test1")
+
+    resource_tracker2 = tracking.ResourceTracker()
+    with tracking.resource_tracker_scope(resource_tracker2):
+      dummy_resource2 = _DummyResource("test2")
+
+    self.assertEqual(1, len(resource_tracker1.resources))
+    self.assertEqual("test1", resource_tracker1.resources[0].resource_handle)
+    self.assertEqual(1, len(resource_tracker1.resources))
+    self.assertEqual("test2", resource_tracker2.resources[0].resource_handle)
+
+  def testNestedScopesScopes(self):
+    resource_tracker = tracking.ResourceTracker()
+    with tracking.resource_tracker_scope(resource_tracker):
+      resource_tracker1 = tracking.ResourceTracker()
+      with tracking.resource_tracker_scope(resource_tracker1):
+        dummy_resource1 = _DummyResource("test1")
+
+      resource_tracker2 = tracking.ResourceTracker()
+      with tracking.resource_tracker_scope(resource_tracker2):
+        dummy_resource2 = _DummyResource("test2")
+
+    self.assertEqual(1, len(resource_tracker1.resources))
+    self.assertEqual("test1", resource_tracker1.resources[0].resource_handle)
+    self.assertEqual(1, len(resource_tracker1.resources))
+    self.assertEqual("test2", resource_tracker2.resources[0].resource_handle)
+    self.assertEqual(2, len(resource_tracker.resources))
+    self.assertEqual("test1", resource_tracker.resources[0].resource_handle)
+    self.assertEqual("test2", resource_tracker.resources[1].resource_handle)
+
 
 if __name__ == "__main__":
   test.main()

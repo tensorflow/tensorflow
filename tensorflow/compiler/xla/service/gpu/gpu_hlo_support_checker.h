@@ -23,14 +23,12 @@ namespace xla {
 // his pass should run early in the HLO pipeline and checks for HLO constructs
 // which are not supported by the GPU backend and cannot be removed via HLO
 // transformations (eg, sparse layouts).
-class GpuHloSupportChecker : public HloPassInterface {
+class GpuHloSupportChecker : public HloModulePass {
  public:
   GpuHloSupportChecker() = default;
   ~GpuHloSupportChecker() override = default;
 
-  tensorflow::StringPiece name() const override {
-    return "gpu_hlo_support_checker";
-  }
+  absl::string_view name() const override { return "gpu_hlo_support_checker"; }
 
   // Note: always returns false (no instructions are ever modified by this
   // pass).

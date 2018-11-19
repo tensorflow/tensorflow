@@ -1,0 +1,58 @@
+op {
+  graph_op_name: "ExperimentalFunctionBufferingResource"
+  in_arg {
+    name: "string_arg"
+    description: <<END
+String argument to the function call.
+END
+  }
+  in_arg {
+    name: "target_device"
+    description: <<END
+Target device to execute the function on.
+END
+  }
+  out_arg {
+    name: "resource"
+    description: <<END
+Handle to the resource created.
+END
+  }
+  attr {
+    name: "shared_name"
+    description: <<END
+If non-empty, this resource will be shared under the given name across
+multiple sessions.
+END
+  }
+  attr {
+    name: "container"
+    description: <<END
+If non-empty, this resource is placed in the given container.
+Otherwise, a default container is used.
+END
+  }
+  attr {
+    name: "f"
+    description: <<END
+Function to be executed.
+END
+  }
+  attr {
+    name: "buffer_size"
+    description: <<END
+Size of the buffer.
+END
+  }
+  attr {
+    name: "output_types"
+    description: <<END
+The type list for the return values.
+END
+  }
+  summary: <<END
+Creates a resource that fills up a buffer by making function calls.
+END
+  visibility: HIDDEN
+}
+

@@ -18,6 +18,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -624,6 +625,34 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetworkWithOpts_Callable) {
   EXPECT_EQ(run_metadata.step_stats().dev_stats_size(), 2);
 }
 
+TEST_F(DirectSessionMinusAXTest, UseRunHandlerPool) {
+  Initialize({3, 2, -1, 0});
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+  std::vector<std::pair<string, Tensor>> inputs;
+
+  // Request two targets: one fetch output and one non-fetched output.
+  std::vector<string> output_names = {y_ + ":0"};
+  std::vector<string> target_nodes = {y_neg_};
+  std::vector<Tensor> outputs;
+
+  // Prepares RunOptions and RunMetadata
+  RunOptions run_options;
+  run_options.mutable_experimental()->set_use_run_handler_pool(true);
+
+  Status s = session->Run(run_options, inputs, output_names, target_nodes,
+                          &outputs, nullptr);
+  TF_ASSERT_OK(s);
+
+  ASSERT_EQ(1, outputs.size());
+  // The first output should be initialized and have the correct
+  // output.
+  auto mat = outputs[0].matrix<float>();
+  ASSERT_TRUE(outputs[0].IsInitialized());
+  EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+}
+
 TEST(DirectSessionTest, KeepsStateAcrossRunsOfSession) {
   GraphDef def;
   Graph g(OpRegistry::Global());
@@ -896,6 +925,125 @@ TEST(DirectSessionTest, FetchMultipleTimes) {
   }
 }
 
+TEST(DirectSessionTest, MultipleFeedTestSomeSyncRun) {
+  GraphDef def;
+  Graph g(OpRegistry::Global());
+  RunOptions run_options;
+  run_options.set_inter_op_thread_pool(-1);
+
+  Tensor first_value(DT_FLOAT, TensorShape({}));
+  first_value.scalar<float>()() = 1.0;
+  Node* first_const = test::graph::Constant(&g, first_value);
+  Node* first_identity = test::graph::Identity(&g, first_const);
+
+  Tensor second_value(DT_FLOAT, TensorShape({}));
+  second_value.scalar<float>()() = 2.0;
+  Node* second_const = test::graph::Constant(&g, second_value);
+  Node* second_identity = test::graph::Identity(&g, second_const);
+
+  test::graph::ToGraphDef(&g, &def);
+
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def));
+
+  std::vector<Tensor> outputs;
+
+  // Fetch without feeding.
+  Status s = session->Run(
+      run_options, {},
+      {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
+      &outputs, nullptr);
+  TF_ASSERT_OK(s);
+  ASSERT_EQ(2, outputs.size());
+  ASSERT_EQ(1.0, outputs[0].flat<float>()(0));
+  ASSERT_EQ(2.0, outputs[1].flat<float>()(0));
+
+  s = session->Run(
+      {}, {second_identity->name() + ":0", first_identity->name() + ":0"}, {},
+      &outputs);
+  TF_ASSERT_OK(s);
+  ASSERT_EQ(2, outputs.size());
+  ASSERT_EQ(2.0, outputs[0].flat<float>()(0));
+  ASSERT_EQ(1.0, outputs[1].flat<float>()(0));
+
+  Tensor value_11(DT_FLOAT, TensorShape({}));
+  value_11.scalar<float>()() = 11.0;
+  Tensor value_22(DT_FLOAT, TensorShape({}));
+  value_22.scalar<float>()() = 22.0;
+
+  // Feed [first_const, second_const]
+  s = session->Run(
+      {{first_const->name(), value_11}, {second_const->name(), value_22}},
+      {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
+      &outputs);
+  TF_ASSERT_OK(s);
+  ASSERT_EQ(2, outputs.size());
+  ASSERT_EQ(11.0, outputs[0].flat<float>()(0));
+  ASSERT_EQ(22.0, outputs[1].flat<float>()(0));
+
+  // Feed [second_const, first_const]
+  s = session->Run(
+      {{second_const->name(), value_22}, {first_const->name(), value_11}},
+      {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
+      &outputs);
+  TF_ASSERT_OK(s);
+  ASSERT_EQ(2, outputs.size());
+  ASSERT_EQ(11.0, outputs[0].flat<float>()(0));
+  ASSERT_EQ(22.0, outputs[1].flat<float>()(0));
+
+  // Feed [first_const, first_const]
+  s = session->Run(
+      run_options,
+      {{first_const->name(), value_11}, {first_const->name(), value_22}},
+      {first_identity->name() + ":0", second_identity->name() + ":0"}, {},
+      &outputs, nullptr);
+  EXPECT_TRUE(errors::IsInvalidArgument(s));
+  EXPECT_TRUE(str_util::StrContains(s.error_message(), "fed more than once"));
+}
+
+REGISTER_OP("ThreadID").Input("x: int64").Output("y: int64").Doc(R"doc(
+ThreadID returns the thread ID that called compute.
+
+x: int64
+y: int64
+)doc");
+
+// The ThreadID kernel returns the thread ID that executed Compute.
+class ThreadIDOp : public OpKernel {
+ public:
+  explicit ThreadIDOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  void Compute(OpKernelContext* ctx) override {
+    Tensor* out_tensor = nullptr;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output("y", TensorShape({}), &out_tensor));
+    std::hash<std::thread::id> hasher;
+    out_tensor->scalar<int64>()() =
+        static_cast<int64>(hasher(std::this_thread::get_id()));
+  }
+};
+REGISTER_KERNEL_BUILDER(Name("ThreadID").Device(DEVICE_CPU), ThreadIDOp);
+
+TEST(DirectSessionTest, SessionSyncRun) {
+  Graph g(OpRegistry::Global());
+  Tensor vx(DT_INT64, TensorShape({}));
+  vx.scalar<int64>()() = 17;
+  Node* x = test::graph::Constant(&g, vx);
+  Node* y = test::graph::Unary(&g, "ThreadID", x);
+  GraphDef def;
+  test::graph::ToGraphDef(&g, &def);
+  auto sess = CreateSession();
+  TF_ASSERT_OK(sess->Create(def));
+  std::vector<Tensor> outputs;
+  RunOptions run_opts;
+  run_opts.set_inter_op_thread_pool(-1);
+  auto s = sess->Run(run_opts, {}, {y->name() + ":0"}, {}, &outputs, nullptr);
+
+  std::hash<std::thread::id> hasher;
+  EXPECT_EQ(static_cast<int64>(hasher(std::this_thread::get_id())),
+            static_cast<int64>(outputs[0].scalar<int64>()()));
+}
+
 REGISTER_OP("Darth").Input("x: float").Output("y: float").Doc(R"doc(
 Darth promises one return value.
 
@@ -1135,7 +1283,7 @@ TEST(DirectSessionTest, RunHandleTest) {
   ASSERT_TRUE(s.ok());
   ASSERT_EQ(1, outputs.size());
 
-  ResourceHandle resource_handle = outputs[0].scalar<ResourceHandle>()();
+  const ResourceHandle& resource_handle = outputs[0].scalar<ResourceHandle>()();
   Tensor string_handle(DT_STRING, {});
   string_handle.flat<string>().setConstant(resource_handle.name());
 
@@ -1188,7 +1336,7 @@ TEST(DirectSessionTest, RunHandleTest_Callable) {
   ASSERT_TRUE(s.ok());
   ASSERT_EQ(1, outputs.size());
 
-  ResourceHandle resource_handle = outputs[0].scalar<ResourceHandle>()();
+  const ResourceHandle& resource_handle = outputs[0].scalar<ResourceHandle>()();
   Tensor string_handle(DT_STRING, {});
   string_handle.flat<string>().setConstant(resource_handle.name());
 
@@ -1400,6 +1548,7 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib,
   p = options.config.add_session_inter_op_thread_pool();
   if (use_global_pools) p->set_global_name("small pool");
   p->set_num_threads(1);
+  const int kSyncPool = -1;
   const int kLargePool = 0;
   const int kSmallPool = 1;
 
@@ -1442,7 +1591,11 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib,
           EXPECT_FLOAT_EQ(1.2, flat(0));
           num_done.fetch_add(1);
         };
-        tp->Schedule(fn);
+        if (tp != nullptr) {
+          tp->Schedule(fn);
+        } else {
+          fn();
+        }
       };
 
   // For blocking states:
@@ -1463,9 +1616,10 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib,
 
   tp1 = new thread::ThreadPool(Env::Default(), "tp1", 5);
 
-  // Launch 2 session run calls. Neither will finish until the blocking op is
+  // Launch a session run call. It will not finish until the blocking op is
   // unblocked, because it is using all threads in the small pool.
   add_session_run_call(tp1, y, kSmallPool);
+
   blocking_op_state->AwaitState(1);  // Wait for the blocking op to Compute.
 
   // These will block on <BlockingOpState>.
@@ -1484,10 +1638,15 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib,
   delete tp2;
   EXPECT_EQ(kUnblockedThreads, num_done.load());
 
+  // Launch a session call using this thread. This will finish as it runs
+  // synchronously in this thread.
+  add_session_run_call(nullptr, x, kSyncPool);
+
   // Unblock the blocked op and wait for the blocked functions to finish.
   blocking_op_state->MoveToState(1, 2);
   delete tp1;
-  EXPECT_EQ(kUnblockedThreads + kBlockedThreads + 1, num_done.load());
+
+  EXPECT_EQ(kUnblockedThreads + kBlockedThreads + 1 + 1, num_done.load());
   delete blocking_op_state;
   blocking_op_state = nullptr;
 }
@@ -1532,7 +1691,7 @@ TEST(DirectSessionTest, TestSessionInterOpThreadsInvalidOptions) {
   {
     std::unique_ptr<Session> session(NewSession(options));
     TF_ASSERT_OK(session->Create(def));
-    for (int pool_num = -1; pool_num <= 1; pool_num += 2) {
+    for (int pool_num = -2; pool_num <= 1; pool_num += 3) {
       RunOptions run_options;
       run_options.set_inter_op_thread_pool(pool_num);
       std::vector<Tensor> outputs;
@@ -2087,4 +2246,115 @@ BENCHMARK(BM_FeedFetch)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
 BENCHMARK(BM_FeedFetchCallable)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
 
 }  // namespace
+
+class DirectSessionCollectiveTest : public ::testing::Test {
+ public:
+  // Creates a graph with CollectiveOps inside functions and runs it.  Returns
+  // the generated collective_graph_key.
+  Status RunGraphWithCollectiveFunctions(bool add_unused_function,
+                                         int64* collective_graph_key) {
+    GraphDef g = CreateGraph(add_unused_function);
+    const Tensor t1 =
+        test::AsTensor<float>({0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1});
+    const Tensor t2 =
+        test::AsTensor<float>({0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3});
+    auto session = CreateSession();
+    TF_RETURN_IF_ERROR(session->Create(g));
+    std::vector<Tensor> outputs;
+    TF_RETURN_IF_ERROR(
+        session->Run({{"input0:0", t1}, {"input1:0", t2}}, {},
+                     {"collective_call0:0", "collective_call1:0"}, &outputs));
+    DirectSession* direct_session = static_cast<DirectSession*>(session.get());
+    {
+      mutex_lock l(direct_session->collective_graph_key_lock_);
+      *collective_graph_key = direct_session->collective_graph_key_;
+    }
+    return Status::OK();
+  }
+
+ private:
+  // Creates a function with name `function_name` and a single CollectiveReduce
+  // node with instance key set as `instance_key`.
+  FunctionDef CollectiveFunction(const string& function_name,
+                                 int instance_key) {
+    return FunctionDefHelper::Define(
+        // Function name
+        function_name,
+        // In def
+        {"arg:float"},
+        // Out def
+        {"reduce:float"},
+        // Attr def
+        {},
+        // Node def
+        {{
+            {"reduce"},
+            "CollectiveReduce",
+            {"arg"},
+            {{"group_size", 2},
+             {"group_key", 1},
+             {"instance_key", instance_key},
+             {"subdiv_offsets", gtl::ArraySlice<int32>({0})},
+             {"merge_op", "Add"},
+             {"final_op", "Div"},
+             {"T", DT_FLOAT}},
+        }});
+  }
+
+  NodeDef Input(int id) {
+    AttrValue dtype_attr;
+    SetAttrValue(DT_FLOAT, &dtype_attr);
+    NodeDef input;
+    input.set_name(strings::StrCat("input", id));
+    input.set_op("Placeholder");
+    input.mutable_attr()->insert({"dtype", dtype_attr});
+    return input;
+  }
+
+  NodeDef CollectiveCall(const string& op, const string& input, int cpu_id) {
+    NodeDef collective_call;
+    collective_call.set_name(strings::StrCat("collective_call", cpu_id));
+    collective_call.set_op(op);
+    collective_call.add_input(input);
+    collective_call.set_device(
+        strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", cpu_id));
+    return collective_call;
+  }
+
+  // Creates a GraphDef that adds two CollectiveFunctions, one each on CPU0 and
+  // CPU1, with instance_key 1, and appropriate placeholder inputs.  If
+  // `add_unused_function` is true, adds another CollectiveFunction with
+  // instance_key 2 that is not invoked in the graph.
+  GraphDef CreateGraph(bool add_unused_function) {
+    GraphDef g;
+    FunctionDef collective_function =
+        CollectiveFunction("CollectiveFunction1", 1);
+    FunctionDefLibrary* lib = g.mutable_library();
+    *lib->add_function() = collective_function;
+    if (add_unused_function) {
+      FunctionDef unused_function =
+          CollectiveFunction("CollectiveFunction2", 2);
+      *lib->add_function() = unused_function;
+    }
+
+    *g.add_node() = Input(0);
+    *g.add_node() = Input(1);
+    // CollectiveReduce on CPU0 with instance_key 1.
+    *g.add_node() = CollectiveCall("CollectiveFunction1", "input0", 0);
+    // CollectiveReduce on CPU1 with instance_key 1.
+    *g.add_node() = CollectiveCall("CollectiveFunction1", "input1", 1);
+
+    return g;
+  }
+};
+
+TEST_F(DirectSessionCollectiveTest,
+       TestCollectiveGraphKeyUsesOnlyCalledFunctions) {
+  int64 key1;
+  TF_ASSERT_OK(RunGraphWithCollectiveFunctions(false, &key1));
+  int64 key2;
+  TF_ASSERT_OK(RunGraphWithCollectiveFunctions(true, &key2));
+  ASSERT_EQ(key1, key2);
+}
+
 }  // namespace tensorflow

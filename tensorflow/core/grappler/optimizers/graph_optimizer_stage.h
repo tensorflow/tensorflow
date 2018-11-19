@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
@@ -46,17 +47,20 @@ struct GraphOptimizerContext {
   GraphOptimizerContext(const std::unordered_set<string>* nodes_to_preserve,
                         GraphDef* optimized_graph,
                         GraphProperties* graph_properties, NodeMap* node_map,
+                        gtl::FlatSet<string>* feed_nodes,
                         RewriterConfig::Toggle opt_level)
       : nodes_to_preserve(nodes_to_preserve),
         optimized_graph(optimized_graph),
         graph_properties(graph_properties),
         node_map(node_map),
+        feed_nodes(feed_nodes),
         opt_level(opt_level) {}
 
   const std::unordered_set<string>* nodes_to_preserve;
   GraphDef* optimized_graph;
   GraphProperties* graph_properties;
   NodeMap* node_map;
+  gtl::FlatSet<string>* feed_nodes;
   RewriterConfig::Toggle opt_level;
 };
 
@@ -235,7 +239,8 @@ class GraphOptimizerStagePipeline {
         // case of any error it must leave optimized graph unmodified.
         if (!stage_status.ok()) {
           LOG(WARNING) << "Failed to run optimizer " << stage->optimizer_name()
-                       << ", stage " << stage->stage_name()
+                       << ", stage " << stage->stage_name() << " node "
+                       << node->name()
                        << ". Error: " << stage_status.error_message();
         }
         if (break_predicate_(*result)) return true;

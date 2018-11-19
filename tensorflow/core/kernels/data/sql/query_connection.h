@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
+namespace data {
 
 class IteratorContext;
 
@@ -63,7 +64,7 @@ class QueryConnection {
 };
 
 }  // namespace sql
-
+}  // namespace data
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_DATA_SQL_QUERY_CONNECTION_H_

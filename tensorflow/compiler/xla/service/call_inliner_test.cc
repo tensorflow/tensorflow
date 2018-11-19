@@ -18,9 +18,9 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -52,7 +51,7 @@ TEST_F(CallInlinerTest, ControlDependenciesAreCarriedToCaller) {
   HloInstruction* one = inner.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   TF_ASSERT_OK(zero->AddControlDependencyTo(one));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* inner_computation =
       module->AddEmbeddedComputation(inner.Build());
 
@@ -80,7 +79,7 @@ TEST_F(CallInlinerTest, ControlDependenciesAreCarriedToCaller) {
 // returns false should be identical to just returning false).
 TEST_F(CallInlinerTest, CallsWithinWhileBodiesAreInlined) {
   const Shape pred = ShapeUtil::MakeShape(PRED, {});
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
 
   // Create a lambda that calls a function that returns the false predicate.
   // Note we also use this lambda twice by reference, just to make the test a
@@ -92,6 +91,8 @@ TEST_F(CallInlinerTest, CallsWithinWhileBodiesAreInlined) {
       module->AddEmbeddedComputation(just_false.Build());
 
   HloComputation::Builder call_false_builder(TestName() + ".call_false");
+  call_false_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, pred, "param"));
   call_false_builder.AddInstruction(
       HloInstruction::CreateCall(pred, {}, false_computation));
   HloComputation* call_false =
@@ -119,7 +120,7 @@ TEST_F(CallInlinerTest, CallsWithinWhileBodiesAreInlined) {
 // whole pass.
 TEST_F(CallInlinerTest, InlineWithoutRunningPass) {
   const Shape pred = ShapeUtil::MakeShape(PRED, {});
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
 
   HloComputation::Builder just_false(TestName() + ".false");
   auto* true_constant = just_false.AddInstruction(
@@ -143,7 +144,7 @@ TEST_F(CallInlinerTest, InlineWithoutRunningPass) {
 
 TEST_F(CallInlinerTest, CallToOutfeedComputationIsInlined) {
   const Shape f32 = ShapeUtil::MakeShape(F32, {});
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
 
   HloComputation::Builder outfeeder(TestName() + ".outfeeder");
   auto value = outfeeder.AddInstruction(

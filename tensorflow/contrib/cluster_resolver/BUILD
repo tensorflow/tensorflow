@@ -30,6 +30,9 @@ py_library(
     deps = [
         ":base_cluster_resolver_py",
         ":gce_cluster_resolver_py",
+        ":kubernetes_cluster_resolver_py",
+        ":slurm_cluster_resolver_py",
+        ":tfconfig_cluster_resolver_py",
         ":tpu_cluster_resolver_py",
         "//tensorflow/python:util",
     ],
@@ -55,8 +58,38 @@ py_library(
 )
 
 py_library(
+    name = "tfconfig_cluster_resolver_py",
+    srcs = ["python/training/tfconfig_cluster_resolver.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":base_cluster_resolver_py",
+        "//tensorflow/python:training",
+    ],
+)
+
+py_library(
     name = "tpu_cluster_resolver_py",
     srcs = ["python/training/tpu_cluster_resolver.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":base_cluster_resolver_py",
+        "//tensorflow/python:training",
+    ],
+)
+
+py_library(
+    name = "slurm_cluster_resolver_py",
+    srcs = ["python/training/slurm_cluster_resolver.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":base_cluster_resolver_py",
+        "//tensorflow/python:training",
+    ],
+)
+
+py_library(
+    name = "kubernetes_cluster_resolver_py",
+    srcs = ["python/training/kubernetes_cluster_resolver.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":base_cluster_resolver_py",
@@ -95,6 +128,22 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "tfconfig_cluster_resolver_py_test",
+    size = "small",
+    srcs = ["python/training/tfconfig_cluster_resolver_test.py"],
+    additional_deps = [
+        ":tfconfig_cluster_resolver_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+    grpc_enabled = True,
+    main = "python/training/tfconfig_cluster_resolver_test.py",
+)
+
+tf_py_test(
     name = "tpu_cluster_resolver_py_test",
     size = "small",
     srcs = ["python/training/tpu_cluster_resolver_test.py"],
@@ -108,4 +157,37 @@ tf_py_test(
     ],
     grpc_enabled = True,
     main = "python/training/tpu_cluster_resolver_test.py",
+)
+
+tf_py_test(
+    name = "slurm_cluster_resolver_py_test",
+    size = "small",
+    srcs = ["python/training/slurm_cluster_resolver_test.py"],
+    additional_deps = [
+        ":cluster_resolver_py",
+        ":slurm_cluster_resolver_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+    main = "python/training/slurm_cluster_resolver_test.py",
+    tags = [],
+)
+
+tf_py_test(
+    name = "kubernetes_cluster_resolver_py_test",
+    size = "small",
+    srcs = ["python/training/kubernetes_cluster_resolver_test.py"],
+    additional_deps = [
+        ":cluster_resolver_py",
+        ":kubernetes_cluster_resolver_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+    main = "python/training/kubernetes_cluster_resolver_test.py",
 )

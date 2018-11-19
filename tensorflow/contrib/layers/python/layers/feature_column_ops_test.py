@@ -27,7 +27,7 @@ from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.layers.python.layers import feature_column_ops
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
-from tensorflow.python.feature_column import feature_column as fc_core
+from tensorflow.python.feature_column import feature_column_lib as fc_core
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -49,7 +49,7 @@ class TransformerTest(test.TestCase):
     real_valued = feature_column.real_valued_column("price")
     features = {"price": constant_op.constant([[20.], [110], [-3]])}
     output = feature_column_ops._Transformer(features).transform(real_valued)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(output.eval(), [[20.], [110], [-3]])
 
   def testSparseRealValuedColumnIdentityTransformation(self):
@@ -60,7 +60,7 @@ class TransformerTest(test.TestCase):
     features = {"rating": rating_tensor}
     output = feature_column_ops._Transformer(features).transform(
         sparse_real_valued)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(output.values.eval(), rating_tensor.values.eval())
       self.assertAllEqual(output.indices.eval(), rating_tensor.indices.eval())
       self.assertAllEqual(output.dense_shape.eval(),
@@ -80,7 +80,7 @@ class TransformerTest(test.TestCase):
                                                         [sparse_real_valued])
     self.assertTrue(sparse_real_valued in output_dict)
     output = output_dict[sparse_real_valued]
-    with self.test_session():
+    with self.cached_session():
       self.assertArrayNear(output.values.eval(), [4.0, 25.0], 1e-5)
       self.assertAllEqual(output.indices.eval(), rating_tensor.indices.eval())
       self.assertAllEqual(output.dense_shape.eval(),
@@ -97,7 +97,7 @@ class TransformerTest(test.TestCase):
         features=features, feature_columns=[bucket])
     self.assertEqual(len(output), 1)
     self.assertIn(bucket, output)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(output[bucket].eval(), [[2], [3], [0]])
 
   def testBucketizedColumnWithMultiDimensions(self):
@@ -109,7 +109,7 @@ class TransformerTest(test.TestCase):
         "price": constant_op.constant([[20., 110], [110., 20], [-3, -3]])
     }
     output = feature_column_ops._Transformer(features).transform(bucket)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(output.eval(), [[2, 3], [3, 2], [0, 0]])
 
   def testCachedTransformation(self):
@@ -118,7 +118,7 @@ class TransformerTest(test.TestCase):
     # buckets 2, 3, 0
     features = {"price": constant_op.constant([[20.], [110], [-3]])}
     transformer = feature_column_ops._Transformer(features)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       transformer.transform(bucket)
       num_of_ops = len(sess.graph.get_operations())
       # Verify that the second call to transform the same feature
@@ -138,7 +138,7 @@ class TransformerTest(test.TestCase):
         features=features, feature_columns=[hashed_sparse])
     self.assertEqual(len(output), 1)
     self.assertIn(hashed_sparse, output)
-    with self.test_session():
+    with self.cached_session():
       self.assertEqual(output[hashed_sparse].values.dtype, dtypes.int64)
       self.assertTrue(
           all(x < 10 and x >= 0 for x in output[hashed_sparse].values.eval()))
@@ -161,7 +161,7 @@ class TransformerTest(test.TestCase):
         features=features, feature_columns=[hashed_sparse])
     self.assertEqual(len(output), 1)
     self.assertIn(hashed_sparse, output)
-    with self.test_session():
+    with self.cached_session():
       self.assertEqual(output[hashed_sparse].values.dtype, dtypes.int64)
       self.assertTrue(
           all(x < 10 and x >= 0 for x in output[hashed_sparse].values.eval()))
@@ -177,7 +177,7 @@ class TransformerTest(test.TestCase):
     features = {"wire": wire_tensor}
     output = feature_column_ops._Transformer(features).transform(hashed_sparse)
 
-    with self.test_session():
+    with self.cached_session():
       # While the input is a dense Tensor, the output should be a SparseTensor.
       self.assertIsInstance(output, sparse_tensor.SparseTensor)
       self.assertEqual(output.values.dtype, dtypes.int64)
@@ -203,7 +203,7 @@ class TransformerTest(test.TestCase):
     self.assertEqual(len(output), 2)
     self.assertIn(hashed_sparse, output)
     self.assertIn(wire_embedding, output)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(output[wire_embedding].indices.eval(),
                           wire_tensor.indices.eval())
       self.assertAllEqual(output[wire_embedding].dense_shape.eval(), [2, 2])
@@ -223,7 +223,7 @@ class TransformerTest(test.TestCase):
         features=features, feature_columns=[keys_sparse])
     self.assertEqual(len(output), 1)
     self.assertIn(keys_sparse, output)
-    with self.test_session():
+    with self.cached_session():
       lookup_ops.tables_initializer().run()
       self.assertEqual(output[keys_sparse].values.dtype, dtypes.int64)
       self.assertAllEqual(output[keys_sparse].values.eval(), [1, 2, 0])
@@ -241,7 +241,7 @@ class TransformerTest(test.TestCase):
     features = {"wire": wire_tensor}
     output = feature_column_ops._Transformer(features).transform(keys_sparse)
 
-    with self.test_session():
+    with self.cached_session():
       lookup_ops.tables_initializer().run()
       # While the input is a dense Tensor, the output should be a SparseTensor.
       self.assertIsInstance(output, sparse_tensor.SparseTensor)
@@ -264,7 +264,7 @@ class TransformerTest(test.TestCase):
         features=features, feature_columns=[hashed_sparse])
     self.assertEqual(len(output), 1)
     self.assertIn(hashed_sparse, output)
-    with self.test_session():
+    with self.cached_session():
       self.assertEqual(output[hashed_sparse].values.dtype, dtypes.int32)
       self.assertTrue(
           all(x < 10 and x >= 0 for x in output[hashed_sparse].values.eval()))
@@ -282,7 +282,7 @@ class TransformerTest(test.TestCase):
     wire_tensor = constant_op.constant([[100, 0], [1, 25]])
     features = {"wire": wire_tensor}
     output = feature_column_ops._Transformer(features).transform(hashed_sparse)
-    with self.test_session():
+    with self.cached_session():
       # While the input is a dense Tensor, the output should be a SparseTensor.
       self.assertIsInstance(output, sparse_tensor.SparseTensor)
       self.assertEqual(output.values.dtype, dtypes.int32)
@@ -310,7 +310,7 @@ class TransformerTest(test.TestCase):
     self.assertEqual(len(output), 1)
     self.assertIn(weighted_ids, output)
 
-    with self.test_session():
+    with self.cached_session():
       lookup_ops.tables_initializer().run()
       self.assertAllEqual(output[weighted_ids][0].dense_shape.eval(),
                           ids_tensor.dense_shape.eval())
@@ -340,7 +340,7 @@ class TransformerTest(test.TestCase):
         features=features, feature_columns=[vocab_sparse])
     self.assertEqual(len(output), 1)
     self.assertIn(vocab_sparse, output)
-    with self.test_session():
+    with self.cached_session():
       lookup_ops.tables_initializer().run()
       self.assertEqual(output[vocab_sparse].values.dtype, dtypes.int64)
       self.assertAllEqual(output[vocab_sparse].values.eval(), [1, 2, 0])
@@ -362,7 +362,7 @@ class TransformerTest(test.TestCase):
         features=features, feature_columns=[vocab_sparse])
     self.assertEqual(len(output), 1)
     self.assertIn(vocab_sparse, output)
-    with self.test_session():
+    with self.cached_session():
       lookup_ops.tables_initializer().run()
       self.assertEqual(output[vocab_sparse].values.dtype, dtypes.int64)
       self.assertAllEqual(output[vocab_sparse].values.eval(), [1, 2, 0, 1])
@@ -386,7 +386,7 @@ class TransformerTest(test.TestCase):
         features=features, feature_columns=[vocab_sparse])
     self.assertEqual(len(output), 1)
     self.assertIn(vocab_sparse, output)
-    with self.test_session():
+    with self.cached_session():
       lookup_ops.tables_initializer().run()
       self.assertEqual(output[vocab_sparse].values.dtype, dtypes.int64)
       self.assertAllEqual(output[vocab_sparse].values.eval(), [1, 2, 0])
@@ -408,7 +408,7 @@ class TransformerTest(test.TestCase):
         features=features, feature_columns=[vocab_sparse])
     self.assertEqual(len(output), 1)
     self.assertIn(vocab_sparse, output)
-    with self.test_session():
+    with self.cached_session():
       lookup_ops.tables_initializer().run()
       self.assertEqual(output[vocab_sparse].values.dtype, dtypes.int64)
       self.assertAllEqual(output[vocab_sparse].values.eval(), [1, 2, 0, 1])
@@ -440,7 +440,7 @@ class TransformerTest(test.TestCase):
         features=features, feature_columns=[country_language])
     self.assertEqual(len(output), 1)
     self.assertIn(country_language, output)
-    with self.test_session():
+    with self.cached_session():
       self.assertEqual(output[country_language].values.dtype, dtypes.int64)
       self.assertTrue(
           all(x < 15 and x >= 0 for x in output[country_language].values.eval(
@@ -467,7 +467,7 @@ class TransformerTest(test.TestCase):
         features=features, feature_columns=[country_price])
     self.assertEqual(len(output), 1)
     self.assertIn(country_price, output)
-    with self.test_session():
+    with self.cached_session():
       self.assertEqual(output[country_price].values.dtype, dtypes.int64)
       self.assertTrue(
           all(x < 15 and x >= 0 for x in output[country_price].values.eval()))
@@ -498,7 +498,7 @@ class TransformerTest(test.TestCase):
       weights = column_to_variable[country_price][0]
       grad = array_ops.squeeze(
           gradients_impl.gradients(output, weights)[0].values)
-      with self.test_session():
+      with self.cached_session():
         variables_lib.global_variables_initializer().run()
         self.assertEqual(len(grad.eval()), 6)
 
@@ -537,7 +537,7 @@ class TransformerTest(test.TestCase):
         features=features, feature_columns=[wire_country_price])
     self.assertEqual(len(output), 1)
     self.assertIn(wire_country_price, output)
-    with self.test_session():
+    with self.cached_session():
       self.assertEqual(output[wire_country_price].values.dtype, dtypes.int64)
       self.assertTrue(
           all(x < 15 and x >= 0 for x in output[wire_country_price].values.eval(
@@ -600,7 +600,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     columns = [one_hot_column, embedding_column, real_valued_column]
     output = feature_column_ops.input_from_feature_columns(features, columns)
     output_core = fc_core.input_layer(features, columns)
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       self.assertAllEqual(output.eval().shape, [3, 2 + 4 + 10])
@@ -626,7 +626,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     cols_to_outs = {}
     feature_column_ops.input_from_feature_columns(
         features, columns, cols_to_outs=cols_to_outs)
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       for column in columns:
@@ -637,7 +637,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     features = {"price": constant_op.constant([[20.], [110], [-3]])}
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [real_valued])
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(output.eval(), features["price"].eval())
       # Verify cross compatibility: Core builder output should equal to contrib.
       self.assertAllClose(output.eval(),
@@ -650,7 +650,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     }
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [real_valued])
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(output.eval(), features["price"].eval())
       # Verify cross compatibility: Core builder output should equal to contrib.
       self.assertAllClose(output.eval(),
@@ -662,7 +662,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     rating = np.array([[0., 1., 2., -1.],
                        [3., 4., 5., 6.]])
     features = {"rating": constant_op.constant(rating)}
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       output = sess.run(feature_column_ops.input_from_feature_columns(
           features, [var_len_real_valued]))
     self.assertAllClose(rating, output)
@@ -673,7 +673,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     rating = np.array([[0, 1, 2, -1],
                        [3, 4, 5, 6]])
     features = {"rating": constant_op.constant(rating, dtype=dtypes.int64)}
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       output = sess.run(feature_column_ops.input_from_feature_columns(
           features, [var_len_real_valued]))
     self.assertAllClose(rating.astype(np.float32), output)
@@ -684,7 +684,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     features = {"price": constant_op.constant([[20.], [110], [-3]])}
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [real_valued])
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(output.eval(), features["price"].eval() - 2)
       # Verify cross compatibility: Core builder output should equal to contrib.
       self.assertAllClose(output.eval(),
@@ -698,7 +698,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     }
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [real_valued])
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(output.eval(), features["price"].eval() - 2)
       # Verify cross compatibility: Core builder output should equal to contrib.
       self.assertAllClose(output.eval(),
@@ -713,7 +713,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     features = {"price": constant_op.constant([[20.], [110], [-3]])}
     output = feature_column_ops.input_from_feature_columns(features, [bucket])
     expected = [[0, 1, 0, 0], [0, 0, 1, 0], [1, 0, 0, 0]]
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(output.eval(), expected)
       self.assertAllClose(output.eval(),
                           fc_core.input_layer(features, [bucket]).eval())
@@ -729,7 +729,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     output = feature_column_ops.input_from_feature_columns(features, [bucket])
     expected = [[0, 0, 1, 0, 0, 0, 0, 1], [0, 0, 0, 1, 0, 0, 1, 0],
                 [1, 0, 0, 0, 1, 0, 0, 0]]
-    with self.test_session():
+    with self.cached_session():
       self.assertAllClose(output.eval(), expected)
       self.assertAllClose(output.eval(),
                           fc_core.input_layer(features, [bucket]).eval())
@@ -752,7 +752,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [one_hot_column])
     output_core = fc_core.input_layer(features, [one_hot_column])
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       self.assertAllEqual([[0, 0, 10., 0], [0, 20., 0, 0], [30., 0, 40., 0]],
@@ -773,7 +773,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
                                                            [one_hot_sparse])
     output_core = fc_core.input_layer(features, [one_hot_sparse])
 
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       self.assertAllEqual([[0, 0, 1, 0], [0, 1, 0, 0], [1, 0, 0, 0]],
@@ -794,7 +794,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
                                                            [one_hot_sparse])
     output_core = fc_core.input_layer(features, [one_hot_sparse])
 
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       self.assertAllEqual([[0, 0, 1, 0], [0, 1, 0, 0], [1, 0, 1, 0]],
@@ -816,7 +816,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [one_hot_sparse])
     output_core = fc_core.input_layer(features, [one_hot_sparse])
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual([[0, 0, 1, 0], [0, 1, 0, 0], [1, 0, 1, 0]],
                           output.eval())
@@ -834,7 +834,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [one_hot_sparse])
     output_core = fc_core.input_layer(features, [one_hot_sparse])
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       self.assertAllEqual([3, 10], output.eval().shape)
@@ -852,7 +852,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [embeded_sparse])
     output_core = fc_core.input_layer(features, [embeded_sparse])
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual(output.eval().shape, [4, 10])
       # Verify cross compatibility: Core builder output should equal to contrib.
@@ -878,7 +878,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
         features, [embedded_sparse], weight_collections=["my_collection_core"])
     weights_core = ops.get_collection("my_collection_core")
     grad_core = gradients_impl.gradients(output_core, weights_core)
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       gradient_values = []
       gradient_values_core = []
@@ -907,7 +907,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
                                                            [embeded_sparse])
     output_core = fc_core.input_layer(features, [embeded_sparse])
 
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       output_eval = output.eval()
       self.assertAllEqual(output_eval.shape, [2, 10])
@@ -935,7 +935,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
 
     # Makes sure that trying to use different initializers with the same
     # embedding column explicitly fails.
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(
           ValueError,
           "Duplicate feature column key found for column: wire_embedding"):
@@ -961,7 +961,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
                                                            [embeded_sparse])
     output_core = fc_core.input_layer(features, [embeded_sparse])
 
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       self.assertAllEqual(output.eval().shape, [2, 10])
@@ -986,7 +986,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     embeded_sparse = feature_column.embedding_column(weighted_ids, 10)
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [embeded_sparse])
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       self.assertAllEqual(output.eval().shape, [2, 10])
@@ -1005,7 +1005,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     embeded_sparse = feature_column.embedding_column(crossed, 10)
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [embeded_sparse])
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual(output.eval().shape, [2, 10])
 
@@ -1016,7 +1016,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
         indices=[[0, 0], [1, 0], [1, 1]],
         dense_shape=[2, 2])
     features = {"wire": wire_tensor}
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(
           ValueError, "Error creating input layer for column: wire"):
         variables_lib.global_variables_initializer().run()
@@ -1035,7 +1035,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
         indices=[[0, 0], [1, 0], [1, 1]],
         dense_shape=[2, 2])
     features = {"ids": ids_tensor, "weights": weights_tensor}
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(
           ValueError,
           "Error creating input layer for column: ids_weighted_by_weights"):
@@ -1053,7 +1053,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
         indices=[[0, 0], [1, 0], [1, 1]],
         dense_shape=[2, 2])
     features = {"aaa": wire_tensor, "bbb": wire_tensor}
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(
           ValueError, "Error creating input layer for column: aaa_X_bbb"):
         variables_lib.global_variables_initializer().run()
@@ -1080,7 +1080,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
         hashed_sparse, 10, initializer=init_ops.constant_initializer(133.7))
     output = feature_column_ops.input_from_feature_columns(
         features, [real_valued, bucket, embeded_sparse])
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       # size of output = 3 (real_valued) + 2 * 4 (bucket) + 10 (embedding) = 21
       self.assertAllEqual(output.eval().shape, [3, 21])
@@ -1099,7 +1099,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
         initializer=init_ops.ones_initializer())
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [embeded_sparse])
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       # score: (number of values)
       self.assertAllEqual(output.eval(), [[1.], [2.], [0.]])
@@ -1119,7 +1119,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
         max_norm=0.5)
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [embedded_sparse])
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       # score: (number of values * 0.5)
       self.assertAllClose(output.eval(), [[0.5], [1.], [0.]])
@@ -1144,7 +1144,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
         initializer=init_ops.ones_initializer())
     output = feature_column_ops.input_from_feature_columns(features,
                                                            [embeded_sparse])
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       # score: (sum of weights)
@@ -1236,7 +1236,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
     # There should be one trainable variables for sparse_2
     self.assertEqual(1, len(variables_lib.trainable_variables()))
 
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       output_1_eval = output_1.eval()
       output_2_eval = output_2.eval()
@@ -1295,7 +1295,7 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
     model_input_tensor = feature_column_ops.sequence_input_from_feature_columns(
         columns_to_tensors, [measurement_column])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       model_inputs = sess.run(model_input_tensor)
     self.assertAllClose(measurement_input, model_inputs)
 
@@ -1305,7 +1305,7 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
     rating = np.array([[0., 1., 2., -1.],
                        [3., 4., 5., 6.]])
     features = {"rating": constant_op.constant(rating)}
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       output = sess.run(
           feature_column_ops.sequence_input_from_feature_columns(
               features, [var_len_real_valued]))
@@ -1329,7 +1329,7 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
     expected_shape = [batch_size, sequence_length, np.prod(dimensions)]
     reshaped_measurements = np.reshape(measurement_input, expected_shape)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       model_inputs = sess.run(model_input_tensor)
 
     self.assertAllClose(reshaped_measurements, model_inputs)
@@ -1350,7 +1350,7 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
     model_input_tensor = feature_column_ops.sequence_input_from_feature_columns(
         columns_to_tensors, [measurement_column])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       model_inputs = sess.run(model_input_tensor)
     self.assertAllClose(normalizer(measurement_input), model_inputs)
 
@@ -1373,7 +1373,7 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
     expected_shape = [batch_size, sequence_length, np.prod(dimensions)]
     reshaped_measurements = np.reshape(measurement_input, expected_shape)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       model_inputs = sess.run(model_input_tensor)
 
     self.assertAllClose(normalizer(reshaped_measurements), model_inputs)
@@ -1395,7 +1395,7 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
     model_input_tensor = feature_column_ops.sequence_input_from_feature_columns(
         columns_to_tensors, [one_hot_column])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       model_input = sess.run(model_input_tensor)
@@ -1429,7 +1429,7 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
     model_input_tensor = feature_column_ops.sequence_input_from_feature_columns(
         columns_to_tensors, [one_hot_column])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       model_input = sess.run(model_input_tensor)
@@ -1459,7 +1459,7 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
     model_input_tensor = feature_column_ops.sequence_input_from_feature_columns(
         columns_to_tensors, [embedded_column])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       model_input = sess.run(model_input_tensor)
@@ -1488,7 +1488,7 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
     model_input_tensor = feature_column_ops.sequence_input_from_feature_columns(
         columns_to_tensors, [embedded_column])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       model_input = sess.run(model_input_tensor)
@@ -1518,7 +1518,7 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
     embedding_weights = ops.get_collection("my_collection")
     gradient_tensor = gradients_impl.gradients(model_input_tensor,
                                                embedding_weights)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       model_input, gradients = sess.run([model_input_tensor, gradient_tensor])
@@ -1585,7 +1585,7 @@ class SequenceInputFromFeatureColumnTest(test.TestCase):
         columns_to_tensors, model_input_columns)
     self.assertEqual(dtypes.float32, model_input_tensor.dtype)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       model_input = sess.run(model_input_tensor)
@@ -1622,7 +1622,7 @@ class WeightedSumTest(test.TestCase):
     logits, _, _ = feature_column_ops.weighted_sum_from_feature_columns(
         features, [hashed_sparse], num_outputs=5)
     logits_core = fc_core.linear_model(features, [hashed_sparse], units=5)
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
       # Verify cross compatibility: Core builder output should equal to contrib.
@@ -1640,7 +1640,7 @@ class WeightedSumTest(test.TestCase):
     logits, _, _ = feature_column_ops.weighted_sum_from_feature_columns(
         features, [hashed_sparse], num_outputs=5)
     logits_core = fc_core.linear_model(features, [hashed_sparse], units=5)
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
       # Verify cross compatibility: Core builder output should equal to contrib.
@@ -1654,7 +1654,7 @@ class WeightedSumTest(test.TestCase):
     logits, _, _ = feature_column_ops.weighted_sum_from_feature_columns(
         features, [hashed_sparse], num_outputs=5)
     logits_core = fc_core.linear_model(features, [hashed_sparse], units=5)
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
       # Verify cross compatibility: Core builder output should equal to contrib.
@@ -1676,7 +1676,7 @@ class WeightedSumTest(test.TestCase):
     logits, _, _ = feature_column_ops.weighted_sum_from_feature_columns(
         features, [weighted_ids], num_outputs=5)
     logits_core = fc_core.linear_model(features, [weighted_ids], units=5)
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
@@ -1695,7 +1695,7 @@ class WeightedSumTest(test.TestCase):
         features, [weighted_ids], num_outputs=5)
     logits_core = fc_core.linear_model(features, [weighted_ids], units=5)
 
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       lookup_ops.tables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
@@ -1716,7 +1716,7 @@ class WeightedSumTest(test.TestCase):
     logits, _, _ = feature_column_ops.weighted_sum_from_feature_columns(
         features, [crossed], num_outputs=5)
     logits_core = fc_core.linear_model(features, [crossed], units=5)
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [2, 5])
       # Verify cross compatibility: Core builder output should equal to contrib.
@@ -1730,7 +1730,7 @@ class WeightedSumTest(test.TestCase):
         dense_shape=[2, 2])
     features = {"wire": wire_tensor}
     embeded_sparse = feature_column.embedding_column(hashed_sparse, 10)
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesRegexp(
           ValueError, "Error creating weighted sum for column: wire_embedding"):
         variables_lib.global_variables_initializer().run()
@@ -1756,7 +1756,7 @@ class WeightedSumTest(test.TestCase):
               features, [movies], num_outputs=1))
       logits_core = fc_core.linear_model(features, [movies])
 
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.initialize_all_variables().run()
         lookup_ops.tables_initializer().run()
 
@@ -1776,7 +1776,7 @@ class WeightedSumTest(test.TestCase):
     }
     logits, _, _ = feature_column_ops.weighted_sum_from_feature_columns(
         features, [real_valued], num_outputs=5)
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [3, 5])
 
@@ -1789,7 +1789,7 @@ class WeightedSumTest(test.TestCase):
     }
     logits, _, _ = feature_column_ops.weighted_sum_from_feature_columns(
         features, [bucket], num_outputs=5)
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual(logits.eval().shape, [3, 5])
 
@@ -1814,7 +1814,7 @@ class WeightedSumTest(test.TestCase):
         features, [real_valued, bucket, hashed_sparse, crossed], num_outputs=5)
     output_core = fc_core.linear_model(
         features, [real_valued, bucket, hashed_sparse, crossed], units=5)
-    with self.test_session():
+    with self.cached_session():
       variables_lib.global_variables_initializer().run()
       self.assertAllEqual(output.eval().shape, [3, 5])
       # Verify cross compatibility: Core builder output should equal to contrib.
@@ -1837,7 +1837,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, bias = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [age, language], num_outputs=1))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
 
@@ -1877,7 +1877,7 @@ class WeightedSumTest(test.TestCase):
               features, [country, language], num_outputs=1))
       # Assert that only a single weight is created.
       self.assertEqual(len(variables), 1)
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
 
@@ -1941,7 +1941,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, bias = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [weighted_language], num_outputs=1))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
 
@@ -1969,7 +1969,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, bias = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [language], num_outputs=1))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
 
@@ -1992,7 +1992,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [movies], num_outputs=1))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
 
@@ -2026,7 +2026,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [country_language], num_outputs=1))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
 
@@ -2050,7 +2050,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [language_language], num_outputs=1))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
 
@@ -2083,7 +2083,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [country_language], num_outputs=1))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
 
@@ -2124,7 +2124,7 @@ class WeightedSumTest(test.TestCase):
                 features, [country, language, country_language],
                 num_outputs=1,
                 scope=scope))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
 
@@ -2161,7 +2161,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [country, age, incomes], num_outputs=1))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
 
@@ -2197,7 +2197,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [country, age, height, incomes], num_outputs=5))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
 
@@ -2228,7 +2228,7 @@ class WeightedSumTest(test.TestCase):
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [bucket], num_outputs=1))
       output_core = fc_core.linear_model(features, [bucket])
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
         # Cross compatibility: Core builder output should equal to contrib.
@@ -2259,7 +2259,7 @@ class WeightedSumTest(test.TestCase):
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [bucket, country], num_outputs=1))
       output_core = fc_core.linear_model(features, [bucket, country])
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
         # Cross compatibility: Core builder output should equal to contrib.
@@ -2290,7 +2290,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [bucket, country], num_outputs=5))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
 
@@ -2326,7 +2326,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [country_price], num_outputs=1))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
 
@@ -2365,7 +2365,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [country_language_price], num_outputs=1))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
 
@@ -2389,7 +2389,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [product], num_outputs=1))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
         product_weights = column_to_variable[product][0]
@@ -2404,7 +2404,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [product], num_outputs=1))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
         product_weights = column_to_variable[product][0]
@@ -2419,7 +2419,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [product], num_outputs=1))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
         product_weights = column_to_variable[product][0]
@@ -2440,7 +2440,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [product], num_outputs=1))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
         product_weights = column_to_variable[product][0]
@@ -2452,7 +2452,7 @@ class WeightedSumTest(test.TestCase):
       features = {"age": constant_op.constant([[10.], [20.], [30.], [40.]])}
       output, _, bias = feature_column_ops.weighted_sum_from_feature_columns(
           features, [feature_column.real_valued_column("age")], num_outputs=3)
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
         sess.run(bias.assign([0.1, 0.2, 0.3]))
@@ -2466,7 +2466,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [column], num_outputs=3))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
         weights = column_to_variable[column][0]
@@ -2490,7 +2490,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [column], num_outputs=3))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
         weights = column_to_variable[column][0]
@@ -2516,7 +2516,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [column], num_outputs=3))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
 
@@ -2556,7 +2556,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [column], num_outputs=3))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
 
@@ -2585,7 +2585,7 @@ class WeightedSumTest(test.TestCase):
       output, column_to_variable, _ = (
           feature_column_ops.weighted_sum_from_feature_columns(
               features, [column], num_outputs=3))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         variables_lib.global_variables_initializer().run()
         lookup_ops.tables_initializer().run()
 
@@ -2651,7 +2651,7 @@ class ParseExampleTest(test.TestCase):
         feature_columns=[bucket, wire_cast])
     self.assertIn(bucket, output)
     self.assertIn(wire_cast, output)
-    with self.test_session():
+    with self.cached_session():
       lookup_ops.tables_initializer().run()
       self.assertAllEqual(output[bucket].eval(), [[2, 3, 0]])
       self.assertAllEqual(output[wire_cast].indices.eval(), [[0, 0], [0, 1]])
@@ -2713,7 +2713,7 @@ class ParseExampleTest(test.TestCase):
     self.assertIn("measurements", seq)
     self.assertIsInstance(seq["measurements"], ops.Tensor)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       location_val, wire_cast_val, measurement_val = sess.run(
           [ctx["location"], seq["wire_cast"], seq["measurements"]])
 

@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/backend.h"
-#include "tensorflow/compiler/xla/service/pool.h"
+#include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -40,7 +40,7 @@ namespace xla {
 // the stream when destructed.
 class AsyncExecution {
  public:
-  AsyncExecution(Backend* backend, std::vector<Backend::StreamPtr> streams,
+  AsyncExecution(Backend* backend, std::vector<StreamPool::Ptr> streams,
                  const ExecutionProfile& profile, GlobalDataHandle result);
 
   Status BlockUntilDone() const;
@@ -54,7 +54,7 @@ class AsyncExecution {
   Backend* backend_;
 
   // Stream on which the execution is launched.
-  std::vector<Backend::StreamPtr> streams_;
+  std::vector<StreamPool::Ptr> streams_;
 
   // Profile object of the execution to be returned to the user.
   ExecutionProfile profile_;
@@ -72,7 +72,7 @@ class ExecutionTracker {
   // Registers an execution with its backend, streams, and data handle to the
   // execution result. Returns a handle for the registered execution.
   ExecutionHandle Register(Backend* backend,
-                           std::vector<Backend::StreamPtr> stream,
+                           std::vector<StreamPool::Ptr> stream,
                            const ExecutionProfile& profile,
                            GlobalDataHandle data);
 

@@ -33,7 +33,7 @@ class SinhArcsinhBijectorTest(test.TestCase):
   """Tests correctness of the power transformation."""
 
   def testBijectorVersusNumpyRewriteOfBasicFunctions(self):
-    with self.test_session():
+    with self.cached_session():
       skewness = 0.2
       tailweight = 2.0
       bijector = SinhArcsinh(
@@ -58,7 +58,7 @@ class SinhArcsinhBijectorTest(test.TestCase):
           atol=0.)
 
   def testLargerTailWeightPutsMoreWeightInTails(self):
-    with self.test_session():
+    with self.cached_session():
       # Will broadcast together to shape [3, 2].
       x = [-1., 1.]
       tailweight = [[0.5], [1.0], [2.0]]
@@ -75,7 +75,7 @@ class SinhArcsinhBijectorTest(test.TestCase):
       self.assertLess(forward_1[1], forward_1[2])
 
   def testSkew(self):
-    with self.test_session():
+    with self.cached_session():
       # Will broadcast together to shape [3, 2].
       x = [-1., 1.]
       skewness = [[-1.], [0.], [1.]]
@@ -92,24 +92,24 @@ class SinhArcsinhBijectorTest(test.TestCase):
       self.assertLess(np.abs(y[2, 0]), np.abs(y[2, 1]))
 
   def testScalarCongruencySkewness1Tailweight0p5(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = SinhArcsinh(skewness=1.0, tailweight=0.5, validate_args=True)
       assert_scalar_congruency(bijector, lower_x=-2., upper_x=2.0, rtol=0.05)
 
   def testScalarCongruencySkewnessNeg1Tailweight1p5(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = SinhArcsinh(skewness=-1.0, tailweight=1.5, validate_args=True)
       assert_scalar_congruency(bijector, lower_x=-2., upper_x=2.0, rtol=0.05)
 
   def testBijectiveAndFiniteSkewnessNeg1Tailweight0p5(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = SinhArcsinh(skewness=-1., tailweight=0.5, validate_args=True)
       x = np.concatenate((-np.logspace(-2, 10, 1000), [0], np.logspace(
           -2, 10, 1000))).astype(np.float32)
       assert_bijective_and_finite(bijector, x, x, event_ndims=0, rtol=1e-3)
 
   def testBijectiveAndFiniteSkewness1Tailweight3(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = SinhArcsinh(skewness=1., tailweight=3., validate_args=True)
       x = np.concatenate((-np.logspace(-2, 5, 1000), [0], np.logspace(
           -2, 5, 1000))).astype(np.float32)
@@ -117,7 +117,7 @@ class SinhArcsinhBijectorTest(test.TestCase):
           bijector, x, x, event_ndims=0, rtol=1e-3)
 
   def testBijectorEndpoints(self):
-    with self.test_session():
+    with self.cached_session():
       for dtype in (np.float32, np.float64):
         bijector = SinhArcsinh(
             skewness=dtype(0.), tailweight=dtype(1.), validate_args=True)
@@ -129,7 +129,7 @@ class SinhArcsinhBijectorTest(test.TestCase):
             bijector, bounds, bounds, event_ndims=0, atol=2e-6)
 
   def testBijectorOverRange(self):
-    with self.test_session():
+    with self.cached_session():
       for dtype in (np.float32, np.float64):
         skewness = np.array([1.2, 5.], dtype=dtype)
         tailweight = np.array([2., 10.], dtype=dtype)
@@ -176,12 +176,12 @@ class SinhArcsinhBijectorTest(test.TestCase):
             atol=0.)
 
   def testZeroTailweightRaises(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaisesOpError("not positive"):
         SinhArcsinh(tailweight=0., validate_args=True).forward(1.0).eval()
 
   def testDefaultDtypeIsFloat32(self):
-    with self.test_session():
+    with self.cached_session():
       bijector = SinhArcsinh()
       self.assertEqual(bijector.tailweight.dtype, np.float32)
       self.assertEqual(bijector.skewness.dtype, np.float32)

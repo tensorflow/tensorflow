@@ -36,13 +36,13 @@ class SparseFeatureColumnTest(TensorFlowTestCase):
     self.assertTrue(isinstance(sfc.example_indices, ops.Tensor))
     self.assertTrue(isinstance(sfc.feature_indices, ops.Tensor))
     self.assertEqual(sfc.feature_values, None)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(expected_example_indices, sfc.example_indices.eval())
       self.assertAllEqual(expected_feature_indices, sfc.feature_indices.eval())
     expected_feature_values = [1.0, 2.0, 3.0, 4.0]
     sfc = SparseFeatureColumn([1, 1, 1, 2], [0, 1, 2, 0],
                               expected_feature_values)
-    with self.test_session():
+    with self.cached_session():
       self.assertAllEqual(expected_feature_values, sfc.feature_values.eval())
 
 

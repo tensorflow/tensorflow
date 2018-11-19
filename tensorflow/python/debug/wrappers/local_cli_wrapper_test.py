@@ -132,8 +132,8 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def setUp(self):
     self._tmp_dir = tempfile.mktemp()
 
-    self.v = variables.Variable(10.0, name="v")
-    self.w = variables.Variable(21.0, name="w")
+    self.v = variables.VariableV1(10.0, name="v")
+    self.w = variables.VariableV1(21.0, name="w")
     self.delta = constant_op.constant(1.0, name="delta")
     self.inc_v = state_ops.assign_add(self.v, self.delta, name="inc_v")
 
@@ -358,7 +358,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def testDebuggingMakeCallableTensorRunnerWorks(self):
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
         [["run"], ["run"]], self.sess, dump_root=self._tmp_dir)
-    v = variables.Variable(42)
+    v = variables.VariableV1(42)
     tensor_runner = wrapped_sess.make_callable(v)
     self.sess.run(v.initializer)
 
@@ -382,7 +382,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def testDebuggingMakeCallableOperationRunnerWorks(self):
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
         [["run"], ["run"]], self.sess, dump_root=self._tmp_dir)
-    v = variables.Variable(10.0)
+    v = variables.VariableV1(10.0)
     inc_v = state_ops.assign_add(v, 1.0)
     op_runner = wrapped_sess.make_callable(inc_v.op)
     self.sess.run(v.initializer)
@@ -403,7 +403,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(wrapped_sess.observers["debug_dumps"]))
 
   def testDebuggingMakeCallableFromOptionsWithZeroFeedWorks(self):
-    variable_1 = variables.Variable(
+    variable_1 = variables.VariableV1(
         10.5, dtype=dtypes.float32, name="variable_1")
     a = math_ops.add(variable_1, variable_1, "callable_a")
     math_ops.add(a, a, "callable_b")
@@ -480,7 +480,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
       self.assertItemsEqual(["callable_a", "callable_b"], node_names)
 
   def testDebugMakeCallableFromOptionsWithCustomOptionsAndMetadataWorks(self):
-    variable_1 = variables.Variable(
+    variable_1 = variables.VariableV1(
         10.5, dtype=dtypes.float32, name="variable_1")
     a = math_ops.add(variable_1, variable_1, "callable_a")
     math_ops.add(a, a, "callable_b")
@@ -528,7 +528,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def testRuntimeErrorBeforeGraphExecutionIsRaised(self):
     # Use an impossible device name to cause an error before graph execution.
     with ops.device("/device:GPU:1337"):
-      w = variables.Variable([1.0] * 10, name="w")
+      w = variables.VariableV1([1.0] * 10, name="w")
 
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
         [["run"]], self.sess, dump_root=self._tmp_dir)

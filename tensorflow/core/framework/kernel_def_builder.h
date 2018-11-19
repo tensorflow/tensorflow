@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_KERNEL_DEF_BUILDER_H_
-#define TENSORFLOW_FRAMEWORK_KERNEL_DEF_BUILDER_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_KERNEL_DEF_BUILDER_H_
+#define TENSORFLOW_CORE_FRAMEWORK_KERNEL_DEF_BUILDER_H_
 
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -64,6 +64,9 @@ class KernelDefBuilder {
   // "_kernel" attr.  May only be specified once.  Returns *this.
   KernelDefBuilder& Label(const char* label);
 
+  // Specify a priority number for this kernel.
+  KernelDefBuilder& Priority(int32 priority);
+
   // Returns a pointer to a KernelDef with fields set based on the
   // above calls to this instance.
   // Caller takes ownership of the result.
@@ -84,4 +87,4 @@ KernelDefBuilder& KernelDefBuilder::TypeConstraint(const char* attr_name) {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_KERNEL_DEF_BUILDER_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_KERNEL_DEF_BUILDER_H_

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -42,7 +43,7 @@ using ::testing::UnorderedElementsAre;
 class HloDataflowAnalysisTest : public HloTestBase,
                                 public ::testing::WithParamInterface<bool> {
  protected:
-  HloDataflowAnalysisTest() : module_(CreateNewModule()) {}
+  HloDataflowAnalysisTest() : module_(CreateNewVerifiedModule()) {}
 
   // Run dataflow analysis on the member module. For convenience returns a
   // reference to the generated analysis stored in analysis_.
@@ -1261,9 +1262,10 @@ TEST_P(HloDataflowAnalysisTest, MultipleEntryParameters_Sequential) {
   auto entry = module_->AddEntryComputation(builder.Build());
   RunAnalysis(GetParam());
 
-  SequentialHloOrdering::HloModuleSequence sequence;
-  sequence.insert({entry, {param0, negate, param1, exp, add}});
-  SequentialHloOrdering ordering(module_.get(), sequence);
+  HloSchedule schedule(module_.get());
+  schedule.set_sequence(entry, {param0, negate, param1, exp, add});
+  TF_ASSERT_OK(schedule.Verify());
+  SequentialHloOrdering ordering(schedule);
 
   // Entry parameters interfere as if they are defined simultaneously at
   // the very beginning.
@@ -1339,14 +1341,16 @@ TEST_P(HloDataflowAnalysisTest, WhileParameters_Sequential) {
   bool ssa_form = GetParam();
   RunAnalysis(ssa_form);
 
-  SequentialHloOrdering::HloModuleSequence sequence;
-  sequence.insert({entry, {param, xla_while}});
-  sequence.insert({condition, {cond_param, cond_constant}});
+  HloSchedule schedule(module_.get());
+  schedule.set_sequence(entry, {param, xla_while});
+  schedule.set_sequence(condition, {cond_param, cond_constant});
   // Construct the order such that 'constant' and its use 'exp' are before
   // body_param.
-  sequence.insert({body, {constant, exp, body_param, add}});
+  schedule.set_sequence(
+      body, {constant, exp, body_param, add, dead_constant, dead_negate});
+  TF_ASSERT_OK(schedule.Verify());
 
-  SequentialHloOrdering ordering(module_.get(), sequence);
+  SequentialHloOrdering ordering(schedule);
 
   // 'add' is live out of the body and will interfere with an later instructions
   // such as 'dead_constant' and 'dead_negate'.
@@ -1476,11 +1480,10 @@ TEST_P(HloDataflowAnalysisTest, OverlappedValuesSequentialOrder) {
   auto entry = module_->AddEntryComputation(builder.Build());
   RunAnalysis(GetParam());
 
-  SequentialHloOrdering::HloModuleSequence sequence;
-  std::vector<const HloInstruction*> order = {param, negate, exp, add};
-  sequence.emplace(entry, order);
-
-  SequentialHloOrdering ordering(module_.get(), sequence);
+  HloSchedule schedule(module_.get());
+  schedule.set_sequence(entry, {param, negate, exp, add});
+  TF_ASSERT_OK(schedule.Verify());
+  SequentialHloOrdering ordering(schedule);
 
   EXPECT_TRUE(InstructionsMayInterfere(ordering, param, negate));
   EXPECT_FALSE(InstructionsMayInterfere(ordering, param, exp));
@@ -1881,7 +1884,7 @@ INSTANTIATE_TEST_CASE_P(HloDataflowAnalysisInstantiation,
 class HloDataflowAnalysisTestBase : public HloTestBase {
  protected:
   void BuildModule(std::unique_ptr<HloComputation> computation) {
-    module_ = CreateNewModule();
+    module_ = CreateNewUnverifiedModule();
     computation_ = module_->AddEntryComputation(std::move(computation));
   }
 
@@ -1961,6 +1964,54 @@ TEST_F(DoesNotUseOperandBufferTest, FusedDynamicUpdateSlice) {
   // The fusion instruction never uses tuple element 0, but does use element 1.
   EXPECT_TRUE(dataflow_analysis_->DoesNotUseOperandBuffer(tuple, {0}, fusion));
   EXPECT_FALSE(dataflow_analysis_->DoesNotUseOperandBuffer(tuple, {1}, fusion));
+}
+
+// Similar to FusedDynamicUpdateSlice above, but tests indirect uses of the
+// parameter tuple.
+TEST_F(DoesNotUseOperandBufferTest, IndirectUses) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape data_shape = ShapeUtil::MakeShape(F32, {8});
+  auto tuple_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeTupleShape({data_shape, data_shape}), "tuple"));
+  auto t0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape, tuple_param, 0));
+  auto t1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape, tuple_param, 1));
+  // Swap the tuple elements.
+  auto tuple = builder.AddInstruction(HloInstruction::CreateTuple({t1, t0}));
+
+  auto gte0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape, tuple, 0));
+  auto gte1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(data_shape, tuple, 1));
+
+  // Create a DynamicUpdateSlice instruction of tuple element 1.
+  auto starts = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+  auto update = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
+  auto dynamic_update_slice =
+      builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+          data_shape, gte1, update, starts));
+  builder.AddInstruction(
+      HloInstruction::CreateTuple({gte0, dynamic_update_slice}));
+
+  BuildModule(builder.Build());
+  auto fusion = computation_->CreateFusionInstruction(
+      {dynamic_update_slice, starts, update, gte1},
+      HloInstruction::FusionKind::kLoop);
+  RunAnalysis();
+
+  // The fusion instruction never uses tuple element 0, but does use element 1.
+  EXPECT_TRUE(dataflow_analysis_->DoesNotUseOperandBuffer(tuple, {0}, fusion));
+  EXPECT_FALSE(dataflow_analysis_->DoesNotUseOperandBuffer(tuple, {1}, fusion));
+  // The same holds for the parameter tuple, except that the tuple elements are
+  // swapped in 'tuple'.
+  EXPECT_TRUE(
+      dataflow_analysis_->DoesNotUseOperandBuffer(tuple_param, {1}, fusion));
+  EXPECT_FALSE(
+      dataflow_analysis_->DoesNotUseOperandBuffer(tuple_param, {0}, fusion));
 }
 
 class CanShareOperandBufferWithUserTest : public HloDataflowAnalysisTestBase {};
@@ -2232,6 +2283,87 @@ TEST_F(CanShareOperandBufferWithUserTest, DynamicUpdateSliceCanShare) {
       dataflow_analysis_->CanShareOperandBufferWithUser(starts, {}, dus, {}));
 }
 
+TEST_F(CanShareOperandBufferWithUserTest, ScatterCanShare) {
+  const char* hlo_text = R"(
+    HloModule TensorFlowScatterV1
+
+    update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+      lhs = s32[] parameter(0)
+      ROOT rhs = s32[] parameter(1)
+    }
+
+    ENTRY main {
+      operand = s32[3,3] parameter(0)
+      indices = s32[2] parameter(1)
+      updates = s32[2,3] parameter(2)
+      ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+          to_apply=update_s32,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseHloString(hlo_text));
+  computation_ = module_->entry_computation();
+  RunAnalysis();
+
+  HloInstruction* operand_param = computation_->parameter_instruction(0);
+  HloInstruction* indices_param = computation_->parameter_instruction(1);
+  HloInstruction* updates_param = computation_->parameter_instruction(2);
+  HloInstruction* scatter = computation_->root_instruction();
+
+  EXPECT_TRUE(dataflow_analysis_->CanShareOperandBufferWithUser(
+      operand_param, {}, scatter, {}));
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(
+      indices_param, {}, scatter, {}));
+  EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(
+      updates_param, {}, scatter, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, SortCanShare) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape keys_shape = ShapeUtil::MakeShape(F32, {8});
+  auto keys = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, keys_shape, "keys"));
+  auto sort =
+      builder.AddInstruction(HloInstruction::CreateSort(keys_shape, 0, keys));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  EXPECT_TRUE(
+      dataflow_analysis_->CanShareOperandBufferWithUser(keys, {}, sort, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, SortCanShareWithTupleUser) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape keys_shape = ShapeUtil::MakeShape(F32, {8});
+  Shape values_shape = ShapeUtil::MakeShape(F32, {8});
+  auto keys = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, keys_shape, "keys"));
+  auto values = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, values_shape, "values"));
+  auto sort = builder.AddInstruction(HloInstruction::CreateSort(
+      ShapeUtil::MakeTupleShape({keys_shape, values_shape}), 0, keys,
+      {values}));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  // The buffer for the keys can be shared with the first tuple entry.
+  EXPECT_TRUE(
+      dataflow_analysis_->CanShareOperandBufferWithUser(keys, {}, sort, {0}));
+  // The buffer for the values can be shared with the second tuple entry.
+  EXPECT_TRUE(
+      dataflow_analysis_->CanShareOperandBufferWithUser(values, {}, sort, {1}));
+  // Verify that the buffers are not shared with the "wrong" tuple entry.
+  EXPECT_FALSE(
+      dataflow_analysis_->CanShareOperandBufferWithUser(keys, {}, sort, {1}));
+  EXPECT_FALSE(
+      dataflow_analysis_->CanShareOperandBufferWithUser(values, {}, sort, {0}));
+}
+
 TEST_F(CanShareOperandBufferWithUserTest, FusedDotAdd) {
   auto builder = HloComputation::Builder(TestName());
   Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
@@ -2244,8 +2376,11 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDotAdd) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
+  PrecisionConfig precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      2, PrecisionConfig::DEFAULT);
   auto dot = builder.AddInstruction(
-      HloInstruction::CreateDot(data_shape, a, b, dot_dnums));
+      HloInstruction::CreateDot(data_shape, a, b, dot_dnums, precision_config));
 
   auto one = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
@@ -2323,7 +2458,7 @@ TEST_F(CanShareOperandBufferWithUserTest, FusionCanShareBufferCustomized) {
 TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
   Shape data_shape = ShapeUtil::MakeShape(F32, {8});
 
-  auto make_cond = [this, &data_shape]() {
+  auto make_cond = [&data_shape]() {
     auto builder = HloComputation::Builder(TestName() + ".Cond");
     auto data = builder.AddInstruction(
         HloInstruction::CreateParameter(0, data_shape, "data"));
@@ -2332,7 +2467,7 @@ TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
     return builder.Build();
   };
 
-  auto make_body = [this, &data_shape]() {
+  auto make_body = [&data_shape]() {
     auto builder = HloComputation::Builder(TestName() + ".Body");
     auto data = builder.AddInstruction(
         HloInstruction::CreateParameter(0, data_shape, "data"));
@@ -2341,7 +2476,7 @@ TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
     return builder.Build();
   };
 
-  module_ = CreateNewModule();
+  module_ = CreateNewUnverifiedModule();
   HloComputation* cond_computation =
       module_->AddEmbeddedComputation(make_cond());
   HloComputation* body_computation =
@@ -2376,7 +2511,7 @@ TEST_F(CanShareOperandBufferWithUserTest, CallToComputationWithFusionRoot) {
   auto add = sub_builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, sub_param, ones));
 
-  module_ = CreateNewModule();
+  module_ = CreateNewUnverifiedModule();
   auto sub_computation = module_->AddEmbeddedComputation(sub_builder.Build());
   sub_computation->CreateFusionInstruction({add, ones},
                                            HloInstruction::FusionKind::kLoop);

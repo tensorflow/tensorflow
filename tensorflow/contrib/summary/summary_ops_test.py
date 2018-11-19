@@ -20,6 +20,8 @@ import os
 import tempfile
 import time
 
+import sqlite3
+
 import numpy as np
 import six
 
@@ -150,6 +152,27 @@ class EagerFileTest(test_util.TensorFlowTestCase):
       self.assertEqual(len(events), 2)
       self.assertEqual(events[1].summary.value[0].tag, 'scalar')
 
+  def testRecordEveryNGlobalSteps(self):
+    step = training_util.get_or_create_global_step()
+    logdir = tempfile.mkdtemp()
+
+    def run_step():
+      summary_ops.scalar('scalar', i, step=step)
+      step.assign_add(1)
+
+    with summary_ops.create_file_writer(
+        logdir).as_default(), summary_ops.record_summaries_every_n_global_steps(
+            2, step):
+      for i in range(10):
+        run_step()
+      # And another 10 steps as a graph function.
+      run_step_fn = function.defun(run_step)
+      for i in range(10):
+        run_step_fn()
+
+    events = summary_test_util.events_from_logdir(logdir)
+    self.assertEqual(len(events), 11)
+
   def testMaxQueue(self):
     logs = tempfile.mkdtemp()
     with summary_ops.create_file_writer(
@@ -274,6 +297,19 @@ class EagerFileTest(test_util.TensorFlowTestCase):
 
 
 class EagerDbTest(summary_test_util.SummaryDbTest):
+
+  def testDbURIOpen(self):
+    tmpdb_path = os.path.join(self.get_temp_dir(), 'tmpDbURITest.sqlite')
+    tmpdb_uri = six.moves.urllib_parse.urljoin('file:', tmpdb_path)
+    tmpdb_writer = summary_ops.create_db_writer(tmpdb_uri, 'experimentA',
+                                                'run1', 'user1')
+    with summary_ops.always_record_summaries():
+      with tmpdb_writer.as_default():
+        summary_ops.scalar('t1', 2.0)
+    tmpdb = sqlite3.connect(tmpdb_path)
+    num = get_one(tmpdb, 'SELECT count(*) FROM Tags WHERE tag_name = "t1"')
+    self.assertEqual(num, 1)
+    tmpdb.close()
 
   def testIntegerSummaries(self):
     step = training_util.create_global_step()

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/client/lib/math.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -133,6 +133,18 @@ XLA_TEST_F(MathTest, Digamma) {
       static_cast<float>(137 / 60.0 - euler_mascheroni),
       static_cast<float>(363 / 140.0 - euler_mascheroni),
       static_cast<float>(761 / 280.0 - euler_mascheroni)};
+  ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_F(MathTest, RoundToEven) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(
+      &builder, {-1.4, -1.5, -2.5, -0.5, 0, 0.5, 1.5, 2.5, 3.5, 4.5});
+  RoundToEven(x);
+
+  std::vector<float> expected = {-1.0, -2.0, -2.0, -0.0, 0,
+                                 0.0,  2.0,  2.0,  4.0,  4.0};
+
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 

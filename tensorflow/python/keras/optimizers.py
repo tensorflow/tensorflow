@@ -23,12 +23,13 @@ import six
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.training import distribute as distribute_lib
+from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpointable import base as checkpointable
@@ -285,14 +286,21 @@ class RMSprop(Optimizer):
 class Adagrad(Optimizer):
   """Adagrad optimizer.
 
+  Adagrad is an optimizer with parameter-specific learning rates,
+  which are adapted relative to how frequently a parameter gets
+  updated during training. The more updates a parameter receives,
+  the smaller the updates.
+
   It is recommended to leave the parameters of this optimizer
   at their default values.
 
-  Arguments:
-      lr: float >= 0. Learning rate.
+  # Arguments
+      lr: float >= 0. Initial learning rate.
       epsilon: float >= 0. If `None`, defaults to `K.epsilon()`.
       decay: float >= 0. Learning rate decay over each update.
 
+  # References
+      - [Adaptive Subgradient Methods for Online Learning and Stochastic Optimization](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf)
   """
 
   def __init__(self, lr=0.01, epsilon=None, decay=0., **kwargs):
@@ -345,16 +353,27 @@ class Adagrad(Optimizer):
 class Adadelta(Optimizer):
   """Adadelta optimizer.
 
+  Adadelta is a more robust extension of Adagrad
+  that adapts learning rates based on a moving window of gradient updates,
+  instead of accumulating all past gradients. This way, Adadelta continues
+  learning even when many updates have been done. Compared to Adagrad, in the
+  original version of Adadelta you don't have to set an initial learning
+  rate. In this version, initial learning rate and decay factor can
+  be set, as in most other Keras optimizers.
+
   It is recommended to leave the parameters of this optimizer
   at their default values.
 
-  Arguments:
-      lr: float >= 0. Learning rate.
+  # Arguments
+      lr: float >= 0. Initial learning rate, defaults to 1.
           It is recommended to leave it at the default value.
-      rho: float >= 0.
+      rho: float >= 0. Adadelta decay factor, corresponding to fraction of
+          gradient to keep at each time step.
       epsilon: float >= 0. Fuzz factor. If `None`, defaults to `K.epsilon()`.
-      decay: float >= 0. Learning rate decay over each update.
+      decay: float >= 0. Initial learning rate decay.
 
+  # References
+      - [Adadelta - an adaptive learning rate method](http://arxiv.org/abs/1212.5701)
   """
 
   def __init__(self, lr=1.0, rho=0.95, epsilon=None, decay=0., **kwargs):
@@ -692,20 +711,24 @@ class TFOptimizer(Optimizer, checkpointable.CheckpointableBase):
   """Wrapper class for native TensorFlow optimizers.
   """
 
-  def __init__(self, optimizer):  # pylint: disable=super-init-not-called
+  def __init__(self, optimizer, iterations=None):  # pylint: disable=super-init-not-called
     self.optimizer = optimizer
     self._track_checkpointable(optimizer, name='optimizer')
-    with K.name_scope(self.__class__.__name__):
-      self.iterations = K.variable(0, dtype='int64', name='iterations')
+    if iterations is None:
+      with K.name_scope(self.__class__.__name__):
+        self.iterations = K.variable(0, dtype='int64', name='iterations')
+    else:
+      self.iterations = iterations
+    self._track_checkpointable(self.iterations, name='global_step')
 
   def apply_gradients(self, grads):
-    self.optimizer.apply_gradients(grads)
+    self.optimizer.apply_gradients(grads, global_step=self.iterations)
 
   def get_grads(self, loss, params):
     return self.optimizer.compute_gradients(loss, params)
 
   def get_updates(self, loss, params):
-    if distribute_lib.has_distribution_strategy():
+    if distribution_strategy_context.has_distribution_strategy():
       self.updates = []
 
       if not params:
@@ -718,10 +741,13 @@ class TFOptimizer(Optimizer, checkpointable.CheckpointableBase):
       global_step = training_util.get_global_step()
       opt_update = self.optimizer.apply_gradients(grads, global_step)
     else:
-      self.updates = [state_ops.assign_add(self.iterations, 1)]
       if not params:
+        self.updates = [state_ops.assign_add(self.iterations, 1)]
         return self.updates
 
+      # Updates list starts out empty because the iterations variable is
+      # incremented in optimizer.apply_gradients()
+      self.updates = []
       grads = self.optimizer.compute_gradients(loss, params)
       opt_update = self.optimizer.apply_gradients(
           grads, global_step=self.iterations)
@@ -808,15 +834,17 @@ def get(identifier):
   Raises:
       ValueError: If `identifier` cannot be interpreted.
   """
+  if isinstance(identifier, (Optimizer, optimizer_v2.OptimizerV2)):
+    return identifier
   # Wrap TF optimizer instances
-  if isinstance(identifier, tf_optimizer_module.Optimizer):
-    return TFOptimizer(identifier)
-  if isinstance(identifier, dict):
+  elif isinstance(identifier, tf_optimizer_module.Optimizer):
+    opt = TFOptimizer(identifier)
+    K.track_tf_optimizer(opt)
+    return opt
+  elif isinstance(identifier, dict):
     return deserialize(identifier)
   elif isinstance(identifier, six.string_types):
     config = {'class_name': str(identifier), 'config': {}}
     return deserialize(config)
-  if isinstance(identifier, Optimizer):
-    return identifier
   else:
     raise ValueError('Could not interpret optimizer identifier:', identifier)

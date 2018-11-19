@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_TILE_FUNCTOR_H_
-#define TENSORFLOW_KERNELS_TILE_FUNCTOR_H_
+#ifndef TENSORFLOW_CORE_KERNELS_TILE_FUNCTOR_H_
+#define TENSORFLOW_CORE_KERNELS_TILE_FUNCTOR_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
@@ -36,9 +36,11 @@ void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,
   auto x = in.tensor<T, NDIM>();
   auto y = out->tensor<T, NDIM>();
 
+  bool use_32bit = y.size() < Eigen::NumTraits<int>::highest();
+
   Eigen::array<Tmultiples, NDIM> b;
   for (int i = 0; i < NDIM; ++i) b[i] = broadcast_array[i];
-  if (Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
+  if (use_32bit && Eigen::internal::is_same<Device, Eigen::GpuDevice>::value) {
     // Use 32bit indexing to speed up the computations
     To32Bit(y).device(d) = To32Bit(x).broadcast(b);
   } else {
@@ -106,4 +108,4 @@ struct Tile {
 }  // end namespace functor
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_TILE_FUNCTOR_H_
+#endif  // TENSORFLOW_CORE_KERNELS_TILE_FUNCTOR_H_

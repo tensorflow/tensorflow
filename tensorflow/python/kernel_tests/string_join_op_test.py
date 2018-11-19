@@ -28,7 +28,7 @@ class StringJoinOpTest(test.TestCase):
     input1 = "a"
     input2 = [["b"], ["c"]]
 
-    with self.test_session():
+    with self.cached_session():
       output = string_ops.string_join([input0, input1])
       self.assertAllEqual(output.eval(), [b"aa", b"ba"])
 

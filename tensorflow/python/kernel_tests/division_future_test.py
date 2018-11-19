@@ -50,7 +50,7 @@ class DivisionTestCase(test.TestCase):
         self.assertEqual(x, y)
       checks.append(f)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       for dtype in dtypes:
         for x in map(dtype, values):
           for y in map(dtype, values):

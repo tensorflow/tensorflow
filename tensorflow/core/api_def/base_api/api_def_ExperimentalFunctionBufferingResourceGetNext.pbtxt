@@ -1,0 +1,25 @@
+op {
+  graph_op_name: "ExperimentalFunctionBufferingResourceGetNext"
+  in_arg {
+    name: "function_buffer_resource"
+    description: <<END
+The FunctionBufferingResource handle.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+A list of return values.
+END
+  }
+  attr {
+    name: "output_types"
+    description: <<END
+The type list for the return values.
+END
+  }
+  summary: <<END
+Gets the next element from a FunctionBufferingResource.
+END
+  visibility: HIDDEN
+}

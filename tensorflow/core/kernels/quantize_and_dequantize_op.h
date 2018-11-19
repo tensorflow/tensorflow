@@ -19,6 +19,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/cwise_ops.h"
 
 namespace tensorflow {
 namespace functor {
@@ -89,17 +90,14 @@ struct QuantizeAndDequantizeOneScaleImpl {
       // min_range and max_range - because we may have changed either min_range
       // or max_range.
       out.device(d) =
-          ((input.cwiseMin(max_range).cwiseMax(min_range) - min_range) * scale +
-           T(0.5))
-                  .floor() *
-              inverse_scale +
-          min_range;
+          (input.cwiseMin(max_range).cwiseMax(min_range) * scale)
+              .unaryExpr(Eigen::internal::scalar_round_op_google<T>()) *
+          inverse_scale;
     } else {
-      // No need to clamp to min_range and max_range in this case as they were
-      // measured from the tensor.
       out.device(d) =
-          ((input - min_range) * scale + T(0.5)).floor() * inverse_scale +
-          min_range;
+          (input * scale)
+              .unaryExpr(Eigen::internal::scalar_round_op_google<T>()) *
+          inverse_scale;
     }
   }
 };

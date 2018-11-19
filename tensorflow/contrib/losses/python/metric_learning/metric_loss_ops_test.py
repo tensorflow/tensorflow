@@ -61,7 +61,7 @@ def pairwise_distance_np(feature, squared=False):
 class ContrastiveLossTest(test.TestCase):
 
   def testContrastive(self):
-    with self.test_session():
+    with self.cached_session():
       num_data = 10
       feat_dim = 6
       margin = 1.0
@@ -90,7 +90,7 @@ class ContrastiveLossTest(test.TestCase):
 class TripletSemiHardLossTest(test.TestCase):
 
   def testTripletSemiHard(self):
-    with self.test_session():
+    with self.cached_session():
       num_data = 10
       feat_dim = 6
       margin = 1.0
@@ -146,7 +146,7 @@ class TripletSemiHardLossTest(test.TestCase):
 class LiftedStructLossTest(test.TestCase):
 
   def testLiftedStruct(self):
-    with self.test_session():
+    with self.cached_session():
       num_data = 10
       feat_dim = 6
       margin = 1.0
@@ -217,7 +217,7 @@ def convert_to_list_of_sparse_tensor(np_matrix):
 class NpairsLossTest(test.TestCase):
 
   def testNpairs(self):
-    with self.test_session():
+    with self.cached_session():
       num_data = 15
       feat_dim = 6
       num_classes = 5
@@ -261,7 +261,7 @@ class NpairsLossTest(test.TestCase):
 class NpairsLossMultiLabelTest(test.TestCase):
 
   def testNpairsMultiLabelLossWithSingleLabelEqualsNpairsLoss(self):
-    with self.test_session():
+    with self.cached_session():
       num_data = 15
       feat_dim = 6
       reg_lambda = 0.02
@@ -290,7 +290,7 @@ class NpairsLossMultiLabelTest(test.TestCase):
       self.assertAllClose(loss_npairs, loss_npairs_multilabel)
 
   def testNpairsMultiLabel(self):
-    with self.test_session():
+    with self.cached_session():
       num_data = 15
       feat_dim = 6
       num_classes = 10
@@ -527,7 +527,7 @@ class ClusterLossTest(test.TestCase):
   def testClusteringLossPAMOff(self):
     if not HAS_SKLEARN:
       return
-    with self.test_session():
+    with self.cached_session():
       margin_multiplier = 10.0
       embeddings, labels = self._genClusters(n_samples=128, n_clusters=64)
 
@@ -544,7 +544,7 @@ class ClusterLossTest(test.TestCase):
   def testClusteringLossPAMOn(self):
     if not HAS_SKLEARN:
       return
-    with self.test_session():
+    with self.cached_session():
       margin_multiplier = 10.0
       embeddings, labels = self._genClusters(n_samples=128, n_clusters=64)
 

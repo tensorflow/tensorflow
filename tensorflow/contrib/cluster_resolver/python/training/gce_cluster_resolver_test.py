@@ -135,12 +135,86 @@ class GceClusterResolverTest(test.TestCase):
     """
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
 
+  def testMasterRetrieval(self):
+    gce_cluster_resolver = GceClusterResolver(
+        project='test-project',
+        zone='us-east1-d',
+        instance_group='test-instance-group',
+        task_index=0,
+        port=8470,
+        credentials=None,
+        service=self.standard_mock_service_client())
+    self.assertEqual(gce_cluster_resolver.master(), 'grpc://10.123.45.67:8470')
+
+  def testMasterRetrievalWithCustomTasks(self):
+    name_to_ip = [
+        {'name': 'instance1', 'ip': '10.1.2.3'},
+        {'name': 'instance2', 'ip': '10.2.3.4'},
+        {'name': 'instance3', 'ip': '10.3.4.5'},
+    ]
+
+    gce_cluster_resolver = GceClusterResolver(
+        project='test-project',
+        zone='us-east1-d',
+        instance_group='test-instance-group',
+        port=8470,
+        credentials=None,
+        service=self.gen_standard_mock_service_client(name_to_ip))
+
+    self.assertEqual(
+        gce_cluster_resolver.master('worker', 2, 'test'),
+        'test://10.3.4.5:8470')
+
+  def testOverrideParameters(self):
+    name_to_ip = [
+        {'name': 'instance1', 'ip': '10.1.2.3'},
+        {'name': 'instance2', 'ip': '10.2.3.4'},
+        {'name': 'instance3', 'ip': '10.3.4.5'},
+    ]
+
+    gce_cluster_resolver = GceClusterResolver(
+        project='test-project',
+        zone='us-east1-d',
+        instance_group='test-instance-group',
+        task_type='testworker',
+        port=8470,
+        credentials=None,
+        service=self.gen_standard_mock_service_client(name_to_ip))
+
+    gce_cluster_resolver.task_index = 1
+    gce_cluster_resolver.rpc_layer = 'test'
+
+    self.assertEqual(gce_cluster_resolver.task_type, 'testworker')
+    self.assertEqual(gce_cluster_resolver.task_index, 1)
+    self.assertEqual(gce_cluster_resolver.rpc_layer, 'test')
+    self.assertEqual(gce_cluster_resolver.master(), 'test://10.2.3.4:8470')
+
+  def testOverrideParametersWithZeroOrEmpty(self):
+    name_to_ip = [
+        {'name': 'instance1', 'ip': '10.1.2.3'},
+        {'name': 'instance2', 'ip': '10.2.3.4'},
+        {'name': 'instance3', 'ip': '10.3.4.5'},
+    ]
+
+    gce_cluster_resolver = GceClusterResolver(
+        project='test-project',
+        zone='us-east1-d',
+        instance_group='test-instance-group',
+        task_type='',
+        task_index=1,
+        port=8470,
+        credentials=None,
+        service=self.gen_standard_mock_service_client(name_to_ip))
+
+    self.assertEqual(gce_cluster_resolver.master(
+        task_type='', task_index=0), 'grpc://10.1.2.3:8470')
+
   def testCustomJobNameAndPortRetrieval(self):
     gce_cluster_resolver = GceClusterResolver(
         project='test-project',
         zone='us-east1-d',
         instance_group='test-instance-group',
-        job_name='custom',
+        task_type='custom',
         port=2222,
         credentials=None,
         service=self.standard_mock_service_client())
@@ -196,7 +270,7 @@ class GceClusterResolverTest(test.TestCase):
         project='test-project',
         zone='us-east1-d',
         instance_group='test-instance-group',
-        job_name='worker',
+        task_type='worker',
         port=8470,
         credentials=None,
         service=self.gen_standard_mock_service_client(worker1_name_to_ip))
@@ -205,7 +279,7 @@ class GceClusterResolverTest(test.TestCase):
         project='test-project',
         zone='us-east1-d',
         instance_group='test-instance-group',
-        job_name='worker',
+        task_type='worker',
         port=8470,
         credentials=None,
         service=self.gen_standard_mock_service_client(worker2_name_to_ip))
@@ -214,7 +288,7 @@ class GceClusterResolverTest(test.TestCase):
         project='test-project',
         zone='us-east1-d',
         instance_group='test-instance-group',
-        job_name='ps',
+        task_type='ps',
         port=2222,
         credentials=None,
         service=self.gen_standard_mock_service_client(ps_name_to_ip))

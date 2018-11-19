@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
@@ -80,24 +80,8 @@ XLAJIT_MAKE_UNARY(Invert, xla::Not(x));
 XLAJIT_MAKE_UNARY(LogicalNot, xla::Not(x));
 XLAJIT_MAKE_UNARY(Neg, -x);
 
-// Implements Banker's rounding: numbers that are equidistant between two
-// integers are rounded towards even.
-xla::XlaOp RoundToEven(xla::XlaOp x) {
-  auto half = xla::ScalarLike(x, 0.5);
-  auto one = xla::ScalarLike(x, 1.0);
-  auto two = xla::ScalarLike(x, 2.0);
-
-  auto round_val = xla::Floor(x);
-  auto fraction = x - round_val;
-  auto nearest_even_int = round_val - two * xla::Floor(half * x);
-  auto is_odd = xla::Eq(nearest_even_int, one);
-  return xla::Select(xla::Or(xla::Gt(fraction, half),
-                             xla::And(xla::Eq(fraction, half), is_odd)),
-                     round_val + one, round_val);
-}
-
-XLAJIT_MAKE_UNARY(Rint, RoundToEven(x));
-XLAJIT_MAKE_UNARY(Round, RoundToEven(x));
+XLAJIT_MAKE_UNARY(Rint, xla::RoundToEven(x));
+XLAJIT_MAKE_UNARY(Round, xla::RoundToEven(x));
 
 XLAJIT_MAKE_UNARY(Rsqrt, xla::Rsqrt(x));
 

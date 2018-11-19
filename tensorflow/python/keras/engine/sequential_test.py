@@ -18,18 +18,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function
 from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import rmsprop
 
 
-class TestSequential(test.TestCase):
+class TestSequential(test.TestCase, parameterized.TestCase):
   """Most Sequential model API tests are covered in `training_test.py`.
   """
 
@@ -51,9 +54,8 @@ class TestSequential(test.TestCase):
     batch_size = 5
     num_classes = 2
 
-    model = keras.models.Sequential()
-    model.add(keras.layers.Dense(num_hidden, input_dim=input_dim))
-    model.add(keras.layers.Dense(num_classes))
+    model = testing_utils.get_small_sequential_mlp(
+        num_hidden, num_classes, input_dim)
     model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3))
     x = np.random.random((batch_size, input_dim))
     y = np.random.random((batch_size, num_classes))
@@ -84,11 +86,11 @@ class TestSequential(test.TestCase):
     batch_size = 5
     num_classes = 2
 
-    model = keras.models.Sequential()
-    # We don't specify the input shape.
-    model.add(keras.layers.Dense(num_hidden))
-    model.add(keras.layers.Dense(num_classes))
-    model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3))
+    model = testing_utils.get_small_sequential_mlp(num_hidden, num_classes)
+    model.compile(
+        loss='mse',
+        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        metrics=[keras.metrics.CategoricalAccuracy()])
     self.assertEqual(len(model.layers), 2)
     self.assertEqual(len(model.weights), 0)
     self.assertFalse(model.built)
@@ -97,27 +99,22 @@ class TestSequential(test.TestCase):
     y = np.random.random((batch_size, num_classes))
     model.fit(x, y, epochs=1)
     self.assertTrue(model.built)
-    self.assertEqual(model.inputs[0].get_shape().as_list(), [None, input_dim])
-    self.assertEqual(model.outputs[0].get_shape().as_list(),
-                     [None, num_classes])
+    self.assertFalse(model._is_graph_network)
     self.assertEqual(len(model.weights), 2 * 2)
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_sequential_deferred_build_with_dataset_iterators(self):
-    if not context.executing_eagerly():
-      # TODO(psv/fchollet): Add support for this use case in graph mode.
-      return
     num_hidden = 5
     input_dim = 3
     num_classes = 2
     num_samples = 50
     steps_per_epoch = 10
 
-    model = keras.models.Sequential()
-    # We don't specify the input shape.
-    model.add(keras.layers.Dense(num_hidden))
-    model.add(keras.layers.Dense(num_classes))
-    model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3))
+    model = testing_utils.get_small_sequential_mlp(num_hidden, num_classes)
+    model.compile(
+        loss='mse',
+        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        metrics=[keras.metrics.CategoricalAccuracy()])
     self.assertEqual(len(model.layers), 2)
     self.assertEqual(len(model.weights), 0)
     self.assertFalse(model.built)
@@ -131,10 +128,51 @@ class TestSequential(test.TestCase):
 
     model.fit(iterator, epochs=1, steps_per_epoch=steps_per_epoch)
     self.assertTrue(model.built)
-    self.assertEqual(model.inputs[0].get_shape().as_list(), [None, input_dim])
-    self.assertEqual(model.outputs[0].get_shape().as_list(),
-                     [None, num_classes])
     self.assertEqual(len(model.weights), 2 * 2)
+    self.assertFalse(model._is_graph_network)
+
+  @parameterized.parameters((True,), (False,))
+  def test_training_and_eval_methods_on_symbolic_tensors(self, deferred):
+    with self.cached_session():
+
+      def get_model():
+        if deferred:
+          model = testing_utils.get_small_sequential_mlp(10, 4)
+        else:
+          model = testing_utils.get_small_sequential_mlp(10, 4, input_dim=3)
+        model.compile(
+            optimizer=rmsprop.RMSPropOptimizer(1e-3),
+            loss='categorical_crossentropy',
+            metrics=['accuracy'])
+        return model
+
+      inputs = keras.backend.zeros(shape=(10, 3))
+      targets = keras.backend.zeros(shape=(10, 4))
+
+      model = get_model()
+      model.fit(inputs, targets, epochs=10, steps_per_epoch=30)
+
+      model = get_model()
+      model.evaluate(inputs, targets, steps=2, verbose=0)
+
+      model = get_model()
+      model.predict(inputs, steps=2)
+
+      model = get_model()
+      model.train_on_batch(inputs, targets)
+
+      model = get_model()
+      model.test_on_batch(inputs, targets)
+
+      model = get_model()
+      model.fit(
+          inputs,
+          targets,
+          epochs=1,
+          steps_per_epoch=2,
+          verbose=0,
+          validation_data=(inputs, targets),
+          validation_steps=2)
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_invalid_use_cases(self):
@@ -185,7 +223,7 @@ class TestSequential(test.TestCase):
     val_a = np.random.random((10, 4))
     val_out = np.random.random((10, 4))
 
-    with self.test_session():
+    with self.cached_session():
       model = keras.models.Sequential()
       model.add(keras.layers.BatchNormalization(input_shape=(4,)))
       assert model.updates
@@ -209,17 +247,18 @@ class TestSequential(test.TestCase):
       x2 = model.predict(val_a)
       assert np.abs(np.sum(x1 - x2)) > 1e-5
 
+  @tf_test_util.run_in_graph_and_eager_modes
   def test_sequential_deferred_build_serialization(self):
     num_hidden = 5
     input_dim = 3
     batch_size = 5
     num_classes = 2
 
-    model = keras.models.Sequential()
-    # We don't specify the input shape.
-    model.add(keras.layers.Dense(num_hidden))
-    model.add(keras.layers.Dense(num_classes))
-    model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3))
+    model = testing_utils.get_small_sequential_mlp(num_hidden, num_classes)
+    model.compile(
+        loss='mse',
+        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        metrics=[keras.metrics.CategoricalAccuracy()])
     self.assertFalse(model.built)
 
     x = np.random.random((batch_size, input_dim))
@@ -228,10 +267,119 @@ class TestSequential(test.TestCase):
     self.assertTrue(model.built)
 
     config = model.get_config()
+    self.assertIn('build_input_shape', config)
+
     new_model = keras.models.Sequential.from_config(config)
-    self.assertTrue(new_model.built)
-    self.assertEqual(len(model.layers), 2)
+    self.assertEqual(len(new_model.layers), 2)
+    self.assertEqual(len(new_model.weights), 4)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_sequential_shape_inference_deferred(self):
+    model = testing_utils.get_small_sequential_mlp(4, 5)
+    output_shape = model.compute_output_shape((None, 7))
+    self.assertEqual(tuple(output_shape.as_list()), (None, 5))
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_sequential_build_deferred(self):
+    model = testing_utils.get_small_sequential_mlp(4, 5)
+
+    model.build((None, 10))
+    self.assertTrue(model.built)
     self.assertEqual(len(model.weights), 4)
+
+    # Test with nested model
+    model = testing_utils.get_small_sequential_mlp(4, 3)
+    inner_model = testing_utils.get_small_sequential_mlp(4, 5)
+    model.add(inner_model)
+
+    model.build((None, 10))
+    self.assertTrue(model.built)
+    self.assertTrue(model.layers[-1].built)
+    self.assertEqual(len(model.weights), 8)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_sequential_nesting(self):
+    model = testing_utils.get_small_sequential_mlp(4, 3)
+    inner_model = testing_utils.get_small_sequential_mlp(4, 5)
+    model.add(inner_model)
+
+    model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3))
+    x = np.random.random((2, 6))
+    y = np.random.random((2, 5))
+    model.fit(x, y, epochs=1)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_variable_names(self):
+    model = keras.models.Sequential([keras.layers.Dense(3)])
+    model.add(keras.layers.Dense(2))
+    model(array_ops.ones([2, 4]))
+    self.assertEqual(
+        ['sequential/dense/kernel:0', 'sequential/dense/bias:0',
+         'sequential/dense_1/kernel:0', 'sequential/dense_1/bias:0'],
+        [v.name for v in model.variables])
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_input_assumptions_propagation(self):
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(1))
+    if context.executing_eagerly():
+      with self.assertRaisesRegexp(ValueError,
+                                   'expected min_ndim=2, found ndim=0'):
+        model(1.0)
+
+
+class TestSequentialEagerIntegration(test.TestCase):
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_defun_on_call(self):
+    # Check that one can subclass Sequential and place the `call` in a `defun`.
+
+    class MySequential(keras.Sequential):
+
+      def __init__(self, name=None):
+        super(MySequential, self).__init__(name=name)
+        self.call = function.defun(self.call)
+
+    model = MySequential()
+    model.add(keras.layers.Dense(4, activation='relu'))
+    model.add(keras.layers.Dense(5, activation='softmax'))
+
+    model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3))
+
+    x = np.random.random((2, 6))
+    y = np.random.random((2, 5))
+    model.fit(x, y, epochs=1)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_build_before_fit(self):
+    # Fix for b/112433577
+    model = testing_utils.get_small_sequential_mlp(4, 5)
+    model.compile(loss='mse', optimizer=rmsprop.RMSPropOptimizer(1e-3))
+
+    model.build((None, 6))
+
+    x = np.random.random((2, 6))
+    y = np.random.random((2, 5))
+    model.fit(x, y, epochs=1)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_sequential_model_fails_with_dict_inputs(self):
+    num_classes = 5
+    model = testing_utils.get_small_sequential_mlp(
+        num_hidden=10, num_classes=num_classes)
+    model.compile(
+        rmsprop.RMSPropOptimizer(learning_rate=0.001),
+        metrics=['acc'],
+        weighted_metrics=['mae'],
+        loss='categorical_crossentropy')
+
+    x = {'dense_input': np.random.random((10, 1))}
+    y = np.random.randint(num_classes, size=(10, 1))
+
+    with self.assertRaisesRegexp(
+        ValueError, 'Passing a dictionary input to a Sequential Model which '
+        'doesn\'t have FeatureLayer as the first layer is an error'):
+      model.fit(x, y, batch_size=5, epochs=1)
 
 
 if __name__ == '__main__':

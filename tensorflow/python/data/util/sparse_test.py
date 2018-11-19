@@ -291,10 +291,10 @@ class SparseTest(test.TestCase):
       self.assertEqual(a, b)
       return
     self.assertTrue(isinstance(b, sparse_tensor.SparseTensor))
-    with self.test_session():
-      self.assertAllEqual(a.eval().indices, b.eval().indices)
-      self.assertAllEqual(a.eval().values, b.eval().values)
-      self.assertAllEqual(a.eval().dense_shape, b.eval().dense_shape)
+    with self.cached_session():
+      self.assertAllEqual(a.eval().indices, self.evaluate(b).indices)
+      self.assertAllEqual(a.eval().values, self.evaluate(b).values)
+      self.assertAllEqual(a.eval().dense_shape, self.evaluate(b).dense_shape)
 
   def testSerializeDeserialize(self):
     test_cases = (

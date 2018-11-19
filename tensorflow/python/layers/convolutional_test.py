@@ -207,7 +207,8 @@ class ConvTest(test.TestCase):
     layer.apply(images)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testConv2DBiasRegularizer(self):
     height, width = 7, 9
@@ -217,7 +218,8 @@ class ConvTest(test.TestCase):
     layer.apply(images)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testConv2DNoBias(self):
     height, width = 7, 9
@@ -264,7 +266,7 @@ class ConvTest(test.TestCase):
       self.assertEqual(len(variables.trainable_variables()), 2)
 
   def testFunctionalConv2DInitializerFromScope(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           'scope', initializer=init_ops.ones_initializer()):
         height, width = 7, 9
@@ -274,8 +276,8 @@ class ConvTest(test.TestCase):
         # Check the names of weights in order.
         self.assertTrue('kernel' in weights[0].name)
         self.assertTrue('bias' in weights[1].name)
-        sess.run(variables.global_variables_initializer())
-        weights = sess.run(weights)
+        self.evaluate(variables.global_variables_initializer())
+        weights = self.evaluate(weights)
         # Check that the kernel weights got initialized to ones (from scope)
         self.assertAllClose(weights[0], np.ones((3, 3, 3, 32)))
         # Check that the bias still got initialized to zeros.
@@ -445,7 +447,8 @@ class SeparableConv1DTest(test.TestCase):
     layer.apply(data)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testSeparableConv1DPointwiseRegularizer(self):
     length = 9
@@ -455,7 +458,8 @@ class SeparableConv1DTest(test.TestCase):
     layer.apply(data)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testSeparableConv1DBiasRegularizer(self):
     length = 9
@@ -465,7 +469,8 @@ class SeparableConv1DTest(test.TestCase):
     layer.apply(data)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testSeparableConv1DNoBias(self):
     length = 9
@@ -647,7 +652,7 @@ class SeparableConv2DTest(test.TestCase):
       self.assertEqual(len(variables.trainable_variables()), 3)
 
   def testFunctionalConv2DInitializerFromScope(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           'scope', initializer=init_ops.ones_initializer()):
         height, width = 7, 9
@@ -658,8 +663,8 @@ class SeparableConv2DTest(test.TestCase):
         self.assertTrue('depthwise_kernel' in weights[0].name)
         self.assertTrue('pointwise_kernel' in weights[1].name)
         self.assertTrue('bias' in weights[2].name)
-        sess.run(variables.global_variables_initializer())
-        weights = sess.run(weights)
+        self.evaluate(variables.global_variables_initializer())
+        weights = self.evaluate(weights)
         # Check that the kernel weights got initialized to ones (from scope)
         self.assertAllClose(weights[0], np.ones((3, 3, 3, 1)))
         self.assertAllClose(weights[1], np.ones((1, 1, 3, 32)))
@@ -682,7 +687,8 @@ class SeparableConv2DTest(test.TestCase):
     layer.apply(images)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testSeparableConv2DPointwiseRegularizer(self):
     height, width = 7, 9
@@ -692,7 +698,8 @@ class SeparableConv2DTest(test.TestCase):
     layer.apply(images)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testSeparableConv2DBiasRegularizer(self):
     height, width = 7, 9
@@ -702,7 +709,8 @@ class SeparableConv2DTest(test.TestCase):
     layer.apply(images)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testSeparableConv2DNoBias(self):
     height, width = 7, 9
@@ -839,7 +847,8 @@ class Conv2DTransposeTest(test.TestCase):
     layer.apply(images)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testConv2DTransposeBiasRegularizer(self):
     height, width = 7, 9
@@ -849,7 +858,8 @@ class Conv2DTransposeTest(test.TestCase):
     layer.apply(images)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testConv2DTransposeNoBias(self):
     height, width = 7, 9
@@ -882,7 +892,7 @@ class Conv2DTransposeTest(test.TestCase):
       self.assertEqual(len(variables.trainable_variables()), 2)
 
   def testFunctionalConv2DTransposeInitializerFromScope(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           'scope', initializer=init_ops.ones_initializer()):
         height, width = 7, 9
@@ -892,8 +902,8 @@ class Conv2DTransposeTest(test.TestCase):
         # Check the names of weights in order.
         self.assertTrue('kernel' in weights[0].name)
         self.assertTrue('bias' in weights[1].name)
-        sess.run(variables.global_variables_initializer())
-        weights = sess.run(weights)
+        self.evaluate(variables.global_variables_initializer())
+        weights = self.evaluate(weights)
         # Check that the kernel weights got initialized to ones (from scope)
         self.assertAllClose(weights[0], np.ones((3, 3, 32, 3)))
         # Check that the bias still got initialized to zeros.
@@ -1017,7 +1027,8 @@ class Conv3DTransposeTest(test.TestCase):
     layer.apply(volumes)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testConv3DTransposeBiasRegularizer(self):
     depth, height, width = 5, 7, 9
@@ -1027,7 +1038,8 @@ class Conv3DTransposeTest(test.TestCase):
     layer.apply(volumes)
     loss_keys = ops.get_collection(ops.GraphKeys.REGULARIZATION_LOSSES)
     self.assertEqual(len(loss_keys), 1)
-    self.assertListEqual(layer.losses, loss_keys)
+    self.evaluate([v.initializer for v in layer.variables])
+    self.assertListEqual(self.evaluate(layer.losses), self.evaluate(loss_keys))
 
   def testConv3DTransposeNoBias(self):
     depth, height, width = 5, 7, 9
@@ -1061,7 +1073,7 @@ class Conv3DTransposeTest(test.TestCase):
       self.assertEqual(len(variables.trainable_variables()), 2)
 
   def testFunctionalConv3DTransposeInitializerFromScope(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with variable_scope.variable_scope(
           'scope', initializer=init_ops.ones_initializer()):
         depth, height, width = 5, 7, 9
@@ -1072,8 +1084,8 @@ class Conv3DTransposeTest(test.TestCase):
         # Check the names of weights in order.
         self.assertTrue('kernel' in weights[0].name)
         self.assertTrue('bias' in weights[1].name)
-        sess.run(variables.global_variables_initializer())
-        weights = sess.run(weights)
+        self.evaluate(variables.global_variables_initializer())
+        weights = self.evaluate(weights)
         # Check that the kernel weights got initialized to ones (from scope)
         self.assertAllClose(weights[0], np.ones((3, 3, 3, 4, 32)))
         # Check that the bias still got initialized to zeros.

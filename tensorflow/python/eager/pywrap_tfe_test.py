@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import core
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -123,8 +124,8 @@ class Tests(test.TestCase):
   def testFastpathExecute_MixedPrecisionVariableTapeWrite(self):
     ctx = context.context()
     with backprop.GradientTape(persistent=True) as tape:
-      a_2_by_2 = constant_op.constant(
-          [[1.0, 2.0], [3.0, 4.0]], dtype=dtypes.float32)
+      a_2_by_2 = constant_op.constant([[1.0, 2.0], [3.0, 4.0]],
+                                      dtype=dtypes.float32)
       a_2_by_2_fp16 = math_ops.cast(a_2_by_2, dtype=dtypes.float16)
       m1 = resource_variable_ops.ResourceVariable(a_2_by_2)
       m2 = resource_variable_ops._MixedPrecisionVariable(
@@ -232,6 +233,26 @@ class Tests(test.TestCase):
     with self.assertRaisesRegexp(TypeError, "expected a string for op_name"):
       pywrap_tensorflow.TFE_Py_FastPathExecute(ctx_handle, ctx.device_name,
                                                ctx_handle, None, [], a_2_by_2)
+
+  @test_util.assert_no_new_tensors
+  @test_util.assert_no_garbage_created
+  def testFastPathExecute_InvalidAttributes(self):
+    split_dim = constant_op.constant(0, dtype=dtypes.int32)
+    value = constant_op.constant([0, 1, 2, 3], dtype=dtypes.float32)
+    ctx = context.context()
+    ctx_handle = ctx._handle
+    with self.assertRaises(core._FallbackException):
+      pywrap_tensorflow.TFE_Py_FastPathExecute(ctx_handle, ctx.device_name,
+                                               "Split", None, None, split_dim,
+                                               value, "num_split", -1)
+
+  @test_util.assert_no_new_tensors
+  @test_util.assert_no_garbage_created
+  def testInvalidNumOutputs(self):
+    with self.assertRaisesRegexp(
+        Exception,
+        "Value for attr 'num_split' of -1 must be at least minimum 1"):
+      array_ops.split(value=[1, 2, 3], num_or_size_splits=-1)
 
 
 if __name__ == "__main__":
