@@ -145,6 +145,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.multinomial": "tf.random.categorical",
         "tf.random.multinomial": "tf.random.categorical",
         "tf.load_file_system_library": "tf.load_library",
+        "tf.arg_max": "tf.argmax",
+        "tf.arg_min": "tf.argmin",
     })
     # pylint: enable=line-too-long
 

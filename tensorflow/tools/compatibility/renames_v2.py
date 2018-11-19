@@ -70,6 +70,8 @@ renames = {
     'tf.all_variables': 'tf.compat.v1.all_variables',
     'tf.angle': 'tf.math.angle',
     'tf.app.run': 'tf.compat.v1.app.run',
+    'tf.arg_max': 'tf.compat.v1.arg_max',
+    'tf.arg_min': 'tf.compat.v1.arg_min',
     'tf.assert_greater_equal': 'tf.compat.v1.assert_greater_equal',
     'tf.assert_integer': 'tf.compat.v1.assert_integer',
     'tf.assert_less_equal': 'tf.compat.v1.assert_less_equal',
@@ -562,7 +564,7 @@ renames = {
     'tf.variable_scope': 'tf.compat.v1.variable_scope',
     'tf.variables_initializer': 'tf.compat.v1.variables_initializer',
     'tf.variance_scaling_initializer': 'tf.keras.initializers.VarianceScaling',
-    'tf.verify_tensor_all_finite': 'tf.debugging.assert_all_finite',
+    'tf.verify_tensor_all_finite': 'tf.compat.v1.verify_tensor_all_finite',
     'tf.wrap_function': 'tf.compat.v1.wrap_function',
     'tf.write_file': 'tf.io.write_file',
     'tf.zeta': 'tf.math.zeta'
