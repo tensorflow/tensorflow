@@ -170,6 +170,18 @@ static StringRef getDiagnosticKindString(MLIRContext::DiagnosticKind kind) {
   }
 }
 
+/// Given a diagnostic kind, returns the LLVM DiagKind.
+static llvm::SourceMgr::DiagKind getDiagKind(MLIRContext::DiagnosticKind kind) {
+  switch (kind) {
+  case MLIRContext::DiagnosticKind::Note:
+    return llvm::SourceMgr::DK_Note;
+  case MLIRContext::DiagnosticKind::Warning:
+    return llvm::SourceMgr::DK_Warning;
+  case MLIRContext::DiagnosticKind::Error:
+    return llvm::SourceMgr::DK_Error;
+  }
+}
+
 /// Parses the memory buffer.  If successfully, run a series of passes against
 /// it and print the result.
 static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
@@ -189,13 +201,14 @@ static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
     context.registerDiagnosticHandler([&](Location location, StringRef message,
                                           MLIRContext::DiagnosticKind kind) {
       unsigned line = 1, column = 1;
+      SMLoc loc;
       if (auto fileLoc = location.dyn_cast<FileLineColLoc>()) {
         line = fileLoc->getLine();
         column = fileLoc->getColumn();
+        loc = getLocFromLineAndCol(buffer, line, column);
       }
 
-      auto unexpectedLoc = getLocFromLineAndCol(buffer, line, column);
-      sourceMgr.PrintMessage(unexpectedLoc, SourceMgr::DK_Error, message);
+      sourceMgr.PrintMessage(loc, getDiagKind(kind), message);
     });
 
     // Run the test actions.
