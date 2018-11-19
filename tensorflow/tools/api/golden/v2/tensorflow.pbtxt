@@ -41,10 +41,6 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "GraphKeys"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "GraphOptions"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
