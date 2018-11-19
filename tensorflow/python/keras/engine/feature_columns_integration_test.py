@@ -49,7 +49,7 @@ class FeatureColumnsIntegrationTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_sequential_model(self):
-    columns = [fc.numeric_column_v2('a')]
+    columns = [fc.numeric_column('a')]
     model = keras.models.Sequential([
         fc.DenseFeatures(columns),
         keras.layers.Dense(64, activation='relu'),
@@ -70,7 +70,7 @@ class FeatureColumnsIntegrationTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_sequential_model_with_ds_input(self):
-    columns = [fc.numeric_column_v2('a')]
+    columns = [fc.numeric_column('a')]
     model = keras.models.Sequential([
         fc.DenseFeatures(columns),
         keras.layers.Dense(64, activation='relu'),
@@ -94,8 +94,8 @@ class FeatureColumnsIntegrationTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_subclassed_model_with_feature_columns(self):
-    col_a = fc.numeric_column_v2('a')
-    col_b = fc.numeric_column_v2('b')
+    col_a = fc.numeric_column('a')
+    col_b = fc.numeric_column('b')
 
     dnn_model = TestDNNModel([col_a, col_b], 20)
 
@@ -114,8 +114,8 @@ class FeatureColumnsIntegrationTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_subclassed_model_with_feature_columns_with_ds_input(self):
-    col_a = fc.numeric_column_v2('a')
-    col_b = fc.numeric_column_v2('b')
+    col_a = fc.numeric_column('a')
+    col_b = fc.numeric_column('b')
 
     dnn_model = TestDNNModel([col_a, col_b], 20)
 
@@ -137,8 +137,8 @@ class FeatureColumnsIntegrationTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def DISABLED_test_function_model_feature_layer_input(self):
-    col_a = fc.numeric_column_v2('a')
-    col_b = fc.numeric_column_v2('b')
+    col_a = fc.numeric_column('a')
+    col_b = fc.numeric_column('b')
 
     feature_layer = fc.DenseFeatures([col_a, col_b], name='fc')
     dense = keras.layers.Dense(4)
@@ -163,9 +163,9 @@ class FeatureColumnsIntegrationTest(test.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def DISABLED_test_function_model_multiple_feature_layer_inputs(self):
-    col_a = fc.numeric_column_v2('a')
-    col_b = fc.numeric_column_v2('b')
-    col_c = fc.numeric_column_v2('c')
+    col_a = fc.numeric_column('a')
+    col_b = fc.numeric_column('b')
+    col_c = fc.numeric_column('c')
 
     fc1 = fc.DenseFeatures([col_a, col_b], name='fc1')
     fc2 = fc.DenseFeatures([col_b, col_c], name='fc2')
