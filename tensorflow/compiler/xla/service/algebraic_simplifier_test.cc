@@ -2255,6 +2255,79 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopSort) {
   EXPECT_THAT(computation->root_instruction(), keys);
 }
 
+TEST_F(AlgebraicSimplifierTest, ReplacePermutationSortWithScatter) {
+  const char* hlo_string = R"(
+    HloModule permutation_sort
+
+    ENTRY sort_computation {
+      keys = f32[64,8732]{1,0} parameter(0)
+      values = s32[64,8732]{1,0} iota(), iota_dimension=1
+      sort = (f32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(keys, values), dimensions={1}
+      gte = s32[64,8732]{1,0} get-tuple-element(sort), index=1
+      ROOT sort2 = (s32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(gte, values), dimensions={1}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options(non_bitcasting_callback());
+  options.set_enable_permutation_sort_replacement(true);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              op::Tuple(op::Iota(),
+                        op::Scatter(op::Iota(),
+                                    op::Concatenate(op::Iota(), op::Reshape()),
+                                    op::Reshape())));
+}
+
+TEST_F(AlgebraicSimplifierTest, DontReplacePermutationSortIfNonIntegral) {
+  // Same as ReplacePermutationSortWithScatter except that the iota has F32
+  // type.
+  const char* hlo_string = R"(
+    HloModule permutation_sort
+
+    ENTRY sort_computation {
+      keys = f32[64,8732]{1,0} parameter(0)
+      values = f32[64,8732]{1,0} iota(), iota_dimension=1
+      sort = (f32[64,8732]{1,0}, f32[64,8732]{1,0}) sort(keys, values), dimensions={1}
+      gte = f32[64,8732]{1,0} get-tuple-element(sort), index=1
+      ROOT sort2 = (f32[64,8732]{1,0}, f32[64,8732]{1,0}) sort(gte, values), dimensions={1}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options(non_bitcasting_callback());
+  options.set_enable_permutation_sort_replacement(true);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+}
+
+TEST_F(AlgebraicSimplifierTest, DontReplacePermutationSortWrongDimensions) {
+  // Same as ReplacePermutationSortWithScatter except that the sort dimensions
+  // don't match.
+  const char* hlo_string = R"(
+   HloModule permutation_sort
+
+    ENTRY sort_computation {
+      keys = f32[64,8732]{1,0} parameter(0)
+      values = s32[64,8732]{1,0} iota(), iota_dimension=1
+      sort = (f32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(keys, values), dimensions={1}
+      gte = s32[64,8732]{1,0} get-tuple-element(sort), index=1
+      ROOT sort2 = (s32[64,8732]{1,0}, s32[64,8732]{1,0}) sort(gte, values), dimensions={0}
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options(non_bitcasting_callback());
+  options.set_enable_permutation_sort_replacement(true);
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_FALSE(simplifier.Run(module.get()).ValueOrDie());
+}
+
 TEST_F(AlgebraicSimplifierTest, ReplaceEffectiveScalarKeyValueSortWithTuple) {
   auto builder = HloComputation::Builder(TestName());
 
