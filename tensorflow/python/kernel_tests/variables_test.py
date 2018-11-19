@@ -388,16 +388,6 @@ class VariablesTestCase(test.TestCase):
       variables.global_variables_initializer().run()
       self.assertAllClose([1, 12], self.evaluate(var))
 
-  def testDevicePlacement(self):
-    with self.cached_session() as sess:
-      with ops.device("/cpu:0"):
-        var = variables.Variable([1, 12])
-      init_value = var.initialized_value()
-      init_op = variables.global_variables_initializer()
-      self.assertEqual(var.op.device, init_value.device)
-      self.assertEqual(var.op.device, init_op.device)
-      self.evaluate(init_op)
-
   def testColocation(self):
     with ops.device("/job:ps"):
       var = variables.VariableV1(0, name="v")
