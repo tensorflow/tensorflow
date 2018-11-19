@@ -1218,6 +1218,24 @@ class Unpack : public BuiltinOperator<UnpackOperator, ::tflite::UnpackOptions,
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+class LeakyRelu
+    : public BuiltinOperator<LeakyReluOperator, ::tflite::LeakyReluOptions,
+                             ::tflite::BuiltinOptions_LeakyReluOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateLeakyReluOptions(*builder, op.alpha);
+  }
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->alpha = options.alpha();
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
 std::unique_ptr<flexbuffers::Builder> WriteFlexOpOptions(
     const string& tensorflow_node_def) {
   auto fbb = absl::make_unique<flexbuffers::Builder>();
@@ -1516,6 +1534,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
                                    OperatorType::kOneHot));
   ops.push_back(MakeUnique<Unpack>(::tflite::BuiltinOperator_UNPACK,
                                    OperatorType::kUnpack));
+  ops.push_back(MakeUnique<LeakyRelu>(::tflite::BuiltinOperator_LEAKY_RELU,
+                                      OperatorType::kLeakyRelu));
 
   // Custom Operators.
   ops.push_back(

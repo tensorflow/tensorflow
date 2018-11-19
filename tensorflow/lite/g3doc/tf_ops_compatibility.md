@@ -378,6 +378,20 @@ Options {
 }
 ```
 
+**LEAKY_RELU**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a tensor equivalent to max(input, input * alpha)
+}
+Options {
+  alpha: slope of the activation at x < 0 (provided alpha <= 1)
+}
+```
+
 **LESS**
 
 ```

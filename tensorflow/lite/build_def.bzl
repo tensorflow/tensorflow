@@ -248,6 +248,7 @@ def generated_test_models():
         "sum",
         "l2norm",
         "l2_pool",
+        "leaky_relu",
         "less",
         "less_equal",
         "local_response_norm",

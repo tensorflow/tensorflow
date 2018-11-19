@@ -558,6 +558,19 @@ inline void ReluX(const tflite::ActivationParams& params,
   }
 }
 
+inline void LeakyRelu(const tflite::LeakyReluParams& params,
+                      const RuntimeShape& input_shape, const float* input_data,
+                      const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("LeakyRelu (not fused)");
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; ++i) {
+    const float val = input_data[i];
+    // Note that this implementation matches that of TensorFlow, and corresponds
+    // to the traditional LeakyRelu equation only for alpha <= 1.
+    output_data[i] = std::max(val, val * params.alpha);
+  }
+}
+
 inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
                             const RuntimeShape& input_shape,
                             const float* input_data,
