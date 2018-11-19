@@ -5703,7 +5703,7 @@ def _get_graph_from_inputs(op_input_list, graph=None):
   return graph or get_default_graph()
 
 
-@tf_export("GraphKeys")
+@tf_export(v1=["GraphKeys"])
 class GraphKeys(object):
   """Standard names to use for graph collections.
 
