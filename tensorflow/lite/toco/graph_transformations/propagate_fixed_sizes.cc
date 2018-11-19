@@ -1714,6 +1714,7 @@ void ProcessUnpackOperator(Model* model, UnpackOperator* op) {
     case OperatorType::kRelu1:
     case OperatorType::kRelu6:
     case OperatorType::kPRelu:
+    case OperatorType::kLeakyRelu:
     case OperatorType::kSoftmax:
     case OperatorType::kLogSoftmax:
     case OperatorType::kLog:

@@ -152,7 +152,8 @@ enum class OperatorType : uint8 {
   kCTCBeamSearchDecoder,
   kUnpack,
   kZerosLike,
-  kResizeNearestNeighbor
+  kResizeNearestNeighbor,
+  kLeakyRelu
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -697,6 +698,19 @@ struct Relu6Operator : Operator {
 // Equivalent to keras.layers.PReLU.
 struct PReluOperator : Operator {
   PReluOperator() : Operator(OperatorType::kPRelu) {}
+};
+
+// LeakyRelu
+//   x -> max(x, alpha * x)
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: LeakyRelu
+struct LeakyReluOperator : Operator {
+  LeakyReluOperator() : Operator(OperatorType::kLeakyRelu) {}
+
+  float alpha = 0.2f;  // 0.2 matches the default value for the TF op attribute.
 };
 
 // Element-wise Logistic operator:

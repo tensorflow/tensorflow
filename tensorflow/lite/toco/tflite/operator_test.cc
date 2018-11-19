@@ -517,6 +517,14 @@ TEST_F(OperatorTest, BuiltinUnpack) {
   EXPECT_EQ(op.axis, output_toco_op->axis);
 }
 
+TEST_F(OperatorTest, BuiltinLeakyRelu) {
+  LeakyReluOperator op;
+  op.alpha = 3;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("LEAKY_RELU", OperatorType::kLeakyRelu), op);
+  EXPECT_EQ(op.alpha, output_toco_op->alpha);
+}
+
 TEST_F(OperatorTest, CustomCTCBeamSearchDecoder) {
   CTCBeamSearchDecoderOperator op;
   op.beam_width = 3;

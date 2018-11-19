@@ -65,6 +65,7 @@ using reference_ops::Greater;
 using reference_ops::GreaterEqual;
 using reference_ops::GreaterEqualWithScaling;
 using reference_ops::GreaterWithScaling;
+using reference_ops::LeakyRelu;
 using reference_ops::Less;
 using reference_ops::LessEqual;
 using reference_ops::LessEqualWithScaling;

@@ -1006,6 +1006,10 @@ struct UnpackParams {
   int16 axis;
 };
 
+struct LeakyReluParams {
+  float alpha;
+};
+
 template <typename P>
 inline void SetActivationParams(float min, float max, P* params) {
   params->float_activation_min = min;
