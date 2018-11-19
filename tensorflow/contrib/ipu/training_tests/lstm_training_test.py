@@ -18,7 +18,6 @@ from __future__ import print_function
 
 # Naive LSTM to learn three-char time steps to one-char mapping
 import numpy as np
-from keras.utils import np_utils
 from tensorflow.contrib.compiler import xla
 from tensorflow.contrib import ipu
 from tensorflow.contrib.ipu import utils
@@ -93,6 +92,8 @@ def _RunLayer(layer_func, x, y):
       loss = sess.run(r, fd)
       losses.append(loss)
   return losses
+def get_one_hot(a, num_classes):
+  return np.squeeze(np.eye(num_classes)[a.reshape(-1)])
 
 class LstmSizeTest(test_util.TensorFlowTestCase):
   # Check that the loss goes down (and is identical to reference version).
@@ -111,7 +112,7 @@ class LstmSizeTest(test_util.TensorFlowTestCase):
     # normalize
     X = X / float(len(nums))
     # one hot encode the output variable
-    y = np_utils.to_categorical(one_hot)
+    y = get_one_hot(nums[seq_len:], nums.size)
     labels = np.zeros([batch_size, num_hidden], dtype=dataType)
     labels[:y.shape[0],:y.shape[1]] = y
 
