@@ -620,7 +620,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
-
     case BuiltinOperator_LEAKY_RELU: {
       TfLiteLeakyReluParams* params =
           allocator->AllocatePOD<TfLiteLeakyReluParams>();
@@ -681,6 +680,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_FILL:
     case BuiltinOperator_FLOOR_MOD:
     case BuiltinOperator_RANGE:
+    case BuiltinOperator_SQUARED_DIFFERENCE:
       break;
   }
   return kTfLiteOk;
