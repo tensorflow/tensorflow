@@ -30,7 +30,7 @@ tf_module {
   }
   member_method {
     name: "batch_norm_with_global_normalization"
-    argspec: "args=[\'t\', \'m\', \'v\', \'beta\', \'gamma\', \'variance_epsilon\', \'scale_after_normalization\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'mean\', \'variance\', \'beta\', \'gamma\', \'variance_epsilon\', \'scale_after_normalization\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "batch_normalization"
