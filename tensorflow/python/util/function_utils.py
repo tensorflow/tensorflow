@@ -55,7 +55,7 @@ def fn_args(fn):
       fn = fn.__call__
     args = tf_inspect.getfullargspec(fn).args
     if _is_bounded_method(fn):
-      args.remove('self')
+      args.pop(0)  # remove `self` or `cls`
   return tuple(args)
 
 
