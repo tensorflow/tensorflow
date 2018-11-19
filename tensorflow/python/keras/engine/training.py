@@ -1152,9 +1152,6 @@ class Model(Network):
     is_x_eager_iterator = isinstance(x, iterator_ops.EagerIterator)
     is_x_iterator = isinstance(x, iterator_ops.Iterator)
 
-    if is_x_eager_iterator:
-      self._run_eagerly = True  # TODO(fchollet): support using graph functions
-
     # Validate user inputs when data is given as a dataset or dataset iterator.
     if is_x_iterator or is_x_eager_iterator:
       training_utils.validate_iterator_input(x, y, sample_weight,
@@ -1207,6 +1204,8 @@ class Model(Network):
     all_inputs = []
     is_build_called = False
     is_compile_called = False
+    # Whether this is a subclassed model that expects dictionary inputs
+    # rather than list inputs (e.g. FeatureColumn-based models).
     dict_inputs = False
     if not self.inputs:
       # We need to use `x` to set the model inputs.
@@ -1236,6 +1235,10 @@ class Model(Network):
         self._set_inputs(x)
     else:
       dict_inputs = isinstance(self.inputs, dict)
+    if dict_inputs and context.executing_eagerly():
+      # No support for graph functions when the model expects dictionary inputs
+      # (i.e. FeatureColumn-based models).
+      self.run_eagerly = True
 
     if y is not None:
       if not self.optimizer:
@@ -1275,7 +1278,7 @@ class Model(Network):
           # Handle target tensors if any passed.
           if not isinstance(y, (list, tuple)):
             y = [y]
-          target_tensors = [v for v in y if tensor_util.is_tensor(v)]
+          target_tensors = [v for v in y if _is_symbolic_tensor(v)]
         is_compile_called = True
         self.compile(
             optimizer=self.optimizer,
@@ -1294,7 +1297,7 @@ class Model(Network):
     # mixed symbolic/value inputs.
     if (not self.run_eagerly and is_build_called and
         is_compile_called and
-        any(tensor_util.is_tensor(v) for v in all_inputs)):
+        any(_is_symbolic_tensor(v) for v in all_inputs)):
       return [], [], []
 
     # What follows is input validation and standardization to list format,
@@ -1766,6 +1769,18 @@ class Model(Network):
           initial_epoch=initial_epoch,
           steps_per_epoch=steps_per_epoch,
           validation_steps=validation_steps)
+    elif isinstance(x, iterator_ops.EagerIterator):
+      return training_generator.fit_generator(
+          self,
+          x,
+          steps_per_epoch=steps_per_epoch,
+          epochs=epochs,
+          verbose=verbose,
+          callbacks=callbacks,
+          validation_data=validation_data,
+          validation_steps=validation_steps,
+          workers=0,
+          initial_epoch=initial_epoch)
     else:
       return training_arrays.fit_loop(
           self,
@@ -1873,7 +1888,6 @@ class Model(Network):
           max_queue_size=max_queue_size,
           workers=workers,
           use_multiprocessing=use_multiprocessing)
-
     # Validate and standardize user data.
     if self._distribution_strategy:
       distributed_training_utils.validate_inputs(
@@ -1908,6 +1922,13 @@ class Model(Network):
     elif training_distributed.should_run_experimental_loop(self):
       return training_distributed.experimental_test_loop(
           self, iterator=x, verbose=verbose, steps=steps)
+    elif isinstance(x, iterator_ops.EagerIterator):
+      return training_generator.evaluate_generator(
+          self,
+          x,
+          steps=steps,
+          verbose=verbose,
+          workers=0)
     else:
       return training_arrays.test_loop(
           self,
@@ -1981,7 +2002,6 @@ class Model(Network):
           max_queue_size=max_queue_size,
           workers=workers,
           use_multiprocessing=use_multiprocessing)
-
     if self._distribution_strategy:
       distributed_training_utils.validate_inputs(
           x, None, self._distribution_strategy)
@@ -2003,9 +2023,15 @@ class Model(Network):
       return training_eager.predict_loop(
           self, x, batch_size=batch_size, verbose=verbose, steps=steps)
     elif training_distributed.should_run_experimental_loop(self):
-      results = training_distributed.experimental_predict_loop(
+      return training_distributed.experimental_predict_loop(
           self, x, verbose=verbose, steps=steps)
-      return results
+    elif isinstance(x, iterator_ops.EagerIterator):
+      return training_generator.predict_generator(
+          self,
+          x,
+          steps=steps,
+          verbose=verbose,
+          workers=0)
     else:
       return training_arrays.predict_loop(
           self, x, batch_size=batch_size, verbose=verbose, steps=steps)
@@ -2151,13 +2177,12 @@ class Model(Network):
     # Validate and standardize user data.
     inputs, _, _ = self._standardize_user_data(x)
     if self.run_eagerly:
-      if (isinstance(x, iterator_ops.EagerIterator) or
-          (isinstance(x, dataset_ops.Dataset))):
+      if (isinstance(inputs, iterator_ops.EagerIterator) or
+          (isinstance(inputs, dataset_ops.Dataset))):
         inputs = training_utils.cast_if_floating_dtype(inputs)
-      else:
+      elif isinstance(inputs, collections.Sequence):
         inputs = [
-            ops.convert_to_tensor(val, dtype=K.floatx()) for val in inputs
-        ]
+            ops.convert_to_tensor(val, dtype=K.floatx()) for val in inputs]
       return self(inputs)  # pylint: disable=not-callable
 
     self._make_predict_function()
@@ -2463,3 +2488,7 @@ class DistributedCallbackModel(Model):
       logging.warning('You are accessing attribute ' + item + ' of the '
                       'DistributedCallbackModel that may not have been set '
                       'correctly.')
+
+
+def _is_symbolic_tensor(x):
+  return tensor_util.is_tensor(x) and not isinstance(x, ops.EagerTensor)
