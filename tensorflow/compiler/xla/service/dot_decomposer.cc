@@ -134,8 +134,9 @@ Status DecomposeBatchDot(HloInstruction* dot) {
     DotDimensionNumbers dot_dnums;
     dot_dnums.add_lhs_contracting_dimensions(1);
     dot_dnums.add_rhs_contracting_dimensions(0);
-    auto dot_r2 = computation->AddInstruction(HloInstruction::CreateDot(
-        dot_shape_r2, lhs_slice_r2, rhs_slice_r2, dot_dnums));
+    auto dot_r2 = computation->AddInstruction(
+        HloInstruction::CreateDot(dot_shape_r2, lhs_slice_r2, rhs_slice_r2,
+                                  dot_dnums, dot->precision_config()));
 
     // Reshape Dot to R3 so we can concat along batch dimension.
     auto dot_r3 = computation->AddInstruction(

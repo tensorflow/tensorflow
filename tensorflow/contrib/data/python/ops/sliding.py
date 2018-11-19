@@ -26,12 +26,12 @@ from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.util import deprecation
 
 
-class _SlideDataset(dataset_ops.Dataset):
+class _SlideDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that passes a sliding window over its input."""
 
   def __init__(self, input_dataset, window_size, window_shift, window_stride):
     """See `sliding_window_batch` for details."""
-    super(_SlideDataset, self).__init__()
+    super(_SlideDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._window_size = ops.convert_to_tensor(
         window_size, dtype=dtypes.int64, name="window_stride")
@@ -67,6 +67,10 @@ class _SlideDataset(dataset_ops.Dataset):
 
 @deprecation.deprecated_args(
     None, "stride is deprecated, use window_shift instead", "stride")
+@deprecation.deprecated(
+    None, "Use `tf.data.Dataset.window(size=window_size, shift=window_shift, "
+    "stride=window_stride).flat_map(lambda x: x.batch(window.size))` "
+    "instead.")
 def sliding_window_batch(window_size,
                          stride=None,
                          window_shift=None,
@@ -109,7 +113,7 @@ def sliding_window_batch(window_size,
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.data.Dataset.apply}.
+    `tf.data.Dataset.apply`.
 
   Raises:
     ValueError: if invalid arguments are provided.

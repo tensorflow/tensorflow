@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class BigtableRangeKeyDatasetOp : public DatasetOpKernel {
@@ -33,17 +34,18 @@ class BigtableRangeKeyDatasetOp : public DatasetOpKernel {
     BigtableTableResource* resource;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
+    core::ScopedUnref scoped_unref(resource);
 
     *output =
         new Dataset(ctx, resource, std::move(start_key), std::move(end_key));
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, BigtableTableResource* table,
                      string start_key, string end_key)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           table_(table),
           start_key_(std::move(start_key)),
           end_key_(std::move(end_key)) {
@@ -54,8 +56,8 @@ class BigtableRangeKeyDatasetOp : public DatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          {this, strings::StrCat(prefix, "::BigtableRangeKeyDataset")}));
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::BigtableRangeKey")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -74,6 +76,14 @@ class BigtableRangeKeyDatasetOp : public DatasetOpKernel {
     }
 
     BigtableTableResource* table() const { return table_; }
+
+   protected:
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      return errors::Unimplemented("%s does not support serialization",
+                                   DebugString());
+    }
 
    private:
     class Iterator : public BigtableReaderDatasetIterator<Dataset> {
@@ -109,4 +119,5 @@ class BigtableRangeKeyDatasetOp : public DatasetOpKernel {
 REGISTER_KERNEL_BUILDER(Name("BigtableRangeKeyDataset").Device(DEVICE_CPU),
                         BigtableRangeKeyDatasetOp);
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

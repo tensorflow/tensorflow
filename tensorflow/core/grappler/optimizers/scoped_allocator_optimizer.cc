@@ -203,7 +203,7 @@ void ScopedAllocatorOptimizer::ExtendNodeAttr(StringPiece name,
                                               NodeDef* node_def) {
   if (HasNodeAttr(*node_def, name)) {
     VLOG(2) << "extending";
-    AttrValue* existing = &(*node_def->mutable_attr())[name.ToString()];
+    AttrValue* existing = &(*node_def->mutable_attr())[string(name)];
     for (int32 i : values) {
       existing->mutable_list()->add_i(i);
     }

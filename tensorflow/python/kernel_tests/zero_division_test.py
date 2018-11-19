@@ -27,7 +27,7 @@ from tensorflow.python.platform import test
 class ZeroDivisionTest(test.TestCase):
 
   def testZeros(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       for dtype in dtypes.uint8, dtypes.int16, dtypes.int32, dtypes.int64:
         zero = constant_op.constant(0, dtype=dtype)
         one = constant_op.constant(1, dtype=dtype)
@@ -36,7 +36,7 @@ class ZeroDivisionTest(test.TestCase):
           bads.append(one % zero)
         for bad in bads:
           try:
-            result = bad.eval()
+            result = self.evaluate(bad)
           except errors_impl.OpError as e:
             # Ideally, we'd get a nice exception.  In theory, this should only
             # happen on CPU, but 32 bit integer GPU division is actually on

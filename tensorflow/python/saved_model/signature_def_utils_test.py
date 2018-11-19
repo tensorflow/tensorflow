@@ -275,44 +275,6 @@ class SignatureDefUtilsTest(test.TestCase):
     self.assertEqual(method_name, signature_def.method_name)
     self.assertEqual(3, len(signature_def.outputs))
 
-  def testGetShapeAndTypes(self):
-    inputs = {
-        "input-1": constant_op.constant(["a", "b"]),
-        "input-2": array_ops.placeholder(dtypes.float32, [10, 11]),
-    }
-    outputs = {
-        "output-1": array_ops.placeholder(dtypes.float32, [10, 32]),
-        "output-2": constant_op.constant([["b"]]),
-    }
-    signature_def = _make_signature(inputs, outputs)
-    self.assertEqual(
-        signature_def_utils_impl.get_signature_def_input_shapes(signature_def),
-        {"input-1": [2], "input-2": [10, 11]})
-    self.assertEqual(
-        signature_def_utils_impl.get_signature_def_output_shapes(signature_def),
-        {"output-1": [10, 32], "output-2": [1, 1]})
-    self.assertEqual(
-        signature_def_utils_impl.get_signature_def_input_types(signature_def),
-        {"input-1": dtypes.string, "input-2": dtypes.float32})
-    self.assertEqual(
-        signature_def_utils_impl.get_signature_def_output_types(signature_def),
-        {"output-1": dtypes.float32, "output-2": dtypes.string})
-
-  def testGetNonFullySpecifiedShapes(self):
-    outputs = {
-        "output-1": array_ops.placeholder(dtypes.float32, [None, 10, None]),
-        "output-2": array_ops.sparse_placeholder(dtypes.float32),
-    }
-    signature_def = _make_signature({}, outputs)
-    shapes = signature_def_utils_impl.get_signature_def_output_shapes(
-        signature_def)
-    self.assertEqual(len(shapes), 2)
-    # Must compare shapes with as_list() since 2 equivalent non-fully defined
-    # shapes are not equal to each other.
-    self.assertEqual(shapes["output-1"].as_list(), [None, 10, None])
-    # Must compare `dims` since its an unknown shape.
-    self.assertEqual(shapes["output-2"].dims, None)
-
   def _assertValidSignature(self, inputs, outputs, method_name):
     signature_def = signature_def_utils_impl.build_signature_def(
         inputs, outputs, method_name)

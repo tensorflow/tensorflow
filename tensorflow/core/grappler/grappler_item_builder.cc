@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variable.pb.h"
@@ -64,7 +65,11 @@ void InitializeTensor(DataType type, Tensor* tensor) {
     for (int i = 0; i < flat.size(); i++) {
       flat(i) = i % period;
     }
-  } else {
+  } else if (type != DT_STRING && type != DT_RESOURCE && type != DT_VARIANT) {
+    // DT_STRING, DT_RESOURCE and DT_VARIANT are not simple types according to
+    // is_simple_type<> in tensorflow/core/framework/type_traits.h, and
+    // Allocator will run non-trivial constructor/destructor for a Tensor with
+    // one of these types, so we should not memset its buffer.
     memset(const_cast<char*>(tensor->tensor_data().data()), 0,
            tensor->tensor_data().size());
   }
@@ -191,9 +196,13 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     const string feed_name = NodeName(feed_node);
     new_item->feed.emplace_back(feed_name, Tensor());
   }
+  for (const auto& fetch_node : cfg.fetch_nodes) {
+    new_item->fetch.emplace_back(NodeName(fetch_node));
+  }
 
-  // Attempt to detect the fetch node(s).
-  if (meta_graph.collection_def().count("train_op") > 0) {
+  // Attempt to detect the fetch node(s) if they were not set explicitly.
+  if (new_item->fetch.empty() &&
+      meta_graph.collection_def().count("train_op") > 0) {
     const CollectionDef& nodes = meta_graph.collection_def().at("train_op");
     if (nodes.has_node_list()) {
       for (const auto& node : nodes.node_list().value()) {
@@ -623,6 +632,15 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     }
   }
   return new_item;
+}
+
+std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDefFile(
+    const string& id, const string& meta_graph_file, const ItemConfig& cfg) {
+  MetaGraphDef meta_graph;
+  if (!ReadMetaGraphDefFromFile(meta_graph_file, &meta_graph).ok()) {
+    return nullptr;
+  }
+  return GrapplerItemFromMetaGraphDef(id, meta_graph, cfg);
 }
 
 }  // end namespace grappler

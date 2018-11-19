@@ -61,7 +61,7 @@ class FilteringStepPostprocessorTest(test.TestCase):
       expected_state = [[[80.], [20.]],
                         [1., 6.],
                         [-1, -2]]
-      with self.test_session():
+      with self.cached_session():
         for interpolated, expected in zip(interpolated_state, expected_state):
           self.assertAllClose(expected, interpolated.eval())
         self.assertGreater(0., updated_outputs["anomaly_score"][0].eval())

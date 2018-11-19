@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
+#include <algorithm>
+
 #include "tensorflow/contrib/boosted_trees/lib/trees/decision_tree.h"
 #include "tensorflow/core/platform/macros.h"
-
-#include <algorithm>
 
 namespace tensorflow {
 namespace boosted_trees {
@@ -28,14 +28,15 @@ int DecisionTree::Traverse(const DecisionTreeConfig& config,
   if (TF_PREDICT_FALSE(config.nodes_size() <= sub_root_id)) {
     return kInvalidLeaf;
   }
-
   // Traverse tree starting at the provided sub-root.
   int32 node_id = sub_root_id;
+  // The index of the leave that holds this example in the oblivious case.
+  int oblivious_leaf_idx = 0;
   while (true) {
     const auto& current_node = config.nodes(node_id);
     switch (current_node.node_case()) {
       case TreeNode::kLeaf: {
-        return node_id;
+        return node_id + oblivious_leaf_idx;
       }
       case TreeNode::kDenseFloatBinarySplit: {
         const auto& split = current_node.dense_float_binary_split();
@@ -80,9 +81,10 @@ int DecisionTree::Traverse(const DecisionTreeConfig& config,
         const auto& split = current_node.categorical_id_binary_split();
         const auto& features =
             example.sparse_int_features[split.feature_column()];
-        node_id = features.find(split.feature_id()) != features.end()
-                      ? split.left_id()
-                      : split.right_id();
+        node_id = (std::find(features.begin(), features.end(),
+                             split.feature_id()) == features.end())
+                      ? split.right_id()
+                      : split.left_id();
         break;
       }
       case TreeNode::kCategoricalIdSetMembershipBinarySplit: {
@@ -98,6 +100,29 @@ int DecisionTree::Traverse(const DecisionTreeConfig& config,
             break;
           }
         }
+        break;
+      }
+      case TreeNode::kObliviousDenseFloatBinarySplit: {
+        const auto& split = current_node.oblivious_dense_float_binary_split();
+        oblivious_leaf_idx <<= 1;
+        if (example.dense_float_features[split.feature_column()] >
+            split.threshold()) {
+          oblivious_leaf_idx++;
+        }
+        node_id++;
+        break;
+      }
+      case TreeNode::kObliviousCategoricalIdBinarySplit: {
+        const auto& split =
+            current_node.oblivious_categorical_id_binary_split();
+        oblivious_leaf_idx <<= 1;
+        const auto& features =
+            example.sparse_int_features[split.feature_column()];
+        if (std::find(features.begin(), features.end(), split.feature_id()) ==
+            features.end()) {
+          oblivious_leaf_idx++;
+        }
+        node_id++;
         break;
       }
       case TreeNode::NODE_NOT_SET: {
@@ -165,6 +190,16 @@ void DecisionTree::LinkChildren(const std::vector<int32>& children,
       split->set_right_id(*++children_it);
       break;
     }
+    case TreeNode::kObliviousDenseFloatBinarySplit: {
+      LOG(QFATAL)
+          << "Not implemented for the ObliviousDenseFloatBinarySplit case.";
+      break;
+    }
+    case TreeNode::kObliviousCategoricalIdBinarySplit: {
+      LOG(QFATAL)
+          << "Not implemented for the ObliviousCategoricalIdBinarySplit case.";
+      break;
+    }
     case TreeNode::NODE_NOT_SET: {
       LOG(QFATAL) << "A non-set node cannot have children.";
       break;
@@ -198,6 +233,16 @@ std::vector<int32> DecisionTree::GetChildren(const TreeNode& node) {
     case TreeNode::kCategoricalIdSetMembershipBinarySplit: {
       const auto& split = node.categorical_id_set_membership_binary_split();
       return {split.left_id(), split.right_id()};
+    }
+    case TreeNode::kObliviousDenseFloatBinarySplit: {
+      LOG(QFATAL)
+          << "Not implemented for the ObliviousDenseFloatBinarySplit case.";
+      return {};
+    }
+    case TreeNode::kObliviousCategoricalIdBinarySplit: {
+      LOG(QFATAL)
+          << "Not implemented for the ObliviousCategoricalIdBinarySplit case.";
+      break;
     }
     case TreeNode::NODE_NOT_SET: {
       return {};

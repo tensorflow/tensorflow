@@ -23,7 +23,6 @@ import logging
 
 from tensorflow.contrib.predictor import predictor
 from tensorflow.contrib.saved_model.python.saved_model import reader
-from tensorflow.contrib.saved_model.python.saved_model import signature_def_utils
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.saved_model import loader
@@ -68,23 +67,19 @@ def _get_signature_def(signature_def_key, export_dir, tags):
   metagraph_def = get_meta_graph_def(export_dir, tags)
 
   try:
-    signature_def = signature_def_utils.get_signature_def_by_key(
-        metagraph_def,
+    signature_def = metagraph_def.signature_def[signature_def_key]
+  except KeyError as e:
+    formatted_key = _DEFAULT_INPUT_ALTERNATIVE_FORMAT.format(
         signature_def_key)
-  except ValueError as e:
     try:
-      formatted_key = _DEFAULT_INPUT_ALTERNATIVE_FORMAT.format(
-          signature_def_key)
-      signature_def = signature_def_utils.get_signature_def_by_key(
-          metagraph_def, formatted_key)
-
-      logging.warning('Could not find signature def "%s". '
-                      'Using "%s" instead', signature_def_key, formatted_key)
-    except ValueError:
+      signature_def = metagraph_def.signature_def[formatted_key]
+    except KeyError:
       raise ValueError(
           'Got signature_def_key "{}". Available signatures are {}. '
           'Original error:\n{}'.format(
               signature_def_key, list(metagraph_def.signature_def), e))
+    logging.warning('Could not find signature def "%s". '
+                    'Using "%s" instead', signature_def_key, formatted_key)
   return signature_def
 
 

@@ -15,11 +15,10 @@ limitations under the License.
 
 #include <array>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -29,19 +28,32 @@ namespace {
 class TokenHloTest : public HloTestBase {};
 
 XLA_TEST_F(TokenHloTest, SingleTokenInstruction) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
   auto builder = HloComputation::Builder(TestName());
   builder.AddInstruction(HloInstruction::CreateToken());
 
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
-                          Execute(std::move(module), {}));
-  EXPECT_TRUE(LiteralTestUtil::Equal(*result, *LiteralUtil::CreateToken()));
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(result, LiteralUtil::CreateToken()));
+}
+
+XLA_TEST_F(TokenHloTest, TokenInTuple) {
+  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
+  builder.AddInstruction(HloInstruction::CreateTuple({token}));
+
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
+  Literal token_literal = LiteralUtil::CreateToken();
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(result, LiteralUtil::MakeTuple({&token_literal})));
 }
 
 XLA_TEST_F(TokenHloTest, TokenTree) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto token0 = builder.AddInstruction(HloInstruction::CreateToken());
   auto token1 = builder.AddInstruction(HloInstruction::CreateToken());
@@ -51,13 +63,12 @@ XLA_TEST_F(TokenHloTest, TokenTree) {
 
   module->AddEntryComputation(builder.Build());
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
-                          Execute(std::move(module), {}));
-  EXPECT_TRUE(LiteralTestUtil::Equal(*result, *LiteralUtil::CreateToken()));
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(result, LiteralUtil::CreateToken()));
 }
 
 XLA_TEST_F(TokenHloTest, InvalidTokenShapedEntryParameter) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
   auto builder = HloComputation::Builder(TestName());
   builder.AddInstruction(
       HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
@@ -67,7 +78,10 @@ XLA_TEST_F(TokenHloTest, InvalidTokenShapedEntryParameter) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(42)));
   module->AddEntryComputation(builder.Build());
 
-  Status status = HloVerifier().Run(module.get()).status();
+  Status status =
+      HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false)
+          .Run(module.get())
+          .status();
   ASSERT_IS_NOT_OK(status);
   EXPECT_THAT(
       status.error_message(),
@@ -75,7 +89,7 @@ XLA_TEST_F(TokenHloTest, InvalidTokenShapedEntryParameter) {
 }
 
 XLA_TEST_F(TokenHloTest, InvalidTupleTokenShapedEntryParameter) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
   auto builder = HloComputation::Builder(TestName());
   builder.AddInstruction(HloInstruction::CreateParameter(
       0,
@@ -84,7 +98,10 @@ XLA_TEST_F(TokenHloTest, InvalidTupleTokenShapedEntryParameter) {
       "param"));
   module->AddEntryComputation(builder.Build());
 
-  Status status = HloVerifier().Run(module.get()).status();
+  Status status =
+      HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false)
+          .Run(module.get())
+          .status();
   ASSERT_IS_NOT_OK(status);
   EXPECT_THAT(
       status.error_message(),
@@ -92,7 +109,7 @@ XLA_TEST_F(TokenHloTest, InvalidTupleTokenShapedEntryParameter) {
 }
 
 XLA_TEST_F(TokenHloTest, InvalidOperandToTokenInstruction) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
@@ -101,7 +118,10 @@ XLA_TEST_F(TokenHloTest, InvalidOperandToTokenInstruction) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(123)));
   module->AddEntryComputation(builder.Build());
 
-  Status status = HloVerifier().Run(module.get()).status();
+  Status status =
+      HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false)
+          .Run(module.get())
+          .status();
   ASSERT_IS_NOT_OK(status);
   EXPECT_THAT(status.error_message(),
               ::testing::HasSubstr(
@@ -185,9 +205,8 @@ ENTRY %TokenInConditional (param.3: pred[]) -> s32[] {
         std::unique_ptr<HloModule> module,
         HloRunner::CreateModuleFromString(module_string, debug_options));
     auto arg = LiteralUtil::CreateR0<bool>(true);
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
-                            Execute(std::move(module), {arg.get()}));
-    EXPECT_EQ(42, result->Get<int32>({}));
+    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&arg}));
+    EXPECT_EQ(42, result.Get<int32>({}));
   }
 
   {
@@ -196,9 +215,8 @@ ENTRY %TokenInConditional (param.3: pred[]) -> s32[] {
         std::unique_ptr<HloModule> module,
         HloRunner::CreateModuleFromString(module_string, debug_options));
     auto arg = LiteralUtil::CreateR0<bool>(false);
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> result,
-                            Execute(std::move(module), {arg.get()}));
-    EXPECT_EQ(7, result->Get<int32>({}));
+    TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&arg}));
+    EXPECT_EQ(7, result.Get<int32>({}));
   }
 }
 

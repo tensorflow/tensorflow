@@ -36,6 +36,7 @@ namespace tensorflow {
 // Forward declaration for proto class NodeExecStats so we do not need to
 // include the proto header
 class NodeExecStats;
+class StepStats;
 
 // KernelAndDevice encapsulates an instantiated kernel and the device it is on.
 //
@@ -49,32 +50,31 @@ class KernelAndDevice {
   //
   // The provided FunctionLibraryRuntime MUST outlive all calls to
   // Run() on the returned KernelAndDevice.
-  //
-  // TODO(ashankar): Figure out thread-safety concerns around
-  // FunctionLibraryRuntime (in particular, how the underlying
-  // FunctionLibraryDefinition might be mutated by another thread as new
-  // functions are registered with it).  Conservatively, thread-safe usage of
-  // the FunctionLibraryRuntime is pushed on to the caller (see locking in
-  // c_api.cc).
-  static Status Init(const NodeDef& ndef, FunctionLibraryRuntime* flib,
+  static Status Init(const NodeDef& ndef, FunctionLibraryRuntime* flr,
                      std::function<void(std::function<void()>)>* runner,
                      KernelAndDevice* out);
-  // TODO(ashankar): Remove this
-  static Status InitOp(Device* device, const NodeDef& ndef,
-                       KernelAndDevice* out);
 
-  KernelAndDevice(tensorflow::Rendezvous* rendez)
-      : device_(nullptr), flib_(nullptr), rendez_(rendez) {}
+  KernelAndDevice(tensorflow::Rendezvous* rendez, bool log_memory)
+      : device_(nullptr),
+        flr_(nullptr),
+        rendez_(rendez),
+        log_memory_(log_memory) {}
 
   // TODO(ashankar): Handle list-valued inputs.
   Status Run(std::vector<Tensor>* inputs, std::vector<Tensor>* outputs,
-             NodeExecStats* stats);
+             NodeExecStats* stats, StepStats* step_stats,
+             GraphCollector* graph_collector);
+
+  Status Run(ScopedStepContainer* step_container, std::vector<Tensor>* inputs,
+             std::vector<Tensor>* outputs, NodeExecStats* stats,
+             StepStats* step_stats, GraphCollector* graph_collector);
+
+  Device* OutputDevice(int idx) const;
 
   const OpKernel* kernel() const { return kernel_.get(); }
 
   Device* device() const { return device_; }
 
-  DataTypeVector* mutable_output_dtypes() { return &output_dtypes_; }
   const DataTypeVector& output_dtypes() { return output_dtypes_; }
 
  private:
@@ -85,12 +85,13 @@ class KernelAndDevice {
   CancellationManager cm_;
   std::unique_ptr<OpKernel> kernel_;
   Device* device_;
-  FunctionLibraryRuntime* flib_;
+  FunctionLibraryRuntime* flr_;
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
   Rendezvous* rendez_;
   DataTypeVector output_dtypes_;
   std::function<void(std::function<void()>)>* runner_;
   std::function<void(std::function<void()>)> default_runner_;
+  const bool log_memory_;
 };
 
 }  // namespace tensorflow

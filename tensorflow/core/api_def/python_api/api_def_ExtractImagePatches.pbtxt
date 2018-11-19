@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "extract_image_patches"
-    deprecated: true
+    deprecation_version: 2
   }
 }

@@ -38,7 +38,7 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
     dtype_list = [dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
                   dtypes.uint8, dtypes.uint16, dtypes.uint32, dtypes.uint64]
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       for dtype in dtype_list:
         lhs = constant_op.constant([0, 5, 3, 14], dtype=dtype)
         rhs = constant_op.constant([5, 0, 7, 11], dtype=dtype)
@@ -61,7 +61,7 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
     def count_bits(x):
       return sum([bin(z).count("1") for z in six.iterbytes(x.tobytes())])
     for dtype in dtype_list:
-      with self.test_session(use_gpu=True) as sess:
+      with self.cached_session(use_gpu=True) as sess:
         print("PopulationCount test: ", dtype)
         inputs = np.array(raw_inputs, dtype=dtype.as_numpy_dtype)
         truth = [count_bits(x) for x in inputs]
@@ -73,7 +73,7 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
     dtype_list = [dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
                   dtypes.uint8, dtypes.uint16, dtypes.uint32, dtypes.uint64]
     inputs = [0, 5, 3, 14]
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       for dtype in dtype_list:
         # Because of issues with negative numbers, let's test this indirectly.
         # 1. invert(a) and a = 0
@@ -97,7 +97,7 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
     dtype_list = [np.int8, np.int16, np.int32, np.int64,
                   np.uint8, np.uint16, np.uint32, np.uint64]
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       for dtype in dtype_list:
         lhs = np.array([0, 5, 3, 14], dtype=dtype)
         rhs = np.array([5, 0, 7, 3], dtype=dtype)
@@ -110,7 +110,7 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
   def testShiftsWithNegativeLHS(self):
     dtype_list = [np.int8, np.int16, np.int32, np.int64]
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       for dtype in dtype_list:
         lhs = np.array([-1, -5, -3, -14], dtype=dtype)
         rhs = np.array([5, 0, 7, 11], dtype=dtype)
@@ -123,7 +123,7 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
   def testImplementationDefinedShiftsDoNotCrash(self):
     dtype_list = [np.int8, np.int16, np.int32, np.int64]
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       for dtype in dtype_list:
         lhs = np.array([-1, -5, -3, -14], dtype=dtype)
         rhs = np.array([-2, 64, 101, 32], dtype=dtype)
@@ -139,7 +139,7 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
     dtype_list = [dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
                   dtypes.uint8, dtypes.uint16]
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       for dtype in dtype_list:
         lhs = constant_op.constant([[0], [3], [5]], dtype=dtype)
         rhs = constant_op.constant([[1, 2, 4]], dtype=dtype)

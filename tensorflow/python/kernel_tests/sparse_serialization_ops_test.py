@@ -68,12 +68,12 @@ class SerializeSparseTest(test.TestCase):
                                       serialize_fn,
                                       deserialize_fn,
                                       out_type=dtypes.string):
-    with self.test_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=False) as sess:
       sp_input = self._SparseTensorValue_5x6(np.arange(6))
       serialized = serialize_fn(sp_input, out_type=out_type)
       sp_deserialized = deserialize_fn(serialized, dtype=dtypes.int32)
 
-      indices, values, shape = sess.run(sp_deserialized)
+      indices, values, shape = self.evaluate(sp_deserialized)
 
       self.assertAllEqual(indices, sp_input[0])
       self.assertAllEqual(values, sp_input[1])
@@ -92,7 +92,7 @@ class SerializeSparseTest(test.TestCase):
                                            serialize_fn,
                                            deserialize_fn,
                                            out_type=dtypes.string):
-    with self.test_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=False) as sess:
       sp_input = self._SparseTensorValue_5x6(np.arange(6))
       serialized = serialize_fn(sp_input, out_type=out_type)
       serialized = array_ops.stack([serialized, serialized])
@@ -125,7 +125,7 @@ class SerializeSparseTest(test.TestCase):
 
   def _testSerializeDeserializeBatchInconsistentShapeHelper(
       self, serialize_fn, deserialize_fn, out_type=dtypes.string):
-    with self.test_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=False) as sess:
       sp_input0 = self._SparseTensorValue_5x6(np.arange(6))
       sp_input1 = self._SparseTensorValue_3x4(np.arange(6))
       serialized0 = serialize_fn(sp_input0, out_type=out_type)
@@ -158,7 +158,7 @@ class SerializeSparseTest(test.TestCase):
                                                  serialize_fn,
                                                  deserialize_fn,
                                                  out_type=dtypes.string):
-    with self.test_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=False) as sess:
       sp_input = self._SparseTensorValue_5x6(np.arange(6))
       serialized = serialize_fn(sp_input, out_type=out_type)
       serialized = array_ops.stack([serialized, serialized])
@@ -201,7 +201,7 @@ class SerializeSparseTest(test.TestCase):
                                                serialize_fn,
                                                deserialize_fn,
                                                out_type=dtypes.string):
-    with self.test_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=False) as sess:
       sp_input0 = self._SparseTensorPlaceholder()
       sp_input1 = self._SparseTensorPlaceholder()
       input0_val = self._SparseTensorValue_5x6(np.arange(6))
@@ -240,7 +240,7 @@ class SerializeSparseTest(test.TestCase):
   def _testSerializeManyShapeHelper(self,
                                     serialize_many_fn,
                                     out_type=dtypes.string):
-    with self.test_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=False) as sess:
       # N == 4 because shape_value == [4, 5]
       indices_value = np.array([[0, 0], [0, 1], [2, 0]], dtype=np.int64)
       values_value = np.array([b"a", b"b", b"c"])
@@ -268,7 +268,7 @@ class SerializeSparseTest(test.TestCase):
                                                serialize_many_fn,
                                                deserialize_fn,
                                                out_type=dtypes.string):
-    with self.test_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=False) as sess:
       # N == 4 because shape_value == [4, 5]
       indices_value = np.array([[0, 0], [0, 1], [2, 0]], dtype=np.int64)
       values_value = np.array([b"a", b"b", b"c"])
@@ -301,7 +301,7 @@ class SerializeSparseTest(test.TestCase):
         dtypes.variant)
 
   def testVariantSerializeDeserializeScalar(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       indices_value = np.array([[]], dtype=np.int64)
       values_value = np.array([37], dtype=np.int32)
       shape_value = np.array([], dtype=np.int64)
@@ -322,7 +322,7 @@ class SerializeSparseTest(test.TestCase):
       self.assertAllEqual(deserialized_value.dense_shape, shape_value)
 
   def testVariantSerializeDeserializeScalarBatch(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       indices_value = np.array([[]], dtype=np.int64)
       values_value = np.array([37], dtype=np.int32)
       shape_value = np.array([], dtype=np.int64)
@@ -349,7 +349,7 @@ class SerializeSparseTest(test.TestCase):
                                            serialize_fn,
                                            deserialize_fn,
                                            out_type=dtypes.string):
-    with self.test_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=False) as sess:
       sp_input0 = self._SparseTensorPlaceholder()
       sp_input1 = self._SparseTensorPlaceholder()
       input0_val = self._SparseTensorValue_5x6(np.arange(6))
@@ -384,7 +384,7 @@ class SerializeSparseTest(test.TestCase):
                                                   serialize_fn,
                                                   deserialize_fn,
                                                   out_type=dtypes.string):
-    with self.test_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=False) as sess:
       sp_input0 = self._SparseTensorPlaceholder()
       sp_input1 = self._SparseTensorPlaceholder()
       input0_val = self._SparseTensorValue_5x6(np.arange(6))
@@ -419,7 +419,7 @@ class SerializeSparseTest(test.TestCase):
                                               serialize_fn,
                                               deserialize_fn,
                                               out_type=dtypes.string):
-    with self.test_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=False) as sess:
       sp_input0 = self._SparseTensorPlaceholder()
       input0_val = self._SparseTensorValue_5x6(np.arange(6))
       serialized0 = serialize_fn(sp_input0, out_type=out_type)

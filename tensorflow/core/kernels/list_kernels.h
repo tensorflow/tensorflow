@@ -56,6 +56,9 @@ struct TensorList {
   std::vector<Tensor> tensors;
   PartialTensorShape element_shape;
   DataType element_dtype;
+  // The maximum allowed size of `tensors`. Defaults to -1 meaning that the size
+  // of `tensors` is unbounded.
+  int max_num_elements = -1;
 };
 
 Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out);
@@ -83,9 +86,9 @@ class TensorListStack : public OpKernel {
                                         DataTypeString(element_dtype_),
                                         " but list elements ",
                                         DataTypeString(l->element_dtype)));
-    OP_REQUIRES(c, l->element_shape.IsFullyDefined(),
-                errors::InvalidArgument("Tried to stack elements from a list "
-                                        "with non-fully-defined shape: ",
+    OP_REQUIRES(c, !l->tensors.empty() || l->element_shape.IsFullyDefined(),
+                errors::InvalidArgument("Tried to stack elements of a empty ",
+                                        "list with non-fully-defined shape: ",
                                         l->element_shape.DebugString()));
     if (num_elements_ != -1) {
       OP_REQUIRES(c, l->tensors.size() == num_elements_,
@@ -94,11 +97,26 @@ class TensorListStack : public OpKernel {
                                           " elements but got a list with ",
                                           l->tensors.size(), " elements."));
     }
+    // Compute the shape of the output tensor.
+    // If `element_shape` is fully-defined it gets used. It is assumed that all
+    // element tensors have the same shape.
+    // If `element_shape` is not fully-defined the shape of the first element
+    // tensor is used and it is checked that all other tensors have the same
+    // shape.
     TensorShape resulting_shape;
-    resulting_shape.AddDim(l->tensors.size());
-    for (TensorShapeDim s : l->element_shape) {
-      resulting_shape.AddDim(s.size);
+    if (!l->element_shape.AsTensorShape(&resulting_shape)) {
+      const Tensor& t = l->tensors[0];
+      resulting_shape = t.shape();
+      for (int i = 1; i < l->tensors.size(); ++i) {
+        const Tensor& t = l->tensors[i];
+        OP_REQUIRES(c, t.shape() == resulting_shape,
+                    errors::InvalidArgument(
+                        "Tried to stack tensors with unequal shapes: ",
+                        resulting_shape.DebugString(), " vs ",
+                        t.shape().DebugString()));
+      }
     }
+    resulting_shape.InsertDim(0, l->tensors.size());
     Tensor* output;
     OP_REQUIRES_OK(c, c->allocate_output(0, resulting_shape, &output));
     if (output->NumElements() == 0) {
@@ -108,12 +126,6 @@ class TensorListStack : public OpKernel {
     ConstMatrixVector inputs_flat;
     inputs_flat.reserve(l->tensors.size());
     for (const auto& t : l->tensors) {
-      OP_REQUIRES(
-          c, l->element_shape.IsCompatibleWith(t.shape()),
-          errors::InvalidArgument(
-              "Tensor with invalid shape in list. List element shape shape: ",
-              l->element_shape.DebugString(),
-              " and tensor shape: ", t.shape().DebugString()));
       inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
           t.shaped<T, 2>({1, t.NumElements()})));
     }
@@ -130,6 +142,91 @@ class TensorListStack : public OpKernel {
 
  private:
   int num_elements_;
+  DataType element_dtype_;
+};
+
+template <typename Device, typename T>
+class TensorListGather : public OpKernel {
+ public:
+  typedef std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>
+      ConstMatrixVector;
+  explicit TensorListGather(OpKernelConstruction* c) : OpKernel(c) {
+    OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+  }
+
+  void Compute(OpKernelContext* c) override {
+    const TensorList* l = c->input(0).scalar<Variant>()().get<TensorList>();
+    OP_REQUIRES(c, l != nullptr,
+                errors::InvalidArgument(
+                    "Input handle is not a list. Saw: '",
+                    c->input(0).scalar<Variant>()().DebugString(), "'"));
+    OP_REQUIRES(c, element_dtype_ == l->element_dtype,
+                errors::InvalidArgument("Invalid data types; op elements ",
+                                        DataTypeString(element_dtype_),
+                                        " but list elements ",
+                                        DataTypeString(l->element_dtype)));
+    Tensor indices = c->input(1);
+    OP_REQUIRES(c,
+                indices.NumElements() > 0 || l->element_shape.IsFullyDefined(),
+                errors::InvalidArgument("Tried to gather 0-elements from "
+                                        "a list with non-fully-defined shape: ",
+                                        l->element_shape.DebugString()));
+    // Compute the shape of the output tensor.
+    // If `element_shape` is fully-defined it gets used. It is assumed that all
+    // requested tensors have the same shape.
+    // If `element_shape` is not fully-defined the shape of the first requested
+    // tensor is used and it is checked that all other tensors have the same
+    // shape.
+    TensorShape resulting_shape;
+    if (!l->element_shape.AsTensorShape(&resulting_shape)) {
+      const int i = indices.flat<int32>()(0);
+      OP_REQUIRES(
+          c, i < l->tensors.size(),
+          errors::InvalidArgument("Index ", i, " out o range; list only has ",
+                                  l->tensors.size(), " elements."));
+      const Tensor& t = l->tensors[i];
+      resulting_shape = t.shape();
+      for (int index = 1; index < indices.NumElements(); ++index) {
+        const int i = indices.flat<int32>()(index);
+        const Tensor& t = l->tensors[i];
+        OP_REQUIRES(c, t.shape() == resulting_shape,
+                    errors::InvalidArgument(
+                        "Tried to gather elements with unequal shapes: ",
+                        resulting_shape.DebugString(), " vs ",
+                        t.shape().DebugString()));
+      }
+    }
+    resulting_shape.InsertDim(0, indices.NumElements());
+    Tensor* output;
+    OP_REQUIRES_OK(c, c->allocate_output(0, resulting_shape, &output));
+    if (output->NumElements() == 0) {
+      return;
+    }
+
+    ConstMatrixVector inputs_flat;
+    inputs_flat.reserve(l->tensors.size());
+    for (int index = 0; index < indices.NumElements(); ++index) {
+      const int i = indices.flat<int32>()(index);
+      OP_REQUIRES(
+          c, i < l->tensors.size(),
+          errors::InvalidArgument("Index ", i, " out o range; list only has ",
+                                  l->tensors.size(), " elements."));
+      const Tensor& t = l->tensors[i];
+      inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
+          t.shaped<T, 2>({1, t.NumElements()})));
+    }
+    auto output_flat = output->shaped<T, 2>({1, output->NumElements()});
+
+#if GOOGLE_CUDA
+    if (std::is_same<Device, Eigen::GpuDevice>::value) {
+      ConcatGPU<T>(c, inputs_flat, output, &output_flat);
+      return;
+    }
+#endif  // GOOGLE_CUDA
+    ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
+  }
+
+ private:
   DataType element_dtype_;
 };
 
@@ -170,6 +267,59 @@ class TensorListFromTensor : public OpKernel {
       // prevent this.
       Tensor aligned;
       OP_REQUIRES_OK(c, c->allocate_temp(tmp.dtype(), tmp.shape(), &aligned));
+      aligned.flat<T>().device(c->eigen_device<Device>()) =
+          tmp.unaligned_flat<T>();
+      output_list.tensors.push_back(aligned);
+    }
+    output_tensor->scalar<Variant>()() = std::move(output_list);
+  }
+};
+
+template <typename Device, typename T>
+class TensorListScatter : public OpKernel {
+ public:
+  TensorListScatter(OpKernelConstruction* c) : OpKernel(c) {}
+
+  void Compute(OpKernelContext* c) override {
+    Tensor* output_tensor;
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+    OP_REQUIRES_OK(c, c->allocate_output(0, {}, &output_tensor, attr));
+    Tensor indices = c->input(1);
+    PartialTensorShape element_shape;
+    OP_REQUIRES_OK(c, TensorShapeFromTensor(c->input(2), &element_shape));
+    TensorList output_list;
+    const Tensor& t = c->input(0);
+    output_list.element_dtype = t.dtype();
+    OP_REQUIRES(c, TensorShapeUtils::IsVectorOrHigher(t.shape()),
+                errors::InvalidArgument(
+                    "Tensor must be at least a vector, but saw shape: ",
+                    t.shape().DebugString()));
+    TensorShape output_shape(t.shape());
+    output_shape.RemoveDim(0);
+    OP_REQUIRES(c, element_shape.IsCompatibleWith(output_shape),
+                errors::InvalidArgument(
+                    "Specified a list with shape ", element_shape.DebugString(),
+                    " from a tensor with shape ", output_shape.DebugString()));
+    output_list.element_shape = element_shape;
+    output_list.tensors.reserve(indices.NumElements());
+    for (int index = 0; index < indices.NumElements(); ++index) {
+      const int i = indices.flat<int32>()(index);
+      OP_REQUIRES(c, i < t.shape().dim_size(0),
+                  errors::InvalidArgument("Trying to scatter index ", i,
+                                          " from tensor with ",
+                                          t.shape().dim_size(0), " rows."));
+      Tensor tmp = t.Slice(i, i + 1);
+      TensorShape tmp_shape = tmp.shape();
+      tmp_shape.RemoveDim(0);
+      OP_REQUIRES(c, tmp.CopyFrom(tmp, tmp_shape),
+                  errors::Unknown("Unexpected shape error."));
+      // TODO(apassos) maybe not always align; but weird compiler bugs seem to
+      // prevent this.
+      Tensor aligned;
+      OP_REQUIRES_OK(c, c->allocate_temp(tmp.dtype(), tmp.shape(), &aligned));
+      // TODO(apassos) do all slices in a single kernel invocation instead of
+      // many small ondes.
       aligned.flat<T>().device(c->eigen_device<Device>()) =
           tmp.unaligned_flat<T>();
       output_list.tensors.push_back(aligned);
@@ -253,7 +403,12 @@ Status TensorListZerosLike(OpKernelContext* c, const TensorList& x,
   y->tensors.reserve(x.tensors.size());
   for (const Tensor& t : x.tensors) {
     Tensor out_tensor;
-    TF_RETURN_IF_ERROR(c->allocate_temp(t.dtype(), t.shape(), &out_tensor));
+    AllocatorAttributes attr;
+    if (t.dtype() == DT_VARIANT) {
+      attr.set_on_host(true);
+    }
+    TF_RETURN_IF_ERROR(
+        c->allocate_temp(t.dtype(), t.shape(), &out_tensor, attr));
     switch (out_tensor.dtype()) {
 #define DTYPE_CASE(dtype)                                        \
   case DataTypeToEnum<dtype>::value:                             \
@@ -261,14 +416,34 @@ Status TensorListZerosLike(OpKernelContext* c, const TensorList& x,
         out_tensor.flat<dtype>().constant(dtype(0));             \
     break;
 
-      TF_CALL_NUMBER_TYPES(DTYPE_CASE)
+      TF_CALL_POD_TYPES(DTYPE_CASE)
 
 #undef DTYPE_CASE
+
+      case DT_INVALID: {
+        // Uninitialized tensor in the TensorList.
+        out_tensor = Tensor(DT_INVALID);
+        break;
+      }
+      case DataTypeToEnum<Variant>::value: {
+        const TensorList* inner_x = t.scalar<Variant>()().get<TensorList>();
+        if (inner_x == nullptr) {
+          return errors::InvalidArgument("Input handle is not a list. Saw: '",
+                                         t.scalar<Variant>()().DebugString(),
+                                         "'");
+        }
+        TensorList inner_y;
+        TF_RETURN_IF_ERROR(TensorListZerosLike<Device>(c, *inner_x, &inner_y));
+        out_tensor.scalar<Variant>()() = std::move(inner_y);
+        break;
+      }
+
       default:
         return errors::InvalidArgument(
-            "Trying to compute zeros_like for unsupported dtype",
-            out_tensor.dtype());
+            "Trying to compute zeros_like for unsupported dtype ",
+            DataTypeString(out_tensor.dtype()));
     }
+    y->tensors.emplace_back(out_tensor);
   }
   return Status::OK();
 }

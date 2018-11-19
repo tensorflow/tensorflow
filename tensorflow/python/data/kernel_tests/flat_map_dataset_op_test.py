@@ -22,6 +22,7 @@ import random
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
@@ -30,7 +31,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
 
-class FlatMapDatasetTest(test.TestCase):
+class FlatMapDatasetTest(test_base.DatasetTestBase):
 
   # pylint: disable=g-long-lambda
   def testFlatMapDataset(self):
@@ -43,11 +44,11 @@ class FlatMapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
-      sess.run(init_op)
+    with self.cached_session() as sess:
+      self.evaluate(init_op)
       for i in repeats:
         for _ in range(i):
-          self.assertEqual(i, sess.run(get_next))
+          self.assertEqual(i, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -62,12 +63,12 @@ class FlatMapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
-      sess.run(init_op)
+    with self.cached_session() as sess:
+      self.evaluate(init_op)
       for row in repeats:
         for i in row:
           for _ in range(i):
-            self.assertEqual(i, sess.run(get_next))
+            self.assertEqual(i, self.evaluate(get_next))
 
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
@@ -93,12 +94,12 @@ class FlatMapDatasetTest(test.TestCase):
       with session.Session(server.target) as sess2:
         for _ in range(3):
           sess = random.choice([sess1, sess2])
-          sess.run(init_op)
+          self.evaluate(init_op)
           for row in repeats:
             for i in row:
               for _ in range(i):
                 sess = random.choice([sess1, sess2])
-                self.assertEqual(i, sess.run(get_next))
+                self.assertEqual(i, self.evaluate(get_next))
 
         with self.assertRaises(errors.OutOfRangeError):
           sess = random.choice([sess1, sess2])
@@ -113,11 +114,11 @@ class FlatMapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
-      sess.run(init_op)
+    with self.cached_session() as sess:
+      self.evaluate(init_op)
       for i in range(10):
         for _ in range(i ** 2):
-          self.assertEqual(i * 2, sess.run(get_next))
+          self.assertEqual(i * 2, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
   # pylint: enable=g-long-lambda
@@ -137,12 +138,12 @@ class FlatMapDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
-      sess.run(init_op)
+    with self.cached_session() as sess:
+      self.evaluate(init_op)
       for i in range(10):
         for j in range(2):
           expected = [i, 0] if j % 2 == 0 else [0, -i]
-          self.assertAllEqual(expected, sess.run(get_next))
+          self.assertAllEqual(expected, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 

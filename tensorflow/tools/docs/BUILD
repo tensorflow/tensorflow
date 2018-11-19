@@ -28,6 +28,25 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":doc_generator_visitor",
+        ":generate_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_library(
+    name = "doc_controls",
+    srcs = ["doc_controls.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "doc_controls_test",
+    size = "small",
+    srcs = ["doc_controls_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":doc_controls",
         "//tensorflow/python:platform_test",
     ],
 )
@@ -38,6 +57,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":doc_controls",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
         "@astor_archive//:astor",
@@ -67,13 +87,15 @@ py_binary(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
+        ":doc_controls",
         ":doc_generator_visitor",
         ":parser",
         ":pretty_docs",
         ":py_guide_parser",
-        "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
+        "//tensorflow/python:util",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
+        "@six_archive//:six",
     ],
 )
 
@@ -105,7 +127,6 @@ py_test(
     name = "build_docs_test",
     size = "small",
     srcs = ["build_docs_test.py"],
-    data = ["//tensorflow:docs_src"],
     srcs_version = "PY2AND3",
     tags = [
         # No reason to run sanitizers or fastbuild for this test.

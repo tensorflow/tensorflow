@@ -56,11 +56,11 @@ class CategoricalTest(xla_test.XLATestCase):
     Returns:
       Frequencies from sampled classes; shape [batch_size, num_classes].
     """
-    with self.test_session() as sess, self.test_scope():
+    with self.cached_session() as sess, self.test_scope():
       random_seed.set_random_seed(1618)
       op = random_ops.multinomial(logits, num_samples,
                                   output_dtype=dtypes.int32)
-      d = sess.run(op)
+      d = self.evaluate(op)
 
     batch_size, num_classes = logits.shape
     freqs_mat = []
@@ -79,15 +79,15 @@ class CategoricalTest(xla_test.XLATestCase):
 
   def _testRngIsNotConstant(self, rng, dtype, output_dtype):
     # Tests that 'rng' does not always return the same value.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.test_scope():
         x = rng(dtype, output_dtype)
 
       # The random-number generator, if working correctly, should produce the
       # same output multiple times with low probability.
-      y = sess.run(x)
-      z = sess.run(x)
-      w = sess.run(x)
+      y = self.evaluate(x)
+      z = self.evaluate(x)
+      w = self.evaluate(x)
 
       # We use exact equality here. If the random-number generator is producing
       # deterministic output, all three outputs will be bitwise identical.
@@ -107,12 +107,12 @@ class CategoricalTest(xla_test.XLATestCase):
   def testCategoricalIsInRange(self):
     for dtype in self.float_types:
       for output_dtype in self.output_dtypes():
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           with self.test_scope():
             x = random_ops.multinomial(
                 array_ops.ones(shape=[1, 20], dtype=dtype), 1000,
                 output_dtype=output_dtype)
-          y = sess.run(x)
+          y = self.evaluate(x)
           self.assertTrue((y >= 0).sum() == 1000)
           self.assertTrue((y < 20).sum() == 1000)
 

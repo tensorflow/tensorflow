@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class BigtablePrefixKeyDatasetOp : public DatasetOpKernel {
@@ -30,16 +31,19 @@ class BigtablePrefixKeyDatasetOp : public DatasetOpKernel {
     BigtableTableResource* resource;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
+    core::ScopedUnref scoped_unref(resource);
 
     *output = new Dataset(ctx, resource, std::move(prefix));
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     explicit Dataset(OpKernelContext* ctx, BigtableTableResource* table,
                      string prefix)
-        : GraphDatasetBase(ctx), table_(table), prefix_(std::move(prefix)) {
+        : DatasetBase(DatasetContext(ctx)),
+          table_(table),
+          prefix_(std::move(prefix)) {
       table_->Ref();
     }
 
@@ -47,8 +51,8 @@ class BigtablePrefixKeyDatasetOp : public DatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          {this, strings::StrCat(prefix, "::BigtablePrefixKeyDataset")}));
+      return std::unique_ptr<IteratorBase>(
+          new Iterator({this, strings::StrCat(prefix, "::BigtablePrefixKey")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -67,6 +71,14 @@ class BigtablePrefixKeyDatasetOp : public DatasetOpKernel {
     }
 
     BigtableTableResource* table() const { return table_; }
+
+   protected:
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      return errors::Unimplemented("%s does not support serialization",
+                                   DebugString());
+    }
 
    private:
     class Iterator : public BigtableReaderDatasetIterator<Dataset> {
@@ -101,4 +113,5 @@ REGISTER_KERNEL_BUILDER(Name("BigtablePrefixKeyDataset").Device(DEVICE_CPU),
                         BigtablePrefixKeyDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

@@ -115,6 +115,8 @@ import abc
 import re
 import threading
 
+import six
+
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.lib import debug_utils
@@ -329,6 +331,7 @@ class OnRunEndResponse(object):
     pass
 
 
+@six.add_metaclass(abc.ABCMeta)
 class BaseDebugWrapperSession(session.SessionInterface):
   """Base class of debug-wrapper session classes.
 
@@ -447,13 +450,16 @@ class BaseDebugWrapperSession(session.SessionInterface):
           "callable_runner and callable_options are mutually exclusive, but "
           "are both specified in this call to BaseDebugWrapperSession.run().")
 
-    if not (callable_runner or callable_options):
-      self.increment_run_call_count()
-    elif callable_runner and (fetches or feed_dict):
+    if callable_runner and (fetches or feed_dict):
       raise ValueError(
           "callable_runner and fetches/feed_dict are mutually exclusive, "
           "but are used simultaneously.")
+    elif callable_options and (fetches or feed_dict):
+      raise ValueError(
+          "callable_options and fetches/feed_dict are mutually exclusive, "
+          "but are used simultaneously.")
 
+    self.increment_run_call_count()
     empty_fetches = not nest.flatten(fetches)
     if empty_fetches:
       tf_logging.info(
@@ -649,6 +655,18 @@ class BaseDebugWrapperSession(session.SessionInterface):
   def increment_run_call_count(self):
     self._run_call_count += 1
 
+  def _is_disk_usage_reset_each_run(self):
+    """Indicates whether disk usage is reset after each Session.run.
+
+    Subclasses that clean up the disk usage after every run should
+    override this protected method.
+
+    Returns:
+      (`bool`) Whether the disk usage amount is reset to zero after
+        each Session.run.
+    """
+    return False
+
   def _decorate_run_options_for_debug(
       self,
       run_options,
@@ -686,7 +704,9 @@ class BaseDebugWrapperSession(session.SessionInterface):
         node_name_regex_whitelist=node_name_regex_whitelist,
         op_type_regex_whitelist=op_type_regex_whitelist,
         tensor_dtype_regex_whitelist=tensor_dtype_regex_whitelist,
-        tolerate_debug_op_creation_failures=tolerate_debug_op_creation_failures)
+        tolerate_debug_op_creation_failures=tolerate_debug_op_creation_failures,
+        reset_disk_byte_usage=(self._run_call_count == 1 or
+                               self._is_disk_usage_reset_each_run()))
 
   def _decorate_run_options_for_profile(self, run_options):
     """Modify a RunOptions object for profiling TensorFlow graph execution.
@@ -771,7 +791,6 @@ class BaseDebugWrapperSession(session.SessionInterface):
   # TODO(cais): Add _node_name_regex_whitelist and
   #   _node_op_type_regex_whitelist.
 
-  @abc.abstractmethod
   def invoke_node_stepper(self,
                           node_stepper,
                           restore_variable_values_on_exit=True):
@@ -788,6 +807,9 @@ class BaseDebugWrapperSession(session.SessionInterface):
       The same return values as the `Session.run()` call on the same fetches as
         the NodeStepper.
     """
+    raise NotImplementedError(
+        self.__class__.__name__ + " does not support node-stepper mode.")
+
 
   def should_stop(self):
     if hasattr(self._sess, "should_stop"):

@@ -56,7 +56,7 @@ class RecurrentTest(test_util.TensorFlowTestCase):
           x_power=state.x_power * theta.x)
       return next_state, []
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       theta = _PolyTheta(x=array_ops.constant(2.0))
       state = _PolyState(
           value=array_ops.constant(0.0),
@@ -142,7 +142,7 @@ class RecurrentTest(test_util.TensorFlowTestCase):
 
   def _ParameterizedTestElman(self, seqlen, use_grad):
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       random_seed.set_random_seed(342462)
 
       batch = 3

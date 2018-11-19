@@ -36,11 +36,11 @@ def optional_param_to_tensor(argument_name,
 
 
 def partial_shape_to_tensor(shape_like):
-  """Returns a @{tf.Tensor} that represents the given shape.
+  """Returns a `tf.Tensor` that represents the given shape.
 
   Args:
-    shape_like: A value that can be converted to a @{tf.TensorShape} or a
-      @{tf.Tensor}.
+    shape_like: A value that can be converted to a `tf.TensorShape` or a
+      `tf.Tensor`.
 
   Returns:
     A 1-D `tf.Tensor` of `tf.int64` elements representing the given shape, where

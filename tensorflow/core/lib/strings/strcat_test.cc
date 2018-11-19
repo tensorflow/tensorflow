@@ -308,11 +308,11 @@ TEST(StrAppend, Death) {
 
 static void CheckHex64(uint64 v) {
   using tensorflow::strings::Hex;
-  string actual = StrCat(Hex(v, tensorflow::strings::ZERO_PAD_16));
+  string actual = StrCat(Hex(v, tensorflow::strings::kZeroPad16));
   string expected = Printf("%016llx", static_cast<unsigned long long>(v));
   EXPECT_EQ(expected, actual) << " decimal value " << v;
 
-  actual = StrCat(Hex(v, tensorflow::strings::ZERO_PAD_8));
+  actual = StrCat(Hex(v, tensorflow::strings::kZeroPad8));
   expected = Printf("%08llx", static_cast<unsigned long long>(v));
   EXPECT_EQ(expected, actual) << " decimal value " << v;
 
@@ -323,7 +323,7 @@ static void CheckHex64(uint64 v) {
 
 static void CheckHex32(uint32 v) {
   using tensorflow::strings::Hex;
-  string actual = StrCat(Hex(v, tensorflow::strings::ZERO_PAD_8));
+  string actual = StrCat(Hex(v, tensorflow::strings::kZeroPad8));
   string expected = Printf("%08x", v);
   EXPECT_EQ(expected, actual) << " decimal value " << v;
 
@@ -334,7 +334,7 @@ static void CheckHex32(uint32 v) {
 
 static void CheckHexSigned32(int32 v) {
   using tensorflow::strings::Hex;
-  string actual = StrCat(Hex(v, tensorflow::strings::ZERO_PAD_8));
+  string actual = StrCat(Hex(v, tensorflow::strings::kZeroPad8));
   string expected = Printf("%08x", v);
   EXPECT_EQ(expected, actual) << " decimal value " << v;
 

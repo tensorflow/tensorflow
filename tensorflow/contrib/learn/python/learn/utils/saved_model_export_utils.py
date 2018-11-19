@@ -55,7 +55,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.summary import summary_iterator
-from tensorflow.python.training import saver
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
 
@@ -415,7 +415,7 @@ def make_export_strategy(serving_input_fn,
       `InputFnOps`.
     default_output_alternative_key: the name of the head to serve when an
       incoming serving request does not explicitly request a specific head.
-      Must be `None` if the estimator inherits from @{tf.estimator.Estimator}
+      Must be `None` if the estimator inherits from `tf.estimator.Estimator`
       or for single-headed models.
     assets_extra: A dict specifying how to populate the assets.extra directory
       within the exported SavedModel.  Each key should give the destination
@@ -453,7 +453,7 @@ def make_export_strategy(serving_input_fn,
       The string path to the exported directory.
 
     Raises:
-      ValueError: If `estimator` is a @{tf.estimator.Estimator} instance
+      ValueError: If `estimator` is a `tf.estimator.Estimator` instance
         and `default_output_alternative_key` was specified.
     """
     if isinstance(estimator, core_estimator.Estimator):
@@ -504,7 +504,7 @@ def make_parsing_export_strategy(feature_columns,
       that must be provided at serving time (excluding labels!).
     default_output_alternative_key: the name of the head to serve when an
       incoming serving request does not explicitly request a specific head.
-      Must be `None` if the estimator inherits from @{tf.estimator.Estimator}
+      Must be `None` if the estimator inherits from `tf.estimator.Estimator`
       or for single-headed models.
     assets_extra: A dict specifying how to populate the assets.extra directory
       within the exported SavedModel.  Each key should give the destination
@@ -714,7 +714,8 @@ def make_best_model_export_strategy(
       #  as soon as contrib is cleaned up and we can thus be sure that
       #  estimator is a tf.estimator.Estimator and not a
       #  tf.contrib.learn.Estimator
-      checkpoint_path = saver.latest_checkpoint(estimator.model_dir)
+      checkpoint_path = checkpoint_management.latest_checkpoint(
+          estimator.model_dir)
     export_checkpoint_path, export_eval_result = best_model_selector.update(
         checkpoint_path, eval_result)
 
@@ -766,7 +767,7 @@ def extend_export_strategy(base_export_strategy,
       The string path to the SavedModel indicated by post_export_fn.
 
     Raises:
-      ValueError: If `estimator` is a @{tf.estimator.Estimator} instance
+      ValueError: If `estimator` is a `tf.estimator.Estimator` instance
         and `default_output_alternative_key` was specified or if post_export_fn
         does not return a valid directory.
       RuntimeError: If unable to create temporary or final export directory.

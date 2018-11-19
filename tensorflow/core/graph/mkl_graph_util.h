@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPH_MKL_GRAPH_UTIL_H_
 #ifdef INTEL_MKL
 
-#include <string>
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
@@ -42,7 +41,7 @@ namespace tensorflow {
 typedef enum { TENSORS_INTERLEAVED, TENSORS_CONTIGUOUS } MklTfTensorOrdering;
 // NOTE: Currently, we use contiguous ordering. If you change this, then you
 // would need to change Mkl op definitions in nn_ops.cc.
-static MklTfTensorOrdering kTensorOrdering = TENSORS_CONTIGUOUS;
+static const MklTfTensorOrdering kTensorOrdering = TENSORS_CONTIGUOUS;
 
 // Get index of MetaData tensor from index 'n' of Data tensor.
 inline int DataIndexToMetaDataIndex(int n, int total_tensors) {
@@ -76,6 +75,8 @@ int inline GetTensorMetaDataIndex(int n, int total_tensors) {
 namespace mkl_op_registry {
 static const char* kMklOpLabel = "MklOp";
 static const char* kMklOpLabelPattern = "label='MklOp'";
+static const char* kMklQuantizedOpLabel = "QuantizedMklOp";
+static const char* kMklQuantizedOpLabelPattern = "label='QuantizedMklOp'";
 // Prefix that we add to Tensorflow op name to construct Mkl op name.
 static const char* const kMklOpPrefix = "_Mkl";
 
@@ -92,9 +93,30 @@ inline string GetMklOpName(const string& name) {
 // @return: true if opname is registered as Mkl op; false otherwise
 static inline bool IsMklOp(const string& op_name, DataType T) {
   string kernel = KernelsRegisteredForOp(op_name);
-  bool result =
-      kernel.find(kMklOpLabelPattern) != string::npos && (T == DT_FLOAT);
-  return result;
+
+  // Restrict quantized ops to QUINT8 and QINT8 for now
+  if (kernel.find(kMklQuantizedOpLabelPattern) != string::npos) {
+    return (T == DT_QUINT8 || T == DT_QINT8);
+  }
+  // Restrict regular ops to FLOAT
+  if (kernel.find(kMklOpLabelPattern) != string::npos) {
+    return (T == DT_FLOAT);
+  }
+  return false;
+}
+
+// TODO(mdfaijul): QuantizedConv2D is registered with input: QUINT8
+// filter:QINT8 for mkldnn integration. First a dummy kernel is created
+// and then it is replaced by an actual kernel.
+static inline bool IsMklOp(const string& op_name, DataType Tinput,
+                           DataType Tfilter) {
+  string kernel = KernelsRegisteredForOp(op_name);
+
+  // Restrict quantized ops to QUINT8 and QINT8 for now
+  if (kernel.find(kMklQuantizedOpLabelPattern) != string::npos) {
+    return (Tinput == DT_QUINT8 && Tfilter == DT_QINT8);
+  }
+  return false;
 }
 
 // Check whether opname with type T is registered as MKL-compliant and

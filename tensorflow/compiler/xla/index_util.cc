@@ -18,25 +18,23 @@ limitations under the License.
 #include <algorithm>
 #include <string>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
 /* static */ int64 IndexUtil::MultidimensionalIndexToLinearIndex(
-    const Shape& shape, tensorflow::gtl::ArraySlice<int64> multi_index) {
+    const Shape& shape, absl::Span<const int64> multi_index) {
   DCHECK_EQ(shape.dimensions_size(), multi_index.size());
-  // Padding and nested layouts not supported yet.
-  DCHECK_EQ(0, shape.layout().padded_dimensions_size());
 
   for (size_t i = 0; i < multi_index.size(); ++i) {
     DCHECK_GE(multi_index[i], 0);
     DCHECK_LT(multi_index[i], shape.dimensions(i))
         << "indexing beyond extent in dimension " << i << ":"
-        << "\n\tindex: " << tensorflow::str_util::Join(multi_index, ",")
+        << "\n\tindex: " << absl::StrJoin(multi_index, ",")
         << "\n\tshape: " << ShapeUtil::HumanString(shape);
   }
 
@@ -94,8 +92,6 @@ namespace xla {
 
 /* static */ std::vector<int64> IndexUtil::LinearIndexToMultidimensionalIndex(
     const Shape& shape, int64 linear_index) {
-  // Padding and nested layouts not supported yet.
-  DCHECK_EQ(0, shape.layout().padded_dimensions_size());
   DCHECK_GE(linear_index, 0);
   DCHECK_LT(linear_index, ShapeUtil::ElementsIn(shape));
 
@@ -118,8 +114,8 @@ namespace xla {
   return multi_index;
 }
 
-/* static */ bool IndexUtil::BumpIndices(
-    const Shape& shape, tensorflow::gtl::MutableArraySlice<int64> indices) {
+/* static */ bool IndexUtil::BumpIndices(const Shape& shape,
+                                         absl::Span<int64> indices) {
   for (int64 dimno = indices.size() - 1; dimno >= 0; --dimno) {
     int64 limit = shape.dimensions(dimno);
     if (indices[dimno] + 1 < limit) {
@@ -133,24 +129,18 @@ namespace xla {
 
 /* static */ int64 IndexUtil::GetDimensionStride(const Shape& shape,
                                                  int64 dimension) {
-  int64 pdim_size = LayoutUtil::PaddedDimensions(shape).size();
   int64 stride = 1;
-  DCHECK(pdim_size == 0 || pdim_size == shape.dimensions_size());
   for (auto dim : LayoutUtil::MinorToMajor(shape)) {
     if (dim == dimension) {
       break;
     }
-    if (pdim_size == 0) {
-      stride *= shape.dimensions(dim);
-    } else {
-      stride *= LayoutUtil::PaddedDimension(shape, dim);
-    }
+    stride *= shape.dimensions()[dim];
   }
   return stride;
 }
 
-/* static */ bool IndexUtil::IndexInBounds(
-    const Shape& shape, tensorflow::gtl::ArraySlice<int64> index) {
+/* static */ bool IndexUtil::IndexInBounds(const Shape& shape,
+                                           absl::Span<const int64> index) {
   int64 rank = ShapeUtil::Rank(shape);
   if (rank != index.size()) {
     return false;
@@ -163,9 +153,8 @@ namespace xla {
   return true;
 }
 
-/* static */ int IndexUtil::CompareIndices(
-    tensorflow::gtl::ArraySlice<int64> lhs,
-    tensorflow::gtl::ArraySlice<int64> rhs) {
+/* static */ int IndexUtil::CompareIndices(absl::Span<const int64> lhs,
+                                           absl::Span<const int64> rhs) {
   int64 rank = lhs.size();
   CHECK_EQ(rhs.size(), rank);
   for (int64 dim = 0; dim < rank; ++dim) {

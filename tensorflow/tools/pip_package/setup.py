@@ -45,17 +45,19 @@ DOCLINES = __doc__.split('\n')
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.9.0-rc0'
+_VERSION = '1.12.0-rc0'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
     'astor >= 0.6.0',
     'gast >= 0.2.0',
+    'keras_applications >= 1.0.6',
+    'keras_preprocessing >= 1.0.5',
     'numpy >= 1.13.3',
     'six >= 1.10.0',
-    'protobuf >= 3.6.0',
-    'setuptools <= 39.1.0',
-    'tensorboard >= 1.8.0, < 1.9.0',
+    'protobuf >= 3.6.1',
+    'tensorboard >= 1.12.0, < 1.13.0',
+    'tensorflow_estimator >= 1.10.0',
     'termcolor >= 1.1.0',
 ]
 
@@ -84,8 +86,9 @@ else:
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.10.0a0, < 1.11.0a0'
-      break
+      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.13.0a0, < 1.14.0a0'
+    if 'tensorflow_estimator' in pkg:
+      REQUIRED_PACKAGES[i] = 'tf-estimator-nightly'
 
 # weakref.finalize and enum were introduced in Python 3.4
 if sys.version_info < (3, 4):
@@ -95,9 +98,9 @@ if sys.version_info < (3, 4):
 # pylint: disable=line-too-long
 CONSOLE_SCRIPTS = [
     'freeze_graph = tensorflow.python.tools.freeze_graph:run_main',
-    'toco_from_protos = tensorflow.contrib.lite.toco.python.toco_from_protos:main',
-    'tflite_convert = tensorflow.contrib.lite.python.tflite_convert:main',
-    'toco = tensorflow.contrib.lite.python.tflite_convert:main',
+    'toco_from_protos = tensorflow.lite.toco.python.toco_from_protos:main',
+    'tflite_convert = tensorflow.lite.python.tflite_convert:main',
+    'toco = tensorflow.lite.python.tflite_convert:main',
     'saved_model_cli = tensorflow.python.tools.saved_model_cli:main',
     # We need to keep the TensorBoard command, even though the console script
     # is now declared by the tensorboard pip package. If we remove the
@@ -165,17 +168,21 @@ class InstallHeaders(Command):
     # directories for -I
     install_dir = re.sub('/google/protobuf_archive/src', '', install_dir)
 
-    # Copy eigen code into tensorflow/include.
+    # Copy external code headers into tensorflow/include.
     # A symlink would do, but the wheel file that gets created ignores
     # symlink within the directory hierarchy.
     # NOTE(keveman): Figure out how to customize bdist_wheel package so
     # we can do the symlink.
-    if 'tensorflow/include/external/eigen_archive/' in install_dir:
-      extra_dir = install_dir.replace(
-          'tensorflow/include/external/eigen_archive', '')
-      if not os.path.exists(extra_dir):
-        self.mkpath(extra_dir)
-      self.copy_file(header, extra_dir)
+    external_header_locations = [
+        'tensorflow/include/external/eigen_archive/',
+        'tensorflow/include/external/com_google_absl/',
+    ]
+    for location in external_header_locations:
+      if location in install_dir:
+        extra_dir = install_dir.replace(location, '')
+        if not os.path.exists(extra_dir):
+          self.mkpath(extra_dir)
+        self.copy_file(header, extra_dir)
 
     if not os.path.exists(install_dir):
       self.mkpath(install_dir)
@@ -221,11 +228,14 @@ if os.name == 'nt':
 else:
   EXTENSION_NAME = 'python/_pywrap_tensorflow_internal.so'
 
-headers = (list(find_files('*.h', 'tensorflow/core')) +
-           list(find_files('*.h', 'tensorflow/stream_executor')) +
-           list(find_files('*.h', 'google/protobuf_archive/src')) +
-           list(find_files('*', 'third_party/eigen3')) +
-           list(find_files('*', 'tensorflow/include/external/eigen_archive')))
+headers = (
+    list(find_files('*.h', 'tensorflow/core')) + list(
+        find_files('*.h', 'tensorflow/stream_executor')) +
+    list(find_files('*.h', 'google/protobuf_archive/src')) + list(
+        find_files('*', 'third_party/eigen3')) + list(
+            find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
+    list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +
+    list(find_files('*', 'tensorflow/include/external/eigen_archive')))
 
 setup(
     name=project_name,

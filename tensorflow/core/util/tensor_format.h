@@ -483,6 +483,7 @@ string GetConvnet3dDataFormatAttrString();
 // Return the string that specifies the filter format for convnet operations.
 string GetConvnetFilterFormatAttrString();
 string GetConvnet3dFilterFormatAttrString();
+string GetConvnetDataFormat2D3DAttrString();
 
 // Returns a tensor shape for the specified format and dimension sizes.
 // Works for both 2D and 3D operations. The output shapes are as follows:

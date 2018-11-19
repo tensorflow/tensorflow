@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -200,10 +200,11 @@ class DynamicStitchOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("DynamicStitch").CompileTimeConstInput("indices"),
+REGISTER_XLA_OP(Name("DynamicStitch").CompileTimeConstantInput("indices"),
                 DynamicStitchOp);
-REGISTER_XLA_OP(Name("ParallelDynamicStitch").CompileTimeConstInput("indices"),
-                DynamicStitchOp);
+REGISTER_XLA_OP(
+    Name("ParallelDynamicStitch").CompileTimeConstantInput("indices"),
+    DynamicStitchOp);
 
 }  // namespace
 }  // namespace tensorflow

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_OPS_COMMON_SHAPE_FNS_H_
-#define TENSORFLOW_CORE_OPS_COMMON_SHAPE_FNS_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_COMMON_SHAPE_FNS_H_
+#define TENSORFLOW_CORE_FRAMEWORK_COMMON_SHAPE_FNS_H_
 
 #include <array>
 
@@ -293,6 +293,9 @@ inline Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
 // Shape function for random operations.
 Status RandomShape(shape_inference::InferenceContext* c);
 
+// Shape function for Slice opertaions.
+Status SliceShape(shape_inference::InferenceContext* c);
+
 // Validates the 3 component tensors of a sparse tensor have the proper
 // shapes. This mimics SparseTensor.__init__ in python/framework/ops.py.
 Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
@@ -311,4 +314,4 @@ Status ExplicitShapes(InferenceContext* c);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_OPS_COMMON_SHAPE_FNS_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_COMMON_SHAPE_FNS_H_

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/contrib/tensorrt/convert/utils.h"
 
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
+
 namespace tensorflow {
 namespace tensorrt {
 
@@ -24,11 +27,42 @@ bool IsGoogleTensorRTEnabled() {
   // safely write code that uses tensorrt conditionally. E.g. if it does not
   // check for for tensorrt, and user mistakenly uses tensorrt, they will just
   // crash and burn.
-#ifdef GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
   return true;
 #else
   return false;
 #endif
+}
+
+Status GetPrecisionModeName(const int precision_mode, string* name) {
+  switch (precision_mode) {
+    case FP32MODE:
+      *name = "FP32";
+      break;
+    case FP16MODE:
+      *name = "FP16";
+      break;
+    case INT8MODE:
+      *name = "INT8";
+      break;
+    default:
+      return tensorflow::errors::OutOfRange("Unknown precision mode");
+  }
+  return Status::OK();
+}
+
+Status GetPrecisionMode(const string& name, int* precision_mode) {
+  if (name == "FP32") {
+    *precision_mode = FP32MODE;
+  } else if (name == "FP16") {
+    *precision_mode = FP16MODE;
+  } else if (name == "INT8") {
+    *precision_mode = INT8MODE;
+  } else {
+    return tensorflow::errors::InvalidArgument("Invalid precision mode name: ",
+                                               name);
+  }
+  return Status::OK();
 }
 
 }  // namespace tensorrt

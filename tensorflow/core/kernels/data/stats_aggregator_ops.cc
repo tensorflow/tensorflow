@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 static mutex* get_counters_map_lock() {
@@ -81,11 +82,12 @@ class StatsAggregatorImpl : public StatsAggregator {
     auto counters_map = get_counters_map();
     if (counters_map->find(name) == counters_map->end()) {
       counters_map->emplace(
-          name, monitoring::Counter<1>::New(
-                    /*streamz name*/ "/tensorflow/" + name,
-                    /*streamz description*/
-                    name + " generated or consumed by the component.",
-                    /*streamz label name*/ "component_descriptor"));
+          name,
+          monitoring::Counter<1>::New(
+              /*streamz name*/ name,
+              /*streamz description*/
+              strings::StrCat(name, " generated or consumed by the component."),
+              /*streamz label name*/ "component_descriptor"));
     }
     counters_map->at(name)->GetCell(label)->IncrementBy(val);
   }
@@ -145,4 +147,5 @@ REGISTER_KERNEL_BUILDER(Name("StatsAggregatorSummary").Device(DEVICE_CPU),
                         StatsAggregatorSummaryOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

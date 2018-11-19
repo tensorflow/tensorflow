@@ -124,7 +124,7 @@ class SinhArcsinh(transformed_distribution.TransformedDistribution):
       tailweight:  Tailweight parameter. Default is `1.0` (unchanged tailweight)
       distribution: `tf.Distribution`-like instance. Distribution that is
         transformed to produce this distribution.
-        Default is `tf.distributions.Normal(0., 1.)`.
+        Default is `tfp.distributions.Normal(0., 1.)`.
         Must be a scalar-batch, scalar-event distribution.  Typically
         `distribution.reparameterization_type = FULLY_REPARAMETERIZED` or it is
         a function of non-trainable parameters. WARNING: If you backprop through

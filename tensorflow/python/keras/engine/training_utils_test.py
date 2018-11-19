@@ -20,9 +20,12 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.platform import test
 
 
@@ -144,6 +147,76 @@ class TrainingUtilTest(test.TestCase):
     nested_data = [False, {'a': False, 'b': (False, False)}]
     any_true = training_utils._nested_any(nested_data, lambda x: x)
     self.assertEquals(any_true, False)
+
+  def test_check_array_lengths(self):
+    training_utils.check_array_lengths(None, None, None)
+    a_np = np.random.random((4, 3, 3))
+    training_utils.check_array_lengths(a_np, a_np, a_np)
+    training_utils.check_array_lengths(
+        [a_np, a_np], [a_np, a_np], [a_np, a_np])
+    training_utils.check_array_lengths([None], [None], [None])
+
+    b_np = np.random.random((3, 4))
+    with self.assertRaises(ValueError):
+      training_utils.check_array_lengths([a_np], [b_np], None)
+
+
+class ModelInputsTest(test.TestCase):
+
+  def test_single_thing(self):
+    a = np.ones(10)
+    model_inputs = training_utils.ModelInputs(a)
+    self.assertEquals(['input_1'], model_inputs.get_input_names())
+    vals = model_inputs.get_symbolic_inputs()
+    self.assertTrue(tensor_util.is_tensor(vals))
+    vals = model_inputs.get_symbolic_inputs(return_single_as_list=True)
+    self.assertEquals(1, len(vals))
+    self.assertTrue(tensor_util.is_tensor(vals[0]))
+
+  def test_single_thing_eager(self):
+    with context.eager_mode():
+      a = np.ones(10)
+      model_inputs = training_utils.ModelInputs(a)
+      self.assertEquals(['input_1'], model_inputs.get_input_names())
+      val = model_inputs.get_symbolic_inputs()
+      self.assertTrue(tf_utils.is_symbolic_tensor(val))
+      vals = model_inputs.get_symbolic_inputs(return_single_as_list=True)
+      self.assertEquals(1, len(vals))
+      self.assertTrue(tf_utils.is_symbolic_tensor(vals[0]))
+
+  def test_list(self):
+    a = [np.ones(10), np.ones(20)]
+    model_inputs = training_utils.ModelInputs(a)
+    self.assertEquals(['input_1', 'input_2'], model_inputs.get_input_names())
+    vals = model_inputs.get_symbolic_inputs()
+    self.assertTrue(tensor_util.is_tensor(vals[0]))
+    self.assertTrue(tensor_util.is_tensor(vals[1]))
+
+  def test_list_eager(self):
+    with context.eager_mode():
+      a = [np.ones(10), np.ones(20)]
+      model_inputs = training_utils.ModelInputs(a)
+      self.assertEquals(['input_1', 'input_2'], model_inputs.get_input_names())
+      vals = model_inputs.get_symbolic_inputs()
+      self.assertTrue(tf_utils.is_symbolic_tensor(vals[0]))
+      self.assertTrue(tf_utils.is_symbolic_tensor(vals[1]))
+
+  def test_dict(self):
+    a = {'b': np.ones(10), 'a': np.ones(20)}
+    model_inputs = training_utils.ModelInputs(a)
+    self.assertEquals(['a', 'b'], model_inputs.get_input_names())
+    vals = model_inputs.get_symbolic_inputs()
+    self.assertTrue(tensor_util.is_tensor(vals['a']))
+    self.assertTrue(tensor_util.is_tensor(vals['b']))
+
+  def test_dict_eager(self):
+    with context.eager_mode():
+      a = {'b': np.ones(10), 'a': np.ones(20)}
+      model_inputs = training_utils.ModelInputs(a)
+      self.assertEquals(['a', 'b'], model_inputs.get_input_names())
+      vals = model_inputs.get_symbolic_inputs()
+      self.assertTrue(tf_utils.is_symbolic_tensor(vals['a']))
+      self.assertTrue(tf_utils.is_symbolic_tensor(vals['b']))
 
 
 if __name__ == '__main__':

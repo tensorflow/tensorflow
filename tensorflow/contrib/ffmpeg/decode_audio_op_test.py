@@ -56,7 +56,7 @@ class DecodeAudioOpTest(test.TestCase):
     """
     if samples_per_second_tensor is None:
       samples_per_second_tensor = samples_per_second
-    with self.test_session():
+    with self.cached_session():
       path = os.path.join(resource_loader.get_data_files_path(), 'testdata',
                           filename)
       with open(path, 'rb') as f:
@@ -123,7 +123,7 @@ class DecodeAudioOpTest(test.TestCase):
     self._loadFileAndTest('mono_10khz.ogg', 'ogg', 0.57, 10000, 1)
 
   def testInvalidFile(self):
-    with self.test_session():
+    with self.cached_session():
       contents = 'invalid file'
       audio_op = ffmpeg.decode_audio(
           contents,
@@ -168,7 +168,7 @@ class DecodeAudioOpTest(test.TestCase):
       self._loadFileAndTest('mono_16khz.mp3', 'docx', 0.57, 20000, 1)
 
   def testStaticShapeInference_ConstantChannelCount(self):
-    with self.test_session():
+    with self.cached_session():
       audio_op = ffmpeg.decode_audio(b'~~~ wave ~~~',
                                      file_format='wav',
                                      samples_per_second=44100,
@@ -176,7 +176,7 @@ class DecodeAudioOpTest(test.TestCase):
       self.assertEqual([None, 2], audio_op.shape.as_list())
 
   def testStaticShapeInference_NonConstantChannelCount(self):
-    with self.test_session():
+    with self.cached_session():
       channel_count = array_ops.placeholder(dtypes.int32)
       audio_op = ffmpeg.decode_audio(b'~~~ wave ~~~',
                                      file_format='wav',
@@ -185,7 +185,7 @@ class DecodeAudioOpTest(test.TestCase):
       self.assertEqual([None, None], audio_op.shape.as_list())
 
   def testStaticShapeInference_ZeroChannelCountInvalid(self):
-    with self.test_session():
+    with self.cached_session():
       with six.assertRaisesRegex(self, Exception,
                                  r'channel_count must be positive'):
         ffmpeg.decode_audio(b'~~~ wave ~~~',
@@ -194,7 +194,7 @@ class DecodeAudioOpTest(test.TestCase):
                             channel_count=0)
 
   def testStaticShapeInference_NegativeChannelCountInvalid(self):
-    with self.test_session():
+    with self.cached_session():
       with six.assertRaisesRegex(self, Exception,
                                  r'channel_count must be positive'):
         ffmpeg.decode_audio(b'~~~ wave ~~~',

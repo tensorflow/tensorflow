@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_LIB_MATH_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_MATH_H_
 
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 
 namespace xla {
 
@@ -34,8 +34,7 @@ XlaOp Reciprocal(XlaOp operand);
 
 // Evaluates a polynomial given coefficients and `x`.
 // N.B. Coefficients should be supplied in decreasing order.
-XlaOp EvaluatePolynomial(XlaOp x,
-                         tensorflow::gtl::ArraySlice<float> coefficients);
+XlaOp EvaluatePolynomial(XlaOp x, absl::Span<const float> coefficients);
 
 // Computes an approximation of the error function complement (1 - erf(x)).
 XlaOp Erfc(XlaOp x);
@@ -51,6 +50,10 @@ XlaOp Lgamma(XlaOp input);
 
 // Computes an approximation of the digamma function.
 XlaOp Digamma(XlaOp input);
+
+// Rounds the given number to even when the number is equidistant between two
+// integers.
+XlaOp RoundToEven(XlaOp x);
 
 // Trigonometric functions
 

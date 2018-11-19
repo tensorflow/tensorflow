@@ -14,13 +14,20 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/utils.h"
+
+#include <unistd.h>
+#include <memory>
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -145,6 +152,21 @@ TEST_F(UtilsTest, NodePosition) {
   EXPECT_EQ(0, NodePosition(""));
 }
 
+TEST_F(UtilsTest, NodePositionIfSameNode) {
+  EXPECT_EQ(-2, NodePositionIfSameNode(":123", ""));
+  EXPECT_EQ(-2, NodePositionIfSameNode(":", ""));
+  EXPECT_EQ(-2, NodePositionIfSameNode("", ""));
+  EXPECT_EQ(123, NodePositionIfSameNode("abc:123", "abc"));
+  EXPECT_EQ(-1, NodePositionIfSameNode("^abc", "abc"));
+  EXPECT_EQ(-1, NodePositionIfSameNode("^abc:123", "abc"));
+  EXPECT_EQ(-2, NodePositionIfSameNode("abc", "xyz"));
+  EXPECT_EQ(-2, NodePositionIfSameNode("abc", "abc/xyz"));
+  EXPECT_EQ(-2, NodePositionIfSameNode("abc/xyz", "abc"));
+  EXPECT_EQ(-2, NodePositionIfSameNode("abc:123", "xyz"));
+  EXPECT_EQ(-2, NodePositionIfSameNode("^abc", "xyz"));
+  EXPECT_EQ(-2, NodePositionIfSameNode("^abc:123", "xyz"));
+}
+
 TEST_F(UtilsTest, AddNodeNamePrefix) {
   EXPECT_EQ("OPTIMIZED/abc", AddPrefixToNodeName("abc", "OPTIMIZED"));
   EXPECT_EQ("^OPTIMIZED/abc", AddPrefixToNodeName("^abc", "OPTIMIZED"));
@@ -207,7 +229,6 @@ TEST_F(UtilsTest, GetTailOfChain) {
   auto noop = ops::NoOp(s.WithControlDependencies(neg0).WithOpName("noop"));
   GraphDef graph;
   TF_CHECK_OK(s.ToGraphDef(&graph));
-  LOG(INFO) << graph.DebugString();
 
   ASSERT_EQ("c0", graph.node(0).name());
   ASSERT_EQ("c1", graph.node(1).name());
@@ -333,7 +354,92 @@ TEST_F(UtilsTest, NumNonControlOutputs) {
   EXPECT_EQ(1, NumNonControlDataOutputs(*add_node, node_map));
 }
 
-TEST_F(UtilsTest, DeleteNodes) {}
+TEST(CheckAttrExists, All) {
+  NodeDef node;
+  node.set_name("node");
+  (*node.mutable_attr())["apple"].set_i(7);
+  (*node.mutable_attr())["pear"].set_b(true);
+
+  TF_EXPECT_OK(CheckAttrExists(node, "apple"));
+  TF_EXPECT_OK(CheckAttrExists(node, "pear"));
+
+  TF_EXPECT_OK(CheckAttrsExist(node, {}));
+  TF_EXPECT_OK(CheckAttrsExist(node, {"apple"}));
+  TF_EXPECT_OK(CheckAttrsExist(node, {"pear"}));
+  TF_EXPECT_OK(CheckAttrsExist(node, {"apple", "pear"}));
+  TF_EXPECT_OK(CheckAttrsExist(node, {"pear", "apple"}));
+
+  Status status = CheckAttrExists(node, "banana");
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.ToString(),
+            "Invalid argument: Node 'node' lacks 'banana' attr: name: \"node\" "
+            "attr { key: \"apple\" value { i: 7 } } attr { key: \"pear\" value "
+            "{ b: true } }");
+  EXPECT_FALSE(CheckAttrsExist(node, {""}).ok());
+  EXPECT_FALSE(CheckAttrsExist(node, {"pear", "cherry"}).ok());
+  EXPECT_FALSE(CheckAttrsExist(node, {"banana", "apple"}).ok());
+}
+
+TEST_F(UtilsTest, DeleteNodes) {
+  // TODO(rmlarsen): write forgotten test.
+}
+
+TEST(IsKernelRegisteredForNode, All) {
+  NodeDef node;
+  node.set_name("foo");
+  node.set_op("NoOp");
+  node.set_device("/cpu:0");
+  TF_EXPECT_OK(IsKernelRegisteredForNode(node));
+  node.set_device("/gpu:0");
+  TF_EXPECT_OK(IsKernelRegisteredForNode(node));
+
+  // Bad device name.
+  node.set_device("");
+  EXPECT_FALSE(IsKernelRegisteredForNode(node).ok());
+
+  // Check an op that is only defined on CPU.
+  node.set_op("MatchingFiles");
+  node.set_device("/cpu:0");
+  TF_EXPECT_OK(IsKernelRegisteredForNode(node));
+  node.set_device("/gpu:0");
+  EXPECT_FALSE(IsKernelRegisteredForNode(node).ok());
+}
+
+#define BM_NodePositionIfSameNode(I, N, NAME)               \
+  static void BM_NodePositionIfSameNode_##NAME(int iters) { \
+    string input = I;                                       \
+    string node = N;                                        \
+    for (int i = 0; i < iters; ++i) {                       \
+      const int pos = NodePositionIfSameNode(input, node);  \
+      CHECK_GT(pos, -3);                                    \
+    }                                                       \
+  }                                                         \
+  BENCHMARK(BM_NodePositionIfSameNode_##NAME)
+
+BM_NodePositionIfSameNode("foo/bar/baz:7", "foo/bar/baz", Match_7);
+BM_NodePositionIfSameNode("foo/bar/baz", "foo/bar/baz", Match_0);
+BM_NodePositionIfSameNode("^foo/bar/baz", "foo/bar/baz", Match_Ctrl);
+BM_NodePositionIfSameNode("blah", "foo/bar/baz", NoMatch_0);
+BM_NodePositionIfSameNode("foo/bar/baz/gnu", "foo/bar/baz", NoMatch_end);
+
+#define BM_ParseNodeNameAsStringPiece(I, NAME)                               \
+  static void BM_ParseNodeNameAsStringPiece_##NAME(int iters) {              \
+    string input = I;                                                        \
+    for (int i = 0; i < iters; ++i) {                                        \
+      int position;                                                          \
+      const StringPiece name = ParseNodeNameAsStringPiece(input, &position); \
+      CHECK_GE(position, -1);                                                \
+      CHECK(!name.empty());                                                  \
+    }                                                                        \
+  }                                                                          \
+  BENCHMARK(BM_ParseNodeNameAsStringPiece_##NAME)
+
+BM_ParseNodeNameAsStringPiece("foo", foo);
+BM_ParseNodeNameAsStringPiece("foo/bar/baz", foo_bar_baz);
+BM_ParseNodeNameAsStringPiece("^foo/bar/baz", foo_bar_baz_ctrl);
+BM_ParseNodeNameAsStringPiece("foo:123", foo123);
+BM_ParseNodeNameAsStringPiece("foo/bar/baz:123", foo_bar_baz_123);
+BM_ParseNodeNameAsStringPiece("^foo/bar/baz:123", foo_bar_baz_123_ctrl);
 
 }  // namespace
 }  // namespace grappler

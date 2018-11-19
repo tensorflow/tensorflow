@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.compiler import xla
 from tensorflow.contrib.tpu.python.tpu import tpu_function
 
 from tensorflow.python.framework import ops
@@ -59,7 +60,7 @@ def while_loop(condition, body, inputs=None, infeed_queue=None, name=None):
   input_types = [x.dtype for x in inputs]
   input_arity = len(inputs)
 
-  body_arg_error = tpu_function.check_function_argument_count(
+  body_arg_error = xla.check_function_argument_count(
       body, input_arity, infeed_queue)
   if body_arg_error is not None:
     if infeed_queue is None:
@@ -74,7 +75,7 @@ def while_loop(condition, body, inputs=None, infeed_queue=None, name=None):
           "infeed, but the computation needs %s" % (input_arity, str(
               [i.name for i in inputs]), infeed_queue.number_of_tuple_elements,
                                                     body_arg_error))
-  condition_arg_error = tpu_function.check_function_argument_count(
+  condition_arg_error = xla.check_function_argument_count(
       condition, input_arity, None)
   if condition_arg_error is not None:
     if infeed_queue is None:

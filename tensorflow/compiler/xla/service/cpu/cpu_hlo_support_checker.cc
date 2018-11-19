@@ -34,9 +34,8 @@ StatusOr<bool> CpuHloSupportChecker::Run(HloModule* module) {
               return xla::Unimplemented(
                   "CPU backend does not support HLO instruction %s with shape "
                   "containing a sparse layout: %s",
-                  instruction->ToString().c_str(),
-                  ShapeUtil::HumanStringWithLayout(instruction->shape())
-                      .c_str());
+                  instruction->ToString(),
+                  ShapeUtil::HumanStringWithLayout(instruction->shape()));
             }
             return Status::OK();
           }));

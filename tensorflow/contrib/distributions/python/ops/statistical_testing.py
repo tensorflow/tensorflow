@@ -30,27 +30,27 @@ is some expected constant.  Suppose the support of P is the interval
 `[0, 1]`.  Then you might do this:
 
 ```python
-tfd = tf.contrib.distributions
+  from tensorflow_probability.python.distributions.internal import statistical_testing
 
-expected_mean = ...
-num_samples = 5000
-samples = ... draw 5000 samples from P
+  expected_mean = ...
+  num_samples = 5000
+  samples = ... draw 5000 samples from P
 
-# Check that the mean looks right
-check1 = tfd.assert_true_mean_equal_by_dkwm(
-    samples, low=0., high=1., expected=expected_mean,
-    false_fail_rate=1e-6)
+  # Check that the mean looks right
+  check1 = statistical_testing.assert_true_mean_equal_by_dkwm(
+      samples, low=0., high=1., expected=expected_mean,
+      false_fail_rate=1e-6)
 
-# Check that the difference in means detectable with 5000 samples is
-# small enough
-check2 = tf.assert_less(
-    tfd.min_discrepancy_of_true_means_detectable_by_dkwm(
-        num_samples, low=0., high=1.0,
-        false_fail_rate=1e-6, false_pass_rate=1e-6),
-    0.01)
+  # Check that the difference in means detectable with 5000 samples is
+  # small enough
+  check2 = tf.assert_less(
+      statistical_testing.min_discrepancy_of_true_means_detectable_by_dkwm(
+          num_samples, low=0., high=1.0,
+          false_fail_rate=1e-6, false_pass_rate=1e-6),
+      0.01)
 
-# Be sure to execute both assertion ops
-sess.run([check1, check2])
+  # Be sure to execute both assertion ops
+  sess.run([check1, check2])
 ```
 
 The second assertion is an instance of experiment design.  It's a

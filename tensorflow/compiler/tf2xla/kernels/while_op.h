@@ -56,6 +56,8 @@ class XlaWhileOp : public XlaOpKernel {
  private:
   NameAttrList cond_name_attr_;
   NameAttrList body_name_attr_;
+  bool has_token_input_output_;
+  std::vector<string> token_input_nodes_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaWhileOp);
 };

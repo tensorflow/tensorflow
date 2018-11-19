@@ -89,7 +89,7 @@ def _compare_output_to_expected(tester, dict_tensors, expected_tensors,
 class ParseExampleTest(test.TestCase):
 
   def _test(self, kwargs, expected_values=None, expected_err=None):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       if expected_err:
         with self.assertRaisesWithPredicateMatch(expected_err[0],
                                                  expected_err[1]):
@@ -107,7 +107,7 @@ class ParseExampleTest(test.TestCase):
         for result_dict in [out, out_with_example_name]:
           result = flatten_values_tensors_or_sparse(result_dict.values())
           # Check values.
-          tf_result = sess.run(result)
+          tf_result = self.evaluate(result)
           _compare_output_to_expected(self, result_dict, expected_values,
                                       tf_result)
 
@@ -844,7 +844,7 @@ class ParseExampleTest(test.TestCase):
 class ParseSingleExampleTest(test.TestCase):
 
   def _test(self, kwargs, expected_values=None, expected_err=None):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       if expected_err:
         with self.assertRaisesWithPredicateMatch(expected_err[0],
                                                  expected_err[1]):

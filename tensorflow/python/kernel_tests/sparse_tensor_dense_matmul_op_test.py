@@ -65,7 +65,7 @@ class SparseTensorDenseMatMulTest(test.TestCase):
     x_values = x[np.where(x)]
     x_shape = x.shape
 
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       sp_x_value = sparse_tensor.SparseTensorValue(
           indices=x_indices, values=x_values, dense_shape=x_shape)
       tf_value_ans = sparse_ops.sparse_tensor_dense_matmul(
@@ -80,7 +80,7 @@ class SparseTensorDenseMatMulTest(test.TestCase):
       self.assertEqual(tf_value_ans.get_shape()[1], np_ans.shape[1])
       self.assertEqual(tf_tensor_ans.get_shape()[1], np_ans.shape[1])
 
-      for out in (tf_value_ans.eval(), tf_tensor_ans.eval()):
+      for out in (tf_value_ans.eval(), self.evaluate(tf_tensor_ans)):
         if x.dtype == np.float32:
           self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
         elif x.dtype == np.float64:
@@ -133,7 +133,7 @@ class SparseTensorDenseMatMulTest(test.TestCase):
 
   def testInvalidIndicesForSparseTensorDenseMatmul(self):
     # Note: use_gpu=False because nice errors are only returned from CPU kernel.
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       indices = np.matrix([[1, 10]]).astype(np.int64)
       values = np.array([10]).astype(np.float32)
       shape = [3, 2]
@@ -166,7 +166,7 @@ class SparseTensorDenseMatMulTest(test.TestCase):
     # Note: use_gpu=False because nice errors are only returned from CPU kerne
     if not test.is_gpu_available():
       return
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       indices = np.array([[1, 10]]).astype(np.int64)
       values = np.array([10]).astype(np.float32)
       shape = [3, 2]

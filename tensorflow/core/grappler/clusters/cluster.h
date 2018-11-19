@@ -72,6 +72,9 @@ class Cluster {
   // before Provision().
   void SetNumWarmupSteps(int num_steps);
 
+  // Set executor type to instantiate
+  void SetExecutorType(const string* executor_type);
+
   // Returns the number of warmup steps.
   int NumWarmupSteps() const;
 

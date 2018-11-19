@@ -26,6 +26,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gen_array_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gen_nn_ops
@@ -328,7 +329,7 @@ def swish(features):
   return features * math_ops.sigmoid(features)
 
 
-@tf_export("nn.l2_normalize")
+@tf_export("math.l2_normalize", "linalg.l2_normalize", "nn.l2_normalize")
 @deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
   """Normalizes along dimension `axis` using an L2 norm.
@@ -360,7 +361,28 @@ def l2_normalize(x, axis=None, epsilon=1e-12, name=None, dim=None):
     return math_ops.multiply(x, x_inv_norm, name=name)
 
 
-@tf_export("nn.zero_fraction")
+def _count_nonzero(input_tensor, dtype=dtypes.int64):
+  """Same as math_ops.count_nonzero.
+
+  The reduction is done in dtype, which can be faster for 32-bit dtypes.
+
+  Args:
+      input_tensor: numeric tensor
+      dtype: reduction dtype
+
+  Returns:
+      number of nonzero values with type dtype
+  """
+  with ops.name_scope("count_nonzero", [input_tensor]):
+    zero = array_ops.zeros([], dtype=input_tensor.dtype)
+    nonzero_count = math_ops.reduce_sum(
+        math_ops.cast(
+            math_ops.not_equal(input_tensor, zero),
+            dtype=dtype), name="nonzero_count")
+    return nonzero_count
+
+
+@tf_export("math.zero_fraction", "nn.zero_fraction")
 def zero_fraction(value, name=None):
   """Returns the fraction of zeros in `value`.
 
@@ -382,13 +404,27 @@ def zero_fraction(value, name=None):
   """
   with ops.name_scope(name, "zero_fraction", [value]):
     value = ops.convert_to_tensor(value, name="value")
-    zero = constant_op.constant(0, dtype=value.dtype, name="zero")
-    return math_ops.reduce_mean(
-        math_ops.cast(math_ops.equal(value, zero), dtypes.float32))
+    size = array_ops.size(value, out_type=dtypes.int64)
+    # If the count is small, we can save memory/CPU with an int32 reduction.
+    num_nonzero = control_flow_ops.cond(
+        size <= dtypes.int32.max,
+        # pylint: disable=g-long-lambda
+        true_fn=lambda: math_ops.cast(
+            _count_nonzero(value, dtype=dtypes.int32),
+            dtype=dtypes.int64),
+        false_fn=lambda: _count_nonzero(value, dtype=dtypes.int64))
+
+    with ops.name_scope("counts_to_fraction"):
+      num_zero = size - num_nonzero
+      num_zero_float32 = math_ops.cast(num_zero, dtype=dtypes.float32)
+      size_float32 = math_ops.cast(size, dtype=dtypes.float32)
+      zero_fraction_float32 = num_zero_float32 / size_float32
+
+    return array_ops.identity(zero_fraction_float32, "fraction")
 
 
 # pylint: disable=redefined-builtin
-@tf_export("nn.depthwise_conv2d")
+@tf_export(v1=["nn.depthwise_conv2d"])
 def depthwise_conv2d(input,
                      filter,
                      strides,
@@ -425,7 +461,7 @@ def depthwise_conv2d(input,
     strides: 1-D of size 4.  The stride of the sliding window for each
       dimension of `input`.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the @{tf.nn.convolution$comment here}
+      See the "returns" section of `tf.nn.convolution` for details.
     rate: 1-D of size 2. The dilation rate in which we sample input values
       across the `height` and `width` dimensions in atrous convolution. If it is
       greater than 1, then all values of strides must be 1.
@@ -461,11 +497,68 @@ def depthwise_conv2d(input,
         op=op)
 
 
+@tf_export("nn.depthwise_conv2d", v1=[])
+def depthwise_conv2d_v2(input,
+                        filter,
+                        strides,
+                        padding,
+                        data_format=None,
+                        dilations=None,
+                        name=None):
+  """Depthwise 2-D convolution.
+
+  Given a 4D input tensor ('NHWC' or 'NCHW' data formats)
+  and a filter tensor of shape
+  `[filter_height, filter_width, in_channels, channel_multiplier]`
+  containing `in_channels` convolutional filters of depth 1, `depthwise_conv2d`
+  applies a different filter to each input channel (expanding from 1 channel
+  to `channel_multiplier` channels for each), then concatenates the results
+  together.  The output has `in_channels * channel_multiplier` channels.
+
+  In detail,
+
+      output[b, i, j, k * channel_multiplier + q] = sum_{di, dj}
+           filter[di, dj, k, q] * input[b, strides[1] * i + rate[0] * di,
+                                           strides[2] * j + rate[1] * dj, k]
+
+  Must have `strides[0] = strides[3] = 1`.  For the most common case of the
+  same horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
+  If any value in `rate` is greater than 1, we perform atrous depthwise
+  convolution, in which case all values in the `strides` tensor must be equal
+  to 1.
+
+  Args:
+    input: 4-D with shape according to `data_format`.
+    filter: 4-D with shape
+      `[filter_height, filter_width, in_channels, channel_multiplier]`.
+    strides: 1-D of size 4.  The stride of the sliding window for each
+      dimension of `input`.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+      See the "returns" section of `tf.nn.convolution` for details.
+    data_format: The data format for input. Either "NHWC" (default) or "NCHW".
+    dilations: 1-D of size 2. The dilation rate in which we sample input values
+      across the `height` and `width` dimensions in atrous convolution. If it is
+      greater than 1, then all values of strides must be 1.
+    name: A name for this operation (optional).
+
+  Returns:
+    A 4-D `Tensor` with shape according to `data_format`.  E.g., for
+    "NHWC" format, shape is
+    `[batch, out_height, out_width, in_channels * channel_multiplier].`
+  """
+  return depthwise_conv2d(input=input,
+                          filter=filter,
+                          strides=strides,
+                          padding=padding,
+                          rate=dilations,
+                          name=name,
+                          data_format=data_format)
+
 # pylint: enable=redefined-builtin
 
 
 # pylint: disable=redefined-builtin,line-too-long
-@tf_export("nn.separable_conv2d")
+@tf_export(v1=["nn.separable_conv2d"])
 def separable_conv2d(input,
                      depthwise_filter,
                      pointwise_filter,
@@ -507,7 +600,7 @@ def separable_conv2d(input,
     strides: 1-D of size 4.  The strides for the depthwise convolution for
       each dimension of `input`.
     padding: A string, either `'VALID'` or `'SAME'`.  The padding algorithm.
-      See the @{tf.nn.convolution$comment here}
+      See the "returns" section of `tf.nn.convolution` for details.
     rate: 1-D of size 2. The dilation rate in which we sample input values
       across the `height` and `width` dimensions in atrous convolution. If it is
       greater than 1, then all values of strides must be 1.
@@ -528,8 +621,8 @@ def separable_conv2d(input,
         pointwise_filter, name="pointwise_filter")
 
     pointwise_filter_shape = pointwise_filter.get_shape().with_rank(4)
-    pointwise_filter_shape[0].assert_is_compatible_with(1)
-    pointwise_filter_shape[1].assert_is_compatible_with(1)
+    pointwise_filter_shape.dims[0].assert_is_compatible_with(1)
+    pointwise_filter_shape.dims[1].assert_is_compatible_with(1)
 
     if rate is None:
       rate = [1, 1]
@@ -563,10 +656,76 @@ def separable_conv2d(input,
         name=name)
 
 
+@tf_export("nn.separable_conv2d", v1=[])
+def separable_conv2d_v2(
+    input,
+    depthwise_filter,
+    pointwise_filter,
+    strides,
+    padding,
+    data_format=None,
+    dilations=None,
+    name=None,
+):
+  """2-D convolution with separable filters.
+
+  Performs a depthwise convolution that acts separately on channels followed by
+  a pointwise convolution that mixes channels.  Note that this is separability
+  between dimensions `[1, 2]` and `3`, not spatial separability between
+  dimensions `1` and `2`.
+
+  In detail,
+
+      output[b, i, j, k] = sum_{di, dj, q, r}
+          input[b, strides[1] * i + di, strides[2] * j + dj, q] *
+          depthwise_filter[di, dj, q, r] *
+          pointwise_filter[0, 0, q * channel_multiplier + r, k]
+
+  `strides` controls the strides for the depthwise convolution only, since
+  the pointwise convolution has implicit strides of `[1, 1, 1, 1]`.  Must have
+  `strides[0] = strides[3] = 1`.  For the most common case of the same
+  horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
+  If any value in `rate` is greater than 1, we perform atrous depthwise
+  convolution, in which case all values in the `strides` tensor must be equal
+  to 1.
+
+  Args:
+    input: 4-D `Tensor` with shape according to `data_format`.
+    depthwise_filter: 4-D `Tensor` with shape `[filter_height, filter_width,
+      in_channels, channel_multiplier]`. Contains `in_channels` convolutional
+      filters of depth 1.
+    pointwise_filter: 4-D `Tensor` with shape `[1, 1, channel_multiplier *
+      in_channels, out_channels]`.  Pointwise filter to mix channels after
+      `depthwise_filter` has convolved spatially.
+    strides: 1-D of size 4.  The strides for the depthwise convolution for each
+      dimension of `input`.
+    padding: A string, either `'VALID'` or `'SAME'`.  The padding algorithm. See
+      the "returns" section of `tf.nn.convolution` for details.
+    data_format: The data format for input. Either "NHWC" (default) or "NCHW".
+    dilations: 1-D of size 2. The dilation rate in which we sample input values
+      across the `height` and `width` dimensions in atrous convolution. If it is
+      greater than 1, then all values of strides must be 1.
+    name: A name for this operation (optional).
+
+  Returns:
+    A 4-D `Tensor` with shape according to 'data_format'. For
+      example, with data_format="NHWC", shape is [batch, out_height,
+      out_width, out_channels].
+  """
+  return separable_conv2d(
+      input,
+      depthwise_filter,
+      pointwise_filter,
+      strides,
+      padding,
+      rate=dilations,
+      name=name,
+      data_format=data_format)
+
 # pylint: enable=redefined-builtin,line-too-long
 
 
-@tf_export("nn.sufficient_statistics")
+@tf_export(v1=["nn.sufficient_statistics"])
 def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
   """Calculate the sufficient statistics for the mean and variance of `x`.
 
@@ -595,10 +754,10 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
   with ops.name_scope(name, "sufficient_statistics", [x, shift]):
     x = ops.convert_to_tensor(x, name="x")
     x_shape = x.get_shape()
-    if all(x_shape[d].value is not None for d in axes):
+    if all(x_shape.dims[d].value is not None for d in axes):
       counts = 1
       for d in axes:
-        counts *= x_shape[d].value
+        counts *= x_shape.dims[d].value
       counts = constant_op.constant(counts, dtype=x.dtype)
     else:  # shape needs to be inferred at runtime.
       x_dims = array_ops.gather(
@@ -614,6 +773,35 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
     m_ss = math_ops.reduce_sum(m_ss, axes, keepdims=keep_dims, name="mean_ss")
     v_ss = math_ops.reduce_sum(v_ss, axes, keepdims=keep_dims, name="var_ss")
   return counts, m_ss, v_ss, shift
+
+
+@tf_export("nn.sufficient_statistics", v1=[])
+def sufficient_statistics_v2(x, axes, shift=None, keepdims=False, name=None):
+  """Calculate the sufficient statistics for the mean and variance of `x`.
+
+  These sufficient statistics are computed using the one pass algorithm on
+  an input that's optionally shifted. See:
+  https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shifted_data
+
+  Args:
+    x: A `Tensor`.
+    axes: Array of ints. Axes along which to compute mean and variance.
+    shift: A `Tensor` containing the value by which to shift the data for
+      numerical stability, or `None` if no shift is to be performed. A shift
+      close to the true mean provides the most numerically stable results.
+    keepdims: produce statistics with the same dimensionality as the input.
+    name: Name used to scope the operations that compute the sufficient stats.
+
+  Returns:
+    Four `Tensor` objects of the same type as `x`:
+
+    * the count (number of elements to average over).
+    * the (possibly shifted) sum of the elements in the array.
+    * the (possibly shifted) sum of squares of the elements in the array.
+    * the shift by which the mean must be corrected or None if `shift` is None.
+  """
+  return sufficient_statistics(
+      x=x, axes=axes, shift=shift, keep_dims=keepdims, name=name)
 
 
 @tf_export("nn.normalize_moments")
@@ -689,7 +877,7 @@ def moments(
     # Compute true mean while keeping the dims for proper broadcasting.
     mean = math_ops.reduce_mean(y, axes, keepdims=True, name="mean")
     # sample variance, not unbiased variance
-    # Note: stop_gradient does not change the gradient that gets 
+    # Note: stop_gradient does not change the gradient that gets
     #       backpropagated to the mean from the variance calculation,
     #       because that gradient is zero
     variance = math_ops.reduce_mean(
@@ -1189,7 +1377,7 @@ def nce_loss(weights,
   Note: By default this uses a log-uniform (Zipfian) distribution for sampling,
   so your labels must be sorted in order of decreasing frequency to achieve
   good results.  For more details, see
-  @{tf.nn.log_uniform_candidate_sampler}.
+  `tf.nn.log_uniform_candidate_sampler`.
 
   Note: In the case where `num_true` > 1, we assign to each target class
   the target probability 1 / `num_true` so that the target probabilities
@@ -1210,7 +1398,9 @@ def nce_loss(weights,
         num_true]`. The target classes.
     inputs: A `Tensor` of shape `[batch_size, dim]`.  The forward
         activations of the input network.
-    num_sampled: An `int`.  The number of classes to randomly sample per batch.
+    num_sampled: An `int`.  The number of negative classes to randomly sample
+        per batch. This single sample of negative classes is evaluated for each
+        element in the batch.
     num_classes: An `int`. The number of possible classes.
     num_true: An `int`.  The number of target classes per training example.
     sampled_values: a tuple of (`sampled_candidates`, `true_expected_count`,

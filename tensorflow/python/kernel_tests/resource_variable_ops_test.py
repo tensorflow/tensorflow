@@ -17,7 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import gc
+import os
+import pickle
 
 import numpy as np
 
@@ -51,7 +54,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.assertEqual(0, len(gc.garbage))
 
   def testHandleDtypeShapeMatch(self):
-    with self.test_session():
+    with self.cached_session():
       handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
       with self.assertRaises(ValueError):
         resource_variable_ops.assign_variable_op(
@@ -106,23 +109,51 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       v = resource_variable_ops.ResourceVariable(False, name="bool_test")
       self.assertAllEqual(bool(v), False)
 
+  def testEagerDeepCopy(self):
+    with context.eager_mode():
+      init_value = np.ones((4, 4, 4))
+      variable = resource_variable_ops.ResourceVariable(init_value,
+                                                        name="init")
+
+      copied_variable = copy.deepcopy(variable)
+      copied_variable.assign(4 * np.ones((4, 4, 4)))
+
+      # Copying the variable should create a new underlying tensor with distinct
+      # values.
+      self.assertFalse(np.allclose(variable.numpy(), copied_variable.numpy()))
+
+  def testGraphDeepCopy(self):
+    with self.cached_session():
+      init_value = np.ones((4, 4, 4))
+      variable = resource_variable_ops.ResourceVariable(init_value,
+                                                        name="init")
+      with self.assertRaises(NotImplementedError):
+        copy.deepcopy(variable)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testStridedSliceAssign(self):
+    v = resource_variable_ops.ResourceVariable([1.0, 2.0])
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(v[0].assign(2.0))
+    self.assertAllEqual(self.evaluate(v), [2.0, 2.0])
+
   def testDifferentAssignGraph(self):
     with ops.Graph().as_default():
       v = resource_variable_ops.ResourceVariable(1.0)
     ops.reset_default_graph()
     v.assign(2.0)  # Note: this fails if we run convert_to_tensor on not the
-                   # variable graph.
+    # variable graph.
 
   def testFetchHandle(self):
-    with self.test_session():
+    with self.cached_session():
       handle = resource_variable_ops.var_handle_op(
           dtype=dtypes.int32, shape=[1], name="foo")
       self.assertGreater(len(handle.eval()), 0)
 
   def testCachedValueReadBeforeWrite(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       v = resource_variable_ops.ResourceVariable(0.0, caching_device="cpu:0")
-      sess.run(v.initializer)
+      self.evaluate(v.initializer)
       value, _ = sess.run([v, v.assign_add(1.0)])
       self.assertAllEqual(value, 0.0)
 
@@ -233,6 +264,18 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
     self.assertEqual(self.evaluate(read), [[5]])
 
+  def testEagerPickle(self):
+    with context.eager_mode():
+      tmp_dir = self.get_temp_dir()
+      fname = os.path.join(tmp_dir, "var.pickle")
+      with open(fname, "wb") as f:
+        v = resource_variable_ops.ResourceVariable(10.0)
+        pickle.dump(v, f)
+
+      with open(fname, "rb") as f:
+        v = pickle.load(f)
+        self.assertAllEqual(v.numpy(), 10.0)
+
   @test_util.run_in_graph_and_eager_modes
   def testScatterDiv(self):
     handle = resource_variable_ops.var_handle_op(
@@ -247,7 +290,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.assertEqual(self.evaluate(read), [[2]])
 
   def testUseResource(self):
-    v = variables.Variable(1.0, use_resource=True)
+    v = variables.VariableV1(1.0, use_resource=True)
     self.assertTrue(isinstance(v, resource_variable_ops.ResourceVariable))
 
   def testEagerNoUseResource(self):
@@ -449,7 +492,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
 
   # TODO(alive): how should this work in Eager mode?
   def testInitFn(self):
-    with self.test_session():
+    with self.cached_session():
       v = resource_variable_ops.ResourceVariable(
           initial_value=lambda: 1, dtype=dtypes.float32)
       self.assertEqual(v.handle.op.colocation_groups(),
@@ -526,11 +569,11 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.assertEqual(2.0, self.evaluate(v.value()))
 
   def testVariableDefInitializedInstances(self):
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       v_def = resource_variable_ops.ResourceVariable(
           initial_value=constant_op.constant(3.0)).to_proto()
 
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       # v describes a VariableDef-based variable without an initial value.
       v = resource_variable_ops.ResourceVariable(variable_def=v_def)
       self.assertEqual(3.0, sess.run(v.initialized_value()))
@@ -541,7 +584,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       self.assertEqual(1.0, v.initialized_value().eval())
 
     v_def.ClearField("initial_value_name")
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       # Restoring a legacy VariableDef proto that does not have
       # initial_value_name set should still work.
       v = resource_variable_ops.ResourceVariable(variable_def=v_def)
@@ -572,17 +615,16 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testSparseRead(self):
-    with self.test_session():
-      init_value = np.reshape(np.arange(np.power(4, 3)), (4, 4, 4))
-      v = resource_variable_ops.ResourceVariable(
-          constant_op.constant(init_value, dtype=dtypes.int32), name="var3")
-      self.evaluate(variables.global_variables_initializer())
+    init_value = np.reshape(np.arange(np.power(4, 3)), (4, 4, 4))
+    v = resource_variable_ops.ResourceVariable(
+        constant_op.constant(init_value, dtype=dtypes.int32), name="var3")
+    self.evaluate(variables.global_variables_initializer())
 
-      value = self.evaluate(v.sparse_read([0, 3, 1, 2]))
-      self.assertAllEqual(init_value[[0, 3, 1, 2], ...], value)
+    value = self.evaluate(v.sparse_read([0, 3, 1, 2]))
+    self.assertAllEqual(init_value[[0, 3, 1, 2], ...], value)
 
   def testToFromProto(self):
-    with self.test_session():
+    with self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
       variables.global_variables_initializer().run()
 
@@ -643,7 +685,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
         handle, ignore_lookup_error=True))
 
   def testAssignDifferentShapes(self):
-    with self.test_session() as sess, variable_scope.variable_scope(
+    with self.cached_session() as sess, variable_scope.variable_scope(
         "foo", use_resource=True):
       var = variable_scope.get_variable("x", shape=[1, 1], dtype=dtypes.float32)
       placeholder = array_ops.placeholder(dtypes.float32)
@@ -685,7 +727,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
         _ = w.value().op.get_attr("_class")
 
   def testSharedName(self):
-    with self.test_session():
+    with self.cached_session():
       v = resource_variable_ops.ResourceVariable(300.0, name="var4")
       variables.global_variables_initializer().run()
 
@@ -694,7 +736,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
           # Needed in Eager since we get a unique container name by default.
           container=ops.get_default_graph()._container)
       w_read = resource_variable_ops.read_variable_op(w, v.dtype.base_dtype)
-      self.assertEqual(300.0, w_read.eval())
+      self.assertEqual(300.0, self.evaluate(w_read))
 
       x = resource_variable_ops.var_handle_op(
           dtype=v.dtype.base_dtype, shape=v.get_shape(), shared_name="var5",
@@ -703,7 +745,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
         resource_variable_ops.read_variable_op(x, v.dtype.base_dtype).eval()
 
   def testSharedNameWithNamescope(self):
-    with self.test_session():
+    with self.cached_session():
       with ops.name_scope("foo"):
         v = resource_variable_ops.ResourceVariable(300.0, name="var6")
         self.assertEqual("foo/var6", v._shared_name)  # pylint: disable=protected-access
@@ -731,7 +773,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
           str(v.sparse_read(array_ops.placeholder(dtypes.int32)).shape))
 
   def testSetInitialValue(self):
-    with self.test_session():
+    with self.cached_session():
       # Initialize variable with a value different from the initial value passed
       # in the constructor.
       v = resource_variable_ops.ResourceVariable(2.0)
@@ -835,6 +877,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       state_ops.scatter_add(v, [1], [3])
       self.assertAllEqual([1.0, 5.0], v.numpy())
 
+  def testScatterSubStateOps(self):
+    with context.eager_mode():
+      v = resource_variable_ops.ResourceVariable([1.0, 2.0], name="sub")
+      state_ops.scatter_sub(v, [1], [3])
+      self.assertAllEqual([1.0, -1.0], v.numpy())
+
   def testScatterNdAddStateOps(self):
     with context.eager_mode():
       v = resource_variable_ops.ResourceVariable(
@@ -859,6 +907,24 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     # eager execution (where the error is realized during kernel execution).
     with self.assertRaisesRegexp(Exception, r"shape.*2.*3"):
       state_ops.scatter_update(v, [0, 1], [0, 1, 2])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testAssignIncompatibleShape(self):
+    v = resource_variable_ops.ResourceVariable([0, 1, 2, 3])
+    self.evaluate(v.initializer)
+    with self.assertRaisesRegexp(Exception, r"hapes must be equal"):
+      self.assertAllEqual(self.evaluate(v.assign_add(1)), [1, 2, 3, 4])
+
+  @test_util.run_in_graph_and_eager_modes
+  def testCopyToGraphUninitialized(self):
+    v = resource_variable_ops.ResourceVariable([0, 1, 2, 3])
+    copy_to_graph = ops.Graph()
+    with copy_to_graph.as_default():  # Intentionally testing v1 behavior
+      copied = resource_variable_ops.copy_to_graph_uninitialized(v)
+      self.assertEqual(v.name, copied.name)
+      with self.session(copy_to_graph) as session:
+        with self.assertRaises(errors.InvalidArgumentError):
+          session.run(copied.initializer)
 
 
 class _MixedPrecisionVariableTest(test_util.TensorFlowTestCase):

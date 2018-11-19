@@ -18,6 +18,7 @@ limitations under the License.
 #include <deque>
 #include <vector>
 
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -54,10 +55,11 @@ Status ValidateControlFlowInfo(const Graph* graph,
       frame.parent = parent;
       frame.name = cf.frame_name;
     } else if (frame.parent != parent) {
-      return errors::InvalidArgument(
+      return errors::Internal(
           "Invalid loop structure: Mismatched parent frames for \"",
           cf.frame_name, "\": \"", parent->name, "\" vs \"", frame.parent->name,
-          "\". This is an internal bug, please file a bug report with "
+          "\". The node giving this error: ", FormatNodeForError(*node),
+          "This is an internal bug, please file a bug report with "
           "instructions on how to reproduce the error.");
     }
     if (IsLoopCond(node)) {
@@ -69,9 +71,9 @@ Status ValidateControlFlowInfo(const Graph* graph,
           !str_util::StrContains(node->name(), "LoopCounter")) {
         return errors::InvalidArgument(
             "Invalid loop structure: Loop \"", cf.frame_name,
-            "\" has more than one LoopCond node: \"", node->name(), "\" and \"",
-            frame.loop_cond->name(),
-            "\". This is an internal bug, please file a bug report with "
+            "\" has more than one LoopCond node: ", FormatNodeForError(*node),
+            " and ", FormatNodeForError(*frame.loop_cond),
+            ". This is an internal bug, please file a bug report with "
             "instructions on how to reproduce the error.");
       }
       frame.loop_cond = node;
@@ -135,12 +137,11 @@ Status BuildControlFlowInfo(const Graph* g, std::vector<ControlFlowInfo>* info,
           const string& parent_frame = (*info)[out_parent->id()].frame_name;
           if (parent_frame != frame_name) {
             return errors::InvalidArgument(
-                "The node '", out->name(),
-                "' has inputs from different "
-                "frames. The input '",
-                curr_node->name(), "' is in frame '", frame_name,
-                "'. The input '", parent_nodes[out->id()]->name(),
-                "' is in frame '", parent_frame, "'.");
+                FormatNodeForError(*out),
+                " has inputs from different frames. The input ",
+                FormatNodeForError(*curr_node), " is in frame '", frame_name,
+                "'. The input ", FormatNodeForError(*parent_nodes[out->id()]),
+                " is in frame '", parent_frame, "'.");
           }
         } else {
           out_info->frame = out;
@@ -148,7 +149,8 @@ Status BuildControlFlowInfo(const Graph* g, std::vector<ControlFlowInfo>* info,
           TF_RETURN_IF_ERROR(
               GetNodeAttr(out->attrs(), "frame_name", &out_info->frame_name));
           if (out_info->frame_name.empty()) {
-            return errors::InvalidArgument("The Enter node ", out->name(),
+            return errors::InvalidArgument("The Enter ",
+                                           FormatNodeForError(*out),
                                            " must have a frame name.");
           }
         }
@@ -156,12 +158,11 @@ Status BuildControlFlowInfo(const Graph* g, std::vector<ControlFlowInfo>* info,
         if (is_visited) {
           if (out_info->frame_name != frame_name) {
             return errors::InvalidArgument(
-                "The node '", out->name(),
-                "' has inputs from different "
-                "frames. The input '",
-                curr_node->name(), "' is in frame '", frame_name,
-                "'. The input '", parent_nodes[out->id()]->name(),
-                "' is in frame '", out_info->frame_name, "'.");
+                FormatNodeForError(*out),
+                " has inputs from different frames. The input ",
+                FormatNodeForError(*curr_node), " is in frame '", frame_name,
+                "'. The input ", FormatNodeForError(*parent_nodes[out->id()]),
+                " is in frame '", out_info->frame_name, "'.");
           }
         } else {
           out_info->frame = frame;

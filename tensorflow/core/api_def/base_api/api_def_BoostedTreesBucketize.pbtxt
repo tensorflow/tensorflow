@@ -1,0 +1,34 @@
+op {
+  graph_op_name: "BoostedTreesBucketize"
+  visibility: HIDDEN
+  in_arg {
+    name: "float_values"
+    description: <<END
+float; List of Rank 1 Tensor each containing float values for a single feature.
+END
+  }
+  in_arg {
+    name: "bucket_boundaries"
+    description: <<END
+float; List of Rank 1 Tensors each containing the bucket boundaries for a single
+feature.
+END
+  }
+  out_arg {
+    name: "buckets"
+    description: <<END
+int; List of Rank 1 Tensors each containing the bucketized values for a single feature.
+END
+  }
+  attr {
+    name: "num_features"
+    description: <<END
+inferred int; number of features.
+END
+  }
+  summary: "Bucketize each feature based on bucket boundaries."
+  description: <<END
+An op that returns a list of float tensors, where each tensor represents the
+bucketized values for a single feature.
+END
+}

@@ -20,6 +20,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_matvec.h"
+#include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
 using tensorflow::int32;
@@ -77,27 +78,24 @@ void MatMulImpl(const void* run_options_ptr, T* out, T* lhs, T* rhs, int64 m,
 
 }  // namespace
 
-void __xla_cpu_runtime_EigenMatMulF16(const void* run_options_ptr,
-                                      Eigen::half* out, Eigen::half* lhs,
-                                      Eigen::half* rhs, int64 m, int64 n,
-                                      int64 k, int32 transpose_lhs,
-                                      int32 transpose_rhs) {
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenMatMulF16(
+    const void* run_options_ptr, Eigen::half* out, Eigen::half* lhs,
+    Eigen::half* rhs, int64 m, int64 n, int64 k, int32 transpose_lhs,
+    int32 transpose_rhs) {
   MatMulImpl<Eigen::half>(run_options_ptr, out, lhs, rhs, m, n, k,
                           transpose_lhs, transpose_rhs);
 }
 
-void __xla_cpu_runtime_EigenMatMulF32(const void* run_options_ptr, float* out,
-                                      float* lhs, float* rhs, int64 m, int64 n,
-                                      int64 k, int32 transpose_lhs,
-                                      int32 transpose_rhs) {
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenMatMulF32(
+    const void* run_options_ptr, float* out, float* lhs, float* rhs, int64 m,
+    int64 n, int64 k, int32 transpose_lhs, int32 transpose_rhs) {
   MatMulImpl<float>(run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs,
                     transpose_rhs);
 }
 
-void __xla_cpu_runtime_EigenMatMulF64(const void* run_options_ptr, double* out,
-                                      double* lhs, double* rhs, int64 m,
-                                      int64 n, int64 k, int32 transpose_lhs,
-                                      int32 transpose_rhs) {
+TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenMatMulF64(
+    const void* run_options_ptr, double* out, double* lhs, double* rhs, int64 m,
+    int64 n, int64 k, int32 transpose_lhs, int32 transpose_rhs) {
   MatMulImpl<double>(run_options_ptr, out, lhs, rhs, m, n, k, transpose_lhs,
                      transpose_rhs);
 }

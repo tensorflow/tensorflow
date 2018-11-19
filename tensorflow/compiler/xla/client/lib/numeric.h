@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_LIB_NUMERIC_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_NUMERIC_H_
 
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -33,6 +33,15 @@ XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64 m, int64 n);
 // [..., M, N], then the output has shape [..., min(M, N)], containing the
 // diagonal elements (i.e., with indices [..., i, i]).
 XlaOp GetMatrixDiagonal(XlaOp x);
+
+// Get the upper or lower triangle part of the last two dimensions
+XlaOp Triangle(XlaOp x, bool lower);
+
+// Get the upper triangle part of the last two dimensions
+XlaOp UpperTriangle(XlaOp x);
+
+// Get the lower triangle part of the last two dimensions
+XlaOp LowerTriangle(XlaOp x);
 
 }  // namespace xla
 

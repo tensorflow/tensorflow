@@ -42,6 +42,11 @@ void Cluster::SetNumWarmupSteps(int num_steps) {
       num_steps);
 }
 
+// Set executor type to instantiate
+void Cluster::SetExecutorType(const string* executor_type) {
+  options_.config.mutable_experimental()->set_executor_type(*executor_type);
+}
+
 int Cluster::NumWarmupSteps() const {
   return options_.config.graph_options().build_cost_model_after();
 }
@@ -76,6 +81,9 @@ void Cluster::DisableOptimizer(bool disable) {
     rewriter_config->set_dependency_optimization(RewriterConfig::OFF);
     rewriter_config->set_constant_folding(RewriterConfig::OFF);
     rewriter_config->set_memory_optimization(RewriterConfig::NO_MEM_OPT);
+    rewriter_config->set_shape_optimization(RewriterConfig::OFF);
+    rewriter_config->set_remapping(RewriterConfig::OFF);
+    rewriter_config->set_pin_to_host_optimization(RewriterConfig::OFF);
     rewriter_config->mutable_auto_parallel()->set_enable(false);
     rewriter_config->clear_optimizers();
   } else {

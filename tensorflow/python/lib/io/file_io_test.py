@@ -582,5 +582,30 @@ class FileIoTest(test.TestCase):
     self.assertTrue(crc1 != crc2)
     self.assertEqual(crc2, crc3)
 
+  def testMatchingFilesPermission(self):
+    # Create top level directory test_dir.
+    dir_path = os.path.join(self._base_dir, "test_dir")
+    file_io.create_dir(dir_path)
+    # Create second level directories `noread` and `any`.
+    noread_path = os.path.join(dir_path, "noread")
+    file_io.create_dir(noread_path)
+    any_path = os.path.join(dir_path, "any")
+    file_io.create_dir(any_path)
+    files = ["file1.txt", "file2.txt", "file3.txt"]
+    for name in files:
+      file_path = os.path.join(any_path, name)
+      file_io.FileIO(file_path, mode="w").write("testing")
+    file_path = os.path.join(noread_path, "file4.txt")
+    file_io.FileIO(file_path, mode="w").write("testing")
+    # Change noread to noread access.
+    os.chmod(noread_path, 0)
+    expected_match = [os.path.join(any_path, name) for name in files]
+    self.assertItemsEqual(
+        file_io.get_matching_files(os.path.join(dir_path, "*", "file*.txt")),
+        expected_match)
+    # Change noread back so that it could be cleaned during tearDown.
+    os.chmod(noread_path, 0o777)
+
+
 if __name__ == "__main__":
   test.main()

@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/c_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -114,6 +116,61 @@ TEST(CAPI_EXPERIMENTAL, ImagenetIteratorGetNext) {
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   TF_DeleteGraph(graph);
   TF_DeleteStatus(s);
+}
+
+TEST(CAPI_EXPERIMENTAL, GetServerDefTest) {
+  const string expected_text_proto(R"(cluster {
+  job {
+    name: "worker"
+    tasks {
+      key: 0
+      value: "tpuserver:0"
+    }
+    tasks {
+      key: 1
+      value: "localhost:1"
+    }
+  }
+}
+job_name: "worker"
+task_index: 1
+protocol: "grpc"
+)");
+
+  TF_Status* status = TF_NewStatus();
+  TF_Buffer* result = TFE_GetServerDef(expected_text_proto.c_str(), status);
+  EXPECT_EQ(TF_GetCode(status), TF_OK);
+
+  ServerDef actual;
+  ASSERT_TRUE(actual.ParseFromArray(result->data, result->length));
+  string actual_text_proto;
+  tensorflow::protobuf::TextFormat::PrintToString(actual, &actual_text_proto);
+  EXPECT_EQ(expected_text_proto, actual_text_proto);
+
+  const string malformed_text_proto(R"(cluster {
+  job {
+    name: "worker")");
+  TF_Buffer* null_result =
+      TFE_GetServerDef(malformed_text_proto.c_str(), status);
+  EXPECT_NE(TF_GetCode(status), TF_OK);
+  EXPECT_TRUE(tensorflow::str_util::StrContains(
+      TF_Message(status), "Invalid text proto for ServerDef"));
+  EXPECT_EQ(null_result, nullptr);
+
+  // Cleanup
+  TF_DeleteBuffer(result);
+  TF_DeleteStatus(status);
+}
+
+TEST(CAPI_EXPERIMENTAL, IsStateful) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  int assign = TF_OpIsStateful("AssignAddVariableOp", status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  EXPECT_EQ(assign, 1);
+  int id = TF_OpIsStateful("Identity", status.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+  EXPECT_EQ(id, 0);
 }
 
 }  // namespace

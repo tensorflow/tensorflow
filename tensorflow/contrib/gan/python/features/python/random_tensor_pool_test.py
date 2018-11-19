@@ -21,7 +21,9 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.gan.python.features.python.random_tensor_pool_impl import tensor_pool
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -35,7 +37,7 @@ class TensorPoolTest(test.TestCase):
     output_value = tensor_pool(input_value, pool_size=10)
     self.assertEqual(output_value.shape.as_list(), [None, None, 3])
 
-    with self.test_session(use_gpu=True) as session:
+    with self.session(use_gpu=True) as session:
       for i in range(10):
         session.run(output_value, {input_value: [[[i] * 3]]})
         session.run(output_value, {input_value: [[[i] * 3] * 2]})
@@ -47,7 +49,7 @@ class TensorPoolTest(test.TestCase):
     output_value = tensor_pool(input_value, pool_size=10)
     self.assertEqual(output_value.shape.as_list(), [])
 
-    with self.test_session(use_gpu=True) as session:
+    with self.session(use_gpu=True) as session:
       outs = []
       for i in range(50):
         out = session.run(output_value, {input_value: i})
@@ -65,7 +67,7 @@ class TensorPoolTest(test.TestCase):
         input_value, pool_size=10, pooling_probability=0.0)
     self.assertEqual(output_value.shape.as_list(), [])
 
-    with self.test_session(use_gpu=True) as session:
+    with self.session(use_gpu=True) as session:
       for i in range(50):
         out = session.run(output_value, {input_value: i})
         self.assertEqual(out, i)
@@ -81,7 +83,7 @@ class TensorPoolTest(test.TestCase):
         pooling_probability=pooling_probability)
     self.assertEqual(output_value.shape.as_list(), [])
 
-    with self.test_session(use_gpu=True) as session:
+    with self.session(use_gpu=True) as session:
       not_pooled = 0
       total = 1000
       for i in range(total):
@@ -102,7 +104,7 @@ class TensorPoolTest(test.TestCase):
     for output_value in output_values:
       self.assertEqual(output_value.shape.as_list(), [])
 
-    with self.test_session(use_gpu=True) as session:
+    with self.session(use_gpu=True) as session:
       for i in range(10):
         outs = session.run(output_values, {
             input_values[0]: i,
@@ -110,6 +112,23 @@ class TensorPoolTest(test.TestCase):
         })
         self.assertEqual(len(outs), len(input_values))
         self.assertEqual(outs[1] - outs[0], 1)
+
+  def test_pool_preserves_shape(self):
+    t = constant_op.constant(1)
+    input_values = [[t, t, t], (t, t), t]
+    output_values = tensor_pool(input_values, pool_size=5)
+    print('stuff: ', output_values)
+    # Overall shape.
+    self.assertIsInstance(output_values, list)
+    self.assertEqual(3, len(output_values))
+    # Shape of first element.
+    self.assertIsInstance(output_values[0], list)
+    self.assertEqual(3, len(output_values[0]))
+    # Shape of second element.
+    self.assertIsInstance(output_values[1], tuple)
+    self.assertEqual(2, len(output_values[1]))
+    # Shape of third element.
+    self.assertIsInstance(output_values[2], ops.Tensor)
 
 
 if __name__ == '__main__':

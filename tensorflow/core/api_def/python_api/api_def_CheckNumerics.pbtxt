@@ -5,6 +5,6 @@ op {
   }
   endpoint {
     name: "check_numerics"
-    deprecated: true
+    deprecation_version: 2
   }
 }

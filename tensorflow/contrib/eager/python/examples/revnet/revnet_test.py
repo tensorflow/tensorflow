@@ -31,10 +31,13 @@ tfe = tf.contrib.eager
 
 def train_one_iter(model, inputs, labels, optimizer, global_step=None):
   """Train for one iteration."""
-  grads, vars_, loss = model.compute_gradients(inputs, labels, training=True)
-  optimizer.apply_gradients(zip(grads, vars_), global_step=global_step)
+  logits, saved_hidden = model(inputs)
+  grads, loss = model.compute_gradients(
+      saved_hidden=saved_hidden, labels=labels)
+  optimizer.apply_gradients(
+      zip(grads, model.trainable_variables), global_step=global_step)
 
-  return loss
+  return logits, loss
 
 
 class RevNetTest(tf.test.TestCase):
@@ -42,9 +45,14 @@ class RevNetTest(tf.test.TestCase):
   def setUp(self):
     super(RevNetTest, self).setUp()
     config = config_.get_hparams_cifar_38()
+    config.add_hparam("n_classes", 10)
+    config.add_hparam("dataset", "cifar-10")
     # Reconstruction could cause numerical error, use double precision for tests
     config.dtype = tf.float64
     config.fused = False  # Fused batch norm does not support tf.float64
+    # Reduce the batch size for tests because the OSS version runs
+    # in constrained GPU environment with 1-2GB of memory.
+    config.batch_size = 2
     shape = (config.batch_size,) + config.input_shape
     self.model = revnet.RevNet(config=config)
     self.x = tf.random_normal(shape=shape, dtype=tf.float64)
@@ -93,9 +101,10 @@ class RevNetTest(tf.test.TestCase):
 
   def test_compute_gradients(self):
     """Test `compute_gradients` function."""
-    self.model(self.x, training=False)  # Initialize model
-    grads, vars_, loss = self.model.compute_gradients(
-        inputs=self.x, labels=self.t, training=True, l2_reg=True)
+    _, saved_hidden = self.model(self.x)  # Initialize model
+    grads, loss = self.model.compute_gradients(
+        saved_hidden=saved_hidden, labels=self.t)
+    vars_ = self.model.trainable_variables
     self.assertTrue(isinstance(grads, list))
     self.assertTrue(isinstance(vars_, list))
     self.assertEqual(len(grads), len(vars_))
@@ -104,7 +113,7 @@ class RevNetTest(tf.test.TestCase):
 
     # Compare against the true gradient computed by the tape
     with tf.GradientTape() as tape:
-      logits, _ = self.model(self.x, training=True)
+      logits, _ = self.model(self.x)
       loss_true = self.model.compute_loss(logits=logits, labels=self.t)
     grads_true = tape.gradient(loss_true, vars_)
     self.assertAllClose(loss, loss_true)
@@ -118,8 +127,12 @@ class RevNetTest(tf.test.TestCase):
 
   def test_compute_gradients_defun(self):
     """Test `compute_gradients` function with defun."""
+    # TODO(apassos): make cond support returning None to let this happen with
+    # tf.function.
     compute_gradients = tfe.defun(self.model.compute_gradients)
-    grads, vars_, _ = compute_gradients(self.x, self.t, training=True)
+    _, saved_hidden = self.model(self.x)
+    grads, _ = compute_gradients(saved_hidden=saved_hidden, labels=self.t)
+    vars_ = self.model.trainable_variables
     self.assertTrue(isinstance(grads, list))
     self.assertTrue(isinstance(vars_, list))
     self.assertEqual(len(grads), len(vars_))
@@ -131,6 +144,9 @@ class RevNetTest(tf.test.TestCase):
     """Test model training in graph mode."""
     with tf.Graph().as_default():
       config = config_.get_hparams_cifar_38()
+      config.add_hparam("n_classes", 10)
+      config.add_hparam("dataset", "cifar-10")
+
       x = tf.random_normal(
           shape=(self.config.batch_size,) + self.config.input_shape)
       t = tf.random_uniform(
@@ -140,15 +156,11 @@ class RevNetTest(tf.test.TestCase):
           dtype=tf.int32)
       global_step = tf.Variable(0., trainable=False)
       model = revnet.RevNet(config=config)
-      model(x)
-      updates = model.get_updates_for(x)
-
-      x_ = tf.identity(x)
-      grads_all, vars_all, _ = model.compute_gradients(x_, t, training=True)
+      _, saved_hidden = model(x)
+      grads, _ = model.compute_gradients(saved_hidden=saved_hidden, labels=t)
       optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
-      with tf.control_dependencies(updates):
-        train_op = optimizer.apply_gradients(
-            zip(grads_all, vars_all), global_step=global_step)
+      train_op = optimizer.apply_gradients(
+          zip(grads, model.trainable_variables), global_step=global_step)
 
       with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
@@ -219,14 +231,14 @@ class RevNetBenchmark(tf.test.Benchmark):
                              label,
                              device_and_format,
                              defun=False,
-                             execution_mode=None,
-                             compiled=False):
+                             execution_mode=None):
     config = config_.get_hparams_imagenet_56()
     with tfe.execution_mode(execution_mode):
       device, data_format = device_and_format
       model = revnet.RevNet(config=config)
       if defun:
-        model.call = tfe.defun(model.call, compiled=compiled)
+        # TODO(apassos): reenable after cond lets you return None
+        model.call = tfe.defun(model.call)
       batch_size = 64
       num_burn = 5
       num_iters = 10
@@ -264,8 +276,7 @@ class RevNetBenchmark(tf.test.Benchmark):
                              make_iterator,
                              device_and_format,
                              defun=False,
-                             execution_mode=None,
-                             compiled=False):
+                             execution_mode=None):
     config = config_.get_hparams_imagenet_56()
     with tfe.execution_mode(execution_mode):
       device, data_format = device_and_format
@@ -274,7 +285,7 @@ class RevNetBenchmark(tf.test.Benchmark):
         model = revnet.RevNet(config=config)
         optimizer = tf.train.GradientDescentOptimizer(0.1)
         if defun:
-          model.call = tfe.defun(model.call)
+          model.call = tfe.function(model.call)
 
         num_burn = 3
         num_iters = 10

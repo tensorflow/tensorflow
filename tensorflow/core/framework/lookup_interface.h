@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_LOOKUP_INTERFACE_H_
-#define TENSORFLOW_FRAMEWORK_LOOKUP_INTERFACE_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_LOOKUP_INTERFACE_H_
+#define TENSORFLOW_CORE_FRAMEWORK_LOOKUP_INTERFACE_H_
 
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -64,6 +64,17 @@ class LookupInterface : public ResourceBase {
   virtual Status Insert(OpKernelContext* ctx, const Tensor& keys,
                         const Tensor& values) = 0;
 
+  // Removes elements from the table.
+  // This method is only implemented in mutable tables that can be updated over
+  // the execution of the graph. It returns Status::NotImplemented for read-only
+  // tables that are initialized once before they can be looked up.
+
+  // Returns the following statuses:
+  // - OK: when the remove finishes successfully.
+  // - InvalidArgument: if any of the preconditions on the lookup key fails.
+  // - Unimplemented: if the table does not support removals.
+  virtual Status Remove(OpKernelContext* ctx, const Tensor& keys) = 0;
+
   // Returns the number of elements in the table.
   virtual size_t size() const = 0;
 
@@ -107,6 +118,12 @@ class LookupInterface : public ResourceBase {
   virtual Status CheckKeyAndValueTensorsForImport(const Tensor& keys,
                                                   const Tensor& values);
 
+  // Check format of the key tensor for the Remove function.
+  // Returns OK if all the following requirements are satisfied, otherwise it
+  // returns InvalidArgument:
+  // - DataType of the tensor keys equals to the table key_dtype
+  virtual Status CheckKeyTensorForRemove(const Tensor& keys);
+
   // Check the arguments of a find operation. Returns OK if all the following
   // requirements are satisfied, otherwise it returns InvalidArgument:
   // - DataType of the tensor keys equals to the table key_dtype
@@ -142,4 +159,4 @@ class LookupInterface : public ResourceBase {
 }  // namespace lookup
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_LOOKUP_INTERFACE_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_LOOKUP_INTERFACE_H_

@@ -46,7 +46,7 @@ XLA_TEST_F(TrivialCrossReplicaSumTest, OneOperand) {
   auto module =
       ParseHloString(module_str, GetModuleConfigForTest()).ValueOrDie();
   auto literal = LiteralUtil::CreateR1<float>({1, 2, 3});
-  EXPECT_EQ(*literal, *ExecuteAndTransfer(std::move(module), {literal.get()}));
+  EXPECT_EQ(literal, ExecuteAndTransfer(std::move(module), {&literal}));
 }
 
 XLA_TEST_F(TrivialCrossReplicaSumTest, MultipleOperands) {
@@ -68,9 +68,8 @@ XLA_TEST_F(TrivialCrossReplicaSumTest, MultipleOperands) {
       ParseHloString(module_str, GetModuleConfigForTest()).ValueOrDie();
   auto literal0 = LiteralUtil::CreateR1<float>({1, 2, 3});
   auto literal1 = LiteralUtil::CreateR1<float>({10, 20});
-  EXPECT_EQ(
-      *LiteralUtil::MakeTuple({literal0.get(), literal1.get()}),
-      *ExecuteAndTransfer(std::move(module), {literal0.get(), literal1.get()}));
+  EXPECT_EQ(LiteralUtil::MakeTuple({&literal0, &literal1}),
+            ExecuteAndTransfer(std::move(module), {&literal0, &literal1}));
 }
 
 // On the GPU backend, constants get special handling.  Someone might pass a
@@ -95,8 +94,8 @@ XLA_TEST_F(TrivialCrossReplicaSumTest, ConstantOperand) {
       ParseHloString(module_str, GetModuleConfigForTest()).ValueOrDie();
   auto literal0 = LiteralUtil::CreateR1<float>({1, 2, 3});
   auto literal1 = LiteralUtil::CreateR1<float>({10, 20});
-  EXPECT_EQ(*LiteralUtil::MakeTuple({literal0.get(), literal1.get()}),
-            *ExecuteAndTransfer(std::move(module), {literal0.get()}));
+  EXPECT_EQ(LiteralUtil::MakeTuple({&literal0, &literal1}),
+            ExecuteAndTransfer(std::move(module), {&literal0}));
 }
 
 }  // namespace

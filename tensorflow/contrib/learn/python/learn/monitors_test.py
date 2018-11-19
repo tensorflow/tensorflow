@@ -39,9 +39,9 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import monitored_session
-from tensorflow.python.training import saver
 from tensorflow.python.training import training_util
 
 
@@ -127,12 +127,12 @@ class MonitorsTest(test.TestCase):
     monitor.end()
 
   def test_base_monitor(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       self._run_monitor(learn.monitors.BaseMonitor())
 
   def test_every_0(self):
     monitor = _MyEveryN(every_n_steps=0, first_n_steps=-1)
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       self._run_monitor(monitor, num_epochs=3, num_steps_per_epoch=10)
       expected_steps = list(range(30))
       self.assertAllEqual(expected_steps, monitor.steps_begun)
@@ -141,7 +141,7 @@ class MonitorsTest(test.TestCase):
 
   def test_every_1(self):
     monitor = _MyEveryN(every_n_steps=1, first_n_steps=-1)
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       self._run_monitor(monitor, num_epochs=3, num_steps_per_epoch=10)
       expected_steps = list(range(1, 30))
       self.assertEqual(expected_steps, monitor.steps_begun)
@@ -150,7 +150,7 @@ class MonitorsTest(test.TestCase):
 
   def test_every_2(self):
     monitor = _MyEveryN(every_n_steps=2, first_n_steps=-1)
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       self._run_monitor(monitor, num_epochs=3, num_steps_per_epoch=10)
       expected_steps = list(range(2, 29, 2)) + [29]
       self.assertEqual(expected_steps, monitor.steps_begun)
@@ -159,7 +159,7 @@ class MonitorsTest(test.TestCase):
 
   def test_every_8(self):
     monitor = _MyEveryN(every_n_steps=8, first_n_steps=2)
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       self._run_monitor(monitor, num_epochs=3, num_steps_per_epoch=10)
       expected_steps = [0, 1, 2, 10, 18, 26, 29]
       self.assertEqual(expected_steps, monitor.steps_begun)
@@ -168,7 +168,7 @@ class MonitorsTest(test.TestCase):
 
   def test_every_8_no_max_steps(self):
     monitor = _MyEveryN(every_n_steps=8, first_n_steps=2)
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       self._run_monitor(
           monitor, num_epochs=3, num_steps_per_epoch=10, pass_max_steps=False)
       begin_end_steps = [0, 1, 2, 10, 18, 26]
@@ -179,7 +179,7 @@ class MonitorsTest(test.TestCase):
 
   def test_every_8_recovered_after_step_begin(self):
     monitor = _MyEveryN(every_n_steps=8)
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       for step in [8, 16]:
         monitor.step_begin(step)
         monitor.step_begin(step)
@@ -192,7 +192,7 @@ class MonitorsTest(test.TestCase):
 
   def test_every_8_recovered_after_step_end(self):
     monitor = _MyEveryN(every_n_steps=8)
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       for step in [8, 16]:
         monitor.step_begin(step)
         monitor.step_end(step, output=None)
@@ -207,7 +207,7 @@ class MonitorsTest(test.TestCase):
 
   def test_every_8_call_post_step_at_the_end(self):
     monitor = _MyEveryN(every_n_steps=8)
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       monitor.begin()
       for step in [8, 16]:
         monitor.step_begin(step)
@@ -224,7 +224,7 @@ class MonitorsTest(test.TestCase):
 
   def test_every_8_call_post_step_should_not_be_called_twice(self):
     monitor = _MyEveryN(every_n_steps=8)
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       monitor.begin()
       for step in [8, 16]:
         monitor.step_begin(step)
@@ -240,14 +240,14 @@ class MonitorsTest(test.TestCase):
       self.assertEqual([8, 16], monitor.post_steps)
 
   def test_print(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       t = constant_op.constant(42.0, name='foo')
       self._run_monitor(learn.monitors.PrintTensor(tensor_names=[t.name]))
       self.assertRegexpMatches(str(self.logged_message), t.name)
 
   def test_logging_trainable(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
-      var = variables.Variable(constant_op.constant(42.0), name='foo')
+    with ops.Graph().as_default() as g, self.session(g):
+      var = variables.VariableV1(constant_op.constant(42.0), name='foo')
       var.initializer.run()
       cof = constant_op.constant(1.0)
       loss = math_ops.subtract(
@@ -258,10 +258,10 @@ class MonitorsTest(test.TestCase):
       self.assertRegexpMatches(str(self.logged_message), var.name)
 
   def test_summary_saver(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       log_dir = 'log/dir'
       summary_writer = testing.FakeSummaryWriter(log_dir, g)
-      var = variables.Variable(0.0)
+      var = variables.VariableV1(0.0)
       var.initializer.run()
       tensor = state_ops.assign_add(var, 1.0)
       summary_op = summary.scalar('my_summary', tensor)
@@ -312,12 +312,12 @@ class MonitorsTest(test.TestCase):
     monitor = learn.monitors.ValidationMonitor(
         x=constant_op.constant(2.0), every_n_steps=0)
     self._assert_validation_monitor(monitor)
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       with self.assertRaisesRegexp(ValueError, 'set_estimator'):
         self._run_monitor(monitor)
 
   @test.mock.patch.object(estimators, 'Estimator', autospec=True)
-  @test.mock.patch.object(saver, 'latest_checkpoint')
+  @test.mock.patch.object(checkpoint_management, 'latest_checkpoint')
   def test_validation_monitor_no_ckpt(self, mock_latest_checkpoint,
                                       mock_estimator_class):
     estimator = mock_estimator_class()
@@ -330,13 +330,13 @@ class MonitorsTest(test.TestCase):
         x=constant_op.constant(2.0), every_n_steps=0)
     self._assert_validation_monitor(monitor)
     monitor.set_estimator(estimator)
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       self._run_monitor(monitor)
       self._assert_validation_monitor(monitor)
       mock_latest_checkpoint.assert_called_with(model_dir)
 
   @test.mock.patch.object(estimators, 'Estimator', autospec=True)
-  @test.mock.patch.object(saver, 'latest_checkpoint')
+  @test.mock.patch.object(checkpoint_management, 'latest_checkpoint')
   def test_validation_monitor_no_early_stopping_rounds(self,
                                                        mock_latest_checkpoint,
                                                        mock_estimator_class):
@@ -351,12 +351,12 @@ class MonitorsTest(test.TestCase):
         x=constant_op.constant(2.0), every_n_steps=0)
     self._assert_validation_monitor(monitor)
     monitor.set_estimator(estimator)
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       self._run_monitor(monitor)
       self._assert_validation_monitor(monitor)
 
   @test.mock.patch.object(estimators, 'Estimator', autospec=True)
-  @test.mock.patch.object(saver, 'latest_checkpoint')
+  @test.mock.patch.object(checkpoint_management, 'latest_checkpoint')
   def test_validation_monitor_invalid_metric(self, mock_latest_checkpoint,
                                              mock_estimator_class):
     estimator = mock_estimator_class()
@@ -370,12 +370,12 @@ class MonitorsTest(test.TestCase):
         x=constant_op.constant(2.0), every_n_steps=0, early_stopping_rounds=1)
     self._assert_validation_monitor(monitor)
     monitor.set_estimator(estimator)
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       with self.assertRaisesRegexp(ValueError, 'missing from outputs'):
         self._run_monitor(monitor, num_epochs=1, num_steps_per_epoch=1)
 
   @test.mock.patch.object(estimators, 'Estimator', autospec=True)
-  @test.mock.patch.object(saver, 'latest_checkpoint')
+  @test.mock.patch.object(checkpoint_management, 'latest_checkpoint')
   def test_validation_monitor(self, mock_latest_checkpoint,
                               mock_estimator_class):
     estimator = mock_estimator_class()
@@ -392,7 +392,7 @@ class MonitorsTest(test.TestCase):
 
     self._assert_validation_monitor(monitor)
     monitor.set_estimator(estimator)
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       monitor.begin(max_steps=100)
       monitor.epoch_begin(epoch=0)
       self.assertEqual(0, estimator.evaluate.call_count)
@@ -464,7 +464,7 @@ class MonitorsTest(test.TestCase):
       monitor.epoch_end(epoch=0)
       monitor.end()
 
-  @test.mock.patch.object(saver, 'latest_checkpoint')
+  @test.mock.patch.object(checkpoint_management, 'latest_checkpoint')
   def test_validation_monitor_with_core_estimator(self, mock_latest_checkpoint):
     estimator = test.mock.Mock(spec=core_estimator.Estimator)
     model_dir = 'model/dir'
@@ -477,7 +477,7 @@ class MonitorsTest(test.TestCase):
         every_n_steps=0, early_stopping_rounds=2)
     self._assert_validation_monitor(monitor)
     monitor.set_estimator(estimator)
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       monitor.begin(max_steps=100)
       monitor.epoch_begin(epoch=0)
       self.assertEqual(0, estimator.evaluate.call_count)
@@ -495,7 +495,7 @@ class MonitorsTest(test.TestCase):
           expected_best_metrics={'loss': 42.0, 'auc': 0.5})
       monitor.post_step(step=step, session=None)
 
-  @test.mock.patch.object(saver, 'latest_checkpoint')
+  @test.mock.patch.object(checkpoint_management, 'latest_checkpoint')
   def test_validation_monitor_fail_with_core_estimator_and_metrics(
       self, mock_latest_checkpoint):
     estimator = test.mock.Mock(spec=core_estimator.Estimator)
@@ -509,7 +509,7 @@ class MonitorsTest(test.TestCase):
         metrics=constant_op.constant(2.0),
         every_n_steps=0, early_stopping_rounds=2)
     monitor.set_estimator(estimator)
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       monitor.begin(max_steps=100)
       monitor.epoch_begin(epoch=0)
 
@@ -525,9 +525,9 @@ class MonitorsTest(test.TestCase):
   def test_graph_dump(self):
     monitor0 = learn.monitors.GraphDump()
     monitor1 = learn.monitors.GraphDump()
-    with ops.Graph().as_default() as g, self.test_session(g):
-      const_var = variables.Variable(42.0, name='my_const')
-      counter_var = variables.Variable(0.0, name='my_counter')
+    with ops.Graph().as_default() as g, self.session(g):
+      const_var = variables.VariableV1(42.0, name='my_const')
+      counter_var = variables.VariableV1(0.0, name='my_counter')
       assign_add = state_ops.assign_add(counter_var, 1.0, name='my_assign_add')
       variables.global_variables_initializer().run()
 
@@ -568,8 +568,8 @@ class MonitorsTest(test.TestCase):
   def test_capture_variable(self):
     monitor = learn.monitors.CaptureVariable(
         var_name='my_assign_add:0', every_n=8, first_n=2)
-    with ops.Graph().as_default() as g, self.test_session(g):
-      var = variables.Variable(0.0, name='my_var')
+    with ops.Graph().as_default() as g, self.session(g):
+      var = variables.VariableV1(0.0, name='my_var')
       var.initializer.run()
       state_ops.assign_add(var, 1.0, name='my_assign_add')
       self._run_monitor(monitor, num_epochs=3, num_steps_per_epoch=10)

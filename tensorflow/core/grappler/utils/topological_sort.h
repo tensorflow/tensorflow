@@ -31,6 +31,9 @@ Status ComputeTopologicalOrder(
 // Sort a graph in topological order.
 Status TopologicalSort(GraphDef* graph);
 
+// Sort a graph in topological order and reverse it.
+Status ReversedTopologicalSort(GraphDef* graph);
+
 }  // namespace grappler
 }  // namespace tensorflow
 

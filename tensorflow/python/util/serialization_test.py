@@ -55,11 +55,8 @@ class SerializationTests(test.TestCase):
     model(constant_op.constant([[1.]]))
     sequential_round_trip = json.loads(
         json.dumps(model, default=serialization.get_json_type))
-    self.assertEqual(5, sequential_round_trip["config"][1]["config"]["units"])
-    input_round_trip = json.loads(
-        json.dumps(model._input_layers, default=serialization.get_json_type))
-    self.assertAllEqual([1, 1],
-                        input_round_trip[0]["config"]["batch_input_shape"])
+    self.assertEqual(
+        5, sequential_round_trip["config"]["layers"][1]["config"]["units"])
 
   @test_util.run_in_graph_and_eager_modes
   def test_serialize_model(self):

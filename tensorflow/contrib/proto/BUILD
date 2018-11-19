@@ -16,15 +16,3 @@ py_library(
         "//tensorflow/contrib/proto/python/ops:encode_proto_op_py",
     ],
 )
-
-py_library(
-    name = "proto_pip",
-    data = if_static(
-        [],
-        otherwise = ["//tensorflow/contrib/proto/python/kernel_tests:libtestexample.so"],
-    ),
-    deps = [
-        ":proto",
-        "//tensorflow/contrib/proto/python/kernel_tests:py_test_deps",
-    ],
-)

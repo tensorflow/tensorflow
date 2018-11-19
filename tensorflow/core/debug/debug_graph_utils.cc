@@ -356,8 +356,8 @@ Status DebugNodeInserter::ParseDebugOpName(
             "Malformed attributes in debug op name \"", debug_op_name, "\"");
       }
 
-      const string key = std::string(seg.substr(0, eq_index));
-      const string value = std::string(
+      const string key(seg.substr(0, eq_index));
+      const string value(
           seg.substr(eq_index + 1, attribute_seg.size() - eq_index - 1));
       if (key.empty() || value.empty()) {
         return errors::InvalidArgument(

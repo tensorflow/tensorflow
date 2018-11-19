@@ -1,0 +1,20 @@
+path: "tensorflow.VariableSynchronization"
+tf_class {
+  is_instance: "<enum \'VariableSynchronization\'>"
+  member {
+    name: "AUTO"
+    mtype: "<enum \'VariableSynchronization\'>"
+  }
+  member {
+    name: "NONE"
+    mtype: "<enum \'VariableSynchronization\'>"
+  }
+  member {
+    name: "ON_READ"
+    mtype: "<enum \'VariableSynchronization\'>"
+  }
+  member {
+    name: "ON_WRITE"
+    mtype: "<enum \'VariableSynchronization\'>"
+  }
+}

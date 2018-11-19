@@ -25,6 +25,7 @@ limitations under the License.
 #include <set>
 #include <unordered_map>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/stream_executor/cuda/cuda_kernel.h"
 #include "tensorflow/stream_executor/event.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -62,10 +63,24 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
   bool GetKernel(const MultiKernelLoaderSpec &spec,
                  KernelBase *kernel) override;
   void UnloadKernel(const KernelBase *kernel) override;
+  bool LoadModule(const MultiModuleLoaderSpec &spec,
+                  ModuleHandle *module_handle) override;
+  bool UnloadModule(ModuleHandle module_handle) override;
 
   bool Launch(Stream *stream, const ThreadDim &thread_dims,
               const BlockDim &block_dims, const KernelBase &k,
               const KernelArgsArrayBase &args) override;
+
+  int CalculateOccupancy(const DeviceDescription &device_description,
+                         uint64 registers_per_thread,
+                         uint64 shared_memory_per_block,
+                         const ThreadDim &thread_dims, CUfunction func);
+
+  int CompareOccupancy(int *initial_blocks,
+                       const DeviceDescription &device_description,
+                       uint64 registers_per_thread,
+                       uint64 shared_memory_per_block,
+                       const ThreadDim &thread_dims, CUfunction func);
 
   void *Allocate(uint64 size) override;
 
@@ -175,7 +190,8 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
 
   // Search for the symbol and returns a device pointer and size.
   // Returns false if symbol does not exist.
-  bool GetSymbol(const string& symbol_name, void **mem, size_t *bytes) override;
+  bool GetSymbol(const string &symbol_name, ModuleHandle module_handle,
+                 void **mem, size_t *bytes) override;
 
   DeviceDescription *PopulateDeviceDescription() const override;
 
@@ -219,8 +235,8 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
   // filename by looking for compute-capability-specific suffixed versions; i.e.
   // looking for "foo.ptx" will check to see if "foo.ptx.cc30.ptx" is present if
   // we're on a compute capability 3.0 machine.
-  bool FindOnDiskForComputeCapability(port::StringPiece filename,
-                                      port::StringPiece canonical_suffix,
+  bool FindOnDiskForComputeCapability(absl::string_view filename,
+                                      absl::string_view canonical_suffix,
                                       string *found_filename) const;
 
   // Host callback landing routine invoked by CUDA.
@@ -238,6 +254,16 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
   // be improved.
   void VlogOccupancyInfo(const KernelBase &kernel, const ThreadDim &thread_dims,
                          const BlockDim &block_dims);
+
+  bool LoadModuleFromCuBin(const char *cubin, CUmodule *module)
+      EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
+
+  // Loads the PTX text `ptx` as a CUDA module.  `ptx` must be null terminated.
+  bool LoadModuleFromPtx(const char *ptx, CUmodule *module)
+      EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
+
+  bool UnloadGpuBinary(const void *gpu_binary)
+      EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
   // Guards the in-memory-module mapping.
   mutex in_memory_modules_mu_;

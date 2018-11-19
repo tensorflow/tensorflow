@@ -20,9 +20,10 @@ from __future__ import print_function
 
 import collections
 
-import numpy as np
+import numpy as _np  # Avoids becoming a part of public Tensorflow API.
 
 from tensorflow.compiler.xla import xla_data_pb2
+from tensorflow.python.framework import dtypes
 
 # Records corresponsence between a XLA primitive type and Python/Numpy types.
 #
@@ -40,76 +41,82 @@ TypeConversionRecord = collections.namedtuple('TypeConversionRecord', [
 
 # Maps from XLA primitive types to TypeConversionRecord.
 MAP_XLA_TYPE_TO_RECORD = {
+    xla_data_pb2.BF16:
+        TypeConversionRecord(
+            primitive_type=xla_data_pb2.BF16,
+            numpy_dtype=dtypes.bfloat16.as_numpy_dtype,
+            literal_field_name='bf16s',
+            literal_field_type=float),
     xla_data_pb2.F16:
         TypeConversionRecord(
             primitive_type=xla_data_pb2.F16,
-            numpy_dtype=np.float16,
+            numpy_dtype=_np.float16,
             literal_field_name='f16s',
             literal_field_type=float),
     xla_data_pb2.F32:
         TypeConversionRecord(
             primitive_type=xla_data_pb2.F32,
-            numpy_dtype=np.float32,
+            numpy_dtype=_np.float32,
             literal_field_name='f32s',
             literal_field_type=float),
     xla_data_pb2.F64:
         TypeConversionRecord(
             primitive_type=xla_data_pb2.F64,
-            numpy_dtype=np.float64,
+            numpy_dtype=_np.float64,
             literal_field_name='f64s',
             literal_field_type=float),
     xla_data_pb2.S8:
         TypeConversionRecord(
             primitive_type=xla_data_pb2.S8,
-            numpy_dtype=np.int8,
+            numpy_dtype=_np.int8,
             literal_field_name='s8s',
             literal_field_type=int),
     xla_data_pb2.S16:
         TypeConversionRecord(
             primitive_type=xla_data_pb2.S16,
-            numpy_dtype=np.int16,
+            numpy_dtype=_np.int16,
             literal_field_name='s16s',
             literal_field_type=int),
     xla_data_pb2.S32:
         TypeConversionRecord(
             primitive_type=xla_data_pb2.S32,
-            numpy_dtype=np.int32,
+            numpy_dtype=_np.int32,
             literal_field_name='s32s',
             literal_field_type=int),
     xla_data_pb2.S64:
         TypeConversionRecord(
             primitive_type=xla_data_pb2.S64,
-            numpy_dtype=np.int64,
+            numpy_dtype=_np.int64,
             literal_field_name='s64s',
             literal_field_type=int),
     xla_data_pb2.U8:
         TypeConversionRecord(
             primitive_type=xla_data_pb2.U8,
-            numpy_dtype=np.uint8,
+            numpy_dtype=_np.uint8,
             literal_field_name='s8s',
             literal_field_type=int),
     xla_data_pb2.U16:
         TypeConversionRecord(
             primitive_type=xla_data_pb2.U16,
-            numpy_dtype=np.uint16,
+            numpy_dtype=_np.uint16,
             literal_field_name='s16s',
             literal_field_type=int),
     xla_data_pb2.U32:
         TypeConversionRecord(
             primitive_type=xla_data_pb2.U32,
-            numpy_dtype=np.uint32,
+            numpy_dtype=_np.uint32,
             literal_field_name='s32s',
             literal_field_type=int),
     xla_data_pb2.U64:
         TypeConversionRecord(
             primitive_type=xla_data_pb2.U64,
-            numpy_dtype=np.uint64,
+            numpy_dtype=_np.uint64,
             literal_field_name='s64s',
             literal_field_type=int),
     xla_data_pb2.PRED:
         TypeConversionRecord(
             primitive_type=xla_data_pb2.PRED,
-            numpy_dtype=np.bool,
+            numpy_dtype=_np.bool,
             literal_field_name='preds',
             literal_field_type=bool)
 }
@@ -119,6 +126,6 @@ MAP_XLA_TYPE_TO_RECORD = {
 # doesn't work as expected (https://github.com/numpy/numpy/issues/7242). Thus,
 # when keying by dtype in this dict, we use the string form of dtypes.
 MAP_DTYPE_TO_RECORD = {
-    str(np.dtype(record.numpy_dtype)): record
+    str(_np.dtype(record.numpy_dtype)): record
     for record in MAP_XLA_TYPE_TO_RECORD.values()
 }

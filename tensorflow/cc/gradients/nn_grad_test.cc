@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/gradient_checker.h"
 #include "tensorflow/cc/framework/testutil.h"
 #include "tensorflow/cc/gradients/grad_testutil.h"
+#include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -25,6 +26,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+using ops::AvgPool;
+using ops::AvgPool3D;
 using ops::BiasAdd;
 using ops::Conv2D;
 using ops::Elu;
@@ -33,11 +36,9 @@ using ops::FractionalMaxPool;
 using ops::L2Loss;
 using ops::LogSoftmax;
 using ops::LRN;
-using ops::AvgPool;
-using ops::AvgPool3D;
 using ops::MaxPool;
-using ops::MaxPoolV2;
 using ops::MaxPool3D;
+using ops::MaxPoolV2;
 using ops::Placeholder;
 using ops::Relu;
 using ops::Relu6;
@@ -111,6 +112,20 @@ TEST_F(NNGradTest, SoftmaxGrad) {
   RunTest(x, shape, y, shape);
 }
 
+TEST_F(NNGradTest, SoftmaxCrossEntropyWithLogitsGrad) {
+  TensorShape logits_shape({5, 3});
+  TensorShape loss_shape({5});
+
+  auto logits = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(logits_shape));
+  auto labels = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(logits_shape));
+  auto y =
+      tensorflow::ops::SoftmaxCrossEntropyWithLogits(scope_, logits, labels);
+  // Note the reversal of the backprop and loss orders. Issue #18734 has been
+  // opened for this.
+  RunTest({logits, labels}, {logits_shape, logits_shape}, {y.backprop, y.loss},
+          {logits_shape, loss_shape});
+}
+
 TEST_F(NNGradTest, LogSoftmaxGrad) {
   TensorShape shape({5, 3});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
@@ -143,6 +158,32 @@ TEST_F(NNGradTest, Relu6Grad) {
   Tensor x_init_value = test::AsTensor<float>(
       {-0.9f, -0.7f, -0.5f, -0.3f, -0.1f, 6.1f, 6.3f, 6.5f, 6.7f, 6.9f},
       {5, 2});
+  RunTest(x, x_init_value, y, shape);
+}
+
+TEST_F(NNGradTest, LeakyReluGrad) {
+  TensorShape shape({5, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = ops::internal::LeakyRelu(scope_, x);
+  // Avoid input values where Leaky ReLU gradient is not well defined (around
+  // zero).
+  Tensor x_init_value = test::AsTensor<float>(
+      {-0.9f, -0.7f, -0.5f, -0.3f, -0.1f, 0.1f, 0.3f, 0.5f, 0.7f, 0.9f},
+      {5, 2});
+  RunTest(x, x_init_value, y, shape);
+}
+
+TEST_F(NNGradTest, LeakyReluGradGrad) {
+  TensorShape shape({5, 2});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  // Avoid input values where Leaky ReLU gradient is not well defined (around
+  // zero).
+  Tensor x_init_value = test::AsTensor<float>(
+      {2.3f, 1.9f, 1.5f, 1.1f, 0.7f, 0.3f, -0.1f, -0.5f, -0.9f, -1.3f}, {5, 2});
+  Tensor features = test::AsTensor<float>(
+      {-0.9f, -0.7f, -0.5f, -0.3f, -0.1f, 0.1f, 0.3f, 0.5f, 0.7f, 0.9f},
+      {5, 2});
+  auto y = ops::internal::LeakyReluGrad(scope_, x, features);
   RunTest(x, x_init_value, y, shape);
 }
 
@@ -253,7 +294,7 @@ TEST_F(NNGradTest, AvgPool3DGradHelper) {
   RunTest(x, x_shape, y, y_shape);
 }
 
-TEST_F(NNGradTest, LRN){
+TEST_F(NNGradTest, LRN) {
   TensorShape x_shape({1, 1, 2, 1});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(x_shape));
   auto y = LRN(scope_, x);

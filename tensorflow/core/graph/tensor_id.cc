@@ -25,7 +25,7 @@ namespace tensorflow {
 TensorId::TensorId(const SafeTensorId& id) : TensorId(id.first, id.second) {}
 
 SafeTensorId::SafeTensorId(const TensorId& id)
-    : SafeTensorId(id.first.ToString(), id.second) {}
+    : SafeTensorId(string(id.first), id.second) {}
 
 TensorId ParseTensorName(const string& name) {
   return ParseTensorName(StringPiece(name.data(), name.size()));

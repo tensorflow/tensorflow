@@ -82,7 +82,7 @@ def CheckGradConfigsToTest():
 class DepthwiseConv2DTest(test.TestCase):
 
   # This is testing that depthwise_conv2d and depthwise_conv2d_native
-  # produce the same results.  It also tests that NCHW and NWHC
+  # produce the same results.  It also tests that NCHW and NHWC
   # formats agree, by comparing the depthwise_conv2d_native with
   # 'NCHW' format (with transposition) matches the 'NHWC' format using
   # the higher level interface.
@@ -114,7 +114,7 @@ class DepthwiseConv2DTest(test.TestCase):
     # Initializes the input and filter tensor with numbers incrementing from 1.
     x1 = [f * 1.0 for f in range(1, total_size_1 + 1)]
     x2 = [f * 1.0 for f in range(1, total_size_2 + 1)]
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu) as sess:
       with sess.graph._kernel_label_map({"DepthwiseConv2dNative": "neon"}):
         t1 = constant_op.constant(x1, shape=tensor_in_sizes)
         t1.set_shape(tensor_in_sizes)
@@ -123,7 +123,7 @@ class DepthwiseConv2DTest(test.TestCase):
       native_t1 = t1
       strides = [1, stride, stride, 1]
       if data_format == "NCHW":
-        # Transpose from NWHC input to NCHW
+        # Transpose from NHWC input to NCHW
         # Ex. [4, 5, 5, 48] to [4, 48, 5, 5]
         native_t1 = array_ops.transpose(t1, [0, 3, 1, 2])
         strides = [1, 1, stride, stride]
@@ -142,8 +142,8 @@ class DepthwiseConv2DTest(test.TestCase):
       conv_interface = nn_impl.depthwise_conv2d(
           t1, t2, strides=[1, stride, stride, 1], padding=padding)
 
-      native_result = sess.run(conv_native)
-      interface_result = sess.run(conv_interface)
+      native_result = self.evaluate(conv_native)
+      interface_result = self.evaluate(conv_interface)
 
     print("depthwise conv_2d: ", tensor_in_sizes, "*", filter_in_sizes,
           ", stride:", stride, ", padding: ", padding, ", max diff: ",
@@ -204,14 +204,14 @@ class DepthwiseConv2DTest(test.TestCase):
     # numbers from 1.
     x1 = [f * 1.0 for f in range(1, total_size_1 + 1)]
     x2 = [f * 1.0 for f in range(1, total_size_2 + 1)]
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu) as sess:
       with sess.graph._kernel_label_map({"DepthwiseConv2dNative": "neon"}):
         t1 = constant_op.constant(x1, shape=tensor_in_sizes)
         t1.set_shape(tensor_in_sizes)
         t2 = constant_op.constant(x2, shape=filter_in_sizes)
         conv = nn_ops.depthwise_conv2d_native(
             t1, t2, strides=[1, stride, stride, 1], padding=padding)
-        value = sess.run(conv)
+        value = self.evaluate(conv)
     print("value = ", value)
     self.assertAllClose(expected, np.ravel(value), 1e-5)
     self.assertShapeEqual(value, conv)

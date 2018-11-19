@@ -19,13 +19,14 @@ limitations under the License.
 #include <map>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -69,7 +70,7 @@ class IrArray {
 
     // Constructs an index from multi-dimensional index "multidim". The linear
     // index is set to nullptr.
-    explicit Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
+    explicit Index(absl::Span<llvm::Value* const> multidim,
                    llvm::Type* index_ty = nullptr)
         : multidim_(multidim.begin(), multidim.end()) {
       if (size() == 0) {
@@ -81,32 +82,39 @@ class IrArray {
         }
       }
       CHECK_NE(index_type_, nullptr);
-      CHECK(c_all_of(multidim, [&](llvm::Value* v) {
+      CHECK(absl::c_all_of(multidim, [&](llvm::Value* v) {
         return index_type_ == v->getType();
       }));
     }
 
     // Constructs an index from linear index "linear" and computes the
-    // multi-dimensional index from "linear" and "shape". "ir_builder" is the IR
+    // multi-dimensional index from "linear" and "shape". "b" is the IR
     // builder to emit the index of each dimension in the multi-dimensional
     // index.
     //
     // Precondition: "shape" has a layout.
-    Index(llvm::Value* linear, const Shape& shape,
-          llvm::IRBuilder<>* ir_builder);
+    Index(llvm::Value* linear, const Shape& shape, llvm::IRBuilder<>* b);
 
     // Constructs an index from the given multi-dimensional index and the shape
     // that it indexes into.
     //
     // Precondition: "shape" has a layout.
-    Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
-          const Shape& shape, llvm::IRBuilder<>* ir_builder);
+    Index(absl::Span<llvm::Value* const> multidim, const Shape& shape,
+          llvm::IRBuilder<>* b);
 
     // Constructs an index from both a multi-dimensional index and a linear
     // index. "shape" has the same meaning as that in the constructor that takes
     // only a linear index.
-    Index(tensorflow::gtl::ArraySlice<llvm::Value*> multidim,
-          llvm::Value* linear, const Shape& shape);
+    Index(absl::Span<llvm::Value* const> multidim, llvm::Value* linear,
+          const Shape& shape);
+
+    // Returns an index that adds `addend` to the given `dim` of the object.
+    Index AddOffsetToDim(llvm::Value* addend, int64 dim,
+                         llvm::IRBuilder<>* b) const {
+      IrArray::Index index = *this;
+      index[dim] = b->CreateAdd(index[dim], addend);
+      return index;
+    }
 
     const std::vector<llvm::Value*>& multidim() const { return multidim_; }
     llvm::Value* linear() const { return linear_; }
@@ -145,17 +153,15 @@ class IrArray {
     // by starting indices `starts` and stride values `strides`.
     //
     // Precondition: "this" is an index into a slice whose shape is `shape`.
-    Index SourceIndexOfSlice(const Shape& shape,
-                             tensorflow::gtl::ArraySlice<int64> starts,
-                             tensorflow::gtl::ArraySlice<int64> strides,
+    Index SourceIndexOfSlice(const Shape& shape, absl::Span<const int64> starts,
+                             absl::Span<const int64> strides,
                              llvm::IRBuilder<>* builder) const;
 
     // Given that "this" is the target index of a transpose from `operand_shape`
     // to `shape` with the given dimension mapping, returns the source index.
-    Index SourceIndexOfTranspose(
-        const Shape& shape, const Shape& operand_shape,
-        tensorflow::gtl::ArraySlice<int64> dimension_mapping,
-        llvm::IRBuilder<>* builder) const;
+    Index SourceIndexOfTranspose(const Shape& shape, const Shape& operand_shape,
+                                 absl::Span<const int64> dimension_mapping,
+                                 llvm::IRBuilder<>* builder) const;
 
     // Given that "this" is the target index of a bitcast from `operand_shape`
     // to `shape`, returns the source index.
@@ -164,14 +170,13 @@ class IrArray {
 
     // Given that "this" is the target index of a broadcast from `operand_shape`
     // to `shape` with the given dimension mapping, returns the source index.
-    Index SourceIndexOfBroadcast(
-        const Shape& shape, const Shape& operand_shape,
-        tensorflow::gtl::ArraySlice<int64> dimension_mapping,
-        llvm::IRBuilder<>* builder) const;
+    Index SourceIndexOfBroadcast(const Shape& shape, const Shape& operand_shape,
+                                 absl::Span<const int64> dimension_mapping,
+                                 llvm::IRBuilder<>* builder) const;
 
     // Linearizes the index into the given shape, i.e. reshapes it to rank-1 and
     // returns the index into the sole dimension 0 of the new shape.
-    llvm::Value* Linearize(tensorflow::gtl::ArraySlice<int64> dimensions,
+    llvm::Value* Linearize(absl::Span<const int64> dimensions,
                            llvm::IRBuilder<>* builder) const;
 
     llvm::Type* GetType() const { return index_type_; }
@@ -191,7 +196,7 @@ class IrArray {
     }
 
     void Delinearize(std::vector<llvm::Value*>* multidim, llvm::Value* linear,
-                     const Shape& shape, llvm::IRBuilder<>* ir_builder) const;
+                     const Shape& shape, llvm::IRBuilder<>* b) const;
 
     std::vector<llvm::Value*> multidim_;
 
@@ -240,9 +245,8 @@ class IrArray {
   //
   // The optional name is useful for debugging when looking at
   // the emitted LLVM IR.
-  llvm::Value* EmitArrayElementAddress(const Index& index,
-                                       llvm::IRBuilder<>* ir_builder,
-                                       tensorflow::StringPiece name = "") const;
+  llvm::Value* EmitArrayElementAddress(const Index& index, llvm::IRBuilder<>* b,
+                                       absl::string_view name = "") const;
 
   // Attach metadata this IrArray instance knows about to "instruction".
   void AnnotateLoadStoreInstructionWithMetadata(
@@ -255,18 +259,16 @@ class IrArray {
   //
   // The optional name is useful for debugging when looking at
   // the emitted LLVM IR.
-  llvm::Value* EmitReadArrayElement(const Index& index,
-                                    llvm::IRBuilder<>* ir_builder,
-                                    tensorflow::StringPiece name = "") const;
+  llvm::Value* EmitReadArrayElement(const Index& index, llvm::IRBuilder<>* b,
+                                    absl::string_view name = "") const;
 
   // Emit IR to write the given value to the array element at the given index.
   void EmitWriteArrayElement(const Index& index, llvm::Value* value,
-                             llvm::IRBuilder<>* ir_builder) const;
+                             llvm::IRBuilder<>* b) const;
 
   // Returns a new IrArray whose shape is "new_shape" and base pointer is a
   // bitcast of the base pointer of "this" IrArray.
-  IrArray CastToShape(const Shape& new_shape,
-                      llvm::IRBuilder<>* ir_builder) const;
+  IrArray CastToShape(const Shape& new_shape, llvm::IRBuilder<>* b) const;
 
   void AddAliasScopeMetadata(llvm::MDNode* alias_scope) {
     CHECK_NE(alias_scope, nullptr);
@@ -312,7 +314,7 @@ class IrArray {
   // Bumps the "which_dimension" value within the provided index by the provided
   // addend.
   static Index BumpIndex(const Index& index, int64 which_dimension,
-                         int64 addend, llvm::IRBuilder<>* ir_builder);
+                         int64 addend, llvm::IRBuilder<>* b);
 
  private:
   // Add the specified LLVM IR metadata to loads/stores associated with this

@@ -27,7 +27,7 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import saver
+from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import training as train
 
 __all__ = [
@@ -40,7 +40,7 @@ __all__ = [
 def _get_checkpoint_filename(filepattern):
   """Returns checkpoint filename given directory or specific filepattern."""
   if gfile.IsDirectory(filepattern):
-    return saver.latest_checkpoint(filepattern)
+    return checkpoint_management.latest_checkpoint(filepattern)
   return filepattern
 
 

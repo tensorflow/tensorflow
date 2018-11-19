@@ -12,10 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMMON_RUNTIME_COLLECTIVE_PARAM_RESOLVER_LOCAL_H_
-#define TENSORFLOW_COMMON_RUNTIME_COLLECTIVE_PARAM_RESOLVER_LOCAL_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_COLLECTIVE_PARAM_RESOLVER_LOCAL_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_COLLECTIVE_PARAM_RESOLVER_LOCAL_H_
 
+#include <functional>
+#include <memory>
+#include <set>
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -53,6 +57,9 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
                              const StatusCallback& done) override;
 
  protected:
+  // For access to InstanceRec and CompleteDefaultRanking.
+  friend class CollectiveParamResolverLocalTest;
+
   // Used to complete/verify CollGroup.
   struct GroupRec {
     CollGroupParams group;
@@ -79,6 +86,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
 
   // Used to complete/verify CollInstance.
   struct InstanceRec;
+
   typedef std::function<void(InstanceRec*)> IRConsumer;
   struct InstanceRec {
     // This structure has two mutexes so that a possibly long
@@ -212,10 +220,6 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   void CallbackWithStatus(const InstanceRecCallback& done, InstanceRec* irec)
       LOCKS_EXCLUDED(irec->out_mu);
 
-  friend class CollectiveParamResolverLocalTest;
-  static void GenerateSubdivPerms(const string& device, int source_rank,
-                                  CollectiveParams* cp);
-
   const DeviceMgr* dev_mgr_;
   DeviceResolverInterface* dev_resolver_;  // Not owned.
   string task_name_;
@@ -229,4 +233,4 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_COLLECTIVE_PARAM_RESOLVER_LOCAL_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_COLLECTIVE_PARAM_RESOLVER_LOCAL_H_

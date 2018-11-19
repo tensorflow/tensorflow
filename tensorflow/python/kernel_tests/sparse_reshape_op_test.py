@@ -77,17 +77,17 @@ class SparseReshapeTest(test.TestCase):
       sparse_ops.sparse_reshape(sp_input, shape=(-1, 7))
 
   def testSameShape(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(input_val, [5, 6])
 
-      output_val = sess.run(sp_output)
+      output_val = self.evaluate(sp_output)
       self.assertAllEqual(output_val.indices, input_val.indices)
       self.assertAllEqual(output_val.values, input_val.values)
       self.assertAllEqual(output_val.dense_shape, input_val.dense_shape)
 
   def testFeedSameShape(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(sp_input, [5, 6])
@@ -98,7 +98,7 @@ class SparseReshapeTest(test.TestCase):
       self.assertAllEqual(output_val.dense_shape, input_val.dense_shape)
 
   def testWorksWellWithTfShape(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       shape = array_ops.shape(sp_input)  # tf.shape generates int32 output
@@ -110,7 +110,7 @@ class SparseReshapeTest(test.TestCase):
       self.assertAllEqual(output_val.dense_shape, input_val.dense_shape)
 
   def testFeedSameShapeWithInferredDim(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(sp_input, [-1, 6])
@@ -121,7 +121,7 @@ class SparseReshapeTest(test.TestCase):
       self.assertAllEqual(output_val.dense_shape, input_val.dense_shape)
 
   def testFeedNewShapeSameRank(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(sp_input, [3, 10])
@@ -134,7 +134,7 @@ class SparseReshapeTest(test.TestCase):
       self.assertAllEqual(output_val.dense_shape, [3, 10])
 
   def testFeedNewShapeSameRankWithInferredDim(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(sp_input, [3, -1])
@@ -147,11 +147,11 @@ class SparseReshapeTest(test.TestCase):
       self.assertAllEqual(output_val.dense_shape, [3, 10])
 
   def testUpRank(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(input_val, [2, 3, 5])
 
-      output_val = sess.run(sp_output)
+      output_val = self.evaluate(sp_output)
       self.assertAllEqual(output_val.indices,
                           np.array([[0, 0, 0], [0, 1, 1], [0, 1, 4], [0, 2, 0],
                                     [1, 1, 0], [1, 1, 1]]))
@@ -159,7 +159,7 @@ class SparseReshapeTest(test.TestCase):
       self.assertAllEqual(output_val.dense_shape, [2, 3, 5])
 
   def testFeedUpRank(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(sp_input, [2, 3, 5])
@@ -172,7 +172,7 @@ class SparseReshapeTest(test.TestCase):
       self.assertAllEqual(output_val.dense_shape, [2, 3, 5])
 
   def testFeedUpRankWithInferredDim(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(sp_input, [2, -1, 5])
@@ -185,7 +185,7 @@ class SparseReshapeTest(test.TestCase):
       self.assertAllEqual(output_val.dense_shape, [2, 3, 5])
 
   def testFeedDownRank(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_2x3x4()
       sp_output = sparse_ops.sparse_reshape(sp_input, [6, 4])
@@ -198,7 +198,7 @@ class SparseReshapeTest(test.TestCase):
       self.assertAllEqual(output_val.dense_shape, [6, 4])
 
   def testFeedDownRankWithInferredDim(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_2x3x4()
       sp_output = sparse_ops.sparse_reshape(sp_input, [6, -1])
@@ -211,7 +211,7 @@ class SparseReshapeTest(test.TestCase):
       self.assertAllEqual(output_val.dense_shape, [6, 4])
 
   def testFeedMultipleInferredDims(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(sp_input, [4, -1, -1])
@@ -225,7 +225,7 @@ class SparseReshapeTest(test.TestCase):
       sparse_ops.sparse_reshape(sp_input, [4, 7])
 
   def testFeedMismatchedSizes(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(sp_input, [4, 7])
@@ -234,7 +234,7 @@ class SparseReshapeTest(test.TestCase):
         sess.run(sp_output, {sp_input: input_val})
 
   def testFeedMismatchedSizesWithInferredDim(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       sp_input = self._SparseTensorPlaceholder()
       input_val = self._SparseTensorValue_5x6()
       sp_output = sparse_ops.sparse_reshape(sp_input, [4, -1])
@@ -242,7 +242,7 @@ class SparseReshapeTest(test.TestCase):
         sess.run(sp_output, {sp_input: input_val})
 
   def testFeedPartialShapes(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       # Incorporate new rank into shape information if known
       sp_input = self._SparseTensorPlaceholder()
       sp_output = sparse_ops.sparse_reshape(sp_input, [2, 3, 5])
@@ -267,7 +267,7 @@ class SparseReshapeTest(test.TestCase):
       self.assertListEqual(sp_output.dense_shape.get_shape().as_list(), [None])
 
   def testFeedDenseReshapeSemantics(self):
-    with self.test_session(use_gpu=False) as sess:
+    with self.session(use_gpu=False) as sess:
       # Compute a random rank-5 initial shape and new shape, randomly sparsify
       # it, and check that the output of SparseReshape has the same semantics
       # as a dense reshape.

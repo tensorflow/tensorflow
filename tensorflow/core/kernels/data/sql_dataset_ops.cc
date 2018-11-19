@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include <utility>
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/kernels/data/sql/driver_manager.h"
 #include "tensorflow/core/kernels/data/sql/query_connection.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
@@ -24,9 +24,10 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
-// See documentation in ../ops/dataset_ops.cc for a high-level
+
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following ops.
 
 class SqlDatasetOp : public DatasetOpKernel {
@@ -75,13 +76,13 @@ class SqlDatasetOp : public DatasetOpKernel {
   }
 
  private:
-  class Dataset : public GraphDatasetBase {
+  class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const string& driver_name,
             const string& data_source_name, const string& query,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes)
-        : GraphDatasetBase(ctx),
+        : DatasetBase(DatasetContext(ctx)),
           driver_name_(driver_name),
           data_source_name_(data_source_name),
           query_(query),
@@ -105,7 +106,8 @@ class SqlDatasetOp : public DatasetOpKernel {
     string DebugString() const override { return "SqlDatasetOp::Dataset"; }
 
    protected:
-    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+    Status AsGraphDefInternal(SerializationContext* ctx,
+                              DatasetGraphDefBuilder* b,
                               Node** output) const override {
       Node* driver_name_node;
       TF_RETURN_IF_ERROR(b->AddScalar(driver_name_, &driver_name_node));
@@ -145,6 +147,11 @@ class SqlDatasetOp : public DatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeSourceNode(std::move(args));
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (query_connection_initialized_) {
@@ -210,5 +217,5 @@ class SqlDatasetOp : public DatasetOpKernel {
 REGISTER_KERNEL_BUILDER(Name("SqlDataset").Device(DEVICE_CPU), SqlDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

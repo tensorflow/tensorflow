@@ -18,8 +18,8 @@ limitations under the License.
 #include <initializer_list>
 #include <numeric>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 namespace {
@@ -27,8 +27,7 @@ namespace {
 // Given an Array4D and a 4-tuple index, computes the linear index into the
 // array idx represents.
 template <typename T>
-int64 Array4DLinearIndex(const Array4D<T>& arr,
-                         tensorflow::gtl::ArraySlice<int64> idx) {
+int64 Array4DLinearIndex(const Array4D<T>& arr, absl::Span<const int64> idx) {
   EXPECT_EQ(4, idx.size());
   return (idx[3] + idx[2] * arr.n4() + idx[1] * arr.n3() * arr.n4() +
           idx[0] * arr.n2() * arr.n3() * arr.n4());
@@ -51,9 +50,8 @@ TEST(Array4dTest, FillCtor) {
   EXPECT_EQ(fullof7.n3(), 4);
   EXPECT_EQ(fullof7.n4(), 5);
 
-  fullof7.Each([](tensorflow::gtl::ArraySlice<int64> idx, int* cell) {
-    EXPECT_EQ(*cell, 7);
-  });
+  fullof7.Each(
+      [](absl::Span<const int64> idx, int* cell) { EXPECT_EQ(*cell, 7); });
 }
 
 TEST(Array4dTest, ContainerCtor) {
@@ -69,7 +67,7 @@ TEST(Array4dTest, ContainerCtor) {
   EXPECT_EQ(arr.n3(), 4);
   EXPECT_EQ(arr.n4(), 5);
 
-  arr.Each([&arr](tensorflow::gtl::ArraySlice<int64> idx, int* cell) {
+  arr.Each([&arr](absl::Span<const int64> idx, int* cell) {
     EXPECT_EQ(*cell, Array4DLinearIndex(arr, idx));
   });
 }
@@ -129,21 +127,19 @@ TEST(Array3dTest, InitializerListCtorHalf) {
 
 TEST(Array4dTest, Fill) {
   Array4D<int> fullof7(2, 3, 4, 5, 7);
-  fullof7.Each([](tensorflow::gtl::ArraySlice<int64> idx, int* cell) {
-    EXPECT_EQ(*cell, 7);
-  });
+  fullof7.Each(
+      [](absl::Span<const int64> idx, int* cell) { EXPECT_EQ(*cell, 7); });
 
   fullof7.Fill(11);
-  fullof7.Each([](tensorflow::gtl::ArraySlice<int64> idx, int* cell) {
-    EXPECT_EQ(*cell, 11);
-  });
+  fullof7.Each(
+      [](absl::Span<const int64> idx, int* cell) { EXPECT_EQ(*cell, 11); });
 }
 
 TEST(Array4dTest, FillWithMultiples) {
   Array4D<float> arr(2, 3, 4, 5);
   arr.FillWithMultiples(2.0f);
 
-  arr.Each([&arr](tensorflow::gtl::ArraySlice<int64> idx, float* cell) {
+  arr.Each([&arr](absl::Span<const int64> idx, float* cell) {
     EXPECT_EQ(*cell, 2.0f * Array4DLinearIndex(arr, idx));
   });
 }

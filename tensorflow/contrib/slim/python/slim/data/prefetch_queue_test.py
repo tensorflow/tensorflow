@@ -37,7 +37,7 @@ from tensorflow.python.training import queue_runner_impl
 class PrefetchQueueTest(test.TestCase):
 
   def testOneThread(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       batch_size = 10
       image_size = 32
       num_batches = 5
@@ -74,7 +74,7 @@ class PrefetchQueueTest(test.TestCase):
         thread.join()
 
   def testMultiThread(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       batch_size = 10
       image_size = 32
       num_batches = 5
@@ -114,7 +114,7 @@ class PrefetchQueueTest(test.TestCase):
         thread.join()
 
   def testMultipleDequeue(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       batch_size = 10
       image_size = 32
       num_batches = 4
@@ -162,7 +162,7 @@ class PrefetchQueueTest(test.TestCase):
         prefetch_queue.prefetch_queue([variable_tensor])
 
   def testDynamicPad(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Create 3 tensors of variable but compatible shapes.
       var_shape = [None, 2]
       p1 = constant_op.constant([[1, 2], [3, 4]])

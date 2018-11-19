@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 
+#include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -26,7 +28,7 @@ namespace gpu {
 
 namespace {
 
-bool IsFusile(const HloInstruction& hlo) {
+bool IsFusible(const HloInstruction& hlo) {
   // Don't fuse get-tuple-element on GPU: We can, but it's slower than not
   // fusing.  We never generate kernels for unfused GTEs.  Instead, if an
   // unfused GTE is an input to a kernel (including a fusion kernel), we
@@ -41,10 +43,12 @@ bool IsFusile(const HloInstruction& hlo) {
          hlo.opcode() == HloOpcode::kDynamicUpdateSlice ||
          hlo.opcode() == HloOpcode::kFusion ||
          hlo.opcode() == HloOpcode::kGather ||
-         hlo.opcode() == HloOpcode::kPad ||
+         hlo.opcode() == HloOpcode::kIota || hlo.opcode() == HloOpcode::kPad ||
          hlo.opcode() == HloOpcode::kReduce ||
          hlo.opcode() == HloOpcode::kReduceWindow ||
          hlo.opcode() == HloOpcode::kReshape ||
+         hlo.opcode() == HloOpcode::kReverse ||
+         hlo.opcode() == HloOpcode::kScatter ||
          hlo.opcode() == HloOpcode::kSlice ||
          hlo.opcode() == HloOpcode::kTranspose;
 }
@@ -71,6 +75,67 @@ bool IsIEEEFloatingPointScalarConstant(const HloInstruction* constant) {
     default:
       return InstructionFusion::IsExpensive(instruction);
   }
+}
+
+// This function limits the maximum number of operands to a fusion.
+//
+// There's a cap on how many parameters we can pass to a CUDA kernel, but
+// exactly what that limit is is hazy, as it depends on (among other things) how
+// much GPU constant memory is in use for other purposes.
+//
+// Moreover, we don't even know at the point that we're running fusion how many
+// arguments the CUDA kernel for a fusion node will have: It depends on buffer
+// assignment, where we will decide which of the fusion's operands live in XLA's
+// big temp buffer versus in other allocations.
+//
+// As a heuristic, we simply cap the number of fusion operands plus outputs at
+// kMaxOperandsAndOutputsPerFusion.  This puts an upper bound on the number of
+// parameters to the kernel, working around the correctness problem.
+//
+// This limit is also often good for performance.  In a fusion with many
+// operands, each GPU thread likely has to do a lot of work, and so possibly
+// uses a lot of registers, thus limiting occupancy.
+/*static*/ bool GpuInstructionFusion::FusionWouldBeTooLarge(
+    const HloInstruction* a, const HloInstruction* b) {
+  // Compute the number of outputs of the (possibly multi-output) fusion node
+  // we're considering creating.
+  //
+  // This isn't precise; we may be off by one if
+  //  - We're creating a multi-output fusion out of two non-MOFs.  Creating a
+  //    MOF adds a new buffer, namely, the tuple buffer.
+  //  - We're merging two MOFs.  In this case, we should count the tuple buffer
+  //    only once.
+  //  - WLOG there's an edge from `a` to `b` and `b` is the only consumer of
+  //    `a`.  In this case the result of `a` is not part of the output of the
+  //    fusion.
+  //
+  // But because this is a heuristic and our limit
+  // kMaxOperandsAndOutputsPerFusion is a large value (so +/- 1 doesn't make a
+  // big difference), we ignore this small inaccuracy in favor of simplicity.
+  int64 num_output_buffers = ShapeUtil::SubshapeCount(a->shape()) +
+                             ShapeUtil::SubshapeCount(b->shape());
+
+  // The new fusion will have no more operands and outputs than
+  //   producer_operands + consumer_operands - 1 + num_output_buffers
+  // (minus one because we may be fusing a producer->consumer edge between `a`
+  // and `b`).
+  //
+  // This fact may be enough to let us avoid having to compute the true total
+  // number of operands, which can be expensive.
+  if (a->operand_count() + b->operand_count() - 1 + num_output_buffers <=
+      kMaxOperandsAndOutputsPerFusion) {
+    return false;
+  }
+
+  // Compute the precise number of operands to the new fusion.
+  absl::flat_hash_set<const HloInstruction*> operands(a->operands().begin(),
+                                                      a->operands().end());
+  operands.insert(b->operands().begin(), b->operands().end());
+  // If there's an edge between `a` and `b`, don't count it: We're fusing that
+  // producer -> consumer relationship.
+  operands.erase(a);
+  operands.erase(b);
+  return operands.size() + num_output_buffers > kMaxOperandsAndOutputsPerFusion;
 }
 
 bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
@@ -115,6 +180,10 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
           IsIEEEFloatingPointScalarConstant(alpha->operand(0))) {
         return true;
       }
+    } else if (consumer->operand_count() == 2 &&
+               consumer->opcode() == HloOpcode::kAdd) {
+      // Fuse a bias add into the output of the dot.
+      return true;
     }
   }
 
@@ -141,6 +210,7 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
              IsIEEEFloatingPointScalarConstant(producer->operand(0)) &&
              fused_parameter_users[0]->opcode() == HloOpcode::kMultiply;
     }
+    return false;
   }
 
   // Other output fusions are not currently supported on GPUs.
@@ -156,6 +226,18 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   // Do not fuse to-vector reduction into other consumers. They should be
   // unfused or the root of a kInput fusion.
   if (IsReductionToVector(*producer)) {
+    return false;
+  }
+
+  // Scatter is only supported at the root of a kInput fusion.
+  if (producer->opcode() == HloOpcode::kScatter) {
+    return false;
+  }
+
+  // Do not fuse into reduce input fusions if the resulting kernel would suffer
+  // from poor data locality (due to unfriendly input layouts).
+  if (IsInputFusibleReduction(*consumer) &&
+      !LayoutsAreReduceInputFusionFriendly(*producer, *consumer)) {
     return false;
   }
 
@@ -175,16 +257,26 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
-  // Fuse scalar constants into loop fusion nodes, this reduces the number of
+  // Fuse scalar constants into loop fusion nodes. This reduces the number of
   // parameters and makes matching scalar broadcasts easier.
-  if (ShapeUtil::IsEffectiveScalar(producer->shape()) &&
-      consumer->opcode() == HloOpcode::kFusion &&
-      producer->opcode() == HloOpcode::kConstant) {
-    return true;
+  //
+  // Don't fuse other constants: Unfused constants in GPU land can be
+  // represented as an external constant (i.e. not emitted in LLVM IR / PTX),
+  // but fused constants are handled by shrared CPU/GPU code and always emitted
+  // in the IR/PTX.  The external constant representation makes for faster
+  // compiles and significantly smaller assembly code.
+  if (producer->opcode() == HloOpcode::kConstant) {
+    return ShapeUtil::IsEffectiveScalar(producer->shape()) &&
+           consumer->opcode() == HloOpcode::kFusion;
   }
 
-  return IsFusile(*producer) && IsFusile(*consumer) &&
-         InstructionFusion::ShouldFuse(consumer, operand_index);
+  if (!IsFusible(*producer) || !IsFusible(*consumer) ||
+      !InstructionFusion::ShouldFuse(consumer, operand_index)) {
+    return false;
+  }
+
+  // We put this check last because it's potentially expensive.
+  return !FusionWouldBeTooLarge(consumer, producer);
 }
 
 bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,
@@ -209,7 +301,8 @@ bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,
 
 HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
-  if (IsReductionToVector(*consumer)) {
+  if (IsReductionToVector(*consumer) ||
+      consumer->opcode() == HloOpcode::kScatter) {
     return HloInstruction::FusionKind::kInput;
   }
   if (producer->opcode() == HloOpcode::kDot ||

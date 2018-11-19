@@ -79,6 +79,10 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
 
   from tensorflow.python.keras import __version__ as keras_version  # pylint: disable=g-import-not-at-top
 
+  # TODO(psv) Add warning when we save models that contain non-serializable
+  # entities like metrics added using `add_metric` and losses added using
+  # `add_loss.`
+
   if not isinstance(filepath, h5py.File):
     # If file exists and should not be overwritten.
     if not overwrite and os.path.isfile(filepath):
@@ -126,7 +130,8 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
                     'config': model.optimizer.get_config()
                 },
                 'loss': model.loss,
-                'metrics': model.metrics,
+                'metrics': model._compile_metrics,
+                'weighted_metrics': model._compile_weighted_metrics,
                 'sample_weight_mode': model.sample_weight_mode,
                 'loss_weights': model.loss_weights,
             },
@@ -246,6 +251,8 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
       # Recover loss functions and metrics.
       loss = convert_custom_objects(training_config['loss'])
       metrics = convert_custom_objects(training_config['metrics'])
+      weighted_metrics = convert_custom_objects(
+          training_config.get('weighted_metrics', None))
       sample_weight_mode = training_config['sample_weight_mode']
       loss_weights = training_config['loss_weights']
 
@@ -254,28 +261,39 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
           optimizer=optimizer,
           loss=loss,
           metrics=metrics,
+          weighted_metrics=weighted_metrics,
           loss_weights=loss_weights,
           sample_weight_mode=sample_weight_mode)
 
       # Set optimizer weights.
       if 'optimizer_weights' in f:
         # Build train function (to get weight updates).
-        model._make_train_function()
-        optimizer_weights_group = f['optimizer_weights']
-        optimizer_weight_names = [
-            n.decode('utf8')
-            for n in optimizer_weights_group.attrs['weight_names']
-        ]
-        optimizer_weight_values = [
-            optimizer_weights_group[n] for n in optimizer_weight_names
-        ]
-        try:
-          model.optimizer.set_weights(optimizer_weight_values)
-        except ValueError:
-          logging.warning('Error in loading the saved optimizer '
-                          'state. As a result, your model is '
-                          'starting with a freshly initialized '
-                          'optimizer.')
+        # Models that aren't graph networks must wait until they are called
+        # with data to _make_train_function() and so can't load optimizer
+        # weights.
+        if model._is_graph_network:  # pylint: disable=protected-access
+          model._make_train_function()
+          optimizer_weights_group = f['optimizer_weights']
+          optimizer_weight_names = [
+              n.decode('utf8')
+              for n in optimizer_weights_group.attrs['weight_names']
+          ]
+          optimizer_weight_values = [
+              optimizer_weights_group[n] for n in optimizer_weight_names
+          ]
+          try:
+            model.optimizer.set_weights(optimizer_weight_values)
+          except ValueError:
+            logging.warning('Error in loading the saved optimizer '
+                            'state. As a result, your model is '
+                            'starting with a freshly initialized '
+                            'optimizer.')
+        else:
+          logging.warning('Sequential models without an `input_shape` '
+                          'passed to the first layer cannot reload their '
+                          'optimizer state. As a result, your model is'
+                          'starting with a freshly initialized optimizer.')
+
   finally:
     if opened_new_file:
       f.close()

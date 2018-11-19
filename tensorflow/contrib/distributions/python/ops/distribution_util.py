@@ -18,15 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib import linalg
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.ops.distributions import distribution as distribution_lib
 
 # The following two lines are redundant, in a sense. The first enables
@@ -315,7 +316,7 @@ def shapes_from_loc_and_scale(loc, scale, name="shapes_from_loc_and_scale"):
 
     # Static check that event shapes match.
     if loc is not None:
-      loc_event_size = loc.get_shape()[-1].value
+      loc_event_size = tensor_shape.dimension_value(loc.get_shape()[-1])
       if loc_event_size is not None and event_size_const is not None:
         if loc_event_size != 1 and loc_event_size != event_size_const:
           raise ValueError(

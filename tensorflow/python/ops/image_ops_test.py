@@ -84,7 +84,7 @@ class RGBToHSVTest(test_util.TensorFlowTestCase):
       with self.test_session(use_gpu=True):
         hsv = image_ops.rgb_to_hsv(rgb_np)
         rgb = image_ops.hsv_to_rgb(hsv)
-        rgb_tf = rgb.eval()
+        rgb_tf = self.evaluate(rgb)
       self.assertAllClose(rgb_tf, rgb_np)
 
 
@@ -173,7 +173,7 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.rgb_to_grayscale(x_tf)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
   def testBasicRGBToGrayscale(self):
@@ -195,7 +195,7 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.grayscale_to_rgb(x_tf)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
     # 3-D input with no batch dimension.
@@ -205,7 +205,7 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.grayscale_to_rgb(x_tf)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
   def testShapeInference(self):
@@ -238,21 +238,21 @@ class AdjustGamma(test_util.TensorFlowTestCase):
 
   def test_adjust_gamma_one(self):
     """Same image should be returned for gamma equal to one"""
-    with self.test_session():
+    with self.cached_session():
       x_data = np.random.uniform(0, 255, (8, 8))
       x_np = np.array(x_data, dtype=np.float32)
 
       x = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.adjust_gamma(x, gamma=1)
 
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       y_np = x_np
 
       self.assertAllClose(y_tf, y_np, 1e-6)
 
   def test_adjust_gamma_less_zero(self):
     """White image should be returned for gamma equal to zero"""
-    with self.test_session():
+    with self.cached_session():
       x_data = np.random.uniform(0, 255, (8, 8))
       x_np = np.array(x_data, dtype=np.float32)
 
@@ -270,7 +270,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
 
   def test_adjust_gamma_less_zero_tensor(self):
     """White image should be returned for gamma equal to zero"""
-    with self.test_session():
+    with self.cached_session():
       x_data = np.random.uniform(0, 255, (8, 8))
       x_np = np.array(x_data, dtype=np.float32)
 
@@ -281,7 +281,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
 
       err_msg = "Gamma should be a non-negative real number."
       try:
-        image.eval()
+        self.evaluate(image)
       except Exception as e:
         if err_msg not in str(e):
           raise
@@ -290,14 +290,14 @@ class AdjustGamma(test_util.TensorFlowTestCase):
 
   def test_adjust_gamma_zero(self):
     """White image should be returned for gamma equal to zero"""
-    with self.test_session():
+    with self.cached_session():
       x_data = np.random.uniform(0, 255, (8, 8))
       x_np = np.array(x_data, dtype=np.float32)
 
       x = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.adjust_gamma(x, gamma=0)
 
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
 
       dtype = x.dtype.as_numpy_dtype
       y_np = np.array([dtypes.dtype_range[dtype][1]] * x_np.size)
@@ -308,7 +308,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
   def test_adjust_gamma_less_one(self):
     """Verifying the output with expected results for gamma
     correction with gamma equal to half"""
-    with self.test_session():
+    with self.cached_session():
       x_np = np.arange(0, 255, 4, np.uint8).reshape(8, 8)
       y = image_ops.adjust_gamma(x_np, gamma=0.5)
       y_tf = np.trunc(y.eval())
@@ -329,7 +329,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
   def test_adjust_gamma_greater_one(self):
     """Verifying the output with expected results for gamma
     correction with gamma equal to two"""
-    with self.test_session():
+    with self.cached_session():
       x_np = np.arange(0, 255, 4, np.uint8).reshape(8, 8)
       y = image_ops.adjust_gamma(x_np, gamma=2)
       y_tf = np.trunc(y.eval())
@@ -360,7 +360,7 @@ class AdjustHueTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x = constant_op.constant(x_np, shape=x_shape)
       y = image_ops.adjust_hue(x, delta)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
   def testAdjustPositiveHue(self):
@@ -375,7 +375,7 @@ class AdjustHueTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x = constant_op.constant(x_np, shape=x_shape)
       y = image_ops.adjust_hue(x, delta)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
   def testBatchAdjustHue(self):
@@ -390,7 +390,7 @@ class AdjustHueTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x = constant_op.constant(x_np, shape=x_shape)
       y = image_ops.adjust_hue(x, delta)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
   def _adjustHueNp(self, x_np, delta_h):
@@ -415,7 +415,7 @@ class AdjustHueTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x = constant_op.constant(x_np)
       y = image_ops.adjust_hue(x, delta_h)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
     return y_tf
 
   def testAdjustRandomHue(self):
@@ -488,11 +488,11 @@ class FlipImageBenchmark(test.Benchmark):
             trainable=False,
             dtype=dtypes.float32)
         run_op = image_ops.flip_left_right(inputs)
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         for i in xrange(warmup_rounds + benchmark_rounds):
           if i == warmup_rounds:
             start = time.time()
-          sess.run(run_op)
+          self.evaluate(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
     tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
@@ -518,11 +518,11 @@ class FlipImageBenchmark(test.Benchmark):
             trainable=False,
             dtype=dtypes.float32)
         run_op = image_ops.random_flip_left_right(inputs)
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         for i in xrange(warmup_rounds + benchmark_rounds):
           if i == warmup_rounds:
             start = time.time()
-          sess.run(run_op)
+          self.evaluate(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
     tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
@@ -548,11 +548,11 @@ class FlipImageBenchmark(test.Benchmark):
             trainable=False,
             dtype=dtypes.float32)
         run_op = image_ops.random_flip_left_right(inputs)
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         for i in xrange(warmup_rounds + benchmark_rounds):
           if i == warmup_rounds:
             start = time.time()
-          sess.run(run_op)
+          self.evaluate(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
     tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
@@ -602,20 +602,19 @@ class AdjustHueBenchmark(test.Benchmark):
     if cpu_count is not None:
       config.inter_op_parallelism_threads = 1
       config.intra_op_parallelism_threads = cpu_count
-    with session.Session("", graph=ops.Graph(), config=config) as sess:
-      with ops.device(device):
-        inputs = variables.Variable(
-            random_ops.random_uniform(image_shape, dtype=dtypes.float32) * 255,
-            trainable=False,
-            dtype=dtypes.float32)
-        delta = constant_op.constant(0.1, dtype=dtypes.float32)
-        outputs = image_ops.adjust_hue(inputs, delta)
-        run_op = control_flow_ops.group(outputs)
-        sess.run(variables.global_variables_initializer())
-        for i in xrange(warmup_rounds + benchmark_rounds):
-          if i == warmup_rounds:
-            start = time.time()
-          sess.run(run_op)
+    with self.benchmark_session(config=config, device=device) as sess:
+      inputs = variables.Variable(
+          random_ops.random_uniform(image_shape, dtype=dtypes.float32) * 255,
+          trainable=False,
+          dtype=dtypes.float32)
+      delta = constant_op.constant(0.1, dtype=dtypes.float32)
+      outputs = image_ops.adjust_hue(inputs, delta)
+      run_op = control_flow_ops.group(outputs)
+      self.evaluate(variables.global_variables_initializer())
+      for i in xrange(warmup_rounds + benchmark_rounds):
+        if i == warmup_rounds:
+          start = time.time()
+        self.evaluate(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
     tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
@@ -646,21 +645,20 @@ class AdjustSaturationBenchmark(test.Benchmark):
     if cpu_count is not None:
       config.inter_op_parallelism_threads = 1
       config.intra_op_parallelism_threads = cpu_count
-    with session.Session("", graph=ops.Graph(), config=config) as sess:
-      with ops.device(device):
-        inputs = variables.Variable(
-            random_ops.random_uniform(image_shape, dtype=dtypes.float32) * 255,
-            trainable=False,
-            dtype=dtypes.float32)
-        delta = constant_op.constant(0.1, dtype=dtypes.float32)
-        outputs = image_ops.adjust_saturation(inputs, delta)
-        run_op = control_flow_ops.group(outputs)
-        sess.run(variables.global_variables_initializer())
-        for _ in xrange(warmup_rounds):
-          sess.run(run_op)
-        start = time.time()
-        for _ in xrange(benchmark_rounds):
-          sess.run(run_op)
+    with self.benchmark_session(config=config, device=device) as sess:
+      inputs = variables.Variable(
+          random_ops.random_uniform(image_shape, dtype=dtypes.float32) * 255,
+          trainable=False,
+          dtype=dtypes.float32)
+      delta = constant_op.constant(0.1, dtype=dtypes.float32)
+      outputs = image_ops.adjust_saturation(inputs, delta)
+      run_op = control_flow_ops.group(outputs)
+      self.evaluate(variables.global_variables_initializer())
+      for _ in xrange(warmup_rounds):
+        self.evaluate(run_op)
+      start = time.time()
+      for _ in xrange(benchmark_rounds):
+        self.evaluate(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
     tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
@@ -699,8 +697,8 @@ class ResizeBilinearBenchmark(test.Benchmark):
         deps = [resize_op]
       benchmark_op = control_flow_ops.group(*deps)
 
-    with session.Session() as sess:
-      sess.run(variables.global_variables_initializer())
+    with self.benchmark_session() as sess:
+      self.evaluate(variables.global_variables_initializer())
       results = self.run_op_benchmark(
           sess,
           benchmark_op,
@@ -747,8 +745,8 @@ class ResizeBicubicBenchmark(test.Benchmark):
         deps = [resize_op]
       benchmark_op = control_flow_ops.group(*deps)
 
-    with session.Session() as sess:
-      sess.run(variables.global_variables_initializer())
+    with self.benchmark_session() as sess:
+      self.evaluate(variables.global_variables_initializer())
       results = self.run_op_benchmark(
           sess,
           benchmark_op,
@@ -804,8 +802,8 @@ class ResizeAreaBenchmark(test.Benchmark):
         deps = [resize_op]
       benchmark_op = control_flow_ops.group(*deps)
 
-    with session.Session() as sess:
-      sess.run(variables.global_variables_initializer())
+    with self.benchmark_session() as sess:
+      self.evaluate(variables.global_variables_initializer())
       results = self.run_op_benchmark(
           sess,
           benchmark_op,
@@ -848,7 +846,7 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x = constant_op.constant(x_np, shape=x_shape)
       y = image_ops.adjust_saturation(x, saturation_factor)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
   def testTwiceSaturation(self):
@@ -863,7 +861,7 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x = constant_op.constant(x_np, shape=x_shape)
       y = image_ops.adjust_saturation(x, saturation_factor)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
   def testBatchSaturation(self):
@@ -878,7 +876,7 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x = constant_op.constant(x_np, shape=x_shape)
       y = image_ops.adjust_saturation(x, saturation_factor)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
   def _adjust_saturation(self, image, saturation_factor):
@@ -901,7 +899,7 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x = constant_op.constant(x_np, shape=x_shape)
       y = self._adjust_saturation(x, saturation_factor)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
   def testTwiceSaturationFused(self):
@@ -916,7 +914,7 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x = constant_op.constant(x_np, shape=x_shape)
       y = self._adjust_saturation(x, saturation_factor)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
   def _adjustSaturationNp(self, x_np, scale):
@@ -982,7 +980,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_left_right(image_ops.flip_left_right(x_tf))
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, x_np)
 
   def testInvolutionLeftRightWithBatch(self):
@@ -992,7 +990,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_left_right(image_ops.flip_left_right(x_tf))
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, x_np)
 
   def testLeftRight(self):
@@ -1003,7 +1001,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_left_right(x_tf)
       self.assertTrue(y.op.name.startswith("flip_left_right"))
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
   def testLeftRightWithBatch(self):
@@ -1017,7 +1015,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_left_right(x_tf)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
   def testRandomFlipLeftRight(self):
@@ -1033,7 +1031,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       count_flipped = 0
       count_unflipped = 0
       for _ in range(100):
-        y_tf = y.eval()
+        y_tf = self.evaluate(y)
         if y_tf[0][0] == 1:
           self.assertAllEqual(y_tf, x_np)
           count_unflipped += 1
@@ -1072,7 +1070,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       count_flipped = 0
       count_unflipped = 0
       for _ in range(100):
-        y_tf = y.eval()
+        y_tf = self.evaluate(y)
 
         # check every element of the batch
         for i in range(batch_size):
@@ -1098,7 +1096,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_up_down(image_ops.flip_up_down(x_tf))
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, x_np)
 
   def testInvolutionUpDownWithBatch(self):
@@ -1109,7 +1107,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_up_down(image_ops.flip_up_down(x_tf))
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, x_np)
 
   def testUpDown(self):
@@ -1120,7 +1118,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_up_down(x_tf)
       self.assertTrue(y.op.name.startswith("flip_up_down"))
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
   def testUpDownWithBatch(self):
@@ -1134,7 +1132,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_up_down(x_tf)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
   def testRandomFlipUpDown(self):
@@ -1150,7 +1148,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       count_flipped = 0
       count_unflipped = 0
       for _ in range(100):
-        y_tf = y.eval()
+        y_tf = self.evaluate(y)
         if y_tf[0][0] == 1:
           self.assertAllEqual(y_tf, x_np)
           count_unflipped += 1
@@ -1189,7 +1187,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       count_flipped = 0
       count_unflipped = 0
       for _ in range(100):
-        y_tf = y.eval()
+        y_tf = self.evaluate(y)
 
         # check every element of the batch
         for i in range(batch_size):
@@ -1215,7 +1213,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.transpose_image(image_ops.transpose_image(x_tf))
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, x_np)
 
   def testInvolutionTransposeWithBatch(self):
@@ -1226,7 +1224,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.transpose_image(image_ops.transpose_image(x_tf))
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, x_np)
 
   def testTranspose(self):
@@ -1237,7 +1235,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.transpose_image(x_tf)
       self.assertTrue(y.op.name.startswith("transpose_image"))
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
   def testTransposeWithBatch(self):
@@ -1252,7 +1250,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.transpose_image(x_tf)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
   def testPartialShapes(self):
@@ -1303,7 +1301,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       rotated = image
       for _ in xrange(4):
         rotated = image_ops.rot90(rotated)
-      self.assertAllEqual(image, rotated.eval())
+      self.assertAllEqual(image, self.evaluate(rotated))
 
   def testRot90GroupOrderWithBatch(self):
     image = np.arange(48, dtype=np.uint8).reshape([2, 2, 4, 3])
@@ -1311,7 +1309,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       rotated = image
       for _ in xrange(4):
         rotated = image_ops.rot90(rotated)
-      self.assertAllEqual(image, rotated.eval())
+      self.assertAllEqual(image, self.evaluate(rotated))
 
   def testRot90NumpyEquivalence(self):
     image = np.arange(24, dtype=np.uint8).reshape([2, 4, 3])
@@ -1337,7 +1335,7 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.adjust_contrast(x, contrast_factor)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllClose(y_tf, y_np, 1e-6)
 
   def testDoubleContrastUint8(self):
@@ -1392,7 +1390,7 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x = constant_op.constant(x_np)
       y = image_ops.adjust_contrast(x, contrast_factor)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
     return y_tf
 
   def testRandomContrast(self):
@@ -1410,6 +1408,14 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
       y_tf = self._adjustContrastTf(x_np, contrast_factor)
       self.assertAllClose(y_tf, y_np, rtol=1e-5, atol=1e-5)
 
+  def testContrastFactorShape(self):
+    x_shape = [1, 2, 2, 3]
+    x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
+    x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
+    with self.assertRaisesRegexp(
+        ValueError, 'Shape must be rank 0 but is rank 1'):
+      image_ops.adjust_contrast(x_np, [2.0])
+
 
 class AdjustBrightnessTest(test_util.TensorFlowTestCase):
 
@@ -1417,7 +1423,7 @@ class AdjustBrightnessTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.adjust_brightness(x, delta)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllClose(y_tf, y_np, 1e-6)
 
   def testPositiveDeltaUint8(self):
@@ -1474,7 +1480,7 @@ class PerImageWhiteningTest(test_util.TensorFlowTestCase):
       x = constant_op.constant(x_np, shape=x_shape)
       y = image_ops.per_image_standardization(x)
       self.assertTrue(y.op.name.startswith("per_image_standardization"))
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllClose(y_tf, y_np, atol=1e-4)
 
   def testUniformImage(self):
@@ -1482,8 +1488,18 @@ class PerImageWhiteningTest(test_util.TensorFlowTestCase):
     im = constant_op.constant(im_np)
     whiten = image_ops.per_image_standardization(im)
     with self.test_session(use_gpu=True):
-      whiten_np = whiten.eval()
+      whiten_np = self.evaluate(whiten)
       self.assertFalse(np.any(np.isnan(whiten_np)))
+
+  def testBatchWhitening(self):
+    imgs_np = np.random.uniform(0., 255., [4, 24, 24, 3])
+    whiten_np = [self._NumpyPerImageWhitening(img) for img in imgs_np]
+    with self.test_session(use_gpu=True):
+      imgs = constant_op.constant(imgs_np)
+      whiten = image_ops.per_image_standardization(imgs)
+      whiten_tf = self.evaluate(whiten)
+      for w_tf, w_np in zip(whiten_tf, whiten_np):
+        self.assertAllClose(w_tf, w_np, atol=1e-4)
 
 
 class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
@@ -1680,7 +1696,7 @@ class CentralCropTest(test_util.TensorFlowTestCase):
         with self.test_session(use_gpu=use_gpu):
           x = constant_op.constant(x_np, shape=x_shape)
           y = image_ops.central_crop(x, 1.0)
-          y_tf = y.eval()
+          y_tf = self.evaluate(y)
           self.assertAllEqual(y_tf, x_np)
           self.assertEqual(y.op.name, x.op.name)
 
@@ -1695,7 +1711,7 @@ class CentralCropTest(test_util.TensorFlowTestCase):
       with self.test_session(use_gpu=use_gpu):
         x = constant_op.constant(x_np, shape=x_shape)
         y = image_ops.central_crop(x, 0.5)
-        y_tf = y.eval()
+        y_tf = self.evaluate(y)
         self.assertAllEqual(y_tf, y_np)
         self.assertAllEqual(y_tf.shape, y_np.shape)
 
@@ -1711,7 +1727,7 @@ class CentralCropTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x = constant_op.constant(x_np, shape=x_shape)
       y = image_ops.central_crop(x, 0.5)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
       self.assertAllEqual(y_tf.shape, y_np.shape)
 
@@ -1881,7 +1897,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
     i = constant_op.constant([1, 0, 4, 3], dtype=dtypes.int64)
     y_tf = image_ops.pad_to_bounding_box(x, i[0], i[1], i[2], i[3])
     with self.test_session(use_gpu=True):
-      self.assertAllClose(y, y_tf.eval())
+      self.assertAllClose(y, self.evaluate(y_tf))
 
   def testNoOp(self):
     x_shape = [10, 10, 10]
@@ -1956,7 +1972,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
           "all dims of 'image.shape' must be > 0",
           use_tensor_inputs_options=[False])
 
-      # The orignal error message does not contain back slashes. However, they
+      # The original error message does not contain back slashes. However, they
       # are added by either the assert op or the runtime. If this behavior
       # changes in the future, the match string will also needs to be changed.
       self._assertRaises(
@@ -2024,7 +2040,7 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       y = array_ops.strided_slice(image_tf, begin, begin + size)
 
       for _ in xrange(num_iter):
-        y_tf = y.eval()
+        y_tf = self.evaluate(y)
         crop_height = y_tf.shape[0]
         crop_width = y_tf.shape[1]
         aspect_ratio = float(crop_width) / float(crop_height)
@@ -2155,9 +2171,9 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([3], end.get_shape().as_list())
       self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
       # Actual run to make sure shape is correct inside Compute().
-      begin = begin.eval()
-      end = end.eval()
-      bbox_for_drawing = bbox_for_drawing.eval()
+      begin = self.evaluate(begin)
+      end = self.evaluate(end)
+      bbox_for_drawing = self.evaluate(bbox_for_drawing)
 
       begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
           image_size=image_size,
@@ -2191,9 +2207,9 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([3], end.get_shape().as_list())
       self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
       # Actual run to make sure shape is correct inside Compute().
-      begin = begin.eval()
-      end = end.eval()
-      bbox_for_drawing = bbox_for_drawing.eval()
+      begin = self.evaluate(begin)
+      end = self.evaluate(end)
+      bbox_for_drawing = self.evaluate(bbox_for_drawing)
 
 
 class ResizeImagesTest(test_util.TensorFlowTestCase):
@@ -2260,7 +2276,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
         y = image_ops.resize_images(image, [target_height, target_width],
                                     self.OPTIONS[0])
         yshape = array_ops.shape(y)
-        newshape = yshape.eval()
+        newshape = self.evaluate(yshape)
         self.assertAllEqual(single_shape, newshape)
 
   def testTensorArguments(self):
@@ -2359,7 +2375,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     img_np = np.array(data, dtype=np.uint8).reshape(img_shape)
 
     for opt in self.OPTIONS:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         image = constant_op.constant(img_np, shape=img_shape)
         y = image_ops.resize_images(image, [height, width], opt)
         yshape = array_ops.shape(y)
@@ -2395,7 +2411,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
               y = image_ops.resize_images(image, [target_height, target_width],
                                           opt)
               expected = np.array(expected_data).reshape(target_shape)
-              resized = y.eval()
+              resized = self.evaluate(y)
               self.assertAllClose(resized, expected, atol=1e-5)
 
   def testResizeUpAlignCornersFalse(self):
@@ -2430,7 +2446,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
           image = constant_op.constant(img_np, shape=img_shape)
           y = image_ops.resize_images(
               image, [target_height, target_width], opt, align_corners=False)
-          resized = y.eval()
+          resized = self.evaluate(y)
           expected = np.array(expected_data[opt]).reshape(
               [1, target_height, target_width, 1])
           self.assertAllClose(resized, expected, atol=1e-05)
@@ -2466,7 +2482,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
           image = constant_op.constant(img_np, shape=img_shape)
           y = image_ops.resize_images(
               image, [target_height, target_width], opt, align_corners=True)
-          resized = y.eval()
+          resized = self.evaluate(y)
           expected = np.array(expected_data[opt]).reshape(
               [1, target_height, target_width, 1])
           self.assertAllClose(resized, expected, atol=1e-05)
@@ -2493,7 +2509,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
       image = constant_op.constant(img_np, shape=img_shape)
       y = image_ops.resize_images(image, [target_height, target_width],
                                   image_ops.ResizeMethod.BICUBIC)
-      resized = y.eval()
+      resized = self.evaluate(y)
       expected = np.array(expected_data).reshape(
           [1, target_height, target_width, 1])
       self.assertAllClose(resized, expected, atol=1)
@@ -2518,7 +2534,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
                                   image_ops.ResizeMethod.AREA)
       expected = np.array(expected_data).reshape(
           [1, target_height, target_width, 1])
-      resized = y.eval()
+      resized = self.evaluate(y)
       self.assertAllClose(resized, expected, atol=1)
 
   def testCompareNearestNeighbor(self):
@@ -2538,7 +2554,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
                 new_size,
                 image_ops.ResizeMethod.NEAREST_NEIGHBOR,
                 align_corners=align_corners)
-            gpu_val = out_op.eval()
+            gpu_val = self.evaluate(out_op)
           with self.test_session(use_gpu=False):
             image = constant_op.constant(img_np, shape=input_shape)
             new_size = constant_op.constant([target_height, target_width])
@@ -2547,7 +2563,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
                 new_size,
                 image_ops.ResizeMethod.NEAREST_NEIGHBOR,
                 align_corners=align_corners)
-            cpu_val = out_op.eval()
+            cpu_val = self.evaluate(out_op)
           self.assertAllClose(cpu_val, gpu_val, rtol=1e-5, atol=1e-5)
 
   def testCompareBilinear(self):
@@ -2569,7 +2585,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
                   new_size,
                   image_ops.ResizeMethod.BILINEAR,
                   align_corners=align_corners)
-              value[use_gpu] = out_op.eval()
+              value[use_gpu] = self.evaluate(out_op)
           self.assertAllClose(value[True], value[False], rtol=1e-5, atol=1e-5)
 
   def testShapeInference(self):
@@ -2678,6 +2694,12 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     x = np.random.uniform(size=x_shape)
 
     self._assertResizeCheckShape(x, x_shape, [3840, 2160], [3840, 2160, 3])
+
+  def testPreserveAspectRatioSquare(self):
+    x_shape = [299, 299, 3]
+    x = np.random.uniform(size=x_shape)
+
+    self._assertResizeCheckShape(x, x_shape, [320, 320], [320, 320, 3])
 
 
 class ResizeImageWithPadTest(test_util.TensorFlowTestCase):
@@ -2985,7 +3007,7 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
           "all dims of 'image.shape' must be > 0",
           use_tensor_inputs_options=[False])
 
-      # The orignal error message does not contain back slashes. However, they
+      # The original error message does not contain back slashes. However, they
       # are added by either the assert op or the runtime. If this behavior
       # changes in the future, the match string will also needs to be changed.
       self._assertRaises(
@@ -3068,7 +3090,7 @@ class JpegTest(test_util.TensorFlowTestCase):
         self.assertLess(error, 4)
 
   def testCropAndDecodeJpeg(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Encode it, then decode it, then encode it
       base = "tensorflow/core/lib/jpeg/testdata"
       jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
@@ -3094,7 +3116,7 @@ class JpegTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(image1_crop, image2)
 
   def testCropAndDecodeJpegWithInvalidCropWindow(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Encode it, then decode it, then encode it
       base = "tensorflow/core/lib/jpeg/testdata"
       jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
@@ -3201,7 +3223,8 @@ class PngTest(test_util.TensorFlowTestCase):
   def testExisting(self):
     # Read some real PNGs, converting to different channel numbers
     prefix = "tensorflow/core/lib/png/testdata/"
-    inputs = (1, "lena_gray.png"), (4, "lena_rgba.png")
+    inputs = ((1, "lena_gray.png"), (4, "lena_rgba.png"),
+              (3, "lena_palette.png"), (4, "lena_palette_trns.png"))
     for channels_in, filename in inputs:
       for channels in 0, 1, 3, 4:
         with self.test_session(use_gpu=True) as sess:
@@ -3211,7 +3234,7 @@ class PngTest(test_util.TensorFlowTestCase):
           self.assertEqual(image0.shape, (26, 51, channels or channels_in))
           if channels == channels_in:
             image1 = image_ops.decode_png(image_ops.encode_png(image0))
-            self.assertAllEqual(image0, image1.eval())
+            self.assertAllEqual(image0, self.evaluate(image1))
 
   def testSynthetic(self):
     with self.test_session(use_gpu=True) as sess:
@@ -3408,7 +3431,7 @@ class TotalVariationTest(test_util.TensorFlowTestCase):
       y = image_ops.total_variation(images=x_tf)
 
       # Run the TensorFlow session to calculate the result.
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
 
       # Assert that the results are as expected within
       # some small error-bound in case they are float-values.
@@ -3568,7 +3591,7 @@ class FormatTest(test_util.TensorFlowTestCase):
         "png": functools.partial(image_ops.decode_png, channels=3),
         "gif": lambda s: array_ops.squeeze(image_ops.decode_gif(s), axis=0),
     }
-    with self.test_session():
+    with self.cached_session():
       for path in paths:
         contents = io_ops.read_file(os.path.join(prefix, path)).eval()
         images = {}
@@ -3583,7 +3606,7 @@ class FormatTest(test_util.TensorFlowTestCase):
 
   def testError(self):
     path = "tensorflow/core/lib/gif/testdata/scan.gif"
-    with self.test_session():
+    with self.cached_session():
       for decode in image_ops.decode_jpeg, image_ops.decode_png:
         with self.assertRaisesOpError(r"Got 12 frames"):
           decode(io_ops.read_file(path)).eval()
@@ -3597,7 +3620,7 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
     scores_np = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
     max_output_size_np = 3
     iou_threshold_np = 0.5
-    with self.test_session():
+    with self.cached_session():
       boxes = constant_op.constant(boxes_np)
       scores = constant_op.constant(scores_np)
       max_output_size = constant_op.constant(max_output_size_np)
@@ -3647,6 +3670,130 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([0.9])
       image_ops.non_max_suppression(boxes, scores, 3, [[0.5]])
+
+  def testDataTypes(self):
+    # Test case for GitHub issue 20199.
+    boxes_np = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
+    scores_np = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
+    max_output_size_np = 3
+    iou_threshold_np = 0.5
+    # Note: There are multiple versions of non_max_suppression v2, v3, v4.
+    # gen_image_ops.non_max_suppression_v2:
+    for dtype in [np.float16, np.float32]:
+      with self.cached_session():
+        boxes = constant_op.constant(boxes_np, dtype=dtype)
+        scores = constant_op.constant(scores_np, dtype=dtype)
+        max_output_size = constant_op.constant(max_output_size_np)
+        iou_threshold = constant_op.constant(iou_threshold_np)
+        selected_indices = gen_image_ops.non_max_suppression_v2(
+            boxes, scores, max_output_size, iou_threshold).eval()
+        self.assertAllClose(selected_indices, [3, 0, 5])
+    # image_ops.non_max_suppression = gen_image_ops.non_max_suppression_v3.
+    for dtype in [np.float16, np.float32]:
+      with self.cached_session():
+        boxes = constant_op.constant(boxes_np, dtype=dtype)
+        scores = constant_op.constant(scores_np, dtype=dtype)
+        max_output_size = constant_op.constant(max_output_size_np)
+        iou_threshold = constant_op.constant(iou_threshold_np)
+        selected_indices = image_ops.non_max_suppression(
+            boxes, scores, max_output_size, iou_threshold).eval()
+        self.assertAllClose(selected_indices, [3, 0, 5])
+    # gen_image_ops.non_max_suppression_v4.
+    score_threshold = float('-inf')
+    for dtype in [np.float16, np.float32]:
+      with self.cached_session():
+        boxes = constant_op.constant(boxes_np, dtype=dtype)
+        scores = constant_op.constant(scores_np, dtype=dtype)
+        max_output_size = constant_op.constant(max_output_size_np)
+        iou_threshold = constant_op.constant(iou_threshold_np)
+        selected_indices, _ = gen_image_ops.non_max_suppression_v4(
+            boxes, scores, max_output_size, iou_threshold, score_threshold)
+        selected_indices = self.evaluate(selected_indices)
+        self.assertAllClose(selected_indices, [3, 0, 5])
+
+
+class NonMaxSuppressionPaddedTest(test_util.TensorFlowTestCase):
+
+  def testSelectFromThreeClusters(self):
+    boxes_np = [[0, 0, 1, 1], [0, 0.1, 1, 1.1], [0, -0.1, 1, 0.9],
+                [0, 10, 1, 11], [0, 10.1, 1, 11.1], [0, 100, 1, 101]]
+    scores_np = [0.9, 0.75, 0.6, 0.95, 0.5, 0.3]
+    max_output_size_np = 5
+    iou_threshold_np = 0.5
+    boxes = constant_op.constant(boxes_np)
+    scores = constant_op.constant(scores_np)
+    max_output_size = constant_op.constant(max_output_size_np)
+    iou_threshold = constant_op.constant(iou_threshold_np)
+    selected_indices_padded, num_valid_padded = \
+        image_ops.non_max_suppression_padded(
+            boxes,
+            scores,
+            max_output_size,
+            iou_threshold,
+            pad_to_max_output_size=True)
+    selected_indices, num_valid = image_ops.non_max_suppression_padded(
+        boxes,
+        scores,
+        max_output_size,
+        iou_threshold,
+        pad_to_max_output_size=False)
+    # The output shape of the padded operation must be fully defined.
+    self.assertEqual(selected_indices_padded.shape.is_fully_defined(), True)
+    self.assertEqual(selected_indices.shape.is_fully_defined(), False)
+    with self.cached_session():
+      self.assertAllClose(selected_indices_padded.eval(), [3, 0, 5, 0, 0])
+      self.assertEqual(num_valid_padded.eval(), 3)
+      self.assertAllClose(selected_indices.eval(), [3, 0, 5])
+      self.assertEqual(num_valid.eval(), 3)
+
+  def testSelectFromContinuousOverLap(self):
+    boxes_np = [[0, 0, 1, 1], [0, 0.2, 1, 1.2], [0, 0.4, 1, 1.4],
+                [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]]
+    scores_np = [0.9, 0.75, 0.6, 0.5, 0.4, 0.3]
+    max_output_size_np = 3
+    iou_threshold_np = 0.5
+    score_threshold_np = 0.1
+    boxes = constant_op.constant(boxes_np)
+    scores = constant_op.constant(scores_np)
+    max_output_size = constant_op.constant(max_output_size_np)
+    iou_threshold = constant_op.constant(iou_threshold_np)
+    score_threshold = constant_op.constant(score_threshold_np)
+    selected_indices, num_valid = image_ops.non_max_suppression_padded(
+        boxes,
+        scores,
+        max_output_size,
+        iou_threshold,
+        score_threshold)
+    # The output shape of the padded operation must be fully defined.
+    self.assertEqual(selected_indices.shape.is_fully_defined(), False)
+    with self.cached_session():
+      self.assertAllClose(selected_indices.eval(), [0, 2, 4])
+      self.assertEqual(num_valid.eval(), 3)
+
+
+class NonMaxSuppressionWithOverlapsTest(test_util.TensorFlowTestCase):
+
+  def testSelectOneFromThree(self):
+    overlaps_np = [
+        [1.0, 0.7, 0.2],
+        [0.7, 1.0, 0.0],
+        [0.2, 0.0, 1.0],
+    ]
+    scores_np = [0.7, 0.9, 0.1]
+    max_ouput_size_np = 3
+
+    overlaps = constant_op.constant(overlaps_np)
+    scores = constant_op.constant(scores_np)
+    max_output_size = constant_op.constant(max_ouput_size_np)
+    overlap_threshold = 0.6
+    score_threshold = 0.4
+
+    selected_indices = image_ops.non_max_suppression_with_overlaps(
+        overlaps, scores, max_output_size, overlap_threshold, score_threshold)
+
+    with self.cached_session():
+      self.assertAllClose(selected_indices.eval(), [1])
 
 
 class VerifyCompatibleImageShapesTest(test_util.TensorFlowTestCase):
@@ -3769,7 +3916,8 @@ class PSNRTest(test_util.TensorFlowTestCase):
     img2 = image_ops.convert_image_dtype(img2, dtypes.float32)
     psnr_float32 = image_ops.psnr(img1, img2, 1.0)
     with self.test_session(use_gpu=True):
-      self.assertAllClose(psnr_uint8.eval(), psnr_float32.eval(), atol=0.001)
+      self.assertAllClose(
+          psnr_uint8.eval(), self.evaluate(psnr_float32), atol=0.001)
 
 
 class SSIMTest(test_util.TensorFlowTestCase):
@@ -3822,7 +3970,7 @@ class SSIMTest(test_util.TensorFlowTestCase):
     ssim = image_ops.ssim(constant_op.constant(img1),
                           constant_op.constant(img2), 1.0)
     with self.test_session(use_gpu=True):
-      self.assertAllClose(expected, ssim.eval(), atol=1e-4)
+      self.assertAllClose(expected, self.evaluate(ssim), atol=1e-4)
 
   def testBroadcast(self):
     img = self._LoadTestImages()[:2]
@@ -3834,7 +3982,7 @@ class SSIMTest(test_util.TensorFlowTestCase):
 
     ssim = image_ops.ssim(img1, img2, 1.0)
     with self.test_session(use_gpu=True):
-      self.assertAllClose(expected, ssim.eval(), atol=1e-4)
+      self.assertAllClose(expected, self.evaluate(ssim), atol=1e-4)
 
   def testNegative(self):
     """Tests against negative SSIM index."""
@@ -3860,7 +4008,8 @@ class SSIMTest(test_util.TensorFlowTestCase):
     img2 = image_ops.convert_image_dtype(img2, dtypes.float32)
     ssim_float32 = image_ops.ssim(img1, img2, 1.0)
     with self.test_session(use_gpu=True):
-      self.assertAllClose(ssim_uint8.eval(), ssim_float32.eval(), atol=0.001)
+      self.assertAllClose(
+          ssim_uint8.eval(), self.evaluate(ssim_float32), atol=0.001)
 
 
 class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
@@ -3930,7 +4079,7 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     msssim = image_ops.ssim_multiscale(constant_op.constant(img1),
                                        constant_op.constant(img2), 1.0)
     with self.test_session(use_gpu=True):
-      self.assertAllClose(expected, msssim.eval(), 1e-4)
+      self.assertAllClose(expected, self.evaluate(msssim), 1e-4)
 
   def testBroadcast(self):
     """Tests MS-SSIM broadcasting."""
@@ -3943,7 +4092,7 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
 
     score_tensor = image_ops.ssim_multiscale(img1, img2, 1.0)
     with self.test_session(use_gpu=True):
-      self.assertAllClose(expected, score_tensor.eval(), 1e-4)
+      self.assertAllClose(expected, self.evaluate(score_tensor), 1e-4)
 
   def testRange(self):
     """Tests against low MS-SSIM score.
@@ -3961,7 +4110,7 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
       images = [ops.convert_to_tensor(x, dtype=dtypes.float32) for x in images]
       msssim_ops = [image_ops.ssim_multiscale(x, y, 1.0)
                     for x, y in itertools.combinations(images, 2)]
-      msssim = sess.run(msssim_ops)
+      msssim = self.evaluate(msssim_ops)
       msssim = np.squeeze(msssim)
 
     self.assertTrue(np.all(msssim >= 0.0))
@@ -3977,7 +4126,8 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     img2 = image_ops.convert_image_dtype(img2, dtypes.float32)
     ssim_float32 = image_ops.ssim_multiscale(img1, img2, 1.0)
     with self.test_session(use_gpu=True):
-      self.assertAllClose(ssim_uint8.eval(), ssim_float32.eval(), atol=0.001)
+      self.assertAllClose(
+          ssim_uint8.eval(), self.evaluate(ssim_float32), atol=0.001)
 
 
 class ImageGradientsTest(test_util.TensorFlowTestCase):
@@ -3991,9 +4141,9 @@ class ImageGradientsTest(test_util.TensorFlowTestCase):
     expected_dx = np.reshape([[2, 1, -2, 0], [-1, -2, 1, 0]], shape)
 
     dy, dx = image_ops.image_gradients(img)
-    with self.test_session():
-      actual_dy = dy.eval()
-      actual_dx = dx.eval()
+    with self.cached_session():
+      actual_dy = self.evaluate(dy)
+      actual_dx = self.evaluate(dx)
       self.assertAllClose(expected_dy, actual_dy)
       self.assertAllClose(expected_dx, actual_dx)
 
@@ -4017,8 +4167,8 @@ class ImageGradientsTest(test_util.TensorFlowTestCase):
     assert batch.get_shape().as_list() == [2, 2, 3, 2]
     dy, dx = image_ops.image_gradients(batch)
     with self.test_session(use_gpu=True):
-      actual_dy = dy.eval()
-      actual_dx = dx.eval()
+      actual_dy = self.evaluate(dy)
+      actual_dx = self.evaluate(dx)
       self.assertAllClose(expected_dy, actual_dy)
       self.assertAllClose(expected_dx, actual_dx)
 
@@ -4038,7 +4188,7 @@ class SobelEdgesTest(test_util.TensorFlowTestCase):
                            [[0, 0], [0, 12], [0, 0]]], [1, 2, 3, 1, 2])
     sobel = image_ops.sobel_edges(img)
     with self.test_session(use_gpu=True):
-      actual_sobel = sobel.eval()
+      actual_sobel = self.evaluate(sobel)
       self.assertAllClose(expected, actual_sobel)
 
   def testSobelEdges5x3x4x2(self):
@@ -4060,7 +4210,7 @@ class SobelEdgesTest(test_util.TensorFlowTestCase):
 
     sobel = image_ops.sobel_edges(img)
     with self.test_session(use_gpu=True):
-      actual_sobel = sobel.eval()
+      actual_sobel = self.evaluate(sobel)
       self.assertAllClose(expected_batch, actual_sobel)
 
 

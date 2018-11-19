@@ -30,24 +30,25 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
 
 class WhereOpTest(test.TestCase):
 
   def _testWhere(self, x, truth, expected_err_re=None):
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       ans = array_ops.where(x)
       self.assertEqual([None, x.ndim], ans.get_shape().as_list())
       if expected_err_re is None:
-        tf_ans = ans.eval()
+        tf_ans = self.evaluate(ans)
         self.assertAllClose(tf_ans, truth, atol=1e-10)
       else:
         with self.assertRaisesOpError(expected_err_re):
-          ans.eval()
+          self.evaluate(ans)
 
   def testWrongNumbers(self):
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       with self.assertRaises(ValueError):
         array_ops.where([False, True], [1, 2], None)
       with self.assertRaises(ValueError):
@@ -131,8 +132,17 @@ class WhereOpTest(test.TestCase):
   def testThreeArgument(self):
     x = np.array([[-2, 3, -1], [1, -3, -3]])
     np_val = np.where(x > 0, x * x, -x)
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       tf_val = array_ops.where(constant_op.constant(x) > 0, x * x, -x).eval()
+    self.assertAllEqual(tf_val, np_val)
+
+  def testBatchSelect(self):
+    x = np.array([[-2, 3, -1] * 64, [1, -3, -3] * 64] * 8192)  # [16384, 192]
+    c_mat = np.array([[False] * 192, [True] * 192] * 8192)  # [16384, 192]
+    c_vec = np.array([False, True] * 8192)  # [16384]
+    np_val = np.where(c_mat, x * x, -x)
+    with self.session(use_gpu=True):
+      tf_val = array_ops.where(c_vec, x * x, -x).eval()
     self.assertAllEqual(tf_val, np_val)
 
 
@@ -151,7 +161,7 @@ class WhereBenchmark(test.Benchmark):
           x = random_ops.random_uniform((m, n), dtype=dtypes.float32) <= p
           v = resource_variable_ops.ResourceVariable(x)
           op = array_ops.where(v)
-        with session.Session() as sess:
+        with session.Session(config=benchmark.benchmark_config()) as sess:
           v.initializer.run()
           r = self.run_op_benchmark(sess, op, min_iters=100, name=name)
           gb_processed_input = m * n / 1.0e9
@@ -162,6 +172,33 @@ class WhereBenchmark(test.Benchmark):
           print("Benchmark: %s \t wall_time: %0.03g s \t "
                 "Throughput: %0.03g GB/s" % (name, r["wall_time"], throughput))
           sys.stdout.flush()
+
+  def benchmarkBatchSelect(self):
+    for (m, n, use_gpu) in itertools.product([1000, 10000, 100000],
+                                             [10, 100, 1000], [False, True]):
+      name = "m_%d_n_%d_use_gpu_%s" % (m, n, use_gpu)
+      device = "/%s:0" % ("gpu" if use_gpu else "cpu")
+      with ops.Graph().as_default():
+        with ops.device(device):
+          x_gen = random_ops.random_uniform([m, n], dtype=dtypes.float32)
+          y_gen = random_ops.random_uniform([m, n], dtype=dtypes.float32)
+          c_gen = random_ops.random_uniform([m], dtype=dtypes.float32) <= 0.5
+          x = resource_variable_ops.ResourceVariable(x_gen)
+          y = resource_variable_ops.ResourceVariable(y_gen)
+          c = resource_variable_ops.ResourceVariable(c_gen)
+          op = array_ops.where(c, x, y)
+        with session.Session(config=benchmark.benchmark_config()) as sess:
+          x.initializer.run()
+          y.initializer.run()
+          c.initializer.run()
+          r = self.run_op_benchmark(sess, op, min_iters=100, name=name)
+          # approximate size of output: m*n*2 floats for each axis.
+          gb_processed = m * n * 8 / 1.0e9
+          throughput = gb_processed / r["wall_time"]
+          print("Benchmark: %s \t wall_time: %0.03g s \t "
+                "Throughput: %0.03g GB/s" % (name, r["wall_time"], throughput))
+          sys.stdout.flush()
+
 
 if __name__ == "__main__":
   test.main()

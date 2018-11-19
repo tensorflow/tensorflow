@@ -56,7 +56,7 @@ class CauchyTest(test.TestCase):
     self.assertAllEqual(all_true, is_finite)
 
   def _testParamShapes(self, sample_shape, expected):
-    with self.test_session():
+    with self.cached_session():
       param_shapes = cauchy_lib.Cauchy.param_shapes(sample_shape)
       loc_shape, scale_shape = param_shapes["loc"], param_shapes["scale"]
       self.assertAllEqual(expected, loc_shape.eval())
@@ -85,7 +85,7 @@ class CauchyTest(test.TestCase):
         tensor_shape.TensorShape(sample_shape), sample_shape)
 
   def testCauchyLogPDF(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       loc = constant_op.constant([3.0] * batch_size)
       scale = constant_op.constant([np.sqrt(10.0)] * batch_size)
@@ -112,7 +112,7 @@ class CauchyTest(test.TestCase):
       self.assertAllClose(np.exp(expected_log_pdf), pdf.eval())
 
   def testCauchyLogPDFMultidimensional(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 6
       loc = constant_op.constant([[3.0, -3.0]] * batch_size)
       scale = constant_op.constant(
@@ -144,7 +144,7 @@ class CauchyTest(test.TestCase):
       self.assertAllClose(np.exp(expected_log_pdf), pdf_values)
 
   def testCauchyCDF(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 50
       loc = self._rng.randn(batch_size)
       scale = self._rng.rand(batch_size) + 1.0
@@ -162,7 +162,7 @@ class CauchyTest(test.TestCase):
       self.assertAllClose(expected_cdf, cdf.eval(), atol=0)
 
   def testCauchySurvivalFunction(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 50
       loc = self._rng.randn(batch_size)
       scale = self._rng.rand(batch_size) + 1.0
@@ -181,7 +181,7 @@ class CauchyTest(test.TestCase):
       self.assertAllClose(expected_sf, sf.eval(), atol=0)
 
   def testCauchyLogCDF(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 50
       loc = self._rng.randn(batch_size)
       scale = self._rng.rand(batch_size) + 1.0
@@ -214,14 +214,14 @@ class CauchyTest(test.TestCase):
         ]:
           value = func(x)
           grads = gradients_impl.gradients(value, [loc, scale])
-          with self.test_session(graph=g):
+          with self.session(graph=g):
             variables.global_variables_initializer().run()
             self.assertAllFinite(value)
             self.assertAllFinite(grads[0])
             self.assertAllFinite(grads[1])
 
   def testCauchyLogSurvivalFunction(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 50
       loc = self._rng.randn(batch_size)
       scale = self._rng.rand(batch_size) + 1.0
@@ -241,7 +241,7 @@ class CauchyTest(test.TestCase):
       self.assertAllClose(expected_sf, sf.eval(), atol=0, rtol=1e-5)
 
   def testCauchyEntropy(self):
-    with self.test_session():
+    with self.cached_session():
       loc = np.array([1.0, 1.0, 1.0])
       scale = np.array([[1.0, 2.0, 3.0]])
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
@@ -259,7 +259,7 @@ class CauchyTest(test.TestCase):
       self.assertAllClose(expected_entropy, entropy.eval())
 
   def testCauchyMode(self):
-    with self.test_session():
+    with self.cached_session():
       # Mu will be broadcast to [7, 7, 7].
       loc = [7.]
       scale = [11., 12., 13.]
@@ -270,7 +270,7 @@ class CauchyTest(test.TestCase):
       self.assertAllEqual([7., 7, 7], cauchy.mode().eval())
 
   def testCauchyMean(self):
-    with self.test_session():
+    with self.cached_session():
       loc = [1., 2., 3.]
       scale = [7.]
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
@@ -279,7 +279,7 @@ class CauchyTest(test.TestCase):
       self.assertAllEqual([np.nan] * 3, cauchy.mean().eval())
 
   def testCauchyNanMean(self):
-    with self.test_session():
+    with self.cached_session():
       loc = [1., 2., 3.]
       scale = [7.]
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale, allow_nan_stats=False)
@@ -288,7 +288,7 @@ class CauchyTest(test.TestCase):
         cauchy.mean().eval()
 
   def testCauchyQuantile(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 50
       loc = self._rng.randn(batch_size)
       scale = self._rng.rand(batch_size) + 1.0
@@ -308,7 +308,7 @@ class CauchyTest(test.TestCase):
       self.assertAllClose(expected_x, x.eval(), atol=0.)
 
   def testCauchyVariance(self):
-    with self.test_session():
+    with self.cached_session():
       # scale will be broadcast to [7, 7, 7]
       loc = [1., 2., 3.]
       scale = [7.]
@@ -318,7 +318,7 @@ class CauchyTest(test.TestCase):
       self.assertAllEqual([np.nan] * 3, cauchy.variance().eval())
 
   def testCauchyNanVariance(self):
-    with self.test_session():
+    with self.cached_session():
       # scale will be broadcast to [7, 7, 7]
       loc = [1., 2., 3.]
       scale = [7.]
@@ -328,7 +328,7 @@ class CauchyTest(test.TestCase):
         cauchy.variance().eval()
 
   def testCauchyStandardDeviation(self):
-    with self.test_session():
+    with self.cached_session():
       # scale will be broadcast to [7, 7, 7]
       loc = [1., 2., 3.]
       scale = [7.]
@@ -338,7 +338,7 @@ class CauchyTest(test.TestCase):
       self.assertAllEqual([np.nan] * 3, cauchy.stddev().eval())
 
   def testCauchyNanStandardDeviation(self):
-    with self.test_session():
+    with self.cached_session():
       # scale will be broadcast to [7, 7, 7]
       loc = [1., 2., 3.]
       scale = [7.]
@@ -348,7 +348,7 @@ class CauchyTest(test.TestCase):
         cauchy.stddev().eval()
 
   def testCauchySample(self):
-    with self.test_session():
+    with self.cached_session():
       loc = constant_op.constant(3.0)
       scale = constant_op.constant(1.0)
       loc_v = 3.0
@@ -373,7 +373,7 @@ class CauchyTest(test.TestCase):
       self.assertAllEqual(expected_shape, sample_values.shape)
 
   def testCauchySampleMultiDimensional(self):
-    with self.test_session():
+    with self.cached_session():
       batch_size = 2
       loc = constant_op.constant([[3.0, -3.0]] * batch_size)
       scale = constant_op.constant([[0.5, 1.0]] * batch_size)
@@ -399,13 +399,13 @@ class CauchyTest(test.TestCase):
       self.assertAllEqual(expected_shape, sample_values.shape)
 
   def testCauchyNegativeLocFails(self):
-    with self.test_session():
+    with self.cached_session():
       cauchy = cauchy_lib.Cauchy(loc=[1.], scale=[-5.], validate_args=True)
       with self.assertRaisesOpError("Condition x > 0 did not hold"):
         cauchy.mode().eval()
 
   def testCauchyShape(self):
-    with self.test_session():
+    with self.cached_session():
       loc = constant_op.constant([-3.0] * 5)
       scale = constant_op.constant(11.0)
       cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
@@ -420,7 +420,7 @@ class CauchyTest(test.TestCase):
     scale = array_ops.placeholder(dtype=dtypes.float32)
     cauchy = cauchy_lib.Cauchy(loc=loc, scale=scale)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # get_batch_shape should return an "<unknown>" tensor.
       self.assertEqual(cauchy.batch_shape, tensor_shape.TensorShape(None))
       self.assertEqual(cauchy.event_shape, ())

@@ -21,9 +21,10 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.keras import backend as K
+from tensorflow.python.eager import context
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras.utils.data_utils import GeneratorEnqueuer
+from tensorflow.python.keras.utils.data_utils import iter_sequence_infinite
 from tensorflow.python.keras.utils.data_utils import OrderedEnqueuer
 from tensorflow.python.keras.utils.data_utils import Sequence
 from tensorflow.python.keras.utils.generic_utils import Progbar
@@ -45,10 +46,13 @@ def fit_generator(model,
                   shuffle=True,
                   initial_epoch=0):
   """See docstring for `Model.fit_generator`."""
-  wait_time = 0.01  # in seconds
   epoch = initial_epoch
 
   do_validation = bool(validation_data)
+  if not context.executing_eagerly():
+    model._make_train_function()
+    if do_validation:
+      model._make_test_function()
 
   is_sequence = isinstance(generator, Sequence)
   if not is_sequence and use_multiprocessing and workers > 1:
@@ -79,66 +83,37 @@ def fit_generator(model,
                      ' class. Please specify `validation_steps` or use'
                      ' the `keras.utils.Sequence` class.')
 
-  # Prepare display labels.
-  out_labels = model.metrics_names
-  callback_metrics = out_labels + ['val_%s' % n for n in out_labels]
-
-  # prepare callbacks
-  model.history = cbks.History()
-  callbacks = [cbks.BaseLogger()] + (callbacks or []) + [model.history]
-  if verbose:
-    callbacks += [cbks.ProgbarLogger(count_mode='steps')]
-  callbacks = cbks.CallbackList(callbacks)
-
-  # it's possible to callback a different model than self:
-  if hasattr(model, 'callback_model') and model.callback_model:
-    callback_model = model.callback_model
-  else:
-    callback_model = model
-  callbacks.set_model(callback_model)
-
-  callback_params = {
-      'epochs': epochs,
-      'steps': steps_per_epoch,
-      'verbose': verbose,
-      'do_validation': do_validation,
-      'metrics': callback_metrics,
-  }
-  if do_validation:
-    # need to create the test_function before start of the first epoch
-    # because TensorBoard callback on_epoch_begin adds summary to the
-    # list of fetches of the test_function
-    model._make_test_function()
-    # determine the number of validation batches given a generator
-    if validation_steps:
-      callback_params.update({'validation_steps': validation_steps})
-    elif isinstance(validation_data, Sequence):
-      callback_params.update({'validation_steps': len(validation_data)})
-  callbacks.set_params(callback_params)
-
   enqueuer = None
   val_enqueuer = None
 
   try:
+    val_x, val_y, val_sample_weights = validation_data, None, None
     if do_validation and not val_gen:
       # Prepare data for validation
       if len(validation_data) == 2:
         val_x, val_y = validation_data  # pylint: disable=unpacking-non-sequence
-        val_sample_weight = None
+        val_sample_weights = None
       elif len(validation_data) == 3:
-        val_x, val_y, val_sample_weight = validation_data  # pylint: disable=unpacking-non-sequence
+        val_x, val_y, val_sample_weights = validation_data  # pylint: disable=unpacking-non-sequence
       else:
         raise ValueError(
             '`validation_data` should be a tuple '
             '`(val_x, val_y, val_sample_weight)` '
             'or `(val_x, val_y)`. Found: ' + str(validation_data))
       val_x, val_y, val_sample_weights = model._standardize_user_data(
-          val_x, val_y, val_sample_weight)
-      val_data = val_x + val_y + val_sample_weights
-      if model.uses_learning_phase and not isinstance(K.learning_phase(), int):
-        val_data += [0.]
-      for cbk in callbacks:
-        cbk.validation_data = val_data
+          val_x, val_y, val_sample_weights)
+
+    callbacks = cbks.configure_callbacks(
+        callbacks,
+        model,
+        do_validation=do_validation,
+        val_inputs=val_x,
+        val_targets=val_y,
+        val_sample_weights=val_sample_weights,
+        epochs=epochs,
+        validation_steps=validation_steps,
+        steps_per_epoch=steps_per_epoch,
+        verbose=verbose)
 
     if workers > 0:
       if is_sequence:
@@ -149,24 +124,20 @@ def fit_generator(model,
       else:
         enqueuer = GeneratorEnqueuer(
             generator,
-            use_multiprocessing=use_multiprocessing,
-            wait_time=wait_time)
+            use_multiprocessing=use_multiprocessing)
       enqueuer.start(workers=workers, max_queue_size=max_queue_size)
       output_generator = enqueuer.get()
     else:
       if is_sequence:
-        output_generator = iter(generator)
+        output_generator = iter_sequence_infinite(generator)
       else:
         output_generator = generator
 
-    callback_model.stop_training = False
-    # validation_data must be set before on_train_begin() is called
-    # so that TensorboardCallback can validate its input
     callbacks.on_train_begin()
     # Construct epoch logs.
     epoch_logs = {}
     while epoch < epochs:
-      for m in model.stateful_metric_functions:
+      for m in model.metrics:
         m.reset_states()
       callbacks.on_epoch_begin(epoch)
       steps_done = 0
@@ -205,7 +176,7 @@ def fit_generator(model,
 
         if not isinstance(outs, list):
           outs = [outs]
-        for l, o in zip(out_labels, outs):
+        for l, o in zip(model.metrics_names, outs):
           batch_logs[l] = o
 
         callbacks.on_batch_end(batch_index, batch_logs)
@@ -235,15 +206,15 @@ def fit_generator(model,
           if not isinstance(val_outs, list):
             val_outs = [val_outs]
           # Same labels assumed.
-          for l, o in zip(out_labels, val_outs):
+          for l, o in zip(model.metrics_names, val_outs):
             epoch_logs['val_' + l] = o
 
-        if callback_model.stop_training:
+        if callbacks.model.stop_training:
           break
 
       callbacks.on_epoch_end(epoch, epoch_logs)
       epoch += 1
-      if callback_model.stop_training:
+      if callbacks.model.stop_training:
         break
 
   finally:
@@ -266,18 +237,14 @@ def evaluate_generator(model,
                        use_multiprocessing=False,
                        verbose=0):
   """See docstring for `Model.evaluate_generator`."""
-  stateful_metric_indices = []
-  if hasattr(model, 'metrics'):
-    for m in model.stateful_metric_functions:
+  if not context.executing_eagerly():
+    model._make_test_function()
+
+  if hasattr(model, '_compile_metrics'):
+    for m in model.metrics:
       m.reset_states()
-    stateful_metric_indices = [
-        i for i, name in enumerate(model.metrics_names)
-        if str(name) in model.stateful_metric_names]
-  else:
-    stateful_metric_indices = []
 
   steps_done = 0
-  wait_time = 0.01
   all_outs = []
   batch_sizes = []
   is_sequence = isinstance(generator, Sequence)
@@ -305,13 +272,12 @@ def evaluate_generator(model,
       else:
         enqueuer = GeneratorEnqueuer(
             generator,
-            use_multiprocessing=use_multiprocessing,
-            wait_time=wait_time)
+            use_multiprocessing=use_multiprocessing)
       enqueuer.start(workers=workers, max_queue_size=max_queue_size)
       output_generator = enqueuer.get()
     else:
       if is_sequence:
-        output_generator = iter(generator)
+        output_generator = iter_sequence_infinite(generator)
       else:
         output_generator = generator
 
@@ -358,13 +324,12 @@ def evaluate_generator(model,
   if not isinstance(outs, list):
     return np.average(np.asarray(all_outs), weights=batch_sizes)
   else:
-    averages = []
-    for i in range(len(outs)):
-      if i not in stateful_metric_indices:
-        averages.append(
-            np.average([out[i] for out in all_outs], weights=batch_sizes))
-      else:
-        averages.append(float(all_outs[-1][i]))
+    averages = [float(all_outs[-1][0])]  # index 0 = 'loss'
+    averages.extend([
+        np.average([out[i]
+                    for out in all_outs], weights=batch_sizes)
+        for i in range(1, len(outs))
+    ])
     return averages
 
 
@@ -376,8 +341,10 @@ def predict_generator(model,
                       use_multiprocessing=False,
                       verbose=0):
   """See docstring for `Model.predict_generator`."""
+  if not context.executing_eagerly():
+    model._make_predict_function()
+
   steps_done = 0
-  wait_time = 0.01
   all_outs = []
   is_sequence = isinstance(generator, Sequence)
   if not is_sequence and use_multiprocessing and workers > 1:
@@ -404,13 +371,12 @@ def predict_generator(model,
       else:
         enqueuer = GeneratorEnqueuer(
             generator,
-            use_multiprocessing=use_multiprocessing,
-            wait_time=wait_time)
+            use_multiprocessing=use_multiprocessing)
       enqueuer.start(workers=workers, max_queue_size=max_queue_size)
       output_generator = enqueuer.get()
     else:
       if is_sequence:
-        output_generator = iter(generator)
+        output_generator = iter_sequence_infinite(generator)
       else:
         output_generator = generator
 

@@ -205,7 +205,7 @@ def _PopulateTFImportGraphDefOptions(options, prefix, input_map,
   for input_src, input_dst in input_map.items():
     input_src = compat.as_str(input_src)
     if input_src.startswith('^'):
-      src_name = compat.as_bytes(input_src[1:])
+      src_name = compat.as_str(input_src[1:])
       dst_op = input_dst._as_tf_output().oper  # pylint: disable=protected-access
       c_api.TF_ImportGraphDefOptionsRemapControlDependency(
           options, src_name, dst_op)
@@ -329,7 +329,7 @@ def _SetDefaultAttrValues(node_def, op_def):
         node_def.attr[key].CopyFrom(attr_def.default_value)
 
 
-@tf_export('import_graph_def')
+@tf_export('graph_util.import_graph_def', 'import_graph_def')
 @deprecated_args(None, 'Please file an issue at '
                  'https://github.com/tensorflow/tensorflow/issues if you depend'
                  ' on this feature.', 'op_dict')
@@ -344,9 +344,9 @@ def import_graph_def(graph_def,
   This function provides a way to import a serialized TensorFlow
   [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
   protocol buffer, and extract individual objects in the `GraphDef` as
-  @{tf.Tensor} and @{tf.Operation} objects. Once extracted,
+  `tf.Tensor` and `tf.Operation` objects. Once extracted,
   these objects are placed into the current default `Graph`. See
-  @{tf.Graph.as_graph_def} for a way to create a `GraphDef`
+  `tf.Graph.as_graph_def` for a way to create a `GraphDef`
   proto.
 
   Args:
@@ -370,7 +370,8 @@ def import_graph_def(graph_def,
 
   Returns:
     A list of `Operation` and/or `Tensor` objects from the imported graph,
-    corresponding to the names in `return_elements`.
+    corresponding to the names in `return_elements`,
+    and None if `returns_elements` is None.
 
   Raises:
     TypeError: If `graph_def` is not a `GraphDef` proto,
@@ -430,16 +431,15 @@ def import_graph_def(graph_def,
     #
     # TODO(skyewm): fetch the TF_Functions directly from the TF_Graph
     # TODO(skyewm): avoid sending serialized FunctionDefs back to the TF_Graph
-    # TODO(b/74620627): move this after _ProcessNewOps outside the lock once
-    # _USE_C_SHAPES is removed.
-    if graph_def.library and graph_def.library.function:
-      # pylint: disable=protected-access
-      functions = function._from_library(graph_def.library)
-      for f in functions:
-        f.add_to_graph(graph)
-      # pylint: enable=protected-access
 
     _ProcessNewOps(graph)
+
+  if graph_def.library and graph_def.library.function:
+    # pylint: disable=protected-access
+    functions = function._from_library(graph_def.library)
+    for f in functions:
+      f.add_to_graph(graph)
+    # pylint: enable=protected-access
 
   # Treat input mappings that don't appear in the graph as an error, because
   # they are likely to be due to a typo.

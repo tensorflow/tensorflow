@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -26,7 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class SequenceDatasetTest(test.TestCase):
+class SequenceDatasetTest(test_base.DatasetTestBase):
 
   def testRepeatTensorDataset(self):
     """Test a dataset that repeats its input multiple times."""
@@ -44,11 +45,11 @@ class SequenceDatasetTest(test.TestCase):
     self.assertEqual([c.shape for c in components],
                      [t.shape for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test a finite repetition.
       sess.run(init_op, feed_dict={count_placeholder: 3})
       for _ in range(3):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         for component, result_component in zip(components, results):
           self.assertAllEqual(component, result_component)
 
@@ -58,7 +59,7 @@ class SequenceDatasetTest(test.TestCase):
       # Test a different finite repetition.
       sess.run(init_op, feed_dict={count_placeholder: 7})
       for _ in range(7):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         for component, result_component in zip(components, results):
           self.assertAllEqual(component, result_component)
       with self.assertRaises(errors.OutOfRangeError):
@@ -74,7 +75,7 @@ class SequenceDatasetTest(test.TestCase):
       # actually is infinite.
       sess.run(init_op, feed_dict={count_placeholder: -1})
       for _ in range(17):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         for component, result_component in zip(components, results):
           self.assertAllEqual(component, result_component)
 
@@ -90,11 +91,11 @@ class SequenceDatasetTest(test.TestCase):
     self.assertEqual([c.shape[1:] for c in components],
                      [t.shape for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Take fewer than input size
       sess.run(init_op, feed_dict={count_placeholder: 4})
       for i in range(4):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         self.assertAllEqual(results, components[0][i:i+1])
 
       with self.assertRaises(errors.OutOfRangeError):
@@ -103,7 +104,7 @@ class SequenceDatasetTest(test.TestCase):
       # Take more than input size
       sess.run(init_op, feed_dict={count_placeholder: 25})
       for i in range(10):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         self.assertAllEqual(results, components[0][i:i+1])
 
       with self.assertRaises(errors.OutOfRangeError):
@@ -112,7 +113,7 @@ class SequenceDatasetTest(test.TestCase):
       # Take all of input
       sess.run(init_op, feed_dict={count_placeholder: -1})
       for i in range(10):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         self.assertAllEqual(results, components[0][i:i+1])
 
       with self.assertRaises(errors.OutOfRangeError):
@@ -136,12 +137,12 @@ class SequenceDatasetTest(test.TestCase):
     self.assertEqual([c.shape[1:] for c in components],
                      [t.shape for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Skip fewer than input size, we should skip
       # the first 4 elements and then read the rest.
       sess.run(init_op, feed_dict={count_placeholder: 4})
       for i in range(4, 10):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         self.assertAllEqual(results, components[0][i:i+1])
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
@@ -164,7 +165,7 @@ class SequenceDatasetTest(test.TestCase):
       # Skip nothing
       sess.run(init_op, feed_dict={count_placeholder: 0})
       for i in range(0, 10):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         self.assertAllEqual(results, components[0][i:i+1])
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
@@ -183,10 +184,10 @@ class SequenceDatasetTest(test.TestCase):
     self.assertEqual([c.shape for c in components],
                      [t.shape for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op, feed_dict={inner_count: 7, outer_count: 14})
       for _ in range(7 * 14):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         for component, result_component in zip(components, results):
           self.assertAllEqual(component, result_component)
       with self.assertRaises(errors.OutOfRangeError):
@@ -199,8 +200,8 @@ class SequenceDatasetTest(test.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
-      sess.run(init_op)
+    with self.cached_session() as sess:
+      self.evaluate(init_op)
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 

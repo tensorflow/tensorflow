@@ -58,7 +58,7 @@ class DataFeederTest(test.TestCase):
         self.assertEqual(expected_np_dtype, v)
     else:
       self.assertEqual(expected_np_dtype, feeder.input_dtype)
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       inp, _ = feeder.input_builder()
       if isinstance(inp, dict):
         for v in list(inp.values()):
@@ -147,7 +147,7 @@ class DataFeederTest(test.TestCase):
   def test_unsupervised(self):
 
     def func(feeder):
-      with self.test_session():
+      with self.cached_session():
         inp, _ = feeder.input_builder()
         feed_dict_fn = feeder.get_feed_dict_fn()
         feed_dict = feed_dict_fn()
@@ -181,7 +181,7 @@ class DataFeederTest(test.TestCase):
   def test_epoch(self):
 
     def func(feeder):
-      with self.test_session():
+      with self.cached_session():
         feeder.input_builder()
         epoch = feeder.make_epoch_variable()
         feed_dict_fn = feeder.get_feed_dict_fn()

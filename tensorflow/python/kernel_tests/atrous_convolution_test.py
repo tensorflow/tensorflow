@@ -263,7 +263,7 @@ class AtrousConvolutionTest(test.TestCase):
     self.assertLess(err, err_tolerance)
 
   def testGradient(self):
-    with self.test_session():
+    with self.cached_session():
       for padding in ["SAME", "VALID"]:
         for rate_width in range(1, 3):
           for rate_height in range(1, 3):

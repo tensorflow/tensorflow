@@ -67,7 +67,7 @@ class BarrierTest(test.TestCase):
       """, b.barrier_ref.op.node_def)
 
   def testInsertMany(self):
-    with self.test_session():
+    with self.cached_session():
       b = data_flow_ops.Barrier(
           (dtypes.float32, dtypes.float32), shapes=((), ()), name="B")
       size_t = b.ready_size()
@@ -83,7 +83,7 @@ class BarrierTest(test.TestCase):
       self.assertEquals(size_t.eval(), [3])
 
   def testInsertManyEmptyTensor(self):
-    with self.test_session():
+    with self.cached_session():
       error_message = ("Empty tensors are not supported, but received shape "
                        r"\'\(0,\)\' at index 1")
       with self.assertRaisesRegexp(ValueError, error_message):
@@ -91,7 +91,7 @@ class BarrierTest(test.TestCase):
             (dtypes.float32, dtypes.float32), shapes=((1,), (0,)), name="B")
 
   def testInsertManyEmptyTensorUnknown(self):
-    with self.test_session():
+    with self.cached_session():
       b = data_flow_ops.Barrier((dtypes.float32, dtypes.float32), name="B")
       size_t = b.ready_size()
       self.assertEqual([], size_t.get_shape())
@@ -103,7 +103,7 @@ class BarrierTest(test.TestCase):
         insert_0_op.run()
 
   def testTakeMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       b = data_flow_ops.Barrier(
           (dtypes.float32, dtypes.float32), shapes=((), ()), name="B")
       size_t = b.ready_size()
@@ -128,7 +128,7 @@ class BarrierTest(test.TestCase):
       self.assertEqual(values_1_val[idx], v1)
 
   def testTakeManySmallBatch(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       b = data_flow_ops.Barrier(
           (dtypes.float32, dtypes.float32), shapes=((), ()), name="B")
       size_t = b.ready_size()
@@ -192,7 +192,7 @@ class BarrierTest(test.TestCase):
         insert_1_3_op.run()
 
   def testUseBarrierWithShape(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       b = data_flow_ops.Barrier(
           (dtypes.float32, dtypes.float32), shapes=((2, 2), (8,)), name="B")
       size_t = b.ready_size()
@@ -221,7 +221,7 @@ class BarrierTest(test.TestCase):
       self.assertAllEqual(values_1_val[idx], v1)
 
   def testParallelInsertMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       b = data_flow_ops.Barrier(dtypes.float32, shapes=())
       size_t = b.ready_size()
       keys = [str(x).encode("ascii") for x in range(10)]
@@ -241,7 +241,7 @@ class BarrierTest(test.TestCase):
       self.assertEqual(values_val[idx], v)
 
   def testParallelTakeMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       b = data_flow_ops.Barrier(dtypes.float32, shapes=())
       size_t = b.ready_size()
       keys = [str(x).encode("ascii") for x in range(10)]
@@ -275,7 +275,7 @@ class BarrierTest(test.TestCase):
         zip(keys, values), [(k[0], v[0]) for k, v in zip(key_vals, value_vals)])
 
   def testBlockingTakeMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       b = data_flow_ops.Barrier(dtypes.float32, shapes=())
       keys = [str(x).encode("ascii") for x in range(10)]
       values = [float(x) for x in range(10)]
@@ -297,7 +297,7 @@ class BarrierTest(test.TestCase):
       t.join()
 
   def testParallelInsertManyTakeMany(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       b = data_flow_ops.Barrier(
           (dtypes.float32, dtypes.int64), shapes=((), (2,)))
       num_iterations = 100
@@ -376,7 +376,7 @@ class BarrierTest(test.TestCase):
         self.assertAllEqual(taken_i["values_1"], expected_values_1)
 
   def testClose(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       b = data_flow_ops.Barrier(
           (dtypes.float32, dtypes.float32), shapes=((), ()), name="B")
       size_t = b.ready_size()
@@ -434,7 +434,7 @@ class BarrierTest(test.TestCase):
         sess.run(take_t[0])
 
   def testCancel(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       b = data_flow_ops.Barrier(
           (dtypes.float32, dtypes.float32), shapes=((), ()), name="B")
       size_t = b.ready_size()
@@ -487,7 +487,7 @@ class BarrierTest(test.TestCase):
         sess.run(take_t[0])
 
   def _testClosedEmptyBarrierTakeManyAllowSmallBatchRaises(self, cancel):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       b = data_flow_ops.Barrier(
           (dtypes.float32, dtypes.float32), shapes=((), ()), name="B")
       take_t = b.take_many(1, allow_small_batch=True)
@@ -500,7 +500,7 @@ class BarrierTest(test.TestCase):
     self._testClosedEmptyBarrierTakeManyAllowSmallBatchRaises(cancel=True)
 
   def _testParallelInsertManyTakeManyCloseHalfwayThrough(self, cancel):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       b = data_flow_ops.Barrier(
           (dtypes.float32, dtypes.int64), shapes=((), (2,)))
       num_iterations = 50
@@ -576,7 +576,7 @@ class BarrierTest(test.TestCase):
     self._testParallelInsertManyTakeManyCloseHalfwayThrough(cancel=True)
 
   def _testParallelPartialInsertManyTakeManyCloseHalfwayThrough(self, cancel):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       b = data_flow_ops.Barrier(
           (dtypes.float32, dtypes.int64), shapes=((), (2,)))
       num_iterations = 100
@@ -676,7 +676,7 @@ class BarrierTest(test.TestCase):
     self._testParallelPartialInsertManyTakeManyCloseHalfwayThrough(cancel=True)
 
   def testIncompatibleSharedBarrierErrors(self):
-    with self.test_session():
+    with self.cached_session():
       # Do component types and shapes.
       b_a_1 = data_flow_ops.Barrier(
           (dtypes.float32,), shapes=(()), shared_name="b_a")

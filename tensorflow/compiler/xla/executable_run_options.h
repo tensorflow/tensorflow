@@ -65,6 +65,13 @@ class ExecutableRunOptions {
   ExecutableRunOptions& set_stream(stream_executor::Stream* stream);
   stream_executor::Stream* stream() const;
 
+  // If set, this is the stream to perform any pre-computation transfers on.
+  // The platform of the stream must match the platform the executable was
+  // built for.  A value of nullptr indicates the option has not been set.
+  ExecutableRunOptions& set_host_to_device_stream(
+      stream_executor::Stream* stream);
+  stream_executor::Stream* host_to_device_stream() const;
+
   // Sets the thread pool device on which to run Eigen subcomputations.
   // Does not take ownership.
   ExecutableRunOptions& set_intra_op_thread_pool(
@@ -90,6 +97,7 @@ class ExecutableRunOptions {
   const Eigen::ThreadPoolDevice* intra_op_thread_pool_ = nullptr;
   ExecutionProfile* execution_profile_ = nullptr;
   int rng_seed_ = 0;
+  stream_executor::Stream* host_to_device_stream_ = nullptr;
 };
 
 }  // namespace xla

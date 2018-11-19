@@ -111,6 +111,6 @@ def get_ds_from_tfrecords(data_dir,
     }[split]
     dataset = dataset.shuffle(size)
 
-  dataset = dataset.batch(batch_size)
+  dataset = dataset.batch(batch_size, drop_remainder=True)
 
   return dataset

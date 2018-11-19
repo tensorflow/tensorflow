@@ -20,9 +20,19 @@ from __future__ import print_function
 
 import abc
 
+import six
+
 from tensorflow.python.training.server_lib import ClusterSpec
 
 
+def format_master_url(master, rpc_layer=None):
+  if rpc_layer:
+    return '%s://%s' % (rpc_layer, master)
+  else:
+    return master
+
+
+@six.add_metaclass(abc.ABCMeta)
 class ClusterResolver(object):
   """Abstract class for all implementations of ClusterResolvers.
 
@@ -34,6 +44,17 @@ class ClusterResolver(object):
   automatically discover and resolve IP addresses for various TensorFlow
   workers. This will eventually allow us to automatically recover from
   underlying machine failures and scale TensorFlow worker clusters up and down.
+
+  Note to Implementors: In addition to these abstract methods, you must also
+  implement the task_type, task_index, and rpc_layer attributes. You may choose
+  to implement them either as properties with getters or setters or directly
+  set the attributes.
+
+  - task_type is the name of the server's current named job (e.g. 'worker',
+     'ps' in a distributed parameterized training job).
+  - task_index is the ordinal index of the server within the task type.
+  - rpc_layer is the protocol used by TensorFlow to communicate with other
+      TensorFlow servers in a distributed environment.
   """
 
   @abc.abstractmethod
@@ -50,21 +71,61 @@ class ClusterResolver(object):
     management system every time this function is invoked and reconstructing
     a cluster_spec, rather than attempting to cache anything.
     """
-    raise NotImplementedError(
-        'cluster_spec is not implemented for {}.'.format(self))
+    raise NotImplementedError()
 
   @abc.abstractmethod
-  def master(self):
-    """..."""
-    raise NotImplementedError('master is not implemented for {}.'.format(self))
+  def master(self, task_type=None, task_index=None, rpc_layer=None):
+    """Retrieves the name or URL of the session master.
+
+    Args:
+      task_type: (Optional) The type of the TensorFlow task of the master.
+      task_index: (Optional) The index of the TensorFlow task of the master.
+      rpc_layer: (Optional) The RPC protocol for the given cluster.
+
+    Returns:
+      The name or URL of the session master.
+
+    Implementors of this function must take care in ensuring that the master
+    returned is up-to-date at the time to calling this function. This usually
+    means retrieving the master every time this function is invoked.
+    """
+    raise NotImplementedError()
+
+  @abc.abstractmethod
+  def num_accelerators_per_worker(self, session_config=None):
+    """Returns the number of accelerator cores per worker.
+
+    This returns the number of accelerator cores (such as GPUs and TPUs)
+    available per worker. If workers only has CPU cores available, then this
+    should return 0. This method will query the master for this information
+    if it is not otherwise known.
+
+    Args:
+      session_config: (Optional) Configuration for starting a new session to
+        query how many accelerator cores it has.
+    """
+    raise NotImplementedError()
+
+  @abc.abstractproperty
+  def environment(self):
+    """Returns the current environment which TensorFlow is running in."""
+    raise NotImplementedError()
 
 
 class SimpleClusterResolver(ClusterResolver):
   """Simple implementation of ClusterResolver that accepts a ClusterSpec."""
 
-  def __init__(self, cluster_spec, master=''):
+  def __init__(self, cluster_spec, master='', task_type=None, task_index=None,
+               environment='', num_accelerators_per_worker=0,
+               rpc_layer=None):
     """Creates a SimpleClusterResolver from a ClusterSpec."""
     super(SimpleClusterResolver, self).__init__()
+
+    self._task_type = task_type
+    self._task_index = task_index
+    self._environment = environment
+    self._num_accelerators_per_worker = num_accelerators_per_worker
+    self._rpc_layer = rpc_layer
 
     if not isinstance(cluster_spec, ClusterSpec):
       raise TypeError('cluster_spec must be a ClusterSpec.')
@@ -78,9 +139,66 @@ class SimpleClusterResolver(ClusterResolver):
     """Returns the ClusterSpec passed into the constructor."""
     return self._cluster_spec
 
-  def master(self):
-    """Returns the master address to use when creating a session."""
-    return self._master
+  def master(self, task_type=None, task_index=None, rpc_layer=None):
+    """Returns the master address to use when creating a session.
+
+    Args:
+      task_type: (Optional) The type of the TensorFlow task of the master.
+      task_index: (Optional) The index of the TensorFlow task of the master.
+      rpc_layer: (Optional) The RPC used by distributed TensorFlow.
+
+    Returns:
+      The name or URL of the session master.
+
+    If a task_type and task_index is given, this will override the `master`
+    string passed into the initialization function.
+    """
+    if task_type is not None and task_index is not None:
+      master = self.cluster_spec().task_address(task_type, task_index)
+    else:
+      master = self._master
+
+    return format_master_url(master, rpc_layer=rpc_layer or self._rpc_layer)
+
+  @property
+  def task_type(self):
+    return self._task_type
+
+  @property
+  def task_index(self):
+    return self._task_index
+
+  @task_type.setter
+  def task_type(self, task_type):
+    self._task_type = task_type
+
+  @task_index.setter
+  def task_index(self, task_index):
+    self._task_index = task_index
+
+  @property
+  def environment(self):
+    return self._environment
+
+  def num_accelerators_per_worker(self, session_config=None):
+    """Returns the number of accelerator cores per worker.
+
+    Args:
+      session_config: Unused. The SimpleClusterResolver does not do automatic
+        detection of accelerators, so a TensorFlow session will never be
+        created, and thus a `session_config` is never necessary here, and will
+        be ignored.
+    """
+    del session_config
+    return self._num_accelerators_per_worker
+
+  @property
+  def rpc_layer(self):
+    return self._rpc_layer
+
+  @rpc_layer.setter
+  def rpc_layer(self, rpc_layer):
+    self._rpc_layer = rpc_layer
 
 
 class UnionClusterResolver(ClusterResolver):
@@ -90,19 +208,35 @@ class UnionClusterResolver(ClusterResolver):
   merges the underlying ClusterResolvers, and returns one unified ClusterSpec
   when cluster_spec is called. The details of the merge function is
   documented in the cluster_spec function.
+
+  For additional Cluster Resolver properties such as task type, task index,
+  rpc layer, environment, etc..., we will return the value from the first
+  ClusterResolver in the union.
   """
 
-  def __init__(self, *args):
+  def __init__(self, *args, **kwargs):
     """Initializes a UnionClusterResolver with other ClusterResolvers.
 
     Args:
       *args: `ClusterResolver` objects to be unionized.
+      **kwargs:
+        rpc_layer - (Optional) Override value for the RPC layer used by
+          TensorFlow.
+        task_type - (Optional) Override value for the current task type.
+        task_index - (Optional) Override value for the current task index.
 
     Raises:
       TypeError: If any argument is not a subclass of `ClusterResolvers`.
       ValueError: If there are no arguments passed.
     """
     super(UnionClusterResolver, self).__init__()
+
+    self._rpc_layer = kwargs.pop('rpc_layer', None)
+    self._task_type = kwargs.pop('task_type', None)
+    self._task_index = kwargs.pop('task_index', None)
+
+    if kwargs:
+      raise ValueError('Unexpected kwargs provided {!r}'.format(kwargs))
 
     if not args:
       raise ValueError('At least one ClusterResolver is required.')
@@ -187,6 +321,54 @@ class UnionClusterResolver(ClusterResolver):
 
     return ClusterSpec(merged_cluster)
 
-  def master(self):
-    """master returns the master address from the first cluster resolver."""
-    return self._cluster_resolvers[0].master()
+  def master(self, task_type=None, task_index=None, rpc_layer=None):
+    """Returns the master address to use when creating a session.
+
+    This usually returns the master from the first ClusterResolver passed in,
+    but you can override this by specifying the task_type and task_index.
+
+    Args:
+      task_type: (Optional) The type of the TensorFlow task of the master.
+      task_index: (Optional) The index of the TensorFlow task of the master.
+      rpc_layer: (Optional) The RPC protocol for the given cluster.
+
+    Returns:
+      The name or URL of the session master.
+    """
+    if task_type is not None and task_index is not None:
+      master = self.cluster_spec().task_address(task_type, task_index)
+      return format_master_url(master, rpc_layer or self._rpc_layer)
+
+    return self._cluster_resolvers[0].master(rpc_layer=rpc_layer)
+
+  @property
+  def task_type(self):
+    return self._task_type or self._cluster_resolvers[0].task_type
+
+  @property
+  def task_index(self):
+    return self._task_index or self._cluster_resolvers[0].task_index
+
+  @task_type.setter
+  def task_type(self, task_type):
+    self._task_type = task_type
+
+  @task_index.setter
+  def task_index(self, task_index):
+    self._task_index = task_index
+
+  @property
+  def environment(self):
+    return self._cluster_resolvers[0].environment
+
+  def num_accelerators_per_worker(self, session_config=None):
+    return self._cluster_resolvers[0].num_accelerators_per_worker(
+        session_config)
+
+  @property
+  def rpc_layer(self):
+    return self._rpc_layer or self._cluster_resolvers[0].rpc_layer
+
+  @rpc_layer.setter
+  def rpc_layer(self, rpc_layer):
+    self._rpc_layer = rpc_layer

@@ -66,7 +66,7 @@ class AddSignTest(test.TestCase):
                  alpha=1.0,
                  beta=0.9):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, m1 = 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -80,9 +80,9 @@ class AddSignTest(test.TestCase):
           global_step = resource_variable_ops.ResourceVariable(
               0, trainable=False)
         else:
-          var0 = variables.Variable(var0_np)
-          var1 = variables.Variable(var1_np)
-          global_step = variables.Variable(
+          var0 = variables.VariableV1(var0_np)
+          var1 = variables.VariableV1(var1_np)
+          global_step = variables.VariableV1(
               0, trainable=False)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
@@ -169,7 +169,7 @@ class AddSignTest(test.TestCase):
                   alpha=1.0,
                   beta=0.9):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.test_session(use_gpu=True):
+      with self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, m1 = 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -183,9 +183,9 @@ class AddSignTest(test.TestCase):
           global_step = resource_variable_ops.ResourceVariable(
               0, trainable=False)
         else:
-          var0 = variables.Variable(var0_np)
-          var1 = variables.Variable(var1_np)
-          global_step = variables.Variable(
+          var0 = variables.VariableV1(var0_np)
+          var1 = variables.VariableV1(var1_np)
+          global_step = variables.VariableV1(
               0, trainable=False)
         grads0_np_indices = np.array([0, 1], dtype=np.int32)
         grads0 = ops.IndexedSlices(

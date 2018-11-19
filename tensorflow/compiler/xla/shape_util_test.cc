@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 
 #include <numeric>
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -23,8 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 namespace {
@@ -334,24 +334,15 @@ TEST(ShapeUtilTest, IncompatibleScalarVsTuple) {
   EXPECT_FALSE(ShapeUtil::CompatibleIgnoringFpPrecision(shape2, shape1));
 }
 
-TEST(ShapeUtilTest, CompareShapesWithPaddedDimensionsMismatch) {
-  Shape shape1 = ShapeUtil::MakeShape(F32, {20, 30});
-  shape1.mutable_layout()->add_padded_dimensions(10);
-
-  Shape shape2 = ShapeUtil::MakeShape(F32, {20, 30});
-  shape2.mutable_layout()->add_padded_dimensions(11);
-
-  EXPECT_FALSE(ShapeUtil::Equal(shape1, shape2));
-}
-
-TEST(ShapeUtilTest, CompareShapesWithPaddingValueMismatch) {
-  Shape shape1 = ShapeUtil::MakeShape(F32, {20, 30});
-  shape1.mutable_layout()->set_padding_value(ZERO_PAD);
-
-  Shape shape2 = ShapeUtil::MakeShape(F32, {20, 30});
-  shape2.mutable_layout()->set_padding_value(LOWEST_PAD);
-
-  EXPECT_FALSE(ShapeUtil::Equal(shape1, shape2));
+TEST(ShapeUtilTest, OpaqueVsArray) {
+  Shape shape1 = ShapeUtil::MakeShape(F32, {5, 7});
+  Shape shape2 = ShapeUtil::MakeOpaqueShape();
+  EXPECT_FALSE(ShapeUtil::Compatible(shape1, shape2));
+  EXPECT_FALSE(ShapeUtil::Compatible(shape2, shape1));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringFpPrecision(shape1, shape2));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringFpPrecision(shape2, shape1));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringElementType(shape1, shape2));
+  EXPECT_FALSE(ShapeUtil::CompatibleIgnoringElementType(shape2, shape1));
 }
 
 TEST(ShapeUtilTest, ScalarDefaultLayoutEqualsScalarEmptyMin2Maj) {
@@ -384,23 +375,13 @@ TEST(ShapeUtilTest, ByteSizeOfWithoutPadding) {
   EXPECT_EQ(0, ShapeUtil::ByteSizeOf(ShapeUtil::MakeTokenShape()));
 }
 
-TEST(ShapeUtilTest, ByteSizeOfWithPadding) {
-  EXPECT_EQ(4, ShapeUtil::ByteSizeOfPrimitiveType(F32));
-  Shape shape = ShapeUtil::MakeShape(F32, {10, 20});
-  EXPECT_EQ(800, ShapeUtil::ByteSizeOf(shape));
-
-  shape.mutable_layout()->add_padded_dimensions(15);
-  shape.mutable_layout()->add_padded_dimensions(21);
-  EXPECT_EQ(15 * 21 * 4, ShapeUtil::ByteSizeOf(shape));
-}
-
 TEST(ShapeUtilTest, NilShape) {
-  EXPECT_TRUE(ShapeUtil::IsNil(ShapeUtil::MakeNil()));
-  EXPECT_FALSE(ShapeUtil::IsNil(ShapeUtil::MakeShape(F32, {1, 2, 3})));
-  EXPECT_FALSE(ShapeUtil::IsNil(ShapeUtil::MakeShape(F32, {0, 1})));
-  EXPECT_FALSE(ShapeUtil::IsNil(
+  EXPECT_TRUE(ShapeUtil::IsEmptyTuple(ShapeUtil::MakeNil()));
+  EXPECT_FALSE(ShapeUtil::IsEmptyTuple(ShapeUtil::MakeShape(F32, {1, 2, 3})));
+  EXPECT_FALSE(ShapeUtil::IsEmptyTuple(ShapeUtil::MakeShape(F32, {0, 1})));
+  EXPECT_FALSE(ShapeUtil::IsEmptyTuple(
       ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(S32, {})})));
-  EXPECT_FALSE(ShapeUtil::IsNil(
+  EXPECT_FALSE(ShapeUtil::IsEmptyTuple(
       ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {0})})));
 }
 
@@ -432,6 +413,22 @@ TEST(ShapeUtilTest, ElementsIn) {
   EXPECT_EQ(0, ShapeUtil::ElementsIn(ShapeUtil::MakeShape(S32, {0, 3, 0})));
   EXPECT_EQ(15, ShapeUtil::ElementsIn(ShapeUtil::MakeShape(S32, {1, 3, 5})));
   EXPECT_EQ(221, ShapeUtil::ElementsIn(ShapeUtil::MakeShape(S32, {13, 17})));
+}
+
+TEST(ShapeUtilTest, HasPrimitiveType) {
+  EXPECT_TRUE(ShapeUtil::HasPrimitiveType(ShapeUtil::MakeShape(S32, {}), S32));
+  EXPECT_FALSE(ShapeUtil::HasPrimitiveType(ShapeUtil::MakeShape(S32, {}), S16));
+  EXPECT_TRUE(ShapeUtil::HasPrimitiveType(ShapeUtil::MakeShape(S32, {0}), S32));
+  EXPECT_FALSE(ShapeUtil::HasPrimitiveType(ShapeUtil::MakeTupleShape({}), S32));
+  EXPECT_TRUE(ShapeUtil::HasPrimitiveType(
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(S32, {})}),
+      S32));
+  EXPECT_TRUE(ShapeUtil::HasPrimitiveType(
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(S32, {}),
+           ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(S16, {})})}),
+      S16));
 }
 
 TEST(ShapeUtilTest, IsZeroElementArray) {
@@ -694,11 +691,10 @@ TEST(ShapeUtilTest, ForEachIndex) {
     Shape shape = ShapeUtil::MakeShape(F32, data.dimensions);
     // Increments at every invocation.
     int invocations = 0;
-    auto increment_func =
-        [&invocations](tensorflow::gtl::ArraySlice<int64> indexes) {
-          invocations++;
-          return true;
-        };
+    auto increment_func = [&invocations](absl::Span<const int64> indexes) {
+      invocations++;
+      return true;
+    };
 
     std::vector<int64> zero_base(data.dimensions.size(), 0);
     std::vector<int64> step(data.dimensions.size(), 1);
@@ -715,8 +711,7 @@ TEST(ShapeUtilTest, ForEachIndexWithStatus) {
   // Increments at every invocation.
   int invocations = 0;
   auto increment_func =
-      [&invocations](
-          tensorflow::gtl::ArraySlice<int64> indexes) -> StatusOr<bool> {
+      [&invocations](absl::Span<const int64> indexes) -> StatusOr<bool> {
     if (++invocations == 5) {
       return Unimplemented("Cannot increment beyond 5.");
     }
@@ -737,7 +732,7 @@ TEST(ShapeUtilTest, ForEachIndexParallel) {
   Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
   int64 output[10][10];
   int init = 5;
-  auto set_func = [&](tensorflow::gtl::ArraySlice<int64> indexes) {
+  auto set_func = [&](absl::Span<const int64> indexes) {
     output[indexes[0]][indexes[1]] = init + indexes[0] + indexes[1];
   };
 
@@ -838,13 +833,13 @@ TEST(ShapeUtilTest, PermuteDimensionsLayout) {
   std::iota(layout.begin(), layout.end(), 0);
   do {
     Shape s = ShapeUtil::MakeShapeWithLayout(F32, {10, 100, 1000}, layout);
-    SCOPED_TRACE(tensorflow::strings::StrCat("s=", ShapeUtil::HumanString(s)));
+    SCOPED_TRACE(absl::StrCat("s=", ShapeUtil::HumanString(s)));
 
     std::vector<int64> permutation(3);
     std::iota(permutation.begin(), permutation.end(), 0);
     do {
-      SCOPED_TRACE(tensorflow::strings::StrCat(
-          "permutation=", tensorflow::str_util::Join(permutation, ",")));
+      SCOPED_TRACE(
+          absl::StrCat("permutation=", absl::StrJoin(permutation, ",")));
 
       // TransposeIsBitcast takes the inverse of the permutation that
       // PermuteDimensions takes.

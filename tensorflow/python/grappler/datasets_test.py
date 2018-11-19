@@ -261,7 +261,7 @@ class GrapplerTest(test.TestCase):
         op_properties = grappler_item.GetOpProperties()
         inferred_shape = self.as_tensor_shape(
             op_properties['IteratorGetNext'][0].shape)
-        self.assertTrue(test_case['shape'][0].is_compatible_with(
+        self.assertTrue(test_case['shape'].dims[0].is_compatible_with(
             inferred_shape[0]))
         self.assertEqual(test_case['shape'][1:], inferred_shape[1:])
 
@@ -290,7 +290,7 @@ class GrapplerTest(test.TestCase):
         op_properties = grappler_item.GetOpProperties()
         inferred_shape = self.as_tensor_shape(
             op_properties['IteratorGetNext'][0].shape)
-        self.assertTrue(test_case['shape'][0].is_compatible_with(
+        self.assertTrue(test_case['shape'].dims[0].is_compatible_with(
             inferred_shape[0]))
         self.assertEqual(test_case['shape'][1:], inferred_shape[1:])
 

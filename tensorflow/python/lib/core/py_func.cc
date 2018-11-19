@@ -177,8 +177,7 @@ tensorflow::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
                                                 const Device* expected_device,
                                                 const Tensor** output_tensor) {
   auto handle = EagerTensor_Handle(eager_tensor)->handle;
-  Device* actual_device = nullptr;
-  TF_RETURN_IF_ERROR(handle->Device(&actual_device));
+  Device* actual_device = handle->device();
   TF_RETURN_IF_ERROR(handle->Tensor(output_tensor));
   // actual_device may be nullptr, which implies local CPU.
   if (expected_device == actual_device) return Status::OK();
@@ -333,6 +332,35 @@ class NumpyTensorBuffer : public TensorBuffer {
   void* data_;
 };
 
+Status PyObjectToString(PyObject* obj, string* str) {
+  char* py_bytes;
+  Py_ssize_t size;
+  if (PyBytes_AsStringAndSize(obj, &py_bytes, &size) != -1) {
+    str->assign(py_bytes, size);
+    return Status::OK();
+  }
+#if PY_MAJOR_VERSION >= 3
+  const char* ptr = PyUnicode_AsUTF8AndSize(obj, &size);
+  if (ptr != nullptr) {
+    str->assign(ptr, size);
+    return Status::OK();
+  }
+#else
+  if (PyUnicode_Check(obj)) {
+    PyObject* unicode = PyUnicode_AsUTF8String(obj);
+    char* ptr;
+    if (unicode && PyString_AsStringAndSize(unicode, &ptr, &size) != -1) {
+      str->assign(ptr, size);
+      Py_DECREF(unicode);
+      return Status::OK();
+    }
+    Py_XDECREF(unicode);
+  }
+#endif
+  return errors::Unimplemented("Unsupported object type ",
+                               obj->ob_type->tp_name);
+}
+
 Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
   PyArrayObject* input = reinterpret_cast<PyArrayObject*>(obj);
   DataType dtype = DT_INVALID;
@@ -348,29 +376,7 @@ Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
       auto tflat = t.flat<string>();
       PyObject** input_data = reinterpret_cast<PyObject**>(PyArray_DATA(input));
       for (int i = 0; i < tflat.dimension(0); ++i) {
-        char* el;
-        Py_ssize_t el_size;
-        if (PyBytes_AsStringAndSize(input_data[i], &el, &el_size) == -1) {
-#if PY_MAJOR_VERSION >= 3
-          el = PyUnicode_AsUTF8AndSize(input_data[i], &el_size);
-#else
-          el = nullptr;
-          if (PyUnicode_Check(input_data[i])) {
-            PyObject* unicode = PyUnicode_AsUTF8String(input_data[i]);
-            if (unicode) {
-              if (PyString_AsStringAndSize(unicode, &el, &el_size) == -1) {
-                Py_DECREF(unicode);
-                el = nullptr;
-              }
-            }
-          }
-#endif
-          if (!el) {
-            return errors::Unimplemented("Unsupported object type ",
-                                         input_data[i]->ob_type->tp_name);
-          }
-        }
-        tflat(i) = string(el, el_size);
+        TF_RETURN_IF_ERROR(PyObjectToString(input_data[i], &tflat(i)));
       }
       *ret = t;
       break;
@@ -391,7 +397,7 @@ Status ConvertNdarrayToTensor(PyObject* obj, Tensor* ret) {
       TF_RETURN_IF_ERROR(NumericNpDTypeToTfDType(PyArray_TYPE(input), &dtype));
       CHECK(DataTypeCanUseMemcpy(dtype));
       if (reinterpret_cast<intptr_t>(PyArray_DATA(input)) %
-              EIGEN_MAX_ALIGN_BYTES !=
+              std::max(1, EIGEN_MAX_ALIGN_BYTES) !=
           0) {
         Tensor t(dtype, shape);
         StringPiece p = t.tensor_data();
@@ -499,6 +505,17 @@ class PyFuncOp : public OpKernel {
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       call.ins.push_back(ctx->input(i));
     }
+
+    // NOTE(mrry): There is a potential time-of-check-to-time-of-use race here.
+    // because it is possible that `Py_Finalize()` could be called in another
+    // thread between this check and the  call to `PyGILState_Ensure()`, which
+    // will abort the process if `Py_Finalize()` has been called. A more robust
+    // solution would be welcome, but it is not obvious how to make this work
+    // using the current Python C API.
+    OP_REQUIRES(ctx, Py_IsInitialized(),
+                errors::FailedPrecondition(
+                    "Python interpreter state is not initialized. "
+                    "The process may be terminated."));
 
     PyGILState_STATE py_threadstate;
     py_threadstate = PyGILState_Ensure();

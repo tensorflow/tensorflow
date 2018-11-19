@@ -20,13 +20,15 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/dump_ir_pass.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSet.h"
@@ -54,10 +56,7 @@ limitations under the License.
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "llvm/Transforms/Scalar.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
@@ -107,28 +106,26 @@ static string GetLibdeviceFilename(const string& libdevice_dir_path,
                  << ", " << compute_capability.second << ") ."
                  << "Defaulting to libdevice for compute_" << libdevice_version;
   }
-  return tensorflow::strings::StrCat("libdevice.compute_", libdevice_version,
-                                     ".10.bc");
+  return absl::StrCat("libdevice.compute_", libdevice_version, ".10.bc");
 }
 
 // Gets the GPU name as it's known to LLVM for a given compute capability.  If
 // we see an unrecognized compute capability, we return "sm_30".
 static string GetSmName(std::pair<int, int> compute_capability) {
-  static auto* m = new std::map<std::pair<int, int>, int>(
-      {{{2, 0}, 20},
-       {{2, 1}, 21},
-       {{3, 0}, 30},
-       {{3, 2}, 32},
-       {{3, 5}, 35},
-       {{3, 7}, 37},
-       {{5, 0}, 50},
-       {{5, 2}, 52},
-       {{5, 3}, 53},
-       {{6, 0}, 60},
-       {{6, 1}, 61},
-       {{6, 2}, 62},
-       // TODO: Change this to 70 once LLVM NVPTX supports it
-       {{7, 0}, 60}});
+  static auto* m = new std::map<std::pair<int, int>, int>({
+      {{3, 0}, 30},
+      {{3, 2}, 32},
+      {{3, 5}, 35},
+      {{3, 7}, 37},
+      {{5, 0}, 50},
+      {{5, 2}, 52},
+      {{5, 3}, 53},
+      {{6, 0}, 60},
+      {{6, 1}, 61},
+      {{6, 2}, 62},
+      {{7, 0}, 70},
+      {{7, 2}, 72},
+  });
   int sm_version = 30;
   auto it = m->find(compute_capability);
   if (it != m->end()) {
@@ -139,15 +136,16 @@ static string GetSmName(std::pair<int, int> compute_capability) {
                  << "Defaulting to telling LLVM that we're compiling for sm_"
                  << sm_version;
   }
-  return tensorflow::strings::StrCat("sm_", sm_version);
+  return absl::StrCat("sm_", sm_version);
 }
 
 // Convenience function for producing a name of a temporary compilation product
 // from the input filename.
 string MakeNameForTempProduct(const std::string& input_filename,
-                              tensorflow::StringPiece extension) {
-  return ReplaceFilenameExtension(
-      tensorflow::io::Basename(llvm_ir::AsString(input_filename)), extension);
+                              absl::string_view extension) {
+  return ReplaceFilenameExtension(absl::string_view(tensorflow::io::Basename(
+                                      llvm_ir::AsString(input_filename))),
+                                  extension);
 }
 
 // Initializes LLVM passes. Uses the PassRegistry mechanism.
@@ -168,7 +166,7 @@ void InitializePasses(llvm::PassRegistry* pass_registry) {
 
 // Returns the TargetMachine, given a triple.
 std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
-    llvm::Triple triple, tensorflow::StringPiece cpu_name,
+    llvm::Triple triple, absl::string_view cpu_name,
     const HloModuleConfig& hlo_module_config) {
   std::string error;
   const llvm::Target* target = TargetRegistry::lookupTarget("", triple, error);
@@ -181,7 +179,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   TargetOptions target_options = InitTargetOptionsFromCodeGenFlags();
   llvm_ir::SetTargetOptions(
       /*fast_math_enabled=*/hlo_module_config.debug_options()
-          .xla_enable_fast_math(),
+          .xla_gpu_enable_fast_math(),
       &target_options);
 
   // Enable FMA synthesis.
@@ -206,7 +204,7 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
     default:
       codegen_opt_level = CodeGenOpt::None;
   }
-  return WrapUnique(target->createTargetMachine(
+  return absl::WrapUnique(target->createTargetMachine(
       triple.str(), llvm_ir::AsStringRef(cpu_name), "+ptx60", target_options,
       Optional<Reloc::Model>(RelocModel), Optional<CodeModel::Model>(CMModel),
       codegen_opt_level));
@@ -244,9 +242,9 @@ void AddOptimizationPasses(unsigned opt_level, unsigned size_level,
 }
 
 // Emits the given module to a bit code file.
-void EmitBitcodeToFile(const Module& module, tensorflow::StringPiece filename) {
+void EmitBitcodeToFile(const Module& module, absl::string_view filename) {
   std::error_code error_code;
-  llvm::ToolOutputFile outfile(filename.ToString().c_str(), error_code,
+  llvm::ToolOutputFile outfile(string(filename).c_str(), error_code,
                                llvm::sys::fs::F_None);
   if (error_code) {
     LOG(FATAL) << "opening bitcode file for writing: " << error_code.message();
@@ -267,8 +265,9 @@ string EmitModuleToPTX(Module* module, llvm::TargetMachine* target_machine) {
     // get creative to add a suffix.
     string module_id(llvm_ir::AsString(module->getModuleIdentifier()));
     IrDumpingPassManager codegen_passes(
-        ReplaceFilenameExtension(tensorflow::io::Basename(module_id),
-                                 "-nvptx.dummy"),
+        ReplaceFilenameExtension(
+            absl::string_view(tensorflow::io::Basename(module_id)),
+            "-nvptx.dummy"),
         "", false);
     codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
         llvm::Triple(module->getTargetTriple())));
@@ -329,12 +328,12 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
   if (linker.linkInModule(
           std::move(libdevice_module), llvm::Linker::Flags::LinkOnlyNeeded,
           [](Module& M, const StringSet<>& GVS) {
-            internalizeModule(M, [&M, &GVS](const GlobalValue& GV) {
+            internalizeModule(M, [&GVS](const GlobalValue& GV) {
               return !GV.hasName() || (GVS.count(GV.getName()) == 0);
             });
           })) {
-    return tensorflow::errors::Internal(tensorflow::strings::StrCat(
-        "Error linking libdevice from ", libdevice_path));
+    return tensorflow::errors::Internal(
+        absl::StrCat("Error linking libdevice from ", libdevice_path));
   }
   return Status::OK();
 }
@@ -454,12 +453,12 @@ void GPUBackendInit(const HloModuleConfig& hlo_module_config) {
   // * 3-6 gives similar results as 2;
   // * >6 start hurting the performance of at least dot product kernels.
   //
-  // TODO(jingyue): The current threshold only considers the numbr of IR
+  // TODO(jingyue): The current threshold only considers the number of IR
   // instructions which do not accurately reflect the true cost. We need a
   // better cost model.
   FeedLLVMWithFlags({"-bonus-inst-threshold=2"});
-  // TODO(b/22073864): Increase limit when scan memory dependency.
-  // This helps to reduce more redundant load instructions.
+  // Increase limit when scanning memory dependencies.  This helps to reduce
+  // more redundant load instructions.
   //
   // The specific value is currently large enough for s3d in shoc benchmark,
   // which contains a lot of load instructions and many arithmetic instructions

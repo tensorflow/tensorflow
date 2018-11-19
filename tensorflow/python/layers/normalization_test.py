@@ -72,13 +72,13 @@ class BNTest(test.TestCase):
              dtype=dtypes.float32):
     ops.reset_default_graph()
     graph = ops.get_default_graph()
-    with self.test_session(graph=graph, use_gpu=use_gpu) as sess:
+    with self.session(graph=graph, use_gpu=use_gpu) as sess:
       image = array_ops.placeholder(dtype=dtype, shape=shape)
       loss, train_op, saver = self._simple_model(image, is_fused, freeze_mode)
       if restore:
         saver.restore(sess, checkpoint_path)
       else:
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
       np.random.seed(0)
       for _ in range(2):
         image_val = np.random.rand(*shape).astype(dtype.as_numpy_dtype)
@@ -94,7 +94,7 @@ class BNTest(test.TestCase):
     dtype = image_val.dtype
     ops.reset_default_graph()
     graph = ops.get_default_graph()
-    with self.test_session(graph=graph, use_gpu=use_gpu) as sess:
+    with self.session(graph=graph, use_gpu=use_gpu) as sess:
       image = array_ops.placeholder(dtype=dtype, shape=shape)
       loss, _, saver = self._simple_model(image, is_fused, True)
       saver.restore(sess, checkpoint_path)
@@ -319,9 +319,9 @@ class BNTest(test.TestCase):
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
 
       np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
       np_gamma = np.reshape(np_gamma, (1, 4, 1))
@@ -337,7 +337,7 @@ class BNTest(test.TestCase):
 
       # Verify that the statistics are updated during training.
       moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
-      np_inputs = sess.run(inputs)
+      np_inputs = self.evaluate(inputs)
       mean = np.mean(np_inputs, axis=(0, 2))
       std = np.std(np_inputs, axis=(0, 2))
       variance = np.square(std)
@@ -361,9 +361,9 @@ class BNTest(test.TestCase):
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
       np_gamma = np.reshape(np_gamma, (1, 1, 3))
       np_beta = np.reshape(np_beta, (1, 1, 3))
@@ -377,7 +377,7 @@ class BNTest(test.TestCase):
 
       # Verify that the statistics are updated during training.
       moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
-      np_inputs = sess.run(inputs)
+      np_inputs = self.evaluate(inputs)
       mean = np.mean(np_inputs, axis=(0, 1))
       std = np.std(np_inputs, axis=(0, 1))
       variance = np.square(std)
@@ -402,9 +402,9 @@ class BNTest(test.TestCase):
       training = array_ops.placeholder(dtype='bool')
       outputs = bn.apply(inputs, training=training)
 
-      with self.test_session(use_gpu=True) as sess:
+      with self.session(use_gpu=True) as sess:
         # Test training with placeholder learning phase.
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
         np_gamma = np.reshape(np_gamma, (1, 4, 1, 1))
         np_beta = np.reshape(np_beta, (1, 4, 1, 1))
@@ -418,7 +418,7 @@ class BNTest(test.TestCase):
 
         # Verify that the statistics are updated during training.
         moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
-        np_inputs = sess.run(inputs)
+        np_inputs = self.evaluate(inputs)
         mean = np.mean(np_inputs, axis=(0, 2, 3))
         std = np.std(np_inputs, axis=(0, 2, 3))
         variance = np.square(std)
@@ -442,9 +442,9 @@ class BNTest(test.TestCase):
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
       np_gamma = np.reshape(np_gamma, (1, 1, 3, 1))
       np_beta = np.reshape(np_beta, (1, 1, 3, 1))
@@ -458,7 +458,7 @@ class BNTest(test.TestCase):
 
       # Verify that the statistics are updated during training.
       moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
-      np_inputs = sess.run(inputs)
+      np_inputs = self.evaluate(inputs)
       mean = np.mean(np_inputs, axis=(0, 1, 3))
       std = np.std(np_inputs, axis=(0, 1, 3))
       variance = np.square(std)
@@ -482,9 +482,9 @@ class BNTest(test.TestCase):
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
       np_gamma = np.reshape(np_gamma, (1, 1, 1, 6))
       np_beta = np.reshape(np_beta, (1, 1, 1, 6))
@@ -498,7 +498,7 @@ class BNTest(test.TestCase):
 
       # Verify that the statistics are updated during training.
       moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
-      np_inputs = sess.run(inputs)
+      np_inputs = self.evaluate(inputs)
       mean = np.mean(np_inputs, axis=(0, 1, 2))
       std = np.std(np_inputs, axis=(0, 1, 2))
       variance = np.square(std)
@@ -522,9 +522,9 @@ class BNTest(test.TestCase):
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
       np_gamma = np.reshape(np_gamma, (1, 1, 1, 6))
       np_beta = np.reshape(np_beta, (1, 1, 1, 6))
@@ -538,7 +538,7 @@ class BNTest(test.TestCase):
 
       # Verify that the statistics are updated during training.
       moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
-      np_inputs = sess.run(inputs)
+      np_inputs = self.evaluate(inputs)
       mean = np.mean(np_inputs, axis=(0, 1, 2))
       std = np.std(np_inputs, axis=(0, 1, 2))
       variance = np.square(std)
@@ -563,9 +563,9 @@ class BNTest(test.TestCase):
       training = array_ops.placeholder(dtype='bool')
       outputs = bn.apply(inputs, training=training)
 
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         # Test training with placeholder learning phase.
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
         np_gamma = np.reshape(np_gamma, (1, 4, 1, 1))
         np_beta = np.reshape(np_beta, (1, 4, 1, 1))
@@ -579,7 +579,7 @@ class BNTest(test.TestCase):
 
         # Verify that the statistics are updated during training.
         moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
-        np_inputs = sess.run(inputs)
+        np_inputs = self.evaluate(inputs)
         mean = np.mean(np_inputs, axis=(0, 2, 3))
         std = np.std(np_inputs, axis=(0, 2, 3))
         variance = np.square(std)
@@ -603,9 +603,9 @@ class BNTest(test.TestCase):
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
       np_gamma = np.reshape(np_gamma, (1, 1, 1, 6))
       np_beta = np.reshape(np_beta, (1, 1, 1, 6))
@@ -620,7 +620,7 @@ class BNTest(test.TestCase):
 
       # Verify that the statistics are updated during training.
       moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
-      np_inputs = sess.run(inputs)
+      np_inputs = self.evaluate(inputs)
       mean = np.mean(np_inputs, axis=(0, 1, 2))
       std = np.std(np_inputs, axis=(0, 1, 2))
       variance = np.square(std)
@@ -644,9 +644,9 @@ class BNTest(test.TestCase):
     outputs_training = bn.apply(inputs, training=True)
     outputs_infer = bn.apply(inputs, training=False)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
       np_gamma = np.reshape(np_gamma, (1, 1, 1, 6))
       np_beta = np.reshape(np_beta, (1, 1, 1, 6))
@@ -659,7 +659,7 @@ class BNTest(test.TestCase):
 
       # Verify that the statistics are updated during training.
       moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
-      np_inputs = sess.run(inputs)
+      np_inputs = self.evaluate(inputs)
       mean = np.mean(np_inputs, axis=(0, 1, 2))
       std = np.std(np_inputs, axis=(0, 1, 2))
       variance = np.square(std)
@@ -667,7 +667,7 @@ class BNTest(test.TestCase):
       self.assertAllClose(variance, moving_var, atol=1e-2)
 
       # Test inference with placeholder learning phase.
-      np_output = sess.run(outputs_infer)
+      np_output = self.evaluate(outputs_infer)
 
       # Verify that the axis is normalized during inference.
       normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
@@ -694,9 +694,9 @@ class BNTest(test.TestCase):
     beta = all_vars['bn/beta:0']
     gamma = all_vars['bn/gamma:0']
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       np_gamma, np_beta = sess.run([gamma, beta])
       np_gamma = np.reshape(np_gamma, (1, 1, 1, 6))
       np_beta = np.reshape(np_beta, (1, 1, 1, 6))
@@ -710,7 +710,7 @@ class BNTest(test.TestCase):
 
       # Verify that the statistics are updated during training.
       np_moving_mean, np_moving_var = sess.run([moving_mean, moving_variance])
-      np_inputs = sess.run(inputs)
+      np_inputs = self.evaluate(inputs)
       np_mean = np.mean(np_inputs, axis=(0, 1, 2))
       np_std = np.std(np_inputs, axis=(0, 1, 2))
       np_variance = np.square(np_std)
@@ -756,16 +756,16 @@ class BNTest(test.TestCase):
     beta = all_vars['bn/beta:0']
     gamma = all_vars['bn/gamma:0']
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       for _ in range(100):
         np_output, _, _ = sess.run([outputs2] + updates,
                                    feed_dict={training: True})
 
       # Verify that the statistics are updated during training.
       np_moving_mean, np_moving_var = sess.run([moving_mean, moving_variance])
-      np_inputs = sess.run(inputs2)
+      np_inputs = self.evaluate(inputs2)
       np_mean = np.mean(np_inputs, axis=(0, 1, 2))
       np_std = np.std(np_inputs, axis=(0, 1, 2))
       np_variance = np.square(np_std)
@@ -884,8 +884,8 @@ class BNTest(test.TestCase):
     moving_variance = 1.
     renorm_mean = renorm_stddev = 0.
     renorm_weight = 0.
-    with self.test_session(use_gpu=True) as sess:
-      sess.run(variables.global_variables_initializer())
+    with self.session(use_gpu=True) as sess:
+      self.evaluate(variables.global_variables_initializer())
       for _ in range(5):
         x = np.random.random(shape)
 
@@ -936,8 +936,8 @@ class BNTest(test.TestCase):
 
     moving_mean = 0.
     moving_variance = 1.
-    with self.test_session(use_gpu=True) as sess:
-      sess.run(variables.global_variables_initializer())
+    with self.session(use_gpu=True) as sess:
+      self.evaluate(variables.global_variables_initializer())
       for _ in range(5):
         x = np.random.random(shape)
         yt_val_train, adj_scale_val, adj_bias_val = sess.run(
@@ -989,8 +989,8 @@ class BNTest(test.TestCase):
     moving_variance = 1.
     renorm_mean = renorm_stddev = 0.
     renorm_weight = 0.
-    with self.test_session(use_gpu=True) as sess:
-      sess.run(variables.global_variables_initializer())
+    with self.session(use_gpu=True) as sess:
+      self.evaluate(variables.global_variables_initializer())
       for _ in range(5):
         x = np.random.random(shape)
         yt_val_train, adj_scale_val, adj_bias_val = sess.run(
@@ -1039,8 +1039,8 @@ class BNTest(test.TestCase):
     self.assertListEqual(
         out1.shape.as_list(), out2.shape.as_list())
 
-    with self.test_session(use_gpu=True) as sess:
-      sess.run(variables.global_variables_initializer())
+    with self.session(use_gpu=True) as sess:
+      self.evaluate(variables.global_variables_initializer())
 
       x = np.random.random(shape)
       y1, y2 = sess.run([out1, out2], feed_dict={inp: x})
@@ -1061,8 +1061,8 @@ class BNTest(test.TestCase):
     out = normalization_layers.batch_normalization(
         inp, virtual_batch_size=2)
 
-    with self.test_session(use_gpu=True) as sess:
-      sess.run(variables.global_variables_initializer())
+    with self.session(use_gpu=True) as sess:
+      self.evaluate(variables.global_variables_initializer())
 
       x = np.random.random(np_shape)
       y = sess.run(out, feed_dict={inp: x})
@@ -1092,8 +1092,8 @@ class BNTest(test.TestCase):
                     shape[0] // virtual_batch_size,
                     shape[1]])
 
-    with self.test_session(use_gpu=True) as sess:
-      sess.run(variables.global_variables_initializer())
+    with self.session(use_gpu=True) as sess:
+      self.evaluate(variables.global_variables_initializer())
       for _ in range(5):
         x = np.random.random(shape)
 
@@ -1145,8 +1145,8 @@ class BNTest(test.TestCase):
     ghost_shape = ([virtual_batch_size, shape[0] // virtual_batch_size] +
                    shape[1:])
 
-    with self.test_session(use_gpu=True) as sess:
-      sess.run(variables.global_variables_initializer())
+    with self.session(use_gpu=True) as sess:
+      self.evaluate(variables.global_variables_initializer())
       for _ in range(5):
         x = np.random.random(shape)
 
@@ -1199,8 +1199,8 @@ class BNTest(test.TestCase):
     ghost_shape = ([virtual_batch_size, shape[0] // virtual_batch_size] +
                    shape[1:])
 
-    with self.test_session(use_gpu=True) as sess:
-      sess.run(variables.global_variables_initializer())
+    with self.session(use_gpu=True) as sess:
+      self.evaluate(variables.global_variables_initializer())
       for _ in range(5):
         x = np.random.random(shape)
 
@@ -1254,9 +1254,9 @@ class BNTest(test.TestCase):
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
 
       np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
 
@@ -1270,7 +1270,7 @@ class BNTest(test.TestCase):
 
       # Verify that the statistics are updated during training.
       moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
-      np_inputs = sess.run(inputs)
+      np_inputs = self.evaluate(inputs)
       mean = np.mean(np_inputs, axis=0, keepdims=True)
       std = np.std(np_inputs, axis=0, keepdims=True)
       variance = np.square(std)
@@ -1294,9 +1294,9 @@ class BNTest(test.TestCase):
     training = array_ops.placeholder(dtype='bool')
     outputs = bn.apply(inputs, training=training)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Test training with placeholder learning phase.
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
 
       np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
 
@@ -1310,7 +1310,7 @@ class BNTest(test.TestCase):
 
       # Verify that the statistics are updated during training.
       moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
-      np_inputs = sess.run(inputs)
+      np_inputs = self.evaluate(inputs)
       mean = np.mean(np_inputs, axis=(0, 4), keepdims=True)
       std = np.std(np_inputs, axis=(0, 4), keepdims=True)
       variance = np.square(std)
@@ -1349,8 +1349,8 @@ class BNTest(test.TestCase):
     ghost_shape = ([virtual_batch_size, shape[0] // virtual_batch_size] +
                    shape[1:])
 
-    with self.test_session(use_gpu=True) as sess:
-      sess.run(variables.global_variables_initializer())
+    with self.session(use_gpu=True) as sess:
+      self.evaluate(variables.global_variables_initializer())
       for _ in range(5):
         x = np.random.random(shape)
 

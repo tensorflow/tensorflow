@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
 
 namespace xla {
 namespace gpu {
@@ -24,7 +24,7 @@ se::Stream* InfeedManager::GetStream(se::StreamExecutor* executor) {
   tensorflow::mutex_lock l(host_to_device_stream_mu_);
   if (host_to_device_executor_ == nullptr) {
     host_to_device_executor_ = executor;
-    host_to_device_stream_ = MakeUnique<se::Stream>(executor);
+    host_to_device_stream_ = absl::make_unique<se::Stream>(executor);
     host_to_device_stream_->Init();
   }
 

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
@@ -59,8 +60,6 @@ class ProcessFunctionLibraryRuntime {
                             const std::vector<AllocatorAttributes>& alloc_attrs,
                             Rendezvous* rendezvous);
 
-  typedef std::function<void(const Status&)> StatusCallback;
-
   // Receives `received_tensors` from `target_device` (originally sent from
   // `source_device`) using `rendezvous`. Uses `key_prefix` to construct the
   // keys to be retrieved. `device_context` should be for the device receiving
@@ -73,7 +72,7 @@ class ProcessFunctionLibraryRuntime {
       DeviceContext* device_context,
       const std::vector<AllocatorAttributes>& alloc_attrs,
       Rendezvous* rendezvous, std::vector<Tensor>* received_tensors,
-      const StatusCallback& done);
+      StatusCallback done);
 
   static const char kDefaultFLRDevice[];
   // Returns the FunctionLibraryRuntime for the corresponding device_name.

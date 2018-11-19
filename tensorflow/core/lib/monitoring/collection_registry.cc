@@ -38,15 +38,15 @@ void Collector::CollectMetricDescriptor(
     mutex_lock l(mu_);
     return collected_metrics_->metric_descriptor_map
         .insert(std::make_pair(
-            std::string(metric_def->name()),
+            string(metric_def->name()),
             std::unique_ptr<MetricDescriptor>(new MetricDescriptor())))
         .first->second.get();
   }();
-  metric_descriptor->name = std::string(metric_def->name());
-  metric_descriptor->description = std::string(metric_def->description());
+  metric_descriptor->name = string(metric_def->name());
+  metric_descriptor->description = string(metric_def->description());
 
   for (const StringPiece label_name : metric_def->label_descriptions()) {
-    metric_descriptor->label_names.push_back(std::string(label_name));
+    metric_descriptor->label_names.emplace_back(label_name);
   }
 
   metric_descriptor->metric_kind = metric_def->kind();

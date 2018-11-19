@@ -25,13 +25,15 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/sparse_index_array.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -40,8 +42,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/bitmap.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -70,13 +70,12 @@ class LiteralBase {
   // Serialize to proto.
   LiteralProto ToProto() const;
 
-  // Returns an ArraySlice of the array for this literal for the given NativeT
+  // Returns a Span of the array for this literal for the given NativeT
   // (e.g., float). CHECKs if the subshape of the literal at the given
   // ShapeIndex is not array. See primitive_util.h for the mapping from XLA type
   // to native type.
   template <typename NativeT>
-  tensorflow::gtl::ArraySlice<NativeT> data(
-      const ShapeIndex& shape_index = {}) const;
+  absl::Span<const NativeT> data(const ShapeIndex& shape_index = {}) const;
 
   // Returns a const pointer to the sparse index array. Returns nullptr if the
   // literal is not a sparse array.
@@ -100,12 +99,12 @@ class LiteralBase {
   // Gets an element in the literal at the given index. The multi_index is
   // CHECKed against the dimension sizes.
   template <typename NativeT>
-  NativeT Get(tensorflow::gtl::ArraySlice<int64> multi_index,
+  NativeT Get(absl::Span<const int64> multi_index,
               const ShapeIndex& shape_index) const;
   // Overloads of Get for array literals. CHECKs if the literal is not
   // array-shaped and dense.
   template <typename NativeT>
-  NativeT Get(tensorflow::gtl::ArraySlice<int64> multi_index) const;
+  NativeT Get(absl::Span<const int64> multi_index) const;
 
   // Returns the element value at index (0, ..., 0), however many zeroes are
   // required for that index.
@@ -114,7 +113,7 @@ class LiteralBase {
 
   // As Get(), but determines the correct type and converts the value
   // into text.
-  string GetAsString(tensorflow::gtl::ArraySlice<int64> multi_index,
+  string GetAsString(absl::Span<const int64> multi_index,
                      const ShapeIndex& shape_index = {}) const;
   // As GetSparseElement(), but determines the correct type and converts the
   // value into text.
@@ -122,14 +121,13 @@ class LiteralBase {
                                   const ShapeIndex& shape_index = {}) const;
   // As Get(), but determines the correct type and converts the value into
   // int64.  This literal must be an array.
-  StatusOr<int64> GetIntegralAsS64(
-      tensorflow::gtl::ArraySlice<int64> multi_index) const;
+  StatusOr<int64> GetIntegralAsS64(absl::Span<const int64> multi_index) const;
 
   // Returns the multi-index of the element in a sparse literal at the given
   // sparse element number.  The sparse element number is the position with in
   // the sparse array's list of (index, value) pairs, and is checked against the
   // total number of (index, value) pairs in the sparse array.
-  tensorflow::gtl::ArraySlice<int64> GetSparseIndex(
+  absl::Span<const int64> GetSparseIndex(
       int64 sparse_element_number, const ShapeIndex& shape_index = {}) const;
 
   // Returns the value of the element in a sparse literal at the given sparse
@@ -150,12 +148,12 @@ class LiteralBase {
   //
   // This literal must have a dense layout.
   void EachCellAsString(
-      const std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
+      const std::function<void(absl::Span<const int64> indices,
                                const string& value)>& per_cell) const;
   template <typename NativeT>
-  void EachCell(std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
-                                   NativeT value)>
-                    per_cell) const;
+  void EachCell(
+      std::function<void(absl::Span<const int64> indices, NativeT value)>
+          per_cell) const;
 
   // Returns whether every element in this literal is equal to value.
   //
@@ -195,13 +193,20 @@ class LiteralBase {
   // Literal consists entirely of the first element of the literal.
   bool IsAllFirst() const;
 
+  // Literal consists entirely of an iota.
+  bool IsR1Iota() const;
+
   // Returns whether this literal is zero at the specified index. This literal
   // must be an array with a dense layout.
-  bool IsZero(tensorflow::gtl::ArraySlice<int64> indices) const;
+  bool IsZero(absl::Span<const int64> indices) const;
 
   // Returns the count of the elements in the array at the given shape index in
   // this literal.
   int64 element_count(const ShapeIndex& index = {}) const {
+    if (index.empty()) {
+      // Common case, avoid GetSubshape().
+      return ShapeUtil::ElementsIn(shape());
+    }
     return ShapeUtil::ElementsIn(ShapeUtil::GetSubshape(shape(), index));
   }
 
@@ -216,31 +221,20 @@ class LiteralBase {
 
   // Converts this literal to the given shape. Returns an error is the
   // conversion is not possible.
-  //
-  // round_f32_to_bf16: if true, converting F32 elements to BF16 uses rounding
-  // instead of truncation; otherwise, truncation is used.
-  //
-  // TODO(b/69266521): remove the round_to_bfloat16 flag when rounding becomes
-  // the default behavior.
-  StatusOr<std::unique_ptr<Literal>> ConvertToShape(
-      const Shape& dest_shape, bool round_f32_to_bf16 = false) const;
+  StatusOr<Literal> ConvertToShape(const Shape& dest_shape) const;
 
   // Converts this literal to another primitive type using a bitcast
   // conversion. The to and from primitive types must have the same bit
   // width. Returns an error if the conversion is not possible. This literal
   // must be array-shaped.
-  StatusOr<std::unique_ptr<Literal>> BitcastConvert(
-      PrimitiveType primitive_dest_type) const;
+  StatusOr<Literal> BitcastConvert(PrimitiveType primitive_dest_type) const;
 
   // Converts this literal to another primitive type. Returns an error if the
   // conversion is not possible. This literal must be array-shaped.
-  StatusOr<std::unique_ptr<Literal>> Convert(
-      PrimitiveType primitive_dest_type) const;
+  StatusOr<Literal> Convert(PrimitiveType primitive_dest_type) const;
 
-  // Clones the underlying buffers into a new Literal, or new
-  // std::unique_ptr<Literal>.
+  // Clones the underlying buffers into a new Literal.
   Literal Clone() const;
-  std::unique_ptr<Literal> CloneToUnique() const;
 
   // TODO(b/67651157): The methods below which perform computation on Literals
   // (Reshape, Slice, etc) should be moved elsewhere, and perhaps combined with
@@ -258,25 +252,23 @@ class LiteralBase {
   // Note: this is useful when the client wants to ensure that a value placed in
   // the XLA allocation tracker has a particular layout; for efficiency
   // purposes or avoiding unimplemented operation/layout combinations.
-  std::unique_ptr<Literal> Relayout(const Layout& new_layout,
-                                    const ShapeIndex& shape_index = {}) const;
+  Literal Relayout(const Layout& new_layout,
+                   const ShapeIndex& shape_index = {}) const;
 
   // An overload of Relayout which changes the layout of the entire shape rather
   // than being limited to a single array within the shape.
-  std::unique_ptr<Literal> Relayout(const Shape& shape_with_layout) const;
+  Literal Relayout(const Shape& shape_with_layout) const;
 
   // Creates a new literal by reshaping this literal to have the given
   // dimensions. The total number of elements must not change; The
   // implementation currently only supports monotonic dim0-major layouts.
   // This literal must be an array.
-  StatusOr<std::unique_ptr<Literal>> Reshape(
-      tensorflow::gtl::ArraySlice<int64> dimensions) const;
+  StatusOr<Literal> Reshape(absl::Span<const int64> dimensions) const;
 
   // Creates a new literal by broadcasting this literal with `dimensions` to
   // yield a literal of shape `result_shape`.
-  StatusOr<std::unique_ptr<Literal>> Broadcast(
-      const Shape& result_shape,
-      tensorflow::gtl::ArraySlice<int64> dimensions) const;
+  StatusOr<Literal> Broadcast(const Shape& result_shape,
+                              absl::Span<const int64> dimensions) const;
 
   // Creates a new literal by reordering the dimensions of this literal.
   // The given `permutation` must be a permutation of the dimension numbers
@@ -285,8 +277,7 @@ class LiteralBase {
   // For example, a transpose call on a literal of shape [3 x 8 x 4] and
   // `permutation` = {2, 0, 1} returns a new literal of shape [4 x 3 x 8].
   // This literal must be an array.
-  std::unique_ptr<Literal> Transpose(
-      tensorflow::gtl::ArraySlice<int64> permutation) const;
+  Literal Transpose(absl::Span<const int64> permutation) const;
 
   // Creates a sub-array from this literal by extracting the indices
   // [start_index, limit_index) of each dimension. The result literal has the
@@ -294,26 +285,26 @@ class LiteralBase {
   // start_indices and limit_indices must be the rank of the literal, and the
   // indices follow the order of the dimensions.
   // This literal must be an array.
-  std::unique_ptr<Literal> Slice(
-      tensorflow::gtl::ArraySlice<int64> start_indices,
-      tensorflow::gtl::ArraySlice<int64> limit_indices) const;
+  Literal Slice(absl::Span<const int64> start_indices,
+                absl::Span<const int64> limit_indices) const;
 
   // Creates a literal with a prepended dimension with bound "times"; e.g. a
   // f32[3x2] with times=4 will produce a f32[4x3x2] with the 3x2 from this
   // literal replicated four times.
   // This literal must be an array.
   template <typename NativeT>
-  std::unique_ptr<Literal> Replicate(int64 times) const;
+  Literal Replicate(int64 times) const;
 
   // Creates a new Literal object with the shape specified as parameter.
   // The content of the literal values is the default value of the primitive
   // type of literal itself (0 for numeric types, and false for predicates).
   //
   // Note: It's an antipattern to use this method then immediately call
-  // Literal::Populate on the result (since that results in zero initialization,
-  // then reinitialization. Conside if a call to MakeUnique<Literal>(shape),
-  // followed by the call to Literal::Populate can be used instead.
-  static std::unique_ptr<Literal> CreateFromShape(const Shape& shape);
+  // MutableLiteralBase::Populate on the result (since that results in zero
+  // initialization, then reinitialization. Consider if a call to
+  // absl::make_unique<Literal>(shape), followed by the call to
+  // MutableLiteralBase::Populate can be used instead.
+  static Literal CreateFromShape(const Shape& shape);
 
  protected:
   // A data structure representing a subshape at a particular ShapeIndex within
@@ -324,9 +315,9 @@ class LiteralBase {
     // Returns the buffer holding the array data for this piece as an array
     // slice. This piece must be array-shaped.
     template <typename NativeT>
-    tensorflow::gtl::ArraySlice<NativeT> data() const;
+    absl::Span<const NativeT> data() const;
     template <typename NativeT>
-    tensorflow::gtl::MutableArraySlice<NativeT> data();
+    absl::Span<NativeT> data();
 
     // Returns the buffer holding the array data for this piece as a void*. This
     // piece must be array-shaped.
@@ -337,9 +328,9 @@ class LiteralBase {
     // is CHECKed against the dimension sizes of the array.  This piece must be
     // array-shaped.
     template <typename NativeT>
-    NativeT Get(tensorflow::gtl::ArraySlice<int64> index) const;
+    NativeT Get(absl::Span<const int64> index) const;
     template <typename NativeT>
-    void Set(tensorflow::gtl::ArraySlice<int64> index, NativeT value);
+    void Set(absl::Span<const int64> index, NativeT value);
 
     // Gets/sets the buffer holding the array data.
     char* buffer() const { return buffer_; }
@@ -534,58 +525,37 @@ class LiteralBase {
   virtual const Piece& root_piece() const = 0;
 
   // LiteralSlice and Literal must access Pieces of other Literals.
-  friend class Literal;
+  friend class MutableLiteralBase;
   friend class LiteralSlice;
   friend class BorrowingLiteral;
 
  private:
   template <typename NativeT>
-  std::unique_ptr<Literal> SliceInternal(
-      const Shape& result_shape,
-      tensorflow::gtl::ArraySlice<int64> start_indices) const;
+  Literal SliceInternal(const Shape& result_shape,
+                        absl::Span<const int64> start_indices) const;
 };
 
-// Class representing literal values in XLA.
-//
-// The underlying buffer and shape is always owned by this class.
-class Literal : public LiteralBase {
+// Abstract base class representing a mutable literal in XLA.
+class MutableLiteralBase : public LiteralBase {
  public:
-  Literal() : Literal(ShapeUtil::MakeNil()) {}
+  virtual ~MutableLiteralBase() = 0;
 
-  // Create a literal of the given shape. The literal is allocated sufficient
-  // memory to hold the shape. Memory is uninitialized.
-  explicit Literal(const Shape& shape);
-  virtual ~Literal();
-
-  // Literals are moveable, but not copyable. To copy a literal use
-  // Literal::Clone or Literal::CloneToUnique. This prevents inadvertent copies
-  // of literals which can be expensive.
-  Literal(const Literal& other) = delete;
-  Literal& operator=(const Literal& other) = delete;
-  Literal(Literal&& other);
-  // 'allocate_arrays' indicates whether to allocate memory for the arrays in
-  // the shape. If false, buffer pointers inside of the Literal::Pieces are set
-  // to nullptr.
-  Literal(const Shape& shape, bool allocate_arrays);
-  Literal& operator=(Literal&& other);
-
-  // TODO(b/67651157): Remove this accessor. Literal users should not be able to
-  // mutate the shape as this can produce malformed Literals.
-  Shape* mutable_shape_do_not_use() { return shape_.get(); }
-
-  // Returns a MutableArraySlice view of the array for this literal for the
+  // Returns a Span view of the array for this literal for the
   // given NativeT (e.g., float). CHECKs if the subshape of the literal at the
   // given ShapeIndex is not array. See primitive_util.h for the mapping from
   // XLA type to native type.
   template <typename NativeT>
-  tensorflow::gtl::MutableArraySlice<NativeT> data(
-      const ShapeIndex& shape_index = {});
+  absl::Span<NativeT> data(const ShapeIndex& shape_index = {});
   // Unhide const method from parent class.
   using LiteralBase::data;
 
   // Returns a pointer to the sparse index array. Returns nullptr if the literal
   // is not a sparse array.
   SparseIndexArray* sparse_indices(const ShapeIndex& shape_index = {});
+
+  // TODO(b/67651157): Remove this accessor. Literal users should not be able to
+  // mutate the shape as this can produce malformed Literals.
+  Shape* mutable_shape_do_not_use() { return shape_.get(); }
 
   // Returns a pointer to the underlying buffer holding the array at the given
   // shape index. CHECKs if the subshape of the literal at the given ShapeIndex
@@ -602,8 +572,7 @@ class Literal : public LiteralBase {
   // are populated.
   template <typename NativeT>
   void PopulateSparse(SparseIndexArray indices,
-                      tensorflow::gtl::ArraySlice<NativeT> values,
-                      bool sort = true);
+                      absl::Span<const NativeT> values, bool sort = true);
 
   // Copy values from 'src_literal' rooted at 'src_shape_index' into this
   // literal rooted at 'dest_shape_index'. The subshape of this literal rooted
@@ -612,21 +581,6 @@ class Literal : public LiteralBase {
   Status CopyFrom(const LiteralSlice& src_literal,
                   const ShapeIndex& dest_shape_index = {},
                   const ShapeIndex& src_shape_index = {});
-
-  // Returns a vector containing the tuple elements of this Literal as separate
-  // Literals. This Literal must be tuple-shaped and can be a nested tuple. The
-  // elements are moved into the new Literals; no data is copied. Upon return
-  // this Literal is set to a nil shape (empty tuple)
-  std::vector<Literal> DecomposeTuple();
-
-  // Similar to CopyFrom, but with move semantincs. The subshape of this literal
-  // rooted at 'dest_shape_index' must be *equal* to the shape 'src_literal'
-  // (layouts and shapes must match), but need not be arrays. The memory
-  // allocated in this literal for the subshape at dest_shape_index is
-  // deallocated, and the respective buffers are replaced with those in
-  // src_literal. Upon return, src_literal is set to a nil shape (empty tuple).
-  Status MoveFrom(Literal&& src_literal,
-                  const ShapeIndex& dest_shape_index = {});
 
   // Copies the values from src_literal, starting at src_base shape indexes,
   // to this literal, starting at dest_base, where the copy size in each
@@ -639,39 +593,38 @@ class Literal : public LiteralBase {
   // corresponding base indices being 0.
   // This literal and 'src_literal' must be arrays.
   Status CopySliceFrom(const LiteralSlice& src_literal,
-                       tensorflow::gtl::ArraySlice<int64> src_base,
-                       tensorflow::gtl::ArraySlice<int64> dest_base,
-                       tensorflow::gtl::ArraySlice<int64> copy_size);
+                       absl::Span<const int64> src_base,
+                       absl::Span<const int64> dest_base,
+                       absl::Span<const int64> copy_size);
 
   // Copies one element from src_literal[src_index] to (*this)[dest_index].
   Status CopyElementFrom(const LiteralSlice& src_literal,
-                         tensorflow::gtl::ArraySlice<int64> src_index,
-                         tensorflow::gtl::ArraySlice<int64> dest_index);
+                         absl::Span<const int64> src_index,
+                         absl::Span<const int64> dest_index);
 
   // Sets an element in the literal at the given index. The multi_index is
   // CHECKed against the dimension sizes.
   template <typename NativeT>
-  void Set(tensorflow::gtl::ArraySlice<int64> multi_index,
-           const ShapeIndex& shape_index, NativeT value);
+  void Set(absl::Span<const int64> multi_index, const ShapeIndex& shape_index,
+           NativeT value);
   // Overloads of Set for array literals. CHECKs if the literal is not
   // array-shaped and dense.
   template <typename NativeT>
-  void Set(tensorflow::gtl::ArraySlice<int64> multi_index, NativeT value);
+  void Set(absl::Span<const int64> multi_index, NativeT value);
 
   // Appends the given element to the literal.  If the elements are not appended
   // in sorted order, then SortSparseElements should be called before calling
   // other methods.  This literal must have a sparse layout.
   template <typename NativeT>
-  void AppendSparseElement(tensorflow::gtl::ArraySlice<int64> multi_index,
-                           NativeT value, const ShapeIndex& shape_index = {});
+  void AppendSparseElement(absl::Span<const int64> multi_index, NativeT value,
+                           const ShapeIndex& shape_index = {});
 
   // Sorts the elements in a sparse array.
   void SortSparseElements(const ShapeIndex& shape_index = {});
 
   // As Set(), but truncates `value` to the literal element type before storing.
   // This literal must be an array.
-  Status SetIntegralAsS64(tensorflow::gtl::ArraySlice<int64> multi_index,
-                          int64 value);
+  Status SetIntegralAsS64(absl::Span<const int64> multi_index, int64 value);
 
   // Populate this literal with the given values. Examples:
   //
@@ -686,7 +639,7 @@ class Literal : public LiteralBase {
   // example, in the call above to literal.PopulateR2(), 'literal' must be a 2x2
   // array of S32.
   template <typename NativeT>
-  void PopulateR1(tensorflow::gtl::ArraySlice<NativeT> values);
+  void PopulateR1(absl::Span<const NativeT> values);
   void PopulateR1(const tensorflow::core::Bitmap& values);
   template <typename NativeT>
   void PopulateR2(std::initializer_list<std::initializer_list<NativeT>> values);
@@ -703,7 +656,7 @@ class Literal : public LiteralBase {
   // in this literal object.
   //
   // generator must be a callable of the type
-  // NativeT(tensorflow::gtl::ArraySlice<int64> indexes) or compatible.
+  // NativeT(absl::Span<int64> indexes) or compatible.
   //
   // This literal must have a dense layout.
   template <typename NativeT, typename FnType>
@@ -723,19 +676,12 @@ class Literal : public LiteralBase {
   // moved into the tuple elements of a new tuple-shaped Literal which is
   // returned. Upon return, each of the Literals in 'elements' is set to a nil
   // shape (empty tuple).
-  static Literal MoveIntoTuple(
-      tensorflow::gtl::MutableArraySlice<Literal> elements);
+  static Literal MoveIntoTuple(absl::Span<Literal> elements);
 
   // Serialize from a proto.
-  static StatusOr<std::unique_ptr<Literal>> CreateFromProto(
-      const LiteralProto& proto);
+  static StatusOr<Literal> CreateFromProto(const LiteralProto& proto);
 
- private:
-  // Recursively sets the subshapes and buffers of all subpieces rooted at
-  // 'piece'. If 'allocate_array' is true, memory is allocated for the arrays in
-  // the shape.
-  void SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays);
-
+ protected:
   // Returns the piece at the given ShapeIndex.
   Piece& piece(const ShapeIndex& shape_index) {
     return const_cast<Piece&>(LiteralBase::piece(shape_index));
@@ -747,20 +693,20 @@ class Literal : public LiteralBase {
   // arguments one by one.
   template <typename NativeT>
   Status CopySliceFromInternal(const LiteralBase& src_literal,
-                               tensorflow::gtl::ArraySlice<int64> src_base,
-                               tensorflow::gtl::ArraySlice<int64> dest_base,
-                               tensorflow::gtl::ArraySlice<int64> copy_size);
+                               absl::Span<const int64> src_base,
+                               absl::Span<const int64> dest_base,
+                               absl::Span<const int64> copy_size);
 
   // Utility structure which is used to create the optimal configuration for
   // a ShapeUtil::ForEachIndex() scan across two literals.
   struct StrideConfig {
     StrideConfig(const Shape& source_shape, const Shape& dest_shape,
-                 tensorflow::gtl::ArraySlice<int64> dimensions);
+                 absl::Span<const int64> dimensions);
 
     // The dimensions of the stride operation. Essentially every dimension
     // will be iterated from base[i] to base[i]+dimensions[i], in step[i]
     // steps.
-    tensorflow::gtl::ArraySlice<int64> dimensions;
+    absl::Span<const int64> dimensions;
     DimensionVector base;
     DimensionVector step;
     int64 minor_dimension = 0;
@@ -783,12 +729,83 @@ class Literal : public LiteralBase {
   template <typename NativeT, typename FnType>
   Status PopulateInternal(const FnType& generator, bool parallel);
 
+  friend class LiteralBase;
+  friend class MutableBorrowingLiteral;
+};
+std::ostream& operator<<(std::ostream& out, const Literal& literal);
+
+// The underlying buffer and shape is always owned by this class.
+class Literal : public MutableLiteralBase {
+ public:
+  Literal() : Literal(ShapeUtil::MakeNil()) {}
+
+  // Create a literal of the given shape. The literal is allocated sufficient
+  // memory to hold the shape. Memory is uninitialized.
+  explicit Literal(const Shape& shape);
+  virtual ~Literal();
+
+  // Literals are moveable, but not copyable. To copy a literal use
+  // Literal::Clone or Literal::CloneToUnique. This prevents inadvertent copies
+  // of literals which can be expensive.
+  Literal(const Literal& other) = delete;
+  Literal& operator=(const Literal& other) = delete;
+  Literal(Literal&& other);
+  // 'allocate_arrays' indicates whether to allocate memory for the arrays in
+  // the shape. If false, buffer pointers inside of the Literal::Pieces are set
+  // to nullptr.
+  Literal(const Shape& shape, bool allocate_arrays);
+  Literal& operator=(Literal&& other);
+
+  // Similar to CopyFrom, but with move semantincs. The subshape of this literal
+  // rooted at 'dest_shape_index' must be *equal* to the shape 'src_literal'
+  // (layouts and shapes must match), but need not be arrays. The memory
+  // allocated in this literal for the subshape at dest_shape_index is
+  // deallocated, and the respective buffers are replaced with those in
+  // src_literal. Upon return, src_literal is set to a nil shape (empty tuple).
+  virtual Status MoveFrom(Literal&& src_literal,
+                          const ShapeIndex& dest_shape_index = {});
+
+  // Returns a vector containing the tuple elements of this Literal as separate
+  // Literals. This Literal must be tuple-shaped and can be a nested tuple. The
+  // elements are moved into the new Literals; no data is copied. Upon return
+  // this Literal is set to a nil shape (empty tuple)
+  std::vector<Literal> DecomposeTuple();
+
+ private:
   // Deallocate the buffers held by this literal.
   void DeallocateBuffers();
 
-  friend class LiteralBase;
+  // Recursively sets the subshapes and buffers of all subpieces rooted at
+  // 'piece'. If 'allocate_array' is true, memory is allocated for the arrays in
+  // the shape.
+  void SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays);
 };
-std::ostream& operator<<(std::ostream& out, const Literal& literal);
+
+// The underlying buffer is not owned by this class and is always owned by
+// others. The shape is not owned by this class and not mutable.
+class MutableBorrowingLiteral : public MutableLiteralBase {
+ public:
+  virtual ~MutableBorrowingLiteral();
+
+  MutableBorrowingLiteral() : MutableLiteralBase() {}
+
+  MutableBorrowingLiteral(const MutableBorrowingLiteral& literal);
+  MutableBorrowingLiteral& operator=(const MutableBorrowingLiteral& literal);
+
+  // Implicit conversion constructors.
+  MutableBorrowingLiteral(const MutableLiteralBase& literal);
+  MutableBorrowingLiteral(MutableLiteralBase* literal);
+  MutableBorrowingLiteral(MutableBorrowingLiteral literal,
+                          const ShapeIndex& view_root);
+  MutableBorrowingLiteral(const char* src_buf_ptr, const Shape& shape);
+
+ private:
+  // Recursively copies the subtree from the `src_piece` at the given child
+  // index to the `dest_piece`. For buffers only the pointers are copied, but
+  // not the content.
+  void CopyPieceSubtree(const Shape& shape, Piece* src_piece,
+                        Piece* dest_piece);
+};
 
 // A read-only view of a Literal. A LiteralSlice contains pointers to shape and
 // literal buffers always owned by others.
@@ -818,7 +835,7 @@ class BorrowingLiteral : public LiteralBase {
   // This constructor is only used for array shapes.
   BorrowingLiteral(const char* src_buf_ptr, const Shape& shape);
   // Similar as above, except to be used for constructing non-nested tuples.
-  BorrowingLiteral(tensorflow::gtl::ArraySlice<const char*> src_buf_ptrs,
+  BorrowingLiteral(absl::Span<const char* const> src_buf_ptrs,
                    const Shape& shape);
   // TODO(b/79707221): adding constructors for nested tuples as well.
 
@@ -831,48 +848,47 @@ class BorrowingLiteral : public LiteralBase {
   const Piece& root_piece() const override { return root_piece_; };
   Piece root_piece_;
 
-  // Shape of this literal. Stored as unique_ptr so such that the (default)
-  // move construction of this class would be trivially correct: the pointer to
-  // Shape root_piece_ stores will still point to the correct address.
+  // Shape of this literal. Stored as unique_ptr such that the (default) move
+  // construction of this class would be trivially correct: the pointer to Shape
+  // root_piece_ stores will still point to the correct address.
   std::unique_ptr<Shape> shape_;
 };
 
 template <typename NativeT>
-tensorflow::gtl::ArraySlice<NativeT> LiteralBase::Piece::data() const {
-  CHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
-  CHECK_EQ(subshape().element_type(),
-           primitive_util::NativeToPrimitiveType<NativeT>())
+absl::Span<const NativeT> LiteralBase::Piece::data() const {
+  DCHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
+  DCHECK_EQ(subshape().element_type(),
+            primitive_util::NativeToPrimitiveType<NativeT>())
       << "Attempting to access "
       << PrimitiveType_Name(primitive_util::NativeToPrimitiveType<NativeT>())
       << " type, but literal element type is "
       << PrimitiveType_Name(subshape().element_type());
-  return tensorflow::gtl::ArraySlice<NativeT>(
-      reinterpret_cast<const NativeT*>(buffer()), element_count());
+  return absl::Span<const NativeT>(reinterpret_cast<const NativeT*>(buffer()),
+                                   element_count());
 }
 
 template <typename NativeT>
-tensorflow::gtl::MutableArraySlice<NativeT> LiteralBase::Piece::data() {
-  CHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
-  CHECK_EQ(subshape().element_type(),
-           primitive_util::NativeToPrimitiveType<NativeT>())
+absl::Span<NativeT> LiteralBase::Piece::data() {
+  DCHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
+  DCHECK_EQ(subshape().element_type(),
+            primitive_util::NativeToPrimitiveType<NativeT>())
       << "Attempting to access "
       << PrimitiveType_Name(primitive_util::NativeToPrimitiveType<NativeT>())
       << " type, but literal element type is "
       << PrimitiveType_Name(subshape().element_type());
-  return tensorflow::gtl::MutableArraySlice<NativeT>(
-      reinterpret_cast<NativeT*>(buffer()), element_count());
+  return absl::Span<NativeT>(reinterpret_cast<NativeT*>(buffer()),
+                             element_count());
 }
 
 template <typename NativeT>
-NativeT LiteralBase::Piece::Get(
-    tensorflow::gtl::ArraySlice<int64> multi_index) const {
+NativeT LiteralBase::Piece::Get(absl::Span<const int64> multi_index) const {
   CHECK(LayoutUtil::IsDenseArray(subshape()));
   return data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(
       subshape(), multi_index)];
 }
 
 template <typename NativeT>
-void LiteralBase::Piece::Set(tensorflow::gtl::ArraySlice<int64> multi_index,
+void LiteralBase::Piece::Set(absl::Span<const int64> multi_index,
                              NativeT value) {
   CHECK(LayoutUtil::IsDenseArray(subshape()));
   data<NativeT>()[IndexUtil::MultidimensionalIndexToLinearIndex(
@@ -880,38 +896,37 @@ void LiteralBase::Piece::Set(tensorflow::gtl::ArraySlice<int64> multi_index,
 }
 
 template <typename NativeT>
-tensorflow::gtl::ArraySlice<NativeT> LiteralBase::data(
+absl::Span<const NativeT> LiteralBase::data(
     const ShapeIndex& shape_index) const {
   return piece(shape_index).data<NativeT>();
 }
 
 template <typename NativeT>
-tensorflow::gtl::MutableArraySlice<NativeT> Literal::data(
-    const ShapeIndex& shape_index) {
+absl::Span<NativeT> MutableLiteralBase::data(const ShapeIndex& shape_index) {
   return piece(shape_index).data<NativeT>();
 }
 
 template <typename NativeT>
-inline NativeT LiteralBase::Get(tensorflow::gtl::ArraySlice<int64> multi_index,
+inline NativeT LiteralBase::Get(absl::Span<const int64> multi_index,
                                 const ShapeIndex& shape_index) const {
   return piece(shape_index).Get<NativeT>(multi_index);
 }
 
 template <typename NativeT>
-inline NativeT LiteralBase::Get(
-    tensorflow::gtl::ArraySlice<int64> multi_index) const {
+inline NativeT LiteralBase::Get(absl::Span<const int64> multi_index) const {
   return root_piece().Get<NativeT>(multi_index);
 }
 
 template <typename NativeT>
-inline void Literal::Set(tensorflow::gtl::ArraySlice<int64> multi_index,
-                         const ShapeIndex& shape_index, NativeT value) {
+inline void MutableLiteralBase::Set(absl::Span<const int64> multi_index,
+                                    const ShapeIndex& shape_index,
+                                    NativeT value) {
   return piece(shape_index).Set<NativeT>(multi_index, value);
 }
 
 template <typename NativeT>
-inline void Literal::Set(tensorflow::gtl::ArraySlice<int64> multi_index,
-                         NativeT value) {
+inline void MutableLiteralBase::Set(absl::Span<const int64> multi_index,
+                                    NativeT value) {
   return root_piece().Set<NativeT>(multi_index, value);
 }
 
@@ -929,8 +944,8 @@ NativeT LiteralBase::GetSparseElement(int64 sparse_element_number,
 }
 
 template <typename NativeT>
-void Literal::AppendSparseElement(
-    tensorflow::gtl::ArraySlice<int64> multi_index, NativeT value,
+void MutableLiteralBase::AppendSparseElement(
+    absl::Span<const int64> multi_index, NativeT value,
     const ShapeIndex& shape_index) {
   Piece& p = piece(shape_index);
   const Shape& subshape = p.subshape();
@@ -946,8 +961,7 @@ void Literal::AppendSparseElement(
 
 template <typename NativeT>
 void LiteralBase::EachCell(
-    std::function<void(tensorflow::gtl::ArraySlice<int64> indices,
-                       NativeT value)>
+    std::function<void(absl::Span<const int64> indices, NativeT value)>
         per_cell) const {
   if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
@@ -955,23 +969,22 @@ void LiteralBase::EachCell(
   std::vector<int64> indices(ShapeUtil::Rank(shape()), 0);
   do {
     per_cell(indices, Get<NativeT>(indices));
-  } while (IndexUtil::BumpIndices(shape(), &indices));
+  } while (IndexUtil::BumpIndices(shape(), absl::MakeSpan(indices)));
 }
 
 template <typename NativeT>
-inline void Literal::PopulateR1(tensorflow::gtl::ArraySlice<NativeT> values) {
+inline void MutableLiteralBase::PopulateR1(absl::Span<const NativeT> values) {
   CHECK(ShapeUtil::IsArray(shape()));
   CHECK_EQ(ShapeUtil::Rank(shape()), 1);
   CHECK_EQ(ShapeUtil::ElementsIn(shape()), values.size());
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
-  for (int64 i = 0; i < values.size(); ++i) {
-    Set({i}, values[i]);
-  }
+  auto data_span = data<NativeT>();
+  std::copy(values.begin(), values.end(), data_span.begin());
 }
 
 template <typename NativeT>
-void Literal::PopulateR2(
+void MutableLiteralBase::PopulateR2(
     std::initializer_list<std::initializer_list<NativeT>> values) {
   CHECK(ShapeUtil::IsArray(shape()));
   CHECK_EQ(ShapeUtil::Rank(shape()), 2);
@@ -996,7 +1009,7 @@ void Literal::PopulateR2(
 }
 
 template <typename NativeT>
-void Literal::PopulateFromArray(const Array<NativeT>& values) {
+void MutableLiteralBase::PopulateFromArray(const Array<NativeT>& values) {
   CHECK(ShapeUtil::IsArray(shape()));
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
@@ -1004,29 +1017,30 @@ void Literal::PopulateFromArray(const Array<NativeT>& values) {
   for (int dim = 0; dim < values.num_dimensions(); ++dim) {
     CHECK_EQ(values.dim(dim), shape().dimensions(dim));
   }
-  values.Each([this](tensorflow::gtl::ArraySlice<int64> indices,
-                     NativeT value) { this->Set(indices, value); });
+  values.Each([this](absl::Span<const int64> indices, NativeT value) {
+    this->Set(indices, value);
+  });
 }
 
 template <typename NativeT>
-void Literal::PopulateR2FromArray2D(const Array2D<NativeT>& values) {
+void MutableLiteralBase::PopulateR2FromArray2D(const Array2D<NativeT>& values) {
   PopulateFromArray(values);
 }
 
 template <typename NativeT>
-void Literal::PopulateR3FromArray3D(const Array3D<NativeT>& values) {
+void MutableLiteralBase::PopulateR3FromArray3D(const Array3D<NativeT>& values) {
   PopulateFromArray(values);
 }
 
 template <typename NativeT>
-void Literal::PopulateR4FromArray4D(const Array4D<NativeT>& values) {
+void MutableLiteralBase::PopulateR4FromArray4D(const Array4D<NativeT>& values) {
   PopulateFromArray(values);
 }
 
 template <typename NativeT>
-void Literal::PopulateSparse(SparseIndexArray indices,
-                             tensorflow::gtl::ArraySlice<NativeT> values,
-                             bool sort) {
+void MutableLiteralBase::PopulateSparse(SparseIndexArray indices,
+                                        absl::Span<const NativeT> values,
+                                        bool sort) {
   CHECK(LayoutUtil::IsSparseArray(shape()));
   int rank = ShapeUtil::Rank(shape());
   CHECK_EQ(indices.rank(), rank);
@@ -1036,7 +1050,7 @@ void Literal::PopulateSparse(SparseIndexArray indices,
   CHECK_LE(num_elements, max_elements);
   CHECK_EQ(num_elements, indices.index_count());
   auto root_data = root_piece().data<NativeT>();
-  // Piece::data() returns an ArraySlice of size equal to the number of indices
+  // Piece::data() returns a Span of size equal to the number of indices
   // in the SparseIndexArray. So there is no need to adjust the size of the data
   // here. It is enough to just copy the incoming values into the data buffer.
   std::copy(values.begin(), values.end(), root_data.begin());
@@ -1049,20 +1063,21 @@ void Literal::PopulateSparse(SparseIndexArray indices,
 }
 
 template <typename NativeT, typename FnType>
-Status Literal::PopulateInternal(const FnType& generator, bool parallel) {
+Status MutableLiteralBase::PopulateInternal(const FnType& generator,
+                                            bool parallel) {
   const Shape& this_shape = shape();
   const int64 rank = ShapeUtil::Rank(this_shape);
   TF_RET_CHECK(LayoutUtil::IsDenseArray(this_shape));
   TF_RET_CHECK(this_shape.element_type() ==
                primitive_util::NativeToPrimitiveType<NativeT>());
-  tensorflow::gtl::MutableArraySlice<NativeT> literal_data = data<NativeT>();
+  absl::Span<NativeT> literal_data = data<NativeT>();
   if (rank > 0) {
     StrideConfig stride_config(this_shape, this_shape,
                                AsInt64Slice(this_shape.dimensions()));
     int64 minor_dimension_size =
         ShapeUtil::GetDimension(this_shape, stride_config.minor_dimension);
 
-    auto init_function = [&](tensorflow::gtl::ArraySlice<int64> indexes) {
+    auto init_function = [&](absl::Span<const int64> indexes) {
       DimensionVector minor_scan_indexes(rank, 0);
       const int64 index =
           IndexUtil::MultidimensionalIndexToLinearIndex(shape(), indexes);
@@ -1080,7 +1095,7 @@ Status Literal::PopulateInternal(const FnType& generator, bool parallel) {
       ShapeUtil::ForEachIndex(
           this_shape, stride_config.base, stride_config.dimensions,
           stride_config.step,
-          [&init_function](tensorflow::gtl::ArraySlice<int64> indexes) {
+          [&init_function](absl::Span<const int64> indexes) {
             init_function(indexes);
             return true;
           });
@@ -1092,17 +1107,17 @@ Status Literal::PopulateInternal(const FnType& generator, bool parallel) {
   return Status::OK();
 }
 template <typename NativeT, typename FnType>
-Status Literal::Populate(const FnType& generator) {
+Status MutableLiteralBase::Populate(const FnType& generator) {
   return PopulateInternal<NativeT>(generator, /*parallel=*/false);
 }
 
 template <typename NativeT, typename FnType>
-Status Literal::PopulateParallel(const FnType& generator) {
+Status MutableLiteralBase::PopulateParallel(const FnType& generator) {
   return PopulateInternal<NativeT>(generator, /*parallel=*/true);
 }
 
 template <typename NativeT>
-void Literal::PopulateWithValue(NativeT value) {
+void MutableLiteralBase::PopulateWithValue(NativeT value) {
   CHECK(ShapeUtil::IsArray(shape()));
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
@@ -1112,27 +1127,26 @@ void Literal::PopulateWithValue(NativeT value) {
 }
 
 template <typename NativeT>
-std::unique_ptr<Literal> LiteralBase::Replicate(int64 times) const {
+Literal LiteralBase::Replicate(int64 times) const {
   DimensionVector bounds = {times};
   bounds.reserve(shape().dimensions_size() + 1);
   for (int64 bound : shape().dimensions()) {
     bounds.push_back(bound);
   }
-  auto literal =
-      MakeUnique<Literal>(ShapeUtil::MakeShape(shape().element_type(), bounds));
-  int64 elements = ShapeUtil::ElementsIn(literal->shape());
+  Literal literal(ShapeUtil::MakeShape(shape().element_type(), bounds));
+  int64 elements = ShapeUtil::ElementsIn(literal.shape());
   if (elements == 0) {
     return literal;
   }
 
   DimensionVector output_indices(bounds.size(), 0);
-  tensorflow::gtl::ArraySlice<int64> input_indices = output_indices;
+  absl::Span<const int64> input_indices = output_indices;
   input_indices.remove_prefix(1);
 
   bool done = false;
   while (!done) {
     const auto element = Get<NativeT>(input_indices);
-    literal->Set<NativeT>(output_indices, element);
+    literal.Set<NativeT>(output_indices, element);
 
     done = true;
     for (int n = 0; n < output_indices.size(); ++n) {

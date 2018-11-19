@@ -29,8 +29,8 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import spectral_ops
 from tensorflow.python.ops.distributions import util
+from tensorflow.python.ops.signal import fft_ops
 
 __all__ = [
     "auto_correlation",
@@ -134,7 +134,7 @@ def auto_correlation(
     x_len = util.prefer_static_shape(x_rotated)[-1]
 
     # TODO(langmore) Investigate whether this zero padding helps or hurts.  At
-    # the moment is is necessary so that all FFT implementations work.
+    # the moment is necessary so that all FFT implementations work.
     # Zero pad to the next power of 2 greater than 2 * x_len, which equals
     # 2**(ceil(Log_2(2 * x_len))).  Note: Log_2(X) = Log_e(X) / Log_e(2).
     x_len_float64 = math_ops.cast(x_len, np.float64)
@@ -157,11 +157,11 @@ def auto_correlation(
                                        dtype.real_dtype.as_numpy_dtype(0.))
 
     # Autocorrelation is IFFT of power-spectral density (up to some scaling).
-    fft_x_rotated_pad = spectral_ops.fft(x_rotated_pad)
+    fft_x_rotated_pad = fft_ops.fft(x_rotated_pad)
     spectral_density = fft_x_rotated_pad * math_ops.conj(fft_x_rotated_pad)
     # shifted_product is R[m] from above detailed explanation.
     # It is the inner product sum_n X[n] * Conj(X[n - m]).
-    shifted_product = spectral_ops.ifft(spectral_density)
+    shifted_product = fft_ops.ifft(spectral_density)
 
     # Cast back to real-valued if x was real to begin with.
     shifted_product = math_ops.cast(shifted_product, dtype)
@@ -198,7 +198,7 @@ def auto_correlation(
     # Recall R[m] is a sum of N / 2 - m nonzero terms x[n] Conj(x[n - m]).  The
     # other terms were zeros arising only due to zero padding.
     # `denominator = (N / 2 - m)` (defined below) is the proper term to
-    # divide by by to make this an unbiased estimate of the expectation
+    # divide by to make this an unbiased estimate of the expectation
     # E[X[n] Conj(X[n - m])].
     x_len = math_ops.cast(x_len, dtype.real_dtype)
     max_lags = math_ops.cast(max_lags, dtype.real_dtype)

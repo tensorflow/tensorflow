@@ -53,7 +53,7 @@ class XentTest(test.TestCase):
 
   def _testXent(self, np_features, np_labels, use_gpu=False):
     np_loss, np_backprop = self._npXent(np_features, np_labels)
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu) as sess:
       loss, backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
           np_features, np_labels)
       tf_loss, tf_backprop = sess.run([loss, backprop])
@@ -62,10 +62,10 @@ class XentTest(test.TestCase):
 
   def _testXentWrapper(self, np_features, np_labels, dim=-1, use_gpu=False):
     np_loss, _ = self._npXent(np_features, np_labels, dim=dim)
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu) as sess:
       loss = nn_ops.softmax_cross_entropy_with_logits(
           labels=np_labels, logits=np_features, dim=dim)
-      tf_loss = sess.run(loss)
+      tf_loss = self.evaluate(loss)
     print("np_loss:", np_loss)
     print("tf_loss:", tf_loss)
     self.assertAllCloseAccordingToType(np_loss, tf_loss)
@@ -76,7 +76,7 @@ class XentTest(test.TestCase):
 
   def _testSingleClass(self, use_gpu=False):
     for dtype in np.float16, np.float32:
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with self.cached_session(use_gpu=use_gpu) as sess:
         loss, backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
             np.array([[1.], [-1.], [0.]]).astype(dtype),
             np.array([[-1.], [0.], [1.]]).astype(dtype))
@@ -145,7 +145,7 @@ class XentTest(test.TestCase):
     tf_l = constant_op.constant(
         np.array([[0., 0., 0., 1.], [0., .5, .5, 0.]]).astype(np.float32))
     for use_gpu in [False, True]:
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with self.cached_session(use_gpu=use_gpu) as sess:
         loss, backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
             tf_f, tf_l)
         tf_loss, tf_backprop = sess.run([loss, backprop])
@@ -153,13 +153,13 @@ class XentTest(test.TestCase):
       self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
 
   def testShapeMismatch(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         gen_nn_ops.softmax_cross_entropy_with_logits(
             [[0., 1.], [2., 3.]], [[0., 1., 0.], [1., 0., 0.]])
 
   def testNotMatrix(self):
-    with self.test_session():
+    with self.cached_session():
       with self.assertRaises(ValueError):
         gen_nn_ops.softmax_cross_entropy_with_logits([0., 1., 2., 3.],
                                                      [0., 1., 0., 1.])
@@ -180,7 +180,7 @@ class XentTest(test.TestCase):
         np.array([[0., 0., 0., 1.], [0., .5, .5, 0.]]).astype(np.float64))
 
   def testGradient(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       l = constant_op.constant(
           [0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.5],
           shape=[3, 4],
@@ -207,7 +207,7 @@ class XentTest(test.TestCase):
     self.assertLess(err, 5e-8)
 
   def testGradientLabelWithV2(self):
-    with self.test_session():
+    with self.cached_session():
       l = constant_op.constant(
           [0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.5],
           shape=[3, 4],
@@ -225,7 +225,7 @@ class XentTest(test.TestCase):
     self.assertLess(err, 5e-8)
 
   def testSecondGradient(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       l = constant_op.constant(
           [
               0.0, 0.0, 1.0 / 3, 0.0, 1.0 / 3, 0.0, 0.0, 0.0, 0.0, 0.5 / 3, 0.0,
@@ -277,10 +277,10 @@ class XentTest(test.TestCase):
     features = np.zeros([0, 2, 4]).astype(np.float32)
     labels = np.zeros([0, 2, 4]).astype(np.float32)
     np_loss, _ = self._npXent(features, labels)
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       loss = nn_ops.softmax_cross_entropy_with_logits(
           labels=labels, logits=features)
-      tf_loss = sess.run(loss)
+      tf_loss = self.evaluate(loss)
     self.assertAllEqual(np_loss, tf_loss)
 
 

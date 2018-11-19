@@ -42,32 +42,18 @@ struct SegmentOptions {
 
 // Get the subgraphs of a graph that can be handled by TensorRT.
 //
-// @param gdef The GraphDef describing the network
-// @param candidate_fn A function that returns true for a NodeDef if
-// that node can be handled by TensorRT.
-// @param segments Returns the TensorRT segments/subgraphs. Each entry
-// in the vector describes a subgraph by giving a set of the names of
-// all the NodeDefs in that subgraph.
-// @return the status.
-//
-// TODO(aaroey): remove this method.
-tensorflow::Status SegmentGraph(
-    const tensorflow::GraphDef& gdef,
-    const std::function<bool(const tensorflow::Node*)>& candidate_fn,
-    const SegmentOptions& options, SegmentNodesVector* segments);
-
-// Get the subgraphs of a graph that can be handled by TensorRT.
-//
 // @param graph tensorflow::Graph of the network
-// @param candidate_fn A function that returns true for a Node* if
+// @param candidate_fn A function that returns OK for a Node* if
 // that node can be handled by TensorRT.
 // @param segments Returns the TensorRT segments/subgraphs. Each entry
 // in the vector describes a subgraph by giving a set of the names of
 // all the NodeDefs in that subgraph.
 // @return the status.
 tensorflow::Status SegmentGraph(
-    tensorflow::Graph* tf_graph,
-    const std::function<bool(const tensorflow::Node*)>& candidate_fn,
+    const tensorflow::Graph* tf_graph,
+    const std::function<Status(const tensorflow::Node*)>& candidate_fn,
+    const std::function<bool(const tensorflow::Edge*)>& input_candidate_fn,
+    const std::function<bool(const tensorflow::Edge*)>& output_candidate_fn,
     const SegmentOptions& options, SegmentNodesVector* segments);
 
 }  // namespace segment

@@ -60,7 +60,7 @@ class BatchToSpaceDepthToSpace(test.TestCase, PythonOpImpl):
           array_ops.depth_to_space(
               array_ops.transpose(x, [3, 1, 2, 0]), block_size=block_size),
           [3, 1, 2, 0])
-      with self.test_session():
+      with self.cached_session():
         self.assertAllEqual(y1.eval(), y2.eval())
 
 
@@ -235,7 +235,7 @@ class BatchToSpaceGradientTest(test.TestCase, PythonOpImpl):
   # Check the gradients.
   def _checkGrad(self, x, crops, block_size):
     assert 4 == x.ndim
-    with self.test_session():
+    with self.cached_session():
       tf_x = ops.convert_to_tensor(x)
       tf_y = self.batch_to_space(tf_x, crops, block_size)
       epsilon = 1e-5
@@ -293,7 +293,7 @@ class BatchToSpaceNDGradientTest(test.TestCase):
     block_shape = np.array(block_shape)
     crops = constant_op.constant(
         np.array(crops).reshape((len(block_shape), 2)), crops_dtype)
-    with self.test_session():
+    with self.cached_session():
       tf_x = ops.convert_to_tensor(x)
       tf_y = array_ops.batch_to_space_nd(tf_x, block_shape, crops)
       epsilon = 1e-5

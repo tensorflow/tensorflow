@@ -41,12 +41,12 @@ class LossScaleManager(object):
      applied on variables.
 
   This class is used together with
-  @{tf.contrib.mixed_precision.LossScaleOptimizer} for mixed precision training
+  `tf.contrib.mixed_precision.LossScaleOptimizer` for mixed precision training
   (float32 variables and float16 ops) on Nvidia GPUs in order to achieve the
   same model quality as single precision training, with the benefits of
   potential higher throughput.
 
-  See @{tf.contrib.mixed_precision.LossScaleOptimizer} for more details.
+  See `tf.contrib.mixed_precision.LossScaleOptimizer` for more details.
   """
 
   @abc.abstractmethod

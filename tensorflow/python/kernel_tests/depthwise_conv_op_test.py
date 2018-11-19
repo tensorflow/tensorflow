@@ -90,7 +90,7 @@ def CheckGradConfigsToTest():
 class DepthwiseConv2DTest(test.TestCase):
 
   # This is testing that depthwise_conv2d and depthwise_conv2d_native
-  # produce the same results.  It also tests that NCHW and NWHC
+  # produce the same results.  It also tests that NCHW and NHWC
   # formats agree, by comparing the depthwise_conv2d_native with
   # 'NCHW' format (with transposition) matches the 'NHWC' format using
   # the higher level interface.
@@ -128,11 +128,11 @@ class DepthwiseConv2DTest(test.TestCase):
     x2 = [f * 1.0 / filter_size for f in range(1, filter_size + 1)]
     ops.reset_default_graph()
     graph = ops.get_default_graph()
-    with self.test_session(graph=graph, use_gpu=use_gpu) as sess:
+    with self.session(graph=graph, use_gpu=use_gpu) as sess:
       tolerance = {
           dtypes.float16: 4e-2,
-          dtypes.float32: 1e-8,
-          dtypes.float64: 1e-13,
+          dtypes.float32: 1e-5,
+          dtypes.float64: 1e-12,
       }[data_type]
 
       t1 = constant_op.constant(x1, shape=tensor_in_sizes, dtype=data_type)
@@ -142,7 +142,7 @@ class DepthwiseConv2DTest(test.TestCase):
       native_t1 = t1
       strides = [1, stride, stride, 1]
       if data_format == "NCHW":
-        # Transpose from NWHC input to NCHW
+        # Transpose from NHWC input to NCHW
         # Ex. [4, 5, 5, 48] to [4, 48, 5, 5]
         native_t1 = array_ops.transpose(t1, [0, 3, 1, 2])
         strides = [1, 1, stride, stride]
@@ -162,7 +162,7 @@ class DepthwiseConv2DTest(test.TestCase):
         conv_native = array_ops.transpose(conv_native, [0, 2, 3, 1])
 
       try:
-        native_result = sess.run(conv_native)
+        native_result = self.evaluate(conv_native)
       except errors.InvalidArgumentError as e:
         # Grouped convolution kernel is only registered for cuDNN 7. Silently
         # return when we are running on an earlier version or without GPU.
@@ -174,7 +174,7 @@ class DepthwiseConv2DTest(test.TestCase):
 
       conv_interface = nn_impl.depthwise_conv2d(
           t1, t2, strides=[1, stride, stride, 1], padding=padding)
-      interface_result = sess.run(conv_interface)
+      interface_result = self.evaluate(conv_interface)
 
     tf_logging.info(
         "data_type: %r, use_gpu: %r, grouped_conv: %r, max diff = %f",
@@ -191,7 +191,7 @@ class DepthwiseConv2DTest(test.TestCase):
       tf_logging.info(
           "Testing DepthwiseConv2D, %dth config: %r * %r, stride: %d, padding: "
           "%s", index, input_size, filter_size, stride, padding)
-      for data_type in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      for data_type in [dtypes.float32, dtypes.float64]:
         tf_logging.info("Testing without grouped_conv")
         self._VerifyValues(
             input_size, filter_size, stride, padding, data_type, use_gpu=True)
@@ -205,6 +205,19 @@ class DepthwiseConv2DTest(test.TestCase):
             use_gpu=True,
             grouped_conv=True)
 
+  def testDepthwiseConv2DWithUnknownShape(self):
+    # GitHub issue 22110.
+    if not test.is_gpu_available():
+      return
+    with self.session(use_gpu=True):
+      x = array_ops.placeholder(dtypes.float32)
+      f = np.ones([1, 1, 1, 1], np.float32)
+      v = nn_impl.depthwise_conv2d(
+          x, f, [1, 1, 1, 1], "VALID", rate=[2, 1], data_format="NCHW")
+      self.assertAllEqual(
+          np.ones([1, 1, 1, 1], np.float32),
+          v.eval(feed_dict={x: np.ones([1, 1, 1, 1], np.float32)}))
+
   def testDepthwiseConv2DFormat(self):
     if not test.is_gpu_available():
       return
@@ -214,7 +227,7 @@ class DepthwiseConv2DTest(test.TestCase):
       tf_logging.info(
           "Testing DepthwiseConv2DFormat, %dth config: %r * %r, stride: %d, "
           "padding: %s", index, input_size, filter_size, stride, padding)
-      for data_type in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      for data_type in [dtypes.float32, dtypes.float64]:
         self._VerifyValues(
             input_size,
             filter_size,
@@ -250,13 +263,13 @@ class DepthwiseConv2DTest(test.TestCase):
     # numbers from 1.
     x1 = [f * 1.0 for f in range(1, total_size_1 + 1)]
     x2 = [f * 1.0 for f in range(1, total_size_2 + 1)]
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.cached_session(use_gpu=use_gpu) as sess:
       t1 = constant_op.constant(x1, shape=tensor_in_sizes)
       t1.set_shape(tensor_in_sizes)
       t2 = constant_op.constant(x2, shape=filter_in_sizes)
       conv = nn_ops.depthwise_conv2d_native(
           t1, t2, strides=[1, stride, stride, 1], padding=padding)
-      value = sess.run(conv)
+      value = self.evaluate(conv)
     tf_logging.info("value = %r", value)
     self.assertArrayNear(expected, np.ravel(value), 1e-5)
     self.assertShapeEqual(value, conv)
@@ -353,7 +366,7 @@ class DepthwiseConv2DTest(test.TestCase):
     filter_data = [x * 1.0 / filter_size for x in range(0, filter_size)]
     ops.reset_default_graph()
     graph = ops.get_default_graph()
-    with self.test_session(graph=graph, use_gpu=use_gpu) as sess:
+    with self.session(graph=graph, use_gpu=use_gpu) as sess:
       tolerance = {
           dtypes.float16: 4e-0,
           dtypes.float32: 8e-4,
@@ -368,7 +381,7 @@ class DepthwiseConv2DTest(test.TestCase):
       native_input = input_tensor
       strides = [1, stride, stride, 1]
       if data_format == "NCHW":
-        # Transpose from NWHC input to NCHW
+        # Transpose from NHWC input to NCHW
         # Ex. [4, 5, 5, 48] to [4, 48, 5, 5]
         native_input = array_ops.transpose(input_tensor, [0, 3, 1, 2])
         input_shape = [
@@ -421,7 +434,7 @@ class DepthwiseConv2DTest(test.TestCase):
       tf_logging.info(
           "Testing DepthwiseConv2DInputGrad, %dth config: %r * %r, stride: %d, "
           "padding: %s", index, input_size, filter_size, stride, padding)
-      for data_type in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      for data_type in [dtypes.float32, dtypes.float64]:
         self._ConstructAndTestGradient(
             input_size,
             filter_size,
@@ -452,7 +465,7 @@ class DepthwiseConv2DTest(test.TestCase):
           "Testing DepthwiseConv2DInputGradFormat, %dth config: %r * %r, "
           "stride: %d, padding: %s", index, input_size, filter_size, stride,
           padding)
-      for data_type in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      for data_type in [dtypes.float32, dtypes.float64]:
         self._ConstructAndTestGradient(
             input_size,
             filter_size,
@@ -470,7 +483,7 @@ class DepthwiseConv2DTest(test.TestCase):
       tf_logging.info(
           "Testing DepthwiseConv2DFilterGrad, %dth config: %r * %r, stride: "
           "%d, padding: %s", index, input_size, filter_size, stride, padding)
-      for data_type in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      for data_type in [dtypes.float32, dtypes.float64]:
         self._ConstructAndTestGradient(
             input_size,
             filter_size,
@@ -491,7 +504,7 @@ class DepthwiseConv2DTest(test.TestCase):
           "Testing DepthwiseConv2DFilterGradFormat, %dth config: %r * %r, "
           "stride: %d, padding: %s", index, input_size, filter_size, stride,
           padding)
-      for data_type in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      for data_type in [dtypes.float32, dtypes.float64]:
         self._ConstructAndTestGradient(
             input_size,
             filter_size,
@@ -509,13 +522,13 @@ class DepthwiseConv2DTest(test.TestCase):
     x2 = np.random.rand(*output_sizes).astype(np.float32)
 
     def _GetVal(use_gpu):
-      with self.test_session(use_gpu=use_gpu):
+      with self.cached_session(use_gpu=use_gpu):
         t0 = constant_op.constant(input_sizes, shape=[len(input_sizes)])
         t1 = constant_op.constant(x1, shape=filter_sizes)
         t2 = constant_op.constant(x2, shape=output_sizes)
         backprop = nn_ops.depthwise_conv2d_native_backprop_input(
             t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
-        ret = backprop.eval()
+        ret = self.evaluate(backprop)
         self.assertShapeEqual(ret, backprop)
         return ret
 
@@ -529,13 +542,13 @@ class DepthwiseConv2DTest(test.TestCase):
     x2 = np.random.rand(*output_sizes).astype(np.float64)
 
     def _GetVal(use_gpu):
-      with self.test_session(use_gpu=use_gpu):
+      with self.cached_session(use_gpu=use_gpu):
         t0 = constant_op.constant(input_sizes, shape=[len(input_sizes)])
         t1 = constant_op.constant(x1, shape=filter_sizes)
         t2 = constant_op.constant(x2, shape=output_sizes)
         backprop = nn_ops.depthwise_conv2d_native_backprop_input(
             t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
-        ret = backprop.eval()
+        ret = self.evaluate(backprop)
         self.assertShapeEqual(ret, backprop)
         return ret
 
@@ -561,13 +574,13 @@ class DepthwiseConv2DTest(test.TestCase):
     x2 = np.random.rand(*output_sizes).astype(np.float32)
 
     def _GetVal(use_gpu):
-      with self.test_session(use_gpu=use_gpu):
+      with self.cached_session(use_gpu=use_gpu):
         t0 = constant_op.constant(x0, shape=input_sizes)
         t1 = constant_op.constant(filter_sizes, shape=[len(filter_sizes)])
         t2 = constant_op.constant(x2, shape=output_sizes)
         backprop = nn_ops.depthwise_conv2d_native_backprop_filter(
             t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
-        ret = backprop.eval()
+        ret = self.evaluate(backprop)
         self.assertShapeEqual(ret, backprop)
         return ret
 
@@ -581,13 +594,13 @@ class DepthwiseConv2DTest(test.TestCase):
     x2 = np.random.rand(*output_sizes).astype(np.float64)
 
     def _GetVal(use_gpu):
-      with self.test_session(use_gpu=use_gpu):
+      with self.cached_session(use_gpu=use_gpu):
         t0 = constant_op.constant(x0, shape=input_sizes)
         t1 = constant_op.constant(filter_sizes, shape=[len(filter_sizes)])
         t2 = constant_op.constant(x2, shape=output_sizes)
         backprop = nn_ops.depthwise_conv2d_native_backprop_filter(
             t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
-        ret = backprop.eval()
+        ret = self.evaluate(backprop)
         self.assertShapeEqual(ret, backprop)
         return ret
 

@@ -269,7 +269,7 @@ void SetSizeOp<T>::Compute(OpKernelContext* ctx) {
 
   // Group by all but last dimension, create a set of group values, and add set
   // size to output.
-  VarDimArray group_ix(set_st.order(), 0, set_st.order().size() - 1);
+  VarDimArray group_ix = set_st.order().subspan(0, set_st.order().size() - 1);
   std::set<T> group_set;
   for (const auto& group : set_st.group(group_ix)) {
     PopulateFromSparseGroup<T>(ctx, group, set_st.shape(), &group_set);
@@ -500,8 +500,8 @@ void SetOperationOp<T>::ComputeDenseToSparse(OpKernelContext* ctx) const {
 
   std::set<T> set1_group_set;
   std::set<T> set2_group_set;
-  auto set2_grouper = set2_st.group(
-      VarDimArray(set2_st.order(), 0, set2_st.order().size() - 1));
+  auto set2_grouper =
+      set2_st.group(set2_st.order().subspan(0, set2_st.order().size() - 1));
   auto set2_group_it = set2_grouper.begin();
   std::vector<int64> group_indices;
   int64 num_elements;
@@ -621,11 +621,11 @@ void SetOperationOp<T>::ComputeSparseToSparse(OpKernelContext* ctx) const {
 
   std::set<T> set1_group_set;
   std::set<T> set2_group_set;
-  auto set1_grouper = set1_st.group(
-      VarDimArray(set1_st.order(), 0, set1_st.order().size() - 1));
+  auto set1_grouper =
+      set1_st.group(set1_st.order().subspan(0, set1_st.order().size() - 1));
   auto set1_group_it = set1_grouper.begin();
-  auto set2_grouper = set2_st.group(
-      VarDimArray(set2_st.order(), 0, set2_st.order().size() - 1));
+  auto set2_grouper =
+      set2_st.group(set2_st.order().subspan(0, set2_st.order().size() - 1));
   auto set2_group_it = set2_grouper.begin();
 
   // Group by rows, and iterate over rows of both sets in parallel, creating a

@@ -15,7 +15,7 @@ filegroup(
     ]),
 )
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
@@ -189,7 +189,7 @@ cc_library(
     ],
 )
 
-cc_library(
+tf_cuda_library(
     name = "worker",
     srcs = ["worker.cc"],
     hdrs = [
@@ -204,6 +204,7 @@ cc_library(
         ":worker_interface",
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:device_tracer",
         "//tensorflow/core:lib_internal",
     ],
 )
@@ -466,6 +467,17 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "server_lib_test",
+    srcs = ["server_lib_test.cc"],
+    deps = [
+        ":server_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "rpc_collective_executor_mgr",
     srcs = ["rpc_collective_executor_mgr.cc"],
@@ -508,6 +520,7 @@ cc_library(
     hdrs = ["collective_rma_distributed.h"],
     deps = [
         ":cancellable_call",
+        ":request_id",
         ":worker_cache",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -561,6 +574,7 @@ cc_library(
     deps = [
         ":worker_cache",
         ":worker_interface",
+        "//tensorflow/core:framework",
     ],
 )
 

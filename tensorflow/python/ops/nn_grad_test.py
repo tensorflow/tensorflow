@@ -37,7 +37,7 @@ class Relu6OpTest(test.TestCase):
     x_init_value = np.array([[-3.5, -1.5, 2, 4], [4.5, 7.5, 8.5, 11]])
     r = nn_ops.relu6(inputs)
     r_g = gradients_impl.gradients(r, inputs)[0]
-    with self.test_session():
+    with self.cached_session():
       error = gradient_checker.compute_gradient_error(
           inputs,
           inputs.get_shape().as_list(),

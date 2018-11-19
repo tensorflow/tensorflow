@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_SPARSE_CONDITIONAL_ACCUMULATOR_H_
-#define TENSORFLOW_KERNELS_SPARSE_CONDITIONAL_ACCUMULATOR_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SPARSE_CONDITIONAL_ACCUMULATOR_H_
+#define TENSORFLOW_CORE_KERNELS_SPARSE_CONDITIONAL_ACCUMULATOR_H_
 
 #include "tensorflow/core/kernels/typed_conditional_accumulator_base.h"
 
@@ -50,10 +50,10 @@ class SparseConditionalAccumulator
  public:
   SparseConditionalAccumulator(const DataType& dtype,
                                const PartialTensorShape& shape,
-                               const string& name)
+                               const string& name, const string& reduction_type)
       : TypedConditionalAccumulatorBase<
             std::tuple<const Tensor*, const Tensor*, const Tensor*>>(
-            dtype, shape, name) {
+            dtype, shape, name, reduction_type) {
     accum_idx_vec_ = nullptr;
     count_element_ = nullptr;
     accum_val_ = nullptr;
@@ -459,4 +459,4 @@ class SparseConditionalAccumulator
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_SPARSE_CONDITIONAL_ACCUMULATOR_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SPARSE_CONDITIONAL_ACCUMULATOR_H_

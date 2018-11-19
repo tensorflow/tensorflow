@@ -40,7 +40,7 @@ class MultivariateNormalFullCovarianceTest(test.TestCase):
     return math_ops.matmul(chol, chol, adjoint_b=True).eval()
 
   def testRaisesIfInitializedWithNonSymmetricMatrix(self):
-    with self.test_session():
+    with self.cached_session():
       mu = [1., 2.]
       sigma = [[1., 0.], [1., 1.]]  # Nonsingular, but not symmetric
       mvn = ds.MultivariateNormalFullCovariance(mu, sigma, validate_args=True)
@@ -48,14 +48,14 @@ class MultivariateNormalFullCovarianceTest(test.TestCase):
         mvn.covariance().eval()
 
   def testNamePropertyIsSetByInitArg(self):
-    with self.test_session():
+    with self.cached_session():
       mu = [1., 2.]
       sigma = [[1., 0.], [0., 1.]]
       mvn = ds.MultivariateNormalFullCovariance(mu, sigma, name="Billy")
       self.assertEqual(mvn.name, "Billy/")
 
   def testDoesNotRaiseIfInitializedWithSymmetricMatrix(self):
-    with self.test_session():
+    with self.cached_session():
       mu = rng.rand(10)
       sigma = self._random_pd_matrix(10, 10)
       mvn = ds.MultivariateNormalFullCovariance(mu, sigma, validate_args=True)
@@ -63,7 +63,7 @@ class MultivariateNormalFullCovarianceTest(test.TestCase):
       mvn.covariance().eval()
 
   def testLogPDFScalarBatch(self):
-    with self.test_session():
+    with self.cached_session():
       mu = rng.rand(2)
       sigma = self._random_pd_matrix(2, 2)
       mvn = ds.MultivariateNormalFullCovariance(mu, sigma, validate_args=True)
@@ -82,7 +82,7 @@ class MultivariateNormalFullCovarianceTest(test.TestCase):
       self.assertAllClose(expected_pdf, pdf.eval())
 
   def testLogPDFScalarBatchCovarianceNotProvided(self):
-    with self.test_session():
+    with self.cached_session():
       mu = rng.rand(2)
       mvn = ds.MultivariateNormalFullCovariance(
           mu, covariance_matrix=None, validate_args=True)
@@ -102,7 +102,7 @@ class MultivariateNormalFullCovarianceTest(test.TestCase):
       self.assertAllClose(expected_pdf, pdf.eval())
 
   def testShapes(self):
-    with self.test_session():
+    with self.cached_session():
       mu = rng.rand(3, 5, 2)
       covariance = self._random_pd_matrix(3, 5, 2, 2)
 
@@ -133,7 +133,7 @@ class MultivariateNormalFullCovarianceTest(test.TestCase):
   def testKLBatch(self):
     batch_shape = [2]
     event_shape = [3]
-    with self.test_session():
+    with self.cached_session():
       mu_a, sigma_a = self._random_mu_and_sigma(batch_shape, event_shape)
       mu_b, sigma_b = self._random_mu_and_sigma(batch_shape, event_shape)
       mvn_a = ds.MultivariateNormalFullCovariance(
@@ -159,7 +159,7 @@ class MultivariateNormalFullCovarianceTest(test.TestCase):
   def testKLBatchBroadcast(self):
     batch_shape = [2]
     event_shape = [3]
-    with self.test_session():
+    with self.cached_session():
       mu_a, sigma_a = self._random_mu_and_sigma(batch_shape, event_shape)
       # No batch shape.
       mu_b, sigma_b = self._random_mu_and_sigma([], event_shape)

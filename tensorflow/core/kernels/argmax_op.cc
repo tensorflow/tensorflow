@@ -76,6 +76,10 @@ class ArgOp : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
 
+    if (output_shape.num_elements() == 0) {
+      return;
+    }
+
 #define HANDLE_DIM(NDIM)                                        \
   case NDIM:                                                    \
     ArgFunctor::Reduce##NDIM(context->eigen_device<Device>(),   \

@@ -54,7 +54,7 @@ class SigmoidCrossEntropyWithLogitsTest(test.TestCase):
     return logits, targets, losses
 
   def testConstructionNamed(self):
-    with self.test_session():
+    with self.cached_session():
       logits, targets, _ = self._Inputs()
       loss = nn_impl.sigmoid_cross_entropy_with_logits(
           labels=targets, logits=logits, name="mylogistic")
@@ -63,28 +63,28 @@ class SigmoidCrossEntropyWithLogitsTest(test.TestCase):
   def testLogisticOutput(self):
     for use_gpu in [True, False]:
       for dtype in [dtypes.float32, dtypes.float16]:
-        with self.test_session(use_gpu=use_gpu):
+        with self.cached_session(use_gpu=use_gpu):
           logits, targets, losses = self._Inputs(dtype=dtype)
           loss = nn_impl.sigmoid_cross_entropy_with_logits(
               labels=targets, logits=logits)
           np_loss = np.array(losses).astype(np.float32)
-          tf_loss = loss.eval()
+          tf_loss = self.evaluate(loss)
         self.assertAllClose(np_loss, tf_loss, atol=0.001)
 
   def testLogisticOutputMultiDim(self):
     for use_gpu in [True, False]:
       for dtype in [dtypes.float32, dtypes.float16]:
-        with self.test_session(use_gpu=use_gpu):
+        with self.cached_session(use_gpu=use_gpu):
           logits, targets, losses = self._Inputs(dtype=dtype, sizes=[2, 2, 2])
           loss = nn_impl.sigmoid_cross_entropy_with_logits(
               labels=targets, logits=logits)
           np_loss = np.array(losses).astype(np.float32)
-          tf_loss = loss.eval()
+          tf_loss = self.evaluate(loss)
         self.assertAllClose(np_loss, tf_loss, atol=0.001)
 
   def testGradient(self):
     sizes = [4, 2]
-    with self.test_session():
+    with self.cached_session():
       logits, targets, _ = self._Inputs(sizes=sizes)
       loss = nn_impl.sigmoid_cross_entropy_with_logits(
           labels=targets, logits=logits)
@@ -93,7 +93,7 @@ class SigmoidCrossEntropyWithLogitsTest(test.TestCase):
     self.assertLess(err, 1e-7)
 
   def testGradientAtZero(self):
-    with self.test_session():
+    with self.cached_session():
       logits = constant_op.constant([0.0, 0.0], dtype=dtypes.float64)
       targets = constant_op.constant([0.0, 1.0], dtype=dtypes.float64)
       loss = nn_impl.sigmoid_cross_entropy_with_logits(
@@ -130,7 +130,7 @@ class WeightedCrossEntropyTest(test.TestCase):
     return logits, targets, q, losses
 
   def testConstructionNamed(self):
-    with self.test_session():
+    with self.cached_session():
       logits, targets, pos_weight, _ = self._Inputs()
       loss = nn_impl.weighted_cross_entropy_with_logits(
           targets=targets, logits=logits, pos_weight=pos_weight, name="mybce")
@@ -138,28 +138,28 @@ class WeightedCrossEntropyTest(test.TestCase):
 
   def testOutput(self):
     for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu):
+      with self.cached_session(use_gpu=use_gpu):
         logits, targets, pos_weight, losses = self._Inputs(dtype=dtypes.float32)
         loss = nn_impl.weighted_cross_entropy_with_logits(
             targets=targets, logits=logits, pos_weight=pos_weight)
         np_loss = np.array(losses).astype(np.float32)
-        tf_loss = loss.eval()
+        tf_loss = self.evaluate(loss)
       self.assertAllClose(np_loss, tf_loss, atol=0.001)
 
   def testOutputMultiDim(self):
     for use_gpu in [True, False]:
-      with self.test_session(use_gpu=use_gpu):
+      with self.cached_session(use_gpu=use_gpu):
         logits, targets, pos_weight, losses = self._Inputs(
             dtype=dtypes.float32, sizes=[2, 2, 2])
         loss = nn_impl.weighted_cross_entropy_with_logits(
             targets=targets, logits=logits, pos_weight=pos_weight)
         np_loss = np.array(losses).astype(np.float32)
-        tf_loss = loss.eval()
+        tf_loss = self.evaluate(loss)
       self.assertAllClose(np_loss, tf_loss, atol=0.001)
 
   def testGradient(self):
     sizes = [4, 2]
-    with self.test_session():
+    with self.cached_session():
       logits, targets, pos_weight, _ = self._Inputs(sizes=sizes)
       loss = nn_impl.weighted_cross_entropy_with_logits(
           targets=targets, logits=logits, pos_weight=pos_weight)

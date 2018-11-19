@@ -56,7 +56,7 @@ XlaOp Epsilon(XlaBuilder* builder, PrimitiveType type) {
                                 std::numeric_limits<double>::epsilon());
     default:
       return builder->ReportError(InvalidArgument(
-          "Invalid type for Epsilon (%s).", PrimitiveType_Name(type).c_str()));
+          "Invalid type for Epsilon (%s).", PrimitiveType_Name(type)));
   }
 }
 

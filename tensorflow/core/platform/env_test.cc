@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/null_file_system.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -86,7 +87,7 @@ TEST_F(DefaultEnvTest, IncompleteReadOutOfRange) {
 
 TEST_F(DefaultEnvTest, ReadFileToString) {
   for (const int length : {0, 1, 1212, 2553, 4928, 8196, 9000, (1 << 20) - 1,
-                           1 << 20, (1 << 20) + 1}) {
+                           1 << 20, (1 << 20) + 1, (256 << 20) + 100}) {
     const string filename = strings::StrCat(BaseDir(), "/bar/..//file", length);
 
     // Write a file with the given length
@@ -345,7 +346,13 @@ TEST_F(DefaultEnvTest, LocalTempFilename) {
   // Write something to the temporary file.
   std::unique_ptr<WritableFile> file_to_write;
   TF_CHECK_OK(env->NewWritableFile(filename, &file_to_write));
+#if defined(PLATFORM_GOOGLE)
+  TF_CHECK_OK(file_to_write->Append("Nu"));
+  TF_CHECK_OK(file_to_write->Append(absl::Cord("ll")));
+#else
+  // TODO(ebrevdo): Remove this version.
   TF_CHECK_OK(file_to_write->Append("Null"));
+#endif
   TF_CHECK_OK(file_to_write->Close());
   TF_CHECK_OK(env->FileExists(filename));
 

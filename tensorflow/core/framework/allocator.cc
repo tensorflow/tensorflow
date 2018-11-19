@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -56,6 +57,14 @@ void RunResourceDtor(ResourceHandle* p, size_t n) {
   for (size_t i = 0; i < n; ++p, ++i) p->~ResourceHandle();
 }
 
+void Allocator::RunVariantCtor(Variant* p, size_t n) {
+  for (size_t i = 0; i < n; ++p, ++i) new (p) Variant();
+}
+
+void Allocator::RunVariantDtor(Variant* p, size_t n) {
+  for (size_t i = 0; i < n; ++p, ++i) p->~Variant();
+}
+
 // If true, cpu allocator collects more stats.
 static bool cpu_allocator_collect_stats = false;
 // If true, cpu allocator collects full stats.
@@ -87,10 +96,17 @@ static int64_t TotalAllocationWarningBytes() {
 void EnableCPUAllocatorStats(bool enable) {
   cpu_allocator_collect_stats = enable;
 }
+bool CPUAllocatorStatsEnabled() { return cpu_allocator_collect_stats; }
 void EnableCPUAllocatorFullStats(bool enable) {
   cpu_allocator_collect_full_stats = enable;
 }
+bool CPUAllocatorFullStatsEnabled() { return cpu_allocator_collect_full_stats; }
 
+namespace {
+// A default Allocator for CPU devices.  ProcessState::GetCPUAllocator() will
+// return a different version that may perform better, but may also lack the
+// optional stats triggered by the functions above.  TODO(tucker): migrate all
+// uses of cpu_allocator() except tests to use ProcessState instead.
 class CPUAllocator : public Allocator {
  public:
   CPUAllocator()
@@ -170,14 +186,60 @@ class CPUAllocator : public Allocator {
   TF_DISALLOW_COPY_AND_ASSIGN(CPUAllocator);
 };
 
+class CPUAllocatorFactory : public AllocatorFactory {
+ public:
+  Allocator* CreateAllocator() override { return new CPUAllocator; }
+
+  SubAllocator* CreateSubAllocator(int numa_node) override {
+    return new CPUSubAllocator(new CPUAllocator);
+  }
+
+ private:
+  class CPUSubAllocator : public SubAllocator {
+   public:
+    explicit CPUSubAllocator(CPUAllocator* cpu_allocator)
+        : SubAllocator({}, {}), cpu_allocator_(cpu_allocator) {}
+
+    void* Alloc(size_t alignment, size_t num_bytes) override {
+      return cpu_allocator_->AllocateRaw(alignment, num_bytes);
+    }
+
+    void Free(void* ptr, size_t num_bytes) override {
+      cpu_allocator_->DeallocateRaw(ptr);
+    }
+
+   private:
+    CPUAllocator* cpu_allocator_;
+  };
+};
+
+REGISTER_MEM_ALLOCATOR("DefaultCPUAllocator", 100, CPUAllocatorFactory);
+}  // namespace
+
 Allocator* cpu_allocator() {
-  static Allocator* cpu_alloc = AllocatorRegistry::Global()->GetAllocator();
+  static Allocator* cpu_alloc =
+      AllocatorFactoryRegistry::singleton()->GetAllocator();
   if (cpu_allocator_collect_full_stats && !cpu_alloc->TracksAllocationSizes()) {
     cpu_alloc = new TrackingAllocator(cpu_alloc, true);
   }
   return cpu_alloc;
 }
 
-REGISTER_MEM_ALLOCATOR("DefaultCPUAllocator", 100, CPUAllocator);
+SubAllocator::SubAllocator(const std::vector<Visitor>& alloc_visitors,
+                           const std::vector<Visitor>& free_visitors)
+    : alloc_visitors_(alloc_visitors), free_visitors_(free_visitors) {}
 
+void SubAllocator::VisitAlloc(void* ptr, int index, size_t num_bytes) {
+  for (const auto& v : alloc_visitors_) {
+    v(ptr, index, num_bytes);
+  }
+}
+
+void SubAllocator::VisitFree(void* ptr, int index, size_t num_bytes) {
+  // Although we don't guarantee any order of visitor application, strive
+  // to apply free visitors in reverse order of alloc visitors.
+  for (int i = free_visitors_.size() - 1; i >= 0; --i) {
+    free_visitors_[i](ptr, index, num_bytes);
+  }
+}
 }  // namespace tensorflow
