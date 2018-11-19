@@ -30,6 +30,7 @@ from tensorflow.contrib.tensorrt.python import trt_convert
 from tensorflow.contrib.tensorrt.python.ops import trt_engine_op
 # pylint: enable=unused-import
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import importer
@@ -63,6 +64,28 @@ class GraphState(object):
   ORIGINAL = 0
   CALIBRATE = 1
   INFERENCE = 2
+
+
+def OptimizerDisabledRewriterConfig():
+  """Returns a RewriterConfig with all default Grappler optimizers disabled."""
+  rewriter_config = rewriter_config_pb2.RewriterConfig()
+  off = rewriter_config_pb2.RewriterConfig.OFF
+  rewriter_config.layout_optimizer = off
+  rewriter_config.constant_folding = off
+  rewriter_config.shape_optimization = off
+  rewriter_config.remapping = off
+  rewriter_config.arithmetic_optimization = off
+  rewriter_config.dependency_optimization = off
+  rewriter_config.loop_optimization = off
+  rewriter_config.function_optimization = off
+  rewriter_config.debug_stripper = off
+  rewriter_config.disable_model_pruning = True
+  rewriter_config.scoped_allocator_optimization = off
+  rewriter_config.memory_optimization = (
+      rewriter_config_pb2.RewriterConfig.NO_MEM_OPT)
+  rewriter_config.pin_to_host_optimization = off
+  rewriter_config.auto_parallel.enable = False
+  return rewriter_config
 
 
 class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
@@ -443,6 +466,11 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       # types.
       scale = 10.0 if np.issubdtype(dtype, np.integer) else 1.0
       dims = params.input_dims[i]
+      # TODO(laigd): add debug options. E.g. we can set the input data to be
+      # continuous natural numbers:
+      # seq = np.arange(np.prod(dims))
+      # seq.resize(dims)
+      # input_data.append(scale * seq.astype(dtype))
       input_data.append((scale * np.random.random_sample(dims)).astype(dtype))
     self._VerifyGraphDef(run_params, input_gdef, GraphState.ORIGINAL)
 

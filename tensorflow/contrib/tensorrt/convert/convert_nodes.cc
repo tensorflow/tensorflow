@@ -54,10 +54,10 @@ limitations under the License.
 // would work!
 #define TFTRT_CHECK_EQ_TYPE(val1, val2) CHECK_EQ((int)val1, (int)val2)
 
-#define TFTRT_INTERNAL_ERROR_AT_NODE(node)                               \
-  do {                                                                   \
-    return tensorflow::errors::Internal(                                 \
-        "TFTRT::", __FUNCTION__, "failed to add TRT layer, at: ", node); \
+#define TFTRT_INTERNAL_ERROR_AT_NODE(node)                                \
+  do {                                                                    \
+    return tensorflow::errors::Internal(                                  \
+        "TFTRT::", __FUNCTION__, " failed to add TRT layer, at: ", node); \
   } while (0)
 
 #define TFTRT_RETURN_ERROR_IF_FALSE(status, node) \
@@ -187,10 +187,34 @@ Status ValidateTensorProperties(const string& producer_node_type,
   return Status::OK();
 }
 
+string DebugString(const nvinfer1::DimensionType type) {
+  switch (type) {
+    case nvinfer1::DimensionType::kSPATIAL:
+      return "kSPATIAL";
+    case nvinfer1::DimensionType::kCHANNEL:
+      return "kCHANNEL";
+    case nvinfer1::DimensionType::kINDEX:
+      return "kINDEX";
+    case nvinfer1::DimensionType::kSEQUENCE:
+      return "kSEQUENCE";
+    default:
+      return StrCat(static_cast<int>(type), "=unknown");
+  }
+}
+
 string DebugString(const nvinfer1::Dims& dims) {
   string out = StrCat("nvinfer1::Dims(nbDims=", dims.nbDims, ", d=");
   for (int i = 0; i < dims.nbDims; ++i) {
-    StrAppend(&out, dims.d[i], ",");
+    StrAppend(&out, dims.d[i], "[", DebugString(dims.type[i]), "],");
+  }
+  StrAppend(&out, ")");
+  return out;
+}
+
+string DebugString(const nvinfer1::Permutation& permutation, int len) {
+  string out = "nvinfer1::Permutation(";
+  for (int i = 0; i < len; ++i) {
+    StrAppend(&out, permutation.order[i], ",");
   }
   StrAppend(&out, ")");
   return out;
@@ -381,7 +405,7 @@ size_t TRT_ShapedWeights::size_bytes() const {
 
 string TRT_ShapedWeights::DebugString() const {
   return StrCat("TRT_ShapedWeights(shape=", convert::DebugString(shape_),
-                ", type=", type_,
+                ", type=", DataTypeString(type_),
                 ", values=", reinterpret_cast<uintptr_t>(GetValues()), ")");
 }
 
@@ -935,6 +959,8 @@ Status Converter::TransposeTensor(nvinfer1::ITensor* input_tensor,
   for (int32_t i = 0; i < dims.nbDims; ++i) {
     permutation.order[i] = order_with_batch_dim[i + 1] - 1;
   }
+  VLOG(1) << "TransposeTensor permutation: "
+          << DebugString(permutation, dims.nbDims);
   layer->setFirstTranspose(permutation);
 
   nvinfer1::Dims reshape_dims;
@@ -1750,73 +1776,71 @@ tensorflow::Status ConvertActivation(OpConverterParams* params) {
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status ConvertScale(OpConverterParams* params) {
+tensorflow::Status ConvertBiasAdd(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   if (inputs.size() != 2 || !inputs.at(0).is_tensor() ||
       !inputs.at(1).is_weights()) {
-    return tensorflow::errors::Unimplemented(
-        "ConvertScale only supports tensor<op>weight: ", node_def.name());
+    return errors::InvalidArgument("Input expects tensor and weights, at ",
+                                   node_def.name());
   }
+  if (params->validation_only) return Status::OK();
 
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
-  TRT_ShapedWeights weights = inputs.at(1).weights();
-  if (params->converter->is_fp16()) {
-    weights = ConvertFP32ToFP16(params->weight_store, inputs.at(1).weights());
-  }
-
-  TRT_ShapedWeights empty_weights(weights.type_);
+  const nvinfer1::Dims original_dims = tensor->getDimensions();
   TFAttrs attrs(node_def);
-
-  const auto data_format = attrs.get<string>("data_format");
-  int channel_index;
-  const auto dims = tensor->getDimensions();
-  if (data_format == "NHWC") {
-    //  1). NHWC is really N+C
-    channel_index = dims.nbDims - 1;  // batch dimension is implicit here!
-  } else {
-    //  2). NCHW is really N+CHW
-    channel_index = 0;  // batch dimension is implicit here!
-  }
+  const string data_format = attrs.get<string>("data_format");
+  const int channel_index =
+      (data_format == "NHWC" ? original_dims.nbDims - 1 : 0);
 
   nvinfer1::Permutation permutation;
-  for (int32_t i = 0; i < dims.nbDims; ++i) {
-    permutation.order[i] = i;
-  }
-
-  if (channel_index >= 0) {
+  if (channel_index != 0) {
+    // Permute the dimensions so that the channel dimension is the first
+    // dimension.
+    for (int i = 0; i < original_dims.nbDims; ++i) {
+      permutation.order[i] = i;
+    }
     permutation.order[0] = channel_index;
     permutation.order[channel_index] = 0;
-  } else {
-    return tensorflow::errors::Unimplemented(
-        "TFTRT::BiasAdd cannot apply on batch dimension, at ", node_def.name());
   }
+  VLOG(1) << "ConvertBiasAdd permutation: "
+          << DebugString(permutation, original_dims.nbDims);
 
   // TensorRT addScale requires input to be of rank 3, we need to apply
-  // transpose as well as reshape
-  if (channel_index != 0 || dims.nbDims != 3) {
+  // transpose as well as reshape.
+  // TODO(laigd): this doesn't match what the TRT doc says, fix the doc?
+  if (channel_index != 0 || original_dims.nbDims != 3) {
     nvinfer1::IShuffleLayer* shuffle_layer =
         params->converter->network()->addShuffle(
             *const_cast<nvinfer1::ITensor*>(tensor));
     TFTRT_RETURN_ERROR_IF_NULLPTR(shuffle_layer, node_def.name());
+    // NOTE(laigd): for some reason we need to apply the reshape
+    // unconditionally. The default shape has nbDims==-1 and it seems the
+    // behavior is undefined in some cases.
     nvinfer1::Dims reshape_dims;
     reshape_dims.nbDims = 3;
-    reshape_dims.d[0] = 0;                          // 0 copy from the input
-    reshape_dims.d[1] = dims.nbDims >= 2 ? 0 : 1;   // 0 copy from the input
-    reshape_dims.d[2] = dims.nbDims >= 3 ? -1 : 1;  // -1 infer from the rest
+    // 0 means copying from input; -1 means inferring from the rest.
+    reshape_dims.d[0] = 0;
+    reshape_dims.d[1] = original_dims.nbDims >= 2 ? 0 : 1;
+    reshape_dims.d[2] = original_dims.nbDims >= 3 ? -1 : 1;
+    shuffle_layer->setReshapeDimensions(reshape_dims);
+
     if (channel_index != 0) {
-      // maybe we do not need this check. concerned about TRT optimization
       shuffle_layer->setFirstTranspose(permutation);
     }
-    shuffle_layer->setReshapeDimensions(reshape_dims);
     tensor = shuffle_layer->getOutput(0);
   }
 
+  TRT_ShapedWeights weights = inputs.at(1).weights();
+  if (params->converter->is_fp16()) {
+    weights = ConvertFP32ToFP16(params->weight_store, weights);
+  }
   nvinfer1::ScaleMode mode = nvinfer1::ScaleMode::kCHANNEL;
   if (weights.shape_.d[0] == 1) {
     mode = nvinfer1::ScaleMode::kUNIFORM;
   }
 
+  TRT_ShapedWeights empty_weights(weights.type_);
   nvinfer1::IScaleLayer* layer = params->converter->network()->addScale(
       *const_cast<nvinfer1::ITensor*>(tensor), mode, weights.GetTrtWeights(),
       empty_weights.GetTrtWeights(), empty_weights.GetTrtWeights());
@@ -1824,17 +1848,22 @@ tensorflow::Status ConvertScale(OpConverterParams* params) {
 
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
-  // restore transpose & reshape
-  if (channel_index != 0 || dims.nbDims != 3) {
+  // Restore transpose & reshape.
+  if (channel_index != 0 || original_dims.nbDims != 3) {
     nvinfer1::IShuffleLayer* shuffle_layer =
-        params->converter->network()->addShuffle(
-            *const_cast<nvinfer1::ITensor*>(output_tensor));
+        params->converter->network()->addShuffle(*output_tensor);
     TFTRT_RETURN_ERROR_IF_NULLPTR(shuffle_layer, node_def.name());
-    nvinfer1::Dims reshape_dims = dims;
-    int tmp = reshape_dims.d[channel_index];
-    reshape_dims.d[channel_index] = reshape_dims.d[0];
-    reshape_dims.d[0] = tmp;
+    // NOTE: for same reason as mentioned above we need to apply the reshape
+    // unconditionally.
+    nvinfer1::Dims reshape_dims = original_dims;
+    if (channel_index != 0) {
+      // NOTE: according to NVIDIA dimension types are deprecated, so we don't
+      // need to copy them back.
+      reshape_dims.d[channel_index] = original_dims.d[0];
+      reshape_dims.d[0] = original_dims.d[channel_index];
+    }
     shuffle_layer->setReshapeDimensions(reshape_dims);
+
     if (channel_index != 0) {
       shuffle_layer->setSecondTranspose(permutation);
     }
@@ -1842,7 +1871,7 @@ tensorflow::Status ConvertScale(OpConverterParams* params) {
   }
 
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 Status GetTensorDimsWithProtoShape(const Tensor& tensor,
@@ -2660,6 +2689,7 @@ tensorflow::Status ConvertTopK(OpConverterParams* params) {
 
 void TrtNodeValidator::RegisterOpValidators() {
   // TODO(laigd): support all op types.
+  op_validators_["BiasAdd"] = ConvertBiasAdd;
   op_validators_["Const"] = ConvertConst;
   op_validators_["Transpose"] = ConvertTranspose;
   op_validators_["Reshape"] = ConvertReshape;
@@ -2673,7 +2703,7 @@ void Converter::RegisterOpConverters() {
   op_registry_["Relu"] = ConvertActivation;
   op_registry_["MaxPool"] = ConvertPool;
   op_registry_["AvgPool"] = ConvertPool;
-  op_registry_["BiasAdd"] = ConvertScale;
+  op_registry_["BiasAdd"] = ConvertBiasAdd;
   op_registry_["Const"] = ConvertConst;
   // TODO(ben,jie): this is a temp hack.
   op_registry_["Identity"] = ConvertIdentity;  // Identity should be removed
