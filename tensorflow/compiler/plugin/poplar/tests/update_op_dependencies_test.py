@@ -50,7 +50,7 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
             'add_1/add.*/AddTo']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
-  def testDontInplaceWithViewChangingPeer(self):
+  def tesInplaceAddCopyWithInplacePeer(self):
     data_a = np.array([[10, -20], [5, 1]])
     data_b = np.array([[-12, 11], [12, -13]])
     with ops.device("/device:IPU:0"):
@@ -81,11 +81,12 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
 
       ok = ['progIdCopy',
             'host-exchange-local-copy-',
-            'add/add.*/Op/Add',
+            'Copy_XLA_Args/arg0.*_to_transpose/transpose',
+            'add/add.*/AddTo',
             'truediv/divide.*/Op/Divide']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
-  def testDontInplaceWithViewChangingPeer2(self):
+  def tesInplaceAddCopyWithInplacePeer2(self):
     data_a = np.array([[10, -10], [-5, 5]])
     data_b = np.array([[-15, 15], [25, -25]])
     data_c = 2
@@ -120,14 +121,15 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
-            'add/add.*.clone_expression/Op/Multiply',
-            'add/add.*.clone_expression/Op/Add',
+            'Copy_XLA_Args/arg0.*_to_transpose/transpose'
+            'mul/multiply.*/Op/Multiply',
+            'add/add.*/AddTo',
             'mul_1/multiply.*/Op/Multiply',
             'add_1/add.*/AddTo',
             'truediv/divide.*/Op/Divide']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
-  def testDontInplaceOpWithViewChangingParent(self):
+  def testInplaceOpAddCopyWithInplaceParent(self):
     with ops.device("/device:IPU:0"):
       pa = array_ops.placeholder(np.float32, [3])
       pb = array_ops.placeholder(np.float32, [3])
@@ -159,8 +161,9 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['progIdCopy',
-            'truediv/divide.*.clone_expression/Op/Add',
-            'truediv/divide.*.clone_expression/Op/Divide',
+            'Copy_XLA_Args/arg0*_to_Slice/slice*.clone',
+            'add/add.*/AddTo',
+            'truediv/divide.*/Op/Divide',
             'add_1/add.*/AddTo']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 

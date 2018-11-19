@@ -24,30 +24,6 @@ namespace xla {
 namespace poplarplugin {
 namespace InplaceUtil {
 namespace {
-bool AllPeersAreNotViewChanging(HloInstruction* inplace,
-                                HloInstruction* inplace_parent,
-                                const CompilerAnnotations& annotations) {
-  // Need to make sure all the peers of inplace instruction are not view
-  // changing on this operand (cond 3a).
-  for (auto* user : inplace_parent->users()) {
-    if (user == inplace) {
-      continue;
-    }
-    auto peer_info = GetHloInstructionDescription(user, annotations);
-    if (peer_info->IsViewChangingType(user)) {
-      auto view_changing_peer_info =
-          static_cast<ViewChangingHloInstructionDescription*>(peer_info.get());
-      for (auto idx :
-           view_changing_peer_info->GetViewChangingOperandIndexes()) {
-        if (user->mutable_operand(idx) == inplace_parent) {
-          return false;
-        }
-      }
-    }
-  }
-  return true;
-}
-
 bool IsNotDependencyOfPeers(HloInstruction* inplace,
                             HloInstruction* inplace_parent,
                             HloReachabilityMap* reachability_map,
@@ -79,9 +55,6 @@ HloInstructionDescription::HloInstructionDescription() {}
 bool HloInstructionDescription::IsInPlaceType(const HloInstruction*) {
   return false;
 };
-bool HloInstructionDescription::IsViewChangingType(const HloInstruction*) {
-  return false;
-};
 
 NotInplaceHloInstructionDescription::NotInplaceHloInstructionDescription() {}
 
@@ -97,44 +70,6 @@ bool InplaceHloInstructionDescription::IsInPlaceType(const HloInstruction*) {
 const OperandIndexes
 InplaceHloInstructionDescription::GetInplaceOperandIndexes() const {
   return inplace_operand_indexes_;
-}
-
-ViewChangingHloInstructionDescription::ViewChangingHloInstructionDescription(
-    const OperandIndexes& view_operand_indexes)
-    : view_operand_indexes_(std::move(view_operand_indexes)) {}
-
-bool ViewChangingHloInstructionDescription::IsViewChangingType(
-    const HloInstruction*) {
-  return true;
-}
-
-const OperandIndexes
-ViewChangingHloInstructionDescription::GetViewChangingOperandIndexes() const {
-  return view_operand_indexes_;
-}
-
-GetTupleElementHloInstructionDescription::
-    GetTupleElementHloInstructionDescription()
-    : ViewChangingHloInstructionDescription(OperandIndexes({0})) {}
-
-bool GetTupleElementHloInstructionDescription::IsViewChangingType(
-    const HloInstruction* inst) {
-  // Check it is a GTE on a parameter - if it is then it is not view changing.
-  const HloInstruction* op = inst->operand(0);
-  if (op->opcode() != HloOpcode::kParameter) {
-    return true;
-  }
-  // Check that this is a unique GTE
-  for (auto user : op->users()) {
-    // The parameter can only be accessed by other GTEs
-    if (user->opcode() != HloOpcode::kGetTupleElement) {
-      return true;
-    }
-    if (user != inst && user->tuple_index() == inst->tuple_index()) {
-      return true;
-    }
-  }
-  return false;
 }
 
 std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
@@ -186,70 +121,33 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
-    // These ops are implemented as inplace ops as well.
+    // These ops are implemented as inplace ops on operand 0 as well.
     case HloOpcode::kBitcast:
-    case HloOpcode::kDynamicUpdateSlice: {
+    case HloOpcode::kBroadcast:
+    case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kGetTupleElement:
+    case HloOpcode::kReshape:
+    case HloOpcode::kSlice:
+    case HloOpcode::kTranspose: {
       // All of the above ops are inplace on operand 0.
       return absl::make_unique<InplaceHloInstructionDescription>(
           OperandIndexes({0}));
     }
-    // Sort is inplace on all operands.
+    // Inplace ops on the first 2 ops.
+    case HloOpcode::kPad: {
+      return absl::make_unique<InplaceHloInstructionDescription>(
+          OperandIndexes({0, 1}));
+    }
+
+    // Inplace on all operands.
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kFusion:
+    case HloOpcode::kMap:
+    case HloOpcode::kTuple:
     case HloOpcode::kSort: {
       OperandIndexes indexes(inst->operand_count());
       std::iota(indexes.begin(), indexes.end(), 0);
       return absl::make_unique<InplaceHloInstructionDescription>(indexes);
-    }
-
-    // View changing ops.
-    // View changing ops on operand 0.
-    case HloOpcode::kReshape:
-    case HloOpcode::kReverse:
-    case HloOpcode::kSlice:
-    case HloOpcode::kTranspose:
-    case HloOpcode::kBroadcast: {
-      return absl::make_unique<ViewChangingHloInstructionDescription>(
-          OperandIndexes({0}));
-    }
-    // View changing on all operands.
-    case HloOpcode::kConcatenate:
-    case HloOpcode::kTuple:
-    case HloOpcode::kMap:
-    case HloOpcode::kFusion: {
-      OperandIndexes indexes(inst->operand_count());
-      std::iota(indexes.begin(), indexes.end(), 0);
-      return absl::make_unique<ViewChangingHloInstructionDescription>(indexes);
-    }
-    // Other view changing.
-    case HloOpcode::kPad: {
-      // view changing on the first 2 ops.
-      return absl::make_unique<ViewChangingHloInstructionDescription>(
-          OperandIndexes({0, 1}));
-    }
-
-    // Not inplace ops.
-    case HloOpcode::kSelect:
-    case HloOpcode::kBatchNormGrad:
-    case HloOpcode::kBatchNormInference:
-    case HloOpcode::kBatchNormTraining:
-    case HloOpcode::kClamp:
-    case HloOpcode::kTupleSelect:
-    case HloOpcode::kRng:
-    case HloOpcode::kSelectAndScatter:
-    case HloOpcode::kConditional:
-    case HloOpcode::kConstant:
-    case HloOpcode::kConvolution:
-    case HloOpcode::kDot:
-    case HloOpcode::kIota:
-    case HloOpcode::kReduce:
-    case HloOpcode::kParameter:
-    case HloOpcode::kDynamicSlice:
-    case HloOpcode::kReduceWindow: {
-      return absl::make_unique<NotInplaceHloInstructionDescription>();
-    }
-
-    // Special cases.
-    case HloOpcode::kGetTupleElement: {
-      return absl::make_unique<GetTupleElementHloInstructionDescription>();
     }
 
     case HloOpcode::kCall: {
@@ -295,9 +193,29 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
       } else {
         OperandIndexes indexes(inst->operand_count());
         std::iota(indexes.begin(), indexes.end(), 0);
-        return absl::make_unique<ViewChangingHloInstructionDescription>(
-            indexes);
+        return absl::make_unique<InplaceHloInstructionDescription>(indexes);
       }
+    }
+
+    // Not inplace ops.
+    case HloOpcode::kSelect:
+    case HloOpcode::kBatchNormGrad:
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormTraining:
+    case HloOpcode::kClamp:
+    case HloOpcode::kTupleSelect:
+    case HloOpcode::kRng:
+    case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kConditional:
+    case HloOpcode::kConstant:
+    case HloOpcode::kConvolution:
+    case HloOpcode::kDot:
+    case HloOpcode::kIota:
+    case HloOpcode::kReduce:
+    case HloOpcode::kParameter:
+    case HloOpcode::kDynamicSlice:
+    case HloOpcode::kReduceWindow: {
+      return absl::make_unique<NotInplaceHloInstructionDescription>();
     }
 
     // Unimplemented ops.
@@ -317,13 +235,9 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
     case HloOpcode::kSendDone:
     case HloOpcode::kTrace:
     default: {
-      VLOG(1)
-          << "Unrecognized op, consider classifying it as it to inplace ops";
-      // For safety, mark the op as view changing on all the operands, meaning
-      // that outputs can be never overwritten by an inplace ops.
-      OperandIndexes indexes(inst->operand_count());
-      std::iota(indexes.begin(), indexes.end(), 0);
-      return absl::make_unique<ViewChangingHloInstructionDescription>(indexes);
+      LOG(FATAL) << "Unrecognized op " << inst->opcode()
+                 << ". Classify whether it is an inplace op or not";
+      return absl::make_unique<NotInplaceHloInstructionDescription>();
     }
   }
 }
@@ -332,12 +246,8 @@ bool IsInPlace(HloInstruction* inst, const CompilerAnnotations& annotations,
                HloReachabilityMap* reachability_map) {
   // An instruction is inplace if:
   // 1. It has an inplace type, and
-  // 2. It's inplace operand instructions are not view changing type, and
-  // 3. For each inplace operand instruction:
-  //   a) The peers (users of the same operands) are not view changing on that
-  //      operand.
-  //   b) Instruction is not a dependency of peer.
-  // TODO the 2nd assumption could probably be relaxed.
+  // 2. For each inplace operand instruction, instruction is not a dependency of
+  // peer (users of the same operands).
   auto info = GetHloInstructionDescription(inst, annotations);
 
   // Verify it is inplace (cond 1).
@@ -355,18 +265,7 @@ bool IsInPlace(HloInstruction* inst, const CompilerAnnotations& annotations,
   // Go trough all the inplace operands.
   for (auto op_idx : inplace_info.GetInplaceOperandIndexes()) {
     HloInstruction* op = inst->mutable_operand(op_idx);
-    // Verify they are not view changing (cond 2).
-    if (GetHloInstructionDescription(op, annotations)->IsViewChangingType(op)) {
-      is_inplace = false;
-      break;
-    }
-    // Need to make sure all the peers of inplace instruction are not view
-    // changing on this operand (cond 3a).
-    if (!AllPeersAreNotViewChanging(inst, op, annotations)) {
-      is_inplace = false;
-      break;
-    }
-    // Verify that inplace is not a dependency of any of the peers (cond 3b).
+    // Verify that inplace is not a dependency of any of the peers (cond 2).
     if (!IsNotDependencyOfPeers(inst, op, reachability_map,
                                 added_dependencies)) {
       is_inplace = false;

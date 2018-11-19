@@ -31,7 +31,7 @@ namespace poplarplugin {
 
 class MapVisitor : public BaseVisitor {
  public:
-  MapVisitor(CompilerResources& res, const ArgVector& inputs,
+  MapVisitor(CompilerResources& res, const ArgVectors& inputs,
              const xla::Shape& shape);
 
   Status HandleParameter(HloInstruction* inst) override;
@@ -42,7 +42,7 @@ class MapVisitor : public BaseVisitor {
   const OutVector& outputs() { return outputs_; }
 
  private:
-  ArgVector operands_;
+  ArgVectors operands_;
   OutVector outputs_;
   xla::Shape shape_;
 };

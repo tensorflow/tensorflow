@@ -23,13 +23,12 @@ StatusOr<poplar::program::Program> CreateSort(CompilerResources& res,
 
   poplar::program::Sequence prog;
   // Get the inplace input/outputs.
-  ArgVector inputs;
-  TF_ASSIGN_OR_RETURN(
-      inputs, GetInplaceOutputTensors(graph, res, prog, inst, tensor_map));
-
+  TF_ASSIGN_OR_RETURN(ArgVectors inputs,
+                      GetInplaceOutputTensors(tensor_map, res, inst, prog));
   if (sort->operand_count() == 1) {
     CHECK_EQ(inputs.size(), 1);
-    poplar::Tensor to_sort = inputs[0];
+    CHECK_EQ(inputs[0].size(), 1);
+    poplar::Tensor to_sort = inputs[0][0];
 
     TF_ASSIGN_OR_RETURN(poplar::program::Sequence sort_prog,
                         CreateSort(graph, to_sort, sort->dimensions(0)));
@@ -38,8 +37,10 @@ StatusOr<poplar::program::Program> CreateSort(CompilerResources& res,
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, to_sort));
   } else {
     CHECK_EQ(inputs.size(), 2);
-    poplar::Tensor key = inputs[0];
-    poplar::Tensor value = inputs[1];
+    CHECK_EQ(inputs[0].size(), 1);
+    CHECK_EQ(inputs[1].size(), 1);
+    poplar::Tensor key = inputs[0][0];
+    poplar::Tensor value = inputs[1][0];
 
     TF_ASSIGN_OR_RETURN(poplar::program::Sequence sort_prog,
                         CreateSort(graph, key, value, sort->dimensions(0)));

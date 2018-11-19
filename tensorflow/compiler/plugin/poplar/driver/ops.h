@@ -93,17 +93,6 @@ poplar::Tensor AddGroupsDimensionToWeights(const poplin::ConvParams& p,
                                            const poplar::Tensor& t,
                                            bool flipped);
 
-/* Sometimes an inplace op cannot be performed because the input/output tensor
- * is not parallel writable or because further analysis has shown that the op
- * can no longer be in place. If that's the case, this function will add an
- * extra tensor copy and use that tensor as the input/output tensor.
- */
-StatusOr<ArgVector> GetInplaceOutputTensors(poplar::Graph& graph,
-                                            CompilerResources& res,
-                                            poplar::program::Sequence& seq,
-                                            const HloInstruction* inst,
-                                            TensorMap& tensor_map);
-
 /* Ops */
 
 StatusOr<poplar::program::Program> CreateUnaryElementwiseOp(

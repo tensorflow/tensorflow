@@ -17,7 +17,7 @@ int64 CountShapes(const Shape& shape) {
   } else {
     return 1;
   }
-};
+}
 
 std::vector<xla::Shape> FlattenedXlaShape(const xla::Shape& shape) {
   std::vector<xla::Shape> out;

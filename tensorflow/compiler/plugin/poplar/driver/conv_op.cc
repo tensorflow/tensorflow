@@ -242,9 +242,8 @@ poplar::Tensor AddGroupsDimensionToWeights(const poplin::ConvParams& p,
     chan_div[out_dim] = out.dim(out_dim) / p.getNumOutputChansPerConvGroup();
 
     // OI... ->(GO)(GI)...
-    out = out.reshapePartial(0, 2,
-                             {chan_div[0], out.dim(0) / chan_div[0],
-                              chan_div[1], out.dim(1) / chan_div[1]});
+    out = out.reshapePartial(0, 2, {chan_div[0], out.dim(0) / chan_div[0],
+                                    chan_div[1], out.dim(1) / chan_div[1]});
 
     // (GO)(GI)... -> (GG)OI...
     out = out.dimShufflePartial({2}, {1});
@@ -397,11 +396,11 @@ StatusOr<poplar::program::Program> CreateConvScaledInplace(
   poplar::program::Sequence prog;
 
   // Find the weights tensor
-  ArgVector inputs;
-  TF_ASSIGN_OR_RETURN(
-      inputs, GetInplaceOutputTensors(graph, res, prog, inst, tensor_map));
+  TF_ASSIGN_OR_RETURN(ArgVectors inputs,
+                      GetInplaceOutputTensors(tensor_map, res, inst, prog));
   CHECK_EQ(inputs.size(), 1);
-  poplar::Tensor w = inputs[0];
+  CHECK_EQ(inputs[0].size(), 1);
+  poplar::Tensor w = inputs[0][0];
 
   // Find the input tensor
   poplar::Tensor in;

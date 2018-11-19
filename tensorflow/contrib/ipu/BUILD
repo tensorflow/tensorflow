@@ -112,17 +112,17 @@ tf_py_test(
     ],
 )
 
-# tf_py_test(
-#     name = "lstm_training_test",
-#     size = "large",
-#     srcs = ["training_tests/lstm_training_test.py"],
-#     additional_deps = [
-#         ":ipu",
-#         "//tensorflow/contrib/compiler:xla",
-#         "//tensorflow/python:framework_test_lib",
-#         "//tensorflow/python:layers",
-#     ],
-# )
+tf_py_test(
+    name = "lstm_training_test",
+    size = "large",
+    srcs = ["training_tests/lstm_training_test.py"],
+    additional_deps = [
+        ":ipu",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:layers",
+    ],
+)
 
 tf_py_test(
     name = "while_loop_test",
@@ -196,10 +196,7 @@ test_suite(
 test_suite(
     name = "training_tests",
     tests = [
-#TODO uncomment this once training is finished - also worth noting that an empty
-# tests field runs all the tests defined in the BUILD file, rather than none of
-# them.
-#        "lstm_training_test",
+       "lstm_training_test",
     ],
 )
 

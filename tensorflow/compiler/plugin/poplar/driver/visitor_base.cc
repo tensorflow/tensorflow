@@ -240,11 +240,14 @@ Status BaseVisitor::HandleConstant(HloInstruction* inst) {
 
 Status BaseVisitor::HandleGetTupleElement(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  ArgVector inputs = FindTupleInInstructionInput(
-      tensor_map, resources_, inst, 0, inst->tuple_index(), sequence);
-  for (unsigned int i = 0; i < inputs.size(); i++) {
+  TF_ASSIGN_OR_RETURN(
+      ArgVectors inputs,
+      GetInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+  CHECK_EQ(inputs.size(), 1);
+  CHECK_EQ(inputs[0].size(), CountShapes(inst->shape()));
+  for (int64 i = 0; i < inputs[0].size(); i++) {
     poplar::Tensor out;
-    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, inputs[i]));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, inputs[0][i]));
   }
   return Status::OK();
 }
@@ -331,13 +334,15 @@ Status BaseVisitor::HandleDynamicUpdateSlice(HloInstruction* inst) {
 
 Status BaseVisitor::HandleTuple(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  uint64 operand_count(inst->operand_count());
-  int64 n = 0;
-  for (uint64 i = 0; i < operand_count; i++) {
-    ArgVector inputs =
-        FindInstructionInputs(tensor_map, resources_, inst, i, sequence);
-    for (poplar::Tensor t : inputs) {
-      TF_CHECK_OK(AddOutputTensor(tensor_map, inst, n, t));
+  TF_ASSIGN_OR_RETURN(
+      ArgVectors inputs,
+      GetInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+  CHECK_EQ(inputs.size(), inst->operand_count());
+  uint64 n = 0;
+  for (uint64 i = 0; i < inputs.size(); i++) {
+    CHECK_EQ(inputs[i].size(), CountShapes(inst->operand(i)->shape()));
+    for (uint64 j = 0; j < inputs[i].size(); j++) {
+      TF_CHECK_OK(AddOutputTensor(tensor_map, inst, n, inputs[i][j]));
       n++;
     }
   }

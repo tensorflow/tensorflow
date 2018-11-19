@@ -171,7 +171,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
         ok = ['progIdCopy',
               'host-exchange-local-copy-',
-              'Copy_',
+              'Copy_*Conv',
               'cnv5*/convolution.*/Conv_1x1',
               'ba5*/add.*/AddTo']
         self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))

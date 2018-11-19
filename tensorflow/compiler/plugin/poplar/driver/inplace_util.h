@@ -29,7 +29,7 @@ using OperandIndexes = absl::InlinedVector<uint64, 1>;
 using InplaceInstructions = absl::flat_hash_set<const HloInstruction*>;
 
 // Internal representations of the Types of instructions.
-// An instruction is either an inplace op, not inplace op or view changing op.
+// An instruction is either an inplace op or not inplace op.
 
 // Base Hlo instruction op type.
 class HloInstructionDescription {
@@ -37,9 +37,6 @@ class HloInstructionDescription {
   // Returns true if given description is of InplaceHloInstructionDescription
   // type given a instruction.
   virtual bool IsInPlaceType(const HloInstruction*);
-  // Returns true if given description is of
-  // ViewChangingHloInstructionDescription type given a instruction.
-  virtual bool IsViewChangingType(const HloInstruction*);
 
  protected:
   HloInstructionDescription();
@@ -63,28 +60,6 @@ class InplaceHloInstructionDescription : public HloInstructionDescription {
 
  private:
   OperandIndexes inplace_operand_indexes_;
-};
-
-// An instruction which modifies the Poplar view of the output tensors of
-// view_operands instructions.
-class ViewChangingHloInstructionDescription : public HloInstructionDescription {
- public:
-  ViewChangingHloInstructionDescription(
-      const OperandIndexes& view_operand_indexes);
-  bool IsViewChangingType(const HloInstruction*);
-  const OperandIndexes GetViewChangingOperandIndexes() const;
-
- protected:
-  OperandIndexes view_operand_indexes_;
-};
-
-// GTE is a special case where if it's a unique GTE on a parameter then it is
-// not a view changing op, otherwise it is.
-class GetTupleElementHloInstructionDescription
-    : public ViewChangingHloInstructionDescription {
- public:
-  GetTupleElementHloInstructionDescription();
-  bool IsViewChangingType(const HloInstruction*);
 };
 
 std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(

@@ -40,12 +40,12 @@ from tensorflow.python.training import gradient_descent
 
 dataType = np.float32
 
-seq_len = 1
-batch_size = 10 - seq_len
+seq_len = 3
+batch_size = 40 - seq_len
 input_size = 1
-num_hidden = 16
-num_training_steps = 3
-lr = 1
+num_hidden = 64
+num_training_steps = 100
+lr = 10
 
 def _PopnnLSTM(x, h, c, y):
   lstm_cell = popnn_rnn.PopnnLSTM(num_hidden,
@@ -98,7 +98,7 @@ class LstmSizeTest(test_util.TensorFlowTestCase):
   # Check that the loss goes down (and is identical to reference version).
   def testTraining(self):
     np.random.seed(42)
-    nums =  np.arange(10)
+    nums = np.arange(batch_size + seq_len)
     # prepare the dataset of input to output pairs encoded as integers
     inputs = []
     one_hot = []
@@ -120,7 +120,7 @@ class LstmSizeTest(test_util.TensorFlowTestCase):
     self.assertTrue(custom_losses[0] > custom_losses[-1])
     # Check that the loss is the same for the reference as well
     ref_losses = _RunLayer(_tfLSTM, X, labels)
-    self.assertAllClose(custom_losses, ref_losses)
+    self.assertAllClose(custom_losses, ref_losses, atol=0.01)
 
 if __name__ == "__main__":
     googletest.main()

@@ -152,17 +152,13 @@ StatusOr<poplar::program::Program> CreateParallelMap(CompilerResources& res,
                                                      const HloInstruction* inst,
                                                      const xla::Shape& output,
                                                      TensorMap& tensor_map) {
-  int64 op_count(inst->operand_count());
-  ArgVector inputs;
-
   poplar::program::Sequence seq;
-
-  for (int64 i = 0; i < op_count; i++) {
-    poplar::Tensor t;
-    TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, res, inst, i, seq));
-    inputs.push_back(t);
+  TF_ASSIGN_OR_RETURN(ArgVectors inputs,
+                      GetInplaceOutputTensors(tensor_map, res, inst, seq));
+  CHECK_EQ(inputs.size(), inst->operand_count());
+  for (int64 op = 0; op < inst->operand_count(); op++) {
+    CHECK_EQ(inputs[op].size(), CountShapes(inst->operand(op)->shape()));
   }
-
   MapVisitor visitor(res, inputs, output);
   TF_RETURN_IF_ERROR(inst->to_apply()->Accept(&visitor));
 
@@ -260,17 +256,14 @@ StatusOr<poplar::program::Program> CreateFusionOp(CompilerResources& res,
                                                   const HloInstruction* inst,
                                                   const xla::Shape& output,
                                                   TensorMap& tensor_map) {
-  int64 op_count(inst->operand_count());
   HloComputation* comp = inst->fused_instructions_computation();
   poplar::program::Sequence seq;
-
-  ArgVectors inputs;
-
-  for (int64 i = 0; i < op_count; i++) {
-    ArgVector t = FindInstructionInputs(tensor_map, res, inst, i, seq);
-    inputs.push_back(t);
+  TF_ASSIGN_OR_RETURN(ArgVectors inputs,
+                      GetInplaceOutputTensors(tensor_map, res, inst, seq));
+  CHECK_EQ(inputs.size(), inst->operand_count());
+  for (int64 op = 0; op < inst->operand_count(); op++) {
+    CHECK_EQ(inputs[op].size(), CountShapes(inst->operand(op)->shape()));
   }
-
   InlineCallVisitor inline_visitor(res, inputs);
   TF_RETURN_IF_ERROR(comp->Accept(&inline_visitor));
 

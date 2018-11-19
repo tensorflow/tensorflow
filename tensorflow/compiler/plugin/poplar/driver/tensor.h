@@ -127,6 +127,16 @@ ArgVector FindInstructionInputs(TensorMap& map, CompilerResources& res,
                                 const HloInstruction* inst, int64 input,
                                 poplar::program::Sequence& seq);
 
+/* Sometimes an inplace op cannot be performed because the input/output tensor
+ * is not parallel writable or because further analysis has shown that the op
+ * can no longer be in place. If that's the case, this function will add an
+ * extra tensor copy and use that tensor as the input/output tensor.
+ */
+StatusOr<ArgVectors> GetInplaceOutputTensors(TensorMap& map,
+                                             CompilerResources& res,
+                                             const HloInstruction* inst,
+                                             poplar::program::Sequence& seq);
+
 /* This returns a vector of poplar tensors which are all of the outputs from
  * the given instruction
  */

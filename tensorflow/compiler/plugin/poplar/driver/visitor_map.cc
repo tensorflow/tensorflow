@@ -23,14 +23,16 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-MapVisitor::MapVisitor(CompilerResources& res, const ArgVector& inputs,
+MapVisitor::MapVisitor(CompilerResources& res, const ArgVectors& inputs,
                        const xla::Shape& shape)
     : BaseVisitor(res), operands_(std::move(inputs)), shape_(shape) {}
 
 Status MapVisitor::HandleParameter(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0,
-                              operands_[inst->parameter_number()]));
+  for (uint64 t = 0; t < operands_[inst->parameter_number()].size(); t++) {
+    auto& v = operands_[inst->parameter_number()];
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, t, v[t]));
+  }
   return Status::OK();
 }
 

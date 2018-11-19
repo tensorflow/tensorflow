@@ -1011,47 +1011,61 @@ OutVector FindExpandedInstructionOutputs(TensorMap& map, CompilerResources& res,
   return outputs;
 }
 
-StatusOr<ArgVector> GetInplaceOutputTensors(poplar::Graph& graph,
-                                            CompilerResources& res,
-                                            poplar::program::Sequence& seq,
-                                            const HloInstruction* inst,
-                                            TensorMap& tensor_map) {
-  const bool is_still_inplace =
-      res.annotations.inplace_instructions.count(inst);
-
+StatusOr<ArgVectors> GetInplaceOutputTensors(TensorMap& map,
+                                             CompilerResources& res,
+                                             const HloInstruction* inst,
+                                             poplar::program::Sequence& seq) {
+  // Check that the instruction description is for an inplace operation.
   auto inst_description =
       InplaceUtil::GetHloInstructionDescription(inst, res.annotations);
-  // Check that the instruction description is for an inplace operation.
   if (!inst_description->IsInPlaceType(inst)) {
     LOG(FATAL) << "Trying to execute " << inst->name()
                << " as an inplace operation, but it is not.";
   }
-
-  // Go through all the inplace tensors and check if we need to add copies.
   auto& inplace_description =
       *static_cast<InplaceUtil::InplaceHloInstructionDescription*>(
           inst_description.get());
-  ArgVector outs;
-  for (auto inplace_idx : inplace_description.GetInplaceOperandIndexes()) {
-    ArgVector inputs =
-        FindInstructionInputs(tensor_map, res, inst, inplace_idx, seq);
-    for (auto input : inputs) {
-      poplar::Tensor out = input;
-      // We need to add a copy before an inplace op if:
-      // 1. out is not ParallelWriteable,
-      // 2. inst has been removed from inplace ops by a different pass.
-      bool requires_copy_inplace =
-          !out.isParallelWriteable() || !is_still_inplace;
-      if (requires_copy_inplace) {
-        VLOG(1) << "Adding a copy for inplace op " << inst->name();
-        poplar::Tensor copy = graph.clone(out, GetDebugName(inst) + ".clone");
-        seq.add(poplar::program::Copy(out, copy));
-        out = copy;
-      }
-      outs.push_back(out);
+
+  const bool is_still_inplace =
+      res.annotations.inplace_instructions.count(inst);
+
+  // Get all the input tensors for all the inplace operands
+  auto inplace_indexes = inplace_description.GetInplaceOperandIndexes();
+  ArgVectors tensors(inplace_indexes.size());
+  // Specialise for GTEs
+  if (inst->opcode() == HloOpcode::kGetTupleElement) {
+    // This should *always* be true
+    CHECK_EQ(inplace_indexes.size(), 1);
+    CHECK_EQ(inplace_indexes[0], 0);
+    tensors[0] = FindTupleInInstructionInput(map, res, inst, 0,
+                                             inst->tuple_index(), seq);
+  } else {
+    for (uint64 i = 0; i < inplace_indexes.size(); i++) {
+      tensors[i] =
+          FindInstructionInputs(map, res, inst, inplace_indexes[i], seq);
     }
   }
-  return outs;
+
+  // Go through all the inplace tensors and check if we need to add copies.
+  auto& graph = GetGraph(res, inst);
+  for (uint64 i = 0; i < inplace_indexes.size(); i++) {
+    for (uint64 j = 0; j < tensors[i].size(); j++) {
+      poplar::Tensor t = tensors[i][j];
+      // We need to add a copy before an inplace op if:
+      // 1. t is not ParallelWriteable,
+      // 2. inst is not marked as inplace.
+      bool requires_copy_inplace =
+          !t.isParallelWriteable() || !is_still_inplace;
+      if (requires_copy_inplace) {
+        VLOG(1) << "Adding a copy for inplace op " << inst->name();
+        poplar::Tensor copy = graph.clone(t, GetDebugName(inst) + ".clone");
+        seq.add(poplar::program::Copy(t, copy));
+        t = copy;
+      }
+      tensors[i][j] = t;
+    }
+  }
+  return tensors;
 }
 
 Status AddOutputTensor(TensorMap& map, const HloInstruction* inst, int64 n,

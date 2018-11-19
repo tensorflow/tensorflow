@@ -201,11 +201,11 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
 
   if (res.annotations.inplace_instructions.count(inst) &&
       (in0.shape() == in1.shape())) {
-    ArgVector inputs;
-    TF_ASSIGN_OR_RETURN(
-        inputs, GetInplaceOutputTensors(graph, res, seq, inst, tensor_map));
+    TF_ASSIGN_OR_RETURN(ArgVectors inputs,
+                        GetInplaceOutputTensors(tensor_map, res, inst, seq));
     CHECK_EQ(inputs.size(), 1);
-    poplar::Tensor in0 = inputs[0];
+    CHECK_EQ(inputs[0].size(), 1);
+    poplar::Tensor in0 = inputs[0][0];
 
     // Call the inplace op
     switch (inst->opcode()) {
@@ -306,11 +306,11 @@ StatusOr<poplar::program::Program> CreateScaledInplace(
   poplar::Graph& graph = GetGraph(res, inst);
 
   poplar::program::Sequence seq;
-  ArgVector inputs;
-  TF_ASSIGN_OR_RETURN(
-      inputs, GetInplaceOutputTensors(graph, res, seq, inst, tensor_map));
+  TF_ASSIGN_OR_RETURN(ArgVectors inputs,
+                      GetInplaceOutputTensors(tensor_map, res, inst, seq));
   CHECK_EQ(inputs.size(), 1);
-  poplar::Tensor in0 = inputs[0];
+  CHECK_EQ(inputs[0].size(), 1);
+  poplar::Tensor in0 = inputs[0][0];
 
   poplar::Tensor in1;
   TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, res, inst, 1, seq));
@@ -514,11 +514,11 @@ StatusOr<poplar::program::Program> CreateReluOp(CompilerResources& res,
   poplar::Graph& graph = GetGraph(res, inst);
 
   poplar::program::Sequence seq;
-  ArgVector inputs;
-  TF_ASSIGN_OR_RETURN(
-      inputs, GetInplaceOutputTensors(graph, res, seq, inst, tensor_map));
+  TF_ASSIGN_OR_RETURN(ArgVectors inputs,
+                      GetInplaceOutputTensors(tensor_map, res, inst, seq));
   CHECK_EQ(inputs.size(), 1);
-  poplar::Tensor t = inputs[0];
+  CHECK_EQ(inputs[0].size(), 1);
+  poplar::Tensor t = inputs[0][0];
   popnn::reluInPlace(graph, t, seq, GetDebugName(inst));
 
   TF_ASSIGN_OR_RETURN(t, BroadcastTensor(t, output_shape));
@@ -559,11 +559,11 @@ StatusOr<poplar::program::Program> CreateSigmoidOp(
   poplar::Graph& graph = GetGraph(res, inst);
 
   poplar::program::Sequence seq;
-  ArgVector inputs;
-  TF_ASSIGN_OR_RETURN(
-      inputs, GetInplaceOutputTensors(graph, res, seq, inst, tensor_map));
+  TF_ASSIGN_OR_RETURN(ArgVectors inputs,
+                      GetInplaceOutputTensors(tensor_map, res, inst, seq));
   CHECK_EQ(inputs.size(), 1);
-  poplar::Tensor t = inputs[0];
+  CHECK_EQ(inputs[0].size(), 1);
+  poplar::Tensor t = inputs[0][0];
 
   popnn::sigmoidInPlace(graph, t, seq, GetDebugName(inst));
 

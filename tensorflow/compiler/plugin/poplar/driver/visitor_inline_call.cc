@@ -28,7 +28,7 @@ InlineCallVisitor::InlineCallVisitor(CompilerResources& res,
     : FullVisitor(res), inputs_(std::move(inputs)) {}
 
 Status InlineCallVisitor::HandleParameter(HloInstruction* inst) {
-  for (unsigned int t = 0; t < inputs_[inst->parameter_number()].size(); t++) {
+  for (uint64 t = 0; t < inputs_[inst->parameter_number()].size(); t++) {
     auto& v = inputs_[inst->parameter_number()];
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, t, v[t]));
   }

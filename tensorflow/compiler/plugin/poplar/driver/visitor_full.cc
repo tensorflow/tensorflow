@@ -60,13 +60,15 @@ FullVisitor::FullVisitor(CompilerResources& res) : BaseVisitor(res) {}
 Status FullVisitor::HandleConcatenate(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   int64 dimension(inst->concatenate_dimension());
-  poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(
-      out, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
+      ArgVectors inputs,
+      GetInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+  CHECK_EQ(inputs.size(), inst->operand_count());
+  CHECK_EQ(inputs[0].size(), 1);
+  poplar::Tensor out = inputs[0][0];
   for (int i = 1; i < inst->operand_count(); i++) {
-    poplar::Tensor t;
-    TF_ASSIGN_OR_RETURN(
-        t, FindInstructionInput(tensor_map, resources_, inst, i, sequence));
+    CHECK_EQ(inputs[i].size(), 1);
+    poplar::Tensor t = inputs[i][0];
     out = poplar::concat(out, t, dimension);
   }
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
@@ -127,9 +129,12 @@ Status FullVisitor::HandleBitcast(HloInstruction* inst) {
 
 Status FullVisitor::HandleBroadcast(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(
-      out, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
+      ArgVectors inputs,
+      GetInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+  CHECK_EQ(inputs.size(), 1);
+  CHECK_EQ(inputs[0].size(), 1);
+  poplar::Tensor out = inputs[0][0];
   TF_ASSIGN_OR_RETURN(
       out, BroadcastTensor(out, GetOutputShape(inst), inst->dimensions()));
   std::vector<size_t> dims(PoplarShapeFromXlaShape(GetOutputShape(inst)));
@@ -140,9 +145,13 @@ Status FullVisitor::HandleBroadcast(HloInstruction* inst) {
 
 Status FullVisitor::HandleReshape(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  poplar::Tensor out;
+
   TF_ASSIGN_OR_RETURN(
-      out, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
+      ArgVectors inputs,
+      GetInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+  CHECK_EQ(inputs.size(), 1);
+  CHECK_EQ(inputs[0].size(), 1);
+  poplar::Tensor out = inputs[0][0];
   std::vector<size_t> dims(PoplarShapeFromXlaShape(GetOutputShape(inst)));
   out = out.reshape(dims);
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
@@ -151,9 +160,12 @@ Status FullVisitor::HandleReshape(HloInstruction* inst) {
 
 Status FullVisitor::HandleTranspose(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(
-      out, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
+      ArgVectors inputs,
+      GetInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+  CHECK_EQ(inputs.size(), 1);
+  CHECK_EQ(inputs[0].size(), 1);
+  poplar::Tensor out = inputs[0][0];
   std::vector<unsigned> permutation(
       convert_array<std::vector<unsigned>>(inst->dimensions()));
   out = out.dimShuffle(permutation);
@@ -163,9 +175,12 @@ Status FullVisitor::HandleTranspose(HloInstruction* inst) {
 
 Status FullVisitor::HandleSlice(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(
-      out, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
+      ArgVectors inputs,
+      GetInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+  CHECK_EQ(inputs.size(), 1);
+  CHECK_EQ(inputs[0].size(), 1);
+  poplar::Tensor out = inputs[0][0];
   std::vector<std::size_t> begin(
       convert_array<std::vector<std::size_t>>(inst->slice_starts()));
   std::vector<std::size_t> end(
@@ -266,12 +281,14 @@ Status FullVisitor::HandleWhile(HloInstruction* inst) {
 
 Status FullVisitor::HandlePad(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
-  poplar::Tensor out;
-  poplar::Tensor pad;
   TF_ASSIGN_OR_RETURN(
-      out, FindInstructionInput(tensor_map, resources_, inst, 0, sequence));
-  TF_ASSIGN_OR_RETURN(
-      pad, FindInstructionInput(tensor_map, resources_, inst, 1, sequence));
+      ArgVectors inputs,
+      GetInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+  CHECK_EQ(inputs.size(), 2);
+  CHECK_EQ(inputs[0].size(), 1);
+  CHECK_EQ(inputs[1].size(), 1);
+  poplar::Tensor out = inputs[0][0];
+  poplar::Tensor pad = inputs[1][0];
   TF_ASSIGN_OR_RETURN(out, PadTensor(inst->padding_config(), out, pad));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   return Status::OK();
