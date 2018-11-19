@@ -51,6 +51,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.sufficient_statistics": {
             "keep_dims": "keepdims"
         },
+        "tf.debugging.assert_all_finite": {
+            "t": "x",
+            "msg": "message",
+        },
         "tf.sparse.split": {
             "split_dim": "axis",
         },
