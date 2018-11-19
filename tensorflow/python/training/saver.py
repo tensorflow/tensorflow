@@ -234,7 +234,7 @@ class BaseSaverBuilder(object):
     del restore_sequentially
     all_tensors = []
     for saveable in saveables:
-      with ops.device(_set_cpu0(saveable.device) if saveable.device else None):
+      with ops.device("cpu:0"):
         all_tensors.extend(
             self.restore_op(filename_tensor, saveable, preferred_shard))
     return all_tensors
@@ -382,8 +382,9 @@ class BaseSaverBuilder(object):
     num_shards = len(per_device)
     sharded_saves = []
     num_shards_tensor = constant_op.constant(num_shards, name="num_shards")
+    save_op_dev = _set_cpu0(per_device[0][0])
     for shard, (device, saveables) in enumerate(per_device):
-      with ops.device(device):
+      with ops.device(save_op_dev):
         sharded_filename = self.sharded_filename(filename_tensor, shard,
                                                  num_shards_tensor)
         sharded_saves.append(self._AddSaveOps(sharded_filename, saveables))
@@ -458,8 +459,9 @@ class BaseSaverBuilder(object):
       An Operation that restores the variables.
     """
     sharded_restores = []
+    save_op_dev = _set_cpu0(per_device[0][0])
     for shard, (device, saveables) in enumerate(per_device):
-      with ops.device(device):
+      with ops.device(save_op_dev):
         sharded_restores.append(
             self._AddRestoreOps(
                 filename_tensor,
@@ -878,7 +880,7 @@ class BulkSaverBuilder(BaseSaverBuilder):
 
     names, slices, dtypes = zip(*restore_specs)
     # Load all tensors onto CPU 0 for compatibility with existing code.
-    with ops.device(_set_cpu0(saveables[0].device)):
+    with ops.device("cpu:0"):
       return io_ops.restore_v2(filename_tensor, names, slices, dtypes)
 
 
