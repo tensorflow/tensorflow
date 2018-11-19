@@ -36,6 +36,15 @@ constexpr char kFusedConv2D[] = "_FusedConv2D";
 constexpr char kDataFormat[] = "data_format";
 constexpr char kIsTraining[] = "is_training";
 
+// TODO(b/119765980): Upgrade upstream Eigen to set `m_can_use_xsmm=false` for
+// contractions with non-default contraction output kernels.
+bool EigenSupportsContractionOutputKernel() {
+#if defined(EIGEN_USE_LIBXSMM)
+  return false;
+#endif
+  return true;
+}
+
 struct RemapperContext {
   explicit RemapperContext(const GrapplerItem& item)
       : nodes_to_preserve(item.NodesToPreserve()),
@@ -116,6 +125,8 @@ bool IsInPreserveSet(const RemapperContext& ctx, const NodeDef* node) {
 
 bool FindConv2DWithBias(const RemapperContext& ctx, const NodeDef* node,
                         Conv2DWithBiasAdd* matched) {
+  if (!EigenSupportsContractionOutputKernel()) return false;
+
   // Root of the pattern must be a BiasAdd.
   if (!node) return false;
   if (!IsBiasAdd(*node)) return false;
@@ -144,6 +155,8 @@ bool FindConv2DWithBias(const RemapperContext& ctx, const NodeDef* node,
 
 bool FindConv2DWithBiasAndRelu(const RemapperContext& ctx, const NodeDef* node,
                                Conv2DWithBiasAddAndRelu* matched) {
+  if (!EigenSupportsContractionOutputKernel()) return false;
+
   // Root of the pattern must be a Relu.
   if (!node) return false;
   if (!IsRelu(*node)) return false;
@@ -172,6 +185,8 @@ bool FindConv2DWithBiasAndRelu(const RemapperContext& ctx, const NodeDef* node,
 bool FindConv2DWithSqueezeAndBias(const RemapperContext& ctx,
                                   const NodeDef* node,
                                   Conv2DWithSqueezeAndBiasAdd* matched) {
+  if (!EigenSupportsContractionOutputKernel()) return false;
+
   // Root of the pattern must be a BiasAdd.
   if (node == nullptr) return false;
   if (node->op() != "BiasAdd") return false;
@@ -219,6 +234,8 @@ bool FindConv2DWithSqueezeAndBias(const RemapperContext& ctx,
 
 bool FindConv2DWithBatchNorm(const RemapperContext& ctx, const NodeDef* node,
                              Conv2DWithBatchNorm* matched) {
+  if (!EigenSupportsContractionOutputKernel()) return false;
+
   // Root of the pattern must be a FusedBatchNorm or a FusedBatchNormV2.
   if (node == nullptr) return false;
   if (!IsFusedBatchNorm(*node)) return false;
@@ -263,6 +280,8 @@ bool FindConv2DWithBatchNorm(const RemapperContext& ctx, const NodeDef* node,
 bool FindConv2DWithBatchNormAndRelu(const RemapperContext& ctx,
                                     const NodeDef* node,
                                     Conv2DWithBatchNormAndRelu* matched) {
+  if (!EigenSupportsContractionOutputKernel()) return false;
+
   // Root of the pattern must be a Relu.
   if (node == nullptr) return false;
   if (!IsRelu(*node)) return false;
