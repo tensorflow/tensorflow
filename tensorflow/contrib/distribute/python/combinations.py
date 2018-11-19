@@ -168,6 +168,8 @@ def _augment_with_special_arguments(test_method):
       if GPU_TEST:
         self.skipTest("Test that doesn't require GPUs.")
     elif context.num_gpus() < required_gpus:
+      # TODO(priyag): Consider allowing tests in graph mode using soft
+      # placement.
       self.skipTest(
           "{} GPUs are not available for this test. {} GPUs are available".
           format(required_gpus, context.num_gpus()))
@@ -335,6 +337,13 @@ tpu_strategy_one_step = NamedDistribution(
     "TPUOneStep", lambda: tpu_lib.TPUStrategy(
         TPUClusterResolver(""), steps_per_run=1),
     required_tpu=True)
+mirrored_strategy_with_one_cpu = NamedDistribution(
+    "Mirrored1CPU",
+    lambda: mirrored_lib.MirroredStrategy(["/cpu:0"]))
+mirrored_strategy_with_one_gpu = NamedDistribution(
+    "Mirrored1GPU",
+    lambda: mirrored_lib.MirroredStrategy(["/gpu:0"]),
+    required_gpus=1)
 mirrored_strategy_with_gpu_and_cpu = NamedDistribution(
     "MirroredCPUAndGPU",
     lambda: mirrored_lib.MirroredStrategy(["/gpu:0", "/cpu:0"]),
@@ -343,6 +352,13 @@ mirrored_strategy_with_two_gpus = NamedDistribution(
     "Mirrored2GPUs",
     lambda: mirrored_lib.MirroredStrategy(["/gpu:0", "/gpu:1"]),
     required_gpus=2)
+core_mirrored_strategy_with_one_cpu = NamedDistribution(
+    "CoreMirrored1CPU",
+    lambda: mirrored_lib.CoreMirroredStrategy(["/cpu:0"]))
+core_mirrored_strategy_with_one_gpu = NamedDistribution(
+    "CoreMirrored1GPU",
+    lambda: mirrored_lib.CoreMirroredStrategy(["/gpu:0"]),
+    required_gpus=1)
 core_mirrored_strategy_with_gpu_and_cpu = NamedDistribution(
     "CoreMirroredCPUAndGPU",
     lambda: mirrored_lib.CoreMirroredStrategy(["/gpu:0", "/cpu:0"]),
