@@ -71,7 +71,9 @@ public:
   operator bool() const { return value.getOperation(); }
 
   /// OpPointer can always be implicitly converted to Operation*.
-  operator Operation *() const { return value.getOperation(); }
+  operator Operation *() const {
+    return const_cast<Operation *>(value.getOperation());
+  }
 
   /// If the OpType operation includes the OneResult trait, then OpPointer can
   /// be implicitly converted to an SSAValue*.  This yields the value of the

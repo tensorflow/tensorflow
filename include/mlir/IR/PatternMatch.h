@@ -179,22 +179,21 @@ public:
   /// and return null.
   template <typename OpTy, typename... Args>
   OpPointer<OpTy> createChecked(Location location, Args... args) {
-    OperationState state(context, location, OpTy::getOperationName());
-    auto result = this->create(location, args...);
+    OperationState state(getContext(), location, OpTy::getOperationName());
+    OpTy::build(this, &state, args...);
+    auto *op = createOperation(state);
 
     // If the Instruction we produce is valid, return it.
-    if (!OpTy::verifyInvariants(result))
+    if (!OpTy::verifyInvariants(op)) {
+      auto result = op->dyn_cast<OpTy>();
+      assert(result && "Builder didn't return the right type");
       return result;
+    }
 
     // Otherwise, the error message got emitted.  Just remove the instruction
     // we made.
-    if (auto *inst = dyn_cast<Instruction>(result.getOperation()))
-      inst->erase();
-    else
-      cast<OperationStmt>(result.getOperation())->eraseFromBlock();
-
-    result->eraseFromBlock();
-    return result;
+    op->erase();
+    return OpPointer<OpTy>();
   }
 
   /// This method is used as the final replacement hook for patterns that match
