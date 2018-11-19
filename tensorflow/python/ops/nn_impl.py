@@ -895,7 +895,7 @@ def moments(
       return (mean, variance)
 
 
-@tf_export("nn.weighted_moments")
+@tf_export(v1=["nn.weighted_moments"])
 def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
   """Returns the frequency-weighted mean and variance of `x`.
 
@@ -965,6 +965,30 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
       weighted_variance = math_ops.cast(weighted_variance, dtypes.float16)
 
     return weighted_mean, weighted_variance
+
+
+@tf_export("nn.weighted_moments", v1=[])
+def weighted_moments_v2(x, axes, frequency_weights, keepdims=False, name=None):
+  """Returns the frequency-weighted mean and variance of `x`.
+
+  Args:
+    x: A tensor.
+    axes: 1-d tensor of int32 values; these are the axes along which
+      to compute mean and variance.
+    frequency_weights: A tensor of positive weights which can be
+      broadcast with x.
+    keepdims: Produce moments with the same dimensionality as the input.
+    name: Name used to scope the operation.
+
+  Returns:
+    Two tensors: `weighted_mean` and `weighted_variance`.
+  """
+  return weighted_moments(
+      x=x,
+      axes=axes,
+      frequency_weights=frequency_weights,
+      name=name,
+      keep_dims=keepdims)
 
 
 @tf_export("nn.batch_normalization")
