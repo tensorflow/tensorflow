@@ -67,6 +67,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.random.multinomial": {
             "output_dtype": "dtype",
         },
+        "tf.nn.batch_norm_with_global_normalization": {
+            "t": "input",
+            "m": "mean",
+            "v": "variance",
+        },
         "tf.nn.conv3d": {
             "filter": "filters"
         },
