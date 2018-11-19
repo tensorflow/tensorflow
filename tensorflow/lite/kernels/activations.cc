@@ -45,6 +45,11 @@ struct LogSoftmaxOpData : public OpData {
   int32_t reverse_scaling_right_shift = 0;
 };
 
+struct PreluOpData : public OpData {
+  int32_t output_multiplier = 0;
+  int output_shift = 0;
+};
+
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // This is a builtin op, so we don't use the contents in 'buffer', if any.
   // Instead, we allocate a new object to carry information from Prepare() to
@@ -57,12 +62,20 @@ void* LogSoftmaxInit(TfLiteContext* context, const char* buffer,
   return new LogSoftmaxOpData;
 }
 
+void* PreluInit(TfLiteContext* context, const char* buffer, size_t length) {
+  return new PreluOpData;
+}
+
 void Free(TfLiteContext* context, void* buffer) {
   delete reinterpret_cast<OpData*>(buffer);
 }
 
 void LogSoftmaxFree(TfLiteContext* context, void* buffer) {
   delete reinterpret_cast<LogSoftmaxOpData*>(buffer);
+}
+
+void PreluFree(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<PreluOpData*>(buffer);
 }
 
 TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
@@ -253,12 +266,17 @@ TfLiteStatus PreluPrepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
   const TfLiteTensor* alpha = GetInput(context, node, 1);
+  PreluOpData* data = reinterpret_cast<PreluOpData*>(node->user_data);
 
-  // Currently only Float32 is supported
-  // TODO(ycling): Support other data types.
-  TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
-  TF_LITE_ENSURE_EQ(context, alpha->type, kTfLiteFloat32);
+  TF_LITE_ENSURE_EQ(context, input->type, alpha->type);
   output->type = input->type;
+
+  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt16) {
+    double real_multiplier =
+        input->params.scale * alpha->params.scale / output->params.scale;
+    QuantizeMultiplierSmallerThanOneExp(
+        real_multiplier, &data->output_multiplier, &data->output_shift);
+  }
 
   // PRelu (parameteric Relu) shares the same alpha value on "shared axis".
   // This means it's always required to "broadcast" alpha values in PRelu.
@@ -650,16 +668,35 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   const TfLiteTensor* alpha = GetInput(context, node, 1);
   TfLiteTensor* output = GetOutput(context, node, 0);
-  if (input->type != kTfLiteFloat32) {
-    context->ReportError(context, "Only float32 supported currently, got %s.",
-                         TfLiteTypeGetName(input->type));
-    return kTfLiteError;
+  const PreluOpData* data = reinterpret_cast<PreluOpData*>(node->user_data);
+  switch (input->type) {
+    case kTfLiteFloat32: {
+      reference_ops::BroadcastBinaryFunction4DSlow<float, float, float>(
+          GetTensorShape(input), GetTensorData<float>(input),
+          GetTensorShape(alpha), GetTensorData<float>(alpha),
+          GetTensorShape(output), GetTensorData<float>(output),
+          ApplyPrelu<float>);
+      return kTfLiteOk;
+    } break;
+    case kTfLiteUInt8: {
+      PreluParams op_params;
+      op_params.input_offset = -input->params.zero_point;
+      op_params.alpha_offset = -alpha->params.zero_point;
+      op_params.output_offset = output->params.zero_point;
+      op_params.output_multiplier = data->output_multiplier;
+      op_params.output_shift = data->output_shift;
+      reference_ops::BroadcastPrelu4DSlow(
+          op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+          GetTensorShape(alpha), GetTensorData<uint8_t>(alpha),
+          GetTensorShape(output), GetTensorData<uint8_t>(output));
+      return kTfLiteOk;
+    } break;
+    default:
+      context->ReportError(context,
+                           "Only float32, uint8 supported currently, got %d.",
+                           TfLiteTypeGetName(input->type));
+      return kTfLiteError;
   }
-  reference_ops::BroadcastBinaryFunction4DSlow<float, float, float>(
-      GetTensorShape(input), GetTensorData<float>(input), GetTensorShape(alpha),
-      GetTensorData<float>(alpha), GetTensorShape(output),
-      GetTensorData<float>(output), ApplyPrelu<float>);
-  return kTfLiteOk;
 }
 
 TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
@@ -736,7 +773,7 @@ TfLiteRegistration* Register_LOG_SOFTMAX() {
 }
 
 TfLiteRegistration* Register_PRELU() {
-  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
+  static TfLiteRegistration r = {activations::PreluInit, activations::PreluFree,
                                  activations::PreluPrepare,
                                  activations::PreluEval};
   return &r;

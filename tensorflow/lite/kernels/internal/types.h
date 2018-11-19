@@ -904,6 +904,14 @@ struct PadParams {
   ResizingCategory resizing_category;
 };
 
+struct PreluParams {
+  int32 input_offset;
+  int32 alpha_offset;
+  int32 output_offset;
+  int32 output_multiplier;
+  int output_shift;
+};
+
 struct PoolParams {
   FusedActivationFunctionType activation;
   PaddingType padding_type;
