@@ -19,13 +19,17 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 
 namespace xla {
 
+namespace m = match;
 using absl::optional;
 using hlo_query::ContainsInstrWithOpcode;
 
@@ -738,6 +742,248 @@ static StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
   return true;
 }
 
+// Tries to merge loop induction variables of a given type.
+//
+// In this pass we're only concerned with elements of the loop's tuple that
+// are effective-scalars of type `elem_ty`.  Some terminology:
+//
+//  - The trip counter is the first element of the loop's tuple that starts at
+//    0 and does x++ on each iteration.
+//
+//  - An induction variable is an element of the loop's tuple that is not the
+//    trip counter and does `x += <constant>` on each iteration of the loop.
+//    Negative constants are OK.
+//
+// This pass adds a trip counter if one isn't already present, then replaces
+// each induction variable with
+//
+//   <initial_value> + <trip_count> * <constant>.
+//
+// This reduces the number of scalar operations in the loop, which is important
+// e.g. on GPUs, where each scalar operation is nontrivially expensive because
+// it's a separate kernel launch.
+//
+// Returns the new loop if a change was made, or null if no change was made.
+// Note that the new loop is not a valid replacement for the old loop; it may
+// need to be wrapped in a tuple that changes its shape.  We return the loop
+// itself so that you can call TryMergeInductionVariables in a loop, once for
+// each integral type elem_ty.
+static StatusOr<HloInstruction*> TryMergeInductionVariables(
+    HloInstruction* while_op, PrimitiveType elem_ty) {
+  CHECK(primitive_util::IsIntegralType(elem_ty)) << PrimitiveType_Name(elem_ty);
+  HloModule* module = while_op->GetModule();
+  HloComputation* computation = while_op->parent();
+  auto* while_init = while_op->mutable_operand(0);
+  auto* while_body = while_op->while_body();
+  auto* while_cond = while_op->while_condition();
+  auto* while_body_root = while_body->root_instruction();
+  if (while_init->opcode() != HloOpcode::kTuple ||
+      while_body_root->opcode() != HloOpcode::kTuple) {
+    return nullptr;
+  }
+
+  TF_RET_CHECK(while_cond->num_parameters() == 1);
+  TF_RET_CHECK(while_body->num_parameters() == 1);
+  TF_RET_CHECK(
+      ShapeUtil::Compatible(while_init->shape(), while_body_root->shape()));
+  Shape while_shape = while_init->shape();
+
+  // The tuple index of the trip counter, if one is present.
+  absl::optional<int64> trip_counter;
+  // Maps the tuple index of each induction variable to its constant increment.
+  absl::flat_hash_map<int64, const HloConstantInstruction*> induction_vars;
+  for (int64 i = 0; i < while_body_root->operand_count(); ++i) {
+    const auto& elem_shape = while_body_root->operand(i)->shape();
+    if (!ShapeUtil::IsEffectiveScalar(elem_shape) ||
+        elem_shape.element_type() != elem_ty) {
+      continue;
+    }
+
+    HloInstruction* constant;
+    if (!Match(while_body_root->mutable_operand(i),
+               m::AddAnyOrder(m::GetTupleElement(m::Parameter(), i),
+                              m::Constant(&constant)))) {
+      continue;
+    }
+    if (!trip_counter && constant->literal().IsAll(1) &&
+        while_init->operand(i)->IsConstant() &&
+        while_init->operand(i)->literal().IsAll(0)) {
+      VLOG(10) << "Found existing trip counter at index " << i;
+      trip_counter = i;
+    } else {
+      VLOG(10) << "Found induction variable at index " << i;
+      induction_vars.emplace(i, Cast<HloConstantInstruction>(constant));
+    }
+  }
+
+  // There's only something to simplify if we can either:
+  //
+  //  - combine one or more induction vars with an existing trip counter, or
+  //  - replace two or more induction variables with a new trip counter.
+  //
+  // Put another way, there's only something to simplify if the number of
+  // induction vars plus the number of existing trip counters (0 or 1) is >= 2.
+  if (induction_vars.size() + (trip_counter.has_value() ? 1 : 0) < 2) {
+    return nullptr;
+  }
+
+  // OK, we're going to do the transformation!  Set up some helpers.
+
+  // `new_instrs` holds instructions created outside of a computation for
+  // cloning.  Elements added here just need to live until the end of the
+  // relevant CloneWithReplacement call.
+  std::vector<std::unique_ptr<HloInstruction>> new_instrs;
+  auto add_new_instr = [&](std::unique_ptr<HloInstruction> instr) {
+    new_instrs.push_back(std::move(instr));
+    return new_instrs.back().get();
+  };
+
+  auto add_binary_op = [&](const Shape& shape, HloOpcode opcode,
+                           HloInstruction* lhs, HloInstruction* rhs) {
+    // Reshape lhs/rhs to the output shape if necessary.  This deals with the
+    // fact that induction variables need only be effective scalars, not true
+    // scalars.
+    if (!ShapeUtil::Compatible(shape, lhs->shape())) {
+      lhs = add_new_instr(HloInstruction::CreateReshape(shape, lhs));
+    }
+    if (!ShapeUtil::Compatible(shape, rhs->shape())) {
+      rhs = add_new_instr(HloInstruction::CreateReshape(shape, rhs));
+    }
+    return add_new_instr(HloInstruction::CreateBinary(shape, opcode, lhs, rhs));
+  };
+
+  auto add_gte = [&](HloInstruction* src, int64 idx) {
+    return add_new_instr(HloInstruction::CreateGetTupleElement(
+        src->shape().tuple_shapes(idx), src, idx));
+  };
+
+  // Our new while loop will have the same shape as the old while loop, except
+  // we'll add a trip counter to the end if it wasn't originally present.
+  Shape new_while_shape = while_shape;
+  bool added_trip_counter = false;
+  if (!trip_counter) {
+    VLOG(10) << "Adding new trip counter to end of loop's tuple.";
+    trip_counter = new_while_shape.tuple_shapes_size();
+    *new_while_shape.add_tuple_shapes() =
+        ShapeUtil::MakeShape(elem_ty, /*dimensions=*/{});
+    added_trip_counter = true;
+  }
+
+  // Converts `instr` into a tuple of the "old" form -- that is, to a tuple with
+  // shape `while_body->shape()` and where the induction variables are "reified"
+  // (i.e. they have value <init> + <counter> * <constant>).
+  auto convert_to_old_form = [&](HloInstruction* instr) {
+    CHECK(ShapeUtil::Compatible(instr->shape(), new_while_shape));
+    std::vector<HloInstruction*> tuple_elems;
+    for (int64 i = 0; i < while_shape.tuple_shapes_size(); ++i) {
+      const auto& elem_shape = while_shape.tuple_shapes(i);
+      if (!induction_vars.count(i)) {
+        tuple_elems.push_back(add_gte(instr, i));
+        continue;
+      }
+      tuple_elems.push_back(add_binary_op(
+          elem_shape, HloOpcode::kAdd, add_gte(instr, i),
+          add_binary_op(elem_shape, HloOpcode::kMultiply,
+                        add_gte(instr, *trip_counter),
+                        add_new_instr(induction_vars.at(i)->Clone()))));
+    }
+    return HloInstruction::CreateTuple(tuple_elems);
+  };
+
+  // Converts `root` into a tuple of the "new" form -- that is, to a tuple with
+  // shape `new_while_shape` and where the induction variables (but not trip
+  // counters) are replaced with their unchanging <loop_body_param> values.
+  auto convert_to_new_form = [&](HloInstruction* old_root,
+                                 HloParameterInstruction* loop_body_param) {
+    CHECK(ShapeUtil::Compatible(old_root->shape(), while_shape));
+    std::vector<HloInstruction*> tuple_elems;
+
+    // In the new form, induction variables come from `init`, everything else
+    // (including the trip counter if it's not one we created ourselves) comes
+    // from the `root` tuple unmodified.
+    for (int64 i = 0; i < while_shape.tuple_shapes_size(); ++i) {
+      tuple_elems.push_back(
+          add_gte((induction_vars.count(i) ? loop_body_param : old_root), i));
+    }
+    // If we created a trip counter ourselves, add 1 to it in the next
+    // iteration.
+    if (added_trip_counter) {
+      tuple_elems.push_back(add_binary_op(
+          new_while_shape.tuple_shapes(*trip_counter), HloOpcode::kAdd,
+          add_gte(loop_body_param, *trip_counter),
+          add_new_instr(
+              HloInstruction::CreateConstant(LiteralUtil::One(elem_ty)))));
+    }
+
+    return HloInstruction::CreateTuple(tuple_elems);
+  };
+
+  // Creates a new init tuple, which is the same as the old init tuple except if
+  // we added a trip counter, it's set to 0.
+  auto get_new_while_init = [&](HloInstruction* init) {
+    CHECK(ShapeUtil::Compatible(init->shape(), while_shape));
+    if (!added_trip_counter) {
+      return init;
+    }
+    std::vector<HloInstruction*> tuple_elems;
+    for (int64 i = 0; i < while_shape.tuple_shapes_size(); ++i) {
+      tuple_elems.push_back(add_gte(init, i));
+    }
+    tuple_elems.push_back(add_new_instr(
+        HloInstruction::CreateConstant(LiteralUtil::Zero(elem_ty))));
+    return add_new_instr(HloInstruction::CreateTuple(tuple_elems));
+  };
+
+  std::unique_ptr<HloComputation> new_while_cond =
+      while_cond->CloneWithReplacementPairs({
+          while_cond->parameter_instruction(0),
+          convert_to_old_form(add_new_instr(HloInstruction::CreateParameter(
+              0, new_while_shape,
+              while_cond->parameter_instruction(0)->name()))),
+      });
+
+  // Creating the new while body proceeds in two steps.  First we convert the
+  // users of the parameter to the old form.  Then as a second
+  // CloneWithReplacement operation we convert the root to the new form.  We
+  // have to do this in two steps because the new root needs to use the new
+  // param0, and during the first clone operation, only the *old-form* param0 is
+  // accessible.
+  //
+  // We have to add temp_new_while_body to the module because cloning a
+  // computation touches the module (to get its NameUniquer).
+  HloComputation* temp_new_while_body =
+      module->AddEmbeddedComputation(while_body->CloneWithReplacementPairs({
+          while_body->parameter_instruction(0),
+          convert_to_old_form(add_new_instr(HloInstruction::CreateParameter(
+              0, new_while_shape,
+              while_body->parameter_instruction(0)->name()))),
+      }));
+  std::unique_ptr<HloComputation> new_while_body =
+      temp_new_while_body->CloneWithReplacementPairs({
+          temp_new_while_body->root_instruction(),
+          convert_to_new_form(
+              add_new_instr(temp_new_while_body->root_instruction()->Clone()),
+              Cast<HloParameterInstruction>(
+                  temp_new_while_body->parameter_instruction(0))),
+      });
+  TF_RETURN_IF_ERROR(module->RemoveEmbeddedComputation(temp_new_while_body));
+
+  // Create the final while loop, and add any new instructions created to
+  // `computation`.
+  new_instrs.clear();
+  auto* new_while = computation->AddInstruction(HloInstruction::CreateWhile(
+      new_while_shape,
+      module->AddEmbeddedComputation(std::move(new_while_cond)),
+      module->AddEmbeddedComputation(std::move(new_while_body)),
+      get_new_while_init(while_init)));
+  TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
+      while_op, convert_to_old_form(new_while)));
+  for (auto& instr : new_instrs) {
+    computation->AddInstruction(std::move(instr));
+  }
+  return new_while;
+}
+
 StatusOr<bool> WhileLoopSimplifier::Run(HloModule* module) {
   XLA_VLOG_LINES(3,
                  "WhileLoopSimplifier::Run(), before:\n" + module->ToString());
@@ -811,6 +1057,22 @@ StatusOr<bool> WhileLoopSimplifier::Run(HloModule* module) {
     TF_ASSIGN_OR_RETURN(result, TryRemoveConstantParams(while_op));
     changed |= result;
     if (result) {
+      continue;
+    }
+
+    bool merged_induction_vars = false;
+    // Notably missing from this list are S16 and U16.  These don't currently
+    // work because S/U16 literals are not implemented.
+    for (auto elem_ty : {S8, U8, S32, U32, S64, U64}) {
+      TF_ASSIGN_OR_RETURN(auto* new_while_op,
+                          TryMergeInductionVariables(while_op, elem_ty));
+      if (new_while_op) {
+        while_op = new_while_op;
+        changed = true;
+        merged_induction_vars = true;
+      }
+    }
+    if (merged_induction_vars) {
       continue;
     }
   }
