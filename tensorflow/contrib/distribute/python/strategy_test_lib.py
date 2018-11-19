@@ -194,7 +194,8 @@ class DistributionTestBase(test.TestCase):
       expected_devices = [False] * len(d.worker_devices)
 
       def mark_devices_fn():
-        replica_id = ds_context.get_replica_context().replica_id_in_sync_group
+        replica_id = self.evaluate(
+            ds_context.get_replica_context().replica_id_in_sync_group)
         self.assertLess(replica_id, len(d.worker_devices))
         self.assertFalse(expected_devices[replica_id])
         expected_devices[replica_id] = True
