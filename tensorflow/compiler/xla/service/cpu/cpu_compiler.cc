@@ -76,6 +76,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
+#include "tensorflow/compiler/xla/service/hlo_get_dimension_size_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -249,6 +250,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       &pipeline, module->config().debug_options(),
       ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
 
+  pipeline.AddPass<HloGetDimensionSizeRewriter>();
   pipeline.AddPass<MapInliner>();
 
   // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
