@@ -51,8 +51,8 @@ linspace = gen_math_ops.lin_space
 
 arg_max = deprecation.deprecated(None, "Use `tf.math.argmax` instead")(arg_max)  # pylint: disable=used-before-assignment
 arg_min = deprecation.deprecated(None, "Use `tf.math.argmin` instead")(arg_min)  # pylint: disable=used-before-assignment
-tf_export("arg_max")(arg_max)
-tf_export("arg_min")(arg_min)
+tf_export(v1=["arg_max"])(arg_max)
+tf_export(v1=["arg_min"])(arg_min)
 
 # This is set by resource_variable_ops.py. It is included in this way since
 # there is a circular dependency between math_ops and resource_variable_ops
