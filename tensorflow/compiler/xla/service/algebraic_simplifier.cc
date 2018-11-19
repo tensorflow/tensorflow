@@ -84,7 +84,8 @@ bool TransposeIsBitcast(const HloInstruction* transpose) {
 // reshape may still be a bitcast. For example, a reshape from [28x28] to [784].
 bool ReshapeOrCopyIsBitcast(
     const HloInstruction* instr,
-    const AlgebraicSimplifier::ValidBitcastCallback& valid_bitcast_callback) {
+    const AlgebraicSimplifierOptions::ValidBitcastCallback&
+        valid_bitcast_callback) {
   CHECK(HloOpcode::kReshape == instr->opcode() ||
         HloOpcode::kCopy == instr->opcode());
 
@@ -180,21 +181,13 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   const bool changed() const { return changed_; }
 
   // Runs the visitor on a computation.
-  static bool Run(
-      HloComputation* computation, bool is_layout_sensitive,
-      AlgebraicSimplifier::ValidBitcastCallback valid_bitcast_callback,
-      bool enable_dot_strength_reduction, bool enable_conv_simplification);
+  static bool Run(HloComputation* computation,
+                  const AlgebraicSimplifierOptions& options);
 
  private:
-  explicit AlgebraicSimplifierVisitor(
-      HloComputation* computation, bool is_layout_sensitive,
-      AlgebraicSimplifier::ValidBitcastCallback valid_bitcast_callback,
-      bool enable_dot_strength_reduction, bool enable_conv_simplification)
-      : computation_(computation),
-        is_layout_sensitive_(is_layout_sensitive),
-        valid_bitcast_callback_(std::move(valid_bitcast_callback)),
-        enable_dot_strength_reduction_(enable_dot_strength_reduction),
-        enable_conv_simplification_(enable_conv_simplification) {}
+  explicit AlgebraicSimplifierVisitor(HloComputation* computation,
+                                      const AlgebraicSimplifierOptions& options)
+      : computation_(computation), options_(options) {}
 
   // Transforms Dots where at least one input is a vector or has a degenerate
   // dimension and converts it into a multiply and reduce. This should enable
@@ -233,10 +226,10 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
                                      HloInstruction* new_instruction);
 
   // Returns whether the shape of the output of the given instructions are the
-  // same for the purposes of simplification. If is_layout_sensitive_ is true,
-  // then this tests shape equality including layout (ShapeUtil::Equal). If
-  // is_layout_sensitive_ is false, then the tests shape compatibility
-  // (ShapeUtil::Compatible).
+  // same for the purposes of simplification. If options_.is_layout_sensitive()
+  // is true, then this tests shape equality including layout
+  // (ShapeUtil::Equal). If options_.is_layout_sensitive() is false, then the
+  // tests shape compatibility (ShapeUtil::Compatible).
   bool SameShape(const HloInstruction* lhs, const HloInstruction* rhs) const;
 
   // Returns whether it was possible to transform `root` to a clamp instruction.
@@ -325,21 +318,11 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   // traversing.
   HloComputation* computation_;
 
+  // The backend-specific options selected for the algebraic simplifier.
+  const AlgebraicSimplifierOptions& options_;
+
   // Whether algebraic simplification has occurred.
   bool changed_ = false;
-
-  // Whether layout is considered during transformation.
-  bool is_layout_sensitive_;
-
-  // Callback used to determine if a bitcast is possible.
-  AlgebraicSimplifier::ValidBitcastCallback valid_bitcast_callback_;
-
-  // Disable dot strength reduction on platforms where it causes a slowdown.
-  bool enable_dot_strength_reduction_;
-
-  // Disable convolution -> dot simplification on platforms where it causes a
-  // slowdown.
-  bool enable_conv_simplification_;
 
   // Cached computation for adding two scalar F32.
   HloComputation* scalar_add_computation_ = nullptr;
@@ -348,19 +331,15 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
 }  // namespace
 
 bool AlgebraicSimplifierVisitor::Run(
-    HloComputation* computation, bool is_layout_sensitive,
-    AlgebraicSimplifier::ValidBitcastCallback valid_bitcast_callback,
-    bool enable_dot_strength_reduction, bool enable_conv_simplification) {
-  AlgebraicSimplifierVisitor visitor(
-      computation, is_layout_sensitive, std::move(valid_bitcast_callback),
-      enable_dot_strength_reduction, enable_conv_simplification);
+    HloComputation* computation, const AlgebraicSimplifierOptions& options) {
+  AlgebraicSimplifierVisitor visitor(computation, options);
   TF_CHECK_OK(computation->Accept(&visitor));
   return visitor.changed_;
 }
 
 bool AlgebraicSimplifierVisitor::SameShape(const HloInstruction* lhs,
                                            const HloInstruction* rhs) const {
-  if (is_layout_sensitive_) {
+  if (options_.is_layout_sensitive()) {
     return ShapeUtil::Equal(lhs->shape(), rhs->shape());
   } else {
     return ShapeUtil::Compatible(lhs->shape(), rhs->shape());
@@ -504,8 +483,8 @@ Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy) {
     return Status::OK();
   }
 
-  if (is_layout_sensitive_ &&
-      ReshapeOrCopyIsBitcast(copy, valid_bitcast_callback_)) {
+  if (options_.is_layout_sensitive() &&
+      ReshapeOrCopyIsBitcast(copy, options_.valid_bitcast_callback())) {
     ReplaceWithBitcast(copy);
   }
 
@@ -1215,7 +1194,8 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
     return ReplaceInstruction(dot, dot_of_gather_optimized);
   }
 
-  if (enable_dot_strength_reduction_ && !is_layout_sensitive_) {
+  if (options_.enable_dot_strength_reduction() &&
+      !options_.is_layout_sensitive()) {
     TF_ASSIGN_OR_RETURN(bool did_strength_reduction,
                         HandleDotStrengthReduction(dot));
     if (did_strength_reduction) {
@@ -1910,8 +1890,8 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
   }
 
   // Make this a bitcast if possible.
-  if (is_layout_sensitive_ &&
-      ReshapeOrCopyIsBitcast(reshape, valid_bitcast_callback_)) {
+  if (options_.is_layout_sensitive() &&
+      ReshapeOrCopyIsBitcast(reshape, options_.valid_bitcast_callback())) {
     ReplaceWithBitcast(reshape);
     return Status::OK();
   }
@@ -2525,7 +2505,7 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
     return ReplaceInstruction(transpose, operand);
   }
 
-  if (is_layout_sensitive_ && TransposeIsBitcast(transpose)) {
+  if (options_.is_layout_sensitive() && TransposeIsBitcast(transpose)) {
     ReplaceWithBitcast(transpose);
     return Status::OK();
   }
@@ -2674,13 +2654,13 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
   const ConvolutionDimensionNumbers& dnums =
       convolution->convolution_dimension_numbers();
 
-  if (!enable_conv_simplification_) {
+  if (!options_.enable_conv_simplification()) {
     return false;
   }
 
   // TODO(b/31337498): For now, we cowardly refuse to do this optimization in
   // layout-insensitive mode, for fear of adding nontrivial reshapes.
-  if (!is_layout_sensitive_) {
+  if (!options_.is_layout_sensitive()) {
     return false;
   }
 
@@ -2770,9 +2750,9 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
   // We cannot insert bitcasts if the layouts will not be compatible.
   // TODO(b/33178038): Consider inserting a transpose if a bitcast would be
   // invalid.
-  if (!valid_bitcast_callback_(input_shape, new_input_shape) ||
-      !valid_bitcast_callback_(filter_shape, new_filter_shape) ||
-      !valid_bitcast_callback_(dot_output_shape, convolution_shape)) {
+  if (!options_.valid_bitcast_callback()(input_shape, new_input_shape) ||
+      !options_.valid_bitcast_callback()(filter_shape, new_filter_shape) ||
+      !options_.valid_bitcast_callback()(dot_output_shape, convolution_shape)) {
     return false;
   }
 
@@ -2878,9 +2858,7 @@ StatusOr<bool> AlgebraicSimplifier::Run(HloModule* module) {
                  "AlgebraicSimplifier::Run(), before:\n" + module->ToString());
   bool changed = false;
   for (auto* comp : module->MakeNonfusionComputations()) {
-    if (AlgebraicSimplifierVisitor::Run(
-            comp, is_layout_sensitive_, valid_bitcast_callback_,
-            enable_dot_strength_reduction_, enable_conv_simplification_)) {
+    if (AlgebraicSimplifierVisitor::Run(comp, options_)) {
       changed = true;
     }
   }
