@@ -55,6 +55,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "t": "x",
             "msg": "message",
         },
+        "tf.sparse.add": [
+            "a", "b", "thresh"
+        ],
         "tf.sparse.split": {
             "split_dim": "axis",
         },
@@ -81,6 +84,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.random.stateless_multinomial": {
             "output_dtype": "dtype",
         },
+        "tf.sparse.concat": [
+            "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
+        ]
     }
 
     # Mapping from function to the new name of the function
@@ -164,6 +170,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "input", "filter", "padding", "strides", "dilation_rate", "name",
             "data_format"],
         "tf.nn.crelu": ["features", "name", "axis"],
+        "tf.nn.weighted_moments": [
+            "x", "axes", "frequency_weights", "name", "keep_dims"
+        ],
         "tf.nn.pool": [
             "input", "window_shape", "pooling_type", "padding", "dilation_rate",
             "strides", "name", "data_format"
@@ -189,6 +198,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
         ],
         "tf.random.poisson": ["lam", "shape", "dtype", "seed", "name"],
+        "tf.sparse.add": [
+            "a", "b", "thresh"
+        ],
+        "tf.sparse.concat": [
+            "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
+        ],
         "tf.sparse.segment_mean": [
             "data", "indices", "segment_ids", "name", "num_segments"
         ],

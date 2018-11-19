@@ -310,7 +310,7 @@ tf_module {
   }
   member_method {
     name: "weighted_moments"
-    argspec: "args=[\'x\', \'axes\', \'frequency_weights\', \'name\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
+    argspec: "args=[\'x\', \'axes\', \'frequency_weights\', \'keepdims\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "with_space_to_batch"
