@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -756,10 +757,18 @@ class ShapeUtil {
       pool.emplace(tensorflow::Env::Default(), "foreach", kNumThreads);
     }
 
+    tensorflow::mutex mu;
+    Status status;  // Guarded by mu
+
     while (n < rank) {
       if (pool != absl::nullopt) {
-        pool->Schedule(
-            [indexes, &visitor_function] { visitor_function(indexes); });
+        pool->Schedule([indexes, &visitor_function, &mu, &status] {
+          StatusOr<bool> result = visitor_function(indexes);
+          if (!result.ok()) {
+            tensorflow::mutex_lock lock(mu);
+            status = status.ok() ? result.status() : status;
+          }
+        });
       } else {
         TF_ASSIGN_OR_RETURN(bool should_continue, visitor_function(indexes));
         if (!should_continue) {
@@ -777,7 +786,9 @@ class ShapeUtil {
       }
     }
 
-    return Status::OK();
+    // Waits for the scheduled work to complete.
+    pool.reset();
+    return status;
   }
 
   TF_DISALLOW_COPY_AND_ASSIGN(ShapeUtil);

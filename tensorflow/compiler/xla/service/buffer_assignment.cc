@@ -746,8 +746,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     LogicalBuffer::AlignmentFunction color_alignment,
     bool allow_input_output_aliasing, bool allocate_buffers_for_constants,
     BufferLiveness::Colorer colorer, ReuseAllocationFunction reuse_checker) {
-  BufferAssigner assigner(allow_input_output_aliasing,
-                          allocate_buffers_for_constants, std::move(colorer),
+  BufferAssigner assigner(allocate_buffers_for_constants, std::move(colorer),
                           std::move(reuse_checker));
   return assigner.CreateAssignment(module, std::move(hlo_ordering),
                                    std::move(buffer_size),

@@ -593,7 +593,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
-  Status HandleDivide(HloInstruction* divide) {
+  Status HandleDivide(HloInstruction* divide) override {
     return HandleDivide<ElementwiseT>(divide);
   }
 
