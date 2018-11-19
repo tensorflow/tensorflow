@@ -72,6 +72,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.conv3d": {
             "filter": "filters"
         },
+        "tf.zeros_like": {
+            "tensor": "input",
+        },
+        "tf.ones_like": {
+            "tensor": "input",
+        },
         "tf.nn.conv3d_transpose": {
             "value": "input",
             "filter": "filters",
@@ -233,6 +239,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         " the data and summarize arguments have been removed."
     )
 
+    tf_01s_like_no_optimize_comment = (
+        "WARNING: tf.zeros_like and tf.ones_like no longer have the optimize "
+        "argument in TF 2.0 or after (also, `tensor' argument is renamed to "
+        "`input')."
+    )
+
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
     self.function_warnings = {
@@ -300,6 +312,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.conv2d_backprop_input":
         "WARNING: use_cudnn_on_gpu argument has been removed and \"filter\" "
         "was renamed to \"filters\"",
+        "tf.zeros_like": tf_01s_like_no_optimize_comment,
+        "tf.ones_like": tf_01s_like_no_optimize_comment,
     }
     # Right now we can't have both a rename and a warning.
     self.symbol_renames = {
