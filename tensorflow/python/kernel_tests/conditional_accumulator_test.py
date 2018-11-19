@@ -424,7 +424,7 @@ class ConditionalAccumulatorTest(test.TestCase):
       takeg_t = q.take_grad(1)
 
       def apply_grad(accum_op):
-        sess.run(accum_op)
+        self.evaluate(accum_op)
 
       threads = [
           self.checkedThread(
@@ -451,7 +451,7 @@ class ConditionalAccumulatorTest(test.TestCase):
       def apply_grad():
         for accum_op in accum_ops:
           time.sleep(1.0)
-          sess.run(accum_op)
+          self.evaluate(accum_op)
 
       apply_grad_thread = self.checkedThread(target=apply_grad)
 
@@ -485,7 +485,7 @@ class ConditionalAccumulatorTest(test.TestCase):
       def apply_grad():
         time.sleep(1.0)
         for accum_op in accum_ops:
-          sess.run(accum_op)
+          self.evaluate(accum_op)
 
       return_array = []
 
@@ -503,7 +503,7 @@ class ConditionalAccumulatorTest(test.TestCase):
 
   def _blocking_takeg(self, sess, takeg_op):
     with self.assertRaisesOpError("was cancelled"):
-      sess.run(takeg_op)
+      self.evaluate(takeg_op)
 
   def testAccumulatorCancel(self):
     with self.cached_session() as sess:

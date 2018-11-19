@@ -287,7 +287,7 @@ class CategoricalTest(test.TestCase, parameterized.TestCase):
     }
 
     with self.cached_session() as sess:
-      run_result = sess.run(to_run)
+      run_result = self.evaluate(to_run)
 
     self.assertAllEqual(run_result["cat_prob"].shape,
                         run_result["norm_prob"].shape)
@@ -462,7 +462,7 @@ class CategoricalTest(test.TestCase, parameterized.TestCase):
           b = categorical.Categorical(logits=b_logits)
 
           kl = kullback_leibler.kl_divergence(a, b)
-          kl_val = sess.run(kl)
+          kl_val = self.evaluate(kl)
           # Make sure KL(a||a) is 0
           kl_same = sess.run(kullback_leibler.kl_divergence(a, a))
 

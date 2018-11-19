@@ -106,7 +106,7 @@ class EagerTest(xla_test.XLATestCase):
         three = constant_op.constant(3)
         five = constant_op.constant(5)
         product = three * five
-        self.assertAllEqual(15, sess.run(product))
+        self.assertAllEqual(15, self.evaluate(product))
 
   def testDegenerateSlices(self):
     with self.test_scope():

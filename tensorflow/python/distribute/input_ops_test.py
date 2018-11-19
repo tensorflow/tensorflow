@@ -92,7 +92,7 @@ class AutoShardDatasetTest(test.TestCase):
     with self.cached_session() as sess:
       for f in range(self._shard_index, self._num_files, self._num_shards):
         for r in range(self._num_records):
-          self.assertAllEqual(record_fn(r, f), sess.run(next_element))
+          self.assertAllEqual(record_fn(r, f), self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -205,10 +205,11 @@ class AutoShardDatasetTest(test.TestCase):
     with self.cached_session() as sess:
       for f in range(self._shard_index, self._num_files, self._num_shards):
         for r in range(self._num_records):
-          self.assertAllEqual(self._record(r, f), sess.run(next_element))
+          self.assertAllEqual(self._record(r, f), self.evaluate(next_element))
       for f in range(self._shard_index, self._num_files, self._num_shards):
         for r in range(self._num_records):
-          self.assertAllEqual(self._text_line(r, f), sess.run(next_element))
+          self.assertAllEqual(
+              self._text_line(r, f), self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 

@@ -149,10 +149,10 @@ class VariablesTestCase(test.TestCase):
           name="foo",
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES])
-      sess.run(variables.local_variables_initializer())
+      self.evaluate(variables.local_variables_initializer())
       old_value = array.value()
       copy_op = array.assign(old_value)
-      self.assertEqual([], list(sess.run(copy_op)))
+      self.assertEqual([], list(self.evaluate(copy_op)))
 
   def _countUpToTest(self, dtype):
     with self.cached_session():
@@ -221,10 +221,10 @@ class VariablesTestCase(test.TestCase):
       v2 = var_dict["v2"]
       # We should be able to initialize and run v1 and v2 without initializing
       # v0, even if the variable was created with a control dep on v0.
-      sess.run(v1.initializer)
-      self.assertEqual([1], sess.run(v1))
-      sess.run(v2.initializer)
-      self.assertEqual([2], sess.run(v2))
+      self.evaluate(v1.initializer)
+      self.assertEqual([1], self.evaluate(v1))
+      self.evaluate(v2.initializer)
+      self.assertEqual([2], self.evaluate(v2))
       # v0 should still be uninitialized.
       with self.assertRaisesRegexp(errors_impl.OpError, "uninitialized"):
         sess.run(v0)
@@ -232,7 +232,7 @@ class VariablesTestCase(test.TestCase):
       with self.assertRaisesRegexp(errors_impl.OpError, "uninitialized"):
         sess.run(add)
       # If we initialize v0 we should be able to run 'add'.
-      sess.run(v0.initializer)
+      self.evaluate(v0.initializer)
       sess.run(add)
 
   def testControlFlowInitialization(self):
@@ -386,7 +386,7 @@ class VariablesTestCase(test.TestCase):
     with self.cached_session() as sess:
       var = variables.Variable([1, 12])
       variables.global_variables_initializer().run()
-      self.assertAllClose([1, 12], sess.run(var))
+      self.assertAllClose([1, 12], self.evaluate(var))
 
   def testDevicePlacement(self):
     with self.cached_session() as sess:
@@ -396,7 +396,7 @@ class VariablesTestCase(test.TestCase):
       init_op = variables.global_variables_initializer()
       self.assertEqual(var.op.device, init_value.device)
       self.assertEqual(var.op.device, init_op.device)
-      sess.run(init_op)
+      self.evaluate(init_op)
 
   def testColocation(self):
     with ops.device("/job:ps"):
@@ -543,7 +543,7 @@ class IsInitializedTest(test.TestCase):
   def testNoVars(self):
     with ops.Graph().as_default(), self.cached_session() as sess:
       uninited = variables.report_uninitialized_variables()
-      self.assertEqual(0, sess.run(uninited).size)
+      self.assertEqual(0, self.evaluate(uninited).size)
 
   def testAssertVariablesInitialized(self):
     with ops.Graph().as_default(), self.cached_session() as sess:
@@ -551,27 +551,27 @@ class IsInitializedTest(test.TestCase):
       w = variables.Variable([3, 4], name="w")
       _ = v, w
       uninited = variables.report_uninitialized_variables()
-      self.assertAllEqual(np.array([b"v", b"w"]), sess.run(uninited))
+      self.assertAllEqual(np.array([b"v", b"w"]), self.evaluate(uninited))
       variables.global_variables_initializer().run()
-      self.assertEqual(0, sess.run(uninited).size)
+      self.assertEqual(0, self.evaluate(uninited).size)
 
   def testVariableList(self):
     with ops.Graph().as_default(), self.cached_session() as sess:
       v = variables.VariableV1([1, 2], name="v")
       w = variables.VariableV1([3, 4], name="w")
       uninited = variables.report_uninitialized_variables()
-      self.assertAllEqual(np.array([b"v", b"w"]), sess.run(uninited))
-      sess.run(w.initializer)
-      self.assertAllEqual(np.array([b"v"]), sess.run(uninited))
+      self.assertAllEqual(np.array([b"v", b"w"]), self.evaluate(uninited))
+      self.evaluate(w.initializer)
+      self.assertAllEqual(np.array([b"v"]), self.evaluate(uninited))
       v.initializer.run()
-      self.assertEqual(0, sess.run(uninited).size)
+      self.assertEqual(0, self.evaluate(uninited).size)
 
   def testZeroSizeVarInitialized(self):
     with ops.Graph().as_default(), self.cached_session() as sess:
       v = variables.Variable(array_ops.zeros([0, 2]), name="v")
       uninited = variables.report_uninitialized_variables()
       v.initializer.run()  # not strictly necessary
-      self.assertEqual(0, sess.run(uninited).size)
+      self.assertEqual(0, self.evaluate(uninited).size)
 
   def testTrainingWithZeroSizeVar(self):
     with ops.Graph().as_default(), self.cached_session() as sess:
@@ -610,7 +610,7 @@ class ObsoleteIsInitializedTest(test.TestCase):
       inited = variables.assert_variables_initialized([v])
       with self.assertRaisesOpError("Attempting to use uninitialized value"):
         inited.op.run()
-      sess.run(w.initializer)
+      self.evaluate(w.initializer)
       with self.assertRaisesOpError("Attempting to use uninitialized value"):
         inited.op.run()
       v.initializer.run()

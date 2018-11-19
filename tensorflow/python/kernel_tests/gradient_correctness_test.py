@@ -35,7 +35,7 @@ class GradientCorrectnessTest(test.TestCase):
       yexp = math_ops.exp(x)
       yexplog = math_ops.log(yexp)
       grads = gradients_impl.gradients([yexp, yexplog], [x])
-      grad_vals = sess.run(grads)
+      grad_vals = self.evaluate(grads)
       exp1_plus_one = (1.0 + np.exp(1.0)).astype(np.float32)
       # [dexp(x)/dx + d(log(exp(x)))/dx] @ x=1 == exp(1) + 1
       self.assertAllClose(grad_vals[0], exp1_plus_one)
@@ -44,13 +44,13 @@ class GradientCorrectnessTest(test.TestCase):
     x = constant_op.constant(3.)
     dx_dx, = gradients_impl.gradients(x, x)
     with self.cached_session() as sess:
-      self.assertAllClose(1., sess.run(dx_dx))
+      self.assertAllClose(1., self.evaluate(dx_dx))
 
   def testIntegerIdentityGradient(self):
     x = constant_op.constant(3)
     dx_dx, = gradients_impl.gradients(x, x)
     with self.cached_session() as sess:
-      self.assertAllClose(1, sess.run(dx_dx))
+      self.assertAllClose(1, self.evaluate(dx_dx))
 
   def testGradientWithIntegerPath(self):
     x = constant_op.constant([3.9, 4.1])
@@ -58,7 +58,7 @@ class GradientCorrectnessTest(test.TestCase):
     y = x * k
     dy_dx, = gradients_impl.gradients(y, x)
     with self.cached_session() as sess:
-      self.assertAllClose([3., 4.], sess.run(dy_dx))
+      self.assertAllClose([3., 4.], self.evaluate(dy_dx))
 
   def testNoIntegerGradient1(self):
     x = constant_op.constant([3.9, 4.1])

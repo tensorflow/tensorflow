@@ -136,7 +136,7 @@ class BackendUtilsTest(test.TestCase):
       x = keras.Input((3,))
       y = keras.layers.BatchNormalization()(x)
       if not context.executing_eagerly():
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         sess.run(y, feed_dict={x: np.random.random((2, 3))})
 
   def test_learning_phase_scope(self):

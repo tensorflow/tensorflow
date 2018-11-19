@@ -36,7 +36,7 @@ class SparseJobTest(test.TestCase):
       a = constant_op.constant(1.0)
 
     with session.Session(server.target) as sess:
-      self.assertEqual(1.0, sess.run(a))
+      self.assertEqual(1.0, self.evaluate(a))
 
 
 if __name__ == "__main__":

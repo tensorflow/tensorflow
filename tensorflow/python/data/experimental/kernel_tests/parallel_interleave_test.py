@@ -637,11 +637,11 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for i in range(10):
         for j in range(2):
           expected = [i, 0] if j % 2 == 0 else [0, -i]
-          self.assertAllEqual(expected, sess.run(get_next))
+          self.assertAllEqual(expected, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -796,7 +796,7 @@ class ParallelInterleaveTest(test_base.DatasetTestBase):
     with self.cached_session() as sess:
       for _ in range(2):
         elements = []
-        sess.run(iterator.initializer)
+        self.evaluate(iterator.initializer)
         try:
           while True:
             elements.extend(sess.run(next_element))

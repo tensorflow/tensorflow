@@ -153,7 +153,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
   def testCachedValueReadBeforeWrite(self):
     with self.cached_session() as sess:
       v = resource_variable_ops.ResourceVariable(0.0, caching_device="cpu:0")
-      sess.run(v.initializer)
+      self.evaluate(v.initializer)
       value, _ = sess.run([v, v.assign_add(1.0)])
       self.assertAllEqual(value, 0.0)
 

@@ -100,7 +100,7 @@ class SupervisorTest(test.TestCase):
       sv = supervisor.Supervisor(logdir=logdir)
       sess = sv.prepare_or_wait_for_session("")
       for _ in xrange(10):
-        sess.run(my_op)
+        self.evaluate(my_op)
       sess.close()
       sv.stop()
 
@@ -111,7 +111,7 @@ class SupervisorTest(test.TestCase):
       sv = supervisor.Supervisor(logdir=logdir)
       with sv.managed_session("") as sess:
         for _ in xrange(10):
-          sess.run(my_op)
+          self.evaluate(my_op)
       # Supervisor has been stopped.
       self.assertTrue(sv.should_stop())
 
@@ -128,7 +128,7 @@ class SupervisorTest(test.TestCase):
             if step == 1:
               raise RuntimeError("failing here")
             else:
-              sess.run(my_op)
+              self.evaluate(my_op)
       # Supervisor has been stopped.
       self.assertTrue(sv.should_stop())
       self.assertEqual(1, last_step)
@@ -146,7 +146,7 @@ class SupervisorTest(test.TestCase):
             raise errors_impl.OutOfRangeError(my_op.op.node_def, my_op.op,
                                               "all done")
           else:
-            sess.run(my_op)
+            self.evaluate(my_op)
       # Supervisor has been stopped.  OutOfRangeError was not thrown.
       self.assertTrue(sv.should_stop())
       self.assertEqual(3, last_step)
@@ -335,7 +335,7 @@ class SupervisorTest(test.TestCase):
       sess = sv.prepare_or_wait_for_session(
           "", config=config_pb2.ConfigProto(device_count={"CPU": 2}))
       for _ in xrange(10):
-        sess.run(my_op)
+        self.evaluate(my_op)
       sess.close()
       sv.stop()
 

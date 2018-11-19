@@ -365,7 +365,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
       grads = gradients.gradients(
           [y], [x], unconnected_gradients="zero")
       with self.cached_session() as sess:
-        self.assertAllEqual([[0.0, 0.0], [0.0, 0.0]], sess.run(grads)[0])
+        self.assertAllEqual([[0.0, 0.0], [0.0, 0.0]], self.evaluate(grads)[0])
 
   def testUnconnectedGradientsZeroConnectedGradients(self):
     with ops.Graph().as_default():
@@ -374,7 +374,7 @@ class GradientsTest(test_util.TensorFlowTestCase):
       grad = gradients.gradients(
           [y], [x], unconnected_gradients="zero")
       with self.cached_session() as sess:
-        self.assertEquals(3.0, sess.run(grad)[0])
+        self.assertEquals(3.0, self.evaluate(grad)[0])
 
   def testUnknownUnconnectedGradientsValueGiven(self):
     with ops.Graph().as_default():
@@ -438,8 +438,8 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
       grads = gradients.gradients(y, [x, b1])
 
       with self.cached_session() as sess:
-        self.assertAllEqual([40.0], sess.run(grads)[0])
-        self.assertAllEqual([10.0], sess.run(grads)[1])
+        self.assertAllEqual([40.0], self.evaluate(grads)[0])
+        self.assertAllEqual([10.0], self.evaluate(grads)[1])
 
   def testFunctionGradientsWithGradFunc(self):
     g = ops.Graph()
@@ -487,7 +487,7 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
 
       f = Foo()
       with self.cached_session() as sess:
-        self.assertEqual(sess.run(f), 2.0)
+        self.assertEqual(self.evaluate(f), 2.0)
 
   def testGradientOfCaptured(self):
     with ops.Graph().as_default():
@@ -501,7 +501,7 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
 
       f = Foo()
       with self.cached_session() as sess:
-        self.assertEqual(sess.run(f), 2.0)
+        self.assertEqual(self.evaluate(f), 2.0)
 
   def testCapturedResourceVariable(self):
     with ops.Graph().as_default():
@@ -515,8 +515,8 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
 
       f = Foo()
       with self.cached_session() as sess:
-        sess.run(variables.global_variables_initializer())
-        self.assertEqual(sess.run(f), 2.0)
+        self.evaluate(variables.global_variables_initializer())
+        self.assertEqual(self.evaluate(f), 2.0)
 
   def testCapturedNested(self):
     with ops.Graph().as_default():
@@ -541,9 +541,9 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
       x1_grad, x2_grad = Outer()
       with self.cached_session() as sess:
         # 1.0 + None + 2.0 + 1.0 = 4.0
-        self.assertEqual(sess.run(x1_grad), 4.0)
+        self.assertEqual(self.evaluate(x1_grad), 4.0)
         # None + 1.0 + 1.0 + None = 2.0
-        self.assertEqual(sess.run(x2_grad), 2.0)
+        self.assertEqual(self.evaluate(x2_grad), 2.0)
 
   def testCapturedFromFunction(self):
     with ops.Graph().as_default():
@@ -563,7 +563,7 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
 
       z_grad = Outer()
       with self.cached_session() as sess:
-        self.assertEqual(sess.run(z_grad), 3.0)
+        self.assertEqual(self.evaluate(z_grad), 3.0)
 
   def testCapturedEagerTensors(self):
     # Test that we can handle captured eager tensors unrelated to the gradient
@@ -873,7 +873,7 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
       y = MyMultiply(x1, x2)
       dy = gradients.gradients(y, [x1, x2])
       with session.Session() as sess:
-        self.assertAllEqual([3., 5.], sess.run(dy))
+        self.assertAllEqual([3., 5.], self.evaluate(dy))
 
   def testCustomGradientErrors(self):
 
@@ -914,7 +914,7 @@ class CustomGradientTest(test_util.TensorFlowTestCase):
       for g in grads:
         self.assertTrue(g is not None)
       with session.Session() as sess:
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         dw = sess.run(math_ops.reduce_sum(grads[1]))
         self.assertEqual(12., dw)
 
@@ -1074,7 +1074,7 @@ class TensorListGradientsTest(test_util.TensorFlowTestCase):
 
       grad = gradients.gradients(tl, a, grad_ys=grad_tl)[0]
       with self.cached_session() as sess:
-        self.assertEquals(sess.run(grad), 5.)
+        self.assertEquals(self.evaluate(grad), 5.)
 
 
 if __name__ == "__main__":

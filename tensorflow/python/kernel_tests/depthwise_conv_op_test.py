@@ -162,7 +162,7 @@ class DepthwiseConv2DTest(test.TestCase):
         conv_native = array_ops.transpose(conv_native, [0, 2, 3, 1])
 
       try:
-        native_result = sess.run(conv_native)
+        native_result = self.evaluate(conv_native)
       except errors.InvalidArgumentError as e:
         # Grouped convolution kernel is only registered for cuDNN 7. Silently
         # return when we are running on an earlier version or without GPU.
@@ -174,7 +174,7 @@ class DepthwiseConv2DTest(test.TestCase):
 
       conv_interface = nn_impl.depthwise_conv2d(
           t1, t2, strides=[1, stride, stride, 1], padding=padding)
-      interface_result = sess.run(conv_interface)
+      interface_result = self.evaluate(conv_interface)
 
     tf_logging.info(
         "data_type: %r, use_gpu: %r, grouped_conv: %r, max diff = %f",
@@ -269,7 +269,7 @@ class DepthwiseConv2DTest(test.TestCase):
       t2 = constant_op.constant(x2, shape=filter_in_sizes)
       conv = nn_ops.depthwise_conv2d_native(
           t1, t2, strides=[1, stride, stride, 1], padding=padding)
-      value = sess.run(conv)
+      value = self.evaluate(conv)
     tf_logging.info("value = %r", value)
     self.assertArrayNear(expected, np.ravel(value), 1e-5)
     self.assertShapeEqual(value, conv)

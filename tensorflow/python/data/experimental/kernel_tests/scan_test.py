@@ -60,7 +60,7 @@ class ScanTest(test_base.DatasetTestBase):
                  feed_dict={start: start_val, step: step_val, take: take_val})
         for expected, _ in zip(
             itertools.count(start_val, step_val), range(take_val)):
-          self.assertEqual(expected, sess.run(next_element))
+          self.assertEqual(expected, self.evaluate(next_element))
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(next_element)
 
@@ -110,7 +110,7 @@ class ScanTest(test_base.DatasetTestBase):
                  feed_dict={start: start_val, step: step_val, take: take_val})
         for expected, _ in zip(
             itertools.count(start_val, step_val), range(take_val)):
-          self.assertEqual(expected, sess.run(next_element).values[0])
+          self.assertEqual(expected, self.evaluate(next_element).values[0])
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(next_element)
 
@@ -136,7 +136,7 @@ class ScanTest(test_base.DatasetTestBase):
 
     with self.cached_session() as sess:
       for i in range(5):
-        (longer_vector_val, larger_rank_val), _ = sess.run(next_element)
+        (longer_vector_val, larger_rank_val), _ = self.evaluate(next_element)
         self.assertAllEqual([0] * (2**i), longer_vector_val)
         self.assertAllEqual(np.array(1, ndmin=i), larger_rank_val)
       with self.assertRaises(errors.OutOfRangeError):

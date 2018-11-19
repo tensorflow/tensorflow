@@ -46,9 +46,9 @@ class RandomOpsTest(xla_test.XLATestCase):
 
       # The random-number generator, if working correctly, should produce the
       # same output multiple times with low probability.
-      y = sess.run(x)
-      z = sess.run(x)
-      w = sess.run(x)
+      y = self.evaluate(x)
+      z = self.evaluate(x)
+      w = self.evaluate(x)
 
       # We use exact equality here. If the random-number generator is producing
       # deterministic output, all three outputs will be bitwise identical.
@@ -83,7 +83,7 @@ class RandomOpsTest(xla_test.XLATestCase):
         with self.test_scope():
           x = random_ops.random_uniform(
               shape=[1000], dtype=dtype, minval=-2, maxval=33)
-        y = sess.run(x)
+        y = self.evaluate(x)
         self.assertTrue((y >= -2).sum() == 1000)
         self.assertTrue((y < 33).sum() == 1000)
 
@@ -102,7 +102,7 @@ class RandomOpsTest(xla_test.XLATestCase):
       with self.cached_session() as sess:
         with self.test_scope():
           x = random_ops.truncated_normal(shape=[count], dtype=dtype)
-        y = sess.run(x)
+        y = self.evaluate(x)
 
         def normal_cdf(x):
           return .5 * math.erfc(-x / math.sqrt(2))
@@ -148,7 +148,7 @@ class RandomOpsTest(xla_test.XLATestCase):
       with self.test_scope():
         x = math_ops.range(1 << 16)
         shuffle = random_ops.random_shuffle(x)
-      result = sess.run(shuffle)
+      result = self.evaluate(shuffle)
       expected = range(1 << 16)
       # Compare sets to avoid randomness behavior changes but make sure still
       # have all the values.
@@ -159,7 +159,7 @@ class RandomOpsTest(xla_test.XLATestCase):
       with self.test_scope():
         x = array_ops.diag(math_ops.range(20))
         shuffle = random_ops.random_shuffle(x)
-      result = sess.run(shuffle)
+      result = self.evaluate(shuffle)
       expected = np.diag(range(20)).flatten()
       # Compare sets to avoid randomness behavior changes but make sure still
       # have all the values.

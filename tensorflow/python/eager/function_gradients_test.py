@@ -78,7 +78,7 @@ class FunctionGradientsTest(test.TestCase, parameterized.TestCase):
       c = constant_op.constant([[2.]])
       f_c = f(c)
       g, = gradients_impl.gradients(f_c, c)
-      self.assertAllEqual(sess.run(g).values, [[1.0]])
+      self.assertAllEqual(self.evaluate(g).values, [[1.0]])
 
   def testNoSymGradNestedDefun(self):
 

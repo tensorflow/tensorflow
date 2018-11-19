@@ -68,7 +68,7 @@ class ListTest(converter_testing.TestCase):
       with self.cached_session() as sess:
         tl = result.test_fn()
         r = list_ops.tensor_list_stack(tl, dtypes.int32)
-        self.assertAllEqual(sess.run(r), [1, 2, 3])
+        self.assertAllEqual(self.evaluate(r), [1, 2, 3])
 
   def test_list_pop(self):
 
@@ -91,8 +91,8 @@ class ListTest(converter_testing.TestCase):
       with self.cached_session() as sess:
         ts, tl = result.test_fn()
         r = list_ops.tensor_list_stack(tl, dtypes.int32)
-        self.assertAllEqual(sess.run(r), [1, 2])
-        self.assertAllEqual(sess.run(ts), 3)
+        self.assertAllEqual(self.evaluate(r), [1, 2])
+        self.assertAllEqual(self.evaluate(ts), 3)
 
   def test_double_list_pop(self):
 

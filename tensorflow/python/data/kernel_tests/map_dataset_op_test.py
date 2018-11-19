@@ -114,7 +114,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       sess.run(init_op, feed_dict={count: 14})
       for _ in range(14):
         for i in range(7):
-          result = sess.run(get_next)
+          result = self.evaluate(get_next)
           for component, result_component in zip(components, result):
             self.assertAllEqual(component[i]**2, result_component)
       with self.assertRaises(errors.OutOfRangeError):
@@ -185,7 +185,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
             output_buffer_size: output_buffer_size_val})
         for _ in range(14):
           for i in range(7):
-            result = sess.run(get_next)
+            result = self.evaluate(get_next)
             for component, result_component in zip(components, result):
               self.assertAllEqual(component[i]**2, result_component)
         with self.assertRaises(errors.OutOfRangeError):
@@ -242,7 +242,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for _ in range(3):
         sess.run(get_next)
 
@@ -257,7 +257,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for _ in range(3):
         sess.run(get_next)
 
@@ -272,7 +272,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for _ in range(3):
         sess.run(get_next)
       # The 4th element is NaN, so `array_ops.check_numerics()` should fail.
@@ -293,7 +293,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for _ in range(3):
         sess.run(get_next)
       # The 4th element is NaN, so `array_ops.check_numerics()` should fail.
@@ -325,10 +325,10 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     with ops.Graph().as_default() as g:
       captured_init_op, init_op, get_next = _build_graph()
       with self.session(graph=g) as sess:
-        sess.run(captured_init_op)
-        sess.run(init_op)
+        self.evaluate(captured_init_op)
+        self.evaluate(init_op)
         for i in range(10):
-          self.assertEqual(i * i, sess.run(get_next))
+          self.assertEqual(i * i, self.evaluate(get_next))
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
 
@@ -353,8 +353,8 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(table.initializer)
-      sess.run(init_op)
+      self.evaluate(table.initializer)
+      self.evaluate(init_op)
       sess.run(get_next)
       sess.run(get_next)
       with self.assertRaises(errors.OutOfRangeError):
@@ -371,11 +371,11 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(enqueue_op)
-      sess.run(close_op)
-      sess.run(init_op)
+      self.evaluate(enqueue_op)
+      self.evaluate(close_op)
+      self.evaluate(init_op)
       for element in elements:
-        self.assertEqual(element, sess.run(get_next))
+        self.assertEqual(element, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -396,9 +396,9 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(enqueue_op)
-      sess.run(close_op)
-      sess.run(init_op)
+      self.evaluate(enqueue_op)
+      self.evaluate(close_op)
+      self.evaluate(init_op)
       for i in range(100):
         self.assertEqual(sorted([elements[i * 2], elements[i * 2 + 1]]),
                          sorted(sess.run(get_next)))
@@ -415,15 +415,15 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(counter_var.initializer)
-      sess.run(init_op)
+      self.evaluate(counter_var.initializer)
+      self.evaluate(init_op)
       for i in range(10):
-        self.assertEqual(i, sess.run(counter_var))
-        self.assertEqual(i + 1, sess.run(get_next))
-      self.assertEqual(10, sess.run(counter_var))
+        self.assertEqual(i, self.evaluate(counter_var))
+        self.assertEqual(i + 1, self.evaluate(get_next))
+      self.assertEqual(10, self.evaluate(counter_var))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
-      self.assertEqual(10, sess.run(counter_var))
+      self.assertEqual(10, self.evaluate(counter_var))
 
   def testCaptureUninitializedVariableError(self):
     counter_var = variable_scope.get_variable(
@@ -435,7 +435,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       with self.assertRaises(errors.NotFoundError):
         sess.run(get_next)
 
@@ -447,14 +447,14 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       random_values = []
       with self.assertRaises(errors.OutOfRangeError):
         while True:
           random_values.extend(sess.run(get_next))
       self.assertEqual(10, len(random_values))
       self.assertGreater(np.abs(np.diff(random_values)).max(), 1e-6)
-      sess.run(init_op)
+      self.evaluate(init_op)
       random_values_2 = []
       with self.assertRaises(errors.OutOfRangeError):
         while True:
@@ -473,8 +473,8 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
-      random_values = sess.run(get_next)
+      self.evaluate(init_op)
+      random_values = self.evaluate(get_next)
 
       # Assert that one of the next 99 batches yielded by the iterator is
       # different from the first.
@@ -500,15 +500,15 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(counter_var.initializer)
-      sess.run(init_op)
+      self.evaluate(counter_var.initializer)
+      self.evaluate(init_op)
       for i in range(10):
-        self.assertEqual(i, sess.run(counter_var))
-        self.assertEqual(i, sess.run(get_next))
-      self.assertEqual(10, sess.run(counter_var))
+        self.assertEqual(i, self.evaluate(counter_var))
+        self.assertEqual(i, self.evaluate(get_next))
+      self.assertEqual(10, self.evaluate(counter_var))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
-      self.assertEqual(10, sess.run(counter_var))
+      self.assertEqual(10, self.evaluate(counter_var))
 
   def testMapDict(self):
     iterator = (dataset_ops.Dataset.range(10)
@@ -519,9 +519,9 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for i in range(10):
-        self.assertEqual(i * 2 + i ** 2, sess.run(get_next))
+        self.assertEqual(i * 2 + i**2, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -569,8 +569,8 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
-      self.assertAllEqual(row ** 2, sess.run(get_next))
+      self.evaluate(init_op)
+      self.assertAllEqual(row**2, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -611,7 +611,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       row = np.arange(6)
       for num in [2, 3, 4]:
         init_op, get_next = build_dataset(row, num)
-        sess.run(init_op)
+        self.evaluate(init_op)
         for i in range(6):
           self.assertEqual(
               (i // 2 if i % 2 else i * 2) if (num == 2 or num == 3) else i * 2,
@@ -652,7 +652,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       row = np.arange(6)
       for num in [2, 3, 4]:
         init_op, get_next = build_dataset(row, num)
-        sess.run(init_op)
+        self.evaluate(init_op)
         self.assertAllEqual(
             [x // 2 if (num == 2 or num == 3) else x * 2 for x in row],
             sess.run(get_next))
@@ -697,7 +697,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       self.assertAllEqual([(x // 2 if x % 2 else x * 2) if
                            (num == 2 or num == 3) else x * 2 for x in row],
                           sess.run(get_next))
@@ -735,7 +735,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       for buffer_size in [1, 10, 100, 1000]:
         sess.run(init_op, feed_dict={buffer_size_placeholder: buffer_size})
         for i in range(100):
-          self.assertEqual(i * i, sess.run(get_next))
+          self.assertEqual(i * i, self.evaluate(get_next))
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
 
@@ -753,10 +753,10 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         sess.run(init_op, feed_dict={buffer_size_placeholder: buffer_size})
         for i in range(event_will_be_set_after_consuming):
           self.assertFalse(ev.is_set())
-          self.assertEqual(i * i, sess.run(get_next))
+          self.assertEqual(i * i, self.evaluate(get_next))
         ev.wait()
         for i in range(event_will_be_set_after_consuming, 100):
-          self.assertEqual(i * i, sess.run(get_next))
+          self.assertEqual(i * i, self.evaluate(get_next))
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
 
@@ -768,9 +768,9 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for i in range(10):
-        self.assertEqual((i, 37.0), sess.run(get_next))
+        self.assertEqual((i, 37.0), self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -789,9 +789,9 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for i in range(10):
-        self.assertEqual((i, 37.0), sess.run(get_next))
+        self.assertEqual((i, 37.0), self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -810,9 +810,9 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for i in range(10):
-        actual = sess.run(get_next)
+        actual = self.evaluate(get_next)
         self.assertIsInstance(actual, sparse_tensor.SparseTensorValue)
         self.assertSparseValuesEqual(actual, _sparse(i))
       with self.assertRaises(errors.OutOfRangeError):
@@ -837,9 +837,9 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for i in range(10):
-        actual = sess.run(get_next)
+        actual = self.evaluate(get_next)
         self.assertIsInstance(actual, sparse_tensor.SparseTensorValue)
         self.assertSparseValuesEqual(actual, _check(_sparse(i)).eval())
       with self.assertRaises(errors.OutOfRangeError):
@@ -861,9 +861,9 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for i in range(100):
-        self.assertEqual(i, sess.run(get_next))
+        self.assertEqual(i, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -875,9 +875,9 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for i in range(10):
-        self.assertEqual((i, b"hello", 10), sess.run(get_next))
+        self.assertEqual((i, b"hello", 10), self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -945,7 +945,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.cached_session() as sess:
       with self.assertRaisesRegexp(errors.InvalidArgumentError, "BrokenConst"):
-        sess.run(iterator.initializer)
+        self.evaluate(iterator.initializer)
 
 # pylint: disable=g-long-lambda
   @parameterized.named_parameters(
@@ -972,7 +972,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      tids = sess.run(get_next)
+      tids = self.evaluate(get_next)
       self.assertTrue(all(tids[0] == tid for tid in tids))
 # pylint: enable=g-long-lambda
 
@@ -996,7 +996,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         expected = map_fn(*sess.run(self.structuredElement(structure)))
       else:
         expected = map_fn(sess.run(self.structuredElement(structure)))
-      self.assertEqual(expected, sess.run(get_next))
+      self.assertEqual(expected, self.evaluate(get_next))
 
   @parameterized.named_parameters(
       ("Sequential", None),
@@ -1011,7 +1011,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.cached_session() as sess:
       sess.run(iterator.initializer, feed_dict={captured_t: 42})
-      self.assertEqual(42, sess.run(get_next))
+      self.assertEqual(42, self.evaluate(get_next))
 
   @parameterized.named_parameters(
       ("1", 1, 1),
@@ -1030,7 +1030,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.cached_session(config=config) as sess:
       for i in range(num_elements):
         coordination_events[i].set()
-        self.assertEqual(i * i, sess.run(get_next))
+        self.assertEqual(i * i, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -1052,7 +1052,7 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
       for element in elements:
         coordination_events[element].set()
-        self.assertEqual(element * element, sess.run(get_next))
+        self.assertEqual(element * element, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
