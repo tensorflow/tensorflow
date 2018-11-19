@@ -325,6 +325,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "distribute"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "distributions"
     mtype: "<type \'module\'>"
   }
