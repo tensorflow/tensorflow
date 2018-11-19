@@ -519,7 +519,7 @@ class GANLossTest(test.TestCase, parameterized.TestCase):
     """Test output type."""
     loss = train.gan_loss(get_gan_model_fn(), add_summaries=True)
     self.assertIsInstance(loss, namedtuples.GANLoss)
-    self.assertGreater(len(ops.get_collection(ops.GraphKeys.SUMMARIES)), 0)
+    self.assertNotEmpty(ops.get_collection(ops.GraphKeys.SUMMARIES))
 
   @parameterized.named_parameters(
       ('cyclegan', create_cyclegan_model),
@@ -528,7 +528,7 @@ class GANLossTest(test.TestCase, parameterized.TestCase):
   def test_cyclegan_output_type(self, get_gan_model_fn):
     loss = train.cyclegan_loss(get_gan_model_fn(), add_summaries=True)
     self.assertIsInstance(loss, namedtuples.CycleGANLoss)
-    self.assertGreater(len(ops.get_collection(ops.GraphKeys.SUMMARIES)), 0)
+    self.assertNotEmpty(ops.get_collection(ops.GraphKeys.SUMMARIES))
 
   @parameterized.named_parameters(
       ('gan', create_gan_model, False),
@@ -923,8 +923,7 @@ class GANTrainOpsTest(test.TestCase, parameterized.TestCase):
         model, loss, generator_optimizer=g_opt, discriminator_optimizer=d_opt)
     self.assertIsInstance(train_ops, namedtuples.GANTrainOps)
     # No new trainable variables should have been added.
-    self.assertEqual(num_trainable_vars,
-                     len(variables_lib.get_trainable_variables()))
+    self.assertLen(variables_lib.get_trainable_variables(), num_trainable_vars)
 
     g_sync_init_op = g_opt.get_init_tokens_op(num_tokens=1)
     d_sync_init_op = d_opt.get_init_tokens_op(num_tokens=1)
