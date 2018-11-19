@@ -1488,7 +1488,7 @@ def sparse_to_indicator(sp_input, vocab_size, name=None):
 
 
 @tf_export(v1=["sparse.merge", "sparse_merge"])
-@deprecation.deprecated_endpoints(["sparse.merge", "sparse_merge"])
+@deprecation.deprecated(None, "No similar op available at this time.")
 def sparse_merge(sp_ids, sp_values, vocab_size, name=None,
                  already_sorted=False):
   """Combines a batch of feature ids and values into a single `SparseTensor`.
