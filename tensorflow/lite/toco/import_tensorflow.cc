@@ -2348,6 +2348,8 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Split", ConvertSplitOperator},
       {"Sqrt", ConvertSimpleOperator<TensorFlowSqrtOperator, 1>},
       {"Square", ConvertSimpleOperator<TensorFlowSquareOperator, 1>},
+      {"SquaredDifference",
+       ConvertSimpleOperator<SquaredDifferenceOperator, 2>},
       {"Squeeze", ConvertSqueezeOperator},
       {"StopGradient", ConvertIdentityOperator},
       {"StridedSlice", ConvertStridedSliceOperator},

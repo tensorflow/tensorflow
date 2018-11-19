@@ -525,6 +525,13 @@ TEST_F(OperatorTest, BuiltinLeakyRelu) {
   EXPECT_EQ(op.alpha, output_toco_op->alpha);
 }
 
+TEST_F(OperatorTest, BuiltinSquaredDifference) {
+  SquaredDifferenceOperator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("SQUARED_DIFFERENCE", OperatorType::kSquaredDifference), op);
+  ASSERT_NE(nullptr, output_toco_op.get());
+}
+
 TEST_F(OperatorTest, CustomCTCBeamSearchDecoder) {
   CTCBeamSearchDecoderOperator op;
   op.beam_width = 3;

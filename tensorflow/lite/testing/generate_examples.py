@@ -1177,6 +1177,10 @@ def make_floor_mod_tests(zip_path):
   make_binary_op_tests(zip_path, tf.floormod)
 
 
+def make_squared_difference_tests(zip_path):
+  make_binary_op_tests(zip_path, tf.squared_difference)
+
+
 def make_gather_tests(zip_path):
   """Make a set of tests to do gather."""
 
