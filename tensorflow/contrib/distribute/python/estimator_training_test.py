@@ -50,6 +50,8 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.summary.writer import writer_cache
+from tensorflow.python.training import session_manager
+
 
 BATCH_SIZE = 10
 LABEL_DIMENSION = 2
@@ -622,5 +624,15 @@ class RunConfigTest(test.TestCase):
 
 
 if __name__ == "__main__":
+  # Reduce `recovery_wait_secs` from 30 seconds so the test completes quickly.
+  orig_init = session_manager.SessionManager.__init__
+
+  def new_init(*args, **kwargs):
+    kwargs.pop("recovery_wait_secs", None)
+    kwargs["recovery_wait_secs"] = 0.5
+    orig_init(*args, **kwargs)
+
+  session_manager.SessionManager.__init__ = new_init
+
   with test.mock.patch.object(sys, "exit", os._exit):
     test.main()
