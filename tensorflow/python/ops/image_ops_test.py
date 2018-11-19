@@ -1234,7 +1234,7 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.transpose_image(x_tf)
-      self.assertTrue(y.op.name.startswith("transpose_image"))
+      self.assertTrue(y.op.name.startswith("transpose"))
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
@@ -2613,7 +2613,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       single_image = array_ops.placeholder(dtypes.float32, shape=[50, 60, 3])
       y = image_ops.resize_images(single_image, [55, 66])
-      self.assertTrue(y.op.name.startswith("resize_images"))
+      self.assertTrue(y.op.name.startswith("resize"))
 
   def _ResizeImageCall(self, x, max_h, max_w, preserve_aspect_ratio,
                        use_tensor_inputs):
