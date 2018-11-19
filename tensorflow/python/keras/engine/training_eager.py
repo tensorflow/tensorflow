@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import copy
 
 import numpy as np
@@ -215,7 +216,7 @@ def iterator_fit_loop(model,
   assert isinstance(inputs, iterator_ops.EagerIterator)
 
   # make sure either x,y or x,y,sample_weights is provided
-  if (not isinstance(inputs.output_shapes, (list, tuple)) or
+  if (not isinstance(inputs.output_shapes, collections.Sequence) or
       len(inputs.output_shapes) not in (2, 3)):
     raise ValueError('Please provide either inputs and targets '
                      'or inputs, targets, and sample_weights')
@@ -340,7 +341,7 @@ def iterator_test_loop(model, inputs, steps, verbose=0):
   """
   assert isinstance(inputs, iterator_ops.EagerIterator)
   # make sure either x,y or x,y,sample_weights is provided
-  if (not isinstance(inputs.output_shapes, (list, tuple)) or
+  if (not isinstance(inputs.output_shapes, collections.Sequence) or
       len(inputs.output_shapes) < 2 or len(inputs.output_shapes) > 3):
     raise ValueError('Please provide either inputs and targets'
                      'or inputs, targets, and sample_weights')
@@ -461,7 +462,7 @@ def iterator_predict_loop(model, inputs, steps, verbose=0):
   """
   assert isinstance(inputs, iterator_ops.EagerIterator)
   if not isinstance(inputs.output_shapes,
-                    (list, tuple)) or len(inputs.output_shapes) > 3:
+                    collections.Sequence) or len(inputs.output_shapes) > 3:
     raise ValueError(
         'Please provide data as a list or tuple of 1, 2, or 3 elements '
         ' - `(input)`, or `(input, target)`, or `(input, target,'
@@ -583,16 +584,17 @@ def train_on_batch(model, inputs, targets, sample_weights=None):
   Returns:
       total loss and the loss associated with each output.
   """
-  if len(inputs) and tensor_util.is_tensor(inputs[0]):
-    inputs = training_utils.cast_if_floating_dtype(inputs)
-    targets = training_utils.cast_if_floating_dtype(targets)
-  else:
-    inputs = [
-        ops.convert_to_tensor(val, dtype=backend.floatx()) for val in inputs
-    ]
-    targets = [
-        ops.convert_to_tensor(val, dtype=backend.floatx()) for val in targets
-    ]
+  if isinstance(inputs, collections.Sequence):
+    if len(inputs) and tensor_util.is_tensor(inputs[0]):
+      inputs = training_utils.cast_if_floating_dtype(inputs)
+      targets = training_utils.cast_if_floating_dtype(targets)
+    else:
+      inputs = [
+          ops.convert_to_tensor(val, dtype=backend.floatx()) for val in inputs
+      ]
+      targets = [
+          ops.convert_to_tensor(val, dtype=backend.floatx()) for val in targets
+      ]
   if sample_weights:
     sample_weights = [
         ops.convert_to_tensor(val, dtype=backend.floatx())
@@ -630,16 +632,17 @@ def test_on_batch(model, inputs, targets, sample_weights=None):
   Returns:
       total loss, loss and metrics associated with each output.
   """
-  if len(inputs) and tensor_util.is_tensor(inputs[0]):
-    inputs = training_utils.cast_if_floating_dtype(inputs)
-    targets = training_utils.cast_if_floating_dtype(targets)
-  else:
-    inputs = [
-        ops.convert_to_tensor(val, dtype=backend.floatx()) for val in inputs
-    ]
-    targets = [
-        ops.convert_to_tensor(val, dtype=backend.floatx()) for val in targets
-    ]
+  if isinstance(inputs, collections.Sequence):
+    if len(inputs) and tensor_util.is_tensor(inputs[0]):
+      inputs = training_utils.cast_if_floating_dtype(inputs)
+      targets = training_utils.cast_if_floating_dtype(targets)
+    else:
+      inputs = [
+          ops.convert_to_tensor(val, dtype=backend.floatx()) for val in inputs
+      ]
+      targets = [
+          ops.convert_to_tensor(val, dtype=backend.floatx()) for val in targets
+      ]
   if sample_weights:
     sample_weights = [
         ops.convert_to_tensor(val, dtype=backend.floatx())

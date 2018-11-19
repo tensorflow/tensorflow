@@ -720,6 +720,18 @@ py_test(
 )
 
 py_test(
+    name = "training_dataset_test",
+    size = "medium",
+    srcs = ["engine/training_dataset_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "training_generator_test",
     size = "enormous",
     srcs = ["engine/training_generator_test.py"],
@@ -743,6 +755,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
