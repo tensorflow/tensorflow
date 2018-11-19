@@ -546,6 +546,7 @@ class DistributionStrategy(object):
     return self._extended.update_non_slot(
         colocate_with, fn, args, kwargs, group)
 
+  @doc_controls.do_not_generate_docs  # DEPRECATED, -> `DistributedValues`
   def unwrap(self, value):
     """Returns the list of all per-replica values contained in `value`.
 
@@ -564,6 +565,7 @@ class DistributionStrategy(object):
     """DEPRECATED: use extended.value_container() instead."""
     return self._extended.value_container(value)
 
+  @doc_controls.do_not_generate_docs  # DEPRECATED, -> `DistributedValues`
   def group(self, value, name=None):
     """Shortcut for `tf.group(self.unwrap(value))`."""
     return self._extended._group(value, name)  # pylint: disable=protected-access
@@ -580,6 +582,7 @@ class DistributionStrategy(object):
     return self._extended._num_replicas_in_sync  # pylint: disable=protected-access
 
   @property
+  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
   def worker_devices(self):
     """DEPRECATED: use extended.worker_devices instead."""
     return self._extended.worker_devices
