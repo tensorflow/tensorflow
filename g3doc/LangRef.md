@@ -1094,7 +1094,7 @@ one can choose to apply MLFunctions when it is beneficial.
 Syntax:
 
 ``` {.ebnf}
-return-stmt ::= `return` ssa-use-and-type-list?
+return-stmt ::= `return` (ssa-use-list `:` type-list-no-parens)?
 ```
 
 The arity and operand types of the return statement must match the result of the
