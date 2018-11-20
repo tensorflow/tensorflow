@@ -3360,6 +3360,14 @@ class ControlFlowTest(test.TestCase):
       result = control_flow_ops.ref_merge([v_f, v_t])
       sess.run(result)
 
+  def testUInt64SwitchMerge(self):
+    with self.cached_session(force_gpu=test.is_gpu_available()) as sess:
+      constant_uint64 = constant_op.constant(np.array([42]), dtypes.uint64)
+      cond = constant_op.constant(True, dtypes.bool)
+      v_f, v_t = control_flow_ops.switch(constant_uint64, cond)
+      result = control_flow_ops.merge([v_f, v_t])
+      sess.run(result)
+
   def testQIntArgAndRet(self):
 
     @function.Defun(dtypes.qint8)
