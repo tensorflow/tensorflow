@@ -877,7 +877,7 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
       [](const Edge* edge) { return true; }, OutputEdgeValidator(),
       segment_options, &initial_segments));
   LOG(INFO) << "Number of TensorRT candidate segments: "
-    << initial_segments.size();
+            << initial_segments.size();
 
   // Get the EngineInfo for each segment.
   std::unordered_map<string, tensorflow::Node*> node_map;
