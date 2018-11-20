@@ -3201,3 +3201,48 @@ def searchsorted(sorted_sequence,
 
 
 quantize.__doc__ = gen_array_ops.quantize_v2.__doc__
+
+
+@tf_export("image.extract_image_patches", v1=[])
+def extract_image_patches_v2(
+    images,
+    sizes,
+    strides,
+    rates,
+    padding,
+    name=None):
+  # pylint: disable=line-too-long
+  r"""Extract `patches` from `images` and put them in the \"depth\" output dimension.
+
+  Args:
+    images: A 4-D Tensor with shape `[batch, in_rows, in_cols, depth]
+    sizes: The size of the sliding window for each dimension of `images`.
+    strides: A 1-D Tensor of length 4. How far the centers of two consecutive
+      patches are in the images. Must be: `[1, stride_rows, stride_cols, 1]`.
+    rates: A 1-D Tensor of length 4. Must be: `[1, rate_rows, rate_cols, 1]`.
+      This is the input stride, specifying how far two consecutive patch samples
+      are in the input. Equivalent to extracting patches with `patch_sizes_eff =
+      patch_sizes + (patch_sizes - 1) * (rates - 1)`, followed by subsampling
+      them spatially by a factor of `rates`. This is equivalent to `rate` in
+      dilated (a.k.a. Atrous) convolutions.
+    padding: The type of padding algorithm to use.
+      We specify the size-related attributes as: ```python ksizes = [1,
+        ksize_rows, ksize_cols, 1] strides = [1, strides_rows, strides_cols, 1]
+        rates = [1, rates_rows, rates_cols, 1]
+    name: A name for the operation (optional).
+
+  Returns:
+    A 4-D Tensor. Has the same type as `images`, and with shape `[batch,
+    out_rows, out_cols, ksize_rows * ksize_cols * depth]` containing image
+    patches with size `ksize_rows x ksize_cols x depth` vectorized in the
+    \"depth\" dimension. Note `out_rows` and `out_cols` are the dimensions of
+    the output patches.
+  """
+  # pylint: enable=line-too-long
+  return gen_array_ops.extract_image_patches(
+      images, sizes, strides, rates, padding, name)
+
+extract_image_patches_deprecation = deprecation.deprecated_args(
+    None, "ksizes is deprecated, use sizes instead", "ksizes")
+tf_export(v1=["image.extract_image_patches", "extract_image_patches"])(
+    extract_image_patches_deprecation(gen_array_ops.extract_image_patches))
