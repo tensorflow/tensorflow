@@ -165,7 +165,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/data/util:structure",
+        "//tensorflow/python/data/util:sparse",
     ],
 )
 
