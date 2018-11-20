@@ -222,6 +222,12 @@ public:
 
   ArrayRef<Attribute> getValue() const;
 
+  size_t size() const { return getValue().size(); }
+
+  using iterator = llvm::ArrayRef<Attribute>::iterator;
+  iterator begin() const { return getValue().begin(); }
+  iterator end() const { return getValue().end(); }
+
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(Kind kind) { return kind == Kind::Array; }
 };
