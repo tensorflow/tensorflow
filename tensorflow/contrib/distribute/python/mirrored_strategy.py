@@ -742,7 +742,7 @@ class CoreMirroredExtended(distribute_lib.DistributionStrategyExtended):
       self.coord = coord
       self.distribution = dist
       self.device = device
-      self.replica_id = dist.worker_devices.index(device)
+      self.replica_id = dist.extended.worker_devices.index(device)
       self.variable_creator_fn = variable_creator_fn
       # State needed to run and return the results of `fn`.
       self.main_fn = fn
@@ -944,4 +944,4 @@ class MirroredReplicaContext(distribute_lib.ReplicaContext):
   def devices(self):
     distribute_lib.require_replica_context(self)
     replica_id = tensor_util.constant_value(self._replica_id_in_sync_group)
-    return [self._distribution_strategy.worker_devices[replica_id]]
+    return [self._distribution_strategy.extended.worker_devices[replica_id]]

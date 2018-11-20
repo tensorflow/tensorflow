@@ -205,9 +205,5 @@ class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):
         replica_id_in_sync_group=constant_op.constant(0, dtypes.int32))
 
   @property
-  def device(self):
-    raise RuntimeError("Use .devices instead")
-
-  @property
   def devices(self):
-    return [self._distribution_strategy.worker_devices[0]]
+    return [self._distribution_strategy.extended.worker_devices[0]]
