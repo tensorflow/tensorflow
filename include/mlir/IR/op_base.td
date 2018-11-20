@@ -44,6 +44,8 @@ class Vector<Type t, list<int> dims> : Type {
 // rank, size.
 def Tensor : Type;
 
+def String : Type;
+
 // The operands of an op.
 class Operands<list<Type> types> {
   list<Type> operandTypes = types;
@@ -86,6 +88,10 @@ class I32Attr : Attr<I<32>> {
  let storageType = [{ IntegerAttr }];
  let returnType = [{ int }];
  let convertFromStorage = [{ return {0}.getSExtValue(); }];
+}
+class StrAttr : Attr<String> {
+ let storageType = [{ StringAttr }];
+ let returnType = [{ StringRef }];
 }
 
 // Class representing a Trait (defined in a C++ file that needs to be included
@@ -159,6 +165,9 @@ class BinaryOp<string mnemonic, list<OpProperty> props> :
   let parser = [{ return mlir::impl::parseBinaryOp(parser, result); }];
   let printer = [{ return mlir::impl::printBinaryOp(getOperation(), p); }];
 }
+
+class TernaryOp<string mnemonic, list<OpProperty> props> :
+    Op<mnemonic, props>, Operands<[Tensor, Tensor, Tensor]>;
 
 class UnaryOp<string mnemonic, list<OpProperty> props> :
     Op<mnemonic, props>, Operands<[Tensor]>, Results<[Tensor]> {
