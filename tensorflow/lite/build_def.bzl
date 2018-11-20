@@ -303,6 +303,7 @@ def generated_test_models():
         "transpose",
         "transpose_conv",
         "unpack",
+        "unroll_batch_matmul",
         "where",
         "zeros_like",
     ]
