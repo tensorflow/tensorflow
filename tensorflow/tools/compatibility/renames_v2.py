@@ -308,6 +308,7 @@ renames = {
     'tf.nn.conv3d_backprop_filter_v2': 'tf.nn.conv3d_backprop_filter',
     'tf.nn.ctc_beam_search_decoder_v2': 'tf.nn.ctc_beam_search_decoder',
     'tf.nn.depthwise_conv2d_native': 'tf.compat.v1.nn.depthwise_conv2d_native',
+    'tf.nn.depthwise_conv2d_native_backprop_filter': 'tf.nn.depthwise_conv2d_backprop_filter',
     'tf.nn.depthwise_conv2d_native_backprop_input': 'tf.nn.depthwise_conv2d_backprop_input',
     'tf.nn.dynamic_rnn': 'tf.compat.v1.nn.dynamic_rnn',
     'tf.nn.log_uniform_candidate_sampler': 'tf.random.log_uniform_candidate_sampler',
