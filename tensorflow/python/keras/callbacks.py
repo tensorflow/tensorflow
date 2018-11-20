@@ -157,6 +157,7 @@ def make_logs(model, logs, outputs, mode, prefix=''):
   return logs
 
 
+@tf_export('keras.callbacks.CallbackList')
 class CallbackList(object):
   """Container abstracting a list of callbacks.
 
