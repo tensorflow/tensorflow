@@ -492,7 +492,7 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     bool convert_successfully = false;
     LOG(INFO) << "Building a new TensorRT engine for " << name()
-            << " with batch size " << batch_size;
+              << " with batch size " << batch_size;
     // Up to this point, calibrator_ can never be empty, since otherwise it
     // means calibration_mode_ is true and this path won't get executed.
     auto status = convert::ConvertGraphDefToEngine(
@@ -568,7 +568,7 @@ tensorflow::Status TRTEngineOp::AllocateCalibrationResources(
   cres->thr_.reset(new std::thread([cres, label, segment_graph, shapes,
                                     platform_gpu_id, workspace_size_bytes]() {
     LOG(INFO) << "Starting calibration thread on device " << platform_gpu_id
-            << ", Calibration Resource @ " << cres;
+              << ", Calibration Resource @ " << cres;
     auto err = cudaSetDevice(platform_gpu_id);
     if (err != cudaSuccess) {
       // TODO(aaroey): should return error here.
