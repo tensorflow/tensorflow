@@ -180,7 +180,7 @@ class TFRecordDatasetV2(dataset_ops.DatasetV2):
 
   def __init__(self, filenames, compression_type=None, buffer_size=None,
                num_parallel_reads=None):
-    """Creates a `TFRecordDataset` to read for one or more TFRecord files.
+    """Creates a `TFRecordDataset` to read one or more TFRecord files.
 
     NOTE: The `num_parallel_reads` argument can be used to improve performance
     when reading from a remote filesystem.
