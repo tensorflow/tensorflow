@@ -676,7 +676,7 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
   for (const NodeDef& node : topo_sorted_item.graph.node()) {
     // Check if node was invalidated by one of the previous remaps.
     if (invalidated_nodes.count(&node) > 0) continue;
-
+#ifndef INTEL_MKL
     // Remap Conv2D+BiasAdd into the _FusedConv2D.
     if (FindConv2DWithBias(ctx, &node, &conv2d_with_bias)) {
       AddFusedConv2DNode(conv2d_with_bias, optimized_graph, &invalidated_nodes);
@@ -712,7 +712,7 @@ Status Remapper::Optimize(Cluster* /*cluster*/, const GrapplerItem& item,
                          &invalidated_nodes);
       continue;
     }
-
+#endif // INTEL_MKL
     // Infer properties lazily in case they are not needed.
     if (!ctx.inferred_graph_properties && IsFusedBatchNormCandidate(node)) {
       TF_RETURN_IF_ERROR(ctx.graph_properties.InferStatically(false));
