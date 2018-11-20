@@ -1,4 +1,4 @@
-//===- CFGFunctionViewGraph.h - View/write graphviz graphs ------*- C++ -*-===//
+//===- CFGFunctionViewGraph.cpp - View/write graphviz graphs --------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
