@@ -3470,6 +3470,32 @@ def make_logical_xor_tests(zip_path):
   return _make_logical_tests(tf.logical_xor)(zip_path)
 
 
+def make_unroll_batch_matmul_tests(zip_path):
+  """Make a set of tests to test unroll_batch_matmul."""
+
+  test_parameters = [{"dtype": [tf.float32], "shape": [[(2, 2, 3), (2, 3, 2)]]}]
+
+  def build_graph(parameters):
+    """Build the batch_matmul op testing graph."""
+    input_tensor1 = tf.placeholder(
+        dtype=parameters["dtype"], shape=parameters["shape"][0])
+    input_tensor2 = tf.placeholder(
+        dtype=parameters["dtype"], shape=parameters["shape"][1])
+    # Should be unrolled and replaced with fully_connected ops in the end.
+    out = tf.matmul(input_tensor1, input_tensor2)
+    return [input_tensor1, input_tensor2], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value1 = create_tensor_data(
+        parameters["dtype"], shape=parameters["shape"][0])
+    input_value2 = create_tensor_data(
+        parameters["dtype"], shape=parameters["shape"][1])
+    return [input_value1, input_value2], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 # Toco binary path provided by the generate rule.
 bin_path = None
 
