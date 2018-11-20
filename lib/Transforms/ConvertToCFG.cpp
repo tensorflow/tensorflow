@@ -221,12 +221,24 @@ void FunctionConverter::visitForStmt(ForStmt *forStmt) {
   BasicBlock *postLoopBlock = builder.createBlock();
 
   builder.setInsertionPoint(loopInitBlock);
-  // TODO(zinenko): support non-constant loop bounds
-  assert(forStmt->hasConstantBounds() && "NYI: non-constant for loop bounds");
-  CFGValue *lowerBound =
-      getConstantIndexValue(forStmt->getConstantLowerBound());
-  CFGValue *upperBound =
-      getConstantIndexValue(forStmt->getConstantUpperBound());
+  // Compute loop bounds using affine_apply after remapping its operands.
+  auto remapOperands = [this](const SSAValue *value) -> SSAValue * {
+    const MLValue *mlValue = dyn_cast<MLValue>(value);
+    return valueRemapping.lookup(mlValue);
+  };
+  auto operands =
+      functional::map(remapOperands, forStmt->getLowerBoundOperands());
+  auto lbAffineApply = builder.create<AffineApplyOp>(
+      forStmt->getLoc(), forStmt->getLowerBoundMap(), operands);
+  // TODO(zinenko): support min/max in loop bounds; this requires min/max
+  // operations to be added to StandardOps first.
+  assert(lbAffineApply->getNumOperands() <= 1 && "NYI: min/max bounds");
+  CFGValue *lowerBound = cast<CFGValue>(lbAffineApply->getResult(0));
+  operands = functional::map(remapOperands, forStmt->getUpperBoundOperands());
+  auto ubAffineApply = builder.create<AffineApplyOp>(
+      forStmt->getLoc(), forStmt->getUpperBoundMap(), operands);
+  assert(ubAffineApply->getNumOperands() <= 1 && "NYI: min/max bounds");
+  CFGValue *upperBound = cast<CFGValue>(ubAffineApply->getResult(0));
   builder.create<BranchOp>(builder.getUnknownLoc(), loopConditionBlock,
                            lowerBound);
 
