@@ -31,6 +31,7 @@ class AffineExpr;
 class ForStmt;
 class MemRefType;
 class MLValue;
+class OperationStmt;
 
 /// Returns the trip count of the loop as an affine expression if the latter is
 /// expressible as an affine expression, and nullptr otherwise. The trip count

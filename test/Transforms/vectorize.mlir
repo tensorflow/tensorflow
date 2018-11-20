@@ -1,9 +1,9 @@
 // RUN: mlir-opt %s -vectorize -virtual-vector-size 128 --test-fastest-varying=0 | FileCheck %s -check-prefix=VEC1D
-// RUN_: mlir-opt %s -vectorize -virtual-vector-size 32 -virtual-vector-size 256 --test-fastest-varying=1 --test-fastest-varying=0 | FileCheck %s -check-prefix=VEC2D
-// RUN_: mlir-opt %s -vectorize -virtual-vector-size 32 -virtual-vector-size 256 --test-fastest-varying=0 --test-fastest-varying=1 | FileCheck %s -check-prefix=VEC2D_T
-// RUN_: mlir-opt %s -vectorize -virtual-vector-size 32 -virtual-vector-size 256 --test-fastest-varying=2 --test-fastest-varying=0 | FileCheck %s -check-prefix=VEC2D_O
-// RUN_: mlir-opt %s -vectorize -virtual-vector-size 32 -virtual-vector-size 256 --test-fastest-varying=0 --test-fastest-varying=2 | FileCheck %s -check-prefix=VEC2D_OT
-// RUN_: mlir-opt %s -vectorize -virtual-vector-size 32 -virtual-vector-size 64 -virtual-vector-size 256 --test-fastest-varying=2 --test-fastest-varying=1 --test-fastest-varying=0 | FileCheck %s -check-prefix=VEC3D
+// RUN: mlir-opt %s -vectorize -virtual-vector-size 32 -virtual-vector-size 256 --test-fastest-varying=1 --test-fastest-varying=0 | FileCheck %s -check-prefix=VEC2D
+// RUN: mlir-opt %s -vectorize -virtual-vector-size 32 -virtual-vector-size 256 --test-fastest-varying=0 --test-fastest-varying=1 | FileCheck %s -check-prefix=VEC2D_T
+// RUN: mlir-opt %s -vectorize -virtual-vector-size 32 -virtual-vector-size 256 --test-fastest-varying=2 --test-fastest-varying=0 | FileCheck %s -check-prefix=VEC2D_O
+// RUN: mlir-opt %s -vectorize -virtual-vector-size 32 -virtual-vector-size 256 --test-fastest-varying=0 --test-fastest-varying=2 | FileCheck %s -check-prefix=VEC2D_OT
+// RUN: mlir-opt %s -vectorize -virtual-vector-size 32 -virtual-vector-size 64 -virtual-vector-size 256 --test-fastest-varying=2 --test-fastest-varying=1 --test-fastest-varying=0 | FileCheck %s -check-prefix=VEC3D
 
 #map0 = (d0) -> (d0)
 #map1 = (d0, d1) -> (d0, d1)
@@ -269,48 +269,70 @@ mlfunc @vec3d(%A : memref<?x?x?xf32>) {
    return
 }
 
-mlfunc @vector_add_2d() -> f32 {
-  %A = alloc () : memref<32x1024xf32, 0>
-  %B = alloc () : memref<32x1024xf32, 0>
-  %C = alloc () : memref<32x1024xf32, 0>
+mlfunc @vector_add_2d(%M : index, %N : index) -> f32 {
+  %A = alloc (%M, %N) : memref<?x?xf32, 0>
+  %B = alloc (%M, %N) : memref<?x?xf32, 0>
+  %C = alloc (%M, %N) : memref<?x?xf32, 0>
   %f1 = constant 1.0 : f32
   %f2 = constant 2.0 : f32
-  for %i0 = 0 to 32 {
-    for %i1 = 0 to 1024 {
+  for %i0 = 0 to %M {
+    for %i1 = 0 to %N {
       // VEC1D: [[C1:%.*]] = constant splat<vector<128xf32>, 1.000000e+00> : vector<128xf32>
-      // VEC1D: "vector_transfer_write"([[C1]], {{.*}}) : (vector<128xf32>, memref<32x1024xf32>, index, index) -> ()
+      // VEC1D: "vector_transfer_write"([[C1]], {{.*}}) : (vector<128xf32>, memref<?x?xf32>, index, index) -> ()
       // VEC2D: [[C1:%.*]] = constant splat<vector<32x256xf32>, 1.000000e+00> : vector<32x256xf32>
-      // VEC2D: "vector_transfer_write"([[C1]], {{.*}}) : (vector<32x256xf32>, memref<32x1024xf32>, index, index) -> ()
-      store %f1, %A[%i0, %i1] : memref<32x1024xf32, 0>
+      // VEC2D: "vector_transfer_write"([[C1]], {{.*}}) : (vector<32x256xf32>, memref<?x?xf32>, index, index) -> ()
+      // non-scoped %f1
+      store %f1, %A[%i0, %i1] : memref<?x?xf32, 0>
     }
   }
-  for %i2 = 0 to 32 {
-    for %i3 = 0 to 1024 {
+  for %i2 = 0 to %M {
+    for %i3 = 0 to %N {
       // VEC1D: [[C3:%.*]] = constant splat<vector<128xf32>, 2.000000e+00> : vector<128xf32>
-      // VEC1D: "vector_transfer_write"([[C3]], {{.*}}) : (vector<128xf32>, memref<32x1024xf32>, index, index) -> ()
+      // VEC1D: "vector_transfer_write"([[C3]], {{.*}}) : (vector<128xf32>, memref<?x?xf32>, index, index) -> ()
       // VEC2D: [[C3:%.*]] = constant splat<vector<32x256xf32>, 2.000000e+00> : vector<32x256xf32>
-      // VEC2D: "vector_transfer_write"([[C3]], {{.*}}) : (vector<32x256xf32>, memref<32x1024xf32>, index, index) -> ()
-      store %f2, %B[%i2, %i3] : memref<32x1024xf32, 0>
+      // VEC2D: "vector_transfer_write"([[C3]], {{.*}}) : (vector<32x256xf32>, memref<?x?xf32>, index, index) -> ()
+      // non-scoped %f2
+      store %f2, %B[%i2, %i3] : memref<?x?xf32, 0>
     }
   }
-  for %i4 = 0 to 32 {
-    for %i5 = 0 to 1024 {
-      // VEC1D: [[A5:%.*]] = "vector_transfer_read"(%0, {{.*}}) : (memref<32x1024xf32>, index, index) -> vector<128xf32>
-      // VEC1D: [[B5:%.*]] = "vector_transfer_read"(%1, {{.*}}) : (memref<32x1024xf32>, index, index) -> vector<128xf32>
+  for %i4 = 0 to %M {
+    for %i5 = 0 to %N {
+      //
+      // VEC1D: [[A5:%.*]] = "vector_transfer_read"(%0, {{.*}}) : (memref<?x?xf32>, index, index) -> vector<128xf32>
+      // VEC1D: [[B5:%.*]] = "vector_transfer_read"(%1, {{.*}}) : (memref<?x?xf32>, index, index) -> vector<128xf32>
       // VEC1D: [[S5:%.*]] = addf [[A5]], [[B5]] : vector<128xf32>
-      // VEC1D: "vector_transfer_write"([[S5]], {{.*}}) : (vector<128xf32>, memref<32x1024xf32>, index, index) -> ()
-      // VEC2D: [[A5:%.*]] = "vector_transfer_read"(%0, {{.*}}) : (memref<32x1024xf32>, index, index) -> vector<32x256xf32>
-      // VEC2D: [[B5:%.*]] = "vector_transfer_read"(%1, {{.*}}) : (memref<32x1024xf32>, index, index) -> vector<32x256xf32>
+      // VEC1D: [[SPLAT1:%.*]] = constant splat<vector<128xf32>, 1.000000e+00> : vector<128xf32>
+      // VEC1D: [[S6:%.*]] = addf [[S5]], [[SPLAT1]] : vector<128xf32>
+      // VEC1D: [[SPLAT2:%.*]] = constant splat<vector<128xf32>, 2.000000e+00> : vector<128xf32>
+      // VEC1D: [[S7:%.*]] = addf [[S5]], [[SPLAT2]] : vector<128xf32>
+      // VEC1D: [[S8:%.*]] = addf [[S7]], [[S6]] : vector<128xf32>
+      // VEC1D: "vector_transfer_write"([[S8]], {{.*}}) : (vector<128xf32>, memref<?x?xf32>, index, index) -> ()
+      //
+      // VEC2D: [[A5:%.*]] = "vector_transfer_read"(%0, {{.*}}) : (memref<?x?xf32>, index, index) -> vector<32x256xf32>
+      // VEC2D: [[B5:%.*]] = "vector_transfer_read"(%1, {{.*}}) : (memref<?x?xf32>, index, index) -> vector<32x256xf32>
       // VEC2D: [[S5:%.*]] = addf [[A5]], [[B5]] : vector<32x256xf32>
-      // VEC2D: "vector_transfer_write"([[S5]], {{.*}}) : (vector<32x256xf32>, memref<32x1024xf32>, index, index) -> ()
-      %a5 = load %A[%i4, %i5] : memref<32x1024xf32, 0>
-      %b5 = load %B[%i4, %i5] : memref<32x1024xf32, 0>
+      // VEC2D: [[SPLAT1:%.*]] = constant splat<vector<32x256xf32>, 1.000000e+00> : vector<32x256xf32>
+      // VEC2D: [[S6:%.*]] = addf [[S5]], [[SPLAT1]] : vector<32x256xf32>
+      // VEC2D: [[SPLAT2:%.*]] = constant splat<vector<32x256xf32>, 2.000000e+00> : vector<32x256xf32>
+      // VEC2D: [[S7:%.*]] = addf [[S5]], [[SPLAT2]] : vector<32x256xf32>
+      // VEC2D: [[S8:%.*]] = addf [[S7]], [[S6]] : vector<32x256xf32>
+      // VEC2D: "vector_transfer_write"([[S8]], {{.*}}) : (vector<32x256xf32>, memref<?x?xf32>, index, index) -> ()
+      //
+      %a5 = load %A[%i4, %i5] : memref<?x?xf32, 0>
+      %b5 = load %B[%i4, %i5] : memref<?x?xf32, 0>
       %s5 = addf %a5, %b5 : f32
-      store %s5, %C[%i4, %i5] : memref<32x1024xf32, 0>
+      // non-scoped %f1
+      %s6 = addf %s5, %f1 : f32
+      // non-scoped %f2
+      %s7 = addf %s5, %f2 : f32
+      // diamond dependency.
+      %s8 = addf %s7, %s6 : f32
+      store %s8, %C[%i4, %i5] : memref<?x?xf32, 0>
     }
   }
   %c7 = constant 7 : index
   %c42 = constant 42 : index
-  %res = load %C[%c7, %c42] : memref<32x1024xf32, 0>
+  %res = load %C[%c7, %c42] : memref<?x?xf32, 0>
   return %res : f32
 }
+
