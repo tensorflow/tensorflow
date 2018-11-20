@@ -982,11 +982,13 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
       // Graph is not modified.
       LOG(WARNING) << msg << " failed: " << status << ". Fallback to TF...";
     }
-    msg = "Segment consists of nodes: ";
-    for (const string& node_name : converted_segments.at(i).first) {
-      StrAppend(&msg, node_name, ", ");
+    if (VLOG_IS_ON(1)) {
+      msg = "Segment consists of nodes: ";
+      for (const string& node_name : converted_segments.at(i).first) {
+        StrAppend(&msg, node_name, ", ");
+      }
+      VLOG(1) << msg;
     }
-    VLOG(1) << msg;
   }
   cudaSetDevice(old_cuda_device);
   graph.ToGraphDef(params.output_graph_def);
