@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import logging
 
+from absl.testing import parameterized
+
 import numpy as np
 
 from tensorflow.python import keras
@@ -33,11 +35,18 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
-class TestTrainingWithDatasetIterators(test.TestCase):
+class TestTrainingWithDatasetIterators(test.TestCase, parameterized.TestCase):
 
+  @parameterized.parameters(
+      {'model': 'functional'},
+      {'model': 'subclass'},
+  )
   @tf_test_util.run_in_graph_and_eager_modes
-  def test_training_and_eval_methods_on_iterators_single_io(self):
-    model = testing_utils.get_small_functional_mlp(1, 4, input_dim=3)
+  def test_training_and_eval_methods_on_iterators_single_io(self, model):
+    if model == 'functional':
+      model = testing_utils.get_small_functional_mlp(1, 4, input_dim=3)
+    elif model == 'subclass':
+      model = testing_utils.get_small_sequential_mlp(1, 4)
     optimizer = RMSPropOptimizer(learning_rate=0.001)
     loss = 'mse'
     metrics = ['mae', metrics_module.CategoricalAccuracy()]
