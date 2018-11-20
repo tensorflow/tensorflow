@@ -794,11 +794,29 @@ class NNTest(PForTest):
   def test_max_pool(self):
     x = random_ops.random_uniform([3, 2, 12, 12, 3])
     ksize = [1, 3, 3, 1]
+    strides = [1, 2, 2, 1]
 
     def loop_fn(i):
       x1 = array_ops.gather(x, i)
       output = nn.max_pool(
-          x1, ksize, strides=[1, 2, 2, 1], padding="VALID", data_format="NHWC")
+          x1, ksize, strides=strides, padding="VALID", data_format="NHWC")
+      loss = nn.l2_loss(output)
+      ones = array_ops.ones_like(output)
+      grad = gradient_ops.gradients(loss, x1, grad_ys=ones)
+      grad_grad = gradient_ops.gradients(grad, ones)
+      return output, grad, grad_grad
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
+
+  def test_max_pool3d(self):
+    x = random_ops.random_uniform([3, 3, 2, 12, 12, 3])
+    ksize = [1, 1, 3, 3, 1]
+    strides = [1, 1, 2, 2, 1]
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      output = nn.max_pool3d(
+          x1, ksize, strides=strides, padding="VALID", data_format="NDHWC")
       loss = nn.l2_loss(output)
       ones = array_ops.ones_like(output)
       grad = gradient_ops.gradients(loss, x1, grad_ys=ones)
