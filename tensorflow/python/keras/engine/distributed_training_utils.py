@@ -401,58 +401,84 @@ def global_batch_size_supported(distribution_strategy):
   return strategy_name in ('TPUStrategy', 'CoreMirroredStrategy')
 
 
-def get_input_batch_params(first_x_value, batch_size, distribution_strategy):
+def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
+                     is_training=False):
   """Calculate the number of batches and steps/steps_per_epoch.
 
   Args:
+    distribution_strategy: The DistributionStrategy used to compile the model.
     first_x_value: This is the first input numpy array that is passed in as the
       model input.
-    batch_size: The specified batch_size or the default batch_size of 32.
-    distribution_strategy: The current DistributionStrategy used to compile the
-      model.
+    steps:  The specified number of steps.
+    batch_size: The specified batch_size.
+    is_training: Boolean to relax the constraints on consuming all the training
+      samples to keep compatibility till we support partial batches.
 
   Returns:
-    The steps or steps_per_epoch argument depending on if a user is
-    calling `fit`, `evaluate` or `predict`.
+    steps: The steps or steps_per_epoch argument depending on if a user is
+        calling `fit`, `evaluate` or `predict`. If the is_training flag is set
+        we don't require the number of samples to be used completely.
+    batch_size: The batch size to be used in model iterations.
 
   Raises:
     ValueError: If the number of batches or steps evaluates to 0.
 
   """
-  if batch_size is None:
-    # Default the global batch size to the minimum of 32 and the size of
-    # the numpy array. 32 is chosen to guarantee backward compatibility.
-    batch_size = min(first_x_value.shape[0], 32)
-    if not global_batch_size_supported(distribution_strategy):
-      if batch_size % distribution_strategy.num_replicas_in_sync:
-        raise ValueError(
-            'The batch size (%s) could not be sharded evenly across the sync '
-            'replicas (%s) in the distribution strategy.' % (
-                batch_size, distribution_strategy.num_replicas_in_sync))
-      batch_size = batch_size // distribution_strategy.num_replicas_in_sync
+  num_samples = first_x_value.shape[0]
+  # TODO(b/118776054): Use global batch size for Keras/DS support.
+  # Currently this is only supported in TPUStrategy and CoreMirroredStrategy.
+  use_per_replica_batch = not global_batch_size_supported(
+      distribution_strategy)
 
-  # Calculate number of global batches
-  if first_x_value.shape[0] % batch_size:
-    raise ValueError('The number of samples is not divisible by batch size.')
-  num_batches = first_x_value.shape[0] // batch_size
-  if not num_batches:
-    raise ValueError('Please specify a batch_size that is smaller than '
-                     'the number of input samples %d.' % first_x_value.shape[0])
-
-  # Number of steps required to run needs to be divide by the number of replicas
-  # if global batch size is not supported.
-  if global_batch_size_supported(distribution_strategy):
-    steps = num_batches
+  if steps is None:
+    if batch_size is None:
+      # If neither the batch size or number of steps are set. We choose the
+      # global batch size as the minimum of number of samples and 32. 32 is
+      # chosen to provide backward compatibility.
+      global_batch_size = min(num_samples, 32)
+    else:
+      # If the user provided the batch size we need to handle the case
+      # between different strategies that use the global/per-replica batch size
+      global_batch_size = batch_size
+      if use_per_replica_batch:
+        global_batch_size *= distribution_strategy.num_replicas_in_sync
+    if not is_training and num_samples % global_batch_size:
+      raise ValueError('The number of samples %s is not divisible by '
+                       'batch size %s.' % (num_samples, global_batch_size))
+    steps = num_samples // global_batch_size
   else:
-    steps = num_batches // distribution_strategy.num_replicas_in_sync
-  if not steps:
-    # TODO(anjalisridhar): Number of replicas in the error message may not
-    # convey what we want to the user. Is there another terminology that we can
-    # use that is consistent across different strategies?
-    raise ValueError('The number of batches %d is smaller than the number '
-                     'of replicas %d used for DistributionStrategy. ' %
-                     (num_batches, distribution_strategy.num_replicas_in_sync))
-  return steps
+    if batch_size is None:
+      # We calculate the batch size based on the number of steps specified
+      if num_samples % steps:
+        raise ValueError('The number of samples %s is not divisible by '
+                         'steps %s. Please change the number of steps to a '
+                         'value that can consume all the samples' % (
+                             num_samples, steps))
+      global_batch_size = num_samples // steps
+    else:
+      # If the user provided the batch size we need to handle the case
+      # between different strategies that use the global/per-replica batch size
+      global_batch_size = batch_size
+      if use_per_replica_batch:
+        global_batch_size *= distribution_strategy.num_replicas_in_sync
+
+      if num_samples < (global_batch_size * steps):
+        raise ValueError('Number of samples %s is less than samples required '
+                         'for specified batch_size %s and steps %s' % (
+                             num_samples, global_batch_size, steps))
+
+  # We need to return the per replica or global batch size based on the strategy
+  if use_per_replica_batch:
+    if global_batch_size % distribution_strategy.num_replicas_in_sync:
+      raise ValueError(
+          'The batch size (%s) could not be sharded evenly across the sync '
+          'replicas (%s) in the distribution strategy.' % (
+              global_batch_size, distribution_strategy.num_replicas_in_sync))
+    batch_size = global_batch_size // distribution_strategy.num_replicas_in_sync
+  else:
+    batch_size = global_batch_size
+
+  return steps, batch_size
 
 
 def get_batch_dimension(iterator):
@@ -461,43 +487,6 @@ def get_batch_dimension(iterator):
   # all.
   dims = shapes[0].dims
   return dims[0] if dims else None
-
-
-def get_batch_size(distribution_strategy, num_samples, steps):
-  """Calculate and return batch size for numpy inputs.
-
-  Args:
-    distribution_strategy: The current DistributionStrategy used to compile the
-      model.
-    num_samples: Total number of input samples in the input numpy arrays.
-    steps: Number of steps that we run the model for.
-
-  Returns:
-    batch size used to create the Dataset object from the input numpy arrays.
-
-  """
-  if num_samples % steps != 0:
-    logging.warning('The number of input samples %d is not evenly '
-                    'divisible by the number of steps %d. '
-                    'Some samples will not be processed as expected.' %
-                    (num_samples, steps))
-  global_batch_size = num_samples // steps
-
-  # TODO(b/118776054): Use global batch size for Keras/DS support.
-  # The Keras API supports using the global batch size which is currently only
-  # supported in TPU Strategy. For other strategies we use a per_replica
-  # batch size so we need to divide it by the number of replicas.
-  if global_batch_size_supported(distribution_strategy):
-    return global_batch_size
-
-  num_replicas = distribution_strategy.num_replicas_in_sync
-  if global_batch_size % num_replicas != 0:
-    logging.warning('The total number of batches per step %d is not evenly '
-                    'divisible by the number of replicas %d used in '
-                    'DistributionStrategy. Some samples will not be processed '
-                    'as expected.' %
-                    (global_batch_size, num_replicas))
-  return global_batch_size // num_replicas
 
 
 def get_cpu_device(distribution_strategy):
