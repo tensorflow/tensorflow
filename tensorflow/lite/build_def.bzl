@@ -297,6 +297,7 @@ def generated_test_models():
         "squeeze",
         "strided_slice",
         "strided_slice_1d_exhaustive",
+        "strided_slice_buggy",
         "sub",
         "tile",
         "topk",
