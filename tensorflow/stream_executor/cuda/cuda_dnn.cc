@@ -824,6 +824,8 @@ cudnnDataType_t ToCudnnDataType(
     case dnn::DataType::kInt8:
       return data_layout == dnn::DataLayout::kBatchDepthYX4 ? CUDNN_DATA_INT8x4
                                                             : CUDNN_DATA_INT8;
+    case dnn::DataType::kInt32:
+      return CUDNN_DATA_INT32;
     default:
       LOG(FATAL) << "Invalid DNN data type: " << static_cast<int>(data_type);
   }
