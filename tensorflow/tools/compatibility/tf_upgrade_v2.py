@@ -31,6 +31,15 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Maps from a function name to a dictionary that describes how to
     # map from an old argument keyword to the new argument keyword.
     self.function_keyword_renames = {
+        "tf.image.crop_and_resize": {
+            "box_ind": "box_indices",
+        },
+        "tf.image.extract_image_patches": {
+            "ksizes": "sizes",
+        },
+        "tf.extract_image_patches": {
+            "ksizes": "sizes",
+        },
         "tf.expand_dims": {
             "dim": "axis",
         },
