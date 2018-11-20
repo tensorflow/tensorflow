@@ -38,7 +38,7 @@ message RewriterConfig {
   }
 
   // Enum controlling the number of times to run optimizers. The default is to
-  // run them once.
+  // run them twice.
   enum NumIterationsType {
     DEFAULT_NUM_ITERS = 0;
     ONE = 1;
