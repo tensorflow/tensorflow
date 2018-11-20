@@ -307,9 +307,9 @@ class AssertNoneEqualTest(test.TestCase):
 
   def test_error_message_eager(self):
     # Note that the following three strings are regexes
-    expected_error_msg_full = r"""\[0\. 1\. 2\. 3\. 4\. 5\.\]"""
-    expected_error_msg_default = r"""\[0\. 1\. 2\.\]"""
-    expected_error_msg_short = r"""\[0\. 1\.\]"""
+    expected_error_msg_full = r"""\[ *0\. +1\. +2\. +3\. +4\. +5\.\]"""
+    expected_error_msg_default = r"""\[ *0\. +1\. +2\.\]"""
+    expected_error_msg_short = r"""\[ *0\. +1\.\]"""
     with context.eager_mode():
       t = constant_op.constant(
           np.array(range(6)), shape=[2, 3], dtype=np.float32)
