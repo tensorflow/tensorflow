@@ -204,10 +204,10 @@ class DistributeCoordinatorIntegrationTest(test.TestCase,
     train_input_fn = self.dataset_input_fn(
         x={"x": DATA},
         y=DATA,
-        batch_size=BATCH_SIZE // len(train_distribute.worker_devices),
+        batch_size=BATCH_SIZE // train_distribute.num_replicas_in_sync,
         shuffle=True)
     if eval_distribute:
-      eval_batch_size = BATCH_SIZE // len(eval_distribute.worker_devices)
+      eval_batch_size = BATCH_SIZE // eval_distribute.num_replicas_in_sync
     else:
       eval_batch_size = BATCH_SIZE
     eval_input_fn = self.dataset_input_fn(

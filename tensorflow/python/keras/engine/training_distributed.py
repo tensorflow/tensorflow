@@ -109,7 +109,7 @@ def experimental_fit_loop(model,
         mode=_Mode.TRAIN)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
-     grouped_session_args) = current_strategy.call_for_each_replica(
+     grouped_session_args) = current_strategy.extended.call_for_each_replica(
          _per_device_fit_function, args=(model._grouped_model_train,))
     (all_inputs, all_outputs, all_updates,
      all_session_args) = distributed_training_utils.unwrap_values(
@@ -152,7 +152,7 @@ def experimental_fit_loop(model,
       name='steps_per_run')
 
   with current_strategy.scope():
-    ctx = current_strategy.run_steps_on_dataset(
+    ctx = current_strategy.extended.experimental_run_steps_on_iterator(
         step_fn, iterator, iterations=steps_per_run,
         initial_loop_values=initial_loop_values)
 
@@ -300,7 +300,7 @@ def experimental_test_loop(model,
         mode=_Mode.TEST)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
-     grouped_session_args) = current_strategy.call_for_each_replica(
+     grouped_session_args) = current_strategy.extended.call_for_each_replica(
          _per_device_eval_function, args=(model._grouped_model_test,))
 
     (all_inputs, all_outputs, all_updates,
@@ -335,7 +335,7 @@ def experimental_test_loop(model,
   with current_strategy.scope():
     # TODO(priyag): Use steps_per_run when we use new metrics as they will
     # allow handling metric computation at each step using variables.
-    ctx = current_strategy.run_steps_on_dataset(
+    ctx = current_strategy.extended.experimental_run_steps_on_iterator(
         step_fn, iterator, iterations=1,
         initial_loop_values=initial_loop_values)
 
@@ -414,7 +414,7 @@ def experimental_predict_loop(model, iterator, verbose=0, steps=None):
         mode=_Mode.PREDICT)
 
     (grouped_inputs, grouped_outputs, grouped_updates,
-     grouped_session_args) = current_strategy.call_for_each_replica(
+     grouped_session_args) = current_strategy.extended.call_for_each_replica(
          _per_device_predict_function, args=(model._grouped_model_predict,))
 
     (all_inputs, all_outputs, all_updates,
@@ -445,7 +445,7 @@ def experimental_predict_loop(model, iterator, verbose=0, steps=None):
 
   with current_strategy.scope():
     # TODO(priyag, sourabhbajaj): Support steps_per_run if/when we add outfeed.
-    ctx = current_strategy.run_steps_on_dataset(
+    ctx = current_strategy.extended.experimental_run_steps_on_iterator(
         step_fn, iterator, iterations=1,
         initial_loop_values=initial_loop_values)
 
@@ -528,7 +528,7 @@ def clone_model_on_replicas(model, strategy, make_callback_model=False,
                             inputs=None, targets=None, mode=None):
   """Create a cloned model on each replica."""
   with strategy.scope():
-    grouped_model = strategy.call_for_each_replica(
+    grouped_model = strategy.extended.call_for_each_replica(
         _clone_and_build_model, args=(model, inputs, targets))
     if mode is _Mode.TRAIN:
       model._grouped_model_train = grouped_model
@@ -583,7 +583,7 @@ def _get_execution_function(model, mode):
     # Create train ops on each of the devices when we call
     # `_per_device_fit_function`.
     (grouped_inputs, grouped_outputs, grouped_updates,
-     grouped_session_args) = strategy.call_for_each_replica(
+     grouped_session_args) = strategy.extended.call_for_each_replica(
          _per_device_function, args=(model._grouped_model,))
 
     if mode == 'train':

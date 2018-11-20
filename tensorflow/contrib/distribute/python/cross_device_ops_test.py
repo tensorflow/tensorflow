@@ -119,7 +119,7 @@ class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
               sess.run(list(left._index.values())), list(right._index.values()))
 
   def _testReductionAndBroadcast(self, cross_device_ops, distribution):
-    devices = distribution.worker_devices
+    devices = distribution.extended.worker_devices
 
     values = [constant_op.constant(float(d)) for d in range(len(devices))]
     per_replica = _make_per_replica(values, devices)

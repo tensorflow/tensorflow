@@ -249,7 +249,7 @@ class CollectiveAllReduceStrategyTestBase(
                               expected_values):
     distribution, master_target, config = self._get_test_object(
         task_type, task_id, num_gpus)
-    devices = distribution.worker_devices
+    devices = distribution.extended.worker_devices
 
     with ops.Graph().as_default(), \
          self.cached_session(config=config,
