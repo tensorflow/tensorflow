@@ -35,7 +35,7 @@ namespace tflite {
 Interpreter::Interpreter(ErrorReporter* error_reporter)
     : error_reporter_(error_reporter ? error_reporter
                                      : DefaultErrorReporter()) {
-  subgraphs_.emplace_back(error_reporter_, external_contexts_);
+  subgraphs_.emplace_back(new Subgraph(error_reporter_, external_contexts_));
   context_ = primary_subgraph().context();
 
   // Reserve some space for the tensors to avoid excessive resizing.
@@ -136,7 +136,7 @@ void Interpreter::UseNNAPI(bool enable) { primary_subgraph().UseNNAPI(enable); }
 
 void Interpreter::SetNumThreads(int num_threads) {
   for (auto& subgraph : subgraphs_) {
-    subgraph.context()->recommended_num_threads = num_threads;
+    subgraph->context()->recommended_num_threads = num_threads;
   }
 
   for (int i = 0; i < kTfLiteMaxExternalContexts; ++i) {
@@ -149,7 +149,7 @@ void Interpreter::SetNumThreads(int num_threads) {
 
 void Interpreter::SetAllowFp16PrecisionForFp32(bool allow) {
   for (auto& subgraph : subgraphs_) {
-    subgraph.context()->allow_fp32_relax_to_fp16 = allow;
+    subgraph->context()->allow_fp32_relax_to_fp16 = allow;
   }
 }
 
@@ -191,7 +191,7 @@ TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,
 }
 
 void Interpreter::SetProfiler(profiling::Profiler* profiler) {
-  for (auto& subgraph : subgraphs_) subgraph.SetProfiler(profiler);
+  for (auto& subgraph : subgraphs_) subgraph->SetProfiler(profiler);
 }
 
 profiling::Profiler* Interpreter::GetProfiler() {

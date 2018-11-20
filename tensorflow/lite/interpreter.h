@@ -427,11 +427,11 @@ class Interpreter {
   friend class InterpreterTest;
 
   Subgraph& primary_subgraph() {
-    return subgraphs_.front();  // Safe as subgraphs_ always has 1 entry.
+    return *subgraphs_.front();  // Safe as subgraphs_ always has 1 entry.
   }
 
   const Subgraph& primary_subgraph() const {
-    return subgraphs_.front();  // Safe as subgraphs_ always has 1 entry.
+    return *subgraphs_.front();  // Safe as subgraphs_ always has 1 entry.
   }
 
   // Set the value of an external context.
@@ -470,7 +470,7 @@ class Interpreter {
   TfLiteExternalContext* external_contexts_[kTfLiteMaxExternalContexts];
 
   // Subgraphs
-  std::vector<Subgraph> subgraphs_;
+  std::vector<std::unique_ptr<Subgraph>> subgraphs_;
 };
 
 }  // namespace tflite

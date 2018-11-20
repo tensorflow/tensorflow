@@ -57,7 +57,6 @@ class Subgraph {
   // interpreter.
   TfLiteStatus SetVariables(std::vector<int> variables);
 
-
   // Adds a node with the given parameters and returns the index of the new
   // node in `node_index` (optionally). Interpreter will take ownership of
   // `builtin_data` and destroy it with `free`. Ownership of 'init_data'
@@ -167,7 +166,6 @@ class Subgraph {
     return &nodes_and_registration_[node_index];
   }
 
-
   // Change the dimensionality of a given tensor. Note, this is only acceptable
   // for tensor indices that are inputs.
   // Returns status of failure or success.
@@ -226,7 +224,6 @@ class Subgraph {
     }
     return kTfLiteOk;
   }
-
 
   // The default capacity of `tensors_` vector.
   static constexpr int kTensorsReservedCapacity = 128;
