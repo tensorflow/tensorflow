@@ -227,8 +227,14 @@ public:
   /// index.
   void addSuccessorOperands(unsigned index, ArrayRef<CFGValue *> values);
 
-  /// Erase a specific argument from the arg list.
-  // TODO: void eraseSuccessorOperand(unsigned index, unsigned argIndex);
+  /// Erase a specific operand from the operand list of the successor at
+  /// 'index'.
+  void eraseSuccessorOperand(unsigned succIndex, unsigned opIndex) {
+    assert(succIndex < getNumSuccessors());
+    assert(opIndex < getNumSuccessorOperands(succIndex));
+    eraseOperand(getSuccessorOperandIndex(succIndex) + opIndex);
+    --getTrailingObjects<unsigned>()[succIndex];
+  }
 
   /// Get the index of the first operand of the successor at the provided
   /// index.
@@ -327,6 +333,9 @@ private:
   // Instructions are deleted through the destroy() member because this class
   // does not have a virtual destructor.
   ~Instruction();
+
+  /// Erase the operand at 'index'.
+  void eraseOperand(unsigned index);
 
   friend struct llvm::ilist_traits<Instruction>;
   friend class BasicBlock;

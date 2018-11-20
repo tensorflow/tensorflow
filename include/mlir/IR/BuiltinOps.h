@@ -119,8 +119,8 @@ public:
   /// Add a list of values to the operand list.
   void addOperands(ArrayRef<SSAValue *> values);
 
-  /// Erase a specific argument from the arg list.
-  // TODO: void eraseArgument(int Index);
+  /// Erase the operand at 'index' from the operand list.
+  void eraseOperand(unsigned index);
 
 private:
   friend class Operation;
@@ -207,6 +207,9 @@ public:
   /// Add a list of values to the operand list.
   void addTrueOperands(ArrayRef<SSAValue *> values);
 
+  /// Erase the operand at 'index' from the true operand list.
+  void eraseTrueOperand(unsigned index);
+
   // Accessors for operands to the 'false' destination.
   SSAValue *getFalseOperand(unsigned idx) {
     assert(idx < getNumFalseOperands());
@@ -245,6 +248,9 @@ public:
 
   /// Add a list of values to the false operand list.
   void addFalseOperands(ArrayRef<SSAValue *> values);
+
+  /// Erase the operand at 'index' from the false operand list.
+  void eraseFalseOperand(unsigned index);
 
 private:
   /// Get the index of the first true destination operand.

@@ -113,6 +113,7 @@ public:
     for (auto *value : values)
       addSuccessorOperand(index, value);
   }
+  void eraseSuccessorOperand(unsigned succIndex, unsigned opIndex);
   llvm::iterator_range<const_operand_iterator>
   getSuccessorOperands(unsigned index) const;
   llvm::iterator_range<operand_iterator> getSuccessorOperands(unsigned index);

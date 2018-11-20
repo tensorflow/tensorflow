@@ -63,11 +63,14 @@ public:
 
   bool args_empty() const { return arguments.empty(); }
 
-  /// Add one value to the operand list.
+  /// Add one value to the argument list.
   BBArgument *addArgument(Type type);
 
   /// Add one argument to the argument list for each type specified in the list.
   llvm::iterator_range<args_iterator> addArguments(ArrayRef<Type> types);
+
+  /// Erase the argument at 'index' and remove it from the argument list.
+  void eraseArgument(unsigned index);
 
   unsigned getNumArguments() const { return arguments.size(); }
   BBArgument *getArgument(unsigned i) { return arguments[i]; }
@@ -258,6 +261,11 @@ public:
     return *this;
   }
 
+  /// Get the successor number in the predecessor terminator.
+  unsigned getSuccessorIndex() const {
+    return bbUseIterator->getOperandNumber();
+  }
+
 private:
   using BBUseIterator = SSAValueUseIterator<BasicBlockOperand, Instruction>;
   BBUseIterator bbUseIterator;
@@ -316,6 +324,9 @@ public:
   BlockType *operator*() const {
     return this->object->getSuccessor(this->index);
   }
+
+  /// Get the successor number in the terminator.
+  unsigned getSuccessorIndex() const { return this->index; }
 };
 
 inline auto BasicBlock::succ_begin() const -> const_succ_iterator {

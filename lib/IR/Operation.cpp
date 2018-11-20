@@ -168,6 +168,12 @@ void Operation::addSuccessorOperand(unsigned index, SSAValue *value) {
   return llvm::cast<Instruction>(this)->addSuccessorOperand(
       index, llvm::cast<CFGValue>(value));
 }
+void Operation::eraseSuccessorOperand(unsigned succIndex, unsigned opIndex) {
+  assert(isTerminator() && "Only terminators have successors.");
+  assert(llvm::isa<Instruction>(this) && "Only instructions have successors.");
+  return llvm::cast<Instruction>(this)->eraseSuccessorOperand(succIndex,
+                                                              opIndex);
+}
 auto Operation::getSuccessorOperands(unsigned index) const
     -> llvm::iterator_range<const_operand_iterator> {
   assert(isTerminator() && "Only terminators have successors.");

@@ -211,6 +211,10 @@ void BranchOp::addOperands(ArrayRef<SSAValue *> values) {
   return getOperation()->addSuccessorOperands(0, values);
 }
 
+void BranchOp::eraseOperand(unsigned index) {
+  getOperation()->eraseSuccessorOperand(0, index);
+}
+
 //===----------------------------------------------------------------------===//
 // CondBranchOp
 //===----------------------------------------------------------------------===//
@@ -290,6 +294,10 @@ void CondBranchOp::addTrueOperands(ArrayRef<SSAValue *> values) {
   return getOperation()->addSuccessorOperands(trueIndex, values);
 }
 
+void CondBranchOp::eraseTrueOperand(unsigned index) {
+  getOperation()->eraseSuccessorOperand(trueIndex, index);
+}
+
 unsigned CondBranchOp::getNumFalseOperands() const {
   return getOperation()->getNumSuccessorOperands(falseIndex);
 }
@@ -300,6 +308,10 @@ void CondBranchOp::addFalseOperand(SSAValue *value) {
 
 void CondBranchOp::addFalseOperands(ArrayRef<SSAValue *> values) {
   return getOperation()->addSuccessorOperands(falseIndex, values);
+}
+
+void CondBranchOp::eraseFalseOperand(unsigned index) {
+  getOperation()->eraseSuccessorOperand(falseIndex, index);
 }
 
 //===----------------------------------------------------------------------===//

@@ -188,6 +188,16 @@ Instruction::~Instruction() {
       successor.~BasicBlockOperand();
 }
 
+void Instruction::eraseOperand(unsigned index) {
+  assert(index < operands.size());
+
+  // Shift all operands down by 1.
+  for (unsigned i = index, e = operands.size() - 1; i != e; ++i)
+    operands[i].set(operands[i + 1].get());
+  // Drop the last operand.
+  operands.pop_back();
+}
+
 /// Destroy this instruction.
 void Instruction::destroy() {
   this->~Instruction();
