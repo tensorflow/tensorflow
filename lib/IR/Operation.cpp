@@ -197,6 +197,13 @@ bool Operation::use_empty() const {
   return true;
 }
 
+void Operation::moveBefore(Operation *existingOp) {
+  if (auto *inst = llvm::dyn_cast<Instruction>(this))
+    return inst->moveBefore(llvm::cast<Instruction>(existingOp));
+  return llvm::cast<OperationStmt>(this)->moveBefore(
+      llvm::cast<OperationStmt>(existingOp));
+}
+
 ArrayRef<NamedAttribute> Operation::getAttrs() const {
   if (!attrs)
     return {};

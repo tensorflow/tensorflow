@@ -56,6 +56,7 @@ public:
   using Statement::emitNote;
   using Statement::emitWarning;
   using Statement::getLoc;
+  using Statement::moveBefore;
   using Statement::print;
 
   /// Check if this statement is a return statement.

@@ -120,6 +120,11 @@ public:
   /// Return true if there are no users of any results of this operation.
   bool use_empty() const;
 
+  /// Unlink this operation from its current block and insert it right before
+  /// `existingOp` which may be in the same or another block of the same
+  /// function.
+  void moveBefore(Operation *existingOp);
+
   // Attributes.  Operations may optionally carry a list of attributes that
   // associate constants to names.  Attributes may be dynamically added and
   // removed over the lifetime of an operation.
