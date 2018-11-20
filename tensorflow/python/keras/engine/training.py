@@ -1227,7 +1227,10 @@ class Model(Network):
       # to match the value shapes.
       if not self.inputs:
         is_build_called = True
-        self._set_inputs(x)
+        cast_inputs = x
+        if training_utils.has_tensors(x):
+          cast_inputs = training_utils.cast_if_floating_dtype(x)
+        self._set_inputs(cast_inputs)
     else:
       dict_inputs = isinstance(self.inputs, dict)
     if dict_inputs and context.executing_eagerly():
@@ -1243,6 +1246,8 @@ class Model(Network):
       if not self._is_compiled:
         # On-the-fly compilation of the model.
         # We need to use `y` to set the model targets.
+        if training_utils.has_tensors(y):
+          y = training_utils.cast_if_floating_dtype(y)
         if isinstance(y, (list, tuple)):
           if not all(isinstance(v, np.ndarray) or
                      tensor_util.is_tensor(v) for v in y):
