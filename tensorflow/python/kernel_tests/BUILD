@@ -270,7 +270,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "ctc_loss_op_test",
     size = "small",
     srcs = ["ctc_loss_op_test.py"],
