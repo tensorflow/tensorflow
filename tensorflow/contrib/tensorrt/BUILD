@@ -29,6 +29,10 @@ load(
     "if_tensorrt",
 )
 
+exports_files(glob([
+    "test/testdata/*",
+]))
+
 tf_cuda_cc_test(
     name = "tensorrt_test_cc",
     size = "small",
@@ -491,6 +495,7 @@ cuda_py_tests(
         "test/memory_alignment_test.py",
         "test/multi_connection_neighbor_engine_test.py",
         "test/neighboring_engine_test.py",
+        "test/quantization_test.py",
         "test/rank_two_test.py",
         "test/reshape_transpose_test.py",
         "test/vgg_block_nchw_test.py",
@@ -522,6 +527,30 @@ cuda_py_tests(
         "no_cuda_on_cpu_tap",
         "no_oss",  # TODO(b/117274186): re-enable in OSS after crash fixed
         "no_pip",  # TODO(b/117274186): re-enable in OSS after crash fixed
+        "no_windows",
+        "nomac",
+    ],
+)
+
+cuda_py_test(
+    name = "quantization_mnist_test",
+    srcs = ["test/quantization_mnist_test.py"],
+    additional_deps = [
+        ":tf_trt_integration_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/keras:keras",
+        "//tensorflow/python/estimator:estimator",
+    ],
+    data = [
+        "test/testdata/checkpoint",
+        "test/testdata/model.ckpt-46900.data-00000-of-00001",
+        "test/testdata/model.ckpt-46900.index",
+    ],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_pip",
+        "no_tap",  # It is not able to download the mnist data.
         "no_windows",
         "nomac",
     ],
