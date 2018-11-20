@@ -130,7 +130,7 @@ void GetOutputProperties(const grappler::GraphProperties& graph_properties,
     *dtype = out_shape.dtype();
     *shape = out_shape.shape();
   } else {
-    VLOG(0) << "Unknown output shape" << node->name();
+    LOG(INFO) << "Unknown output shape" << node->name();
     *dtype = node->output_type(out_port);
   }
 }
