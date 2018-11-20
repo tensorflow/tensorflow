@@ -44,7 +44,7 @@ class StructureTest(test.TestCase, parameterized.TestCase):
        [dtypes.float32], [[]]),
       (lambda: sparse_tensor.SparseTensor(
           indices=[[3, 4]], values=[-1], dense_shape=[4, 5]),
-       structure.SparseTensorStructure, [dtypes.variant], [None]),
+       structure.SparseTensorStructure, [dtypes.variant], [[3]]),
       (lambda: (constant_op.constant(37.0), constant_op.constant([1, 2, 3])),
        structure.NestedStructure, [dtypes.float32, dtypes.int32], [[], [3]]),
       (lambda: {
@@ -58,17 +58,14 @@ class StructureTest(test.TestCase, parameterized.TestCase):
                 sparse_tensor.SparseTensor(
                     indices=[[3, 4]], values=[-1], dense_shape=[4, 5]))
       }, structure.NestedStructure,
-       [dtypes.float32, dtypes.variant, dtypes.variant], [[], None, None]))
+       [dtypes.float32, dtypes.variant, dtypes.variant], [[], [3], [3]]))
   def testFlatStructure(self, value_fn, expected_structure, expected_types,
                         expected_shapes):
     value = value_fn()
     s = structure.Structure.from_value(value)
     self.assertIsInstance(s, expected_structure)
     self.assertEqual(expected_types, s._flat_types)
-    for expected, actual in zip(expected_shapes, s._flat_shapes):
-      self.assertTrue(actual.is_compatible_with(expected))
-      self.assertTrue(
-          tensor_shape.as_shape(expected).is_compatible_with(actual))
+    self.assertEqual(expected_shapes, s._flat_shapes)
 
   @parameterized.parameters(
       (lambda: constant_op.constant(37.0), lambda: [

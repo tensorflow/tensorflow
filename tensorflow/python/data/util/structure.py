@@ -208,16 +208,14 @@ class Structure(object):
     flat_ret = []
     for flat_type, flat_shape, flat_class in zip(flat_types, flat_shapes,
                                                  flat_classes):
-      if isinstance(flat_class, Structure):
-        flat_ret.append(flat_class)
-      elif issubclass(flat_class, sparse_tensor_lib.SparseTensor):
+      if issubclass(flat_class, sparse_tensor_lib.SparseTensor):
         flat_ret.append(SparseTensorStructure(flat_type, flat_shape))
       elif issubclass(flat_class, ops.Tensor):
         flat_ret.append(TensorStructure(flat_type, flat_shape))
       else:
         # NOTE(mrry): Since legacy structures produced by iterators only
-        # comprise Tensors, SparseTensors, and nests, we do not need to
-        # support all structure types here.
+        # comprise Tensors, SparseTensors, and nests, we do not need to support
+        # all structure types here.
         raise TypeError(
             "Could not build a structure for output class %r" % flat_type)
 
@@ -383,13 +381,6 @@ class TensorStructure(Structure):
     return self._from_compatible_tensor_list(flat_value)
 
   def _from_compatible_tensor_list(self, flat_value):
-    # TODO(b/112266545): It would be cleaner to create a new `ensure_shape()`
-    # op here and return that, instead of mutating the input's shape using
-    # `Tensor.set_shape()`. However, that would add extra ops on the arguments
-    # of each `tf.data` function, which could impact performance. When this
-    # bug is resolved, we should be able to add the `ensure_shape()` ops and
-    # optimize them away using contextual shape information.
-    flat_value[0].set_shape(self._shape)
     return flat_value[0]
 
   @staticmethod
@@ -415,11 +406,7 @@ class SparseTensorStructure(Structure):
 
   @property
   def _flat_shapes(self):
-    # NOTE(mrry): The default flat shape of a boxed `SparseTensor` is `(3,)`,
-    # but a `SparseTensorStructure` can also represent a batch of boxed
-    # `SparseTensor` objects with shape `(?, 3)` (and batches of batches, etc.),
-    # so the flat shape must be unknown.
-    return [tensor_shape.unknown_shape(None)]
+    return [tensor_shape.vector(3)]
 
   @property
   def _flat_types(self):
@@ -441,11 +428,8 @@ class SparseTensorStructure(Structure):
     return self._from_compatible_tensor_list(flat_value)
 
   def _from_compatible_tensor_list(self, flat_value):
-    ret = sparse_ops.deserialize_sparse(
+    return sparse_ops.deserialize_sparse(
         flat_value[0], dtype=self._dtype, rank=self._dense_shape.ndims)
-    ret.indices.set_shape([None, self._dense_shape.ndims])
-    ret.dense_shape.set_shape([self._dense_shape.ndims])
-    return ret
 
   @staticmethod
   def from_value(value):
