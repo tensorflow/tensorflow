@@ -1091,7 +1091,7 @@ class PolymorphicFunction(object):
       if graph_function is None:
         logging.vlog(1,
                      "Creating new FuncGraph for Python function %r (key: %r)",
-                     self._python_function.__name__, cache_key)
+                     self._python_function, cache_key)
         if self._input_signature is None:
           arglen = len(args)
         else:
