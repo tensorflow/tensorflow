@@ -1110,7 +1110,7 @@ tf_module {
   }
   member_method {
     name: "transpose"
-    argspec: "args=[\'a\', \'perm\', \'name\', \'conjugate\'], varargs=None, keywords=None, defaults=[\'None\', \'transpose\', \'False\'], "
+    argspec: "args=[\'a\', \'perm\', \'conjugate\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'transpose\'], "
   }
   member_method {
     name: "truediv"
@@ -1130,7 +1130,7 @@ tf_module {
   }
   member_method {
     name: "tuple"
-    argspec: "args=[\'tensors\', \'name\', \'control_inputs\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'tensors\', \'control_inputs\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "unique"
@@ -1162,7 +1162,7 @@ tf_module {
   }
   member_method {
     name: "while_loop"
-    argspec: "args=[\'cond\', \'body\', \'loop_vars\', \'shape_invariants\', \'parallel_iterations\', \'back_prop\', \'swap_memory\', \'name\', \'maximum_iterations\', \'return_same_structure\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'True\', \'False\', \'None\', \'None\', \'False\'], "
+    argspec: "args=[\'cond\', \'body\', \'loop_vars\', \'shape_invariants\', \'parallel_iterations\', \'back_prop\', \'swap_memory\', \'maximum_iterations\', \'return_same_structure\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'True\', \'False\', \'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "zeros"
