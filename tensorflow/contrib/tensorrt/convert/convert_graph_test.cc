@@ -85,27 +85,42 @@ TEST(TrtCandidateSelector, Basics) {
       ops::MatMul(s.WithOpName("matmul_with_incompatible_input"),
                   incompatible_feed, const_2);
 
+  // Quantize ops.
+  auto quantize_attrs = ops::FakeQuantWithMinMaxArgs::Min(-6.0f).Max(6.0f);
+  auto quantize = ops::FakeQuantWithMinMaxArgs(s.WithOpName("quantize"), feed,
+                                               quantize_attrs);
+
+  // Get GrapplerItem and GraphProperties.
   grappler::GrapplerItem item;
   TF_EXPECT_OK(s.ToGraphDef(&item.graph));
   Tensor feed_tensor(DT_FLOAT, input_shape);
   item.feed.push_back(std::make_pair("feed", feed_tensor));
-
   grappler::GraphProperties graph_properties(item);
   TF_EXPECT_OK(graph_properties.InferStatically(true));
 
-  TrtCandidateSelector selector(graph_properties);
-  TF_EXPECT_OK(selector.IsTensorRTCandidate(matmul.operation.node()));
-  ExpectStatus(
-      selector.IsTensorRTCandidate(incompatible_matmul.operation.node()),
-      error::INVALID_ARGUMENT,
-      "transpose_a is not supported for TensorRT FullyConnected "
-      "(op: MatMul), at: incompatible_matmul");
-  ExpectStatus(selector.IsTensorRTCandidate(unsupported_op.operation.node()),
-               error::UNIMPLEMENTED, "Op type Sin is not supported");
-  ExpectStatus(selector.IsTensorRTCandidate(
-                   matmul_with_incompatible_input.operation.node()),
-               error::INTERNAL,
-               "Failed to convert input with index 0 to a TRT_TensorOrWeights");
+  for (const int precision_mode : {FP32MODE, INT8MODE}) {
+    TrtCandidateSelector selector(graph_properties, precision_mode);
+    TF_EXPECT_OK(selector.IsTensorRTCandidate(matmul.operation.node()));
+    ExpectStatus(
+        selector.IsTensorRTCandidate(incompatible_matmul.operation.node()),
+        error::INVALID_ARGUMENT,
+        "transpose_a is not supported for TensorRT FullyConnected "
+        "(op: MatMul), at: incompatible_matmul");
+    ExpectStatus(selector.IsTensorRTCandidate(unsupported_op.operation.node()),
+                 error::UNIMPLEMENTED, "Op type Sin is not supported");
+    ExpectStatus(
+        selector.IsTensorRTCandidate(
+            matmul_with_incompatible_input.operation.node()),
+        error::INTERNAL,
+        "Failed to convert input with index 0 to a TRT_TensorOrWeights");
+    if (precision_mode == INT8MODE) {
+      TF_EXPECT_OK(selector.IsTensorRTCandidate(quantize.operation.node()));
+    } else {
+      ExpectStatus(selector.IsTensorRTCandidate(quantize.operation.node()),
+                   error::UNIMPLEMENTED,
+                   "Op type FakeQuantWithMinMaxArgs is not supported");
+    }
+  }
 }
 
 class FakeCluster : public grappler::Cluster {
