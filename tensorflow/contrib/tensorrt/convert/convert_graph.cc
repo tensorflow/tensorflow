@@ -170,7 +170,7 @@ tensorflow::Status BuildNodeMap(
 tensorflow::Status ConvertCalibGraphToInferGraph(
     const tensorflow::GraphDef& graph_def, tensorflow::GraphDef* infer_graph,
     bool is_dyn_op) {
-  VLOG(0) << "Starting Calib Conversion";
+  LOG(INFO) << "Starting Calib Conversion";
   infer_graph->CopyFrom(graph_def);
   auto trt_rm = TRTResourceManager::instance();
   auto calib_rm = trt_rm->getManager("TRTCalibration");
@@ -876,7 +876,7 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
       // need to check the input edges.
       [](const Edge* edge) { return true; }, OutputEdgeValidator(),
       segment_options, &initial_segments));
-  VLOG(0) << "Number of TensorRT candidate segments: "
+  LOG(INFO) << "Number of TensorRT candidate segments: "
     << initial_segments.size();
 
   // Get the EngineInfo for each segment.
