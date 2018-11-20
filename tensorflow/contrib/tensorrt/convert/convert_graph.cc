@@ -970,8 +970,8 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
                                 &graph, alloc.get(), &engine_nodes);
     // If status is ok, we successfully added the node to the graph and can
     // remove segment ops. Otherwise graph is not modified.
-    string msg = StrCat("Added TensorRT node ", engine.engine_name, " for segment ",
-                        i, " consisting ",
+    string msg = StrCat("TensorRT node ", engine.engine_name, " added for segment ",
+                        i, " consisting of ",
                         converted_segments.at(i).first.size(), " nodes");
     if (status.ok()) {
       LOG(INFO) << msg << " succeeded.";
