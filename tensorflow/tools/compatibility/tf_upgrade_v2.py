@@ -219,6 +219,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "data", "indices", "segment_ids", "name", "num_segments"
         ],
         "tf.strings.length": ["input", "name", "unit"],
+        "tf.transpose": ["a", "perm", "name", "conjugate"],
+        "tf.tuple": ["tensors", "name", "control_inputs"],
+        "tf.while_loop": ["cond", "body", "loop_vars", "shape_invariants",
+                          "parallel_iterations", "back_prop", "swap_memory",
+                          "name", "maximum_iterations",
+                          "return_same_structure"],
     }
 
     # Specially handled functions.
