@@ -46,7 +46,7 @@ namespace mlir {
 ///  struct DimExprCounter : public AffineExprVisitor<DimExprCounter> {
 ///    unsigned numDimExprs;
 ///    DimExprCounter() : numDimExprs(0) {}
-///    void visitAffineDimExpr(AffineDimExpr expr) { ++numDimExprs; }
+///    void visitDimExpr(AffineDimExpr expr) { ++numDimExprs; }
 ///  };
 ///
 ///  And this class would be used like this:
@@ -184,8 +184,8 @@ public:
     static_cast<SubClass *>(this)->visitAffineBinaryOpExpr(expr);
   }
   void visitConstantExpr(AffineConstantExpr expr) {}
-  void visitAffineDimExpr(AffineDimExpr expr) {}
-  void visitAffineSymbolExpr(AffineSymbolExpr expr) {}
+  void visitDimExpr(AffineDimExpr expr) {}
+  void visitSymbolExpr(AffineSymbolExpr expr) {}
 
 private:
   // Walk the operands - each operand is itself walked in post order.
