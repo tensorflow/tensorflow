@@ -26,9 +26,9 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export("data.experimental.enumerate_dataset")
 def enumerate_dataset(start=0):
-  """A transformation that enumerate the elements of a dataset.
+  """A transformation that enumerates the elements of a dataset.
 
-  It is Similar to python's `enumerate`.
+  It is similar to python's `enumerate`.
   For example:
 
   ```python
