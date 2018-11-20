@@ -760,6 +760,9 @@ class CategoricalAccuracy(MeanMetricWrapper):
   ultimately returned as `categorical accuracy`: an idempotent operation that
   simply divides `total` by `count`.
 
+  `y_pred` and `y_true` should be passed in as vectors of probabilities, rather
+  than as labels. If necessary, use `tf.one_hot` to expand `y_true` as a vector.
+
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
   """
