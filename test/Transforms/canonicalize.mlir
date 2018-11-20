@@ -46,7 +46,6 @@ mlfunc @test_commutative(%arg0: i32) -> (i32, i32) {
 // CHECK-LABEL: mlfunc @trivial_dce
 mlfunc @trivial_dce(%arg0: tensor<8x4xf32>) {
   %0 = dim %arg0, 1 : tensor<8x4xf32>
-  %1 = alloc() : memref<1024xf32>
   // CHECK-NEXT: return
   return
 }
@@ -146,18 +145,21 @@ mlfunc @dyn_shape_fold(%L : index, %M : index) -> memref<? x ? x f32> {
   // CHECK-NEXT: %1 = alloc(%arg1) : memref<4x1024x8x512x?xf32>
   %b = alloc(%N, %K, %M) : memref<4 x ? x 8 x ? x ? x f32>
 
+  // CHECK-NEXT: %2 = alloc() : memref<512x1024xi32>
+  %c = alloc(%K, %N) : memref<? x ? x i32>
+
   // CHECK: for %i0 =
   for %i = 0 to %L {
     // CHECK-NEXT: for %i1 =
     for %j = 0 to 10 {
-      // CHECK-NEXT: %2 = load %0[%i0, %i1] : memref<?x1024xf32>
-      // CHECK-NEXT: store %2, %1[%c0, %c0, %i0, %i1, %c0] : memref<4x1024x8x512x?xf32>
+      // CHECK-NEXT: %3 = load %0[%i0, %i1] : memref<?x1024xf32>
+      // CHECK-NEXT: store %3, %1[%c0, %c0, %i0, %i1, %c0] : memref<4x1024x8x512x?xf32>
       %v = load %a[%i, %j] : memref<?x?xf32>
       store %v, %b[%zero, %zero, %i, %j, %zero] : memref<4x?x8x?x?xf32>
     }
   }
 
-  // CHECK: %3 = alloc() : memref<9x9xf32>
+  // CHECK: %4 = alloc() : memref<9x9xf32>
   %d = alloc(%nine, %nine) : memref<? x ? x f32>
 
   return %d : memref<? x ? x f32>
