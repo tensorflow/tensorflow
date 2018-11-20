@@ -303,58 +303,21 @@ class CoreMirroredStrategy(distribute_lib.DistributionStrategy):
   This strategy uses one replica per device and sync replication for its
   multi-GPU version.
 
-  When `cluster_spec` is given by the `configure` method., it turns into the
-  mulit-worker version that works on multiple workers with in-graph replication.
-  Note: `configure` will be called by higher-level APIs if running in
-  distributed environment.
-
-  There are several important concepts for distributed TensorFlow, e.g.
-  `client`, `job`, 'task', `cluster`, `in-graph replication` and
-  'synchronous training' and they have already been defined in the
-  [TensorFlow's documentation](https://www.tensorflow.org/deploy/distributed).
-  The distribution strategy inherits these concepts as well and in addition to
-  that we also clarify several more concepts:
-
-  * **In-graph replication**: the `client` creates a single `tf.Graph` that
-    specifies tasks for devices on all workers. The `client` then creates a
-    client session which will talk to the `master` service of a `worker`. Then
-    the `master` will partition the graph and distribute the work to all
-    participating workers.
-  * **Worker**: A `worker` is a TensorFlow `task` that usually maps to one
-    physical machine. We will have multiple `worker`s with different `task`
-    index. They all do similar things except for one worker checkpointing model
-    variables, writing summaries, etc. in addition to its ordinary work.
-
-  The multi-worker version of this class maps one replica to one device on a
-  worker. It mirrors all model variables on all replicas. For example, if you
-  have two `worker`s and each `worker` has 4 GPUs, it will create 8 copies of
-  the model variables on these 8 GPUs. Then like in MirroredStrategy, each
-  replica performs their computation with their own copy of variables unless in
-  cross-replica model where variable or tensor reduction happens.
+  The multi-worker version will be added in the fture.
 
   Args:
     devices: a list of device strings.
-    num_gpus: number of GPUs. For local training, either specify `devices` or
-      `num_gpus`. In distributed training, this must be specified as number of
-      GPUs on each worker.
-    num_gpus_per_worker: number of GPUs per worker. This is the same as
-      `num_gpus` and only one of `num_gpus` and `num_gpus_per_worker` can be
-      specified.
+    num_gpus_per_worker: number of GPUs per worker.
     cross_device_ops: optional, a descedant of `CrossDeviceOps`. If this is not
-      set, the `configure` method will try to find the best one.
-    auto_shard_dataset: whether to auto-shard the dataset when there are
-      multiple workers.
+      set, nccl will be use by default.
   """
 
   def __init__(self,
                devices=None,
-               num_gpus=None,
                num_gpus_per_worker=None,
-               cross_device_ops=None,
-               auto_shard_dataset=False):
-    extended = CoreMirroredExtended(
-        self, devices, num_gpus, num_gpus_per_worker,
-        cross_device_ops, auto_shard_dataset)
+               cross_device_ops=None):
+    extended = CoreMirroredExtended(self, devices, num_gpus_per_worker,
+                                    cross_device_ops)
     super(CoreMirroredStrategy, self).__init__(extended)
 
 
@@ -364,21 +327,12 @@ class CoreMirroredExtended(distribute_lib.DistributionStrategyExtended):
   def __init__(self,
                container_strategy,
                devices=None,
-               num_gpus=None,
                num_gpus_per_worker=None,
-               cross_device_ops=None,
-               auto_shard_dataset=False):
+               cross_device_ops=None):
     super(CoreMirroredExtended, self).__init__(container_strategy)
     self._cross_device_ops = cross_device_ops
-    self._auto_shard_dataset = auto_shard_dataset
     # Remember num GPUs which might be needed by `configure` method.
-    if num_gpus is not None and num_gpus_per_worker is not None:
-      raise ValueError(
-          "You cannot specify both `num_gpus` and `num_gpus_per_worker`.")
-    if num_gpus is not None:
-      self._num_gpus = num_gpus
-    else:
-      self._num_gpus = num_gpus_per_worker
+    self._num_gpus = num_gpus_per_worker
 
     self._initialize_local(self._num_gpus, devices)
 
@@ -493,8 +447,9 @@ class CoreMirroredExtended(distribute_lib.DistributionStrategyExtended):
   def _distribute_dataset(self, dataset_fn):
     if self._cluster_spec:
       return values.MultiWorkerDataset(
-          partial(self._call_dataset_fn, dataset_fn), self._worker_devices,
-          auto_shard=self._auto_shard_dataset)
+          partial(self._call_dataset_fn, dataset_fn),
+          self._worker_devices,
+          auto_shard=False)
     else:
       return values.PerReplicaDataset(
           self._call_dataset_fn(dataset_fn), self._devices)
@@ -873,26 +828,29 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
                auto_shard_dataset=False,
                cross_tower_ops=None):
     assert not (cross_device_ops and cross_tower_ops)
-    extended = MirroredExtended(
-        self, devices, num_gpus, num_gpus_per_worker,
-        cross_device_ops or cross_tower_ops, auto_shard_dataset)
+    if num_gpus is not None and num_gpus_per_worker is not None:
+      raise ValueError(
+          "You cannot specify both `num_gpus` and `num_gpus_per_worker`.")
+    if num_gpus is None:
+      num_gpus = num_gpus_per_worker
+    extended = MirroredExtended(self, devices, num_gpus,
+                                cross_device_ops or cross_tower_ops,
+                                auto_shard_dataset)
     super(MirroredStrategy, self).__init__(extended)
 
 
 class MirroredExtended(CoreMirroredExtended):
   """Implementation of (contrib) MirroredStrategy."""
 
-  # pylint: disable=useless-super-delegation
   def __init__(self,
                container_strategy,
                devices=None,
-               num_gpus=None,
                num_gpus_per_worker=None,
                cross_device_ops=None,
                auto_shard_dataset=False):
     super(MirroredExtended, self).__init__(
-        container_strategy, devices, num_gpus, num_gpus_per_worker,
-        cross_device_ops, auto_shard_dataset)
+        container_strategy, devices, num_gpus_per_worker, cross_device_ops)
+    self._auto_shard_dataset = auto_shard_dataset
 
   def _make_dataset_iterator(self, dataset):
     """Make iterator from dataset without splitting the batch.
@@ -911,6 +869,16 @@ class MirroredExtended(CoreMirroredExtended):
     else:
       worker_device_pairs = [("/job:localhost", self._devices)]
     return values.DatasetIterator(dataset, worker_device_pairs)
+
+  def _distribute_dataset(self, dataset_fn):
+    if self._cluster_spec:
+      return values.MultiWorkerDataset(
+          partial(self._call_dataset_fn, dataset_fn),
+          self._worker_devices,
+          auto_shard=self._auto_shard_dataset)
+    else:
+      return values.PerReplicaDataset(
+          self._call_dataset_fn(dataset_fn), self._devices)
 
 
 class MirroredReplicaContext(distribute_lib.ReplicaContext):

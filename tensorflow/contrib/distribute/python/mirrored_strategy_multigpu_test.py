@@ -1304,21 +1304,23 @@ class MirroredStrategyDefunTest(test.TestCase):
       self.assertAllEqual([0.5], updated_var_values[1])
 
 
-@combinations.generate(combinations.combine(
-    distribution=[
-        combinations.NamedDistribution(
-            "Mirrored",
-            # pylint: disable=g-long-lambda
-            lambda: mirrored_strategy.CoreMirroredStrategy(
-                num_gpus=context.num_gpus()),
-            required_gpus=1),
-        combinations.NamedDistribution(
-            "CoreMirrored",
-            # pylint: disable=g-long-lambda
-            lambda: mirrored_strategy.CoreMirroredStrategy(
-                num_gpus=context.num_gpus()),
-            required_gpus=1)],
-    mode=["graph"]))
+@combinations.generate(
+    combinations.combine(
+        distribution=[
+            combinations.NamedDistribution(
+                "Mirrored",
+                # pylint: disable=g-long-lambda
+                lambda: mirrored_strategy.CoreMirroredStrategy(
+                    num_gpus_per_worker=context.num_gpus()),
+                required_gpus=1),
+            combinations.NamedDistribution(
+                "CoreMirrored",
+                # pylint: disable=g-long-lambda
+                lambda: mirrored_strategy.CoreMirroredStrategy(
+                    num_gpus_per_worker=context.num_gpus()),
+                required_gpus=1)
+        ],
+        mode=["graph"]))
 class MultiWorkerMirroredStrategyTest(
     multi_worker_test_base.MultiWorkerTestBase,
     strategy_test_lib.DistributionTestBase):

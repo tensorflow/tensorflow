@@ -522,7 +522,7 @@ class RunConfigTest(test.TestCase):
       run_config_lib.RunConfig(
           experimental_distribute=DistributeConfig(
               train_distribute=mirrored_strategy.CoreMirroredStrategy(
-                  num_gpus=2)))
+                  num_gpus_per_worker=2)))
 
   def test_should_run_distribute_coordinator(self):
     """Tests that should_run_distribute_coordinator return a correct value."""
@@ -546,11 +546,11 @@ class RunConfigTest(test.TestCase):
       config_with_train_distribute = run_config_lib.RunConfig(
           experimental_distribute=DistributeConfig(
               train_distribute=mirrored_strategy.CoreMirroredStrategy(
-                  num_gpus=2)))
+                  num_gpus_per_worker=2)))
       config_with_eval_distribute = run_config_lib.RunConfig(
           experimental_distribute=DistributeConfig(
               eval_distribute=mirrored_strategy.CoreMirroredStrategy(
-                  num_gpus=2)))
+                  num_gpus_per_worker=2)))
     self.assertTrue(
         dc_training.should_run_distribute_coordinator(
             config_with_train_distribute))
@@ -564,7 +564,7 @@ class RunConfigTest(test.TestCase):
       config = run_config_lib.RunConfig(
           experimental_distribute=DistributeConfig(
               train_distribute=mirrored_strategy.CoreMirroredStrategy(
-                  num_gpus=2)))
+                  num_gpus_per_worker=2)))
     self.assertFalse(dc_training.should_run_distribute_coordinator(config))
 
   def test_init_run_config_duplicate_distribute(self):
