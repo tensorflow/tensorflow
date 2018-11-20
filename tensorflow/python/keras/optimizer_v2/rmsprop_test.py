@@ -52,7 +52,7 @@ _TESTPARAMS = [
 ]
 
 
-class RMSPropOptimizerTest(test.TestCase):
+class RMSpropOptimizerTest(test.TestCase):
 
   def _rmsprop_update_numpy(self, var, g, mg, rms, mom, lr, rho, momentum,
                             epsilon, centered):
@@ -98,7 +98,7 @@ class RMSPropOptimizerTest(test.TestCase):
         var1 = resource_variable_ops.ResourceVariable(var1_np, dtype=dtype)
         grads0 = constant_op.constant(grads0_np, dtype=dtype)
         grads1 = constant_op.constant(grads1_np, dtype=dtype)
-        opt = rmsprop.RMSProp(
+        opt = rmsprop.RMSprop(
             learning_rate=learning_rate,
             rho=rho,
             momentum=momentum,
@@ -135,7 +135,7 @@ class RMSPropOptimizerTest(test.TestCase):
         self.assertAllClose([1.0, 2.0], self.evaluate(var0))
         self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
-        # Run 4 steps of RMSProp
+        # Run 4 steps of RMSprop
         for _ in range(1, 5):
           update.run()
 
@@ -164,7 +164,7 @@ class RMSPropOptimizerTest(test.TestCase):
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
         pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
         loss = pred * pred
-        sgd_op = rmsprop.RMSProp(
+        sgd_op = rmsprop.RMSprop(
             learning_rate=1.0,
             rho=0.0,
             momentum=0.0,
@@ -188,7 +188,7 @@ class RMSPropOptimizerTest(test.TestCase):
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
         pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
         loss = pred * pred
-        sgd_op = rmsprop.RMSProp(
+        sgd_op = rmsprop.RMSprop(
             learning_rate=1.0,
             rho=0.0,
             momentum=0.0,
@@ -224,7 +224,7 @@ class RMSPropOptimizerTest(test.TestCase):
         grads1 = ops.IndexedSlices(
             constant_op.constant(grads1_np),
             constant_op.constant(grads1_np_indices), constant_op.constant([1]))
-        opt = rmsprop.RMSProp(
+        opt = rmsprop.RMSprop(
             learning_rate=learning_rate,
             rho=rho,
             momentum=momentum,
@@ -261,7 +261,7 @@ class RMSPropOptimizerTest(test.TestCase):
         self.assertAllClose([1.0, 2.0], self.evaluate(var0))
         self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
-        # Run 4 steps of RMSProp
+        # Run 4 steps of RMSprop
         for _ in range(1, 5):
           update.run()
 
@@ -295,7 +295,7 @@ class RMSPropOptimizerTest(test.TestCase):
         rho = lambda: 0.9
         momentum = lambda: 0.0
         epsilon = lambda: 1.0
-        opt = rmsprop.RMSProp(learning_rate, rho, momentum, epsilon)
+        opt = rmsprop.RMSprop(learning_rate, rho, momentum, epsilon)
 
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], self.evaluate(var0))
