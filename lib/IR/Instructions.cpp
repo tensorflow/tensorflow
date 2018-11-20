@@ -37,6 +37,16 @@ unsigned InstResult::getResultNumber() const {
   return this - &getOwner()->getInstResults()[0];
 }
 
+/// Return which operand this is in the operand list.
+template <> unsigned InstOperand::getOperandNumber() const {
+  return this - &getOwner()->getInstOperands()[0];
+}
+
+/// Return which operand this is in the operand list.
+template <> unsigned BasicBlockOperand::getOperandNumber() const {
+  return this - &getOwner()->getBasicBlockOperands()[0];
+}
+
 //===----------------------------------------------------------------------===//
 // Instruction
 //===----------------------------------------------------------------------===//

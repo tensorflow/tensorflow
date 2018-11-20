@@ -215,7 +215,7 @@ public:
   }
 
   /// Return which operand this is in the operand list of the User.
-  // TODO:  unsigned getOperandNumber() const;
+  unsigned getOperandNumber() const;
 
   /// We support a move constructor so IROperand's can be in vectors, but this
   /// shouldn't be used by general clients.

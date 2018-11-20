@@ -39,6 +39,15 @@ unsigned StmtResult::getResultNumber() const {
 }
 
 //===----------------------------------------------------------------------===//
+// StmtOperand
+//===------------------------------------------------------------------===//
+
+/// Return which operand this is in the operand list.
+template <> unsigned StmtOperand::getOperandNumber() const {
+  return this - &getOwner()->getStmtOperands()[0];
+}
+
+//===----------------------------------------------------------------------===//
 // Statement
 //===------------------------------------------------------------------===//
 
