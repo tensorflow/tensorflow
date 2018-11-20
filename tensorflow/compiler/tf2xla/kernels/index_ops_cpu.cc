@@ -119,6 +119,10 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
                         ", but got shape: ",
                         input_shape.DebugString()));
     }
+    const DataType dtype = output_type(0);
+    xla::PrimitiveType output_type;
+    OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(dtype, &output_type));
+    output = xla::ConvertElementType(output, output_type);
     ctx->SetOutput(0, output);
   }
 
