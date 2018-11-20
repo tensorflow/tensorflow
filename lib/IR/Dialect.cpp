@@ -24,16 +24,32 @@ using namespace mlir;
 static llvm::ManagedStatic<SmallVector<DialectAllocatorFunction, 8>>
     dialectRegistry;
 
-/// Register a specific dialect creation function with the system, typically
+// Registry for dialect's constant fold hooks.
+static llvm::ManagedStatic<SmallVector<ConstantFoldHookAllocator, 8>>
+    constantFoldHookRegistry;
+
+/// Registers a specific dialect creation function with the system, typically
 /// used through the DialectRegistration template.
 void mlir::registerDialectAllocator(const DialectAllocatorFunction &function) {
-  assert(function && "Attempting to register an empty op initialize function");
+  assert(function &&
+         "Attempting to register an empty dialect initialize function");
   dialectRegistry->push_back(function);
 }
 
-/// Registers all dialects with the specified MLIRContext.
+/// Registers a constant fold hook for a specific dialect with the system.
+void mlir::registerConstantFoldHook(const ConstantFoldHookAllocator &function) {
+  assert(
+      function &&
+      "Attempting to register an empty constant fold hook initialize function");
+  constantFoldHookRegistry->push_back(function);
+}
+
+/// Registers all dialects and their const folding hooks with the specified
+/// MLIRContext.
 void mlir::registerAllDialects(MLIRContext *context) {
   for (const auto &fn : *dialectRegistry)
+    fn(context);
+  for (const auto &fn : *constantFoldHookRegistry)
     fn(context);
 }
 

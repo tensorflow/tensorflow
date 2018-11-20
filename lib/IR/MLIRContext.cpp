@@ -516,6 +516,19 @@ std::vector<Dialect *> MLIRContext::getRegisteredDialects() const {
   return result;
 }
 
+/// Get registered IR dialect which has the longest matching with the given
+/// prefix. If none is found, returns nullptr.
+Dialect *MLIRContext::getRegisteredDialect(StringRef prefix) const {
+  Dialect *result = nullptr;
+  for (auto &dialect : getImpl().dialects) {
+    if (prefix.startswith(dialect->getOperationPrefix()))
+      if (!result || result->getOperationPrefix().size() <
+                         dialect->getOperationPrefix().size())
+        result = dialect.get();
+  }
+  return result;
+}
+
 /// Register this dialect object with the specified context.  The context
 /// takes ownership of the heap allocated dialect.
 void Dialect::registerDialect(MLIRContext *context) {

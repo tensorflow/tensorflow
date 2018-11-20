@@ -26,6 +26,9 @@
 
 namespace mlir {
 
+using DialectConstantFoldHook = std::function<bool(
+    const Operation *, ArrayRef<Attribute>, SmallVectorImpl<Attribute> &)>;
+
 /// Dialects are groups of MLIR operations and behavior associated with the
 /// entire group.  For example, hooks into other systems for constant folding,
 /// default named types for asm printing, etc.
@@ -39,19 +42,16 @@ public:
 
   StringRef getOperationPrefix() const { return opPrefix; }
 
-  /// Dialect implementations can implement this hook. It should attempt to
-  /// constant fold this operation with the specified constant operand values -
-  /// the elements in "operands" will correspond directly to the operands of the
-  /// operation, but may be null if non-constant.  If constant folding is
-  /// successful, this returns false and fills in the `results` vector.  If not,
-  /// this returns true and `results` is unspecified.
-  ///
-  /// If not overridden, this fallback implementation always fails to fold.
-  ///
-  virtual bool constantFold(const Operation *op, ArrayRef<Attribute> operands,
-                            SmallVectorImpl<Attribute> &results) const {
-    return true;
-  }
+  /// Registered fallback constant fold hook for the dialect. Like the constant
+  /// fold hook of each operation, it attempts to constant fold the operation
+  /// with the specified constant operand values - the elements in "operands"
+  /// will correspond directly to the operands of the operation, but may be null
+  /// if non-constant.  If constant folding is successful, this returns false
+  /// and fills in the `results` vector.  If not, this returns true and
+  /// `results` is unspecified.
+  DialectConstantFoldHook constantFoldHook =
+      [](const Operation *op, ArrayRef<Attribute> operands,
+         SmallVectorImpl<Attribute> &results) { return true; };
 
   // TODO: Hook to return the list of named types that are known.
 
@@ -108,10 +108,25 @@ private:
 };
 
 using DialectAllocatorFunction = std::function<void(MLIRContext *)>;
+using ConstantFoldHookAllocator = std::function<void(MLIRContext *)>;
 
-/// Register a specific dialect creation function with the system, typically
+/// Registers a specific dialect creation function with the system, typically
 /// used through the DialectRegistration template.
 void registerDialectAllocator(const DialectAllocatorFunction &function);
+
+/// Registers a constant fold hook for one or multiple dialects. The
+/// ConstantFoldHookAllocator defines how the hook gets mapped to the targeted
+/// dialect(s) in the context.
+/// Exmaple:
+///      registerConstantFoldHook([&](MLIRContext *ctx) {
+///        auto dialects = ctx->getRegisteredDialects();
+///        // then iterate and select the target dialect from dialects, or
+///        // get one dialect directly by the prefix:
+///        auto dialect = ctx->getRegisteredDialect("TARGET_PREFIX")
+///
+///        dialect->constantFoldHook = MyConstantFoldHook;
+///      });
+void registerConstantFoldHook(const ConstantFoldHookAllocator &function);
 
 /// Registers all dialects with the specified MLIRContext.
 void registerAllDialects(MLIRContext *context);

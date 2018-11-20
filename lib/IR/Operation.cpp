@@ -304,9 +304,16 @@ bool Operation::constantFold(ArrayRef<Attribute> operands,
       return false;
 
     // Otherwise, fall back on the dialect hook to handle it.
-    Dialect &dialect = abstractOp->dialect;
-    return dialect.constantFold(this, operands, results);
+    return abstractOp->dialect.constantFoldHook(this, operands, results);
   }
+
+  // If this operation hasn't been registered or doesn't have abstract
+  // operation, fall back to a dialect which matches the prefix.
+  auto opName = getName().getStringRef();
+  if (auto *dialect = getContext()->getRegisteredDialect(opName)) {
+    return dialect->constantFoldHook(this, operands, results);
+  }
+
   return true;
 }
 

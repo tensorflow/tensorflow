@@ -45,6 +45,10 @@ public:
   /// Return information about all registered IR dialects.
   std::vector<Dialect *> getRegisteredDialects() const;
 
+  /// Get registered IR dialect which has the longest matching with the given
+  /// prefix. If none is found, returns nullptr.
+  Dialect *getRegisteredDialect(StringRef prefix) const;
+
   /// Return information about all registered operations.  This isn't very
   /// efficient: typically you should ask the operations about their properties
   /// directly.
@@ -97,4 +101,4 @@ private:
 };
 } // end namespace mlir
 
-#endif  // MLIR_IR_MLIRCONTEXT_H
+#endif // MLIR_IR_MLIRCONTEXT_H
