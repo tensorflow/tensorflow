@@ -44,9 +44,6 @@ namespace {
 
 using xla::XlaOp;
 
-// TODO(b/112295522): note that sampling from image boundary is not currently
-// being handled properly.
-
 // Calculates the bilinear weight tensor, given basis ratio (px, py) of the
 // sampling position:
 //    W = [(1-px)*(1-py), px*(1-py), (1-px)*py, px*py]
@@ -421,12 +418,13 @@ class ResamplerOp : public XlaOpKernel {
     OP_REQUIRES(ctx, warp_shape.dim_size(last_warp_dim) == 2,
                 errors::InvalidArgument(
                     "the last dimension of warp must be exactly size 2."));
+    xla::PrimitiveType warp_type = ctx->input_xla_type(1);
 
     XlaOp data = ctx->Input("data");
     XlaOp warp = ctx->Input("warp");
 
     // Find the coordinates of the top left corner for the 2x2 region to be
-    // sampled from. The dimensions are (batch, dim_0, ... dim_n, 2) where the
+    // sampled from. The dimensions are [batch, dim_0, ... dim_n, 2] where the
     // last dimension of size 2 in turn is [x, y].
     XlaOp top_left = xla::ConvertElementType(warp, xla::U32);
 
@@ -457,10 +455,56 @@ class ResamplerOp : public XlaOpKernel {
     dot_dims.add_lhs_contracting_dimensions(warp_shape.dims() - 1);
     dot_dims.add_rhs_contracting_dimensions(warp_shape.dims() - 1);
 
+    // The dimension is [batch, dim_0, ...dim_n, data_channels].
     auto blended_pixels = xla::DotGeneral(weights, neighbors_data, dot_dims,
                                           /*precision_config=*/nullptr);
 
-    ctx->SetOutput(0, blended_pixels);
+    // Handle out of boundary cases by constructing a predicate mask array based
+    // on the in-bound condition, and output 0 for the blended pixel value if
+    // out-bound. The dimension is the same as top_left: [batch, dim_0,
+    // ...dim_n, 2] where the last dimension of size 2 is the [x, y] coordinate.
+
+    auto is_ge_zero = xla::Ge(warp, xla::ZerosLike(warp));
+
+    auto is_lt_image_size = xla::Lt(
+        warp,
+        xla::ConvertElementType(
+            xla::ConstantR1<float>(
+                ctx->builder(),
+                {/*width=*/static_cast<float>(data_shape.dim_size(2) - 1),
+                 /*height=*/static_cast<float>(data_shape.dim_size(1) - 1)}),
+            warp_type),
+        /*broadcast_dimensions=*/{warp_shape.dims() - 1});
+
+    auto is_in_bound_x_y = xla::And(is_ge_zero, is_lt_image_size);
+    // Reduce along last dimension. The resulting dimension is:
+    // [batch, dim_0, ...dim_n].
+    auto is_in_bound = xla::Reduce(
+        is_in_bound_x_y, xla::ConstantR0<bool>(ctx->builder(), true),
+        xla::CreateScalarAndComputation(xla::PrimitiveType::PRED,
+                                        ctx->builder()),
+        {last_warp_dim});
+
+    // Broadcast 'is_in_bound' to the same dimension as 'blended_pixels', which
+    // is the dimension of the result:
+    //  [batch, dim_0, ...dim_n, data_channels].
+    auto warp_dims = warp_shape.dim_sizes();
+    std::vector<int64> result_dims(warp_dims.begin(), warp_dims.end() - 1);
+    result_dims.push_back(data_channels);
+    xla::Shape broadcasted_shape =
+        xla::ShapeUtil::MakeShape(xla::PrimitiveType::PRED, result_dims);
+
+    std::vector<int64> broadcasted_dims(warp_dims.size() - 1);
+    std::iota(broadcasted_dims.begin(), broadcasted_dims.end(), 0);
+    auto broadcasted_is_in_bound =
+        xla::BroadcastInDim(is_in_bound, broadcasted_shape, broadcasted_dims);
+
+    // Set out of bound samples to zero.
+    auto zeros =
+        xla::Broadcast(xla::Zero(ctx->builder(), data_type), result_dims);
+    auto result = xla::Select(broadcasted_is_in_bound, blended_pixels, zeros);
+
+    ctx->SetOutput(0, result);
   }
 };
 
@@ -473,6 +517,8 @@ class ResamplerGradOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &output_dtype));
   }
 
+  // TODO(b/112295522): note that sampling from image boundary is not currently
+  // being handled properly.
   void Compile(XlaOpKernelContext* ctx) override {
     TensorShape data_shape_tf = ctx->InputShape("data");
     OP_REQUIRES(ctx, data_shape_tf.dims() == 4,

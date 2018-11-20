@@ -63,8 +63,8 @@ class ResamplerOpsTest(xla_test.XLATestCase):
   def testSimple(self):
     for dtype in self.float_types:
       input_shape = [1, 2, 2, 1]
-      input_rgb_data = [0, 5, 13, 54]
-      input_np = np.array(input_rgb_data, dtype=dtype).reshape(input_shape)
+      input_data = [0, 5, 13, 54]
+      input_np = np.array(input_data, dtype=dtype).reshape(input_shape)
 
       warp_shape = [1, 2]
       warp_data = [0.7, 0.6]
@@ -150,6 +150,55 @@ class ResamplerOpsTest(xla_test.XLATestCase):
       self._assertBackwardOpMatchesExpected(input_np, warp_np, grad_output,
                                             expected_grad_data,
                                             expected_grad_warp)
+
+  def testOutOfBoundWarps(self):
+    # (x, y) are both less than 0.
+    for dtype in self.float_types:
+      input_shape = [1, 2, 2, 1]
+      input_data = [10, 5, 13, 54]
+      input_np = np.array(input_data, dtype=dtype).reshape(input_shape)
+
+      warp_shape = [1, 2, 2]
+      warp_data = [-1, -1, 0.7, 0.6]
+      warp_np = np.array(warp_data, dtype=dtype).reshape(warp_shape)
+      expected = [[[0.0], [27.62]]]
+      self._assertForwardOpMatchesExpected(input_np, warp_np, expected)
+
+    # One of (x, y) is less than 0.
+    for dtype in self.float_types:
+      input_shape = [1, 2, 2, 1]
+      input_data = [10, 5, 13, 54]
+      input_np = np.array(input_data, dtype=dtype).reshape(input_shape)
+
+      warp_shape = [1, 2, 2]
+      warp_data = [-1, 0.1, 0.7, 0.6]
+      warp_np = np.array(warp_data, dtype=dtype).reshape(warp_shape)
+      expected = [[[0.0], [27.62]]]
+      self._assertForwardOpMatchesExpected(input_np, warp_np, expected)
+
+    # Both of (x, y) are greater than image size.
+    for dtype in self.float_types:
+      input_shape = [1, 2, 2, 1]
+      input_data = [10, 5, 13, 54]
+      input_np = np.array(input_data, dtype=dtype).reshape(input_shape)
+
+      warp_shape = [1, 2, 2]
+      warp_data = [-0.1, 0.1, 1.2, 2.1]
+      warp_np = np.array(warp_data, dtype=dtype).reshape(warp_shape)
+      expected = [[[0.0], [0.0]]]
+      self._assertForwardOpMatchesExpected(input_np, warp_np, expected)
+
+    # One of (x, y) is greater than image size.
+    for dtype in self.float_types:
+      input_shape = [1, 2, 2, 1]
+      input_data = [10, 5, 13, 54]
+      input_np = np.array(input_data, dtype=dtype).reshape(input_shape)
+
+      warp_shape = [1, 2, 2]
+      warp_data = [0.1, -0.1, 1.2, 0.1]
+      warp_np = np.array(warp_data, dtype=dtype).reshape(warp_shape)
+      expected = [[[0.0], [0.0]]]
+      self._assertForwardOpMatchesExpected(input_np, warp_np, expected)
 
 
 if __name__ == '__main__':
