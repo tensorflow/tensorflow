@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/memory_planner.h"
+#include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -241,6 +242,10 @@ class Subgraph {
   // to the value of the buffer.
   // WARNING: This is an experimental API and subject to change.
   TfLiteStatus ResetVariableTensors();
+
+  void SetProfiler(profiling::Profiler* profiler) { profiler_ = profiler; }
+
+  profiling::Profiler* GetProfiler() { return profiler_; }
 
  private:
   // Prevent 'context_' from accessing functions that are only available to
@@ -470,6 +475,9 @@ class Subgraph {
 
   // External contexts (kTfLiteMaxExternalContexts).
   TfLiteExternalContext** external_contexts_;
+
+  // Profiler for this interpreter instance.
+  profiling::Profiler* profiler_ = nullptr;
 };
 
 }  // namespace tflite
