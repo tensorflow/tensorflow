@@ -266,6 +266,7 @@ py_test(
     name = "optimizers_test",
     size = "medium",
     srcs = ["optimizers_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [
@@ -273,6 +274,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

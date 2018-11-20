@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for AdaMax."""
+"""Tests for Adamax."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -76,7 +76,7 @@ def get_beta_accumulators(opt, dtype):
   return beta_1_power
 
 
-class AdaMaxOptimizerTest(test.TestCase):
+class AdamaxOptimizerTest(test.TestCase):
 
   def doTestSparse(self, use_resource=False):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -100,7 +100,7 @@ class AdaMaxOptimizerTest(test.TestCase):
         grads1 = ops.IndexedSlices(
             constant_op.constant(grads1_np),
             constant_op.constant(grads1_np_indices), constant_op.constant([3]))
-        opt = adamax.AdaMax()
+        opt = adamax.Adamax()
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
 
@@ -110,7 +110,7 @@ class AdaMaxOptimizerTest(test.TestCase):
 
         beta1_power = get_beta_accumulators(opt, dtype)
 
-        # Run 3 steps of AdaMax
+        # Run 3 steps of Adamax
         for t in range(1, 4):
           self.assertAllCloseAccordingToType(0.9**t, beta1_power.eval())
           update.run()
@@ -135,7 +135,7 @@ class AdaMaxOptimizerTest(test.TestCase):
         var = variables.Variable([[1.0], [2.0]])
         indices = constant_op.constant([0, 1], dtype=index_dtype)
         gathered_sum = math_ops.reduce_sum(array_ops.gather(var, indices))
-        optimizer = adamax.AdaMax(3.0)
+        optimizer = adamax.Adamax(3.0)
         minimize_op = optimizer.minimize(gathered_sum, var_list=[var])
         variables.global_variables_initializer().run()
         minimize_op.run()
@@ -157,9 +157,9 @@ class AdaMaxOptimizerTest(test.TestCase):
                 [0.2], shape=[1, 1], dtype=dtype),
             constant_op.constant([1]),
             constant_op.constant([2, 1]))
-        repeated_update = adamax.AdaMax().apply_gradients(
+        repeated_update = adamax.Adamax().apply_gradients(
             [(grad_repeated_index, repeated_index_update_var)])
-        aggregated_update = adamax.AdaMax().apply_gradients(
+        aggregated_update = adamax.Adamax().apply_gradients(
             [(grad_aggregated, aggregated_update_var)])
         variables.global_variables_initializer().run()
         self.assertAllClose(aggregated_update_var.eval(),
@@ -189,7 +189,7 @@ class AdaMaxOptimizerTest(test.TestCase):
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
 
-        opt = adamax.AdaMax()
+        opt = adamax.Adamax()
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
 
         if not context.executing_eagerly():
@@ -198,7 +198,7 @@ class AdaMaxOptimizerTest(test.TestCase):
           self.assertAllClose([1.0, 2.0], self.evaluate(var0))
           self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
-        # Run 3 steps of AdaMax
+        # Run 3 steps of Adamax
         for t in range(1, 4):
           if not context.executing_eagerly():
             self.evaluate(update)
@@ -232,7 +232,7 @@ class AdaMaxOptimizerTest(test.TestCase):
         var1 = variables.Variable(var1_np)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
-        opt = adamax.AdaMax(constant_op.constant(0.001))
+        opt = adamax.Adamax(constant_op.constant(0.001))
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
 
@@ -242,7 +242,7 @@ class AdaMaxOptimizerTest(test.TestCase):
 
         beta1_power = get_beta_accumulators(opt, dtype)
 
-        # Run 3 steps of AdaMax
+        # Run 3 steps of Adamax
         for t in range(1, 4):
           self.assertAllCloseAccordingToType(0.9**t, beta1_power.eval())
           update.run()
@@ -268,7 +268,7 @@ class AdaMaxOptimizerTest(test.TestCase):
         var1 = variables.Variable(var1_np)
         grads0 = constant_op.constant(grads0_np)
         grads1 = constant_op.constant(grads1_np)
-        opt = adamax.AdaMax()
+        opt = adamax.Adamax()
         update1 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         update2 = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
@@ -279,7 +279,7 @@ class AdaMaxOptimizerTest(test.TestCase):
         self.assertAllClose([1.0, 2.0], var0.eval())
         self.assertAllClose([3.0, 4.0], var1.eval())
 
-        # Run 3 steps of intertwined AdaMax1 and AdaMax2.
+        # Run 3 steps of intertwined Adamax1 and Adamax2.
         for t in range(1, 4):
           self.assertAllCloseAccordingToType(0.9**t, beta1_power.eval())
           if t % 2 == 0:
@@ -298,7 +298,7 @@ class AdaMaxOptimizerTest(test.TestCase):
     with context.eager_mode():
       v1 = resource_variable_ops.ResourceVariable(1.)
       v2 = resource_variable_ops.ResourceVariable(1.)
-      opt = adamax.AdaMax(1.)
+      opt = adamax.Adamax(1.)
       opt.minimize(lambda: v1 + v2, var_list=[v1, v2])
       # There should be iteration, hyper variables, and two unique slot
       # variables for v1 and v2 respectively.
