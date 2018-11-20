@@ -30,6 +30,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
@@ -146,7 +147,7 @@ class TestTrainingWithDatasetIterators(test.TestCase, parameterized.TestCase):
           'dataset iterator ran out of data')
 
 
-class TestTrainingWithDataset(test.TestCase):
+class TestTrainingWithDataset(test.TestCase, parameterized.TestCase):
 
   @tf_test_util.run_in_graph_and_eager_modes
   def test_calling_model_on_same_dataset(self):
@@ -249,20 +250,29 @@ class TestTrainingWithDataset(test.TestCase):
     model.evaluate(dataset, steps=2, verbose=1)
     model.predict(dataset, steps=2)
 
+  @parameterized.parameters(
+      {'model': 'functional'},
+      {'model': 'subclass'},
+  )
   @tf_test_util.run_in_graph_and_eager_modes
-  def test_dataset_with_sparse_labels(self):
-    model = testing_utils.get_small_functional_mlp(1, 4, input_dim=3)
-    optimizer = RMSPropOptimizer(learning_rate=0.001)
-    loss = 'sparse_categorical_crossentropy'
-    model.compile(optimizer, loss)
+  def test_dataset_with_sparse_labels(self, model):
+    if model == 'functional':
+      model = testing_utils.get_small_functional_mlp(1, 4, input_dim=3)
+    elif model == 'subclass':
+      model = testing_utils.get_small_sequential_mlp(1, 4)
 
-    inputs = np.zeros((10, 3))
-    targets = np.random.randint(0, 4, size=10, dtype=np.int32)
-    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
-    dataset = dataset.repeat(100)
-    dataset = dataset.batch(10)
+    for loss in ['sparse_categorical_crossentropy',
+                 losses_impl.sparse_softmax_cross_entropy]:
+      optimizer = RMSPropOptimizer(learning_rate=0.001)
+      model.compile(optimizer, loss)
 
-    model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
+      inputs = np.zeros((10, 3), dtype=np.float32)
+      targets = np.random.randint(0, 4, size=10, dtype=np.int32)
+      dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+      dataset = dataset.repeat(100)
+      dataset = dataset.batch(10)
+
+      model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=1)
 
   def test_dataset_input_shape_validation(self):
     with self.cached_session():
