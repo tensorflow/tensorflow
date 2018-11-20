@@ -220,8 +220,8 @@ def get_correctness_test_inputs(use_numpy, with_distribution,
   # TODO(b/118776054): Use global batch size for Keras/DS support.
   use_per_core_batch_size = (
       with_distribution and
-      not isinstance(with_distribution, (
-          tpu_strategy.TPUStrategy, mirrored_strategy.CoreMirroredStrategy)))
+      not distributed_training_utils.global_batch_size_supported(
+          with_distribution))
   if use_per_core_batch_size:
     batch_size //= with_distribution.num_replicas_in_sync
 
@@ -480,84 +480,133 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       # Verify that the numpy value is copied to the variable.
       self.assertAllEqual(x, val)
 
-  # TODO(sourabhbajaj): Test this with all strategies.
-  def test_calculating_batch_params(self):
-    # This verifies that we calculate the number of steps when the batch size
-    # is specified.
+  @combinations.generate(strategy_combinations())
+  def test_calculating_input_params_no_steps_no_batch_size(self, distribution):
+    # Calculate the per_replica_batch_size scaling factor for strategies
+    # that use per_core_batch_size
+    replica_scale_factor = 1.0
+    if not distributed_training_utils.global_batch_size_supported(distribution):
+      replica_scale_factor = distribution.num_replicas_in_sync
+
     with self.cached_session():
-      # 64 is the number of input samples.
-      inputs = np.zeros((64, 3), dtype=np.float32)
-      # The number of replicas is equal to 3.
-      strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:0',
-                                                     '/device:CPU:0',
-                                                     '/device:GPU:1'])
+      # Input samples of different sizes
+      input_20_samples = np.zeros((20, 3), dtype=np.float32)
+      input_63_samples = np.zeros((63, 3), dtype=np.float32)
+      input_64_samples = np.zeros((64, 3), dtype=np.float32)
 
-      with self.assertRaisesRegexp(ValueError, 'The number of samples is not '
-                                   'divisible by batch size.'):
-        # The batch size(128) is larger than the number of input
-        # samples(64).
-        distributed_training_utils.get_input_batch_params(inputs,
-                                                          128,
-                                                          strategy)
-
-      with self.assertRaisesRegexp(ValueError, 'is smaller than the number '
-                                               'of replicas'):
-        # The batch size(32) * num_replicas_in_sync(3) is 96 which is greater
-        # than the number of input samples(64).
-        distributed_training_utils.get_input_batch_params(inputs,
-                                                          32,
-                                                          strategy)
-
-      # The number of replicas now is equal to 2.
-      strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:0',
-                                                     '/device:CPU:0'])
-      # 32 is the batch size per replica.
-      steps = distributed_training_utils.get_input_batch_params(inputs,
-                                                                32,
-                                                                strategy)
-      # The number of batches is the ratio of input samples(64) to
-      # batch size(32) which is 2. The number of steps(1) is the ratio of
-      # number of batches(2) to the number of replicas(2).
-      self.assertEqual(steps, 1)
-
-      # 16 is the batch size per replica.
-      steps = distributed_training_utils.get_input_batch_params(inputs,
-                                                                16,
-                                                                strategy)
-      # The number of batches is the ratio of input samples(64) to
-      # batch size(16) which is 4. The number of steps(2) is the ratio of
-      # number of batches(4) to the number of replicas(2).
+      # Default global batch size 32 for input with 64 samples run in 2 steps
+      steps, batch_size = distributed_training_utils.get_input_params(
+          distribution, input_64_samples, steps=None, batch_size=None)
+      self.assertEqual(batch_size, 32 // replica_scale_factor)
       self.assertEqual(steps, 2)
 
-  # TODO(sourabhbajaj): Test this with all strategies.
-  def test_calculating_batch_size(self):
+      # Computed global batch size 20 is lower than 32 if we pass less samples.
+      steps, batch_size = distributed_training_utils.get_input_params(
+          distribution, input_20_samples, steps=None, batch_size=None)
+      self.assertEqual(batch_size, 20 // replica_scale_factor)
+      self.assertEqual(steps, 1)
+
+      #  Default global batch size 32 cannot be used with 63 samples.
+      with self.assertRaisesRegexp(ValueError, 'not divisible by batch size'):
+        distributed_training_utils.get_input_params(
+            distribution, input_63_samples, steps=None, batch_size=None)
+
+  @combinations.generate(strategy_combinations())
+  def test_calculating_input_params_with_steps_no_batch_size(self,
+                                                             distribution):
+    # Calculate the per_replica_batch_size scaling factor for strategies
+    # that use per_core_batch_size
+    replica_scale_factor = 1.0
+    if not distributed_training_utils.global_batch_size_supported(distribution):
+      replica_scale_factor = distribution.num_replicas_in_sync
+
     with self.cached_session():
-      # 64 is the number of input samples.
-      inputs = np.zeros((64, 3), dtype=np.float32)
-      targets = np.zeros((64, 4), dtype=np.float32)
+      # Input samples of different sizes
+      input_63_samples = np.zeros((63, 3), dtype=np.float32)
+      input_64_samples = np.zeros((64, 3), dtype=np.float32)
 
-      model = get_model()
-      optimizer = gradient_descent.GradientDescentOptimizer(0.001)
-      loss = 'mse'
-      strategy = mirrored_strategy.MirroredStrategy(['/device:GPU:0',
-                                                     '/device:CPU:0'])
-      strategy.extended._require_static_shapes = True
+      # Computed global batch size is correct for number of specified 1 step
+      steps, batch_size = distributed_training_utils.get_input_params(
+          distribution, input_64_samples, steps=1, batch_size=None)
+      self.assertEqual(batch_size, 64 // replica_scale_factor)
+      self.assertEqual(steps, 1)
 
-      model.compile(optimizer, loss, distribute=strategy)
-      iterator = model._distribution_standardize_user_data(inputs,
-                                                           targets,
-                                                           batch_size=None,
-                                                           check_steps=True,
-                                                           steps_name='steps',
-                                                           steps=3)
+      # Computed global batch size is correct for number of specified 2 steps
+      steps, batch_size = distributed_training_utils.get_input_params(
+          distribution, input_64_samples, steps=2, batch_size=None)
+      self.assertEqual(batch_size, 32 // replica_scale_factor)
+      self.assertEqual(steps, 2)
 
-      # The global batch size(21) across all replicas is the ratio of the input
-      # samples(64) to the steps(3).
-      # The batch size(10) per device is the ratio of the global batch size(21)
-      # to the number of replicas(2).
-      # The global batch size and batch size are rounded integer values.
-      self.assertEqual(10, distributed_training_utils.get_batch_dimension(
-          iterator))
+      # All samples can not be consumed in specified number of steps
+      with self.assertRaisesRegexp(ValueError, 'not divisible by steps'):
+        distributed_training_utils.get_input_params(
+            distribution, input_63_samples, steps=2, batch_size=None)
+
+      # This cases is different for different strategies due to the
+      # difference in supported batch size being global or per-replica.
+      if replica_scale_factor == 1:
+        # Computed global batch size is correct even if not sharadable
+        steps, batch_size = distributed_training_utils.get_input_params(
+            distribution, input_63_samples, steps=3, batch_size=None)
+        self.assertEqual(batch_size, 21)
+        self.assertEqual(steps, 3)
+      else:
+        # Computed global batch size can not be sharded across replicas
+        with self.assertRaisesRegexp(ValueError, 'could not be sharded evenly '
+                                     'across the sync replicas'):
+          distributed_training_utils.get_input_params(
+              distribution, input_63_samples, steps=1, batch_size=None)
+
+  @combinations.generate(strategy_combinations())
+  def test_calculating_input_params_no_steps_with_batch_size(self,
+                                                             distribution):
+    # Calculate the per_replica_batch_size scaling factor for strategies
+    # that use per_core_batch_size
+    replica_scale_factor = 1.0
+    if not distributed_training_utils.global_batch_size_supported(distribution):
+      replica_scale_factor = distribution.num_replicas_in_sync
+
+    with self.cached_session():
+      input_64_samples = np.zeros((64, 3), dtype=np.float32)
+
+      # Computed steps is correct for specified batch size
+      steps, batch_size = distributed_training_utils.get_input_params(
+          distribution, input_64_samples, steps=None, batch_size=16)
+      self.assertEqual(batch_size, 16)
+      self.assertEqual(steps, 4 // replica_scale_factor)
+
+      # Computed steps is correct for specified batch size
+      steps, batch_size = distributed_training_utils.get_input_params(
+          distribution, input_64_samples, steps=None, batch_size=32)
+      self.assertEqual(batch_size, 32)
+      self.assertEqual(steps, 2 // replica_scale_factor)
+
+      # Number of samples is not divisible by the global batch size
+      with self.assertRaisesRegexp(ValueError, 'not divisible by batch size'):
+        distributed_training_utils.get_input_params(
+            distribution, input_64_samples, steps=None, batch_size=20)
+
+      # Number of samples is not divisible by the global batch size
+      with self.assertRaisesRegexp(ValueError, 'not divisible by batch size'):
+        distributed_training_utils.get_input_params(
+            distribution, input_64_samples, steps=None, batch_size=3)
+
+  @combinations.generate(strategy_combinations())
+  def test_calculating_input_params_with_steps_with_batch_size(self,
+                                                               distribution):
+    with self.cached_session():
+      input_64_samples = np.zeros((64, 3), dtype=np.float32)
+
+      # No change to steps and batch size if both specified and feasible
+      steps, batch_size = distributed_training_utils.get_input_params(
+          distribution, input_64_samples, steps=5, batch_size=3)
+      self.assertEqual(batch_size, 3)
+      self.assertEqual(steps, 5)
+
+      # Number of samples is less than global batch size * steps
+      with self.assertRaisesRegexp(ValueError, 'less than samples required'):
+        distributed_training_utils.get_input_params(
+            distribution, input_64_samples, steps=10, batch_size=13)
 
   @combinations.generate(strategy_combinations())
   def test_calling_model_with_numpy_arrays(self, distribution):
@@ -656,7 +705,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       # `predict` a list that is equal in length to the number of model outputs.
       # In this test our model has two outputs and each element of `outs`
       # corresponds to all the samples of one of the model outputs.
-      self.assertEqual(2, len(outs))
+      self.assertLen(outs, 2)
       # Each of the output samples have a dimension of 7. We should process all
       # the available input samples(6).
       self.assertAllEqual([6, 7], outs[0].shape)
@@ -1147,7 +1196,9 @@ class TestDistributionStrategyCorrectness(test.TestCase,
           distribute=distribution)
 
       batch_size = 64
-      batch_size //= distribution.num_replicas_in_sync
+      if not distributed_training_utils.global_batch_size_supported(
+          distribution):
+        batch_size //= distribution.num_replicas_in_sync
       train_dataset = dataset_ops.Dataset.from_tensor_slices((x_train, y_train))
       train_dataset = batch_wrapper(train_dataset, batch_size, distribution)
 

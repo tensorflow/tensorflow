@@ -1002,11 +1002,6 @@ class Model(Network):
 
     first_x_value = nest.flatten(x)[0]
     if isinstance(first_x_value, np.ndarray):
-      assert steps is not None
-      x_shape = first_x_value.shape
-      if batch_size is None:
-        batch_size = distributed_training_utils.get_batch_size(
-            self._distribution_strategy, x_shape[0], steps)
       # We need to use the drop_remainder argument to allow for a static
       # input shape which is required for TPUs.
       drop_remainder = self._distribution_strategy.require_static_shapes
@@ -1041,7 +1036,6 @@ class Model(Network):
         var_x = distributed_training_utils.get_var_for_numpy(
             self._distribution_strategy, x)
         x = dataset_ops.Dataset.from_tensor_slices(var_x)
-        x = x.repeat()
         x = x.batch(batch_size, drop_remainder=drop_remainder)
 
     assert isinstance(x, dataset_ops.Dataset)
@@ -1661,9 +1655,11 @@ class Model(Network):
           x, y, self._distribution_strategy)
 
       first_x_value = nest.flatten(x)[0]
-      if not steps_per_epoch and isinstance(first_x_value, np.ndarray):
-        steps_per_epoch = distributed_training_utils.get_input_batch_params(
-            first_x_value, batch_size, self._distribution_strategy)
+      if isinstance(first_x_value, np.ndarray):
+        steps_per_epoch, batch_size = (
+            distributed_training_utils.get_input_params(
+                self._distribution_strategy, first_x_value, steps_per_epoch,
+                batch_size, is_training=True))
 
     # Backwards compatibility
     if batch_size is None and steps_per_epoch is None:
@@ -1708,9 +1704,10 @@ class Model(Network):
         distributed_training_utils.validate_inputs(
             val_x, val_y, self._distribution_strategy)
         first_valx_value = nest.flatten(val_x)[0]
-        if not validation_steps and isinstance(first_valx_value, np.ndarray):
-          validation_steps = distributed_training_utils.get_input_batch_params(
-              first_valx_value, batch_size, self._distribution_strategy)
+        if isinstance(first_valx_value, np.ndarray):
+          validation_steps, _ = distributed_training_utils.get_input_params(
+              self._distribution_strategy, first_valx_value, validation_steps,
+              batch_size)
 
       val_x, val_y, val_sample_weights = self._standardize_user_data(
           val_x,
@@ -1893,9 +1890,9 @@ class Model(Network):
       distributed_training_utils.validate_inputs(
           x, y, self._distribution_strategy)
       first_x_value = nest.flatten(x)[0]
-      if isinstance(first_x_value, np.ndarray) and not steps:
-        steps = distributed_training_utils.get_input_batch_params(
-            first_x_value, batch_size, self._distribution_strategy)
+      if isinstance(first_x_value, np.ndarray):
+        steps, batch_size = distributed_training_utils.get_input_params(
+            self._distribution_strategy, first_x_value, steps, batch_size)
 
     # Backwards compatibility.
     if batch_size is None and steps is None:
@@ -2006,18 +2003,25 @@ class Model(Network):
       distributed_training_utils.validate_inputs(
           x, None, self._distribution_strategy)
       first_x_value = nest.flatten(x)[0]
-      if isinstance(first_x_value, np.ndarray) and not steps:
-        steps = distributed_training_utils.get_input_batch_params(
-            first_x_value, batch_size, self._distribution_strategy)
+      if isinstance(first_x_value, np.ndarray):
+        steps, batch_size = distributed_training_utils.get_input_params(
+            self._distribution_strategy, first_x_value, steps, batch_size)
+
     # Backwards compatibility.
     if batch_size is None and steps is None:
       batch_size = 32
 
     # Validate and standardize user data.
-    # TODO(anjalisridhar): We don't pass batch_size here for some reason. This
-    # means that we end up calculating it twice which we should avoid.
-    x, _, _ = self._standardize_user_data(
-        x, check_steps=True, steps_name='steps', steps=steps)
+    if self._distribution_strategy:
+      x, _, _ = self._standardize_user_data(
+          x, check_steps=True, steps_name='steps', steps=steps,
+          batch_size=batch_size)
+    else:
+      # TODO(anjalisridhar): We don't pass batch_size here for some reason. This
+      # means we need to special case distribution strategy which needs the
+      # batch size.
+      x, _, _ = self._standardize_user_data(
+          x, check_steps=True, steps_name='steps', steps=steps)
 
     if self.run_eagerly:
       return training_eager.predict_loop(
