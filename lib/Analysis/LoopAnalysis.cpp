@@ -24,6 +24,7 @@
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/MLFunctionMatcher.h"
+#include "mlir/Analysis/VectorAnalysis.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Statements.h"
@@ -193,9 +194,7 @@ static bool isVectorElement(LoadOrStoreOpPointer memoryOp) {
 // TODO(ntv): make the following into MLIR instructions, then use isa<>.
 static bool isVectorTransferReadOrWrite(const Statement &stmt) {
   const auto *opStmt = cast<OperationStmt>(&stmt);
-  llvm::SmallString<16> name(opStmt->getName().getStringRef());
-  return name == kVectorTransferReadOpName ||
-         name == kVectorTransferWriteOpName;
+  return isaVectorTransferRead(*opStmt) || isaVectorTransferWrite(*opStmt);
 }
 
 using VectorizableStmtFun =

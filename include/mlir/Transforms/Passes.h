@@ -37,8 +37,12 @@ FunctionPass *createConstantFoldPass();
 FunctionPass *createCanonicalizerPass();
 
 /// Creates a pass to vectorize loops, operations and data types using a
-/// target-independent, n-D virtual vector abstraction.
+/// target-independent, n-D super-vector abstraction.
 FunctionPass *createVectorizePass();
+
+/// Creates a pass to allow independent testing of vectorizer functionality with
+/// FileCheck.
+FunctionPass *createVectorizerTestPass();
 
 /// Creates a loop unrolling pass. Default option or command-line options take
 /// effect if -1 is passed as parameter.

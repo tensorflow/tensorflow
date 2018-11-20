@@ -22,6 +22,7 @@
 
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/Analysis/MLFunctionMatcher.h"
+#include "mlir/Analysis/VectorAnalysis.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"

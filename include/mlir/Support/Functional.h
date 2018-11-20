@@ -18,10 +18,9 @@
 #ifndef MLIR_SUPPORT_FUNCTIONAL_H_
 #define MLIR_SUPPORT_FUNCTIONAL_H_
 
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/iterator_range.h"
-#include <functional>
-#include <type_traits>
+#include "llvm/ADT/STLExtras.h"
+//#include <functional>
+//#include <type_traits>
 
 /// This file provides some simple template functional-style sugar to operate
 /// on **value** types. Make sure when using that the stored type is cheap to
@@ -64,10 +63,20 @@ void apply(Fun fun, IterType begin, IterType end) {
   }
 }
 
-/// Map with templated container.
+/// Apply with templated container.
 template <typename Fun, typename ContainerType>
 void apply(Fun fun, ContainerType input) {
   return apply(fun, std::begin(input), std::end(input));
+}
+
+/// Zip with 2 templated container.
+/// TODO(ntv): make variadic.
+template <typename Fun, typename ContainerType1, typename ContainerType2>
+void zip(Fun fun, ContainerType1 input1, ContainerType2 input2) {
+  auto zipIter = llvm::zip(input1, input2);
+  for (auto it : zipIter) {
+    fun(std::get<0>(it), std::get<1>(it));
+  }
 }
 
 /// Simple ScopeGuard.
