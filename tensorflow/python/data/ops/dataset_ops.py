@@ -278,9 +278,9 @@ class DatasetV2(object):
     Note that if `tensors` contains a NumPy array, and eager execution is not
     enabled, the values will be embedded in the graph as one or more
     `tf.constant` operations. For large datasets (> 1 GB), this can waste
-    memory and run into byte limits of graph serialization.  If tensors contains
-    one or more large NumPy arrays, consider the alternative described in
-    [this guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
+    memory and run into byte limits of graph serialization. If `tensors`
+    contains one or more large NumPy arrays, consider the alternative described
+    in [this guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
 
     Args:
       tensors: A nested structure of tensors.
@@ -297,9 +297,9 @@ class DatasetV2(object):
     Note that if `tensors` contains a NumPy array, and eager execution is not
     enabled, the values will be embedded in the graph as one or more
     `tf.constant` operations. For large datasets (> 1 GB), this can waste
-    memory and run into byte limits of graph serialization.  If tensors contains
-    one or more large NumPy arrays, consider the alternative described in
-    [this guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
+    memory and run into byte limits of graph serialization. If `tensors`
+    contains one or more large NumPy arrays, consider the alternative described
+    in [this guide](https://tensorflow.org/guide/datasets#consuming_numpy_arrays).
 
     Args:
       tensors: A nested structure of tensors, each having the same size in the
@@ -566,7 +566,7 @@ class DatasetV2(object):
     ```
 
     Args:
-      *args: follow same semantics as python's xrange.
+      *args: follows the same semantics as python's xrange.
         len(args) == 1 -> start = 0, stop = args[0], step = 1
         len(args) == 2 -> start = args[0], stop = args[1], step = 1
         len(args) == 3 -> start = args[0], stop = args[1, stop = args[2]
@@ -852,10 +852,10 @@ class DatasetV2(object):
 
     Raises:
       ValueError: if `num_shards` or `index` are illegal values. Note: error
-        checking is done on a best-effort basis, and aren't guaranteed to be
-        caught upon dataset creation. (e.g. providing in a placeholder tensor
-        bypasses the early checking, and will instead result in an error during
-        a session.run call.)
+        checking is done on a best-effort basis, and errors aren't guaranteed
+        to be caught upon dataset creation. (e.g. providing in a placeholder
+        tensor bypasses the early checking, and will instead result in an error
+        during a session.run call.)
     """
     num_shards = ops.convert_to_tensor(
         num_shards, name="num_shards", dtype=dtypes.int64)
@@ -892,7 +892,7 @@ class DatasetV2(object):
       batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
         consecutive elements of this dataset to combine in a single batch.
       drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
-        whether the last batch should be dropped in the case its has fewer than
+        whether the last batch should be dropped in the case it has fewer than
         `batch_size` elements; the default behavior is not to drop the smaller
         batch.
 
@@ -949,7 +949,7 @@ class DatasetV2(object):
         respective components.  Defaults are `0` for numeric types and
         the empty string for string types.
       drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
-        whether the last batch should be dropped in the case its has fewer than
+        whether the last batch should be dropped in the case it has fewer than
         `batch_size` elements; the default behavior is not to drop the smaller
         batch.
 
@@ -1573,7 +1573,7 @@ class DatasetV1Adapter(DatasetV1):
 class Options(object):
   """Represents options for tf.data.Dataset.
 
-  An `Options` object can be for instance used to control which static
+  An `Options` object can be, for instance, used to control which static
   optimizations to apply or whether to use performance modeling to dynamically
   tune the parallelism of operations such as `tf.data.Dataset.map` or
   `tf.data.Dataset.interleave`.
