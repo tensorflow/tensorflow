@@ -153,6 +153,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.contrib.data.sloppy_interleave": "tf.compat.v1.contrib.data.sloppy_interleave",
         "tf.contrib.data.unbatch": "tf.data.experimental.unbatch",
         "tf.contrib.data.unique": "tf.data.experimental.unique",
+        "tf.contrib.framework.sort": "tf.sort",
+        "tf.contrib.framework.argsort": "tf.argsort",
         "tf.quantize_v2": "tf.quantization.quantize",
         "tf.sparse_concat": "tf.sparse.concat",
         "tf.sparse_split": "tf.sparse.split",

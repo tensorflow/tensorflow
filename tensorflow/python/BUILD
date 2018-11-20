@@ -2844,6 +2844,33 @@ py_test(
 )
 
 py_library(
+    name = "sort_ops",
+    srcs = ["ops/sort_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":framework",
+        ":math_ops",
+        ":nn_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "sort_ops_test",
+    srcs = ["ops/sort_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":framework",
+        ":random_ops",
+        ":sort_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
     name = "spectral_ops_test_util",
     srcs = ["ops/spectral_ops_test_util.py"],
     srcs_version = "PY2AND3",
@@ -2957,6 +2984,7 @@ py_library(
         ":random_ops",
         ":script_ops",
         ":session_ops",
+        ":sort_ops",
         ":sparse_grad",
         ":sparse_ops",
         ":special_math_ops",

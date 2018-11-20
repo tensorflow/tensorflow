@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.framework.python.ops import sort_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -28,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import sort_ops
 from tensorflow.python.platform import test
 
 
@@ -88,9 +88,7 @@ class SortTest(test.TestCase):
       self.assertAllEqual(
           np.sort(arr, axis=0)[::-1],
           sort_ops.sort(
-              constant_op.constant(arr),
-              axis=0,
-              direction='DESCENDING').eval())
+              constant_op.constant(arr), axis=0, direction='DESCENDING').eval())
 
   def testSort_staticallyKnownRank_constantTransposition(self):
     # The transposition array should be a constant if the rank of "values" is
