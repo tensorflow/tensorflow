@@ -236,7 +236,7 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
   // dimension.
   for (auto &pair : startWaitPairs) {
     auto *dmaStartStmt = pair.first;
-    const MLValue *oldMemRef = cast<MLValue>(dmaStartStmt->getOperand(
+    MLValue *oldMemRef = cast<MLValue>(dmaStartStmt->getOperand(
         dmaStartStmt->cast<DmaStartOp>()->getFasterMemPos()));
     if (!doubleBuffer(oldMemRef, forStmt)) {
       // Normally, double buffering should not fail because we already checked
@@ -246,17 +246,27 @@ PassResult PipelineDataTransfer::runOnForStmt(ForStmt *forStmt) {
       // IR still in a valid state.
       return success();
     }
+    // If the old memref has no more uses, remove its 'dead' alloc if it was
+    // alloc'ed (note: DMA buffers are rarely function live-in).
+    if (oldMemRef->use_empty())
+      if (auto *allocStmt = oldMemRef->getDefiningStmt())
+        allocStmt->erase();
   }
 
   // Double the buffers for tag memrefs.
   for (auto &pair : startWaitPairs) {
-    const auto *dmaFinishStmt = pair.second;
-    const MLValue *oldTagMemRef = cast<MLValue>(
+    auto *dmaFinishStmt = pair.second;
+    MLValue *oldTagMemRef = cast<MLValue>(
         dmaFinishStmt->getOperand(getTagMemRefPos(*dmaFinishStmt)));
     if (!doubleBuffer(oldTagMemRef, forStmt)) {
       LLVM_DEBUG(llvm::dbgs() << "tag double buffering failed\n";);
       return success();
     }
+    // If the old tag has no more uses, remove its 'dead' alloc if it was
+    // alloc'ed.
+    if (oldTagMemRef->use_empty())
+      if (auto *allocStmt = oldTagMemRef->getDefiningStmt())
+        allocStmt->erase();
   }
 
   // Double buffering would have invalidated all the old DMA start/wait stmts.
