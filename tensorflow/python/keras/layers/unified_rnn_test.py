@@ -174,6 +174,8 @@ class UnifiedLSTM(RNN):
 
   def __init__(self,
                units,
+               activation='tanh',
+               recurrent_activation='hard_sigmoid',
                kernel_initializer='glorot_uniform',
                recurrent_initializer='orthogonal',
                bias_initializer='zeros',
@@ -196,7 +198,8 @@ class UnifiedLSTM(RNN):
     cell_spec = collections.namedtuple('cell', ['state_size', 'output_size'])
     self.cell = cell_spec(
         state_size=(self.units, self.units), output_size=self.units)
-
+    self.activation = activations.get(activation)
+    self.recurrent_activation = activations.get(recurrent_activation)
     self.kernel_initializer = initializers.get(kernel_initializer)
     self.recurrent_initializer = initializers.get(recurrent_initializer)
     self.bias_initializer = initializers.get(bias_initializer)
@@ -292,7 +295,8 @@ class UnifiedLSTM(RNN):
 
     outputs, [new_h, new_c], runtime = normal_lstm(
         inputs, initial_state[0], initial_state[1], self.kernel,
-        self.recurrent_kernel, self.bias, self.units)
+        self.recurrent_kernel, self.bias, self.units, self.activation,
+        self.recurrent_activation)
 
     function.register(cudnn_lstm, inputs, initial_state[0], initial_state[1],
                       self.kernel, self.recurrent_kernel, self.bias, self.units)
@@ -385,7 +389,8 @@ def _is_multiple_state(state_size):
         'experimental_api_implements': 'lstm',
         'experimental_api_preferred_device': 'CPU'
     })
-def normal_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, units):
+def normal_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, units,
+                activation, recurrent_activation):
   input_shape = K.int_shape(inputs)
   timesteps = input_shape[1]
 
@@ -405,12 +410,12 @@ def normal_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, units):
     z2 = z[:, 2 * units:3 * units]
     z3 = z[:, 3 * units:]
 
-    i = activations.get('hard_sigmoid')(z0)
-    f = activations.get('hard_sigmoid')(z1)
-    c = f * c_tm1 + i * activations.get('tanh')(z2)
-    o = activations.get('hard_sigmoid')(z3)
+    i = recurrent_activation(z0)
+    f = recurrent_activation(z1)
+    c = f * c_tm1 + i * activation(z2)
+    o = recurrent_activation(z3)
 
-    h = o * activations.get('tanh')(c)
+    h = o * activation(c)
     return h, [h, c]
 
   _, outputs, new_states = K.rnn(
