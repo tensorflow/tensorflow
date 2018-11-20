@@ -33,6 +33,7 @@ namespace tensorflow {
 namespace tensorrt {
 namespace segment {
 using ::tensorflow::strings::StrAppend;
+using ::tensorflow::strings::StrCat;
 
 // A simple graph representation to mirror tensorflow::Graph. This structure
 // helps saving memory since segmenter modifies the graph in place, preventing
@@ -433,13 +434,12 @@ tensorflow::Status SegmentGraph(
     }
     node_segments.emplace_back(node);
   }
-  string msg = "There are "
-               + std::to_string(num_unsupported_ops)
-               + " unsupported ops of "
-               + std::to_string(unsupported_ops.size())
-               + " different types in the graph: ";
+  string msg = StrCat("There are ", num_unsupported_ops,
+                      " ops of ", unsupported_ops.size(),
+                      " different types in the graph that",
+                      " are not converted to TensorRT: ");
   for (const auto& elem: unsupported_ops) {
-    msg += elem + ", ";
+    StrAppend(&msg, elem, ", ");
   }
   LOG(INFO) << msg << "(For more information see "
             << "https://docs.nvidia.com/deeplearning"
