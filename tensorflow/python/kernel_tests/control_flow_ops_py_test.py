@@ -435,6 +435,20 @@ class ControlFlowTest(test.TestCase):
 
       self.assertEqual(1.0, control_flow_ops.cond(rv, case, lambda: t).eval())
 
+  def testCondWithTensorArrayGrad(self):
+    with self.cached_session() as sess:
+      with ops.device(test.gpu_device_name()):
+        pred = array_ops.placeholder(dtypes.bool, [])
+        x = constant_op.constant([1.0, 2.0, 3.0])
+        y = control_flow_ops.cond(
+            pred, lambda: functional_ops.map_fn(lambda z: z * 2.0, x),
+            lambda: constant_op.constant([1.0, 1.0, 1.0]))
+        g = gradients_impl.gradients(y, x)[0]
+
+      self.assertAllEqual(sess.run(g, {pred: True}), [2.0, 2.0, 2.0])
+      # TODO(b/119791601): Enable this.
+      # self.assertAllEqual(sess.run(g, {pred: False}), [0.0, 0.0, 0.0])
+
   @test_util.disable_control_flow_v2("b/113293074")
   def testCondIndexedSlicesDifferentTypes(self):
     with self.cached_session():
