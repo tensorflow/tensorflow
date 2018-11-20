@@ -29,7 +29,7 @@ tf_module {
     argspec: "args=[\'shape\', \'lam\', \'dtype\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\', \'None\'], "
   }
   member_method {
-    name: "set_random_seed"
+    name: "set_seed"
     argspec: "args=[\'seed\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
