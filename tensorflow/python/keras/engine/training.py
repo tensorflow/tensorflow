@@ -986,7 +986,8 @@ class Model(Network):
                                 'when using DistributionStrategy.')
 
     if (sample_weight is not None and sample_weight.all() and
-        self._distribution_strategy.__class__.__name__ == 'TPUStrategy'):
+        distributed_training_utils.is_tpu_strategy(
+            self._distribution_strategy)):
       raise NotImplementedError('`sample_weight` is currently not supported '
                                 'when using TPUStrategy.')
 
@@ -1755,7 +1756,8 @@ class Model(Network):
           initial_epoch=initial_epoch,
           steps_per_epoch=steps_per_epoch,
           validation_steps=validation_steps)
-    elif training_distributed.should_run_experimental_loop(self):
+    elif distributed_training_utils.is_tpu_strategy(
+        self._distribution_strategy):
       return training_distributed.experimental_fit_loop(
           self,
           x,
@@ -1916,7 +1918,8 @@ class Model(Network):
           batch_size=batch_size,
           verbose=verbose,
           steps=steps)
-    elif training_distributed.should_run_experimental_loop(self):
+    elif distributed_training_utils.is_tpu_strategy(
+        self._distribution_strategy):
       return training_distributed.experimental_test_loop(
           self, iterator=x, verbose=verbose, steps=steps)
     elif isinstance(x, iterator_ops.EagerIterator):
@@ -2026,7 +2029,8 @@ class Model(Network):
     if self.run_eagerly:
       return training_eager.predict_loop(
           self, x, batch_size=batch_size, verbose=verbose, steps=steps)
-    elif training_distributed.should_run_experimental_loop(self):
+    elif distributed_training_utils.is_tpu_strategy(
+        self._distribution_strategy):
       return training_distributed.experimental_predict_loop(
           self, x, verbose=verbose, steps=steps)
     elif isinstance(x, iterator_ops.EagerIterator):
