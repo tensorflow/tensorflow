@@ -674,9 +674,3 @@ def _per_device_aggregate_batch(batch_outs, model, mode):
       total_batch_outs.append(np.concatenate(nest.flatten(nested_outs)))
     return total_batch_outs
   return batch_outs
-
-
-def should_run_experimental_loop(model):
-  """Whether to run the experimental loops in this file."""
-  return (hasattr(model, '_distribution_strategy') and
-          model._distribution_strategy.__class__.__name__ == 'TPUStrategy')
