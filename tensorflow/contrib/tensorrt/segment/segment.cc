@@ -442,7 +442,8 @@ tensorflow::Status SegmentGraph(
     msg += elem + ", ";
   }
   LOG(INFO) << msg << "(For more information see "
-    << "https://docs.nvidia.com/deeplearning/dgx/integrate-tf-trt/index.html#support-ops).";
+            << "https://docs.nvidia.com/deeplearning"
+            << "/dgx/integrate-tf-trt/index.html#support-ops).";
 
   // The segmentation algorithm below visits nodes in reverse topological order
   // and attempts to merge nodes along output edges. That means that subgraphs
