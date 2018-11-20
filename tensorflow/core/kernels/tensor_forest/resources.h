@@ -55,10 +55,72 @@ class TensorForestTreeResource : public ResourceBase {
   const int32 TraverseTree(const int32 example_id,
                            const TTypes<float>::ConstMatrix* dense_data) const;
 
+  void SplitNode(const int32 node, tensor_forest::FertileSlot* slot,
+                 tensor_forest::SplitCandidate* best,
+                 std::vector<int32>* new_children);
+
+  const bool NodeHasLeaf(const int32 node_id);
+
  protected:
   mutex mu_;
   protobuf::Arena arena_;
   boosted_trees::Tree* decision_tree_;
+};
+
+class TensorForestFertileStatsResource : public ResourceBase {
+ public:
+  TensorForestFertileStatsResource()
+      : fertile_stats_(
+            protobuf::Arena::CreateMessage<tensor_forest::FertileStats>(
+                &arena_)){};
+
+  string DebugString() override { return "TensorForestFertilStats"; }
+
+  mutex* get_mutex() { return &mu_; }
+
+  bool InitFromSerialized(const string& serialized);
+
+  // Resets the resource and frees the proto.
+  // Caller needs to hold the mutex lock while calling this.
+  void Reset();
+
+  const tensor_forest::FertileStats& fertile_stats() const {
+    return *fertile_stats_;
+  }
+
+  const bool IsSlotFinished(const int32 node_id,
+                            const int32 split_nodes_after_samples,
+                            const int32 splits_to_consider) const;
+
+  const bool IsSlotInitialized(const int32 node_id,
+                               const int32 splits_to_consider) const;
+
+  void UpdateSlotStats(const bool is_regression, const int32 node_id,
+                       const int32 example_id, const int32 num_targets,
+                       const TTypes<float>::ConstMatrix* dense_feature,
+                       const TTypes<float>::ConstMatrix* labels);
+
+  const bool AddSplitToSlot(const int32 node_id, const int32 feature_id,
+                            const float threshold, const int32 example_id,
+                            const int32 num_targets,
+                            const TTypes<float>::ConstMatrix* dense_feature,
+                            const TTypes<float>::ConstMatrix* labels);
+
+  const bool BestSplitFromSlot(const int32 node_id,
+                               tensor_forest::FertileSlot* slot,
+                               tensor_forest::SplitCandidate* best);
+
+  void Allocate(const int32 node_id);
+
+  void Clear(const int32 node_id);
+
+  void ResetSplitStats(const int32 node_id);
+
+ protected:
+  // Mutex for using random number generator.
+  mutex mu_;
+  protobuf::Arena arena_;
+  tensor_forest::FertileStats* fertile_stats_;
 };
 
 }  // namespace tensorflow

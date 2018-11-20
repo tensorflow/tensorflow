@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package tensorflow.tensor_forest;
+option cc_enable_arenas = true;
+option java_outer_classname = "TensorForestProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+
+import "tensorflow/core/kernels/boosted_trees/boosted_trees.proto";
+
+message SplitStats {
+  // For classification,
+  // we store the sum of example weights and the sum of the squares of
+  // example weights.  Gini(X) = 1 - \sum_i{(X_i/n)^2}
+  // = 1 - \sum_i{(x_i/n)^2} /n^2 = 1 - sum_of_square/square_of_sum
+  // = 1 - sum_of_square/sum*sum
+
+  // X_i\weight = LeafStat->counts_or_sums(label) using as counts
+  // new_weight = weight + incoming_weight
+  // sum -> sum + incoming_weight
+  // sum_of_square -> sum_of_square - (weight ^ 2) + (new_weight ^ 2)
+  // since classification only need 1 d of statics, we use the first dimension
+  // of the vector
+
+  // For regression,
+  // we store sum of example weights and sum of square of
+  // example weights. Var(X_i) = E(X_i^2)-E(X_i)^2 We can use
+  // left\right_variance = sum_of_square/n - (sum/n)^2
+
+  // X_i\sum_i = LeafStat->counts_or_sums(label) using as sums
+  // sum_i -> sum_i + incoming_weight
+  // sum_of_square_i -> sum_of_square_i + incoming_weight*incoming_weight
+  boosted_trees.Vector sum = 1;
+  boosted_trees.Vector sum_of_square = 2;
+}
+
+message LeafStat {
+  // The sum of the weights of the training examples that we have seen.
+  float weight_sum = 1;
+  boosted_trees.Vector counts_or_sums = 2;
+}
+
+message SplitCandidate {
+  // proto representing the potential node.
+  boosted_trees.DenseSplit split = 1;
+
+  // Left gini stats.
+  SplitStats left_split_stats = 2;
+
+  // Right gini stats.
+  SplitStats right_split_stats = 3;
+
+  // Right counts are inferred from FertileSlot.post_init_leaf_stats and
+  // left_stats.
+  LeafStat left_leaf_stats = 4;
+
+  // Right stats (not full counts) are kept here.
+  // LeafStat right_stats = 5;
+}
+
+message FertileSlot {
+  repeated SplitCandidate candidates = 1;
+
+  // The statistics for *all* the examples seen at this leaf after
+  // initialization.
+  LeafStat leaf_stats = 4;
+}
+
+message FertileStats {
+  // Tracks stats for each node.  node_to_slot[i] is the FertileSlot for node i.
+  // This grow dynamically as needed.
+  map<int32, FertileSlot> node_to_slot = 1;
+}
