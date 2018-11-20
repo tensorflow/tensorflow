@@ -27,7 +27,6 @@
 #include "mlir/IR/Types.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
-#include "third_party/llvm/llvm/include/llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace mlir;
