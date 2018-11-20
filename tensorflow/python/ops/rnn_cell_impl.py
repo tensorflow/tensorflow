@@ -1394,7 +1394,7 @@ class DeviceWrapper(RNNCell):
       return self._cell(inputs, state, scope=scope)
 
 
-@tf_export("nn.rnn_cell.MultiRNNCell")
+@tf_export(v1=["nn.rnn_cell.MultiRNNCell"])
 class MultiRNNCell(RNNCell):
   """RNN cell composed sequentially of multiple simple cells.
 
@@ -1407,6 +1407,9 @@ class MultiRNNCell(RNNCell):
   ```
   """
 
+  @deprecated(None, "This class is equivalent as "
+                    "tf.keras.layers.StackedRNNCells, and will be replaced by "
+                    "that in Tensorflow 2.0.")
   def __init__(self, cells, state_is_tuple=True):
     """Create a RNN cell composed sequentially of a number of RNNCells.
 
