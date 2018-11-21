@@ -1,8 +1,24 @@
 path: "tensorflow.metrics"
 tf_module {
-  member_method {
-    name: "accuracy"
-    argspec: "args=[\'labels\', \'predictions\', \'weights\', \'metrics_collections\', \'updates_collections\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  member {
+    name: "Accuracy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "BinaryAccuracy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CategoricalAccuracy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Mean"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SparseCategoricalAccuracy"
+    mtype: "<type \'type\'>"
   }
   member_method {
     name: "auc"
@@ -27,10 +43,6 @@ tf_module {
   member_method {
     name: "false_positives_at_thresholds"
     argspec: "args=[\'labels\', \'predictions\', \'thresholds\', \'weights\', \'metrics_collections\', \'updates_collections\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "mean"
-    argspec: "args=[\'values\', \'weights\', \'metrics_collections\', \'updates_collections\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "mean_absolute_error"

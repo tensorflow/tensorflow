@@ -49,7 +49,7 @@ class KerasMetricsTest(test.TestCase):
         output = metric(y_a, y_b)
         self.assertEqual(K.eval(output).shape, (6,))
 
-  def test_sparse_categorical_accuracy(self):
+  def test_sparse_categorical_accuracy_int(self):
     with self.cached_session():
       metric = metrics.sparse_categorical_accuracy
       y_true = K.variable(np.random.randint(0, 7, (6,)))
@@ -368,6 +368,28 @@ class KerasMetricsTest(test.TestCase):
     self.assertEqual(3, self.evaluate(restore_mean.count))
 
   @test_util.run_in_graph_and_eager_modes
+  def test_accuracy(self):
+    acc_obj = metrics.Accuracy(name='my acc')
+
+    # check config
+    self.assertEqual(acc_obj.name, 'my acc')
+    self.assertTrue(acc_obj.stateful)
+    self.assertEqual(len(acc_obj.variables), 2)
+    self.assertEqual(acc_obj.dtype, dtypes.float32)
+    self.evaluate(variables.variables_initializer(acc_obj.variables))
+
+    # verify that correct value is returned
+    update_op = acc_obj.update_state([[1], [2], [3], [4]], [[1], [2], [3], [4]])
+    self.evaluate(update_op)
+    result = self.evaluate(acc_obj.result())
+    self.assertEqual(result, 1)  # 2/2
+
+    # check with sample_weight
+    result_t = acc_obj([[2], [1]], [[2], [0]], sample_weight=[[0.5], [0.2]])
+    result = self.evaluate(result_t)
+    self.assertAlmostEqual(result, 0.96, 2)  # 4.5/4.7
+
+  @test_util.run_in_graph_and_eager_modes
   def test_binary_accuracy(self):
     acc_obj = metrics.BinaryAccuracy(name='my acc')
 
@@ -434,6 +456,30 @@ class KerasMetricsTest(test.TestCase):
     # check with sample_weight
     result_t = acc_obj([[0, 0, 1], [0, 1, 0]],
                        [[0.1, 0.1, 0.8], [0.05, 0, 0.95]], [[0.5], [0.2]])
+    result = self.evaluate(result_t)
+    self.assertAlmostEqual(result, 0.93, 2)  # 2.5/2.7
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_sparse_categorical_accuracy(self):
+    acc_obj = metrics.SparseCategoricalAccuracy(name='my acc')
+
+    # check config
+    self.assertEqual(acc_obj.name, 'my acc')
+    self.assertTrue(acc_obj.stateful)
+    self.assertEqual(len(acc_obj.variables), 2)
+    self.assertEqual(acc_obj.dtype, dtypes.float32)
+    self.evaluate(variables.variables_initializer(acc_obj.variables))
+
+    # verify that correct value is returned
+    update_op = acc_obj.update_state([[2], [1]],
+                                     [[0.1, 0.1, 0.8], [0.05, 0.95, 0]])
+    self.evaluate(update_op)
+    result = self.evaluate(acc_obj.result())
+    self.assertEqual(result, 1)  # 2/2
+
+    # check with sample_weight
+    result_t = acc_obj([[2], [1]], [[0.1, 0.1, 0.8], [0.05, 0, 0.95]],
+                       [[0.5], [0.2]])
     result = self.evaluate(result_t)
     self.assertAlmostEqual(result, 0.93, 2)  # 2.5/2.7
 
