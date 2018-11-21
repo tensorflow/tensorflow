@@ -198,6 +198,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "keep_dims": "keepdims",
             "reduction_indices": "axis"
         },
+        "tf.squeeze": {
+            "squeeze_dims": "axis",
+        },
     }
 
     # Mapping from function to the new name of the function
