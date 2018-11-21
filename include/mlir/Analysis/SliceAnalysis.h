@@ -70,8 +70,8 @@ using TransitiveFilter = std::function<bool(Statement *)>;
 ///              9
 ///
 /// Assuming all local orders match the numbering order:
-/// 1. after getting back to the root getForwardSlice,
-///    `forwardSlice` may contain:
+/// 1. after getting back to the root getForwardSlice, `forwardSlice` may
+///    contain:
 ///      {9, 7, 8, 5, 1, 2, 6, 3, 4}
 /// 2. reversing the result of 1. gives:
 ///      {4, 3, 6, 2, 1, 5, 8, 7, 9}

@@ -59,7 +59,7 @@ void mlir::getForwardSlice(Statement *stmt,
         auto *ownerStmt = u.getOwner();
         if (forwardSlice->count(ownerStmt) == 0) {
           getForwardSlice(ownerStmt, forwardSlice, filter,
-                          /* topLevel */ false);
+                          /*topLevel=*/false);
         }
       }
     }
@@ -68,7 +68,7 @@ void mlir::getForwardSlice(Statement *stmt,
       auto *ownerStmt = u.getOwner();
       if (forwardSlice->count(ownerStmt) == 0) {
         getForwardSlice(ownerStmt, forwardSlice, filter,
-                        /* topLevel */ false);
+                        /*topLevel=*/false);
       }
     }
   } else {
@@ -105,7 +105,7 @@ void mlir::getBackwardSlice(Statement *stmt,
     auto *stmt = operand->getDefiningStmt();
     if (backwardSlice->count(stmt) == 0) {
       getBackwardSlice(stmt, backwardSlice, filter,
-                       /* topLevel */ false);
+                       /*topLevel=*/false);
     }
   }
 

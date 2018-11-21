@@ -44,6 +44,9 @@ FunctionPass *createVectorizePass();
 /// FileCheck.
 FunctionPass *createVectorizerTestPass();
 
+/// Creates a pass to lower super-vectors to target-dependent HW vectors.
+FunctionPass *createMaterializeVectors();
+
 /// Creates a loop unrolling pass. Default option or command-line options take
 /// effect if -1 is passed as parameter.
 FunctionPass *createLoopUnrollPass(int unrollFactor = -1, int unrollFull = -1);
