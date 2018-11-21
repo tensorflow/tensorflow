@@ -191,8 +191,7 @@ xla_test(
     name = "sorting_test",
     srcs = ["sorting_test.cc"],
     blacklisted_backends = [
-        "cpu",
-        "gpu",
+        "cpu",  # Fails with --config=asan.
     ],
     tags = ["enable_for_xla_interpreter"],
     deps = [
