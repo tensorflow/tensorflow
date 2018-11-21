@@ -312,6 +312,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.strings.length": ["input", "name", "unit"],
         "tf.transpose": ["a", "perm", "name", "conjugate"],
         "tf.tuple": ["tensors", "name", "control_inputs"],
+        "tf.io.parse_example": [
+            "serialized", "features", "name", "example_names"
+        ],
+        "tf.io.parse_single_example": [
+            "serialized", "features", "name", "example_names"
+        ],
         "tf.while_loop": [
             "cond", "body", "loop_vars", "shape_invariants",
             "parallel_iterations", "back_prop", "swap_memory", "name",
