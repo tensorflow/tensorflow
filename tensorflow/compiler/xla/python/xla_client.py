@@ -26,6 +26,9 @@ import os
 
 import numpy as np
 
+import six
+from six.moves import xrange
+
 from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.compiler.xla.python import pywrap_xla as c_api
 from tensorflow.compiler.xla.service import hlo_pb2
@@ -322,6 +325,9 @@ class Shape(object):
   def __ne__(self, other):
     return not self == other
 
+  def __hash__(self):
+    return hash((self._dtype, self._dimensions, self._minor_to_major))
+
   def __repr__(self):
     return ('xla_client.Shape(_dtype={!r}, _dimensions={!r}, '
             '_is_tuple={!r}, _minor_to_major={!r})').format(
@@ -540,6 +546,8 @@ class LocalComputation(object):
           shape.map_leaves(layout_fn) for shape in argument_shapes
       ]
       result_shape = result_shape.map_leaves(layout_fn)
+
+    argument_shapes = list(argument_shapes)
 
     compile_options = compile_options or CompileOptions()
     compile_options.result_shape = result_shape
@@ -1380,6 +1388,8 @@ def initialize_platform_name(platform_name):
   Raises:
     A runtime exception if the XLA service has already been initialized.
   """
+  if six.PY3:
+    platform_name = platform_name.encode('utf-8')
   c_api.InitializePlatformName(platform_name)
 
 
