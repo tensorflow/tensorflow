@@ -306,6 +306,7 @@ renames = {
     'tf.matrix_solve_ls': 'tf.linalg.lstsq',
     'tf.matrix_transpose': 'tf.linalg.transpose',
     'tf.matrix_triangular_solve': 'tf.linalg.triangular_solve',
+    'tf.min_max_variable_partitioner': 'tf.compat.v1.min_max_variable_partitioner',
     'tf.model_variables': 'tf.compat.v1.model_variables',
     'tf.moving_average_variables': 'tf.compat.v1.moving_average_variables',
     'tf.multinomial': 'tf.compat.v1.multinomial',
