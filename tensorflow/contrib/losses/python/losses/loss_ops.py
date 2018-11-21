@@ -59,9 +59,8 @@ def _scale_losses(losses, weights):
   """
   # First, compute the sum of the losses over all elements:
   start_index = max(0, weights.get_shape().ndims)
-  reduction_indices = list(range(start_index, losses.get_shape().ndims))
-  reduced_losses = math_ops.reduce_sum(
-      losses, reduction_indices=reduction_indices)
+  axis = list(range(start_index, losses.get_shape().ndims))
+  reduced_losses = math_ops.reduce_sum(losses, axis=axis)
   reduced_losses = math_ops.multiply(reduced_losses, weights)
   return math_ops.reduce_sum(reduced_losses)
 
@@ -158,10 +157,9 @@ def _num_present(losses, weights, per_batch=False):
 
   # First, count the number of nonzero weights:
   if weights.get_shape().ndims >= 1:
-    reduction_indices = list(range(1, weights.get_shape().ndims))
+    axis = list(range(1, weights.get_shape().ndims))
     num_nonzero_per_batch = math_ops.reduce_sum(
-        math_ops.to_float(math_ops.not_equal(weights, 0)),
-        reduction_indices=reduction_indices)
+        math_ops.to_float(math_ops.not_equal(weights, 0)), axis=axis)
 
   # Next, determine the number of elements that weights would broadcast to:
   broadcast_dims = array_ops.slice(
@@ -577,16 +575,16 @@ def mean_pairwise_squared_error(predictions,
     if weights.get_shape().ndims is None:
       raise ValueError("weights.get_shape().ndims cannot be None")
 
-    reduction_indices = list(range(1, diffs.get_shape().ndims))
+    axis = list(range(1, diffs.get_shape().ndims))
 
     sum_squares_diff_per_batch = math_ops.reduce_sum(
-        math_ops.square(diffs), reduction_indices=reduction_indices)
+        math_ops.square(diffs), axis=axis)
     num_present_per_batch = _num_present(diffs, weights, per_batch=True)
 
     term1 = 2.0 * math_ops.div_no_nan(
         sum_squares_diff_per_batch, num_present_per_batch, name="value")
 
-    sum_diff = math_ops.reduce_sum(diffs, reduction_indices=reduction_indices)
+    sum_diff = math_ops.reduce_sum(diffs, axis=axis)
     term2 = 2.0 * math_ops.div_no_nan(
         math_ops.square(sum_diff),
         math_ops.square(num_present_per_batch),
@@ -645,7 +643,7 @@ def cosine_distance(predictions,
 
     radial_diffs = math_ops.multiply(predictions, labels)
     losses = 1 - math_ops.reduce_sum(
-        radial_diffs, reduction_indices=[
+        radial_diffs, axis=[
             axis,
         ])
     return compute_weighted_loss(losses, weights, scope=scope)

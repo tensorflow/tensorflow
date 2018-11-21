@@ -1314,7 +1314,7 @@ def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disa
 
 
 # Reduction operations
-def _ReductionDims(x, axis, reduction_indices):
+def _ReductionDims(x, axis, reduction_indices=None):  # pylint: disable=invalid-name
   """Returns range(0, rank(x)) if reduction_indices is None."""
   # TODO(aselle): Remove this after deprecation
   if reduction_indices is not None:
@@ -1337,23 +1337,23 @@ def _ReductionDims(x, axis, reduction_indices):
     return range(0, array_ops.rank(x))
 
 
-def _may_reduce_to_scalar(keepdims, axis, reduction_indices, output):
+def _may_reduce_to_scalar(keepdims, axis, output):
   """Set a reduction's output shape to be a scalar if we are certain."""
   if not common_shapes.has_fully_defined_shape(output) and (not keepdims) and (
-      axis is None) and (reduction_indices is None):
+      axis is None):
     output.set_shape(())
   return output
 
 
-@tf_export("math.reduce_sum", "reduce_sum")
+@tf_export(v1=["math.reduce_sum", "reduce_sum"])
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
-def reduce_sum(input_tensor,
-               axis=None,
-               keepdims=None,
-               name=None,
-               reduction_indices=None,
-               keep_dims=None):
+def reduce_sum_v1(input_tensor,
+                  axis=None,
+                  keepdims=None,
+                  name=None,
+                  reduction_indices=None,
+                  keep_dims=None):
   """Computes the sum of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1393,18 +1393,58 @@ def reduce_sum(input_tensor,
   int64 while tensorflow returns the same dtype as the input.
   @end_compatibility
   """
+  axis = deprecation.deprecated_argument_lookup(
+      "axis", axis, "reduction_indices", reduction_indices)
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
                                                     "keep_dims", keep_dims)
-  if keepdims is None:
-    keepdims = False
+  return reduce_sum(input_tensor, axis, keepdims, name)
 
-  return _may_reduce_to_scalar(keepdims, axis, reduction_indices,
-                               gen_math_ops._sum(
-                                   input_tensor,
-                                   _ReductionDims(input_tensor, axis,
-                                                  reduction_indices),
-                                   keepdims,
-                                   name=name))
+
+@tf_export("math.reduce_sum", "reduce_sum", v1=[])
+def reduce_sum(input_tensor, axis=None, keepdims=False, name=None):
+  """Computes the sum of elements across dimensions of a tensor.
+
+  Reduces `input_tensor` along the dimensions given in `axis`.
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
+
+  If `axis` is None, all dimensions are reduced, and a
+  tensor with a single element is returned.
+
+  For example:
+
+  ```python
+  x = tf.constant([[1, 1, 1], [1, 1, 1]])
+  tf.reduce_sum(x)  # 6
+  tf.reduce_sum(x, 0)  # [2, 2, 2]
+  tf.reduce_sum(x, 1)  # [3, 3]
+  tf.reduce_sum(x, 1, keepdims=True)  # [[3], [3]]
+  tf.reduce_sum(x, [0, 1])  # 6
+  ```
+
+  Args:
+    input_tensor: The tensor to reduce. Should have numeric type.
+    axis: The dimensions to reduce. If `None` (the default), reduces all
+      dimensions. Must be in the range `[-rank(input_tensor),
+      rank(input_tensor))`.
+    keepdims: If true, retains reduced dimensions with length 1.
+    name: A name for the operation (optional).
+
+  Returns:
+    The reduced tensor, of the same dtype as the input_tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.sum apart the fact that numpy upcast uint8 and int32 to
+  int64 while tensorflow returns the same dtype as the input.
+  @end_compatibility
+  """
+  keepdims = False if keepdims is None else keepdims
+  return _may_reduce_to_scalar(
+      keepdims, axis,
+      gen_math_ops._sum(
+          input_tensor, _ReductionDims(input_tensor, axis), keepdims,
+          name=name))
 
 
 @tf_export(v1=["math.count_nonzero", "count_nonzero"])
@@ -1544,15 +1584,13 @@ def count_nonzero_v2(input,  # pylint: disable=redefined-builtin
         dtype=dtype)
 
 
-@tf_export("math.reduce_mean", "reduce_mean")
-@deprecation.deprecated_args(
-    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
-def reduce_mean(input_tensor,
-                axis=None,
-                keepdims=None,
-                name=None,
-                reduction_indices=None,
-                keep_dims=None):
+@tf_export(v1=["math.reduce_mean", "reduce_mean"])
+def reduce_mean_v1(input_tensor,
+                   axis=None,
+                   keepdims=None,
+                   name=None,
+                   reduction_indices=None,
+                   keep_dims=None):
   """Computes the mean of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1602,22 +1640,72 @@ def reduce_mean(input_tensor,
 
   @end_compatibility
   """
+  axis = deprecation.deprecated_argument_lookup(
+      "axis", axis, "reduction_indices", reduction_indices)
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
                                                     "keep_dims", keep_dims)
+  return reduce_mean(input_tensor, axis, keepdims, name)
 
-  if keepdims is None:
-    keepdims = False
-  return _may_reduce_to_scalar(keepdims, axis, reduction_indices,
-                               gen_math_ops.mean(
-                                   input_tensor,
-                                   _ReductionDims(input_tensor, axis,
-                                                  reduction_indices),
-                                   keepdims,
-                                   name=name))
+
+@tf_export("math.reduce_mean", "reduce_mean", v1=[])
+def reduce_mean(input_tensor, axis=None, keepdims=False, name=None):
+  """Computes the mean of elements across dimensions of a tensor.
+
+  Reduces `input_tensor` along the dimensions given in `axis`.
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
+
+  If `axis` is None, all dimensions are reduced, and a
+  tensor with a single element is returned.
+
+  For example:
+
+  ```python
+  x = tf.constant([[1., 1.], [2., 2.]])
+  tf.reduce_mean(x)  # 1.5
+  tf.reduce_mean(x, 0)  # [1.5, 1.5]
+  tf.reduce_mean(x, 1)  # [1.,  2.]
+  ```
+
+  Args:
+    input_tensor: The tensor to reduce. Should have numeric type.
+    axis: The dimensions to reduce. If `None` (the default), reduces all
+      dimensions. Must be in the range `[-rank(input_tensor),
+      rank(input_tensor))`.
+    keepdims: If true, retains reduced dimensions with length 1.
+    name: A name for the operation (optional).
+
+  Returns:
+    The reduced tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.mean
+
+  Please note that `np.mean` has a `dtype` parameter that could be used to
+  specify the output type. By default this is `dtype=float64`. On the other
+  hand, `tf.reduce_mean` has an aggressive type inference from `input_tensor`,
+  for example:
+
+  ```python
+  x = tf.constant([1, 0, 1, 0])
+  tf.reduce_mean(x)  # 0
+  y = tf.constant([1., 0., 1., 0.])
+  tf.reduce_mean(y)  # 0.5
+  ```
+
+  @end_compatibility
+  """
+  keepdims = False if keepdims is None else keepdims
+  return _may_reduce_to_scalar(
+      keepdims, axis,
+      gen_math_ops.mean(
+          input_tensor, _ReductionDims(input_tensor, axis), keepdims,
+          name=name))
 
 
 @tf_export("math.reduce_variance")
-def reduce_variance(input_tensor, axis=None, keepdims=None, name=None):
+def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the variance of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1665,7 +1753,7 @@ def reduce_variance(input_tensor, axis=None, keepdims=None, name=None):
 
 
 @tf_export("math.reduce_std")
-def reduce_std(input_tensor, axis=None, keepdims=None, name=None):
+def reduce_std(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the standard deviation of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1710,15 +1798,8 @@ def reduce_std(input_tensor, axis=None, keepdims=None, name=None):
     return sqrt(variance)
 
 
-@tf_export("math.reduce_prod", "reduce_prod")
-@deprecation.deprecated_args(
-    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
-def reduce_prod(input_tensor,
-                axis=None,
-                keepdims=None,
-                name=None,
-                reduction_indices=None,
-                keep_dims=None):
+@tf_export("math.reduce_prod", "reduce_prod", v1=[])
+def reduce_prod(input_tensor, axis=None, keepdims=False, name=None):
   """Computes the product of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1736,6 +1817,48 @@ def reduce_prod(input_tensor,
       `[-rank(input_tensor), rank(input_tensor))`.
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
+
+  Returns:
+    The reduced tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.prod
+  @end_compatibility
+  """
+  keepdims = False if keepdims is None else keepdims
+  return _may_reduce_to_scalar(
+      keepdims, axis,
+      gen_math_ops.prod(
+          input_tensor, _ReductionDims(input_tensor, axis), keepdims,
+          name=name))
+
+
+@tf_export(v1=["math.reduce_prod", "reduce_prod"])
+@deprecation.deprecated_args(
+    None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
+def reduce_prod_v1(input_tensor,
+                   axis=None,
+                   keepdims=None,
+                   name=None,
+                   reduction_indices=None,
+                   keep_dims=None):
+  """Computes the product of elements across dimensions of a tensor.
+
+  Reduces `input_tensor` along the dimensions given in `axis`.
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
+
+  If `axis` is None, all dimensions are reduced, and a
+  tensor with a single element is returned.
+
+  Args:
+    input_tensor: The tensor to reduce. Should have numeric type.
+    axis: The dimensions to reduce. If `None` (the default), reduces all
+      dimensions. Must be in the range `[-rank(input_tensor),
+      rank(input_tensor))`.
+    keepdims: If true, retains reduced dimensions with length 1.
+    name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
     keep_dims: Deprecated alias for `keepdims`.
 
@@ -1746,29 +1869,22 @@ def reduce_prod(input_tensor,
   Equivalent to np.prod
   @end_compatibility
   """
+  axis = deprecation.deprecated_argument_lookup(
+      "axis", axis, "reduction_indices", reduction_indices)
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
                                                     "keep_dims", keep_dims)
-
-  if keepdims is None:
-    keepdims = False
-  return _may_reduce_to_scalar(keepdims, axis, reduction_indices,
-                               gen_math_ops.prod(
-                                   input_tensor,
-                                   _ReductionDims(input_tensor, axis,
-                                                  reduction_indices),
-                                   keepdims,
-                                   name=name))
+  return reduce_prod(input_tensor, axis, keepdims, name)
 
 
-@tf_export("math.reduce_min", "reduce_min")
+@tf_export(v1=["math.reduce_min", "reduce_min"])
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
-def reduce_min(input_tensor,
-               axis=None,
-               keepdims=None,
-               name=None,
-               reduction_indices=None,
-               keep_dims=None):
+def reduce_min_v1(input_tensor,
+                  axis=None,
+                  keepdims=None,
+                  name=None,
+                  reduction_indices=None,
+                  keep_dims=None):
   """Computes the minimum of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1781,9 +1897,9 @@ def reduce_min(input_tensor,
 
   Args:
     input_tensor: The tensor to reduce. Should have real numeric type.
-    axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions. Must be in the range
-      `[-rank(input_tensor), rank(input_tensor))`.
+    axis: The dimensions to reduce. If `None` (the default), reduces all
+      dimensions. Must be in the range `[-rank(input_tensor),
+      rank(input_tensor))`.
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1796,28 +1912,57 @@ def reduce_min(input_tensor,
   Equivalent to np.min
   @end_compatibility
   """
+  axis = deprecation.deprecated_argument_lookup(
+      "axis", axis, "reduction_indices", reduction_indices)
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
                                                     "keep_dims", keep_dims)
-  if keepdims is None:
-    keepdims = False
-  return _may_reduce_to_scalar(keepdims, axis, reduction_indices,
-                               gen_math_ops._min(
-                                   input_tensor,
-                                   _ReductionDims(input_tensor, axis,
-                                                  reduction_indices),
-                                   keepdims,
-                                   name=name))
+  return reduce_min(input_tensor, axis, keepdims, name)
 
 
-@tf_export("math.reduce_max", "reduce_max")
+@tf_export("math.reduce_min", "reduce_min", v1=[])
+def reduce_min(input_tensor, axis=None, keepdims=False, name=None):
+  """Computes the minimum of elements across dimensions of a tensor.
+
+  Reduces `input_tensor` along the dimensions given in `axis`.
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
+
+  If `axis` is None, all dimensions are reduced, and a
+  tensor with a single element is returned.
+
+  Args:
+    input_tensor: The tensor to reduce. Should have real numeric type.
+    axis: The dimensions to reduce. If `None` (the default), reduces all
+      dimensions. Must be in the range `[-rank(input_tensor),
+      rank(input_tensor))`.
+    keepdims: If true, retains reduced dimensions with length 1.
+    name: A name for the operation (optional).
+
+  Returns:
+    The reduced tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.min
+  @end_compatibility
+  """
+  keepdims = False if keepdims is None else keepdims
+  return _may_reduce_to_scalar(
+      keepdims, axis,
+      gen_math_ops._min(
+          input_tensor, _ReductionDims(input_tensor, axis), keepdims,
+          name=name))
+
+
+@tf_export(v1=["math.reduce_max", "reduce_max"])
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
-def reduce_max(input_tensor,
-               axis=None,
-               keepdims=None,
-               name=None,
-               reduction_indices=None,
-               keep_dims=None):
+def reduce_max_v1(input_tensor,
+                  axis=None,
+                  keepdims=None,
+                  name=None,
+                  reduction_indices=None,
+                  keep_dims=None):
   """Computes the maximum of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1845,28 +1990,57 @@ def reduce_max(input_tensor,
   Equivalent to np.max
   @end_compatibility
   """
+  axis = deprecation.deprecated_argument_lookup(
+      "axis", axis, "reduction_indices", reduction_indices)
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
                                                     "keep_dims", keep_dims)
-  if keepdims is None:
-    keepdims = False
-  return _may_reduce_to_scalar(keepdims, axis, reduction_indices,
-                               gen_math_ops._max(
-                                   input_tensor,
-                                   _ReductionDims(input_tensor, axis,
-                                                  reduction_indices),
-                                   keepdims,
-                                   name=name))
+  return reduce_max(input_tensor, axis, keepdims, name)
 
 
-@tf_export("math.reduce_all", "reduce_all")
+@tf_export("math.reduce_max", "reduce_max", v1=[])
+def reduce_max(input_tensor, axis=None, keepdims=False, name=None):
+  """Computes the maximum of elements across dimensions of a tensor.
+
+  Reduces `input_tensor` along the dimensions given in `axis`.
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
+
+  If `axis` is None, all dimensions are reduced, and a
+  tensor with a single element is returned.
+
+  Args:
+    input_tensor: The tensor to reduce. Should have real numeric type.
+    axis: The dimensions to reduce. If `None` (the default), reduces all
+      dimensions. Must be in the range `[-rank(input_tensor),
+      rank(input_tensor))`.
+    keepdims: If true, retains reduced dimensions with length 1.
+    name: A name for the operation (optional).
+
+  Returns:
+    The reduced tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.max
+  @end_compatibility
+  """
+  keepdims = False if keepdims is None else keepdims
+  return _may_reduce_to_scalar(
+      keepdims, axis,
+      gen_math_ops._max(
+          input_tensor, _ReductionDims(input_tensor, axis), keepdims,
+          name=name))
+
+
+@tf_export(v1=["math.reduce_all", "reduce_all"])
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
-def reduce_all(input_tensor,
-               axis=None,
-               keepdims=None,
-               name=None,
-               reduction_indices=None,
-               keep_dims=None):
+def reduce_all_v1(input_tensor,
+                  axis=None,
+                  keepdims=None,
+                  name=None,
+                  reduction_indices=None,
+                  keep_dims=None):
   """Computes the "logical and" of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1888,9 +2062,9 @@ def reduce_all(input_tensor,
 
   Args:
     input_tensor: The boolean tensor to reduce.
-    axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions. Must be in the range
-      `[-rank(input_tensor), rank(input_tensor))`.
+    axis: The dimensions to reduce. If `None` (the default), reduces all
+      dimensions. Must be in the range `[-rank(input_tensor),
+      rank(input_tensor))`.
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1903,28 +2077,66 @@ def reduce_all(input_tensor,
   Equivalent to np.all
   @end_compatibility
   """
+  axis = deprecation.deprecated_argument_lookup(
+      "axis", axis, "reduction_indices", reduction_indices)
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
                                                     "keep_dims", keep_dims)
-  if keepdims is None:
-    keepdims = False
-  return _may_reduce_to_scalar(keepdims, axis, reduction_indices,
-                               gen_math_ops._all(
-                                   input_tensor,
-                                   _ReductionDims(input_tensor, axis,
-                                                  reduction_indices),
-                                   keepdims,
-                                   name=name))
+  return reduce_all(input_tensor, axis, keepdims, name)
 
 
-@tf_export("math.reduce_any", "reduce_any")
+@tf_export("reduce_all", "math.reduce_all", v1=[])
+def reduce_all(input_tensor, axis=None, keepdims=False, name=None):
+  """Computes the "logical and" of elements across dimensions of a tensor.
+
+  Reduces `input_tensor` along the dimensions given in `axis`.
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
+
+  If `axis` is None, all dimensions are reduced, and a
+  tensor with a single element is returned.
+
+  For example:
+
+  ```python
+  x = tf.constant([[True,  True], [False, False]])
+  tf.reduce_all(x)  # False
+  tf.reduce_all(x, 0)  # [False, False]
+  tf.reduce_all(x, 1)  # [True, False]
+  ```
+
+  Args:
+    input_tensor: The boolean tensor to reduce.
+    axis: The dimensions to reduce. If `None` (the default), reduces all
+      dimensions. Must be in the range `[-rank(input_tensor),
+      rank(input_tensor))`.
+    keepdims: If true, retains reduced dimensions with length 1.
+    name: A name for the operation (optional).
+
+  Returns:
+    The reduced tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.all
+  @end_compatibility
+  """
+  keepdims = False if keepdims is None else keepdims
+  return _may_reduce_to_scalar(
+      keepdims, axis,
+      gen_math_ops._all(
+          input_tensor, _ReductionDims(input_tensor, axis), keepdims,
+          name=name))
+
+
+@tf_export(v1=["math.reduce_any", "reduce_any"])
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
-def reduce_any(input_tensor,
-               axis=None,
-               keepdims=None,
-               name=None,
-               reduction_indices=None,
-               keep_dims=None):
+def reduce_any_v1(input_tensor,
+                  axis=None,
+                  keepdims=None,
+                  name=None,
+                  reduction_indices=None,
+                  keep_dims=None):
   """Computes the "logical or" of elements across dimensions of a tensor.
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -1946,9 +2158,9 @@ def reduce_any(input_tensor,
 
   Args:
     input_tensor: The boolean tensor to reduce.
-    axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions. Must be in the range
-      `[-rank(input_tensor), rank(input_tensor))`.
+    axis: The dimensions to reduce. If `None` (the default), reduces all
+      dimensions. Must be in the range `[-rank(input_tensor),
+      rank(input_tensor))`.
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -1961,28 +2173,66 @@ def reduce_any(input_tensor,
   Equivalent to np.any
   @end_compatibility
   """
+  axis = deprecation.deprecated_argument_lookup(
+      "axis", axis, "reduction_indices", reduction_indices)
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
                                                     "keep_dims", keep_dims)
-  if keepdims is None:
-    keepdims = False
-  return _may_reduce_to_scalar(keepdims, axis, reduction_indices,
-                               gen_math_ops._any(
-                                   input_tensor,
-                                   _ReductionDims(input_tensor, axis,
-                                                  reduction_indices),
-                                   keepdims,
-                                   name=name))
+  return reduce_any(input_tensor, axis, keepdims, name)
 
 
-@tf_export("math.reduce_logsumexp", "reduce_logsumexp")
+@tf_export("math.reduce_any", "reduce_any", v1=[])
+def reduce_any(input_tensor, axis=None, keepdims=False, name=None):
+  """Computes the "logical or" of elements across dimensions of a tensor.
+
+  Reduces `input_tensor` along the dimensions given in `axis`.
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
+
+  If `axis` is None, all dimensions are reduced, and a
+  tensor with a single element is returned.
+
+  For example:
+
+  ```python
+  x = tf.constant([[True,  True], [False, False]])
+  tf.reduce_any(x)  # True
+  tf.reduce_any(x, 0)  # [True, True]
+  tf.reduce_any(x, 1)  # [True, False]
+  ```
+
+  Args:
+    input_tensor: The boolean tensor to reduce.
+    axis: The dimensions to reduce. If `None` (the default), reduces all
+      dimensions. Must be in the range `[-rank(input_tensor),
+      rank(input_tensor))`.
+    keepdims: If true, retains reduced dimensions with length 1.
+    name: A name for the operation (optional).
+
+  Returns:
+    The reduced tensor.
+
+  @compatibility(numpy)
+  Equivalent to np.any
+  @end_compatibility
+  """
+  keepdims = False if keepdims is None else keepdims
+  return _may_reduce_to_scalar(
+      keepdims, axis,
+      gen_math_ops._any(
+          input_tensor, _ReductionDims(input_tensor, axis), keepdims,
+          name=name))
+
+
+@tf_export(v1=["math.reduce_logsumexp", "reduce_logsumexp"])
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
-def reduce_logsumexp(input_tensor,
-                     axis=None,
-                     keepdims=None,
-                     name=None,
-                     reduction_indices=None,
-                     keep_dims=None):
+def reduce_logsumexp_v1(input_tensor,
+                        axis=None,
+                        keepdims=None,
+                        name=None,
+                        reduction_indices=None,
+                        keep_dims=None):
   """Computes log(sum(exp(elements across dimensions of a tensor))).
 
   Reduces `input_tensor` along the dimensions given in `axis`.
@@ -2010,9 +2260,9 @@ def reduce_logsumexp(input_tensor,
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
-    axis: The dimensions to reduce. If `None` (the default),
-      reduces all dimensions. Must be in the range
-      `[-rank(input_tensor), rank(input_tensor))`.
+    axis: The dimensions to reduce. If `None` (the default), reduces all
+      dimensions. Must be in the range `[-rank(input_tensor),
+      rank(input_tensor))`.
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
     reduction_indices: The old (deprecated) name for axis.
@@ -2021,16 +2271,57 @@ def reduce_logsumexp(input_tensor,
   Returns:
     The reduced tensor.
   """
+  axis = deprecation.deprecated_argument_lookup(
+      "axis", axis, "reduction_indices", reduction_indices)
   keepdims = deprecation.deprecated_argument_lookup("keepdims", keepdims,
                                                     "keep_dims", keep_dims)
-  if keepdims is None:
-    keepdims = False
+  return reduce_logsumexp(input_tensor, axis, keepdims, name)
+
+
+@tf_export("math.reduce_logsumexp", "reduce_logsumexp", v1=[])
+def reduce_logsumexp(input_tensor, axis=None, keepdims=False, name=None):
+  """Computes log(sum(exp(elements across dimensions of a tensor))).
+
+  Reduces `input_tensor` along the dimensions given in `axis`.
+  Unless `keepdims` is true, the rank of the tensor is reduced by 1 for each
+  entry in `axis`. If `keepdims` is true, the reduced dimensions
+  are retained with length 1.
+
+  If `axis` has no entries, all dimensions are reduced, and a
+  tensor with a single element is returned.
+
+  This function is more numerically stable than log(sum(exp(input))). It avoids
+  overflows caused by taking the exp of large inputs and underflows caused by
+  taking the log of small inputs.
+
+  For example:
+
+  ```python
+  x = tf.constant([[0., 0., 0.], [0., 0., 0.]])
+  tf.reduce_logsumexp(x)  # log(6)
+  tf.reduce_logsumexp(x, 0)  # [log(2), log(2), log(2)]
+  tf.reduce_logsumexp(x, 1)  # [log(3), log(3)]
+  tf.reduce_logsumexp(x, 1, keepdims=True)  # [[log(3)], [log(3)]]
+  tf.reduce_logsumexp(x, [0, 1])  # log(6)
+  ```
+
+  Args:
+    input_tensor: The tensor to reduce. Should have numeric type.
+    axis: The dimensions to reduce. If `None` (the default), reduces all
+      dimensions. Must be in the range `[-rank(input_tensor),
+      rank(input_tensor))`.
+    keepdims: If true, retains reduced dimensions with length 1.
+    name: A name for the operation (optional).
+
+  Returns:
+    The reduced tensor.
+  """
+  keepdims = False if keepdims is None else keepdims
   input_tensor = ops.convert_to_tensor(input_tensor)
   with ops.name_scope(name, "ReduceLogSumExp", [input_tensor]) as name:
     raw_max = reduce_max(
         input_tensor,
         axis=axis,
-        reduction_indices=reduction_indices,
         keepdims=True)
     my_max = array_ops.stop_gradient(
         array_ops.where(
@@ -2040,12 +2331,11 @@ def reduce_logsumexp(input_tensor,
         reduce_sum(
             gen_math_ops.exp(gen_math_ops.sub(input_tensor, my_max)),
             axis,
-            keepdims=keepdims,
-            reduction_indices=reduction_indices))
+            keepdims=keepdims))
     if not keepdims:
       my_max = array_ops.reshape(my_max, array_ops.shape(result))
     result = gen_math_ops.add(result, my_max)
-    return _may_reduce_to_scalar(keepdims, axis, reduction_indices, result)
+    return _may_reduce_to_scalar(keepdims, axis, result)
 
 
 @tf_export("linalg.trace", v1=["linalg.trace", "trace"])

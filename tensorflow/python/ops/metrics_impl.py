@@ -948,7 +948,7 @@ def mean_cosine_distance(labels,
       predictions=predictions, labels=labels, weights=weights)
   radial_diffs = math_ops.multiply(predictions, labels)
   radial_diffs = math_ops.reduce_sum(
-      radial_diffs, reduction_indices=[
+      radial_diffs, axis=[
           dim,
       ], keepdims=True)
   mean_distance, update_op = mean(radial_diffs, weights, None, None, name or
@@ -3045,7 +3045,7 @@ def _sparse_average_precision_at_top_k(labels, predictions_idx):
 
     # Reduce along k dimension to get the sum, yielding a [D1, ... DN] tensor.
     precision_sum = math_ops.reduce_sum(
-        relevant_precision_per_k, reduction_indices=(-1,), name='precision_sum')
+        relevant_precision_per_k, axis=(-1,), name='precision_sum')
 
     # Divide by number of relevant items to get average precision. These are
     # the "num_relevant_items" and "AveP" terms from the formula above.
