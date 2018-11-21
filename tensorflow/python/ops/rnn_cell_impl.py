@@ -36,6 +36,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import initializers
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
@@ -410,7 +411,7 @@ class BasicRNNCell(LayerRNNCell):
                    "performance on GPU.", self)
 
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
     self._num_units = num_units
     if activation:
@@ -507,7 +508,7 @@ class GRUCell(LayerRNNCell):
                    "Please use tf.contrib.cudnn_rnn.CudnnGRU for better "
                    "performance on GPU.", self)
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
     self._num_units = num_units
     if activation:
@@ -683,7 +684,7 @@ class BasicLSTMCell(LayerRNNCell):
                    "performance on GPU.", self)
 
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
     self._num_units = num_units
     self._forget_bias = forget_bias
@@ -871,7 +872,7 @@ class LSTMCell(LayerRNNCell):
                    "performance on GPU.", self)
 
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
     self._num_units = num_units
     self._use_peepholes = use_peepholes
