@@ -124,6 +124,7 @@ py_library(
         "engine/base_layer.py",
         "engine/distributed_training_utils.py",
         "engine/input_layer.py",
+        "engine/input_spec.py",
         "engine/network.py",
         "engine/saving.py",
         "engine/sequential.py",
@@ -266,6 +267,7 @@ py_test(
     name = "optimizers_test",
     size = "medium",
     srcs = ["optimizers_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [
@@ -273,6 +275,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -728,6 +731,7 @@ py_test(
         ":keras",
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

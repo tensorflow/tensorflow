@@ -65,6 +65,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/buffer_assignment_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/dynamic_update_slice_util.h"
@@ -2172,7 +2173,18 @@ Status IrEmitterUnnested::HandleSelect(HloInstruction* select) {
 Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
   std::vector<std::unique_ptr<Thunk>> thunks;
   Shape keys_shape = sort->operand(0)->shape();
+  int64 dimension_to_sort = sort->dimensions(0);
+  // In case there is a 'values' parameter that is a iota, we take note and use
+  // it later to ensure a stable sort. Otherwise, we don't guarantee a stable
+  // sort.
+  int64 iota_values_parameter_index = -1;
   for (int64 i = 0; i < sort->operand_count(); ++i) {
+    if (i > 0 && sort->operand(i)->opcode() == HloOpcode::kIota &&
+        ShapeUtil::ElementIsIntegral(sort->operand(i)->shape()) &&
+        Cast<HloIotaInstruction>(sort->operand(i))->iota_dimension() ==
+            dimension_to_sort) {
+      iota_values_parameter_index = i;
+    }
     ShapeIndex shape_index =
         sort->operand_count() > 1 ? ShapeIndex({i}) : ShapeIndex({});
     // We assume that the layout of all involved operands and outputs is the
@@ -2197,7 +2209,6 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
     }
   }
 
-  int64 dimension_to_sort = sort->dimensions(0);
   uint64 dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
   int64 num_stages = tensorflow::Log2Ceiling(dimension_to_sort_bound);
   CHECK_GE(1ULL << num_stages, dimension_to_sort_bound);
@@ -2299,8 +2310,9 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
       }
     }
     return llvm_ir::EmitSortInPlace(
-        dimension_to_sort, keys_array, values_arrays, IrName(sort), xor_masks,
-        &b_, launch_dimensions,
+        dimension_to_sort, keys_array, values_arrays,
+        iota_values_parameter_index, IrName(sort), xor_masks, &b_,
+        launch_dimensions,
         xor_masks.size() > 1 ? num_iterations_in_sort_dim
                              : standard_num_iterations_in_sort_dim,
         kTileSize);

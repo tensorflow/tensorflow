@@ -4293,7 +4293,6 @@ inline void LogSoftmax(const SoftmaxParams& params,
   using FixedPointScaledDiff =
       gemmlowp::FixedPoint<int32, kScaledDiffIntegerBits>;
   using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumulationIntegerBits>;
-  using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
 
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =

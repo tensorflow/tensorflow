@@ -31,6 +31,15 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Maps from a function name to a dictionary that describes how to
     # map from an old argument keyword to the new argument keyword.
     self.function_keyword_renames = {
+        "tf.image.crop_and_resize": {
+            "box_ind": "box_indices",
+        },
+        "tf.image.extract_image_patches": {
+            "ksizes": "sizes",
+        },
+        "tf.extract_image_patches": {
+            "ksizes": "sizes",
+        },
         "tf.expand_dims": {
             "dim": "axis",
         },
@@ -50,6 +59,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         },
         "tf.nn.sufficient_statistics": {
             "keep_dims": "keepdims"
+        },
+        "tf.nn.log_softmax": {
+            "dim": "axis",
+        },
+        "tf.nn.softmax": {
+            "dim": "axis",
         },
         "tf.debugging.assert_all_finite": {
             "t": "x",
@@ -144,6 +159,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.contrib.data.sloppy_interleave": "tf.compat.v1.contrib.data.sloppy_interleave",
         "tf.contrib.data.unbatch": "tf.data.experimental.unbatch",
         "tf.contrib.data.unique": "tf.data.experimental.unique",
+        "tf.contrib.framework.sort": "tf.sort",
+        "tf.contrib.framework.argsort": "tf.argsort",
         "tf.quantize_v2": "tf.quantization.quantize",
         "tf.sparse_concat": "tf.sparse.concat",
         "tf.sparse_split": "tf.sparse.split",
@@ -194,6 +211,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "input", "min_range", "max_range", "T", "mode", "name",
             "round_mode"
         ],
+        "tf.feature_column.categorical_column_with_vocabulary_file": [
+            "key", "vocabulary_file", "vocabulary_size",
+            "num_oov_buckets", "default_value", "dtype"
+        ],
         "tf.shape": ["input", "name", "out_type"],
         "tf.size": ["input", "name", "out_type"],
         "tf.sparse.concat": [
@@ -210,6 +231,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "data", "indices", "segment_ids", "name", "num_segments"
         ],
         "tf.strings.length": ["input", "name", "unit"],
+        "tf.transpose": ["a", "perm", "name", "conjugate"],
+        "tf.tuple": ["tensors", "name", "control_inputs"],
+        "tf.while_loop": ["cond", "body", "loop_vars", "shape_invariants",
+                          "parallel_iterations", "back_prop", "swap_memory",
+                          "name", "maximum_iterations",
+                          "return_same_structure"],
     }
 
     # Specially handled functions.

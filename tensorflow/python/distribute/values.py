@@ -1608,11 +1608,11 @@ class MultiStepContext(object):
   """A context object that can be used to capture things when running steps.
 
   This context object is useful when running multiple steps at a time using the
-  `run_steps_on_dataset` API. For e.g. it allows the user's step function to
-  specify which outputs to emit at what frequency. Currently it supports
-  capturing output from the last step, as well as capturing non tensor outputs.
-  In the future it will be augmented to support other use cases such as output
-  each N steps.
+  `experimental_run_steps_on_iterator` API. For e.g. it allows the user's step
+  function to specify which outputs to emit at what frequency. Currently it
+  supports capturing output from the last step, as well as capturing non tensor
+  outputs.  In the future it will be augmented to support other use cases such
+  as output each N steps.
   """
 
   def __init__(self):

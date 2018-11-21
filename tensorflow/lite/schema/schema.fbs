@@ -202,6 +202,7 @@ enum BuiltinOperator : byte {
   RESIZE_NEAREST_NEIGHBOR = 97,
   LEAKY_RELU = 98,
   SQUARED_DIFFERENCE = 99,
+  MIRROR_PAD = 100,
 }
 
 // Options for the builtin operators.
@@ -282,6 +283,7 @@ union BuiltinOptions {
   ResizeNearestNeighborOptions,
   LeakyReluOptions,
   SquaredDifferenceOptions,
+  MirrorPadOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -667,6 +669,17 @@ table LeakyReluOptions {
 }
 
 table SquaredDifferenceOptions {
+}
+
+enum MirrorPadMode : byte {
+  // Doesn't include borders.
+  REFLECT = 0,
+  // Includes borders.
+  SYMMETRIC = 1,
+}
+
+table MirrorPadOptions {
+  mode:MirrorPadMode;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

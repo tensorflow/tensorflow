@@ -1,8 +1,9 @@
-path: "tensorflow.nn.rnn_cell.MultiRNNCell"
+path: "tensorflow.keras.metrics.SparseCategoricalAccuracy"
 tf_class {
-  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.MultiRNNCell\'>"
-  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.RNNCell\'>"
-  is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
+  is_instance: "<class \'tensorflow.python.keras.metrics.SparseCategoricalAccuracy\'>"
+  is_instance: "<class \'tensorflow.python.keras.metrics.MeanMetricWrapper\'>"
+  is_instance: "<class \'tensorflow.python.keras.metrics.Mean\'>"
+  is_instance: "<class \'tensorflow.python.keras.metrics.Metric\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"
   is_instance: "<type \'object\'>"
@@ -12,10 +13,6 @@ tf_class {
   }
   member {
     name: "dtype"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "graph"
     mtype: "<type \'property\'>"
   }
   member {
@@ -67,18 +64,6 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "output_size"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "scope_name"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "state_size"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "trainable_variables"
     mtype: "<type \'property\'>"
   }
@@ -100,7 +85,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'cells\', \'state_is_tuple\'], varargs=None, keywords=None, defaults=[\'True\'], "
+    argspec: "args=[\'self\', \'name\', \'dtype\'], varargs=None, keywords=None, defaults=[\'sparse_categorical_accuracy\', \'None\'], "
   }
   member_method {
     name: "add_loss"
@@ -120,7 +105,7 @@ tf_class {
   }
   member_method {
     name: "add_weight"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'use_resource\', \'synchronization\', \'aggregation\', \'partitioner\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\', \'None\'], "
+    argspec: "args=[\'self\', \'name\', \'shape\', \'aggregation\', \'synchronization\', \'initializer\'], varargs=None, keywords=None, defaults=[\'()\', \'VariableAggregation.SUM\', \'VariableSynchronization.ON_READ\', \'None\'], "
   }
   member_method {
     name: "apply"
@@ -128,11 +113,11 @@ tf_class {
   }
   member_method {
     name: "build"
-    argspec: "args=[\'self\', \'_\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "call"
-    argspec: "args=[\'self\', \'inputs\', \'state\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "compute_mask"
@@ -153,10 +138,6 @@ tf_class {
   member_method {
     name: "get_config"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "get_initial_state"
-    argspec: "args=[\'self\', \'inputs\', \'batch_size\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "get_input_at"
@@ -195,11 +176,19 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "reset_states"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "result"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "set_weights"
     argspec: "args=[\'self\', \'weights\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "zero_state"
-    argspec: "args=[\'self\', \'batch_size\', \'dtype\'], varargs=None, keywords=None, defaults=None"
+    name: "update_state"
+    argspec: "args=[\'self\', \'y_true\', \'y_pred\', \'sample_weight\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
 }

@@ -194,6 +194,11 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
   def should_save_summary(self):
     return True
 
+  # TODO(priyag): Delete this once all strategies use global batch size.
+  @property
+  def _global_batch_size(self):
+    return True
+
 
 class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):
   """ReplicaContext for OneDeviceStrategy."""
@@ -205,9 +210,5 @@ class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):
         replica_id_in_sync_group=constant_op.constant(0, dtypes.int32))
 
   @property
-  def device(self):
-    raise RuntimeError("Use .devices instead")
-
-  @property
   def devices(self):
-    return [self._distribution_strategy.worker_devices[0]]
+    return [self._distribution_strategy.extended.worker_devices[0]]

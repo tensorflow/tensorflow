@@ -568,6 +568,20 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     v.load(2.0)
     self.assertEqual(2.0, self.evaluate(v.value()))
 
+  def testToFromProtoCachedValue(self):
+    with ops.Graph().as_default():
+      v_def = resource_variable_ops.ResourceVariable(
+          initial_value=constant_op.constant(3.0)).to_proto()
+      v_prime = resource_variable_ops.ResourceVariable(variable_def=v_def)
+      self.assertTrue(getattr(v_prime, "_cached_value", None) is None)
+
+      other_v_def = resource_variable_ops.ResourceVariable(
+          caching_device="cpu:0",
+          initial_value=constant_op.constant(3.0)).to_proto()
+      other_v_prime = resource_variable_ops.ResourceVariable(
+          variable_def=other_v_def)
+      self.assertTrue(other_v_prime._cached_value is not None)
+
   def testVariableDefInitializedInstances(self):
     with ops.Graph().as_default(), self.cached_session() as sess:
       v_def = resource_variable_ops.ResourceVariable(

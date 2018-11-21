@@ -65,9 +65,9 @@ def per_example_quantile_regression_loss(labels, weights, predictions,
   below is this loss but squared in the region where the loss value < 1.
 
   Args:
-    labels: Rank 2 (N, 1) tensor of per-example labels.
+    labels: Rank 2 (N, D) tensor of per-example labels.
     weights: Rank 2 (N, 1) tensor of per-example weights.
-    predictions: Rank 2 (N, 1) tensor of per-example predictions.
+    predictions: Rank 2 (N, D) tensor of per-example predictions.
     quantile: The quantile to use.
 
   Returns:

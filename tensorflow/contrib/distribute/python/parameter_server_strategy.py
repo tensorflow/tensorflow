@@ -510,3 +510,8 @@ class ParameterServerExtended(distribute_lib.DistributionStrategyExtended):
   @property
   def should_save_summary(self):
     return self._is_chief
+
+  # TODO(priyag): Delete this once all strategies use global batch size.
+  @property
+  def _global_batch_size(self):
+    return False

@@ -119,7 +119,7 @@ class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
               sess.run(list(left._index.values())), list(right._index.values()))
 
   def _testReductionAndBroadcast(self, cross_device_ops, distribution):
-    devices = distribution.worker_devices
+    devices = distribution.extended.worker_devices
 
     values = [constant_op.constant(float(d)) for d in range(len(devices))]
     per_replica = _make_per_replica(values, devices)
@@ -381,27 +381,31 @@ class MultiWorkerCrossDeviceOpsTest(multi_worker_test_base.MultiWorkerTestBase,
       distribution=[
           combinations.NamedDistribution(
               "MirroredCPU",
-              lambda: mirrored_strategy.MirroredStrategy(num_gpus=0),
+              lambda: mirrored_strategy.MirroredStrategy(num_gpus_per_worker=0),
               required_gpus=0),
           combinations.NamedDistribution(
               "Mirrored1GPU",
-              lambda: mirrored_strategy.MirroredStrategy(num_gpus=1),
+              lambda: mirrored_strategy.MirroredStrategy(num_gpus_per_worker=1),
               required_gpus=1),
           combinations.NamedDistribution(
               "Mirrored2GPUs",
-              lambda: mirrored_strategy.MirroredStrategy(num_gpus=2),
+              lambda: mirrored_strategy.MirroredStrategy(num_gpus_per_worker=2),
               required_gpus=2),
+          # pylint: disable=g-long-lambda
           combinations.NamedDistribution(
               "CoreMirroredCPU",
-              lambda: mirrored_strategy.CoreMirroredStrategy(num_gpus=0),
+              lambda: mirrored_strategy.CoreMirroredStrategy(
+                  num_gpus_per_worker=0),
               required_gpus=0),
           combinations.NamedDistribution(
               "CoreMirrored1GPU",
-              lambda: mirrored_strategy.CoreMirroredStrategy(num_gpus=1),
+              lambda: mirrored_strategy.CoreMirroredStrategy(
+                  num_gpus_per_worker=1),
               required_gpus=1),
           combinations.NamedDistribution(
               "CoreMirrored2GPUs",
-              lambda: mirrored_strategy.CoreMirroredStrategy(num_gpus=2),
+              lambda: mirrored_strategy.CoreMirroredStrategy(
+                  num_gpus_per_worker=2),
               required_gpus=2),
       ],
       mode=["graph"])

@@ -361,9 +361,14 @@ def from_sparse(st_input, name=None):
     st_input = sparse_tensor.convert_to_tensor_or_sparse_tensor(
         st_input, name='rt_input')
 
-    if (st_input.dense_shape.shape.ndims != 2 and
-        st_input.indices.shape.ndims is None or
-        st_input.indices.shape.dims[1].value != 2):
+    static_rank_from_dense_shape = (
+        None if st_input.dense_shape.shape.ndims is None
+        else st_input.dense_shape.shape.dims[0].value)
+    static_rank_from_indices = (
+        None if st_input.indices.shape.ndims is None
+        else st_input.indices.shape.dims[1].value)
+
+    if static_rank_from_dense_shape != 2 and static_rank_from_indices != 2:
       raise ValueError('rank(st_input) must be 2')
 
     with ops.control_dependencies(

@@ -416,6 +416,12 @@ class GradientsTest(test.TestCase):
       self.assertAllClose(ans, pfor_value)
       self.assertAllClose(ans, while_value)
 
+  def test_jacobian_parallel_iterations(self):
+    x = constant_op.constant([[1., 2], [3, 4]])
+    y = math_ops.matmul(x, x)
+    self.assertAllClose(gradients.jacobian(y, x, parallel_iterations=2),
+                        gradients.jacobian(y, x, parallel_iterations=3))
+
   def test_batch_jacobian_bad_shapes(self):
     x = random_ops.random_uniform([2, 2])
     y = random_ops.random_uniform([3, 2])
@@ -458,6 +464,13 @@ class GradientsTest(test.TestCase):
           feed_dict={x: [[1, 2], [3, 4]]})
       self.assertAllClose(ans, pfor_value)
       self.assertAllClose(ans, while_value)
+
+  def test_batch_jacobian_parallel_iterations(self):
+    x = constant_op.constant([[1., 2], [3, 4]])
+    w = constant_op.constant([[1., 2, 3, 4], [5, 6, 7, 8]])
+    y = math_ops.matmul(x, w)
+    self.assertAllClose(gradients.batch_jacobian(y, x, parallel_iterations=2),
+                        gradients.batch_jacobian(y, x, parallel_iterations=3))
 
   def test_fc_batch_jacobian(self):
     pfor_jacobian, while_jacobian = create_fc_batch_jacobian(8, 4, 2)
