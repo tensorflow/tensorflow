@@ -125,6 +125,7 @@ typedef enum {
   kTfLiteBuiltinResizeNearestNeighbor = 97,
   kTfLiteBuiltinLeakyRelu = 98,
   kTfLiteBuiltinSquaredDifference = 99,
+  kTfLiteBuiltinMirrorPad = 100,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus
