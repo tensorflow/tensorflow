@@ -57,6 +57,9 @@ from tensorflow.python.util import function_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
+ops.NotDifferentiable("ReduceDataset")
+
+
 @tf_export("data.Dataset", v1=[])
 @six.add_metaclass(abc.ABCMeta)
 class DatasetV2(object):
