@@ -145,7 +145,7 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
     const ExecutableBuildOptions& build_options) {
   const HloModuleProto& proto = computation.proto();
   TF_RET_CHECK(proto.has_host_program_shape());
-  const ProgramShape& program_shape = proto.host_program_shape();
+  ProgramShape program_shape(proto.host_program_shape());
 
   // Validate incoming layouts.
   if (argument_layouts.size() != program_shape.parameters_size()) {

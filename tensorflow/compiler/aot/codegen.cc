@@ -164,7 +164,8 @@ string RewriteWithName(const string& name, string code,
 }
 
 // Generate methods for args (inputs).
-Status GenArgMethods(const tf2xla::Config& config, const xla::ProgramShape& ps,
+Status GenArgMethods(const tf2xla::Config& config,
+                     const xla::ProgramShapeProto& ps,
                      const CompileResult& compile_result, string* methods) {
   size_t num_args = ps.parameters_size();
   if (config.feed_size() != num_args) {
@@ -204,7 +205,7 @@ Status GenArgMethods(const tf2xla::Config& config, const xla::ProgramShape& ps,
 
 // Generate methods for results (outputs).
 Status GenResultMethods(const tf2xla::Config& config,
-                        const xla::ProgramShape& ps, string* methods) {
+                        const xla::ProgramShapeProto& ps, string* methods) {
   if (ps.result().element_type() != xla::TUPLE) {
     // The XlaCompiler we use to build the xla computation always generates a
     // tuple result, and we rely on this to simplify code generation.
@@ -336,7 +337,7 @@ Status GenerateHeader(const CodegenOpts& opts, const tf2xla::Config& config,
       ExtractEntryParamBufferInfos(buffer_infos);
   std::vector<BufferInfo> buffer_infos_for_temps =
       ExtractTempBufferInfos(buffer_infos);
-  const xla::ProgramShape& ps = compile_result.program_shape;
+  const xla::ProgramShapeProto& ps = compile_result.program_shape;
   string methods_arg, methods_result;
   TF_RETURN_IF_ERROR(GenArgMethods(config, ps, compile_result, &methods_arg));
   TF_RETURN_IF_ERROR(GenResultMethods(config, ps, &methods_result));
@@ -548,8 +549,8 @@ class {{CLASS}} : public tensorflow::XlaCompiledCpuFunction {
   static const char** StaticResultNames() {{RESULT_NAMES_CODE}}
 
   // Shape of the args and results.
-  static const xla::ProgramShape* StaticProgramShape() {
-    static const xla::ProgramShape* kShape = {{PROGRAM_SHAPE_SHIM_EXPRESSION}};
+  static const xla::ProgramShapeProto* StaticProgramShape() {
+    static const xla::ProgramShapeProto* kShape = {{PROGRAM_SHAPE_SHIM_EXPRESSION}};
     return kShape;
   }
 
@@ -615,11 +616,11 @@ static string CreateUniqueIdentifier(const CodegenOpts& opts,
 Status GenerateMetadata(const CodegenOpts& opts,
                         const CompileResult& compile_result,
                         MetadataResult* metadata_result) {
-  std::unique_ptr<xla::ProgramShape> program_shape;
+  std::unique_ptr<xla::ProgramShapeProto> program_shape;
 
   if (opts.gen_program_shape) {
     program_shape =
-        absl::make_unique<xla::ProgramShape>(compile_result.program_shape);
+        absl::make_unique<xla::ProgramShapeProto>(compile_result.program_shape);
 
     // The parameter names are currently meaningless, and redundant with the
     // rest of our metadata, so clear them out to avoid confusion and save
@@ -631,8 +632,8 @@ Status GenerateMetadata(const CodegenOpts& opts,
   // a shim that evaluates to nullptr, which is what we want.
 
   ProtobufToEmbed program_shape_protobuf{
-      CreateUniqueIdentifier(opts, "ProgramShape"), "xla::ProgramShape",
-      program_shape.get()};
+      CreateUniqueIdentifier(opts, "ProgramShapeProto"),
+      "xla::ProgramShapeProto", program_shape.get()};
 
   ProtobufToEmbed hlo_profile_printer_data_protobuf{
       CreateUniqueIdentifier(opts, "HloProfilePrinterData"),

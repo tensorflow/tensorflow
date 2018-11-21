@@ -288,7 +288,8 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id) {
 
   HloComputationProto entry;
   SetProtoIdAndName(&entry, name_, kNameSeparator, GetNextId());
-  TF_ASSIGN_OR_RETURN(*entry.mutable_program_shape(), GetProgramShape(root_id));
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape, GetProgramShape(root_id));
+  *entry.mutable_program_shape() = program_shape.ToProto();
   entry.set_root_id(root_id);
 
   for (auto& instruction : instructions_) {
@@ -2372,7 +2373,7 @@ StatusOr<XlaComputation> XlaBuilder::BuildConstantSubGraph(
   SetProtoIdAndName(&entry, StrCat(name_, "_compute_constant"), kNameSeparator,
                     GetNextId());
   entry.set_root_id(root->id());
-  ProgramShape* program_shape = entry.mutable_program_shape();
+  ProgramShapeProto* program_shape = entry.mutable_program_shape();
   *program_shape->mutable_result() = root->shape();
 
   // We use std::set to keep the instruction ids in ascending order (which is
