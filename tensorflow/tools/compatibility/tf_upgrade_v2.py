@@ -43,6 +43,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.expand_dims": {
             "dim": "axis",
         },
+        "tf.batch_to_space_nd": {
+            "block_size": "block_shape",
+        },
         "tf.convert_to_tensor": {
             "preferred_dtype": "dtype_hint"
         },
@@ -84,6 +87,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "m": "mean",
             "v": "variance",
         },
+        "tf.manip.batch_to_space_nd": {
+            "block_size": "block_shape",
+        },
         "tf.nn.conv3d": {
             "filter": "filters"
         },
@@ -117,6 +123,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # function_reorders or function_keyword_renames, use the OLD function name.
     # These renames happen after the arguments have been processed.
     self.symbol_renames.update({
+        "tf.batch_to_space_nd": "tf.batch_to_space",
         "tf.contrib.data.AUTOTUNE": "tf.data.experimental.AUTOTUNE",
         "tf.contrib.data.Counter": "tf.data.experimental.Counter",
         "tf.contrib.data.CheckpointInputPipelineHook": "tf.data.experimental.CheckpointInputPipelineHook",
@@ -161,6 +168,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.contrib.data.unique": "tf.data.experimental.unique",
         "tf.contrib.framework.sort": "tf.sort",
         "tf.contrib.framework.argsort": "tf.argsort",
+        "tf.manip.batch_to_space_nd": "tf.batch_to_space",
         "tf.quantize_v2": "tf.quantization.quantize",
         "tf.sparse_concat": "tf.sparse.concat",
         "tf.sparse_split": "tf.sparse.split",
@@ -186,6 +194,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     self.function_reorders = {
         "tf.argmax": ["input", "axis", "name", "dimension", "output_type"],
         "tf.argmin": ["input", "axis", "name", "dimension", "output_type"],
+        "tf.batch_to_space": ["input", "crops", "block_size", "name"],
         "tf.boolean_mask": ["tensor", "mask", "name", "axis"],
         "tf.convert_to_tensor": ["value", "dtype", "name", "preferred_dtype"],
         "tf.nn.convolution": [
@@ -200,6 +209,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "input", "filter", "strides", "padding", "rate", "name",
             "data_format"
         ],
+        "tf.manip.batch_to_space_nd": ["input", "crops", "block_size", "name"],
         "tf.multinomial": [
             "logits", "num_samples", "seed", "name", "output_dtype"
         ],
