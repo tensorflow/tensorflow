@@ -556,7 +556,8 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
   def testInt64GPU(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
-    with self.session(use_gpu=True, force_gpu=True):
+
+    with test_util.force_gpu():
       x = constant_op.constant([1., 2., 3.])
       begin = constant_op.constant([2], dtype=dtypes.int64)
       end = constant_op.constant([3], dtype=dtypes.int64)
@@ -1187,18 +1188,18 @@ class IdentityTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(x.numpy(), y.numpy())
         self.assertTrue(device in y.device.lower())
 
-      with ops.device("gpu:0"):
+      with test_util.force_gpu():
         a = constant_op.constant([[2], [3]], dtype=dtypes.float32)
-      with ops.device("gpu:0"):
+      with test_util.force_gpu():
         b = array_ops.identity(a)
         _test(a, b, "gpu")
-      with ops.device("cpu:0"):
+      with test_util.force_cpu():
         c = array_ops.identity(b)
         _test(b, c, "cpu")
-      with ops.device("cpu:0"):
+      with test_util.force_cpu():
         d = array_ops.identity(c)
         _test(c, d, "cpu")
-      with ops.device("gpu:0"):
+      with test_util.force_gpu():
         e = array_ops.identity(d)
         _test(d, e, "gpu")
 

@@ -28,6 +28,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
@@ -87,7 +88,7 @@ class RMSpropOptimizerTest(test.TestCase):
 
   def testDense(self):
     for (dtype, learning_rate, rho, momentum, epsilon, centered) in _TESTPARAMS:
-      with self.cached_session(use_gpu=True):
+      with test_util.use_gpu():
         # Initialize variables for numpy implementation.
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
         grads0_np = np.array([0.1, 0.2], dtype=dtype.as_numpy_dtype)
@@ -106,7 +107,7 @@ class RMSpropOptimizerTest(test.TestCase):
             centered=centered)
 
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         if centered:
           mg0 = opt.get_slot(var0, "mg")
@@ -137,7 +138,7 @@ class RMSpropOptimizerTest(test.TestCase):
 
         # Run 4 steps of RMSprop
         for _ in range(1, 5):
-          update.run()
+          self.evaluate(update)
 
           var0_np, mg0_np, rms0_np, mom0_np = self._rmsprop_update_numpy(
               var0_np, grads0_np, mg0_np, rms0_np, mom0_np, learning_rate, rho,
@@ -171,11 +172,11 @@ class RMSpropOptimizerTest(test.TestCase):
             epsilon=0.0,
             centered=False).minimize(
                 loss, var_list=[var0])
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
         # Run 1 step of sgd
-        sgd_op.run()
+        self.evaluate(sgd_op)
         # Validate updated params
         self.assertAllCloseAccordingToType([[0., 1.]],
                                            self.evaluate(var0),
@@ -195,11 +196,11 @@ class RMSpropOptimizerTest(test.TestCase):
             epsilon=1.0,
             centered=True).minimize(
                 loss, var_list=[var0])
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
         # Run 1 step of sgd
-        sgd_op.run()
+        self.evaluate(sgd_op)
         # Validate updated params
         self.assertAllCloseAccordingToType([[-111, -138]],
                                            self.evaluate(var0),
@@ -207,7 +208,7 @@ class RMSpropOptimizerTest(test.TestCase):
 
   def testSparse(self):
     for (dtype, learning_rate, rho, momentum, epsilon, centered) in _TESTPARAMS:
-      with self.cached_session(use_gpu=True):
+      with test_util.use_gpu():
         # Initialize variables for numpy implementation.
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
         grads0_np = np.array([0.1], dtype=dtype.as_numpy_dtype)
@@ -231,7 +232,7 @@ class RMSpropOptimizerTest(test.TestCase):
             epsilon=epsilon,
             centered=centered)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         if centered:
           mg0 = opt.get_slot(var0, "mg")
@@ -263,7 +264,7 @@ class RMSpropOptimizerTest(test.TestCase):
 
         # Run 4 steps of RMSprop
         for _ in range(1, 5):
-          update.run()
+          self.evaluate(update)
 
           var0_np, mg0_np, rms0_np, mom0_np = self._sparse_rmsprop_update_numpy(
               var0_np, grads0_np_indices, grads0_np, mg0_np, rms0_np, mom0_np,

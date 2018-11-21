@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -43,7 +44,7 @@ class ExtractImagePatches(test.TestCase):
     strides = [1] + strides + [1]
     rates = [1] + rates + [1]
 
-    with self.session(use_gpu=True):
+    with test_util.use_gpu():
       out_tensor = array_ops.extract_image_patches(
           constant_op.constant(image),
           ksizes=ksizes,

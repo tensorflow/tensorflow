@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
@@ -36,7 +37,7 @@ class DynamicStitchTestBase(object):
     self.stitch_op = stitch_op
 
   def testScalar(self):
-    with self.session(use_gpu=True):
+    with test_util.use_gpu():
       indices = [constant_op.constant(0), constant_op.constant(1)]
       data = [constant_op.constant(40), constant_op.constant(60)]
       for step in -1, 1:
@@ -47,7 +48,7 @@ class DynamicStitchTestBase(object):
         self.assertEqual([2], stitched_t.get_shape().as_list())
 
   def testShapeInferenceForScalarWithNonConstantIndices(self):
-    with self.session(use_gpu=True):
+    with test_util.use_gpu():
       indices = [
           array_ops.placeholder(dtype=dtypes.int32),
           constant_op.constant(1)
@@ -61,7 +62,7 @@ class DynamicStitchTestBase(object):
         self.assertEqual([None], stitched_t.get_shape().as_list())
 
   def testSimpleOneDimensional(self):
-    with self.session(use_gpu=True):
+    with test_util.use_gpu():
       # Test various datatypes in the simple case to ensure that the op was
       # registered under those types.
       dtypes_to_test = [
@@ -84,7 +85,7 @@ class DynamicStitchTestBase(object):
         self.assertEqual([8], stitched_t.get_shape().as_list())
 
   def testOneListOneDimensional(self):
-    with self.session(use_gpu=True):
+    with test_util.use_gpu():
       indices = [constant_op.constant([1, 6, 2, 3, 5, 0, 4, 7])]
       data = [constant_op.constant([10, 60, 20, 30, 50, 0, 40, 70])]
       stitched_t = self.stitch_op(indices, data)
@@ -94,7 +95,7 @@ class DynamicStitchTestBase(object):
       self.assertEqual([8], stitched_t.get_shape().as_list())
 
   def testSimpleTwoDimensional(self):
-    with self.session(use_gpu=True):
+    with test_util.use_gpu():
       indices = [
           constant_op.constant([0, 4, 7]),
           constant_op.constant([1, 6]),
@@ -113,7 +114,7 @@ class DynamicStitchTestBase(object):
       self.assertEqual([8, 2], stitched_t.get_shape().as_list())
 
   def testZeroSizeTensor(self):
-    with self.session(use_gpu=True):
+    with test_util.use_gpu():
       indices = [
           constant_op.constant([0, 4, 7]),
           constant_op.constant([1, 6]),
@@ -222,7 +223,7 @@ class ParallelDynamicStitchTest(DynamicStitchTestBase, test.TestCase):
     DynamicStitchTestBase.__init__(self, data_flow_ops.parallel_dynamic_stitch)
 
   def testScalar(self):
-    with self.session(use_gpu=True):
+    with test_util.use_gpu():
       indices = [constant_op.constant(0), constant_op.constant(1)]
       data = [constant_op.constant(40.0), constant_op.constant(60.0)]
       for step in -1, 1:
