@@ -66,6 +66,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
@@ -378,53 +379,12 @@ def skip_if(condition):
 
 
 def enable_c_shapes(fn):
-  """Decorator for enabling C shapes on a test.
-
-  Note this enables the C shapes after running the test class's setup/teardown
-  methods.
-
-  Args:
-    fn: the function to be wrapped
-
-  Returns:
-    The wrapped function
-  """
-
-  # pylint: disable=protected-access
-  def wrapper(*args, **kwargs):
-    prev_value = ops._USE_C_SHAPES
-    ops._USE_C_SHAPES = True
-    try:
-      fn(*args, **kwargs)
-    finally:
-      ops._USE_C_SHAPES = prev_value
-
-  # pylint: enable=protected-access
-
-  return wrapper
+  """No-op. TODO(b/74620627): Remove this."""
+  return fn
 
 
 def with_c_shapes(cls):
-  """Adds methods that call original methods but with C API shapes enabled.
-
-  Note this enables C shapes in new methods after running the test class's
-  setup method.
-
-  Args:
-    cls: class to decorate
-
-  Returns:
-    cls with new test methods added
-  """
-  # If C shapes are already enabled, don't do anything. Some tests break if the
-  # same test is run twice, so this allows us to turn on the C shapes by default
-  # without breaking these tests.
-  if ops._USE_C_SHAPES:
-    return cls
-
-  for name, value in cls.__dict__.copy().items():
-    if callable(value) and name.startswith("test"):
-      setattr(cls, name + "WithCShapes", enable_c_shapes(value))
+  """No-op. TODO(b/74620627): Remove this."""
   return cls
 
 
@@ -447,13 +407,40 @@ def enable_control_flow_v2(fn):
   def wrapper(*args, **kwargs):
     enable_cond_v2_old = control_flow_ops.ENABLE_COND_V2
     enable_while_v2_old = control_flow_ops.ENABLE_WHILE_V2
+    enable_tensor_array_v2_old = tensor_array_ops.ENABLE_TENSOR_ARRAY_V2
     control_flow_ops.ENABLE_COND_V2 = True
     control_flow_ops.ENABLE_WHILE_V2 = True
+    tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = True
     try:
       fn(*args, **kwargs)
     finally:
       control_flow_ops.ENABLE_COND_V2 = enable_cond_v2_old
       control_flow_ops.ENABLE_WHILE_V2 = enable_while_v2_old
+      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = enable_tensor_array_v2_old
+
+  return wrapper
+
+
+def enable_tensor_array_v2(fn):
+  """Decorator for enabling _GraphTensorArrayV2 on a test.
+
+  Note this enables _GraphTensorArrayV2 after running the test class's
+  setup/teardown methods.
+
+  Args:
+    fn: the function to be wrapped
+
+  Returns:
+    The wrapped function
+  """
+
+  def wrapper(*args, **kwargs):
+    enable_tensor_array_v2_old = tensor_array_ops.ENABLE_TENSOR_ARRAY_V2
+    tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = True
+    try:
+      fn(*args, **kwargs)
+    finally:
+      tensor_array_ops.ENABLE_TENSOR_ARRAY_V2 = enable_tensor_array_v2_old
 
   return wrapper
 
@@ -1057,7 +1044,7 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
         return True
     return False
   except errors_impl.NotFoundError as e:
-    if not all([x in str(e) for x in ["CUDA", "not find"]]):
+    if not all(x in str(e) for x in ["CUDA", "not find"]):
       raise e
     else:
       logging.error(str(e))
@@ -1072,6 +1059,27 @@ def device(use_gpu):
   else:
     dev = "/device:CPU:0"
   with ops.device(dev):
+    yield
+
+
+@contextlib.contextmanager
+def use_gpu():
+  """Uses gpu when requested and available."""
+  with device(use_gpu=True):
+    yield
+
+
+@contextlib.contextmanager
+def force_gpu():
+  """Force the gpu to be used."""
+  with ops.device("/device:GPU:0"):
+    yield
+
+
+@contextlib.contextmanager
+def force_cpu():
+  """Force the cpu to be used."""
+  with ops.device("/device:CPU:0"):
     yield
 
 

@@ -552,8 +552,8 @@ class FunctionTest(test.TestCase):
 
     with self.session(graph=g):
       v.initializer.run()
-      self.assertAllEqual(expected_val.eval(), actual_val.eval())
-      self.assertAllEqual(expected_shape, actual_shape.eval())
+      self.assertAllEqual(expected_val.eval(), self.evaluate(actual_val))
+      self.assertAllEqual(expected_shape, self.evaluate(actual_shape))
 
   def testDefineErrors(self):
     with ops.Graph().as_default():

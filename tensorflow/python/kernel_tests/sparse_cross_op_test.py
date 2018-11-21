@@ -331,7 +331,7 @@ class SparseCrossOpTest(test.TestCase):
         [t2, t1], num_buckets=1024, hash_key=sparse_ops._DEFAULT_HASH_KEY + 1)
     cross_dense = sparse_ops.sparse_tensor_to_dense(cross)
     with session.Session():
-      values = cross_dense.eval()
+      values = self.evaluate(cross_dense)
       self.assertTrue(numpy.not_equal(values[0], values[1]).all())
 
   def test_hashed_3x1x2(self):

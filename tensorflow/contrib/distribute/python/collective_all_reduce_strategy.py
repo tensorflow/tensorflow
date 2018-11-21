@@ -18,12 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_ops_lib
-from tensorflow.contrib.distribute.python import cross_tower_utils
 from tensorflow.contrib.distribute.python import mirrored_strategy
-from tensorflow.contrib.distribute.python import values
 from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
+from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -79,11 +79,11 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     else:
       local_devices = ["/device:CPU:0"]
 
-    self._collective_keys = cross_tower_utils.CollectiveKeys()
+    self._collective_keys = cross_device_utils.CollectiveKeys()
     super(CollectiveAllReduceExtended, self).__init__(
         container_strategy,
         devices=local_devices,
-        cross_device_ops=cross_tower_ops_lib.CollectiveAllReduce(
+        cross_device_ops=cross_device_ops_lib.CollectiveAllReduce(
             num_workers=1,
             num_gpus_per_worker=num_gpus_per_worker,
             collective_keys=self._collective_keys))
@@ -123,11 +123,11 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     else:
       local_devices = [worker_device]
 
-    self._collective_keys = cross_tower_utils.CollectiveKeys()
+    self._collective_keys = cross_device_utils.CollectiveKeys()
     super(CollectiveAllReduceExtended, self).__init__(
         container_strategy,
         devices=local_devices,
-        cross_device_ops=cross_tower_ops_lib.CollectiveAllReduce(
+        cross_device_ops=cross_device_ops_lib.CollectiveAllReduce(
             num_workers=self._num_workers,
             num_gpus_per_worker=num_gpus_per_worker,
             collective_keys=self._collective_keys))
@@ -234,8 +234,9 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         num_input_pipelines=self._num_workers,
         input_pipeline_id=input_pipeline_id,
         num_replicas_in_sync=self._num_replicas_in_sync)
-    return values.PerReplicaDataset(
-        self._call_dataset_fn(input_fn, input_context), self._devices, True)
+
+    return values.InputFunctionIterator(
+        input_fn, [(self._default_device, self._devices)], [input_context])
 
   def _configure(self,
                  session_config=None,
@@ -319,3 +320,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   @property
   def _num_replicas_in_sync(self):
     return len(self._devices) * self._num_workers
+
+  # TODO(priyag): Delete this once all strategies use global batch size.
+  @property
+  def _global_batch_size(self):
+    return False

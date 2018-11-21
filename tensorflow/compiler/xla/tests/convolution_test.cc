@@ -1282,7 +1282,7 @@ TYPED_TEST(Convolve2D_1x4x4x1024_3x3x1x1024_Depthwise_Valid, Types) {
 }
 
 template <typename T>
-class Convolve2D_1x2x2x6_2x2x1x12_Grouped_Valid : public ConvolutionTest {
+class Convolve2D_1x2x2x6_2x2x2x12_Grouped_Valid : public ConvolutionTest {
  public:
   void RunTest() {
     XlaBuilder builder(TestName());
@@ -1341,8 +1341,8 @@ class Convolve2D_1x2x2x6_2x2x1x12_Grouped_Valid : public ConvolutionTest {
   }
 };
 
-TYPED_TEST_CASE(Convolve2D_1x2x2x6_2x2x1x12_Grouped_Valid, TestTypes);
-TYPED_TEST(Convolve2D_1x2x2x6_2x2x1x12_Grouped_Valid, Types) {
+TYPED_TEST_CASE(Convolve2D_1x2x2x6_2x2x2x12_Grouped_Valid, TestTypes);
+TYPED_TEST(Convolve2D_1x2x2x6_2x2x2x12_Grouped_Valid, Types) {
   this->RunTest();
 }
 

@@ -77,7 +77,9 @@ def all_combinations():
       distribution=[combinations.default_strategy,
                     combinations.one_device_strategy,
                     combinations.mirrored_strategy_with_gpu_and_cpu,
-                    combinations.mirrored_strategy_with_two_gpus],
+                    combinations.mirrored_strategy_with_two_gpus,
+                    combinations.core_mirrored_strategy_with_gpu_and_cpu,
+                    combinations.core_mirrored_strategy_with_two_gpus],
       mode=["graph"])
 
 
@@ -98,7 +100,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
       if isinstance(distribution, tpu_strategy.TPUStrategy):
         def step_fn(ctx, inputs):
           value, update = distribution.call_for_each_replica(
-              metric_fn, args=[inputs])
+              metric_fn, args=inputs)
           ctx.set_non_tensor_output(name="value", output=value)
           return distribution.group(update)
 

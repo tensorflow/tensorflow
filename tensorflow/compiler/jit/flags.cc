@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
-namespace legacy_flags {
 namespace {
 
 BuildXlaOpsPassFlags* build_ops_flags;
@@ -150,5 +149,4 @@ void AppendDumpGraphFlags(std::vector<Flag>* flag_list) {
   AppendDumpGraphFlagsInternal(flag_list);
 }
 
-}  // namespace legacy_flags
 }  // namespace tensorflow

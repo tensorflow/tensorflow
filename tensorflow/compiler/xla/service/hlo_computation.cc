@@ -499,7 +499,7 @@ HloComputationProto HloComputation::ToProto() const {
     proto.add_instructions()->Swap(&instruction_proto);
   }
   proto.set_root_id(root_instruction()->unique_id());
-  *proto.mutable_program_shape() = ComputeProgramShape();
+  *proto.mutable_program_shape() = ComputeProgramShape().ToProto();
   return proto;
 }
 
@@ -795,7 +795,7 @@ Status HloComputation::AcceptWithOperandOrder(
 template <typename HloInstructionPtr>
 Status HloComputation::AcceptOrdered(
     DfsHloVisitorBase<HloInstructionPtr>* visitor,
-    const std::vector<const HloInstruction*>& order) const {
+    const std::vector<HloInstruction*>& order) const {
   VLOG(3) << "Accepting visitor with order.";
   for (HloInstruction* root : CollectUnreachableRoots()) {
     TF_RET_CHECK(std::find(order.begin(), order.end(), root) != order.end())
@@ -825,9 +825,9 @@ Status HloComputation::AcceptOrdered(
 
 // Explicit instantiations.
 template Status HloComputation::AcceptOrdered(
-    DfsHloVisitor*, const std::vector<const HloInstruction*>&) const;
+    DfsHloVisitor*, const std::vector<HloInstruction*>&) const;
 template Status HloComputation::AcceptOrdered(
-    ConstDfsHloVisitor*, const std::vector<const HloInstruction*>&) const;
+    ConstDfsHloVisitor*, const std::vector<HloInstruction*>&) const;
 
 Status HloComputation::Accept(
     const std::function<Status(HloInstruction*)>& visitor_func) {

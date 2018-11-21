@@ -59,7 +59,7 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
                   2**31 - 1, 2**31, 2**32 - 1, 2**32, -2**32 + 1, -2**32,
                   -2**63 + 1, 2**63 - 1]
     def count_bits(x):
-      return sum([bin(z).count("1") for z in six.iterbytes(x.tobytes())])
+      return sum(bin(z).count("1") for z in six.iterbytes(x.tobytes()))
     for dtype in dtype_list:
       with self.cached_session(use_gpu=True) as sess:
         print("PopulationCount test: ", dtype)

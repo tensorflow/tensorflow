@@ -245,6 +245,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "TensorSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TextLineReader"
     mtype: "<type \'type\'>"
   }
@@ -318,6 +322,10 @@ tf_module {
   }
   member {
     name: "debugging"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "distribute"
     mtype: "<type \'module\'>"
   }
   member {
@@ -693,6 +701,10 @@ tf_module {
     argspec: "args=[\'input\', \'axis\', \'name\', \'dimension\', \'output_type\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \"<dtype: \'int64\'>\"], "
   }
   member_method {
+    name: "argsort"
+    argspec: "args=[\'values\', \'axis\', \'direction\', \'stable\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'ASCENDING\', \'False\', \'None\'], "
+  }
+  member_method {
     name: "as_dtype"
     argspec: "args=[\'type_value\'], varargs=None, keywords=None, defaults=None"
   }
@@ -778,7 +790,7 @@ tf_module {
   }
   member_method {
     name: "assert_scalar"
-    argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'tensor\', \'name\', \'message\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "assert_type"
@@ -1947,6 +1959,10 @@ tf_module {
   member_method {
     name: "slice"
     argspec: "args=[\'input_\', \'begin\', \'size\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "sort"
+    argspec: "args=[\'values\', \'axis\', \'direction\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'ASCENDING\', \'None\'], "
   }
   member_method {
     name: "space_to_batch"

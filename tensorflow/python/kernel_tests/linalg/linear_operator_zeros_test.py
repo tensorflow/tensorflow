@@ -169,6 +169,17 @@ class LinearOperatorZerosTest(
     self.assertFalse(operator.is_non_singular)
     self.assertTrue(operator.is_self_adjoint)
 
+  def test_zeros_matmul(self):
+    operator1 = linalg_lib.LinearOperatorIdentity(num_rows=2)
+    operator2 = linalg_lib.LinearOperatorZeros(num_rows=2)
+    self.assertTrue(isinstance(
+        operator1.matmul(operator2),
+        linalg_lib.LinearOperatorZeros))
+
+    self.assertTrue(isinstance(
+        operator2.matmul(operator1),
+        linalg_lib.LinearOperatorZeros))
+
 
 class LinearOperatorZerosNotSquareTest(
     linear_operator_test_util.NonSquareLinearOperatorDerivedClassTest):

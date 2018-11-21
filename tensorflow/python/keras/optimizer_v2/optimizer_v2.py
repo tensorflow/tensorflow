@@ -374,12 +374,16 @@ class OptimizerV2(optimizer_v1.Optimizer):
     else:
       super(OptimizerV2, self).__setattr__(name, value)
 
-  def add_slot(self, var, slot_name):
+  def add_slot(self, var, slot_name, initializer="zeros"):
     var_key = _var_key(var)
     slot_dict = self._slots.setdefault(var_key, {})
     if slot_name not in slot_dict:
       slot_key = _get_slot_key_from_var(var, slot_name)
-      weight = self.add_weight(name=slot_key, shape=var.shape, dtype=var.dtype)
+      weight = self.add_weight(
+          name=slot_key,
+          shape=var.shape,
+          dtype=var.dtype,
+          initializer=initializer)
       slot_dict[slot_name] = weight
       self._weights.append(weight)
 
@@ -572,7 +576,7 @@ def merge_update_step(update_ops, local_step):
     return incre_op
 
   return distribution_strategy_context.get_replica_context().merge_call(
-      merge_update_step_fn, update_ops, local_step)
+      merge_update_step_fn, args=(update_ops, local_step))
 
 
 def merge_grads(grads_and_vars):
@@ -584,7 +588,7 @@ def merge_grads(grads_and_vars):
     return reduced_grads
 
   return distribution_strategy_context.get_replica_context().merge_call(
-      merge_grad_fn, grads_and_vars)
+      merge_grad_fn, args=(grads_and_vars,))
 
 
 def _var_key(var):

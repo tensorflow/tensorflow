@@ -73,9 +73,13 @@ class PForTest(test.TestCase):
       else:
         self.assertAllEqual(outputs[i + n], outputs[i])
 
-  def _test_loop_fn(self, loop_fn, iters, loop_fn_dtypes=dtypes.float32):
-    t1 = pfor_control_flow_ops.pfor(loop_fn, iters=iters)
-    t2 = pfor_control_flow_ops.for_loop(loop_fn, loop_fn_dtypes, iters=iters)
+  def _test_loop_fn(self, loop_fn, iters,
+                    loop_fn_dtypes=dtypes.float32,
+                    parallel_iterations=None):
+    t1 = pfor_control_flow_ops.pfor(loop_fn, iters=iters,
+                                    parallel_iterations=parallel_iterations)
+    t2 = pfor_control_flow_ops.for_loop(loop_fn, loop_fn_dtypes, iters=iters,
+                                        parallel_iterations=parallel_iterations)
     self.run_and_assert_equal(t1, t2)
 
   def test_op_conversion_fallback_to_while_loop(self):
@@ -95,6 +99,30 @@ class PForTest(test.TestCase):
     self._test_loop_fn(
         loop_fn, 3, loop_fn_dtypes=[dtypes.float32, dtypes.int32])
     flags.FLAGS.op_conversion_fallback_to_while_loop = False
+
+  def test_parallel_iterations(self):
+    for parallel_iterations in [2, 3, 8, 10]:
+      x = random_ops.random_uniform([8, 3])
+
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        return array_ops.gather(x, i)
+      # pylint: enable=cell-var-from-loop
+
+      self._test_loop_fn(loop_fn, 8, parallel_iterations=parallel_iterations)
+      self._test_loop_fn(loop_fn, 4 * constant_op.constant(2),
+                         parallel_iterations=parallel_iterations)
+
+  def test_parallel_iterations_zero(self):
+    with self.assertRaisesRegexp(ValueError, "positive integer"):
+      pfor_control_flow_ops.pfor(lambda i: 1, 8, parallel_iterations=0)
+    with self.assertRaisesRegexp(TypeError, "positive integer"):
+      pfor_control_flow_ops.for_loop(lambda i: 1, dtypes.int32, 8,
+                                     parallel_iterations=0)
+
+  def test_parallel_iterations_one(self):
+    with self.assertRaisesRegexp(ValueError, "Use for_loop instead"):
+      pfor_control_flow_ops.pfor(lambda i: 1, 8, parallel_iterations=1)
 
 
 class ArrayTest(PForTest):
@@ -794,11 +822,29 @@ class NNTest(PForTest):
   def test_max_pool(self):
     x = random_ops.random_uniform([3, 2, 12, 12, 3])
     ksize = [1, 3, 3, 1]
+    strides = [1, 2, 2, 1]
 
     def loop_fn(i):
       x1 = array_ops.gather(x, i)
       output = nn.max_pool(
-          x1, ksize, strides=[1, 2, 2, 1], padding="VALID", data_format="NHWC")
+          x1, ksize, strides=strides, padding="VALID", data_format="NHWC")
+      loss = nn.l2_loss(output)
+      ones = array_ops.ones_like(output)
+      grad = gradient_ops.gradients(loss, x1, grad_ys=ones)
+      grad_grad = gradient_ops.gradients(grad, ones)
+      return output, grad, grad_grad
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
+
+  def test_max_pool3d(self):
+    x = random_ops.random_uniform([3, 3, 2, 12, 12, 3])
+    ksize = [1, 1, 3, 3, 1]
+    strides = [1, 1, 2, 2, 1]
+
+    def loop_fn(i):
+      x1 = array_ops.gather(x, i)
+      output = nn.max_pool3d(
+          x1, ksize, strides=strides, padding="VALID", data_format="NDHWC")
       loss = nn.l2_loss(output)
       ones = array_ops.ones_like(output)
       grad = gradient_ops.gradients(loss, x1, grad_ys=ones)
@@ -1278,13 +1324,12 @@ class ControlFlowTest(PForTest):
     pfor_out, pfor_out_grad = pfor_control_flow_ops.pfor(loop_fn, 4)
     # Note that tf.while_loop does not work in the setup above. So we manually
     # construct the equivalent computation of the above loops here.
-    real_out = math_ops.reduce_sum(inp, reduction_indices=[0])
-    real_out = math_ops.reduce_prod(real_out, reduction_indices=[1])
+    real_out = math_ops.reduce_sum(inp, axis=[0])
+    real_out = math_ops.reduce_prod(real_out, axis=[1])
     # Note that gradients of real_out will accumulate the gradients across the
     # output value. Hence we do the same aggregation on pfor_out_grad.
     real_out_grad = gradient_ops.gradients(real_out, inp)[0]
-    sum_pfor_out_grad = math_ops.reduce_sum(
-        pfor_out_grad, reduction_indices=[0])
+    sum_pfor_out_grad = math_ops.reduce_sum(pfor_out_grad, axis=[0])
 
     with session.Session() as sess:
       v1, v2, v1_grad, v2_grad = sess.run(

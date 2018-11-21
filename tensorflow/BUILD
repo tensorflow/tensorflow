@@ -361,7 +361,7 @@ package_group(
         "-//third_party/tensorflow/python/estimator",
         "//learning/meta_rank/...",
         "//tensorflow/...",
-        "//tensorflow_estimator/...",
+        "//tensorflow_estimator/contrib/...",
         "//tensorflow_fold/llgtm/...",
         "//tensorflow_text/...",
         "//third_party/py/tensor2tensor/...",

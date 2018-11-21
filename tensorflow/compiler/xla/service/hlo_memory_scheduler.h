@@ -36,14 +36,14 @@ namespace xla {
 // that describes buffer aliasing, together with a target-specific size function
 // that maps a tensor's logical size to its padded size.
 typedef std::function<StatusOr<HloInstructionSequence>(
-    const HloComputation&, const TuplePointsToAnalysis&,
+    HloComputation*, const TuplePointsToAnalysis&,
     const LogicalBuffer::SizeFunction&,
     const absl::flat_hash_map<const HloComputation*, int64>&)>
     MemorySchedulerAlgorithm;
 
 // List scheduler
 StatusOr<HloInstructionSequence> ListMemoryScheduler(
-    const HloComputation& computation,
+    HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
     const absl::flat_hash_map<const HloComputation*, int64>&
@@ -51,7 +51,7 @@ StatusOr<HloInstructionSequence> ListMemoryScheduler(
 
 // DFS-order scheduler
 StatusOr<HloInstructionSequence> DFSMemoryScheduler(
-    const HloComputation& computation,
+    HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
     const absl::flat_hash_map<const HloComputation*, int64>&
@@ -59,7 +59,7 @@ StatusOr<HloInstructionSequence> DFSMemoryScheduler(
 
 // Naive Post Order scheduler
 StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
-    const HloComputation& computation,
+    HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
     const absl::flat_hash_map<const HloComputation*, int64>&
@@ -69,7 +69,7 @@ StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
 // and the DFS scheduler, and chooses whichever returns a lower min-memory,
 // not accounting for fragmentation.
 StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
-    const HloComputation& computation,
+    HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
     const absl::flat_hash_map<const HloComputation*, int64>&
@@ -79,13 +79,13 @@ StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
 // the computation. size_function is the function returning the number of bytes
 // required for a LogicalBuffer.
 StatusOr<HloSchedule> ScheduleModule(
-    const HloModule& module, const LogicalBuffer::SizeFunction& size_function,
+    HloModule* module, const LogicalBuffer::SizeFunction& size_function,
     const MemorySchedulerAlgorithm& algorithm = {});
 
 // Computes the schedule for a single computation.
 // Currently only used by the GPU backend.
 StatusOr<HloInstructionSequence> ScheduleComputation(
-    const HloComputation& computation,
+    HloComputation* computation,
     const LogicalBuffer::SizeFunction& size_function);
 
 // A pass which schedules the HLO instructions in a module. The HloModule's

@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/eigen_support.h"
 #include "tensorflow/lite/kernels/gemm_support.h"
-#include "tensorflow/lite/kernels/internal/optimized/cblas_conv.h"
 #include "tensorflow/lite/kernels/internal/optimized/multithreaded_conv.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -491,11 +490,10 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
   KernelType effective_kernel_type;
-  if ((kernel_type == kMultithreadOptimized ||
-       kernel_type == kCblasOptimized) &&
+  if ((kernel_type == kMultithreadOptimized) &&
       (params->dilation_width_factor != 1 ||
        params->dilation_height_factor != 1)) {
-    // kMultithreadOptimized and kCblasOptimized do not support dilation.
+    // kMultithreadOptimized does not support dilation.
     // Therefore, fallback to optimized.
     effective_kernel_type = kGenericOptimized;
   } else {
@@ -521,6 +519,7 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
                           GetTensorData<float>(im2col));
       break;
     }
+    case kCblasOptimized:
     case kGenericOptimized: {
       optimized_ops::Conv(op_params, GetTensorShape(input),
                           GetTensorData<float>(input), GetTensorShape(filter),
@@ -544,15 +543,6 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
           GetTensorData<float>(bias), GetTensorShape(output),
           GetTensorData<float>(output), GetTensorShape(im2col),
           GetTensorData<float>(im2col));
-      break;
-    }
-    case kCblasOptimized: {
-      cblas_ops::Conv(op_params, GetTensorShape(input),
-                      GetTensorData<float>(input), GetTensorShape(filter),
-                      GetTensorData<float>(filter), GetTensorShape(bias),
-                      GetTensorData<float>(bias), GetTensorShape(output),
-                      GetTensorData<float>(output), GetTensorShape(im2col),
-                      GetTensorData<float>(im2col));
       break;
     }
   }

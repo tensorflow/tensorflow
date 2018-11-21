@@ -121,6 +121,7 @@ tf_cuda_library(
         ":c_api",
         ":c_api_internal",
         "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/contrib/tpu:all_ops",
         "//tensorflow/core:core_cpu",
@@ -263,7 +264,7 @@ tf_cuda_cc_test(
 
 tf_cc_test(
     name = "c_api_experimental_test",
-    size = "small",
+    size = "medium",
     srcs = ["c_api_experimental_test.cc"],
     data = ["testdata/tf_record"],
     linkopts = select({
@@ -274,8 +275,11 @@ tf_cc_test(
     # the shared library must be able to use core:framework.
     # linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
+        ":c_api",
         ":c_api_experimental",
         ":c_test_util",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_test_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",

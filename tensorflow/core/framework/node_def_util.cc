@@ -102,6 +102,10 @@ string SummarizeNodeDef(const NodeDef& node_def) {
   return ret;
 }
 
+string SummarizeAttrs(const NodeDef& node_def) {
+  return SummarizeAttrsHelper(node_def, node_def.device());
+}
+
 string FormatNodeForError(const Node& node) {
   return FormatNodeDefForError(node.def());
 }

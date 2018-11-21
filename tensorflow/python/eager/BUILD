@@ -189,6 +189,9 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
     ],
     shard_count = 5,
+    tags = [
+        "no_windows",
+    ],
 )
 
 cuda_py_test(
@@ -211,6 +214,9 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
     ],
     shard_count = 15,
+    tags = [
+        "no_windows",
+    ],
 )
 
 py_library(
@@ -335,6 +341,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:tape",
+        "//tensorflow/python/ops/parallel_for:control_flow_ops",
         "@six_archive//:six",
     ],
 )

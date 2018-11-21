@@ -159,7 +159,7 @@ class AllReduceTest(test_util.TensorFlowTestCase):
       output_tensors = build_f(input_tensors, un_op)
       sum_reduced = math_ops.add_n(output_tensors)
       sum_reduced.op.run()
-      self.assertAllClose(sum_reduced.eval(), simple_sum.eval())
+      self.assertAllClose(sum_reduced.eval(), self.evaluate(simple_sum))
 
   def _testRingAllReduce(self, num_workers, num_gpus, shape, subdiv):
     start_time = time.time()

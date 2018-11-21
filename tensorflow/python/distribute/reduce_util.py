@@ -21,38 +21,33 @@ from __future__ import print_function
 import enum
 
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.util.tf_export import tf_export
 
 
-# TODO(priyag): Add this to tf.distribute namespace when it exists.
+@tf_export("distribute.ReduceOp")
 class ReduceOp(enum.Enum):
   """Indicates how a set of values should be reduced.
 
   * `SUM`: Add all the values.
   * `MEAN`: Take the arithmetic mean ("average") of the values.
-  * `ONLY_FIRST_REPLICA`: Return the value on the first replica.
 
   TODO(priyag): Add the following types:
   * `MIN`: Return the minimum of all values.
   * `MAX`: Return the maximum of all values.
   """
 
-  SUM = 0
-  MEAN = 1
-  ONLY_FIRST_REPLICA = 2
+  SUM = "SUM"
+  MEAN = "MEAN"
 
   @staticmethod
   def from_variable_aggregation(aggregation):
     mapping = {
         variable_scope.VariableAggregation.SUM: ReduceOp.SUM,
         variable_scope.VariableAggregation.MEAN: ReduceOp.MEAN,
-        variable_scope.VariableAggregation.ONLY_FIRST_REPLICA:
-            ReduceOp.ONLY_FIRST_REPLICA
     }
 
     reduce_op = mapping.get(aggregation)
     if not reduce_op:
-      raise ValueError("Could not convert from `tf.VariableAggregation` to"
-                       "`tf.distribute.ReduceOp` type")
+      raise ValueError("Could not convert from `tf.VariableAggregation` %s to"
+                       "`tf.distribute.ReduceOp` type" % aggregation)
     return reduce_op
-
-

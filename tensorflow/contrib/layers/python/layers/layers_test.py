@@ -3811,7 +3811,7 @@ class UnitNormTests(test.TestCase):
       image = random_ops.random_uniform((height, width, 3))
       output = _layers.unit_norm(image, dim=dim, epsilon=1e-6)
       norms = math_ops.sqrt(
-          math_ops.reduce_sum(math_ops.square(output), reduction_indices=dim))
+          math_ops.reduce_sum(math_ops.square(output), axis=dim))
 
       shape = [height, width, 3]
       del shape[dim]
@@ -3847,7 +3847,7 @@ class UnitNormTests(test.TestCase):
       image = array_ops.placeholder(dtypes.float32, (None, None, 3))
       output = _layers.unit_norm(image, dim=dim, epsilon=1e-6)
       norms = math_ops.sqrt(
-          math_ops.reduce_sum(math_ops.square(output), reduction_indices=dim))
+          math_ops.reduce_sum(math_ops.square(output), axis=dim))
 
       with self.cached_session():
         actual = norms.eval({image: placeholder_value})

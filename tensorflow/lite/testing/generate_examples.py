@@ -755,6 +755,34 @@ def make_prelu_tests(zip_path):
       use_frozen_graph=True)
 
 
+def make_leaky_relu_tests(zip_path):
+  """Make a set of tests to do LeakyRelu."""
+
+  test_parameters = [
+      {
+          "input_shape": [[], [1], [5], [1, 10, 10, 3], [3, 3, 3, 3]],
+          "alpha": [0.1, 1.0, 2.0, -0.1, -1.0, -2.0],
+      },
+  ]
+
+  def build_graph(parameters):
+    """Build the graph for the test case."""
+
+    input_tensor = tf.placeholder(
+        dtype=tf.float32, name="input", shape=parameters["input_shape"])
+    out = tf.nn.leaky_relu(input_tensor, alpha=parameters["alpha"])
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    """Build the inputs for the test case."""
+    input_values = create_tensor_data(
+        np.float32, parameters["input_shape"], min_value=-3, max_value=10)
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 # This function tests various TensorFLow functions that generates Const op,
 # including `tf.ones`, `tf.zeros` and random functions.
 def make_constant_tests(zip_path):
@@ -1147,6 +1175,10 @@ def make_floor_div_tests(zip_path):
 
 def make_floor_mod_tests(zip_path):
   make_binary_op_tests(zip_path, tf.floormod)
+
+
+def make_squared_difference_tests(zip_path):
+  make_binary_op_tests(zip_path, tf.squared_difference)
 
 
 def make_gather_tests(zip_path):
@@ -2488,6 +2520,32 @@ def make_strided_slice_1d_exhaustive_tests(zip_path):
   _make_strided_slice_tests(zip_path, test_parameters)
 
 
+def make_strided_slice_buggy_tests(zip_path):
+  """Make a set of tests to show strided_slice yields incorrect results."""
+
+  test_parameters = [{
+      "unused_iteration_counter": [1],
+  }]
+
+  def build_graph(parameters):
+    """Build the strided_slice op testing graph."""
+    del parameters
+    input_values = tf.placeholder(dtype=tf.float32, shape=[4, 2])
+    data = tf.constant([[0, 1, 2, 3],
+                        [4, 5, 6, 7],
+                        [8, 9, 10, 11],
+                        [12, 13, 14, 15]], tf.float32)
+    return [input_values], [input_values + data[:, :2]]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    del parameters
+    input_values = np.zeros([4, 2], dtype=np.float32)
+    return [input_values], sess.run(
+        outputs, feed_dict={inputs[0]: input_values})
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def make_lstm_tests(zip_path):
   """Make a set of tests to do basic Lstm cell."""
 
@@ -3436,6 +3494,32 @@ def make_logical_xor_tests(zip_path):
     Test logical_not as well.
   """
   return _make_logical_tests(tf.logical_xor)(zip_path)
+
+
+def make_unroll_batch_matmul_tests(zip_path):
+  """Make a set of tests to test unroll_batch_matmul."""
+
+  test_parameters = [{"dtype": [tf.float32], "shape": [[(2, 2, 3), (2, 3, 2)]]}]
+
+  def build_graph(parameters):
+    """Build the batch_matmul op testing graph."""
+    input_tensor1 = tf.placeholder(
+        dtype=parameters["dtype"], shape=parameters["shape"][0])
+    input_tensor2 = tf.placeholder(
+        dtype=parameters["dtype"], shape=parameters["shape"][1])
+    # Should be unrolled and replaced with fully_connected ops in the end.
+    out = tf.matmul(input_tensor1, input_tensor2)
+    return [input_tensor1, input_tensor2], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value1 = create_tensor_data(
+        parameters["dtype"], shape=parameters["shape"][0])
+    input_value2 = create_tensor_data(
+        parameters["dtype"], shape=parameters["shape"][1])
+    return [input_value1, input_value2], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value1, input_value2])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
 # Toco binary path provided by the generate rule.

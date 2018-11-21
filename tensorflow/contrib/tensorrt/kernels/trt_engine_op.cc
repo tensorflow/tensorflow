@@ -124,8 +124,10 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
   OP_REQUIRES_OK(context,
                  context->GetAttr("segment_funcdef_name", &funcdef_name_));
   OP_REQUIRES_OK(context, GetPrecisionMode(precision_string, &precision_mode_));
-  calibration_mode_ =
-      (precision_mode_ == INT8MODE && calibration_data.size() == 0);
+  OP_REQUIRES_OK(context,
+                 context->GetAttr("use_calibration", &use_calibration_));
+  calibration_mode_ = (use_calibration_ && precision_mode_ == INT8MODE &&
+                       calibration_data.size() == 0);
   if (calibration_data.size()) {
     calibrator_.reset(new TRTInt8Calibrator(calibration_data));
     calibration_data.resize(0);
@@ -308,7 +310,7 @@ bool TRTEngineOp::ExecuteTrtEngine(
   std::vector<void*> buffers(num_binding);
   for (int i = 0; i < ctx->num_inputs(); i++) {
     const string input_name = StrCat(kInputPHName, i);
-    const size_t binding_index =
+    const int binding_index =
         trt_engine_ptr->getBindingIndex(input_name.c_str());
     if (binding_index == -1) {
       LOG(ERROR) << "Input node not found, at " << input_name;
@@ -345,7 +347,7 @@ bool TRTEngineOp::ExecuteTrtEngine(
   for (int i = 0; i < ctx->num_outputs(); i++) {
     // Create an output tensor
     const string output_name = StrCat(kOutputPHName, i);
-    const size_t binding_index =
+    const int binding_index =
         trt_engine_ptr->getBindingIndex(output_name.c_str());
     Tensor* output_tensor = nullptr;
 
@@ -497,7 +499,8 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
     // means calibration_mode_ is true and this path won't get executed.
     auto status = convert::ConvertGraphDefToEngine(
         segment_graph_, precision_mode_, batch_size, workspace_size_, shapes,
-        &logger, allocator, calibrator_.get(), &engine, &convert_successfully);
+        &logger, allocator, calibrator_.get(), &engine, use_calibration_,
+        &convert_successfully);
     if (!status.ok()) {
       if (convert_successfully) {
         // This means it fail to build the engine even when the network is built
@@ -586,6 +589,7 @@ tensorflow::Status TRTEngineOp::AllocateCalibrationResources(
         *segment_graph, INT8MODE, cres->calibrator_->getBatchSize(),
         workspace_size_bytes, shapes, &cres->logger_, cres->allocator_.get(),
         cres->calibrator_.get(), &cres->engine_,
+        /*use_calibration=*/true,
         /*convert_successfully=*/nullptr);
     if (!s.ok()) {
       LOG(ERROR) << "Calibration failed: " << s;

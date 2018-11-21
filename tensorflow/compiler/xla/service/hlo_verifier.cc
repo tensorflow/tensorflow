@@ -753,7 +753,13 @@ Status ShapeVerifier::HandleAfterAll(HloInstruction* token) {
   for (const HloInstruction* operand : token->operands()) {
     operand_shapes.push_back(&operand->shape());
   }
-  return CheckShape(token, ShapeInference::InferAfterAllShape(operand_shapes));
+  return CheckShape(token, ShapeUtil::MakeTokenShape());
+}
+
+Status ShapeVerifier::HandleAddDependency(HloInstruction* add_dependency) {
+  TF_RETURN_IF_ERROR(CheckOperandCount(add_dependency, 2));
+  TF_RETURN_IF_ERROR(CheckIsTokenOperand(add_dependency, 1));
+  return CheckShape(add_dependency, add_dependency->operand(0)->shape());
 }
 
 Status ShapeVerifier::HandleGetDimensionSize(HloInstruction* get_size) {
@@ -1425,6 +1431,8 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
       *module, [this](const Shape& shape) {
         return target_metadata_->ShapeSize(shape);
       }));
+
+  TF_RETURN_IF_ERROR(module->dynamic_parameter_binding().Verify(*module));
 
   return false;
 }

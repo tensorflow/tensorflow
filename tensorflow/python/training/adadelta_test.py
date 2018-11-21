@@ -177,12 +177,11 @@ class AdadeltaOptimizerTest(test.TestCase):
             1.0, 1.0, 1.0).minimize(loss)
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
+        self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
         # Run 1 step of sgd
         sgd_op.run()
         # Validate updated params
-        self.assertAllCloseAccordingToType(
-            [[-111, -138]], var0.eval())
+        self.assertAllCloseAccordingToType([[-111, -138]], self.evaluate(var0))
 
 
 if __name__ == "__main__":

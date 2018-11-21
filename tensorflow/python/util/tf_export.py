@@ -50,6 +50,10 @@ from tensorflow.python.util import tf_decorator
 ESTIMATOR_API_NAME = 'estimator'
 TENSORFLOW_API_NAME = 'tensorflow'
 
+# List of subpackage names used by TensorFlow components. Have to check that
+# TensorFlow core repo does not export any symbols under these names.
+SUBPACKAGE_NAMESPACES = [ESTIMATOR_API_NAME]
+
 _Attributes = collections.namedtuple(
     'ExportedApiAttributes', ['names', 'constants'])
 
@@ -75,6 +79,11 @@ API_ATTRS_V1 = {
 
 class SymbolAlreadyExposedError(Exception):
   """Raised when adding API names to symbol that already has API names."""
+  pass
+
+
+class InvalidSymbolNameError(Exception):
+  """Raised when trying to export symbol as an invalid or unallowed name."""
   pass
 
 
@@ -162,6 +171,37 @@ class api_export(object):  # pylint: disable=invalid-name
     self._api_name = kwargs.get('api_name', TENSORFLOW_API_NAME)
     self._overrides = kwargs.get('overrides', [])
     self._allow_multiple_exports = kwargs.get('allow_multiple_exports', False)
+
+    self._validate_symbol_names()
+
+  def _validate_symbol_names(self):
+    """Validate you are exporting symbols under an allowed package.
+
+    We need to ensure things exported by tf_export, estimator_export, etc.
+    export symbols under disjoint top-level package names.
+
+    For TensorFlow, we check that it does not export anything under subpackage
+    names used by components (estimator, keras, etc.).
+
+    For each component, we check that it exports everything under its own
+    subpackage.
+
+    Raises:
+      InvalidSymbolNameError: If you try to export symbol under disallowed name.
+    """
+    all_symbol_names = set(self._names) | set(self._names_v1)
+    if self._api_name == TENSORFLOW_API_NAME:
+      for subpackage in SUBPACKAGE_NAMESPACES:
+        if any(n.startswith(subpackage) for n in all_symbol_names):
+          raise InvalidSymbolNameError(
+              '@tf_export is not allowed to export symbols under %s.*' % (
+                  subpackage))
+    else:
+      if not all(n.startswith(self._api_name) for n in all_symbol_names):
+        raise InvalidSymbolNameError(
+            'Can only export symbols under package name of component. '
+            'e.g. tensorflow_estimator must export all symbols under '
+            'tf.estimator')
 
   def __call__(self, func):
     """Calls this decorator.

@@ -73,7 +73,7 @@ class ModelDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.cached_session() as sess:
       for _ in range(5):
         sess.run(get_next.op)
-      for _ in range(1000):
+      for _ in range(100):
         start = time.time()
         sess.run(get_next.op)
         end = time.time()
@@ -137,7 +137,7 @@ class ModelDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.cached_session() as sess:
       for _ in range(5):
         sess.run(get_next.op)
-      for _ in range(1000):
+      for _ in range(100):
         start = time.time()
         sess.run(get_next.op)
         end = time.time()

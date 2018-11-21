@@ -337,9 +337,13 @@ reduce_join.__doc__ = reduce_join.__doc__.replace("tf.reduce_join(",
 
 # This wrapper provides backwards compatibility for code that predates the
 # unit argument and that passed 'name' as a positional argument.
-@tf_export("strings.length")
+@tf_export(v1=["strings.length"])
 def string_length(input, name=None, unit="BYTE"):
   return gen_string_ops.string_length(input, unit=unit, name=name)
+
+@tf_export("strings.length", v1=[])
+def string_length_v2(input, unit="BYTE", name=None):
+  return string_length(input, name, unit)
 
 
 string_length.__doc__ = gen_string_ops.string_length.__doc__

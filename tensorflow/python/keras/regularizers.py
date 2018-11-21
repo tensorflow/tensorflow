@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import six
 
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
@@ -54,12 +55,14 @@ class L1L2(Regularizer):
     self.l2 = K.cast_to_floatx(l2)
 
   def __call__(self, x):
-    regularization = 0.
-    if self.l1:
-      regularization += math_ops.reduce_sum(self.l1 * math_ops.abs(x))
-    if self.l2:
-      regularization += math_ops.reduce_sum(self.l2 * math_ops.square(x))
-    return regularization
+    if self.l1 or self.l2:
+      regularization = ops.convert_to_tensor(0., dtype=K.floatx())
+      if self.l1:
+        regularization += math_ops.reduce_sum(self.l1 * math_ops.abs(x))
+      if self.l2:
+        regularization += math_ops.reduce_sum(self.l2 * math_ops.square(x))
+      return regularization
+    return None
 
   def get_config(self):
     return {'l1': float(self.l1), 'l2': float(self.l2)}

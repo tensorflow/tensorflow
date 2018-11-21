@@ -646,10 +646,6 @@ class _VariableStore(object):
         when violating reuse during variable creation, or if an existing
         sharded variable exists for the given name but with different sharding.
     """
-    if context.executing_eagerly():
-      raise NotImplementedError("Partitioned variables are not yet supported "
-                                "when eager execution is enabled.")
-
     initializing_from_value = initializer is not None and isinstance(
         initializer, ops.Tensor)
     reuse_without_partition = reuse and not partitioner
@@ -684,7 +680,7 @@ class _VariableStore(object):
             "Partitioner returned a partition list that does not match the "
             "Variable's rank: %s vs. %s" % (partitions, shape))
 
-      if any([p < 1 for p in partitions]):
+      if any(p < 1 for p in partitions):
         raise ValueError(
             "Partitioner returned zero partitions for some axes: %s" %
             partitions)
@@ -803,15 +799,13 @@ class _VariableStore(object):
       vs.append(var)
       # pylint: enable=protected-access
 
-      # pylint: disable=protected-access
     partitioned_var = variables.PartitionedVariable(name=name,
                                                     shape=shape,
                                                     dtype=dtype,
                                                     variable_list=vs,
                                                     partitions=partitions)
-    # pylint: enable=protected-access
-
-    self._partitioned_vars[name] = partitioned_var
+    if not context.executing_eagerly() or self._store_eager_variables:
+      self._partitioned_vars[name] = partitioned_var
     return partitioned_var
 
   def _get_single_variable(self,
@@ -1080,9 +1074,6 @@ class VariableScope(object):
       if self._caching_device is not None:
         raise NotImplementedError("Caching devices is not yet supported "
                                   "when eager execution is enabled.")
-      if self._partitioner is not None:
-        raise NotImplementedError("Partitioned variables are not yet supported "
-                                  "when eager execution is enabled.")
       self._reuse = AUTO_REUSE
       self._use_resource = True
 
@@ -1162,9 +1153,6 @@ class VariableScope(object):
 
   def set_partitioner(self, partitioner):
     """Set partitioner for this scope."""
-    if partitioner and context.executing_eagerly():
-      raise NotImplementedError("Partitioned variables are not yet supported "
-                                "when eager execution is enabled.")
     self._partitioner = partitioner
 
   def set_custom_getter(self, custom_getter):
@@ -1277,9 +1265,6 @@ class VariableScope(object):
                                 synchronization=VariableSynchronization.AUTO,
                                 aggregation=VariableAggregation.NONE):
     """Gets an existing variable with this name or create a new one."""
-    if context.executing_eagerly():
-      raise NotImplementedError("Partitioned variables are not yet supported "
-                                "when eager execution is enabled.")
     if initializer is None:
       initializer = self._initializer
     if regularizer is None:

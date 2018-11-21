@@ -59,7 +59,7 @@ class EdgeSetTest;
 class Graph;
 class GraphDef;
 class Node;
-class OutputTensor;
+struct OutputTensor;
 class VersionDef;
 class WhileContext;
 

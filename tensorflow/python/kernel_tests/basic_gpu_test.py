@@ -214,7 +214,7 @@ class BroadcastSimpleTest(test.TestCase):
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = tf_func(inx, iny)
-      tf_gpu = out.eval()
+      tf_gpu = self.evaluate(out)
     self.assertAllClose(np_ans, tf_gpu)
     self.assertShapeEqual(np_ans, out)
     # TODO(zhifengc/ke): make gradient checker work on GPU.

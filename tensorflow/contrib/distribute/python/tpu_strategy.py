@@ -23,15 +23,13 @@ from __future__ import print_function
 
 import functools
 
-from tensorflow.contrib.distribute.python import cross_tower_ops as cross_tower_ops_lib
-from tensorflow.contrib.distribute.python import values
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.contrib.tpu.python.tpu import training_loop
-from tensorflow.python.data.experimental.ops import batching
-from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
@@ -232,59 +230,14 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     return enqueue_op_per_host
 
   def _make_dataset_iterator(self, dataset):
-    """Make iterators for each of the TPU hosts.
-
-    We first unbatch the users input dataset and then rebatch it with the
-    per replica batch size that is calculated using
-    `global_batch_size // num_replicas_in_sync`. The currently supported cases
-    are as follows:
-    `dataset.batch()` is the last operation on the dataset.
-    `dataset.apply(map_and_batch)` is the last operation on the dataset.
-    `dataset.batch().prefetch()` are the last 2 operations on the dataset.
-    `dataset.apply(map_and_batch).prefetch()` are the last 2 operations.
-
-    Args:
-      dataset: The `tf.data` dataset passed by the user.
-
-    Returns:
-      iterator: InputIterator created for each of the host machines.
-    """
-    # TODO(sourabhbajaj): Remove this in lieu of distributed datasets
-    def _get_dataset_batch_size(dataset):
-      """Get the global batch size from the dataset object."""
-      # pylint: disable=protected-access
-      if isinstance(dataset, dataset_ops.DatasetV1Adapter):
-        dataset = dataset._dataset
-      if isinstance(dataset, dataset_ops.BatchDataset):
-        return tensor_util.constant_value(dataset._batch_size)
-      elif isinstance(dataset, batching._MapAndBatchDataset):
-        return dataset._batch_size
-      elif isinstance(dataset, dataset_ops.PrefetchDataset):
-        return _get_dataset_batch_size(dataset._input_dataset)
-      # pylint: enable=protected-access
-      raise ValueError(
-          "Unable to fetch the batch size from the input dataset. `batch` "
-          "`map_and_batch` need to be the last operations on the dataset. "
-          "The batch operations can be followed by a prefetch.")
-
-    global_batch_size = _get_dataset_batch_size(dataset)
-    if global_batch_size % self._num_replicas_in_sync:
-      raise ValueError(
-          "Batch size %s cannot be sharded evenly across replicas %s" % (
-              global_batch_size, self.num_replicas_in_sync))
-    per_replica_batch_size = global_batch_size // self._num_replicas_in_sync
-    dataset = dataset.apply(batching.unbatch())
-    dataset = dataset.batch(per_replica_batch_size, drop_remainder=True)
+    """Make iterators for each of the TPU hosts."""
 
     worker_devices = [
         (self.get_host(hid), [self.get_host_cpu_device(hid)])
         for hid in range(self.num_hosts)
     ]
-    distributed_dataset = values.MultiWorkerDataset(
-        functools.partial(self._call_dataset_fn, lambda: dataset),
-        worker_devices)
-    # TODO(priyag): Return distribution strategy specific InputIterator
-    return distributed_dataset.make_initializable_iterator()
+    return values.DatasetIterator(dataset, worker_devices,
+                                  self._num_replicas_in_sync)
 
   def _distribute_dataset(self, dataset_fn):
     worker_devices = [
@@ -301,7 +254,7 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
       self, fn, multi_worker_iterator, iterations, initial_loop_values=None):
     output_shapes = multi_worker_iterator.output_shapes
     shapes = nest.flatten(output_shapes)
-    if any([not s.is_fully_defined() for s in shapes]):
+    if any(not s.is_fully_defined() for s in shapes):
       raise ValueError(
           "TPU currently requires fully defined shapes. Either use "
           "set_shape() on the input tensors or use "
@@ -328,7 +281,7 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
       fn_inputs = dequeue_fn()
       if not isinstance(fn_inputs, tuple):
         fn_inputs = (fn_inputs,)
-      fn_result = fn(ctx, *fn_inputs)
+      fn_result = fn(ctx, fn_inputs)
       flat_last_step_outputs = nest.flatten(ctx.last_step_outputs)
       if flat_last_step_outputs:
         with ops.control_dependencies([fn_result]):
@@ -467,15 +420,13 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     # Validate that the destination is same as the host device
     # Note we don't do this when in replicate context as the reduction is
     # performed on the TPU device itself.
-    devices = cross_tower_ops_lib.get_devices_from(destinations)
+    devices = cross_device_ops_lib.get_devices_from(destinations)
     if len(devices) == 1:
       assert device_util.canonicalize(devices[0]) == device_util.canonicalize(
           self._host_device)
     else:
       raise ValueError("Multiple devices are not supported for TPUStrategy")
 
-    if reduce_op == reduce_util.ReduceOp.ONLY_FIRST_REPLICA:
-      return value[0]
     output = math_ops.add_n(value)
     if reduce_op == reduce_util.ReduceOp.MEAN:
       return output * (1. / len(value))
@@ -593,6 +544,11 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
       if cluster_spec:
         session_config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
 
+  # TODO(priyag): Delete this once all strategies use global batch size.
+  @property
+  def _global_batch_size(self):
+    return True
+
 
 class _TPUReplicaContext(distribute_lib.ReplicaContext):
   """Replication Context class for TPU Strategy."""
@@ -606,12 +562,8 @@ class _TPUReplicaContext(distribute_lib.ReplicaContext):
         replica_id_in_sync_group=constant_op.constant(0, dtypes.int32))
 
   @property
-  def device(self):
-    raise RuntimeError("Use .devices instead")
-
-  @property
   def devices(self):
     distribute_lib.require_replica_context(self)
     ds = self._distribution_strategy
     replica_id = tensor_util.constant_value(self._replica_id_in_sync_group)
-    return [ds.worker_devices[replica_id]]
+    return [ds.extended.worker_devices[replica_id]]

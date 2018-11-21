@@ -658,9 +658,9 @@ Status Service::ExecuteGraphParallel(const ExecuteGraphParallelRequest* arg,
     // replica 0.
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
-        CreateModuleConfig(request.computation().host_program_shape(),
-                           replicated_arguments.front(),
-                           request.execution_options()));
+        CreateModuleConfig(
+            ProgramShape{request.computation().host_program_shape()},
+            replicated_arguments.front(), request.execution_options()));
     VLOG(3)
         << "ExecuteGraphParallel created HloModuleConfig computation layout: "
         << module_config->entry_computation_layout().ToString();
@@ -824,7 +824,7 @@ Status Service::Compile(const CompileRequest* arg, CompileResponse* result) {
                     [](const Shape& shape) { return &shape; });
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
-      CreateModuleConfig(arg->computation().host_program_shape(),
+      CreateModuleConfig(ProgramShape{arg->computation().host_program_shape()},
                          argument_shapes, &arg->execution_options()));
   VLOG(3) << "Compile created HloModuleConfig computation layout: "
           << module_config->entry_computation_layout().ToString();
@@ -957,21 +957,6 @@ Status Service::TransferToClient(const TransferToClientRequest* arg,
   return Status::OK();
 }
 
-namespace {
-
-// Creates a clone of the given shaped buffer with the given device ordinal. The
-// shape and DeviceMemoryBase values of the clone are identical to the original.
-std::unique_ptr<ShapedBuffer> CloneShapedBufferOnDevice(
-    const ShapedBuffer& shaped_buffer, int device_ordinal) {
-  auto clone = absl::make_unique<ShapedBuffer>(
-      shaped_buffer.on_host_shape(), shaped_buffer.on_device_shape(),
-      shaped_buffer.platform(), device_ordinal);
-  clone->buffers() = shaped_buffer.buffers();
-  return clone;
-}
-
-}  // namespace
-
 Status Service::TransferToServer(const TransferToServerRequest* arg,
                                  TransferToServerResponse* result) {
   TF_ASSIGN_OR_RETURN(Literal literal,
@@ -1087,7 +1072,7 @@ Status Service::ComputeConstantGraph(const ComputeConstantGraphRequest* arg,
         "constant computation may not depend on any parameters.");
   }
 
-  ProgramShape program_shape = arg->computation().host_program_shape();
+  ProgramShape program_shape(arg->computation().host_program_shape());
   TF_DCHECK_OK(ShapeUtil::ValidateShape(program_shape.result()));
   if (arg->has_output_layout()) {
     TF_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutForShape(
@@ -1131,7 +1116,7 @@ Status Service::GetComputationGraphStats(
     return InvalidArgument("Program shape may not be empty.");
   }
 
-  HloModuleConfig config(arg->computation().host_program_shape());
+  HloModuleConfig config(ProgramShape{arg->computation().host_program_shape()});
   config.set_debug_options(arg->debug_options());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
                       CreateModuleFromProto(arg->computation(), config));

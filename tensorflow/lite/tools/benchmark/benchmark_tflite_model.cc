@@ -181,7 +181,9 @@ bool PopulateInputLayerInfo(
   return true;
 }
 
-BenchmarkParams GetDefaultParams() {
+}  // namespace
+
+BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   BenchmarkParams default_params = BenchmarkModel::DefaultParams();
   default_params.AddParam("graph", BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("input_layer",
@@ -192,10 +194,8 @@ BenchmarkParams GetDefaultParams() {
   return default_params;
 }
 
-}  // namespace
-
 BenchmarkTfLiteModel::BenchmarkTfLiteModel()
-    : BenchmarkTfLiteModel(GetDefaultParams()) {}
+    : BenchmarkTfLiteModel(DefaultParams()) {}
 
 BenchmarkTfLiteModel::BenchmarkTfLiteModel(BenchmarkParams params)
     : BenchmarkModel(std::move(params)) {
@@ -319,6 +319,7 @@ void BenchmarkTfLiteModel::Init() {
   bool use_nnapi = params_.Get<bool>("use_nnapi");
 
   interpreter->UseNNAPI(use_nnapi);
+  ApplyDelegates();
 
   auto interpreter_inputs = interpreter->inputs();
 

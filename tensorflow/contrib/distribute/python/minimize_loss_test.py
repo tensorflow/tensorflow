@@ -64,7 +64,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       model_fn, dataset_fn, layer = minimize_loss_example(
           optimizer_fn, use_bias=True, use_callable_loss=use_callable_loss)
 
-      def step_fn(ctx, *inputs):
+      def step_fn(ctx, inputs):
         del ctx  # Unused
         return distribution.group(
             distribution.call_for_each_replica(model_fn, args=inputs))
@@ -158,7 +158,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
           use_callable_loss=True,
           create_optimizer_inside_model_fn=True)
 
-      def step_fn(ctx, *inputs):
+      def step_fn(ctx, inputs):
         del ctx  # Unused
         return distribution.group(
             distribution.call_for_each_replica(model_fn, args=inputs))
@@ -227,7 +227,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
           renorm=renorm,
           update_ops_in_replica_mode=not update_ops_in_cross_replica_mode)
 
-      def step_fn(ctx, *inputs):
+      def step_fn(ctx, inputs):
         del ctx  # Unused
         fetches = distribution.unwrap(
             distribution.call_for_each_replica(model_fn, args=inputs))
@@ -286,7 +286,9 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
                   distribution=[
                       combinations.one_device_strategy,
                       combinations.mirrored_strategy_with_gpu_and_cpu,
-                      combinations.mirrored_strategy_with_two_gpus
+                      combinations.mirrored_strategy_with_two_gpus,
+                      combinations.core_mirrored_strategy_with_gpu_and_cpu,
+                      combinations.core_mirrored_strategy_with_two_gpus
                   ]),
               combinations.combine(
                   mode=["graph"], use_callable_loss=[True, False]) +
@@ -322,10 +324,10 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         labels = dataset_ops.Dataset.from_tensors([[6.], [21.]])
         return dataset_ops.Dataset.zip((features, labels)).repeat()
 
-      def step_fn(ctx, x, y):
+      def step_fn(ctx, inputs):
         del ctx  # Unused
         return distribution.group(
-            distribution.call_for_each_replica(model_fn, args=(x, y)))
+            distribution.call_for_each_replica(model_fn, args=inputs))
 
       iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
 
@@ -342,7 +344,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       run_step()
 
       v = all_vars[0]
-      self.assertTrue(all([v is vi for vi in all_vars[1:]]))
+      self.assertTrue(all(v is vi for vi in all_vars[1:]))
       weight = numpy.squeeze(self.evaluate(v))
       # Our model is:
       #   predict = x * w
@@ -409,7 +411,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         output_context.set_non_tensor_output(key1, value1)
         return (train_op, loss)
 
-      def step_fn(output_context, *inputs):
+      def step_fn(output_context, inputs):
         (train_op, loss) = distribution.call_for_each_replica(
             model_fn, args=(output_context,) + inputs)
         output_context.set_last_step_output(

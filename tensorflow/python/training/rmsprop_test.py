@@ -28,6 +28,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -92,7 +93,7 @@ class RMSPropOptimizerTest(test.TestCase):
     # TODO(yori): Use ParameterizedTest when available
     for (dtype, learning_rate, decay, momentum,
          epsilon, centered, use_resource) in _TESTPARAMS:
-      with self.cached_session(use_gpu=True):
+      with test_util.use_gpu():
         # Initialize variables for numpy implementation.
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
         grads0_np = np.array([0.1, 0.2], dtype=dtype.as_numpy_dtype)
@@ -115,7 +116,7 @@ class RMSPropOptimizerTest(test.TestCase):
             centered=centered)
 
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         mg0 = opt.get_slot(var0, "mg")
         self.assertEqual(mg0 is not None, centered)
@@ -138,12 +139,12 @@ class RMSPropOptimizerTest(test.TestCase):
         mom1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
         # Run 4 steps of RMSProp
         for _ in range(1, 5):
-          update.run()
+          self.evaluate(update)
 
           var0_np, mg0_np, rms0_np, mom0_np = self._rmsprop_update_numpy(
               var0_np, grads0_np, mg0_np, rms0_np, mom0_np, learning_rate,
@@ -154,14 +155,14 @@ class RMSPropOptimizerTest(test.TestCase):
 
           # Validate updated params
           if centered:
-            self.assertAllCloseAccordingToType(mg0_np, mg0.eval())
-            self.assertAllCloseAccordingToType(mg1_np, mg1.eval())
-          self.assertAllCloseAccordingToType(rms0_np, rms0.eval())
-          self.assertAllCloseAccordingToType(rms1_np, rms1.eval())
-          self.assertAllCloseAccordingToType(mom0_np, mom0.eval())
-          self.assertAllCloseAccordingToType(mom1_np, mom1.eval())
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
-          self.assertAllCloseAccordingToType(var1_np, var1.eval())
+            self.assertAllCloseAccordingToType(mg0_np, self.evaluate(mg0))
+            self.assertAllCloseAccordingToType(mg1_np, self.evaluate(mg1))
+          self.assertAllCloseAccordingToType(rms0_np, self.evaluate(rms0))
+          self.assertAllCloseAccordingToType(rms1_np, self.evaluate(rms1))
+          self.assertAllCloseAccordingToType(mom0_np, self.evaluate(mom0))
+          self.assertAllCloseAccordingToType(mom1_np, self.evaluate(mom1))
+          self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
+          self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.float32, dtypes.float64]:
@@ -176,14 +177,15 @@ class RMSPropOptimizerTest(test.TestCase):
             momentum=0.0,
             epsilon=0.0,
             centered=False).minimize(loss)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
-        self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
+        self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
         # Run 1 step of sgd
-        sgd_op.run()
+        self.evaluate(sgd_op)
         # Validate updated params
-        self.assertAllCloseAccordingToType(
-            [[0., 1.]], var0.eval(), atol=0.01)
+        self.assertAllCloseAccordingToType([[0., 1.]],
+                                           self.evaluate(var0),
+                                           atol=0.01)
 
   def testMinimizeSparseResourceVariableCentered(self):
     for dtype in [dtypes.float32, dtypes.float64]:
@@ -198,20 +200,21 @@ class RMSPropOptimizerTest(test.TestCase):
             momentum=0.0,
             epsilon=1.0,
             centered=True).minimize(loss)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
-        self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
+        self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
         # Run 1 step of sgd
-        sgd_op.run()
+        self.evaluate(sgd_op)
         # Validate updated params
-        self.assertAllCloseAccordingToType(
-            [[-111, -138]], var0.eval(), atol=0.01)
+        self.assertAllCloseAccordingToType([[-111, -138]],
+                                           self.evaluate(var0),
+                                           atol=0.01)
 
   def testSparse(self):
     # TODO(yori): Use ParameterizedTest when available
     for (dtype, learning_rate, decay,
          momentum, epsilon, centered, _) in _TESTPARAMS:
-      with self.cached_session(use_gpu=True):
+      with test_util.use_gpu():
         # Initialize variables for numpy implementation.
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
         grads0_np = np.array([0.1], dtype=dtype.as_numpy_dtype)
@@ -235,7 +238,7 @@ class RMSPropOptimizerTest(test.TestCase):
             epsilon=epsilon,
             centered=centered)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         mg0 = opt.get_slot(var0, "mg")
         self.assertEqual(mg0 is not None, centered)
@@ -258,12 +261,12 @@ class RMSPropOptimizerTest(test.TestCase):
         mom1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
         # Run 4 steps of RMSProp
         for _ in range(1, 5):
-          update.run()
+          self.evaluate(update)
 
           var0_np, mg0_np, rms0_np, mom0_np = self._sparse_rmsprop_update_numpy(
               var0_np, grads0_np_indices, grads0_np, mg0_np, rms0_np, mom0_np,
@@ -274,18 +277,18 @@ class RMSPropOptimizerTest(test.TestCase):
 
           # Validate updated params
           if centered:
-            self.assertAllCloseAccordingToType(mg0_np, mg0.eval())
-            self.assertAllCloseAccordingToType(mg1_np, mg1.eval())
-          self.assertAllCloseAccordingToType(rms0_np, rms0.eval())
-          self.assertAllCloseAccordingToType(rms1_np, rms1.eval())
-          self.assertAllCloseAccordingToType(mom0_np, mom0.eval())
-          self.assertAllCloseAccordingToType(mom1_np, mom1.eval())
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
-          self.assertAllCloseAccordingToType(var1_np, var1.eval())
+            self.assertAllCloseAccordingToType(mg0_np, self.evaluate(mg0))
+            self.assertAllCloseAccordingToType(mg1_np, self.evaluate(mg1))
+          self.assertAllCloseAccordingToType(rms0_np, self.evaluate(rms0))
+          self.assertAllCloseAccordingToType(rms1_np, self.evaluate(rms1))
+          self.assertAllCloseAccordingToType(mom0_np, self.evaluate(mom0))
+          self.assertAllCloseAccordingToType(mom1_np, self.evaluate(mom1))
+          self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
+          self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
   def testWithoutMomentum(self):
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session(use_gpu=True):
+      with test_util.use_gpu():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -293,7 +296,7 @@ class RMSPropOptimizerTest(test.TestCase):
         opt = rmsprop.RMSPropOptimizer(
             learning_rate=2.0, decay=0.9, momentum=0.0, epsilon=1.0)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         rms0 = opt.get_slot(var0, "rms")
         self.assertTrue(rms0 is not None)
@@ -305,34 +308,36 @@ class RMSPropOptimizerTest(test.TestCase):
         self.assertTrue(mom1 is not None)
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
         # Step 1: the rms accumulators where 1. So we should see a normal
         # update: v -= grad * learning_rate
-        update.run()
+        self.evaluate(update)
         # Check the root mean square accumulators.
         self.assertAllCloseAccordingToType(
-            np.array([0.901, 0.901]), rms0.eval())
+            np.array([0.901, 0.901]), self.evaluate(rms0))
         self.assertAllCloseAccordingToType(
-            np.array([0.90001, 0.90001]), rms1.eval())
+            np.array([0.90001, 0.90001]), self.evaluate(rms1))
         # Check the parameters.
         self.assertAllCloseAccordingToType(
             np.array([
                 1.0 - (0.1 * 2.0 / math.sqrt(0.901 + 1.0)),
                 2.0 - (0.1 * 2.0 / math.sqrt(0.901 + 1.0))
-            ]), var0.eval())
+            ]), self.evaluate(var0))
         self.assertAllCloseAccordingToType(
             np.array([
                 3.0 - (0.01 * 2.0 / math.sqrt(0.90001 + 1.0)),
                 4.0 - (0.01 * 2.0 / math.sqrt(0.90001 + 1.0))
-            ]), var1.eval())
+            ]), self.evaluate(var1))
         # Step 2: the root mean square accumulators contain the previous update.
-        update.run()
+        self.evaluate(update)
         # Check the rms accumulators.
         self.assertAllCloseAccordingToType(
-            np.array([0.901 * 0.9 + 0.001, 0.901 * 0.9 + 0.001]), rms0.eval())
+            np.array([0.901 * 0.9 + 0.001, 0.901 * 0.9 + 0.001]),
+            self.evaluate(rms0))
         self.assertAllCloseAccordingToType(
-            np.array([0.90001 * 0.9 + 1e-5, 0.90001 * 0.9 + 1e-5]), rms1.eval())
+            np.array([0.90001 * 0.9 + 1e-5, 0.90001 * 0.9 + 1e-5]),
+            self.evaluate(rms1))
         # Check the parameters.
         self.assertAllCloseAccordingToType(
             np.array([
@@ -340,18 +345,18 @@ class RMSPropOptimizerTest(test.TestCase):
                 (0.1 * 2.0 / math.sqrt(0.901 * 0.9 + 0.001 + 1.0)),
                 2.0 - (0.1 * 2.0 / math.sqrt(0.901 + 1.0)) -
                 (0.1 * 2.0 / math.sqrt(0.901 * 0.9 + 0.001 + 1.0))
-            ]), var0.eval())
+            ]), self.evaluate(var0))
         self.assertAllCloseAccordingToType(
             np.array([
                 3.0 - (0.01 * 2.0 / math.sqrt(0.90001 + 1.0)) -
                 (0.01 * 2.0 / math.sqrt(0.90001 * 0.9 + 1e-5 + 1.0)),
                 4.0 - (0.01 * 2.0 / math.sqrt(0.90001 + 1.0)) -
                 (0.01 * 2.0 / math.sqrt(0.90001 * 0.9 + 1e-5 + 1.0))
-            ]), var1.eval())
+            ]), self.evaluate(var1))
 
   def testWithMomentum(self):
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session(use_gpu=True):
+      with test_util.use_gpu():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -360,7 +365,7 @@ class RMSPropOptimizerTest(test.TestCase):
         opt = rmsprop.RMSPropOptimizer(
             learning_rate=2.0, decay=0.9, momentum=0.5, epsilon=1e-5)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         rms0 = opt.get_slot(var0, "rms")
         self.assertTrue(rms0 is not None)
@@ -372,57 +377,61 @@ class RMSPropOptimizerTest(test.TestCase):
         self.assertTrue(mom1 is not None)
 
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
         # Step 1: rms = 1, mom = 0. So we should see a normal
         # update: v -= grad * learning_rate
-        update.run()
+        self.evaluate(update)
         # Check the root mean square accumulators.
         self.assertAllCloseAccordingToType(
-            np.array([0.901, 0.901]), rms0.eval())
+            np.array([0.901, 0.901]), self.evaluate(rms0))
         self.assertAllCloseAccordingToType(
-            np.array([0.90001, 0.90001]), rms1.eval())
+            np.array([0.90001, 0.90001]), self.evaluate(rms1))
         # Check the momentum accumulators
         self.assertAllCloseAccordingToType(
             np.array([(0.1 * 2.0 / math.sqrt(0.901 + 1e-5)),
-                      (0.1 * 2.0 / math.sqrt(0.901 + 1e-5))]), mom0.eval())
+                      (0.1 * 2.0 / math.sqrt(0.901 + 1e-5))]),
+            self.evaluate(mom0))
         self.assertAllCloseAccordingToType(
             np.array([(0.01 * 2.0 / math.sqrt(0.90001 + 1e-5)),
-                      (0.01 * 2.0 / math.sqrt(0.90001 + 1e-5))]), mom1.eval())
+                      (0.01 * 2.0 / math.sqrt(0.90001 + 1e-5))]),
+            self.evaluate(mom1))
 
         # Check that the parameters.
         self.assertAllCloseAccordingToType(
             np.array([
                 1.0 - (0.1 * 2.0 / math.sqrt(0.901 + 1e-5)),
                 2.0 - (0.1 * 2.0 / math.sqrt(0.901 + 1e-5))
-            ]), var0.eval())
+            ]), self.evaluate(var0))
         self.assertAllCloseAccordingToType(
             np.array([
                 3.0 - (0.01 * 2.0 / math.sqrt(0.90001 + 1e-5)),
                 4.0 - (0.01 * 2.0 / math.sqrt(0.90001 + 1e-5))
-            ]), var1.eval())
+            ]), self.evaluate(var1))
 
         # Step 2: the root mean square accumulators contain the previous update.
-        update.run()
+        self.evaluate(update)
         # Check the rms accumulators.
         self.assertAllCloseAccordingToType(
-            np.array([0.901 * 0.9 + 0.001, 0.901 * 0.9 + 0.001]), rms0.eval())
+            np.array([0.901 * 0.9 + 0.001, 0.901 * 0.9 + 0.001]),
+            self.evaluate(rms0))
         self.assertAllCloseAccordingToType(
-            np.array([0.90001 * 0.9 + 1e-5, 0.90001 * 0.9 + 1e-5]), rms1.eval())
+            np.array([0.90001 * 0.9 + 1e-5, 0.90001 * 0.9 + 1e-5]),
+            self.evaluate(rms1))
         self.assertAllCloseAccordingToType(
             np.array([
                 0.5 * (0.1 * 2.0 / math.sqrt(0.901 + 1e-5)) +
                 (0.1 * 2.0 / math.sqrt(0.901 * 0.9 + 0.001 + 1e-5)),
                 0.5 * (0.1 * 2.0 / math.sqrt(0.901 + 1e-5)) +
                 (0.1 * 2.0 / math.sqrt(0.901 * 0.9 + 0.001 + 1e-5))
-            ]), mom0.eval())
+            ]), self.evaluate(mom0))
         self.assertAllCloseAccordingToType(
             np.array([
                 0.5 * (0.01 * 2.0 / math.sqrt(0.90001 + 1e-5)) +
                 (0.01 * 2.0 / math.sqrt(0.90001 * 0.9 + 2e-5)),
                 0.5 * (0.01 * 2.0 / math.sqrt(0.90001 + 1e-5)) +
                 (0.01 * 2.0 / math.sqrt(0.90001 * 0.9 + 2e-5))
-            ]), mom1.eval())
+            ]), self.evaluate(mom1))
 
         # Check the parameters.
         self.assertAllCloseAccordingToType(
@@ -433,7 +442,7 @@ class RMSPropOptimizerTest(test.TestCase):
                 2.0 - (0.1 * 2.0 / math.sqrt(0.901 + 1e-5)) -
                 (0.5 * (0.1 * 2.0 / math.sqrt(0.901 + 1e-5)) +
                  (0.1 * 2.0 / math.sqrt(0.901 * 0.9 + 0.001 + 1e-5)))
-            ]), var0.eval())
+            ]), self.evaluate(var0))
 
         self.assertAllCloseAccordingToType(
             np.array([
@@ -443,7 +452,7 @@ class RMSPropOptimizerTest(test.TestCase):
                 4.0 - (0.01 * 2.0 / math.sqrt(0.90001 + 1e-5)) -
                 (0.5 * (0.01 * 2.0 / math.sqrt(0.90001 + 1e-5)) +
                  (0.01 * 2.0 / math.sqrt(0.90001 * 0.9 + 2e-5)))
-            ]), var1.eval())
+            ]), self.evaluate(var1))
 
   def testCallableParams(self):
     with context.eager_mode():

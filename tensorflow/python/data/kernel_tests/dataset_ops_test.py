@@ -24,10 +24,14 @@ import numpy as np
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import structure
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import test
 
 
@@ -38,7 +42,7 @@ class DatasetOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.cached_session() as sess:
       graph = graph_pb2.GraphDef().FromString(
           sess.run(dataset._as_serialized_graph()))
-      self.assertTrue(any([node.op != "RangeDataset" for node in graph.node]))
+      self.assertTrue(any(node.op != "RangeDataset" for node in graph.node))
 
   @staticmethod
   def make_apply_fn(dataset):
@@ -248,6 +252,63 @@ class DatasetOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
          dataset_ops.Dataset.range(0).with_options(options2)))
     self.assertTrue(ds.options().experimental_autotune)
     self.assertTrue(ds.options().experimental_filter_fusion)
+
+  # pylint: disable=g-long-lambda
+  @parameterized.named_parameters(
+      ("Tensor", lambda: constant_op.constant(37.0),
+       structure.TensorStructure(dtypes.float32, [])),
+      ("SparseTensor", lambda: sparse_tensor.SparseTensor(
+          indices=[[0]], values=constant_op.constant([0], dtype=dtypes.int32),
+          dense_shape=[1]),
+       structure.SparseTensorStructure(dtypes.int32, [1])),
+      ("Nest", lambda: {
+          "a": constant_op.constant(37.0),
+          "b": (constant_op.constant(["Foo"]), constant_op.constant("Bar"))},
+       structure.NestedStructure({
+           "a": structure.TensorStructure(dtypes.float32, []),
+           "b": (structure.TensorStructure(dtypes.string, [1]),
+                 structure.TensorStructure(dtypes.string, []))})),
+      ("Dataset", lambda: dataset_ops.Dataset.from_tensor_slices(
+          constant_op.constant([1, 2, 3])),
+       dataset_ops.DatasetStructure(
+           structure.TensorStructure(dtypes.int32, []))),
+      ("Optional", lambda: optional_ops.Optional.from_value(37.0),
+       optional_ops.OptionalStructure(
+           structure.TensorStructure(dtypes.float32, []))),
+  )
+  def testDatasetStructure(self, tf_value_fn, expected_element_structure):
+    dataset = dataset_ops.Dataset.from_tensors(0).map(lambda _: tf_value_fn())
+    dataset_structure = structure.Structure.from_value(dataset)
+    self.assertIsInstance(dataset_structure, dataset_ops.DatasetStructure)
+
+    # TODO(b/110122868): Add a public API to `tf.data.Dataset` for accessing
+    # the element structure.
+    self.assertTrue(expected_element_structure.is_compatible_with(
+        dataset_structure._element_structure))
+    self.assertTrue(dataset_structure._element_structure.is_compatible_with(
+        expected_element_structure))
+
+    self.assertEqual([dtypes.variant], dataset_structure._flat_types)
+    self.assertEqual([tensor_shape.scalar()], dataset_structure._flat_shapes)
+
+    # Assert that the `Dataset` survives a round-trip via _from_tensor_list()
+    # and _to_tensor_list().
+    round_trip_dataset = dataset_structure._from_tensor_list(
+        dataset_structure._to_tensor_list(dataset))
+
+    value = tf_value_fn()
+
+    if isinstance(value, dataset_ops.Dataset):
+      self.assertDatasetsEqual(value, dataset.flat_map(lambda x: x))
+    elif isinstance(value, optional_ops.Optional):
+      self.assertDatasetProduces(
+          round_trip_dataset.map(lambda opt: opt.get_value()),
+          [self.evaluate(value.get_value())],
+          requires_initialization=True)
+    else:
+      self.assertDatasetProduces(
+          round_trip_dataset, [self.evaluate(tf_value_fn())],
+          requires_initialization=True)
 
 
 if __name__ == "__main__":

@@ -901,12 +901,14 @@ class MapDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         break
     self.assertTrue(found_warning)
 
-  def testNestedDatasetError(self):
-    dataset = dataset_ops.Dataset.from_tensors([1.0, 2.0, 3.0])
-    with self.assertRaisesRegexp(
-        NotImplementedError, r"The Dataset.map\(\) transformation does not "
-        "currently support nested datasets as outputs."):
-      _ = dataset.map(dataset_ops.Dataset.from_tensor_slices)
+  def testNestedDatasetMap(self):
+    # TODO(b/110122868): When iterators can yield a `tf.data.Dataset`, remove
+    # the `get_single_element()` call.
+    dataset = dataset_ops.Dataset.from_tensors([1.0, 2.0, 3.0]).map(
+        dataset_ops.Dataset.from_tensor_slices).map(
+            lambda ds: ds.batch(3)).flat_map(lambda x: x)
+
+    self.assertDatasetProduces(dataset, [[1.0, 2.0, 3.0]])
 
   def testReturnValueError(self):
     dataset = dataset_ops.Dataset.from_tensors([1.0, 2.0, 3.0])

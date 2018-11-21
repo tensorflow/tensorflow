@@ -124,6 +124,7 @@ py_library(
         "engine/base_layer.py",
         "engine/distributed_training_utils.py",
         "engine/input_layer.py",
+        "engine/input_spec.py",
         "engine/network.py",
         "engine/saving.py",
         "engine/sequential.py",
@@ -266,6 +267,7 @@ py_test(
     name = "optimizers_test",
     size = "medium",
     srcs = ["optimizers_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [
@@ -273,6 +275,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:training",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -508,6 +511,17 @@ py_test(
     ],
 )
 
+cuda_py_test(
+    name = "unified_rnn_test",
+    size = "medium",
+    srcs = ["layers/unified_rnn_test.py"],
+    additional_deps = [
+        ":keras",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
 py_test(
     name = "serialization_test",
     size = "small",
@@ -709,6 +723,19 @@ py_test(
 )
 
 py_test(
+    name = "training_dataset_test",
+    size = "medium",
+    srcs = ["engine/training_dataset_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
     name = "training_generator_test",
     size = "enormous",
     srcs = ["engine/training_generator_test.py"],
@@ -732,6 +759,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/feature_column:feature_column_py",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

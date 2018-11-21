@@ -25,11 +25,9 @@ import numpy as np
 import six
 
 from tensorflow.contrib.distribute.python import combinations
-from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import context
 from tensorflow.python.estimator import run_config
 from tensorflow.python.estimator import training
 from tensorflow.python.estimator.canned import dnn_linear_combined
@@ -71,7 +69,9 @@ class KerasOptimizerV2IntegrationTest(test.TestCase, parameterized.TestCase):
           distribution=[
               combinations.one_device_strategy,
               combinations.mirrored_strategy_with_gpu_and_cpu,
-              combinations.mirrored_strategy_with_two_gpus
+              combinations.mirrored_strategy_with_two_gpus,
+              combinations.core_mirrored_strategy_with_gpu_and_cpu,
+              combinations.core_mirrored_strategy_with_two_gpus
           ],
           use_train_and_evaluate=[True, False]))
   def test_complete_flow_with_mode(self, distribution, use_train_and_evaluate):
@@ -83,11 +83,11 @@ class KerasOptimizerV2IntegrationTest(test.TestCase, parameterized.TestCase):
     train_input_fn = self.dataset_input_fn(
         x={'x': data},
         y=data,
-        batch_size=batch_size // len(distribution.worker_devices))
+        batch_size=batch_size // distribution.num_replicas_in_sync)
     eval_input_fn = self.dataset_input_fn(
         x={'x': data},
         y=data,
-        batch_size=batch_size // len(distribution.worker_devices))
+        batch_size=batch_size // distribution.num_replicas_in_sync)
     predict_input_fn = numpy_io.numpy_input_fn(
         x={'x': data}, batch_size=batch_size, shuffle=False)
 
@@ -150,12 +150,14 @@ def get_model():
   return model
 
 
-class MirroredStrategyOptimizerV2Test(test.TestCase):
+class MirroredStrategyOptimizerV2Test(test.TestCase, parameterized.TestCase):
 
-  def testKerasOptimizerWithUnequalInput(self):
-    if context.num_gpus() < 1:
-      self.skipTest('Not enough GPUs.')
-
+  @combinations.generate(combinations.combine(
+      distribution=[
+          combinations.mirrored_strategy_with_gpu_and_cpu,
+          combinations.core_mirrored_strategy_with_gpu_and_cpu],
+      mode=['graph']))
+  def testKerasOptimizerWithUnequalInput(self, distribution):
     def create_fn():
       var = variables.Variable(
           2.0, name='var', aggregation=variable_scope.VariableAggregation.SUM)
@@ -168,25 +170,24 @@ class MirroredStrategyOptimizerV2Test(test.TestCase):
       return (var, m, v, train_op, optimizer.iterations)
 
     devices = ['/device:GPU:0', '/device:CPU:0']
-    dist = mirrored_strategy.MirroredStrategy(devices)
-    with dist.scope():
-      (var, m, v, op, counter) = dist.call_for_each_replica(create_fn)
+    with distribution.scope():
+      (var, m, v, op, counter) = distribution.call_for_each_replica(create_fn)
       self.evaluate(variables.global_variables_initializer())
       var_val = [2.0, 2.0, 2.0]
       self.assertAllClose(
           var_val,
           self.evaluate(
-              [dist.read_var(var),
+              [distribution.read_var(var),
                var.get(devices[0]),
                var.get(devices[1])]))
       self.assertAllClose([0, 0, 0],
                           self.evaluate([
-                              dist.read_var(counter),
+                              distribution.read_var(counter),
                               counter.get(devices[0]),
                               counter.get(devices[1])
                           ]))
 
-      train_op = dist.unwrap(op)
+      train_op = distribution.unwrap(op)
       self.evaluate(train_op)
       # m(1) = beta1 * m(0) + (1-beta1) * grad = 0.2 * 0 + 0.8 * (1 + 2) / 2
       m_val = [1.2, 1.2, 1.2]
@@ -194,7 +195,7 @@ class MirroredStrategyOptimizerV2Test(test.TestCase):
       self.assertAllClose(
           m_val,
           self.evaluate(
-              [dist.read_var(m),
+              [distribution.read_var(m),
                m.get(devices[0]),
                m.get(devices[1])]))
       # v(1) = beta2 * v(0) + (1-beta2) * grad^2 = 0.2 * 0 + 0.8 * 2.25
@@ -202,7 +203,7 @@ class MirroredStrategyOptimizerV2Test(test.TestCase):
       self.assertAllClose(
           v_val,
           self.evaluate(
-              [dist.read_var(v),
+              [distribution.read_var(v),
                v.get(devices[0]),
                v.get(devices[1])]))
       # var(1) = var(0) - lr * m(1) * sqrt(1 - beta2) / sqrt(v(1)) / (1 - beta1)
@@ -211,12 +212,12 @@ class MirroredStrategyOptimizerV2Test(test.TestCase):
       self.assertAllClose(
           var_val,
           self.evaluate(
-              [dist.read_var(var),
+              [distribution.read_var(var),
                var.get(devices[0]),
                var.get(devices[1])]))
       self.assertAllClose([1, 1, 1],
                           self.evaluate([
-                              dist.read_var(counter),
+                              distribution.read_var(counter),
                               counter.get(devices[0]),
                               counter.get(devices[1])
                           ]))
@@ -227,7 +228,7 @@ class MirroredStrategyOptimizerV2Test(test.TestCase):
       self.assertAllClose(
           m_val,
           self.evaluate(
-              [dist.read_var(m),
+              [distribution.read_var(m),
                m.get(devices[0]),
                m.get(devices[1])]))
       # v(2) = beta2 * v(1) + (1-beta2) * grad^2 = 0.2 * 1.8 + 0.8 * 2.25
@@ -235,28 +236,29 @@ class MirroredStrategyOptimizerV2Test(test.TestCase):
       self.assertAllClose(
           v_val,
           self.evaluate(
-              [dist.read_var(v),
+              [distribution.read_var(v),
                v.get(devices[0]),
                v.get(devices[1])]))
       self.assertAllClose([2, 2, 2],
                           self.evaluate([
-                              dist.read_var(counter),
+                              distribution.read_var(counter),
                               counter.get(devices[0]),
                               counter.get(devices[1])
                           ]))
 
-  def testOptimizerWithKerasModelAndNumpyArrays(self):
-    if context.num_gpus() < 1:
-      self.skipTest('Not enough GPUs.')
+  @combinations.generate(combinations.combine(
+      distribution=[
+          combinations.mirrored_strategy_with_gpu_and_cpu,
+          combinations.core_mirrored_strategy_with_gpu_and_cpu],
+      mode=['graph']))
+  def testOptimizerWithKerasModelAndNumpyArrays(self, distribution):
 
     with self.cached_session():
       model = get_model()
       optimizer = gradient_descent.SGD(0.001)
       loss = 'mse'
       metrics = ['mae']
-      devices = ['/device:GPU:0', '/device:CPU:0']
-      dist = mirrored_strategy.MirroredStrategy(devices)
-      model.compile(optimizer, loss, metrics=metrics, distribute=dist)
+      model.compile(optimizer, loss, metrics=metrics, distribute=distribution)
 
       inputs = np.zeros((64, 3), dtype=np.float32)
       targets = np.zeros((64, 4), dtype=np.float32)

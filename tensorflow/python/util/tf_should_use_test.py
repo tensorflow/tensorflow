@@ -111,7 +111,7 @@ class TfShouldUseTest(test.TestCase):
         # Creating another op and executing it does not mark the
         # unused op as being "used".
         v = constant_op.constant(1.0, name='meh')
-        v.eval()
+        self.evaluate(v)
     msg = '\n'.join(error.call_args[0])
     self.assertIn('Object was never used', msg)
     self.assertIn('blah3:0', msg)

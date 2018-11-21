@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
-namespace legacy_flags {
 
 // Flags associated with the XLA bridge's mark_for_compilation_pass module.
 struct MarkForCompilationPassFlags {
@@ -99,7 +98,6 @@ void AppendMarkForCompilationPassFlags(
     std::vector<tensorflow::Flag>* flag_list);
 void AppendDumpGraphFlags(std::vector<tensorflow::Flag>* flag_list);
 
-}  // namespace legacy_flags
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_FLAGS_H_

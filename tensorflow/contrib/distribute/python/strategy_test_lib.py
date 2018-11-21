@@ -19,15 +19,19 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import distribution_strategy_context as ds_context
 from tensorflow.python.training import optimizer
@@ -187,16 +191,18 @@ class DistributionTestBase(test.TestCase):
 
   def _test_replica_id(self, d):
     with d.scope():
-      expected_devices = [False] * len(d.worker_devices)
+      expected_devices = [False] * len(d.extended.worker_devices)
 
       def mark_devices_fn():
-        replica_id = ds_context.get_replica_context().replica_id_in_sync_group
-        self.assertLess(replica_id, len(d.worker_devices))
+        replica_id = self.evaluate(
+            ds_context.get_replica_context().replica_id_in_sync_group)
+        self.assertLess(replica_id, len(d.extended.worker_devices))
         self.assertFalse(expected_devices[replica_id])
         expected_devices[replica_id] = True
 
       d.call_for_each_replica(mark_devices_fn)
-      self.assertAllEqual(expected_devices, [True] * len(d.worker_devices))
+      self.assertAllEqual(expected_devices,
+                          [True] * len(d.extended.worker_devices))
 
   def _test_call_and_merge_exceptions(self, dist):
     with dist.scope():
@@ -209,7 +215,9 @@ class DistributionTestBase(test.TestCase):
       with self.assertRaises(_TestException):
         dist.call_for_each_replica(_merge_call_merge_raises_fn)
 
-  def _input_fn_to_test_input_context(self, expected_num_replicas_in_sync,
+  def _input_fn_to_test_input_context(self,
+                                      dataset_fn,
+                                      expected_num_replicas_in_sync,
                                       expected_num_input_pipelines,
                                       expected_input_pipeline_id):
     # Use a list of one element as counter so that it can be captured by the
@@ -232,6 +240,52 @@ class DistributionTestBase(test.TestCase):
         self.assertEqual(worker_id_counter[0], input_context.input_pipeline_id)
         worker_id_counter[0] += 1
 
-      return dataset_ops.Dataset.from_tensors([[1.]]).repeat()
+      return dataset_fn()
 
     return _input_fn
+
+  def _test_input_fn_iterator(self, iterator, devices, expected_values,
+                              sess=None):
+    evaluate = lambda x: sess.run(x) if sess else self.evaluate(x)
+    evaluate(iterator.initialize())
+
+    for expected_value in expected_values:
+      next_element = iterator.get_next()
+      computed_value = evaluate(
+          [values.select_device(d, next_element) for d in devices])
+      self.assertEqual(expected_value, computed_value)
+
+    with self.assertRaises(errors.OutOfRangeError):
+      next_element = iterator.get_next()
+      evaluate([values.select_device(d, next_element) for d in devices])
+
+    # After re-initializing the iterator, should be able to iterate again.
+    evaluate(iterator.initialize())
+
+    for expected_value in expected_values:
+      next_element = iterator.get_next()
+      computed_value = evaluate(
+          [values.select_device(d, next_element) for d in devices])
+      self.assertEqual(expected_value, computed_value)
+
+  def _test_global_step_update(self, strategy):
+    with strategy.scope():
+      global_step = variable_scope.get_variable(
+          "global_step",
+          shape=[],
+          dtype=dtypes.int64,
+          initializer=init_ops.zeros_initializer(),
+          trainable=False,
+          aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA)
+      self.evaluate(variables.global_variables_initializer())
+
+      def model_fn():
+        train_op = global_step.assign_add(1)
+        value = global_step.read_value()
+        return train_op, value
+
+      train_ops, value = strategy.call_for_each_replica(model_fn)
+      self.evaluate(strategy.group(train_ops))
+      global_step_tensors = strategy.unwrap(value)
+      global_step_values = self.evaluate(global_step_tensors)
+      self.assertEqual([1] * len(global_step_tensors), global_step_values)

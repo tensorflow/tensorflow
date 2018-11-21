@@ -26,7 +26,6 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
-from tensorflow.compiler.xla.python_api import xla_shape
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu
 from tensorflow.contrib.tpu.python.tpu import tpu_sharding
@@ -92,8 +91,7 @@ class InfeedQueue(object):
       else:
         raise ValueError(
             "number of tuple elements cannot be inferred from InfeedQueue "
-            "constructor"
-        )
+            "constructor")
     if number_of_tuple_elements <= 0:
       raise ValueError("number_of_tuple_elements %d must be > 0" %
                        number_of_tuple_elements)
@@ -293,9 +291,8 @@ class InfeedQueue(object):
         self.number_of_tuple_elements
     """
     if len(input_tensors) != self.number_of_tuple_elements:
-      raise ValueError(
-          "input_tensors is %s, but should be a list of %d Tensors", (
-              str(input_tensors), self.number_of_tuple_elements))
+      raise ValueError("input_tensors is %s, but should be a list of %d Tensors"
+                       % (str(input_tensors), self.number_of_tuple_elements))
     self.set_tuple_shapes([t.shape for t in input_tensors])
     self.set_tuple_types([t.dtype for t in input_tensors])
 
@@ -451,8 +448,8 @@ class InfeedQueue(object):
       for i in xrange(1, self.number_of_tuple_elements):
         if devices[0] != devices[i]:
           raise ValueError(
-              "input devices for shard %d are %s, but should all be the same",
-              index, str(devices))
+              "input devices for shard %d are %s, but should all be the same" %
+              (index, str(devices)))
       with ops.colocate_with(inputs[0]):
         return tpu_ops.infeed_enqueue_tuple(
             inputs=inputs,
@@ -792,18 +789,14 @@ class _PartitionedInfeedQueue(InfeedQueue):
 
     Args:
       tensor: Input tensor for partitioning.
-      dims: A list of integer describes how to partition the input tensor.
+      dims: 1-D np.array of the list of integer describes how to partition the
+        input tensor.
 
     Raises:
       ValueError: If the tensor can't be partitioned by dims or the
         num_cores_per_replica doesn't match the number of
         partitions(dims.prod()).
     """
-    if dims is None:
-      return
-
-    dims = np.array(dims)
-
     if (dims < 1).any():
       raise ValueError("All input partition dims must be >= 1.")
 
@@ -823,11 +816,6 @@ class _PartitionedInfeedQueue(InfeedQueue):
           "partition dims = {}).".format(tensor.shape.as_list(), dims))
 
     tensor.shape.assert_is_fully_defined()
-    if (np.array(tensor.shape.as_list()) % dims != 0).any():
-      raise ValueError(
-          "All input partition dims must divide exactly into the `Tensor` "
-          "shape (tensor shape = {}, input partition dims = {}).".format(
-              tensor.shape.as_list(), dims))
 
   def _partition_or_replicate_on_host(self, tensor, dims):
     """Partitions or replicates the input tensor.
@@ -840,16 +828,33 @@ class _PartitionedInfeedQueue(InfeedQueue):
     Returns:
       An iterator of `Tensor`s or a list of partioned tensors.
     """
-    self._check_input_partition_dims(tensor, dims)
     if dims is None:
       return itertools.repeat(tensor)
-    else:
-      output = [tensor]
-      for axis, dim in enumerate(dims):
-        if dim > 1:
-          output = [array_ops.split(x, dim, axis=axis) for x in output]
-          output = nest.flatten(output)
-      return output
+    dims = np.array(dims)
+    self._check_input_partition_dims(tensor, dims)
+    output = [tensor]
+    divds, remainders = np.divmod(np.array(tensor.shape.as_list()), dims)
+    for axis, (divd, remainder, dim) in enumerate(
+        np.dstack((divds, remainders, dims))[0]):
+      if dim <= 1:
+        continue
+      if remainder > 0:
+        # For each dimension, when it cannot be evenly partitioned, XLA assumes
+        # the size of last parts are smaller by 1. E.g. 2D tensor with shape
+        # (5, 14) and dims are (2, 4). Since 5 % 2 = 1 and 14 % 4 = 2, [5, 14]
+        # => [[(3, 3), (3, 3), (2, 3), (2, 3)],
+        # [(2, 3), (2, 3), (2, 2), (2, 2)]]
+        output = [
+            array_ops.split(
+                x,
+                num_or_size_splits=[divd + 1] * remainder +
+                [divd] * (dim - remainder),
+                axis=axis) for x in output
+        ]
+      else:
+        output = [array_ops.split(x, dim, axis=axis) for x in output]
+      output = nest.flatten(output)
+    return output
 
   def _tag_sharding_attribute_for_dequeued_tensor(self, tensor, dims):
     """Tags appropriate XLA sharding attribute to the dequeued tensor.
@@ -866,13 +871,9 @@ class _PartitionedInfeedQueue(InfeedQueue):
     elif np.prod(dims) == 1:
       return xla_sharding.assign_device(tensor, 0)
     else:
-      tile_shape = np.array(tensor.shape.as_list()) // dims
       tile_assignment = np.arange(np.prod(dims)).reshape(dims)
       return xla_sharding.tile(
           tensor=tensor,
-          tile_shape=xla_shape.CreateShapeFromDtypeAndTuple(
-              dtype=np.dtype(tensor.dtype.as_numpy_dtype),
-              shape_tuple=tile_shape),
           tile_assignment=tile_assignment)
 
   def _tag_sharding_attribute_for_dequeued_tensors(self, dequeues, dims):

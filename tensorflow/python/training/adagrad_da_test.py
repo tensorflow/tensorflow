@@ -92,12 +92,13 @@ class AdagradDAOptimizerTest(test.TestCase):
             1.0, global_step).minimize(loss)
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllCloseAccordingToType([[1.0, 2.0]], var0.eval())
+        self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
         # Run 1 step of sgd
         sgd_op.run()
         # Validate updated params
-        self.assertAllCloseAccordingToType(
-            [[-1, -1]], var0.eval(), rtol=0.01)
+        self.assertAllCloseAccordingToType([[-1, -1]],
+                                           self.evaluate(var0),
+                                           rtol=0.01)
 
   def testAdagradDAwithoutRegularizationBasic2(self):
     for dtype in [dtypes.float64, dtypes.float32]:
