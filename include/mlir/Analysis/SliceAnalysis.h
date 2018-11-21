@@ -29,22 +29,13 @@ namespace mlir {
 
 class Statement;
 
-/// Returns true if `stmt` is strictly scoped under `scope`.
-/// `scope` must be of type `ForStmt` or `IfStmt`.
-///
-/// Implementation considerations:
-/// Too many genuflections are currently required to get `const Statement &`.
-/// For instance, one would need to make const auto &forStmt = dyn_cast<ForStmt>
-/// convertible to bool and then add a bunch of const_cast.
-bool strictlyScopedUnder(Statement *stmt, Statement *scope);
-
 /// Type of the condition to limit the propagation of transitive use-defs.
 /// This can be used in particular to limit the propagation to a given Scope or
 /// to avoid passing through certain types of statement in a configurable
 /// manner.
 using TransitiveFilter = std::function<bool(Statement *)>;
 
-/// Fills `forwardStaticSlice` with the computed forward static slice (i.e. all
+/// Fills `forwardSlice` with the computed forward slice (i.e. all
 /// the transitive uses of stmt), **without** including that statement.
 ///
 /// This additionally takes a TransitiveFilter which acts as a frontier:
@@ -53,13 +44,13 @@ using TransitiveFilter = std::function<bool(Statement *)>;
 /// scope within a ForStmt or the scope within an IfStmt.
 ///
 /// The implementation traverses the use chains in postorder traversal for
-/// efficiency reasons: if a statement is already in `forwardStaticSlice`, no
+/// efficiency reasons: if a statement is already in `forwardSlice`, no
 /// need to traverse its uses again. Since use-def chains form a DAG, this
 /// terminates.
 ///
-/// Upon return to the root call, `forwardStaticSlice` is filled with a
-/// postorder list of uses (i.e. a reverse topological order. To get a proper
-/// topological order, we just just revert the order in `forwardStaticSlice` at
+/// Upon return to the root call, `forwardSlice` is filled with a
+/// postorder list of uses (i.e. a reverse topological order). To get a proper
+/// topological order, we just just reverse the order in `forwardSlice` at
 /// the topLevel before returning.
 ///
 /// Example starting from node 0
@@ -79,19 +70,19 @@ using TransitiveFilter = std::function<bool(Statement *)>;
 ///              9
 ///
 /// Assuming all local orders match the numbering order:
-/// 1. after getting back to the root getForwardStaticSlice,
-///    `forwardStaticSlice` may contain:
+/// 1. after getting back to the root getForwardSlice,
+///    `forwardSlice` may contain:
 ///      {9, 7, 8, 5, 1, 2, 6, 3, 4}
-/// 2. reverting the result of 1. gives:
+/// 2. reversing the result of 1. gives:
 ///      {4, 3, 6, 2, 1, 5, 8, 7, 9}
 ///
-void getForwardStaticSlice(
-    Statement *stmt, llvm::SetVector<Statement *> *forwardStaticSlice,
+void getForwardSlice(
+    Statement *stmt, llvm::SetVector<Statement *> *forwardSlice,
     TransitiveFilter filter = /* pass-through*/
     [](Statement *) { return true; },
     bool topLevel = true);
 
-/// Fills `backwardStaticSlice` with the computed backward static slice (i.e.
+/// Fills `backwardSlice` with the computed backward slice (i.e.
 /// all the transitive defs of stmt), **without** including that statement.
 ///
 /// This additionally takes a TransitiveFilter which acts as a frontier:
@@ -100,11 +91,11 @@ void getForwardStaticSlice(
 /// scope within a ForStmt or the scope within an IfStmt.
 ///
 /// The implementation traverses the def chains in postorder traversal for
-/// efficiency reasons: if a statement is already in `backwardStaticSlice`, no
+/// efficiency reasons: if a statement is already in `backwardSlice`, no
 /// need to traverse its definitions again. Since useuse-def chains form a DAG,
 /// this terminates.
 ///
-/// Upon return to the root call, `backwardStaticSlice` is filled with a
+/// Upon return to the root call, `backwardSlice` is filled with a
 /// postorder list of defs. This happens to be a topological order, from the
 /// point of view of the use-def chains.
 ///
@@ -125,17 +116,17 @@ void getForwardStaticSlice(
 /// Assuming all local orders match the numbering order:
 ///    {1, 2, 5, 7, 3, 4, 6, 8}
 ///
-void getBackwardStaticSlice(
-    Statement *stmt, llvm::SetVector<Statement *> *backwardStaticSlice,
+void getBackwardSlice(
+    Statement *stmt, llvm::SetVector<Statement *> *backwardSlice,
     TransitiveFilter filter = /* pass-through*/
     [](Statement *) { return true; },
     bool topLevel = true);
 
-/// Iteratively computes backward static slices and forward static slices until
+/// Iteratively computes backward slices and forward slices until
 /// a fixed point is reached. Returns an `llvm::SetVector<Statement *>` which
 /// **includes** the original statement.
 ///
-/// This allows building a static slice (i.e. multi-root DAG where everything
+/// This allows building a slice (i.e. multi-root DAG where everything
 /// that is reachable from an SSAValue in forward and backward direction is
 /// contained in the slice).
 /// This is the abstraction we need to materialize all the instructions for
@@ -159,7 +150,7 @@ void getBackwardStaticSlice(
 /// Return the whole DAG in some topological order.
 ///
 /// The implementation works by just filling up a worklist with iterative
-/// alternate calls to `getBackwardStaticSlice` and `getForwardStaticSlice`.
+/// alternate calls to `getBackwardSlice` and `getForwardSlice`.
 ///
 /// The following section describes some additional implementation
 /// considerations for a potentially more efficient implementation but they are
@@ -176,7 +167,7 @@ void getBackwardStaticSlice(
 ///    /  \  uses (in some topological order)
 ///   /____\
 ///
-/// We want to iteratively apply `getStaticSlice` to construct the whole
+/// We want to iteratively apply `getSlice` to construct the whole
 /// list of OperationStmt that are reachable by (use|def)+ from stmt.
 /// We want the resulting slice in topological order.
 /// Ideally we would like the ordering to be maintained in-place to avoid
@@ -208,7 +199,7 @@ void getBackwardStaticSlice(
 /// and keep things ordered but this is still hand-wavy and not worth the
 /// trouble for now: punt to a simple worklist-based solution.
 ///
-llvm::SetVector<Statement *> getStaticSlice(
+llvm::SetVector<Statement *> getSlice(
     Statement *stmt,
     TransitiveFilter backwardFilter = /* pass-through*/
     [](Statement *) { return true; },

@@ -1,4 +1,4 @@
-//===- UseDefAnalysis.h - Analysis for Transitive UseDef chains -----------===//
+//===- UseDefAnalysis.cpp - Analysis for Transitive UseDef chains ---------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -38,60 +38,16 @@ using namespace mlir;
 using llvm::DenseSet;
 using llvm::SetVector;
 
-/// Implementation detail that walks up the parents and records the ones with
-/// the specified type.
-/// TODO(ntv): could also be implemented as a collect parents followed by a
-/// filter and made available outside this file.
-template <typename T>
-static inline SetVector<T *> getParentsOfType(Statement *stmt) {
-  SetVector<T *> res;
-  auto *current = stmt;
-  while (auto *parent = current->getParentStmt()) {
-    auto *typedParent = dyn_cast<T>(parent);
-    if (typedParent) {
-      assert(res.count(typedParent) == 0 && "Already inserted");
-      res.insert(typedParent);
-    }
-    current = parent;
-  }
-  return res;
-}
-
-// Returns the enclosing ForStmt, from closest to farthest.
-// Use reverse iterators to get from outermost to innermost loop.
-static inline SetVector<ForStmt *> getEnclosingForStmts(Statement *stmt) {
-  return getParentsOfType<ForStmt>(stmt);
-}
-
-// Returns the enclosing IfStmt, from closest to farthest.
-// Use reverse iterators to get from outermost to innermost if conditional.
-static inline SetVector<IfStmt *> getEnclosingIfStmts(Statement *stmt) {
-  return getParentsOfType<IfStmt>(stmt);
-}
-
-bool mlir::strictlyScopedUnder(Statement *stmt, Statement *scope) {
-  if (auto *forStmt = dyn_cast<ForStmt>(scope)) {
-    return getEnclosingForStmts(stmt).count(forStmt) > 0;
-  }
-  if (auto *ifStmt = dyn_cast<IfStmt>(scope)) {
-    return getEnclosingIfStmts(stmt).count(ifStmt) > 0;
-  }
-  auto *opStmt = cast<OperationStmt>(scope);
-  (void)opStmt;
-  assert(false && "NYI: domination by an OpertationStmt");
-  return false;
-}
-
-void mlir::getForwardStaticSlice(Statement *stmt,
-                                 SetVector<Statement *> *forwardStaticSlice,
-                                 TransitiveFilter filter, bool topLevel) {
+void mlir::getForwardSlice(Statement *stmt,
+                           SetVector<Statement *> *forwardSlice,
+                           TransitiveFilter filter, bool topLevel) {
   if (!stmt) {
     return;
   }
 
   // Evaluate whether we should keep this use.
   // This is useful in particular to implement scoping; i.e. return the
-  // transitive forwardStaticSlice in the current scope.
+  // transitive forwardSlice in the current scope.
   if (!filter(stmt)) {
     return;
   }
@@ -101,18 +57,18 @@ void mlir::getForwardStaticSlice(Statement *stmt,
     if (opStmt->getNumResults() > 0) {
       for (auto &u : opStmt->getResult(0)->getUses()) {
         auto *ownerStmt = u.getOwner();
-        if (forwardStaticSlice->count(ownerStmt) == 0) {
-          getForwardStaticSlice(ownerStmt, forwardStaticSlice, filter,
-                                /* topLevel */ false);
+        if (forwardSlice->count(ownerStmt) == 0) {
+          getForwardSlice(ownerStmt, forwardSlice, filter,
+                          /* topLevel */ false);
         }
       }
     }
   } else if (auto *forStmt = dyn_cast<ForStmt>(stmt)) {
     for (auto &u : forStmt->getUses()) {
       auto *ownerStmt = u.getOwner();
-      if (forwardStaticSlice->count(ownerStmt) == 0) {
-        getForwardStaticSlice(ownerStmt, forwardStaticSlice, filter,
-                              /* topLevel */ false);
+      if (forwardSlice->count(ownerStmt) == 0) {
+        getForwardSlice(ownerStmt, forwardSlice, filter,
+                        /* topLevel */ false);
       }
     }
   } else {
@@ -124,65 +80,65 @@ void mlir::getForwardStaticSlice(Statement *stmt,
     // std::reverse does not work out of the box on SetVector and I want an
     // in-place swap based thing (the real std::reverse, not the LLVM adapter).
     // TODO(clattner): Consider adding an extra method?
-    std::vector<Statement *> v(forwardStaticSlice->takeVector());
-    forwardStaticSlice->insert(v.rbegin(), v.rend());
+    std::vector<Statement *> v(forwardSlice->takeVector());
+    forwardSlice->insert(v.rbegin(), v.rend());
   } else {
-    forwardStaticSlice->insert(stmt);
+    forwardSlice->insert(stmt);
   }
 }
 
-void mlir::getBackwardStaticSlice(Statement *stmt,
-                                  SetVector<Statement *> *backwardStaticSlice,
-                                  TransitiveFilter filter, bool topLevel) {
+void mlir::getBackwardSlice(Statement *stmt,
+                            SetVector<Statement *> *backwardSlice,
+                            TransitiveFilter filter, bool topLevel) {
   if (!stmt) {
     return;
   }
 
   // Evaluate whether we should keep this def.
   // This is useful in particular to implement scoping; i.e. return the
-  // transitive forwardStaticSlice in the current scope.
+  // transitive forwardSlice in the current scope.
   if (!filter(stmt)) {
     return;
   }
 
   for (auto *operand : stmt->getOperands()) {
     auto *stmt = operand->getDefiningStmt();
-    if (backwardStaticSlice->count(stmt) == 0) {
-      getBackwardStaticSlice(stmt, backwardStaticSlice, filter,
-                             /* topLevel */ false);
+    if (backwardSlice->count(stmt) == 0) {
+      getBackwardSlice(stmt, backwardSlice, filter,
+                       /* topLevel */ false);
     }
   }
 
   // Don't insert the top level statement, we just queried on it and don't
   // want it in the results.
   if (!topLevel) {
-    backwardStaticSlice->insert(stmt);
+    backwardSlice->insert(stmt);
   }
 }
 
-SetVector<Statement *> mlir::getStaticSlice(Statement *stmt,
-                                            TransitiveFilter backwardFilter,
-                                            TransitiveFilter forwardFilter) {
-  SetVector<Statement *> staticSlice;
-  staticSlice.insert(stmt);
+SetVector<Statement *> mlir::getSlice(Statement *stmt,
+                                      TransitiveFilter backwardFilter,
+                                      TransitiveFilter forwardFilter) {
+  SetVector<Statement *> slice;
+  slice.insert(stmt);
 
-  int currentIndex = 0;
-  SetVector<Statement *> backwardStaticSlice;
-  SetVector<Statement *> forwardStaticSlice;
-  while (currentIndex != staticSlice.size()) {
-    auto *currentStmt = (staticSlice)[currentIndex];
-    // Compute and insert the backwardStaticSlice starting from currentStmt.
-    backwardStaticSlice.clear();
-    getBackwardStaticSlice(currentStmt, &backwardStaticSlice, backwardFilter);
-    staticSlice.insert(backwardStaticSlice.begin(), backwardStaticSlice.end());
+  unsigned currentIndex = 0;
+  SetVector<Statement *> backwardSlice;
+  SetVector<Statement *> forwardSlice;
+  while (currentIndex != slice.size()) {
+    auto *currentStmt = (slice)[currentIndex];
+    // Compute and insert the backwardSlice starting from currentStmt.
+    backwardSlice.clear();
+    getBackwardSlice(currentStmt, &backwardSlice, backwardFilter);
+    slice.insert(backwardSlice.begin(), backwardSlice.end());
 
-    // Compute and insert the forwardStaticSlice starting from currentStmt.
-    forwardStaticSlice.clear();
-    getForwardStaticSlice(currentStmt, &forwardStaticSlice, forwardFilter);
-    staticSlice.insert(forwardStaticSlice.begin(), forwardStaticSlice.end());
+    // Compute and insert the forwardSlice starting from currentStmt.
+    forwardSlice.clear();
+    getForwardSlice(currentStmt, &forwardSlice, forwardFilter);
+    slice.insert(forwardSlice.begin(), forwardSlice.end());
     ++currentIndex;
   }
-  return topologicalSort(staticSlice);
+  return topologicalSort(slice);
 }
 
 namespace {

@@ -43,18 +43,16 @@ static llvm::cl::list<int> clTestVectorShapeRatio(
     "vector-shape-ratio",
     llvm::cl::desc("Specify the HW vector size for vectorization"),
     llvm::cl::ZeroOrMore);
-
-static llvm::cl::opt<bool> clTestForwardStaticSlicingAnalysis(
+static llvm::cl::opt<bool> clTestForwardSlicingAnalysis(
     "forward-slicing",
     llvm::cl::desc(
         "Specify to enable testing forward static slicing and topological sort "
         "functionalities"));
-static llvm::cl::opt<bool> clTestBackwardStaticSlicingAnalysis(
+static llvm::cl::opt<bool> clTestBackwardSlicingAnalysis(
     "backward-slicing",
-    llvm::cl::desc(
-        "Specify to enable testing backward staticslicing and topological sort "
-        "functionalities"));
-static llvm::cl::opt<bool> clTestStaticSlicingAnalysis(
+    llvm::cl::desc("Specify to enable testing backward static slicing and "
+                   "topological sort functionalities"));
+static llvm::cl::opt<bool> clTestSlicingAnalysis(
     "slicing",
     llvm::cl::desc(
         "Specify to enable testing static slicing and topological sort "
@@ -67,9 +65,9 @@ struct VectorizerTestPass : public FunctionPass {
 
   PassResult runOnMLFunction(MLFunction *f) override;
   void testVectorShapeRatio(MLFunction *f);
-  void testForwardStaticSlicing(MLFunction *f);
-  void testBackwardStaticSlicing(MLFunction *f);
-  void testStaticSlicing(MLFunction *f);
+  void testForwardSlicing(MLFunction *f);
+  void testBackwardSlicing(MLFunction *f);
+  void testSlicing(MLFunction *f);
 
   // Thread-safe RAII contexts local to pass, BumpPtrAllocator freed on exit.
   MLFunctionMatcherContext MLContext;
@@ -144,12 +142,12 @@ static MLFunctionMatches matchTestSlicingOps(MLFunction *f) {
   return pat.match(f);
 }
 
-void VectorizerTestPass::testBackwardStaticSlicing(MLFunction *f) {
+void VectorizerTestPass::testBackwardSlicing(MLFunction *f) {
   auto matches = matchTestSlicingOps(f);
   for (auto m : matches) {
-    SetVector<Statement *> backwardStaticSlice;
-    getBackwardStaticSlice(m.first, &backwardStaticSlice);
-    auto strs = map(toString, backwardStaticSlice);
+    SetVector<Statement *> backwardSlice;
+    getBackwardSlice(m.first, &backwardSlice);
+    auto strs = map(toString, backwardSlice);
     outs() << "\nmatched: " << *m.first << " backward static slice: ";
     for (const auto &s : strs) {
       outs() << "\n" << s;
@@ -157,12 +155,12 @@ void VectorizerTestPass::testBackwardStaticSlicing(MLFunction *f) {
   }
 }
 
-void VectorizerTestPass::testForwardStaticSlicing(MLFunction *f) {
+void VectorizerTestPass::testForwardSlicing(MLFunction *f) {
   auto matches = matchTestSlicingOps(f);
   for (auto m : matches) {
-    SetVector<Statement *> forwardStaticSlice;
-    getForwardStaticSlice(m.first, &forwardStaticSlice);
-    auto strs = map(toString, forwardStaticSlice);
+    SetVector<Statement *> forwardSlice;
+    getForwardSlice(m.first, &forwardSlice);
+    auto strs = map(toString, forwardSlice);
     outs() << "\nmatched: " << *m.first << " forward static slice: ";
     for (const auto &s : strs) {
       outs() << "\n" << s;
@@ -170,10 +168,10 @@ void VectorizerTestPass::testForwardStaticSlicing(MLFunction *f) {
   }
 }
 
-void VectorizerTestPass::testStaticSlicing(MLFunction *f) {
+void VectorizerTestPass::testSlicing(MLFunction *f) {
   auto matches = matchTestSlicingOps(f);
   for (auto m : matches) {
-    SetVector<Statement *> staticSlice = getStaticSlice(m.first);
+    SetVector<Statement *> staticSlice = getSlice(m.first);
     auto strs = map(toString, staticSlice);
     outs() << "\nmatched: " << *m.first << " static slice: ";
     for (const auto &s : strs) {
@@ -186,14 +184,14 @@ PassResult VectorizerTestPass::runOnMLFunction(MLFunction *f) {
   if (!clTestVectorShapeRatio.empty()) {
     testVectorShapeRatio(f);
   }
-  if (clTestForwardStaticSlicingAnalysis) {
-    testForwardStaticSlicing(f);
+  if (clTestForwardSlicingAnalysis) {
+    testForwardSlicing(f);
   }
-  if (clTestBackwardStaticSlicingAnalysis) {
-    testBackwardStaticSlicing(f);
+  if (clTestBackwardSlicingAnalysis) {
+    testBackwardSlicing(f);
   }
-  if (clTestStaticSlicingAnalysis) {
-    testStaticSlicing(f);
+  if (clTestSlicingAnalysis) {
+    testSlicing(f);
   }
   return PassResult::Success;
 }
