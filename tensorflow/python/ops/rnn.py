@@ -348,7 +348,10 @@ def _reverse_seq(input_seq, lengths):
   return results
 
 
-@tf_export("nn.bidirectional_dynamic_rnn")
+@deprecation.deprecated(None, "Please use `keras.layers.Bidirectional("
+                        "keras.layers.RNN(cell))`, which is equivalent to "
+                        "this API")
+@tf_export(v1=["nn.bidirectional_dynamic_rnn"])
 def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
                               initial_state_fw=None, initial_state_bw=None,
                               dtype=None, parallel_iterations=None,
@@ -1490,7 +1493,10 @@ def static_state_saving_rnn(cell,
   return (outputs, state)
 
 
-@tf_export("nn.static_bidirectional_rnn")
+@deprecation.deprecated(None, "Please use `keras.layers.Bidirectional("
+                        "keras.layers.RNN(cell, unroll=True))`, which is "
+                        "equivalent to this API")
+@tf_export(v1=["nn.static_bidirectional_rnn"])
 def static_bidirectional_rnn(cell_fw,
                              cell_bw,
                              inputs,

@@ -1770,6 +1770,14 @@ bool IsAllocatableTransientArray(const Model& model, const string& array_name) {
   if (!array->has_shape()) {
     return false;
   }
+
+  // The size of string tensors is rarely known ahead of time, so all transient
+  // tensors of this type will need to be dynamically allocated.
+  if (array->final_data_type == ArrayDataType::kString ||
+      array->data_type == ArrayDataType::kString) {
+    return false;
+  }
+
   return true;
 }
 

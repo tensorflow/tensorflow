@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_experimental.h"
 
+#include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -23,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/platform/net.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
@@ -8740,8 +8744,55 @@ void TFE_TensorHandlePrintDebugString(TFE_TensorHandle* handle) {
   TF_DeleteStatus(status);
 }
 
-TF_CAPI_EXPORT extern void TF_MakeInternalErrorStatus(TF_Status* status,
-                                                      const char* errMsg) {
+struct TFE_ExecuteOpNotification {
+  TFE_ExecuteOpNotification() : status(TF_NewStatus(), TF_DeleteStatus) {}
+  tensorflow::Notification n;
+  std::unique_ptr<tensorflow::Thread> thread;
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status;
+};
+
+TFE_ExecuteOpNotification* TFE_ExecuteOpInNewThread(TFE_Op* op,
+                                                    TFE_TensorHandle** retvals,
+                                                    int* num_retvals,
+                                                    TF_Status* status) {
+  TFE_ExecuteOpNotification* n = new TFE_ExecuteOpNotification;
+
+  n->thread.reset(op->operation.EagerContext()->TFEnv()->StartThread(
+      tensorflow::ThreadOptions(), "ExecuteOpThread",
+      [op, retvals, num_retvals, n]() {
+        TFE_Execute(op, retvals, num_retvals, n->status.get());
+        n->n.Notify();
+      }));
+
+  return n;
+}
+
+void TFE_ExecuteOpNotificationWaitAndDelete(
+    TFE_ExecuteOpNotification* notification, TF_Status* status) {
+  if (notification == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Passed in notification is a nullptr.");
+
+    return;
+  }
+  if (notification->thread == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Passed in notification didn't start a thread correctly. Cleaning up "
+        "this notification. Please re-execute the operation to get a new "
+        "notification.");
+
+    delete notification;
+    return;
+  }
+
+  notification->n.WaitForNotification();
+
+  status->status = notification->status->status;
+
+  delete notification;
+}
+
+void TF_MakeInternalErrorStatus(TF_Status* status, const char* errMsg) {
   status->status = tensorflow::errors::Internal(errMsg);
 }
 
@@ -8814,4 +8865,8 @@ int TF_OpIsStateful(const char* op_type, TF_Status* status) {
 
 void TF_InitMain(const char* usage, int* argc, char*** argv) {
   tensorflow::port::InitMain(usage, argc, argv);
+}
+
+int TF_PickUnusedPortOrDie() {
+  return tensorflow::internal::PickUnusedPortOrDie();
 }

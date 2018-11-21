@@ -191,17 +191,18 @@ class DistributionTestBase(test.TestCase):
 
   def _test_replica_id(self, d):
     with d.scope():
-      expected_devices = [False] * len(d.worker_devices)
+      expected_devices = [False] * len(d.extended.worker_devices)
 
       def mark_devices_fn():
         replica_id = self.evaluate(
             ds_context.get_replica_context().replica_id_in_sync_group)
-        self.assertLess(replica_id, len(d.worker_devices))
+        self.assertLess(replica_id, len(d.extended.worker_devices))
         self.assertFalse(expected_devices[replica_id])
         expected_devices[replica_id] = True
 
       d.call_for_each_replica(mark_devices_fn)
-      self.assertAllEqual(expected_devices, [True] * len(d.worker_devices))
+      self.assertAllEqual(expected_devices,
+                          [True] * len(d.extended.worker_devices))
 
   def _test_call_and_merge_exceptions(self, dist):
     with dist.scope():

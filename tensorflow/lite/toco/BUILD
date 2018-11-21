@@ -395,9 +395,10 @@ tf_cc_test(
 
 # :toco is the main public command-line tool exposing the functionality
 # of the :toco_tooling library.
-tf_cc_binary(
-    name = "toco",
-    srcs = ["toco.cc"],
+cc_library(
+    name = "toco_convert",
+    srcs = ["toco_convert.cc"],
+    hdrs = ["toco_convert.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":model",
@@ -408,6 +409,51 @@ tf_cc_binary(
         ":toco_port",
         ":toco_tooling",
         ":types_proto_cc",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:lib",
+        # We cannot embed the core:ops dependency directly into :toco_tooling as
+        # it can conflict with downstream deps when toco is used as a library.
+        "//tensorflow/core:ops",
+    ],
+)
+
+tf_cc_binary(
+    name = "toco",
+    srcs = ["toco.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":model",
+        ":model_cmdline_flags",
+        ":model_flags_proto_cc",
+        ":toco_cmdline_flags",
+        ":toco_convert",
+        ":toco_flags_proto_cc",
+        ":toco_port",
+        ":toco_tooling",
+        ":types_proto_cc",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:lib",
+        # We cannot embed the core:ops dependency directly into :toco_tooling as
+        # it can conflict with downstream deps when toco is used as a library.
+        "//tensorflow/core:ops",
+    ],
+)
+
+tf_cc_test(
+    name = "toco_convert_test",
+    srcs = ["toco_convert_test.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":model",
+        ":model_cmdline_flags",
+        ":model_flags_proto_cc",
+        ":toco_cmdline_flags",
+        ":toco_convert",
+        ":toco_flags_proto_cc",
+        ":toco_port",
+        ":toco_tooling",
+        ":types_proto_cc",
+        "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         # We cannot embed the core:ops dependency directly into :toco_tooling as

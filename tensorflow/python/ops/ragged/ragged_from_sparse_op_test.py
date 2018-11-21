@@ -64,6 +64,20 @@ class RaggedTensorToSparseOpTest(test_util.TensorFlowTestCase):
     self.assertRaisesRegexp(ValueError, r'rank\(st_input\) must be 2',
                             ragged.from_sparse, st3)
 
+  def testGoodPartialSparseTensorRank(self):
+    st1 = sparse_tensor.SparseTensor(
+        indices=[[0, 0]],
+        values=[0],
+        dense_shape=array_ops.placeholder(dtypes.int64))
+    st2 = sparse_tensor.SparseTensor(
+        indices=array_ops.placeholder(dtypes.int64),
+        values=[0],
+        dense_shape=[4, 3])
+
+    # Shouldn't throw ValueError
+    ragged.from_sparse(st1)
+    ragged.from_sparse(st2)
+
   def testNonRaggedSparseTensor(self):
     # "index_suffix" means the value of the innermost dimension of the index
     # (i.e., indices[i][-1]).

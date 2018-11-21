@@ -341,6 +341,7 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:tape",
+        "//tensorflow/python/ops/parallel_for:control_flow_ops",
         "@six_archive//:six",
     ],
 )

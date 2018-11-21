@@ -32,6 +32,7 @@ from tensorflow.python.keras import metrics
 from tensorflow.python.keras.engine.training import Model
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -48,7 +49,7 @@ class KerasMetricsTest(test.TestCase):
         output = metric(y_a, y_b)
         self.assertEqual(K.eval(output).shape, (6,))
 
-  def test_sparse_categorical_accuracy(self):
+  def test_sparse_categorical_accuracy_int(self):
     with self.cached_session():
       metric = metrics.sparse_categorical_accuracy
       y_true = K.variable(np.random.randint(0, 7, (6,)))
@@ -367,6 +368,28 @@ class KerasMetricsTest(test.TestCase):
     self.assertEqual(3, self.evaluate(restore_mean.count))
 
   @test_util.run_in_graph_and_eager_modes
+  def test_accuracy(self):
+    acc_obj = metrics.Accuracy(name='my acc')
+
+    # check config
+    self.assertEqual(acc_obj.name, 'my acc')
+    self.assertTrue(acc_obj.stateful)
+    self.assertEqual(len(acc_obj.variables), 2)
+    self.assertEqual(acc_obj.dtype, dtypes.float32)
+    self.evaluate(variables.variables_initializer(acc_obj.variables))
+
+    # verify that correct value is returned
+    update_op = acc_obj.update_state([[1], [2], [3], [4]], [[1], [2], [3], [4]])
+    self.evaluate(update_op)
+    result = self.evaluate(acc_obj.result())
+    self.assertEqual(result, 1)  # 2/2
+
+    # check with sample_weight
+    result_t = acc_obj([[2], [1]], [[2], [0]], sample_weight=[[0.5], [0.2]])
+    result = self.evaluate(result_t)
+    self.assertAlmostEqual(result, 0.96, 2)  # 4.5/4.7
+
+  @test_util.run_in_graph_and_eager_modes
   def test_binary_accuracy(self):
     acc_obj = metrics.BinaryAccuracy(name='my acc')
 
@@ -433,6 +456,30 @@ class KerasMetricsTest(test.TestCase):
     # check with sample_weight
     result_t = acc_obj([[0, 0, 1], [0, 1, 0]],
                        [[0.1, 0.1, 0.8], [0.05, 0, 0.95]], [[0.5], [0.2]])
+    result = self.evaluate(result_t)
+    self.assertAlmostEqual(result, 0.93, 2)  # 2.5/2.7
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_sparse_categorical_accuracy(self):
+    acc_obj = metrics.SparseCategoricalAccuracy(name='my acc')
+
+    # check config
+    self.assertEqual(acc_obj.name, 'my acc')
+    self.assertTrue(acc_obj.stateful)
+    self.assertEqual(len(acc_obj.variables), 2)
+    self.assertEqual(acc_obj.dtype, dtypes.float32)
+    self.evaluate(variables.variables_initializer(acc_obj.variables))
+
+    # verify that correct value is returned
+    update_op = acc_obj.update_state([[2], [1]],
+                                     [[0.1, 0.1, 0.8], [0.05, 0.95, 0]])
+    self.evaluate(update_op)
+    result = self.evaluate(acc_obj.result())
+    self.assertEqual(result, 1)  # 2/2
+
+    # check with sample_weight
+    result_t = acc_obj([[2], [1]], [[0.1, 0.1, 0.8], [0.05, 0, 0.95]],
+                       [[0.5], [0.2]])
     result = self.evaluate(result_t)
     self.assertAlmostEqual(result, 0.93, 2)  # 2.5/2.7
 
@@ -731,6 +778,249 @@ class TruePositivesTest(test.TestCase):
 
     result = tp_obj(y_true, y_pred, sample_weight=37.)
     self.assertAllClose([222., 111., 37.], self.evaluate(result))
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class PrecisionTest(test.TestCase):
+
+  def test_config(self):
+    p_obj = metrics.Precision(name='my_precision', thresholds=[0.4, 0.9])
+    self.assertEqual(p_obj.name, 'my_precision')
+    self.assertLen(p_obj.variables, 2)
+    self.assertEqual([v.name for v in p_obj.variables],
+                     ['true_positives:0', 'false_positives:0'])
+    self.assertEqual(p_obj.thresholds, [0.4, 0.9])
+
+  def test_value_is_idempotent(self):
+    p_obj = metrics.Precision(thresholds=[0.3, 0.72])
+    y_pred = random_ops.random_uniform(shape=(10, 3))
+    y_true = random_ops.random_uniform(shape=(10, 3))
+    update_op = p_obj.update_state(y_true, y_pred)
+    self.evaluate(variables.variables_initializer(p_obj.variables))
+
+    # Run several updates.
+    for _ in range(10):
+      self.evaluate(update_op)
+
+    # Then verify idempotency.
+    initial_precision = self.evaluate(p_obj.result())
+    for _ in range(10):
+      self.assertArrayNear(initial_precision, self.evaluate(p_obj.result()),
+                           1e-3)
+
+  def test_unweighted(self):
+    p_obj = metrics.Precision()
+    y_pred = constant_op.constant([1, 0, 1, 0], shape=(1, 4))
+    y_true = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
+    self.evaluate(variables.variables_initializer(p_obj.variables))
+    result = p_obj(y_true, y_pred)
+    self.assertAlmostEqual(0.5, self.evaluate(result))
+
+  def test_unweighted_all_incorrect(self):
+    p_obj = metrics.Precision(thresholds=[0.5])
+    inputs = np.random.randint(0, 2, size=(100, 1))
+    y_pred = constant_op.constant(inputs)
+    y_true = constant_op.constant(1 - inputs)
+    self.evaluate(variables.variables_initializer(p_obj.variables))
+    result = p_obj(y_true, y_pred)
+    self.assertAlmostEqual(0, self.evaluate(result))
+
+  def test_weighted(self):
+    p_obj = metrics.Precision()
+    y_pred = constant_op.constant([[1, 0, 1, 0], [1, 0, 1, 0]])
+    y_true = constant_op.constant([[0, 1, 1, 0], [1, 0, 0, 1]])
+    self.evaluate(variables.variables_initializer(p_obj.variables))
+    result = p_obj(
+        y_true,
+        y_pred,
+        sample_weight=constant_op.constant([[1, 2, 3, 4], [4, 3, 2, 1]]))
+    weighted_tp = 3.0 + 4.0
+    weighted_positives = (1.0 + 3.0) + (4.0 + 2.0)
+    expected_precision = weighted_tp / weighted_positives
+    self.assertAlmostEqual(expected_precision, self.evaluate(result))
+
+  def test_div_by_zero(self):
+    p_obj = metrics.Precision()
+    y_pred = constant_op.constant([0, 0, 0, 0])
+    y_true = constant_op.constant([0, 0, 0, 0])
+    self.evaluate(variables.variables_initializer(p_obj.variables))
+    result = p_obj(y_true, y_pred)
+    self.assertEqual(0, self.evaluate(result))
+
+  def test_unweighted_with_threshold(self):
+    p_obj = metrics.Precision(thresholds=[0.5, 0.7])
+    y_pred = constant_op.constant([1, 0, 0.6, 0], shape=(1, 4))
+    y_true = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
+    self.evaluate(variables.variables_initializer(p_obj.variables))
+    result = p_obj(y_true, y_pred)
+    self.assertArrayNear([0.5, 0.], self.evaluate(result), 0)
+
+  def test_weighted_with_threshold(self):
+    p_obj = metrics.Precision(thresholds=[0.5, 1.1])
+    y_true = constant_op.constant([[0, 1], [1, 0]], shape=(2, 2))
+    y_pred = constant_op.constant([[1, 0], [0.6, 0]],
+                                  shape=(2, 2),
+                                  dtype=dtypes.float32)
+    weights = constant_op.constant([[4, 0], [3, 1]],
+                                   shape=(2, 2),
+                                   dtype=dtypes.float32)
+    self.evaluate(variables.variables_initializer(p_obj.variables))
+    result = p_obj(y_true, y_pred, sample_weight=weights)
+    weighted_tp = 0 + 3.
+    weighted_positives = (0 + 3.) + (4. + 0.)
+    expected_precision = weighted_tp / weighted_positives
+    self.assertArrayNear([expected_precision, 0], self.evaluate(result), 1e-3)
+
+  def test_extreme_thresholds(self):
+    p_obj = metrics.Precision(thresholds=[-1.0, 2.0])  # beyond values range
+    y_pred = math_ops.cast(
+        constant_op.constant([1, 0, 1, 0], shape=(1, 4)), dtype=dtypes.float32)
+    y_true = math_ops.cast(
+        constant_op.constant([0, 1, 1, 1], shape=(1, 4)), dtype=dtypes.float32)
+    self.evaluate(variables.variables_initializer(p_obj.variables))
+    result = p_obj(y_true, y_pred)
+    self.assertArrayNear([0.75, 0.], self.evaluate(result), 0)
+
+  def test_multiple_updates(self):
+    p_obj = metrics.Precision(thresholds=[0.5, 1.1])
+    y_true = constant_op.constant([[0, 1], [1, 0]], shape=(2, 2))
+    y_pred = constant_op.constant([[1, 0], [0.6, 0]],
+                                  shape=(2, 2),
+                                  dtype=dtypes.float32)
+    weights = constant_op.constant([[4, 0], [3, 1]],
+                                   shape=(2, 2),
+                                   dtype=dtypes.float32)
+    self.evaluate(variables.variables_initializer(p_obj.variables))
+    update_op = p_obj.update_state(y_true, y_pred, sample_weight=weights)
+    for _ in range(2):
+      self.evaluate(update_op)
+
+    weighted_tp = (0 + 3.) + (0 + 3.)
+    weighted_positives = ((0 + 3.) + (4. + 0.)) + ((0 + 3.) + (4. + 0.))
+    expected_precision = weighted_tp / weighted_positives
+    self.assertArrayNear([expected_precision, 0], self.evaluate(p_obj.result()),
+                         1e-3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class RecallTest(test.TestCase):
+
+  def test_config(self):
+    r_obj = metrics.Recall(name='my_recall', thresholds=[0.4, 0.9])
+    self.assertEqual(r_obj.name, 'my_recall')
+    self.assertLen(r_obj.variables, 2)
+    self.assertEqual([v.name for v in r_obj.variables],
+                     ['true_positives:0', 'false_negatives:0'])
+    self.assertEqual(r_obj.thresholds, [0.4, 0.9])
+
+  def test_value_is_idempotent(self):
+    r_obj = metrics.Recall(thresholds=[0.3, 0.72])
+    y_pred = random_ops.random_uniform(shape=(10, 3))
+    y_true = random_ops.random_uniform(shape=(10, 3))
+    update_op = r_obj.update_state(y_true, y_pred)
+    self.evaluate(variables.variables_initializer(r_obj.variables))
+
+    # Run several updates.
+    for _ in range(10):
+      self.evaluate(update_op)
+
+    # Then verify idempotency.
+    initial_recall = self.evaluate(r_obj.result())
+    for _ in range(10):
+      self.assertArrayNear(initial_recall, self.evaluate(r_obj.result()), 1e-3)
+
+  def test_unweighted(self):
+    r_obj = metrics.Recall()
+    y_pred = constant_op.constant([1, 0, 1, 0], shape=(1, 4))
+    y_true = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
+    self.evaluate(variables.variables_initializer(r_obj.variables))
+    result = r_obj(y_true, y_pred)
+    self.assertAlmostEqual(0.5, self.evaluate(result))
+
+  def test_unweighted_all_incorrect(self):
+    r_obj = metrics.Recall(thresholds=[0.5])
+    inputs = np.random.randint(0, 2, size=(100, 1))
+    y_pred = constant_op.constant(inputs)
+    y_true = constant_op.constant(1 - inputs)
+    self.evaluate(variables.variables_initializer(r_obj.variables))
+    result = r_obj(y_true, y_pred)
+    self.assertAlmostEqual(0, self.evaluate(result))
+
+  def test_weighted(self):
+    r_obj = metrics.Recall()
+    y_pred = constant_op.constant([[1, 0, 1, 0], [0, 1, 0, 1]])
+    y_true = constant_op.constant([[0, 1, 1, 0], [1, 0, 0, 1]])
+    self.evaluate(variables.variables_initializer(r_obj.variables))
+    result = r_obj(
+        y_true,
+        y_pred,
+        sample_weight=constant_op.constant([[1, 2, 3, 4], [4, 3, 2, 1]]))
+    weighted_tp = 3.0 + 1.0
+    weighted_t = (2.0 + 3.0) + (4.0 + 1.0)
+    expected_recall = weighted_tp / weighted_t
+    self.assertAlmostEqual(expected_recall, self.evaluate(result))
+
+  def test_div_by_zero(self):
+    r_obj = metrics.Recall()
+    y_pred = constant_op.constant([0, 0, 0, 0])
+    y_true = constant_op.constant([0, 0, 0, 0])
+    self.evaluate(variables.variables_initializer(r_obj.variables))
+    result = r_obj(y_true, y_pred)
+    self.assertEqual(0, self.evaluate(result))
+
+  def test_unweighted_with_threshold(self):
+    r_obj = metrics.Recall(thresholds=[0.5, 0.7])
+    y_pred = constant_op.constant([1, 0, 0.6, 0], shape=(1, 4))
+    y_true = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
+    self.evaluate(variables.variables_initializer(r_obj.variables))
+    result = r_obj(y_true, y_pred)
+    self.assertArrayNear([0.5, 0.], self.evaluate(result), 0)
+
+  def test_weighted_with_threshold(self):
+    r_obj = metrics.Recall(thresholds=[0.5, 1.1])
+    y_true = constant_op.constant([[0, 1], [1, 0]], shape=(2, 2))
+    y_pred = constant_op.constant([[1, 0], [0.6, 0]],
+                                  shape=(2, 2),
+                                  dtype=dtypes.float32)
+    weights = constant_op.constant([[1, 4], [3, 2]],
+                                   shape=(2, 2),
+                                   dtype=dtypes.float32)
+    self.evaluate(variables.variables_initializer(r_obj.variables))
+    result = r_obj(y_true, y_pred, sample_weight=weights)
+    weighted_tp = 0 + 3.
+    weighted_positives = (0 + 3.) + (4. + 0.)
+    expected_recall = weighted_tp / weighted_positives
+    self.assertArrayNear([expected_recall, 0], self.evaluate(result), 1e-3)
+
+  def test_extreme_thresholds(self):
+    r_obj = metrics.Recall(thresholds=[-1.0, 2.0])  # beyond values range
+    y_pred = math_ops.cast(
+        constant_op.constant([1, 0, 1, 0], shape=(1, 4)), dtype=dtypes.float32)
+    y_true = math_ops.cast(
+        constant_op.constant([0, 1, 1, 1], shape=(1, 4)), dtype=dtypes.float32)
+    self.evaluate(variables.variables_initializer(r_obj.variables))
+    result = r_obj(y_true, y_pred)
+    self.assertArrayNear([1.0, 0.], self.evaluate(result), 0)
+
+  def test_multiple_updates(self):
+    r_obj = metrics.Recall(thresholds=[0.5, 1.1])
+    y_true = constant_op.constant([[0, 1], [1, 0]], shape=(2, 2))
+    y_pred = constant_op.constant([[1, 0], [0.6, 0]],
+                                  shape=(2, 2),
+                                  dtype=dtypes.float32)
+    weights = constant_op.constant([[1, 4], [3, 2]],
+                                   shape=(2, 2),
+                                   dtype=dtypes.float32)
+    self.evaluate(variables.variables_initializer(r_obj.variables))
+    update_op = r_obj.update_state(y_true, y_pred, sample_weight=weights)
+    for _ in range(2):
+      self.evaluate(update_op)
+
+    weighted_tp = (0 + 3.) + (0 + 3.)
+    weighted_positives = ((0 + 3.) + (4. + 0.)) + ((0 + 3.) + (4. + 0.))
+    expected_recall = weighted_tp / weighted_positives
+    self.assertArrayNear([expected_recall, 0], self.evaluate(r_obj.result()),
+                         1e-3)
 
 
 if __name__ == '__main__':

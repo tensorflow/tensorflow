@@ -29,8 +29,8 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
@@ -833,6 +833,37 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     result = fn(shape)
     self.assertAllEqual(result[:2], [-1, 5])
     self.assertIs(result[2], t)
+
+  def testAddN(self):
+    l1 = list_ops.tensor_list_from_tensor([1.0, 2.0], element_shape=[])
+    l2 = list_ops.tensor_list_from_tensor([3.0, 4.0], element_shape=[])
+    l3 = list_ops.tensor_list_from_tensor([5.0, 6.0], element_shape=[])
+    result = math_ops.add_n((l1, l2, l3))
+    result_t = list_ops.tensor_list_stack(result, element_dtype=dtypes.float32)
+    self.assertAllEqual(self.evaluate(result_t), [9., 12.])
+
+  def testAddNNestedList(self):
+    l1 = list_ops.tensor_list_from_tensor([1.0, 2.0], element_shape=[])
+    l2 = list_ops.tensor_list_from_tensor([3.0, 4.0], element_shape=[])
+    l3 = list_ops.tensor_list_from_tensor([5.0, 6.0], element_shape=[])
+    l4 = list_ops.tensor_list_from_tensor([7.0, 8.0], element_shape=[])
+    a = list_ops.empty_tensor_list(
+        element_dtype=dtypes.variant, element_shape=[])
+    a = list_ops.tensor_list_push_back(a, l1)
+    a = list_ops.tensor_list_push_back(a, l2)
+    b = list_ops.empty_tensor_list(
+        element_dtype=dtypes.variant, element_shape=[])
+    b = list_ops.tensor_list_push_back(b, l3)
+    b = list_ops.tensor_list_push_back(b, l4)
+    result = math_ops.add_n((a, b))
+    result_0 = list_ops.tensor_list_stack(
+        list_ops.tensor_list_get_item(result, 0, element_dtype=dtypes.variant),
+        element_dtype=dtypes.float32)
+    result_1 = list_ops.tensor_list_stack(
+        list_ops.tensor_list_get_item(result, 1, element_dtype=dtypes.variant),
+        element_dtype=dtypes.float32)
+    self.assertAllEqual(self.evaluate(result_0), [6., 8.])
+    self.assertAllEqual(self.evaluate(result_1), [10., 12.])
 
 
 if __name__ == "__main__":

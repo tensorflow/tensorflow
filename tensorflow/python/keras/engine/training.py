@@ -693,11 +693,15 @@ class Model(Network):
             target = None
           if target is None or K.is_placeholder(target):
             if target is None:
+              target_dtype = losses.LABEL_DTYPES_FOR_LOSSES.get(
+                  self.loss_functions[i],
+                  K.dtype(self.outputs[i]))
+
               target = K.placeholder(
                   ndim=len(shape),
                   name=name + '_target',
                   sparse=K.is_sparse(self.outputs[i]),
-                  dtype=K.dtype(self.outputs[i]))
+                  dtype=target_dtype)
             self._feed_targets.append(target)
             self._feed_outputs.append(self.outputs[i])
             self._feed_output_names.append(name)
@@ -986,7 +990,8 @@ class Model(Network):
                                 'when using DistributionStrategy.')
 
     if (sample_weight is not None and sample_weight.all() and
-        self._distribution_strategy.__class__.__name__ == 'TPUStrategy'):
+        distributed_training_utils.is_tpu_strategy(
+            self._distribution_strategy)):
       raise NotImplementedError('`sample_weight` is currently not supported '
                                 'when using TPUStrategy.')
 
@@ -1226,7 +1231,10 @@ class Model(Network):
       # to match the value shapes.
       if not self.inputs:
         is_build_called = True
-        self._set_inputs(x)
+        cast_inputs = x
+        if training_utils.has_tensors(x):
+          cast_inputs = training_utils.cast_if_floating_dtype(x)
+        self._set_inputs(cast_inputs)
     else:
       dict_inputs = isinstance(self.inputs, dict)
     if dict_inputs and context.executing_eagerly():
@@ -1242,6 +1250,8 @@ class Model(Network):
       if not self._is_compiled:
         # On-the-fly compilation of the model.
         # We need to use `y` to set the model targets.
+        if training_utils.has_tensors(y):
+          y = training_utils.cast_if_floating_dtype(y)
         if isinstance(y, (list, tuple)):
           if not all(isinstance(v, np.ndarray) or
                      tensor_util.is_tensor(v) for v in y):
@@ -1755,7 +1765,8 @@ class Model(Network):
           initial_epoch=initial_epoch,
           steps_per_epoch=steps_per_epoch,
           validation_steps=validation_steps)
-    elif training_distributed.should_run_experimental_loop(self):
+    elif distributed_training_utils.is_tpu_strategy(
+        self._distribution_strategy):
       return training_distributed.experimental_fit_loop(
           self,
           x,
@@ -1916,7 +1927,8 @@ class Model(Network):
           batch_size=batch_size,
           verbose=verbose,
           steps=steps)
-    elif training_distributed.should_run_experimental_loop(self):
+    elif distributed_training_utils.is_tpu_strategy(
+        self._distribution_strategy):
       return training_distributed.experimental_test_loop(
           self, iterator=x, verbose=verbose, steps=steps)
     elif isinstance(x, iterator_ops.EagerIterator):
@@ -2026,7 +2038,8 @@ class Model(Network):
     if self.run_eagerly:
       return training_eager.predict_loop(
           self, x, batch_size=batch_size, verbose=verbose, steps=steps)
-    elif training_distributed.should_run_experimental_loop(self):
+    elif distributed_training_utils.is_tpu_strategy(
+        self._distribution_strategy):
       return training_distributed.experimental_predict_loop(
           self, x, verbose=verbose, steps=steps)
     elif isinstance(x, iterator_ops.EagerIterator):

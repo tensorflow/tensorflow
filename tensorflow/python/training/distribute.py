@@ -1604,6 +1604,11 @@ class _DefaultDistributionExtended(DistributionStrategyExtended):
       else:
         return [self._iterator.initializer]
 
+  # TODO(priyag): Delete this once all strategies use global batch size.
+  @property
+  def _global_batch_size(self):
+    return True
+
 
 # ------------------------------------------------------------------------------
 # We haven't yet implemented deserialization for DistributedVariables.

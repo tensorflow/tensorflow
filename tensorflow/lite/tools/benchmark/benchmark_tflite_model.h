@@ -77,11 +77,16 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   };
 
  protected:
+  static BenchmarkParams DefaultParams();
   void PrepareInputsAndOutputs() override;
 
- private:
+  // Allows installation of custom delegates during initialization
+  virtual void ApplyDelegates() {}
+
   std::unique_ptr<tflite::FlatBufferModel> model;
   std::unique_ptr<tflite::Interpreter> interpreter;
+
+ private:
   std::vector<InputLayerInfo> inputs;
   ProfilingListener profiling_listener_;
   GemmlowpProfilingListener gemmlowp_profiling_listener_;

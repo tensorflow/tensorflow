@@ -178,7 +178,7 @@ TEST_F(GpuFusibleTest,
   EXPECT_TRUE(LayoutsAreReduceInputFusionFriendly(*loop_fusion, *reduce));
 }
 
-TEST_F(GpuFusibleTest, IsInputFusibleReduction_ReductionToVector) {
+TEST_F(GpuFusibleTest, IsReduceInputFusion_ReductionToVector) {
   auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     ENTRY entry {
       c0 = f32[] parameter(0)
@@ -191,10 +191,11 @@ TEST_F(GpuFusibleTest, IsInputFusibleReduction_ReductionToVector) {
   const HloInstruction* reduce =
       module->entry_computation()->root_instruction();
   ASSERT_EQ(reduce->opcode(), HloOpcode::kReduce);
+  EXPECT_FALSE(IsReduceInputFusion(*reduce));
   EXPECT_TRUE(IsInputFusibleReduction(*reduce));
 }
 
-TEST_F(GpuFusibleTest, IsInputFusibleReduction_ElementalReduction) {
+TEST_F(GpuFusibleTest, IsReduceInputFusion_ElementalReduction) {
   auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     ENTRY entry {
       c0 = f32[] parameter(0)
@@ -207,10 +208,11 @@ TEST_F(GpuFusibleTest, IsInputFusibleReduction_ElementalReduction) {
   const HloInstruction* reduce =
       module->entry_computation()->root_instruction();
   ASSERT_EQ(reduce->opcode(), HloOpcode::kReduce);
+  EXPECT_FALSE(IsReduceInputFusion(*reduce));
   EXPECT_FALSE(IsInputFusibleReduction(*reduce));
 }
 
-TEST_F(GpuFusibleTest, IsInputFusibleReduction_SingleOutputInputReduceFusion) {
+TEST_F(GpuFusibleTest, IsReduceInputFusion_SingleOutputInputReduceFusion) {
   auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_reduction {
       c0 = f32[] parameter(0)
@@ -225,10 +227,11 @@ TEST_F(GpuFusibleTest, IsInputFusibleReduction_SingleOutputInputReduceFusion) {
   const HloInstruction* reduce =
       module->entry_computation()->root_instruction();
   ASSERT_EQ(reduce->opcode(), HloOpcode::kFusion);
+  EXPECT_TRUE(IsReduceInputFusion(*reduce));
   EXPECT_TRUE(IsInputFusibleReduction(*reduce));
 }
 
-TEST_F(GpuFusibleTest, IsInputFusibleReduction_SingleOutputLoopReduceFusion) {
+TEST_F(GpuFusibleTest, IsReduceInputFusion_SingleOutputLoopReduceFusion) {
   auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_reduction {
       c0 = f32[] parameter(0)
@@ -243,10 +246,11 @@ TEST_F(GpuFusibleTest, IsInputFusibleReduction_SingleOutputLoopReduceFusion) {
   const HloInstruction* reduce =
       module->entry_computation()->root_instruction();
   ASSERT_EQ(reduce->opcode(), HloOpcode::kFusion);
+  EXPECT_FALSE(IsReduceInputFusion(*reduce));
   EXPECT_FALSE(IsInputFusibleReduction(*reduce));
 }
 
-TEST_F(GpuFusibleTest, IsInputFusibleReduction_MultiOutputInputReduceFusion) {
+TEST_F(GpuFusibleTest, IsReduceInputFusion_MultiOutputInputReduceFusion) {
   auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_reduction {
       c0 = f32[] parameter(0)
@@ -263,11 +267,12 @@ TEST_F(GpuFusibleTest, IsInputFusibleReduction_MultiOutputInputReduceFusion) {
   const HloInstruction* reduce =
       module->entry_computation()->root_instruction();
   ASSERT_EQ(reduce->opcode(), HloOpcode::kFusion);
+  EXPECT_TRUE(IsReduceInputFusion(*reduce));
   EXPECT_TRUE(IsInputFusibleReduction(*reduce));
 }
 
 TEST_F(GpuFusibleTest,
-       IsInputFusibleReduction_MultiOutputInputReduceFusionWithExtraOutputs) {
+       IsReduceInputFusion_MultiOutputInputReduceFusionWithExtraOutputs) {
   auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_reduction {
       c0 = f32[] parameter(0)
@@ -284,10 +289,11 @@ TEST_F(GpuFusibleTest,
   const HloInstruction* reduce =
       module->entry_computation()->root_instruction();
   ASSERT_EQ(reduce->opcode(), HloOpcode::kFusion);
+  EXPECT_TRUE(IsReduceInputFusion(*reduce));
   EXPECT_TRUE(IsInputFusibleReduction(*reduce));
 }
 
-TEST_F(GpuFusibleTest, IsInputFusibleReduction_MultiOutputLoopReduceFusion) {
+TEST_F(GpuFusibleTest, IsReduceInputFusion_MultiOutputLoopReduceFusion) {
   auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_reduction {
       c0 = f32[] parameter(0)
@@ -304,11 +310,12 @@ TEST_F(GpuFusibleTest, IsInputFusibleReduction_MultiOutputLoopReduceFusion) {
   const HloInstruction* reduce =
       module->entry_computation()->root_instruction();
   ASSERT_EQ(reduce->opcode(), HloOpcode::kFusion);
+  EXPECT_FALSE(IsReduceInputFusion(*reduce));
   EXPECT_FALSE(IsInputFusibleReduction(*reduce));
 }
 
 TEST_F(GpuFusibleTest,
-       IsInputFusibleReduction_MultiOutputLoopFusionReduceAndElementwiseOp) {
+       IsReduceInputFusion_MultiOutputLoopFusionReduceAndElementwiseOp) {
   auto module = ParseHloString(absl::StrCat(kModulePrefix, R"(
     fused_reduction {
       c0 = f32[] parameter(0)
@@ -325,6 +332,7 @@ TEST_F(GpuFusibleTest,
   const HloInstruction* reduce =
       module->entry_computation()->root_instruction();
   ASSERT_EQ(reduce->opcode(), HloOpcode::kFusion);
+  EXPECT_FALSE(IsReduceInputFusion(*reduce));
   EXPECT_FALSE(IsInputFusibleReduction(*reduce));
 }
 

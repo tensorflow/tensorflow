@@ -1213,6 +1213,17 @@ TEST(FunctionLibraryDefinitionTest, ToProto) {
   EXPECT_EQ(f3->DebugString(), f4->DebugString());
 }
 
+TEST(FunctionLibraryDefinitionTest, FunctionNames) {
+  FunctionDefLibrary proto;
+  *proto.add_function() = test::function::XTimesTwo();
+  *proto.add_function() = test::function::WXPlusB();
+  const FunctionLibraryDefinition lib_def(OpRegistry::Global(), proto);
+
+  const std::vector<string> function_names = lib_def.ListFunctionNames();
+  const std::vector<string> expected = {"XTimesTwo", "WXPlusB"};
+  EXPECT_EQ(function_names, expected);
+}
+
 TEST(FunctionLibraryDefinitionTest, GetAttr_FuncNoAttr) {
   FunctionDefLibrary proto;
   *proto.add_function() = test::function::XTimesTwo();

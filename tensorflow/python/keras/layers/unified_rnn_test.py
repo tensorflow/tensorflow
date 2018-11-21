@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import time
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -35,8 +36,8 @@ from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.keras.engine.base_layer import \
-  InputSpec
+from tensorflow.python.keras.engine.input_spec import InputSpec
+from tensorflow.python.keras.layers.cudnn_recurrent import CuDNNLSTM
 from tensorflow.python.keras.layers.recurrent import RNN
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
@@ -47,20 +48,22 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import gradient_descent
 
 
 class RNNTest(test.TestCase):
 
-  def test_unifiedRNN(self):
+  def setUp(self):
     rewrites = rewriter_config_pb2.RewriterConfig()
     rewrites.function_optimization = rewriter_config_pb2.RewriterConfig.OFF
     customer_optimizer = rewrites.custom_optimizers.add()
     customer_optimizer.name = 'ExperimentalImplementationSelector'
     rewrites.min_graph_nodes = -1
     graph_options = config_pb2.GraphOptions(rewrite_options=rewrites)
-    config = config_pb2.ConfigProto(graph_options=graph_options)
+    self.config = config_pb2.ConfigProto(graph_options=graph_options)
 
+  def test_unifiedRNN(self):
     input_shape = 10
     rnn_state_size = 8
     output_shape = 8
@@ -68,13 +71,13 @@ class RNNTest(test.TestCase):
     batch = 100
     epoch = 1
 
-    with ops.Graph().as_default(), session.Session(config=config) as sess:
+    with ops.Graph().as_default(), session.Session(config=self.config) as sess:
       (x_train, y_train), _ = testing_utils.get_test_data(
           train_samples=batch,
           test_samples=0,
           input_shape=(timestep, input_shape),
           num_classes=output_shape)
-      y_train = keras.utils.to_categorical(y_train)
+      y_train = keras.utils.to_categorical(y_train, output_shape)
 
       layer = UnifiedLSTM(rnn_state_size)
 
@@ -104,18 +107,36 @@ class RNNTest(test.TestCase):
         self.assertNotEqual(existing_loss, loss_value)
         existing_loss = loss_value
 
+  def test_keras_model_with_lstm(self):
+    input_shape = 10
+    rnn_state_size = 8
+    output_shape = 8
+    timestep = 4
+    batch = 100
+    epoch = 10
+
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=batch,
+        test_samples=0,
+        input_shape=(timestep, input_shape),
+        num_classes=output_shape)
+    y_train = keras.utils.to_categorical(y_train, output_shape)
+
+    K.set_session(session.Session(config=self.config))
+    layer = UnifiedLSTM(rnn_state_size)
+
+    inputs = keras.layers.Input(
+        shape=[timestep, input_shape], dtype=dtypes.float32)
+
+    outputs, unused_runtime = layer(inputs)
+    model = keras.models.Model(inputs, outputs)
+    model.compile('rmsprop', loss='mse')
+    model.fit(x_train, y_train, epochs=epoch)
+
   def test_unifiedRNN_with_cond(self):
     # This test is to demonstrate the graph rewrite of grappler plugin under
     # the condition that the function returns different number of internal
     # states.
-    rewrites = rewriter_config_pb2.RewriterConfig()
-    rewrites.function_optimization = rewriter_config_pb2.RewriterConfig.OFF
-    customer_optimizer = rewrites.custom_optimizers.add()
-    customer_optimizer.name = 'ExperimentalImplementationSelector'
-    rewrites.min_graph_nodes = -1
-    graph_options = config_pb2.GraphOptions(rewrite_options=rewrites)
-    config = config_pb2.ConfigProto(graph_options=graph_options)
-
     input_shape = 10
     rnn_state_size = 8
     output_shape = 8
@@ -123,13 +144,13 @@ class RNNTest(test.TestCase):
     batch = 100
     epoch = 1
 
-    with ops.Graph().as_default(), session.Session(config=config) as sess:
+    with ops.Graph().as_default(), session.Session(config=self.config) as sess:
       (x_train, y_train), _ = testing_utils.get_test_data(
           train_samples=batch,
           test_samples=0,
           input_shape=(timestep, input_shape),
           num_classes=output_shape)
-      y_train = keras.utils.to_categorical(y_train)
+      y_train = keras.utils.to_categorical(y_train, output_shape)
 
       layer = UnifiedLSTM(rnn_state_size)
 
@@ -169,11 +190,153 @@ class RNNTest(test.TestCase):
         self.assertNotEqual(existing_loss, loss_value)
         existing_loss = loss_value
 
+  def _time_performance_run_cudnn_lstm(self, test_config, x_train, y_train):
+    # Get the performance number for standard Cudnn LSTM
+    input_shape = test_config['input_shape']
+    rnn_state_size = test_config['rnn_state_size']
+    timestep = test_config['timestep']
+    epoch = test_config['epoch']
+    warmup_epoch = test_config['warmup_epoch']
+
+    ops.reset_default_graph()
+    with self.test_session(use_gpu=True):
+      cudnn_lstm_layer = CuDNNLSTM(rnn_state_size)
+      inputs = keras.layers.Input(
+          shape=[timestep, input_shape], dtype=dtypes.float32)
+
+      outputs = cudnn_lstm_layer(inputs)
+      model = keras.models.Model(inputs, outputs)
+      model.compile('sgd', 'mse')
+
+      total_duration = 0
+      for i in range(epoch):
+        start_time = time.time()
+        model.fit(x_train, y_train)
+        end_time = time.time()
+        if i >= warmup_epoch:
+          duration_per_epoch = end_time - start_time
+          total_duration += duration_per_epoch
+          logging.vlog(2, '%s: Time consumed for epoch %d is: %s',
+                       'CuDNN LSTM', i, duration_per_epoch)
+      logging.info('Average performance for %s per epoch is: %s',
+                   'CuDNN LSTM', (total_duration / epoch))
+      return total_duration / epoch
+
+  def _time_performance_run_unifed_lstm_gpu(
+      self, test_config, x_train, y_train):
+    # Get performance number for Unified_LSTM with grappler swap the impl
+    input_shape = test_config['input_shape']
+    rnn_state_size = test_config['rnn_state_size']
+    timestep = test_config['timestep']
+    epoch = test_config['epoch']
+    warmup_epoch = test_config['warmup_epoch']
+
+    ops.reset_default_graph()
+    K.set_session(session.Session(config=self.config))
+    layer = UnifiedLSTM(rnn_state_size)
+    inputs = keras.layers.Input(
+        shape=[timestep, input_shape], dtype=dtypes.float32)
+
+    outputs, _ = layer(inputs)
+    model = keras.models.Model(inputs, outputs)
+    model.compile('sgd', 'mse')
+
+    total_duration = 0
+    for i in range(epoch):
+      start_time = time.time()
+      model.fit(x_train, y_train)
+      end_time = time.time()
+      if i >= warmup_epoch:
+        duration_per_epoch = end_time - start_time
+        total_duration += duration_per_epoch
+        logging.vlog(2, '%s: Time consumed for epoch %d is: %s',
+                     'Unified LSTM', i, duration_per_epoch)
+    logging.info('Average performance for %s per epoch is: %s',
+                 'Unified LSTM', (total_duration / epoch))
+    return total_duration / epoch
+
+  def _time_performance_run_normal_lstm(
+      self, test_config, x_train, y_train):
+    # Get performance number for standard LSTM on GPU.
+    input_shape = test_config['input_shape']
+    rnn_state_size = test_config['rnn_state_size']
+    timestep = test_config['timestep']
+    epoch = test_config['epoch']
+    warmup_epoch = test_config['warmup_epoch']
+
+    ops.reset_default_graph()
+    with self.test_session(use_gpu=True):
+      layer = keras.layers.LSTM(rnn_state_size)
+      inputs = keras.layers.Input(
+          shape=[timestep, input_shape], dtype=dtypes.float32)
+
+      outputs = layer(inputs)
+      model = keras.models.Model(inputs, outputs)
+      model.compile('sgd', 'mse')
+
+      total_duration = 0
+      for i in range(epoch):
+        start_time = time.time()
+        model.fit(x_train, y_train)
+        end_time = time.time()
+        if i >= warmup_epoch:
+          duration_per_epoch = end_time - start_time
+          total_duration += duration_per_epoch
+          logging.vlog(2, '%s: Time consumed for epoch %d is: %s',
+                       'Normal LSTM', i, duration_per_epoch)
+      logging.info('Average performance for %s per epoch is: %s',
+                   'Normal LSTM', (total_duration / epoch))
+      return total_duration / epoch
+
+  def test_performance_with_standard_cudnn_impl(self):
+    if not test.is_gpu_available():
+      self.skipTest('performance test will only run on GPU')
+
+    test_config = {
+        'input_shape': 128,
+        'rnn_state_size': 64,
+        'output_shape': 64,
+        'timestep': 50,
+        'epoch': 20,
+        # The performance for warmup epoch is ignored.
+        'warmup_epoch': 1,
+    }
+    batch = 64
+    (x_train, y_train), _ = testing_utils.get_test_data(
+        train_samples=batch,
+        test_samples=0,
+        input_shape=(test_config['timestep'], test_config['input_shape']),
+        num_classes=test_config['output_shape'])
+    y_train = keras.utils.to_categorical(y_train, test_config['output_shape'])
+
+    cudnn_duration = self._time_performance_run_cudnn_lstm(
+        test_config, x_train, y_train)
+    unified_lstm_gpu_duration = self._time_performance_run_unifed_lstm_gpu(
+        test_config, x_train, y_train)
+    normal_lstm_duration = self._time_performance_run_normal_lstm(
+        test_config, x_train, y_train)
+
+    cudnn_vs_unified = cudnn_duration / unified_lstm_gpu_duration
+    unified_vs_normal = normal_lstm_duration / unified_lstm_gpu_duration
+    # Assert the performance diff should be within 80% of the native cudnn impl.
+    self.assertGreaterEqual(
+        cudnn_vs_unified, 0.80,
+        'Expect the performance of Unified LSTM is within 80% of CuDNN LSTM, '
+        'but got {}'.format(cudnn_vs_unified * 100))
+    # Assert the performance diff between CPU impl and GPU impl should be more
+    # than 5 times.
+    self.assertGreaterEqual(
+        unified_vs_normal, 5,
+        'Expect the performance of Unified LSTM is more than 5 times of normal '
+        'LSTM, but got {}'.format(unified_vs_normal))
+
 
 class UnifiedLSTM(RNN):
 
   def __init__(self,
                units,
+               activation='tanh',
+               recurrent_activation='hard_sigmoid',
                kernel_initializer='glorot_uniform',
                recurrent_initializer='orthogonal',
                bias_initializer='zeros',
@@ -196,7 +359,8 @@ class UnifiedLSTM(RNN):
     cell_spec = collections.namedtuple('cell', ['state_size', 'output_size'])
     self.cell = cell_spec(
         state_size=(self.units, self.units), output_size=self.units)
-
+    self.activation = activations.get(activation)
+    self.recurrent_activation = activations.get(recurrent_activation)
     self.kernel_initializer = initializers.get(kernel_initializer)
     self.recurrent_initializer = initializers.get(recurrent_initializer)
     self.bias_initializer = initializers.get(bias_initializer)
@@ -292,7 +456,8 @@ class UnifiedLSTM(RNN):
 
     outputs, [new_h, new_c], runtime = normal_lstm(
         inputs, initial_state[0], initial_state[1], self.kernel,
-        self.recurrent_kernel, self.bias, self.units)
+        self.recurrent_kernel, self.bias, self.units, self.activation,
+        self.recurrent_activation)
 
     function.register(cudnn_lstm, inputs, initial_state[0], initial_state[1],
                       self.kernel, self.recurrent_kernel, self.bias, self.units)
@@ -385,7 +550,8 @@ def _is_multiple_state(state_size):
         'experimental_api_implements': 'lstm',
         'experimental_api_preferred_device': 'CPU'
     })
-def normal_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, units):
+def normal_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, units,
+                activation, recurrent_activation):
   input_shape = K.int_shape(inputs)
   timesteps = input_shape[1]
 
@@ -405,12 +571,12 @@ def normal_lstm(inputs, init_h, init_c, kernel, recurrent_kernel, bias, units):
     z2 = z[:, 2 * units:3 * units]
     z3 = z[:, 3 * units:]
 
-    i = activations.get('hard_sigmoid')(z0)
-    f = activations.get('hard_sigmoid')(z1)
-    c = f * c_tm1 + i * activations.get('tanh')(z2)
-    o = activations.get('hard_sigmoid')(z3)
+    i = recurrent_activation(z0)
+    f = recurrent_activation(z1)
+    c = f * c_tm1 + i * activation(z2)
+    o = recurrent_activation(z3)
 
-    h = o * activations.get('tanh')(c)
+    h = o * activation(c)
     return h, [h, c]
 
   _, outputs, new_states = K.rnn(

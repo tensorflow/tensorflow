@@ -1713,7 +1713,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         auto done = [this, state]() {
           Device* device = impl_->params_.device;
           NodeExecStatsInterface* stats = state->stats;  // Shorthand
-          Entry* first_input = state->first_input;     // Shorthand
+          Entry* first_input = state->first_input;       // Shorthand
 
           nodestats::SetOpEnd(stats);
           EntryVector outputs;
@@ -2394,18 +2394,23 @@ void ExecutorState::Finish() {
   auto done_cb = std::move(done_cb_);
   auto runner = std::move(runner_);
   mu_.unlock();
+  CHECK(done_cb != nullptr);
   Device* device = impl_->params_.device;
+
   if ((sync_on_finish_ && status.ok()) || device->RequiresSyncOnCompletion()) {
     // Block until the device has finished all queued operations. For
     // devices like GPUs that continue to execute Ops after their Compute
     // methods have completed, this ensures that control is not returned to
     // the user until the step (and its side-effects) has actually completed.
-    status.Update(device->Sync());
+    device->Sync([=](Status new_status) mutable {
+      status.Update(new_status);
+      delete this;
+      runner([=]() { done_cb(status); });
+    });
+  } else {
+    delete this;
+    runner([=]() { done_cb(status); });
   }
-
-  delete this;
-  CHECK(done_cb != nullptr);
-  runner([=]() { done_cb(status); });
 }
 
 void ExecutorState::FindOrCreateChildFrame(FrameState* frame, int64 iter,

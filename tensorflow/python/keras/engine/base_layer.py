@@ -36,6 +36,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 # A module that only depends on `keras.layers` import these from here.
@@ -797,7 +798,8 @@ class Layer(checkpointable.CheckpointableBase):
     with ops.name_scope(self._name_scope()):
       if not self.built:
         # Check input assumptions set before layer building, e.g. input rank.
-        self._assert_input_compatibility(inputs)
+        input_spec.assert_input_compatibility(
+            self.input_spec, inputs, self.name)
         if input_list and self._dtype is None:
           try:
             self._dtype = input_list[0].dtype.base_dtype.name
@@ -822,7 +824,8 @@ class Layer(checkpointable.CheckpointableBase):
       if build_graph:
         # Symbolic execution on symbolic tensors. We will attempt to build
         # the corresponding TF subgraph inside `backend.get_graph()`
-        self._assert_input_compatibility(inputs)
+        input_spec.assert_input_compatibility(
+            self.input_spec, inputs, self.name)
         graph = backend.get_graph()
         with graph.as_default():
           if not executing_eagerly:
@@ -1492,101 +1495,6 @@ class Layer(checkpointable.CheckpointableBase):
     """Deprecated, do NOT use! Only for compatibility with external Keras."""
     return self._outbound_nodes
 
-  def _assert_input_compatibility(self, inputs):
-    """Checks compatibility between the layer and provided inputs.
-
-    This checks that the tensor(s) `inputs` verify the input assumptions
-    of the layer (if any). If not, a clear and actional exception gets raised.
-
-    Arguments:
-        inputs: input tensor or list of input tensors.
-
-    Raises:
-        ValueError: in case of mismatch between
-            the provided inputs and the expectations of the layer.
-    """
-    if not self.input_spec:
-      return
-    if not isinstance(self.input_spec, (list, tuple)):
-      input_spec = nest.flatten(self.input_spec)
-    else:
-      input_spec = self.input_spec
-    inputs = nest.flatten(inputs)
-    if len(inputs) != len(input_spec):
-      raise ValueError('Layer ' + self.name + ' expects ' +
-                       str(len(input_spec)) + ' inputs, '
-                       'but it received ' + str(len(inputs)) +
-                       ' input tensors. Inputs received: ' + str(inputs))
-    for input_index, (x, spec) in enumerate(zip(inputs, input_spec)):
-      if spec is None:
-        continue
-
-      if (spec.ndim is not None or
-          spec.min_ndim is not None or
-          spec.max_ndim is not None):
-        if x.shape.ndims is None:
-          raise ValueError('Input ' + str(input_index) + ' of layer ' +
-                           self.name + ' is incompatible with the layer: '
-                           'its rank is undefined, but the layer requires a '
-                           'defined rank.')
-
-      # Check ndim.
-      if spec.ndim is not None:
-        ndim = x.shape.ndims
-        if ndim != spec.ndim:
-          raise ValueError('Input ' + str(input_index) + ' of layer ' +
-                           self.name + ' is incompatible with the layer: '
-                           'expected ndim=' + str(spec.ndim) + ', found ndim=' +
-                           str(ndim) + '. Full shape received: ' +
-                           str(x.shape.as_list()))
-      if spec.max_ndim is not None:
-        ndim = x.shape.ndims
-        if ndim is not None and ndim > spec.max_ndim:
-          raise ValueError('Input ' + str(input_index) + ' of layer ' +
-                           self.name + ' is incompatible with the layer: '
-                           'expected max_ndim=' + str(spec.max_ndim) +
-                           ', found ndim=' + str(ndim))
-      if spec.min_ndim is not None:
-        ndim = x.shape.ndims
-        if ndim is not None and ndim < spec.min_ndim:
-          raise ValueError('Input ' + str(input_index) + ' of layer ' +
-                           self.name + ' is incompatible with the layer: '
-                           ': expected min_ndim=' + str(spec.min_ndim) +
-                           ', found ndim=' + str(ndim) +
-                           '. Full shape received: ' +
-                           str(x.shape.as_list()))
-      # Check dtype.
-      if spec.dtype is not None:
-        if x.dtype != spec.dtype:
-          raise ValueError('Input ' + str(input_index) + ' of layer ' +
-                           self.name + ' is incompatible with the layer: '
-                           'expected dtype=' + str(spec.dtype) +
-                           ', found dtype=' + str(x.dtype))
-      # Check specific shape axes.
-      if spec.axes:
-        shape = x.shape.as_list()
-        if shape is not None:
-          for axis, value in spec.axes.items():
-            if hasattr(value, 'value'):
-              value = value.value
-            if value is not None and shape[int(axis)] not in {value, None}:
-              raise ValueError(
-                  'Input ' + str(input_index) + ' of layer ' + self.name + ' is'
-                  ' incompatible with the layer: expected axis ' + str(axis) +
-                  ' of input shape to have value ' + str(value) +
-                  ' but received input with shape ' + str(shape))
-      # Check shape.
-      if spec.shape is not None:
-        shape = x.shape.as_list()
-        if shape is not None:
-          for spec_dim, dim in zip(spec.shape, shape):
-            if spec_dim is not None and dim is not None:
-              if spec_dim != dim:
-                raise ValueError('Input ' + str(input_index) +
-                                 ' is incompatible with layer ' + self.name +
-                                 ': expected shape=' + str(spec.shape) +
-                                 ', found shape=' + str(shape))
-
   def set_weights(self, weights):
     """Sets the weights of the layer, from Numpy arrays.
 
@@ -1685,55 +1593,6 @@ class Layer(checkpointable.CheckpointableBase):
       Boolean.
     """
     return self._call_is_graph_friendly
-
-
-@tf_export(
-    'keras.layers.InputSpec', v1=['keras.layers.InputSpec', 'layers.InputSpec'])
-class InputSpec(object):
-  """Specifies the ndim, dtype and shape of every input to a layer.
-
-  Every layer should expose (if appropriate) an `input_spec` attribute:
-  a list of instances of InputSpec (one per input tensor).
-
-  A None entry in a shape is compatible with any dimension,
-  a None shape is compatible with any shape.
-
-  Arguments:
-      dtype: Expected DataType of the input.
-      shape: Shape tuple, expected shape of the input
-          (may include None for unchecked axes).
-      ndim: Integer, expected rank of the input.
-      max_ndim: Integer, maximum rank of the input.
-      min_ndim: Integer, minimum rank of the input.
-      axes: Dictionary mapping integer axes to
-          a specific dimension value.
-  """
-
-  def __init__(self,
-               dtype=None,
-               shape=None,
-               ndim=None,
-               max_ndim=None,
-               min_ndim=None,
-               axes=None):
-    self.dtype = dtype
-    self.shape = shape
-    if shape is not None:
-      self.ndim = len(shape)
-    else:
-      self.ndim = ndim
-    self.max_ndim = max_ndim
-    self.min_ndim = min_ndim
-    self.axes = axes or {}
-
-  def __repr__(self):
-    spec = [('dtype=' + str(self.dtype)) if self.dtype else '',
-            ('shape=' + str(self.shape)) if self.shape else '',
-            ('ndim=' + str(self.ndim)) if self.ndim else '',
-            ('max_ndim=' + str(self.max_ndim)) if self.max_ndim else '',
-            ('min_ndim=' + str(self.min_ndim)) if self.min_ndim else '',
-            ('axes=' + str(self.axes)) if self.axes else '']
-    return 'InputSpec(%s)' % ', '.join(x for x in spec if x)
 
 
 class Node(object):
@@ -2037,3 +1896,8 @@ def default(method):
 
 def generate_placeholders_from_shape(shape):
   return array_ops.placeholder(shape=shape, dtype=backend.floatx())
+
+
+# Avoid breaking users who directly import this symbol from this file.
+# TODO(fchollet): remove this.
+InputSpec = input_spec.InputSpec  # pylint:disable=invalid-name

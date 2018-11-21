@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""AdaMax for TensorFlow."""
+"""Adamax for TensorFlow."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -27,8 +27,8 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training import training_ops
 
 
-class AdaMax(adam.Adam):
-  """Optimizer that implements the AdaMax algorithm.
+class Adamax(adam.Adam):
+  """Optimizer that implements the Adamax algorithm.
 
   It is a variant of Adam based on the infinity norm.
   Default parameters follow those provided in the paper.
@@ -44,8 +44,8 @@ class AdaMax(adam.Adam):
                beta_1=0.9,
                beta_2=0.999,
                epsilon=1e-7,
-               name='AdaMax'):
-    """Construct a new AdaMax optimizer.
+               name='Adamax'):
+    """Construct a new Adamax optimizer.
 
     Initialization:
 
@@ -86,10 +86,10 @@ class AdaMax(adam.Adam):
         rate for the exponentially weighted infinity norm.
       epsilon: A small constant for numerical stability.
       name: Optional name for the operations created when applying gradients.
-        Defaults to "AdaMax".
+        Defaults to "Adamax".
     """
     # pylint: disable=useless-super-delegation
-    super(AdaMax, self).__init__(learning_rate, beta_1, beta_2, epsilon, name)
+    super(Adamax, self).__init__(learning_rate, beta_1, beta_2, epsilon, name)
     # pylint: enable=useless-super-delegation
 
   def _resource_apply_dense(self, grad, var):

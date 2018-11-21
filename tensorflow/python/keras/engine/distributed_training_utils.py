@@ -333,7 +333,7 @@ def configure_and_create_session(distribution_strategy):
   # TODO(priyag): Throw error if a session already exists.
   session_config = K.get_default_session_config()
 
-  if type(distribution_strategy).__name__ == 'TPUStrategy':
+  if is_tpu_strategy(distribution_strategy):
     # TODO(priyag, yuefengz): Remove this workaround when Distribute
     # Coordinator is integrated with keras and we can create a session from
     # there.
@@ -379,7 +379,7 @@ def validate_inputs(x, y, distribution_strategy):
                      'Iterator. You must pass a `tf.data.Dataset` object or a '
                      'numpy array as input.')
 
-  if distribution_strategy.__class__.__name__ == 'TPUStrategy':
+  if is_tpu_strategy(distribution_strategy):
     for i in [x, y]:
       if isinstance(i, dataset_ops.Dataset):
         shapes = nest.flatten(i.output_shapes)
@@ -391,14 +391,17 @@ def validate_inputs(x, y, distribution_strategy):
               'Found unknown shape {} in input {}.'.format(s, i))
 
 
-# TODO(b/118776054): Currently we support global batch size for TPUStrategy
-# and CoreMirroredStrategy only. Remove this check when contrib MirroredStrategy
-# is no longer needed.
+# TODO(b/118776054): Currently we support global batch size for TPUStrategy and
+# core MirroredStrategy only. Remove this check when contrib MirroredStrategy is
+# no longer needed.
 def global_batch_size_supported(distribution_strategy):
-  strategy_name = distribution_strategy.__class__.__name__
-  # TODO(priyag): Change this to whatever condition makes sense when
-  # CoreMirroredStrategy is moved to core and renamed.
-  return strategy_name in ('TPUStrategy', 'CoreMirroredStrategy')
+  return distribution_strategy.extended._global_batch_size  # pylint: disable=protected-access
+
+
+# TODO(sourabhbajaj): Remove this once we use the same API for all strategies.
+def is_tpu_strategy(strategy):
+  """We're executing TPU Strategy."""
+  return strategy is not None and strategy.__class__.__name__ == 'TPUStrategy'
 
 
 def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
@@ -504,7 +507,7 @@ def get_cpu_device(distribution_strategy):
     NotImplementedError: We currently don't support copying numpy data to
     multiple hosts in the case of Cloud TPU pods.
   """
-  if distribution_strategy.__class__.__name__ == 'TPUStrategy':
+  if is_tpu_strategy(distribution_strategy):
     if distribution_strategy.extended.num_hosts > 1:
       raise NotImplementedError('TPUDistributionStrategy does not '
                                 'support numpy inputs when running on Cloud'

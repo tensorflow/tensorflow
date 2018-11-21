@@ -1241,6 +1241,16 @@ const FunctionDef* FunctionLibraryDefinition::GetAttrImpl(
   }
 }
 
+std::vector<string> FunctionLibraryDefinition::ListFunctionNames() const {
+  std::vector<string> function_names;
+  tf_shared_lock l(mu_);
+  function_names.reserve(function_defs_.size());
+  for (const auto& it : function_defs_) {
+    function_names.emplace_back(it.first);
+  }
+  return function_names;
+}
+
 FunctionDefLibrary FunctionLibraryDefinition::ToProto() const {
   FunctionDefLibrary lib;
   tf_shared_lock l(mu_);
@@ -1357,12 +1367,12 @@ absl::flat_hash_set<string> ReachableFunctions(
     if (!grad_func_name.empty()) add_to_func_queue(grad_func_name);
   }
 
-  const FunctionDefLibrary library_proto = flib.ToProto();
-  for (const auto& it : library_proto.function()) {
-    const auto attr_it = it.attr().find(kExperimentalApiImplements);
-    if (attr_it != it.attr().end()) {
+  for (const auto& func_name : flib.ListFunctionNames()) {
+    const auto& func_def = flib.Find(func_name);
+    const auto attr_it = func_def->attr().find(kExperimentalApiImplements);
+    if (attr_it != func_def->attr().end()) {
       if (reachable_api_interface.contains(attr_it->second.s())) {
-        reachable_funcs.insert(it.signature().name());
+        reachable_funcs.insert(func_name);
       }
     }
   }

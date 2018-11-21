@@ -41,8 +41,8 @@ tf_module {
     argspec: "args=[\'value\', \'bias\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
-    name: "bidirectional_dynamic_rnn"
-    argspec: "args=[\'cell_fw\', \'cell_bw\', \'inputs\', \'sequence_length\', \'initial_state_fw\', \'initial_state_bw\', \'dtype\', \'parallel_iterations\', \'swap_memory\', \'time_major\', \'scope\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'False\', \'False\', \'None\'], "
+    name: "collapse_repeated"
+    argspec: "args=[\'labels\', \'seq_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "compute_accidental_hits"
@@ -98,7 +98,11 @@ tf_module {
   }
   member_method {
     name: "ctc_loss"
-    argspec: "args=[\'labels\', \'inputs\', \'sequence_length\', \'preprocess_collapse_repeated\', \'ctc_merge_repeated\', \'ignore_longer_outputs_than_inputs\', \'time_major\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'False\', \'True\'], "
+    argspec: "args=[\'labels\', \'logits\', \'label_length\', \'logit_length\', \'logits_time_major\', \'unique\', \'blank_index\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "ctc_unique_labels"
+    argspec: "args=[\'labels\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "depth_to_space"
@@ -109,12 +113,12 @@ tf_module {
     argspec: "args=[\'input\', \'filter\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
-    name: "depthwise_conv2d_backprop_input"
-    argspec: "args=[\'input_sizes\', \'filter\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
+    name: "depthwise_conv2d_backprop_filter"
+    argspec: "args=[\'input\', \'filter_sizes\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
-    name: "depthwise_conv2d_native_backprop_filter"
-    argspec: "args=[\'input\', \'filter_sizes\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
+    name: "depthwise_conv2d_backprop_input"
+    argspec: "args=[\'input_sizes\', \'filter\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "dilation2d"
@@ -186,7 +190,7 @@ tf_module {
   }
   member_method {
     name: "log_softmax"
-    argspec: "args=[\'logits\', \'axis\', \'name\', \'dim\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'logits\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "lrn"
@@ -258,7 +262,7 @@ tf_module {
   }
   member_method {
     name: "softmax"
-    argspec: "args=[\'logits\', \'axis\', \'name\', \'dim\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+    argspec: "args=[\'logits\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "softmax_cross_entropy_with_logits"
@@ -283,10 +287,6 @@ tf_module {
   member_method {
     name: "sparse_softmax_cross_entropy_with_logits"
     argspec: "args=[\'_sentinel\', \'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
-  }
-  member_method {
-    name: "static_bidirectional_rnn"
-    argspec: "args=[\'cell_fw\', \'cell_bw\', \'inputs\', \'initial_state_fw\', \'initial_state_bw\', \'dtype\', \'sequence_length\', \'scope\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "static_state_saving_rnn"

@@ -22,6 +22,7 @@ limitations under the License.
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Instructions.h"
@@ -1671,26 +1672,66 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
 
   b_->SetInsertPoint(init_block);
 
+  // Assign a unique id for each *different* operand, and count how often each
+  // operand is used. If all operands are different, the usage count will be 1
+  // for each operand.
+  absl::flat_hash_map<const HloInstruction*, int64> to_unique_operand_id;
+  std::vector<int64> operand_usage_count;
+  for (const auto* operand : hlo->operands()) {
+    if (to_unique_operand_id.contains(operand)) {
+      ++operand_usage_count[to_unique_operand_id[operand]];
+    } else {
+      int64 unique_operand_id = to_unique_operand_id.size();
+      to_unique_operand_id[operand] = unique_operand_id;
+      operand_usage_count.push_back(1);
+    }
+  }
+
+  // To avoid that we emit the same operand more than once, we create one basic
+  // block for each *different* operand with a PHI node for the different source
+  // index inputs.
+  std::vector<llvm::BasicBlock*> emit_operand_blocks(
+      to_unique_operand_id.size(), nullptr);
+  std::vector<llvm::PHINode*> source_index_phis(to_unique_operand_id.size(),
+                                                nullptr);
+  for (const auto* operand : hlo->operands()) {
+    int64 operand_id = to_unique_operand_id[operand];
+    if (emit_operand_blocks[operand_id] != nullptr) {
+      continue;
+    }
+
+    emit_operand_blocks[operand_id] = llvm_ir::CreateBasicBlock(
+        exit_block, StrCat("concat_index_from_operand_id", operand_id), b_);
+    auto saved_insert_point = b_->GetInsertPoint();
+    llvm_ir::SetToFirstInsertPoint(emit_operand_blocks[operand_id], b_);
+    source_index_phis[operand_id] =
+        PHI(source_index.GetType(), operand_usage_count[operand_id]);
+    auto operand_index = source_index;
+    operand_index[concat_dim] = source_index_phis[operand_id];
+
+    // Create the terminator of the block before calling operand generators,
+    // because they require non-degenerate basic blocks.
+    b_->SetInsertPoint(llvm::BranchInst::Create(
+        exit_block, /*InsertAtEnd=*/emit_operand_blocks[operand_id]));
+    TF_ASSIGN_OR_RETURN(llvm::Value * value,
+                        operand_to_generator.at(operand)(operand_index));
+    output->addIncoming(value, b_->GetInsertBlock());
+    b_->SetInsertPoint(init_block, saved_insert_point);
+  }
+
   for (int64 operand_idx = 0; operand_idx < hlo->operand_count();
        ++operand_idx) {
     const HloInstruction* operand = hlo->operand(operand_idx);
-    auto true_block = llvm_ir::CreateBasicBlock(
-        exit_block, StrCat("concat_index_from_operand", operand_idx), b_);
     auto false_block = llvm_ir::CreateBasicBlock(
         exit_block, StrCat("concat_index_not_from_operand", operand_idx), b_);
     auto concat_dim_size =
         llvm::ConstantInt::get(source_index[concat_dim]->getType(),
                                operand->shape().dimensions(concat_dim));
-    CondBr(ICmpULT(source_index[concat_dim], concat_dim_size), true_block,
-           false_block);
-
-    // Create the terminator of the true block before calling operand
-    // generators, because they require non-degenerate basic blocks.
-    b_->SetInsertPoint(
-        llvm::BranchInst::Create(exit_block, /*InsertAtEnd=*/true_block));
-    TF_ASSIGN_OR_RETURN(llvm::Value * value,
-                        operand_to_generator.at(operand)(source_index));
-    output->addIncoming(value, b_->GetInsertBlock());
+    int64 operand_id = to_unique_operand_id[operand];
+    source_index_phis[operand_id]->addIncoming(source_index[concat_dim],
+                                               b_->GetInsertBlock());
+    CondBr(ICmpULT(source_index[concat_dim], concat_dim_size),
+           emit_operand_blocks[operand_id], false_block);
 
     // Subtract the size of the concat dimension of the current operand
     // from the source index.

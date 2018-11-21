@@ -522,7 +522,7 @@ class ParameterServerStrategyTestBase(
                               expected_values):
     distribution, master_target, config = self._get_test_objects(
         task_type, task_id, num_gpus)
-    devices = distribution.worker_devices
+    devices = distribution.extended.worker_devices
 
     with ops.Graph().as_default(), \
          self.cached_session(config=config,
@@ -698,9 +698,9 @@ class ParameterServerStrategyWithChiefTest(ParameterServerStrategyTestBase,
           v = variable_scope.get_variable('v', initializer=10.0)
           _ = v * v
         v, = tape.watched_variables()
-        w = distribution.value_container(v)
+        w = distribution.extended.value_container(v)
         self.assertIs(values.AggregatingVariable, type(w))
-      distribution.call_for_each_replica(f)
+      distribution.extended.call_for_each_replica(f)
 
 
 if __name__ == '__main__':

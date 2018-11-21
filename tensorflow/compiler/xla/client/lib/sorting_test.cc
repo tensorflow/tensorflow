@@ -56,5 +56,13 @@ XLA_TEST_F(SortingTest, TopKFullSort) {
   ComputeAndCompareR1<float>(&builder, inputs, {});
 }
 
+XLA_TEST_F(SortingTest, TopKFullSortWithDuplicates) {
+  XlaBuilder builder(TestName());
+  XlaOp a;
+  auto a_data = CreateR1Parameter<int>({1, 1, 2, 2, 1}, 0, "a", &builder, &a);
+  xla::GetTupleElement(xla::TopK(a, 5), 1);
+  ComputeAndCompareR1<int>(&builder, {2, 3, 0, 1, 4}, {a_data.get()});
+}
+
 }  // namespace
 }  // namespace xla

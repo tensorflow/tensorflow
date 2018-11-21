@@ -121,10 +121,6 @@ tf_module {
     argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "tf_record_iterator"
-    argspec: "args=[\'path\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "write_file"
     argspec: "args=[\'filename\', \'contents\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

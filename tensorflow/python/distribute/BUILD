@@ -140,6 +140,35 @@ py_library(
 )
 
 py_library(
+    name = "mirrored_strategy",
+    srcs = ["mirrored_strategy.py"],
+    deps = [
+        ":cross_device_ops",
+        ":multi_worker_util",
+        ":reduce_util",
+        ":shared_variable_creator",
+        ":values",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:device",
+        "//tensorflow/python:device_util",
+        "//tensorflow/python:distribute",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:tape",
+    ],
+)
+
+py_library(
     name = "multi_worker_util",
     srcs = [
         "multi_worker_util.py",

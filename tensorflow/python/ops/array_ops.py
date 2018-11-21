@@ -1507,7 +1507,75 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
       value=value, size_splits=size_splits, axis=axis, num_split=num, name=name)
 
 
-@tf_export("transpose")
+@tf_export("transpose", v1=[])
+def transpose_v2(a, perm=None, conjugate=False, name="transpose"):
+  """Transposes `a`. Permutes the dimensions according to `perm`.
+
+  The returned tensor's dimension i will correspond to the input dimension
+  `perm[i]`. If `perm` is not given, it is set to (n-1...0), where n is
+  the rank of the input tensor. Hence by default, this operation performs a
+  regular matrix transpose on 2-D input Tensors. If conjugate is True and
+  `a.dtype` is either `complex64` or `complex128` then the values of `a`
+  are conjugated and transposed.
+
+  @compatibility(numpy)
+  In `numpy` transposes are memory-efficient constant time operations as they
+  simply return a new view of the same data with adjusted `strides`.
+
+  TensorFlow does not support strides, so `transpose` returns a new tensor with
+  the items permuted.
+  @end_compatibility
+
+  For example:
+
+  ```python
+  x = tf.constant([[1, 2, 3], [4, 5, 6]])
+  tf.transpose(x)  # [[1, 4]
+                   #  [2, 5]
+                   #  [3, 6]]
+
+  # Equivalently
+  tf.transpose(x, perm=[1, 0])  # [[1, 4]
+                                #  [2, 5]
+                                #  [3, 6]]
+
+  # If x is complex, setting conjugate=True gives the conjugate transpose
+  x = tf.constant([[1 + 1j, 2 + 2j, 3 + 3j],
+                   [4 + 4j, 5 + 5j, 6 + 6j]])
+  tf.transpose(x, conjugate=True)  # [[1 - 1j, 4 - 4j],
+                                   #  [2 - 2j, 5 - 5j],
+                                   #  [3 - 3j, 6 - 6j]]
+
+  # 'perm' is more useful for n-dimensional tensors, for n > 2
+  x = tf.constant([[[ 1,  2,  3],
+                    [ 4,  5,  6]],
+                   [[ 7,  8,  9],
+                    [10, 11, 12]]])
+
+  # Take the transpose of the matrices in dimension-0
+  # (this common operation has a shorthand `linalg.transpose`)
+  tf.transpose(x, perm=[0, 2, 1])  # [[[1,  4],
+                                   #   [2,  5],
+                                   #   [3,  6]],
+                                   #  [[7, 10],
+                                   #   [8, 11],
+                                   #   [9, 12]]]
+  ```
+
+  Args:
+    a: A `Tensor`.
+    perm: A permutation of the dimensions of `a`.
+    conjugate: Optional bool. Setting it to `True` is mathematically equivalent
+      to tf.conj(tf.transpose(input)).
+    name: A name for the operation (optional).
+
+  Returns:
+    A transposed `Tensor`.
+  """
+  return transpose(a=a, perm=perm, name=name, conjugate=conjugate)
+
+
+@tf_export(v1=["transpose"])
 def transpose(a, perm=None, name="transpose", conjugate=False):
   """Transposes `a`. Permutes the dimensions according to `perm`.
 
@@ -3201,3 +3269,48 @@ def searchsorted(sorted_sequence,
 
 
 quantize.__doc__ = gen_array_ops.quantize_v2.__doc__
+
+
+@tf_export("image.extract_image_patches", v1=[])
+def extract_image_patches_v2(
+    images,
+    sizes,
+    strides,
+    rates,
+    padding,
+    name=None):
+  # pylint: disable=line-too-long
+  r"""Extract `patches` from `images` and put them in the \"depth\" output dimension.
+
+  Args:
+    images: A 4-D Tensor with shape `[batch, in_rows, in_cols, depth]
+    sizes: The size of the sliding window for each dimension of `images`.
+    strides: A 1-D Tensor of length 4. How far the centers of two consecutive
+      patches are in the images. Must be: `[1, stride_rows, stride_cols, 1]`.
+    rates: A 1-D Tensor of length 4. Must be: `[1, rate_rows, rate_cols, 1]`.
+      This is the input stride, specifying how far two consecutive patch samples
+      are in the input. Equivalent to extracting patches with `patch_sizes_eff =
+      patch_sizes + (patch_sizes - 1) * (rates - 1)`, followed by subsampling
+      them spatially by a factor of `rates`. This is equivalent to `rate` in
+      dilated (a.k.a. Atrous) convolutions.
+    padding: The type of padding algorithm to use.
+      We specify the size-related attributes as: ```python ksizes = [1,
+        ksize_rows, ksize_cols, 1] strides = [1, strides_rows, strides_cols, 1]
+        rates = [1, rates_rows, rates_cols, 1]
+    name: A name for the operation (optional).
+
+  Returns:
+    A 4-D Tensor. Has the same type as `images`, and with shape `[batch,
+    out_rows, out_cols, ksize_rows * ksize_cols * depth]` containing image
+    patches with size `ksize_rows x ksize_cols x depth` vectorized in the
+    \"depth\" dimension. Note `out_rows` and `out_cols` are the dimensions of
+    the output patches.
+  """
+  # pylint: enable=line-too-long
+  return gen_array_ops.extract_image_patches(
+      images, sizes, strides, rates, padding, name)
+
+extract_image_patches_deprecation = deprecation.deprecated_args(
+    None, "ksizes is deprecated, use sizes instead", "ksizes")
+tf_export(v1=["image.extract_image_patches", "extract_image_patches"])(
+    extract_image_patches_deprecation(gen_array_ops.extract_image_patches))
