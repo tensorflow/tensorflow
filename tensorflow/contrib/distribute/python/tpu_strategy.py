@@ -544,6 +544,11 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
       if cluster_spec:
         session_config.cluster_def.CopyFrom(cluster_spec.as_cluster_def())
 
+  # TODO(priyag): Delete this once all strategies use global batch size.
+  @property
+  def _global_batch_size(self):
+    return True
+
 
 class _TPUReplicaContext(distribute_lib.ReplicaContext):
   """Replication Context class for TPU Strategy."""

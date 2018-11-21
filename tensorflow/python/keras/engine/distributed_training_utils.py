@@ -391,14 +391,11 @@ def validate_inputs(x, y, distribution_strategy):
               'Found unknown shape {} in input {}.'.format(s, i))
 
 
-# TODO(b/118776054): Currently we support global batch size for TPUStrategy
-# and CoreMirroredStrategy only. Remove this check when contrib MirroredStrategy
-# is no longer needed.
+# TODO(b/118776054): Currently we support global batch size for TPUStrategy and
+# core MirroredStrategy only. Remove this check when contrib MirroredStrategy is
+# no longer needed.
 def global_batch_size_supported(distribution_strategy):
-  strategy_name = distribution_strategy.__class__.__name__
-  # TODO(priyag): Change this to whatever condition makes sense when
-  # CoreMirroredStrategy is moved to core and renamed.
-  return strategy_name in ('TPUStrategy', 'CoreMirroredStrategy')
+  return distribution_strategy.extended._global_batch_size  # pylint: disable=protected-access
 
 
 # TODO(sourabhbajaj): Remove this once we use the same API for all strategies.
