@@ -1046,8 +1046,15 @@ Status HloEvaluator::HandleBroadcast(HloInstruction* broadcast) {
   return Status::OK();
 }
 
-Status HloEvaluator::HandleAfterAll(HloInstruction* token) {
-  evaluated_[token] = LiteralUtil::CreateToken();
+Status HloEvaluator::HandleAfterAll(HloInstruction* after_all) {
+  evaluated_[after_all] = LiteralUtil::CreateToken();
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleAddDependency(HloInstruction* add_dependency) {
+  // AddDedendency just forwards its zero-th operand.
+  evaluated_[add_dependency] =
+      GetEvaluatedLiteralFor(add_dependency->operand(0)).Clone();
   return Status::OK();
 }
 

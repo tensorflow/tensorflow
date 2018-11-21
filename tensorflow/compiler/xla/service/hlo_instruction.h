@@ -770,6 +770,9 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateGetDimensionSize(
       const Shape& shape, HloInstruction* operand, int64 dimension);
 
+  static std::unique_ptr<HloInstruction> CreateAddDependency(
+      HloInstruction* data_operand, HloInstruction* token_operand);
+
   // Returns the opcode for this instruction.
   HloOpcode opcode() const { return opcode_; }
 
