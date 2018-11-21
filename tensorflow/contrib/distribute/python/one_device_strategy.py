@@ -194,6 +194,11 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
   def should_save_summary(self):
     return True
 
+  # TODO(priyag): Delete this once all strategies use global batch size.
+  @property
+  def _global_batch_size(self):
+    return True
+
 
 class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):
   """ReplicaContext for OneDeviceStrategy."""

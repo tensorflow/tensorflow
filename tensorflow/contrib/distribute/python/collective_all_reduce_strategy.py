@@ -320,3 +320,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   @property
   def _num_replicas_in_sync(self):
     return len(self._devices) * self._num_workers
+
+  # TODO(priyag): Delete this once all strategies use global batch size.
+  @property
+  def _global_batch_size(self):
+    return False
