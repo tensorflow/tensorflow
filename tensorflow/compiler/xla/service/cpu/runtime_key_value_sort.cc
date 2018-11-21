@@ -51,19 +51,21 @@ void KeyValueSort(std::pair<KeyType, int64>* row_to_sort, int64 num_elements) {
 // then y is ordered as an int32 such that finite values have the
 // obvious order, -0 is ordered before 0, and -NaN and NaN appear at
 // the beginning and end of the ordering.
-template <typename CastType, typename KeyType>
+template <typename CastType, typename UnsignedCastType, typename KeyType>
 CastType Convert(KeyType value) {
   CastType casted_value;
   memcpy(&casted_value, &value, sizeof(CastType));
   if (casted_value < 0) {
-    return std::numeric_limits<CastType>::max() - casted_value;
+    return static_cast<UnsignedCastType>(std::numeric_limits<CastType>::max()) -
+           casted_value;
   }
   return casted_value;
 }
 
-template <typename CastType, typename KeyType>
+template <typename CastType, typename UnsignedCastType, typename KeyType>
 bool LessThan(KeyType lhs, KeyType rhs) {
-  return Convert<CastType>(lhs) < Convert<CastType>(rhs);
+  return Convert<CastType, UnsignedCastType>(lhs) <
+         Convert<CastType, UnsignedCastType>(rhs);
 }
 
 template <>
@@ -71,7 +73,7 @@ void KeyValueSort(std::pair<double, int64>* row_to_sort, int64 num_elements) {
   std::stable_sort(row_to_sort, row_to_sort + num_elements,
                    [](const std::pair<double, int64>& lhs,
                       const std::pair<double, int64>& rhs) -> bool {
-                     return LessThan<int64>(lhs.first, rhs.first);
+                     return LessThan<int64, uint64>(lhs.first, rhs.first);
                    });
 }
 
@@ -80,7 +82,7 @@ void KeyValueSort(std::pair<float, int64>* row_to_sort, int64 num_elements) {
   std::stable_sort(row_to_sort, row_to_sort + num_elements,
                    [](const std::pair<float, int64>& lhs,
                       const std::pair<float, int64>& rhs) -> bool {
-                     return LessThan<int32>(lhs.first, rhs.first);
+                     return LessThan<int32, uint32>(lhs.first, rhs.first);
                    });
 }
 
@@ -90,7 +92,7 @@ void KeyValueSort(std::pair<Eigen::half, int64>* row_to_sort,
   std::stable_sort(row_to_sort, row_to_sort + num_elements,
                    [](const std::pair<Eigen::half, int64>& lhs,
                       const std::pair<Eigen::half, int64>& rhs) -> bool {
-                     return LessThan<int32>(
+                     return LessThan<int32, uint32>(
                          Eigen::half_impl::half_to_float(lhs.first),
                          Eigen::half_impl::half_to_float(rhs.first));
                    });
