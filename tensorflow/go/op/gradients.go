@@ -16,7 +16,12 @@ limitations under the License.
 
 package op
 
-import tf "github.com/tensorflow/tensorflow/tensorflow/go"
+import (
+	"fmt"
+
+	tf "github.com/tensorflow/tensorflow/tensorflow/go"
+)
+
 
 // Gradients adds gradients computation ops to the graph according to scope.
 //
@@ -27,6 +32,15 @@ import tf "github.com/tensorflow/tensorflow/tensorflow/go"
 //
 //  return the partial derivatives
 func Gradients(scope *Scope, y []tf.Output, x []tf.Output, dx ...tf.Output) (output []tf.Output) {
+	if len(scope.controlDependencies) > 0 {
+		scope.UpdateErr("Gradients", fmt.Errorf("Gradients does not currently support control dependencies (via Scope.WithControlDependencies)."))
+		return
+	}
+	if scope.device != "" {
+		scope.UpdateErr("Gradients", fmt.Errorf("Gradients does not currently support device annotations (via Scope.WithDevice)."))
+		return
+	}
+
 	var err error
 	if output, err = scope.graph.AddGradients(scope.opName("Gradients"), y, x, dx); err != nil {
 		scope.UpdateErr("Gradients", err)
