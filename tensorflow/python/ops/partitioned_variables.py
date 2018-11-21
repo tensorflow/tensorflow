@@ -96,7 +96,7 @@ def variable_axis_size_partitioner(
 
   Returns:
     A partition function usable as the `partitioner` argument to
-    `variable_scope`, `get_variable`, and `get_partitioned_variable_list`.
+    `variable_scope` and `get_variable`.
 
   Raises:
     ValueError: If any of the byte counts are non-positive.
@@ -175,7 +175,7 @@ def min_max_variable_partitioner(max_partitions=1, axis=0,
 
   Returns:
     A partition function usable as the `partitioner` argument to
-    `variable_scope`, `get_variable`, and `get_partitioned_variable_list`.
+    `variable_scope` and `get_variable`.
 
   """
   def _partitioner(shape, dtype):
@@ -228,7 +228,7 @@ def fixed_size_partitioner(num_shards, axis=0):
 
   Returns:
     A partition function usable as the `partitioner` argument to
-    `variable_scope`, `get_variable`, and `get_partitioned_variable_list`.
+    `variable_scope` and `get_variable`.
   """
   def _partitioner(shape, **unused_args):
     partitions_list = [1] * len(shape)
