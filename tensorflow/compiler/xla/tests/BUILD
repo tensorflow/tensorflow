@@ -1892,6 +1892,7 @@ xla_test(
 xla_test(
     name = "multioutput_fusion_test",
     srcs = ["multioutput_fusion_test.cc"],
+    backends = ["gpu"],
     deps = [
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
