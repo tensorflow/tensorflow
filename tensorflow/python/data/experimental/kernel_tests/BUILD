@@ -618,7 +618,10 @@ py_test(
     size = "medium",
     srcs = ["stats_dataset_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notsan",
+    ],
     deps = [
         ":reader_dataset_ops_test_base",
         ":stats_dataset_test_base",
