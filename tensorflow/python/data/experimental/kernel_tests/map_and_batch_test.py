@@ -89,7 +89,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       sess.run(init_op, feed_dict={count: 28, batch_size: 14})
       num_batches = (28 * 7) // 14
       for i in range(num_batches):
-        result = self.evaluate(get_next)
+        result = sess.run(get_next)
         for component, result_component in zip(components, result):
           for j in range(14):
             self.assertAllEqual(component[(i * 14 + j) % 7]**2,
@@ -104,12 +104,12 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       # We expect (num_batches - 1) full-sized batches.
       num_batches = int(math.ceil((14 * 7) / 8))
       for i in range(num_batches - 1):
-        result = self.evaluate(get_next)
+        result = sess.run(get_next)
         for component, result_component in zip(components, result):
           for j in range(8):
             self.assertAllEqual(component[(i * 8 + j) % 7]**2,
                                 result_component[j])
-      result = self.evaluate(get_next)
+      result = sess.run(get_next)
       for component, result_component in zip(components, result):
         for j in range((14 * 7) % 8):
           self.assertAllEqual(component[((num_batches - 1) * 8 + j) % 7]**2,
@@ -152,10 +152,10 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual([None, 1], iterator.output_shapes.as_list())
     next_element = iterator.get_next()
     with self.cached_session() as sess:
-      self.assertAllEqual([[0], [1], [4], [9]], self.evaluate(next_element))
-      self.assertAllEqual([[16], [25], [36], [49]], self.evaluate(next_element))
+      self.assertAllEqual([[0], [1], [4], [9]], sess.run(next_element))
+      self.assertAllEqual([[16], [25], [36], [49]], sess.run(next_element))
       if not drop_remainder:
-        self.assertAllEqual([[64], [81]], self.evaluate(next_element))
+        self.assertAllEqual([[64], [81]], sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -177,9 +177,9 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual([None, 1], iterator.output_shapes.as_list())
     next_element = iterator.get_next()
     with self.cached_session() as sess:
-      self.assertAllEqual([[0], [1], [4], [9]], self.evaluate(next_element))
-      self.assertAllEqual([[16], [25], [36], [49]], self.evaluate(next_element))
-      self.assertAllEqual([[64], [81]], self.evaluate(next_element))
+      self.assertAllEqual([[0], [1], [4], [9]], sess.run(next_element))
+      self.assertAllEqual([[16], [25], [36], [49]], sess.run(next_element))
+      self.assertAllEqual([[64], [81]], sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -201,7 +201,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       elements.append(iterator.get_next())
     with self.cached_session() as sess:
       for i in range(5):
-        got = self.evaluate(elements)
+        got = sess.run(elements)
         got.sort(key=lambda x: x[0])
         expected = []
         for j in range(100):
@@ -230,7 +230,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       elements.append(iterator.get_next())
     with self.cached_session() as sess:
       for i in range(4):
-        got = self.evaluate(elements)
+        got = sess.run(elements)
         got.sort(key=lambda x: x[0])
         expected = []
         for j in range(100):
@@ -261,9 +261,9 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      self.evaluate(init_op)
+      sess.run(init_op)
       for i in range(2):
-        actual = self.evaluate(get_next)
+        actual = sess.run(get_next)
         expected = sparse_tensor.SparseTensorValue(
             indices=[[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]],
             values=[i * 5, i * 5 + 1, i * 5 + 2, i * 5 + 3, i * 5 + 4],
@@ -321,7 +321,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
     with self.cached_session() as sess:
-      self.evaluate(init_op)
+      sess.run(init_op)
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "number of elements does not match"):
         sess.run(get_next)
@@ -393,8 +393,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.cached_session() as sess:
       for i in range(threshold // 10):
-        self.assertAllEqual([i * 10 + j for j in range(10)],
-                            self.evaluate(get_next))
+        self.assertAllEqual([i * 10 + j for j in range(10)], sess.run(get_next))
       if threshold % 10 != 0:
         self.assertAllEqual(
             [threshold // 10 * 10 + j for j in range(threshold % 10)],
@@ -443,8 +442,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.cached_session() as sess:
       for _ in range(10):
-        self.assertAllEqual([element for _ in range(10)],
-                            self.evaluate(get_next))
+        self.assertAllEqual([element for _ in range(10)], sess.run(get_next))
 
   @parameterized.named_parameters(
       ("Identity", None, lambda x: x, None),
@@ -464,7 +462,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       else:
         expected = map_fn(
             sess.run(self.structuredElement(structure, shape=[10])))
-      self.assertAllEqual(expected, self.evaluate(get_next))
+      self.assertAllEqual(expected, sess.run(get_next))
 
   def testShortCircuitCapturedInput(self):
     captured_t = array_ops.placeholder(dtypes.int64, shape=[])
@@ -475,7 +473,7 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.cached_session() as sess:
       sess.run(iterator.initializer, feed_dict={captured_t: 42})
-      self.assertAllEqual([42] * 10, self.evaluate(get_next))
+      self.assertAllEqual([42] * 10, sess.run(get_next))
 
   @parameterized.named_parameters(
       ("Normal", False),

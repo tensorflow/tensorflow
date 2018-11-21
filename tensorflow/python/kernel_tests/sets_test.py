@@ -159,7 +159,7 @@ class SetOpsTest(test_util.TensorFlowTestCase):
       self.assertEqual(None, op.get_shape().dims)
       self.assertEqual(dtypes.int32, op.dtype)
     with self.cached_session() as sess:
-      results = self.evaluate(ops)
+      results = sess.run(ops)
     self.assertAllEqual(results[0], results[1])
     return results[0]
 

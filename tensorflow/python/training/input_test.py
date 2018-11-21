@@ -474,7 +474,7 @@ class BatchTest(test_lib.TestCase):
       threads = queue_runner_impl.start_queue_runners()
 
       for i in range(num_batches):
-        results = self.evaluate(batched_fetch)
+        results = sess.run(batched_fetch)
         self.assertAllEqual(results[0],
                             np.arange(i * batch_size, (i + 1) * batch_size))
         self.assertAllEqual(
@@ -539,7 +539,7 @@ class BatchTest(test_lib.TestCase):
       threads = queue_runner_impl.start_queue_runners()
 
       for i in range(num_batches):
-        results = self.evaluate(batched)
+        results = sess.run(batched)
         expected_results = np.arange(i * batch_size, (i + 1) * batch_size)
         max_len = expected_results[-1]
         self.assertAllEqual(results[0], expected_results)
@@ -571,7 +571,7 @@ class BatchTest(test_lib.TestCase):
       threads = queue_runner_impl.start_queue_runners()
 
       for i in range(num_batches):
-        results = self.evaluate(batched)
+        results = sess.run(batched)
         self.assertAllEqual(results[0],
                             np.arange(i * batch_size, (i + 1) * batch_size))
         self.assertAllEqual(
@@ -610,7 +610,7 @@ class BatchTest(test_lib.TestCase):
 
       all_counts = []
       for i in range(num_batches):
-        results = self.evaluate(batched)
+        results = sess.run(batched)
         tf_logging.info("Batch %d: %s", i, results[0])
         self.assertEqual(len(results[0]), batch_size)
         self.assertAllEqual(results[0], results[1].values)
@@ -651,7 +651,7 @@ class BatchTest(test_lib.TestCase):
       threads = queue_runner_impl.start_queue_runners()
 
       for i in range(num_batches):
-        results = self.evaluate(batched)
+        results = sess.run(batched)
         self.assertAllEqual(results[0],
                             np.arange(i * batch_size, (i + 1) * batch_size))
         self.assertAllEqual(
@@ -667,7 +667,7 @@ class BatchTest(test_lib.TestCase):
         self.assertAllEqual(results[2], [b"string"] * batch_size)
 
       # Reached the final batch with extra_elements.
-      results = self.evaluate(batched)
+      results = sess.run(batched)
       self.assertAllEqual(results[0],
                           np.arange(num_batches * batch_size,
                                     num_batches * batch_size + extra_elements))
@@ -709,7 +709,7 @@ class BatchTest(test_lib.TestCase):
 
       all_counts = []
       for i in range(num_batches):
-        results = self.evaluate(batched)
+        results = sess.run(batched)
         tf_logging.info("Batch %d: %s", i, results[0])
         self.assertEqual(len(results[0]), batch_size)
         self.assertAllEqual(results[0], results[1].values)
@@ -721,7 +721,7 @@ class BatchTest(test_lib.TestCase):
         self.assertAllEqual(results[2], [b"string"] * batch_size)
 
       # Reached the final batch with extra_elements.
-      results = self.evaluate(batched)
+      results = sess.run(batched)
       tf_logging.info("Last Batch: %s", results[0])
       self.assertEqual(len(results[0]), extra_elements)
       self.assertAllEqual(results[0], results[1].values)
@@ -827,7 +827,7 @@ class BatchTest(test_lib.TestCase):
       threads = queue_runner_impl.start_queue_runners()
 
       for _ in range(num_batches):
-        results = self.evaluate(batched)
+        results = sess.run(batched)
         self.assertAllEqual([0] * batch_size, np.mod(results[0], 2))
         self.assertAllEqual([0] * batch_size, np.mod(results[1].values, 2))
         self.assertAllEqual([b"string"] * batch_size, results[2])
@@ -1020,7 +1020,7 @@ class BatchJoinTest(test_lib.TestCase):
       saw_both = 0
       num_batches = (num_a + num_b) // batch_size
       for i in range(num_batches):
-        results = self.evaluate(batched_fetch)
+        results = sess.run(batched_fetch)
         self.assertEqual(3, len(results))
         self.assertEqual(batch_size, len(results[0]))
         self.assertEqual(batch_size, len(results[2]))
@@ -1116,7 +1116,7 @@ class BatchJoinTest(test_lib.TestCase):
       saw_both = 0
       num_batches = (num_a + num_b) // batch_size
       for i in range(num_batches):
-        results = self.evaluate(batched)
+        results = sess.run(batched)
         self.assertEqual(2, len(results))
         self.assertEqual(len(results[0]), batch_size)
         self.assertEqual(len(results[1]), batch_size)
@@ -1201,7 +1201,7 @@ class BatchJoinTest(test_lib.TestCase):
       saw_both = 0
       num_batches = (num_a + num_b) // batch_size
       for i in range(num_batches):
-        results = self.evaluate(batched)
+        results = sess.run(batched)
         tf_logging.info("Batch %d: %s", i, results[0])
         self.assertEqual(len(results[0]), batch_size)
         self.assertEqual(len(results[2]), batch_size)
@@ -1221,7 +1221,7 @@ class BatchJoinTest(test_lib.TestCase):
                             [results[0][i] for i in which_b])
 
       # Reached the final batch with 2 * extra_elements.
-      results = self.evaluate(batched)
+      results = sess.run(batched)
       tf_logging.info("Last Batch: %s", results[0])
       self.assertEqual(len(results[0]), 2 * extra_elements)
       self.assertEqual(len(results[2]), 2 * extra_elements)
@@ -1296,7 +1296,7 @@ class BatchJoinTest(test_lib.TestCase):
       saw_both = 0
       num_batches = (num_a + num_b) // batch_size
       for i in range(num_batches):
-        results = self.evaluate(batched)
+        results = sess.run(batched)
         tf_logging.info("Batch %d: %s", i, results[0])
         self.assertEqual(len(results[0]), batch_size)
         self.assertEqual(len(results[1]), batch_size)
@@ -1316,7 +1316,7 @@ class BatchJoinTest(test_lib.TestCase):
                             [results[0][i] for i in which_b])
 
       # Reached the final batch with 2 * extra_elements.
-      results = self.evaluate(batched)
+      results = sess.run(batched)
       tf_logging.info("Last Batch: %s", results[0])
       self.assertEqual(len(results[0]), 2 * extra_elements)
       self.assertEqual(len(results[1]), 2 * extra_elements)
@@ -1410,7 +1410,7 @@ class BatchJoinTest(test_lib.TestCase):
       threads = queue_runner_impl.start_queue_runners()
 
       for _ in range(num_batches):
-        results = self.evaluate(batched)
+        results = sess.run(batched)
         self.assertAllEqual(
             [0] * batch_size,
             np.mod(results[0], 2),)
@@ -1579,7 +1579,7 @@ class ShuffleBatchTest(test_lib.TestCase):
 
       all_counts = []
       for i in range(num_batches):
-        results = self.evaluate(batched_fetch)
+        results = sess.run(batched_fetch)
         self.assertEqual(len(results[0]), batch_size)
         all_counts.extend(results[0])
         self.assertAllEqual(
@@ -1634,7 +1634,7 @@ class ShuffleBatchTest(test_lib.TestCase):
 
       all_counts = []
       for _ in range(num_batches):
-        results = self.evaluate(batched_fetch)
+        results = sess.run(batched_fetch)
         self.assertEqual(len(results[0]), batch_size)
         all_counts.extend(results[0])
         self.assertAllEqual(
@@ -1645,7 +1645,7 @@ class ShuffleBatchTest(test_lib.TestCase):
         self.assertAllEqual(results[2], [b"string"] * batch_size)
 
       # Reached the final batch with extra elements.
-      results = self.evaluate(batched)
+      results = sess.run(batched)
       self.assertAllEqual(results[1].dense_shape, [extra_elements, 1])
       self.assertAllEqual(results[2], [b"string"] * extra_elements)
       all_counts.extend(results[0])
@@ -1687,7 +1687,7 @@ class ShuffleBatchTest(test_lib.TestCase):
 
       all_counts = []
       for i in range(num_batches):
-        results = self.evaluate(batched)
+        results = sess.run(batched)
         tf_logging.info("Batch %d: %s", i, results[0])
         self.assertEqual(len(results[0]), batch_size)
         all_counts.extend(results[0])
@@ -1737,7 +1737,7 @@ class ShuffleBatchTest(test_lib.TestCase):
 
       all_counts = []
       for i in range(num_batches):
-        results = self.evaluate(batched)
+        results = sess.run(batched)
         tf_logging.info("Batch %d: %s", i, results[0])
         self.assertEqual(len(results[0]), batch_size)
         all_counts.extend(results[0])
@@ -1749,7 +1749,7 @@ class ShuffleBatchTest(test_lib.TestCase):
         self.assertAllEqual(results[2], [b"string"] * batch_size)
 
       # Reached the final batch with extra elements.
-      results = self.evaluate(batched)
+      results = sess.run(batched)
       self.assertAllEqual(results[0].shape, [extra_elements])
       self.assertAllEqual(results[1].dense_shape, [extra_elements, 1])
       self.assertAllEqual(results[2], [b"string"] * extra_elements)
@@ -1817,7 +1817,7 @@ class ShuffleBatchTest(test_lib.TestCase):
       threads = queue_runner_impl.start_queue_runners()
 
       for _ in range(num_batches):
-        results = self.evaluate(batched)
+        results = sess.run(batched)
         self.assertAllEqual([0] * batch_size, np.mod(results[0], 2))
         self.assertAllEqual([0] * batch_size, np.mod(results[1].values, 2))
         self.assertAllEqual([b"string"] * batch_size, results[2])
@@ -1990,7 +1990,7 @@ class ShuffleBatchJoinTest(test_lib.TestCase):
       saw_both = 0
       num_batches = (num_a + num_b) // batch_size
       for i in range(num_batches):
-        results = self.evaluate(batched_fetch)
+        results = sess.run(batched_fetch)
         self.assertEqual(3, len(results))
         self.assertEqual(len(results[0]), batch_size)
         self.assertEqual(len(results[2]), batch_size)
@@ -2082,7 +2082,7 @@ class ShuffleBatchJoinTest(test_lib.TestCase):
       saw_both = 0
       num_batches = (num_a + num_b) // batch_size
       for i in range(num_batches):
-        results = self.evaluate(batched)
+        results = sess.run(batched)
         tf_logging.info("Batch %d: %s", i, results[0])
         self.assertEqual(len(results[0]), batch_size)
         self.assertEqual(len(results[2]), batch_size)
@@ -2102,7 +2102,7 @@ class ShuffleBatchJoinTest(test_lib.TestCase):
                             [results[0][i] for i in which_b])
 
       # Reached end with 2 * extra_elements left
-      results = self.evaluate(batched)
+      results = sess.run(batched)
       self.assertEqual(len(results[0]), 2 * extra_elements)
       self.assertAllEqual(results[1].dense_shape, [2 * extra_elements, 1])
       self.assertEqual(len(results[2]), 2 * extra_elements)
@@ -2203,7 +2203,7 @@ class ShuffleBatchJoinTest(test_lib.TestCase):
       threads = queue_runner_impl.start_queue_runners()
 
       for _ in range(num_batches):
-        results = self.evaluate(batched)
+        results = sess.run(batched)
         self.assertAllEqual([0] * batch_size, np.mod(results[0], 2))
         self.assertAllEqual([0] * batch_size, np.mod(results[1].values, 2))
         self.assertAllEqual([b"string"] * batch_size, results[2])

@@ -88,7 +88,7 @@ class SparseTensorsMapTest(test.TestCase):
       sp_out = take_many_sparse_from_tensors_map(
           sparse_map_op=handle0.op, sparse_handles=handles_concat)
 
-      combined_indices, combined_values, combined_shape = self.evaluate(sp_out)
+      combined_indices, combined_values, combined_shape = sess.run(sp_out)
 
       self.assertAllEqual(combined_indices[:6, 0], [0] * 6)  # minibatch 0
       self.assertAllEqual(combined_indices[:6, 1:], sp_input0[0])
@@ -114,8 +114,7 @@ class SparseTensorsMapTest(test.TestCase):
       sp_roundtrip = take_many_sparse_from_tensors_map(
           sparse_map_op=handle.op, sparse_handles=sparse_handles)
 
-      combined_indices, combined_values, combined_shape = self.evaluate(
-          sp_roundtrip)
+      combined_indices, combined_values, combined_shape = sess.run(sp_roundtrip)
 
       self.assertAllEqual(combined_indices[:6, 0], [0] * 6)  # minibatch 0
       self.assertAllEqual(combined_indices[:6, 1:], input0_val[0])
@@ -172,7 +171,7 @@ class SparseTensorsMapTest(test.TestCase):
     with self.session(use_gpu=False) as sess:
       input_val = self._SparseTensorValue_5x6(np.arange(6))
       handle = add_sparse_to_tensors_map(input_val)
-      handle_value = self.evaluate(handle)
+      handle_value = sess.run(handle)
       bad_handle = handle_value + 10
       sp_roundtrip = take_many_sparse_from_tensors_map(
           sparse_map_op=handle.op, sparse_handles=[handle_value, bad_handle])
@@ -213,8 +212,8 @@ class BenchmarkSparseTensorsMapVsSerialization(test.Benchmark):
 
         variables.global_variables_initializer().run()
 
-        st_roundtrip_values = self.evaluate(st_roundtrip)
-        st_deserialized_values = self.evaluate(st_deserialized)
+        st_roundtrip_values = sess.run(st_roundtrip)
+        st_deserialized_values = sess.run(st_deserialized)
         np.testing.assert_equal(st_roundtrip_values.values,
                                 st_deserialized_values.values)
         np.testing.assert_equal(st_roundtrip_values.indices,

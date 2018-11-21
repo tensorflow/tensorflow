@@ -40,7 +40,7 @@ class DynamicPartitionTest(test.TestCase):
       indices = constant_op.constant([0, 0, 2, 3, 2, 1])
       partitions = data_flow_ops.dynamic_partition(
           data, indices, num_partitions=4)
-      partition_vals = self.evaluate(partitions)
+      partition_vals = sess.run(partitions)
 
     self.assertEqual(4, len(partition_vals))
     self.assertAllEqual([0, 13], partition_vals[0])
@@ -62,7 +62,7 @@ class DynamicPartitionTest(test.TestCase):
       indices = constant_op.constant([0, 0, 2, 3, 2, 1])
       partitions = data_flow_ops.dynamic_partition(
           data, indices, num_partitions=4)
-      partition_vals = self.evaluate(partitions)
+      partition_vals = sess.run(partitions)
 
     self.assertEqual(4, len(partition_vals))
     self.assertAllEqual([[0, 1, 2], [3, 4, 5]], partition_vals[0])
@@ -87,7 +87,7 @@ class DynamicPartitionTest(test.TestCase):
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
           data, indices, num_partitions=2)
-      partition_vals = self.evaluate(partitions)
+      partition_vals = sess.run(partitions)
 
     self.assertEqual(2, len(partition_vals))
     self.assertAllEqual(part1, partition_vals[0])
@@ -109,7 +109,7 @@ class DynamicPartitionTest(test.TestCase):
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
           data, indices, num_partitions=num_partitions)
-      partition_vals = self.evaluate(partitions)
+      partition_vals = sess.run(partitions)
 
     self.assertEqual(num_partitions, len(partition_vals))
     for i in range(num_partitions):
@@ -125,7 +125,7 @@ class DynamicPartitionTest(test.TestCase):
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
           data, indices, num_partitions=2)
-      partition_vals = self.evaluate(partitions)
+      partition_vals = sess.run(partitions)
 
     self.assertEqual(2, len(partition_vals))
     self.assertAllEqual([3 + 4j, 7 + 8j], partition_vals[0])
@@ -138,7 +138,7 @@ class DynamicPartitionTest(test.TestCase):
       indices = 3
       partitions = data_flow_ops.dynamic_partition(
           data, indices, num_partitions=4)
-      partition_vals = self.evaluate(partitions)
+      partition_vals = sess.run(partitions)
 
     self.assertEqual(4, len(partition_vals))
     self.assertAllEqual(np.array([], dtype=np.float64).reshape(-1, 4),
@@ -164,7 +164,7 @@ class DynamicPartitionTest(test.TestCase):
             outputs = data_flow_ops.dynamic_partition(
                 data_t, partitions_t, num_partitions=n)
             self.assertEqual(n, len(outputs))
-            outputs_val = self.evaluate(outputs)
+            outputs_val = sess.run(outputs)
             for i, output in enumerate(outputs_val):
               self.assertAllEqual(output, data[partitions == i])
 
@@ -183,7 +183,7 @@ class DynamicPartitionTest(test.TestCase):
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
           data, indices, num_partitions=4)
-      partition_vals = self.evaluate(partitions)
+      partition_vals = sess.run(partitions)
 
     self.assertEqual(4, len(partition_vals))
     self.assertAllEqual([], partition_vals[0])
@@ -199,7 +199,7 @@ class DynamicPartitionTest(test.TestCase):
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
           data, indices, num_partitions=3)
-      partition_vals = self.evaluate(partitions)
+      partition_vals = sess.run(partitions)
 
     self.assertEqual(3, len(partition_vals))
     self.assertAllEqual([[]], partition_vals[0])
@@ -215,7 +215,7 @@ class DynamicPartitionTest(test.TestCase):
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
           data, indices, num_partitions=2)
-      partition_vals = self.evaluate(partitions)
+      partition_vals = sess.run(partitions)
 
     self.assertEqual(2, len(partition_vals))
     self.assertAllEqual([], partition_vals[0])
@@ -236,7 +236,7 @@ class DynamicPartitionTest(test.TestCase):
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
           data, indices, num_partitions=2)
-      partition_vals = self.evaluate(partitions)
+      partition_vals = sess.run(partitions)
 
     self.assertEqual(2, len(partition_vals))
     self.assertAllEqual([6], partition_vals[0])
@@ -257,7 +257,7 @@ class DynamicPartitionTest(test.TestCase):
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
           data, indices, num_partitions=5)
-      partition_vals = self.evaluate(partitions)
+      partition_vals = sess.run(partitions)
 
     self.assertEqual(5, len(partition_vals))
     self.assertAllEqual([5], partition_vals[0])
@@ -281,7 +281,7 @@ class DynamicPartitionTest(test.TestCase):
       indices = constant_op.constant(indices_list, dtype=dtypes.int32)
       partitions = data_flow_ops.dynamic_partition(
           data, indices, num_partitions=40)
-      partition_vals = self.evaluate(partitions)
+      partition_vals = sess.run(partitions)
 
     self.assertEqual(40, len(partition_vals))
     for i in range(40):
@@ -335,7 +335,7 @@ class DynamicPartitionTest(test.TestCase):
     self.assertEqual(len(inds), x.shape[0])
     partitioned = data_flow_ops.dynamic_partition(x, inds, 16)
     with self.cached_session() as sess:
-      res = self.evaluate(partitioned)
+      res = sess.run(partitioned)
     self.assertEqual(res[-1].shape[0], 192)
 
 

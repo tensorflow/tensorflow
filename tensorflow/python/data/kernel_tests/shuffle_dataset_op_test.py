@@ -66,7 +66,7 @@ class ShuffleDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.cached_session() as sess:
       # First run without shuffling to collect the "ground truth".
-      self.evaluate(init_fifo_op)
+      sess.run(init_fifo_op)
       unshuffled_elements = []
       for _ in range(20):
         unshuffled_elements.append(sess.run(get_next))
@@ -159,7 +159,7 @@ class ShuffleDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.cached_session() as sess:
       sess.run(iterator.initializer, feed_dict={seed_placeholder: 0})
       for elem in elems:
-        self.assertEqual(elem, self.evaluate(get_next))
+        self.assertEqual(elem, sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -188,9 +188,9 @@ class ShuffleDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
-      initial_permutation = self.evaluate(next_element)
-      self.assertAllEqual(initial_permutation, self.evaluate(next_element))
-      self.assertAllEqual(initial_permutation, self.evaluate(next_element))
+      initial_permutation = sess.run(next_element)
+      self.assertAllEqual(initial_permutation, sess.run(next_element))
+      self.assertAllEqual(initial_permutation, sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -261,7 +261,7 @@ class ShuffleDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.session(graph=g) as sess:
         for iterator in iterators:
           if initializable:
-            self.evaluate(iterator.initializer)
+            sess.run(iterator.initializer)
           next_element = iterator.get_next()
           run_results = []
           for _ in range(300):

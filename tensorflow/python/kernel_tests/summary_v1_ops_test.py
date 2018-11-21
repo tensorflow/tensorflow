@@ -42,7 +42,7 @@ class SummaryV1OpsTest(test.TestCase):
     with self.cached_session() as sess:
       const = constant_op.constant([10.0, 20.0])
       summ = logging_ops.scalar_summary(["c1", "c2"], const, name="mysumm")
-      value = self.evaluate(summ)
+      value = sess.run(summ)
     self.assertEqual([], summ.get_shape())
     self.assertProtoEquals("""
       value { tag: "c1" simple_value: 10.0 }
@@ -53,7 +53,7 @@ class SummaryV1OpsTest(test.TestCase):
     with self.cached_session() as sess:
       const = constant_op.constant([10.0, 20.0])
       summ = logging_ops.scalar_summary(["c1", "c2"], const)
-      value = self.evaluate(summ)
+      value = sess.run(summ)
     self.assertEqual([], summ.get_shape())
     self.assertProtoEquals("""
       value { tag: "c1" simple_value: 10.0 }
@@ -66,7 +66,7 @@ class SummaryV1OpsTest(test.TestCase):
       summ1 = summary.histogram("h", const)
       summ2 = logging_ops.scalar_summary("c", const)
       merge = summary.merge([summ1, summ2])
-      value = self.evaluate(merge)
+      value = sess.run(merge)
     self.assertEqual([], merge.get_shape())
     self.assertProtoEquals("""
       value {

@@ -61,7 +61,7 @@ class CategoricalTest(xla_test.XLATestCase):
       random_seed.set_random_seed(1618)
       op = random_ops.multinomial(logits, num_samples,
                                   output_dtype=dtypes.int32)
-      d = self.evaluate(op)
+      d = sess.run(op)
 
     batch_size, num_classes = logits.shape
     freqs_mat = []
@@ -86,9 +86,9 @@ class CategoricalTest(xla_test.XLATestCase):
 
       # The random-number generator, if working correctly, should produce the
       # same output multiple times with low probability.
-      y = self.evaluate(x)
-      z = self.evaluate(x)
-      w = self.evaluate(x)
+      y = sess.run(x)
+      z = sess.run(x)
+      w = sess.run(x)
 
       # We use exact equality here. If the random-number generator is producing
       # deterministic output, all three outputs will be bitwise identical.
@@ -113,7 +113,7 @@ class CategoricalTest(xla_test.XLATestCase):
             x = random_ops.multinomial(
                 array_ops.ones(shape=[1, 20], dtype=dtype), 1000,
                 output_dtype=output_dtype)
-          y = self.evaluate(x)
+          y = sess.run(x)
           self.assertTrue((y >= 0).sum() == 1000)
           self.assertTrue((y < 20).sum() == 1000)
 

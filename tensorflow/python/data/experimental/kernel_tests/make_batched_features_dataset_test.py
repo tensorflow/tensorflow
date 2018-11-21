@@ -112,10 +112,10 @@ class MakeBatchedFeaturesDatasetTest(
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
-      self.evaluate(init_op)
+      sess.run(init_op)
       for file_batch, _, _, _, record_batch, _ in self._next_expected_batch(
           range(self._num_files), 2, 10):
-        actual_batch = self.evaluate(next_element)
+        actual_batch = sess.run(next_element)
         self.assertAllEqual(file_batch, actual_batch["file"])
         self.assertAllEqual(record_batch, actual_batch["record"])
       with self.assertRaises(errors.OutOfRangeError):

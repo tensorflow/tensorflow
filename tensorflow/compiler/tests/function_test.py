@@ -50,7 +50,7 @@ class FunctionTest(xla_test.XLATestCase):
       b = constant_op.constant(bval, name="b")
       with self.test_scope():
         call_f = Foo(a, b)
-      result = self.evaluate(call_f)
+      result = sess.run(call_f)
     self.assertAllClose(result, expected, rtol=1e-3)
 
   def testNestedFunctions(self):
@@ -76,7 +76,7 @@ class FunctionTest(xla_test.XLATestCase):
       b = constant_op.constant(bval, name="b")
       with self.test_scope():
         call_g = Foo(a, b)
-      result = self.evaluate(call_g)
+      result = sess.run(call_g)
     self.assertAllClose(result, expected, rtol=1e-3)
 
   def testFunctionMultipleRetvals(self):
@@ -100,7 +100,7 @@ class FunctionTest(xla_test.XLATestCase):
       b = constant_op.constant(bval, name="b")
       with self.test_scope():
         call_f = Foo(a, b)
-      result = self.evaluate(call_f)
+      result = sess.run(call_f)
     self.assertAllClose(result, expected, rtol=1e-3)
 
   def testCompileTimeConstantsInDefun(self):

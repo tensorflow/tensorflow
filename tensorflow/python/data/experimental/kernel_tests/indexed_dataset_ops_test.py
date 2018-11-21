@@ -53,7 +53,7 @@ class IndexedDatasetOpsTest(test_base.DatasetTestBase):
     ds = indexed_dataset_ops.IdentityIndexedDataset(16)
     materialized = ds.materialize()
     with self.cached_session() as sess:
-      self.evaluate(materialized.initializer)
+      sess.run(materialized.initializer)
       placeholder = array_ops.placeholder(dtypes.uint64, shape=[])
       for i in range(16):
         output = sess.run(
@@ -68,9 +68,9 @@ class IndexedDatasetOpsTest(test_base.DatasetTestBase):
     itr = ds.make_initializable_iterator()
     n = itr.get_next()
     with self.cached_session() as sess:
-      self.evaluate(itr.initializer)
+      sess.run(itr.initializer)
       for i in range(16):
-        output = self.evaluate(n)
+        output = sess.run(n)
         self.assertEqual(i, output)
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(n)

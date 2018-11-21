@@ -218,7 +218,7 @@ class MapDefunTest(test_base.DatasetTestBase):
 
   def _assert_op_cancelled(self, sess, map_defun_op):
     with self.assertRaisesRegexp(errors.CancelledError, "was cancelled"):
-      self.evaluate(map_defun_op)
+      sess.run(map_defun_op)
 
   def testMapDefunWithParentCancellation(self):
     # Checks that a cancellation of the parent graph is threaded through to

@@ -187,7 +187,7 @@ class CastOpTest(test.TestCase):
       y = variables.Variable(True, dtype=dtypes.bool)
       cast = math_ops.cast(y, x.dtype)
       variables.global_variables_initializer().run()
-      self.assertEqual(1.0, self.evaluate(cast))
+      self.assertEqual(1.0, sess.run(cast))
 
   def testGradients(self):
     t = [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]

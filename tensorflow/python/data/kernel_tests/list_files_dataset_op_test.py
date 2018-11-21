@@ -102,7 +102,7 @@ class ListFilesDatasetOpTest(test_base.DatasetTestBase):
       all_produced_filenames = []
       for _ in range(3):
         produced_filenames = []
-        self.evaluate(itr.initializer)
+        sess.run(itr.initializer)
         try:
           while True:
             produced_filenames.append(sess.run(next_element))

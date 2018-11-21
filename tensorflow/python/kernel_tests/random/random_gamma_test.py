@@ -48,7 +48,7 @@ class RandomGammaTest(test.TestCase):
             [num], alpha, beta=beta, dtype=dtype, seed=seed)
         ret = np.empty([10, num])
         for i in xrange(10):
-          ret[i, :] = self.evaluate(rng)
+          ret[i, :] = sess.run(rng)
       return ret
 
     return func
