@@ -70,6 +70,8 @@ class GraphState(object):
 def OptimizerDisabledRewriterConfig():
   """Returns a RewriterConfig with all default Grappler optimizers disabled."""
   rewriter_config = rewriter_config_pb2.RewriterConfig()
+
+  # Turn off all default Grappler optimizers.
   off = rewriter_config_pb2.RewriterConfig.OFF
   rewriter_config.layout_optimizer = off
   rewriter_config.constant_folding = off
@@ -86,6 +88,10 @@ def OptimizerDisabledRewriterConfig():
       rewriter_config_pb2.RewriterConfig.NO_MEM_OPT)
   rewriter_config.pin_to_host_optimization = off
   rewriter_config.auto_parallel.enable = False
+
+  # Run only once for each enabled optimizer.
+  rewriter_config.meta_optimizer_iterations = (
+      rewriter_config_pb2.RewriterConfig.ONE)
   return rewriter_config
 
 
