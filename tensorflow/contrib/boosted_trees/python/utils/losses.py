@@ -119,8 +119,7 @@ def per_example_maxent_loss(labels, weights, logits, num_classes, eps=1e-15):
     labels = array_ops.expand_dims(labels, 1)
   # Labels are indices of classes, convert them to one hot encodings.
   target_one_hot = array_ops.one_hot(indices=labels, depth=num_classes)
-  labels = math_ops.reduce_sum(
-      input_tensor=target_one_hot, reduction_indices=[1])
+  labels = math_ops.reduce_sum(input_tensor=target_one_hot, axis=[1])
   labels = math_ops.to_float(labels)
 
   # Calculate softmax probabilities for each class.

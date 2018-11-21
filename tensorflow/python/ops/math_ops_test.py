@@ -104,7 +104,7 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
     for dtype in [np.float16, np.float32, np.double]:
       x_np = np.random.rand(5, 5).astype(dtype)
       with self.cached_session(use_gpu=True):
-        y_tf = math_ops.reduce_logsumexp(x_np, reduction_indices=[0])
+        y_tf = math_ops.reduce_logsumexp(x_np, axis=[0])
         y_np = log(np.sum(exp(x_np), axis=0))
         self.assertShapeEqual(y_np, y_tf)
         y_tf_np = self.evaluate(y_tf)
@@ -114,7 +114,7 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
     for dtype in [np.float16, np.float32, np.double]:
       x_np = np.random.rand(5, 5).astype(dtype)
       with self.cached_session(use_gpu=True):
-        y_tf = math_ops.reduce_logsumexp(x_np, reduction_indices=0)
+        y_tf = math_ops.reduce_logsumexp(x_np, axis=0)
         y_np = log(np.sum(exp(x_np), axis=0))
         self.assertShapeEqual(y_np, y_tf)
         y_tf_np = self.evaluate(y_tf)

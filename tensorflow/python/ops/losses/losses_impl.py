@@ -583,12 +583,10 @@ def mean_pairwise_squared_error(
 
       diffs = math_ops.subtract(predictions, labels)
 
-      reduction_indices = math_ops.range(1, array_ops.rank(diffs))
+      axis = math_ops.range(1, array_ops.rank(diffs))
 
       sum_squares_diff_per_batch = math_ops.reduce_sum(
-          math_ops.square(diffs),
-          reduction_indices=reduction_indices,
-          keepdims=True)
+          math_ops.square(diffs), axis=axis, keepdims=True)
       num_present_per_batch = _num_present(diffs, weights, per_batch=True)
 
       term1 = 2.0 * math_ops.div_no_nan(
@@ -596,8 +594,7 @@ def mean_pairwise_squared_error(
           math_ops.maximum(num_present_per_batch - 1, 0),
           name="value")
 
-      sum_diff = math_ops.reduce_sum(
-          diffs, reduction_indices=reduction_indices, keepdims=True)
+      sum_diff = math_ops.reduce_sum(diffs, axis=axis, keepdims=True)
       term2 = 2.0 * math_ops.div_no_nan(
           math_ops.square(sum_diff),
           math_ops.maximum(

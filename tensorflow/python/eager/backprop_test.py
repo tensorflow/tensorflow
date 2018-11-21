@@ -74,7 +74,7 @@ class BackpropTest(test.TestCase):
       tf_g1 = embedding_ops.embedding_lookup(tf_var, tf_ind1)
       tf_g2 = embedding_ops.embedding_lookup(tf_var, tf_ind2)
       tf_g3 = embedding_ops.embedding_lookup(tf_var, tf_ind3)
-      tf_g4 = math_ops.reduce_sum(tf_var * 2.0, reduction_indices=(0, 1))
+      tf_g4 = math_ops.reduce_sum(tf_var * 2.0, axis=(0, 1))
       tf_y = tf_g1 * tf_g2 * tf_g3 * tf_g4
       tf_grad = gradients.gradients(tf_y, [tf_var])[0]
 

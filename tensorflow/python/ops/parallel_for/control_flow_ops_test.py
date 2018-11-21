@@ -1324,13 +1324,12 @@ class ControlFlowTest(PForTest):
     pfor_out, pfor_out_grad = pfor_control_flow_ops.pfor(loop_fn, 4)
     # Note that tf.while_loop does not work in the setup above. So we manually
     # construct the equivalent computation of the above loops here.
-    real_out = math_ops.reduce_sum(inp, reduction_indices=[0])
-    real_out = math_ops.reduce_prod(real_out, reduction_indices=[1])
+    real_out = math_ops.reduce_sum(inp, axis=[0])
+    real_out = math_ops.reduce_prod(real_out, axis=[1])
     # Note that gradients of real_out will accumulate the gradients across the
     # output value. Hence we do the same aggregation on pfor_out_grad.
     real_out_grad = gradient_ops.gradients(real_out, inp)[0]
-    sum_pfor_out_grad = math_ops.reduce_sum(
-        pfor_out_grad, reduction_indices=[0])
+    sum_pfor_out_grad = math_ops.reduce_sum(pfor_out_grad, axis=[0])
 
     with session.Session() as sess:
       v1, v2, v1_grad, v2_grad = sess.run(
