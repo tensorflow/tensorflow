@@ -32,6 +32,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@StatsAggregator
 @@StatsOptions
 @@TFRecordWriter
+@@ThreadingOptions
 
 @@bucket_by_sequence_length
 @@choose_from_datasets
@@ -101,6 +102,7 @@ from tensorflow.python.data.experimental.ops.shuffle_ops import shuffle_and_repe
 from tensorflow.python.data.experimental.ops.stats_aggregator import StatsAggregator
 from tensorflow.python.data.experimental.ops.stats_ops import latency_stats
 from tensorflow.python.data.experimental.ops.stats_options import StatsOptions
+from tensorflow.python.data.experimental.ops.threading_options import ThreadingOptions
 from tensorflow.python.data.experimental.ops.unique import unique
 from tensorflow.python.data.experimental.ops.writers import TFRecordWriter
 from tensorflow.python.data.ops.iterator_ops import get_next_as_optional

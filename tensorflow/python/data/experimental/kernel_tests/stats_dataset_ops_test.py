@@ -45,22 +45,18 @@ def function_set_stats_aggregator(dataset,
 
 def function_apply_options(dataset, aggregator, prefix="", counter_prefix=""):
   options = dataset_ops.Options()
-  options.experimental_stats = stats_options.StatsOptions(aggregator)
+  options.experimental_stats = stats_options.StatsOptions()
+  options.experimental_stats.aggregator = aggregator
+  options.experimental_stats.prefix = prefix
+  options.experimental_stats.counter_prefix = counter_prefix
   options.experimental_stats.latency_all_edges = False
-  if prefix:
-    options.experimental_stats.prefix = prefix
-  if counter_prefix:
-    options.experimental_stats.counter_prefix = counter_prefix
   return dataset.with_options(options)
 
 
 @parameterized.named_parameters(
-    dict(
-        testcase_name="SetStatsAggregator",
-        dataset_transformation=function_set_stats_aggregator),
-    dict(
-        testcase_name="StatsOptions",
-        dataset_transformation=function_apply_options))
+    ("SetStatsAggregator", function_set_stats_aggregator),
+    ("StatsOptions", function_apply_options),
+)
 class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
 
   def testBytesProduced(self, dataset_transformation):

@@ -189,6 +189,17 @@ py_library(
 )
 
 py_library(
+    name = "map_defun",
+    srcs = ["map_defun.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dataset_ops_gen",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_shape",
+    ],
+)
+
+py_library(
     name = "optimization",
     srcs = ["optimization.py"],
     srcs_version = "PY2AND3",
@@ -214,17 +225,6 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
-    ],
-)
-
-py_library(
-    name = "map_defun",
-    srcs = ["map_defun.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:dataset_ops_gen",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:tensor_shape",
     ],
 )
 
@@ -303,6 +303,18 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":stats_aggregator",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/util:options",
+    ],
+)
+
+py_library(
+    name = "threading_options",
+    srcs = ["threading_options.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/util:options",
     ],
 )
 
@@ -313,9 +325,8 @@ py_library(
     deps = [
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/data/util:sparse",
         "//tensorflow/python/eager:context",
     ],
 )

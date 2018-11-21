@@ -140,6 +140,22 @@ REGISTER_OP("ExperimentalFunctionBufferingResourceReset")
     .Input("function_buffer_resource: resource")
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("ExperimentalMaxIntraOpParallelismDataset")
+    .Input("input_dataset: variant")
+    .Input("max_intra_op_parallelism: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("ExperimentalPrivateThreadPoolDataset")
+    .Input("input_dataset: variant")
+    .Input("num_threads: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("ExperimentalThreadPoolDataset")
     .Input("input_dataset: variant")
     .Input("thread_pool: resource")
