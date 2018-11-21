@@ -60,6 +60,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.sufficient_statistics": {
             "keep_dims": "keepdims"
         },
+        "tf.nn.log_softmax": {
+            "dim": "axis",
+        },
+        "tf.nn.softmax": {
+            "dim": "axis",
+        },
         "tf.debugging.assert_all_finite": {
             "t": "x",
             "msg": "message",
