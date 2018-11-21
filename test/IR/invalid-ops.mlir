@@ -32,6 +32,14 @@ bb:
 
 // -----
 
+cfgfunc @constant_out_of_range() {
+bb:
+  %x = "constant"(){value: 100} : () -> i1 // expected-error {{'constant' op requires 'value' to be an integer within the range of the integer result type}}
+  return
+}
+
+// -----
+
 cfgfunc @affine_apply_no_map() {
 bb0:
   %i = "constant"() {value: 0} : () -> index
@@ -127,6 +135,13 @@ bb:
 
 mlfunc @mlfunc_constant() {
   %x = "constant"(){value: "xyz"} : () -> i32 // expected-error {{'constant' op requires 'value' to be an integer for an integer result type}}
+  return
+}
+
+// -----
+
+mlfunc @mlfunc_constant_out_of_range() {
+  %x = "constant"(){value: 100} : () -> i1 // expected-error {{'constant' op requires 'value' to be an integer within the range of the integer result type}}
   return
 }
 

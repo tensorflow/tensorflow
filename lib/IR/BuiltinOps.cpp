@@ -368,9 +368,20 @@ bool ConstantOp::verify() const {
 
   auto type = this->getType();
   if (type.isa<IntegerType>() || type.isIndex()) {
-    if (!value.isa<IntegerAttr>())
+    auto intAttr = value.dyn_cast<IntegerAttr>();
+    if (!intAttr)
       return emitOpError(
           "requires 'value' to be an integer for an integer result type");
+
+    // If the type has a known bitwidth we verify that the value can be
+    // represented with the given bitwidth.
+    if (!type.isIndex()) {
+      auto bitwidth = type.cast<IntegerType>().getWidth();
+      auto intVal = intAttr.getValue();
+      if (!intVal.isSignedIntN(bitwidth) && !intVal.isIntN(bitwidth))
+        return emitOpError("requires 'value' to be an integer within the range "
+                           "of the integer result type");
+    }
     return false;
   }
 
