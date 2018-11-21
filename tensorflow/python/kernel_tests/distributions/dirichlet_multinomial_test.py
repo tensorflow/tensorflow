@@ -110,7 +110,7 @@ class DirichletMultinomialTest(test.TestCase):
       counts = [1., 0]
       dist = ds.DirichletMultinomial(1., alpha)
       pmf = dist.prob(counts)
-      self.assertAllClose(1 / 3., pmf.eval())
+      self.assertAllClose(1 / 3., self.evaluate(pmf))
       self.assertEqual((), pmf.get_shape())
 
   def testPmfBothZeroBatchesNontrivialN(self):
@@ -122,7 +122,7 @@ class DirichletMultinomialTest(test.TestCase):
       counts = [3., 2]
       dist = ds.DirichletMultinomial(5., alpha)
       pmf = dist.prob(counts)
-      self.assertAllClose(1 / 7., pmf.eval())
+      self.assertAllClose(1 / 7., self.evaluate(pmf))
       self.assertEqual((), pmf.get_shape())
 
   def testPmfBothZeroBatchesMultidimensionalN(self):
@@ -134,7 +134,7 @@ class DirichletMultinomialTest(test.TestCase):
       n = np.full([4, 3], 5., dtype=np.float32)
       dist = ds.DirichletMultinomial(n, alpha)
       pmf = dist.prob(counts)
-      self.assertAllClose([[1 / 7., 1 / 7., 1 / 7.]] * 4, pmf.eval())
+      self.assertAllClose([[1 / 7., 1 / 7., 1 / 7.]] * 4, self.evaluate(pmf))
       self.assertEqual((4, 3), pmf.get_shape())
 
   def testPmfAlphaStretchedInBroadcastWhenSameRank(self):
@@ -145,7 +145,7 @@ class DirichletMultinomialTest(test.TestCase):
       counts = [[1., 0], [0., 1]]
       dist = ds.DirichletMultinomial([1.], alpha)
       pmf = dist.prob(counts)
-      self.assertAllClose([1 / 3., 2 / 3.], pmf.eval())
+      self.assertAllClose([1 / 3., 2 / 3.], self.evaluate(pmf))
       self.assertAllEqual([2], pmf.get_shape())
 
   def testPmfAlphaStretchedInBroadcastWhenLowerRank(self):
@@ -155,7 +155,7 @@ class DirichletMultinomialTest(test.TestCase):
       alpha = [1., 2]
       counts = [[1., 0], [0., 1]]
       pmf = ds.DirichletMultinomial(1., alpha).prob(counts)
-      self.assertAllClose([1 / 3., 2 / 3.], pmf.eval())
+      self.assertAllClose([1 / 3., 2 / 3.], self.evaluate(pmf))
       self.assertAllEqual([2], pmf.get_shape())
 
   def testPmfCountsStretchedInBroadcastWhenSameRank(self):
@@ -165,7 +165,7 @@ class DirichletMultinomialTest(test.TestCase):
       alpha = [[1., 2], [2., 3]]
       counts = [[1., 0]]
       pmf = ds.DirichletMultinomial([1., 1.], alpha).prob(counts)
-      self.assertAllClose([1 / 3., 2 / 5.], pmf.eval())
+      self.assertAllClose([1 / 3., 2 / 5.], self.evaluate(pmf))
       self.assertAllEqual([2], pmf.get_shape())
 
   def testPmfCountsStretchedInBroadcastWhenLowerRank(self):
@@ -175,7 +175,7 @@ class DirichletMultinomialTest(test.TestCase):
       alpha = [[1., 2], [2., 3]]
       counts = [1., 0]
       pmf = ds.DirichletMultinomial(1., alpha).prob(counts)
-      self.assertAllClose([1 / 3., 2 / 5.], pmf.eval())
+      self.assertAllClose([1 / 3., 2 / 5.], self.evaluate(pmf))
       self.assertAllEqual([2], pmf.get_shape())
 
   def testPmfForOneVoteIsTheMeanWithOneRecordInput(self):
@@ -289,7 +289,7 @@ class DirichletMultinomialTest(test.TestCase):
         expected_covariance = n * (n + alpha_0) / (1 + alpha_0) * shared_matrix
 
         self.assertEqual([2, 2], covariance.get_shape())
-        self.assertAllClose(expected_covariance, covariance.eval())
+        self.assertAllClose(expected_covariance, self.evaluate(covariance))
 
   def testCovarianceNAlphaBroadcast(self):
     alpha_v = [1., 2, 3]
@@ -327,7 +327,7 @@ class DirichletMultinomialTest(test.TestCase):
           ns * (ns + alpha_0) / (1 + alpha_0))[..., array_ops.newaxis]
 
       self.assertEqual([4, 3, 3], covariance.get_shape())
-      self.assertAllClose(expected_covariance, covariance.eval())
+      self.assertAllClose(expected_covariance, self.evaluate(covariance))
 
   def testCovarianceMultidimensional(self):
     alpha = np.random.rand(3, 5, 4).astype(np.float32)
@@ -353,7 +353,7 @@ class DirichletMultinomialTest(test.TestCase):
     with self.cached_session():
       dist = ds.DirichletMultinomial(0., alpha)
       pmf = dist.prob(counts)
-      self.assertAllClose(1.0, pmf.eval())
+      self.assertAllClose(1.0, self.evaluate(pmf))
       self.assertEqual((), pmf.get_shape())
 
   def testLargeTauGivesPreciseProbabilities(self):
@@ -368,7 +368,7 @@ class DirichletMultinomialTest(test.TestCase):
     with self.cached_session():
       dist = ds.DirichletMultinomial(1., alpha)
       pmf = dist.prob(counts)
-      self.assertAllClose(0.8, pmf.eval(), atol=1e-4)
+      self.assertAllClose(0.8, self.evaluate(pmf), atol=1e-4)
       self.assertEqual((), pmf.get_shape())
 
     # Two (three sided) coin flips.  Prob[coin 3] = 0.8.
@@ -376,7 +376,7 @@ class DirichletMultinomialTest(test.TestCase):
     with self.cached_session():
       dist = ds.DirichletMultinomial(2., alpha)
       pmf = dist.prob(counts)
-      self.assertAllClose(0.8**2, pmf.eval(), atol=1e-2)
+      self.assertAllClose(0.8**2, self.evaluate(pmf), atol=1e-2)
       self.assertEqual((), pmf.get_shape())
 
     # Three (three sided) coin flips.
@@ -384,7 +384,7 @@ class DirichletMultinomialTest(test.TestCase):
     with self.cached_session():
       dist = ds.DirichletMultinomial(3., alpha)
       pmf = dist.prob(counts)
-      self.assertAllClose(3 * 0.1 * 0.8 * 0.8, pmf.eval(), atol=1e-2)
+      self.assertAllClose(3 * 0.1 * 0.8 * 0.8, self.evaluate(pmf), atol=1e-2)
       self.assertEqual((), pmf.get_shape())
 
   def testSmallTauPrefersCorrelatedResults(self):
@@ -399,7 +399,7 @@ class DirichletMultinomialTest(test.TestCase):
     with self.cached_session():
       dist = ds.DirichletMultinomial(1., alpha)
       pmf = dist.prob(counts)
-      self.assertAllClose(0.5, pmf.eval())
+      self.assertAllClose(0.5, self.evaluate(pmf))
       self.assertEqual((), pmf.get_shape())
 
     # If there are two draws, it is much more likely that they are the same.
@@ -409,7 +409,7 @@ class DirichletMultinomialTest(test.TestCase):
       dist = ds.DirichletMultinomial(2., alpha)
       pmf_same = dist.prob(counts_same)
       pmf_different = dist.prob(counts_different)
-      self.assertLess(5 * pmf_different.eval(), pmf_same.eval())
+      self.assertLess(5 * self.evaluate(pmf_different), self.evaluate(pmf_same))
       self.assertEqual((), pmf_same.get_shape())
 
   def testNonStrictTurnsOffAllChecks(self):

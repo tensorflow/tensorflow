@@ -88,7 +88,7 @@ class ComparisonOpTest(test.TestCase):
       out = func(
           ops.convert_to_tensor(np.array([x]).astype(dtype)),
           ops.convert_to_tensor(np.array([y]).astype(dtype)))
-      ret = out.eval()
+      ret = self.evaluate(out)
     return ret[0]
 
   def testScalarCompareScalar(self):
@@ -119,7 +119,7 @@ class ComparisonOpTest(test.TestCase):
     np_ans = np_func(x, y)
     with self.test_session(force_gpu=test_util.is_gpu_available()):
       out = tf_func(ops.convert_to_tensor(x), ops.convert_to_tensor(y))
-      tf_ans = out.eval()
+      tf_ans = self.evaluate(out)
     self.assertAllEqual(np_ans, tf_ans)
 
   def testTensorCompareTensor(self):
@@ -223,7 +223,7 @@ class LogicalOpTest(test.TestCase):
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = tf_func(inx, iny)
-      tf_val = out.eval()
+      tf_val = self.evaluate(out)
     self.assertEqual(out.dtype, dtypes_lib.bool)
     self.assertAllEqual(np_ans, tf_val)
     self.assertShapeEqual(np_ans, out)
@@ -233,7 +233,7 @@ class LogicalOpTest(test.TestCase):
     with self.test_session(use_gpu=use_gpu,
                            force_gpu=use_gpu and test_util.is_gpu_available()):
       out = math_ops.logical_not(ops.convert_to_tensor(x))
-      tf_val = out.eval()
+      tf_val = self.evaluate(out)
     self.assertEqual(out.dtype, dtypes_lib.bool)
     self.assertAllEqual(np_ans, tf_val)
     self.assertShapeEqual(np_ans, out)
@@ -319,7 +319,7 @@ class SelectOpTest(test.TestCase):
     with self.test_session(use_gpu=use_gpu,
                            force_gpu=use_gpu and test_util.is_gpu_available()):
       out = array_ops.where(c, x, y)
-      tf_ans = out.eval()
+      tf_ans = self.evaluate(out)
     self.assertAllEqual(np_ans, tf_ans)
     self.assertShapeEqual(np_ans, out)
 
@@ -463,7 +463,7 @@ class BatchSelectOpTest(test.TestCase):
     with self.test_session(use_gpu=use_gpu,
                            force_gpu=use_gpu and test_util.is_gpu_available()):
       out = array_ops.where(c, x, y)
-      tf_ans = out.eval()
+      tf_ans = self.evaluate(out)
     self.assertAllEqual(np_ans, tf_ans)
     self.assertShapeEqual(np_ans, out)
 
@@ -644,13 +644,13 @@ class MathOpsOverloadTest(test.TestCase):
     with self.test_session(use_gpu=False):
       inx = ops.convert_to_tensor(x, dtype=dtype)
       z = func(inx, y)  # Should use __add__, __sub__, etc.
-      return z.eval()
+      return self.evaluate(z)
 
   def _computeLiteralAndTensor(self, x, y, dtype, func):
     with self.test_session(use_gpu=False):
       iny = ops.convert_to_tensor(y, dtype=dtype)
       z = func(x, iny)  # Should use __radd__, __rsub__, etc.
-      return z.eval()
+      return self.evaluate(z)
 
   def _compareBinary(self, x, y, dtype, np_func, tf_func):
     np_ans = np_func(x, y).astype(dtype.as_numpy_dtype)
@@ -777,9 +777,9 @@ class IsFiniteInfNanTest(test.TestCase):
             tf_y = math_ops.sqrt(x)
             tf_nan = math_ops.is_nan(tf_y)
             if value < 0:
-              self.assertAllEqual(np_nan, tf_nan.eval())
+              self.assertAllEqual(np_nan, self.evaluate(tf_nan))
             else:
-              self.assertAllCloseAccordingToType(np_y, tf_y.eval())
+              self.assertAllCloseAccordingToType(np_y, self.evaluate(tf_y))
 
 
 class RoundingTest(test.TestCase):
@@ -788,7 +788,7 @@ class RoundingTest(test.TestCase):
     y = np.rint(x) if y is None else np.asarray(y)
     with self.cached_session() as sess:
       tf_rint = math_ops.rint(x)
-      np_rint = sess.run(tf_rint)
+      np_rint = self.evaluate(tf_rint)
     self.assertAllEqual(y, np_rint)
     self.assertShapeEqual(y, tf_rint)
 
@@ -833,7 +833,7 @@ class ComplexMakeRealImagTest(test.TestCase):
       real = ops.convert_to_tensor(real)
       imag = ops.convert_to_tensor(imag)
       tf_ans = math_ops.complex(real, imag)
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
     self.assertAllEqual(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
 
@@ -855,10 +855,10 @@ class ComplexMakeRealImagTest(test.TestCase):
       tf_imag = math_ops.imag(inx)
       tf_real_real = math_ops.real(tf_real)
       tf_imag_real = math_ops.imag(tf_real)
-      self.assertAllEqual(np_real, tf_real.eval())
-      self.assertAllEqual(np_imag, tf_imag.eval())
-      self.assertAllEqual(np_real, tf_real_real.eval())
-      self.assertAllEqual(np_zeros, tf_imag_real.eval())
+      self.assertAllEqual(np_real, self.evaluate(tf_real))
+      self.assertAllEqual(np_imag, self.evaluate(tf_imag))
+      self.assertAllEqual(np_real, self.evaluate(tf_real_real))
+      self.assertAllEqual(np_zeros, self.evaluate(tf_imag_real))
 
   def testRealImag64(self):
     real = (np.arange(-3, 3) / 4.).reshape([1, 3, 2]).astype(np.float32)
@@ -881,7 +881,7 @@ class ComplexMakeRealImagTest(test.TestCase):
         force_gpu=use_gpu and test_util.is_gpu_available()) as sess:
       inx = ops.convert_to_tensor(cplx)
       tf_angle = math_ops.angle(inx)
-      tf_angle_val = sess.run(tf_angle)
+      tf_angle_val = self.evaluate(tf_angle)
     self.assertAllEqual(np_angle, tf_angle_val)
     self.assertShapeEqual(np_angle, tf_angle)
 
@@ -916,7 +916,7 @@ class ComplexMakeRealImagTest(test.TestCase):
                            force_gpu=use_gpu and test_util.is_gpu_available()):
       inx = ops.convert_to_tensor(cplx)
       tf_conj = math_ops.conj(inx)
-      tf_ans = tf_conj.eval()
+      tf_ans = self.evaluate(tf_conj)
     self.assertAllEqual(np_ans, tf_ans)
     self.assertShapeEqual(np_ans, tf_conj)
 
@@ -1032,13 +1032,13 @@ class AccumulateTest(test.TestCase):
       np_val = random_arrays[0]
       for random_array in random_arrays[1:]:
         np_val += random_array
-      self.assertAllClose(np_val, tf_val.eval())
+      self.assertAllClose(np_val, self.evaluate(tf_val))
 
   def testZeroArgs(self):
     with self.cached_session():
       with self.assertRaises(ValueError):
         tf_val = math_ops.accumulate_n([])
-        tf_val.eval()
+        self.evaluate(tf_val)
 
   def testWrongShape(self):
     with self.cached_session():
@@ -1070,7 +1070,7 @@ class PolyvalTest(test.TestCase):
     np_val = np.polyval(coeffs, x)
     with self.cached_session():
       tf_val = math_ops.polyval(coeffs, x)
-      self.assertAllClose(np_val, tf_val.eval())
+      self.assertAllClose(np_val, self.evaluate(tf_val))
 
   def testSimple(self):
     for dtype in [
@@ -1093,7 +1093,7 @@ class PolyvalTest(test.TestCase):
         np_val = np.polyval(coeffs, x)
         with self.cached_session():
           tf_val = math_ops.polyval(coeffs, x)
-          self.assertAllClose(np_val, tf_val.eval())
+          self.assertAllClose(np_val, self.evaluate(tf_val))
 
   def testEmpty(self):
     x = np.random.rand(2, 2).astype(np.float32)
@@ -1101,7 +1101,7 @@ class PolyvalTest(test.TestCase):
     np_val = np.polyval(coeffs, x)
     with self.cached_session():
       tf_val = math_ops.polyval(coeffs, x)
-      self.assertAllClose(np_val, tf_val.eval())
+      self.assertAllClose(np_val, self.evaluate(tf_val))
 
 
 if __name__ == "__main__":

@@ -23,7 +23,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -31,6 +30,7 @@ from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
@@ -66,9 +66,7 @@ def while_loop(cond,
                maximum_iterations=None,
                name=None):
   """Like tf.while_loop, except emits a single While op."""
-  if _is_in_xla_context() and maximum_iterations is None:
-    raise ValueError("maximum_iterations is required in XLA context.")
-
+  maximum_iterations = _validate_and_convert_to_tensor(maximum_iterations)
   # Keep the original loop_vars around to know which args were TensorArrays.
   orig_loop_vars = loop_vars
   # Cache its length since we use it at multiple places below.
@@ -84,13 +82,6 @@ def while_loop(cond,
     nest.assert_same_structure(orig_loop_vars, shape_invariants)
   else:
     shape_invariants = nest.map_structure(lambda t: t.shape, loop_vars)
-
-  if maximum_iterations is not None:
-    maximum_iterations = ops.convert_to_tensor(
-        maximum_iterations, name="maximum_iterations")
-    if maximum_iterations.shape.ndims != 0:
-      raise ValueError("maximum_iterations must be a scalar, saw shape: %s" %
-                       maximum_iterations.shape)
 
   if not name:
     name = "while"
@@ -108,7 +99,8 @@ def while_loop(cond,
     # Add loop counter needed for computing gradients.
     loop_vars = [loop_counter] + loop_vars
 
-    shape_invariants = [tensor_shape.scalar()] + shape_invariants
+    shape_invariants = type(shape_invariants)([tensor_shape.scalar()
+                                              ]) + shape_invariants
 
     # Automatic control dependencies are added in defuns, but not in v1
     # graphs. Propagate that behavior here.
@@ -141,9 +133,8 @@ def while_loop(cond,
     # the value of that tensor in each iteration is the same as it was at the
     # beginning of the loop execution.
     loop_vars = loop_vars + cond_graph.external_captures
-    shape_invariants = shape_invariants + [
-        t.shape for t in cond_graph.external_captures
-    ]
+    shape_invariants = shape_invariants + type(shape_invariants)(
+        [t.shape for t in cond_graph.external_captures])
 
     def wrapped_body(loop_counter, *args):
       """Loop body augmented with counter update.
@@ -214,11 +205,10 @@ def while_loop(cond,
     intermediate_tensors = _get_intermediates(body_graph)
 
     for intermediate_tensor in intermediate_tensors:
-      # TODO(srbs): Cache and re-use empty tensor lists.
       tensor_list = list_ops.empty_tensor_list(
           element_dtype=intermediate_tensor.dtype,
-          element_shape=_get_tensor_convertible_shape(
-              intermediate_tensor.shape))
+          element_shape=intermediate_tensor.shape,
+          max_num_elements=maximum_iterations)
       loop_vars.append(tensor_list)
       with cond_graph.as_default():
         # Add a placeholder to cond_graph's inputs corresponding to the
@@ -253,7 +243,8 @@ def while_loop(cond,
         name=scope)
 
     _copy_handle_data(body_graph.outputs, outputs)
-    _maybe_set_lowering_attr(outputs[0].op)
+    util.maybe_set_lowering_attr(outputs[0].op)
+    _maybe_set_maximum_iterations_attr(outputs[0].op, maximum_iterations)
 
     # Return identities for each output of the While op, rather than the output
     # of the While op directly. This makes pruning work if the output of
@@ -264,11 +255,14 @@ def while_loop(cond,
     outputs = tuple(array_ops.identity(t) for t in outputs)
 
   # First var is loop counter.
-  if num_flattened_outputs == 1:
-    return outputs[1]
+  outputs = _pack_sequence_as(orig_loop_vars,
+                              outputs[1:1 + num_flattened_outputs])
+
+  flattened_outputs = nest.flatten(outputs)
+  if len(flattened_outputs) == 1:
+    return flattened_outputs[0]
   else:
-    return _pack_sequence_as(orig_loop_vars,
-                             outputs[1:1 + num_flattened_outputs])
+    return outputs
 
 
 @ops.RegisterGradient("While")
@@ -314,10 +308,15 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
 
   intermediate_tensors = _get_intermediates(body_grad_graph)
 
+  maximum_iterations = op.get_attr(
+      "_maximum_iterations") if _is_in_xla_context() else None
+  assert not _is_in_xla_context() or maximum_iterations is not None
   for intermediate_tensor in intermediate_tensors:
     tensor_list = list_ops.empty_tensor_list(
         element_dtype=intermediate_tensor.dtype,
-        element_shape=_get_tensor_convertible_shape(intermediate_tensor.shape))
+        element_shape=intermediate_tensor.shape,
+        max_num_elements=maximum_iterations)
+
     with body_grad_graph.as_default():
       tensor_list_ph = body_grad_graph.capture(tensor_list, whitelisted=True)
       # Push the intermediate tensor to the tensor list.
@@ -345,7 +344,11 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       name="%s_grad" % op.name)
 
   _copy_handle_data(body_grad_graph.outputs, outputs)
-  _maybe_set_lowering_attr(outputs[0].op)
+  util.maybe_set_lowering_attr(outputs[0].op)
+  _maybe_set_maximum_iterations_attr(outputs[0].op, maximum_iterations)
+
+  # See comment in while_loop.
+  outputs = [array_ops.identity(t) for t in outputs]
 
   # Set None as the output gradient for tensors with None input gradient
   # e.g. TensorArray handles.
@@ -360,6 +363,46 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       none_padded_outputs.append(outputs[index])
       index += 1
   return none_padded_outputs
+
+
+def _validate_and_convert_to_tensor(maximum_iterations):
+  """Checks that `maximum_iterations` is valid.
+
+  In XLA context, `maximum_iterations` is required and must be statically
+  inferable, e.g. output tensor of a Const node.
+
+  Args:
+    maximum_iterations: The maximum_iterations passed to while_loop.
+
+  Returns:
+    A scalar valued tensor of type int32 or None.
+
+  Raises:
+    ValueError: If `maximum_iterations` is invalid.
+  """
+  if _is_in_xla_context():
+    if maximum_iterations is None:
+      raise ValueError("maximum_iterations is None. It is required and must "
+                       "be statically known (e.g. a constant value or known "
+                       "shape dimension) when building while_loop in XLA "
+                       "context.")
+    if isinstance(maximum_iterations, ops.Tensor):
+      # Get the constant value from the `maximum_iterations` tensor to avoid
+      # capturing a Const tensor from outside this graph.
+      maximum_iterations = tensor_util.constant_value(maximum_iterations)
+      if maximum_iterations is None:
+        raise ValueError("maximum_iterations must be statically known (e.g. a "
+                         "constant value or known shape dimension) when "
+                         "building while_loop in XLA context.")
+
+  if maximum_iterations is not None:
+    # EmptyTensorList expects `max_num_elements` to be of type int32.
+    maximum_iterations = ops.convert_to_tensor(
+        maximum_iterations, dtype=dtypes.int32, name="maximum_iterations")
+    if maximum_iterations.shape.ndims != 0:
+      raise ValueError("maximum_iterations must be a scalar, saw shape: %s" %
+                       maximum_iterations.shape)
+  return maximum_iterations
 
 
 # TODO(srbs): Pull this into common utils for cond_v2 and while_v2.
@@ -753,47 +796,26 @@ def _copy_handle_data(src_tensors, tgt_tensors):
     custom_gradient.copy_handle_data(src_t, tgt_t)
 
 
-# TODO(srbs): Move to common utils for cond_v2 and while_v2.
-def _maybe_set_lowering_attr(op):
-  """Sets the flag to enable lowering on the `While` op if necessary.
-
-  Lowering allows while_v2 to avoid some of the limitations of Functions,
-  allowing users to specify devices & colocation inside of while_v2
-  branches, and enabling non-strict evaluation & partial pruning of while_v2
-  branches. This brings while_v2 closer to feature parity with
-  tf.while_loop.
-
-  However, we do not lower `While` in the XLA context because it is easier
-  for XLA to apply its own optimizations when dealing with un-lowered
-  `While` operators than with low-level control flow primitives.
-
-  Args:
-    op: The While op.
-  """
-  if not control_flow_util.IsInXLAContext(op):
-    # pylint: disable=protected-access
-    op._set_attr("_lower_using_switch_merge", attr_value_pb2.AttrValue(b=True))
-    # pylint: enable=protected-access
+def _maybe_set_maximum_iterations_attr(op, maximum_iterations):
+  if control_flow_util.IsInXLAContext(op):
+    # Store the maximum_iterations to use in the gradient pass.
+    op._set_attr(  # pylint: disable=protected-access
+        "_maximum_iterations",
+        attr_value_pb2.AttrValue(
+            i=tensor_util.constant_value(maximum_iterations)))
 
 
 # TODO(srbs): This method should be in control_flow_util but that introduces
 # a circular dependency ops -> control_flow_util -> ops.
 def _is_in_xla_context():
   """Returns whether the current context is inside an XLA context."""
-  cur_ctxt = ops.get_default_graph()._get_control_flow_context()  # pylint: disable=protected-access
+  outer_graph = ops.get_default_graph()
+  # The `_control_flow_context` is not copied when building a FuncGraph so
+  # we look it up from the base graph.
+  while isinstance(outer_graph, func_graph_module.FuncGraph):
+    outer_graph = outer_graph.outer_graph
+  cur_ctxt = outer_graph._get_control_flow_context()  # pylint: disable=protected-access
   return control_flow_util.GetContainingXLAContext(cur_ctxt) is not None
-
-
-def _get_tensor_convertible_shape(shape):
-  assert isinstance(shape, tensor_shape.TensorShape)
-  if shape.is_fully_defined():
-    return shape
-  if not shape:  # Unknown shape.
-    return -1
-  # Partially defined shape.
-  shape_list = shape.as_list()
-  shape_list = [s if s is not None else -1 for s in shape_list]
-  return ops.convert_to_tensor(shape_list)
 
 
 def _graph_name(graph):

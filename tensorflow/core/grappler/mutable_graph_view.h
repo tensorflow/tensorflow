@@ -44,31 +44,44 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   using GraphViewInternal::GetRegularFanin;
   const OutputPort GetRegularFanin(const GraphView::InputPort& port) const;
 
-  // Adds a new node to graph and updates the view.
+  // Adds a new node to graph and updates the view. Returns a pointer to the
+  // node in graph.
   NodeDef* AddNode(NodeDef&& node);
 
-  // Inserts a new node to the graph after `input` node and updates the view.
-  // This adds `node` to the graph and replaces the input for the output
-  // nodes of `input` with a port `output_port_id` with the new node.
-  NodeDef* InsertNode(const NodeDef& input, NodeDef&& node,
-                      int output_port_id = 0);
-
-  // Replaces the input for the output nodes of 'old_input' with a port
-  // `output_port_id` with 'new_input'.
+  // Updates all fanouts (input ports fetching output tensors) from `from_node`
+  // to the `to_node`, including control dependencies.
   //
-  // E.g: We have 2 nodes that use 'bar' node outputs as inputs:
-  // foo(bar:0, bar:1),  foo2(other:0, bar:0)
-  // Calling ReplaceInput(bar, new, 0) changes every occurrence of bar:0 for
-  // new:0.  Result:
-  // foo(new:0, bar:1),  foo2(other:0, new:0)
-  void ReplaceInput(const NodeDef& old_input, const NodeDef& new_input,
-                    int output_port_id = 0);
+  // Example: We have 2 nodes that use `bar` node output tensors as inputs:
+  //   1. foo1(bar:0, bar:1, other:0, ^bar)
+  //   2. foo2(bar:1, other:1)
+  //
+  // After calling ForwardOutputs(bar, new_bar):
+  //   1. foo1(new_bar:0, new_bar:1, other:0, ^new_bar)
+  //   2. foo2(new_bar:1, other:1)
+  void UpdateFanouts(absl::string_view from_node, absl::string_view to_node);
 
   // Deletes nodes from the graph.
   void DeleteNodes(const std::set<string>& nodes_to_delete);
 
  private:
-  void RemoveFanouts(NodeDef* node);
+  // Updates all fanouts (input ports fetching output tensors) from `from_node`
+  // to the `to_node`, including control dependencies.
+  //
+  // Example: We have 2 nodes that use `bar` node output tensors as inputs:
+  //   1. foo1(bar:0, bar:1, other:0, ^bar)
+  //   2. foo2(bar:1, other:1)
+  //
+  // After calling ForwardOutputs(bar, new_bar):
+  //   1. foo1(new_bar:0, new_bar:1, other:0, ^new_bar)
+  //   2. foo2(new_bar:1, other:1)
+  //
+  // IMPORTANT: If `from_node` or `to_node` is not in the underlying graph, the
+  // behavior is undefined.
+  void UpdateFanouts(NodeDef* from_node, NodeDef* to_node);
+
+  // Remove fanouts of the deleted node from internal state (including control
+  // dependencies).
+  void RemoveFanouts(NodeDef* deleted_node);
 };
 
 }  // end namespace grappler

@@ -154,11 +154,8 @@ int DependencyOptimizer::NumEdgesIfBypassed(
 
     for (auto consumer : output_nodes) {
       for (int j = 0; j < consumer->input_size(); ++j) {
-        const string& consumer_input = consumer->input(j);
-        int consumer_input_pos;
-        StringPiece consumer_input_node_name =
-            ParseNodeNameAsStringPiece(consumer_input, &consumer_input_pos);
-        if (consumer_input_node_name == node.name()) {
+        const TensorId consumer_input = ParseTensorName(consumer->input(j));
+        if (consumer_input.node() == node.name()) {
           if (IsControlInput(consumer_input)) {
             num_edges_if_bypassed += num_inputs;
           } else {
@@ -248,11 +245,9 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
       bool optimize_fanout = false;
       bool data_connection = false;
       for (int i = fanout->input_size() - 1; i >= 0; --i) {
-        int pos;
-        StringPiece input_name =
-            ParseNodeNameAsStringPiece(fanout->input(i), &pos);
-        if (input_name == node_name) {
-          if (pos < 0) {
+        const TensorId input_tensor = ParseTensorName(fanout->input(i));
+        if (input_tensor.node() == node_name) {
+          if (input_tensor.index() < 0) {
             fanout->mutable_input()->SwapElements(i, fanout->input_size() - 1);
             fanout->mutable_input()->RemoveLast();
             optimize_fanout = true;
@@ -396,20 +391,19 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
           const string& input_to_forward = node->input(i);
           CHECK(!IsControlInput(input_to_forward));
           for (int j = 0; j < consumer->input_size(); ++j) {
-            const string& old_input = consumer->input(j);
-            int old_input_pos;
-            StringPiece old_input_node_name =
-                ParseNodeNameAsStringPiece(old_input, &old_input_pos);
-            if (old_input_node_name == node_name) {
-              if (old_input_pos == i) {
+            const TensorId old_input = ParseTensorName(consumer->input(j));
+            if (old_input.node() == node_name) {
+              if (old_input.index() == i) {
                 // Regular input
                 new_input = input_to_forward;
-                node_map_->UpdateInput(consumer->name(), old_input, new_input);
+                node_map_->UpdateInput(consumer->name(), old_input.ToString(),
+                                       new_input);
                 consumer->set_input(j, new_input);
-              } else if (old_input_pos == -1) {
+              } else if (old_input.index() == -1) {
                 // Control dependency
                 new_input = AsControlDependency(NodeName(input_to_forward));
-                node_map_->UpdateInput(consumer->name(), old_input, new_input);
+                node_map_->UpdateInput(consumer->name(), old_input.ToString(),
+                                       new_input);
                 consumer->set_input(j, new_input);
               }
             }

@@ -52,8 +52,8 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
                      [t.shape for t in get_next])
 
     with self.cached_session() as sess:
-      sess.run(init_op)
-      results = sess.run(get_next)
+      self.evaluate(init_op)
+      results = self.evaluate(get_next)
       for component, result_component in zip(components, results):
         self.assertAllEqual(component, result_component)
       with self.assertRaises(errors.OutOfRangeError):
@@ -81,8 +81,8 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
         [shape for shape in iterator.output_shapes])
 
     with self.cached_session() as sess:
-      sess.run(init_op)
-      results = sess.run(get_next)
+      self.evaluate(init_op)
+      results = self.evaluate(get_next)
       for component, result_component in zip(components, results):
         self.assertSparseValuesEqual(component, result_component)
       with self.assertRaises(errors.OutOfRangeError):
@@ -112,8 +112,8 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     ], [shape for shape in iterator.output_shapes])
 
     with self.cached_session() as sess:
-      sess.run(init_op)
-      results = sess.run(get_next)
+      self.evaluate(init_op)
+      results = self.evaluate(get_next)
       for component, result_component in zip(components, results):
         if sparse_tensor.is_sparse(component):
           self.assertSparseValuesEqual(component, result_component)
@@ -139,9 +139,9 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
                      [t.shape for t in get_next])
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for i in range(4):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         for component, result_component in zip(components, results):
           self.assertAllEqual(component[i], result_component)
       with self.assertRaises(errors.OutOfRangeError):
@@ -169,7 +169,7 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
         [shape for shape in iterator.output_shapes])
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       expected = [
           (sparse_tensor.SparseTensorValue(
               indices=np.array([[0]]),
@@ -197,7 +197,7 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
                dense_shape=np.array([3]))),
       ]
       for i in range(3):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         for component, result_component in zip(expected[i], results):
           self.assertSparseValuesEqual(component, result_component)
       with self.assertRaises(errors.OutOfRangeError):
@@ -229,7 +229,7 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     ], [shape for shape in iterator.output_shapes])
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       expected = [
           (sparse_tensor.SparseTensorValue(
               indices=np.array([[0]]),
@@ -257,7 +257,7 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
                dense_shape=np.array([3]))),
       ]
       for i in range(3):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         for component, result_component in zip(
             (list(zip(*components[:3]))[i] + expected[i]), results):
           if sparse_tensor.is_sparse(component):
@@ -280,9 +280,9 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
     self.assertEqual((1,), iterator.output_shapes["bar"])
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for i in range(3):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         self.assertEqual(components["foo"][i], results["foo"])
         self.assertEqual(components["bar"][i], results["bar"])
       with self.assertRaises(errors.OutOfRangeError):
@@ -308,7 +308,7 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
                                                     dense_shape)
       sess.run(init_op, feed_dict={st: sparse_feed})
       for i, s in enumerate(slices):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         self.assertAllEqual(s, results.values)
         expected_indices = np.array(
             [[j] for j in range(len(slices[i]))]).reshape([-1, 1])
@@ -474,15 +474,15 @@ class DatasetConstructorTest(test_base.DatasetTestBase):
       with ops.device("/cpu:0"):
         var_0 = resource_variable_ops.ResourceVariable(initial_value=0)
         dataset = dataset.map(lambda x: x + var_0.read_value())
-      sess.run(var_0.initializer)
+      self.evaluate(var_0.initializer)
 
       with ops.device("/cpu:1"):
         var_1 = resource_variable_ops.ResourceVariable(initial_value=0)
         dataset = dataset.map(lambda x: x + var_1.read_value())
-      sess.run(var_1.initializer)
+      self.evaluate(var_1.initializer)
 
       iterator = dataset.make_initializable_iterator()
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
 
       with self.assertRaisesRegexp(
           errors.FailedPreconditionError,
@@ -506,7 +506,7 @@ class DatasetConstructorBenchmark(test.Benchmark):
     next_element = iterator.get_next()
 
     with session.Session() as sess:
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       # Run one whole epoch to burn in the computation.
       for _ in range(input_size // batch_size):
         sess.run(next_element)
@@ -543,7 +543,7 @@ class DatasetConstructorBenchmark(test.Benchmark):
     next_element = iterator.get_next()
 
     with session.Session() as sess:
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       get_next_element = sess.make_callable(next_element)
       # Run one whole epoch to burn in the computation.
       for _ in range(input_size // batch_size):
@@ -582,7 +582,7 @@ class DatasetConstructorBenchmark(test.Benchmark):
     next_element = iterator.get_next()
 
     with session.Session() as sess:
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       get_next_element = sess.make_callable(next_element)
       # Run one whole epoch to burn in the computation.
       for _ in range(input_size // batch_size):
@@ -620,7 +620,7 @@ class DatasetConstructorBenchmark(test.Benchmark):
     next_element = iterator.get_next()
 
     with session.Session() as sess:
-      sess.run(iterator.initializer)
+      self.evaluate(iterator.initializer)
       get_next_element = sess.make_callable(next_element)
       # Run one whole epoch to burn in the computation.
       for _ in range(input_size // batch_size):

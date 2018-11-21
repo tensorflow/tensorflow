@@ -2478,8 +2478,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Ne) {
   Ne(v, m, /*broadcast_dimensions=*/{1});
 
   const string expected = R"(pred[2,2] {
-  { 00 },
-  { 01 }
+  { 0, 0 },
+  { 0, 1 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -2492,8 +2492,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Ge) {
   Ge(v, m, /*broadcast_dimensions=*/{1});
 
   const string expected = R"(pred[2,4] {
-  { 1100 },
-  { 0001 }
+  { 1, 1, 0, 0 },
+  { 0, 0, 0, 1 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -2506,8 +2506,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Gt) {
   Gt(v, m, /*broadcast_dimensions=*/{1});
 
   const string expected = R"(pred[2,4] {
-  { 0100 },
-  { 0000 }
+  { 0, 1, 0, 0 },
+  { 0, 0, 0, 0 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -2520,8 +2520,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Le) {
   Le(v, m, /*broadcast_dimensions=*/{1});
 
   const string expected = R"(pred[2,4] {
-  { 1011 },
-  { 1111 }
+  { 1, 0, 1, 1 },
+  { 1, 1, 1, 1 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -2534,8 +2534,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Lt) {
   Lt(v, m, /*broadcast_dimensions=*/{1});
 
   const string expected = R"(pred[2,4] {
-  { 0011 },
-  { 1110 }
+  { 0, 0, 1, 1 },
+  { 1, 1, 1, 0 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
@@ -2744,12 +2744,16 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareGtR3F32sWithDegenerateDim2) {
   Array3D<int> expected_3d(
       {{{0, 1}, {0, 0}, {0, 0}}, {{0, 1}, {1, 0}, {0, 1}}});
   const string expected = R"(pred[2,3,2] {
-{ { 01 },
-  { 00 },
-  { 00 } },
-{ { 01 },
-  { 10 },
-  { 01 } }
+{
+  { 0, 1 },
+  { 0, 0 },
+  { 0, 0 }
+},
+{
+  { 0, 1 },
+  { 1, 0 },
+  { 0, 1 }
+}
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }

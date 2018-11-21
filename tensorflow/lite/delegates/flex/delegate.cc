@@ -46,11 +46,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteDelegate* delegate) {
   }
 
   // Request TFLite to partition the graph and make kernels for each independent
-  // subgraph.
+  // node sub set.
   TfLiteIntArray* size_and_nodes =
       ConvertVectorToTfLiteIntArray(supported_nodes);
-  context->ReplaceSubgraphsWithDelegateKernels(context, GetKernel(),
-                                               size_and_nodes, delegate);
+  context->ReplaceNodeSubsetsWithDelegateKernels(context, GetKernel(),
+                                                 size_and_nodes, delegate);
   TfLiteIntArrayFree(size_and_nodes);
   return kTfLiteOk;
 }
@@ -109,7 +109,8 @@ FlexDelegate::FlexDelegate(std::unique_ptr<flex::DelegateData> delegate_data)
           /*nullptr,*/ &flex::delegate::Prepare,
           /*CopyFromBufferHandle=*/&flex::delegate::CopyFromBufferHandle,
           /*CopyToBufferHandle=*/nullptr,
-          /*FreeBufferHandle=*/nullptr},
+          /*FreeBufferHandle=*/nullptr,
+          /*flags=*/kTfLiteDelegateFlagsAllowDynamicTensors},
       delegate_data_(std::move(delegate_data)) {}
 
 FlexDelegate::~FlexDelegate() {}

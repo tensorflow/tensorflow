@@ -38,7 +38,7 @@ class SliceTest(test.TestCase):
       with self.cached_session(use_gpu=True):
         a = constant_op.constant(inp, shape=[4, 4], dtype=dtypes.float32)
         slice_t = a[2, k:k]
-        slice_val = slice_t.eval()
+        slice_val = self.evaluate(slice_t)
       self.assertAllEqual(slice_val, inp[2, k:k])
 
   def testInt32(self):
@@ -47,7 +47,7 @@ class SliceTest(test.TestCase):
       with self.cached_session(use_gpu=True):
         a = constant_op.constant(inp, shape=[4, 4], dtype=dtypes.int32)
         slice_t = a[2, k:k]
-        slice_val = slice_t.eval()
+        slice_val = self.evaluate(slice_t)
       self.assertAllEqual(slice_val, inp[2, k:k])
 
   def testSlicingWithInt64Index(self):
@@ -57,33 +57,33 @@ class SliceTest(test.TestCase):
       # Slice using int64 Tensor.
       i = constant_op.constant(1, dtype=dtypes.int64)
       slice_t = a[i]
-      slice_val = slice_t.eval()
+      slice_val = self.evaluate(slice_t)
       self.assertAllEqual(1, slice_val)
       slice_t = a[i:i+1]
-      slice_val = slice_t.eval()
+      slice_val = self.evaluate(slice_t)
       self.assertAllEqual([1], slice_val)
 
       # Slice using int64 integer.
       i = np.asarray(1).astype(np.int64)
       slice_t = a[i]
-      slice_val = slice_t.eval()
+      slice_val = self.evaluate(slice_t)
       self.assertAllEqual(1, slice_val)
       slice_t = a[i:i+1]
-      slice_val = slice_t.eval()
+      slice_val = self.evaluate(slice_t)
       self.assertAllEqual([1], slice_val)
 
       a_int32 = constant_op.constant([0, 1, 2], dtype=dtypes.int32)
       slice_t = array_ops.slice(a_int32,
                                 np.asarray([1]).astype(np.int64),
                                 np.asarray([2]).astype(np.int64))
-      slice_val = slice_t.eval()
+      slice_val = self.evaluate(slice_t)
       self.assertAllEqual([1, 2], slice_val)
 
       a_float32 = constant_op.constant([0, 1, 2], dtype=dtypes.float32)
       slice_t = array_ops.slice(a_float32,
                                 np.asarray([1]).astype(np.int64),
                                 np.asarray([2]).astype(np.int64))
-      slice_val = slice_t.eval()
+      slice_val = self.evaluate(slice_t)
       self.assertAllEqual([1, 2], slice_val)
 
   def testSlicingInt64Tensor(self):
@@ -93,23 +93,23 @@ class SliceTest(test.TestCase):
       # Slice using int32 Tensor.
       i = constant_op.constant(1, dtype=dtypes.int32)
       slice_t = a[i]
-      slice_val = slice_t.eval()
+      slice_val = self.evaluate(slice_t)
       self.assertAllEqual(1, slice_val)
       slice_t = a[i:i + 1]
-      slice_val = slice_t.eval()
+      slice_val = self.evaluate(slice_t)
       self.assertAllEqual([1], slice_val)
 
       # Slice using int32 integer.
       i = np.asarray(1).astype(np.int32)
       slice_t = a[i]
-      slice_val = slice_t.eval()
+      slice_val = self.evaluate(slice_t)
       self.assertAllEqual(1, slice_val)
       slice_t = a[i:i + 1]
-      slice_val = slice_t.eval()
+      slice_val = self.evaluate(slice_t)
       self.assertAllEqual([1], slice_val)
 
       slice_t = array_ops.slice(a, [1], [2])
-      slice_val = slice_t.eval()
+      slice_val = self.evaluate(slice_t)
       self.assertAllEqual([1, 2], slice_val)
 
   def testSelectAll(self):
@@ -121,8 +121,8 @@ class SliceTest(test.TestCase):
         slice_explicit_t = array_ops.slice(a, [0, 0, 0, 0], [-1, -1, -1, -1])
         slice_implicit_t = a[:, :, :, :]
 
-        self.assertAllEqual(inp, slice_explicit_t.eval())
-        self.assertAllEqual(inp, slice_implicit_t.eval())
+        self.assertAllEqual(inp, self.evaluate(slice_explicit_t))
+        self.assertAllEqual(inp, self.evaluate(slice_implicit_t))
         self.assertEqual(inp.shape, slice_explicit_t.get_shape())
         self.assertEqual(inp.shape, slice_implicit_t.get_shape())
 
@@ -134,7 +134,7 @@ class SliceTest(test.TestCase):
 
         hi = np.random.randint(0, 9)
         scalar_t = a[hi]
-        scalar_val = scalar_t.eval()
+        scalar_val = self.evaluate(scalar_t)
         self.assertAllEqual(scalar_val, inp[hi])
 
         if hi > 0:
@@ -142,7 +142,7 @@ class SliceTest(test.TestCase):
         else:
           lo = 0
         slice_t = a[lo:hi]
-        slice_val = slice_t.eval()
+        slice_val = self.evaluate(slice_t)
         self.assertAllEqual(slice_val, inp[lo:hi])
 
   def testScalarInput(self):
@@ -195,7 +195,7 @@ class SliceTest(test.TestCase):
 
         x, y = np.random.randint(0, 3, size=2).tolist()
         slice_t = a[x, 0:y]
-        slice_val = slice_t.eval()
+        slice_val = self.evaluate(slice_t)
       self.assertAllEqual(slice_val, inp[x, 0:y])
 
   def testSimple(self):
@@ -282,7 +282,7 @@ class SliceTest(test.TestCase):
       grads = np.random.rand(num_grads).astype("f").reshape(slice_size)
       grad_tensor = constant_op.constant(grads)
       grad = gradients_impl.gradients(slice_t, [a], grad_tensor)[0]
-      result = grad.eval()
+      result = self.evaluate(grad)
 
     # Create a zero tensor of the input shape ane place
     # the grads into the right location to compare against TensorFlow.
@@ -368,7 +368,7 @@ class SliceTest(test.TestCase):
       c = b[:-1, :]
       d = c[1, :]
       res = 2 * d - c[1, :] + a[2, :] - 2 * b[-2, :]
-      self.assertAllEqual([0, 0, 0], res.eval())
+      self.assertAllEqual([0, 0, 0], self.evaluate(res))
 
 
 if __name__ == "__main__":

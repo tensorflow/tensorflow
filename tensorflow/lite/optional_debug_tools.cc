@@ -44,6 +44,8 @@ const char* TensorTypeName(TfLiteType type) {
       return "kTfLiteInt32";
     case kTfLiteUInt8:
       return "kTfLiteUInt8";
+    case kTfLiteInt8:
+      return "kTfLiteInt8";
     case kTfLiteInt64:
       return "kTfLiteInt64";
     case kTfLiteString:
@@ -83,26 +85,27 @@ void PrintInterpreterState(Interpreter* interpreter) {
   printf("Outputs:");
   PrintIntVector(interpreter->outputs());
   printf("\n");
-  for (int tensor_index = 0; tensor_index < interpreter->tensors_size();
+  for (size_t tensor_index = 0; tensor_index < interpreter->tensors_size();
        tensor_index++) {
-    TfLiteTensor* tensor = interpreter->tensor(tensor_index);
-    printf("Tensor %3d %-20s %10s %15s %10zu bytes (%4.1f MB) ", tensor_index,
+    TfLiteTensor* tensor = interpreter->tensor(static_cast<int>(tensor_index));
+    printf("Tensor %3zu %-20s %10s %15s %10zu bytes (%4.1f MB) ", tensor_index,
            tensor->name, TensorTypeName(tensor->type),
            AllocTypeName(tensor->allocation_type), tensor->bytes,
            (static_cast<float>(tensor->bytes) / (1 << 20)));
     PrintTfLiteIntVector(tensor->dims);
   }
   printf("\n");
-  for (int node_index = 0; node_index < interpreter->nodes_size();
+  for (size_t node_index = 0; node_index < interpreter->nodes_size();
        node_index++) {
     const std::pair<TfLiteNode, TfLiteRegistration>* node_and_reg =
-        interpreter->node_and_registration(node_index);
+        interpreter->node_and_registration(static_cast<int>(node_index));
     const TfLiteNode& node = node_and_reg->first;
     const TfLiteRegistration& reg = node_and_reg->second;
     if (reg.custom_name != nullptr) {
-      printf("Node %3d Operator Custom Name %s\n", node_index, reg.custom_name);
+      printf("Node %3zu Operator Custom Name %s\n", node_index,
+             reg.custom_name);
     } else {
-      printf("Node %3d Operator Builtin Code %3d\n", node_index,
+      printf("Node %3zu Operator Builtin Code %3d\n", node_index,
              reg.builtin_code);
     }
     printf("  Inputs:");

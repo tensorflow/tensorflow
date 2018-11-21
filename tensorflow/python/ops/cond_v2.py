@@ -25,15 +25,15 @@ from __future__ import print_function
 
 import collections
 
-from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.util import nest
+
 
 # NOTE(skyewm): TensorFlow uses protected class methods and fields to signify
 # that they aren't part of the official public API. These protected members
@@ -108,23 +108,8 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
                                          false_graph.outputs),
         name=scope)
 
-    # Set the flag to enable lowering on the `if` op if necessary
-    # Lowering allows cond_v2 to avoid some of the limitations of Functions,
-    # allowing users to specify devices & colocation inside of cond_v2 branches,
-    # and enabling non-strict evaluation & partial pruning of cond_v2 branches.
-    # This brings cond_v2 closer to feature parity with tf.cond.
-    #
-    # However, we do not lower `If` in the XLA context because it is easier for
-    # XLA to apply its own optimizations when dealing with un-lowered `If`
-    # operators than with lowered switch/merge control flow.
-    #
     # TODO(b/110167197) this approach requires cond_v2 to have at least 1 output
-    if_op = tensors[0].op
-    if not control_flow_util.IsInXLAContext(if_op):
-      # pylint: disable=protected-access
-      if_op._set_attr("_lower_using_switch_merge",
-                      attr_value_pb2.AttrValue(b=True))
-      # pylint: enable=protected-access
+    util.maybe_set_lowering_attr(tensors[0].op)
 
     # Return identities for each output of the If op, rather than the output of
     # the If op directly. This makes pruning work if the output of cond() is
@@ -136,11 +121,8 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
     # correct output structure
     tensors = tuple(array_ops.identity(t) for t in tensors)
 
-    result = tuple(tensors[:num_cond_outputs])
-    if len(result) == 1:
-      return result[0]
-    else:
-      return result
+    return func_graph_module.pack_sequence_as(true_graph.structured_outputs,
+                                              tensors[:num_cond_outputs])
 
 
 @ops.RegisterGradient("If")
@@ -198,6 +180,11 @@ def _IfGrad(op, *grads):  # pylint: disable=invalid-name
       util.create_new_tf_function(false_grad_graph),
       output_shapes=_get_output_shapes(true_grad_graph.outputs,
                                        false_grad_graph.outputs))
+
+  util.maybe_set_lowering_attr(tensors[0].op)
+
+  # See comment in cond_v2.
+  tensors = [array_ops.identity(t) for t in tensors]
 
   # The predicate has no gradient.
   return [None] + tensors[:num_grad_outputs]
@@ -462,11 +449,19 @@ def _check_same_outputs(true_graph, false_graph):
   false_output_types = [t.dtype for t in false_graph.outputs]
   if (len(true_graph.outputs) != len(false_graph.outputs) or
       true_output_types != false_output_types):
-    raise ValueError(
+    raise TypeError(
         "true_fn() and false_fn() must return the same number and type of "
         "arguments, got:\n"
         "  true_fn: %s\n"
         "  false_fn: %s" % (true_output_types, false_output_types))
+
+  # Make sure `structured_outputs` for both graphs have the same structure.
+  try:
+    nest.assert_same_structure(true_graph.structured_outputs,
+                               false_graph.structured_outputs)
+  except (ValueError, TypeError) as e:
+    raise ValueError("Outputs of true_fn and false_fn must have the same "
+                     "structure: %s" % str(e))
 
 
 def _get_output_shapes(true_graph_outputs, false_graph_outputs):

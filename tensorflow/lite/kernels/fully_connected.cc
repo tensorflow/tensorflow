@@ -117,7 +117,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Note that quantized inference requires that all tensors have their
   // parameters set. This is usually done during quantized training.
   TfLiteType data_type = input->type;
-  if (data_type != kTfLiteFloat32) {
+  if (data_type != kTfLiteFloat32 && data_type != kTfLiteInt32) {
     double real_multiplier = 0.0;
     TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
         context, input, filter, bias, output, &real_multiplier));

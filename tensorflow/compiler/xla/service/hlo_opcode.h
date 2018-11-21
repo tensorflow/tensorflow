@@ -83,6 +83,7 @@ namespace xla {
   V(kFusion, "fusion", kHloOpcodeIsVariadic)                 \
   V(kGather, "gather")                                       \
   V(kGe, "greater-than-or-equal-to", kHloOpcodeIsComparison) \
+  V(kGetDimensionSize, "get-dimension-size")                 \
   V(kAfterAll, "after-all", kHloOpcodeIsVariadic)            \
   V(kGetTupleElement, "get-tuple-element")                   \
   V(kGt, "greater-than", kHloOpcodeIsComparison)             \

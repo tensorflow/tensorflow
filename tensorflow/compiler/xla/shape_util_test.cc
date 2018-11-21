@@ -376,12 +376,12 @@ TEST(ShapeUtilTest, ByteSizeOfWithoutPadding) {
 }
 
 TEST(ShapeUtilTest, NilShape) {
-  EXPECT_TRUE(ShapeUtil::IsNil(ShapeUtil::MakeNil()));
-  EXPECT_FALSE(ShapeUtil::IsNil(ShapeUtil::MakeShape(F32, {1, 2, 3})));
-  EXPECT_FALSE(ShapeUtil::IsNil(ShapeUtil::MakeShape(F32, {0, 1})));
-  EXPECT_FALSE(ShapeUtil::IsNil(
+  EXPECT_TRUE(ShapeUtil::IsEmptyTuple(ShapeUtil::MakeNil()));
+  EXPECT_FALSE(ShapeUtil::IsEmptyTuple(ShapeUtil::MakeShape(F32, {1, 2, 3})));
+  EXPECT_FALSE(ShapeUtil::IsEmptyTuple(ShapeUtil::MakeShape(F32, {0, 1})));
+  EXPECT_FALSE(ShapeUtil::IsEmptyTuple(
       ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(S32, {})})));
-  EXPECT_FALSE(ShapeUtil::IsNil(
+  EXPECT_FALSE(ShapeUtil::IsEmptyTuple(
       ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {0})})));
 }
 

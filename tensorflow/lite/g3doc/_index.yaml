@@ -182,35 +182,41 @@ landing_page:
     background: grey
     heading: Updates
     items:
-    - heading: Introducing the Model Optimization Toolkit
-      image_path: /ecosystem/images/tf-logo-card-16x9.png
+    - heading: "AI in motion: react in the real world"
+      image_path: ./images/landing-page/ai_in_motion.png
+      path: https://cloud.google.com/blog/products/ai-machine-learning/ai-motion-designing-simple-system-see-understand-and-react-real-world-part-ii
+      buttons:
+      - label: Read more
+        path: https://cloud.google.com/blog/products/ai-machine-learning/ai-motion-designing-simple-system-see-understand-and-react-real-world-part-ii
+    - heading: "Introducing the Model Optimization Toolkit"
+      image_path: /resources/images/tf-logo-card-16x9.png
       path: https://medium.com/tensorflow/introducing-the-model-optimization-toolkit-for-tensorflow-254aca1ba0a3
       buttons:
       - label: Read on TensorFlow blog
         path: https://medium.com/tensorflow/introducing-the-model-optimization-toolkit-for-tensorflow-254aca1ba0a3
-    - heading: East Africa Cassava App
+    - heading: "East Africa Cassava App"
       image_path: ./images/landing-page/detect_crop_disease_in_africa.png
       path: https://heartbeat.fritz.ai/community-spotlight-nuru-a-mobile-app-by-plantvillage-to-detect-crop-disease-in-africa-28d142bf63d5
       buttons:
       - label: Read more
         path: https://heartbeat.fritz.ai/community-spotlight-nuru-a-mobile-app-by-plantvillage-to-detect-crop-disease-in-africa-28d142bf63d5
-    - heading: Using TensorFlow Lite on Android
-      image_path: /ecosystem/images/tf-logo-card-16x9.png
-      path: https://medium.com/tensorflow/using-tensorflow-lite-on-android-9bbc9cb7d69d
-      buttons:
-      - label: Read on TensorFlow blog
-        path: https://medium.com/tensorflow/using-tensorflow-lite-on-android-9bbc9cb7d69d
 
   - classname: devsite-landing-row-cards
     background: grey
     items:
-    - heading: TensorFlow Lite at the Dev Summit
+    - heading: "Using TensorFlow Lite on Android"
+      image_path: /resources/images/tf-logo-card-16x9.png
+      path: https://medium.com/tensorflow/using-tensorflow-lite-on-android-9bbc9cb7d69d
+      buttons:
+      - label: Read on TensorFlow blog
+        path: https://medium.com/tensorflow/using-tensorflow-lite-on-android-9bbc9cb7d69d
+    - heading: "TensorFlow Lite at the Dev Summit"
       youtube_id: FAMfy7izB6A
       buttons:
       - label: Watch the video
         path: https://www.youtube.com/watch?v=FAMfy7izB6A
-    - heading: TensorFlow Lite on GitHub
-      image_path: /ecosystem/images/github-card-16x9.png
+    - heading: "TensorFlow Lite on GitHub"
+      image_path: /resources/images/github-card-16x9.png
       path: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite
       buttons:
       - label: View on GitHub

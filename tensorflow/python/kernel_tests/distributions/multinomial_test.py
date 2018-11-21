@@ -127,7 +127,7 @@ class MultinomialTest(test.TestCase):
       p = [0.5, 0.5]
       counts = [1., 0]
       pmf = multinomial.Multinomial(total_count=1., probs=p).prob(counts)
-      self.assertAllClose(0.5, pmf.eval())
+      self.assertAllClose(0.5, self.evaluate(pmf))
       self.assertEqual((), pmf.get_shape())
 
   def testPmfBothZeroBatchesNontrivialN(self):
@@ -138,7 +138,7 @@ class MultinomialTest(test.TestCase):
       dist = multinomial.Multinomial(total_count=5., probs=p)
       pmf = dist.prob(counts)
       # 5 choose 3 = 5 choose 2 = 10. 10 * (.9)^2 * (.1)^3 = 81/10000.
-      self.assertAllClose(81. / 10000, pmf.eval())
+      self.assertAllClose(81. / 10000, self.evaluate(pmf))
       self.assertEqual((), pmf.get_shape())
 
   def testPmfPStretchedInBroadcastWhenSameRank(self):
@@ -146,7 +146,7 @@ class MultinomialTest(test.TestCase):
       p = [[0.1, 0.9]]
       counts = [[1., 0], [0, 1]]
       pmf = multinomial.Multinomial(total_count=1., probs=p).prob(counts)
-      self.assertAllClose([0.1, 0.9], pmf.eval())
+      self.assertAllClose([0.1, 0.9], self.evaluate(pmf))
       self.assertEqual((2), pmf.get_shape())
 
   def testPmfPStretchedInBroadcastWhenLowerRank(self):
@@ -154,7 +154,7 @@ class MultinomialTest(test.TestCase):
       p = [0.1, 0.9]
       counts = [[1., 0], [0, 1]]
       pmf = multinomial.Multinomial(total_count=1., probs=p).prob(counts)
-      self.assertAllClose([0.1, 0.9], pmf.eval())
+      self.assertAllClose([0.1, 0.9], self.evaluate(pmf))
       self.assertEqual((2), pmf.get_shape())
 
   def testPmfCountsStretchedInBroadcastWhenSameRank(self):
@@ -182,7 +182,7 @@ class MultinomialTest(test.TestCase):
       # [2]
       counts = [2., 1]
       pmf = multinomial.Multinomial(total_count=n, probs=p).prob(counts)
-      pmf.eval()
+      self.evaluate(pmf)
       self.assertEqual(pmf.get_shape(), (2, 2))
 
   def testPmfShapeCountsPStretchedN(self):
@@ -191,7 +191,7 @@ class MultinomialTest(test.TestCase):
       counts = [3., 2]
       n = np.full([4, 3], 5., dtype=np.float32)
       pmf = multinomial.Multinomial(total_count=n, probs=p).prob(counts)
-      pmf.eval()
+      self.evaluate(pmf)
       self.assertEqual((4, 3), pmf.get_shape())
 
   def testMultinomialMean(self):

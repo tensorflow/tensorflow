@@ -174,6 +174,11 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
           batch_component_shape.AppendShape(first_element.shape());
           out_tensors->emplace_back(ctx->allocator({}), first_element.dtype(),
                                     batch_component_shape);
+          if (!out_tensors->back().IsInitialized()) {
+            return errors::ResourceExhausted(
+                "Failed to allocate memory for the batch of component ",
+                component_index);
+          }
           Tensor& batch_component = out_tensors->back();
           // Build the output tuple component by copying one slice
           // from each input element in the batch.

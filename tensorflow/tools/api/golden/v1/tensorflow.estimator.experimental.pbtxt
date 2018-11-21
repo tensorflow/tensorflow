@@ -16,4 +16,12 @@ tf_module {
     name: "linear_logit_fn_builder"
     argspec: "args=[\'units\', \'feature_columns\', \'sparse_combiner\'], varargs=None, keywords=None, defaults=[\'sum\'], "
   }
+  member_method {
+    name: "make_early_stopping_hook"
+    argspec: "args=[\'estimator\', \'should_stop_fn\', \'run_every_secs\', \'run_every_steps\'], varargs=None, keywords=None, defaults=[\'60\', \'None\'], "
+  }
+  member_method {
+    name: "stop_if_higher_hook"
+    argspec: "args=[\'estimator\', \'metric_name\', \'threshold\', \'eval_dir\', \'min_steps\', \'run_every_secs\', \'run_every_steps\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'60\', \'None\'], "
+  }
 }

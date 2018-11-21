@@ -147,8 +147,7 @@ tensorflow::Status ConvertGraphDefToEngine(
     const std::vector<tensorflow::PartialTensorShape>& input_shapes,
     Logger* logger, nvinfer1::IGpuAllocator* allocator,
     TRTInt8Calibrator* calibrator,
-    TrtUniquePtrType<nvinfer1::ICudaEngine>* engine,
-    bool use_calibration,
+    TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     bool* convert_successfully);
 
 // Helper class for the segmenter to determine whether an output edge from the
@@ -395,8 +394,7 @@ class TrtNodeValidator {
 // Class to convert TF nodes to TRT network.
 class Converter {
  public:
-  Converter(nvinfer1::INetworkDefinition* trt_network,
-            int precision_mode,
+  Converter(nvinfer1::INetworkDefinition* trt_network, int precision_mode,
             bool use_calibration);
 
   //////////////////////////////////////////////////////////////////////////////
@@ -442,12 +440,12 @@ class Converter {
   // This function should be called when we know the quantization range of a
   // tensor, either from a quantize/dequantize node or when the output is a
   // fixed range (e.g. SoftMax, Relu6, Sigmoid).
-  void ProvideQuantizationRange(nvinfer1::ITensor* tensor,
-                                float min_range, float max_range);
+  void ProvideQuantizationRange(nvinfer1::ITensor* tensor, float min_range,
+                                float max_range);
 
   // Should be called when full TRT network has been constructed and before
   // building the engine.
-  void ApplyQuantizationRanges(bool warn_missing_ranges);
+  void MaybeApplyQuantizationRanges();
 
   // Below are helper methods for op converters to add different layers to the
   // TRT network.
@@ -463,6 +461,13 @@ class Converter {
   Status PrepareTensorForShape(const TRT_TensorOrWeights& input,
                                const nvinfer1::Dims& dims,
                                const nvinfer1::ITensor** tensor);
+
+  // Return OK if the broadcast scheme is supported and compute the shapes after
+  // broadcasting.
+  Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
+                              const TRT_TensorOrWeights& operand_r,
+                              nvinfer1::Dims* operand_l_new_dims,
+                              nvinfer1::Dims* operand_r_new_dims) const;
 
  private:
   // Verify the provided batch_size is consistent with batch_size_ and update it
@@ -482,10 +487,10 @@ class Converter {
   void RegisterOpConverters();
 
   void PropagateQuantizationRanges();
-  
+
   // Gets the min and max value in a TRT_ShapedWeights
-  Status GetWeightRange(const TRT_ShapedWeights& weights,
-                        float* out_min, float* out_max) const;
+  Status GetWeightRange(const TRT_ShapedWeights& weights, float* out_min,
+                        float* out_max) const;
 
   // Registered op converters by op type.
   std::unordered_map<string, OpConverter> op_registry_;
@@ -503,7 +508,7 @@ class Converter {
   TrtWeightStore weight_store_;
 
   // During conversion, this table is populated with quantization ranges per
-  // tensor. ApplyQuantizationRanges() will use this table to set the TensorRT
+  // tensor. MaybeApplyQuantizationRanges() will use this table to set the TRT
   // quantization ranges. Since TRT only supports symmetric ranges, we will
   // store the range as a single float = max(abs(min_range), abs(max_range)).
   // Range refers to the floating point values, e.g. min_range = 0.0f, max_range
@@ -514,8 +519,8 @@ class Converter {
   // first tensor to second tensor. PropagateQuantizationRanges() will propagate
   // known ranges from quantization_ranges_ across these edges, adding the new
   // ranges to quantization_ranges_ so that they can be applied in
-  // ApplyQuantizationRanges().
-  std::vector<std::pair<nvinfer1::ITensor*,nvinfer1::ITensor*>>
+  // MaybeApplyQuantizationRanges().
+  std::vector<std::pair<nvinfer1::ITensor*, nvinfer1::ITensor*>>
       quantization_infer_;
 
   const int precision_mode_;

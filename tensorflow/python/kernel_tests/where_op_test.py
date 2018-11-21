@@ -41,11 +41,11 @@ class WhereOpTest(test.TestCase):
       ans = array_ops.where(x)
       self.assertEqual([None, x.ndim], ans.get_shape().as_list())
       if expected_err_re is None:
-        tf_ans = ans.eval()
+        tf_ans = self.evaluate(ans)
         self.assertAllClose(tf_ans, truth, atol=1e-10)
       else:
         with self.assertRaisesOpError(expected_err_re):
-          ans.eval()
+          self.evaluate(ans)
 
   def testWrongNumbers(self):
     with self.session(use_gpu=True):

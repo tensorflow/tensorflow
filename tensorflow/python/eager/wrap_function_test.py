@@ -53,6 +53,23 @@ class WrapFunctionTest(test.TestCase):
     self.assertAllEqual(f_sub(1.0), 4.0)
     self.assertAllEqual(f_sub(1.0), 3.0)
 
+  def testPrune(self):
+
+    x_in = []
+    x_out = []
+
+    def f(x, y):
+      x_in.append(x)
+      xx = x * x
+      x_out.append(xx)
+      return xx, 2 * y*y
+
+    f_wrapped = wrap_function.wrap_function(
+        f, [tensor_spec.TensorSpec((), dtypes.float32)] * 2)
+
+    f_pruned = f_wrapped.prune(x_in[0], [x_out[0]])
+    self.assertAllEqual(f_pruned(ops.convert_to_tensor(2.0)), [4.0])
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

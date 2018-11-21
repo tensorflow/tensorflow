@@ -166,7 +166,7 @@ class PoolingTest(test.TestCase):
             strides_placeholder: strides
         })
       else:
-        actual = t.eval()
+        actual = self.evaluate(t)
         self.assertShapeEqual(actual, t)
       self.assertAllCloseAccordingToType(expected, actual.flatten())
 
@@ -750,11 +750,11 @@ class PoolingTest(test.TestCase):
       with self.cached_session(use_gpu=True):
         t = constant_op.constant(tensor_input, shape=input_shape)
         out_op, _ = nn_ops.max_pool_with_argmax(t, ksize, strides, padding)
-        gpu_val = out_op.eval()
+        gpu_val = self.evaluate(out_op)
       with self.cached_session(use_gpu=False):
         t = constant_op.constant(tensor_input, shape=input_shape)
         out_op = nn_ops.max_pool(t, ksize, strides, padding)
-        cpu_val = out_op.eval()
+        cpu_val = self.evaluate(out_op)
       self.assertAllCloseAccordingToType(cpu_val, gpu_val)
 
   def _CompareMaxPoolingBk(self, input_shape, output_shape, ksize, strides,
@@ -767,20 +767,20 @@ class PoolingTest(test.TestCase):
       with self.cached_session(use_gpu=True):
         t = constant_op.constant(tensor_input, shape=input_shape)
         _, argmax_op = nn_ops.max_pool_with_argmax(t, ksize, strides, padding)
-        argmax = argmax_op.eval()
+        argmax = self.evaluate(argmax_op)
         grad_in = constant_op.constant(tensor_output, shape=output_shape)
         out_op = gen_nn_ops.max_pool_grad_with_argmax(t, grad_in, argmax, ksize,
                                                       strides, padding)
-        gpu_val = out_op.eval()
+        gpu_val = self.evaluate(out_op)
         self.assertShapeEqual(gpu_val, out_op)
       with self.cached_session(use_gpu=False):
         t = constant_op.constant(tensor_input, shape=input_shape)
         out_op = nn_ops.max_pool(t, ksize, strides, padding)
-        orig_out = out_op.eval()
+        orig_out = self.evaluate(out_op)
         grad_in = constant_op.constant(tensor_output, shape=output_shape)
         out_op = gen_nn_ops.max_pool_grad(t, orig_out, grad_in, ksize, strides,
                                           padding)
-        cpu_val = out_op.eval()
+        cpu_val = self.evaluate(out_op)
         self.assertShapeEqual(cpu_val, out_op)
       # The CPU version accumulates its gradient on fp16, so it's less
       # accurate than the GPU version that does the accumulation on fp32
@@ -796,20 +796,20 @@ class PoolingTest(test.TestCase):
       with self.cached_session(use_gpu=True):
         t = constant_op.constant(tensor_input, shape=input_shape)
         _, argmax_op = nn_ops.max_pool_with_argmax(t, ksize, strides, padding)
-        argmax = argmax_op.eval()
+        argmax = self.evaluate(argmax_op)
         grad_in = constant_op.constant(tensor_input, shape=input_shape)
         out_op = gen_nn_ops.max_pool_grad_grad_with_argmax(
             t, grad_in, argmax, ksize, strides, padding)
-        gpu_val = out_op.eval()
+        gpu_val = self.evaluate(out_op)
         self.assertShapeEqual(gpu_val, out_op)
       with self.cached_session(use_gpu=False):
         t = constant_op.constant(tensor_input, shape=input_shape)
         out_op = nn_ops.max_pool(t, ksize, strides, padding)
-        orig_out = out_op.eval()
+        orig_out = self.evaluate(out_op)
         grad_in = constant_op.constant(tensor_input, shape=input_shape)
         out_op = gen_nn_ops.max_pool_grad_grad(t, orig_out, grad_in, ksize,
                                                strides, padding)
-        cpu_val = out_op.eval()
+        cpu_val = self.evaluate(out_op)
         self.assertShapeEqual(cpu_val, out_op)
       # The CPU version accumulates its gradient on fp16, so it's less
       # accurate than the GPU version that does the accumulation on fp32
@@ -848,7 +848,7 @@ class PoolingTest(test.TestCase):
           ksize=[1, 2, 2, 1],
           strides=[1, 1, 1, 1],
           padding="VALID")
-      out = out_op.eval().flatten()
+      out = self.evaluate(out_op).flatten()
       self.assertAllClose(out,
                           [11.0, 12.0, 0.0, 13.0, 0.0, 14.0, 0.0, 0.0, 0.0])
 
@@ -871,7 +871,7 @@ class PoolingTest(test.TestCase):
           ksize=[1, 2, 2, 1],
           strides=[1, 1, 1, 1],
           padding="VALID")
-      out = out_op.eval().flatten()
+      out = self.evaluate(out_op).flatten()
       self.assertAllClose(out, [11.0, 12.0, 14.0, 16.0])
 
   def _ConstructAndTestGradient(self,
@@ -1221,12 +1221,12 @@ class PoolingTest(test.TestCase):
           input_tensor, output_tensor, output_backprop_tensor, window_rows,
           window_cols, row_stride, col_stride, padding, v2)
 
-      actual_input_backprop = input_backprop_tensor.eval()
+      actual_input_backprop = self.evaluate(input_backprop_tensor)
       self.assertShapeEqual(actual_input_backprop, input_backprop_tensor)
       actual_input_backprop = actual_input_backprop.flatten()
       actual_input_backprop = self._GetNdArray(actual_input_backprop)
 
-      actual_output = output_tensor.eval().flatten()
+      actual_output = self.evaluate(output_tensor).flatten()
       actual_output = self._GetNdArray(actual_output)
 
       self.assertAllClose(

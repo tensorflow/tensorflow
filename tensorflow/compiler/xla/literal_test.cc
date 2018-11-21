@@ -133,7 +133,7 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
 
 TEST_F(LiteralUtilTest, LiteralVectorToString) {
   auto pred_vec = LiteralUtil::CreateR1<bool>({true, false, true});
-  EXPECT_EQ("{101}", pred_vec.ToString());
+  EXPECT_EQ("{1, 0, 1}", pred_vec.ToString());
 }
 
 TEST_F(LiteralUtilTest, R2ToString) {
@@ -150,12 +150,58 @@ TEST_F(LiteralUtilTest, R3ToString) {
   const auto literal =
       LiteralUtil::CreateR3({{{1}, {2}}, {{3}, {4}}, {{5}, {6}}});
   const string expected = R"(s32[3,2,1] {
-{ { 1 },
-  { 2 } },
-{ { 3 },
-  { 4 } },
-{ { 5 },
-  { 6 } }
+{
+  {1},
+  {2}
+},
+{
+  {3},
+  {4}
+},
+{
+  {5},
+  {6}
+}
+})";
+  EXPECT_EQ(expected, literal.ToString());
+}
+
+TEST_F(LiteralUtilTest, R6ToString) {
+  const auto literal =
+      LiteralUtil::CreateFromDimensions(S32, {2, 2, 1, 1, 1, 2});
+  const string expected = R"(s32[2,2,1,1,1,2] {
+{ /*i0=0*/
+{ /*i1=0*/
+{ /*i2=0*/
+{ /*i3=0*/
+  { 0, 0 }
+}
+}
+},
+{ /*i1=1*/
+{ /*i2=0*/
+{ /*i3=0*/
+  { 0, 0 }
+}
+}
+}
+},
+{ /*i0=1*/
+{ /*i1=0*/
+{ /*i2=0*/
+{ /*i3=0*/
+  { 0, 0 }
+}
+}
+},
+{ /*i1=1*/
+{ /*i2=0*/
+{ /*i3=0*/
+  { 0, 0 }
+}
+}
+}
+}
 })";
   EXPECT_EQ(expected, literal.ToString());
 }
@@ -190,12 +236,16 @@ TEST_F(LiteralUtilTest, CreateR3FromArray3d) {
   EXPECT_THAT(literal.shape().dimensions(), ElementsAre(2, 3, 2));
   string result = literal.ToString();
   const string expected = R"(f32[2,3,2] {
-{ { 1, 2 },
+{
+  { 1, 2 },
   { 3, 4 },
-  { 5, 6 } },
-{ { 7, 8 },
+  { 5, 6 }
+},
+{
+  { 7, 8 },
   { 9, 10 },
-  { 11, 12 } }
+  { 11, 12 }
+}
 })";
   EXPECT_EQ(expected, result);
 }
@@ -247,18 +297,18 @@ TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
   EXPECT_THAT(literal.shape().dimensions(), ElementsAre(1, 2, 3, 2));
   string result = literal.ToString();
   const string expected = R"(f32[1,2,3,2] {
-  {  /*i0=0*/
-    {  /*i1=0*/
-      {1, 2},
-      {1001, 1002},
-      {2001, 2002}
-    },
-    {  /*i1=1*/
-      {1, 2},
-      {1001, 1002},
-      {2001, 2002}
-    }
-  }
+{ /*i0=0*/
+{ /*i1=0*/
+  { 1, 2 },
+  { 1001, 1002 },
+  { 2001, 2002 }
+},
+{ /*i1=1*/
+  { 1, 2 },
+  { 1001, 1002 },
+  { 2001, 2002 }
+}
+}
 })";
   EXPECT_EQ(expected, result);
 }
@@ -268,30 +318,30 @@ TEST_F(LiteralUtilTest, LiteralR4F32Stringifies) {
               ElementsAre(2, 2, 3, 3));
   string result = literal_r4_2x2x3x3_dim0major_.ToString();
   const string expected = R"(f32[2,2,3,3] {
-  {  /*i0=0*/
-    {  /*i1=0*/
-      {1, 2, 3},
-      {4, 5, 6},
-      {7, 8, 9}
-    },
-    {  /*i1=1*/
-      {11, 12, 13},
-      {14, 15, 16},
-      {17, 18, 19}
-    }
-  },
-  {  /*i0=1*/
-    {  /*i1=0*/
-      {101, 102, 103},
-      {104, 105, 106},
-      {107, 108, 109}
-    },
-    {  /*i1=1*/
-      {201, 202, 203},
-      {204, 205, 206},
-      {207, 208, 209}
-    }
-  }
+{ /*i0=0*/
+{ /*i1=0*/
+  { 1, 2, 3 },
+  { 4, 5, 6 },
+  { 7, 8, 9 }
+},
+{ /*i1=1*/
+  { 11, 12, 13 },
+  { 14, 15, 16 },
+  { 17, 18, 19 }
+}
+},
+{ /*i0=1*/
+{ /*i1=0*/
+  { 101, 102, 103 },
+  { 104, 105, 106 },
+  { 107, 108, 109 }
+},
+{ /*i1=1*/
+  { 201, 202, 203 },
+  { 204, 205, 206 },
+  { 207, 208, 209 }
+}
+}
 })";
   EXPECT_EQ(expected, result);
 }
@@ -1394,6 +1444,28 @@ TEST_F(LiteralUtilTest, CopyFromProto_f16) {
   EXPECT_EQ(h1, r[3]);
 }
 
+TEST_F(LiteralUtilTest, CopyFromProto_u16) {
+  uint16 u1(0xabcd);
+  uint16 u2(0x1234);
+
+  const unsigned char uint16_vals[8] = {0xcd, 0xab, 0x34, 0x12,
+                                        0x34, 0x12, 0xcd, 0xab};
+  LiteralProto p;
+  p.mutable_shape()->set_element_type(U16);
+  p.mutable_shape()->clear_dimensions();
+  p.mutable_shape()->add_dimensions(4);
+  LayoutUtil::SetToDefaultLayout(p.mutable_shape());
+  p.clear_u16s();
+  p.set_u16s(uint16_vals, 8);
+  TF_ASSERT_OK_AND_ASSIGN(Literal literal, Literal::CreateFromProto(p));
+  auto r = literal.data<uint16>();
+  ASSERT_EQ(4, r.size());
+  EXPECT_EQ(u1, r[0]);
+  EXPECT_EQ(u2, r[1]);
+  EXPECT_EQ(u2, r[2]);
+  EXPECT_EQ(u1, r[3]);
+}
+
 TEST_F(LiteralUtilTest, LiteralSliceTest) {
   auto scalar = LiteralUtil::CreateR0<float>(1.0);
   auto matrix = LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
@@ -1515,9 +1587,9 @@ TEST_F(LiteralUtilTest, DecomposeTuple) {
   Literal nested_tuple = LiteralUtil::MakeTuple(
       {&tuple_elements[0], &tuple_elements[1], &nil_literal});
 
-  EXPECT_FALSE(ShapeUtil::IsNil(nested_tuple.shape()));
+  EXPECT_FALSE(ShapeUtil::IsEmptyTuple(nested_tuple.shape()));
   std::vector<Literal> elements = nested_tuple.DecomposeTuple();
-  EXPECT_TRUE(ShapeUtil::IsNil(nested_tuple.shape()));
+  EXPECT_TRUE(ShapeUtil::IsEmptyTuple(nested_tuple.shape()));
 
   ASSERT_EQ(elements.size(), 3);
 
@@ -1568,7 +1640,7 @@ TEST_F(LiteralUtilTest, MoveIntoTuple) {
   EXPECT_EQ(literal.Get<double>({1}, /*shape_index=*/{2, 1}), 44.0);
 
   for (const Literal& element : elements) {
-    EXPECT_TRUE(ShapeUtil::IsNil(element.shape()));
+    EXPECT_TRUE(ShapeUtil::IsEmptyTuple(element.shape()));
   }
 }
 

@@ -107,28 +107,19 @@ TEST(PreprocessForEncapsulationTest, ControlEdges) {
   identity4_node->AddAttr("_xla", "1");
   identity4_node->AddAttr("_oc", "0");
   identity5_node->AddAttr("_xla", "1");
-  // Case 1a: control edges between outside compilation and its XLA computation.
-  g.AddControlEdge(add_node, identity0_node);
-  g.AddControlEdge(identity0_node, identity1_node);
-  // Case 1b: control edges between outside compilation and another XLA
+  // Case 1a: control edges between outside compilation and another XLA
   // computation.
   g.AddControlEdge(identity0_node, identity3_node);
   g.AddControlEdge(identity1_node, identity4_node);
-  // Case 1c: control edges between different outside compilations.
+  // Case 1b: control edges between different outside compilations.
   g.AddControlEdge(identity0_node, identity4_node);
-  // Case 1d: control edges between outside compilation and host computation.
+  // Case 1c: control edges between outside compilation and host computation.
   g.AddControlEdge(const0_node, identity0_node);
   g.AddControlEdge(identity0_node, identity2_node);
 
   TF_CHECK_OK(PreprocessForEncapsulation(&g, "_xla", "_oc"));
 
-  // Case 1a: add attr "_xla_connected_{from/to}_xla_computation = true" to the
-  // outside compilation node.
-  EXPECT_TRUE(HasNodeAttr(identity0_node->def(),
-                          kXlaConnectedFromXlaComputationAttrName));
-  EXPECT_TRUE(HasNodeAttr(identity0_node->def(),
-                          kXlaConnectedToXlaComputationAttrName));
-  // Case 1b: add attr "_xla_control_deps_{from/to} = XLA computation node name"
+  // Case 1a: add attr "_xla_control_deps_{from/to} = XLA computation node name"
   // to the outside compilation node.
   std::vector<string> attr;
   TF_CHECK_OK(GetNodeAttr(identity0_node->def(),
@@ -140,13 +131,13 @@ TEST(PreprocessForEncapsulationTest, ControlEdges) {
                           kXlaConnectedFromOtherXlaComputationAttrName, &attr));
   EXPECT_EQ(attr.size(), 1);
   EXPECT_EQ(attr[0], "0");
-  // Case 1c: add attr "_xla_control_deps = src node name" to dst node.
+  // Case 1b: add attr "_xla_control_deps = src node name" to dst node.
   attr.clear();
   TF_CHECK_OK(GetNodeAttr(identity4_node->def(),
                           kXlaControlDependenciesAttrName, &attr));
   EXPECT_EQ(attr.size(), 1);
   EXPECT_EQ(attr[0], "identity0");
-  // Case 1d: add attr "_xla_control_deps = src node name" to dst node.
+  // Case 1c: add attr "_xla_control_deps = src node name" to dst node.
   attr.clear();
   TF_CHECK_OK(GetNodeAttr(identity0_node->def(),
                           kXlaControlDependenciesAttrName, &attr));

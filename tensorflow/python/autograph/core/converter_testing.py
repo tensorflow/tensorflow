@@ -30,6 +30,7 @@ from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import errors
 from tensorflow.python.autograph.core import function_wrapping
+from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
@@ -103,6 +104,7 @@ class TestCase(test.TestCase):
       fake_ag = self.make_fake_mod('fake_ag', converted_call,
                                    converter.ConversionOptions)
       fake_ag.__dict__.update(operators.__dict__)
+      fake_ag.__dict__.update(special_functions.__dict__)
       fake_ag.__dict__['utils'] = utils
       fake_ag.__dict__['rewrite_graph_construction_error'] = (
           errors.rewrite_graph_construction_error)

@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import functools
 import threading
 import warnings
 
@@ -25,6 +26,7 @@ import numpy as np
 import six
 
 from tensorflow.python.compat import compat
+from tensorflow.python.data.experimental.ops import stats_options
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import random_seed
@@ -51,17 +53,16 @@ from tensorflow.python.util import function_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("data.Dataset")
+@tf_export("data.Dataset", v1=[])
 @six.add_metaclass(abc.ABCMeta)
-class Dataset(object):
+class DatasetV2(object):
   """Represents a potentially large set of elements.
 
   A `Dataset` can be used to represent an input pipeline as a
   collection of elements (nested structures of tensors) and a "logical
+
   plan" of transformations that act on those elements.
   """
-  def __init__(self):
-    pass
 
   def _as_serialized_graph(self):
     """Produces serialized graph representation of the dataset.
@@ -88,25 +89,33 @@ class Dataset(object):
     raise NotImplementedError("Dataset._inputs")
 
   def options(self):
-    """Returns the options for this dataset.
+    """Returns the options for this dataset and its inputs.
 
     Returns:
       A `tf.data.Options` object representing the dataset options.
     """
+    options = Options()
     for input_dataset in self._inputs():
-      options = input_dataset.options()
-      if options is not None:
-        return options
-    return Options()
+      input_options = input_dataset.options()
+      if input_options is not None:
+        options = options.merge(input_options)
+    return options
 
   def _apply_options(self):
+    """Apply options, such as optimization configuration, to the dataset."""
+
     dataset = self
     options = self.options()
     static_optimizations = options._static_optimizations()  # pylint: disable=protected-access
     if static_optimizations:
       dataset = _OptimizeDataset(dataset, static_optimizations)
-    if options.experimental_autotune:
+    if options.experimental_autotune is not False:
       dataset = _ModelDataset(dataset)
+    if options.experimental_stats and options.experimental_stats.aggregator:  # pylint: disable=line-too-long
+      dataset = _SetStatsAggregatorDataset(  # pylint: disable=protected-access
+          dataset, options.experimental_stats.aggregator,
+          options.experimental_stats.prefix,
+          options.experimental_stats.counter_prefix)
     return dataset
 
   def make_initializable_iterator(self, shared_name=None):
@@ -192,6 +201,7 @@ class Dataset(object):
     # a 0-argument function.
     @function.Defun(capture_by_value=True)
     def _make_dataset():
+      """Factory function for a dataset."""
       # NOTE(mrry): `Defun` does not capture the graph-level seed from the
       # enclosing graph, so if a graph-level seed is present we set the local
       # graph seed based on a combination of the graph- and op-level seeds.
@@ -299,19 +309,6 @@ class Dataset(object):
       Dataset: A `Dataset`.
     """
     return TensorSliceDataset(tensors)
-
-  @staticmethod
-  @deprecation.deprecated(None, "Use `tf.data.Dataset.from_tensor_slices()`.")
-  def from_sparse_tensor_slices(sparse_tensor):
-    """Splits each rank-N `tf.SparseTensor` in this dataset row-wise.
-
-    Args:
-      sparse_tensor: A `tf.SparseTensor`.
-
-    Returns:
-      Dataset: A `Dataset` of rank-(N-1) sparse tensors.
-    """
-    return SparseTensorSliceDataset(sparse_tensor)
 
   class _GeneratorState(object):
     """Stores outstanding iterators created from a Python generator.
@@ -424,7 +421,7 @@ class Dataset(object):
     flattened_types = [dtypes.as_dtype(dt) for dt in nest.flatten(output_types)]
     flattened_shapes = nest.flatten(output_shapes)
 
-    generator_state = Dataset._GeneratorState(generator)
+    generator_state = DatasetV2._GeneratorState(generator)
 
     def get_iterator_id_fn(unused_dummy):
       """Creates a unique `iterator_id` for each pass over the dataset.
@@ -1206,7 +1203,7 @@ class Dataset(object):
           dataset.
     """
     dataset = transformation_func(self)
-    if not isinstance(dataset, Dataset):
+    if not isinstance(dataset, DatasetV2):
       raise TypeError("`transformation_func` must return a Dataset.")
     dataset._input_datasets = [self]  # pylint: disable=protected-access
     return dataset
@@ -1390,6 +1387,188 @@ class Dataset(object):
     return _OptionsDataset(self, options)
 
 
+@tf_export(v1=["data.Dataset"])
+class DatasetV1(DatasetV2):
+  """Represents a potentially large set of elements.
+
+  A `Dataset` can be used to represent an input pipeline as a
+  collection of elements (nested structures of tensors) and a "logical
+  plan" of transformations that act on those elements.
+  """
+
+  def __init__(self):
+    pass
+
+  @staticmethod
+  @functools.wraps(DatasetV2.from_tensors)
+  def from_tensors(tensors):
+    return DatasetV1Adapter(DatasetV2.from_tensors(tensors))
+
+  @staticmethod
+  @functools.wraps(DatasetV2.from_tensor_slices)
+  def from_tensor_slices(tensors):
+    return DatasetV1Adapter(DatasetV2.from_tensor_slices(tensors))
+
+  @staticmethod
+  @deprecation.deprecated(None, "Use `tf.data.Dataset.from_tensor_slices()`.")
+  def from_sparse_tensor_slices(sparse_tensor):
+    """Splits each rank-N `tf.SparseTensor` in this dataset row-wise.
+
+    Args:
+      sparse_tensor: A `tf.SparseTensor`.
+
+    Returns:
+      Dataset: A `Dataset` of rank-(N-1) sparse tensors.
+    """
+    return DatasetV1Adapter(SparseTensorSliceDataset(sparse_tensor))
+
+  @staticmethod
+  @functools.wraps(DatasetV2.from_generator)
+  def from_generator(generator, output_types, output_shapes=None, args=None):
+    return DatasetV1Adapter(DatasetV2.from_generator(
+        generator, output_types, output_shapes, args))
+
+  @staticmethod
+  @functools.wraps(DatasetV2.range)
+  def range(*args):
+    return DatasetV1Adapter(DatasetV2.range(*args))
+
+  @staticmethod
+  @functools.wraps(DatasetV2.zip)
+  def zip(datasets):
+    return DatasetV1Adapter(DatasetV2.zip(datasets))
+
+  @functools.wraps(DatasetV2.concatenate)
+  def concatenate(self, dataset):
+    return DatasetV1Adapter(super(DatasetV1, self).concatenate(dataset))
+
+  @functools.wraps(DatasetV2.prefetch)
+  def prefetch(self, buffer_size):
+    return DatasetV1Adapter(super(DatasetV1, self).prefetch(buffer_size))
+
+  @staticmethod
+  @functools.wraps(DatasetV2.list_files)
+  def list_files(file_pattern, shuffle=None, seed=None):
+    return DatasetV1Adapter(DatasetV2.list_files(file_pattern, shuffle, seed))
+
+  @functools.wraps(DatasetV2.repeat)
+  def repeat(self, count=None):
+    return DatasetV1Adapter(super(DatasetV1, self).repeat(count))
+
+  @functools.wraps(DatasetV2.shuffle)
+  def shuffle(self, buffer_size, seed=None, reshuffle_each_iteration=None):
+    return DatasetV1Adapter(super(DatasetV1, self).shuffle(
+        buffer_size, seed, reshuffle_each_iteration))
+
+  @functools.wraps(DatasetV2.cache)
+  def cache(self, filename=""):
+    return DatasetV1Adapter(super(DatasetV1, self).cache(filename))
+
+  @functools.wraps(DatasetV2.take)
+  def take(self, count):
+    return DatasetV1Adapter(super(DatasetV1, self).take(count))
+
+  @functools.wraps(DatasetV2.skip)
+  def skip(self, count):
+    return DatasetV1Adapter(super(DatasetV1, self).skip(count))
+
+  @functools.wraps(DatasetV2.shard)
+  def shard(self, num_shards, index):
+    return DatasetV1Adapter(super(DatasetV1, self).shard(num_shards, index))
+
+  @functools.wraps(DatasetV2.batch)
+  def batch(self, batch_size, drop_remainder=False):
+    return DatasetV1Adapter(super(DatasetV1, self).batch(
+        batch_size, drop_remainder))
+
+  @functools.wraps(DatasetV2.padded_batch)
+  def padded_batch(self,
+                   batch_size,
+                   padded_shapes,
+                   padding_values=None,
+                   drop_remainder=False):
+    return DatasetV1Adapter(super(DatasetV1, self).padded_batch(
+        batch_size, padded_shapes, padding_values, drop_remainder))
+
+  @functools.wraps(DatasetV2.map)
+  def map(self, map_func, num_parallel_calls=None):
+    return DatasetV1Adapter(super(DatasetV1, self).map(
+        map_func, num_parallel_calls))
+
+  @functools.wraps(DatasetV2.flat_map)
+  def flat_map(self, map_func):
+    return DatasetV1Adapter(super(DatasetV1, self).flat_map(map_func))
+
+  @functools.wraps(DatasetV2.interleave)
+  def interleave(self,
+                 map_func,
+                 cycle_length,
+                 block_length=1,
+                 num_parallel_calls=None):
+    return DatasetV1Adapter(super(DatasetV1, self).interleave(
+        map_func, cycle_length, block_length, num_parallel_calls))
+
+  @functools.wraps(DatasetV2.filter)
+  def filter(self, predicate):
+    return DatasetV1Adapter(super(DatasetV1, self).filter(predicate))
+
+  @functools.wraps(DatasetV2.apply)
+  def apply(self, transformation_func):
+    return DatasetV1Adapter(super(DatasetV1, self).apply(transformation_func))
+
+  @functools.wraps(DatasetV2.window)
+  def window(self, size, shift=None, stride=1, drop_remainder=False):
+    return DatasetV1Adapter(super(DatasetV1, self).window(
+        size, shift, stride, drop_remainder))
+
+  @functools.wraps(DatasetV2.with_options)
+  def with_options(self, options):
+    return DatasetV1Adapter(super(DatasetV1, self).with_options(options))
+
+
+# TODO(b/119044825): Until all `tf.data` unit tests are converted to V2, keep
+# this alias in place.
+Dataset = DatasetV1
+
+
+class DatasetV1Adapter(DatasetV1):
+  """Wraps a V2 `Dataset` object in the `tf.compat.v1.data.Dataset` API."""
+
+  def __init__(self, dataset):
+    super(DatasetV1Adapter, self).__init__()
+    self._dataset = dataset
+
+  def _as_variant_tensor(self):
+    return self._dataset._as_variant_tensor()  # pylint: disable=protected-access
+
+  def _inputs(self):
+    return self._dataset._inputs()  # pylint: disable=protected-access
+
+  def options(self):
+    return self._dataset.options()
+
+  @property
+  def output_classes(self):
+    return self._dataset.output_classes
+
+  @property
+  def output_shapes(self):
+    return self._dataset.output_shapes
+
+  @property
+  def output_types(self):
+    return self._dataset.output_types
+
+  def make_initializable_iterator(self, shared_name=None):
+    return self._dataset.make_initializable_iterator(shared_name)
+
+  def __iter__(self):
+    return iter(self._dataset)
+
+  def make_one_shot_iterator(self):
+    return self._dataset.make_one_shot_iterator()
+
+
 @tf_export("data.Options")
 class Options(object):
   """Represents options for tf.data.Dataset.
@@ -1410,8 +1589,8 @@ class Options(object):
       ("experimental_hoist_random_uniform", bool,
        "Whether to hoist `tf.random_uniform()` ops out of map transformations."
       ),
-      ("experimental_latency_all_edges", bool,
-       "Whether to add latency measurements on all edges."),
+      ("experimental_stats", stats_options.StatsOptions,
+       "Associate the given statistics options with the dataset pipeline."),
       ("experimental_map_and_batch_fusion", bool,
        "Whether to fuse map and batch transformations."),
       ("experimental_map_and_filter_fusion", bool,
@@ -1441,8 +1620,8 @@ class Options(object):
       def setter(self, value):
         if not isinstance(value, ty):
           raise TypeError(
-              "Attempting to set the option %s to incompatible value: %r" %
-              (name, value))
+              "Attempting to set the option %s to incompatible value: %r when "
+              "it expects  %r" % (name, value, ty))
         setattr(self, "_" + name, value)
 
       return setter
@@ -1466,10 +1645,15 @@ class Options(object):
   def _static_optimizations(self):
     """Produces the list of enabled static optimizations."""
     experimental_optimizations = [
-        "filter_fusion", "hoist_random_uniform", "latency_all_edges",
-        "map_and_batch_fusion", "map_and_filter_fusion", "map_fusion",
-        "map_parallelization", "map_vectorization", "noop_elimination",
-        "shuffle_and_repeat_fusion"
+        "filter_fusion",
+        "hoist_random_uniform",
+        "map_and_batch_fusion",
+        "map_and_filter_fusion",
+        "map_fusion",
+        "map_parallelization",
+        "map_vectorization",
+        "noop_elimination",
+        "shuffle_and_repeat_fusion",
     ]
     result = []
     for exp_opt in experimental_optimizations:
@@ -1480,6 +1664,10 @@ class Options(object):
       result.append("make_numa_aware")
     if getattr(self, "experimental_deterministic") is False:
       result.append("make_sloppy")
+    experimental_stats_options = getattr(self, "experimental_stats")
+    if experimental_stats_options and getattr(experimental_stats_options,
+                                              "latency_all_edges"):
+      result.append("latency_all_edges")
     return result
 
   def merge(self, options):
@@ -1505,7 +1693,6 @@ class Options(object):
           "experimental_deterministic",
           "experimental_filter_fusion",
           "experimental_hoist_random_uniform",
-          "experimental_latency_all_edges",
           "experimental_map_and_batch_fusion",
           "experimental_map_and_filter_fusion",
           "experimental_map_fusion",
@@ -1514,6 +1701,7 @@ class Options(object):
           "experimental_noop_elimination",
           "experimental_numa_aware",
           "experimental_shuffle_and_repeat_fusion",
+          "experimental_stats",
       ]:
         this = getattr(result, name)
         that = getattr(other, name)
@@ -1526,14 +1714,14 @@ class Options(object):
     return result
 
 
-class DatasetSource(Dataset):
+class DatasetSource(DatasetV2):
   """Abstract class representing a dataset with no inputs."""
 
   def _inputs(self):
     return []
 
 
-class UnaryDataset(Dataset):
+class UnaryDataset(DatasetV2):
   """Abstract class representing a dataset with one input."""
 
   def __init__(self, input_dataset):
@@ -1542,6 +1730,22 @@ class UnaryDataset(Dataset):
 
   def _inputs(self):
     return [self._input_dataset]
+
+
+class UnaryUnchangedStructureDataset(UnaryDataset):
+  """Represents a unary dataset with the same input and output structure."""
+
+  @property
+  def output_classes(self):
+    return self._input_dataset.output_classes  # pylint: disable=protected-access
+
+  @property
+  def output_shapes(self):
+    return self._input_dataset.output_shapes  # pylint: disable=protected-access
+
+  @property
+  def output_types(self):
+    return self._input_dataset.output_types  # pylint: disable=protected-access
 
 
 class TensorDataset(DatasetSource):
@@ -1672,11 +1876,6 @@ class _NestedDatasetComponent(object):
   corresponding position in the `output_classes`, `output_shapes`, and
   `output_types` properties.
 
-  NOTE(mrry): This class is not currently exposed via the public API. Support
-  for nested datasets can be enabled on a function-by-function basis by setting
-  `experimental_nested_dataset_support=True` in the `StructuredFunctionWrapper`
-  initializer.
-
   TODO(b/110122868): Add this class, or something equivalent, to the public API.
   We are considering revising the public API for accessing Dataset structure
   (`output_classes` etc.) based on experience with nested datasets and other
@@ -1720,7 +1919,7 @@ class _NestedDatasetComponent(object):
     return self._output_types
 
 
-class _VariantDataset(Dataset):
+class _VariantDataset(DatasetV2):
   """A Dataset wrapper around a `tf.variant`-typed function argument."""
 
   def __init__(self, dataset_variant, structure):
@@ -1759,7 +1958,7 @@ class StructuredFunctionWrapper(object):
                input_shapes=None,
                input_types=None,
                add_to_graph=True,
-               experimental_nested_dataset_support=False):
+               defun_kwargs=None):
     """Creates a new `StructuredFunctionWrapper` for the given function.
 
     Args:
@@ -1778,8 +1977,9 @@ class StructuredFunctionWrapper(object):
         argument defines the element types and structure for `func` arguments.
       add_to_graph: (Optional.) If `True`, the function will be added to the
         default graph.
-      experimental_nested_dataset_support: (Optional.) If `True`, the function
-        will support `tf.data.Dataset` objects as arguments and return values.
+      defun_kwargs: (Optional.) A dictionary mapping string argument names to
+        values. If supplied, will be passed to `function.Defun()` as keyword
+        arguments.
 
     Raises:
       ValueError: If an invalid combination of `dataset`, `input_classes`,
@@ -1811,10 +2011,11 @@ class StructuredFunctionWrapper(object):
 
     ])
 
-    # TODO(b/110122868): Enable this support for all `tf.data` functions.
-    self._nested_dataset_support = experimental_nested_dataset_support
+    if defun_kwargs is None:
+      defun_kwargs = {}
 
-    @function.Defun(*self._defun_args(), func_name=self._func_name)
+    @function.Defun(
+        *self._defun_args(), func_name=self._func_name, **defun_kwargs)
     def tf_data_structured_function_wrapper(*args):
       """Wrapper for passing nested structures to and from tf.data functions."""
       flat_args = []
@@ -1831,7 +2032,6 @@ class StructuredFunctionWrapper(object):
           arg.indices.set_shape([None, arg_shape.ndims])
           arg.dense_shape.set_shape([arg_shape.ndims])
         elif isinstance(arg_class, _NestedDatasetComponent):
-          assert self._nested_dataset_support
           arg = _VariantDataset(arg, arg_class)
         else:
           arg.set_shape(arg_shape)
@@ -1869,12 +2069,7 @@ class StructuredFunctionWrapper(object):
           flat_classes.append(sparse_tensor_lib.SparseTensor)
           flat_shapes.append(t.get_shape())
           flat_types.append(t.dtype)
-        elif isinstance(t, Dataset):
-          if not self._nested_dataset_support:
-            raise NotImplementedError(
-                "The %s transformation does not currently support nested "
-                "datasets as outputs." % self._transformation_name)
-
+        elif isinstance(t, DatasetV2):
           flat_ret.append(t._as_variant_tensor())  # pylint: disable=protected-access
           component = _NestedDatasetComponent(t)
           flat_classes.append(component)
@@ -1922,10 +2117,6 @@ class StructuredFunctionWrapper(object):
       if input_class is sparse_tensor_lib.SparseTensor:
         ret.append(dtypes.variant)
       elif isinstance(input_class, _NestedDatasetComponent):
-        if not self._nested_dataset_support:
-          raise NotImplementedError(
-              "The %s transformation does not currently support nested "
-              "datasets as inputs." % self._transformation_name)
         ret.append(dtypes.variant)
       else:
         assert isinstance(input_type, dtypes.DType)
@@ -2080,14 +2271,14 @@ class _GeneratorDataset(DatasetSource):
     return "Dataset.from_generator()"
 
 
-class ZipDataset(Dataset):
+class ZipDataset(DatasetV2):
   """A `Dataset` that zips its inputs together."""
 
   def __init__(self, datasets):
     """See `Dataset.zip()` for details."""
     super(ZipDataset, self).__init__()
     for ds in nest.flatten(datasets):
-      if not isinstance(ds, Dataset):
+      if not isinstance(ds, DatasetV2):
         if isinstance(ds, list):
           message = ("The argument to `Dataset.zip()` must be a nested "
                      "structure of `Dataset` objects. Nested structures do not "
@@ -2127,7 +2318,7 @@ class ZipDataset(Dataset):
         [ds.output_types for ds in nest.flatten(self._datasets)])
 
 
-class ConcatenateDataset(Dataset):
+class ConcatenateDataset(DatasetV2):
   """A `Dataset` that concatenates its input with given dataset."""
 
   def __init__(self, input_dataset, dataset_to_concatenate):
@@ -2182,7 +2373,7 @@ class ConcatenateDataset(Dataset):
     return self._output_types
 
 
-class RepeatDataset(UnaryDataset):
+class RepeatDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that repeats its input several times."""
 
   def __init__(self, input_dataset, count):
@@ -2200,18 +2391,6 @@ class RepeatDataset(UnaryDataset):
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         count=self._count,
         **flat_structure(self))
-
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
-
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
 
 
 class RangeDataset(DatasetSource):
@@ -2262,7 +2441,7 @@ class RangeDataset(DatasetSource):
     return dtypes.int64
 
 
-class CacheDataset(UnaryDataset):
+class CacheDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that caches elements of its input."""
 
   def __init__(self, input_dataset, filename):
@@ -2278,20 +2457,8 @@ class CacheDataset(UnaryDataset):
         filename=self._filename,
         **flat_structure(self))
 
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
 
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
-
-
-class ShuffleDataset(UnaryDataset):
+class ShuffleDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that randomly shuffles the elements of its input."""
 
   def __init__(self,
@@ -2339,20 +2506,8 @@ class ShuffleDataset(UnaryDataset):
         reshuffle_each_iteration=self._reshuffle_each_iteration,
         **flat_structure(self))
 
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
 
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
-
-
-class TakeDataset(UnaryDataset):
+class TakeDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` containing the first `count` elements from its input."""
 
   def __init__(self, input_dataset, count):
@@ -2367,20 +2522,8 @@ class TakeDataset(UnaryDataset):
         count=self._count,
         **flat_structure(self))
 
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
 
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
-
-
-class SkipDataset(UnaryDataset):
+class SkipDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` skipping the first `count` elements from its input."""
 
   def __init__(self, input_dataset, count):
@@ -2394,18 +2537,6 @@ class SkipDataset(UnaryDataset):
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         count=self._count,
         **flat_structure(self))
-
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
-
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
 
 
 class BatchDataset(UnaryDataset):
@@ -2709,7 +2840,7 @@ class MapDataset(UnaryDataset):
     return "Dataset.map()"
 
 
-class MatchingFilesDataset(Dataset):
+class MatchingFilesDataset(DatasetSource):
   """A `Dataset` that list the files according to the input patterns."""
 
   def __init__(self, patterns):
@@ -2719,9 +2850,6 @@ class MatchingFilesDataset(Dataset):
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.matching_files_dataset(self._patterns)
-
-  def _inputs(self):
-    return []
 
   @property
   def output_classes(self):
@@ -2773,10 +2901,7 @@ class FlatMapDataset(UnaryDataset):
     self._input_dataset = input_dataset
 
     wrapped_func = StructuredFunctionWrapper(
-        map_func,
-        self._transformation_name(),
-        dataset=input_dataset,
-        experimental_nested_dataset_support=True)
+        map_func, self._transformation_name(), dataset=input_dataset)
     if not isinstance(wrapped_func.output_classes, _NestedDatasetComponent):
       raise TypeError("`map_func` must return a `Dataset` object.")
     self._output_classes = wrapped_func.output_classes.output_classes
@@ -2862,7 +2987,7 @@ class ParallelInterleaveDataset(FlatMapDataset):
     return "Dataset.interleave()"
 
 
-class FilterDataset(UnaryDataset):
+class FilterDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that filters its input according to a predicate function."""
 
   def __init__(self, input_dataset, predicate):
@@ -2884,23 +3009,11 @@ class FilterDataset(UnaryDataset):
         predicate=self._predicate,
         **flat_structure(self))
 
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
-
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
-
   def _transformation_name(self):
     return "Dataset.filter()"
 
 
-class PrefetchDataset(UnaryDataset):
+class PrefetchDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that asynchronously prefetches its input."""
 
   def __init__(self, input_dataset, buffer_size):
@@ -2917,18 +3030,6 @@ class PrefetchDataset(UnaryDataset):
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         buffer_size=self._buffer_size,
         **flat_structure(self))
-
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
-
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
 
 
 class WindowDataset(UnaryDataset):
@@ -2981,7 +3082,7 @@ class WindowDataset(UnaryDataset):
     return self._output_types
 
 
-class _OptionsDataset(UnaryDataset):
+class _OptionsDataset(UnaryUnchangedStructureDataset):
   """An identity `Dataset` that stores options."""
 
   def __init__(self, input_dataset, options):
@@ -2999,20 +3100,8 @@ class _OptionsDataset(UnaryDataset):
   def options(self):
     return self._options
 
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
 
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
-
-
-class _ModelDataset(UnaryDataset):
+class _ModelDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and models performance."""
 
   def __init__(self, input_dataset):
@@ -3025,20 +3114,8 @@ class _ModelDataset(UnaryDataset):
         self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
         **flat_structure(self))
 
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
 
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
-
-
-class _OptimizeDataset(UnaryDataset):
+class _OptimizeDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and applies optimizations."""
 
   def __init__(self, input_dataset, optimizations):
@@ -3056,14 +3133,21 @@ class _OptimizeDataset(UnaryDataset):
         self._optimizations,
         **flat_structure(self))
 
-  @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
 
-  @property
-  def output_shapes(self):
-    return self._input_dataset.output_shapes
+class _SetStatsAggregatorDataset(UnaryUnchangedStructureDataset):
+  """A `Dataset` that acts as an identity, and sets stats aggregator."""
 
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
+  def __init__(self, input_dataset, aggregator, prefix, counter_prefix):
+    super(_SetStatsAggregatorDataset, self).__init__(input_dataset)
+    self._input_dataset = input_dataset
+    self._stats_aggregator = aggregator
+    self._prefix = prefix
+    self._counter_prefix = counter_prefix
+
+  def _as_variant_tensor(self):
+    return gen_dataset_ops.set_stats_aggregator_dataset(
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+        self._stats_aggregator._resource,  # pylint: disable=protected-access
+        self._prefix,
+        self._counter_prefix,
+        **flat_structure(self))

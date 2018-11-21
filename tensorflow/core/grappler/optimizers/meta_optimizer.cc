@@ -127,8 +127,10 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
 
 #undef MK_OPT
 
-MetaOptimizer::MetaOptimizer(DeviceBase* cpu_device, const RewriterConfig& cfg)
-    : cpu_device_(cpu_device), cfg_(cfg) {
+MetaOptimizer::MetaOptimizer(DeviceBase* cpu_device, const ConfigProto& cfg)
+    : cpu_device_(cpu_device),
+      config_proto_(cfg),
+      cfg_(*config_proto_.mutable_graph_options()->mutable_rewrite_options()) {
   DCHECK(cpu_device_ == nullptr ||
          cpu_device_->attributes().device_type() == "CPU");
 }
@@ -279,6 +281,18 @@ MetaOptimizer::GetCustomGraphOptimizerConfig(const string& name) const {
   return nullptr;
 }
 
+#define RUN_OPTIMIZER_OR_RETURN_IF_ERROR(optimizer)                            \
+  {                                                                            \
+    const Status status = RunOptimizer(optimizer, cluster, &optimized_item,    \
+                                       optimized_graph, &optimization_result); \
+    if (status.ok()) {                                                         \
+      is_optimized = true;                                                     \
+    } else if (cfg_.fail_on_optimizer_errors()) {                              \
+      VLOG(2) << "Optimizer '" << optimizer->name() << "' failed: " << status; \
+      TF_RETURN_IF_ERROR(status);                                              \
+    }                                                                          \
+  }
+
 Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
                                     GraphDef* optimized_graph) {
   int min_graph_nodes = cfg_.min_graph_nodes() == 0 ? kDefaultMinGraphNodes
@@ -340,9 +354,7 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
         if (fusion_optimizer == nullptr) fusion_optimizer = optimizer.get();
         continue;
       }
-      Status status = RunOptimizer(optimizer.get(), cluster, &optimized_item,
-                                   optimized_graph, &optimization_result);
-      if (status.ok()) is_optimized = true;
+      RUN_OPTIMIZER_OR_RETURN_IF_ERROR(optimizer.get());
     }
   }
 
@@ -353,16 +365,12 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   // optimizations from taking place since we don't have shape inference for
   // functions, and we can't optimize across function boundaries.
   if (fusion_optimizer != nullptr) {
-    Status status = RunOptimizer(fusion_optimizer, cluster, &optimized_item,
-                                 optimized_graph, &optimization_result);
-    if (status.ok()) is_optimized = true;
+    RUN_OPTIMIZER_OR_RETURN_IF_ERROR(fusion_optimizer);
   }
 
   // ScopedAllocatorOptimizer must run last.
   if (sa_optimizer != nullptr) {
-    Status status = RunOptimizer(sa_optimizer, cluster, &optimized_item,
-                                 optimized_graph, &optimization_result);
-    if (status.ok()) is_optimized = true;
+    RUN_OPTIMIZER_OR_RETURN_IF_ERROR(sa_optimizer);
   }
 
   // Record graph optimization result.
@@ -378,6 +386,8 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
 
   return Status::OK();
 }
+
+#undef RUN_OPTIMIZER_OR_RETURN_IF_ERROR
 
 Status MetaOptimizer::RunOptimizer(
     GraphOptimizer* optimizer, Cluster* cluster, GrapplerItem* optimized_item,
@@ -562,32 +572,35 @@ void MetaOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
   // Nothing to do for MetaOptimizer.
 }
 
-bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
-  if (cfg.disable_meta_optimizer()) {
+bool MetaOptimizerEnabled(const ConfigProto& cfg) {
+  const auto& rewrite_cfg = cfg.graph_options().rewrite_options();
+  if (rewrite_cfg.disable_meta_optimizer()) {
     return false;
   }
-  return !cfg.disable_model_pruning() ||
-         cfg.layout_optimizer() != RewriterConfig::OFF ||
-         cfg.function_optimization() != RewriterConfig::OFF ||
-         cfg.constant_folding() != RewriterConfig::OFF ||
-         cfg.shape_optimization() != RewriterConfig::OFF ||
-         cfg.remapping() != RewriterConfig::OFF ||
-         cfg.arithmetic_optimization() != RewriterConfig::OFF ||
-         cfg.loop_optimization() != RewriterConfig::OFF ||
-         cfg.dependency_optimization() != RewriterConfig::OFF ||
-         cfg.auto_parallel().enable() ||
-         cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
-         cfg.debug_stripper() == RewriterConfig::ON ||
-         cfg.scoped_allocator_optimization() == RewriterConfig::ON ||
-         cfg.pin_to_host_optimization() == RewriterConfig::ON ||
-         !cfg.optimizers().empty() || !cfg.custom_optimizers().empty();
+  return !rewrite_cfg.disable_model_pruning() ||
+         rewrite_cfg.layout_optimizer() != RewriterConfig::OFF ||
+         rewrite_cfg.function_optimization() != RewriterConfig::OFF ||
+         rewrite_cfg.constant_folding() != RewriterConfig::OFF ||
+         rewrite_cfg.shape_optimization() != RewriterConfig::OFF ||
+         rewrite_cfg.remapping() != RewriterConfig::OFF ||
+         rewrite_cfg.arithmetic_optimization() != RewriterConfig::OFF ||
+         rewrite_cfg.loop_optimization() != RewriterConfig::OFF ||
+         rewrite_cfg.dependency_optimization() != RewriterConfig::OFF ||
+         rewrite_cfg.auto_parallel().enable() ||
+         rewrite_cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
+         rewrite_cfg.debug_stripper() == RewriterConfig::ON ||
+         rewrite_cfg.scoped_allocator_optimization() == RewriterConfig::ON ||
+         rewrite_cfg.pin_to_host_optimization() == RewriterConfig::ON ||
+         !rewrite_cfg.optimizers().empty() ||
+         !rewrite_cfg.custom_optimizers().empty();
 }
 
-Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
+Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
                         DeviceBase* cpu_device, Cluster* cluster,
                         GraphDef* optimized_graph) {
   MetaOptimizer optimizer(cpu_device, cfg);
-  optimizer.set_deadline_usec(DeadlineMicroSeconds(cfg));
+  optimizer.set_deadline_usec(
+      DeadlineMicroSeconds(cfg.graph_options().rewrite_options()));
   Status status = optimizer.Optimize(cluster, item, optimized_graph);
   if (!status.ok()) {
     *optimized_graph = item.graph;

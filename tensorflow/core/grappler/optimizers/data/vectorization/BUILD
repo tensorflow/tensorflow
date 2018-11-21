@@ -33,6 +33,7 @@ cc_library(
     deps = [
         ":wrapped_tensor",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/cc:ops",
         "//tensorflow/core:lib",
     ] + tf_protos_all(),
 )
@@ -120,5 +121,6 @@ cc_library(
         ":unpack_vectorizer",
         ":vectorizer",
         ":vectorizer_registry",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

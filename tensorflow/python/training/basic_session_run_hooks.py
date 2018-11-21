@@ -976,7 +976,7 @@ class FeedFnHook(session_run_hook.SessionRunHook):
         fetches=None, feed_dict=self.feed_fn())
 
 
-@tf_export("train.ProfilerHook")
+@tf_export(v1=["train.ProfilerHook"])
 class ProfilerHook(session_run_hook.SessionRunHook):
   """Captures CPU/GPU profiling information every N steps or seconds.
 

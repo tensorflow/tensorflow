@@ -46,8 +46,8 @@ namespace xla {
         << "No computation exists in HLO module with id " << computation_id;
     const HloComputation* computation = comp_it->second;
 
-    absl::flat_hash_map<int64, const HloInstruction*> id_to_instruction;
-    for (const HloInstruction* instruction : computation->instructions()) {
+    absl::flat_hash_map<int64, HloInstruction*> id_to_instruction;
+    for (HloInstruction* instruction : computation->instructions()) {
       id_to_instruction[instruction->unique_id()] = instruction;
     }
 
@@ -81,9 +81,8 @@ StatusOr<HloScheduleProto> HloSchedule::ToProto() const {
   return std::move(proto);
 }
 
-void HloSchedule::set_sequence(
-    const HloComputation* computation,
-    absl::Span<const HloInstruction* const> sequence) {
+void HloSchedule::set_sequence(const HloComputation* computation,
+                               absl::Span<HloInstruction* const> sequence) {
   set_sequence(computation, HloInstructionSequence(sequence));
 }
 
@@ -114,8 +113,8 @@ Status HloSchedule::UpdateComputationSchedule(
     const HloComputation* computation) {
   // Map from unique ID to HloInstruction pointer for instructions in the
   // computation.
-  absl::flat_hash_map<int, const HloInstruction*> id_to_instruction;
-  for (const HloInstruction* instruction : computation->instructions()) {
+  absl::flat_hash_map<int, HloInstruction*> id_to_instruction;
+  for (HloInstruction* instruction : computation->instructions()) {
     InsertOrDie(&id_to_instruction, instruction->unique_id(), instruction);
   }
 
@@ -128,7 +127,7 @@ Status HloSchedule::UpdateComputationSchedule(
   // Map from HloInstruction X to newly added instructions (instruction is in
   // computation, but not in schedule) which use X. If an instruction is not in
   // the map, then it has no users which are newly added instructions.
-  absl::flat_hash_map<const HloInstruction*, std::vector<const HloInstruction*>>
+  absl::flat_hash_map<const HloInstruction*, std::vector<HloInstruction*>>
       new_instruction_uses;
 
   // For each newly added instruction, this is the count of the instruction's
@@ -138,9 +137,9 @@ Status HloSchedule::UpdateComputationSchedule(
 
   // Create a worklist of newly added instructions which are ready to be added
   // to the schedule. Initialize worklist with those that have zero operands.
-  std::queue<const HloInstruction*> worklist;
+  std::queue<HloInstruction*> worklist;
 
-  for (const HloInstruction* instruction : computation->instructions()) {
+  for (HloInstruction* instruction : computation->instructions()) {
     if (ids_in_schedule.count(instruction->unique_id()) == 0) {
       // This is a newly added instruction which is not in the schedule.
       if (instruction->operands().empty()) {
@@ -161,17 +160,17 @@ Status HloSchedule::UpdateComputationSchedule(
   // Lambda which schedules all instructions on the worklist.
   auto schedule_worklist = [&]() {
     while (!worklist.empty()) {
-      const HloInstruction* instruction = worklist.front();
+      HloInstruction* instruction = worklist.front();
       worklist.pop();
       new_sequence.push_back(instruction);
-      std::vector<const HloInstruction*>* new_users =
+      std::vector<HloInstruction*>* new_users =
           tensorflow::gtl::FindOrNull(new_instruction_uses, instruction);
       if (new_users != nullptr) {
         // This just-scheduled instruction has users which are newly added to
         // the module. Update the number of unscheduled operands and push the
         // newly added instruction to the worklist if it is ready to
         // schedule.
-        for (const HloInstruction* new_user : *new_users) {
+        for (HloInstruction* new_user : *new_users) {
           unscheduled_operand_count.at(new_user)--;
           CHECK_GE(unscheduled_operand_count.at(new_user), 0);
           if (unscheduled_operand_count.at(new_user) == 0) {
@@ -264,7 +263,10 @@ Status HloSchedule::Verify() const {
     }
 
     TF_RET_CHECK(instruction_position.size() ==
-                 computation->instruction_count());
+                 computation->instruction_count())
+        << "Schedule for computation " << computation->name() << " has "
+        << instruction_position.size() << " instructions, expected "
+        << computation->instruction_count();
     for (const HloInstruction* instruction : computation->instructions()) {
       TF_RET_CHECK(instruction_position.count(instruction) == 1)
           << "Instruction " << instruction->name() << " is not in schedule";

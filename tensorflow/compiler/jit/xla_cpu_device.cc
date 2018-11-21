@@ -17,8 +17,8 @@ limitations under the License.
 // operators using XLA via the XLA "Host" (CPU) backend.
 
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/kernels/xla_ops.h"
-#include "tensorflow/compiler/jit/legacy_flags/xla_device_flags.h"
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
@@ -37,13 +37,15 @@ class XlaCpuDeviceFactory : public DeviceFactory {
 Status XlaCpuDeviceFactory::CreateDevices(const SessionOptions& session_options,
                                           const string& name_prefix,
                                           std::vector<Device*>* devices) {
-  legacy_flags::XlaDeviceFlags* flags = legacy_flags::GetXlaDeviceFlags();
+  XlaDeviceFlags* flags = GetXlaDeviceFlags();
   bool compile_on_demand = flags->tf_xla_compile_on_demand;
 
   XlaOpRegistry::DeviceRegistration registration;
   registration.compilation_device_name = DEVICE_CPU_XLA_JIT;
-  registration.requires_compilation = !compile_on_demand;
-  registration.enable_jit_by_default = false;
+  registration.autoclustering_policy =
+      compile_on_demand
+          ? XlaOpRegistry::AutoclusteringPolicy::kIfExplicitlyRequested
+          : XlaOpRegistry::AutoclusteringPolicy::kAlways;
   registration.compile_resource_ops = true;
   XlaOpRegistry::RegisterCompilationDevice(DEVICE_XLA_CPU, registration);
 

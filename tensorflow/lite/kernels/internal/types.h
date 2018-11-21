@@ -852,7 +852,6 @@ struct FullyConnectedParams {
 };
 
 struct GatherParams {
-  int16 input_rank;
   int16 axis;
 };
 
@@ -903,6 +902,14 @@ struct PadParams {
   int8 right_padding_count;
   int32 right_padding[4];
   ResizingCategory resizing_category;
+};
+
+struct PreluParams {
+  int32 input_offset;
+  int32 alpha_offset;
+  int32 output_offset;
+  int32 output_multiplier;
+  int output_shift;
 };
 
 struct PoolParams {
@@ -1005,6 +1012,10 @@ struct TransposeParams {
 struct UnpackParams {
   uint16 num_split;
   int16 axis;
+};
+
+struct LeakyReluParams {
+  float alpha;
 };
 
 template <typename P>

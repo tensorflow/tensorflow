@@ -4634,6 +4634,25 @@ op {
   is_stateful: true
 }
 op {
+  name: "BoostedTreesQuantileStreamResourceDeserialize"
+  input_arg {
+    name: "quantile_stream_resource_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "bucket_boundaries"
+    type: DT_FLOAT
+    number_attr: "num_streams"
+  }
+  attr {
+    name: "num_streams"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "BoostedTreesQuantileStreamResourceFlush"
   input_arg {
     name: "quantile_stream_resource_handle"
@@ -9605,6 +9624,10 @@ op {
     name: "element_shape"
     type_attr: "shape_type"
   }
+  input_arg {
+    name: "max_num_elements"
+    type: DT_INT32
+  }
   output_arg {
     name: "handle"
     type: DT_VARIANT
@@ -10339,6 +10362,49 @@ op {
   is_stateful: true
 }
 op {
+  name: "ExperimentalMapDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "use_inter_op_parallelism"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+}
+op {
   name: "ExperimentalMaterializedIndexDatasetHandle"
   output_arg {
     name: "handle"
@@ -10365,6 +10431,29 @@ op {
     minimum: 1
   }
   is_stateful: true
+}
+op {
+  name: "ExperimentalNonSerializableDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
 }
 op {
   name: "ExperimentalNumaMapAndBatchDataset"
@@ -11276,6 +11365,38 @@ op {
   input_arg {
     name: "buffer_size"
     type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
+  name: "FixedLengthRecordDatasetV2"
+  input_arg {
+    name: "filenames"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "header_bytes"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "record_bytes"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "footer_bytes"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "buffer_size"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "compression_type"
+    type: DT_STRING
   }
   output_arg {
     name: "handle"
@@ -20257,6 +20378,13 @@ op {
   }
   attr {
     name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "config_proto"
     type: "string"
     default_value {
       s: ""
@@ -29541,17 +29669,6 @@ op {
   }
 }
 op {
-  name: "SinkDataset"
-  input_arg {
-    name: "input_dataset"
-    type: DT_VARIANT
-  }
-  output_arg {
-    name: "handle"
-    type: DT_VARIANT
-  }
-}
-op {
   name: "Size"
   input_arg {
     name: "input"
@@ -33447,6 +33564,13 @@ op {
     }
   }
   attr {
+    name: "config_proto"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
     name: "executor_type"
     type: "string"
     default_value {
@@ -35857,6 +35981,108 @@ op {
   is_stateful: true
 }
 op {
+  name: "TensorForestCreateTreeVariable"
+  input_arg {
+    name: "tree_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "tree_config"
+    type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
+  name: "TensorForestTreeDeserialize"
+  input_arg {
+    name: "tree_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "tree_config"
+    type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
+  name: "TensorForestTreeIsInitializedOp"
+  input_arg {
+    name: "tree_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "is_initialized"
+    type: DT_BOOL
+  }
+  is_stateful: true
+}
+op {
+  name: "TensorForestTreePredict"
+  input_arg {
+    name: "tree_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "dense_features"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "logits"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "logits_dimension"
+    type: "int"
+  }
+  is_stateful: true
+}
+op {
+  name: "TensorForestTreeResourceHandleOp"
+  output_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "TensorForestTreeSerialize"
+  input_arg {
+    name: "tree_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "tree_config"
+    type: DT_STRING
+  }
+  is_stateful: true
+}
+op {
+  name: "TensorForestTreeSize"
+  input_arg {
+    name: "tree_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "tree_size"
+    type: DT_INT32
+  }
+  is_stateful: true
+}
+op {
   name: "TensorListConcatLists"
   input_arg {
     name: "input_a"
@@ -36817,6 +37043,57 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+}
+op {
+  name: "UnicodeDecodeWithOffsets"
+  input_arg {
+    name: "input"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "row_splits"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "char_values"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "char_to_byte_starts"
+    type: DT_INT64
+  }
+  attr {
+    name: "input_encoding"
+    type: "string"
+  }
+  attr {
+    name: "errors"
+    type: "string"
+    default_value {
+      s: "replace"
+    }
+    allowed_values {
+      list {
+        s: "strict"
+        s: "replace"
+        s: "ignore"
+      }
+    }
+  }
+  attr {
+    name: "replacement_char"
+    type: "int"
+    default_value {
+      i: 65533
+    }
+  }
+  attr {
+    name: "replace_control_characters"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
 }
 op {

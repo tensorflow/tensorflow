@@ -52,7 +52,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
         gather_t = array_ops.batch_gather(params, indices_tf)
         expected_result = np.array([3, 7])
         np_val = self._buildParams(expected_result, dtype)
-        gather_val = gather_t.eval()
+        gather_val = self.evaluate(gather_t)
         self.assertAllEqual(np_val, gather_val)
         self.assertEqual(np_val.shape, gather_t.get_shape())
 
@@ -68,7 +68,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
         gather_t = array_ops.batch_gather(params, indices_tf)
         expected_result = np.array([[3], [15]])
         np_val = self._buildParams(expected_result, dtype)
-        gather_val = gather_t.eval()
+        gather_val = self.evaluate(gather_t)
         self.assertAllEqual(np_val, gather_val)
         self.assertEqual(np_val.shape, gather_t.get_shape())
 
@@ -81,7 +81,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
         params = constant_op.constant(params_np)
         indices_tf = constant_op.constant(indices)
         gather_t = array_ops.batch_gather(params, indices_tf)
-        gather_val = gather_t.eval()
+        gather_val = self.evaluate(gather_t)
         expected_result = np.array([[[2, 0], [7, 5]], [[10, 8], [11, 15]]])
         np_val = self._buildParams(expected_result, dtype)
         self.assertAllEqual(np_val, gather_val)

@@ -465,9 +465,7 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_applyDelegate(
   TfLiteDelegate* delegate = convertLongToDelegate(env, delegate_handle);
   if (delegate == nullptr) return;
 
-  TfLiteStatus status =
-      interpreter->ModifyGraphWithDelegate(delegate,
-                                           /* allow_dynamic_tensors= */ true);
+  TfLiteStatus status = interpreter->ModifyGraphWithDelegate(delegate);
   if (status != kTfLiteOk) {
     throwException(env, kIllegalArgumentException,
                    "Internal error: Failed to apply delegate: %s",

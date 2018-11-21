@@ -183,19 +183,18 @@ Status RewriteIdentityNAndInputsOutputs(
       if (IsControlInput(input)) {
         continue;
       }
-      int pos;
-      const StringPiece name = ParseNodeNameAsStringPiece(input, &pos);
-      if (name == node->name()) {
-        if (terminal_ports.find(pos) == terminal_ports.end()) {
+      TensorId input_tensor = ParseTensorName(input);
+      if (input_tensor.node() == node->name()) {
+        if (terminal_ports.find(input_tensor.index()) == terminal_ports.end()) {
           // Replace input that does not lead to a terminal node with newly
           // created identity.
-          string new_identity = new_identities[pos];
+          string new_identity = new_identities[input_tensor.index()];
           output->set_input(i, new_identity);
           updates.push_back({new_identity, output->name()});
         } else {
           // Update input ports that lead to a terminal node from splitting
           // inputs.
-          int new_pos = terminal_input_pos[pos];
+          int new_pos = terminal_input_pos[input_tensor.index()];
           string updated_input_name =
               new_pos > 0 ? strings::StrCat(node->name(), ":", new_pos)
                           : node->name();

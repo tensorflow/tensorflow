@@ -45,10 +45,10 @@ class FlatMapDatasetTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for i in repeats:
         for _ in range(i):
-          self.assertEqual(i, sess.run(get_next))
+          self.assertEqual(i, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -64,11 +64,11 @@ class FlatMapDatasetTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for row in repeats:
         for i in row:
           for _ in range(i):
-            self.assertEqual(i, sess.run(get_next))
+            self.assertEqual(i, self.evaluate(get_next))
 
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
@@ -94,12 +94,12 @@ class FlatMapDatasetTest(test_base.DatasetTestBase):
       with session.Session(server.target) as sess2:
         for _ in range(3):
           sess = random.choice([sess1, sess2])
-          sess.run(init_op)
+          self.evaluate(init_op)
           for row in repeats:
             for i in row:
               for _ in range(i):
                 sess = random.choice([sess1, sess2])
-                self.assertEqual(i, sess.run(get_next))
+                self.assertEqual(i, self.evaluate(get_next))
 
         with self.assertRaises(errors.OutOfRangeError):
           sess = random.choice([sess1, sess2])
@@ -115,10 +115,10 @@ class FlatMapDatasetTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for i in range(10):
         for _ in range(i ** 2):
-          self.assertEqual(i * 2, sess.run(get_next))
+          self.assertEqual(i * 2, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
   # pylint: enable=g-long-lambda
@@ -139,11 +139,11 @@ class FlatMapDatasetTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for i in range(10):
         for j in range(2):
           expected = [i, 0] if j % 2 == 0 else [0, -i]
-          self.assertAllEqual(expected, sess.run(get_next))
+          self.assertAllEqual(expected, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 

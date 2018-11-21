@@ -68,9 +68,9 @@ class GroupByWindowTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
 
-      which_bucket, bucketed_values = sess.run(get_next)
+      which_bucket, bucketed_values = self.evaluate(get_next)
 
       self.assertEqual(0, which_bucket)
 
@@ -103,11 +103,11 @@ class GroupByWindowTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
 
       # Get two minibatches (one containing even values, one containing odds)
-      which_bucket_even, bucketed_values_even = sess.run(get_next)
-      which_bucket_odd, bucketed_values_odd = sess.run(get_next)
+      which_bucket_even, bucketed_values_even = self.evaluate(get_next)
+      which_bucket_odd, bucketed_values_odd = self.evaluate(get_next)
 
       # Count number of bucket_tensors.
       self.assertEqual(3, len(bucketed_values_even))
@@ -174,11 +174,11 @@ class GroupByWindowTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
 
       # Get two minibatches ([0, 2, ...] and [64, 66, ...])
-      which_bucket0, bucketed_values_even0 = sess.run(get_next)
-      which_bucket1, bucketed_values_even1 = sess.run(get_next)
+      which_bucket0, bucketed_values_even0 = self.evaluate(get_next)
+      which_bucket1, bucketed_values_even1 = self.evaluate(get_next)
 
       # Ensure that bucket 1 was completely filtered out
       self.assertAllEqual(0, which_bucket0)
@@ -207,11 +207,11 @@ class GroupByWindowTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       with self.assertRaises(errors.OutOfRangeError):
         batches = 0
         while True:
-          result = sess.run(get_next)
+          result = self.evaluate(get_next)
           is_even = all(x % 2 == 0 for x in result)
           is_odd = all(x % 2 == 1 for x in result)
           self.assertTrue(is_even or is_odd)
@@ -232,11 +232,11 @@ class GroupByWindowTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       counts = []
       with self.assertRaises(errors.OutOfRangeError):
         while True:
-          result = sess.run(get_next)
+          result = self.evaluate(get_next)
           self.assertTrue(
               all(x % 2 == 0
                   for x in result) or all(x % 2 == 1)
@@ -259,16 +259,16 @@ class GroupByWindowTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       # The input is infinite, so this test demonstrates that:
       # 1. We produce output without having to consume the entire input,
       # 2. Different buckets can produce output at different rates, and
       # 3. For deterministic input, the output is deterministic.
       for _ in range(3):
-        self.assertAllEqual([0, 0, 0, 0], sess.run(get_next))
-        self.assertAllEqual([1, 1, 1, 1], sess.run(get_next))
-        self.assertAllEqual([2, 2, 2, 2], sess.run(get_next))
-        self.assertAllEqual([0, 0, 0, 0], sess.run(get_next))
+        self.assertAllEqual([0, 0, 0, 0], self.evaluate(get_next))
+        self.assertAllEqual([1, 1, 1, 1], self.evaluate(get_next))
+        self.assertAllEqual([2, 2, 2, 2], self.evaluate(get_next))
+        self.assertAllEqual([0, 0, 0, 0], self.evaluate(get_next))
 
   def testSmallGroups(self):
     components = np.array([0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0], dtype=np.int64)
@@ -280,13 +280,13 @@ class GroupByWindowTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
-      self.assertAllEqual([0, 0, 0, 0], sess.run(get_next))
-      self.assertAllEqual([1, 1, 1, 1], sess.run(get_next))
+      self.evaluate(init_op)
+      self.assertAllEqual([0, 0, 0, 0], self.evaluate(get_next))
+      self.assertAllEqual([1, 1, 1, 1], self.evaluate(get_next))
       # The small outputs at the end are deterministically produced in key
       # order.
-      self.assertAllEqual([0, 0, 0], sess.run(get_next))
-      self.assertAllEqual([1], sess.run(get_next))
+      self.assertAllEqual([0, 0, 0], self.evaluate(get_next))
+      self.assertAllEqual([1], self.evaluate(get_next))
 
   def testEmpty(self):
     iterator = (
@@ -297,7 +297,7 @@ class GroupByWindowTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
           "Window size must be greater than zero, but got 0."):
@@ -323,7 +323,7 @@ class GroupByWindowTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(get_next)
 
@@ -351,11 +351,11 @@ class GroupByWindowTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       counts = []
       with self.assertRaises(errors.OutOfRangeError):
         while True:
-          tight_result, multiple_of_10_result = sess.run(get_next)
+          tight_result, multiple_of_10_result = self.evaluate(get_next)
           self.assertEqual(0, multiple_of_10_result.shape[1] % 10)
           self.assertAllEqual(tight_result,
                               multiple_of_10_result[:, :tight_result.shape[1]])

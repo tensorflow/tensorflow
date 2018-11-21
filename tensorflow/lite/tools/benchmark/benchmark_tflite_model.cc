@@ -29,6 +29,10 @@ limitations under the License.
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/benchmark/logging.h"
 
+#ifdef GEMMLOWP_PROFILING
+#include "third_party/gemmlowp/profiling/profiler.h"
+#endif
+
 #ifdef TFLITE_CUSTOM_OPS_HEADER
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
 #endif
@@ -60,6 +64,21 @@ void ProfilingListener::OnSingleRunEnd() {
   auto profile_events = profiler_.GetProfileEvents();
   has_profiles_ = !profile_events.empty();
   summarizer_.ProcessProfiles(profile_events, *interpreter_);
+}
+
+void GemmlowpProfilingListener::OnBenchmarkStart(
+    const BenchmarkParams& params) {
+#ifdef GEMMLOWP_PROFILING
+  gemmlowp::RegisterCurrentThreadForProfiling();
+  gemmlowp::StartProfiling();
+#endif
+}
+
+void GemmlowpProfilingListener::OnBenchmarkEnd(
+    const BenchmarkResults& results) {
+#ifdef GEMMLOWP_PROFILING
+  gemmlowp::FinishProfiling();
+#endif
 }
 
 namespace {
@@ -162,7 +181,9 @@ bool PopulateInputLayerInfo(
   return true;
 }
 
-BenchmarkParams GetDefaultParams() {
+}  // namespace
+
+BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   BenchmarkParams default_params = BenchmarkModel::DefaultParams();
   default_params.AddParam("graph", BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("input_layer",
@@ -173,16 +194,13 @@ BenchmarkParams GetDefaultParams() {
   return default_params;
 }
 
-}  // namespace
-
 BenchmarkTfLiteModel::BenchmarkTfLiteModel()
-    : BenchmarkModel(GetDefaultParams()) {
-  AddListener(&profiling_listener_);
-}
+    : BenchmarkTfLiteModel(DefaultParams()) {}
 
 BenchmarkTfLiteModel::BenchmarkTfLiteModel(BenchmarkParams params)
     : BenchmarkModel(std::move(params)) {
   AddListener(&profiling_listener_);
+  AddListener(&gemmlowp_profiling_listener_);
 }
 
 std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
@@ -301,6 +319,7 @@ void BenchmarkTfLiteModel::Init() {
   bool use_nnapi = params_.Get<bool>("use_nnapi");
 
   interpreter->UseNNAPI(use_nnapi);
+  ApplyDelegates();
 
   auto interpreter_inputs = interpreter->inputs();
 

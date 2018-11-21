@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np  # pylint: disable=unused-import
 
 from tensorflow.python.client import session
@@ -28,9 +29,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -38,40 +41,84 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import test
 
 
-def scalar_shape():
-  return ops.convert_to_tensor([], dtype=dtypes.int32)
+@test_util.run_all_in_graph_and_eager_modes
+class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
-
-class ListOpsTest(test_util.TensorFlowTestCase):
-
-  @test_util.run_in_graph_and_eager_modes
-  def testPushPop(self):
-    l = list_ops.empty_tensor_list(element_dtype=dtypes.float32,
-                                   element_shape=scalar_shape())
+  def _testPushPop(self, max_num_elements):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32,
+        element_shape=[],
+        max_num_elements=max_num_elements)
     l = list_ops.tensor_list_push_back(l, constant_op.constant(1.0))
     l, e = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
     self.assertAllEqual(self.evaluate(e), 1.0)
 
-  @test_util.run_in_graph_and_eager_modes
-  def testPushPopGPU(self):
+  @parameterized.named_parameters(("NoMaxNumElements", None),
+                                  ("WithMaxNumElements", 2))
+  def testPushPop(self, max_num_elements):
+    self._testPushPop(max_num_elements)
+
+  @parameterized.named_parameters(("NoMaxNumElements", None),
+                                  ("WithMaxNumElements", 2))
+  def testPushPopGPU(self, max_num_elements):
     if not context.num_gpus():
       return
     with context.device("gpu:0"):
-      self.testPushPop()
+      self._testPushPop(max_num_elements)
 
-  @test_util.run_in_graph_and_eager_modes
-  def testStack(self):
-    l = list_ops.empty_tensor_list(element_dtype=dtypes.float32,
-                                   element_shape=scalar_shape())
+  def testPushInFullListFails(self):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=[], max_num_elements=1)
+    l = list_ops.tensor_list_push_back(l, constant_op.constant(1.0))
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "Tried to push item into a full list"):
+      l = list_ops.tensor_list_push_back(l, 2.)
+      self.evaluate(l)
+
+  @parameterized.named_parameters(("NoMaxNumElements", None),
+                                  ("WithMaxNumElements", 2))
+  def testPopFromEmptyTensorListFails(self, max_num_elements):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32,
+        element_shape=[],
+        max_num_elements=max_num_elements)
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "Trying to pop from an empty list"):
+      l = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
+      self.evaluate(l)
+
+  def _testStack(self, max_num_elements):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32,
+        element_shape=[],
+        max_num_elements=max_num_elements)
     l = list_ops.tensor_list_push_back(l, constant_op.constant(1.0))
     l = list_ops.tensor_list_push_back(l, constant_op.constant(2.0))
     t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+    if not context.executing_eagerly():
+      self.assertAllEqual(t.shape.as_list(), [None])
     self.assertAllEqual(self.evaluate(t), [1.0, 2.0])
 
-  @test_util.run_in_graph_and_eager_modes
-  def testStackWithUnknownElementShape(self):
+  @parameterized.named_parameters(("NoMaxNumElements", None),
+                                  ("WithMaxNumElements", 2))
+  def testStack(self, max_num_elements):
+    self._testStack(max_num_elements)
+
+  @parameterized.named_parameters(("NoMaxNumElements", None),
+                                  ("WithMaxNumElements", 2))
+  def testStackGPU(self, max_num_elements):
+    if not context.num_gpus():
+      return
+    with context.device("gpu:0"):
+      self._testStack(max_num_elements)
+
+  @parameterized.named_parameters(("NoMaxNumElements", None),
+                                  ("WithMaxNumElements", 3))
+  def testStackWithUnknownElementShape(self, max_num_elements):
     l = list_ops.empty_tensor_list(
-        element_dtype=dtypes.float32, element_shape=-1)
+        element_dtype=dtypes.float32,
+        element_shape=None,
+        max_num_elements=max_num_elements)
     l = list_ops.tensor_list_push_back(l, constant_op.constant(1.0))
     l = list_ops.tensor_list_push_back(l, constant_op.constant(2.0))
 
@@ -85,10 +132,13 @@ class ListOpsTest(test_util.TensorFlowTestCase):
       t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
       self.evaluate(t)
 
-  @test_util.run_in_graph_and_eager_modes
-  def testStackWithPartiallyDefinedElementShape(self):
+  @parameterized.named_parameters(("NoMaxNumElements", None),
+                                  ("WithMaxNumElements", 3))
+  def testStackWithPartiallyDefinedElementShape(self, max_num_elements):
     l = list_ops.empty_tensor_list(
-        element_dtype=dtypes.float32, element_shape=[-1])
+        element_dtype=dtypes.float32,
+        element_shape=[None],
+        max_num_elements=max_num_elements)
     l = list_ops.tensor_list_push_back(l, constant_op.constant([1.0]))
     l = list_ops.tensor_list_push_back(l, constant_op.constant([2.0]))
 
@@ -102,11 +152,14 @@ class ListOpsTest(test_util.TensorFlowTestCase):
       t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
       self.evaluate(t)
 
-  @test_util.run_in_graph_and_eager_modes
-  def testStackEmptyList(self):
+  @parameterized.named_parameters(("NoMaxNumElements", None),
+                                  ("WithMaxNumElements", 2))
+  def testStackEmptyList(self, max_num_elements):
     # Should be able to stack empty lists with fully defined element_shape.
     l = list_ops.empty_tensor_list(
-        element_dtype=dtypes.float32, element_shape=[1, 2])
+        element_dtype=dtypes.float32,
+        element_shape=[1, 2],
+        max_num_elements=max_num_elements)
     t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
     self.assertAllEqual(self.evaluate(t).shape, (0, 1, 2))
 
@@ -115,7 +168,9 @@ class ListOpsTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  "non-fully-defined"):
       l = list_ops.empty_tensor_list(
-          element_dtype=dtypes.float32, element_shape=[-1, 2])
+          element_dtype=dtypes.float32,
+          element_shape=[None, 2],
+          max_num_elements=max_num_elements)
       t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
       self.evaluate(t)
 
@@ -123,15 +178,20 @@ class ListOpsTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  "non-fully-defined"):
       l = list_ops.empty_tensor_list(
-          element_dtype=dtypes.float32, element_shape=-1)
+          element_dtype=dtypes.float32,
+          element_shape=None,
+          max_num_elements=max_num_elements)
       t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
       self.evaluate(t)
 
-  @test_util.run_in_graph_and_eager_modes
-  def testGatherGrad(self):
+  @parameterized.named_parameters(("NoMaxNumElements", None),
+                                  ("WithMaxNumElements", 2))
+  def testGatherGrad(self, max_num_elements):
     with backprop.GradientTape() as tape:
-      l = list_ops.empty_tensor_list(element_dtype=dtypes.float32,
-                                     element_shape=scalar_shape())
+      l = list_ops.empty_tensor_list(
+          element_dtype=dtypes.float32,
+          element_shape=[],
+          max_num_elements=max_num_elements)
       c0 = constant_op.constant(1.0)
       tape.watch(c0)
       l = list_ops.tensor_list_push_back(l, c0)
@@ -142,10 +202,13 @@ class ListOpsTest(test_util.TensorFlowTestCase):
     dt = tape.gradient(s, c0)
     self.assertAllEqual(self.evaluate(dt), 6.0)
 
-  @test_util.run_in_graph_and_eager_modes
-  def testGatherWithUnknownElementShape(self):
+  @parameterized.named_parameters(("NoMaxNumElements", None),
+                                  ("WithMaxNumElements", 3))
+  def testGatherWithUnknownElementShape(self, max_num_elements):
     l = list_ops.empty_tensor_list(
-        element_dtype=dtypes.float32, element_shape=-1)
+        element_dtype=dtypes.float32,
+        element_shape=None,
+        max_num_elements=max_num_elements)
     l = list_ops.tensor_list_push_back(l, constant_op.constant(1.0))
     l = list_ops.tensor_list_push_back(l, constant_op.constant(2.0))
     l = list_ops.tensor_list_push_back(l, constant_op.constant([3.0, 4.0]))
@@ -162,10 +225,13 @@ class ListOpsTest(test_util.TensorFlowTestCase):
       t = list_ops.tensor_list_gather(l, [0, 2], element_dtype=dtypes.float32)
       self.evaluate(t)
 
-  @test_util.run_in_graph_and_eager_modes
-  def testGatherWithPartiallyDefinedElementShape(self):
+  @parameterized.named_parameters(("NoMaxNumElements", None),
+                                  ("WithMaxNumElements", 3))
+  def testGatherWithPartiallyDefinedElementShape(self, max_num_elements):
     l = list_ops.empty_tensor_list(
-        element_dtype=dtypes.float32, element_shape=[-1])
+        element_dtype=dtypes.float32,
+        element_shape=[None],
+        max_num_elements=max_num_elements)
     l = list_ops.tensor_list_push_back(l, constant_op.constant([1.0]))
     l = list_ops.tensor_list_push_back(l, constant_op.constant([2.0, 3.0]))
     l = list_ops.tensor_list_push_back(l, constant_op.constant([4.0, 5.0]))
@@ -182,12 +248,15 @@ class ListOpsTest(test_util.TensorFlowTestCase):
       t = list_ops.tensor_list_gather(l, [0, 2], element_dtype=dtypes.float32)
       self.evaluate(t)
 
-  @test_util.run_in_graph_and_eager_modes
-  def testGatherEmptyList(self):
+  @parameterized.named_parameters(("NoMaxNumElements", None),
+                                  ("WithMaxNumElements", 3))
+  def testGatherEmptyList(self, max_num_elements):
     # Should be able to gather from empty lists with fully defined
     # element_shape.
     l = list_ops.empty_tensor_list(
-        element_dtype=dtypes.float32, element_shape=[1, 2])
+        element_dtype=dtypes.float32,
+        element_shape=[1, 2],
+        max_num_elements=max_num_elements)
     t = list_ops.tensor_list_gather(l, [], element_dtype=dtypes.float32)
     self.assertAllEqual((0, 1, 2), self.evaluate(t).shape)
 
@@ -196,7 +265,9 @@ class ListOpsTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  "non-fully-defined"):
       l = list_ops.empty_tensor_list(
-          element_dtype=dtypes.float32, element_shape=[-1, 2])
+          element_dtype=dtypes.float32,
+          element_shape=[None, 2],
+          max_num_elements=max_num_elements)
       t = list_ops.tensor_list_gather(l, [], element_dtype=dtypes.float32)
       self.evaluate(t)
 
@@ -205,11 +276,12 @@ class ListOpsTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  "non-fully-defined"):
       l = list_ops.empty_tensor_list(
-          element_dtype=dtypes.float32, element_shape=-1)
+          element_dtype=dtypes.float32,
+          element_shape=None,
+          max_num_elements=max_num_elements)
       t = list_ops.tensor_list_gather(l, [], element_dtype=dtypes.float32)
       self.evaluate(t)
 
-  @test_util.run_in_graph_and_eager_modes
   def testScatterGrad(self):
     with backprop.GradientTape() as tape:
       c0 = constant_op.constant([1.0, 2.0])
@@ -224,51 +296,59 @@ class ListOpsTest(test_util.TensorFlowTestCase):
     dt = tape.gradient(loss, c0)
     self.assertAllEqual(self.evaluate(dt), [2., 4.])
 
-  @test_util.run_in_graph_and_eager_modes
-  def testStackGPU(self):
-    if not context.num_gpus():
-      return
-    with context.device("gpu:0"):
-      self.testStack()
-
-  @test_util.run_in_graph_and_eager_modes
   def testTensorListFromTensor(self):
     t = constant_op.constant([1.0, 2.0])
-    l = list_ops.tensor_list_from_tensor(t, element_shape=scalar_shape())
+    l = list_ops.tensor_list_from_tensor(t, element_shape=[])
     l, e = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
     self.assertAllEqual(self.evaluate(e), 2.0)
     l, e = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
     self.assertAllEqual(self.evaluate(e), 1.0)
     self.assertAllEqual(self.evaluate(list_ops.tensor_list_length(l)), 0)
 
-  @test_util.run_in_graph_and_eager_modes
   def testFromTensorGPU(self):
     if not context.num_gpus():
       return
     with context.device("gpu:0"):
       self.testTensorListFromTensor()
 
-  @test_util.run_in_graph_and_eager_modes
   def testGetSetItem(self):
     t = constant_op.constant([1.0, 2.0])
-    l = list_ops.tensor_list_from_tensor(t, element_shape=scalar_shape())
+    l = list_ops.tensor_list_from_tensor(t, element_shape=[])
     e0 = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
     self.assertAllEqual(self.evaluate(e0), 1.0)
     l = list_ops.tensor_list_set_item(l, 0, 3.0)
     t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
     self.assertAllEqual(self.evaluate(t), [3.0, 2.0])
 
-  @test_util.run_in_graph_and_eager_modes
   def testGetSetGPU(self):
     if not context.num_gpus():
       return
     with context.device("gpu:0"):
       self.testGetSetItem()
 
-  @test_util.run_in_graph_and_eager_modes
+  def testSetGetGrad(self):
+    with backprop.GradientTape() as tape:
+      t = constant_op.constant(5.)
+      tape.watch(t)
+      l = list_ops.tensor_list_reserve(
+          element_dtype=dtypes.float32, element_shape=[], num_elements=3)
+      l = list_ops.tensor_list_set_item(l, 1, 2. * t)
+      e = list_ops.tensor_list_get_item(l, 1, element_dtype=dtypes.float32)
+      self.assertAllEqual(self.evaluate(e), 10.0)
+    self.assertAllEqual(self.evaluate(tape.gradient(e, t)), 2.0)
+
+  def testSetOnEmptyListWithMaxNumElementsFails(self):
+    l = list_ops.empty_tensor_list(
+        element_dtype=dtypes.float32, element_shape=[], max_num_elements=3)
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "Trying to modify element 0 in a list with 0 elements."):
+      l = list_ops.tensor_list_set_item(l, 0, 1.)
+      self.evaluate(l)
+
   def testUnknownShape(self):
     l = list_ops.empty_tensor_list(
-        element_dtype=dtypes.float32, element_shape=-1)
+        element_dtype=dtypes.float32, element_shape=None)
     l = list_ops.tensor_list_push_back(l, constant_op.constant(1.0))
     l = list_ops.tensor_list_push_back(l, constant_op.constant([1.0, 2.0]))
     l, e = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
@@ -276,12 +356,11 @@ class ListOpsTest(test_util.TensorFlowTestCase):
     l, e = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
     self.assertAllEqual(self.evaluate(e), 1.0)
 
-  @test_util.run_in_graph_and_eager_modes
   def testCPUGPUCopy(self):
     if not context.num_gpus():
       return
     t = constant_op.constant([1.0, 2.0])
-    l = list_ops.tensor_list_from_tensor(t, element_shape=scalar_shape())
+    l = list_ops.tensor_list_from_tensor(t, element_shape=[])
     with context.device("gpu:0"):
       l_gpu = array_ops.identity(l)
       self.assertAllEqual(
@@ -294,12 +373,11 @@ class ListOpsTest(test_util.TensorFlowTestCase):
             list_ops.tensor_list_pop_back(
                 l_cpu, element_dtype=dtypes.float32)[1]), 2.0)
 
-  @test_util.run_in_graph_and_eager_modes
   def testCPUGPUCopyNested(self):
     if not context.num_gpus():
       return
     t = constant_op.constant([1.0, 2.0])
-    child_l = list_ops.tensor_list_from_tensor(t, element_shape=scalar_shape())
+    child_l = list_ops.tensor_list_from_tensor(t, element_shape=[])
     l = list_ops.empty_tensor_list(
         element_shape=constant_op.constant([], dtype=dtypes.int32),
         element_dtype=dtypes.variant)
@@ -331,7 +409,7 @@ class ListOpsTest(test_util.TensorFlowTestCase):
               list_ops.tensor_list_stack(tl, element_dtype=dtypes.int32)),
           [[1]])
 
-  def testGraphStackInLoop(self):
+  def testSkipEagerStackInLoop(self):
     with self.cached_session():
       t1 = list_ops.empty_tensor_list(
           element_shape=constant_op.constant([], dtype=dtypes.int32),
@@ -348,7 +426,7 @@ class ListOpsTest(test_util.TensorFlowTestCase):
       s1 = list_ops.tensor_list_stack(t1, element_dtype=dtypes.int32)
       self.assertAllEqual(self.evaluate(s1), [0, 1, 2, 3])
 
-  def testGraphStackSwitchDtype(self):
+  def testSkipEagerStackSwitchDtype(self):
     with self.cached_session():
       list_ = list_ops.empty_tensor_list(
           element_shape=constant_op.constant([], dtype=dtypes.int32),
@@ -369,7 +447,7 @@ class ListOpsTest(test_util.TensorFlowTestCase):
       np_s1 = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.float32)
       self.assertAllEqual(self.evaluate(s1), np_s1)
 
-  def testGraphStackInLoopSwitchDtype(self):
+  def testSkipEagerStackInLoopSwitchDtype(self):
     with self.cached_session():
       t1 = list_ops.empty_tensor_list(
           element_shape=constant_op.constant([], dtype=dtypes.int32),
@@ -392,7 +470,6 @@ class ListOpsTest(test_util.TensorFlowTestCase):
       np_s1 = np.vstack([np.arange(1, 4) * i for i in range(4)])
       self.assertAllEqual(self.evaluate(s1), np_s1)
 
-  @test_util.run_in_graph_and_eager_modes
   def testSerialize(self):
     worker = test_util.create_local_cluster(num_workers=1, num_ps=1)[0][0]
     with ops.Graph().as_default(), session.Session(target=worker.target):
@@ -407,15 +484,12 @@ class ListOpsTest(test_util.TensorFlowTestCase):
         worker_e = array_ops.identity(e)
       self.assertAllEqual(self.evaluate(worker_e), [2.0])
 
-  @test_util.run_in_graph_and_eager_modes
   def testSerializeListWithInvalidTensors(self):
     worker = test_util.create_local_cluster(num_workers=1, num_ps=1)[0][0]
     with ops.Graph().as_default(), session.Session(target=worker.target):
       with ops.device("/job:worker"):
         l = list_ops.tensor_list_reserve(
-            element_dtype=dtypes.float32,
-            element_shape=scalar_shape(),
-            num_elements=2)
+            element_dtype=dtypes.float32, element_shape=[], num_elements=2)
         l = list_ops.tensor_list_set_item(l, 0, 1.)
       with ops.device("/job:ps"):
         l_ps = array_ops.identity(l)
@@ -425,13 +499,12 @@ class ListOpsTest(test_util.TensorFlowTestCase):
         worker_t = array_ops.identity(t)
       self.assertAllEqual(self.evaluate(worker_t), [1.0, 2.0])
 
-  @test_util.run_in_graph_and_eager_modes
   def testSerializeListWithUnknownRank(self):
     worker = test_util.create_local_cluster(num_workers=1, num_ps=1)[0][0]
     with ops.Graph().as_default(), session.Session(target=worker.target):
       with ops.device("/job:worker"):
         t = constant_op.constant([[1.0], [2.0]])
-        l = list_ops.tensor_list_from_tensor(t, element_shape=-1)
+        l = list_ops.tensor_list_from_tensor(t, element_shape=None)
       with ops.device("/job:ps"):
         l_ps = array_ops.identity(l)
         element_shape = list_ops.tensor_list_element_shape(
@@ -440,11 +513,32 @@ class ListOpsTest(test_util.TensorFlowTestCase):
         element_shape = array_ops.identity(element_shape)
       self.assertEqual(self.evaluate(element_shape), -1)
 
-  @test_util.run_in_graph_and_eager_modes
+  def testSerializeListWithMaxNumElements(self):
+    if context.num_gpus():
+      # TODO(b/119151861): Enable on GPU.
+      return
+    worker = test_util.create_local_cluster(num_workers=1, num_ps=1)[0][0]
+    with ops.Graph().as_default(), session.Session(target=worker.target):
+      with ops.device("/job:worker"):
+        l = list_ops.empty_tensor_list(
+            element_shape=None,
+            element_dtype=dtypes.float32,
+            max_num_elements=2)
+        l = list_ops.tensor_list_push_back(l, 1.)
+      with ops.device("/job:ps"):
+        l_ps = array_ops.identity(l)
+        l_ps = list_ops.tensor_list_push_back(l_ps, 2.)
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "Tried to push item into a full list"):
+        with ops.device("/job:worker"):
+          l_worker = array_ops.identity(l_ps)
+          l_worker = list_ops.tensor_list_push_back(l_worker, 3.0)
+          self.evaluate(l_worker)
+
   def testPushPopGradients(self):
     with backprop.GradientTape() as tape:
-      l = list_ops.empty_tensor_list(element_dtype=dtypes.float32,
-                                     element_shape=scalar_shape())
+      l = list_ops.empty_tensor_list(
+          element_dtype=dtypes.float32, element_shape=[])
       c = constant_op.constant(1.0)
       tape.watch(c)
       l = list_ops.tensor_list_push_back(l, c)
@@ -452,24 +546,22 @@ class ListOpsTest(test_util.TensorFlowTestCase):
       e = 2 * e
     self.assertAllEqual(self.evaluate(tape.gradient(e, [c])[0]), 2.0)
 
-  @test_util.run_in_graph_and_eager_modes
   def testStackFromTensorGradients(self):
     with backprop.GradientTape() as tape:
       c = constant_op.constant([1.0, 2.0])
       tape.watch(c)
-      l = list_ops.tensor_list_from_tensor(c, element_shape=scalar_shape())
+      l = list_ops.tensor_list_from_tensor(c, element_shape=[])
       c2 = list_ops.tensor_list_stack(
           l, element_dtype=dtypes.float32, num_elements=2)
       result = c2 * 2.0
     grad = tape.gradient(result, [c])[0]
     self.assertAllEqual(self.evaluate(grad), [2.0, 2.0])
 
-  @test_util.run_in_graph_and_eager_modes
   def testGetSetGradients(self):
     with backprop.GradientTape() as tape:
       c = constant_op.constant([1.0, 2.0])
       tape.watch(c)
-      l = list_ops.tensor_list_from_tensor(c, element_shape=scalar_shape())
+      l = list_ops.tensor_list_from_tensor(c, element_shape=[])
       c2 = constant_op.constant(3.0)
       tape.watch(c2)
       l = list_ops.tensor_list_set_item(l, 0, c2)
@@ -480,18 +572,17 @@ class ListOpsTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(self.evaluate(grad_c), [0.0, 4.0])
     self.assertAllEqual(self.evaluate(grad_c2), 6.0)
 
-  @test_util.run_in_graph_and_eager_modes
   def testSetOutOfBounds(self):
     c = constant_op.constant([1.0, 2.0])
-    l = list_ops.tensor_list_from_tensor(c, element_shape=scalar_shape())
+    l = list_ops.tensor_list_from_tensor(c, element_shape=[])
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(list_ops.tensor_list_set_item(l, 20, 3.0))
 
-  def testSetItemWithMismatchedShapeFails(self):
+  def testSkipEagerSetItemWithMismatchedShapeFails(self):
     with self.cached_session() as sess:
       ph = array_ops.placeholder(dtypes.float32)
       c = constant_op.constant([1.0, 2.0])
-      l = list_ops.tensor_list_from_tensor(c, element_shape=scalar_shape())
+      l = list_ops.tensor_list_from_tensor(c, element_shape=[])
       # Set a placeholder with unknown shape to satisfy the shape inference
       # at graph building time.
       l = list_ops.tensor_list_set_item(l, 0, ph)
@@ -500,10 +591,9 @@ class ListOpsTest(test_util.TensorFlowTestCase):
                                    "incompatible shape"):
         sess.run(l_0, {ph: [3.0]})
 
-  @test_util.run_in_graph_and_eager_modes
   def testResourceVariableScatterGather(self):
     c = constant_op.constant([1.0, 2.0], dtype=dtypes.float32)
-    l = list_ops.tensor_list_from_tensor(c, element_shape=scalar_shape())
+    l = list_ops.tensor_list_from_tensor(c, element_shape=[])
     v = vs.get_variable("var", initializer=[l] * 10, use_resource=True)
     v_r_0_stacked = list_ops.tensor_list_stack(v[0], dtypes.float32)
     self.evaluate(v.initializer)
@@ -511,10 +601,8 @@ class ListOpsTest(test_util.TensorFlowTestCase):
     v_r_sparse_stacked = list_ops.tensor_list_stack(
         v.sparse_read(0), dtypes.float32)
     self.assertAllEqual([1.0, 2.0], self.evaluate(v_r_sparse_stacked))
-    l_new_0 = list_ops.tensor_list_from_tensor(
-        [3.0, 4.0], element_shape=scalar_shape())
-    l_new_1 = list_ops.tensor_list_from_tensor(
-        [5.0, 6.0], element_shape=scalar_shape())
+    l_new_0 = list_ops.tensor_list_from_tensor([3.0, 4.0], element_shape=[])
+    l_new_1 = list_ops.tensor_list_from_tensor([5.0, 6.0], element_shape=[])
     updated_v = state_ops.scatter_update(v, [3, 5], [l_new_0, l_new_1])
     updated_v_elems = array_ops.unstack(updated_v)
     updated_v_stacked = [
@@ -524,11 +612,10 @@ class ListOpsTest(test_util.TensorFlowTestCase):
                 [[1.0, 2.0]] * 4)
     self.assertAllEqual(self.evaluate(updated_v_stacked), expected)
 
-  @test_util.run_in_graph_and_eager_modes
   def testConcat(self):
     c = constant_op.constant([1.0, 2.0], dtype=dtypes.float32)
-    l0 = list_ops.tensor_list_from_tensor(c, element_shape=scalar_shape())
-    l1 = list_ops.tensor_list_from_tensor([-1.0], element_shape=scalar_shape())
+    l0 = list_ops.tensor_list_from_tensor(c, element_shape=[])
+    l1 = list_ops.tensor_list_from_tensor([-1.0], element_shape=[])
     l_batch_0 = array_ops.stack([l0, l1])
     l_batch_1 = array_ops.stack([l1, l0])
 
@@ -564,7 +651,7 @@ class ListOpsTest(test_util.TensorFlowTestCase):
       self.evaluate(
           list_ops.tensor_list_concat_lists(
               l_batch_0,
-              list_ops.empty_tensor_list(scalar_shape(), dtypes.float32),
+              list_ops.empty_tensor_list([], dtypes.float32),
               element_dtype=dtypes.float32))
 
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
@@ -578,17 +665,15 @@ class ListOpsTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  r"input_b\[0\].dtype != element_dtype."):
       l_batch_of_int_tls = array_ops.stack(
-          [list_ops.tensor_list_from_tensor([1], element_shape=scalar_shape())]
-          * 2)
+          [list_ops.tensor_list_from_tensor([1], element_shape=[])] * 2)
       self.evaluate(
           list_ops.tensor_list_concat_lists(l_batch_0, l_batch_of_int_tls,
                                             element_dtype=dtypes.float32))
 
-  @test_util.run_in_graph_and_eager_modes
   def testPushBackBatch(self):
     c = constant_op.constant([1.0, 2.0], dtype=dtypes.float32)
-    l0 = list_ops.tensor_list_from_tensor(c, element_shape=scalar_shape())
-    l1 = list_ops.tensor_list_from_tensor([-1.0], element_shape=scalar_shape())
+    l0 = list_ops.tensor_list_from_tensor(c, element_shape=[])
+    l1 = list_ops.tensor_list_from_tensor([-1.0], element_shape=[])
     l_batch = array_ops.stack([l0, l1])
     l_push = list_ops.tensor_list_push_back_batch(l_batch, [3.0, 4.0])
     l_unstack = array_ops.unstack(l_push)
@@ -626,14 +711,13 @@ class ListOpsTest(test_util.TensorFlowTestCase):
                                  "Invalid data type at index 0"):
       self.evaluate(list_ops.tensor_list_push_back_batch(l_batch, [3, 4]))
 
-  @test_util.run_in_graph_and_eager_modes
   def testZerosLike(self):
     for dtype in (dtypes.uint8, dtypes.uint16, dtypes.int8, dtypes.int16,
                   dtypes.int32, dtypes.int64, dtypes.float16, dtypes.float32,
                   dtypes.float64, dtypes.complex64, dtypes.complex128,
                   dtypes.bool):
       l_empty = list_ops.empty_tensor_list(
-          element_dtype=dtype, element_shape=scalar_shape())
+          element_dtype=dtype, element_shape=[])
       l_empty_zeros = array_ops.zeros_like(l_empty)
       t_empty_zeros = list_ops.tensor_list_stack(
           l_empty_zeros, element_dtype=dtype)
@@ -651,17 +735,15 @@ class ListOpsTest(test_util.TensorFlowTestCase):
           self.evaluate(t_full_zeros), np.zeros(
               (2,), dtype=dtype.as_numpy_dtype))
 
-  @test_util.run_in_graph_and_eager_modes
   def testZerosLikeNested(self):
     for dtype in (dtypes.uint8, dtypes.uint16, dtypes.int8, dtypes.int16,
                   dtypes.int32, dtypes.int64, dtypes.float16, dtypes.float32,
                   dtypes.float64, dtypes.complex64, dtypes.complex128,
                   dtypes.bool):
       l = list_ops.empty_tensor_list(
-          element_dtype=dtypes.variant, element_shape=scalar_shape())
+          element_dtype=dtypes.variant, element_shape=[])
 
-      sub_l = list_ops.empty_tensor_list(
-          element_dtype=dtype, element_shape=scalar_shape())
+      sub_l = list_ops.empty_tensor_list(element_dtype=dtype, element_shape=[])
       l = list_ops.tensor_list_push_back(l, sub_l)
       sub_l = list_ops.tensor_list_push_back(sub_l, math_ops.cast(
           1, dtype=dtype))
@@ -692,16 +774,14 @@ class ListOpsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(
           self.evaluate(outputs[0]), np.zeros((2,), dtype=dtype.as_numpy_dtype))
 
-  @test_util.run_in_graph_and_eager_modes
   def testElementShape(self):
     l = list_ops.empty_tensor_list(
-        element_dtype=dtypes.float32, element_shape=-1)
+        element_dtype=dtypes.float32, element_shape=None)
     shape = list_ops.tensor_list_element_shape(l, shape_type=dtypes.int32)
     self.assertEqual(self.evaluate(shape), -1)
 
   def testZerosLikeUninitialized(self):
-    l0 = list_ops.tensor_list_reserve(
-        scalar_shape(), 3, element_dtype=dtypes.float32)
+    l0 = list_ops.tensor_list_reserve([], 3, element_dtype=dtypes.float32)
     l1 = list_ops.tensor_list_set_item(l0, 0, 1.)  # [1., _, _]
     zeros_1 = array_ops.zeros_like(l1)  # [0., _, _]
     l2 = list_ops.tensor_list_set_item(l1, 2, 2.)  # [1., _, 2.]
@@ -716,6 +796,74 @@ class ListOpsTest(test_util.TensorFlowTestCase):
 
     self.assertAllEqual(self.evaluate(res_1), [0.])
     self.assertAllEqual(self.evaluate(res_2), [0., 0.])
+
+  def testSkipEagerTensorListGetItemGradAggregation(self):
+    l = list_ops.tensor_list_reserve(
+        element_shape=[], num_elements=1, element_dtype=dtypes.float32)
+    x = constant_op.constant(1.0)
+    l = list_ops.tensor_list_set_item(l, 0, x)
+    l_read1 = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
+    l_read2 = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
+    grad = gradients_impl.gradients([l_read1, l_read2], [x])
+    with self.cached_session() as sess:
+      self.assertSequenceEqual(sess.run(grad), [2.])
+
+  def testSkipEagerBuildElementShape(self):
+    fn = list_ops._build_element_shape
+    # Unknown shape -> -1.
+    self.assertEqual(fn(None), -1)
+    self.assertEqual(fn(tensor_shape.unknown_shape()), -1)
+    # Scalar shape -> [] with type int32.
+    self.assertEqual(fn([]).dtype, dtypes.int32)
+    self.assertEqual(fn(tensor_shape.scalar()).dtype, dtypes.int32)
+    self.assertAllEqual(self.evaluate(fn([])), np.array([], np.int32))
+    self.assertAllEqual(
+        self.evaluate(fn(tensor_shape.scalar())), np.array([], np.int32))
+    # Tensor -> Tensor
+    shape = constant_op.constant(1)
+    self.assertIs(fn(shape), shape)
+    # Shape with unknown dims -> shape list with -1's.
+    shape = [None, 5]
+    self.assertAllEqual(fn(shape), [-1, 5])
+    self.assertAllEqual(fn(tensor_shape.TensorShape(shape)), [-1, 5])
+    # Shape with unknown dims and tensor dims -> shape list with -1's and tensor
+    # dims.
+    t = array_ops.placeholder(dtypes.int32)
+    shape = [None, 5, t]
+    result = fn(shape)
+    self.assertAllEqual(result[:2], [-1, 5])
+    self.assertIs(result[2], t)
+
+  def testAddN(self):
+    l1 = list_ops.tensor_list_from_tensor([1.0, 2.0], element_shape=[])
+    l2 = list_ops.tensor_list_from_tensor([3.0, 4.0], element_shape=[])
+    l3 = list_ops.tensor_list_from_tensor([5.0, 6.0], element_shape=[])
+    result = math_ops.add_n((l1, l2, l3))
+    result_t = list_ops.tensor_list_stack(result, element_dtype=dtypes.float32)
+    self.assertAllEqual(self.evaluate(result_t), [9., 12.])
+
+  def testAddNNestedList(self):
+    l1 = list_ops.tensor_list_from_tensor([1.0, 2.0], element_shape=[])
+    l2 = list_ops.tensor_list_from_tensor([3.0, 4.0], element_shape=[])
+    l3 = list_ops.tensor_list_from_tensor([5.0, 6.0], element_shape=[])
+    l4 = list_ops.tensor_list_from_tensor([7.0, 8.0], element_shape=[])
+    a = list_ops.empty_tensor_list(
+        element_dtype=dtypes.variant, element_shape=[])
+    a = list_ops.tensor_list_push_back(a, l1)
+    a = list_ops.tensor_list_push_back(a, l2)
+    b = list_ops.empty_tensor_list(
+        element_dtype=dtypes.variant, element_shape=[])
+    b = list_ops.tensor_list_push_back(b, l3)
+    b = list_ops.tensor_list_push_back(b, l4)
+    result = math_ops.add_n((a, b))
+    result_0 = list_ops.tensor_list_stack(
+        list_ops.tensor_list_get_item(result, 0, element_dtype=dtypes.variant),
+        element_dtype=dtypes.float32)
+    result_1 = list_ops.tensor_list_stack(
+        list_ops.tensor_list_get_item(result, 1, element_dtype=dtypes.variant),
+        element_dtype=dtypes.float32)
+    self.assertAllEqual(self.evaluate(result_0), [6., 8.])
+    self.assertAllEqual(self.evaluate(result_1), [10., 12.])
 
 
 if __name__ == "__main__":

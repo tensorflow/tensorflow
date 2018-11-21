@@ -40,7 +40,7 @@ class PrefetchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.cached_session() as sess:
       sess.run(init_op, feed_dict={buffer_size_t: buffer_size})
       for m in range(10):
-        self.assertEqual(m, sess.run(get_next))
+        self.assertEqual(m, self.evaluate(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 

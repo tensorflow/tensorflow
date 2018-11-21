@@ -126,8 +126,8 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
   OP_REQUIRES_OK(context, GetPrecisionMode(precision_string, &precision_mode_));
   OP_REQUIRES_OK(context,
                  context->GetAttr("use_calibration", &use_calibration_));
-  calibration_mode_ = (use_calibration_ &&
-      (precision_mode_ == INT8MODE && calibration_data.size() == 0));
+  calibration_mode_ = (use_calibration_ && precision_mode_ == INT8MODE &&
+                       calibration_data.size() == 0);
   if (calibration_data.size()) {
     calibrator_.reset(new TRTInt8Calibrator(calibration_data));
     calibration_data.resize(0);
@@ -499,8 +499,8 @@ TRTEngineOp::EngineCtxPair& TRTEngineOp::GetEngine(int batch_size,
     // means calibration_mode_ is true and this path won't get executed.
     auto status = convert::ConvertGraphDefToEngine(
         segment_graph_, precision_mode_, batch_size, workspace_size_, shapes,
-        &logger, allocator, calibrator_.get(), &engine,
-        use_calibration_, &convert_successfully); 
+        &logger, allocator, calibrator_.get(), &engine, use_calibration_,
+        &convert_successfully);
     if (!status.ok()) {
       if (convert_successfully) {
         // This means it fail to build the engine even when the network is built

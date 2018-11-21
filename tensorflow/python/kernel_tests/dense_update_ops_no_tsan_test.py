@@ -43,7 +43,7 @@ class AssignOpTest(test.TestCase):
       variables.global_variables_initializer().run()
 
       def run_add(add_op):
-        sess.run(add_op)
+        self.evaluate(add_op)
 
       threads = [
           self.checkedThread(
@@ -54,7 +54,7 @@ class AssignOpTest(test.TestCase):
       for t in threads:
         t.join()
 
-      vals = p.eval()
+      vals = self.evaluate(p)
       ones = np.ones((1024, 1024)).astype(np.float32)
       self.assertTrue((vals >= ones).all())
       self.assertTrue((vals <= ones * 20).all())
@@ -70,7 +70,7 @@ class AssignOpTest(test.TestCase):
       variables.global_variables_initializer().run()
 
       def run_assign(assign_op):
-        sess.run(assign_op)
+        self.evaluate(assign_op)
 
       threads = [
           self.checkedThread(
@@ -81,7 +81,7 @@ class AssignOpTest(test.TestCase):
       for t in threads:
         t.join()
 
-      vals = p.eval()
+      vals = self.evaluate(p)
 
       # Assert every element is taken from one of the assignments.
       self.assertTrue((vals > 0).all())
@@ -103,7 +103,7 @@ class AssignOpTest(test.TestCase):
       p.initializer.run()
 
       def run_add(add_op):
-        sess.run(add_op)
+        self.evaluate(add_op)
 
       threads = [
           self.checkedThread(
@@ -114,7 +114,7 @@ class AssignOpTest(test.TestCase):
       for t in threads:
         t.join()
 
-      vals = p.eval()
+      vals = self.evaluate(p)
       ones = np.ones((1024, 1024)).astype(np.float32)
       self.assertAllEqual(vals, ones * 20)
 
@@ -131,7 +131,7 @@ class AssignOpTest(test.TestCase):
       p.initializer.run()
 
       def run_assign(assign_op):
-        sess.run(assign_op)
+        self.evaluate(assign_op)
 
       threads = [
           self.checkedThread(
@@ -142,7 +142,7 @@ class AssignOpTest(test.TestCase):
       for t in threads:
         t.join()
 
-      vals = p.eval()
+      vals = self.evaluate(p)
 
       # Assert every element is the same, and taken from one of the assignments.
       self.assertTrue(vals[0, 0] > 0)

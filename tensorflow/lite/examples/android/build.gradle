@@ -22,3 +22,7 @@ allprojects {
 task clean(type: Delete) {
     delete rootProject.buildDir
 }
+
+// Changed since default name 'build' conflicts with
+// bazel BUILD file name.
+buildDir = "gradle-build"

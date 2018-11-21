@@ -112,6 +112,12 @@ class XlaDevice : public LocalDevice {
     // compute, host-to-device, and device-to-host communication.
     bool use_multiple_streams = false;
 
+    // A function that describes how the on-host shapes of
+    // a) argument and return value, for entry computations
+    // b) variables, for all computations,
+    // should be represented in XLA. Parameters/return values will be shaped
+    // according to this function, and reshaped back to/from their declared
+    // shapes for computations. Must be non-null.
     XlaCompiler::ShapeRepresentationFn shape_representation_fn;
 
     // If padded_shape_fn is empty, a default implementation that returns
@@ -129,6 +135,7 @@ class XlaDevice : public LocalDevice {
   void ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                     AsyncOpKernel::DoneCallback done) override;
   Status Sync() override;
+  void Sync(const DoneCallback& done) override;
 
   Status FillContextMap(const Graph* graph,
                         DeviceContextMap* device_context_map) override
@@ -158,7 +165,30 @@ class XlaDevice : public LocalDevice {
 
   bool RequiresSyncOnCompletion() const override LOCKS_EXCLUDED(mu_);
 
+  // A simple RAII handle. On construction the device's
+  // outstanding_asynchronous_operations_ field is incremented; on destruction
+  // it is decremented.
+  class AsynchronousOperationHandle {
+   public:
+    AsynchronousOperationHandle(XlaDevice* device);
+    ~AsynchronousOperationHandle();
+    AsynchronousOperationHandle(const AsynchronousOperationHandle& other);
+    AsynchronousOperationHandle(AsynchronousOperationHandle&& other);
+    AsynchronousOperationHandle& operator=(
+        const AsynchronousOperationHandle& other);
+    AsynchronousOperationHandle& operator=(AsynchronousOperationHandle&& other);
+
+   private:
+    XlaDevice* device_ = nullptr;
+  };
+
+  AsynchronousOperationHandle CreateAsynchronousOperationHandle() {
+    return AsynchronousOperationHandle(this);
+  }
+
  private:
+  friend class AsynchronousOperationHandle;
+
   xla::LocalClient* client() const;
   Allocator* GetAllocatorLocked(AllocatorAttributes attr)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
@@ -221,6 +251,11 @@ class XlaDevice : public LocalDevice {
   // True if the device requires XlaDevice::Sync to be called on completion
   // regardless of status.
   bool sync_on_completion_ GUARDED_BY(mu_) = false;
+
+  // Count of outstanding asynchronous operations which must be zero on Sync()
+  // completion.
+  int64 outstanding_asynchronous_operations_ GUARDED_BY(mu_) = 0;
+  condition_variable outstanding_asynchronous_operations_cv_;
 };
 
 // Builds OpKernel registrations on 'device' for the JIT operators

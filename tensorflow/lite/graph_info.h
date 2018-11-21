@@ -51,31 +51,32 @@ class GraphInfo {
   virtual const std::vector<int>& variables() const = 0;
 };
 
-// Represents a subgraph of a TensorFlow Lite graph.
-struct Subgraph {
+// Represents a subset of nodes in a TensorFlow Lite graph.
+struct NodeSubset {
   enum Type {
     kTfUnexplored = 0,  // temporarily used during creation
     kTfPartition,
     kTfNonPartition
   };
   Type type = kTfUnexplored;
-  // Nodes within the subgraph
+  // Nodes within the node sub set
   std::vector<int> nodes;
-  // Tensors that stride output from another subgraph that this depends on,
+  // Tensors that stride output from another node sub set that this depends on,
   // or global inputs to the TensorFlow Lite full graph.
   std::vector<int> input_tensors;
-  // Outputs that are consumed by other subgraphs or are global output tensors.
-  // All output tensors of the nodes in the subgraph that do not appear in this
-  // list are intermediate results that can be potentially elided.
+  // Outputs that are consumed by other node sub sets or are global output
+  // tensors. All output tensors of the nodes in the node sub set that do not
+  // appear in this list are intermediate results that can be potentially
+  // elided.
   std::vector<int> output_tensors;
 };
 
-// Partitions a list of node indices `nodes_to_partition` into subgraphs.
-// Each subgraph is in dependency order (i.e. all members of the subgraph).
-// `subgraphs` is assumed to be empty.
-TfLiteStatus PartitionGraphIntoIndependentSubgraphs(
+// Partitions a list of node indices `nodes_to_partition` into node sub sets.
+// Each node sub set is in dependency order (i.e. all members of the node sub
+// sets). `node_subsets` is assumed to be empty.
+TfLiteStatus PartitionGraphIntoIndependentNodeSubsets(
     const GraphInfo* info, const TfLiteIntArray* nodes_to_partition,
-    std::vector<Subgraph>* subgraphs);
+    std::vector<NodeSubset>* node_subsets);
 
 }  // namespace tflite
 

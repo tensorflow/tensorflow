@@ -1218,6 +1218,43 @@ class Unpack : public BuiltinOperator<UnpackOperator, ::tflite::UnpackOptions,
   int GetVersion(const Operator& op) const override { return 1; }
 };
 
+class LeakyRelu
+    : public BuiltinOperator<LeakyReluOperator, ::tflite::LeakyReluOptions,
+                             ::tflite::BuiltinOptions_LeakyReluOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateLeakyReluOptions(*builder, op.alpha);
+  }
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->alpha = options.alpha();
+  }
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
+class SquaredDifference
+    : public BuiltinOperator<
+          SquaredDifferenceOperator, ::tflite::SquaredDifferenceOptions,
+          ::tflite::BuiltinOptions_SquaredDifferenceOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateSquaredDifferenceOptions(*builder);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {}
+
+  int GetVersion(const Operator& op) const override { return 1; }
+};
+
 std::unique_ptr<flexbuffers::Builder> WriteFlexOpOptions(
     const string& tensorflow_node_def) {
   auto fbb = absl::make_unique<flexbuffers::Builder>();
@@ -1516,6 +1553,11 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
                                    OperatorType::kOneHot));
   ops.push_back(MakeUnique<Unpack>(::tflite::BuiltinOperator_UNPACK,
                                    OperatorType::kUnpack));
+  ops.push_back(MakeUnique<LeakyRelu>(::tflite::BuiltinOperator_LEAKY_RELU,
+                                      OperatorType::kLeakyRelu));
+  ops.push_back(MakeUnique<SquaredDifference>(
+      ::tflite::BuiltinOperator_SQUARED_DIFFERENCE,
+      OperatorType::kSquaredDifference));
 
   // Custom Operators.
   ops.push_back(
@@ -1526,11 +1568,11 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
                                                   OperatorType::kUnsupported,
                                                   enable_select_tf_ops));
 
-  // There operators are supported by Toco, but not by TF Lite, and has no
-  // attributes.
-  ops.push_back(
-      MakeUnique<SimpleOperator<AddNOperator>>("ADDN", OperatorType::kAddN));
-  // Simple Operators.
+  // SimpleOperator was designed to export CUSTOM TF Lite ops, but has since
+  // been modified to also export builtins. As TOCO evolved we added warnings
+  // when custom ops are exported but SimpleOperator bypasses thoses. To
+  // prevent user confusion we are settling on using SimpleOperator only for
+  // builtins.
   ops.push_back(MakeUnique<SimpleOperator<DequantizeOperator>>(
       "DEQUANTIZE", OperatorType::kDequantize));
   ops.push_back(

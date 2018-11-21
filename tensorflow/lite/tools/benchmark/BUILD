@@ -112,6 +112,7 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/profiling:profile_summarizer",
+        "@gemmlowp",
     ],
 )
 

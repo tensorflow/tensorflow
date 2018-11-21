@@ -36,7 +36,7 @@ class ReduceDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       ds = dataset_ops.Dataset.range(1, i + 1)
       result = ds.reduce(np.int64(0), lambda x, y: x + y)
       with self.cached_session() as sess:
-        self.assertEqual(((i + 1) * i) // 2, sess.run(result))
+        self.assertEqual(((i + 1) * i) // 2, self.evaluate(result))
 
   def testSumTuple(self):
 
@@ -49,7 +49,7 @@ class ReduceDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       ds = dataset_ops.Dataset.zip((ds, ds))
       result = ds.reduce(np.int64(0), reduce_fn)
       with self.cached_session() as sess:
-        self.assertEqual(((i + 1) * i), sess.run(result))
+        self.assertEqual(((i + 1) * i), self.evaluate(result))
 
   def testSumAndCount(self):
 
@@ -61,7 +61,7 @@ class ReduceDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       ds = dataset_ops.Dataset.range(1, i + 1)
       result = ds.reduce((np.int64(0), np.int64(0)), reduce_fn)
       with self.cached_session() as sess:
-        s, c = sess.run(result)
+        s, c = self.evaluate(result)
         self.assertEqual(((i + 1) * i) // 2, s)
         self.assertEqual(i, c)
 
@@ -93,7 +93,8 @@ class ReduceDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       ds = dataset_ops.Dataset.from_tensors(make_sparse_fn(i+1))
       result = ds.reduce(make_sparse_fn(0), reduce_fn)
       with self.cached_session() as sess:
-        self.assertSparseValuesEqual(make_sparse_fn(i+1), sess.run(result))
+        self.assertSparseValuesEqual(
+            make_sparse_fn(i + 1), self.evaluate(result))
 
   def testNested(self):
 
@@ -116,7 +117,7 @@ class ReduceDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       ds = dataset_ops.Dataset.range(1, i + 1).map(map_fn)
       result = ds.reduce(map_fn(0), reduce_fn)
       with self.cached_session() as sess:
-        result = sess.run(result)
+        result = self.evaluate(result)
         self.assertEqual(((i + 1) * i) // 2, result["dense"])
         self.assertSparseValuesEqual(make_sparse_fn(i), result["sparse"])
 

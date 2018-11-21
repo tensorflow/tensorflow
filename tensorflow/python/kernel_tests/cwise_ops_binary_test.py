@@ -81,7 +81,7 @@ class BinaryOpTest(test.TestCase):
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = tf_func(inx, iny)
-      tf_cpu = out.eval()
+      tf_cpu = self.evaluate(out)
       # Test that the op takes precedence over numpy operators.
       np_left = tf_func(x, iny).eval()
       np_right = tf_func(inx, y).eval()
@@ -178,7 +178,7 @@ class BinaryOpTest(test.TestCase):
       inx = ops.convert_to_tensor(x)
       iny = ops.convert_to_tensor(y)
       out = tf_func(inx, iny)
-      tf_gpu = out.eval()
+      tf_gpu = self.evaluate(out)
     self.assertAllClose(np_ans, tf_gpu)
     self.assertShapeEqual(np_ans, out)
     # TODO(zhifengc/ke): make gradient checker work on GPU.
@@ -748,7 +748,7 @@ class ComparisonOpTest(test.TestCase):
       out = func(
           ops.convert_to_tensor(np.array([x]).astype(dtype)),
           ops.convert_to_tensor(np.array([y]).astype(dtype)))
-      ret = out.eval()
+      ret = self.evaluate(out)
     return ret[0]
 
   def testScalarCompareScalar(self):
@@ -779,7 +779,7 @@ class ComparisonOpTest(test.TestCase):
     np_ans = np_func(x, y)
     with self.test_session(force_gpu=test_util.is_gpu_available()):
       out = tf_func(ops.convert_to_tensor(x), ops.convert_to_tensor(y))
-      tf_ans = out.eval()
+      tf_ans = self.evaluate(out)
     self.assertAllEqual(np_ans, tf_ans)
 
   def testTensorCompareTensor(self):

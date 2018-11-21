@@ -90,73 +90,166 @@ NodeDef BuildNode(
   return node;
 }
 
-class ShapeImportTest : public ::testing::TestWithParam<tensorflow::DataType> {
- protected:
-  ShapeImportTest() {}
+namespace {
+void BuildConstNode(std::initializer_list<int64_t> shape,
+                    tensorflow::DataType dtype, int64_t num_elements,
+                    NodeDef* node) {
+  node->set_op("Const");
+  node->set_name("Node1");
 
-  void BuildConstNode(std::initializer_list<int64_t> shape,
-                      tensorflow::DataType dtype, int64_t num_elements,
-                      NodeDef* node) {
-    node->set_op("Const");
-    node->set_name("Node1");
+  // An attribute describing the type of this const node.
+  AttrValue dtype_attr;
+  SetAttrValue(dtype, &dtype_attr);
+  (*node->mutable_attr())["dtype"] = dtype_attr;
 
-    // An attribute describing the type of this const node.
-    AttrValue dtype_attr;
-    SetAttrValue(dtype, &dtype_attr);
-    (*node->mutable_attr())["dtype"] = dtype_attr;
-
-    // An attribute describing the content of this const node.
-    tensorflow::TensorProto t;
-    t.set_dtype(dtype);
-    auto* s = t.mutable_tensor_shape();
-    for (auto d : shape) {
-      s->add_dim()->set_size(d);
-    }
-
-    // TODO(ahentz): also need to test via tensor_content()
-    switch (dtype) {
-      case DT_FLOAT:
-        for (int64_t i = 0; i < num_elements; ++i) {
-          t.add_float_val(i / 10000.0);
-        }
-        break;
-      case DT_INT32:
-        for (int64_t i = 0; i < num_elements; ++i) {
-          t.add_int_val(i % std::numeric_limits<int>::max());
-        }
-        break;
-      case DT_QUINT8:
-        for (int64_t i = 0; i < num_elements; ++i) {
-          t.add_int_val(i % std::numeric_limits<uint8_t>::max());
-        }
-        break;
-      case DT_INT64:
-        for (int64_t i = 0; i < num_elements; ++i) {
-          t.add_int64_val(i);
-        }
-        break;
-      case DT_STRING:
-        break;
-      case DT_BOOL:
-        for (int64_t i = 0; i < num_elements; ++i) {
-          t.add_bool_val(i % 2);
-        }
-        break;
-      case DT_COMPLEX64:
-        for (int64_t i = 0; i < num_elements; ++i) {
-          t.add_scomplex_val(i / 10000.0);
-          t.add_scomplex_val(-i / 10000.0);
-        }
-        break;
-      default:
-        break;
-    }
-
-    AttrValue value_attr;
-    SetAttrValue(t, &value_attr);
-    (*node->mutable_attr())["value"] = value_attr;
+  // An attribute describing the content of this const node.
+  tensorflow::TensorProto t;
+  t.set_dtype(dtype);
+  auto* s = t.mutable_tensor_shape();
+  for (auto d : shape) {
+    s->add_dim()->set_size(d);
   }
+
+  // TODO(ahentz): also need to test via tensor_content()
+  switch (dtype) {
+    case DT_FLOAT:
+      for (int64_t i = 0; i < num_elements; ++i) {
+        t.add_float_val(i / 10000.0);
+      }
+      break;
+    case DT_INT32:
+      for (int64_t i = 0; i < num_elements; ++i) {
+        t.add_int_val(i % std::numeric_limits<int>::max());
+      }
+      break;
+    case DT_QUINT8:
+      for (int64_t i = 0; i < num_elements; ++i) {
+        t.add_int_val(i % std::numeric_limits<uint8_t>::max());
+      }
+      break;
+    case DT_INT64:
+      for (int64_t i = 0; i < num_elements; ++i) {
+        t.add_int64_val(i);
+      }
+      break;
+    case DT_STRING:
+      break;
+    case DT_BOOL:
+      for (int64_t i = 0; i < num_elements; ++i) {
+        t.add_bool_val(i % 2);
+      }
+      break;
+    case DT_COMPLEX64:
+      for (int64_t i = 0; i < num_elements; ++i) {
+        t.add_scomplex_val(i / 10000.0);
+        t.add_scomplex_val(-i / 10000.0);
+      }
+      break;
+    default:
+      break;
+  }
+
+  AttrValue value_attr;
+  SetAttrValue(t, &value_attr);
+  (*node->mutable_attr())["value"] = value_attr;
+}
+}  //  namespace
+
+class ShapeImportTest : public ::testing::TestWithParam<tensorflow::DataType> {
 };
+
+TEST_P(ShapeImportTest, ShapeElementIsNegative) {
+  NodeDef node;
+  BuildConstNode({1, -2, 10}, GetParam(), 0, &node);
+  auto status = ImportNode(node);
+  EXPECT_EQ(
+      status.error_message(),
+      "Tensor shape should not include negative values\n\t (while processing "
+      "node 'Node1')");
+}
+
+TEST_P(ShapeImportTest, ShapeElementIsZero) {
+  NodeDef node;
+  // Const nodes with zero-sized, non-scalar shapes are still not importable.
+  BuildConstNode({1, 0, 10}, GetParam(), 0, &node);
+
+  Model model;
+  EXPECT_TRUE(ImportNode(node, &model).ok());
+
+  const auto& array = model.GetArray("Node1");
+  EXPECT_THAT(array.shape().dims(), ::testing::ElementsAre());
+}
+
+// Note how this is subtly different thant ShapeElementIsZero above, where toco
+// removes all shape information after import.
+TEST_P(ShapeImportTest, ShapeIsOneDimZero) {
+  NodeDef node;
+  BuildConstNode({0}, GetParam(), 0, &node);
+
+  Model model;
+  EXPECT_TRUE(ImportNode(node, &model).ok());
+
+  const auto& array = model.GetArray("Node1");
+  // We would like to have [0] shapes actually import correctly, but
+  // for some reason that slows everything down.
+  EXPECT_THAT(array.shape().dims(), ::testing::ElementsAre());
+}
+
+TEST_P(ShapeImportTest, ShapeElementTooLarge) {
+  NodeDef node;
+  BuildConstNode({3000000000}, GetParam(), 0, &node);
+  auto status = ImportNode(node);
+  EXPECT_EQ(status.error_message(),
+            "Shape element overflows\n\t (while processing node 'Node1')");
+}
+
+TEST_P(ShapeImportTest, ShapeTooLarge) {
+  NodeDef node;
+  BuildConstNode({1000000, 2000000, 2000000, 2000000}, GetParam(), 0, &node);
+  auto status = ImportNode(node);
+  EXPECT_EQ(status.error_message(),
+            "Tensor shape is too large\n\t (while processing node 'Node1')");
+}
+
+TEST_P(ShapeImportTest, ValidShapeButZeroElements) {
+  NodeDef node;
+  BuildConstNode({1, 2, 2, 2}, GetParam(), 0, &node);
+  auto status = ImportNode(node);
+  EXPECT_THAT(status.error_message(),
+              ::testing::MatchesRegex(
+                  "Neither input_content .0. nor .*_val .0. have the right "
+                  "dimensions .8. for this .* tensor\n\t .while processing "
+                  "node 'Node1'."));
+}
+
+std::vector<tensorflow::DataType> TestTypes() {
+  return {DT_FLOAT, DT_INT32, DT_INT64, DT_BOOL, DT_QUINT8, DT_COMPLEX64};
+}
+
+INSTANTIATE_TEST_CASE_P(ShapeImportTest, ShapeImportTest,
+                        ::testing::ValuesIn(TestTypes()));
+
+TEST(ImportTest, Complex64ConstNode) {
+  NodeDef node;
+  BuildConstNode({1, 2, 3}, DT_COMPLEX64, 6, &node);
+  Model model;
+  EXPECT_TRUE(ImportNode(node, &model).ok());
+  const auto& array = model.GetArray("Node1");
+  EXPECT_EQ(ArrayDataType::kComplex64, array.data_type);
+  EXPECT_EQ(6, array.GetBuffer<ArrayDataType::kComplex64>().Length());
+  int64_t i = 0;
+  for (const auto& datum : array.GetBuffer<ArrayDataType::kComplex64>().data) {
+    EXPECT_EQ(i / 10000.0f, std::real(datum));
+    EXPECT_EQ(-i / 10000.0f, std::imag(datum));
+    i++;
+  }
+}
+
+std::vector<std::pair<tensorflow::DataType, ArrayDataType>> UnaryTestTypes() {
+  return {{DT_FLOAT, ArrayDataType::kFloat},
+          {DT_INT32, ArrayDataType::kInt32},
+          {DT_INT64, ArrayDataType::kInt64}};
+}
 
 class TypeImportTest : public ::testing::TestWithParam<
                            std::pair<tensorflow::DataType, ArrayDataType>> {
@@ -176,79 +269,6 @@ class TypeImportTest : public ::testing::TestWithParam<
     (*node->mutable_attr())["T"] = dtype_attr;
   }
 };
-
-std::vector<tensorflow::DataType> TestTypes() {
-  return {DT_FLOAT, DT_INT32, DT_INT64, DT_BOOL, DT_QUINT8, DT_COMPLEX64};
-}
-
-TEST_P(ShapeImportTest, ShapeElementIsNegative) {
-  NodeDef node;
-  BuildConstNode({1, -2, 10}, GetParam(), 0, &node);
-  auto status = ImportNode(node);
-  EXPECT_EQ(
-      status.error_message(),
-      "Tensor shape should not include negative values\n\t (while processing "
-      "node 'Node1')");
-}
-INSTANTIATE_TEST_CASE_P(ShapeElementIsNegative, ShapeImportTest,
-                        ::testing::ValuesIn(TestTypes()));
-
-TEST_P(ShapeImportTest, ShapeElementTooLarge) {
-  NodeDef node;
-  BuildConstNode({3000000000}, GetParam(), 0, &node);
-  auto status = ImportNode(node);
-  EXPECT_EQ(status.error_message(),
-            "Shape element overflows\n\t (while processing node 'Node1')");
-}
-INSTANTIATE_TEST_CASE_P(ShapeElementTooLarge, ShapeImportTest,
-                        ::testing::ValuesIn(TestTypes()));
-
-TEST_P(ShapeImportTest, ShapeTooLarge) {
-  NodeDef node;
-  BuildConstNode({1000000, 2000000, 2000000, 2000000}, GetParam(), 0, &node);
-  auto status = ImportNode(node);
-  EXPECT_EQ(status.error_message(),
-            "Tensor shape is too large\n\t (while processing node 'Node1')");
-}
-INSTANTIATE_TEST_CASE_P(ShapeTooLarge, ShapeImportTest,
-                        ::testing::ValuesIn(TestTypes()));
-
-TEST_P(ShapeImportTest, ValidShapeButZeroElements) {
-  NodeDef node;
-  BuildConstNode({1, 2, 2, 2}, GetParam(), 0, &node);
-  auto status = ImportNode(node);
-  EXPECT_THAT(status.error_message(),
-              ::testing::MatchesRegex(
-                  "Neither input_content .0. nor .*_val .0. have the right "
-                  "dimensions .8. for this .* tensor\n\t .while processing "
-                  "node 'Node1'."));
-}
-INSTANTIATE_TEST_CASE_P(ValidShapeButZeroElements, ShapeImportTest,
-                        ::testing::ValuesIn(TestTypes()));
-
-TEST_P(ShapeImportTest, Complex64ConstNode) {
-  NodeDef node;
-  BuildConstNode({1, 2, 3}, DT_COMPLEX64, 6, &node);
-  Model model;
-  EXPECT_TRUE(ImportNode(node, &model).ok());
-  const auto& array = model.GetArray("Node1");
-  EXPECT_EQ(ArrayDataType::kComplex64, array.data_type);
-  EXPECT_EQ(6, array.GetBuffer<ArrayDataType::kComplex64>().Length());
-  int64_t i = 0;
-  for (const auto& datum : array.GetBuffer<ArrayDataType::kComplex64>().data) {
-    EXPECT_EQ(i / 10000.0f, std::real(datum));
-    EXPECT_EQ(-i / 10000.0f, std::imag(datum));
-    i++;
-  }
-}
-INSTANTIATE_TEST_CASE_P(Complex64ConstNode, ShapeImportTest,
-                        ::testing::ValuesIn({DT_COMPLEX64}));
-
-std::vector<std::pair<tensorflow::DataType, ArrayDataType>> UnaryTestTypes() {
-  return {{DT_FLOAT, ArrayDataType::kFloat},
-          {DT_INT32, ArrayDataType::kInt32},
-          {DT_INT64, ArrayDataType::kInt64}};
-}
 
 TEST_P(TypeImportTest, BasicTypeInference) {
   NodeDef node;

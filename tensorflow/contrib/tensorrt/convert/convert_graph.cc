@@ -82,81 +82,79 @@ std::vector<int> GetLoadedTensorRTVersion() {
 }
 
 TrtCandidateSelector::TrtCandidateSelector(
-    const grappler::GraphProperties& graph_properties,
-    int precision_mode)
+    const grappler::GraphProperties& graph_properties, int precision_mode)
     : graph_properties_(graph_properties), precision_mode_(precision_mode) {}
 
 Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
   // TODO(laigd): move this set to TrtNodeValidator where it should belong.
   // LINT.IfChange
   static const std::set<string> candidate_ops = {
-    "Identity",
-    "Snapshot",
-    "Const",
-    "Conv2D",
-    "MaxPool",
-    "BiasAdd",
-    "Relu",
-    "Add",
-    "Mul",
-    "Sub",
-    "Rsqrt",
-    "Pad",
-    "Mean",
-    "AvgPool",
-    "ConcatV2",
-    "DepthwiseConv2dNative",
-    "FusedBatchNorm",
-    "FusedBatchNormV2",
-    "Div",
-    "RealDiv",
-    "Rsqrt",
-    "Reciprocal",
-    "Exp",
-    "Log",
-    "Sqrt",
-    "Abs",
-    "Neg",
-    "Transpose",
-    "Reshape",
-    "MatMul",
-    "BatchMatMul",
-    "Softmax",
-    "Minimum",
-    "Maximum",
-    "TopKV2",
-    "Sum",
-    "Prod",
-    "Max",
-    "Min",
-    "Relu6",
+      "Identity",
+      "Snapshot",
+      "Const",
+      "Conv2D",
+      "MaxPool",
+      "BiasAdd",
+      "Relu",
+      "Add",
+      "Mul",
+      "Sub",
+      "Rsqrt",
+      "Pad",
+      "Mean",
+      "AvgPool",
+      "ConcatV2",
+      "DepthwiseConv2dNative",
+      "FusedBatchNorm",
+      "FusedBatchNormV2",
+      "Div",
+      "RealDiv",
+      "Rsqrt",
+      "Reciprocal",
+      "Exp",
+      "Log",
+      "Sqrt",
+      "Abs",
+      "Neg",
+      "Transpose",
+      "Reshape",
+      "MatMul",
+      "BatchMatMul",
+      "Softmax",
+      "Minimum",
+      "Maximum",
+      "TopKV2",
+      "Sum",
+      "Prod",
+      "Max",
+      "Min",
+      "Relu6",
   };
-  bool is_supported_op_type = (candidate_ops.count(node->type_string()) ||
-      PluginFactoryTensorRT::GetInstance()->IsPlugin(node->type_string()));
-#if NV_TENSORRT_MAJOR >= 5
+  bool is_supported_op_type =
+      (candidate_ops.count(node->type_string()) ||
+       PluginFactoryTensorRT::GetInstance()->IsPlugin(node->type_string()));
   static const std::set<string> quantize_ops = {
-    "QuantizeAndDequantizeV2",
-    "QuantizeAndDequantizeV3",
-    "FakeQuantWithMinMaxVars",
-    "FakeQuantWithMinMaxArgs",
+      "QuantizeAndDequantizeV2",
+      "QuantizeAndDequantizeV3",
+      "FakeQuantWithMinMaxVars",
+      "FakeQuantWithMinMaxArgs",
   };
   // In INT8 mode, we will always apply the quantization ranges provided by
   // these ops to the relevant tensors. This happens regardless of the value of
   // use_calibration.
-  if (precision_mode_ == INT8MODE &&
-      quantize_ops.count(node->type_string())) {
+  if (precision_mode_ == INT8MODE && quantize_ops.count(node->type_string())) {
     is_supported_op_type = true;
   }
-#endif
   // LINT.ThenChange(//tensorflow/contrib/tensorrt/convert/convert_nodes.cc)
   if (!is_supported_op_type) {
     return errors::Unimplemented("Op type ", node->type_string(),
-                                 " is not supported.");
+                                 " is not supported");
   }
 
   std::vector<const Edge*> input_edges;
   TF_RETURN_IF_ERROR(node->input_edges(&input_edges));
   std::vector<std::pair<const NodeDef*, int>> input_node_and_ports;
+  input_node_and_ports.reserve(input_edges.size());
   for (const Edge* input_edge : input_edges) {
     input_node_and_ports.emplace_back(&input_edge->src()->def(),
                                       input_edge->src_output());
@@ -280,7 +278,9 @@ tensorflow::Status ConvertGraphDefToTensorRT(
 #endif
 
   // Create RewriterConfig.
-  tensorflow::RewriterConfig rw_cfg;
+  tensorflow::ConfigProto config_proto;
+  auto& rw_cfg =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
   // TODO(aaroey): use only const folding and layout for the time being since
   // new optimizers break the graph for trt.
   rw_cfg.add_optimizers("constfold");
@@ -304,7 +304,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   parameters["use_calibration"].set_b(use_calibration);
 
   // Run optimizer.
-  tensorflow::grappler::MetaOptimizer meta_opt(nullptr, rw_cfg);
+  tensorflow::grappler::MetaOptimizer meta_opt(nullptr, config_proto);
   TF_RETURN_IF_ERROR(meta_opt.Optimize(cluster.get(), item, new_graph_def));
 
   if (VLOG_IS_ON(5)) {
@@ -582,11 +582,11 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
     }
   }
 
-  const bool calibrate_int8 = (info.precision_mode == INT8MODE && info.use_calibration);
+  const bool calibrate_int8 =
+      (info.precision_mode == INT8MODE && info.use_calibration);
   // Build the engine and get its serialized representation.
   string segment_string;
-  if (info.engine_type == EngineInfo::EngineType::TRTStatic || 
-      calibrate_int8) {
+  if (info.engine_type == EngineInfo::EngineType::TRTStatic || calibrate_int8) {
     // Create static engine for fp32/fp16 mode, and test validity of the engine
     // for int8 calibration mode. We don't want engine to fail at the
     // calibration time. So we are constructing a FP32 engine here to check its
@@ -596,8 +596,7 @@ tensorflow::Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
     TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
     // TODO(sami): What happens if 1st dim is not batch?
     TF_RETURN_IF_ERROR(ConvertGraphDefToEngine(
-        info.segment_graph_def,
-        calibrate_int8 ? FP32MODE : info.precision_mode,
+        info.segment_graph_def, calibrate_int8 ? FP32MODE : info.precision_mode,
         max_batch_size, info.max_workspace_size_bytes, input_shapes,
         &trt_logger, alloc, /*calibrator=*/nullptr, &engine,
         info.use_calibration,
@@ -927,12 +926,12 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
     }
     curr_engine.precision_mode = params.precision_mode;
     if (params.use_calibration && params.precision_mode != INT8MODE) {
-      return tensorflow::errors::Unimplemented(
-           "Calibration with FP32 or FP16 is not implemented. ");
+      return errors::InvalidArgument(
+          "Calibration with FP32 or FP16 is not supported.");
     }
     curr_engine.engine_type = ((params.is_dyn_op || params.use_calibration)
-             ? EngineInfo::EngineType::TRTDynamic
-             : EngineInfo::EngineType::TRTStatic);
+                                   ? EngineInfo::EngineType::TRTDynamic
+                                   : EngineInfo::EngineType::TRTStatic);
     curr_engine.use_calibration = params.use_calibration;
     curr_engine.cached_engine_batches = params.cached_engine_batches;
     curr_engine.maximum_cached_engines = params.max_cached_engines;
@@ -952,7 +951,7 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
     converted_segments.push_back(std::move(curr_segment));
 
     if (VLOG_IS_ON(8)) {
-      string fname = curr_engine.engine_name;
+      string fname = engine_segments.back().engine_name;
       StrAppend(&fname, ".pb");
       std::fstream f;
       f.open(fname.c_str(), std::fstream::out | std::fstream::binary);

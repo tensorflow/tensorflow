@@ -37,8 +37,6 @@ tf_ops_fuzz_target_lib("decode_bmp")
 
 tf_ops_fuzz_target_lib("decode_png")
 
-tf_ops_fuzz_target_lib("decode_jpeg")
-
 tf_ops_fuzz_target_lib("decode_wav")
 
 tf_ops_fuzz_target_lib("example_proto_fast_parsing")

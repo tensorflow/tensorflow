@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.cluster_resolver.python.training.cluster_resolver import ClusterResolver
+from tensorflow.contrib.cluster_resolver.python.training.cluster_resolver import format_master_url
+from tensorflow.python.client import device_lib
 from tensorflow.python.training import server_lib
 
 _KUBERNETES_API_CLIENT_INSTALLED = True
@@ -41,6 +43,7 @@ class KubernetesClusterResolver(ClusterResolver):
   def __init__(self,
                job_to_label_mapping=None,
                tf_server_port=8470,
+               rpc_layer='grpc',
                override_client=None):
     """Initializes a new KubernetesClusterResolver.
 
@@ -58,6 +61,8 @@ class KubernetesClusterResolver(ClusterResolver):
          'ps': ['job-name=ps-1', 'job-name=ps-2']}
         ```
       tf_server_port: The port the TensorFlow server is listening on.
+      rpc_layer: (Optional) The RPC layer TensorFlow should use to communicate
+        between tasks in Kubernetes. Defaults to 'grpc'.
       override_client: The Kubernetes client (usually automatically retrieved
         using `from kubernetes import client as k8sclient`). If you pass this
         in, you are responsible for setting Kubernetes credentials manually.
@@ -65,6 +70,7 @@ class KubernetesClusterResolver(ClusterResolver):
     Raises:
       ImportError: If the Kubernetes Python client is not installed and no
         `override_client` is passed in.
+      RuntimeError: If autoresolve_task is not a boolean or a callable.
     """
     if _KUBERNETES_API_CLIENT_INSTALLED:
       k8sconfig.load_kube_config()
@@ -82,16 +88,37 @@ class KubernetesClusterResolver(ClusterResolver):
     self._tf_server_port = tf_server_port
     self._override_client = override_client
 
-  def master(self):
-    # TODO(frankchn): Figure out a standard way to pass in the current task type
-    # and task id via Kubernetes.
-    pass
+    self.task_type = None
+    self.task_index = None
+    self.rpc_layer = rpc_layer
 
-  def get_master(self):
-    return self.master()
+  def master(self, task_type=None, task_index=None, rpc_layer=None):
+    """Returns the master address to use when creating a session.
 
-  def get_job_name(self):
-    return self._job_name
+    You must have set the task_type and task_index object properties before
+    calling this function, or pass in the `task_type` and `task_index`
+    parameters when using this function. If you do both, the function parameters
+    will override the object properties.
+
+    Args:
+      task_type: (Optional) The type of the TensorFlow task of the master.
+      task_index: (Optional) The index of the TensorFlow task of the master.
+      rpc_layer: (Optional) The RPC protocol for the given cluster.
+
+    Returns:
+      The name or URL of the session master.
+    """
+    if task_type is not None and task_index is not None:
+      return format_master_url(
+          self.cluster_spec().task_address(task_type, task_index),
+          rpc_layer or self.rpc_layer)
+
+    if self.task_type is not None and self.task_index is not None:
+      return format_master_url(
+          self.cluster_spec().task_address(self.task_type, self.task_index),
+          rpc_layer or self.rpc_layer)
+
+    return ''
 
   def cluster_spec(self):
     """Returns a ClusterSpec object based on the latest info from Kubernetes.
@@ -130,3 +157,17 @@ class KubernetesClusterResolver(ClusterResolver):
       cluster_map[tf_job] = all_pods
 
     return server_lib.ClusterSpec(cluster_map)
+
+  @property
+  def environment(self):
+    """Returns the current environment which TensorFlow is running in.
+
+    For users in the Cloud environment, the environment property is always an
+    empty string, and Google users will not use this ClusterResolver for running
+    on internal systems.
+    """
+    return ''
+
+  def num_accelerators_per_worker(self, session_config=None):
+    local_devices = device_lib.list_local_devices(session_config)
+    return len([d for d in local_devices if d.device_type == 'GPU'])

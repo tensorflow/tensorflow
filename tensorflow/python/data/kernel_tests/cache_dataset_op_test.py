@@ -71,7 +71,7 @@ class FileCacheDatasetTest(test_base.DatasetTestBase):
 
     with self.cached_session() as sess:
       # First run without caching to collect the "ground truth".
-      sess.run(init_fifo_op)
+      self.evaluate(init_fifo_op)
       elements = []
       for _ in range(20):
         elements.append(sess.run(get_next))
@@ -220,14 +220,14 @@ class MemoryCacheDatasetTest(test_base.DatasetTestBase):
 
       with self.cached_session() as sess:
 
-        sess.run(repeat_count.initializer)
-        sess.run(cached_iterator.initializer)
-        sess.run(uncached_iterator.initializer)
+        self.evaluate(repeat_count.initializer)
+        self.evaluate(cached_iterator.initializer)
+        self.evaluate(uncached_iterator.initializer)
 
         for i in range(3):
           for _ in range(10):
-            self.assertEqual(sess.run(cached_next), i)
-            self.assertEqual(sess.run(uncached_next), i)
+            self.assertEqual(self.evaluate(cached_next), i)
+            self.assertEqual(self.evaluate(uncached_next), i)
 
         sess.run(repeat_count.assign(0))
 
@@ -238,7 +238,7 @@ class MemoryCacheDatasetTest(test_base.DatasetTestBase):
         # The cached iterator replays from cache.
         for i in range(3):
           for _ in range(10):
-            self.assertEqual(sess.run(cached_next), i)
+            self.assertEqual(self.evaluate(cached_next), i)
 
         # The cached iterator should now be empty.
         with self.assertRaises(errors.OutOfRangeError):
@@ -280,7 +280,7 @@ class MemoryCacheDatasetTest(test_base.DatasetTestBase):
     i2 = d2.make_initializable_iterator()
 
     with self.cached_session() as sess:
-      sess.run(i1.initializer)
+      self.evaluate(i1.initializer)
 
       self.assertEqual(1, sess.run(i1.get_next()))
       self.assertEqual(2, sess.run(i1.get_next()))
@@ -307,7 +307,7 @@ class MemoryCacheDatasetTest(test_base.DatasetTestBase):
 
     with self.cached_session() as sess:
       for i, expected in enumerate(expected_values):
-        self.assertEqual(expected, sess.run(n),
+        self.assertEqual(expected, self.evaluate(n),
                          "Unexpected value at index %s" % i)
 
       with self.assertRaises(errors.OutOfRangeError):

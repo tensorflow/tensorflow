@@ -154,7 +154,7 @@ def variable_axis_size_partitioner(
   return _partitioner
 
 
-@tf_export("min_max_variable_partitioner")
+@tf_export(v1=["min_max_variable_partitioner"])
 def min_max_variable_partitioner(max_partitions=1, axis=0,
                                  min_slice_size=256 << 10,
                                  bytes_per_string_element=16):

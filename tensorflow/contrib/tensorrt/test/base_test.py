@@ -56,8 +56,9 @@ class SimpleSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
             strides=[1, 2, 2, 1],
             padding="SAME",
             name="conv")
-        bias = constant_op.constant(
-            [4., 1.5, 2., 3., 5., 7.], name="bias", dtype=dtype)
+        bias = constant_op.constant([4., 1.5, 2., 3., 5., 7.],
+                                    name="bias",
+                                    dtype=dtype)
         added = nn.bias_add(conv, bias, name="bias_add")
         relu = nn.relu(added, "relu")
         identity = array_ops.identity(relu, "identity")
@@ -73,11 +74,12 @@ class SimpleSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    # TODO(aaroey): LayoutOptimizer adds additional nodes to the graph which
-    # breaks the connection check, fix it.
-    # - my_trt_op_0 should have ["weights", "conv", "bias", "bias_add",
-    #   "relu", "identity", "max_pool"]
-    return ["my_trt_op_0"]
+    return {
+        "my_trt_op_0": [
+            "weights", "conv", "bias", "bias_add", "relu", "identity",
+            "max_pool"
+        ]
+    }
 
 
 class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
@@ -92,7 +94,7 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
     g = ops.Graph()
     with g.as_default():
       inp = array_ops.placeholder(
-          dtype=dtype, shape=[None] + input_dims[1:], name=input_name)
+          dtype=dtype, shape=input_dims, name=input_name)
       with g.device("/GPU:0"):
         conv_filter = constant_op.constant(
             [[[[1., 0.5, 4., 6., 0.5, 1.], [1., 0.5, 1., 1., 0.5, 1.]]]],
@@ -105,10 +107,10 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
             padding="SAME",
             name="conv")
         c1 = constant_op.constant(
-            np.random.randn(input_dims[0], 12, 12, 6), dtype=dtype, name="c1")
+            np.random.randn(12, 12, 6), dtype=dtype, name="c1")
         p = math_ops.mul(conv, c1, name="mul")
         c2 = constant_op.constant(
-            np.random.randn(input_dims[0], 12, 12, 6), dtype=dtype, name="c2")
+            np.random.randn(12, 12, 6), dtype=dtype, name="c2")
         q = math_ops.div(conv, c2, name="div")
 
         edge = self.trt_incompatible_op(q, name="incompatible")
@@ -129,22 +131,21 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    # TODO(aaroey): LayoutOptimizer adds additional nodes to the graph which
-    # breaks the connection check, fix it.
-    # - my_trt_op_0 should have ["mul", "sub", "div1", "mul1", "add1",
-    #   "add", "sub1"];
-    # - my_trt_op_1 should have ["weights","conv", "div"]
-    return ["my_trt_op_0", "my_trt_op_1"]
+    return {
+        "my_trt_op_0": [
+            "add", "add1", "c1", "div1", "mul", "mul1", "sub", "sub1"
+        ],
+        "my_trt_op_1": ["c2", "conv", "div", "weights"]
+    }
 
-  def ShouldRunTest(self, run_params):
-    # TODO(aaroey): LayoutOptimizer adds Transpose(Const, Const) to the graph
-    # which breaks the conversion. We should fix it as:
-    # - Detect the invalid NodeDef earlier before adding them to segment
-    # - Let it able to change the RewriterConfig when calling
-    #   create_inference_graph().
-    # It will be good to add debugging feature for Grappler to print the graph
-    # after running each optimizer.
-    return False
+  def GetConversionParams(self, run_params):
+    """Return a ConversionParams for test."""
+    return super(
+        SimpleMultiEnginesTest, self
+    ).GetConversionParams(run_params)._replace(
+        # Disable layout optimizer, since it'll add Transpose(Const, Const) to
+        # the graph and breaks the conversion check.
+        rewriter_config=trt_test.OptimizerDisabledRewriterConfig())
 
 
 class PartiallyConvertedTestA(trt_test.TfTrtIntegrationTestBase):
@@ -199,7 +200,7 @@ class PartiallyConvertedTestA(trt_test.TfTrtIntegrationTestBase):
     # can cause overflow.
     return ((run_params.precision_mode != "FP16") and
             not (trt_test.IsQuantizationMode(run_params.precision_mode) and
-            not run_params.use_calibration))
+                 not run_params.use_calibration))
 
 
 class PartiallyConvertedTestB(PartiallyConvertedTestA):

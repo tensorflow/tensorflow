@@ -142,8 +142,8 @@ class DepthwiseConv2DTest(test.TestCase):
       conv_interface = nn_impl.depthwise_conv2d(
           t1, t2, strides=[1, stride, stride, 1], padding=padding)
 
-      native_result = sess.run(conv_native)
-      interface_result = sess.run(conv_interface)
+      native_result = self.evaluate(conv_native)
+      interface_result = self.evaluate(conv_interface)
 
     print("depthwise conv_2d: ", tensor_in_sizes, "*", filter_in_sizes,
           ", stride:", stride, ", padding: ", padding, ", max diff: ",
@@ -211,7 +211,7 @@ class DepthwiseConv2DTest(test.TestCase):
         t2 = constant_op.constant(x2, shape=filter_in_sizes)
         conv = nn_ops.depthwise_conv2d_native(
             t1, t2, strides=[1, stride, stride, 1], padding=padding)
-        value = sess.run(conv)
+        value = self.evaluate(conv)
     print("value = ", value)
     self.assertAllClose(expected, np.ravel(value), 1e-5)
     self.assertShapeEqual(value, conv)

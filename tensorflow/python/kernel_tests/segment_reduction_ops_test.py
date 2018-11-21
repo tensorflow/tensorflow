@@ -118,7 +118,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
           for np_op1, np_op2, tf_op in curr_ops_list:
             np_ans = self._segmentReduce(indices, np_x, np_op1, np_op2)
             s = tf_op(data=tf_x, segment_ids=indices)
-            tf_ans = s.eval()
+            tf_ans = self.evaluate(s)
             self.assertAllClose(np_ans, tf_ans)
             # NOTE(mrry): The static shape inference that computes
             # `tf_ans.shape` can only infer that sizes from dimension 1
@@ -141,7 +141,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
         indices = [0, 1]
         s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
         with self.assertRaisesOpError("segment_ids should be the same size"):
-          s.eval()
+          self.evaluate(s)
 
   def testSegmentIdsValid(self):
     # This is a baseline for the following SegmentIdsInvalid* tests.
@@ -161,7 +161,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
         indices = [1, 1, 2, 2]
         np_ans = self._segmentReduce(indices, np_x, np.add)
         s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
-        tf_ans = s.eval()
+        tf_ans = self.evaluate(s)
         self.assertAllClose(np_ans, tf_ans)
 
   def testSegmentIdsHole(self):
@@ -172,7 +172,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
         indices = [0, 0, 3, 3]
         np_ans = self._segmentReduce(indices, np_x, np.add)
         s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
-        tf_ans = s.eval()
+        tf_ans = self.evaluate(s)
         self.assertAllClose(np_ans, tf_ans)
 
   def testSegmentIdsInvalid1(self):
@@ -184,7 +184,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
       with self.assertRaisesOpError(
           r"Segment id -1 out of range \[0, 1\), possibly because "
           "'segment_ids' input is not sorted."):
-        s.eval()
+        self.evaluate(s)
 
   def testSegmentIdsInvalid2(self):
     shape = [4, 4]
@@ -193,7 +193,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
       indices = [0, 1, 0, 1]
       s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
       with self.assertRaisesOpError("segment ids are not increasing"):
-        s.eval()
+        self.evaluate(s)
 
   def testSegmentIdsInvalid3(self):
     shape = [4, 4]
@@ -204,7 +204,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
       with self.assertRaisesOpError(
           r"Segment id 1 out of range \[0, 1\), possibly "
           "because 'segment_ids' input is not sorted."):
-        s.eval()
+        self.evaluate(s)
 
   def testSegmentIdsInvalid4(self):
     shape = [4, 4]
@@ -214,7 +214,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
         indices = [0, 0, 0, -1]
         s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
         with self.assertRaisesOpError("segment ids must be >= 0"):
-          s.eval()
+          self.evaluate(s)
 
   def testSegmentIdsInvalid5(self):
     shape = [4, 4]
@@ -224,7 +224,7 @@ class SegmentReductionOpTest(SegmentReductionHelper):
         indices = [0, 0, 0, -2]
         s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
         with self.assertRaisesOpError("segment ids must be >= 0"):
-          s.eval()
+          self.evaluate(s)
 
   def testGradient(self):
     shape = [4, 4]
@@ -297,7 +297,7 @@ class UnsortedSegmentTest(SegmentReductionHelper):
                   indices, np_x, np_op1, np_op2, num_segments=num_segments,
                   initial_value=init_op(dtype))
               s = tf_op(tf_x, segment_ids=indices, num_segments=num_segments)
-              tf_ans = s.eval()
+              tf_ans = self.evaluate(s)
               if dtype is dtypes_lib.bfloat16:
                 tf_ans = tf_ans.astype(np.float32)
               self.assertAllCloseAccordingToType(np_ans, tf_ans)
@@ -320,7 +320,7 @@ class UnsortedSegmentTest(SegmentReductionHelper):
               data=tf_x,
               segment_ids=indices,
               num_segments=num_segments_constant)
-          tf_ans = s.eval()
+          tf_ans = self.evaluate(s)
         self.assertAllClose(np_ans, tf_ans)
         self.assertShapeEqual(np_ans, s)
 
@@ -412,7 +412,7 @@ class UnsortedSegmentTest(SegmentReductionHelper):
         unsorted = math_ops.unsorted_segment_sum([[17]], bad, num_segments=2)
         with self.assertRaisesOpError(
             r"segment_ids\[0,0\] = %d is out of range \[0, 2\)" % bad[0][0]):
-          unsorted.eval()
+          self.evaluate(unsorted)
 
   def testEmptySecondDimension(self):
     dtypes = [np.float16, np.float32, np.float64, np.int64, np.int32,
@@ -443,7 +443,7 @@ class UnsortedSegmentTest(SegmentReductionHelper):
           np.place(indices, indices == 8, [-1])
           s = math_ops.unsorted_segment_sum(
               data=tf_x, segment_ids=indices, num_segments=num_segments)
-          tf_ans = s.eval()
+          tf_ans = self.evaluate(s)
         self.assertAllClose(np_ans, tf_ans)
         self.assertShapeEqual(np_ans, s)
 
@@ -499,7 +499,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
           np_ans = self._sparseSegmentReduce(np_x, np_indices, segment_indices,
                                              np_op1, np_op2)
           s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
-          tf_ans = s.eval()
+          tf_ans = self.evaluate(s)
           self.assertAllClose(np_ans, tf_ans)
           # NOTE(mrry): The static shape inference that computes
           # `tf_ans.shape` can only infer that sizes from dimension 1
@@ -518,7 +518,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         np_ans = self._sparseSegmentReduce(np_x, tf_indices, segment_indices,
                                            np_op1, np_op2)
         s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
-        tf_ans = s.eval()
+        tf_ans = self.evaluate(s)
         self.assertAllClose(np_ans, tf_ans)
 
   def testWithNumSegments(self):
@@ -543,7 +543,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
             indices=tf_indices,
             segment_ids=segment_indices,
             num_segments=num_segments)
-        tf_ans = s.eval()
+        tf_ans = self.evaluate(s)
         self.assertAllClose(np_ans, tf_ans)
 
   def testWithEmptySegments(self):
@@ -562,7 +562,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
             indices=tf_indices,
             segment_ids=segment_indices,
             num_segments=num_segments)
-        tf_ans = s.eval()
+        tf_ans = self.evaluate(s)
         self.assertAllClose(np.zeros([5, 4]), tf_ans)
 
   def testSegmentIdsGreaterThanZero(self):
@@ -576,7 +576,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         np_ans = self._sparseSegmentReduce(np_x, tf_indices, segment_indices,
                                            np_op1, np_op2)
         s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
-        tf_ans = s.eval()
+        tf_ans = self.evaluate(s)
         self.assertAllClose(np_ans, tf_ans)
 
   def testValid(self):
@@ -588,7 +588,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     with self.session(use_gpu=False):
       for tf_op in ops_list:
         s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
-        s.eval()
+        self.evaluate(s)
 
   def testIndicesInvalid1(self):
     tf_x, _ = self._input([10, 4], dtype=dtypes_lib.float32)
@@ -600,7 +600,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
         with self.assertRaisesOpError(
             r"indices\[1\] == -1 out of range \[0, 10\)"):
-          s.eval()
+          self.evaluate(s)
 
   def testIndicesInvalid2(self):
     tf_x, _ = self._input([10, 4], dtype=dtypes_lib.float32)
@@ -612,7 +612,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
         with self.assertRaisesOpError(
             r"indices\[3\] == 10 out of range \[0, 10\)"):
-          s.eval()
+          self.evaluate(s)
 
   def testSegmentsInvalid2(self):
     tf_x, _ = self._input([10, 4], dtype=dtypes_lib.float32)
@@ -623,7 +623,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
       for tf_op in ops_list:
         s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
         with self.assertRaisesOpError("segment ids are not increasing"):
-          s.eval()
+          self.evaluate(s)
 
   def testSegmentsInvalid3(self):
     tf_x, _ = self._input([10, 4], dtype=dtypes_lib.float32)
@@ -636,7 +636,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         with self.assertRaisesOpError(
             r"Segment id 1 out of range \[0, 1\), possibly because "
             "'segment_ids' input is not sorted"):
-          s.eval()
+          self.evaluate(s)
 
   def testSegmentsInvalid4(self):
     tf_x, _ = self._input([10, 4], dtype=dtypes_lib.float32)
@@ -649,7 +649,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         with self.assertRaisesOpError(
             r"Segment id -1 out of range \[0, 2\), possibly because "
             "'segment_ids' input is not sorted"):
-          s.eval()
+          self.evaluate(s)
 
   def testSegmentsInvalid6(self):
     tf_x, _ = self._input([10, 4], dtype=dtypes_lib.float32)
@@ -660,7 +660,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
       for tf_op in ops_list:
         s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
         with self.assertRaisesOpError("segment ids must be >= 0"):
-          s.eval()
+          self.evaluate(s)
 
   def testSegmentsInvalid7(self):
     tf_x, _ = self._input([10, 4], dtype=dtypes_lib.float32)
@@ -671,7 +671,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
       for tf_op in ops_list:
         s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
         with self.assertRaisesOpError("segment ids must be >= 0"):
-          s.eval()
+          self.evaluate(s)
 
   def testSegmentWithNumSegmentsValid(self):
     # Baseline for the test*WithNumSegmentsInvalid* methods below.
@@ -690,7 +690,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
             indices=tf_indices,
             segment_ids=segment_indices,
             num_segments=num_segments)
-        s.eval()
+        self.evaluate(s)
 
   def testSegmentWithNumSegmentsInvalid1(self):
     tf_x, _ = self._input([10, 4], dtype=dtypes_lib.float32)
@@ -709,7 +709,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
             segment_ids=segment_indices,
             num_segments=num_segments)
         with self.assertRaisesOpError("segment ids must be < num_segments"):
-          s.eval()
+          self.evaluate(s)
 
   def testSegmentWithNumSegmentsInvalid2(self):
     tf_x, _ = self._input([10, 4], dtype=dtypes_lib.float32)
@@ -785,7 +785,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     with self.session(use_gpu=False):
       for tf_op in ops_list:
         s = tf_op(tf_x, tf_indices, segment_indices, 10)
-        s.eval()
+        self.evaluate(s)
 
   def testGradientIndicesInvalid1(self):
     tf_x, _ = self._input([3, 4], dtype=dtypes_lib.float32)
@@ -798,7 +798,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
       for tf_op in ops_list:
         s = tf_op(tf_x, tf_indices, segment_indices, 10)
         with self.assertRaisesOpError(r"Index 10 out of range \[0, 10\)"):
-          s.eval()
+          self.evaluate(s)
 
   def testGradientIndicesInvalid2(self):
     tf_x, _ = self._input([3, 4], dtype=dtypes_lib.float32)
@@ -811,7 +811,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
       for tf_op in ops_list:
         s = tf_op(tf_x, tf_indices, segment_indices, 10)
         with self.assertRaisesOpError(r"Index -1 out of range \[0, 10\)"):
-          s.eval()
+          self.evaluate(s)
 
   def testGradientSegmentsInvalid1(self):
     tf_x, _ = self._input(
@@ -825,7 +825,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
       for tf_op in ops_list:
         s = tf_op(tf_x, tf_indices, segment_indices, 10)
         with self.assertRaisesOpError("Invalid number of segments"):
-          s.eval()
+          self.evaluate(s)
 
   def testGradientSegmentsInvalid2(self):
     tf_x, _ = self._input([1, 4], dtype=dtypes_lib.float32)
@@ -838,7 +838,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
       for tf_op in ops_list:
         s = tf_op(tf_x, tf_indices, segment_indices, 10)
         with self.assertRaisesOpError(r"Segment id 1 out of range \[0, 1\)"):
-          s.eval()
+          self.evaluate(s)
 
   def testGradientSegmentsInvalid3(self):
     tf_x, _ = self._input([2, 4], dtype=dtypes_lib.float32)
@@ -851,7 +851,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
       for tf_op in ops_list:
         s = tf_op(tf_x, tf_indices, segment_indices, 10)
         with self.assertRaisesOpError(r"Segment id -1 out of range \[0, 2\)"):
-          s.eval()
+          self.evaluate(s)
 
   def testGradientSegmentsInvalid4(self):
     tf_x, _ = self._input([0, 4], dtype=dtypes_lib.float32)
@@ -864,7 +864,8 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
       for tf_op in ops_list:
         s = tf_op(tf_x, tf_indices, segment_indices, 10)
         with self.assertRaisesOpError(r"Segment id 0 out of range \[0, 0\)"):
-          s.eval()
+          self.evaluate(s)
+
 
 class SegmentReductionOpBenchmark(test.Benchmark):
   outer_dim_options = [2**x for x in range(9, 14, 2)]

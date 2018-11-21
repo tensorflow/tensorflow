@@ -382,6 +382,16 @@ class MonitoredTrainingSessionTest(test.TestCase):
         self.assertEqual(0, session.run(gstep))
 
 
+class MockExtended(object):
+
+  def __init__(self, between_graph, should_init, should_checkpoint,
+               should_save_summary):
+    self.experimental_between_graph = between_graph
+    self.experimental_should_init = should_init
+    self.should_checkpoint = should_checkpoint
+    self.should_save_summary = should_save_summary
+
+
 class MockStrategy(object):
 
   def __init__(self,
@@ -389,26 +399,8 @@ class MockStrategy(object):
                should_init=True,
                should_checkpoint=None,
                should_save_summary=None):
-    self._between_graph = between_graph
-    self._should_init = should_init
-    self._should_checkpoint = should_checkpoint
-    self._should_save_summary = should_save_summary
-
-  @property
-  def between_graph(self):
-    return self._between_graph
-
-  @property
-  def should_init(self):
-    return self._should_init
-
-  @property
-  def should_checkpoint(self):
-    return self._should_checkpoint
-
-  @property
-  def should_save_summary(self):
-    return self._should_save_summary
+    self.extended = MockExtended(between_graph, should_init, should_checkpoint,
+                                 should_save_summary)
 
 
 class MonitoredTrainingSessionWithDistributeCoordinatorTest(test.TestCase):
@@ -1178,7 +1170,7 @@ class HookedSessionTest(test.TestCase):
       mock_run = FakeSession(sess)
       mon_sess = monitored_session._HookedSession(sess=mock_run, hooks=[])
       a_tensor = constant_op.constant([0], name='a_tensor')
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       output = mon_sess.run(fetches=a_tensor,
                             feed_dict='a_feed',
                             options='an_option',
@@ -1197,7 +1189,7 @@ class HookedSessionTest(test.TestCase):
       mon_sess = monitored_session._HookedSession(
           sess=sess, hooks=[mock_hook, mock_hook2])
       a_tensor = constant_op.constant([0], name='a_tensor')
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       mon_sess.run(a_tensor)
 
       for hook in [mock_hook, mock_hook2]:
@@ -1222,7 +1214,7 @@ class HookedSessionTest(test.TestCase):
       mon_sess = monitored_session._HookedSession(
           sess=sess, hooks=[mock_hook, mock_hook2])
       constant_op.constant([0], name='a_tensor')
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
 
       mon_sess.run(fetches='a_tensor')
       self.assertFalse(mon_sess.should_stop())
@@ -1242,7 +1234,7 @@ class HookedSessionTest(test.TestCase):
       third_tensor = constant_op.constant([10], name='third_tensor')
       mock_hook.request = session_run_hook.SessionRunArgs([another_tensor])
       mock_hook2.request = session_run_hook.SessionRunArgs([third_tensor])
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
 
       output = mon_sess.run(fetches=a_tensor)
       self.assertEqual(output, [0])
@@ -1262,7 +1254,7 @@ class HookedSessionTest(test.TestCase):
           None, feed_dict={a_tensor: [5]})
       mock_hook2.request = session_run_hook.SessionRunArgs(
           None, feed_dict={b_tensor: [10]})
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
 
       self.assertEqual(mon_sess.run(fetches=add_tensor), [15])
 
@@ -1280,7 +1272,7 @@ class HookedSessionTest(test.TestCase):
           None, feed_dict={a_tensor: [5]})
       mock_hook2.request = session_run_hook.SessionRunArgs(
           None, feed_dict={b_tensor: [10]})
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
 
       feed_dict = {c_tensor: [20]}
       self.assertEqual(
@@ -1301,7 +1293,7 @@ class HookedSessionTest(test.TestCase):
           None, feed_dict={a_tensor: [5]})
       mock_hook2.request = session_run_hook.SessionRunArgs(
           None, feed_dict={a_tensor: [10]})
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
 
       with self.assertRaisesRegexp(RuntimeError, 'Same tensor is fed'):
         mon_sess.run(fetches=add_tensor)
@@ -1319,7 +1311,7 @@ class HookedSessionTest(test.TestCase):
           None, feed_dict={a_tensor: [5]})
       mock_hook2.request = session_run_hook.SessionRunArgs(
           None, feed_dict={b_tensor: [10]})
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
 
       with self.assertRaisesRegexp(RuntimeError, 'Same tensor is fed'):
         mon_sess.run(fetches=add_tensor, feed_dict={b_tensor: [10]})
