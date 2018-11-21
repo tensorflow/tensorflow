@@ -22,6 +22,7 @@ import contextlib
 import os
 import random
 import re
+import sys
 
 import numpy as np
 
@@ -37,6 +38,10 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+
+# TODO(b/35678764): Disable monkeypatched exit handlers once we find a proper
+# solution to invoke exit handlers during program exit.
+test._googletest.SetOSExit(sys.exit)
 
 FLAGS = flags.FLAGS
 
