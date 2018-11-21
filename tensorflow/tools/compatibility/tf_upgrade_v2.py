@@ -205,6 +205,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "input", "min_range", "max_range", "T", "mode", "name",
             "round_mode"
         ],
+        "tf.feature_column.categorical_column_with_vocabulary_file": [
+            "key", "vocabulary_file", "vocabulary_size",
+            "num_oov_buckets", "default_value", "dtype"
+        ],
         "tf.shape": ["input", "name", "out_type"],
         "tf.size": ["input", "name", "out_type"],
         "tf.sparse.concat": [
