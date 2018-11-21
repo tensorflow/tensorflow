@@ -131,6 +131,7 @@ py_library(
         ":subscribe",
         ":summary",
         ":tensor_array_ops",
+        ":tensor_forest_ops",
         ":test_ops",  # TODO: Break testing code out into separate rule.
         ":tf_cluster",
         ":tf_item",
@@ -853,7 +854,6 @@ py_library(
     deps = [
         ":c_api_util",
         ":control_flow_util",
-        ":cpp_shape_inference_proto_py",
         ":device",
         ":dtypes",
         ":error_interpolation",
@@ -879,6 +879,8 @@ py_library(
     deps = [
         ":auto_control_deps",
         ":framework_ops",
+        ":sparse_tensor",
+        ":tensor_array_ops",
         "//tensorflow/python/autograph",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:graph_only_ops",
@@ -893,6 +895,8 @@ py_library(
     deps = [
         ":control_flow_ops",
         ":framework_ops",
+        ":sparse_tensor",
+        ":tensor_array_ops",
         ":util",
     ],
 )
@@ -993,6 +997,7 @@ py_library(
         ":common_shapes",
         ":dtypes",
         ":tensor_shape",
+        ":util",
         "//third_party/py/numpy",
     ],
 )
@@ -1051,6 +1056,7 @@ py_library(
         ":random_seed",
         ":resource_variable_ops",
         ":session",
+        ":tensor_array_ops",
         ":training",
         ":util",
         ":variables",
@@ -1618,6 +1624,14 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "tensor_forest_ops_gen",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:tensor_forest_ops_op_lib",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "summary_ops_gen",
     visibility = ["//tensorflow:__subpackages__"],
     deps = ["//tensorflow/core:summary_ops_op_lib"],
@@ -1942,6 +1956,19 @@ py_library(
 )
 
 py_library(
+    name = "tensor_forest_ops",
+    srcs = ["ops/tensor_forest_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework",
+        ":ops",
+        ":tensor_forest_ops_gen",
+        ":training",
+        "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_py",
+    ],
+)
+
+py_library(
     name = "sets",
     srcs = [
         "ops/sets.py",
@@ -2138,6 +2165,7 @@ py_library(
         ":control_flow_util_v2",
         ":dtypes",
         ":framework_ops",
+        ":framework_test_lib",
         ":function_def_to_graph",
         ":functional_ops_gen",
         ":gradients_impl",
@@ -2816,6 +2844,33 @@ py_test(
 )
 
 py_library(
+    name = "sort_ops",
+    srcs = ["ops/sort_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":framework",
+        ":math_ops",
+        ":nn_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "sort_ops_test",
+    srcs = ["ops/sort_ops_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":framework",
+        ":random_ops",
+        ":sort_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
     name = "spectral_ops_test_util",
     srcs = ["ops/spectral_ops_test_util.py"],
     srcs_version = "PY2AND3",
@@ -2929,6 +2984,7 @@ py_library(
         ":random_ops",
         ":script_ops",
         ":session_ops",
+        ":sort_ops",
         ":sparse_grad",
         ":sparse_ops",
         ":special_math_ops",
@@ -3037,13 +3093,16 @@ py_library(
     deps = [
         ":array_ops",
         ":constant_op",
+        ":control_flow_ops_gen",
         ":data_flow_ops_gen",
         ":dtypes",
         ":errors",
         ":framework_ops",
+        ":list_ops",
         ":math_ops",
         ":tensor_shape",
         ":tensor_util",
+        ":tf2",
         ":tf_should_use",
         "//tensorflow/python/eager:context",
     ],

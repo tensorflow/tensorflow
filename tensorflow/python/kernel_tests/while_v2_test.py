@@ -26,9 +26,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
@@ -308,9 +308,8 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         self.assertRegexpMatches(
             while2_op.get_attr("body").name, r"foo_while_1_body_\d*")
 
+  @test_util.enable_control_flow_v2
   def testWhileAndTensorArray(self):
-    old_enable_while_v2 = control_flow_ops.ENABLE_WHILE_V2
-    control_flow_ops.ENABLE_WHILE_V2 = True
     with self.cached_session() as sess:
       param = constant_op.constant(2.0)
       y0 = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="elems")
@@ -319,7 +318,6 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       self.assertAllClose([2.0, 4.0, 6.0, 8.0, 10.0, 12.0], sess.run(r))
       r = gradients_impl.gradients(r, param)[0]
       self.assertAllClose(21.0, sess.run(r))
-    control_flow_ops.ENABLE_WHILE_V2 = old_enable_while_v2
 
   def testNestedWhile(self):
     # Compute sum of geometric progression: n^0 + n^1 + ... + n^m

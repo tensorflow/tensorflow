@@ -778,8 +778,7 @@ class CudnnParamsFormatConverterTest(TensorFlowTestCase,
 
       # Test opaque_params size lower bound
       opaque_params_size_v = sess.run(opaque_params_size)
-      min_params_size = (
-          np.sum([x.size for x in ws]) + np.sum([x.size for x in bs]))
+      min_params_size = sum(x.size for x in ws) + np.sum(x.size for x in bs)
       logging.info("min_parm_size: %d vs actual_opaque_param_size: %d",
                    min_params_size, opaque_params_size_v)
       self.assertLessEqual(min_params_size, opaque_params_size_v)
@@ -853,8 +852,7 @@ class CudnnParamsFormatConverterTest(TensorFlowTestCase,
 
       # Test opaque_params size lower bound
       opaque_params_size_v = sess.run(opaque_params_size)
-      min_params_size = (
-          np.sum([x.size for x in ws]) + np.sum([x.size for x in bs]))
+      min_params_size = sum(x.size for x in ws) + sum(x.size for x in bs)
       logging.info("min_parm_size: %d vs actual_opaque_param_size: %d",
                    min_params_size, opaque_params_size_v)
       self.assertLessEqual(min_params_size, opaque_params_size_v)

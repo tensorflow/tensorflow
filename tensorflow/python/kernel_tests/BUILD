@@ -121,8 +121,10 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:math_ops",
+        "//tensorflow/python:gradients_impl",
         "//tensorflow/python:list_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python/eager:context",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
@@ -268,7 +270,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "ctc_loss_op_test",
     size = "small",
     srcs = ["ctc_loss_op_test.py"],
@@ -1350,6 +1352,7 @@ cuda_py_test(
         "//tensorflow/python:test_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
     ],
     shard_count = 10,
     tags = [
@@ -1461,6 +1464,7 @@ cuda_py_test(
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:math_ops",
@@ -1748,9 +1752,11 @@ cuda_py_test(
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_v2",
         "//tensorflow/python/data/ops:iterator_ops",
     ],
     grpc_enabled = True,
+    shard_count = 2,
     tags = ["no_windows"],
 )
 
@@ -2383,6 +2389,8 @@ cuda_py_test(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:cond_v2",
+        "//tensorflow/python:while_v2",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
     ],
@@ -3314,7 +3322,9 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:while_v2",
     ],
     grpc_enabled = True,
 )

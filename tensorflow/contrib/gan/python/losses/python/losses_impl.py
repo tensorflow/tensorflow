@@ -36,8 +36,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -817,7 +815,7 @@ def _numerically_stable_global_norm(tensor_list):
   Returns:
     A scalar tensor with the global norm.
   """
-  if np.all([x is None for x in tensor_list]):
+  if all(x is None for x in tensor_list):
     return 0.0
 
   list_max = math_ops.reduce_max([math_ops.reduce_max(math_ops.abs(x)) for x in

@@ -424,7 +424,7 @@ def zero_fraction(value, name=None):
 
 
 # pylint: disable=redefined-builtin
-@tf_export("nn.depthwise_conv2d")
+@tf_export(v1=["nn.depthwise_conv2d"])
 def depthwise_conv2d(input,
                      filter,
                      strides,
@@ -496,6 +496,63 @@ def depthwise_conv2d(input,
         data_format=data_format,
         op=op)
 
+
+@tf_export("nn.depthwise_conv2d", v1=[])
+def depthwise_conv2d_v2(input,
+                        filter,
+                        strides,
+                        padding,
+                        data_format=None,
+                        dilations=None,
+                        name=None):
+  """Depthwise 2-D convolution.
+
+  Given a 4D input tensor ('NHWC' or 'NCHW' data formats)
+  and a filter tensor of shape
+  `[filter_height, filter_width, in_channels, channel_multiplier]`
+  containing `in_channels` convolutional filters of depth 1, `depthwise_conv2d`
+  applies a different filter to each input channel (expanding from 1 channel
+  to `channel_multiplier` channels for each), then concatenates the results
+  together.  The output has `in_channels * channel_multiplier` channels.
+
+  In detail,
+
+      output[b, i, j, k * channel_multiplier + q] = sum_{di, dj}
+           filter[di, dj, k, q] * input[b, strides[1] * i + rate[0] * di,
+                                           strides[2] * j + rate[1] * dj, k]
+
+  Must have `strides[0] = strides[3] = 1`.  For the most common case of the
+  same horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
+  If any value in `rate` is greater than 1, we perform atrous depthwise
+  convolution, in which case all values in the `strides` tensor must be equal
+  to 1.
+
+  Args:
+    input: 4-D with shape according to `data_format`.
+    filter: 4-D with shape
+      `[filter_height, filter_width, in_channels, channel_multiplier]`.
+    strides: 1-D of size 4.  The stride of the sliding window for each
+      dimension of `input`.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+      See the "returns" section of `tf.nn.convolution` for details.
+    data_format: The data format for input. Either "NHWC" (default) or "NCHW".
+    dilations: 1-D of size 2. The dilation rate in which we sample input values
+      across the `height` and `width` dimensions in atrous convolution. If it is
+      greater than 1, then all values of strides must be 1.
+    name: A name for this operation (optional).
+
+  Returns:
+    A 4-D `Tensor` with shape according to `data_format`.  E.g., for
+    "NHWC" format, shape is
+    `[batch, out_height, out_width, in_channels * channel_multiplier].`
+  """
+  return depthwise_conv2d(input=input,
+                          filter=filter,
+                          strides=strides,
+                          padding=padding,
+                          rate=dilations,
+                          name=name,
+                          data_format=data_format)
 
 # pylint: enable=redefined-builtin
 
@@ -838,7 +895,7 @@ def moments(
       return (mean, variance)
 
 
-@tf_export("nn.weighted_moments")
+@tf_export(v1=["nn.weighted_moments"])
 def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
   """Returns the frequency-weighted mean and variance of `x`.
 
@@ -908,6 +965,30 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
       weighted_variance = math_ops.cast(weighted_variance, dtypes.float16)
 
     return weighted_mean, weighted_variance
+
+
+@tf_export("nn.weighted_moments", v1=[])
+def weighted_moments_v2(x, axes, frequency_weights, keepdims=False, name=None):
+  """Returns the frequency-weighted mean and variance of `x`.
+
+  Args:
+    x: A tensor.
+    axes: 1-d tensor of int32 values; these are the axes along which
+      to compute mean and variance.
+    frequency_weights: A tensor of positive weights which can be
+      broadcast with x.
+    keepdims: Produce moments with the same dimensionality as the input.
+    name: Name used to scope the operation.
+
+  Returns:
+    Two tensors: `weighted_mean` and `weighted_variance`.
+  """
+  return weighted_moments(
+      x=x,
+      axes=axes,
+      frequency_weights=frequency_weights,
+      name=name,
+      keep_dims=keepdims)
 
 
 @tf_export("nn.batch_normalization")
@@ -1041,7 +1122,7 @@ def fused_batch_norm(
   return y, batch_mean, batch_var
 
 
-@tf_export("nn.batch_norm_with_global_normalization")
+@tf_export(v1=["nn.batch_norm_with_global_normalization"])
 def batch_norm_with_global_normalization(t,
                                          m,
                                          v,
@@ -1077,6 +1158,53 @@ def batch_norm_with_global_normalization(t,
   """
   return batch_normalization(t, m, v, beta, gamma if scale_after_normalization
                              else None, variance_epsilon, name)
+
+
+# pylint: disable=redefined-builtin,line-too-long
+@tf_export("nn.batch_norm_with_global_normalization", v1=[])
+def batch_norm_with_global_normalization_v2(input,
+                                            mean,
+                                            variance,
+                                            beta,
+                                            gamma,
+                                            variance_epsilon,
+                                            scale_after_normalization,
+                                            name=None):
+  """Batch normalization.
+
+  This op is deprecated. See `tf.nn.batch_normalization`.
+
+  Args:
+    input: A 4D input Tensor.
+    mean: A 1D mean Tensor with size matching the last dimension of t.
+      This is the first output from tf.nn.moments,
+      or a saved moving average thereof.
+    variance: A 1D variance Tensor with size matching the last dimension of t.
+      This is the second output from tf.nn.moments,
+      or a saved moving average thereof.
+    beta: A 1D beta Tensor with size matching the last dimension of t.
+      An offset to be added to the normalized tensor.
+    gamma: A 1D gamma Tensor with size matching the last dimension of t.
+      If "scale_after_normalization" is true, this tensor will be multiplied
+      with the normalized tensor.
+    variance_epsilon: A small float number to avoid dividing by 0.
+    scale_after_normalization: A bool indicating whether the resulted tensor
+      needs to be multiplied with gamma.
+    name: A name for this operation (optional).
+
+  Returns:
+     A batch-normalized `t`.
+  """
+  return batch_norm_with_global_normalization(t=input,
+                                              m=mean,
+                                              v=variance,
+                                              beta=beta,
+                                              gamma=gamma,
+                                              variance_epsilon=variance_epsilon,
+                                              scale_after_normalization=scale_after_normalization,
+                                              name=name)
+
+# pylint: enable=redefined-builtin,line-too-long
 
 
 def _sum_rows(x):

@@ -58,10 +58,10 @@ def _map_nested(data, func):
 def _nested_all(data, cond_func):
   """Checks if all elements in a nested structure satisfy cond_func."""
   if isinstance(data, (tuple, list)):
-    return all([_nested_all(nested_data, cond_func) for nested_data in data])
+    return all(_nested_all(nested_data, cond_func) for nested_data in data)
   elif isinstance(data, dict):
     return all(
-        [_nested_all(nested_data, cond_func) for nested_data in data.values()])
+        _nested_all(nested_data, cond_func) for nested_data in data.values())
   else:
     return cond_func(data)
 
@@ -69,7 +69,7 @@ def _nested_all(data, cond_func):
 def _nested_any(data, cond_func):
   """Checks if any nested_elements in a nested structure satisfy cond_func."""
   if isinstance(data, (tuple, list)):
-    return any([_nested_any(nested_data, cond_func) for nested_data in data])
+    return any(_nested_any(nested_data, cond_func) for nested_data in data)
   elif isinstance(data, dict):
     return any(
         [_nested_any(nested_data, cond_func) for nested_data in data.values()])
@@ -140,7 +140,7 @@ def convert_to_iterator(x=None,
   if isinstance(x, iterator_ops.EagerIterator):
     if steps_per_epoch is None:
       raise ValueError('You must specify the number of steps (number of batches'
-                       'to draw from the iterator).')
+                       ' to draw from the iterator).')
     return x, steps_per_epoch
 
   if not _nested_any(sample_weights, lambda x: x is None):
@@ -155,7 +155,7 @@ def convert_to_iterator(x=None,
   data = _convert_lists_to_tuples(data)
   if steps_per_epoch is None and batch_size is not None:
     num_samples = _get_batch_axis_size(data)
-    steps_per_epoch = int(math.ceil(num_samples / batch_size))
+    steps_per_epoch = int(math.ceil(num_samples / int(batch_size)))
 
   if steps_per_epoch is None:
     alternative_arg_name = (
@@ -654,7 +654,7 @@ def weighted_masked_objective(fn):
       score_array = math_ops.multiply(score_array, weights)
       score_array = math_ops.reduce_sum(score_array)
       weights = math_ops.reduce_sum(weights)
-      score_array = metrics_module.safe_div(score_array, weights)
+      score_array = math_ops.div_no_nan(score_array, weights)
     return K.mean(score_array)
 
   return weighted

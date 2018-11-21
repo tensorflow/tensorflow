@@ -36,6 +36,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import initializers
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
@@ -410,7 +411,7 @@ class BasicRNNCell(LayerRNNCell):
                    "performance on GPU.", self)
 
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
     self._num_units = num_units
     if activation:
@@ -507,7 +508,7 @@ class GRUCell(LayerRNNCell):
                    "Please use tf.contrib.cudnn_rnn.CudnnGRU for better "
                    "performance on GPU.", self)
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
     self._num_units = num_units
     if activation:
@@ -683,7 +684,7 @@ class BasicLSTMCell(LayerRNNCell):
                    "performance on GPU.", self)
 
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
     self._num_units = num_units
     self._forget_bias = forget_bias
@@ -871,7 +872,7 @@ class LSTMCell(LayerRNNCell):
                    "performance on GPU.", self)
 
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
     self._num_units = num_units
     self._use_peepholes = use_peepholes
@@ -1394,7 +1395,7 @@ class DeviceWrapper(RNNCell):
       return self._cell(inputs, state, scope=scope)
 
 
-@tf_export("nn.rnn_cell.MultiRNNCell")
+@tf_export(v1=["nn.rnn_cell.MultiRNNCell"])
 class MultiRNNCell(RNNCell):
   """RNN cell composed sequentially of multiple simple cells.
 
@@ -1407,6 +1408,9 @@ class MultiRNNCell(RNNCell):
   ```
   """
 
+  @deprecated(None, "This class is equivalent as "
+                    "tf.keras.layers.StackedRNNCells, and will be replaced by "
+                    "that in Tensorflow 2.0.")
   def __init__(self, cells, state_is_tuple=True):
     """Create a RNN cell composed sequentially of a number of RNNCells.
 
@@ -1452,7 +1456,7 @@ class MultiRNNCell(RNNCell):
     if self._state_is_tuple:
       return tuple(cell.state_size for cell in self._cells)
     else:
-      return sum([cell.state_size for cell in self._cells])
+      return sum(cell.state_size for cell in self._cells)
 
   @property
   def output_size(self):

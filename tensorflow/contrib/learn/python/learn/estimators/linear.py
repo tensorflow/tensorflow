@@ -155,8 +155,8 @@ def _linear_model_fn(features, labels, mode, params, config=None):
       parent_scope,
       values=tuple(six.itervalues(features)),
       partitioner=partitioner) as scope:
-    if all([isinstance(fc, feature_column._FeatureColumn)  # pylint: disable=protected-access
-            for fc in feature_columns]):
+    if all(isinstance(fc, feature_column._FeatureColumn)  # pylint: disable=protected-access
+           for fc in feature_columns):
       if joint_weights:
         layer_fn = layers.joint_weighted_sum_from_feature_columns
       else:

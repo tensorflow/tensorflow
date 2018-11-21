@@ -447,7 +447,7 @@ class _OptimizerV2State(object):
     if v is None:
       if colocate_with is None:
         colocate_with = self._non_slot_devices
-      with self._distribution.colocate_vars_with(colocate_with):
+      with self._distribution.extended.colocate_vars_with(colocate_with):
         # TODO(josh11b): Use get_variable() except for the legacy Adam use case.
         v = variable_scope.variable(initial_value, name=name, trainable=False)
       self._non_slot_dict[name] = v
@@ -892,7 +892,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
       raise ValueError("No gradients provided for any variable: %s." %
                        ([str(v) for _, v in grads_and_vars],))
     return distribute_ctx.get_replica_context().merge_call(
-        self._distributed_apply, filtered, global_step=global_step, name=name)
+        self._distributed_apply, args=(filtered,),
+        kwargs={"global_step": global_step, "name": name})
 
   def _get_or_create_state(self, var_list=None):
     """Either looks up or creates `_OptimizerV2State`.
@@ -927,7 +928,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
 
   def _distributed_apply(self, distribution, grads_and_vars, global_step, name):
     """`apply_gradients` for use with a `DistributionStrategy`."""
-    reduced_grads = distribution.batch_reduce(
+    reduced_grads = distribution.extended.batch_reduce_to(
         ds_reduce_util.ReduceOp.SUM, grads_and_vars)
     var_list = [v for _, v in grads_and_vars]
     grads_and_vars = zip(reduced_grads, var_list)
@@ -944,7 +945,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
     with ops.name_scope(name, self._name) as name:
       per_graph_state = self._get_or_create_state(var_list=unwrapped_var_list)
       # Include the current value of any dynamic hyper parameters in `state`.
-      non_slot_devices = distribution.non_slot_devices(var_list)
+      non_slot_devices = distribution.extended.non_slot_devices(var_list)
       state = per_graph_state._copy_with_dynamic_hyper(  # pylint: disable=protected-access
           self._hyper, distribution, non_slot_devices)
 
@@ -989,7 +990,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
       # Use the processors to update the variables.
       update_ops = []
       for grad, var in grads_and_vars:
-        update_ops.extend(distribution.update(var, update, grad, grouped=False))
+        update_ops.extend(distribution.extended.update(
+            var, update, args=(grad,), group=False))
 
       # Give the child class a chance to do something after applying
       # gradients
@@ -1001,8 +1003,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
 
       update_ops = control_flow_ops.group(update_ops)
       with ops.control_dependencies([update_ops]):
-        finish_updates = distribution.update_non_slot(
-            non_slot_devices, finish, grouped=False)
+        finish_updates = distribution.extended.update_non_slot(
+            non_slot_devices, finish, group=False)
       # We said grouped=False, which means finish_updates is always a list.
       # It will be [None] when finish() returns None.
       if finish_updates == [None]:
@@ -1017,8 +1019,8 @@ class OptimizerV2(optimizer_v1.Optimizer):
           def update_global_step(global_step, name):
             return global_step.assign_add(1, read_value=False, name=name)
 
-          apply_updates = distribution.update(global_step, update_global_step,
-                                              name)
+          apply_updates = distribution.extended.update(
+              global_step, update_global_step, args=(name,))
 
       # Add the training op to the TRAIN_OP graph collection in graph mode.
       if not eager_execution:

@@ -99,6 +99,8 @@ void VerifiedHloModule::VerifyOrAddFailure(const string& message) {
     ADD_FAILURE() << "HloVerifier failed on module " << name()
                   << (message.empty() ? "" : absl::StrCat(" (", message, ")"))
                   << ": " << status;
+    LOG(ERROR) << "Contents of bad module:";
+    XLA_LOG_LINES(tensorflow::ERROR, ToString());
   }
 }
 

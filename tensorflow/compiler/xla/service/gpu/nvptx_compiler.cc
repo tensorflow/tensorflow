@@ -67,6 +67,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
+#include "tensorflow/compiler/xla/service/hlo_get_dimension_size_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
@@ -142,6 +143,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
                          Compiler* compiler) {
   {
     HloPassPipeline pipeline("optimization");
+    pipeline.AddPass<HloGetDimensionSizeRewriter>();
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
     pipeline.AddPass<GpuHloSupportChecker>();
@@ -177,9 +179,10 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       // elimination has to come after that pass.
       pipeline.AddPass<ZeroSizedHloElimination>();
 
-      pass.AddPass<AlgebraicSimplifier>(
-          /*is_layout_sensitive=*/false,
+      AlgebraicSimplifierOptions options(
           [](const Shape&, const Shape&) { return false; });
+      options.set_enable_permutation_sort_replacement(true);
+      pass.AddPass<AlgebraicSimplifier>(options);
       pass.AddPass<TupleSimplifier>();
       pass.AddPass<WhileLoopConstantSinking>();
       pass.AddPass<WhileLoopSimplifier>();
@@ -248,11 +251,13 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
 
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
-    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
-        /*is_layout_sensitive=*/true,
+    AlgebraicSimplifierOptions options(
         /*valid_bitcast_callback=*/[](const Shape&, const Shape&) {
           return true;
         });
+    options.set_is_layout_sensitive(true);
+    options.set_enable_permutation_sort_replacement(true);
+    pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
     // Choose the fastest algorithm for each conv.
     //

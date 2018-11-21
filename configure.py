@@ -859,7 +859,7 @@ def set_tf_cuda_version(environ_cp):
     cuda_toolkit_paths_full = [
         os.path.join(cuda_toolkit_path, x) for x in cuda_rt_lib_paths
     ]
-    if any([os.path.exists(x) for x in cuda_toolkit_paths_full]):
+    if any(os.path.exists(x) for x in cuda_toolkit_paths_full):
       break
 
     # Reset and retry

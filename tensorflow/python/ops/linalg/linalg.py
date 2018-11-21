@@ -22,6 +22,7 @@ from __future__ import print_function
 # pylint: disable=wildcard-import,unused-import
 from tensorflow.python.ops.linalg import cholesky_registrations as _cholesky_registrations
 from tensorflow.python.ops.linalg import linear_operator_algebra as _linear_operator_algebra
+from tensorflow.python.ops.linalg import matmul_registrations as _matmul_registrations
 from tensorflow.python.ops.linalg.linalg_impl import *
 from tensorflow.python.ops.linalg.linear_operator import *
 from tensorflow.python.ops.linalg.linear_operator_block_diag import *

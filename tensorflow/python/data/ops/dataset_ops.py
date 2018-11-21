@@ -31,6 +31,7 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import random_seed
 from tensorflow.python.data.util import sparse
+from tensorflow.python.data.util import structure as structure_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -1868,62 +1869,6 @@ class SparseTensorSliceDataset(DatasetSource):
     return (dtypes.int64, self._sparse_tensor.dtype, dtypes.int64)
 
 
-class _NestedDatasetComponent(object):
-  """The structure of a `Dataset` nested in a component of another `Dataset`.
-
-  A `StructuredFunctionWrapper` around a function that returns a `Dataset` as
-  one of its components will have a `NestedDatasetComponent` in the
-  corresponding position in the `output_classes`, `output_shapes`, and
-  `output_types` properties.
-
-  NOTE(mrry): This class is not currently exposed via the public API. Support
-  for nested datasets can be enabled on a function-by-function basis by setting
-  `experimental_nested_dataset_support=True` in the `StructuredFunctionWrapper`
-  initializer.
-
-  TODO(b/110122868): Add this class, or something equivalent, to the public API.
-  We are considering revising the public API for accessing Dataset structure
-  (`output_classes` etc.) based on experience with nested datasets and other
-  custom component types.
-  """
-
-  def __init__(self,
-               dataset=None,
-               output_shapes=None,
-               output_types=None,
-               output_classes=None):
-    if dataset is None:
-      if (output_classes is None or output_shapes is None or
-          output_types is None):
-        raise ValueError(
-            "Either `dataset`, or all of `output_classes`, "
-            "`output_shapes`, and `output_types` must be specified.")
-      self._output_classes = output_classes
-      self._output_shapes = output_shapes
-      self._output_types = output_types
-    else:
-      if not (output_classes is None and output_shapes is None and
-              output_types is None):
-        raise ValueError(
-            "Either `dataset`, or all of `output_classes`, "
-            "`output_shapes`, and `output_types` must be specified.")
-      self._output_classes = dataset.output_classes
-      self._output_shapes = dataset.output_shapes
-      self._output_types = dataset.output_types
-
-  @property
-  def output_classes(self):
-    return self._output_classes
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
-
-  @property
-  def output_types(self):
-    return self._output_types
-
-
 class _VariantDataset(DatasetV2):
   """A Dataset wrapper around a `tf.variant`-typed function argument."""
 
@@ -1940,15 +1885,73 @@ class _VariantDataset(DatasetV2):
 
   @property
   def output_classes(self):
-    return self._structure.output_classes
+    return self._structure._to_legacy_output_classes()  # pylint: disable=protected-access
 
   @property
   def output_shapes(self):
-    return self._structure.output_shapes
+    return self._structure._to_legacy_output_shapes()  # pylint: disable=protected-access
 
   @property
   def output_types(self):
-    return self._structure.output_types
+    return self._structure._to_legacy_output_types()  # pylint: disable=protected-access
+
+
+class DatasetStructure(structure_lib.Structure):
+  """Represents a `Dataset` of structured values."""
+
+  def __init__(self, element_structure):
+    self._element_structure = element_structure
+
+  @property
+  def _flat_shapes(self):
+    return [tensor_shape.scalar()]
+
+  @property
+  def _flat_types(self):
+    return [dtypes.variant]
+
+  def is_compatible_with(self, other):
+    # pylint: disable=protected-access
+    return (isinstance(other, DatasetStructure) and
+            self._element_structure.is_compatible_with(
+                other._element_structure))
+
+  def _to_tensor_list(self, value):
+    return [value._as_variant_tensor()]  # pylint: disable=protected-access
+
+  def _from_tensor_list(self, flat_value):
+    if (len(flat_value) != 1 or flat_value[0].dtype != dtypes.variant or
+        not flat_value[0].shape.is_compatible_with(tensor_shape.scalar())):
+      raise ValueError(
+          "DatasetStructure corresponds to a single tf.variant scalar.")
+    return self._from_compatible_tensor_list(flat_value)
+
+  def _from_compatible_tensor_list(self, flat_value):
+    # pylint: disable=protected-access
+    return _VariantDataset(flat_value[0], self._element_structure)
+
+  @staticmethod
+  def from_value(value):
+    # TODO(b/110122868): We can simplify this when a `Dataset` object has a
+    # `Structure`-valued property.
+    element_structure = structure_lib.Structure._from_legacy_structure(
+        value.output_types, value.output_shapes, value.output_classes)
+    return DatasetStructure(element_structure)
+
+  def _to_legacy_output_types(self):
+    return self
+
+  def _to_legacy_output_shapes(self):
+    return self
+
+  def _to_legacy_output_classes(self):
+    return self
+
+
+# pylint: disable=protected-access
+structure_lib.Structure._register_custom_converter(DatasetV2,
+                                                   DatasetStructure.from_value)
+# pylint: enable=protected-access
 
 
 class StructuredFunctionWrapper(object):
@@ -1963,7 +1966,6 @@ class StructuredFunctionWrapper(object):
                input_shapes=None,
                input_types=None,
                add_to_graph=True,
-               experimental_nested_dataset_support=False,
                defun_kwargs=None):
     """Creates a new `StructuredFunctionWrapper` for the given function.
 
@@ -1983,8 +1985,6 @@ class StructuredFunctionWrapper(object):
         argument defines the element types and structure for `func` arguments.
       add_to_graph: (Optional.) If `True`, the function will be added to the
         default graph.
-      experimental_nested_dataset_support: (Optional.) If `True`, the function
-        will support `tf.data.Dataset` objects as arguments and return values.
       defun_kwargs: (Optional.) A dictionary mapping string argument names to
         values. If supplied, will be passed to `function.Defun()` as keyword
         arguments.
@@ -2009,6 +2009,9 @@ class StructuredFunctionWrapper(object):
       self._input_types = dataset.output_types
       self._input_classes = dataset.output_classes
 
+    self._input_structure = structure_lib.Structure._from_legacy_structure(  # pylint: disable=protected-access
+        self._input_types, self._input_shapes, self._input_classes)
+
     self._transformation_name = transformation_name
     readable_transformation_name = transformation_name.replace(
         ".", "_")[:-2] if len(transformation_name) > 2 else ""
@@ -2016,39 +2019,18 @@ class StructuredFunctionWrapper(object):
         readable_transformation_name,
         function_utils.get_func_name(func),
         str(ops.uid())
-
     ])
-
-    # TODO(b/110122868): Enable this support for all `tf.data` functions.
-    self._nested_dataset_support = experimental_nested_dataset_support
 
     if defun_kwargs is None:
       defun_kwargs = {}
 
     @function.Defun(
-        *self._defun_args(), func_name=self._func_name, **defun_kwargs)
+        *self._input_structure._flat_types, func_name=self._func_name,  # pylint: disable=protected-access
+        **defun_kwargs)
     def tf_data_structured_function_wrapper(*args):
       """Wrapper for passing nested structures to and from tf.data functions."""
-      flat_args = []
-      for arg, arg_class, arg_shape, arg_type in zip(
-          args,
-          nest.flatten(self._input_classes),
-          nest.flatten(self._input_shapes),
-          nest.flatten(self._input_types)):
-        # TODO(b/110122868): Add a registration mechanism for new component
-        # types.
-        if arg_class is sparse_tensor_lib.SparseTensor:
-          arg = sparse.deserialize_sparse_tensors(
-              arg, arg_type, arg_shape, arg_class)
-          arg.indices.set_shape([None, arg_shape.ndims])
-          arg.dense_shape.set_shape([arg_shape.ndims])
-        elif isinstance(arg_class, _NestedDatasetComponent):
-          assert self._nested_dataset_support
-          arg = _VariantDataset(arg, arg_class)
-        else:
-          arg.set_shape(arg_shape)
-        flat_args.append(arg)
-      nested_args = nest.pack_sequence_as(self._input_classes, flat_args)
+      # pylint: disable=protected-access
+      nested_args = self._input_structure._from_compatible_tensor_list(args)
       if not _should_unpack_args(nested_args):
         nested_args = (nested_args,)
 
@@ -2066,55 +2048,14 @@ class StructuredFunctionWrapper(object):
       if isinstance(ret, list):
         ret = tuple(ret)
 
-      # Convert any `SparseTensorValue`s to `SparseTensor`s and all other
-      # values to tensors.
-      flat_ret = []
-      flat_classes = []
-      flat_shapes = []
-      flat_types = []
-      for t in nest.flatten(ret):
-        # TODO(b/110122868): Add a registration mechanism for new component
-        # types.
-        if sparse_tensor_lib.is_sparse(t):
-          t = sparse_tensor_lib.SparseTensor.from_value(t)
-          flat_ret.append(sparse.serialize_sparse_tensors(t))
-          flat_classes.append(sparse_tensor_lib.SparseTensor)
-          flat_shapes.append(t.get_shape())
-          flat_types.append(t.dtype)
-        elif isinstance(t, DatasetV2):
-          if not self._nested_dataset_support:
-            raise NotImplementedError(
-                "The %s transformation does not currently support nested "
-                "datasets as outputs." % self._transformation_name)
-
-          flat_ret.append(t._as_variant_tensor())  # pylint: disable=protected-access
-          component = _NestedDatasetComponent(t)
-          flat_classes.append(component)
-          flat_shapes.append(component)
-          flat_types.append(component)
-          if t.options() != Options():
-            warnings.warn("Encountered a nested dataset with non-default "
-                          "options. These options will not be propagated to "
-                          "the outer dataset.")
-        else:
-          try:
-            t = ops.convert_to_tensor(t)
-          except (ValueError, TypeError):
-            raise TypeError("Unsupported return value from function passed to "
-                            "%s: %s." % (transformation_name, t))
-          flat_ret.append(t)
-          flat_classes.append(ops.Tensor)
-          flat_shapes.append(t.get_shape())
-          flat_types.append(t.dtype)
-
-      ret = nest.pack_sequence_as(ret, flat_ret)
-      self._output_classes = nest.pack_sequence_as(ret, flat_classes)
-      self._output_shapes = nest.pack_sequence_as(ret, flat_shapes)
-      self._output_types = nest.pack_sequence_as(ret, flat_types)
+      try:
+        self._output_structure = structure_lib.Structure.from_value(ret)
+      except (ValueError, TypeError):
+        raise TypeError("Unsupported return value from function passed to "
+                        "%s: %s." % (transformation_name, ret))
 
       _warn_if_collections(transformation_name)
-
-      return flat_ret
+      return self._output_structure._to_tensor_list(ret)
 
     self._function = tf_data_structured_function_wrapper
     if add_to_graph:
@@ -2125,36 +2066,21 @@ class StructuredFunctionWrapper(object):
       # in case (e.g.) we need to rerun the function.
       self._function._create_definition_if_needed()  # pylint: disable=protected-access
 
-  def _defun_args(self):
-    """Returns a flat list of `tf.DType` for the input element structure."""
-    ret = []
-    for input_type, input_class in zip(nest.flatten(self._input_types),
-                                       nest.flatten(self._input_classes)):
-      # TODO(b/110122868): Add a registration mechanism for new component types.
-      if input_class is sparse_tensor_lib.SparseTensor:
-        ret.append(dtypes.variant)
-      elif isinstance(input_class, _NestedDatasetComponent):
-        if not self._nested_dataset_support:
-          raise NotImplementedError(
-              "The %s transformation does not currently support nested "
-              "datasets as inputs." % self._transformation_name)
-        ret.append(dtypes.variant)
-      else:
-        assert isinstance(input_type, dtypes.DType)
-        ret.append(input_type)
-    return ret
+  @property
+  def output_structure(self):
+    return self._output_structure
 
   @property
   def output_classes(self):
-    return self._output_classes
+    return self._output_structure._to_legacy_output_classes()  # pylint: disable=protected-access
 
   @property
   def output_shapes(self):
-    return self._output_shapes
+    return self._output_structure._to_legacy_output_shapes()  # pylint: disable=protected-access
 
   @property
   def output_types(self):
-    return self._output_types
+    return self._output_structure._to_legacy_output_types()  # pylint: disable=protected-access
 
   @property
   def function(self):
@@ -2177,30 +2103,12 @@ def flat_structure(dataset):
     A dictionary of keyword arguments that can be passed to many Dataset op
     constructors.
   """
-  output_classes = []
-  output_shapes = []
-  output_types = []
-  for output_class, output_shape, output_type in zip(
-      nest.flatten(dataset.output_classes), nest.flatten(dataset.output_shapes),
-      nest.flatten(dataset.output_types)):
-    if isinstance(output_class, _NestedDatasetComponent):
-      output_classes.append(output_class.output_classes)
-      output_shapes.append(output_shape.output_shapes)
-      output_types.append(output_type.output_types)
-    else:
-      output_classes.append(output_class)
-      output_shapes.append(output_shape)
-      output_types.append(output_type)
-
-  output_classes = nest.pack_sequence_as(dataset.output_classes, output_classes)
-  output_shapes = nest.pack_sequence_as(dataset.output_shapes, output_shapes)
-  output_types = nest.pack_sequence_as(dataset.output_types, output_types)
-
+  # pylint: disable=protected-access
+  structure = structure_lib.Structure._from_legacy_structure(
+      dataset.output_types, dataset.output_shapes, dataset.output_classes)
   return {
-      "output_shapes":
-          nest.flatten(sparse.as_dense_shapes(output_shapes, output_classes)),
-      "output_types":
-          nest.flatten(sparse.as_dense_types(output_types, output_classes)),
+      "output_shapes": structure._flat_shapes,
+      "output_types": structure._flat_types,
   }
 
 
@@ -2922,15 +2830,14 @@ class FlatMapDataset(UnaryDataset):
     self._input_dataset = input_dataset
 
     wrapped_func = StructuredFunctionWrapper(
-        map_func,
-        self._transformation_name(),
-        dataset=input_dataset,
-        experimental_nested_dataset_support=True)
-    if not isinstance(wrapped_func.output_classes, _NestedDatasetComponent):
+        map_func, self._transformation_name(), dataset=input_dataset)
+    if not isinstance(wrapped_func.output_structure, DatasetStructure):
       raise TypeError("`map_func` must return a `Dataset` object.")
-    self._output_classes = wrapped_func.output_classes.output_classes
-    self._output_types = wrapped_func.output_types.output_types
-    self._output_shapes = wrapped_func.output_shapes.output_shapes
+    # pylint: disable=protected-access
+    element_structure = wrapped_func.output_structure._element_structure
+    self._output_classes = element_structure._to_legacy_output_classes()
+    self._output_types = element_structure._to_legacy_output_types()
+    self._output_shapes = element_structure._to_legacy_output_shapes()
     self._map_func = wrapped_func.function
 
   def _as_variant_tensor(self):
@@ -3072,10 +2979,9 @@ class WindowDataset(UnaryDataset):
     self._output_classes = nest.pack_sequence_as(
         input_dataset.output_classes,
         [
-            _NestedDatasetComponent(  # pylint: disable=protected-access
-                output_classes=output_class,
-                output_shapes=output_shape,
-                output_types=output_type)
+            DatasetStructure(
+                structure_lib.Structure._from_legacy_structure(  # pylint: disable=protected-access
+                    output_type, output_shape, output_class))
             for output_class, output_shape, output_type in zip(
                 nest.flatten(input_dataset.output_classes),
                 nest.flatten(input_dataset.output_shapes),

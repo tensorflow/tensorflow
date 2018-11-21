@@ -125,22 +125,22 @@ class SpectralOpsTest(test.TestCase):
       stft = spectral_ops.stft(signal, frame_length=7, frame_step=8,
                                pad_end=True)
       self.assertAllEqual([64, 5], stft.shape.as_list())
-      self.assertAllEqual([64, 5], stft.eval().shape)
+      self.assertAllEqual([64, 5], self.evaluate(stft).shape)
 
       stft = spectral_ops.stft(signal, frame_length=8, frame_step=8,
                                pad_end=True)
       self.assertAllEqual([64, 5], stft.shape.as_list())
-      self.assertAllEqual([64, 5], stft.eval().shape)
+      self.assertAllEqual([64, 5], self.evaluate(stft).shape)
 
       stft = spectral_ops.stft(signal, frame_length=8, frame_step=8,
                                fft_length=16, pad_end=True)
       self.assertAllEqual([64, 9], stft.shape.as_list())
-      self.assertAllEqual([64, 9], stft.eval().shape)
+      self.assertAllEqual([64, 9], self.evaluate(stft).shape)
 
       stft = spectral_ops.stft(signal, frame_length=16, frame_step=8,
                                fft_length=8, pad_end=True)
       self.assertAllEqual([64, 5], stft.shape.as_list())
-      self.assertAllEqual([64, 5], stft.eval().shape)
+      self.assertAllEqual([64, 5], self.evaluate(stft).shape)
 
       stft = np.zeros((32, 9)).astype(np.complex64)
 
@@ -148,7 +148,7 @@ class SpectralOpsTest(test.TestCase):
                                                fft_length=16, frame_step=8)
       expected_length = (stft.shape[0] - 1) * 8 + 8
       self.assertAllEqual([256], inverse_stft.shape.as_list())
-      self.assertAllEqual([expected_length], inverse_stft.eval().shape)
+      self.assertAllEqual([expected_length], self.evaluate(inverse_stft).shape)
 
   def test_stft_and_inverse_stft(self):
     """Test that spectral_ops.stft/inverse_stft match a NumPy implementation."""

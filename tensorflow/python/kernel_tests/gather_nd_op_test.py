@@ -40,7 +40,7 @@ class GatherNdTest(test.TestCase):
       params = constant_op.constant(np.array([8, 1, 2, 3, 7, 5], dtype=dtype))
       indices = constant_op.constant([[4], [4], [0]])
       gather_nd_t = array_ops.gather_nd(params, indices)
-      gather_nd_val = gather_nd_t.eval()
+      gather_nd_val = self.evaluate(gather_nd_t)
 
     self.assertAllEqual(np.array([7, 7, 8], dtype=dtype), gather_nd_val)
     self.assertEqual([3], gather_nd_t.get_shape())
@@ -60,20 +60,20 @@ class GatherNdTest(test.TestCase):
 
       indices_empty = np.empty((0, 2), dtype=np.int32)
       gather_nd_ok_t = array_ops.gather_nd(params, indices_empty)
-      gather_nd_ok_val = gather_nd_ok_t.eval()
+      gather_nd_ok_val = self.evaluate(gather_nd_ok_t)
       self.assertEqual([0], gather_nd_ok_t.get_shape())
       self.assertAllClose(np.empty((0,), dtype=np.float32), gather_nd_ok_val)
 
       indices_empty = np.empty((0, 1), dtype=np.int32)
       gather_nd_ok_t = array_ops.gather_nd(params, indices_empty)
-      gather_nd_ok_val = gather_nd_ok_t.eval()
+      gather_nd_ok_val = self.evaluate(gather_nd_ok_t)
       self.assertEqual([0, 3], gather_nd_ok_t.get_shape())
       self.assertAllClose(np.empty((0, 3), dtype=np.float32), gather_nd_ok_val)
 
       params_empty = np.empty((0, 3), dtype=np.float32)
       indices_empty = np.empty((0, 2), dtype=np.int32)
       gather_nd_ok_t = array_ops.gather_nd(params_empty, indices_empty)
-      gather_nd_ok_val = gather_nd_ok_t.eval()
+      gather_nd_ok_val = self.evaluate(gather_nd_ok_t)
       self.assertEqual([0], gather_nd_ok_t.get_shape())
       self.assertAllClose(np.empty((0,), dtype=np.float32), gather_nd_ok_val)
 
@@ -82,7 +82,7 @@ class GatherNdTest(test.TestCase):
       gather_nd_break_t = array_ops.gather_nd(params_empty, indices_nonempty)
       with self.assertRaisesOpError(
           r"Requested more than 0 entries, but params is empty."):
-        gather_nd_break_t.eval()
+        self.evaluate(gather_nd_break_t)
       self.assertAllClose(np.empty((0,), dtype=np.float32), gather_nd_ok_val)
 
   def testIndexScalar(self):
@@ -91,7 +91,7 @@ class GatherNdTest(test.TestCase):
           [[-8, -1, -2, -3, -7, -5], [8, 1, 2, 3, 7, 5]], dtype=np.float32).T
       indices = constant_op.constant([4, 1])
       gather_nd_t = array_ops.gather_nd(params, indices)
-      gather_nd_val = gather_nd_t.eval()
+      gather_nd_val = self.evaluate(gather_nd_t)
       self.assertEqual([], gather_nd_t.get_shape())
       self.assertAllEqual(np.array(7), gather_nd_val)
 
@@ -101,7 +101,7 @@ class GatherNdTest(test.TestCase):
           [[-8, -1, -2, -3, -7, -5], [8, 1, 2, 3, 7, 5]], dtype=np.float32).T
       indices = constant_op.constant([4])
       gather_nd_t = array_ops.gather_nd(params, indices)
-      gather_nd_val = gather_nd_t.eval()
+      gather_nd_val = self.evaluate(gather_nd_t)
       self.assertEqual([2], gather_nd_t.get_shape())
       self.assertAllEqual(np.array([-7, 7]), gather_nd_val)
 
@@ -111,7 +111,7 @@ class GatherNdTest(test.TestCase):
           [[-8, -1, -2, -3, -7, -5], [8, 1, 2, 3, 7, 5]], dtype=np.float32).T
       indices = constant_op.constant([[4], [4], [0]])
       gather_nd_t = array_ops.gather_nd(params, indices)
-      gather_nd_val = gather_nd_t.eval()
+      gather_nd_val = self.evaluate(gather_nd_t)
 
     self.assertEqual([3, 2], gather_nd_t.get_shape())
     self.assertAllEqual(np.array([[-7, 7], [-7, 7], [-8, 8]]), gather_nd_val)
@@ -125,7 +125,7 @@ class GatherNdTest(test.TestCase):
       params_t = constant_op.constant(params)
       indices = constant_op.constant([[4], [4], [0]])
       gather_nd_t = array_ops.gather_nd(params_t, indices)
-      gather_nd_val = gather_nd_t.eval()
+      gather_nd_val = self.evaluate(gather_nd_t)
 
     self.assertEqual([3, 2, 2], gather_nd_t.get_shape())
     self.assertAllEqual(params[[4, 4, 0]], gather_nd_val)
@@ -140,7 +140,7 @@ class GatherNdTest(test.TestCase):
       indices = constant_op.constant(
           [[], []], dtype=dtypes.int32)  # Size (2, 0)
       gather_nd_t = array_ops.gather_nd(params_t, indices)
-      gather_nd_val = gather_nd_t.eval()
+      gather_nd_val = self.evaluate(gather_nd_t)
 
     self.assertEqual([2, 6, 2, 2], gather_nd_t.get_shape())
     self.assertAllEqual(
@@ -156,7 +156,7 @@ class GatherNdTest(test.TestCase):
       params_t = constant_op.constant(params)
       indices = constant_op.constant([[[3], [2], [1]], [[4], [4], [0]]])
       gather_nd_t = array_ops.gather_nd(params_t, indices)
-      gather_nd_val = gather_nd_t.eval()
+      gather_nd_val = self.evaluate(gather_nd_t)
 
     self.assertEqual([2, 3, 2, 2], gather_nd_t.get_shape())
     self.assertAllEqual(params[[3, 2, 1, 4, 4, 0]].reshape(2, 3, 2, 2),
@@ -168,7 +168,7 @@ class GatherNdTest(test.TestCase):
       params = np.random.rand(*shape)
       indices = np.vstack([np.random.randint(0, s, size=2000) for s in shape]).T
       gather_nd_t = array_ops.gather_nd(params, indices)
-      gather_nd_val = gather_nd_t.eval()
+      gather_nd_val = self.evaluate(gather_nd_t)
 
     expected = params[tuple(indices.T)]
     self.assertAllEqual(expected, gather_nd_val)
@@ -181,7 +181,7 @@ class GatherNdTest(test.TestCase):
       indices = np.vstack([np.random.randint(0, s, size=2000) for s in shape]).T
       indices_reshaped = indices.reshape([10, 10, 20, 5])
       gather_nd_t = array_ops.gather_nd(params, indices_reshaped)
-      gather_nd_val = gather_nd_t.eval()
+      gather_nd_val = self.evaluate(gather_nd_t)
 
     expected = params[tuple(indices.T)]
     self.assertAllEqual(expected.reshape([10, 10, 20]), gather_nd_val)
@@ -205,7 +205,7 @@ class GatherNdTest(test.TestCase):
       gather_nd = array_ops.gather_nd(params, indices)
       with self.assertRaisesOpError(
           r"indices\[0,1\] = \[7\] does not index into param shape \[3\]"):
-        gather_nd.eval()
+        self.evaluate(gather_nd)
 
   def _disabledTestBadIndicesGPU(self):
     # TODO disabled due to different behavior on GPU and CPU
@@ -218,7 +218,7 @@ class GatherNdTest(test.TestCase):
       gather_nd = array_ops.gather_nd(params, indices)
       with self.assertRaisesOpError(
           r"indices\[0,1\] = \[7\] does not index into param shape \[3\]"):
-        gather_nd.eval()
+        self.evaluate(gather_nd)
 
   def testBadIndicesWithSlicesCPU(self):
     with self.session(use_gpu=False):
@@ -227,7 +227,7 @@ class GatherNdTest(test.TestCase):
       gather_nd = array_ops.gather_nd(params, indices)
       with self.assertRaisesOpError(
           r"indices\[0,2\] = \[1\] does not index into param shape \[1,3\]"):
-        gather_nd.eval()
+        self.evaluate(gather_nd)
 
   def _disabledTestBadIndicesWithSlicesGPU(self):
     # TODO disabled due to different behavior on GPU and CPU
@@ -240,7 +240,7 @@ class GatherNdTest(test.TestCase):
       gather_nd = array_ops.gather_nd(params, indices)
       with self.assertRaisesOpError(
           r"indices\[0,2\] = \[1\] does not index into param shape \[1,3\]"):
-        gather_nd.eval()
+        self.evaluate(gather_nd)
 
   def testGradientsRank2Elements(self):
     indices = constant_op.constant([[0, 0], [1, 1]], dtype=dtypes.int32)
@@ -251,7 +251,7 @@ class GatherNdTest(test.TestCase):
     grads = gradients_impl.gradients([outputs], [inputs], [grad_vals])[0]
     expected_grads = np.array([[1, 0], [0, 2]], dtype=np.float64)
     with self.session(use_gpu=True):
-      assert np.array_equal(expected_grads, grads.eval())
+      assert np.array_equal(expected_grads, self.evaluate(grads))
 
   def testGradientsRank2Slices(self):
     indices = constant_op.constant([[1], [0]], dtype=dtypes.int32)
@@ -278,7 +278,7 @@ class GatherNdTest(test.TestCase):
     expected_grads = np.array(
         [[[5, 6], [1, 2]], [[3, 4], [7, 8]]], dtype=np.float64)
     with self.session(use_gpu=True):
-      self.assertAllEqual(expected_grads, grads.eval())
+      self.assertAllEqual(expected_grads, self.evaluate(grads))
 
   def testGradientsRank7Elements(self):
     # Shape [1,1,2,1,1,2,2]
@@ -307,7 +307,7 @@ class GatherNdTest(test.TestCase):
             [[[[3, 4], [7, 8]]]]
         ]]], dtype=np.float64)
     with self.session(use_gpu=True):
-      self.assertAllEqual(expected_grads, grads.eval())
+      self.assertAllEqual(expected_grads, self.evaluate(grads))
 
   def testGradientsInt64Indices(self):
     indices = constant_op.constant(
@@ -322,7 +322,7 @@ class GatherNdTest(test.TestCase):
     expected_grads = np.array(
         [[[5, 6], [1, 2]], [[3, 4], [7, 8]]], dtype=np.float64)
     with self.session(use_gpu=True):
-      self.assertAllEqual(expected_grads, grads.eval())
+      self.assertAllEqual(expected_grads, self.evaluate(grads))
 
   def testGradientsRank2SlicesWithEmptySpace(self):
     indices = constant_op.constant([[2], [0], [5]], dtype=dtypes.int32)
@@ -361,10 +361,10 @@ class GatherNdOpBenchmark(test.Benchmark):
       gather_op = array_ops.gather_nd(t_params, t_indices)
       variables.global_variables_initializer().run()
       for _ in range(10):
-        gather_op.eval()
+        self.evaluate(gather_op)
       t1 = time.time()
       for _ in range(1000):
-        gather_op.eval()
+        self.evaluate(gather_op)
       t2 = time.time()
       self.report_benchmark(iters=1000, wall_time=(t2 - t1) / 1000.0)
 

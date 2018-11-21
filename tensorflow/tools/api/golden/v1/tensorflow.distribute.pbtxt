@@ -1,0 +1,47 @@
+path: "tensorflow.distribute"
+tf_module {
+  member {
+    name: "InputContext"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "InputReplicationMode"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
+    name: "ReduceOp"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
+    name: "ReplicaContext"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Strategy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "StrategyExtended"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "get_loss_reduction"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_replica_context"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_strategy"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "has_strategy"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "in_cross_replica_context"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+}

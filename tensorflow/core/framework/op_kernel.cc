@@ -1127,7 +1127,8 @@ Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
         FormatNodeDefForError(node_def));
     if (was_attr_mismatch) {
       errors::AppendToMessage(
-          &s, " (OpKernel was found, but attributes didn't match)");
+          &s, " (OpKernel was found, but attributes didn't match) ",
+          "Requested Attributes: ", SummarizeAttrs(node_def));
     }
     errors::AppendToMessage(
         &s, ".  Registered:", KernelsRegisteredForOp(node_def.op()));
@@ -1262,7 +1263,8 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
                               FormatNodeDefForError(node_def)));
     if (was_attr_mismatch) {
       errors::AppendToMessage(
-          &s, " (OpKernel was found, but attributes didn't match)");
+          &s, " (OpKernel was found, but attributes didn't match) ",
+          "Requested Attributes: ", SummarizeAttrs(node_def));
     }
     errors::AppendToMessage(
         &s, ".  Registered:", KernelsRegisteredForOp(node_def.op()));

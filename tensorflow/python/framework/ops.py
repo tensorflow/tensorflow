@@ -40,7 +40,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import c_api_util
-from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import error_interpolation
@@ -318,22 +317,13 @@ class Tensor(_TensorLike):
     self._op = op
     self._value_index = value_index
     self._dtype = dtypes.as_dtype(dtype)
-
     # This will be set by self._as_tf_output().
     self._tf_output = None
-
     # This will be set by self.shape().
     self._shape_val = None
-
     # List of operations that use this Tensor as input.  We maintain this list
     # to easily navigate a computation graph.
     self._consumers = []
-
-    if not _USE_C_SHAPES:
-      # Attributes used for C++ shape inference. Not inspected, only forwarded.
-      # If set, will be a HandleData object from cpp_shape_inference.proto.
-      self._handle_data = None
-
     self._id = uid()
 
   @property
@@ -408,17 +398,7 @@ class Tensor(_TensorLike):
 
     """
     if self._shape_val is None:
-      if _USE_C_SHAPES:
-        self._shape_val = self._c_api_shape()
-      else:
-        # Call set_shape_and_handle_data_for_outputs in topological order on all
-        # ops that are needed to compute self.op's shape. We do this instead of
-        # having set_shape_and_handle_data_for_outputs recursively call
-        # Operation.shape on self.op.inputs to overflowing the call stack.
-        need_shapes = self._get_input_ops_without_shapes(self.op)
-        need_shapes.sort(key=lambda op: op._id)
-        for op in need_shapes:
-          set_shape_and_handle_data_for_outputs(op)
+      self._shape_val = self._c_api_shape()
     return self._shape_val
 
   def _get_input_ops_without_shapes(self, target_op):
@@ -533,14 +513,10 @@ class Tensor(_TensorLike):
       ValueError: If `shape` is not compatible with the current shape of
         this tensor.
     """
-    if _USE_C_SHAPES:  # pylint: disable=protected-access
-      # Reset cached shape.
-      self._shape_val = None
-    else:
-      self._shape_val = self.shape.merge_with(shape)
+    # Reset cached shape.
+    self._shape_val = None
 
-    # Update C shape even if _USE_C_SHAPES = False, since we still want
-    # set_shape to be reflected in the C API graph for when we run it.
+    # We want set_shape to be reflected in the C API graph for when we run it.
     if not isinstance(shape, tensor_shape.TensorShape):
       shape = tensor_shape.TensorShape(shape)
     dim_list = []
@@ -634,10 +610,7 @@ class Tensor(_TensorLike):
     return id(self) == id(other)
 
   def __copy__(self):
-    # Make sure _shape_val is computed before we copy.
     # TODO(b/77597810): get rid of Tensor copies.
-    if self._shape_val is None:
-      set_shape_and_handle_data_for_outputs(self.op)
     cls = self.__class__
     result = cls.__new__(cls)
     result.__dict__.update(self.__dict__)
@@ -2135,12 +2108,6 @@ class Operation(object):
       raise TypeError("tensor must be a Tensor: %s" % tensor)
     _assert_same_graph(self, tensor)
 
-    # Make sure output shapes are already computed for this op in case we create
-    # a cycle (we cannot compute shapes for cycles). Usually shapes are computed
-    # lazily upon request.
-    if not _USE_C_SHAPES:
-      set_shape_and_handle_data_for_outputs(self)
-
     # Reset cached inputs.
     self._inputs_val = None
     c_api.UpdateEdge(
@@ -2614,72 +2581,9 @@ class RegisterShape(object):
     return f
 
 
-# TODO(b/74620627): remove when _USE_C_SHAPES is removed
-def _set_shape_and_handle_data_for_outputs_c_api(op):
-  """Set shapes and resource handle data using info from the C API."""
-  assert not _USE_C_SHAPES
-  for output in op.outputs:
-    output._shape_val = output._c_api_shape()
-    # Set the resource handle data for compatibility with the Python shape
-    # inference code.
-    serialized = c_api.GetHandleShapeAndType(op._graph._c_graph,  # pylint: disable=protected-access
-                                             output._as_tf_output())
-    if serialized:
-      output._handle_data = (
-          cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData
-          .FromString(compat.as_bytes(serialized)))
-    else:
-      output._handle_data = None
-
-
-# TODO(b/74620627): remove when _USE_C_SHAPES is removed
-def set_shape_and_handle_data_for_outputs(op):
-  """Set the shapes and resource handle data for op's outputs.
-
-  When _USE_C_SHAPES = False, this is lazily called when a tensor's shape is
-  first requested. Usually this should work automatically, but some edge cases
-  may require manually calling this first to make sure Tensor._shape_val and
-  Tensor._handle_data are set (e.g. manually overriding _handle_data, copying a
-  Tensor).
-  """
-  if _USE_C_SHAPES: return
-
-  if op.graph._is_function(op.type):
-    for output in op.outputs:
-      output._shape_val = tensor_shape.unknown_shape()
-    return
-
-  try:
-    shape_func = _shape_registry.lookup(op.type)
-  except LookupError:
-    try:
-      shape_func = _default_shape_function_registry.lookup(op.type)
-    except LookupError:
-      shape_func = _call_cpp_shape_fn_and_require_op
-
-  shapes = shape_func(op)
-  if shapes is None:
-    raise RuntimeError(
-        "Shape function for op %s did not return any shapes" % op)
-  elif isinstance(shapes, dict):
-    # Returned by call_cpp_shape_fn
-    shapes_dict = shapes
-    shapes = shapes_dict["shapes"]
-    handle_datas = shapes_dict["handle_data"]
-    for output, handle_data in zip(op.outputs, handle_datas):
-      # Don't override any existing handle data that may have been manually set.
-      # pylint: disable=protected-access
-      if output._handle_data is None:
-        output._handle_data = handle_data
-      # pylint: enable=protected-access
-
-  if len(op.outputs) != len(shapes):
-    raise RuntimeError(
-        "Shape function for op %s returned %d shapes but expected %d %s %s" %
-        (op, len(shapes), len(op.outputs), shape_func.__name__, str(shapes)))
-  for output, s in zip(op.outputs, shapes):
-    output._shape_val = tensor_shape.unknown_shape()
-    output._shape_val = output._shape_val.merge_with(s)
+def set_shape_and_handle_data_for_outputs(_):
+  """No op. TODO(b/74620627): Remove this."""
+  pass
 
 
 class OpStats(object):
@@ -3532,11 +3436,6 @@ class Graph(object):
 
     # pylint: disable=protected-access
     for op in new_ops:
-      # Operations created by the C API always retrieve shapes from the C API so
-      # we preserve the shapes of ops created in import_graph_def (from the
-      # "_output_shapes" attr of the imported NodeDef).
-      if not _USE_C_SHAPES:
-        _set_shape_and_handle_data_for_outputs_c_api(op)
       new_control_inputs = self._control_dependencies_for_inputs(op.inputs)
       op._add_control_inputs(new_control_inputs)
       op._control_flow_post_processing()
@@ -5804,7 +5703,7 @@ def _get_graph_from_inputs(op_input_list, graph=None):
   return graph or get_default_graph()
 
 
-@tf_export("GraphKeys")
+@tf_export(v1=["GraphKeys"])
 class GraphKeys(object):
   """Standard names to use for graph collections.
 

@@ -41,7 +41,7 @@ class SlotCreatorTest(test.TestCase):
       self.assertEqual("var/slot", slot.op.name)
       self.assertEqual([2], slot.get_shape().as_list())
       self.assertEqual(dtypes.float32, slot.dtype.base_dtype)
-      self.assertAllEqual([1.0, 2.5], slot.eval())
+      self.assertAllEqual([1.0, 2.5], self.evaluate(slot))
 
   def testCreateSlotFromTensor(self):
     with self.cached_session():
@@ -53,7 +53,7 @@ class SlotCreatorTest(test.TestCase):
       self.assertEqual("const/slot", slot.op.name)
       self.assertEqual([2], slot.get_shape().as_list())
       self.assertEqual(dtypes.float32, slot.dtype.base_dtype)
-      self.assertAllEqual([2.0, 5.0], slot.eval())
+      self.assertAllEqual([2.0, 5.0], self.evaluate(slot))
 
   def testCreateZerosSlotFromVariable(self):
     with self.cached_session():
@@ -67,7 +67,7 @@ class SlotCreatorTest(test.TestCase):
       self.assertEqual("var/slot", slot.op.name)
       self.assertEqual([2], slot.get_shape().as_list())
       self.assertEqual(dtypes.float64, slot.dtype.base_dtype)
-      self.assertAllEqual([0.0, 0.0], slot.eval())
+      self.assertAllEqual([0.0, 0.0], self.evaluate(slot))
 
   def testCreateZerosSlotFromDynamicShapedVariable(self):
     with self.cached_session():
@@ -88,7 +88,7 @@ class SlotCreatorTest(test.TestCase):
       self.assertEqual("var/slot", slot.op.name)
       self.assertEqual([2], array_ops.shape(slot).eval())
       self.assertEqual(dtypes.float64, slot.dtype.base_dtype)
-      self.assertAllEqual([0.0, 0.0], slot.eval())
+      self.assertAllEqual([0.0, 0.0], self.evaluate(slot))
 
   def testCreateZerosSlotFromTensor(self):
     with self.cached_session():
@@ -101,7 +101,7 @@ class SlotCreatorTest(test.TestCase):
       self.assertEqual("const/slot", slot.op.name)
       self.assertEqual([2], slot.get_shape().as_list())
       self.assertEqual(dtypes.float32, slot.dtype.base_dtype)
-      self.assertAllEqual([0.0, 0.0], slot.eval())
+      self.assertAllEqual([0.0, 0.0], self.evaluate(slot))
 
   def testCreateZerosSlotFromDynamicShapedTensor(self):
     with self.cached_session():
@@ -116,7 +116,7 @@ class SlotCreatorTest(test.TestCase):
       self.assertEqual("const/slot", slot.op.name)
       self.assertEqual([2], array_ops.shape(slot).eval())
       self.assertEqual(dtypes.float64, slot.dtype.base_dtype)
-      self.assertAllEqual([0.0, 0.0], slot.eval())
+      self.assertAllEqual([0.0, 0.0], self.evaluate(slot))
 
   def testCreateSlotFromVariableRespectsScope(self):
     # See discussion on #2740.

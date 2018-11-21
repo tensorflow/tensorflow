@@ -411,7 +411,7 @@ TEST(RawApiTest, CompileAndExecute) {
   auto expected = xla::LiteralUtil::CreateR1<float>({27.0f, 21.0f});
   EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
 
-  xla::ProgramShape program_shape;
+  xla::ProgramShapeProto program_shape;
   EXPECT_TRUE(program_shape.ParseFromString(outputs[1].vec<string>()(0)));
   EXPECT_EQ(program_shape.parameters_size(), 2);
 }
@@ -465,7 +465,7 @@ TEST(RawApiTest, CompileAndExecuteWithArgumentVector) {
   auto expected = xla::LiteralUtil::CreateR1<float>({27.0f, 21.0f});
   EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
 
-  xla::ProgramShape program_shape;
+  xla::ProgramShapeProto program_shape;
   EXPECT_TRUE(program_shape.ParseFromString(outputs[1].vec<string>()(0)));
   EXPECT_EQ(program_shape.parameters_size(), 2);
 }
@@ -510,7 +510,7 @@ TEST(RawApiTest, CompileWithXlaReturnShapes) {
   TF_EXPECT_OK(session.Run(tensorflow::ClientSession::FeedType(),
                            {c_handle.program_shape}, {release}, &outputs));
 
-  xla::ProgramShape program_shape;
+  xla::ProgramShapeProto program_shape;
   EXPECT_TRUE(program_shape.ParseFromString(outputs[0].vec<string>()(0)));
   EXPECT_EQ(program_shape.parameters_size(), 1);
 
@@ -520,7 +520,7 @@ TEST(RawApiTest, CompileWithXlaReturnShapes) {
           << xla::ShapeUtil::HumanStringWithLayout(program_shape.result());
 
   xla::ProgramShape xla_program_shape =
-      XlaCompiledProgramShape(xla_computation, *shapes);
+      XlaCompiledProgramShape(xla_computation, xla::ProgramShape(*shapes));
   EXPECT_TRUE(xla::LayoutUtil::Equal(
       xla::ShapeUtil::GetSubshape(program_shape.parameters(0), {0}).layout(),
       xla::ShapeUtil::GetSubshape(xla_program_shape.parameters(0), {0})
@@ -739,7 +739,7 @@ TEST(RawApiTest, CompileAndExecuteWithS64Argument) {
   auto expected = xla::LiteralUtil::CreateR0<int64>(15123899);
   EXPECT_TRUE(CompareLiteralToLiteralProto(expected, response));
 
-  xla::ProgramShape program_shape;
+  xla::ProgramShapeProto program_shape;
   EXPECT_TRUE(program_shape.ParseFromString(outputs[1].vec<string>()(0)));
   EXPECT_EQ(program_shape.parameters_size(), 2);
   EXPECT_TRUE(

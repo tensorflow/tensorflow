@@ -179,6 +179,7 @@ typedef enum {
   kTfLiteBool = 6,
   kTfLiteInt16 = 7,
   kTfLiteComplex64 = 8,
+  kTfLiteInt8 = 9,
 } TfLiteType;
 
 // Return the name of a given type, for error reporting purposes.
@@ -203,6 +204,7 @@ typedef union {
   bool* b;
   int16_t* i16;
   TfLiteComplex64* c64;
+  int8_t* int8;
 } TfLitePtrUnion;
 
 // Memory allocation strategies. kTfLiteMmapRo is for read-only memory-mapped

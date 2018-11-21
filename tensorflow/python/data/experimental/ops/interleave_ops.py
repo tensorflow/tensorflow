@@ -158,7 +158,7 @@ def sample_from_datasets_v2(datasets, weights=None, seed=None):
       length of the `datasets` element.
   """
   num_datasets = len(datasets)
-  if not isinstance(weights, dataset_ops.Dataset):
+  if not isinstance(weights, dataset_ops.DatasetV2):
     if weights is None:
       # Select inputs with uniform probability.
       logits = [[1.0] * num_datasets]

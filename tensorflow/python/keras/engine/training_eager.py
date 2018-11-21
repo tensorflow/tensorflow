@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import copy
 
 import numpy as np
@@ -215,7 +216,7 @@ def iterator_fit_loop(model,
   assert isinstance(inputs, iterator_ops.EagerIterator)
 
   # make sure either x,y or x,y,sample_weights is provided
-  if (not isinstance(inputs.output_shapes, (list, tuple)) or
+  if (not isinstance(inputs.output_shapes, collections.Sequence) or
       len(inputs.output_shapes) not in (2, 3)):
     raise ValueError('Please provide either inputs and targets '
                      'or inputs, targets, and sample_weights')
@@ -254,16 +255,25 @@ def iterator_fit_loop(model,
           if val is not None else None for val in sample_weights
       ]
 
-    # Set stateful_metrics in callbacks. We do not do this before the
-    # `steps_per_epoch` loop because model will be compiled only in the first
-    # iteration of this loop in the deferred build scenario.
+    # Train model.
+    outs, loss, _, aggregated_loss_metrics, masks = _process_single_batch(
+        model,
+        x,
+        y,
+        output_loss_metrics=output_loss_metrics,
+        sample_weights=sample_weights,
+        training=True)
+    outs = generic_utils.to_list(outs)
+
     if step_index == 0:
+      # Set stateful_metrics in callbacks. We do not do this before the
+      # `steps_per_epoch` loop because model will be compiled only in the first
+      # iteration of this loop in the deferred build scenario.
       for cbk in callbacks:
         if (isinstance(cbk, cbks.BaseLogger) or
             isinstance(cbk, cbks.ProgbarLogger)):
           cbk.stateful_metrics = model.metrics_names[1:]  # Exclude `loss`
 
-    if step_index == 0 and not callbacks.params['metrics']:
       callback_metrics = copy.copy(model.metrics_names)
       if do_validation:
         callback_metrics += ['val_' + n for n in model.metrics_names]
@@ -276,16 +286,6 @@ def iterator_fit_loop(model,
           'metrics': callback_metrics or [],
           'validation_steps': validation_steps
       })
-
-    # Train model.
-    outs, loss, _, aggregated_loss_metrics, masks = _process_single_batch(
-        model,
-        x,
-        y,
-        output_loss_metrics=output_loss_metrics,
-        sample_weights=sample_weights,
-        training=True)
-    outs = generic_utils.to_list(outs)
 
     # Calculate metrics.
     for l, o in zip(model.metrics_names, outs):
@@ -341,7 +341,7 @@ def iterator_test_loop(model, inputs, steps, verbose=0):
   """
   assert isinstance(inputs, iterator_ops.EagerIterator)
   # make sure either x,y or x,y,sample_weights is provided
-  if (not isinstance(inputs.output_shapes, (list, tuple)) or
+  if (not isinstance(inputs.output_shapes, collections.Sequence) or
       len(inputs.output_shapes) < 2 or len(inputs.output_shapes) > 3):
     raise ValueError('Please provide either inputs and targets'
                      'or inputs, targets, and sample_weights')
@@ -392,8 +392,8 @@ def iterator_test_loop(model, inputs, steps, verbose=0):
       # Get stateful metrics indices. We do not do this before the `steps` loop
       # because model will be compiled only in the first iteration of this loop
       # in the deferred build scenario.
-      if hasattr(model, 'metrics'):
-        for m in model.stateful_metric_functions:
+      if hasattr(model, '_compile_metrics'):
+        for m in model.metrics:
           m.reset_states()
       for m in output_loss_metrics:
         m.reset_states()
@@ -462,7 +462,7 @@ def iterator_predict_loop(model, inputs, steps, verbose=0):
   """
   assert isinstance(inputs, iterator_ops.EagerIterator)
   if not isinstance(inputs.output_shapes,
-                    (list, tuple)) or len(inputs.output_shapes) > 3:
+                    collections.Sequence) or len(inputs.output_shapes) > 3:
     raise ValueError(
         'Please provide data as a list or tuple of 1, 2, or 3 elements '
         ' - `(input)`, or `(input, target)`, or `(input, target,'
@@ -584,16 +584,17 @@ def train_on_batch(model, inputs, targets, sample_weights=None):
   Returns:
       total loss and the loss associated with each output.
   """
-  if len(inputs) and tensor_util.is_tensor(inputs[0]):
-    inputs = training_utils.cast_if_floating_dtype(inputs)
-    targets = training_utils.cast_if_floating_dtype(targets)
-  else:
-    inputs = [
-        ops.convert_to_tensor(val, dtype=backend.floatx()) for val in inputs
-    ]
-    targets = [
-        ops.convert_to_tensor(val, dtype=backend.floatx()) for val in targets
-    ]
+  if isinstance(inputs, collections.Sequence):
+    if len(inputs) and tensor_util.is_tensor(inputs[0]):
+      inputs = training_utils.cast_if_floating_dtype(inputs)
+      targets = training_utils.cast_if_floating_dtype(targets)
+    else:
+      inputs = [
+          ops.convert_to_tensor(val, dtype=backend.floatx()) for val in inputs
+      ]
+      targets = [
+          ops.convert_to_tensor(val, dtype=backend.floatx()) for val in targets
+      ]
   if sample_weights:
     sample_weights = [
         ops.convert_to_tensor(val, dtype=backend.floatx())
@@ -631,16 +632,17 @@ def test_on_batch(model, inputs, targets, sample_weights=None):
   Returns:
       total loss, loss and metrics associated with each output.
   """
-  if len(inputs) and tensor_util.is_tensor(inputs[0]):
-    inputs = training_utils.cast_if_floating_dtype(inputs)
-    targets = training_utils.cast_if_floating_dtype(targets)
-  else:
-    inputs = [
-        ops.convert_to_tensor(val, dtype=backend.floatx()) for val in inputs
-    ]
-    targets = [
-        ops.convert_to_tensor(val, dtype=backend.floatx()) for val in targets
-    ]
+  if isinstance(inputs, collections.Sequence):
+    if len(inputs) and tensor_util.is_tensor(inputs[0]):
+      inputs = training_utils.cast_if_floating_dtype(inputs)
+      targets = training_utils.cast_if_floating_dtype(targets)
+    else:
+      inputs = [
+          ops.convert_to_tensor(val, dtype=backend.floatx()) for val in inputs
+      ]
+      targets = [
+          ops.convert_to_tensor(val, dtype=backend.floatx()) for val in targets
+      ]
   if sample_weights:
     sample_weights = [
         ops.convert_to_tensor(val, dtype=backend.floatx())
@@ -750,7 +752,7 @@ def fit_loop(model,
     for epoch in range(initial_epoch, epochs):
       if model._is_compiled:  # Model may not be compiled the first time.
         # Reset stateful metrics
-        for m in model.stateful_metric_functions:
+        for m in model.metrics:
           m.reset_states()
 
       for m in output_loss_metrics:

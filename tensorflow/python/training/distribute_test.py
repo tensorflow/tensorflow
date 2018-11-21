@@ -63,6 +63,7 @@ def _assert_in_default_state(t):
   t.assertIs(distribution_strategy_context._get_default_replica_context(),
              distribution_strategy_context.get_replica_context())
   t.assertIs(None, distribution_strategy_context.get_cross_replica_context())
+  t.assertFalse(distribution_strategy_context.in_cross_replica_context())
   t.assertIs(distribution_strategy_context._get_default_distribution_strategy(),
              distribution_strategy_context.get_distribution_strategy())
   t.assertFalse(distribution_strategy_context.has_distribution_strategy())
@@ -79,6 +80,7 @@ class TestStrategyTest(test.TestCase):
       self.assertTrue(replica_context is not None)
       self.assertIs(None,
                     distribution_strategy_context.get_cross_replica_context())
+      self.assertFalse(distribution_strategy_context.in_cross_replica_context())
       self.assertTrue(distribution_strategy_context.has_distribution_strategy())
       self.assertIs(dist,
                     distribution_strategy_context.get_distribution_strategy())
@@ -90,9 +92,9 @@ class TestStrategyTest(test.TestCase):
                            variable_scope.variable(1.0, name="bar"))
 
     with self.assertRaises(RuntimeError):
-      dist.call_for_each_replica(run_fn)
+      dist.extended.call_for_each_replica(run_fn)
     with dist.scope():
-      dist.call_for_each_replica(run_fn)
+      dist.extended.call_for_each_replica(run_fn)
     _assert_in_default_state(self)
 
   def testScope(self):
@@ -102,6 +104,7 @@ class TestStrategyTest(test.TestCase):
       self.assertIs(None, distribution_strategy_context.get_replica_context())
       self.assertIs(dist,
                     distribution_strategy_context.get_cross_replica_context())
+      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
       self.assertTrue(distribution_strategy_context.has_distribution_strategy())
       self.assertIs(dist,
                     distribution_strategy_context.get_distribution_strategy())
@@ -141,6 +144,7 @@ class DefaultDistributionStrategyTest(test.TestCase):
       self.assertIs(None, distribution_strategy_context.get_replica_context())
       self.assertIs(dist,
                     distribution_strategy_context.get_cross_replica_context())
+      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
       self.assertIs(dist,
                     distribution_strategy_context.get_distribution_strategy())
       self.assertFalse(
@@ -150,7 +154,7 @@ class DefaultDistributionStrategyTest(test.TestCase):
     replica_ctx = distribution_strategy_context.get_replica_context()
     self.assertIs(distribution_strategy_context._get_default_replica_context(),
                   replica_ctx)
-    self.assertEqual("foo_bar", replica_ctx.merge_call(merge_fn, "bar"))
+    self.assertEqual("foo_bar", replica_ctx.merge_call(merge_fn, args=("bar",)))
     _assert_in_default_state(self)
 
 

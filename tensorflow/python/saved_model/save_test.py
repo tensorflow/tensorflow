@@ -36,6 +36,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import adam
 from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.checkpointable import util
@@ -68,7 +69,7 @@ class SaveTest(test.TestCase):
     """Import a SavedModel into a TF 1.x-style graph and run `signature_key`."""
     graph = ops.Graph()
     with graph.as_default(), self.session(graph) as session:
-      model = loader.load(session, [], save_dir)
+      model = loader.load(session, [tag_constants.SERVING], save_dir)
       signature = model.signature_def[signature_key]
       self.assertEqual(set(inputs.keys()), set(signature.inputs.keys()))
       feed_dict = {}
@@ -246,7 +247,7 @@ class SaveTest(test.TestCase):
     save.save(to_save, save_dir)
     graph = ops.Graph()
     with graph.as_default(), self.session(graph) as session:
-      loader.load(session, [], save_dir)
+      loader.load(session, [tag_constants.SERVING], save_dir)
       func, = graph._functions.values()
       complex_node, = [
           node for node in func.definition.node_def if node.op == "Complex"]

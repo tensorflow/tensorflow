@@ -649,7 +649,7 @@ class VariableScopeTest(test.TestCase):
             "testVarScopeGetOrCreateReuse_bar",
             reuse=variable_scope.AUTO_REUSE):
           _ = variable_scope.get_variable("var", [])
-        self.assertEqual(value, x.eval())
+        self.assertEqual(value, self.evaluate(x))
 
       test_value(42.)  # Variable is created.
       test_value(13.)  # Variable is reused hereafter.
@@ -1403,6 +1403,14 @@ class VariableScopeWithPartitioningTest(test.TestCase):
     with variable_scope.variable_scope("scope0", reuse=True):
       v_reused = variable_scope.get_variable("name0")
     self.assertEqual(v, v_reused)
+
+  def testNoReuseInEagerByDefault(self):
+    with context.eager_mode():
+      with variable_scope.variable_scope(
+          "scope0", partitioner=axis0_into2_partitioner):
+        v1 = variable_scope.get_variable("name0", shape=(3, 1, 1))
+        v2 = variable_scope.get_variable("name0", shape=(3, 1, 1))
+        self.assertIsNot(v1, v2)
 
   @test_util.run_in_graph_and_eager_modes
   @run_inside_wrap_function_in_eager_mode

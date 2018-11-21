@@ -2325,7 +2325,7 @@ def concatenate(tensors, axis=-1):
     else:
       axis = 0
 
-  if py_all([is_sparse(x) for x in tensors]):
+  if py_all(is_sparse(x) for x in tensors):
     return sparse_ops.sparse_concat(axis, tensors)
   else:
     return array_ops.concat([to_dense(x) for x in tensors], axis)
@@ -3161,8 +3161,12 @@ class EagerExecutionFunction(object):
         if value is None:
           raise ValueError(
               'You must feed a value for placeholder %s' % (tensor,))
-      converted_inputs.append(
-          ops.convert_to_tensor(value, dtype=tensor.dtype))
+      value = ops.convert_to_tensor(value, dtype=tensor.dtype)
+      if value.dtype != tensor.dtype:
+        # Temporary workaround due to `convert_to_tensor` not casting floats.
+        # See b/119637405
+        value = math_ops.cast(value, tensor.dtype)
+      converted_inputs.append(value)
     outputs = self._graph_fn(*converted_inputs)
     return [x.numpy() for x in outputs]
 
@@ -3343,9 +3347,9 @@ def rnn(step_function,
     assert not nest.is_sequence(input_t)
     rank_diff = len(input_t.shape) - len(mask_t.shape)
     for _ in range(rank_diff):
-      mask_t = array_ops.expand_dims(mask_t)
-    expand_dims = [1] * fixed_dim + input_t.shape.as_list()[fixed_dim:]
-    return array_ops.tile(mask_t, expand_dims)
+      mask_t = array_ops.expand_dims(mask_t, -1)
+    multiples = [1] * fixed_dim + input_t.shape.as_list()[fixed_dim:]
+    return array_ops.tile(mask_t, multiples)
 
   if unroll:
     if not time_steps:
@@ -3570,12 +3574,12 @@ def rnn(step_function,
           **while_loop_kwargs)
       new_states = final_outputs[2:]
 
-    last_time = final_outputs[0]
     output_ta = final_outputs[1]
 
     outputs = tuple(o.stack() for o in output_ta)
+    last_output = tuple(o[-1] for o in outputs)
+
     outputs = nest.pack_sequence_as(output_time_zero, outputs)
-    last_output = tuple(o.read(last_time - 1) for o in output_ta)
     last_output = nest.pack_sequence_as(output_time_zero, last_output)
 
   # static shape inference
@@ -3680,13 +3684,13 @@ def in_train_phase(x, alt, training=None):
   if training is None:
     training = learning_phase()
 
-  if training is 1 or training is True:
+  if training == 1 or training is True:
     if callable(x):
       return x()
     else:
       return x
 
-  elif training is 0 or training is False:
+  elif training == 0 or training is False:
     if callable(alt):
       return alt()
     else:

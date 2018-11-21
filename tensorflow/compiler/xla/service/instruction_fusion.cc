@@ -103,7 +103,6 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kSlice:
     case HloOpcode::kSubtract:
-    case HloOpcode::kAfterAll:
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
     case HloOpcode::kTupleSelect:
@@ -116,7 +115,10 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kSin:
       return ShapeUtil::ElementIsComplex(instruction.shape());
 
-    // Expensive instructions.
+    // Expensive instructions or unusual instructions for which fusion is
+    // nonsensical.
+    case HloOpcode::kAddDependency:
+    case HloOpcode::kAfterAll:
     case HloOpcode::kAtan2:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:

@@ -1877,6 +1877,30 @@ TEST_P(HloDataflowAnalysisTest, NestedConditionals) {
   }
 }
 
+TEST_P(HloDataflowAnalysisTest, AddDependency) {
+  string module_string = R"(
+HloModule AddDependency
+ENTRY %AddDependency (p: f32[3]) -> f32[3] {
+  %p = f32[3] parameter(0)
+  %token = token[] after-all()
+  ROOT %add_dep = f32[3] add-dependency(f32[3] %p, token[] %token)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseHloString(module_string, GetModuleConfigForTest()));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloDataflowAnalysis> analysis,
+                          HloDataflowAnalysis::Run(*module));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kAddDependency);
+
+  // The after-all and parameter should define a value. Add-dependency should
+  // not.
+  EXPECT_EQ(analysis->values().size(), 2);
+  EXPECT_FALSE(analysis->ValueIsDefinedAt(root));
+}
+
 INSTANTIATE_TEST_CASE_P(HloDataflowAnalysisInstantiation,
                         HloDataflowAnalysisTest,
                         ::testing::Values(false, true));

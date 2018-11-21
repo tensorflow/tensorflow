@@ -877,58 +877,72 @@ class Tensor::HostScalarTensorBufferBase : public TensorBuffer {
   void FillAllocationDescription(AllocationDescription* proto) const final;
 };
 
+// A packed representation for a single scalar value of type `T`, and a
+// `TensorBuffer` implementation that describes (and manages the lifetime of)
+// that value.
 template <typename T>
-Tensor::Tensor(T value, host_scalar_tag tag) {
-  // A packed representation for a single scalar value of type `T`, and a
-  // `TensorBuffer` implementation that describes (and manages the lifetime of)
-  // that value.
-  struct ValueAndTensorBuffer {
-    class HostScalarTensorBuffer : public HostScalarTensorBufferBase {
-     public:
-      HostScalarTensorBuffer(void* data) : data_(data) {}
-      void* data() const final { return const_cast<void*>(data_); }
-      size_t size() const final { return sizeof(T); }
-      TensorBuffer* root_buffer() final { return this; }
+struct Tensor::ValueAndTensorBuffer {
+  class HostScalarTensorBuffer : public Tensor::HostScalarTensorBufferBase {
+   public:
+    HostScalarTensorBuffer(void* data) : data_(data) {}
+    void* data() const final { return const_cast<void*>(data_); }
+    size_t size() const final { return sizeof(T); }
+    TensorBuffer* root_buffer() final { return this; }
 
-      // Override `operator delete` so that calling `delete this` in
-      // `core::Refcounted::Unref()` for an object of this type will free
-      // the enclosing `ValueAndTensorBuffer` for the tensor buffer.
-      static void operator delete(void* ptr) {
-        // Use a dummy object to compute to offset of
-        // `ValueAndTensorBuffer::tensor_buffer`, because `offsetof()` is not
-        // necessarily defined on this non-POD type (until C++17).
-        typename std::aligned_storage<sizeof(ValueAndTensorBuffer),
-                                      alignof(ValueAndTensorBuffer)>::type
-            dummy_storage_;
-        ValueAndTensorBuffer* dummy_object =
-            reinterpret_cast<ValueAndTensorBuffer*>(&dummy_storage_);
-        intptr_t offset =
-            reinterpret_cast<intptr_t>(&dummy_object->tensor_buffer) -
-            reinterpret_cast<intptr_t>(dummy_object);
+    // Override `operator delete` so that calling `delete this` in
+    // `core::Refcounted::Unref()` for an object of this type will free
+    // the enclosing `ValueAndTensorBuffer` for the tensor buffer.
+    //
+    // NOTE(mrry): The definition of this method must be outside the class
+    // definition in order to satisfy some compilers.
+    static void operator delete(void* ptr);
 
-        port::AlignedFree(static_cast<char*>(ptr) - offset);
-      }
+    static void operator delete(void*, void*) {
+      // Some compilers require an overridden class-specific deallocation
+      // function, which will be called if placement `new` throws an
+      // exception.
+    }
 
-      static void operator delete(void*, void*) {
-        // Some compilers require an overridden class-specific deallocation
-        // function, which will be called if placement `new` throws an
-        // exception.
-      }
-
-     private:
-      ~HostScalarTensorBuffer() override { static_cast<T*>(data_)->~T(); }
-      void* const data_;
-    };
-
-    T value;
-    HostScalarTensorBuffer tensor_buffer;
+   private:
+    ~HostScalarTensorBuffer() override { static_cast<T*>(data_)->~T(); }
+    void* const data_;
   };
 
-  auto* value_and_buf = static_cast<ValueAndTensorBuffer*>(
-      port::AlignedMalloc(sizeof(ValueAndTensorBuffer), EIGEN_MAX_ALIGN_BYTES));
+  T value;
+  HostScalarTensorBuffer tensor_buffer;
+};
+
+/* static */
+template <typename T>
+void Tensor::ValueAndTensorBuffer<T>::HostScalarTensorBuffer::operator delete(
+    void* ptr) {
+  // Use a dummy object to compute to offset of
+  // `ValueAndTensorBuffer::tensor_buffer`, because `offsetof()` is not
+  // necessarily defined on this non-POD type (until C++17).
+  //
+  // NOTE(mrry): Using `sizeof(Tensor::ValueAndTensorBuffer<T>)` here requires
+  // us to define this method outside the class definition, so that it is not
+  // considered an incomplete type.
+  typename std::aligned_storage<sizeof(Tensor::ValueAndTensorBuffer<T>),
+                                alignof(Tensor::ValueAndTensorBuffer<T>)>::type
+      dummy_storage_;
+  Tensor::ValueAndTensorBuffer<T>* dummy_object =
+      reinterpret_cast<Tensor::ValueAndTensorBuffer<T>*>(&dummy_storage_);
+  intptr_t offset = reinterpret_cast<intptr_t>(&dummy_object->tensor_buffer) -
+                    reinterpret_cast<intptr_t>(dummy_object);
+
+  port::AlignedFree(static_cast<char*>(ptr) - offset);
+}
+
+template <typename T>
+Tensor::Tensor(T value, host_scalar_tag tag) {
+  auto* value_and_buf = static_cast<Tensor::ValueAndTensorBuffer<T>*>(
+      port::AlignedMalloc(sizeof(typename Tensor::ValueAndTensorBuffer<T>),
+                          EIGEN_MAX_ALIGN_BYTES));
   new (&value_and_buf->value) T(std::move(value));
   new (&value_and_buf->tensor_buffer)
-      typename ValueAndTensorBuffer::HostScalarTensorBuffer(value_and_buf);
+      typename Tensor::ValueAndTensorBuffer<T>::HostScalarTensorBuffer(
+          value_and_buf);
   buf_ = &value_and_buf->tensor_buffer;
   set_dtype(DataTypeToEnum<T>::value);
 }

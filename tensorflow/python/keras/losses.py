@@ -26,6 +26,7 @@ from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -197,3 +198,9 @@ def get(identifier):
   else:
     raise ValueError('Could not interpret '
                      'loss function identifier:', identifier)
+
+
+LABEL_DTYPES_FOR_LOSSES = {
+    losses_impl.sparse_softmax_cross_entropy: 'int32',
+    sparse_categorical_crossentropy: 'int32'
+}

@@ -230,7 +230,7 @@ def _evaluate_once(checkpoint_path,
   hooks = list(hooks or [])
 
   if eval_ops is not None:
-    if any([isinstance(h, _MultiStepStopAfterNEvalsHook) for h in hooks]):
+    if any(isinstance(h, _MultiStepStopAfterNEvalsHook) for h in hooks):
       steps_per_run_variable = \
           basic_session_run_hooks.get_or_create_steps_per_run_variable()
       update_eval_step = state_ops.assign_add(

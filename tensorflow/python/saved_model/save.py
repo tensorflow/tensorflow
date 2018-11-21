@@ -33,6 +33,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils_impl
 from tensorflow.python.training.checkpointable import base
 from tensorflow.python.training.checkpointable import util
@@ -526,6 +527,7 @@ def save(obj, export_dir, signatures=None):
   saved_model.saved_model_schema_version = (
       constants.SAVED_MODEL_SCHEMA_VERSION)
   meta_graph_def = saved_model.meta_graphs.add()
+  meta_graph_def.meta_info_def.tags.append(tag_constants.SERVING)
   meta_graph_def.saver_def.CopyFrom(saver_def)
   # TODO(allenl): Factor out some subset of SavedModelBuilder which is 2.x
   # compatible (no sessions) and share it with this export API rather than

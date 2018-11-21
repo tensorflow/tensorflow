@@ -565,7 +565,7 @@ class Optimizer(
     if distribute_ctx.has_distribution_strategy():
       grads_and_vars = get_filtered_grad_fn(lambda: grads_and_vars)()
       return distribute_ctx.get_replica_context().merge_call(
-          self._distributed_apply, grads_and_vars, global_step, name)
+          self._distributed_apply, args=(grads_and_vars, global_step, name))
 
     # No DistributionStrategy case.
     grads_and_vars = tuple(grads_and_vars)  # Make sure repeat iteration works.
@@ -660,7 +660,7 @@ class Optimizer(
       replicas. If `global_step` was not None, that operation also
       increments `global_step`
     """
-    reduced_grads = distribution.batch_reduce(
+    reduced_grads = distribution.extended.batch_reduce_to(
         ds_reduce_util.ReduceOp.SUM, grads_and_vars)
     var_list = [v for _, v in grads_and_vars]
     grads_and_vars = zip(reduced_grads, var_list)
@@ -695,21 +695,23 @@ class Optimizer(
       update_ops = [
           op
           for grad, var in grads_and_vars
-          for op in distribution.update(var, update, grad, grouped=False)
+          for op in distribution.extended.update(
+              var, update, args=(grad,), group=False)
       ]
 
       def finish(self, update_ops):
         return self._finish(update_ops, "update")
 
-      non_slot_devices = distribution.non_slot_devices(var_list)
-      finish_updates = distribution.update_non_slot(
-          non_slot_devices, finish, self, update_ops, grouped=False)
+      non_slot_devices = distribution.extended.non_slot_devices(var_list)
+      finish_updates = distribution.extended.update_non_slot(
+          non_slot_devices, finish, args=(self, update_ops), group=False)
       if global_step is None:
         apply_updates = distribution.group(finish_updates, name=name)
       else:
         with ops.control_dependencies(finish_updates):
-          apply_updates = distribution.update(
-              global_step, state_ops.assign_add, 1, name=name)
+          apply_updates = distribution.extended.update(
+              global_step, state_ops.assign_add, args=(1,),
+              kwargs={"name": name})
 
       if not context.executing_eagerly():
         if isinstance(apply_updates, ops.Tensor):

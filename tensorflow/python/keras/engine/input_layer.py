@@ -19,12 +19,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.utils import tf_utils
-from tensorflow.python.ops import array_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -94,19 +92,19 @@ class InputLayer(base_layer.Layer):
       else:
         batch_input_shape = None
       graph = backend.get_graph()
-      with context.graph_mode():
-        with graph.as_default():
-          # In graph mode, create a graph placeholder to call the layer on.
-          if sparse:
-            input_tensor = array_ops.sparse_placeholder(
-                shape=batch_input_shape,
-                dtype=dtype,
-                name=self.name)
-          else:
-            input_tensor = array_ops.placeholder(
-                shape=batch_input_shape,
-                dtype=dtype,
-                name=self.name)
+      with graph.as_default():
+        # In graph mode, create a graph placeholder to call the layer on.
+        if sparse:
+          input_tensor = backend.placeholder(
+              shape=batch_input_shape,
+              dtype=dtype,
+              name=self.name,
+              sparse=True)
+        else:
+          input_tensor = backend.placeholder(
+              shape=batch_input_shape,
+              dtype=dtype,
+              name=self.name)
 
       self.is_placeholder = True
       self._batch_input_shape = batch_input_shape

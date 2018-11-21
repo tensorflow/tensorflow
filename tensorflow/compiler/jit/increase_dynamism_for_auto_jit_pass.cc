@@ -345,8 +345,7 @@ Status FindAndRewriteSlices(Graph* g, bool* changed) {
 
 Status IncreaseDynamismForAutoJitPass::Run(
     const GraphOptimizationPassOptions& options) {
-  legacy_flags::MarkForCompilationPassFlags* flags =
-      legacy_flags::GetMarkForCompilationPassFlags();
+  MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
   if (flags->tf_xla_clustering_debug) {
     dump_graph::DumpGraphToFile("before_increase_dynamism_for_auto_jit_pass",
                                 **options.graph, options.flib_def);

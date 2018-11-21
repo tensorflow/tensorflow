@@ -372,10 +372,6 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return IsTuple(shape) && TupleElementCount(shape) == 0;
 }
 
-/* static */ bool ShapeUtil::IsNil(const Shape& shape) {
-  return IsEmptyTuple(shape);
-}
-
 /* static */ int64 ShapeUtil::TupleElementCount(const Shape& shape) {
   CHECK(IsTuple(shape)) << HumanString(shape);
   return shape.tuple_shapes_size();
@@ -565,6 +561,20 @@ StatusOr<PrimitiveType> StringToPrimitiveType(const string& name) {
   }
   return StrCat("(", absl::StrJoin(parameters, ", "), ") -> ",
                 HumanString(program_shape.result()));
+}
+
+/* static */ string ShapeUtil::HumanString(
+    const ProgramShapeProto& program_shape_proto) {
+  std::vector<string> parameters;
+  for (auto& shape : program_shape_proto.parameters()) {
+    const int i = parameters.size();
+    parameters.push_back(StrCat(i < program_shape_proto.parameter_names_size()
+                                    ? program_shape_proto.parameter_names(i)
+                                    : "(unknown)",
+                                ": ", HumanString(shape)));
+  }
+  return StrCat("(", absl::StrJoin(parameters, ", "), ") -> ",
+                HumanString(program_shape_proto.result()));
 }
 
 namespace {

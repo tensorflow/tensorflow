@@ -25,6 +25,7 @@ from tensorflow.contrib.rnn.ops import gen_lstm_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -385,7 +386,7 @@ class LSTMBlockCell(LayerRNNCell):
         "scope": "lstm_cell"
     }
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
   @property
   def state_size(self):
@@ -628,7 +629,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
     self._use_peephole = use_peephole
 
     # Inputs must be 3-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=3)
+    self.input_spec = input_spec.InputSpec(ndim=3)
 
   @property
   def num_units(self):

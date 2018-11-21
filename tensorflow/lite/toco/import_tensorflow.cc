@@ -2220,6 +2220,21 @@ tensorflow::Status ConvertUnidirectionalSequenceLstm(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertLeakyReluOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "LeakyRelu");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
+  CHECK_EQ(GetDataTypeAttr(node, "T"), DT_FLOAT);
+  const auto& input_name = node.input(0);
+  auto* op = new LeakyReluOperator;
+  op->inputs.push_back(input_name);
+  op->outputs.push_back(node.name());
+  op->alpha = GetFloatAttr(node, "alpha");
+  model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
+}
+
 }  // namespace
 
 namespace internal {
@@ -2233,6 +2248,7 @@ ConverterMapType GetTensorFlowNodeConverterMapForFlex() {
   return std::unordered_map<std::string, ConverterType>({
       // We need to let TCO convert Placeholder information into
       // array data, so that the data types are correct.
+      {"LegacyFedInput", ConvertPlaceholderOperator},
       {"Placeholder", ConvertPlaceholderOperator},
   });
 }
@@ -2282,6 +2298,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
        ConvertSimpleOperator<TensorFlowGreaterEqualOperator, 2>},
       {"Identity", ConvertIdentityOperator},
       {"LRN", ConvertLRNOperator},
+      {"LeakyRelu", ConvertLeakyReluOperator},
       {"LegacyFedInput", ConvertPlaceholderOperator},
       {"Less", ConvertSimpleOperator<TensorFlowLessOperator, 2>},
       {"LessEqual", ConvertSimpleOperator<TensorFlowLessEqualOperator, 2>},
@@ -2334,6 +2351,8 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Split", ConvertSplitOperator},
       {"Sqrt", ConvertSimpleOperator<TensorFlowSqrtOperator, 1>},
       {"Square", ConvertSimpleOperator<TensorFlowSquareOperator, 1>},
+      {"SquaredDifference",
+       ConvertSimpleOperator<SquaredDifferenceOperator, 2>},
       {"Squeeze", ConvertSqueezeOperator},
       {"StopGradient", ConvertIdentityOperator},
       {"StridedSlice", ConvertStridedSliceOperator},

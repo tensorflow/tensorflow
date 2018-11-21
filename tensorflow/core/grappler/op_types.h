@@ -77,6 +77,7 @@ bool IsIdentityNSingleInput(const NodeDef& node);
 bool IsIgamma(const NodeDef& node);
 bool IsIgammac(const NodeDef& node);
 bool IsImag(const NodeDef& node);
+bool IsImmutableConst(const NodeDef& node);
 bool IsInvGrad(const NodeDef& node);
 bool IsLess(const NodeDef& node);
 bool IsLessEqual(const NodeDef& node);

@@ -137,7 +137,8 @@ class LinearOperatorCirculantTestSelfAdjointOperator(
       matrix = operator.to_dense()
       imag_matrix = math_ops.imag(matrix)
       eps = np.finfo(np.float32).eps
-      np.testing.assert_allclose(0, imag_matrix.eval(), rtol=0, atol=eps * 3)
+      np.testing.assert_allclose(
+          0, self.evaluate(imag_matrix), rtol=0, atol=eps * 3)
 
 
 class LinearOperatorCirculantTestHermitianSpectrum(
@@ -203,7 +204,8 @@ class LinearOperatorCirculantTestHermitianSpectrum(
       matrix = operator.to_dense()
       imag_matrix = math_ops.imag(matrix)
       eps = np.finfo(np.float32).eps
-      np.testing.assert_allclose(0, imag_matrix.eval(), rtol=0, atol=eps * 3)
+      np.testing.assert_allclose(
+          0, self.evaluate(imag_matrix), rtol=0, atol=eps * 3)
 
 
 class LinearOperatorCirculantTestNonHermitianSpectrum(
@@ -257,7 +259,8 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
       matrix = operator.to_dense()
       imag_matrix = math_ops.imag(matrix)
       eps = np.finfo(np.float32).eps
-      np.testing.assert_allclose(0, imag_matrix.eval(), rtol=0, atol=eps * 3)
+      np.testing.assert_allclose(
+          0, self.evaluate(imag_matrix), rtol=0, atol=eps * 3)
 
   def test_simple_positive_real_spectrum_gives_self_adjoint_pos_def_oper(self):
     with self.cached_session() as sess:
@@ -299,7 +302,7 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
       imag_matrix = math_ops.imag(matrix)
       eps = np.finfo(np.float32).eps
       np.testing.assert_allclose(
-          0, imag_matrix.eval(), rtol=0, atol=eps * 3 * 4)
+          0, self.evaluate(imag_matrix), rtol=0, atol=eps * 3 * 4)
 
   def test_convolution_kernel_same_as_first_row_of_to_dense(self):
     spectrum = [[3., 2., 1.], [2., 1.5, 1.]]
@@ -310,7 +313,7 @@ class LinearOperatorCirculantTestNonHermitianSpectrum(
 
       self.assertAllEqual((2, 3), h.get_shape())
       self.assertAllEqual((2, 3, 3), c.get_shape())
-      self.assertAllClose(h.eval(), c.eval()[:, :, 0])
+      self.assertAllClose(h.eval(), self.evaluate(c)[:, :, 0])
 
   def test_assert_non_singular_fails_for_singular_operator(self):
     spectrum = math_ops.cast([0, 4, 2j + 2], dtypes.complex64)

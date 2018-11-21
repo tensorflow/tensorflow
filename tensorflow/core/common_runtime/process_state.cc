@@ -32,28 +32,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-ProcessState* ProcessState::instance_ = nullptr;
-
 /*static*/ ProcessState* ProcessState::singleton() {
-  if (instance_ == nullptr) {
-    instance_ = new ProcessState;
-  }
-
-  return instance_;
+  static ProcessState* instance = new ProcessState;
+  return instance;
 }
 
 ProcessState::ProcessState() : numa_enabled_(false) {
-  CHECK(instance_ == nullptr);
-}
-
-// Normally the ProcessState singleton is never explicitly deleted.
-// This function is defined for debugging problems with the allocators.
-ProcessState::~ProcessState() {
-  CHECK_EQ(this, instance_);
-  instance_ = nullptr;
-  for (Allocator* a : cpu_allocators_) {
-    delete a;
-  }
 }
 
 string ProcessState::MemDesc::DebugString() {

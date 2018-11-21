@@ -418,7 +418,7 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
     cannot_compile_cluster = cannot_compile_cluster_;
   }
 
-  if (legacy_flags::GetXlaOpsCommonFlags().tf_xla_always_defer_compilation ||
+  if (GetXlaOpsCommonFlags().tf_xla_always_defer_compilation ||
       cannot_compile_cluster) {
     executable = nullptr;
   } else {

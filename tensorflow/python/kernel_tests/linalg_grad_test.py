@@ -50,7 +50,7 @@ class ShapeTest(test_lib.TestCase):
       determinants = linalg_ops.matrix_determinant(batch_identity)
       reduced = math_ops.reduce_sum(determinants)
       sum_grad = gradients_impl.gradients(reduced, batch_identity)[0]
-      self.assertAllClose(batch_identity.eval(), sum_grad.eval())
+      self.assertAllClose(batch_identity.eval(), self.evaluate(sum_grad))
 
 
 class MatrixUnaryFunctorGradientTest(test_lib.TestCase):
@@ -69,7 +69,7 @@ def _GetMatrixUnaryFunctorGradientTest(functor_, dtype_, shape_, **kwargs_):
       if functor_.__name__ == 'matrix_square_root':
         # Square the input matrix to ensure that its matrix square root exists
         a = math_ops.matmul(a, a)
-        a_np = a.eval()
+        a_np = self.evaluate(a)
       b = functor_(a, **kwargs_)
 
       # Optimal stepsize for central difference is O(epsilon^{1/3}).

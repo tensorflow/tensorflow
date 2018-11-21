@@ -116,7 +116,7 @@ TEST(XlaJitCompiledCpuFunction, Sum) {
   // Check program shape.
   using xla::ShapeUtil;
   const xla::Shape s32 = ShapeUtil::MakeShape(xla::S32, {});
-  const xla::ProgramShape* program_shape = function.ProgramShape();
+  const xla::ProgramShapeProto* program_shape = function.ProgramShape();
   ASSERT_TRUE(program_shape != nullptr);
   ASSERT_EQ(program_shape->parameters_size(), 2);
   EXPECT_TRUE(ShapeUtil::Compatible(program_shape->parameters(0), s32));

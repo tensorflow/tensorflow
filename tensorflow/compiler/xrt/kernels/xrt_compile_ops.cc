@@ -174,11 +174,12 @@ void XRTCompileOp::Compute(OpKernelContext* ctx) {
   ctx->set_output(0, handle_output);
 
   xla::LocalExecutable* executable = entry->get().get_executable();
-  xla::ProgramShape program_shape = executable->executable()
-                                        ->module()
-                                        .config()
-                                        .entry_computation_layout()
-                                        .ComputeProgramShape();
+  xla::ProgramShapeProto program_shape = executable->executable()
+                                             ->module()
+                                             .config()
+                                             .entry_computation_layout()
+                                             .ComputeProgramShape()
+                                             .ToProto();
   Tensor program_shape_output(DT_STRING, TensorShape({1}));
   program_shape_output.vec<string>()(0) = program_shape.SerializeAsString();
   ctx->set_output(1, program_shape_output);

@@ -2457,34 +2457,6 @@ class PartitionedVariable(object):
   @end_compatibility
   """
 
-  class PartitionedVariableIterator(object):
-    """An iterator that allows accessing the underlying `Variable` objects.
-
-    This iterator is necessary to control order of access when Variables
-    are not partitioned in a standard way along a single axis.
-
-    Allows e.g. `list(partitioned_variable)` to return a proper list.
-    """
-
-    def __init__(self, partitioned_variable):
-      self._ix = 0
-      self._partitioned_variable = partitioned_variable
-
-    def __iter__(self):
-      return self
-
-    def __next__(self):  # For python3 compatibility.
-      return self.next()
-
-    def next(self):
-      # pylint: disable=protected-access
-      if self._ix >= len(self._partitioned_variable._variable_list):
-        raise StopIteration()
-      variable = self._partitioned_variable._variable_list[self._ix]
-      # pylint: enable=protected-access
-      self._ix += 1
-      return variable
-
   def __init__(self, name, shape, dtype, variable_list, partitions):
     """Creates a new partitioned variable wrapper.
 
@@ -2504,31 +2476,27 @@ class PartitionedVariable(object):
         `partitions` is not a list.
       ValueError: If `variable_list` is empty, or the `Variable` shape
         information does not match `shape`, or `partitions` has invalid values.
-      RuntimeError: If eager execution is enabled
     """
-    if context.executing_eagerly():
-      raise RuntimeError(
-          "tf.PartitionedVariable not supported with eager execution enabled.")
     if not isinstance(variable_list, (list, tuple)):
       raise TypeError(
           "variable_list is not a list or tuple: %s" % variable_list)
     if not isinstance(partitions, (list, tuple)):
       raise TypeError("partitions is not a list or tuple: %s" % partitions)
-    if not all([p >= 1 for p in partitions]):
+    if not all(p >= 1 for p in partitions):
       raise ValueError("partition values must be positive: %s" % partitions)
     if not variable_list:
       raise ValueError("variable_list may not be empty")
     # pylint: disable=protected-access
     for v in variable_list:
       # Sort the variable_list lexicographically according to var offset value.
-      if not all([v._get_save_slice_info() is not None for v in variable_list]):
+      if not all(v._get_save_slice_info() is not None for v in variable_list):
         raise ValueError(
             "All variables must have a save_slice_info available: %s"
             % [v.name for v in variable_list])
       if len(shape) != len(partitions):
         raise ValueError("len(shape) != len(partitions): %s vs. %s"
                          % (shape, partitions))
-      if not all([v._get_save_slice_info().full_shape == shape]):
+      if v._get_save_slice_info().full_shape != shape:
         raise ValueError(
             "All variables' full shapes must match shape: %s; "
             "but full shapes were: %s"
@@ -2545,7 +2513,7 @@ class PartitionedVariable(object):
 
   def __iter__(self):
     """Return an iterable for accessing the underlying partition Variables."""
-    return self.PartitionedVariableIterator(self)
+    return iter(self._variable_list)
 
   def __len__(self):
     num_partition_axes = len(self._partition_axes())
@@ -2555,7 +2523,7 @@ class PartitionedVariable(object):
     return len(self._variable_list)
 
   def _partition_axes(self):
-    if all([p == 1 for p in self._partitions]):
+    if all(p == 1 for p in self._partitions):
       return [0]
     else:
       return [i for i, p in enumerate(self._partitions) if p > 1]

@@ -489,6 +489,7 @@ tf_gen_op_wrappers_cc(
         "image_ops",
         "io_ops",
         "linalg_ops",
+        "list_ops",
         "logging_ops",
         "lookup_ops",
         "manip_ops",

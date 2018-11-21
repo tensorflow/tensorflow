@@ -128,6 +128,40 @@ class TestUpgrade(test_util.TensorFlowTestCase):
         )
     self.assertEqual(new_text, expected_text)
 
+  def testRandomMultinomialToRandomCategorical(self):
+    text = (
+        "tf.random.multinomial(logits, samples, seed, name, output_dtype)\n"
+        )
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    expected_text = (
+        "tf.random.categorical(logits=logits, num_samples=samples, seed=seed, "
+        "name=name, dtype=output_dtype)\n"
+        )
+    self.assertEqual(new_text, expected_text)
+
+    text = (
+        "tf.multinomial(logits, samples, seed, name, output_dtype)\n"
+        )
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    expected_text = (
+        "tf.random.categorical(logits=logits, num_samples=samples, seed=seed, "
+        "name=name, dtype=output_dtype)\n"
+        )
+    self.assertEqual(new_text, expected_text)
+
+  def testConvolutionOpUpdate(self):
+    text = (
+        "tf.nn.convolution(input, filter, padding, strides, dilation_rate, "
+        "name, data_format)"
+    )
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    expected_text = (
+        "tf.nn.convolution(input=input, filters=filter, padding=padding, "
+        "strides=strides, dilations=dilation_rate, name=name, "
+        "data_format=data_format)"
+    )
+    self.assertEqual(new_text, expected_text)
+
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 
