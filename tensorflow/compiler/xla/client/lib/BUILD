@@ -179,7 +179,9 @@ cc_library(
     hdrs = ["sorting.h"],
     deps = [
         ":numeric",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
     ],
