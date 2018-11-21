@@ -485,7 +485,7 @@ class GradientsTest(test.TestCase):
     with session.Session() as sess:
       init = variables.global_variables_initializer()
       sess.run(init)
-      pfor = self.evaluate(pfor_jacobian)
+      pfor = sess.run(pfor_jacobian)
       for i in range(4):
         while_i = sess.run(while_gradients[i])
         self.assertAllClose(while_i, pfor[:, i, ...])

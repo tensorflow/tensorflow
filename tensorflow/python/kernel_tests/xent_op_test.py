@@ -65,7 +65,7 @@ class XentTest(test.TestCase):
     with self.cached_session(use_gpu=use_gpu) as sess:
       loss = nn_ops.softmax_cross_entropy_with_logits(
           labels=np_labels, logits=np_features, dim=dim)
-      tf_loss = self.evaluate(loss)
+      tf_loss = sess.run(loss)
     print("np_loss:", np_loss)
     print("tf_loss:", tf_loss)
     self.assertAllCloseAccordingToType(np_loss, tf_loss)
@@ -280,7 +280,7 @@ class XentTest(test.TestCase):
     with self.session(use_gpu=True) as sess:
       loss = nn_ops.softmax_cross_entropy_with_logits(
           labels=labels, logits=features)
-      tf_loss = self.evaluate(loss)
+      tf_loss = sess.run(loss)
     self.assertAllEqual(np_loss, tf_loss)
 
 

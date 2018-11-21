@@ -82,7 +82,7 @@ class BatchNormalizationTest(test.TestCase):
           epsilon=epsilon,
           data_format=data_format,
           is_training=False)
-      y_val = self.evaluate(y)
+      y_val = sess.run(y)
       y_ref = self._inference_ref(x, scale, offset, mean, var, epsilon,
                                   data_format)
     # An atol value of 1e-3 is too small for float16's, because some adjacent

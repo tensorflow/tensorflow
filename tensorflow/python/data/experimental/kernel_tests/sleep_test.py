@@ -38,10 +38,10 @@ class SleepTest(test_base.DatasetTestBase):
     next_element = iterator.get_next()
 
     with self.cached_session() as sess:
-      self.evaluate(iterator.initializer)
+      sess.run(iterator.initializer)
       start_time = time.time()
       for i in range(10):
-        self.assertEqual(i, self.evaluate(next_element))
+        self.assertEqual(i, sess.run(next_element))
       end_time = time.time()
       self.assertGreater(end_time - start_time, (10 * sleep_microseconds) / 1e6)
       with self.assertRaises(errors.OutOfRangeError):

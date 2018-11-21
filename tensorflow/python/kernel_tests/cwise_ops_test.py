@@ -788,7 +788,7 @@ class RoundingTest(test.TestCase):
     y = np.rint(x) if y is None else np.asarray(y)
     with self.cached_session() as sess:
       tf_rint = math_ops.rint(x)
-      np_rint = self.evaluate(tf_rint)
+      np_rint = sess.run(tf_rint)
     self.assertAllEqual(y, np_rint)
     self.assertShapeEqual(y, tf_rint)
 
@@ -881,7 +881,7 @@ class ComplexMakeRealImagTest(test.TestCase):
         force_gpu=use_gpu and test_util.is_gpu_available()) as sess:
       inx = ops.convert_to_tensor(cplx)
       tf_angle = math_ops.angle(inx)
-      tf_angle_val = self.evaluate(tf_angle)
+      tf_angle_val = sess.run(tf_angle)
     self.assertAllEqual(np_angle, tf_angle_val)
     self.assertShapeEqual(np_angle, tf_angle)
 

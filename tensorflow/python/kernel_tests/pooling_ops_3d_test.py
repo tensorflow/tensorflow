@@ -81,7 +81,7 @@ class PoolingTest(test.TestCase):
           data_format=data_format)
       if data_format == "NCDHW":
         t = test_util.NCHWToNHWC(t)
-      vals = self.evaluate(t)
+      vals = sess.run(t)
     # Verifies values.
     actual = vals.flatten()
     self.assertAllClose(expected, actual)

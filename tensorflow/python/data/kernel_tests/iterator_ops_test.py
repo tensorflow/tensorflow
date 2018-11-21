@@ -97,7 +97,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     with self.cached_session() as sess:
       for _ in range(14):
         for i in range(7):
-          result = self.evaluate(get_next)
+          result = sess.run(get_next)
           for component, result_component in zip(components, result):
             self.assertAllEqual(component[i]**2, result_component)
       with self.assertRaises(errors.OutOfRangeError):
@@ -123,7 +123,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     with self.cached_session() as sess:
       for _ in range(14):
         for i in range(7):
-          result = self.evaluate(get_next)
+          result = sess.run(get_next)
           for component, result_component in zip(components, result):
             self.assertAllEqual(component[i]**2, result_component)
       with self.assertRaises(errors.OutOfRangeError):
@@ -159,7 +159,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
 
         for _ in range(14):
           for i in range(7):
-            result = self.evaluate(get_next)
+            result = sess.run(get_next)
             for component, result_component in zip(components, result):
               self.assertAllEqual(component[i]**2, result_component)
         with self.assertRaises(errors.OutOfRangeError):
@@ -175,7 +175,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     config = config_pb2.ConfigProto(
         inter_op_parallelism_threads=1, use_per_session_threads=True)
     with session.Session(config=config) as sess:
-      self.assertAllEqual([1, 4, 9], self.evaluate(next_element))
+      self.assertAllEqual([1, 4, 9], sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -254,15 +254,15 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
       get_next = iterator.get_next()
 
       with session.Session(server.target) as sess:
-        self.evaluate(init_op)
-        results = self.evaluate(get_next)
+        sess.run(init_op)
+        results = sess.run(get_next)
         for component, result_component in zip(components, results):
           self.assertAllEqual(component, result_component)
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
 
         # Re-initialize the iterator in the first session.
-        self.evaluate(init_op)
+        sess.run(init_op)
 
     with ops.Graph().as_default():
       # Re-define the iterator manually, without defining any of the
@@ -277,7 +277,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
 
       with session.Session(server.target) as sess:
         # Use the iterator without re-initializing in the second session.
-        results = self.evaluate(get_next)
+        results = sess.run(get_next)
         for component, result_component in zip(components, results):
           self.assertAllEqual(component, result_component)
         with self.assertRaises(errors.OutOfRangeError):
@@ -317,20 +317,20 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
         sess.run(get_next)
 
       # Initialize with one dataset.
-      self.evaluate(dataset_3_init_op)
-      self.assertAllEqual([1, 2, 3], self.evaluate(get_next))
+      sess.run(dataset_3_init_op)
+      self.assertAllEqual([1, 2, 3], sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
       # Initialize with a different dataset.
-      self.evaluate(dataset_4_init_op)
-      self.assertAllEqual([4, 5, 6, 7], self.evaluate(get_next))
+      sess.run(dataset_4_init_op)
+      self.assertAllEqual([4, 5, 6, 7], sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
       # Reinitialize with the first dataset.
-      self.evaluate(dataset_3_init_op)
-      self.assertAllEqual([1, 2, 3], self.evaluate(get_next))
+      sess.run(dataset_3_init_op)
+      self.assertAllEqual([1, 2, 3], sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -348,7 +348,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
           g, output_types=dtypes.int64)
       sess.run(iterator.make_initializer(dataset_1))
       for expected in range(10):
-        self.assertEqual(expected, self.evaluate(next_element))
+        self.assertEqual(expected, sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -356,7 +356,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
           g, output_types=dtypes.int64)
       sess.run(iterator.make_initializer(dataset_2))
       for expected in range(10):
-        self.assertEqual(expected, self.evaluate(next_element))
+        self.assertEqual(expected, sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -679,10 +679,10 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
       n = itr.get_next()
 
     with session.Session(s3.target, config=config) as sess:
-      self.evaluate(itr.initializer)
+      sess.run(itr.initializer)
       expected_values = worker_devices
       for expected in expected_values:
-        self.assertEqual((compat.as_bytes(expected),), self.evaluate(n))
+        self.assertEqual((compat.as_bytes(expected),), sess.run(n))
 
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(n)
@@ -786,8 +786,8 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     with ops.Graph().as_default() as g:
       init_op, _, save_op, _ = _build_range_dataset_graph()
       with self.session(graph=g) as sess:
-        self.evaluate(init_op)
-        self.evaluate(save_op)
+        sess.run(init_op)
+        sess.run(save_op)
 
     # Attempt to restore the saved iterator into an IteratorResource of
     # incompatible type. An iterator of RangeDataset has output type int64,
@@ -798,7 +798,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
       _, _, _, restore_op = _build_reader_dataset_graph()
       with self.session(graph=g) as sess:
         with self.assertRaises(errors.InvalidArgumentError):
-          self.evaluate(restore_op)
+          sess.run(restore_op)
 
   def testRepeatedGetNextWarning(self):
     iterator = dataset_ops.Dataset.range(10).make_one_shot_iterator()
@@ -949,7 +949,7 @@ class IteratorCheckpointingTest(test.TestCase):
         checkpoint.restore(checkpoint_management.latest_checkpoint(
             checkpoint_directory)).initialize_or_restore(sess)
         for j in range(2):
-          self.assertEqual(i * 2 + j, self.evaluate(get_next))
+          self.assertEqual(i * 2 + j, sess.run(get_next))
         checkpoint.save(file_prefix=checkpoint_prefix)
 
 

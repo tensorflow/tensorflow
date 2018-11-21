@@ -709,7 +709,7 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
           t = self.evaluate(outputs)
           self.assertAllEqual(t.shape, outputs_shape)
           # Check isometry of the delta-orthogonal kernel.
-          self.assertAllClose(self.evaluate(ratio), gain, rtol=tol, atol=tol)
+          self.assertAllClose(sess.run(ratio), gain, rtol=tol, atol=tol)
 
   def testNonuniformity(self):
     value = 0
@@ -847,7 +847,7 @@ class ConvolutionOrthogonal1dInitializerTest(test.TestCase):
         t = self.evaluate(outputs)
         self.assertAllEqual(t.shape, outputs_shape)
         # Check isometry of the orthogonal kernel.
-        self.assertAllClose(self.evaluate(ratio), gain, rtol=tol, atol=tol)
+        self.assertAllClose(sess.run(ratio), gain, rtol=tol, atol=tol)
 
 
 class ConvolutionOrthogonal2dInitializerTest(test.TestCase):
@@ -942,7 +942,7 @@ class ConvolutionOrthogonal2dInitializerTest(test.TestCase):
         t = self.evaluate(outputs)
         self.assertAllEqual(t.shape, outputs_shape)
         # Check isometry of the orthogonal kernel.
-        self.assertAllClose(self.evaluate(ratio), gain, rtol=tol, atol=tol)
+        self.assertAllClose(sess.run(ratio), gain, rtol=tol, atol=tol)
 
 
 class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
@@ -1067,7 +1067,7 @@ class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
         t = self.evaluate(outputs)
         self.assertAllEqual(t.shape, outputs_shape)
         # Check isometry of the orthogonal kernel.
-        self.assertAllClose(self.evaluate(ratio), gain, rtol=tol, atol=tol)
+        self.assertAllClose(sess.run(ratio), gain, rtol=tol, atol=tol)
 
 
 class IdentityInitializerTest(test.TestCase):

@@ -73,7 +73,7 @@ class Conv2DTest(test.TestCase):
           max_input=x1_max,
           min_filter=x2_min,
           max_filter=x2_max)
-      value = self.evaluate(conv)
+      value = sess.run(conv)
     quantized_output = value[0]
     output_min = value[1]
     output_max = value[2]

@@ -517,21 +517,21 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEquals(x.consumers(), [])
     self.assertEquals(y.consumers(), [z.op, z.op])
     with session.Session(graph=g) as sess:
-      self.assertEquals(self.evaluate(z), 4)
+      self.assertEquals(sess.run(z), 4)
 
     z.op._update_input(0, x)  # pylint: disable=protected-access
     self.assertEquals(list(z.op.inputs), [x, y])
     self.assertEquals(x.consumers(), [z.op])
     self.assertEquals(y.consumers(), [z.op])
     with session.Session(graph=g) as sess:
-      self.assertEquals(self.evaluate(z), 3)
+      self.assertEquals(sess.run(z), 3)
 
     z.op._update_input(1, y)  # pylint: disable=protected-access
     self.assertEquals(list(z.op.inputs), [x, y])
     self.assertEquals(x.consumers(), [z.op])
     self.assertEquals(y.consumers(), [z.op])
     with session.Session(graph=g) as sess:
-      self.assertEquals(self.evaluate(z), 3)
+      self.assertEquals(sess.run(z), 3)
 
   def testUpdateInputGraphError(self):
     g_0 = ops.Graph()

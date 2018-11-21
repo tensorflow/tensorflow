@@ -51,9 +51,9 @@ class ConcatenateDatasetTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      self.evaluate(init_op)
+      sess.run(init_op)
       for i in range(9):
-        result = self.evaluate(get_next)
+        result = sess.run(get_next)
         if i < 4:
           for component, result_component in zip(input_components, result):
             self.assertAllEqual(component[i], result_component)
@@ -85,9 +85,9 @@ class ConcatenateDatasetTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      self.evaluate(init_op)
+      sess.run(init_op)
       for i in range(9):
-        result = self.evaluate(get_next)
+        result = sess.run(get_next)
         if i < 4:
           for component, result_component in zip(input_components, result):
             self.assertAllEqual(component[i], result_component)

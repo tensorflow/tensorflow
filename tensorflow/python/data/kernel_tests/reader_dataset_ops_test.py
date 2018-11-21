@@ -107,7 +107,7 @@ class TextLineDatasetTest(test_base.DatasetTestBase):
           init_op, feed_dict={filenames: [test_filenames[0]],
                               num_epochs: 1})
       for i in range(5):
-        self.assertEqual(self._lineText(0, i), self.evaluate(get_next))
+        self.assertEqual(self._lineText(0, i), sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -116,7 +116,7 @@ class TextLineDatasetTest(test_base.DatasetTestBase):
           init_op, feed_dict={filenames: [test_filenames[1]],
                               num_epochs: 1})
       for i in range(5):
-        self.assertEqual(self._lineText(1, i), self.evaluate(get_next))
+        self.assertEqual(self._lineText(1, i), sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -124,7 +124,7 @@ class TextLineDatasetTest(test_base.DatasetTestBase):
       sess.run(init_op, feed_dict={filenames: test_filenames, num_epochs: 1})
       for j in range(2):
         for i in range(5):
-          self.assertEqual(self._lineText(j, i), self.evaluate(get_next))
+          self.assertEqual(self._lineText(j, i), sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -133,7 +133,7 @@ class TextLineDatasetTest(test_base.DatasetTestBase):
       for _ in range(10):
         for j in range(2):
           for i in range(5):
-            self.assertEqual(self._lineText(j, i), self.evaluate(get_next))
+            self.assertEqual(self._lineText(j, i), sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -267,7 +267,7 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
           init_op, feed_dict={filenames: [test_filenames[0]],
                               num_epochs: 1})
       for i in range(self._num_records):
-        self.assertEqual(self._record(0, i), self.evaluate(get_next))
+        self.assertEqual(self._record(0, i), sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -276,7 +276,7 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
           init_op, feed_dict={filenames: [test_filenames[1]],
                               num_epochs: 1})
       for i in range(self._num_records):
-        self.assertEqual(self._record(1, i), self.evaluate(get_next))
+        self.assertEqual(self._record(1, i), sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -284,7 +284,7 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
       sess.run(init_op, feed_dict={filenames: test_filenames, num_epochs: 1})
       for j in range(self._num_files):
         for i in range(self._num_records):
-          self.assertEqual(self._record(j, i), self.evaluate(get_next))
+          self.assertEqual(self._record(j, i), sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -293,7 +293,7 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
       for _ in range(10):
         for j in range(self._num_files):
           for i in range(self._num_records):
-            self.assertEqual(self._record(j, i), self.evaluate(get_next))
+            self.assertEqual(self._record(j, i), sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -405,19 +405,19 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
       with self.session(graph=g) as sess:
-        self.evaluate(init_op)
+        sess.run(init_op)
         # Note: There is no checkpoint saved currently so a NotFoundError is
         # raised.
         with self.assertRaises(errors.NotFoundError):
-          self.evaluate(restore_op)
+          sess.run(restore_op)
         for epoch in range(num_epochs):
           for f in range(self._num_files):
             for r in range(self._num_records):
               if (epoch == epoch_break and f == file_break and
                   r == record_break):
-                self.evaluate(save_op)
+                sess.run(save_op)
                 break
-              self.assertEqual(self._record(f, r), self.evaluate(get_next_op))
+              self.assertEqual(self._record(f, r), sess.run(get_next_op))
             else:
               continue
             break
@@ -426,13 +426,13 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
           break
         else:
           with self.assertRaises(errors.OutOfRangeError):
-            self.evaluate(get_next_op)
+            sess.run(get_next_op)
 
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
       with self.session(graph=g) as sess:
-        self.evaluate(restore_op)
+        sess.run(restore_op)
         for epoch in range(num_epochs):
           for f in range(self._num_files):
             for r in range(self._num_records):
@@ -441,9 +441,9 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
                   (epoch == epoch_break and f == file_break and
                    r < record_break)):
                 continue
-              self.assertEqual(self._record(f, r), self.evaluate(get_next_op))
+              self.assertEqual(self._record(f, r), sess.run(get_next_op))
         with self.assertRaises(errors.OutOfRangeError):
-          self.evaluate(get_next_op)
+          sess.run(get_next_op)
 
   def testInitThenRestore(self):
     # Note: Calling init_op before restore_op is redundant. This test just makes
@@ -458,19 +458,19 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
       with self.session(graph=g) as sess:
-        self.evaluate(init_op)
+        sess.run(init_op)
         # Note: There is no checkpoint saved currently so a NotFoundError is
         # raised.
         with self.assertRaises(errors.NotFoundError):
-          self.evaluate(restore_op)
+          sess.run(restore_op)
         for epoch in range(num_epochs):
           for f in range(self._num_files):
             for r in range(self._num_records):
               if (epoch == epoch_break and f == file_break and
                   r == record_break):
-                self.evaluate(save_op)
+                sess.run(save_op)
                 break
-              self.assertEqual(self._record(f, r), self.evaluate(get_next_op))
+              self.assertEqual(self._record(f, r), sess.run(get_next_op))
             else:
               continue
             break
@@ -479,14 +479,14 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
           break
         else:
           with self.assertRaises(errors.OutOfRangeError):
-            self.evaluate(get_next_op)
+            sess.run(get_next_op)
 
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
       with self.session(graph=g) as sess:
-        self.evaluate(init_op)
-        self.evaluate(restore_op)
+        sess.run(init_op)
+        sess.run(restore_op)
         for epoch in range(num_epochs):
           for f in range(self._num_files):
             for r in range(self._num_records):
@@ -495,9 +495,9 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
                   (epoch == epoch_break and f == file_break and
                    r < record_break)):
                 continue
-              self.assertEqual(self._record(f, r), self.evaluate(get_next_op))
+              self.assertEqual(self._record(f, r), sess.run(get_next_op))
         with self.assertRaises(errors.OutOfRangeError):
-          self.evaluate(get_next_op)
+          sess.run(get_next_op)
 
   def testRestoreInModifiedGraph(self):
     num_epochs = 10
@@ -510,19 +510,19 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
       with self.session(graph=g) as sess:
-        self.evaluate(init_op)
+        sess.run(init_op)
         # Note: There is no checkpoint saved currently so a NotFoundError is
         # raised.
         with self.assertRaises(errors.NotFoundError):
-          self.evaluate(restore_op)
+          sess.run(restore_op)
         for epoch in range(num_epochs):
           for f in range(self._num_files):
             for r in range(self._num_records):
               if (epoch == epoch_break and f == file_break and
                   r == record_break):
-                self.evaluate(save_op)
+                sess.run(save_op)
                 break
-              self.assertEqual(self._record(f, r), self.evaluate(get_next_op))
+              self.assertEqual(self._record(f, r), sess.run(get_next_op))
             else:
               continue
             break
@@ -531,13 +531,13 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
           break
         else:
           with self.assertRaises(errors.OutOfRangeError):
-            self.evaluate(get_next_op)
+            sess.run(get_next_op)
 
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs_1)
       with self.session(graph=g) as sess:
-        self.evaluate(restore_op)
+        sess.run(restore_op)
         for epoch in range(num_epochs):
           for f in range(self._num_files):
             for r in range(self._num_records):
@@ -546,9 +546,9 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
                   (epoch == epoch_break and f == file_break and
                    r < record_break)):
                 continue
-              self.assertEqual(self._record(f, r), self.evaluate(get_next_op))
+              self.assertEqual(self._record(f, r), sess.run(get_next_op))
         with self.assertRaises(errors.OutOfRangeError):
-          self.evaluate(get_next_op)
+          sess.run(get_next_op)
 
   def testRestoreWithoutBuildingDatasetGraph(self):
     num_epochs = 10
@@ -560,19 +560,19 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
       with self.session(graph=g) as sess:
-        self.evaluate(init_op)
+        sess.run(init_op)
         # Note: There is no checkpoint saved currently so a NotFoundError is
         # raised.
         with self.assertRaises(errors.NotFoundError):
-          self.evaluate(restore_op)
+          sess.run(restore_op)
         for epoch in range(num_epochs):
           for f in range(self._num_files):
             for r in range(self._num_records):
               if (epoch == epoch_break and f == file_break and
                   r == record_break):
-                self.evaluate(save_op)
+                sess.run(save_op)
                 break
-              self.assertEqual(self._record(f, r), self.evaluate(get_next_op))
+              self.assertEqual(self._record(f, r), sess.run(get_next_op))
             else:
               continue
             break
@@ -581,12 +581,12 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
           break
         else:
           with self.assertRaises(errors.OutOfRangeError):
-            self.evaluate(get_next_op)
+            sess.run(get_next_op)
 
     with ops.Graph().as_default() as g:
       restore_op, get_next_op = self._restore_iterator()
       with self.session(graph=g) as sess:
-        self.evaluate(restore_op)
+        sess.run(restore_op)
         for epoch in range(num_epochs):
           for f in range(self._num_files):
             for r in range(self._num_records):
@@ -595,9 +595,9 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
                   (epoch == epoch_break and f == file_break and
                    r < record_break)):
                 continue
-              self.assertEqual(self._record(f, r), self.evaluate(get_next_op))
+              self.assertEqual(self._record(f, r), sess.run(get_next_op))
         with self.assertRaises(errors.OutOfRangeError):
-          self.evaluate(get_next_op)
+          sess.run(get_next_op)
 
   def testRestoreUnusedIterator(self):
     num_epochs = 10
@@ -605,22 +605,22 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
       with self.session(graph=g) as sess:
-        self.evaluate(init_op)
+        sess.run(init_op)
         # Note: There is no checkpoint saved currently so a NotFoundError is
         # raised.
         with self.assertRaises(errors.NotFoundError):
-          self.evaluate(restore_op)
+          sess.run(restore_op)
         # Save unused iterator.
-        self.evaluate(save_op)
+        sess.run(save_op)
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
       with self.session(graph=g) as sess:
-        self.evaluate(restore_op)
+        sess.run(restore_op)
         for _ in range(num_epochs * self._num_files * self._num_records):
-          self.evaluate(get_next_op)
+          sess.run(get_next_op)
         with self.assertRaises(errors.OutOfRangeError):
-          self.evaluate(get_next_op)
+          sess.run(get_next_op)
 
   def testRestoreExhaustedIterator(self):
     num_epochs = 10
@@ -629,26 +629,26 @@ class FixedLengthRecordReaderTest(test_base.DatasetTestBase):
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
       with self.session(graph=g) as sess:
-        self.evaluate(init_op)
+        sess.run(init_op)
         # Note: There is no checkpoint saved currently so a NotFoundError is
         # raised.
         with self.assertRaises(errors.NotFoundError):
-          self.evaluate(restore_op)
+          sess.run(restore_op)
         for _ in range(num_epochs):
           for f in range(self._num_files):
             for r in range(self._num_records):
-              self.assertEqual(self._record(f, r), self.evaluate(get_next_op))
+              self.assertEqual(self._record(f, r), sess.run(get_next_op))
         with self.assertRaises(errors.OutOfRangeError):
-          self.evaluate(get_next_op)
-        self.evaluate(save_op)
+          sess.run(get_next_op)
+        sess.run(save_op)
 
     with ops.Graph().as_default() as g:
       init_op, get_next_op, save_op, restore_op = self._build_iterator_graph(
           num_epochs=num_epochs)
       with self.session(graph=g) as sess:
-        self.evaluate(restore_op)
+        sess.run(restore_op)
         with self.assertRaises(errors.OutOfRangeError):
-          self.evaluate(get_next_op)
+          sess.run(get_next_op)
 
 
 class TFRecordDatasetTest(test_base.DatasetTestBase):
@@ -807,7 +807,7 @@ class TFRecordDatasetTest(test_base.DatasetTestBase):
     with self.cached_session() as sess:
       for j in range(self._num_files):
         for i in range(self._num_records):
-          self.assertAllEqual(self._record(j, i), self.evaluate(next_element))
+          self.assertAllEqual(self._record(j, i), sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -819,7 +819,7 @@ class TFRecordDatasetTest(test_base.DatasetTestBase):
     with self.cached_session() as sess:
       for j in range(self._num_files):
         for i in range(self._num_records):
-          self.assertAllEqual(self._record(j, i), self.evaluate(next_element))
+          self.assertAllEqual(self._record(j, i), sess.run(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 

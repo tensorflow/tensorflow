@@ -57,7 +57,7 @@ class IteratorClusterTest(test.TestCase):
 
     with session.Session(worker[0].target) as sess:
       with self.assertRaises(errors.InvalidArgumentError):
-        self.evaluate(get_next_op)
+        sess.run(get_next_op)
 
   def _testRemoteIteratorHelper(self, device0, device1, target):
     with ops.device(device1):
@@ -134,12 +134,12 @@ class IteratorClusterTest(test.TestCase):
     get_next = iterator.get_next()
 
     with session.Session(worker[0].target) as sess:
-      self.evaluate(table.initializer)
-      self.evaluate(init_op)
-      self.assertAllEqual([0, 0, -1, 1, 2], self.evaluate(get_next))
+      sess.run(table.initializer)
+      sess.run(init_op)
+      self.assertAllEqual([0, 0, -1, 1, 2], sess.run(get_next))
 
     with session.Session(worker[0].target) as sess:
-      self.assertAllEqual([2, 0], self.evaluate(get_next))
+      self.assertAllEqual([2, 0], sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
@@ -166,7 +166,7 @@ class IteratorClusterTest(test.TestCase):
     get_next = iterator.get_next()
 
     with session.Session(worker[0].target) as sess:
-      self.evaluate(init_op)
+      sess.run(init_op)
       for _ in range(3):
         sess.run(get_next)
 

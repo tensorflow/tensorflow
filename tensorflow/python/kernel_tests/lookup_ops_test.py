@@ -174,7 +174,7 @@ class HashTableOpTest(test.TestCase):
           constant_op.constant(sp_shape, dtypes.int64))
       output = table.lookup(input_tensor)
 
-      out_indices, out_values, out_shape = self.evaluate(output)
+      out_indices, out_values, out_shape = sess.run(output)
 
       self.assertAllEqual([0, 1, -1], out_values)
       self.assertAllEqual(sp_indices, out_indices)

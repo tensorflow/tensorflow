@@ -488,11 +488,11 @@ class FlipImageBenchmark(test.Benchmark):
             trainable=False,
             dtype=dtypes.float32)
         run_op = image_ops.flip_left_right(inputs)
-        self.evaluate(variables.global_variables_initializer())
+        sess.run(variables.global_variables_initializer())
         for i in xrange(warmup_rounds + benchmark_rounds):
           if i == warmup_rounds:
             start = time.time()
-          self.evaluate(run_op)
+          sess.run(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
     tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
@@ -518,11 +518,11 @@ class FlipImageBenchmark(test.Benchmark):
             trainable=False,
             dtype=dtypes.float32)
         run_op = image_ops.random_flip_left_right(inputs)
-        self.evaluate(variables.global_variables_initializer())
+        sess.run(variables.global_variables_initializer())
         for i in xrange(warmup_rounds + benchmark_rounds):
           if i == warmup_rounds:
             start = time.time()
-          self.evaluate(run_op)
+          sess.run(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
     tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
@@ -548,11 +548,11 @@ class FlipImageBenchmark(test.Benchmark):
             trainable=False,
             dtype=dtypes.float32)
         run_op = image_ops.random_flip_left_right(inputs)
-        self.evaluate(variables.global_variables_initializer())
+        sess.run(variables.global_variables_initializer())
         for i in xrange(warmup_rounds + benchmark_rounds):
           if i == warmup_rounds:
             start = time.time()
-          self.evaluate(run_op)
+          sess.run(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
     tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
@@ -610,11 +610,11 @@ class AdjustHueBenchmark(test.Benchmark):
       delta = constant_op.constant(0.1, dtype=dtypes.float32)
       outputs = image_ops.adjust_hue(inputs, delta)
       run_op = control_flow_ops.group(outputs)
-      self.evaluate(variables.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
       for i in xrange(warmup_rounds + benchmark_rounds):
         if i == warmup_rounds:
           start = time.time()
-        self.evaluate(run_op)
+        sess.run(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
     tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
@@ -653,12 +653,12 @@ class AdjustSaturationBenchmark(test.Benchmark):
       delta = constant_op.constant(0.1, dtype=dtypes.float32)
       outputs = image_ops.adjust_saturation(inputs, delta)
       run_op = control_flow_ops.group(outputs)
-      self.evaluate(variables.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
       for _ in xrange(warmup_rounds):
-        self.evaluate(run_op)
+        sess.run(run_op)
       start = time.time()
       for _ in xrange(benchmark_rounds):
-        self.evaluate(run_op)
+        sess.run(run_op)
     end = time.time()
     step_time = (end - start) / benchmark_rounds
     tag = device + "_%s" % (cpu_count if cpu_count is not None else "_all")
@@ -698,7 +698,7 @@ class ResizeBilinearBenchmark(test.Benchmark):
       benchmark_op = control_flow_ops.group(*deps)
 
     with self.benchmark_session() as sess:
-      self.evaluate(variables.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
       results = self.run_op_benchmark(
           sess,
           benchmark_op,
@@ -746,7 +746,7 @@ class ResizeBicubicBenchmark(test.Benchmark):
       benchmark_op = control_flow_ops.group(*deps)
 
     with self.benchmark_session() as sess:
-      self.evaluate(variables.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
       results = self.run_op_benchmark(
           sess,
           benchmark_op,
@@ -803,7 +803,7 @@ class ResizeAreaBenchmark(test.Benchmark):
       benchmark_op = control_flow_ops.group(*deps)
 
     with self.benchmark_session() as sess:
-      self.evaluate(variables.global_variables_initializer())
+      sess.run(variables.global_variables_initializer())
       results = self.run_op_benchmark(
           sess,
           benchmark_op,
@@ -4110,7 +4110,7 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
       images = [ops.convert_to_tensor(x, dtype=dtypes.float32) for x in images]
       msssim_ops = [image_ops.ssim_multiscale(x, y, 1.0)
                     for x, y in itertools.combinations(images, 2)]
-      msssim = self.evaluate(msssim_ops)
+      msssim = sess.run(msssim_ops)
       msssim = np.squeeze(msssim)
 
     self.assertTrue(np.all(msssim >= 0.0))
