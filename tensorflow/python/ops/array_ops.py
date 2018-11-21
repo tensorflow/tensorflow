@@ -3057,7 +3057,7 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
       return gen_math_ops.cast(result, dtype)
 
 
-@tf_export("squeeze")
+@tf_export(v1=["squeeze"])
 @deprecation.deprecated_args(None, "Use the `axis` argument instead",
                              "squeeze_dims")
 def squeeze(input, axis=None, name=None, squeeze_dims=None):
@@ -3105,6 +3105,12 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
   if np.isscalar(axis):
     axis = [axis]
   return gen_array_ops.squeeze(input, axis, name)
+
+
+@tf_export("squeeze", v1=[])
+def squeeze_v2(input, axis=None, name=None):
+  # pylint: disable=redefined-builtin
+  return squeeze(input, axis, name)
 
 
 @tf_export("where")
