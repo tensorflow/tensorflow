@@ -308,7 +308,6 @@ class VariableScopeTest(test.TestCase):
       self.evaluate(variables_lib.global_variables_initializer())
       self.assertAllEqual(self.evaluate(x.value()), self.evaluate(y.value()))
 
-  # TODO(alive): support variable partitioning/caching in eager mode.
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
   # InvalidArgumentError: /job:moo/replica:0/task:0/device:CPU:0 unknown device.
   def testVarScopeCachingDevice(self):
@@ -1466,6 +1465,10 @@ class VariableScopeWithPartitioningTest(test.TestCase):
   @run_inside_wrap_function_in_eager_mode
   def testPartitionConcatenatesAlongCorrectAxisResource(self):
     self._testPartitionConcatenatesAlongCorrectAxis(use_resource=True)
+
+  def testPartitionConcatenatesAlongCorrectAxisResourceInEager(self):
+    with context.eager_mode():
+      self._testPartitionConcatenatesAlongCorrectAxis(use_resource=True)
 
 
 class VariableScopeWithCustomGetterTest(test.TestCase):
