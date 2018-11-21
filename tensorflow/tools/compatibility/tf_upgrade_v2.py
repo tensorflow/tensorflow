@@ -114,6 +114,15 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.random.stateless_multinomial": {
             "output_dtype": "dtype",
         },
+        "tf.linalg.l2_normalize": {
+            "dim": "axis",
+        },
+        "tf.math.l2_normalize": {
+            "dim": "axis",
+        },
+        "tf.nn.l2_normalize": {
+            "dim": "axis",
+        },
         "tf.sparse.concat": [
             "axis", "sp_inputs", "name", "expand_nonconcat_dim", "concat_dim"
         ],
