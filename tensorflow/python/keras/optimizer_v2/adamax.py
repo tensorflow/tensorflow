@@ -89,7 +89,13 @@ class Adamax(adam.Adam):
         Defaults to "Adamax".
     """
     # pylint: disable=useless-super-delegation
-    super(Adamax, self).__init__(learning_rate, beta_1, beta_2, epsilon, name)
+    super(Adamax, self).__init__(
+        learning_rate=learning_rate,
+        beta_1=beta_1,
+        beta_2=beta_2,
+        epsilon=epsilon,
+        amsgrad=False,
+        name=name)
     # pylint: enable=useless-super-delegation
 
   def _resource_apply_dense(self, grad, var):
