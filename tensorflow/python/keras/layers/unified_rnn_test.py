@@ -288,7 +288,7 @@ class RNNTest(test.TestCase):
                    'Normal LSTM', (total_duration / epoch))
       return total_duration / epoch
 
-  def test_performance_with_standard_cudnn_impl(self):
+  def DISABLED_test_performance_with_standard_cudnn_impl(self):
     if not test.is_gpu_available():
       self.skipTest('performance test will only run on GPU')
 
