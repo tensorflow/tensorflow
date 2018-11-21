@@ -37,7 +37,7 @@ import six
 
 from tensorflow.python.util.tf_export import tf_export
 
-# Don't use this directly. Use _get_logger() instead.
+# Don't use this directly. Use get_logger() instead.
 _logger = None
 _logger_lock = threading.Lock()
 
@@ -78,7 +78,8 @@ else:
       return '(unknown file)', 0, '(unknown function)'
 
 
-def _get_logger():
+@tf_export('get_logger')
+def get_logger():
   """Return TF logger instance."""
   global _logger
 
@@ -132,37 +133,37 @@ def _get_logger():
 
 @tf_export(v1=['logging.log'])
 def log(level, msg, *args, **kwargs):
-  _get_logger().log(level, msg, *args, **kwargs)
+  get_logger().log(level, msg, *args, **kwargs)
 
 
 @tf_export(v1=['logging.debug'])
 def debug(msg, *args, **kwargs):
-  _get_logger().debug(msg, *args, **kwargs)
+  get_logger().debug(msg, *args, **kwargs)
 
 
 @tf_export(v1=['logging.error'])
 def error(msg, *args, **kwargs):
-  _get_logger().error(msg, *args, **kwargs)
+  get_logger().error(msg, *args, **kwargs)
 
 
 @tf_export(v1=['logging.fatal'])
 def fatal(msg, *args, **kwargs):
-  _get_logger().fatal(msg, *args, **kwargs)
+  get_logger().fatal(msg, *args, **kwargs)
 
 
 @tf_export(v1=['logging.info'])
 def info(msg, *args, **kwargs):
-  _get_logger().info(msg, *args, **kwargs)
+  get_logger().info(msg, *args, **kwargs)
 
 
 @tf_export(v1=['logging.warn'])
 def warn(msg, *args, **kwargs):
-  _get_logger().warn(msg, *args, **kwargs)
+  get_logger().warn(msg, *args, **kwargs)
 
 
 @tf_export(v1=['logging.warning'])
 def warning(msg, *args, **kwargs):
-  _get_logger().warning(msg, *args, **kwargs)
+  get_logger().warning(msg, *args, **kwargs)
 
 
 _level_names = {
@@ -196,7 +197,7 @@ def flush():
 # Code below is taken from pyglib/logging
 @tf_export(v1=['logging.vlog'])
 def vlog(level, msg, *args, **kwargs):
-  _get_logger().log(level, msg, *args, **kwargs)
+  get_logger().log(level, msg, *args, **kwargs)
 
 
 def _GetNextLogCountPerToken(token):
@@ -299,13 +300,13 @@ def google2_log_prefix(level, timestamp=None, file_and_line=None):
 @tf_export(v1=['logging.get_verbosity'])
 def get_verbosity():
   """Return how much logging output will be produced."""
-  return _get_logger().getEffectiveLevel()
+  return get_logger().getEffectiveLevel()
 
 
 @tf_export(v1=['logging.set_verbosity'])
 def set_verbosity(v):
   """Sets the threshold for what messages will be logged."""
-  _get_logger().setLevel(v)
+  get_logger().setLevel(v)
 
 
 def _get_thread_id():
