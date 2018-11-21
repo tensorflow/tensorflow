@@ -1880,6 +1880,126 @@ tensorflow::Status ConvertReshape(OpConverterParams* params) {
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertExpandDims(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  if (inputs.size() != 2) {
+    return tensorflow::errors::InvalidArgument(
+        "Two inputs expected for ExpandDims, at ", node_def.name());
+  }
+  if (!inputs.at(1).is_weights() ) {
+    return tensorflow::errors::InvalidArgument(
+        "ExpandDims expects weights for axis, at ", node_def.name());
+  }
+  // Get input shape as vector.
+  TRT_TensorOrWeights input_tensor = inputs.at(0);
+  const nvinfer1::Dims dims = input_tensor.GetTrtDims();
+  std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
+  // Add batch dim back for tensors.
+  if (input_tensor.is_tensor()) {
+    input_dims.insert(input_dims.begin(), -1);
+  }
+  const int input_rank = input_dims.size();
+  // Get axis to expand on.
+  TRT_ShapedWeights weights = inputs.at(1).weights();
+  const int* weights_ptr =
+      static_cast<int*>(const_cast<void*>(weights.GetValues()));
+  int axis = weights_ptr[0];
+  // Make sure axis is valid.
+  if ((axis < (-input_rank - 1)) || (axis > input_rank)) {
+    return tensorflow::errors::InvalidArgument(
+        "Axis for ExpandDims is invalid, must be in the range "
+        "[-rank(input) - 1, rank(input)], at ",
+        node_def.name());
+  }
+  // Convert negative axis to corresponding positive axis.
+  if (axis < 0) axis += input_rank + 1;
+  if (input_tensor.is_tensor() && axis == 0) {
+    return tensorflow::errors::Unimplemented(
+        "Modifying batch dimension is not supported for ExpandDims, at ",
+        node_def.name());
+  }
+  if (params->validation_only) return Status::OK();
+
+  // ExpandDims: Insert new dim of size 1.
+  input_dims.insert(input_dims.begin()+axis, 1);
+  // Convert input_dims vector into nvinfer1::Dims.
+  const bool ignore_first_dim = input_tensor.is_tensor();
+  nvinfer1::Dims new_dims = VectorToTrtDims(input_dims, ignore_first_dim);
+  // Reshape tensor.
+  const nvinfer1::ITensor* output_tensor = nullptr;
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      input_tensor, new_dims, &output_tensor));
+  params->outputs->push_back(
+      TRT_TensorOrWeights(const_cast<nvinfer1::ITensor*>(output_tensor)));
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertSqueeze(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  if (inputs.size() != 1) {
+    return tensorflow::errors::InvalidArgument(
+        "One input expected for Squeeze, at ", node_def.name());
+  }
+  // Get input shape.
+  TRT_TensorOrWeights input_tensor = inputs.at(0);
+  const nvinfer1::Dims dims = input_tensor.GetTrtDims();
+  std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
+  // Add batch dim back temporarily.
+  if (input_tensor.is_tensor()) {
+    input_dims.insert(input_dims.begin(), -1);
+  }
+  const int input_rank = input_dims.size();
+  // Mark axes to remove by setting them to 0.
+  TFAttrs attrs(node_def);
+  auto squeeze_dims = attrs.get<std::vector<int>>("squeeze_dims");
+  if (squeeze_dims.size() == 0) {
+    return tensorflow::errors::Unimplemented(
+        "Squeeze is only implemented for explicit dims, at ", node_def.name());
+  }
+  for (int axis : squeeze_dims) {
+    // Make sure axis is valid.
+    if ((axis < -input_rank) || (axis >= input_rank)) {
+      return tensorflow::errors::InvalidArgument(
+          "Axis for Squeeze is invalid, must be in the range "
+          "[-rank(input), rank(input)), at ",
+          node_def.name());
+    }
+    // Convert negative axis to corresponding positive axis.
+    if (axis < 0) axis += input_rank;
+    LOG(INFO) << axis;
+    // Don't squeeze batch dim.
+    if (axis == 0) {
+      return tensorflow::errors::Unimplemented(
+          "Cannot squeeze batch dimension, at ", node_def.name());
+    }
+    // Make sure target dimension is size 1.
+    if (input_dims[axis] != 1) {
+      return tensorflow::errors::InvalidArgument(
+          "Cannot squeeze a dimension which isn't size 1, at ",
+          node_def.name());
+    }
+    // Mark dim for removal by setting to 0.
+    input_dims[axis] = 0;
+  }
+  if (params->validation_only) return Status::OK();
+  
+  // Remove all dims which are equal to 0.
+  input_dims.erase(std::remove(input_dims.begin(), input_dims.end(), 0),
+                   input_dims.end());
+  // Convert input_dims vector into nvinfer1::Dims.
+  const bool ignore_first_dim = input_tensor.is_tensor();
+  nvinfer1::Dims new_dims = VectorToTrtDims(input_dims, ignore_first_dim);
+  // Reshape tensor.
+  const nvinfer1::ITensor* output_tensor = nullptr;
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      input_tensor, new_dims, &output_tensor));
+  params->outputs->push_back(
+      TRT_TensorOrWeights(const_cast<nvinfer1::ITensor*>(output_tensor)));
+  return tensorflow::Status::OK();
+}
+
 tensorflow::Status ConvertConv2D(OpConverterParams* params) {
   return ConvertConv2DHelper(params, ConvolutionType::DEFAULT);
 }
@@ -3156,6 +3276,8 @@ static void RegisterValidatableOpConverters(
   (*registration)["MatMul"] = ConvertMatMul;
   (*registration)["Relu6"] = ConvertRelu6;
   (*registration)["Square"] = ConvertSquare;
+  (*registration)["ExpandDims"] = ConvertExpandDims;
+  (*registration)["Squeeze"] = ConvertSqueeze;
 
   for (auto quantization_op_type :
        {"QuantizeAndDequantizeV2", "QuantizeAndDequantizeV3",

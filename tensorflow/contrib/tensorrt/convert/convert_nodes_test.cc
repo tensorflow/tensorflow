@@ -2113,6 +2113,253 @@ TEST_F(OpConverterTest, ConvertActivation) {
   }
 }
 
+TEST_F(OpConverterTest, ConvertExpandDims) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_expanddims", "ExpandDims", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Two inputs expected for ExpandDims, at my_expanddims");
+  }
+
+  // Get the NodeDef for ExpandDims.
+  Scope s = Scope::NewRootScope();
+  auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+  auto weights = ops::Placeholder(s.WithOpName("weights"), DT_INT32);
+  auto expanddims = ops::ExpandDims(s.WithOpName("my_expanddims"), input, weights);
+  const NodeDef& node_def = expanddims.operation.node()->def();
+
+  {
+    // Axis is a tensor, should fail.
+    Reset();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestTensor("weights", {3});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "ExpandDims expects weights for axis, at my_expanddims");
+  }
+  {
+    // Add dim at batch dimension, should fail.
+    Reset();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<int32>("weights", {1}, {0});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+        "Modifying batch dimension is not supported for ExpandDims, at my_expanddims");
+  }
+  {
+    // Add dim at batch dimension via negative axis, should fail.
+    Reset();
+    AddTestTensor("input", {1, 2, 3});
+    // Input is rank 4 (batch dim included)
+    AddTestWeights<int32>("weights", {1}, {-5});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+        "Modifying batch dimension is not supported for ExpandDims, at my_expanddims");
+  }
+  {
+    // Axis > rank(input), should fail.
+    Reset();
+    AddTestTensor("input", {1, 2, 3});
+    // Input is rank 4 (batch dim included)
+    AddTestWeights<int32>("weights", {1}, {5});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+        "Axis for ExpandDims is invalid, must be in the range "
+        "[-rank(input) - 1, rank(input)], at my_expanddims");
+  }
+  {
+    // Axis < -rank(input)-1, should fail.
+    Reset();
+    AddTestTensor("input", {1, 2, 3});
+    // Input is rank 4 (batch dim included)
+    AddTestWeights<int32>("weights", {1}, {-6});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+        "Axis for ExpandDims is invalid, must be in the range "
+        "[-rank(input) - 1, rank(input)], at my_expanddims");
+  }
+  {
+    // Add axis before, Ok.
+    Reset();
+    AddTestTensor("input", {2, 3});
+    AddTestWeights<int32>("weights", {1}, {1});
+    RunValidationAndConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(GetTensorOrWeights("my_expanddims", &output));
+    EXPECT_TRUE(output.is_tensor());
+    EXPECT_TRUE(TrtDimsEqualsArray({1, 2, 3}, output.tensor()->getDimensions()))
+        << output.DebugString();
+
+    std::vector<float> output_data(6);
+    BuildAndRun("input", {1, 2, 3, 4, 5, 6}, "my_expanddims", &output_data);
+    EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
+  }
+  {
+    // Add axis after, Ok.
+    Reset();
+    AddTestTensor("input", {2, 3});
+    AddTestWeights<int32>("weights", {1}, {3});
+    RunValidationAndConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(GetTensorOrWeights("my_expanddims", &output));
+    EXPECT_TRUE(output.is_tensor());
+    EXPECT_TRUE(TrtDimsEqualsArray({2, 3, 1}, output.tensor()->getDimensions()))
+        << output.DebugString();
+
+    std::vector<float> output_data(6);
+    BuildAndRun("input", {1, 2, 3, 4, 5, 6}, "my_expanddims", &output_data);
+    EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
+  }
+  {
+    // Add negative axis, Ok.
+    Reset();
+    AddTestTensor("input", {2, 3});
+    AddTestWeights<int32>("weights", {1}, {-1});
+    RunValidationAndConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(GetTensorOrWeights("my_expanddims", &output));
+    EXPECT_TRUE(output.is_tensor());
+    EXPECT_TRUE(TrtDimsEqualsArray({2, 3, 1}, output.tensor()->getDimensions()))
+        << output.DebugString();
+
+    std::vector<float> output_data(6);
+    BuildAndRun("input", {1, 2, 3, 4, 5, 6}, "my_expanddims", &output_data);
+    EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
+  }
+}
+
+TEST_F(OpConverterTest, ConvertSqueeze) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_squeeze", "Squeeze", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "One input expected for Squeeze, at my_squeeze");
+  }
+  {
+    // No attrs, should fail.
+    Reset();
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+    auto squeeze = ops::Squeeze(s.WithOpName("my_squeeze"), input);
+    const NodeDef& node_def = squeeze.operation.node()->def();
+    AddTestTensor("input", {1, 2, 3});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Squeeze is only implemented for explicit dims, at my_squeeze");
+  }
+
+  // Get the NodeDef for Squeeze.
+  auto get_squeeze_nodedef = [](std::vector<int> axis) -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+    ops::Squeeze::Attrs squeeze_attrs;
+    squeeze_attrs.axis_ = gtl::ArraySlice<int>(axis);
+    auto squeeze = ops::Squeeze(s.WithOpName("my_squeeze"), input, squeeze_attrs);
+    return squeeze.operation.node()->def();
+  };
+
+  {
+    // Squeeze batch dim, should fail.
+    Reset();
+    NodeDef node_def = get_squeeze_nodedef({0});
+    AddTestTensor("input", {1, 2, 3});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Cannot squeeze batch dimension, at my_squeeze");
+  }
+  {
+    // Squeeze batch dim via negative axis, should fail.
+    Reset();
+    NodeDef node_def = get_squeeze_nodedef({-4});
+    AddTestTensor("input", {1, 2, 3});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Cannot squeeze batch dimension, at my_squeeze");
+  }
+  {
+    // Squeeze >= rank(input), should fail.
+    Reset();
+    NodeDef node_def = get_squeeze_nodedef({4});
+    AddTestTensor("input", {1, 2, 3});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Axis for Squeeze is invalid, must be in the range "
+        "[-rank(input), rank(input)), at my_squeeze");
+  }
+  {
+    // Squeeze < -rank(input), should fail.
+    Reset();
+    NodeDef node_def = get_squeeze_nodedef({-5});
+    AddTestTensor("input", {1, 2, 3});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Axis for Squeeze is invalid, must be in the range "
+        "[-rank(input), rank(input)), at my_squeeze");
+  }
+  {
+    // Squeeze axis before, Ok.
+    Reset();
+    NodeDef node_def = get_squeeze_nodedef({1});
+    AddTestTensor("input", {1, 2, 3});
+    RunConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(GetTensorOrWeights("my_squeeze", &output));
+    EXPECT_TRUE(output.is_tensor());
+    EXPECT_TRUE(TrtDimsEqualsArray({2, 3}, output.tensor()->getDimensions()))
+        << output.DebugString();
+
+    std::vector<float> output_data(6);
+    BuildAndRun("input", {1, 2, 3, 4, 5, 6}, "my_squeeze", &output_data);
+    EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
+  }
+  {
+    // Squeeze axis after, Ok.
+    Reset();
+    NodeDef node_def = get_squeeze_nodedef({3});
+    AddTestTensor("input", {2, 3, 1});
+    RunConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(GetTensorOrWeights("my_squeeze", &output));
+    EXPECT_TRUE(output.is_tensor());
+    EXPECT_TRUE(TrtDimsEqualsArray({2, 3}, output.tensor()->getDimensions()))
+        << output.DebugString();
+
+    std::vector<float> output_data(6);
+    BuildAndRun("input", {1, 2, 3, 4, 5, 6}, "my_squeeze", &output_data);
+    EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
+  }
+  {
+    // Squeeze multiple axis, Ok.
+    Reset();
+    NodeDef node_def = get_squeeze_nodedef({1, 3, 5});
+    AddTestTensor("input", {1, 2, 1, 3, 1});
+    RunConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(GetTensorOrWeights("my_squeeze", &output));
+    EXPECT_TRUE(output.is_tensor());
+    EXPECT_TRUE(TrtDimsEqualsArray({2, 3}, output.tensor()->getDimensions()))
+        << output.DebugString();
+
+    std::vector<float> output_data(6);
+    BuildAndRun("input", {1, 2, 3, 4, 5, 6}, "my_squeeze", &output_data);
+    EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
+  }
+  {
+    // Squeeze multiple axis negative, Ok.
+    Reset();
+    NodeDef node_def = get_squeeze_nodedef({-1, -3, -5});
+    AddTestTensor("input", {1, 2, 1, 3, 1});
+    RunConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(GetTensorOrWeights("my_squeeze", &output));
+    EXPECT_TRUE(output.is_tensor());
+    EXPECT_TRUE(TrtDimsEqualsArray({2, 3}, output.tensor()->getDimensions()))
+        << output.DebugString();
+
+    std::vector<float> output_data(6);
+    BuildAndRun("input", {1, 2, 3, 4, 5, 6}, "my_squeeze", &output_data);
+    EXPECT_THAT(output_data, ElementsAre(1, 2, 3, 4, 5, 6));
+  }
+}
+
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow
