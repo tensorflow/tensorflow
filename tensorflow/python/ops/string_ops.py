@@ -311,7 +311,7 @@ def _reduce_join_reduction_dims(x, axis, reduction_indices):
     return math_ops.range(array_ops.rank(x) - 1, -1, -1)
 
 
-@tf_export("strings.reduce_join", v1=["strings.reduce_join", "reduce_join"])
+@tf_export(v1=["strings.reduce_join", "reduce_join"])
 @deprecation.deprecated_endpoints("reduce_join")
 def reduce_join(inputs, axis=None,  # pylint: disable=missing-docstring
                 keep_dims=False,
@@ -327,6 +327,17 @@ def reduce_join(inputs, axis=None,  # pylint: disable=missing-docstring
       keep_dims=keep_dims,
       separator=separator,
       name=name)
+
+
+@tf_export("strings.reduce_join", v1=[])
+def reduce_join_v2(  # pylint: disable=missing-docstring
+    inputs,
+    axis=None,
+    keepdims=False,
+    separator="",
+    name=None):
+  return reduce_join(
+      inputs, axis, keep_dims=keepdims, separator=separator, name=name)
 
 
 reduce_join.__doc__ = deprecation.rewrite_argument_docstring(
@@ -357,9 +368,14 @@ def substr_deprecated(input, pos, len, name=None, unit="BYTE"):
 substr_deprecated.__doc__ = gen_string_ops.substr.__doc__
 
 
-@tf_export("strings.substr")
+@tf_export(v1=["strings.substr"])
 def substr(input, pos, len, name=None, unit="BYTE"):
   return gen_string_ops.substr(input, pos, len, unit=unit, name=name)
+
+
+@tf_export("strings.substr", v1=[])
+def substr_v2(input, pos, len, unit="BYTE", name=None):
+  return substr(input, pos, len, name=name, unit=unit)
 
 
 substr.__doc__ = gen_string_ops.substr.__doc__

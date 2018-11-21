@@ -190,6 +190,14 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "reduction_indices": "axis",
             "keep_dims": "keepdims",
         },
+        "tf.reduce_join": {
+            "keep_dims": "keepdims",
+            "reduction_indices": "axis"
+        },
+        "tf.strings.reduce_join": {
+            "keep_dims": "keepdims",
+            "reduction_indices": "axis"
+        },
     }
 
     # Mapping from function to the new name of the function
@@ -319,6 +327,11 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.sparse.segment_sum": [
             "data", "indices", "segment_ids", "name", "num_segments"
         ],
+        "tf.strings.substr": ["input", "pos", "len", "name", "unit"],
+        "tf.strings.reduce_join": [
+            "input", "axis", "keep_dims", "separator", "name",
+            "reduction_indices"
+        ],
         "tf.strings.length": ["input", "name", "unit"],
         "tf.transpose": ["a", "perm", "name", "conjugate"],
         "tf.tuple": ["tensors", "name", "control_inputs"],
@@ -396,6 +409,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.math.reduce_logsumexp": [
             "input_tensor", "axis", "keepdims", "name", "reduction_indices",
             "keep_dims"
+        ],
+        "tf.reduce_join": [
+            "input", "axis", "keep_dims", "separator", "name",
+            "reduction_indices"
         ],
     }
 
