@@ -13,17 +13,13 @@
 # limitations under the License.
 # =============================================================================
 
-"""Functional operations.
-
-See the [Higher Order
-Functions](https://tensorflow.org/api_guides/python/functional_ops) guide.
-"""
+"""Functional operations."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -806,6 +802,29 @@ def Gradient(inputs, f, name=None):
   return symbolic_gradient(input=inputs, Tout=tlist, f=f, name=name)
 
 
+def _LoopBodyCaptureWrapper(func):
+  """Returns a wrapper for `func` that handles loop-carried captured inputs."""
+
+  @function.Defun(
+      *func.declared_input_types, func_name="%s_Wrapper" % func.name)
+  def Wrapper(*args):
+    """A wrapper that handles loop-carried captured inputs."""
+    result = func(*args)
+    extra_args = tuple(function.get_extra_args())
+    # Nullary functions return an Operation. Normal functions can't do this
+    # because their return values are converted to Tensors.
+    if isinstance(result, ops.Operation):
+      return extra_args
+    # Unary functions return a single Tensor value.
+    elif not isinstance(result, tuple):
+      return (result,) + extra_args
+    # N-ary functions return a tuple of Tensors.
+    else:
+      return result + extra_args
+
+  return Wrapper
+
+
 # pylint: disable=invalid-name,protected-access
 def While(input_, cond, body, name=None, hostmem=None):
   r"""output = input; While (Cond(output)) { output = Body(output) }.
@@ -827,11 +846,41 @@ def While(input_, cond, body, name=None, hostmem=None):
     hostmem: A list of integer. If i is in the list, input[i] is a
       host memory tensor.
 
+  Raises:
+    ValueError: if `cond` has implicitly captured inputs or if `cond` and `body`
+      have different signatures.
+
   Returns:
     A list of `Tensor` objects. Has the same type as `input`.
     A list of output tensors whose types are T.
   """
-  ret = gen_functional_ops._while(input_, cond, body, name=name)
+  if cond.captured_inputs:
+    raise ValueError("While op 'cond' argument must be a function "
+                     "without implicitly captured inputs.")
+
+  if cond.declared_input_types != body.declared_input_types:
+    raise ValueError(
+        "While op 'cond' and 'body' signatures do not match. %r vs %r" %
+        (cond.declared_input_types, body.declared_input_types))
+
+  if body.captured_inputs:
+    cond_dtypes = list(
+        body.declared_input_types) + [t.dtype for t in body.captured_inputs]
+
+    @function.Defun(*cond_dtypes, func_name="%s_Wrapper" % cond.name)
+    def CondWrapper(*args):
+      """A wrapper that handles loop-carried captured inputs."""
+      return cond(*args[:len(body.declared_input_types)])
+
+    ret = gen_functional_ops._while(
+        input_ + body.captured_inputs,
+        CondWrapper,
+        _LoopBodyCaptureWrapper(body),
+        name=name)
+    # Slice off the loop-carried captured inputs.
+    ret = ret[:-len(body.captured_inputs)]
+  else:
+    ret = gen_functional_ops._while(input_, cond, body, name=name)
   if hostmem:
     input_attr = attr_value_pb2.AttrValue()
     input_attr.list.i.extend(hostmem)
@@ -880,11 +929,10 @@ def _ForUsingWhile(start,
   # must have identical inputs, we have to augment the cond signature to take
   # the same types as the carried loop variables.
   body_sig = [dtypes.int32] * 4 + list(forbody.declared_input_types)[1:]
-  cond_sig = body_sig + [t.dtype for t in forbody.captured_inputs]
 
   cond_name = "%s_Cond" % forbody.name
 
-  @function.Defun(*cond_sig, func_name=cond_name)
+  @function.Defun(*body_sig, func_name=cond_name)
   def WhileCond(i, n, *args):
     del args
     return i < n
@@ -902,8 +950,7 @@ def _ForUsingWhile(start,
     # Unary functions return a single Tensor value.
     elif isinstance(for_result, ops.Tensor):
       for_result = (for_result,)
-    extra_args = tuple(function.get_extra_args())
-    return (i + 1, n, start, delta) + tuple(for_result) + extra_args
+    return (i + 1, n, start, delta) + tuple(for_result)
 
   if hostmem is not None:
     hostmem = [0, 1, 2, 3] + [(4 + _) for _ in hostmem]
@@ -911,13 +958,13 @@ def _ForUsingWhile(start,
     hostmem = [0, 1, 2, 3]
 
   results = While(
-      input_=[0, n, start, delta] + inputs + WhileBody.captured_inputs,
+      input_=[0, n, start, delta] + inputs,
       cond=WhileCond,
       body=WhileBody,
       name=name,
       hostmem=hostmem)
   # Slice off the loop-carried captured inputs.
-  return list(results[4:len(results) - len(WhileBody.captured_inputs)])
+  return list(results[4:len(results)])
 
 
 def For(start,
@@ -951,29 +998,15 @@ def For(start,
   if rewrite_with_while:
     return _ForUsingWhile(start, limit, delta, inputs, body, name, hostmem)
   if body.captured_inputs:
-    wrapper_name = "%s_BodyWrapper" % body.name
-
-    @function.Defun(*body.declared_input_types, func_name=wrapper_name)
-    def BodyWrapper(*args):
-      """A wrapper for body that handles loop-carried captured inputs."""
-      body_result = body(*args)
-      extra_args = tuple(function.get_extra_args())
-      # Nullary functions return an Operation. Normal functions can't do this
-      # because their return values are converted to Tensors.
-      if isinstance(body_result, ops.Operation):
-        return extra_args
-      # Unary functions return a single Tensor value.
-      elif not isinstance(body_result, tuple):
-        return (body_result,) + extra_args
-      # N-ary functions return a tuple of Tensors.
-      else:
-        return body_result + extra_args
-
-    inputs += BodyWrapper.captured_inputs
     ret = gen_functional_ops._for(
-        start, limit, delta, inputs, BodyWrapper, name=name)
+        start,
+        limit,
+        delta,
+        inputs + body.captured_inputs,
+        _LoopBodyCaptureWrapper(body),
+        name=name)
     # Slice off the loop-carried captured inputs.
-    ret = ret[:-len(BodyWrapper.captured_inputs)]
+    ret = ret[:-len(body.captured_inputs)]
   else:
     ret = gen_functional_ops._for(start, limit, delta, inputs, body, name=name)
   if hostmem:
@@ -994,9 +1027,10 @@ _rewriter_config_optimizer_disabled = None
 def _get_disabled_rewriter_config():
   global _rewriter_config_optimizer_disabled
   if _rewriter_config_optimizer_disabled is None:
-    rewriter_config = rewriter_config_pb2.RewriterConfig()
+    config = config_pb2.ConfigProto()
+    rewriter_config = config.graph_options.rewrite_options
     rewriter_config.disable_meta_optimizer = True
-    _rewriter_config_optimizer_disabled = rewriter_config.SerializeToString()
+    _rewriter_config_optimizer_disabled = config.SerializeToString()
   return _rewriter_config_optimizer_disabled
 
 
@@ -1015,7 +1049,7 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None, config=None,
       the signature of `f`.
     executing_eagerly: (Optional) A boolean indicating whether the context is
       executing eagerly. If `None`, fetched from the global context.
-    config: (Optional) A tensorflow::RewriterConfig proto, serialized. If
+    config: (Optional) A `tensorflow::ConfigProto` proto, serialized. If
       `None`, all optimizations are disabled. Currently only handled for eager
       defined functions.
     executor_type: (Optional) A string for the name of the executor to be used
@@ -1043,10 +1077,12 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None, config=None,
   if executing_eagerly or len(tout):
     if f.stateful_ops:
       outputs = gen_functional_ops.stateful_partitioned_call(
-          args=args, Tout=tout, f=f, config=config, executor_type=executor_type)
+          args=args, Tout=tout, f=f, config_proto=config,
+          executor_type=executor_type)
     else:
       outputs = gen_functional_ops.partitioned_call(
-          args=args, Tout=tout, f=f, config=config, executor_type=executor_type)
+          args=args, Tout=tout, f=f, config_proto=config,
+          executor_type=executor_type)
     return outputs if outputs else None
 
   # The generated binding returns an empty list for functions that don't
@@ -1065,7 +1101,7 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None, config=None,
   # When running in graph mode, the graph and function graphs are optimized
   # (i.e. run through grappler) per the session options, so we can disable any
   # eager-specific rewriting.
-  rewriter_config = attr_value_pb2.AttrValue(s=_get_disabled_rewriter_config())
+  config_proto = attr_value_pb2.AttrValue(s=_get_disabled_rewriter_config())
 
   graph = ops.get_default_graph()
   f.add_to_graph(graph)
@@ -1080,7 +1116,7 @@ def partitioned_call(args, f, tout=None, executing_eagerly=None, config=None,
           "Tin": tin_attr,
           "Tout": tout_attr,
           "f": func_attr,
-          "config": rewriter_config,
+          "config_proto": config_proto,
           "executor_type": executor_type_attr,
       })
   outputs = op.outputs

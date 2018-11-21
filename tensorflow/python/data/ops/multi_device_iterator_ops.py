@@ -55,7 +55,8 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
     def _init_func():
       return multi_device_iterator_string_handle
 
-    init_func_concrete = _init_func.get_concrete_function()
+    init_func_concrete = _init_func._get_concrete_function_internal()  # pylint: disable=protected-access
+
     @function.defun()
     def _remote_init_func():
       return functional_ops.remote_call(
@@ -64,7 +65,7 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
           Tout=[dtypes.string],
           f=init_func_concrete)
 
-    self._init_func = _remote_init_func.get_concrete_function()
+    self._init_func = _remote_init_func._get_concrete_function_internal()  # pylint: disable=protected-access
     self._init_captured_args = self._init_func.captured_inputs
 
     @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
@@ -81,7 +82,8 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
           output_types=self._flat_output_types,
           output_shapes=self._flat_output_shapes)
 
-    next_func_concrete = _next_func.get_concrete_function()
+    next_func_concrete = _next_func._get_concrete_function_internal()  # pylint: disable=protected-access
+
     @function.defun_with_attributes(
         input_signature=[tensor_spec.TensorSpec([], dtypes.string)],
         attributes={"experimental_ints_on_device": True})
@@ -93,14 +95,15 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
           Tout=self._flat_output_types,
           f=next_func_concrete)
 
-    self._next_func = _remote_next_func.get_concrete_function()
+    self._next_func = _remote_next_func._get_concrete_function_internal()  # pylint: disable=protected-access
     self._next_captured_args = self._next_func.captured_inputs
 
     @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _finalize_func(unused_string_handle):
       return array_ops.constant(0, dtypes.int64)
 
-    finalize_func_concrete = _finalize_func.get_concrete_function()
+    finalize_func_concrete = _finalize_func._get_concrete_function_internal()  # pylint: disable=protected-access
+
     @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
     def _remote_finalize_func(string_handle):
       return functional_ops.remote_call(
@@ -110,7 +113,8 @@ class _PerDeviceGenerator(dataset_ops.Dataset):
           Tout=[dtypes.int64],
           f=finalize_func_concrete)
 
-    self._finalize_func = _remote_finalize_func.get_concrete_function()
+    self._finalize_func = _remote_finalize_func._get_concrete_function_internal(  # pylint: disable=protected-access
+    )
     self._finalize_captured_args = self._finalize_func.captured_inputs
 
   def _as_variant_tensor(self):
@@ -216,6 +220,10 @@ class MultiDeviceIterator(object):
           self._dataset.output_types, self._dataset.output_classes)
       if prefetch_buffer_size > 0:
         ds = ds.prefetch(prefetch_buffer_size)
+      # TODO(jsimsa): Enable auto-tuning when supported for non-CPU devices.
+      options = dataset_ops.Options()
+      options.experimental_autotune = False
+      ds = ds.with_options(options)
       with ops.device(device):
         self._device_iterators.append(ds.make_initializable_iterator())
 

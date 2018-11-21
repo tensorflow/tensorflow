@@ -4,11 +4,8 @@
 <img style="width:50%" src="./images/xlalogo.png">
 </div>
 
-> Note: XLA is experimental and considered alpha.  Most use cases will not
-> see improvements in performance (speed or decreased memory usage). We have
-> released XLA early so the Open Source Community can contribute to its
-> development, as well as create a path for integration with hardware
-> accelerators.
+> Note: XLA is still under development.  Some use cases will not
+> see improvements in speed or decreased memory usage.
 
 XLA (Accelerated Linear Algebra) is a domain-specific compiler for linear
 algebra that optimizes TensorFlow computations. The results are improvements in

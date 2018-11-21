@@ -63,8 +63,8 @@ class GraphProperties {
   // values strictly less than -1 to encode symbolic dimensions: although we
   // don't know the actual value of the symbolic dimension, we know that all the
   // dimensions denoted by the same negative value are the equal.
-  bool HasInputProperties(const string& name) const;
-  bool HasOutputProperties(const string& name) const;
+  bool HasInputProperties(const string& node_name) const;
+  bool HasOutputProperties(const string& node_name) const;
   const std::vector<OpInfo::TensorProperties>& GetInputProperties(
       const string& node_name) const;
   const std::vector<OpInfo::TensorProperties>& GetOutputProperties(

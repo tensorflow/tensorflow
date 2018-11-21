@@ -165,6 +165,7 @@ namespace opcode_matchers {
   }
 HLO_MATCHER(Abs);
 HLO_MATCHER(Add);
+HLO_MATCHER(AllToAll);
 HLO_MATCHER(Bitcast);
 HLO_MATCHER(Broadcast);
 HLO_MATCHER(BatchNormGrad);
@@ -178,6 +179,7 @@ HLO_MATCHER(Convert);
 HLO_MATCHER(Convolution);
 HLO_MATCHER(Copy);
 HLO_MATCHER(CrossReplicaSum);
+HLO_MATCHER(CollectivePermute);
 HLO_MATCHER(Divide);
 HLO_MATCHER(Domain);
 HLO_MATCHER(DynamicSlice);

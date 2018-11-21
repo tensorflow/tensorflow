@@ -89,6 +89,7 @@ py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python/data/experimental/kernel_tests:stats_dataset_test_base",
         "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/experimental/ops:stats_aggregator",
         "//tensorflow/python/data/experimental/ops:stats_ops",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
@@ -201,6 +202,7 @@ py_test(
     name = "map_vectorization_test",
     size = "medium",
     srcs = ["map_vectorization_test.py"],
+    shard_count = 8,
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",

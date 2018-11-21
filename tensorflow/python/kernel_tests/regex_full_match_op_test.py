@@ -61,7 +61,7 @@ class RegexFullMatchOpVariantsTest(test.TestCase, parameterized.TestCase):
       invalid_pattern = "A["
       matched = op(input_tensor, invalid_pattern)
       with self.assertRaisesOpError("Invalid pattern"):
-        matched.eval()
+        self.evaluate(matched)
 
 
 class RegexFullMatchOpTest(test.TestCase):

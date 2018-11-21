@@ -199,23 +199,35 @@ tensorflow::Status ImportShape(
         input_dims,
     int* input_flat_size, Shape* shape) {
   std::vector<int> input_dims_only_sizes;
+  bool zero_sized_shape = false;
   for (auto& d : input_dims) {
-    if (d.size() == 0) {
-      // Some TensorFlow shapes contain a 0 dim, effectively making
-      // them of flat size 0 even though they have other nonzero dims.
-      // This breaks our invariant, that array dims can't be 0.
-      // For now, tweaking this to record a 0-D shape instead.
-      shape->mutable_dims()->clear();
-      if (input_flat_size != nullptr) *input_flat_size = 0;
-      return tensorflow::Status::OK();
-    }
     // TensorFlow's shapes use int64s, while TOCO uses ints.
     if (d.size() > std::numeric_limits<int>::max()) {
       return tensorflow::errors::InvalidArgument("Shape element overflows");
     }
-
+    if (d.size() == 0) {
+      zero_sized_shape = true;
+    }
     input_dims_only_sizes.push_back(d.size());
   }
+
+  // Note that up to this point we were OK with the input shape containing
+  // elements valued -1 or 0, which are perfectly legal in tensorflow. However
+  // our CheckValidShapeDimensions() insists on them being >= 1, with the
+  // exception of the "scalar" shape [0]. The main issue with zero-values shape
+  // elements is that the corresponding arrays don't contain any data and the
+  // allocation code gets a bit confused. It seems that the code expects an
+  // empty shape for zero-sized shapes, so we will do just that, except for the
+  // [0] case.
+  // TODO(b/119325030): In order to correctly import the "scalar" shapes the
+  // following test must include "&& input_dims_only_sizes.size() > 1", but
+  // that seems to slow everything down a lot.
+  if (zero_sized_shape) {
+    shape->mutable_dims()->clear();
+    if (input_flat_size != nullptr) *input_flat_size = 0;
+    return tensorflow::Status::OK();
+  }
+
   *shape->mutable_dims() = input_dims_only_sizes;
 
   if (input_flat_size == nullptr) return tensorflow::Status::OK();
@@ -1122,28 +1134,53 @@ tensorflow::Status ConvertConcatOperator(
   return tensorflow::Status::OK();
 }
 
+static constexpr int kAnyNumInputs = -1;
+
+enum FlexSupport { kFlexOk, kFlexNotOk };
+
 // This method supports simple operators without additional attributes.
-template <typename Op>
-tensorflow::Status ConvertSimpleOperator(
+// Converts a simple operator that takes no attributes. The list of inputs is
+// taken from the given NodeDef, and its number must match NumInputs, unless
+// kAnyNumInputs is passed in. If kFlexOk is passed in the resulting operator
+// will be eligible for being exported as a flex op.
+template <typename Op, int NumInputs, FlexSupport flex>
+tensorflow::Status ConvertSimpleOperatorGeneric(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
+  if (NumInputs != kAnyNumInputs) {
+    TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, NumInputs));
+  }
   auto* op = new Op;
   const int num_inputs = GetInputsCount(node, tf_import_flags);
   for (int i = 0; i < num_inputs; ++i) {
     op->inputs.push_back(node.input(i));
   }
   op->outputs.push_back(node.name());
+
+  if (flex == kFlexOk) {
+    RetainTensorFlowNodeDef(node, op);
+  }
+
   model->operators.emplace_back(op);
   return tensorflow::Status::OK();
 }
 
-// This method supports simple operators without additional attributes.
-template <typename Op, unsigned int NumInputs>
+// Convert a simple operator which is not valid as a flex op.
+template <typename Op, int NumInputs = kAnyNumInputs>
 tensorflow::Status ConvertSimpleOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
-  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, NumInputs));
-  return ConvertSimpleOperator<Op>(node, tf_import_flags, model);
+  return ConvertSimpleOperatorGeneric<Op, NumInputs, kFlexNotOk>(
+      node, tf_import_flags, model);
+}
+
+// Convert a simple operator which is valid as a flex op.
+template <typename Op, int NumInputs = kAnyNumInputs>
+tensorflow::Status ConvertSimpleOperatorFlexOk(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  return ConvertSimpleOperatorGeneric<Op, NumInputs, kFlexOk>(
+      node, tf_import_flags, model);
 }
 
 void GetOutputNamesFromNodeDef(const NodeDef& node,
@@ -2183,6 +2220,21 @@ tensorflow::Status ConvertUnidirectionalSequenceLstm(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertLeakyReluOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "LeakyRelu");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
+  CHECK_EQ(GetDataTypeAttr(node, "T"), DT_FLOAT);
+  const auto& input_name = node.input(0);
+  auto* op = new LeakyReluOperator;
+  op->inputs.push_back(input_name);
+  op->outputs.push_back(node.name());
+  op->alpha = GetFloatAttr(node, "alpha");
+  model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
+}
+
 }  // namespace
 
 namespace internal {
@@ -2196,6 +2248,7 @@ ConverterMapType GetTensorFlowNodeConverterMapForFlex() {
   return std::unordered_map<std::string, ConverterType>({
       // We need to let TCO convert Placeholder information into
       // array data, so that the data types are correct.
+      {"LegacyFedInput", ConvertPlaceholderOperator},
       {"Placeholder", ConvertPlaceholderOperator},
   });
 }
@@ -2203,7 +2256,7 @@ ConverterMapType GetTensorFlowNodeConverterMapForFlex() {
 ConverterMapType GetTensorFlowNodeConverterMap() {
   return std::unordered_map<std::string, ConverterType>({
       {"Add", ConvertSimpleOperator<AddOperator, 2>},
-      {"AddN", ConvertSimpleOperator<AddNOperator>},
+      {"AddN", ConvertSimpleOperatorFlexOk<AddNOperator>},
       {"All", ConvertSimpleOperator<TensorFlowAllOperator>},
       {"Any", ConvertReduceOperator<TensorFlowAnyOperator>},
       {"ArgMax", ConvertArgMaxOperator},
@@ -2245,6 +2298,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
        ConvertSimpleOperator<TensorFlowGreaterEqualOperator, 2>},
       {"Identity", ConvertIdentityOperator},
       {"LRN", ConvertLRNOperator},
+      {"LeakyRelu", ConvertLeakyReluOperator},
       {"LegacyFedInput", ConvertPlaceholderOperator},
       {"Less", ConvertSimpleOperator<TensorFlowLessOperator, 2>},
       {"LessEqual", ConvertSimpleOperator<TensorFlowLessEqualOperator, 2>},
@@ -2297,6 +2351,8 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Split", ConvertSplitOperator},
       {"Sqrt", ConvertSimpleOperator<TensorFlowSqrtOperator, 1>},
       {"Square", ConvertSimpleOperator<TensorFlowSquareOperator, 1>},
+      {"SquaredDifference",
+       ConvertSimpleOperator<SquaredDifferenceOperator, 2>},
       {"Squeeze", ConvertSqueezeOperator},
       {"StopGradient", ConvertIdentityOperator},
       {"StridedSlice", ConvertStridedSliceOperator},

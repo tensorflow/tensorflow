@@ -20,9 +20,9 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.lite.python import convert_saved_model as _convert_saved_model
 from tensorflow.lite.python import lite as _lite
-from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.python import keras as _keras
 from tensorflow.python.client import session as _session
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
@@ -166,18 +166,20 @@ def evaluate_keras_model(filename):
   return lambda input_data: [keras_model.predict(input_data)]
 
 
-# TODO(nupurgarg): Make this function a parameter to test_frozen_graph (and
-# related functions) in order to make it easy to use different data generators.
-def compare_models_random_data(tflite_model, tf_eval_func, tolerance=5):
-  """Compares TensorFlow and TFLite models with random data.
+def compare_models(tflite_model, tf_eval_func, input_data=None, tolerance=5):
+  """Compares TensorFlow and TFLite models.
+
+  Unless the input data is provided, the models are compared with random data.
 
   Args:
     tflite_model: Serialized TensorFlow Lite model.
     tf_eval_func: Lambda function that takes in input data and outputs the
       results of the TensorFlow model ([np.ndarray data] : [np.ndarray result]).
+    input_data: np.ndarray to pass into models during inference. (default None)
     tolerance: Decimal place to check accuracy to. (default 5)
   """
-  input_data = _generate_random_input_data(tflite_model)
+  if input_data is None:
+    input_data = _generate_random_input_data(tflite_model)
   tf_results = tf_eval_func(input_data)
   tflite_results = _evaluate_tflite_model(tflite_model, input_data)
   for tf_result, tflite_result in zip(tf_results, tflite_results):
@@ -253,6 +255,7 @@ def test_frozen_graph(filename,
                       input_arrays,
                       output_arrays,
                       input_shapes=None,
+                      input_data=None,
                       **kwargs):
   """Validates the TensorFlow frozen graph converts to a TFLite model.
 
@@ -267,6 +270,7 @@ def test_frozen_graph(filename,
       integers representing input shapes (e.g., {"foo" : [1, 16, 16, 3]}).
       Automatically determined when input shapes is None (e.g., {"foo" : None}).
         (default None)
+    input_data: np.ndarray to pass into models during inference. (default None)
     **kwargs: Additional arguments to be passed into the converter.
   """
   converter = _lite.TFLiteConverter.from_frozen_graph(
@@ -274,13 +278,14 @@ def test_frozen_graph(filename,
   tflite_model = _convert(converter, **kwargs)
 
   tf_eval_func = evaluate_frozen_graph(filename, input_arrays, output_arrays)
-  compare_models_random_data(tflite_model, tf_eval_func)
+  compare_models(tflite_model, tf_eval_func, input_data=input_data)
 
 
 def test_saved_model(directory,
                      input_shapes=None,
                      tag_set=None,
                      signature_key=None,
+                     input_data=None,
                      **kwargs):
   """Validates the TensorFlow SavedModel converts to a TFLite model.
 
@@ -296,6 +301,7 @@ def test_saved_model(directory,
     tag_set: Set of tags identifying the MetaGraphDef within the SavedModel to
       analyze. All tags in the tag set must be present.
     signature_key: Key identifying SignatureDef containing inputs and outputs.
+    input_data: np.ndarray to pass into models during inference. (default None)
     **kwargs: Additional arguments to be passed into the converter.
   """
   converter = _lite.TFLiteConverter.from_saved_model(
@@ -306,10 +312,14 @@ def test_saved_model(directory,
   tflite_model = _convert(converter, **kwargs)
 
   tf_eval_func = evaluate_saved_model(directory, tag_set, signature_key)
-  compare_models_random_data(tflite_model, tf_eval_func)
+  compare_models(tflite_model, tf_eval_func, input_data=input_data)
 
 
-def test_keras_model(filename, input_arrays=None, input_shapes=None, **kwargs):
+def test_keras_model(filename,
+                     input_arrays=None,
+                     input_shapes=None,
+                     input_data=None,
+                     **kwargs):
   """Validates the tf.keras model converts to a TFLite model.
 
   Converts the tf.keras model to TFLite and checks the accuracy of the model on
@@ -322,6 +332,7 @@ def test_keras_model(filename, input_arrays=None, input_shapes=None, **kwargs):
       integers representing input shapes (e.g., {"foo" : [1, 16, 16, 3]}).
       Automatically determined when input shapes is None (e.g., {"foo" : None}).
         (default None)
+    input_data: np.ndarray to pass into models during inference. (default None)
     **kwargs: Additional arguments to be passed into the converter.
   """
   converter = _lite.TFLiteConverter.from_keras_model_file(
@@ -329,4 +340,4 @@ def test_keras_model(filename, input_arrays=None, input_shapes=None, **kwargs):
   tflite_model = _convert(converter, **kwargs)
 
   tf_eval_func = evaluate_keras_model(filename)
-  compare_models_random_data(tflite_model, tf_eval_func)
+  compare_models(tflite_model, tf_eval_func, input_data=input_data)

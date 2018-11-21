@@ -282,29 +282,29 @@ class AsTensorTest(test.TestCase):
     with self.cached_session():
       x = ops.convert_to_tensor(tensor_shape.TensorShape([]))
       self.assertEqual(dtypes_lib.int32, x.dtype)
-      self.assertAllEqual([], x.eval())
+      self.assertAllEqual([], self.evaluate(x))
 
       x = ops.convert_to_tensor(tensor_shape.TensorShape([1, 2, 3]))
       self.assertEqual(dtypes_lib.int32, x.dtype)
-      self.assertAllEqual([1, 2, 3], x.eval())
+      self.assertAllEqual([1, 2, 3], self.evaluate(x))
 
       x = ops.convert_to_tensor(tensor_shape.TensorShape([2**31-1, 2, 3]))
       self.assertEqual(dtypes_lib.int32, x.dtype)
-      self.assertAllEqual([2**31-1, 2, 3], x.eval())
+      self.assertAllEqual([2**31 - 1, 2, 3], self.evaluate(x))
 
       x = ops.convert_to_tensor(tensor_shape.TensorShape([2**31-1, 2, 3]),
                                 dtype=dtypes_lib.int32)
       self.assertEqual(dtypes_lib.int32, x.dtype)
-      self.assertAllEqual([2**31-1, 2, 3], x.eval())
+      self.assertAllEqual([2**31 - 1, 2, 3], self.evaluate(x))
 
       x = ops.convert_to_tensor(tensor_shape.TensorShape([2**31, 2, 3]))
       self.assertEqual(dtypes_lib.int64, x.dtype)
-      self.assertAllEqual([2**31, 2, 3], x.eval())
+      self.assertAllEqual([2**31, 2, 3], self.evaluate(x))
 
       x = ops.convert_to_tensor(tensor_shape.TensorShape([2**31, 2, 3]),
                                 dtype=dtypes_lib.int64)
       self.assertEqual(dtypes_lib.int64, x.dtype)
-      self.assertAllEqual([2**31, 2, 3], x.eval())
+      self.assertAllEqual([2**31, 2, 3], self.evaluate(x))
 
       with self.assertRaisesRegexp(
           ValueError, "a dimension is too large .2147483648."):
@@ -314,11 +314,11 @@ class AsTensorTest(test.TestCase):
       x = ops.convert_to_tensor(
           tensor_shape.TensorShape([1, 2, 3]), dtype=dtypes_lib.int64)
       self.assertEqual(dtypes_lib.int64, x.dtype)
-      self.assertAllEqual([1, 2, 3], x.eval())
+      self.assertAllEqual([1, 2, 3], self.evaluate(x))
 
       x = array_ops.reshape(
           array_ops.zeros([6]), tensor_shape.TensorShape([2, 3]))
-      self.assertAllEqual([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], x.eval())
+      self.assertAllEqual([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], self.evaluate(x))
 
     with self.assertRaisesRegexp(ValueError, "partially known"):
       ops.convert_to_tensor(tensor_shape.TensorShape(None))
@@ -334,12 +334,12 @@ class AsTensorTest(test.TestCase):
     with self.cached_session():
       x = ops.convert_to_tensor(tensor_shape.TensorShape([1, 2, 3])[1])
       self.assertEqual(dtypes_lib.int32, x.dtype)
-      self.assertAllEqual(2, x.eval())
+      self.assertAllEqual(2, self.evaluate(x))
 
       x = ops.convert_to_tensor(
           tensor_shape.TensorShape([1, 2, 3])[1], dtype=dtypes_lib.int64)
       self.assertEqual(dtypes_lib.int64, x.dtype)
-      self.assertAllEqual(2, x.eval())
+      self.assertAllEqual(2, self.evaluate(x))
 
     shape = tensor_shape.TensorShape(None)
     if shape._v2_behavior:
@@ -372,7 +372,7 @@ class ZerosTest(test.TestCase):
     with self.cached_session():
       ret = array_ops.zeros(shape)
       self.assertEqual(shape, ret.get_shape())
-      return ret.eval()
+      return self.evaluate(ret)
 
   def testConst(self):
     self.assertTrue(
@@ -383,7 +383,7 @@ class ZerosTest(test.TestCase):
     self.assertEqual(0, self._Zeros(()))
     with self.cached_session():
       scalar = array_ops.zeros(constant_op.constant([], dtype=dtypes_lib.int32))
-      self.assertEqual(0, scalar.eval())
+      self.assertEqual(0, self.evaluate(scalar))
 
   def testDynamicSizes(self):
     np_ans = np.array([[0] * 3] * 2)
@@ -392,7 +392,7 @@ class ZerosTest(test.TestCase):
       d = array_ops.fill([2, 3], 12., name="fill")
       # Constructs a tensor of zeros of the same dimensions as "d".
       z = array_ops.zeros(array_ops.shape(d))
-      out = z.eval()
+      out = self.evaluate(z)
     self.assertAllEqual(np_ans, out)
     self.assertShapeEqual(np_ans, d)
     self.assertShapeEqual(np_ans, z)
@@ -420,13 +420,13 @@ class ZerosTest(test.TestCase):
         z = array_ops.zeros([2, 3], dtype=dtype)
         self.assertEqual(z.dtype, dtype)
         self.assertEqual([2, 3], z.get_shape())
-        z_value = z.eval()
+        z_value = self.evaluate(z)
         self.assertFalse(np.any(z_value))
         self.assertEqual((2, 3), z_value.shape)
         z = array_ops.zeros(array_ops.shape(d), dtype=dtype)
         self.assertEqual(z.dtype, dtype)
         self.assertEqual([2, 3], z.get_shape())
-        z_value = z.eval()
+        z_value = self.evaluate(z)
         self.assertFalse(np.any(z_value))
         self.assertEqual((2, 3), z_value.shape)
 
@@ -538,7 +538,7 @@ class OnesTest(test.TestCase):
     with self.cached_session():
       ret = array_ops.ones(shape)
       self.assertEqual(shape, ret.get_shape())
-      return ret.eval()
+      return self.evaluate(ret)
 
   def testConst(self):
     self.assertTrue(np.array_equal(self._Ones([2, 3]), np.array([[1] * 3] * 2)))
@@ -548,7 +548,7 @@ class OnesTest(test.TestCase):
     self.assertEqual(1, self._Ones(()))
     with self.cached_session():
       scalar = array_ops.ones(constant_op.constant([], dtype=dtypes_lib.int32))
-      self.assertEqual(1, scalar.eval())
+      self.assertEqual(1, self.evaluate(scalar))
 
   def testDynamicSizes(self):
     np_ans = np.array([[1] * 3] * 2)
@@ -557,7 +557,7 @@ class OnesTest(test.TestCase):
       d = array_ops.fill([2, 3], 12., name="fill")
       # Constructs a tensor of ones of the same dimensions as "d".
       z = array_ops.ones(array_ops.shape(d))
-      out = z.eval()
+      out = self.evaluate(z)
     self.assertAllEqual(np_ans, out)
     self.assertShapeEqual(np_ans, d)
     self.assertShapeEqual(np_ans, z)
@@ -617,7 +617,7 @@ class OnesLikeTest(test.TestCase):
         z_var = array_ops.ones_like(d)
         # Test that the type is correct
         self.assertEqual(z_var.dtype, dtype)
-        z_value = z_var.eval()
+        z_value = self.evaluate(z_var)
 
       # Test that the value is correct
       self.assertTrue(np.array_equal(z_value, np.array([[1] * 3] * 2)))
@@ -634,7 +634,7 @@ class FillTest(test.TestCase):
   def _compare(self, dims, val, np_ans, use_gpu):
     with self.cached_session(use_gpu=use_gpu):
       tf_ans = array_ops.fill(dims, val, name="fill")
-      out = tf_ans.eval()
+      out = self.evaluate(tf_ans)
     self.assertAllClose(np_ans, out)
     # Fill does not set the shape.
     # self.assertShapeEqual(np_ans, tf_ans)
@@ -726,7 +726,7 @@ class PlaceholderTest(test.TestCase):
 
       with self.assertRaisesOpError(
           "must feed a value for placeholder tensor 'p' with dtype float"):
-        p_identity.eval()
+        self.evaluate(p_identity)
 
   def testShape(self):
     with self.cached_session():
@@ -739,7 +739,7 @@ class PlaceholderTest(test.TestCase):
       with self.assertRaisesOpError(
           "must feed a value for placeholder tensor 'p' with dtype float and "
           r"shape \[10,10\]"):
-        p_identity.eval()
+        self.evaluate(p_identity)
 
       with self.assertRaisesWithPredicateMatch(
           ValueError, lambda e: "Cannot feed value of shape" in str(e)):
@@ -783,7 +783,7 @@ class PlaceholderTest(test.TestCase):
       # Should trigger an operator error, not a shape error.
       with self.assertRaisesOpError(
           "must feed a value for placeholder tensor 'p' with dtype float"):
-        p_identity.eval()
+        self.evaluate(p_identity)
 
   def testControlDependency(self):
     with self.cached_session():
@@ -896,7 +896,7 @@ class PlaceholderWithDefaultTest(test.TestCase):
     with self.session(force_gpu=test_util.is_gpu_available()):
       p = array_ops.placeholder_with_default([[2, 2], [2, 2]], shape=[2, 2])
       a = array_ops.identity(p)
-      self.assertAllEqual([[2, 2], [2, 2]], a.eval())
+      self.assertAllEqual([[2, 2], [2, 2]], self.evaluate(a))
       self.assertAllEqual(
           [[3, 3], [3, 3]], a.eval(feed_dict={p: [[3, 3], [3, 3]]}))
 
@@ -907,7 +907,7 @@ class PlaceholderWithDefaultTest(test.TestCase):
     with self.session(force_gpu=test_util.is_gpu_available()):
       p = array_ops.placeholder_with_default([1, 2, 3], shape=[None])
       a = array_ops.identity(p)
-      self.assertAllEqual([1, 2, 3], a.eval())
+      self.assertAllEqual([1, 2, 3], self.evaluate(a))
       self.assertAllEqual([3, 37], a.eval(feed_dict={p: [3, 37]}))
 
       with self.assertRaises(ValueError):
@@ -917,7 +917,7 @@ class PlaceholderWithDefaultTest(test.TestCase):
     with self.session(force_gpu=test_util.is_gpu_available()):
       p = array_ops.placeholder_with_default([17], shape=None)
       a = array_ops.identity(p)
-      self.assertAllEqual([17], a.eval())
+      self.assertAllEqual([17], self.evaluate(a))
       self.assertAllEqual([3, 37], a.eval(feed_dict={p: [3, 37]}))
       self.assertAllEqual(
           [[3, 3], [3, 3]], a.eval(feed_dict={p: [[3, 3], [3, 3]]}))

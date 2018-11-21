@@ -50,7 +50,7 @@ class GatherTest(test.TestCase):
           params = constant_op.constant(params_np)
           indices_tf = constant_op.constant(indices)
           gather_t = array_ops.gather(params, indices_tf)
-          gather_val = gather_t.eval()
+          gather_val = self.evaluate(gather_t)
           np_val = params_np[indices]
           self.assertAllEqual(np_val, gather_val)
           self.assertEqual(np_val.shape, gather_t.get_shape())
@@ -65,7 +65,7 @@ class GatherTest(test.TestCase):
           params = constant_op.constant(params_np)
           indices = constant_op.constant(2)
           gather_t = array_ops.gather(params, indices, axis=axis)
-          gather_val = gather_t.eval()
+          gather_val = self.evaluate(gather_t)
           self.assertAllEqual(np.take(params_np, 2, axis=axis), gather_val)
           expected_shape = data.shape[:axis] + data.shape[axis + 1:]
           self.assertEqual(expected_shape, gather_t.get_shape())
@@ -81,7 +81,7 @@ class GatherTest(test.TestCase):
           # The indices must be in bounds for any axis.
           indices = constant_op.constant([0, 1, 0, 2])
           gather_t = array_ops.gather(params, indices, axis=axis)
-          gather_val = gather_t.eval()
+          gather_val = self.evaluate(gather_t)
           self.assertAllEqual(np.take(params_np, [0, 1, 0, 2], axis=axis),
                               gather_val)
           expected_shape = data.shape[:axis] + (4,) + data.shape[axis + 1:]
@@ -142,8 +142,11 @@ class GatherTest(test.TestCase):
               source_slice = ((slice(None),) * outer_dims + (source_index,) +
                               (slice(None),) * inner_dims)
               correct_params_grad[dest_slice] += gather_grad[source_slice]
-            self.assertAllClose(correct_params_grad, params_grad.eval(),
-                                atol=2e-6, rtol=2e-6)
+            self.assertAllClose(
+                correct_params_grad,
+                self.evaluate(params_grad),
+                atol=2e-6,
+                rtol=2e-6)
 
   def testString(self):
     params = np.array([[b"asdf", b"zxcv"], [b"qwer", b"uiop"]])

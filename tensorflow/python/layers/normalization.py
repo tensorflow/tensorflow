@@ -23,6 +23,7 @@ from __future__ import print_function
 from tensorflow.python.keras import layers as keras_layers
 from tensorflow.python.layers import base
 from tensorflow.python.ops import init_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -154,6 +155,9 @@ class BatchNormalization(keras_layers.BatchNormalization, base.Layer):
     return super(BatchNormalization, self).call(inputs, training=training)
 
 
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.batch_normalization instead.')
 @tf_export(v1=['layers.batch_normalization'])
 def batch_normalization(inputs,
                         axis=-1,

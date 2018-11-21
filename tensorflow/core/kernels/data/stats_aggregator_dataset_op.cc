@@ -163,19 +163,13 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
         mutex_lock l(mu_);
         StatsAggregatorResource* stats_aggregator_resource =
             dataset()->stats_aggregator_resource_;
-        IteratorContext::Params params;
-        params.env = ctx->env();
-        params.runner = *(ctx->runner());
+        IteratorContext::Params params(ctx);
         params.stats_aggregator = std::shared_ptr<StatsAggregator>(
             new StatsAggregatorWithTagAndPrefix(
                 stats_aggregator_resource->stats_aggregator(), dataset()->tag_,
                 dataset()->prefix_));
-        params.lib = ctx->lib();
-        params.function_library = ctx->function_library();
-        params.allocator_getter = ctx->allocator_getter();
-        IteratorContext set_stats_aggregator_ctx(params);
-        return input_impl_->GetNext(&set_stats_aggregator_ctx, out_tensors,
-                                    end_of_sequence);
+        IteratorContext iter_ctx(std::move(params));
+        return input_impl_->GetNext(&iter_ctx, out_tensors, end_of_sequence);
       }
 
      protected:

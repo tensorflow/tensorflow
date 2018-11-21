@@ -31,6 +31,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
+# TODO(b/117581999): Add eager coverage for the following tests.
 class ModelDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def testModelMap(self):
@@ -72,7 +73,7 @@ class ModelDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.cached_session() as sess:
       for _ in range(5):
         sess.run(get_next.op)
-      for _ in range(1000):
+      for _ in range(100):
         start = time.time()
         sess.run(get_next.op)
         end = time.time()
@@ -136,7 +137,7 @@ class ModelDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.cached_session() as sess:
       for _ in range(5):
         sess.run(get_next.op)
-      for _ in range(1000):
+      for _ in range(100):
         start = time.time()
         sess.run(get_next.op)
         end = time.time()

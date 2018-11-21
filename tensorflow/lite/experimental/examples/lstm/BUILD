@@ -23,10 +23,8 @@ py_test(
     srcs = ["unidirectional_sequence_lstm_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "manual",
         "no_oss",
         "no_pip",
-        "notap",
     ],
     deps = [
         ":tflite_lstm",

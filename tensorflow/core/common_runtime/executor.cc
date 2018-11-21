@@ -1713,7 +1713,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         auto done = [this, state]() {
           Device* device = impl_->params_.device;
           NodeExecStatsInterface* stats = state->stats;  // Shorthand
-          Entry* first_input = state->first_input;     // Shorthand
+          Entry* first_input = state->first_input;       // Shorthand
 
           nodestats::SetOpEnd(stats);
           EntryVector outputs;
@@ -2046,6 +2046,23 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
 void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
                                      const NodeItem* item, EntryVector* outputs,
                                      TaggedNodeSeq* ready) {
+  auto activity_handle =
+      [&]() -> std::unique_ptr<tracing::TraceCollector::Handle> {
+    if (TF_PREDICT_FALSE(trace_collector_ != nullptr &&
+                         trace_collector_->IsEnabledForActivities(
+                             false /* is_expensive */))) {
+      const string& op_name = item->kernel->name();
+      // Intentionally using ExecutorPropagateOutputs as the first key so that
+      // users are aware that it's not the op invocation.
+      return trace_collector_->CreateActivityHandle(
+          "ExecutorPropagateOutputs",
+          strings::StrCat(op_name, "#id=", step_id_, "#"),
+          false /* is_expensive */);
+    } else {
+      return nullptr;
+    }
+  }();
+
   const Node* node = tagged_node.node;
   FrameState* input_frame = tagged_node.input_frame;
   const int64 input_iter = tagged_node.input_iter;
@@ -2377,18 +2394,23 @@ void ExecutorState::Finish() {
   auto done_cb = std::move(done_cb_);
   auto runner = std::move(runner_);
   mu_.unlock();
+  CHECK(done_cb != nullptr);
   Device* device = impl_->params_.device;
+
   if ((sync_on_finish_ && status.ok()) || device->RequiresSyncOnCompletion()) {
     // Block until the device has finished all queued operations. For
     // devices like GPUs that continue to execute Ops after their Compute
     // methods have completed, this ensures that control is not returned to
     // the user until the step (and its side-effects) has actually completed.
-    status.Update(device->Sync());
+    device->Sync([=](Status new_status) mutable {
+      status.Update(new_status);
+      delete this;
+      runner([=]() { done_cb(status); });
+    });
+  } else {
+    delete this;
+    runner([=]() { done_cb(status); });
   }
-
-  delete this;
-  CHECK(done_cb != nullptr);
-  runner([=]() { done_cb(status); });
 }
 
 void ExecutorState::FindOrCreateChildFrame(FrameState* frame, int64 iter,

@@ -59,6 +59,7 @@ class TfLiteDriver : public TestRunner {
   std::unique_ptr<Interpreter> interpreter_;
   std::map<int, std::unique_ptr<Expectation>> expected_output_;
   bool must_allocate_tensors_ = true;
+  std::vector<TfLiteTensor*> tensors_to_deallocate_;
 };
 
 }  // namespace testing

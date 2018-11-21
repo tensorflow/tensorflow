@@ -64,7 +64,7 @@ class SoftmaxTest(test.TestCase):
         tf_softmax = nn_ops.log_softmax(np_features, axis=dim, name=name)
       else:
         tf_softmax = nn_ops.softmax(np_features, axis=dim, name=name)
-      out = tf_softmax.eval()
+      out = self.evaluate(tf_softmax)
     self.assertAllCloseAccordingToType(np_softmax, out)
     self.assertShapeEqual(np_softmax, tf_softmax)
     if not log:
@@ -113,7 +113,7 @@ class SoftmaxTest(test.TestCase):
     features = np.array([[1., 1., 1., 1.], [max, 1., 2., 3.]]).astype(type)
     with self.cached_session(use_gpu=use_gpu):
       tf_log_softmax = nn_ops.log_softmax(features)
-      out = tf_log_softmax.eval()
+      out = self.evaluate(tf_log_softmax)
     self.assertAllClose(
         np.array([[-1.386294, -1.386294, -1.386294, -1.386294],
                   [0, -max, -max, -max]]),
@@ -221,6 +221,13 @@ class SoftmaxTest(test.TestCase):
       dim = array_ops.placeholder_with_default(100, shape=[])
       with self.assertRaises(errors_impl.InvalidArgumentError):
         nn_ops.softmax([1., 2., 3., 4.], axis=dim).eval()
+
+  def testInvalidAxis(self):
+    # Test case for GitHub issue 22793.
+    with self.cached_session():
+      ones = array_ops.ones(shape=[2, 3])
+      with self.assertRaises(errors_impl.InvalidArgumentError):
+        nn_ops.softmax(ones, axis=2).eval()
 
   def testLargeDims(self):
     # Make sure that we properly handle large inputs. See

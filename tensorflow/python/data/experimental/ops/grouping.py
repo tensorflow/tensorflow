@@ -454,8 +454,7 @@ class _GroupByWindowDataset(dataset_ops.UnaryDataset):
         self._transformation_name(),
         input_classes=(ops.Tensor, nested_dataset),
         input_shapes=(tensor_shape.scalar(), nested_dataset),
-        input_types=(dtypes.int64, nested_dataset),
-        experimental_nested_dataset_support=True)
+        input_types=(dtypes.int64, nested_dataset))
     if not isinstance(
         wrapped_func.output_classes, dataset_ops._NestedDatasetComponent):  # pylint: disable=protected-access
       raise TypeError("`reduce_func` must return a `Dataset` object.")
@@ -528,10 +527,7 @@ class _MapXDataset(dataset_ops.UnaryDataset):
     self._input_dataset = input_dataset
 
     wrapped_func = dataset_ops.StructuredFunctionWrapper(
-        map_func,
-        self._transformation_name(),
-        dataset=input_dataset,
-        experimental_nested_dataset_support=True)
+        map_func, self._transformation_name(), dataset=input_dataset)
     self._output_classes = wrapped_func.output_classes
     self._output_shapes = wrapped_func.output_shapes
     self._output_types = wrapped_func.output_types

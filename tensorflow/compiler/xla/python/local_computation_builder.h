@@ -39,6 +39,12 @@ namespace swig {
 // returned.
 Status InitializeReplicaCount(int replica_count);
 
+// Initializes the platform name that XLA will be initialized with (when
+// first obtaining a handle to the local XLA service). If this is called after
+// the handle to the local XLA service has been established, then an error is
+// returned.
+Status InitializePlatformName(const string& platform_name);
+
 // Returns the replica count that is currently set, regardless of whether the
 // local XLA service has been instantiated yet or not.
 int GetReplicaCount();

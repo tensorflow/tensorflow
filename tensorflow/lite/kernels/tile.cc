@@ -182,6 +182,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt64:
       Tile<int64_t>(*(input->dims), input, multipliers, output);
       break;
+    case kTfLiteBool:
+      Tile<bool>(*(input->dims), input, multipliers, output);
+      break;
     default:
       context->ReportError(context, "Type '%s' is not supported by tile.",
                            TfLiteTypeGetName(output->type));

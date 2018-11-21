@@ -628,6 +628,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:logging_ops",
         "//tensorflow/core/kernels:math",
+        "//tensorflow/core/kernels:nn",
         "//tensorflow/core/kernels:parsing",
         "//tensorflow/tools/graph_transforms:transform_utils",
     ] + tf_protos_all(),

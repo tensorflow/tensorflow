@@ -212,7 +212,7 @@ class _DistributionMeta(abc.ABCMeta):
     return abc.ABCMeta.__new__(mcs, classname, baseclasses, attrs)
 
 
-@tf_export("distributions.ReparameterizationType")
+@tf_export(v1=["distributions.ReparameterizationType"])
 class ReparameterizationType(object):
   """Instances of this class represent how sampling is reparameterized.
 
@@ -263,7 +263,7 @@ class ReparameterizationType(object):
 # reparameterized distribution support straight-through gradients with
 # respect to all parameters.
 FULLY_REPARAMETERIZED = ReparameterizationType("FULLY_REPARAMETERIZED")
-tf_export("distributions.FULLY_REPARAMETERIZED").export_constant(
+tf_export(v1=["distributions.FULLY_REPARAMETERIZED"]).export_constant(
     __name__, "FULLY_REPARAMETERIZED")
 
 
@@ -271,12 +271,12 @@ tf_export("distributions.FULLY_REPARAMETERIZED").export_constant(
 # reparameterized distribution do not support straight-through gradients for
 # at least some of the parameters.
 NOT_REPARAMETERIZED = ReparameterizationType("NOT_REPARAMETERIZED")
-tf_export("distributions.NOT_REPARAMETERIZED").export_constant(
+tf_export(v1=["distributions.NOT_REPARAMETERIZED"]).export_constant(
     __name__, "NOT_REPARAMETERIZED")
 
 
 @six.add_metaclass(_DistributionMeta)
-@tf_export("distributions.Distribution")
+@tf_export(v1=["distributions.Distribution"])
 class Distribution(_BaseDistribution):
   """A generic probability distribution base class.
 

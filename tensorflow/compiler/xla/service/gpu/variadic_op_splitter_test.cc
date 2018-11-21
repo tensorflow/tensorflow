@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -32,7 +32,7 @@ namespace gpu {
 namespace {
 using match::Concatenate;
 
-class VariadicOpSplitterTest : public HloVerifiedTestBase {};
+class VariadicOpSplitterTest : public HloTestBase {};
 
 TEST_F(VariadicOpSplitterTest, DontSplit) {
   auto module = ParseAndReturnVerifiedModule(R"(

@@ -366,7 +366,7 @@ Status ReplaceOrRemoveOutsideCompilationCallNode(
 //    replace this node with compilation result node.
 // 3) all outside compilation graphs.
 Status ConstructHostGraph(
-    const string& xla_cluster_name,
+    const string& xla_cluster_name, const string& outside_compilation_attr_name,
     const std::vector<string>& outside_compilation_host_graphs,
     FunctionLibraryDefinition* fld, std::unique_ptr<Graph>* host_graph) {
   host_graph->reset(new Graph(fld));
@@ -394,12 +394,12 @@ Status ConstructHostGraph(
   for (const string& host_func : outside_compilation_host_graphs) {
     VLOG(4) << "Expanding host graph " << host_func;
     FunctionBody* host_fbody = nullptr;
-    TF_RETURN_IF_ERROR(
-        FunctionDefToBodyHelper(*fld->Find(host_func), AttrSlice(), fld,
-                                [&](const string& op, const OpDef** sig) {
-                                  return fld->LookUpOpDef(op, sig);
-                                },
-                                &host_fbody));
+    TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
+        *fld->Find(host_func), AttrSlice(), fld,
+        [&](const string& op, const OpDef** sig) {
+          return fld->LookUpOpDef(op, sig);
+        },
+        &host_fbody));
     std::unique_ptr<FunctionBody> host_fbody_deleter(host_fbody);
 
     // We use ReverseDFS() to copy nodes. Make sure all nodes are reverse
@@ -411,52 +411,53 @@ Status ConstructHostGraph(
     node_map[host_fbody->graph->source_node()] = (*host_graph)->source_node();
     node_map[host_fbody->graph->sink_node()] = (*host_graph)->sink_node();
     Status s;
-    ReverseDFS(*host_fbody->graph, /*enter=*/nullptr,
-               [&](const Node* n) {
-                 if (!s.ok()) {
-                   return;
-                 }
+    ReverseDFS(
+        *host_fbody->graph, /*enter=*/nullptr,
+        [&](const Node* n) {
+          if (!s.ok()) {
+            return;
+          }
 
-                 Node* copy;
-                 if (node_map.find(n) != node_map.end()) {
-                   // Already copied this node.
-                   copy = node_map.at(n);
-                 } else if (IsKeyPlaceholderNode(*n)) {
-                   // Change a).
-                   copy = key_placeholder;
-                   node_map[n] = copy;
-                 } else {
-                   // Copy the node.
-                   NodeDef copy_def = n->def();
-                   // Change c).
-                   copy_def.clear_device();
-                   copy = (*host_graph)->AddNode(copy_def, &s);
-                   if (!s.ok()) {
-                     return;
-                   }
-                   node_map[n] = copy;
-                 }
+          Node* copy;
+          if (node_map.find(n) != node_map.end()) {
+            // Already copied this node.
+            copy = node_map.at(n);
+          } else if (IsKeyPlaceholderNode(*n)) {
+            // Change a).
+            copy = key_placeholder;
+            node_map[n] = copy;
+          } else {
+            // Copy the node.
+            NodeDef copy_def = n->def();
+            // Change c).
+            copy_def.clear_device();
+            copy = (*host_graph)->AddNode(copy_def, &s);
+            if (!s.ok()) {
+              return;
+            }
+            node_map[n] = copy;
+          }
 
-                 // Only handle input edges. Output edges will be added later as
-                 // its output nodes' input edges.
-                 for (auto e : n->in_edges()) {
-                   if (node_map.find(e->src()) == node_map.end()) {
-                     s = errors::Internal("Cannot find node image for ",
-                                          e->src()->DebugString());
-                     return;
-                   }
-                   (*host_graph)
-                       ->AddEdge(node_map[e->src()], e->src_output(), copy,
-                                 e->dst_input());
-                 }
+          // Only handle input edges. Output edges will be added later as
+          // its output nodes' input edges.
+          for (auto e : n->in_edges()) {
+            if (node_map.find(e->src()) == node_map.end()) {
+              s = errors::Internal("Cannot find node image for ",
+                                   e->src()->DebugString());
+              return;
+            }
+            (*host_graph)
+                ->AddEdge(node_map[e->src()], e->src_output(), copy,
+                          e->dst_input());
+          }
 
-                 // Change b).
-                 if (copy->type_string() == "_XlaRecvAtHost" ||
-                     copy->type_string() == "_XlaSendFromHost") {
-                   (*host_graph)->AddControlEdge(copy, sequencer);
-                 }
-               },
-               NodeComparatorID());
+          // Change b).
+          if (copy->type_string() == "_XlaRecvAtHost" ||
+              copy->type_string() == "_XlaSendFromHost") {
+            (*host_graph)->AddControlEdge(copy, sequencer);
+          }
+        },
+        NodeComparatorID());
     if (!s.ok()) {
       return s;
     }
@@ -474,6 +475,10 @@ Status ConstructHostGraph(
   PruneForReverseReachability(
       host_graph->get(),
       std::unordered_set<const Node*>{(*host_graph)->sink_node()});
+
+  // Postprocess edges between different outside compilations.
+  TF_RETURN_IF_ERROR(PostprocessEdgesBetweenOutsideCompilations(
+      host_graph->get(), outside_compilation_attr_name));
 
   if (VLOG_IS_ON(4)) {
     dump_graph::DumpGraphToFile(
@@ -800,6 +805,11 @@ Status ExtractOutsideCompilationForFunction(
       },
       &fbody));
   std::unique_ptr<FunctionBody> fbody_deleter(fbody);
+
+  // Preprocess edges between different outside compilations. They will be
+  // restored in `ConstructHostGraph()`.
+  TF_RETURN_IF_ERROR(PreprocessEdgesBetweenOutsideCompilations(
+      fbody->graph, outside_compilation_attr_name));
   if (VLOG_IS_ON(4)) {
     dump_graph::DumpGraphToFile(
         absl::StrCat("extract_outside_compilation_for_func_before_", func_name),
@@ -838,7 +848,12 @@ Status ExtractOutsideCompilationForFunction(
         FunctionDef shape_inference_fdef = *xla_fdef;
         shape_inference_fdef.mutable_signature()->set_name(
             shape_inference_graph);
-        TF_RETURN_IF_ERROR(fld->AddFunctionDef(shape_inference_fdef));
+        if (fld->Find(shape_inference_graph)) {
+          TF_RETURN_IF_ERROR(fld->ReplaceFunction(shape_inference_graph,
+                                                  shape_inference_fdef));
+        } else {
+          TF_RETURN_IF_ERROR(fld->AddFunctionDef(shape_inference_fdef));
+        }
       }
     }
   }
@@ -854,8 +869,9 @@ Status ExtractOutsideCompilationForFunction(
 
   // Construct host graph.
   if (!outside_compilation_host_graphs.empty()) {
-    TF_RETURN_IF_ERROR(ConstructHostGraph(
-        xla_cluster_name, outside_compilation_host_graphs, fld, host_graph));
+    TF_RETURN_IF_ERROR(
+        ConstructHostGraph(xla_cluster_name, outside_compilation_attr_name,
+                           outside_compilation_host_graphs, fld, host_graph));
   }
 
   // Remove the outside compilation graphs from function library.

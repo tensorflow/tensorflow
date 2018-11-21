@@ -90,20 +90,29 @@ string HumanReadableProfileBuilder::ToString() const {
         op.optimal_seconds < 0
             ? ""
             : StrFormat("(%12.1f optimal)", op.optimal_seconds * 1e6),
-        op.flop_count <= 0 ? "" : HumanReadableNumFlops(op.flop_count, nsecs),
-        op.transcendental_count <= 0
-            ? ""
-            : HumanReadableNumTranscendentalOps(op.transcendental_count, nsecs),
+        op.flop_count > 0 && nsecs > 0
+            ? HumanReadableNumFlops(op.flop_count, nsecs)
+            : "",
+        op.transcendental_count > 0 && nsecs > 0
+            ? HumanReadableNumTranscendentalOps(op.transcendental_count, nsecs)
+            : "",
         bytes_per_sec, bytes_per_cycle, op.name);
   };
 
-  float optimal_seconds_sum = 0.0;
+  double optimal_seconds_sum = 0;
   int64 total_flops = 0.;
   int64 total_transcendentals = 0.;
   int64 total_bytes = 0;
   for (const auto& op : op_infos_) {
     if (op.optimal_seconds > 0) {
-      optimal_seconds_sum += op.optimal_seconds;
+      // An op can run faster than the estimated optimum. For example, we might
+      // estimate a fusion's speed by looking at the size of its operands and
+      // result, but perhaps the fusion doesn't read the entirety of all of its
+      // inputs.  For the purposes of summing the instructions' optimal speeds,
+      // we treat the "optimum" as the smallest of either the estimated optimum
+      // and the actual speed.
+      optimal_seconds_sum +=
+          std::min(double{op.optimal_seconds}, CyclesToSeconds(op.cycles));
     }
     total_flops += std::max(op.flop_count, int64{0});
     total_transcendentals += std::max(op.transcendental_count, int64{0});
@@ -114,7 +123,7 @@ string HumanReadableProfileBuilder::ToString() const {
 
   print_op({is_entry_computation_ ? "[total] [entry]" : "[total]", "[total]",
             /*category=*/"", total_cycles_, total_flops, total_transcendentals,
-            total_bytes, optimal_seconds_sum},
+            total_bytes, static_cast<float>(optimal_seconds_sum)},
            /*is_total=*/true);
 
   // Sort ops in decreasing order of cycles, and print them.
@@ -155,8 +164,10 @@ string HumanReadableProfileBuilder::ToString() const {
         entry.text = op.name;
         entry.short_text = op.short_name;
         entry.category_text = op.category;
-        entry.metric =
-            CyclesToMicroseconds(op.cycles) - op.optimal_seconds * 1e6;
+        // Ignore ops that run faster than the estimated optimal here, as we do
+        // when calculating optimal_seconds_sum.
+        entry.metric = std::max(
+            0., CyclesToMicroseconds(op.cycles) - op.optimal_seconds * 1e6);
         total_discrepancy_in_microseconds += entry.metric;
         table.AddEntry(std::move(entry));
       }

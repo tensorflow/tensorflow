@@ -53,6 +53,9 @@ class TrtCandidateSelector {
   // GraphProperties of the graph whose nodes are to be validated by
   // IsTensorRTCandidate().
   const grappler::GraphProperties& graph_properties_;
+
+  // Quantization ops are only converted when using quantized precisions.
+  const int precision_mode_;
 };
 
 struct ConversionParams {
@@ -101,8 +104,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
     size_t max_workspace_size_bytes, tensorflow::GraphDef* new_graph_def,
     int precision_mode = 1, int minimum_segment_size = 3,
     bool is_dyn_op = false, int max_cached_engines = 1,
-    std::vector<int> cached_engine_batches = {},
-    bool use_calibration = true);
+    std::vector<int> cached_engine_batches = {}, bool use_calibration = true);
 
 // Method to call from optimization pass
 tensorflow::Status ConvertAfterShapes(ConversionParams& params);

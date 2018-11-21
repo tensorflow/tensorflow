@@ -370,6 +370,11 @@ HloAllReduceInstruction::HloAllReduceInstruction(
   AppendComputation(reduce_computation);
 }
 
+void HloAllReduceInstruction::set_all_reduce_id(
+    const absl::optional<int64>& all_reduce_id) {
+  all_reduce_id_ = all_reduce_id;
+}
+
 HloInstructionProto HloAllReduceInstruction::ToProto() const {
   HloInstructionProto proto = HloCollectiveInstruction::ToProto();
   // Proto3 is so sad.
@@ -2349,4 +2354,43 @@ HloInstructionProto HloDomainInstruction::ToProto() const {
 
   return proto;
 }
+
+HloGetDimensionSizeInstruction::HloGetDimensionSizeInstruction(
+    const Shape& shape, HloInstruction* operand, int64 dimension)
+    : HloInstruction(HloOpcode::kGetDimensionSize, shape),
+      dimension_(dimension) {
+  AppendOperand(operand);
+}
+
+HloInstructionProto HloGetDimensionSizeInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.add_dimensions(dimension());
+  return proto;
+}
+
+std::vector<string> HloGetDimensionSizeInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& /*options*/) const {
+  return {StrCat("dimensions={", dimension(), "}")};
+}
+
+bool HloGetDimensionSizeInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+    /*eq_computations*/) const {
+  const auto& casted_other =
+      static_cast<const HloGetDimensionSizeInstruction&>(other);
+  return dimension() == casted_other.dimension();
+}
+
+std::unique_ptr<HloInstruction>
+HloGetDimensionSizeInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* /*context*/) const {
+  if (new_operands.size() != 1) {
+    LOG(FATAL) << "expects 1 operand";
+  }
+  return absl::make_unique<HloGetDimensionSizeInstruction>(
+      shape, new_operands[0], dimension());
+}
+
 }  // namespace xla

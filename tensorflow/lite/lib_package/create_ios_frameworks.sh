@@ -30,7 +30,7 @@ echo "Creating target Headers directories"
 mkdir -p $FW_DIR_TFLITE_HDRS
 
 echo "Headers, populating: TensorFlow Lite"
-cd $TFLITE_DIR/../../..
+cd $TFLITE_DIR/../..
 
 find tensorflow/lite -name '*.h' \
     -not -path 'tensorflow/lite/tools/*' \
@@ -51,10 +51,10 @@ cd $FW_DIR_TFLITE_HDRS
 tar xf tmp.tar
 rm -f tmp.tar
 
-cd $TFLITE_DIR/../../..
+cd $TFLITE_DIR/../..
 echo "Generate master LICENSE file and copy to target"
 bazel build //tensorflow/tools/lib_package:clicenses_generate
-cp $TFLITE_DIR/../../../bazel-genfiles/tensorflow/tools/lib_package/include/tensorflow/c/LICENSE \
+cp $TFLITE_DIR/../../bazel-genfiles/tensorflow/tools/lib_package/include/tensorflow/c/LICENSE \
    $FW_DIR_TFLITE
 
 echo "Copying static libraries"

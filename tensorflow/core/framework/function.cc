@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb_text.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -149,8 +150,8 @@ class FunctionInstantiationHelper {
   }
 
   // Builds index for nodes that can be used as node's input arguments.
-  Status BuildInputArgIndex(const OpDef::ArgDef& arg_def,
-                            AttrSlice attr_values) {
+  Status BuildInputArgIndex(const OpDef::ArgDef& arg_def, AttrSlice attr_values,
+                            bool ints_on_device) {
     bool is_type_list;
     DataTypeVector dtypes;
     TF_RETURN_IF_ERROR(
@@ -169,7 +170,11 @@ class FunctionInstantiationHelper {
         strings::StrAppend(&name, "_", i);
       }
       NodeDef* gnode = AddNode(name);
-      gnode->set_op(FunctionLibraryDefinition::kArgOp);
+      if (ints_on_device && dtypes[i] == DataType::DT_INT32) {
+        gnode->set_op(FunctionLibraryDefinition::kDeviceArgOp);
+      } else {
+        gnode->set_op(FunctionLibraryDefinition::kArgOp);
+      }
       AddAttr("T", dtypes[i], gnode);
       AddAttr("index", arg_index, gnode);
       result_.arg_types.push_back(dtypes[i]);
@@ -564,9 +569,11 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
   std::vector<const NodeDef*> ret;
   std::vector<const NodeDef*> body;
   for (const NodeDef* n : nodes) {
-    if (n->op() == FunctionLibraryDefinition::kArgOp) {
+    if (n->op() == FunctionLibraryDefinition::kArgOp ||
+        n->op() == FunctionLibraryDefinition::kDeviceArgOp) {
       arg.push_back(n);
-    } else if (n->op() == FunctionLibraryDefinition::kRetOp) {
+    } else if (n->op() == FunctionLibraryDefinition::kRetOp ||
+               n->op() == FunctionLibraryDefinition::kDeviceRetOp) {
       ret.push_back(n);
     } else {
       body.push_back(n);
@@ -638,10 +645,13 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
   const OpDef& sig = fdef.signature();
   TF_RETURN_IF_ERROR(ValidateSignatureWithAttrs(sig, attr_values));
 
+  bool ints_on_device = fdef.attr().count("experimental_ints_on_device") != 0 &&
+                        fdef.attr().at("experimental_ints_on_device").b();
+
   FunctionInstantiationHelper helper(get_function, result);
   Status s;
   for (const OpDef::ArgDef& arg_def : sig.input_arg()) {
-    s = helper.BuildInputArgIndex(arg_def, attr_values);
+    s = helper.BuildInputArgIndex(arg_def, attr_values, ints_on_device);
     if (!s.ok()) {
       errors::AppendToMessage(&s, "In ", Print(arg_def));
       return s;
@@ -692,9 +702,6 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
       return s;
     }
   }
-
-  bool ints_on_device = fdef.attr().count("experimental_ints_on_device") != 0 &&
-                        fdef.attr().at("experimental_ints_on_device").b();
 
   // Emits nodes for the function's return values.
   int ret_index = 0;
@@ -1234,6 +1241,16 @@ const FunctionDef* FunctionLibraryDefinition::GetAttrImpl(
   }
 }
 
+std::vector<string> FunctionLibraryDefinition::ListFunctionNames() const {
+  std::vector<string> function_names;
+  tf_shared_lock l(mu_);
+  function_names.reserve(function_defs_.size());
+  for (const auto& it : function_defs_) {
+    function_names.emplace_back(it.first);
+  }
+  return function_names;
+}
+
 FunctionDefLibrary FunctionLibraryDefinition::ToProto() const {
   FunctionDefLibrary lib;
   tf_shared_lock l(mu_);
@@ -1272,6 +1289,138 @@ Status FunctionLibraryDefinition::GetAttr(const Node& node, const string& attr,
 GET_ATTR(string)
 GET_ATTR(bool)
 #undef GET_ATTR
+
+namespace {
+
+constexpr char kExperimentalApiImplements[] = "experimental_api_implements";
+
+absl::flat_hash_set<string> ReachableFunctions(
+    const FunctionLibraryDefinition& flib,
+    const protobuf::RepeatedPtrField<NodeDef>& nodes) {
+  // Functions that are reachable from the graph.
+  absl::flat_hash_set<string> reachable_funcs;
+
+  // For any functions, if it has attribute "experimental_api_implements" =
+  // "some_interface" and it is reachable, then it means any other
+  // function with same attribute name and value could also be potentially
+  // reachable, eg via experimental_implementation_selector swapping the
+  // nodedef.
+  absl::flat_hash_set<string> reachable_api_interface;
+
+  // Functions might be reachable from the nested function calls, so we keep a
+  // queue of functions that we have to check.
+  gtl::InlinedVector<const FunctionDef*, 4> func_queue;
+
+  // Add reachable and not already processed functions to the functions queue.
+  const auto add_to_func_queue = [&](const string& func_name) {
+    const FunctionDef* func = flib.Find(func_name);
+    if (func && reachable_funcs.find(func_name) == reachable_funcs.end()) {
+      func_queue.push_back(func);
+    }
+  };
+
+  // Add all the functions that are reachable from the given node to the queue.
+  const auto process_node = [&](const NodeDef& node) {
+    // Node itself can be a call to the function.
+    add_to_func_queue(node.op());
+
+    // Or node can have an attribute referencing a function.
+    for (const auto& attr : node.attr()) {
+      const auto& attr_value = attr.second;
+
+      // 1. AttrValue.func
+      if (attr_value.has_func()) {
+        add_to_func_queue(attr_value.func().name());
+      }
+
+      // 2. AttrValue.ListValue.func
+      if (attr_value.has_list()) {
+        for (const auto& func : attr_value.list().func()) {
+          add_to_func_queue(func.name());
+        }
+      }
+    }
+  };
+
+  // Add all functions that are directly called from the optimized graph.
+  std::for_each(nodes.begin(), nodes.end(), process_node);
+
+  // Process all reachable functions.
+  while (!func_queue.empty()) {
+    const FunctionDef* func = func_queue.back();
+    func_queue.pop_back();
+
+    const string& func_name = func->signature().name();
+    reachable_funcs.insert(func_name);
+
+    const auto attr_it = func->attr().find(kExperimentalApiImplements);
+    if (attr_it != func->attr().end()) {
+      reachable_api_interface.insert(attr_it->second.s());
+    }
+
+    // Find all the functions called from the function body.
+    const auto& func_body = func->node_def();
+    std::for_each(func_body.begin(), func_body.end(), process_node);
+
+    // Check if the function has a registered gradient.
+    const string grad_func_name = flib.FindGradient(func_name);
+    if (!grad_func_name.empty()) add_to_func_queue(grad_func_name);
+  }
+
+  for (const auto& func_name : flib.ListFunctionNames()) {
+    const auto& func_def = flib.Find(func_name);
+    const auto attr_it = func_def->attr().find(kExperimentalApiImplements);
+    if (attr_it != func_def->attr().end()) {
+      if (reachable_api_interface.contains(attr_it->second.s())) {
+        reachable_funcs.insert(func_name);
+      }
+    }
+  }
+
+  return reachable_funcs;
+}
+
+FunctionLibraryDefinition ReachableFunctionLibraryDefinition(
+    const FunctionLibraryDefinition& flib,
+    const protobuf::RepeatedPtrField<NodeDef>& nodes) {
+  absl::flat_hash_set<string> reachable_funcs = ReachableFunctions(flib, nodes);
+
+  FunctionLibraryDefinition reachable_flib(flib.default_registry(),
+                                           FunctionDefLibrary());
+
+  for (const string& func_name : reachable_funcs) {
+    const FunctionDef* func = flib.Find(func_name);
+    DCHECK_NE(func, nullptr);
+    // That should never fail, because we copy functions from valid flib and use
+    // the same default registry.
+    const Status added = reachable_flib.AddFunctionDef(*func);
+    DCHECK(added.ok());
+
+    const string grad_func_name = flib.FindGradient(func_name);
+    if (!grad_func_name.empty()) {
+      GradientDef grad;
+      grad.set_function_name(func_name);
+      grad.set_gradient_func(grad_func_name);
+      // It can only fail if function already has a gradient function.
+      const Status added_grad = reachable_flib.AddGradientDef(grad);
+      DCHECK(added_grad.ok());
+    }
+  }
+
+  return reachable_flib;
+}
+
+}  // namespace
+
+FunctionLibraryDefinition FunctionLibraryDefinition::ReachableDefinitions(
+    const GraphDef& graph) const {
+  return ReachableFunctionLibraryDefinition(*this, graph.node());
+}
+
+FunctionLibraryDefinition FunctionLibraryDefinition::ReachableDefinitions(
+    const FunctionDef& func) const {
+  return ReachableFunctionLibraryDefinition(*this, func.node_def());
+}
 
 void FunctionDefHelper::AttrValueWrapper::InitFromString(StringPiece val) {
   if (val.size() >= 2 && val[0] == '$') {

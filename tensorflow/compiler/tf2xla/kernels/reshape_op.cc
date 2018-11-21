@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
 namespace {
@@ -36,7 +37,7 @@ class ReshapeOp : public XlaOpKernel {
     const TensorShape input_shape = ctx->InputShape(0);
     const TensorShape sizes_shape = ctx->InputShape(1);
     // Preliminary validation of sizes.
-    OP_REQUIRES(ctx, IsLegacyVector(sizes_shape),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(sizes_shape),
                 errors::InvalidArgument("sizes input must be 1-D, not shape ",
                                         sizes_shape.DebugString()));
     const int64 num_dims = sizes_shape.num_elements();

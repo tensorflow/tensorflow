@@ -526,21 +526,40 @@ REGISTER_KERNEL_BUILDER(Name("For")
                             .HostMemory("delta"),
                         ForOp);
 
+// FakeParamOp allocates a tensor with a shape conforming to the expected
+// output. This is necessary if the value will be stored in a while_loop's
+// TensorList. The output is otherwise not expected to be consumed by anything
+// else.
 class FakeParamOp : public OpKernel {
  public:
   explicit FakeParamOp(OpKernelConstruction* context) : OpKernel(context) {
-    OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_));
+    DataType dtype;
+    OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype));
+
+    // Set shape to the specified shape, setting unknown dimensions to empty.
+    // If the specified shape is unknown, leave as an empty shape.
+    TensorShape shape;
+    PartialTensorShape partial_shape;
+    OP_REQUIRES_OK(context, context->GetAttr("shape", &partial_shape));
+    if (!partial_shape.unknown_rank()) {
+      for (int64 d : partial_shape.dim_sizes()) {
+        shape.AddDim(d == -1 ? 0 : d);
+      }
+    }
+
+    // Create a persistent tensor that we can repeatedly return to save memory.
+    // TODO(b/119612758): add optimization to prevent sending this across
+    // devices on each Compute() call.
+    OP_REQUIRES_OK(context, context->allocate_persistent(
+                                dtype, shape, &value_handle_, nullptr));
   }
 
   void Compute(OpKernelContext* context) override {
-    // We must produce something (only Switch and Recvs are allowed to output
-    // dead tensors). This output is not expected to be consumed by anything.
-    Tensor output_tensor(dtype_, TensorShape({}));
-    context->set_output(0, output_tensor);
+    context->set_output(0, *value_handle_.AccessTensor(context));
   }
 
  private:
-  DataType dtype_;
+  PersistentTensor value_handle_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("FakeParam").Device(DEVICE_CPU), FakeParamOp);

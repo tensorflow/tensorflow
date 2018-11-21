@@ -131,7 +131,7 @@ Status KernelAndDevice::Run(ScopedStepContainer* step_container,
     outputs->push_back(Tensor(*context.mutable_output(i)));
   }
   if (stats != nullptr) {
-    for (const auto& allocator_pair : context.wrapped_allocators()) {
+    for (const auto& allocator_pair : context.ConsumeWrappedAllocators()) {
       AllocatorMemoryUsed* memory = stats->add_memory();
       memory->set_allocator_name(allocator_pair.first->Name());
       auto sizes = allocator_pair.second->GetSizes();
@@ -154,6 +154,14 @@ Status KernelAndDevice::Run(ScopedStepContainer* step_container,
     step_stats_collector->Finalize();
   }
   return Status::OK();
+}
+
+tensorflow::Device* KernelAndDevice::OutputDevice(int idx) const {
+  if (device_ != nullptr &&
+      kernel_->output_memory_types()[idx] == HOST_MEMORY) {
+    return nullptr;
+  }
+  return device_;
 }
 
 }  // namespace tensorflow

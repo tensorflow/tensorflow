@@ -41,12 +41,12 @@ class OneHotTest(test.TestCase):
       else:
         ans = array_ops.one_hot(**inputs)
         if expected_err_re is None:
-          tf_ans = ans.eval()
+          tf_ans = self.evaluate(ans)
           self.assertAllEqual(tf_ans, truth)
           self.assertEqual(tf_ans.shape, ans.get_shape())
         else:
           with self.assertRaisesOpError(expected_err_re):
-            ans.eval()
+            self.evaluate(ans)
 
   def _testBothOneHot(self, truth, expected_err_re=None, raises=None, **inputs):
     self._testOneHot(truth, True, expected_err_re, raises, **inputs)

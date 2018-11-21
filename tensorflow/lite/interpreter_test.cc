@@ -38,7 +38,7 @@ class InterpreterTest : public ::testing::Test {
   }
 
  protected:
-  TfLiteContext* GetInterpreterContext() { return &interpreter_.context_; }
+  TfLiteContext* GetInterpreterContext() { return interpreter_.context_; }
 
   Interpreter interpreter_;
 };
@@ -698,7 +698,7 @@ TEST(BasicInterpreter, TestUnsupportedDelegateFunctions) {
                                                   nullptr};
       TfLiteIntArray nodes_to_replace;
       nodes_to_replace.size = 0;
-      EXPECT_EQ(context->ReplaceSubgraphsWithDelegateKernels(
+      EXPECT_EQ(context->ReplaceNodeSubsetsWithDelegateKernels(
                     context, delegate_registration, &nodes_to_replace, nullptr),
                 kTfLiteError);
     }
@@ -1085,7 +1085,7 @@ class TestDelegate : public ::testing::Test {
           TFLITE_CHECK_EQ(strcmp(reg->custom_name, "my_add"), 0);
         }
 
-        context->ReplaceSubgraphsWithDelegateKernels(
+        context->ReplaceNodeSubsetsWithDelegateKernels(
             context, FakeFusedRegistration(), nodes_to_separate, delegate);
         TfLiteIntArrayFree(nodes_to_separate);
         return kTfLiteOk;
@@ -1109,6 +1109,7 @@ class TestDelegate : public ::testing::Test {
              TfLiteBufferHandle* handle) { *handle = kTfLiteNullBufferHandle; };
       // Store type-punned data SimpleDelegate structure.
       delegate_.data_ = reinterpret_cast<void*>(this);
+      delegate_.flags = kTfLiteDelegateFlagsNone;
     }
 
     static TfLiteRegistration FakeFusedRegistration() {
@@ -1210,7 +1211,7 @@ TEST_F(TestDelegate, SetInvalidHandleToTensor) {
   interpreter_->Invoke();
   delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({0, 1, 2}));
   TfLiteDelegate* delegate = delegate_->get_tf_lite_delegate();
-  interpreter_->ModifyGraphWithDelegate(delegate, true);
+  interpreter_->ModifyGraphWithDelegate(delegate);
 
   SimpleDelegate another_simple_delegate({0, 1, 2});
 
@@ -1264,10 +1265,11 @@ class TestDelegateWithDynamicTensors : public ::testing::Test {
       TfLiteIntArray* execution_plan;
       TF_LITE_ENSURE_STATUS(
           context->GetExecutionPlan(context, &execution_plan));
-      context->ReplaceSubgraphsWithDelegateKernels(
+      context->ReplaceNodeSubsetsWithDelegateKernels(
           context, DelegateRegistration(), execution_plan, delegate);
       return kTfLiteOk;
     };
+    delegate_.flags = kTfLiteDelegateFlagsNone;
   }
 
   static TfLiteRegistration DynamicCopyOpRegistration() {
@@ -1296,7 +1298,7 @@ class TestDelegateWithDynamicTensors : public ::testing::Test {
 };
 
 TEST_F(TestDelegateWithDynamicTensors, DisallowDynamicTensors) {
-  interpreter_->ModifyGraphWithDelegate(&delegate_, false);
+  interpreter_->ModifyGraphWithDelegate(&delegate_);
 
   ASSERT_EQ(interpreter_->execution_plan().size(), 1);
   // The interpreter should not call delegate's `Prepare` when dynamic tensors
@@ -1305,7 +1307,8 @@ TEST_F(TestDelegateWithDynamicTensors, DisallowDynamicTensors) {
 }
 
 TEST_F(TestDelegateWithDynamicTensors, AllowDynamicTensors) {
-  interpreter_->ModifyGraphWithDelegate(&delegate_, true);
+  delegate_.flags = kTfLiteDelegateFlagsAllowDynamicTensors;
+  interpreter_->ModifyGraphWithDelegate(&delegate_);
 
   ASSERT_EQ(interpreter_->execution_plan().size(), 1);
   // The node should be replaced because dynamic tensors are allowed. Therefore
@@ -1317,6 +1320,7 @@ TEST(TestDelegateOwnership, ProperlyDisposed) {
   struct TfLiteInterpreterOwnedDelegate : public TfLiteDelegate {
     TfLiteInterpreterOwnedDelegate(bool* destroyed, bool* prepared)
         : destroyed(destroyed), prepared(prepared) {
+      flags = kTfLiteDelegateFlagsNone;
       Prepare = [](TfLiteContext*, TfLiteDelegate* delegate) -> TfLiteStatus {
         *static_cast<TfLiteInterpreterOwnedDelegate*>(delegate)->prepared =
             true;

@@ -23,6 +23,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import testing_utils
@@ -317,6 +318,15 @@ class TestSequential(test.TestCase, parameterized.TestCase):
          'sequential/dense_1/kernel:0', 'sequential/dense_1/bias:0'],
         [v.name for v in model.variables])
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_input_assumptions_propagation(self):
+    model = keras.models.Sequential()
+    model.add(keras.layers.Dense(1))
+    if context.executing_eagerly():
+      with self.assertRaisesRegexp(ValueError,
+                                   'expected min_ndim=2, found ndim=0'):
+        model(1.0)
+
 
 class TestSequentialEagerIntegration(test.TestCase):
 
@@ -353,27 +363,23 @@ class TestSequentialEagerIntegration(test.TestCase):
     model.fit(x, y, epochs=1)
 
   @tf_test_util.run_in_graph_and_eager_modes
-  def test_sequential_can_use_graph_functions(self):
-    model = testing_utils.get_small_sequential_mlp(4, 3)
-    self.assertTrue(model._can_use_graph_functions)
-    inner_model = testing_utils.get_small_sequential_mlp(4, 5)
-    model.add(inner_model)
+  def test_sequential_model_fails_with_dict_inputs(self):
+    num_classes = 5
+    model = testing_utils.get_small_sequential_mlp(
+        num_hidden=10, num_classes=num_classes)
+    model.compile(
+        rmsprop.RMSPropOptimizer(learning_rate=0.001),
+        metrics=['acc'],
+        weighted_metrics=['mae'],
+        loss='categorical_crossentropy')
 
-    self.assertTrue(model._can_use_graph_functions)
+    x = {'dense_input': np.random.random((10, 1))}
+    y = np.random.randint(num_classes, size=(10, 1))
 
-    inner_model_two = testing_utils.get_small_sequential_mlp(5, 7)
-    self.assertTrue(inner_model_two._can_use_graph_functions)
-
-    layer = keras.layers.Lambda(lambda x: x)
-    layer._can_use_graph_functions = False
-    inner_model_two.add(layer)
-    self.assertFalse(inner_model_two._can_use_graph_functions)
-
-    model.add(inner_model_two)
-    self.assertFalse(model._can_use_graph_functions)
-
-    model.pop()
-    self.assertTrue(model._can_use_graph_functions)
+    with self.assertRaisesRegexp(
+        ValueError, 'Passing a dictionary input to a Sequential Model which '
+        'doesn\'t have FeatureLayer as the first layer is an error'):
+      model.fit(x, y, batch_size=5, epochs=1)
 
 
 if __name__ == '__main__':

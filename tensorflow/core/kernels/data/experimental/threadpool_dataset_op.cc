@@ -47,6 +47,8 @@ class ThreadPoolResource : public ResourceBase {
     }
   }
 
+  int32 NumThreads() { return thread_pool_.NumThreads(); }
+
   string DebugString() override { return "ThreadPoolResource"; }
 
  private:
@@ -185,25 +187,15 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        return dataset()->input_->MakeIterator(
+            IteratorContext(CreateParams(ctx)), prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
-        ThreadPoolResource* pool = dataset()->threadpool_;
-        IteratorContext::Params params;
-        params.env = ctx->env();
-        params.runner = [pool](std::function<void()> c) {
-          pool->Schedule(std::move(c));
-        };
-        params.stats_aggregator = ctx->stats_aggregator();
-        params.lib = ctx->lib();
-        params.function_library = ctx->function_library();
-        params.allocator_getter = ctx->allocator_getter();
-        IteratorContext threadpool_ctx(params);
-        return input_impl_->GetNext(&threadpool_ctx, out_tensors,
-                                    end_of_sequence);
+        return input_impl_->GetNext(IteratorContext(CreateParams(ctx)),
+                                    out_tensors, end_of_sequence);
       }
 
      protected:
@@ -214,6 +206,16 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
       }
 
      private:
+      IteratorContext::Params CreateParams(IteratorContext* ctx) {
+        ThreadPoolResource* pool = dataset()->threadpool_;
+        IteratorContext::Params params(ctx);
+        params.runner = [pool](std::function<void()> c) {
+          pool->Schedule(std::move(c));
+        };
+        params.runner_threadpool_size = pool->NumThreads();
+        return params;
+      }
+
       std::unique_ptr<IteratorBase> input_impl_;
     };
 

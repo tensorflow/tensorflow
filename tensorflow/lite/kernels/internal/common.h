@@ -27,7 +27,7 @@ limitations under the License.
 #include <arm_neon.h>
 #endif
 
-#if defined __GNUC__ && defined __SSE4_1__
+#if defined __GNUC__ && defined __SSE4_1__ && !defined TF_LITE_DISABLE_X86_NEON
 #define USE_NEON
 
 #define OPTIMIZED_OPS_H__IGNORE_DEPRECATED_DECLARATIONS

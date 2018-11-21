@@ -39,7 +39,7 @@ class MultinomialTest(test.TestCase):
           num_samples=1000000,
           seed=15)
       for _ in range(100):
-        x = sess.run(samples)
+        x = self.evaluate(samples)
         indices, counts = np.unique(x, return_counts=True)
         for index, count in zip(indices, counts):
           if index in counts_by_indices.keys():
@@ -57,7 +57,7 @@ class MultinomialTest(test.TestCase):
           num_samples=1000000,
           seed=15)
       for _ in range(100):
-        x = sess.run(samples)
+        x = self.evaluate(samples)
         indices, counts = np.unique(x, return_counts=True)
         for index, count in zip(indices, counts):
           if index in counts_by_indices.keys():
@@ -79,7 +79,7 @@ class MultinomialTest(test.TestCase):
       # we'll run out of memory if we try to draw 1e9 samples directly
       # really should fit in 12GB of memory...
       for _ in range(100):
-        x = sess.run(samples)
+        x = self.evaluate(samples)
         indices, counts = np.unique(x, return_counts=True)
         for index, count in zip(indices, counts):
           if index in counts_by_indices.keys():

@@ -674,6 +674,29 @@ REGISTER_OP("FixedLengthRecordDataset")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("FixedLengthRecordDatasetV2")
+    .Input("filenames: string")
+    .Input("header_bytes: int64")
+    .Input("record_bytes: int64")
+    .Input("footer_bytes: int64")
+    .Input("buffer_size: int64")
+    .Input("compression_type: string")
+    .Output("handle: variant")
+    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+                      // stateful to inhibit constant folding.
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // `filenames` must be a scalar or a vector.
+      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 1, &unused));
+      // header_bytes, record_bytes, footer_bytes, buffer_size should be
+      // scalars.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 REGISTER_OP("TFRecordDataset")
     .Input("filenames: string")
     .Input("compression_type: string")
@@ -865,11 +888,6 @@ REGISTER_OP("DatasetToTFRecord")
 REGISTER_OP("DatasetToGraph")
     .Input("input_dataset: variant")
     .Output("graph: string")
-    .SetShapeFn(shape_inference::ScalarShape);
-
-REGISTER_OP("SinkDataset")
-    .Input("input_dataset: variant")
-    .Output("handle: variant")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("OptimizeDataset")

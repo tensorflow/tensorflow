@@ -308,7 +308,7 @@ def estimator_train(estimator, train_distributed_fn, hooks):
     raise ValueError('Only `STANDALONE_CLIENT` mode is supported when you call '
                      '`estimator.train`')
 
-  if estimator._config._train_distribute.between_graph:
+  if estimator._config._train_distribute.extended.experimental_between_graph:
     # TODO(yuefengz): remove this limitation once we figure out how to merge
     # return values from `_worker_fn`s.
     raise ValueError('`Estimator.train` API is not supported for %s with '
@@ -356,7 +356,7 @@ def estimator_evaluate(estimator, evaluate_distributed_fn, hooks):
     raise ValueError('Only `STANDALONE_CLIENT` mode is supported when you call '
                      '`Estimator.train`')
 
-  if estimator._config._eval_distribute.between_graph:
+  if estimator._config._eval_distribute.extended.experimental_between_graph:
     # TODO(yuefengz): remove this limitation once we figure out how to merge
     # return values from `_worker_fn`s.
     raise ValueError('`Estimator.evaluate` API is not supported for %s with '

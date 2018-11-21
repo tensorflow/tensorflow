@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -818,6 +819,69 @@ class ModelSubclassingTest(test.TestCase):
     self.assertEqual([m.var], m.trainable_variables)
     self.assertEqual([m.dense.kernel, m.dense.bias, m.not_trainable_var],
                      m.non_trainable_variables)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_add_weight_in_model(self):
+
+    class MyModel(keras.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.b = self.add_weight('bias', (10,))
+        self.c = self.add_weight('bias2', (10,), trainable=False)
+
+      def call(self, inputs):
+        return inputs + self.b + self.c
+
+    x = ops.convert_to_tensor(np.ones((10, 10), 'float32'))
+    model = MyModel()
+    model(x)
+    self.assertEqual(1, len(model.trainable_weights))
+    self.assertEqual(1, len(model.non_trainable_weights))
+    self.assertEqual(2, len(model.weights))
+
+    class MyModelCustomBuild(keras.Model):
+
+      def build(self, input_shape):
+        self.b = self.add_weight('bias', (10,))
+        self.c = self.add_weight('bias2', (10,), trainable=False)
+
+      def call(self, inputs):
+        return inputs + self.b + self.c
+
+    x = ops.convert_to_tensor(np.ones((10, 10), 'float32'))
+    model = MyModelCustomBuild()
+    model(x)
+    self.assertEqual(1, len(model.trainable_weights))
+    self.assertEqual(1, len(model.non_trainable_weights))
+    self.assertEqual(2, len(model.weights))
+
+  def test_add_update_in_model(self):
+
+    class MyModel(keras.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.b = self.add_weight('bias', (10,))
+        self.c = self.add_weight('bias2', (10,))
+
+      def call(self, inputs):
+        # Unconditional
+        self.add_update(self.b.assign(self.b * 2))
+        # Conditional
+        self.add_update(self.c.assign(inputs[1, :]), inputs)
+        return inputs + self.b + self.c
+
+    x = ops.convert_to_tensor(np.ones((10, 10), 'float32'))
+    model = MyModel()
+    model(x)
+
+    if context.executing_eagerly():
+      self.assertEqual(0, len(model.updates))
+    else:
+      self.assertEqual(2, len(model.updates))
+      self.assertEqual(1, len(model.get_updates_for(None)))
+      self.assertEqual(1, len(model.get_updates_for(x)))
 
 
 class GraphSpecificModelSubclassingTests(test.TestCase):

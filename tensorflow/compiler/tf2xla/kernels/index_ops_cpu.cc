@@ -48,9 +48,8 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
     // We require that the dimension argument is a constant, since it lets us
     // dispatch to a specialized custom-call function without any run-time
     // overhead, when compiling ahead-of-time.
-    xla::Literal literal;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInput(1, &literal));
-    const int32 dim = literal.Get<int32>({});
+    int64 dim;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar(1, &dim));
     OP_REQUIRES(ctx, dim >= 0, errors::InvalidArgument("dim must be >= 0"));
     OP_REQUIRES(
         ctx, dim < input_shape.dims(),
@@ -120,6 +119,10 @@ class ArgMaxCustomCallOp : public XlaOpKernel {
                         ", but got shape: ",
                         input_shape.DebugString()));
     }
+    const DataType dtype = output_type(0);
+    xla::PrimitiveType output_type;
+    OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(dtype, &output_type));
+    output = xla::ConvertElementType(output, output_type);
     ctx->SetOutput(0, output);
   }
 

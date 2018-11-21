@@ -21,6 +21,10 @@ cc_library(
             "//tensorflow/lite/java/src/main/native:jni_md.h",
         ],
     }),
+    includes = select({
+        "//tensorflow:android": [],
+        "//conditions:default": ["../../main/native/."],
+    }),
     deps = ["//tensorflow/lite/c:c_api_internal"],
 )
 

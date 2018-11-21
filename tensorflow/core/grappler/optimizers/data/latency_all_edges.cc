@@ -96,7 +96,8 @@ Status LatencyAllEdges::Optimize(Cluster* cluster, const GrapplerItem& item,
       }
     }
 
-    graph.InsertNode(node, MakeLatencyNode(node, &graph));
+    NodeDef* latency_node = graph.AddNode(MakeLatencyNode(node, &graph));
+    graph.UpdateFanouts(node.name(), latency_node->name());
   }
   return Status::OK();
 }

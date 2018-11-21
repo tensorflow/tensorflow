@@ -656,7 +656,7 @@ template <typename T>
 struct erfc : base<T, Eigen::internal::scalar_erfc_op<T>> {};
 
 template <typename T>
-struct sigmoid : base<T, Eigen::internal::scalar_sigmoid_op<T>> {};
+struct sigmoid : base<T, Eigen::internal::scalar_logistic_op<T>> {};
 
 template <typename T>
 struct sin : base<T, Eigen::internal::scalar_sin_op<T>> {};

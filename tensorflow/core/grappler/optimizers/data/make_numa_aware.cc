@@ -47,7 +47,7 @@ Status MakeNumaAware::Optimize(Cluster* cluster, const GrapplerItem& item,
     if (node.op() != "MapAndBatchDatasetV2") continue;
 
     auto* numa_node = graph.AddNode(MakeNumaAwareNode(node, &graph));
-    graph.ReplaceInput(node, *numa_node);
+    graph.UpdateFanouts(node.name(), numa_node->name());
     nodes_to_delete.insert(node.name());
   }
   graph.DeleteNodes(nodes_to_delete);

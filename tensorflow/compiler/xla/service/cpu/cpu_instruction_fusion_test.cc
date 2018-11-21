@@ -58,7 +58,7 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Basic_0) {
   HloInstruction* dot = builder.AddInstruction(
       MakeDot(ShapeUtil::MakeShape(F32, {1024, 1}), exp0, arg1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(dot, computation->root_instruction());
   EXPECT_TRUE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
@@ -77,7 +77,7 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Basic_1) {
   HloInstruction* dot = builder.AddInstruction(
       MakeDot(ShapeUtil::MakeShape(F32, {1, 1024}), arg0, exp1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(dot, computation->root_instruction());
   EXPECT_TRUE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
@@ -98,7 +98,7 @@ TEST_F(InstructionFusionTest, DotOperationNoFusion_Bitcast) {
   HloInstruction* dot = builder.AddInstruction(
       MakeDot(ShapeUtil::MakeShape(F32, {1024, 1}), bitcast0, arg1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(dot, computation->root_instruction());
   EXPECT_FALSE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
@@ -119,7 +119,7 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Reshape) {
   HloInstruction* dot = builder.AddInstruction(
       MakeDot(ShapeUtil::MakeShape(F32, {1024, 1}), reshape0, arg1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(dot, computation->root_instruction());
   EXPECT_TRUE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
@@ -138,7 +138,7 @@ TEST_F(InstructionFusionTest, DotOperationFusion_TooLarge) {
   HloInstruction* dot = builder.AddInstruction(
       MakeDot(ShapeUtil::MakeShape(F32, {1, 32 * 1024}), arg0, exp1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(dot, computation->root_instruction());
   EXPECT_FALSE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
@@ -157,7 +157,7 @@ TEST_F(InstructionFusionTest, DotOperationFusion_ElementReuse) {
   HloInstruction* dot = builder.AddInstruction(
       MakeDot(ShapeUtil::MakeShape(F32, {2, 1024}), arg0, exp1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(dot, computation->root_instruction());
   EXPECT_FALSE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
@@ -321,7 +321,7 @@ TEST_F(OpcodeFusionTest, Exponential_Reshape_Negate) {
   builder.AddInstruction(
       HloInstruction::CreateUnary(result_shape, HloOpcode::kNegate, reshape2));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   RunFusionAndCheckOpcodesWereFused(
@@ -350,7 +350,7 @@ TEST_F(OpcodeFusionTest, Broadcast_Reshape_DynamicSlice_Tanh) {
   builder.AddInstruction(HloInstruction::CreateUnary(
       dynamic_slice_shape, HloOpcode::kTanh, dynamic_slice4));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   module->AddEntryComputation(builder.Build());
 
   RunFusionAndCheckOpcodesWereFused(
@@ -370,7 +370,7 @@ TEST_F(OpcodeFusionTest, Broadcast_Negate) {
   builder.AddInstruction(HloInstruction::CreateUnary(
       result_shape, HloOpcode::kNegate, broadcast1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   RunFusionAndCheckOpcodesWereFused(
@@ -392,7 +392,7 @@ TEST_F(OpcodeFusionTest, DynamicSlice_Negate) {
   builder.AddInstruction(HloInstruction::CreateUnary(
       result_shape, HloOpcode::kNegate, dynamic_slice2));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   module->AddEntryComputation(builder.Build());
 
   RunFusionAndCheckOpcodesWereFused(
@@ -410,7 +410,7 @@ TEST_F(OpcodeFusionTest, Exponential_Negate) {
   builder.AddInstruction(
       HloInstruction::CreateUnary(param_shape, HloOpcode::kNegate, exp1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   RunFusionAndCheckOpcodesWereFused(
@@ -429,7 +429,7 @@ TEST_F(OpcodeFusionTest, Reshape_Negate) {
   builder.AddInstruction(
       HloInstruction::CreateUnary(result_shape, HloOpcode::kNegate, reshape1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   RunFusionAndCheckOpcodesWereFused(
@@ -447,7 +447,7 @@ TEST_F(OpcodeFusionTest, Reverse_Negate) {
   builder.AddInstruction(
       HloInstruction::CreateUnary(param_shape, HloOpcode::kNegate, reverse1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   RunFusionAndCheckOpcodesWereFused(
@@ -466,7 +466,7 @@ TEST_F(OpcodeFusionTest, Slice_Negate) {
   builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {2}), HloOpcode::kNegate, slice1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   module->AddEntryComputation(builder.Build());
 
   RunFusionAndCheckOpcodesWereFused(
@@ -489,7 +489,7 @@ TEST_F(OpcodeFusionTest, Exponential_Transpose_Negate) {
   builder.AddInstruction(HloInstruction::CreateUnary(
       result_shape, HloOpcode::kNegate, transpose2));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   RunFusionAndCheckOpcodesWereFused(
@@ -498,7 +498,7 @@ TEST_F(OpcodeFusionTest, Exponential_Transpose_Negate) {
 }
 
 TEST_F(OpcodeFusionTest, UnaryMapOfExp) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
 
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {3, 4});
@@ -517,7 +517,7 @@ TEST_F(OpcodeFusionTest, UnaryMapOfExp) {
 }
 
 TEST_F(OpcodeFusionTest, BinaryMapOfExps) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
 
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {3, 4});
@@ -542,7 +542,7 @@ TEST_F(OpcodeFusionTest, BinaryMapOfExps) {
 }
 
 TEST_F(OpcodeFusionTest, DynamicSliceWithDynamicUpdateSlice) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
 
   HloComputation::Builder builder(TestName());
   Shape full_shape = ShapeUtil::MakeShape(F32, {10, 100, 1000});
@@ -573,7 +573,7 @@ TEST_F(OpcodeFusionTest, DynamicSliceWithDynamicUpdateSlice) {
 }
 
 TEST_F(OpcodeFusionTest, MessOfFusibleNodes) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
 
   Shape full_shape = ShapeUtil::MakeShape(F32, {4, 100, 10, 100, 50});
@@ -641,7 +641,7 @@ TEST_F(OpcodeFusionTest, ReuseViaImplicitBroadcastUnary) {
   builder.AddInstruction(
       HloInstruction::CreateUnary(large_shape, HloOpcode::kExp, small_exp));
 
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
   module->AddEntryComputation(builder.Build());
 
   auto did_fusion = CpuInstructionFusion().Run(module.get());
@@ -670,7 +670,7 @@ TEST_F(OpcodeFusionTest, ReuseViaImplicitBroadcastBinary) {
   builder.AddInstruction(HloInstruction::CreateBinary(
       large_shape, HloOpcode::kAdd, small_exp, large_param));
 
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
   module->AddEntryComputation(builder.Build());
 
   auto did_fusion = CpuInstructionFusion().Run(module.get());
@@ -712,7 +712,7 @@ void CreateComputationForDotAddOutputFusionTest(const string& test_name,
 }
 
 TEST_F(OpcodeFusionTest, DotAddOutputFusion_1x50x19) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   CreateComputationForDotAddOutputFusionTest(TestName(), module.get(), /*m=*/1,
                                              /*k=*/50, /*n=*/19,
                                              /*add_extra_use_for_dot=*/false);
@@ -725,7 +725,7 @@ TEST_F(OpcodeFusionTest, DotAddOutputFusion_1x50x19) {
 }
 
 TEST_F(OpcodeFusionTest, DotAddOutputFusion_19x50x1) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   CreateComputationForDotAddOutputFusionTest(TestName(), module.get(), /*m=*/19,
                                              /*k=*/50, /*n=*/1,
                                              /*add_extra_use_for_dot=*/false);
@@ -738,7 +738,7 @@ TEST_F(OpcodeFusionTest, DotAddOutputFusion_19x50x1) {
 }
 
 TEST_F(OpcodeFusionTest, DotAddOutputFusion_19x50x19) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   CreateComputationForDotAddOutputFusionTest(TestName(), module.get(), /*m=*/19,
                                              /*k=*/50, /*n=*/19,
                                              /*add_extra_use_for_dot=*/false);
@@ -751,7 +751,7 @@ TEST_F(OpcodeFusionTest, DotAddOutputFusion_19x50x19) {
 }
 
 TEST_F(OpcodeFusionTest, DotAddOutputFusion_19x50x1_multi_use) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   CreateComputationForDotAddOutputFusionTest(TestName(), module.get(), /*m=*/19,
                                              /*k=*/50, /*n=*/1,
                                              /*add_extra_use_for_dot=*/true);

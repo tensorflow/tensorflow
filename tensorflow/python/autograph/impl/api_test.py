@@ -28,6 +28,9 @@ from tensorflow.python.autograph.impl import api
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.framework import constant_op
+from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.layers import core
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
 
@@ -60,7 +63,7 @@ class ApiTest(test.TestCase):
       x = tc.test_method(
           constant_op.constant([2, 4]), constant_op.constant(1),
           constant_op.constant(-2))
-      self.assertListEqual([0, 1], sess.run(x).tolist())
+      self.assertListEqual([0, 1], self.evaluate(x).tolist())
 
   def test_decorator_does_not_recurse(self):
 
@@ -80,7 +83,7 @@ class ApiTest(test.TestCase):
       x = tc.test_method(
           constant_op.constant([2, 4]), constant_op.constant(1),
           constant_op.constant(-2))
-      self.assertListEqual([0, 1], sess.run(x).tolist())
+      self.assertListEqual([0, 1], self.evaluate(x).tolist())
 
   def test_decorator_calls_unconverted_graph(self):
 
@@ -101,7 +104,7 @@ class ApiTest(test.TestCase):
       x = tc.test_method(
           constant_op.constant([2, 4]), constant_op.constant(1),
           constant_op.constant(-2))
-      self.assertListEqual([0, 1], sess.run(x).tolist())
+      self.assertListEqual([0, 1], self.evaluate(x).tolist())
 
   def test_decorator_calls_unconverted_py_func(self):
 
@@ -127,7 +130,7 @@ class ApiTest(test.TestCase):
       x = tc.test_method(
           constant_op.constant([2, 4]), constant_op.constant(1),
           constant_op.constant(-2))
-      self.assertListEqual([0, 1], sess.run(x).tolist())
+      self.assertListEqual([0, 1], self.evaluate(x).tolist())
 
   def test_decorator_calls_decorated(self):
 
@@ -150,7 +153,7 @@ class ApiTest(test.TestCase):
       x = tc.test_method(
           constant_op.constant([2, 4]), constant_op.constant(1),
           constant_op.constant(-2))
-      self.assertListEqual([0, 1], sess.run(x).tolist())
+      self.assertListEqual([0, 1], self.evaluate(x).tolist())
 
   def test_decorator_preserves_argspec(self):
 
@@ -189,7 +192,7 @@ class ApiTest(test.TestCase):
       x = tc.test_method(
           constant_op.constant([2, 4]), constant_op.constant(1),
           constant_op.constant(-2))
-      self.assertListEqual([0, 1], sess.run(x).tolist())
+      self.assertListEqual([0, 1], self.evaluate(x).tolist())
 
   def test_converted_call_builtin(self):
     x = api.converted_call(range, None, converter.ConversionOptions(), 3)
@@ -205,7 +208,7 @@ class ApiTest(test.TestCase):
     with self.cached_session() as sess:
       x = api.converted_call(test_fn, None, converter.ConversionOptions(),
                              constant_op.constant(-1))
-      self.assertEqual(1, sess.run(x))
+      self.assertEqual(1, self.evaluate(x))
 
   def test_converted_call_method_explicit_owner(self):
     # TODO(mdan): Implement.
@@ -231,7 +234,7 @@ class ApiTest(test.TestCase):
       tc = TestClass(constant_op.constant(-1))
       x = api.converted_call(tc.test_method, None,
                              converter.ConversionOptions(), tc)
-      self.assertEqual(1, sess.run(x))
+      self.assertEqual(1, self.evaluate(x))
 
   def test_converted_call_method_by_class(self):
 
@@ -249,7 +252,7 @@ class ApiTest(test.TestCase):
       tc = TestClass(constant_op.constant(-1))
       x = api.converted_call(TestClass.test_method, None,
                              converter.ConversionOptions(), tc)
-      self.assertEqual(1, sess.run(x))
+      self.assertEqual(1, self.evaluate(x))
 
   def test_converted_call_callable_object(self):
 
@@ -266,7 +269,7 @@ class ApiTest(test.TestCase):
     with self.cached_session() as sess:
       tc = TestClass(constant_op.constant(-1))
       x = api.converted_call(tc, None, converter.ConversionOptions())
-      self.assertEqual(1, sess.run(x))
+      self.assertEqual(1, self.evaluate(x))
 
   def test_converted_call_constructor(self):
 
@@ -285,7 +288,7 @@ class ApiTest(test.TestCase):
                               constant_op.constant(-1))
       # tc is now a converted object.
       x = tc.test_method()
-      self.assertEqual(1, sess.run(x))
+      self.assertEqual(1, self.evaluate(x))
 
   def test_converted_call_already_converted(self):
 
@@ -295,12 +298,12 @@ class ApiTest(test.TestCase):
     with self.cached_session() as sess:
       x = api.converted_call(f, None, converter.ConversionOptions(),
                              constant_op.constant(0))
-      self.assertTrue(sess.run(x))
+      self.assertTrue(self.evaluate(x))
 
       converted_f = api.to_graph(f)
       x = api.converted_call(converted_f, None, converter.ConversionOptions(),
                              constant_op.constant(0))
-      self.assertTrue(sess.run(x))
+      self.assertTrue(self.evaluate(x))
 
   def test_converted_call_no_user_code(self):
 
@@ -319,6 +322,63 @@ class ApiTest(test.TestCase):
     # The constant has static shape so the result is a primitive not a Tensor.
     self.assertEqual(x, 1)
 
+  def test_converted_call_whitelisted_method(self):
+
+    opts = converter.ConversionOptions()
+
+    model = sequential.Sequential([
+        core.Dense(2)
+    ])
+
+    x = api.converted_call(model.call, None, opts,
+                           constant_op.constant([[0.0]]), training=True)
+
+    with self.cached_session() as sess:
+      self.evaluate(variables.global_variables_initializer())
+      self.assertAllEqual([[0.0, 0.0]], self.evaluate(x))
+
+  def test_converted_call_whitelisted_method_extra_self(self):
+
+    opts = converter.ConversionOptions()
+
+    model = sequential.Sequential([
+        core.Dense(2)
+    ])
+
+    x = api.converted_call(model.call, None, opts,
+                           model, constant_op.constant([[0.0]]), training=True)
+
+    with self.cached_session() as sess:
+      self.evaluate(variables.global_variables_initializer())
+      self.assertAllEqual([[0.0, 0.0]], self.evaluate(x))
+
+  def test_converted_call_whitelisted_method_via_owner(self):
+
+    opts = converter.ConversionOptions()
+
+    model = sequential.Sequential([
+        core.Dense(2)
+    ])
+
+    x = api.converted_call('call', model, opts,
+                           constant_op.constant([[0.0]]), training=True)
+
+    with self.cached_session() as sess:
+      self.evaluate(variables.global_variables_initializer())
+      self.assertAllEqual([[0.0, 0.0]], self.evaluate(x))
+
+  def test_converted_call_lambda(self):
+
+    opts = converter.ConversionOptions()
+
+    l = lambda x: x == 0
+
+    x = api.converted_call(l, None, opts, constant_op.constant(0))
+
+    with self.cached_session() as sess:
+      self.evaluate(variables.global_variables_initializer())
+      self.assertAllEqual(True, self.evaluate(x))
+
   def test_to_graph_basic(self):
 
     def test_fn(x, s):
@@ -330,7 +390,7 @@ class ApiTest(test.TestCase):
 
     with self.cached_session() as sess:
       x = compiled_fn(constant_op.constant([4, 8]), 4)
-      self.assertListEqual([1, 2], sess.run(x).tolist())
+      self.assertListEqual([1, 2], self.evaluate(x).tolist())
 
   def test_to_graph_with_defaults(self):
 
@@ -345,7 +405,7 @@ class ApiTest(test.TestCase):
 
     with self.cached_session() as sess:
       x = compiled_fn(constant_op.constant([4, 8]))
-      self.assertListEqual([1, 2], sess.run(x).tolist())
+      self.assertListEqual([1, 2], self.evaluate(x).tolist())
 
   def test_to_code_basic(self):
 

@@ -552,10 +552,7 @@ Status GraphExecutionState::OptimizeGraph(
     return errors::InvalidArgument("Can't optimize a pruned graph");
   }
 
-  const RewriterConfig& rewrite_options =
-      session_options_->config.graph_options().rewrite_options();
-
-  if (grappler::MetaOptimizerEnabled(rewrite_options)) {
+  if (grappler::MetaOptimizerEnabled(session_options_->config)) {
     // Adding this functionality in steps. The first step is to make sure
     // we don't break dependencies. The second step will be to turn the
     // functionality on by default.
@@ -638,7 +635,7 @@ Status GraphExecutionState::OptimizeGraph(
     grappler::VirtualCluster cluster(device_set_);
     GraphDef new_graph;
     TF_RETURN_IF_ERROR(grappler::RunMetaOptimizer(
-        item, rewrite_options, cpu_device, &cluster, &new_graph));
+        item, session_options_->config, cpu_device, &cluster, &new_graph));
 
     // Merge optimized graph function library with an original library.
     // Optimized graph might have new functions specialized for it's

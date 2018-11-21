@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python.client import session as session_module
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -293,19 +294,63 @@ def validate_all_tensor_shapes(x, x_values):
                        ' inputs {}'.format(x))
 
 
+def _wait_for_variable_initialization(session):
+  """Utility to wait for variables to be initialized."""
+  all_variables = K._get_variables(K.get_graph())  # pylint: disable=protected-access
+  candidate_vars = []
+  for v in all_variables:
+    if not getattr(v, '_keras_initialized', False):
+      candidate_vars.append(v)
+
+  if not candidate_vars:
+    return
+
+  while True:
+    is_initialized = session.run(
+        [variables.is_variable_initialized(v) for v in candidate_vars])
+    uninitialized_vars = []
+    for flag, v in zip(is_initialized, candidate_vars):
+      if not flag:
+        uninitialized_vars.append(v)
+      v._keras_initialized = True  # pylint: disable=protected-access
+    if not uninitialized_vars:
+      break
+
+
+def init_restore_or_wait_for_variables():
+  """Initialize or restore variables or wait for variables to be initialized."""
+  session = K._get_session()  # pylint: disable=protected-access
+  worker_context = dc_context.get_current_worker_context()
+  if not worker_context or worker_context.should_init:
+    # TODO(yuefengz): if checkpoints exit, restore from checkpoint.
+    K._initialize_variables(session)  # pylint: disable=protected-access
+  else:
+    _wait_for_variable_initialization(session)
+
+
 def configure_and_create_session(distribution_strategy):
   """Configure session config and create a session with it."""
   # TODO(priyag): Throw error if a session already exists.
   session_config = K.get_default_session_config()
-  distribution_strategy.configure(session_config)
 
-  if distribution_strategy.__class__.__name__ == 'TPUStrategy':
-    # TODO(priyag): Remove this workaround when Distributed Coordinator is
-    # integrated with keras and we can create a session from there.
-    master = distribution_strategy._tpu_cluster_resolver.master()  # pylint: disable=protected-access
+  if is_tpu_strategy(distribution_strategy):
+    # TODO(priyag, yuefengz): Remove this workaround when Distribute
+    # Coordinator is integrated with keras and we can create a session from
+    # there.
+    distribution_strategy.configure(session_config)
+    master = distribution_strategy.extended._tpu_cluster_resolver.master()  # pylint: disable=protected-access
     session = session_module.Session(config=session_config, target=master)
   else:
-    session = session_module.Session(config=session_config)
+    worker_context = dc_context.get_current_worker_context()
+    if worker_context:
+      dc_session_config = worker_context.session_config
+      # Merge the default session config to the one from distribute coordinator,
+      # which is fine for now since they don't have conflicting configurations.
+      dc_session_config.MergeFrom(session_config)
+      session = session_module.Session(
+          config=dc_session_config, target=worker_context.master_target)
+    else:
+      session = session_module.Session(config=session_config)
 
   K.set_session(session)
 
@@ -334,7 +379,7 @@ def validate_inputs(x, y, distribution_strategy):
                      'Iterator. You must pass a `tf.data.Dataset` object or a '
                      'numpy array as input.')
 
-  if distribution_strategy.__class__.__name__ == 'TPUStrategy':
+  if is_tpu_strategy(distribution_strategy):
     for i in [x, y]:
       if isinstance(i, dataset_ops.Dataset):
         shapes = nest.flatten(i.output_shapes)
@@ -346,40 +391,97 @@ def validate_inputs(x, y, distribution_strategy):
               'Found unknown shape {} in input {}.'.format(s, i))
 
 
-def get_input_batch_params(first_x_value, batch_size, distribution_strategy):
+# TODO(b/118776054): Currently we support global batch size for TPUStrategy and
+# core MirroredStrategy only. Remove this check when contrib MirroredStrategy is
+# no longer needed.
+def global_batch_size_supported(distribution_strategy):
+  return distribution_strategy.extended._global_batch_size  # pylint: disable=protected-access
+
+
+# TODO(sourabhbajaj): Remove this once we use the same API for all strategies.
+def is_tpu_strategy(strategy):
+  """We're executing TPU Strategy."""
+  return strategy is not None and strategy.__class__.__name__ == 'TPUStrategy'
+
+
+def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
+                     is_training=False):
   """Calculate the number of batches and steps/steps_per_epoch.
 
   Args:
+    distribution_strategy: The DistributionStrategy used to compile the model.
     first_x_value: This is the first input numpy array that is passed in as the
       model input.
-    batch_size: The specified batch_size or the default batch_size of 32.
-    distribution_strategy: The current DistributionStrategy used to compile the
-      model.
+    steps:  The specified number of steps.
+    batch_size: The specified batch_size.
+    is_training: Boolean to relax the constraints on consuming all the training
+      samples to keep compatibility till we support partial batches.
 
   Returns:
-    The steps or steps_per_epoch argument depending on if a user is
-    calling `fit`, `evaluate` or `predict`.
+    steps: The steps or steps_per_epoch argument depending on if a user is
+        calling `fit`, `evaluate` or `predict`. If the is_training flag is set
+        we don't require the number of samples to be used completely.
+    batch_size: The batch size to be used in model iterations.
 
   Raises:
     ValueError: If the number of batches or steps evaluates to 0.
 
   """
-  num_batches = first_x_value.shape[0] // batch_size
-  if not num_batches:
-    raise ValueError('Please specify a batch_size that is smaller than'
-                     'the number of input samples %d.' % first_x_value.shape[0])
-  # TODO(anjalisridhar): TPU currently supports using the num_replicas property.
-  # We might want to look into implementing worker_devices. In multi worker
-  # strategy, perhaps num_replicas works better?
-  steps = num_batches // distribution_strategy.num_replicas
-  if not steps:
-    # TODO(anjalisridhar): Number of replicas in the error message may not
-    # convey what we want to the user. Is there another terminology that we can
-    # use that is consistent across different strategies?
-    raise ValueError('The number of batches %d is smaller than the number '
-                     'of replicas %d used for DistributionStrategy. ' %
-                     (num_batches, distribution_strategy.num_replicas))
-  return steps
+  num_samples = first_x_value.shape[0]
+  # TODO(b/118776054): Use global batch size for Keras/DS support.
+  # Currently this is only supported in TPUStrategy and CoreMirroredStrategy.
+  use_per_replica_batch = not global_batch_size_supported(
+      distribution_strategy)
+
+  if steps is None:
+    if batch_size is None:
+      # If neither the batch size or number of steps are set. We choose the
+      # global batch size as the minimum of number of samples and 32. 32 is
+      # chosen to provide backward compatibility.
+      global_batch_size = min(num_samples, 32)
+    else:
+      # If the user provided the batch size we need to handle the case
+      # between different strategies that use the global/per-replica batch size
+      global_batch_size = batch_size
+      if use_per_replica_batch:
+        global_batch_size *= distribution_strategy.num_replicas_in_sync
+    if not is_training and num_samples % global_batch_size:
+      raise ValueError('The number of samples %s is not divisible by '
+                       'batch size %s.' % (num_samples, global_batch_size))
+    steps = num_samples // global_batch_size
+  else:
+    if batch_size is None:
+      # We calculate the batch size based on the number of steps specified
+      if num_samples % steps:
+        raise ValueError('The number of samples %s is not divisible by '
+                         'steps %s. Please change the number of steps to a '
+                         'value that can consume all the samples' % (
+                             num_samples, steps))
+      global_batch_size = num_samples // steps
+    else:
+      # If the user provided the batch size we need to handle the case
+      # between different strategies that use the global/per-replica batch size
+      global_batch_size = batch_size
+      if use_per_replica_batch:
+        global_batch_size *= distribution_strategy.num_replicas_in_sync
+
+      if num_samples < (global_batch_size * steps):
+        raise ValueError('Number of samples %s is less than samples required '
+                         'for specified batch_size %s and steps %s' % (
+                             num_samples, global_batch_size, steps))
+
+  # We need to return the per replica or global batch size based on the strategy
+  if use_per_replica_batch:
+    if global_batch_size % distribution_strategy.num_replicas_in_sync:
+      raise ValueError(
+          'The batch size (%s) could not be sharded evenly across the sync '
+          'replicas (%s) in the distribution strategy.' % (
+              global_batch_size, distribution_strategy.num_replicas_in_sync))
+    batch_size = global_batch_size // distribution_strategy.num_replicas_in_sync
+  else:
+    batch_size = global_batch_size
+
+  return steps, batch_size
 
 
 def get_batch_dimension(iterator):
@@ -388,33 +490,6 @@ def get_batch_dimension(iterator):
   # all.
   dims = shapes[0].dims
   return dims[0] if dims else None
-
-
-def get_batch_size(num_replicas, num_samples, steps):
-  """Calculate and return batch size for numpy inputs.
-
-  Args:
-    num_replicas: Number of devices over which the model input is distributed.
-    num_samples: Total number of input samples in the input numpy arrays.
-    steps: Number of steps that we run the model for.
-
-  Returns:
-    batch size used to create the Dataset object from the input numpy arrays.
-
-  """
-  if num_samples % steps != 0:
-    logging.warning('The number of input samples %d is not evenly '
-                    'divisible by the number of steps %d. '
-                    'Some samples will not be processed as expected.' %
-                    (num_samples, steps))
-  global_batch_size = num_samples // steps
-  if global_batch_size % num_replicas != 0:
-    logging.warning('The total number of batches per step %d is not evenly '
-                    'divisible by the number of replicas %d used in '
-                    'DistributionStrategy. Some samples will not be processed '
-                    'as expected.' %
-                    (global_batch_size, num_replicas))
-  return global_batch_size // num_replicas
 
 
 def get_cpu_device(distribution_strategy):
@@ -432,12 +507,12 @@ def get_cpu_device(distribution_strategy):
     NotImplementedError: We currently don't support copying numpy data to
     multiple hosts in the case of Cloud TPU pods.
   """
-  if distribution_strategy.__class__.__name__ == 'TPUStrategy':
-    if distribution_strategy.num_hosts > 1:
+  if is_tpu_strategy(distribution_strategy):
+    if distribution_strategy.extended.num_hosts > 1:
       raise NotImplementedError('TPUDistributionStrategy does not '
                                 'support numpy inputs when running on Cloud'
                                 'TPU pods.')
-    return distribution_strategy.get_host_cpu_device(0)
+    return distribution_strategy.extended.get_host_cpu_device(0)
   else:
     # For all strategies except TPUDistributionStrategy
     # TODO(anjalisridhar): We may need to modify this when we add support for
@@ -496,7 +571,7 @@ def _get_var_for_numpy(distribution_strategy, input_array):
                                 input_var.dtype.size
 
   # Calculate number of elements we want to copy per slice.
-  batch_size_per_slice = np.ceil((64 << 20) / byte_size_per_batch_element)
+  batch_size_per_slice = int(np.ceil((64 << 20) / byte_size_per_batch_element))
 
   # Copy slices of the above size starting at 0, except the last slice will be
   # smaller.

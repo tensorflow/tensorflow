@@ -21,44 +21,39 @@ from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class AssertNextDatasetTest(test_base.DatasetTestBase):
 
   def testAssertNext(self):
     dataset = dataset_ops.Dataset.from_tensors(0).apply(
         optimization.assert_next(["Map"])).map(lambda x: x)
-    iterator = dataset.make_one_shot_iterator()
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      self.assertEqual(0, sess.run(get_next))
+    self.assertDatasetProduces(dataset, expected_output=[0])
 
   def testAssertNextInvalid(self):
     dataset = dataset_ops.Dataset.from_tensors(0).apply(
         optimization.assert_next(["Whoops"])).map(lambda x: x)
-    iterator = dataset.make_one_shot_iterator()
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          "Asserted Whoops transformation at offset 0 but encountered "
-          "Map transformation instead."):
-        sess.run(get_next)
+    self.assertDatasetProduces(
+        dataset,
+        expected_error=(
+            errors.InvalidArgumentError,
+            "Asserted Whoops transformation at offset 0 but encountered "
+            "Map transformation instead."))
 
   def testAssertNextShort(self):
     dataset = dataset_ops.Dataset.from_tensors(0).apply(
         optimization.assert_next(["Map", "Whoops"])).map(lambda x: x)
-    iterator = dataset.make_one_shot_iterator()
-    get_next = iterator.get_next()
-
-    with self.cached_session() as sess:
-      with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          "Asserted next 2 transformations but encountered only 1."):
-        sess.run(get_next)
+    options = dataset_ops.Options()
+    options.experimental_autotune = False
+    dataset = dataset.with_options(options)
+    self.assertDatasetProduces(
+        dataset,
+        expected_error=(
+            errors.InvalidArgumentError,
+            "Asserted next 2 transformations but encountered only 1."))
 
 
 if __name__ == "__main__":

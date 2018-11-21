@@ -204,7 +204,7 @@ def get_pruning_hparams():
       begin_pruning_step=0,
       end_pruning_step=-1,
       weight_sparsity_map=[''],
-      threshold_decay=0.9,
+      threshold_decay=0.0,
       pruning_frequency=10,
       nbins=256,
       block_height=1,
@@ -456,13 +456,14 @@ class Pruning(object):
 
       pool_window = [self._block_dim[0], self._block_dim[1]]
       pool_fn = pruning_utils.factorized_pool
-
+      squeeze_axis = None
       if not self._spec.use_tpu:
         pool_fn = nn_ops.pool
         abs_weights = array_ops.reshape(
             abs_weights,
             [1, abs_weights.get_shape()[0],
              abs_weights.get_shape()[1], 1])
+        squeeze_axis = [0, 3]
 
       pooled_weights = pool_fn(
           abs_weights,
@@ -473,7 +474,7 @@ class Pruning(object):
           name=weights.op.name + '_pooled')
 
       if pooled_weights.get_shape().ndims != 2:
-        pooled_weights = array_ops.squeeze(pooled_weights)
+        pooled_weights = array_ops.squeeze(pooled_weights, axis=squeeze_axis)
 
       smoothed_threshold, new_mask = self._update_mask(pooled_weights,
                                                        threshold)

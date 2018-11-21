@@ -26,8 +26,8 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.engine.base_layer import InputSpec
 from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -145,7 +145,6 @@ class BatchNormalization(Layer):
                **kwargs):
     super(BatchNormalization, self).__init__(
         name=name, trainable=trainable, **kwargs)
-    self._can_use_graph_functions = True
     if isinstance(axis, list):
       self.axis = axis[:]
     else:
@@ -493,7 +492,6 @@ class BatchNormalization(Layer):
     return (r, d, new_mean, new_variance)
 
   def call(self, inputs, training=None):
-    original_training_value = training
     if training is None:
       training = K.learning_phase()
 
@@ -517,8 +515,6 @@ class BatchNormalization(Layer):
         # Currently never reaches here since fused_batch_norm does not support
         # virtual batching
         outputs = undo_virtual_batching(outputs)
-      if not context.executing_eagerly() and original_training_value is None:
-        outputs._uses_learning_phase = True  # pylint: disable=protected-access
       return outputs
 
     # Compute the axes along which to reduce the mean / variance
@@ -635,8 +631,6 @@ class BatchNormalization(Layer):
 
     if self.virtual_batch_size is not None:
       outputs = undo_virtual_batching(outputs)
-    if not context.executing_eagerly() and original_training_value is None:
-      outputs._uses_learning_phase = True  # pylint: disable=protected-access
     return outputs
 
   def compute_output_shape(self, input_shape):

@@ -25,6 +25,7 @@ from tensorflow.contrib.rnn.ops import gen_lstm_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
@@ -156,7 +157,7 @@ def _block_lstm(seq_len_max,
 
   Args:
     seq_len_max: A `Tensor` of type `int64`.
-    x: A list of at least 1 `Tensor` objects of the same type in: `float32`.
+    x: A list of at least 1 `Tensor` objects of the same type.
     w: A `Tensor`. Must have the same type as `x`.
     b: A `Tensor`. Must have the same type as `x`.
     cs_prev: A `Tensor`. Must have the same type as `x`.
@@ -189,6 +190,7 @@ def _block_lstm(seq_len_max,
   Raises:
     ValueError: If `b` does not have a valid shape.
   """
+  dtype = x[0].dtype
   batch_size = x[0].get_shape().with_rank(2).dims[0].value
   cell_size4 = b.get_shape().with_rank(1).dims[0].value
   if cell_size4 is None:
@@ -197,13 +199,13 @@ def _block_lstm(seq_len_max,
   zero_state = None
   if cs_prev is None or h_prev is None:
     zero_state = array_ops.constant(
-        0, dtype=dtypes.float32, shape=[batch_size, cell_size])
+        0, dtype=dtype, shape=[batch_size, cell_size])
   if cs_prev is None:
     cs_prev = zero_state
   if h_prev is None:
     h_prev = zero_state
   if wci is None:
-    wci = array_ops.constant(0, dtype=dtypes.float32, shape=[cell_size])
+    wci = array_ops.constant(0, dtype=dtype, shape=[cell_size])
     wcf = wci
     wco = wci
 
@@ -384,7 +386,7 @@ class LSTMBlockCell(LayerRNNCell):
         "scope": "lstm_cell"
     }
     # Inputs must be 2-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=2)
+    self.input_spec = input_spec.InputSpec(ndim=2)
 
   @property
   def state_size(self):
@@ -627,7 +629,7 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
     self._use_peephole = use_peephole
 
     # Inputs must be 3-dimensional.
-    self.input_spec = base_layer.InputSpec(ndim=3)
+    self.input_spec = input_spec.InputSpec(ndim=3)
 
   @property
   def num_units(self):

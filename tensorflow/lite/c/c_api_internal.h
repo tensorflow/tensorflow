@@ -179,6 +179,7 @@ typedef enum {
   kTfLiteBool = 6,
   kTfLiteInt16 = 7,
   kTfLiteComplex64 = 8,
+  kTfLiteInt8 = 9,
 } TfLiteType;
 
 // Return the name of a given type, for error reporting purposes.
@@ -203,6 +204,7 @@ typedef union {
   bool* b;
   int16_t* i16;
   TfLiteComplex64* c64;
+  int8_t* int8;
 } TfLitePtrUnion;
 
 // Memory allocation strategies. kTfLiteMmapRo is for read-only memory-mapped
@@ -373,7 +375,7 @@ typedef struct TfLiteContext {
 
   // Replace ops with one or more stub delegate operations. This function
   // does not take ownership of `nodes_to_replace`.
-  TfLiteStatus (*ReplaceSubgraphsWithDelegateKernels)(
+  TfLiteStatus (*ReplaceNodeSubsetsWithDelegateKernels)(
       struct TfLiteContext*, TfLiteRegistration registration,
       const TfLiteIntArray* nodes_to_replace, TfLiteDelegate* delegate);
 
@@ -456,6 +458,22 @@ typedef struct _TfLiteRegistration {
   int version;
 } TfLiteRegistration;
 
+// The flags used in `TfLiteDelegate`. Note that this is a bitmask, so the
+// values should be 1, 2, 4, 8, ...etc.
+typedef enum {
+  kTfLiteDelegateFlagsNone = 0,
+  // The flag is set if the delegate can handle dynamic sized tensors.
+  // For example, the output shape of a `Resize` op with non-constant shape
+  // can only be inferred when the op is invoked.
+  // In this case, the Delegate is responsible for calling
+  // `SetTensorToDynamic` to mark the tensor as a dynamic tensor, and calling
+  // `ResizeTensor` when invoking the op.
+  //
+  // If the delegate isn't capable to handle dynamic tensors, this flag need
+  // to be set to false.
+  kTfLiteDelegateFlagsAllowDynamicTensors = 1
+} TfLiteDelegateFlags;
+
 // WARNING: This is an experimental interface that is subject to change.
 typedef struct _TfLiteDelegate {
   // Data that delegate needs to identify itself. This data is owned by the
@@ -465,7 +483,7 @@ typedef struct _TfLiteDelegate {
 
   // Invoked by ModifyGraphWithDelegate. This prepare is called, giving the
   // delegate a view of the current graph through TfLiteContext*. It typically
-  // will look at the nodes and call ReplaceSubgraphsWithDelegateKernels()
+  // will look at the nodes and call ReplaceNodeSubsetsWithDelegateKernels()
   // to ask the TensorFlow lite runtime to create macro-nodes to represent
   // delegated subgraphs of the original graph.
   TfLiteStatus (*Prepare)(TfLiteContext* context, TfLiteDelegate* delegate);
@@ -490,6 +508,9 @@ typedef struct _TfLiteDelegate {
   // This can be null if the delegate doesn't use its own buffer.
   void (*FreeBufferHandle)(TfLiteContext* context, TfLiteDelegate* delegate,
                            TfLiteBufferHandle* handle);
+
+  // Bitmask flags. See the comments in `TfLiteDelegateFlags`.
+  int64_t flags;
 } TfLiteDelegate;
 
 // WARNING: This is an experimental interface that is subject to change.

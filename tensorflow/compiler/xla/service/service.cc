@@ -23,9 +23,9 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -292,7 +292,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     config->set_seed(execution_options->seed());
     config->set_debug_options(execution_options->debug_options());
   } else {
-    config->set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+    config->set_debug_options(GetDebugOptionsFromFlags());
   }
 
   if (execute_backend_ != nullptr &&
@@ -760,38 +760,6 @@ Status Service::GetDeviceHandles(const GetDeviceHandlesRequest* arg,
   return Status::OK();
 }
 
-Status Service::ExecuteOneToN(const ExecuteGraphRequest* arg,
-                              ExecuteResponse* result) {
-  ExecuteGraphParallelRequest parallel_arg;
-  *parallel_arg.add_requests() = *arg;
-  ExecuteParallelResponse parallel_result;
-  TF_RETURN_IF_ERROR(ExecuteGraphParallel(&parallel_arg, &parallel_result));
-  return PickParallelResponse(parallel_result, result);
-}
-
-Status Service::PickParallelResponse(
-    const ExecuteParallelResponse& parallel_result, ExecuteResponse* result) {
-  // The "result device" selection is a bit hacky, but better than assuming it
-  // is device 0. We have b/76035356 for restructuring the client API to clean
-  // up the current asymmetries and support more functionalities.
-  for (int64 i = 0; i < parallel_result.responses_size(); ++i) {
-    TF_ASSIGN_OR_RETURN(const ShapedBuffer* buffer,
-                        allocation_tracker_.ResolveForReplica(
-                            parallel_result.responses(i).output(), 0));
-    const Shape& shape = buffer->on_host_shape();
-    if (!ShapeUtil::IsEmptyTuple(shape)) {
-      *result = parallel_result.responses(i);
-      VLOG(3) << "Fetching result from device " << i << ": "
-              << ShapeUtil::HumanString(shape);
-      return Status::OK();
-    }
-  }
-  TF_RET_CHECK(parallel_result.responses_size() > 0);
-  *result = parallel_result.responses(0);
-  VLOG(1) << "Defaulting to device 0 result";
-  return Status::OK();
-}
-
 StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
     const HloModuleProto& module_proto,
     std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
@@ -836,10 +804,8 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
   return std::move(executable);
 }
 
-Status Service::ExecuteGraph(const ExecuteGraphRequest* arg,
-                             ExecuteResponse* result) {
-  VLOG(1) << "running execute-graph request";
-
+Status Service::Compile(const CompileRequest* arg, CompileResponse* result) {
+  VLOG(1) << "running compile request";
   if (!arg->has_computation()) {
     return InvalidArgument("computations may not be empty");
   }
@@ -847,22 +813,21 @@ Status Service::ExecuteGraph(const ExecuteGraphRequest* arg,
     return InvalidArgument("programe shape may not be empty");
   }
 
-  // If we received multiple device handles, we must partition the module.
   if (arg->execution_options().device_handles_size() > 1) {
-    return ExecuteOneToN(arg, result);
+    return InvalidArgument(
+        "The compile request does not support multiple device handles.");
   }
 
-  TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*execute_backend_,
-                                              SingleComputationDeviceHandle()));
-  TF_ASSIGN_OR_RETURN(
-      std::vector<std::vector<const ShapedBuffer*>> replicated_arguments,
-      ResolveAndValidateArguments(arg->arguments(), replicas));
-
+  std::vector<const Shape*> argument_shapes;
+  absl::c_transform(arg->input_shape_with_layout(),
+                    std::back_inserter(argument_shapes),
+                    [](const Shape& shape) { return &shape; });
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
       CreateModuleConfig(arg->computation().host_program_shape(),
-                         replicated_arguments.front(),
-                         arg->execution_options()));
+                         argument_shapes, &arg->execution_options()));
+  VLOG(3) << "Compile created HloModuleConfig computation layout: "
+          << module_config->entry_computation_layout().ToString();
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
@@ -870,6 +835,48 @@ Status Service::ExecuteGraph(const ExecuteGraphRequest* arg,
                       execute_backend_.get(),
                       execute_backend_->default_stream_executor(),
                       /*device_allocator=*/nullptr));
+
+  *result->mutable_handle() = compilation_cache_.Insert(std::move(executable));
+
+  VLOG(1) << "successfully completed 'compile' request";
+  return Status::OK();
+}
+
+Status Service::Execute(const ExecuteRequest* arg, ExecuteResponse* result) {
+  VLOG(1) << "running execute request";
+  if (!arg->has_handle()) {
+    return InvalidArgument("execution handle should not be empty");
+  }
+  TF_ASSIGN_OR_RETURN(auto executable,
+                      compilation_cache_.LookUp(arg->handle()));
+
+  TF_ASSIGN_OR_RETURN(auto replicas, Replicas(*execute_backend_,
+                                              SingleComputationDeviceHandle()));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::vector<const ShapedBuffer*>> replicated_arguments,
+      ResolveAndValidateArguments(arg->arguments(), replicas));
+
+  // Check that the replicated_arguments has the same shape and layout as the
+  // module config used when creating the exectuable.
+  const int64 num_module_args =
+      executable->module_config().entry_computation_layout().parameter_count();
+  if (num_module_args != arg->arguments_size()) {
+    return InvalidArgument(
+        "The executable expects %lld arguments, but sees %lld.",
+        num_module_args, arg->arguments_size());
+  }
+  for (int64 i = 0; i < num_module_args; i++) {
+    const Shape& shape_module =
+        executable->module_config().entry_computation_layout().parameter_shape(
+            i);
+    const Shape& shape_arg = replicated_arguments.front()[i]->on_host_shape();
+    if (!ShapeUtil::Equal(shape_module, shape_arg)) {
+      return InvalidArgumentStrCat(
+          "The executable exepcts the ", i, "th argument in shape ",
+          ShapeUtil::HumanStringWithLayout(shape_module), " but sees ",
+          ShapeUtil::HumanStringWithLayout(shape_arg));
+    }
+  }
 
   TF_ASSIGN_OR_RETURN(auto stream,
                       execute_backend_->BorrowStream(
@@ -884,9 +891,10 @@ Status Service::ExecuteGraph(const ExecuteGraphRequest* arg,
 
   TF_ASSIGN_OR_RETURN(
       *result->mutable_output(),
-      ExecuteAndRegisterResult(
-          executable.get(), replicated_arguments, execute_backend_.get(),
-          "result of " + arg->computation().name(), result->mutable_profile()));
+      ExecuteAndRegisterResult(executable.get(), replicated_arguments,
+                               execute_backend_.get(),
+                               "result of " + executable->module().name(),
+                               result->mutable_profile()));
 
   if (executable->dumping_snapshot()) {
     TF_ASSIGN_OR_RETURN(
@@ -898,7 +906,7 @@ Status Service::ExecuteGraph(const ExecuteGraphRequest* arg,
     TF_RETURN_IF_ERROR(executable->DumpHloSnapshot());
   }
 
-  VLOG(1) << "successfully completed 'execute-graph' request";
+  VLOG(1) << "successfully completed 'execute' request";
   return Status::OK();
 }
 
@@ -948,21 +956,6 @@ Status Service::TransferToClient(const TransferToClientRequest* arg,
   }
   return Status::OK();
 }
-
-namespace {
-
-// Creates a clone of the given shaped buffer with the given device ordinal. The
-// shape and DeviceMemoryBase values of the clone are identical to the original.
-std::unique_ptr<ShapedBuffer> CloneShapedBufferOnDevice(
-    const ShapedBuffer& shaped_buffer, int device_ordinal) {
-  auto clone = absl::make_unique<ShapedBuffer>(
-      shaped_buffer.on_host_shape(), shaped_buffer.on_device_shape(),
-      shaped_buffer.platform(), device_ordinal);
-  clone->buffers() = shaped_buffer.buffers();
-  return clone;
-}
-
-}  // namespace
 
 Status Service::TransferToServer(const TransferToServerRequest* arg,
                                  TransferToServerResponse* result) {

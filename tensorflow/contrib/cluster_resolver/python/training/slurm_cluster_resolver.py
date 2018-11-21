@@ -53,7 +53,8 @@ class SlurmClusterResolver(ClusterResolver):
                gpus_per_node=1,
                gpus_per_task=1,
                tasks_per_node=None,
-               auto_set_gpu=True):
+               auto_set_gpu=True,
+               rpc_layer='grpc'):
     """Creates a new SlurmClusterResolver object.
 
     This takes in parameters and creates a SlurmClusterResolver object. It uses
@@ -74,6 +75,8 @@ class SlurmClusterResolver(ClusterResolver):
       auto_set_gpu: Set the visible CUDA devices automatically while resolving
         the cluster by setting CUDA_VISIBLE_DEVICES environment variable.
         Defaults to True.
+      rpc_layer: (Optional) The protocol TensorFlow uses to communicate between
+        nodes. Defaults to 'grpc'.
 
     Returns:
       A ClusterResolver object which can be used with distributed TensorFlow.
@@ -107,8 +110,9 @@ class SlurmClusterResolver(ClusterResolver):
     self._gpus_per_task = gpus_per_task
 
     self._auto_set_gpu = auto_set_gpu
-    self._job_name = None
-    self._task_index = None
+    self.task_type = None
+    self.task_index = None
+    self.rpc_layer = rpc_layer
 
     self._gpu_allocation = []
     self._cluster_allocation = {}
@@ -157,17 +161,15 @@ class SlurmClusterResolver(ClusterResolver):
     cluster_rank_offset_start = 0
     cluster_rank_offset_end = 0
 
-    for job_name, num_tasks in self._jobs.items():
+    for task_type, num_tasks in self._jobs.items():
       cluster_rank_offset_end = cluster_rank_offset_start + num_tasks
 
-      self._cluster_allocation[job_name] = \
-        task_list[cluster_rank_offset_start:cluster_rank_offset_end]
+      self._cluster_allocation[task_type] = (
+          task_list[cluster_rank_offset_start:cluster_rank_offset_end])
 
-      if self._rank >= cluster_rank_offset_start and \
-          self._rank < cluster_rank_offset_end:
-
-        self._job_name = job_name
-        self._task_index = self._rank - cluster_rank_offset_start
+      if cluster_rank_offset_start <= self._rank < cluster_rank_offset_end:
+        self.task_type = task_type
+        self.task_index = self._rank - cluster_rank_offset_start
 
       cluster_rank_offset_start = cluster_rank_offset_end
 
@@ -188,9 +190,37 @@ class SlurmClusterResolver(ClusterResolver):
       A string specifying job name the process belongs to and an integner
         specifying the task index the process belongs to in that job.
     """
-    return self._job_name, self._task_index
+    return self.task_type, self.task_index
 
-  def master(self, task_type=None, task_index=None):
-    if task_type and task_index:
-      return self.cluster_spec().task_address(task_type, task_index)
-    return self._cluster_allocation[str(self._job_name)][self._task_index]
+  def master(self, task_type=None, task_index=None, rpc_layer=None):
+    """Returns the master string for connecting to a TensorFlow master.
+
+    Args:
+      task_type: (Optional) Overrides the default auto-selected task type.
+      task_index: (Optional) Overrides the default auto-slected task index.
+      rpc_layer: (Optional) Overrides the default RPC protocol TensorFlow uses
+        to communicate across nodes.
+
+    Returns:
+      A connection string for connecting to a TensorFlow master.
+    """
+    task_type = task_type if task_type is not None else self.task_type
+    task_index = task_index if task_index is not None else self.task_index
+    rpc_layer = rpc_layer or self.rpc_layer
+    master = self.cluster_spec().task_address(task_type, task_index)
+
+    return '%s://%s' % (rpc_layer, master) if rpc_layer else master
+
+  @property
+  def environment(self):
+    """Returns the current environment which TensorFlow is running in.
+
+    For users in the Slurm environment, the environment property is always an
+    empty string, and Google users will not use this ClusterResolver for running
+    on internal systems.
+    """
+    return ''
+
+  def num_accelerators_per_worker(self, session_config=None):
+    del session_config  # Unused, since this is set in __init__ manually.
+    return self._gpus_per_node

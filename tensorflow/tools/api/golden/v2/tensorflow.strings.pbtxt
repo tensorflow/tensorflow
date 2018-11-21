@@ -10,7 +10,7 @@ tf_module {
   }
   member_method {
     name: "length"
-    argspec: "args=[\'input\', \'name\', \'unit\'], varargs=None, keywords=None, defaults=[\'None\', \'BYTE\'], "
+    argspec: "args=[\'input\', \'unit\', \'name\'], varargs=None, keywords=None, defaults=[\'BYTE\', \'None\'], "
   }
   member_method {
     name: "reduce_join"

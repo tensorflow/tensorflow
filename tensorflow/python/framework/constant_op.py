@@ -106,12 +106,12 @@ def convert_to_eager_tensor(value, ctx, dtype=None):
     tensor = scalar_cache.get(cache_key, None)
     if tensor is not None:
       return ops.EagerTensor(
-          value, context=handle, device=device, dtype=dtype, other_value=tensor)
-    t = ops.EagerTensor(value, context=handle, device=device, dtype=dtype)
+          value, handle, device, dtype, tensor)
+    t = ops.EagerTensor(value, handle, device, dtype)
     scalar_cache[cache_key] = t
     return t
   else:
-    return ops.EagerTensor(value, context=handle, device=device, dtype=dtype)
+    return ops.EagerTensor(value, handle, device, dtype)
 
 
 @tf_export("constant")

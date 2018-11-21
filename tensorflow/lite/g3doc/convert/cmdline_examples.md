@@ -95,11 +95,10 @@ tflite_convert \
 
 The TensorFlow Lite Converter is compatible with fixed point quantization models
 described [here](https://www.tensorflow.org/performance/quantization). These are
-float models with
-[`FakeQuant*`](https://www.tensorflow.org/api_guides/python/array_ops#Fake_quantization)
-ops inserted at the boundaries of fused layers to record min-max range
-information. This generates a quantized inference workload that reproduces the
-quantization behavior that was used during training.
+float models with `FakeQuant*` ops inserted at the boundaries of fused layers
+to record min-max range information. This generates a quantized inference
+workload that reproduces the quantization behavior that was used during
+training.
 
 The following command generates a quantized TensorFlow Lite FlatBuffer from a
 "quantized" TensorFlow GraphDef.

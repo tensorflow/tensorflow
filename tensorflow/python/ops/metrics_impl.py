@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -213,26 +212,6 @@ def _maybe_expand_labels(labels, predictions):
         lambda: array_ops.expand_dims(labels, -1, name=scope), lambda: labels)
 
 
-def _safe_div(numerator, denominator, name):
-  """Divides two tensors element-wise, returning 0 if the denominator is <= 0.
-
-  Args:
-    numerator: A real `Tensor`.
-    denominator: A real `Tensor`, with dtype matching `numerator`.
-    name: Name for the returned op.
-
-  Returns:
-    0 if `denominator` <= 0, else `numerator` / `denominator`
-  """
-  if compat.forward_compatible(2018, 11, 1):
-    return math_ops.div_no_nan(numerator, denominator)
-  t = math_ops.truediv(numerator, denominator)
-  zero = array_ops.zeros_like(t, dtype=denominator.dtype)
-  condition = math_ops.greater(denominator, zero)
-  zero = math_ops.cast(zero, t.dtype)
-  return array_ops.where(condition, t, zero, name=name)
-
-
 def _safe_scalar_div(numerator, denominator, name):
   """Divides two values, returning 0 if the denominator is 0.
 
@@ -246,7 +225,7 @@ def _safe_scalar_div(numerator, denominator, name):
   """
   numerator.get_shape().with_rank_at_most(1)
   denominator.get_shape().with_rank_at_most(1)
-  return _safe_div(numerator, denominator, name=name)
+  return math_ops.div_no_nan(numerator, denominator, name=name)
 
 
 def _streaming_confusion_matrix(labels, predictions, num_classes, weights=None):
@@ -302,7 +281,7 @@ def _aggregate_across_replicas(metrics_collections, metric_value_fn, *args):
   """Aggregate metric value across replicas."""
   def fn(distribution, *a):
     """Call `metric_value_fn` in the correct control flow context."""
-    if hasattr(distribution, '_outer_control_flow_context'):
+    if hasattr(distribution.extended, '_outer_control_flow_context'):
       # If there was an outer context captured before this method was called,
       # then we enter that context to create the metric value op. If the
       # caputred context is `None`, ops.control_dependencies(None) gives the
@@ -315,13 +294,13 @@ def _aggregate_across_replicas(metrics_collections, metric_value_fn, *args):
       # once the update ops have been evaluted.
 
       # pylint: disable=protected-access
-      if distribution._outer_control_flow_context is None:
+      if distribution.extended._outer_control_flow_context is None:
         with ops.control_dependencies(None):
           metric_value = metric_value_fn(distribution, *a)
       else:
-        distribution._outer_control_flow_context.Enter()
+        distribution.extended._outer_control_flow_context.Enter()
         metric_value = metric_value_fn(distribution, *a)
-        distribution._outer_control_flow_context.Exit()
+        distribution.extended._outer_control_flow_context.Exit()
         # pylint: enable=protected-access
     else:
       metric_value = metric_value_fn(distribution, *a)
@@ -330,10 +309,10 @@ def _aggregate_across_replicas(metrics_collections, metric_value_fn, *args):
     return metric_value
 
   return distribution_strategy_context.get_replica_context().merge_call(
-      fn, *args)
+      fn, args=args)
 
 
-@tf_export('metrics.mean')
+@tf_export(v1=['metrics.mean'])
 def mean(values,
          weights=None,
          metrics_collections=None,
@@ -401,13 +380,12 @@ def mean(values,
       update_count_op = state_ops.assign_add(count, num_values)
 
     def compute_mean(_, t, c):
-      return _safe_div(t, math_ops.maximum(c, 0), name='value')
+      return math_ops.div_no_nan(t, math_ops.maximum(c, 0), name='value')
 
     mean_t = _aggregate_across_replicas(
         metrics_collections, compute_mean, total, count)
-    update_op = _safe_div(update_total_op,
-                          math_ops.maximum(update_count_op, 0),
-                          name='update_op')
+    update_op = math_ops.div_no_nan(
+        update_total_op, math_ops.maximum(update_count_op, 0), name='update_op')
 
     if updates_collections:
       ops.add_to_collections(updates_collections, update_op)
@@ -415,7 +393,7 @@ def mean(values,
     return mean_t, update_op
 
 
-@tf_export('metrics.accuracy')
+@tf_export(v1=['metrics.accuracy'])
 def accuracy(labels,
              predictions,
              weights=None,
@@ -779,19 +757,19 @@ def auc(labels,
       """
       dtp = tp[:num_thresholds - 1] - tp[1:]
       p = tp + fp
-      prec_slope = _safe_div(
+      prec_slope = math_ops.div_no_nan(
           dtp,
           math_ops.maximum(p[:num_thresholds - 1] - p[1:], 0),
           name='prec_slope')
       intercept = tp[1:] - math_ops.multiply(prec_slope, p[1:])
       safe_p_ratio = array_ops.where(
           math_ops.logical_and(p[:num_thresholds - 1] > 0, p[1:] > 0),
-          _safe_div(p[:num_thresholds - 1],
-                    math_ops.maximum(p[1:], 0),
-                    name='recall_relative_ratio'),
-          array_ops.ones_like(p[1:]))
+          math_ops.div_no_nan(
+              p[:num_thresholds - 1],
+              math_ops.maximum(p[1:], 0),
+              name='recall_relative_ratio'), array_ops.ones_like(p[1:]))
       return math_ops.reduce_sum(
-          _safe_div(
+          math_ops.div_no_nan(
               prec_slope * (dtp + intercept * math_ops.log(safe_p_ratio)),
               math_ops.maximum(tp[1:] + fn[1:], 0),
               name='pr_auc_increment'),
@@ -1074,7 +1052,7 @@ def mean_per_class_accuracy(labels,
     update_count_op = state_ops.scatter_add(count, labels, is_correct)
 
     def compute_mean_accuracy(_, count, total):
-      per_class_accuracy = _safe_div(
+      per_class_accuracy = math_ops.div_no_nan(
           count, math_ops.maximum(total, 0), name=None)
       mean_accuracy_v = math_ops.reduce_mean(
           per_class_accuracy, name='mean_accuracy')
@@ -1083,9 +1061,8 @@ def mean_per_class_accuracy(labels,
     mean_accuracy_v = _aggregate_across_replicas(
         metrics_collections, compute_mean_accuracy, count, total)
 
-    update_op = _safe_div(update_count_op,
-                          math_ops.maximum(update_total_op, 0),
-                          name='update_op')
+    update_op = math_ops.div_no_nan(
+        update_count_op, math_ops.maximum(update_total_op, 0), name='update_op')
     if updates_collections:
       ops.add_to_collections(updates_collections, update_op)
 
@@ -1394,15 +1371,14 @@ def mean_tensor(values,
     with ops.control_dependencies([values]):
       update_count_op = state_ops.assign_add(count, num_values)
 
-    compute_mean = lambda _, t, c: _safe_div(
+    compute_mean = lambda _, t, c: math_ops.div_no_nan(  # pylint: disable=g-long-lambda
         t, math_ops.maximum(c, 0), name='value')
 
     mean_t = _aggregate_across_replicas(
         metrics_collections, compute_mean, total, count)
 
-    update_op = _safe_div(update_total_op,
-                          math_ops.maximum(update_count_op, 0),
-                          name='update_op')
+    update_op = math_ops.div_no_nan(
+        update_total_op, math_ops.maximum(update_count_op, 0), name='update_op')
     if updates_collections:
       ops.add_to_collections(updates_collections, update_op)
 

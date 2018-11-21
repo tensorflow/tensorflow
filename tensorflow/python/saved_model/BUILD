@@ -21,9 +21,9 @@ py_library(
     deps = [
         ":builder",
         ":constants",
-        ":export",
         ":loader",
         ":main_op",
+        ":save",
         ":signature_constants",
         ":signature_def_utils",
         ":simple_save",
@@ -265,9 +265,9 @@ py_test(
 )
 
 py_library(
-    name = "export",
+    name = "save",
     srcs = [
-        "export.py",
+        "save.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -285,11 +285,11 @@ py_library(
 )
 
 py_test(
-    name = "export_test",
-    srcs = ["export_test.py"],
+    name = "save_test",
+    srcs = ["save_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":export",
+        ":save",
         ":signature_constants",
         ":tag_constants",
         "//tensorflow/python/eager:def_function",

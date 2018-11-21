@@ -16,8 +16,10 @@ limitations under the License.
 
 #include <iostream>
 
+#include "absl/strings/escaping.h"
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/delegates/flex/delegate.h"
+#include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/split.h"
 
 namespace tflite {
@@ -105,6 +107,7 @@ class TfLiteDriver::Expectation {
     if (tensor_size != num_elements_) {
       std::cerr << "Expected a tensor with " << num_elements_
                 << " elements, got " << tensor_size << std::endl;
+      std::cerr << "while checking tensor " << tensor.name << std::endl;
       return false;
     }
 
@@ -143,7 +146,11 @@ TfLiteDriver::TfLiteDriver(bool use_nnapi, const string& delegate_name)
   }
 }
 
-TfLiteDriver::~TfLiteDriver() {}
+TfLiteDriver::~TfLiteDriver() {
+  for (TfLiteTensor* t : tensors_to_deallocate_) {
+    free(t->data.raw);
+  }
+}
 
 void TfLiteDriver::AllocateTensors() {
   if (must_allocate_tensors_) {
@@ -173,9 +180,7 @@ void TfLiteDriver::LoadModel(const string& bin_file_path) {
   interpreter_->UseNNAPI(use_nnapi_);
 
   if (delegate_) {
-    if (interpreter_->ModifyGraphWithDelegate(delegate_.get(),
-                                              /*allow_dynamic_tensors=*/true) !=
-        kTfLiteOk) {
+    if (interpreter_->ModifyGraphWithDelegate(delegate_.get()) != kTfLiteOk) {
       Invalidate("Unable to the build graph using the delegate");
       return;
     }
@@ -232,6 +237,17 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
       const auto& values = testing::Split<bool>(csv_values, ",");
       if (!CheckSizes<bool>(tensor->bytes, values.size())) return;
       SetTensorData(values, &tensor->data);
+      break;
+    }
+    case kTfLiteString: {
+      string s = absl::HexStringToBytes(csv_values);
+
+      tensor->data.raw = reinterpret_cast<char*>(malloc(s.size()));
+      tensor->bytes = s.size();
+      memcpy(tensor->data.raw, s.data(), s.size());
+
+      // We must remember to free the memory we allocated above.
+      tensors_to_deallocate_.push_back(tensor);
       break;
     }
     default:

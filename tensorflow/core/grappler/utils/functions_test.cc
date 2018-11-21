@@ -32,65 +32,6 @@ constexpr char kDevice[] = "/device:CPU:0";
 
 class FunctionsTest : public ::testing::Test {};
 
-TEST_F(FunctionsTest, ReachableFunctions) {
-  using ::tensorflow::test::function::GDef;
-  using ::tensorflow::test::function::NDef;
-  using FDH = ::tensorflow::FunctionDefHelper;
-
-  const auto make_simple_fdef = [](const string &name) {
-    return FDH::Create(
-        name, {"x:T", "y:T"}, {"z:T"}, {"T: {float, double}"},
-        {{{"output"}, "Mul", {"x", "y"}, {{"T", "$T"}}}},
-        /* Mapping between function returns and function node outputs. */
-        {{"z", "output:z:0"}});
-  };
-
-  FunctionDef func_1 = make_simple_fdef("Func1");
-  FunctionDef func_2 = make_simple_fdef("Func2");
-  FunctionDef func_3 = make_simple_fdef("Func3");
-
-  FunctionDef func_2_grad = make_simple_fdef("Func2_grad");
-
-  GraphDef graph = GDef(
-      {
-          NDef("a", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
-          NDef("b", "Placeholder", {}, {{"dtype", DT_FLOAT}}, kDevice),
-          NDef("x", "Func1", {"a", "b"}, {{"T", DT_FLOAT}}, kDevice),
-          NDef("y", "PartitionedCall", {"a", "b"},
-               {{"Tin", DataTypeSlice{DT_FLOAT, DT_FLOAT}},
-                {"Tout", DataTypeSlice{DT_FLOAT}},
-                {"f", FDH::FunctionRef("Func2", {{"T", DT_FLOAT}})}},
-               kDevice),
-      },
-      // FunctionLib
-      {func_1, func_2, func_3, func_2_grad});
-
-  // Register custom function gradient after the graph was constructed.
-  GradientDef *func3_grad_def = graph.mutable_library()->add_gradient();
-  func3_grad_def->set_function_name("Func2");
-  func3_grad_def->set_gradient_func("Func2_grad");
-
-  FunctionLibraryDefinition flib(OpRegistry::Global(), graph.library());
-
-  // - 'Func1' called directly from the graph
-  // - 'Func2' called indirectly via PartitionedCall attribute, and it also
-  //   has a custom gradient ('Func2_grad') that must remain in the library
-  // - 'Func3' in unreachable and has to be removed from the library
-
-  absl::flat_hash_set<string> reachable_funcs = ReachableFunctions(flib, graph);
-  ASSERT_EQ(reachable_funcs.size(), 3);
-  EXPECT_NE(reachable_funcs.find("Func1"), reachable_funcs.end());
-  EXPECT_NE(reachable_funcs.find("Func2"), reachable_funcs.end());
-  EXPECT_NE(reachable_funcs.find("Func2_grad"), reachable_funcs.end());
-
-  FunctionLibraryDefinition reachable_flib =
-      ReachableFunctionLibraryDefinition(flib, graph);
-  ASSERT_EQ(reachable_flib.num_functions(), 3);
-  EXPECT_TRUE(reachable_flib.Contains("Func1"));
-  EXPECT_TRUE(reachable_flib.Contains("Func2"));
-  EXPECT_TRUE(reachable_flib.Contains("Func2_grad"));
-}
-
 TEST_F(FunctionsTest, IsParametrized) {
   // Function is defined for multiple input types.
   FunctionDef parametrized_func = FunctionDefHelper::Create(
@@ -633,6 +574,33 @@ TEST_F(FunctionsTest, FromFunctionDefWithoutInput) {
   EXPECT_EQ("o", cast.name());
   EXPECT_EQ(1, cast.input_size());
   EXPECT_EQ("two", cast.input(0));
+}
+
+TEST_F(FunctionsTest, FromFunctionDefWithSideEffectfulOps) {
+  const Tensor kOne = test::AsScalar<float>(1.0);
+  FunctionDef func = FunctionDefHelper::Define(
+      /* Name */ "SideEffects",
+      /* Args */ {"x: Ref(float)"},
+      /* Return values */ {},
+      /* Attr def */ {},
+      /* Nodes */
+      {{{"one"}, "Const", {}, {{"value", kOne}, {"dtype", DT_FLOAT}}},
+       {{"update"}, "AssignAdd", {"x", "one"}, {{"T", DT_FLOAT}}}});
+
+  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
+
+  GrapplerFunctionItem item;
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func,
+                                        AttrSlice(&func_instantiation_attr),
+                                        flib, TF_GRAPH_DEF_VERSION, &item));
+
+  EXPECT_EQ("SideEffects", item.id);
+  EXPECT_EQ(3, item.function_body().node_size());
+  EXPECT_EQ(1, item.input_size());
+  EXPECT_EQ(0, item.output_size());
+  ASSERT_EQ(1, item.keep_ops.size());
+  EXPECT_EQ("update", item.keep_ops[0]);
 }
 
 TEST_F(FunctionsTest, MakeFunctionDef) {

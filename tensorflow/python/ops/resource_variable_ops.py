@@ -519,7 +519,10 @@ class ResourceVariable(variables.RefVariable):
       snapshot = g.as_graph_element(
           ops.prepend_name_scope(
               variable_def.snapshot_name, import_scope=import_scope))
-      self._cached_value = snapshot
+      if snapshot.op.type != "ReadVariableOp":
+        self._cached_value = snapshot
+      else:
+        self._cached_value = None
       while snapshot.op.type != "ReadVariableOp":
         snapshot = snapshot.op.inputs[0]
       self._graph_element = snapshot

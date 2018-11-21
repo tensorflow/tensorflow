@@ -31,24 +31,24 @@ class ConvertTest(test.TestCase):
   def testInteger(self):
     resp = convert.optional_param_to_tensor("foo", 3)
     with self.cached_session() as sess:
-      self.assertEqual(3, sess.run(resp))
+      self.assertEqual(3, self.evaluate(resp))
 
   def testIntegerDefault(self):
     resp = convert.optional_param_to_tensor("foo", None)
     with self.cached_session() as sess:
-      self.assertEqual(0, sess.run(resp))
+      self.assertEqual(0, self.evaluate(resp))
 
   def testStringDefault(self):
     resp = convert.optional_param_to_tensor("bar", None, "default",
                                             dtypes.string)
     with self.cached_session() as sess:
-      self.assertEqual(compat.as_bytes("default"), sess.run(resp))
+      self.assertEqual(compat.as_bytes("default"), self.evaluate(resp))
 
   def testString(self):
     resp = convert.optional_param_to_tensor("bar", "value", "default",
                                             dtypes.string)
     with self.cached_session() as sess:
-      self.assertEqual(compat.as_bytes("value"), sess.run(resp))
+      self.assertEqual(compat.as_bytes("value"), self.evaluate(resp))
 
   def testPartialShapeToTensorKnownDimension(self):
     with self.cached_session() as sess:

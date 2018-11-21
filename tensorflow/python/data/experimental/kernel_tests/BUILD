@@ -38,6 +38,7 @@ cuda_py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python/compat:compat",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
@@ -279,6 +280,7 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:io_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/ops:readers",
@@ -616,7 +618,10 @@ py_test(
     size = "medium",
     srcs = ["stats_dataset_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "notsan",
+    ],
     deps = [
         ":reader_dataset_ops_test_base",
         ":stats_dataset_test_base",
@@ -624,9 +629,15 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/experimental/ops:stats_aggregator",
         "//tensorflow/python/data/experimental/ops:stats_ops",
+        "//tensorflow/python/data/experimental/ops:stats_options",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

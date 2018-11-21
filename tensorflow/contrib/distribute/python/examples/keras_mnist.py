@@ -61,7 +61,6 @@ def get_input_datasets(use_bfloat16=False):
   # train dataset
   train_ds = tf.data.Dataset.from_tensor_slices((x_train, y_train))
   train_ds = train_ds.repeat()
-  train_ds = train_ds.shuffle(100)
   train_ds = train_ds.map(lambda x, y: (tf.cast(x, cast_dtype), y))
   train_ds = train_ds.batch(64, drop_remainder=True)
 

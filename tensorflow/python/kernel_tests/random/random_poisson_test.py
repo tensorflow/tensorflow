@@ -43,7 +43,7 @@ class RandomPoissonTest(test.TestCase):
         rng = random_ops.random_poisson(lam, [num], dtype=dtype, seed=seed)
         ret = np.empty([10, num])
         for i in xrange(10):
-          ret[i, :] = sess.run(rng)
+          ret[i, :] = self.evaluate(rng)
       return ret
 
     return func
@@ -140,7 +140,7 @@ class RandomPoissonTest(test.TestCase):
     with self.cached_session():
       rnd = random_ops.random_poisson([], [], seed=12345)
       self.assertEqual([0], rnd.get_shape().as_list())
-      self.assertAllClose(np.array([], dtype=np.float32), rnd.eval())
+      self.assertAllClose(np.array([], dtype=np.float32), self.evaluate(rnd))
 
   def testShape(self):
     # Fully known shape

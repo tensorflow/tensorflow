@@ -40,6 +40,19 @@ from tensorflow.python.training.gradient_descent import GradientDescentOptimizer
 class VariableOpsTest(xla_test.XLATestCase):
   """Test cases for resource variable operators."""
 
+  def testWriteEmptyShape(self):
+    # Verifies that we can pass an uninitialized variable with an empty shape,
+    # assign it a value, and successfully return it.
+    for dtype in self.numeric_types:
+      with self.test_session() as sess, self.test_scope():
+        zeros = np.zeros([3, 0], dtype=dtype)
+        v = resource_variable_ops.ResourceVariable(zeros)
+        p = array_ops.placeholder(dtype)
+        x = v.assign(p)
+        with ops.control_dependencies([x]):
+          y = v.read_value()
+        self.assertAllClose(zeros, sess.run(y, {p: zeros}))
+
   def testOneWriteOneOutput(self):
     # Regression test for a bug where computations with one non-constant
     # output and one variable update were mishandled.
@@ -216,7 +229,7 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_add(
               handle, [0], constant_op.constant([[2]], dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertAllEqual(sess.run(read), [[3], [7]])
+      self.assertAllEqual(self.evaluate(read), [[3], [7]])
 
   def testScatterSub(self):
     with self.test_session() as sess, self.test_scope():
@@ -229,7 +242,7 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_sub(
               handle, [1], constant_op.constant([[2]], dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertAllEqual(sess.run(read), [[4], [-1]])
+      self.assertAllEqual(self.evaluate(read), [[4], [-1]])
 
   def testScatterMul(self):
     with self.test_session() as sess, self.test_scope():
@@ -242,7 +255,7 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_mul(
               handle, [0], constant_op.constant([[5]], dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(sess.run(read), [[5]])
+      self.assertEqual(self.evaluate(read), [[5]])
 
   def testScatterDiv(self):
     with self.test_session() as sess, self.test_scope():
@@ -255,7 +268,7 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_div(
               handle, [0], constant_op.constant([[3]], dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertAllEqual(sess.run(read), [[2]])
+      self.assertAllEqual(self.evaluate(read), [[2]])
 
   def testScatterMin(self):
     with self.test_session() as sess, self.test_scope():
@@ -268,7 +281,7 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_min(
               handle, [0], constant_op.constant([[3]], dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(sess.run(read), [[3]])
+      self.assertEqual(self.evaluate(read), [[3]])
 
   def testScatterMax(self):
     with self.test_session() as sess, self.test_scope():
@@ -281,7 +294,7 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_max(
               handle, [0], constant_op.constant([[3]], dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(sess.run(read), [[6]])
+      self.assertEqual(self.evaluate(read), [[6]])
 
   def testScatterUpdate(self):
     with self.test_session() as sess, self.test_scope():
@@ -294,7 +307,7 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_update(
               handle, [0], constant_op.constant([[3]], dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(sess.run(read), [[3]])
+      self.assertEqual(self.evaluate(read), [[3]])
 
   def testScatterAddScalar(self):
     with self.test_session() as sess, self.test_scope():
@@ -307,7 +320,7 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_add(
               handle, [0], constant_op.constant(2, dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(sess.run(read), [[3]])
+      self.assertEqual(self.evaluate(read), [[3]])
 
   def testScatterSubScalar(self):
     with self.test_session() as sess, self.test_scope():
@@ -320,7 +333,7 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_sub(
               handle, [0], constant_op.constant(2, dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(sess.run(read), [[-1]])
+      self.assertEqual(self.evaluate(read), [[-1]])
 
   def testScatterMulScalar(self):
     with self.test_session() as sess, self.test_scope():
@@ -333,7 +346,7 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_mul(
               handle, [0], constant_op.constant(5, dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(sess.run(read), [[5]])
+      self.assertEqual(self.evaluate(read), [[5]])
 
   def testScatterDivScalar(self):
     with self.test_session() as sess, self.test_scope():
@@ -346,7 +359,7 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_div(
               handle, [0], constant_op.constant(3, dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(sess.run(read), [[2]])
+      self.assertEqual(self.evaluate(read), [[2]])
 
   def testScatterMinScalar(self):
     with self.test_session() as sess, self.test_scope():
@@ -359,7 +372,7 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_min(
               handle, [0], constant_op.constant(3, dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(sess.run(read), [[3]])
+      self.assertEqual(self.evaluate(read), [[3]])
 
   def testScatterMaxScalar(self):
     with self.test_session() as sess, self.test_scope():
@@ -372,7 +385,7 @@ class VariableOpsTest(xla_test.XLATestCase):
           resource_variable_ops.resource_scatter_max(
               handle, [0], constant_op.constant(3, dtype=dtypes.int32)))
       read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
-      self.assertEqual(sess.run(read), [[6]])
+      self.assertEqual(self.evaluate(read), [[6]])
 
   def testScatterNdAddOps(self):
     with self.test_session() as sess, self.test_scope():
@@ -387,7 +400,7 @@ class VariableOpsTest(xla_test.XLATestCase):
       sess.run(gen_state_ops.resource_scatter_nd_add(handle, indices, updates))
       read = resource_variable_ops.read_variable_op(
           handle, dtype=dtypes.float32)
-      self.assertAllClose(expected, sess.run(read))
+      self.assertAllClose(expected, self.evaluate(read))
 
   def testScatterNdUpdateAddOps(self):
     with self.test_session() as sess, self.test_scope():
@@ -403,7 +416,7 @@ class VariableOpsTest(xla_test.XLATestCase):
           gen_state_ops.resource_scatter_nd_update(handle, indices, updates))
       read = resource_variable_ops.read_variable_op(
           handle, dtype=dtypes.float32)
-      self.assertAllClose(expected, sess.run(read))
+      self.assertAllClose(expected, self.evaluate(read))
 
 
 class StridedSliceAssignChecker(object):

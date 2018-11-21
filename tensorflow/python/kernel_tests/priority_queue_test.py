@@ -50,7 +50,7 @@ class PriorityQueueTest(test.TestCase):
         enq.run()
 
       deq = q.dequeue_many(100)
-      deq_elem, deq_value_0, deq_value_1 = sess.run(deq)
+      deq_elem, deq_value_0, deq_value_1 = self.evaluate(deq)
 
       allowed = {}
       missed = set()
@@ -81,7 +81,7 @@ class PriorityQueueTest(test.TestCase):
 
       # Run one producer thread for each element in elems.
       def enqueue(enqueue_op):
-        sess.run(enqueue_op)
+        self.evaluate(enqueue_op)
 
       dequeue_op = q.dequeue_many(100)
 
@@ -93,7 +93,7 @@ class PriorityQueueTest(test.TestCase):
       for t in enqueue_threads:
         t.start()
 
-      deq_elem, deq_value_0, deq_value_1 = sess.run(dequeue_op)
+      deq_elem, deq_value_0, deq_value_1 = self.evaluate(dequeue_op)
 
       for t in enqueue_threads:
         t.join()
@@ -132,12 +132,12 @@ class PriorityQueueTest(test.TestCase):
 
       # Run one producer thread for each element in elems.
       def enqueue(enqueue_op):
-        sess.run(enqueue_op)
+        self.evaluate(enqueue_op)
 
       dequeued = []
 
       def dequeue(dequeue_op):
-        (dequeue_indices, dequeue_values) = sess.run(dequeue_op)
+        (dequeue_indices, dequeue_values) = self.evaluate(dequeue_op)
         self.assertAllEqual(dequeue_indices, dequeue_values)
         dequeued.extend(dequeue_indices)
 
@@ -184,10 +184,10 @@ class PriorityQueueTest(test.TestCase):
 
       # Run one producer thread for each element in elems.
       def enqueue(enqueue_op):
-        sess.run(enqueue_op)
+        self.evaluate(enqueue_op)
 
       def dequeue(dequeue_op, dequeued):
-        (dequeue_indices, dequeue_values) = sess.run(dequeue_op)
+        (dequeue_indices, dequeue_values) = self.evaluate(dequeue_op)
         self.assertAllEqual(dequeue_indices, dequeue_values)
         dequeue_wait.acquire()
         dequeued.extend(dequeue_indices)
@@ -236,7 +236,7 @@ class PriorityQueueTest(test.TestCase):
 
       # Run one producer thread for each element in elems.
       def enqueue(enqueue_op):
-        sess.run(enqueue_op)
+        self.evaluate(enqueue_op)
 
       dequeue_op = q.dequeue_many(100)
 
@@ -248,7 +248,7 @@ class PriorityQueueTest(test.TestCase):
       for t in enqueue_threads:
         t.start()
 
-      deq_elem, deq_value_0, deq_value_1 = sess.run(dequeue_op)
+      deq_elem, deq_value_0, deq_value_1 = self.evaluate(dequeue_op)
 
       for t in enqueue_threads:
         t.join()
@@ -276,7 +276,7 @@ class PriorityQueueTest(test.TestCase):
       side_value_1 = np.random.rand(1000).astype(bytes)
       q.enqueue_many((elem, side_value_0, side_value_1)).run()
       deq = q.dequeue_many(1000)
-      deq_elem, deq_value_0, deq_value_1 = sess.run(deq)
+      deq_elem, deq_value_0, deq_value_1 = self.evaluate(deq)
 
       allowed = {}
       for e, v0, v1 in zip(elem, side_value_0, side_value_1):

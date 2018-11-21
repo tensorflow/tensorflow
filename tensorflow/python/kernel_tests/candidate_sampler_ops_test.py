@@ -55,7 +55,7 @@ class RangeSamplerOpsTest(test.TestCase):
           [[1, 2], [0, 4], [3, 3]], dtype=dtypes.int64)
       sampled_candidates, _, _ = candidate_sampling_ops.all_candidate_sampler(
           true_classes, self.NUM_TRUE, self.NUM_SAMPLED, True)
-      result = sampled_candidates.eval()
+      result = self.evaluate(sampled_candidates)
 
     expected_ids = [0, 1, 2, 3, 4]
     self.assertAllEqual(result, expected_ids)
@@ -68,7 +68,7 @@ class RangeSamplerOpsTest(test.TestCase):
       _, true_expected_count, _ = candidate_sampling_ops.all_candidate_sampler(
           true_classes, self.NUM_TRUE, self.NUM_SAMPLED, True)
       true_log_expected_count = math_ops.log(true_expected_count)
-      result = true_log_expected_count.eval()
+      result = self.evaluate(true_log_expected_count)
 
     self.assertAllEqual(result, [[0.0] * self.NUM_TRUE] * self.BATCH_SIZE)
     self.assertEqual(true_expected_count.get_shape(),
@@ -83,7 +83,7 @@ class RangeSamplerOpsTest(test.TestCase):
       _, _, sampled_expected_count = candidate_sampling_ops.all_candidate_sampler(  # pylint: disable=line-too-long
           true_classes, self.NUM_TRUE, self.NUM_SAMPLED, True)
       sampled_log_expected_count = math_ops.log(sampled_expected_count)
-      result = sampled_log_expected_count.eval()
+      result = self.evaluate(sampled_log_expected_count)
 
     self.assertAllEqual(result, [0.0] * self.NUM_SAMPLED)
     self.assertEqual(sampled_expected_count.get_shape(), [self.NUM_SAMPLED])
@@ -97,7 +97,7 @@ class RangeSamplerOpsTest(test.TestCase):
           true_classes, self.NUM_TRUE, self.NUM_SAMPLED, True)
       accidental_hits = candidate_sampling_ops.compute_accidental_hits(
           true_classes, sampled_candidates, self.NUM_TRUE)
-      indices, ids, weights = sess.run(accidental_hits)
+      indices, ids, weights = self.evaluate(accidental_hits)
 
     self.assertEqual(1, accidental_hits[0].get_shape().ndims)
     self.assertEqual(1, accidental_hits[1].get_shape().ndims)
@@ -114,7 +114,7 @@ class RangeSamplerOpsTest(test.TestCase):
             [[1, 2], [0, 4], [3, 3]], dtype=dtypes.int64)
         sampled, _, _ = candidate_sampling_ops.log_uniform_candidate_sampler(
             true_classes, self.NUM_TRUE, self.NUM_SAMPLED, True, 5, seed=seed)
-        return sampled.eval()
+        return self.evaluate(sampled)
 
     # Non-zero seed. Repeatable.
     for seed in [1, 12, 123, 1234]:

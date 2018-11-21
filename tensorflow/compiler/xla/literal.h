@@ -301,7 +301,7 @@ class LiteralBase {
   //
   // Note: It's an antipattern to use this method then immediately call
   // MutableLiteralBase::Populate on the result (since that results in zero
-  // initialization, then reinitialization. Conside if a call to
+  // initialization, then reinitialization. Consider if a call to
   // absl::make_unique<Literal>(shape), followed by the call to
   // MutableLiteralBase::Populate can be used instead.
   static Literal CreateFromShape(const Shape& shape);

@@ -362,7 +362,7 @@ class ErfInvTest(test.TestCase):
 
       expected_x = special.erfinv(x)
       x = special_math.erfinv(x)
-      self.assertAllClose(expected_x, x.eval(), atol=0.)
+      self.assertAllClose(expected_x, self.evaluate(x), atol=0.)
 
   def testErfInvIntegerInput(self):
     with self.cached_session():

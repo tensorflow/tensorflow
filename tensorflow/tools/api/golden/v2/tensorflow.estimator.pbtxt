@@ -29,6 +29,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "DNNEstimator"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "DNNLinearCombinedClassifier"
     mtype: "<type \'type\'>"
   }
@@ -70,6 +74,10 @@ tf_module {
   }
   member {
     name: "LinearClassifier"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LinearEstimator"
     mtype: "<type \'type\'>"
   }
   member {
