@@ -239,7 +239,7 @@ class DatasetOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     options2 = dataset_ops.Options()
     options2.experimental_autotune = False
     with self.assertRaisesRegexp(ValueError,
-                                 "Cannot merge incompatible values of option"):
+                                 "Cannot merge incompatible values"):
       dataset_ops.Dataset.range(0).with_options(options1).with_options(options2)
 
   def testOptionsMergeOptionsFromMultipleInputs(self):

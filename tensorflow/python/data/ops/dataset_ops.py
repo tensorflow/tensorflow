@@ -27,8 +27,10 @@ import six
 
 from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import stats_options
+from tensorflow.python.data.experimental.ops import threading_options
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import options as options_lib
 from tensorflow.python.data.util import random_seed
 from tensorflow.python.data.util import sparse
 from tensorflow.python.data.util import structure as structure_lib
@@ -45,6 +47,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
@@ -107,6 +110,14 @@ class DatasetV2(object):
 
     dataset = self
     options = self.options()
+    if options.experimental_threading is not None:
+      t_options = options.experimental_threading
+      if t_options.private_threadpool_size is not None:
+        dataset = _PrivateThreadPoolDataset(dataset,
+                                            t_options.private_threadpool_size)
+      if t_options.max_intra_op_parallelism is not None:
+        dataset = _MaxIntraOpParallelismDataset(
+            dataset, t_options.max_intra_op_parallelism)
     static_optimizations = options._static_optimizations()  # pylint: disable=protected-access
     if static_optimizations:
       dataset = _OptimizeDataset(dataset, static_optimizations)
@@ -1371,10 +1382,9 @@ class DatasetV2(object):
   def with_options(self, options):
     """Returns a new `tf.data.Dataset` with the given options set.
 
-    The options are "global" in the sense they apply to the entire input
-    pipeline in which the `with_options` transformation is used. If options are
-    set multiple times, they are merged if possible (see
-    `tf.data.Options.merge()` for details).
+    The options are "global" in the sense they apply to the entire dataset.
+    If options are set multiple times, they are merged as long as different
+    options do not use different non-default values.
 
     Args:
       options: A `tf.data.Options` that identifies the options the use.
@@ -1383,7 +1393,7 @@ class DatasetV2(object):
       Dataset: A `Dataset` with the given options.
 
     Raises:
-      ValueError: if options are set more than once
+      ValueError: when an option is set more than once to a non-default value
     """
     return _OptionsDataset(self, options)
 
@@ -1571,7 +1581,7 @@ class DatasetV1Adapter(DatasetV1):
 
 
 @tf_export("data.Options")
-class Options(object):
+class Options(options_lib.OptionsBase):
   """Represents options for tf.data.Dataset.
 
   An `Options` object can be for instance used to control which static
@@ -1579,69 +1589,81 @@ class Options(object):
   tune the parallelism of operations such as `tf.data.Dataset.map` or
   `tf.data.Dataset.interleave`.
   """
-  for _name, _ty, _docstring in [
-      ("experimental_autotune", bool,
-       "Whether to dynamically adjust the values of tunable parameters (e.g. "
-       "degrees of parallelism)."),
-      ("experimental_deterministic", bool,
-       "Whether the outputs need to be produced in deterministic order."),
-      ("experimental_filter_fusion", bool,
-       "Whether to fuse filter transformations."),
-      ("experimental_hoist_random_uniform", bool,
-       "Whether to hoist `tf.random_uniform()` ops out of map transformations."
-      ),
-      ("experimental_stats", stats_options.StatsOptions,
-       "Associate the given statistics options with the dataset pipeline."),
-      ("experimental_map_and_batch_fusion", bool,
-       "Whether to fuse map and batch transformations."),
-      ("experimental_map_and_filter_fusion", bool,
-       "Whether to fuse map and filter transformations."),
-      ("experimental_map_fusion", bool, "Whether to fuse map transformations."),
-      ("experimental_map_parallelization", bool,
-       "Whether to parallelize stateless map transformations."),
-      ("experimental_map_vectorization", bool,
-       "Whether to vectorize map transformations."),
-      ("experimental_noop_elimination", bool,
-       "Whether to eliminate no-op transformations."),
-      ("experimental_shuffle_and_repeat_fusion", bool,
-       "Whether to fuse shuffle and repeat transformations."),
-      ("experimental_numa_aware", bool,
-       "Whether to use NUMA-aware operations."),
-  ]:
 
-    def _make_getter(name):  # pylint: disable=no-self-argument
+  experimental_autotune = options_lib.create_option(
+      name="experimental_autotune",
+      ty=bool,
+      docstring=
+      "Whether to dynamically adjust the values of tunable parameters (e.g. "
+      "degrees of parallelism).")
 
-      def getter(self):
-        return getattr(self, "_" + name)
+  experimental_deterministic = options_lib.create_option(
+      name="experimental_deterministic",
+      ty=bool,
+      docstring=
+      "Whether to dynamically adjust the values of tunable parameters (e.g. "
+      "degrees of parallelism).")
 
-      return getter
+  experimental_filter_fusion = options_lib.create_option(
+      name="experimental_filter_fusion",
+      ty=bool,
+      docstring="Whether to fuse filter transformations.")
 
-    def _make_setter(name, ty):  # pylint: disable=no-self-argument
+  experimental_hoist_random_uniform = options_lib.create_option(
+      name="experimental_hoist_random_uniform",
+      ty=bool,
+      docstring=
+      "Whether to hoist `tf.random_uniform()` ops out of map transformations.")
 
-      def setter(self, value):
-        if not isinstance(value, ty):
-          raise TypeError(
-              "Attempting to set the option %s to incompatible value: %r when "
-              "it expects  %r" % (name, value, ty))
-        setattr(self, "_" + name, value)
+  experimental_map_and_batch_fusion = options_lib.create_option(
+      name="experimental_map_and_batch_fusion",
+      ty=bool,
+      docstring="Whether to fuse map and batch transformations.")
 
-      return setter
+  experimental_map_and_filter_fusion = options_lib.create_option(
+      name="experimental_map_and_filter_fusion",
+      ty=bool,
+      docstring="Whether to fuse map and filter transformations.")
 
-    vars()["_" + _name] = None
-    vars()[_name] = property(
-        _make_getter(_name), _make_setter(_name, _ty), None, _docstring)
+  experimental_map_fusion = options_lib.create_option(
+      name="experimental_map_and_filter_fusion",
+      ty=bool,
+      docstring="Whether to fuse map transformations.")
 
-  def __init__(self):
-    pass
+  experimental_map_parallelization = options_lib.create_option(
+      name="experimental_map_parallelization",
+      ty=bool,
+      docstring="Whether to parallelize stateless map transformations.")
 
-  def __eq__(self, other):
-    if isinstance(other, self.__class__):
-      return self.__dict__ == other.__dict__
-    else:
-      return False
+  experimental_map_vectorization = options_lib.create_option(
+      name="experimental_map_vectorization",
+      ty=bool,
+      docstring="Whether to vectorize map transformations.")
 
-  def __ne__(self, other):
-    return not self.__eq__(other)
+  experimental_noop_elimination = options_lib.create_option(
+      name="experimental_noop_elimination",
+      ty=bool,
+      docstring="Whether to eliminate no-op transformations.")
+
+  experimental_numa_aware = options_lib.create_option(
+      name="experimental_numa_aware",
+      ty=bool,
+      docstring="Whether to use NUMA-aware operations.")
+
+  experimental_shuffle_and_repeat_fusion = options_lib.create_option(
+      name="experimental_shuffle_and_repeat_fusion",
+      ty=bool,
+      docstring="Whether to fuse shuffle and repeat transformations.")
+
+  experimental_stats = options_lib.create_option(
+      name="experimental_stats",
+      ty=stats_options.StatsOptions,
+      docstring="Associates the given statistics options with the dataset.")
+
+  experimental_threading = options_lib.create_option(
+      name="experimental_threading",
+      ty=threading_options.ThreadingOptions,
+      docstring="Associates the given threading options with the dataset.")
 
   def _static_optimizations(self):
     """Produces the list of enabled static optimizations."""
@@ -1687,32 +1709,7 @@ class Options(object):
       New `tf.data.Options()` object which is the result of merging self with
       the input `tf.data.Options`.
     """
-    result = Options()
-    for other in [self, options]:
-      for name in [
-          "experimental_autotune",
-          "experimental_deterministic",
-          "experimental_filter_fusion",
-          "experimental_hoist_random_uniform",
-          "experimental_map_and_batch_fusion",
-          "experimental_map_and_filter_fusion",
-          "experimental_map_fusion",
-          "experimental_map_parallelization",
-          "experimental_map_vectorization",
-          "experimental_noop_elimination",
-          "experimental_numa_aware",
-          "experimental_shuffle_and_repeat_fusion",
-          "experimental_stats",
-      ]:
-        this = getattr(result, name)
-        that = getattr(other, name)
-        if that is not None:
-          if this is None:
-            setattr(result, name, that)
-          elif this != that:
-            raise ValueError(
-                "Cannot merge incompatible values of option: %s" % (name))
-    return result
+    return options_lib.merge_options(self, options)
 
 
 class DatasetSource(DatasetV2):
@@ -3065,7 +3062,7 @@ class _OptimizeDataset(UnaryUnchangedStructureDataset):
 
 
 class _SetStatsAggregatorDataset(UnaryUnchangedStructureDataset):
-  """A `Dataset` that acts as an identity, and sets stats aggregator."""
+  """A `Dataset` that acts as an identity, and sets a stats aggregator."""
 
   def __init__(self, input_dataset, aggregator, prefix, counter_prefix):
     super(_SetStatsAggregatorDataset, self).__init__(input_dataset)
@@ -3080,4 +3077,38 @@ class _SetStatsAggregatorDataset(UnaryUnchangedStructureDataset):
         self._stats_aggregator._resource,  # pylint: disable=protected-access
         self._prefix,
         self._counter_prefix,
+        **flat_structure(self))
+
+
+class _MaxIntraOpParallelismDataset(UnaryUnchangedStructureDataset):
+  """A `Dataset` that acts as an identity, overriding intra-op parallelism."""
+
+  def __init__(self, input_dataset, max_intra_op_parallelism):
+    super(_MaxIntraOpParallelismDataset, self).__init__(input_dataset)
+    self._input_dataset = input_dataset
+    self._max_intra_op_parallelism = ops.convert_to_tensor(
+        max_intra_op_parallelism,
+        dtype=dtypes.int64,
+        name="max_intra_op_parallelism")
+
+  def _as_variant_tensor(self):
+    return ged_ops.experimental_max_intra_op_parallelism_dataset(
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+        self._max_intra_op_parallelism,
+        **flat_structure(self))
+
+
+class _PrivateThreadPoolDataset(UnaryUnchangedStructureDataset):
+  """A `Dataset` that acts as an identity, setting a private threadpool."""
+
+  def __init__(self, input_dataset, num_threads):
+    super(_PrivateThreadPoolDataset, self).__init__(input_dataset)
+    self._input_dataset = input_dataset
+    self._num_threads = ops.convert_to_tensor(
+        num_threads, dtype=dtypes.int64, name="num_threads")
+
+  def _as_variant_tensor(self):
+    return ged_ops.experimental_private_thread_pool_dataset(
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+        self._num_threads,
         **flat_structure(self))
