@@ -180,6 +180,7 @@ cc_library(
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:fifo_queue",
         "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:functional_ops",
         "//tensorflow/core/kernels:identity_n_op",
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:no_op",
