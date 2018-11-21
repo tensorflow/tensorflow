@@ -1035,10 +1035,10 @@ void CheckEachArray(const Model& model) {
     if (colon_pos != string::npos) {
       CHECK_EQ(name.substr(colon_pos + 1).find_first_not_of("0123456789"),
                string::npos)
-          << "Array name must only have digits after colon";
+          << "Array '" << name << "' has non-digit characters after colon.";
     }
-    CHECK_GT(colon_pos, 0)
-        << "First character of array name must not be a colon.";
+    CHECK_GT(colon_pos, 0) << "Array '" << name
+                           << "' must not start with a colon.";
   }
 }
 
