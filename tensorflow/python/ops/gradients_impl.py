@@ -895,7 +895,7 @@ def _HasAnyNotNoneGrads(grads, op):
     if isinstance(out_grad, (ops.Tensor, ops.IndexedSlices)):
       return True
     if out_grad and isinstance(out_grad, collections.Sequence):
-      if any([g is not None for g in out_grad]):
+      if any(g is not None for g in out_grad):
         return True
   return False
 
@@ -1110,11 +1110,11 @@ def _AggregatedGrads(grads,
         assert control_flow_util.IsLoopSwitch(op)
         continue
     # Grads have to be Tensors or IndexedSlices
-    if (isinstance(out_grad, collections.Sequence) and not all([
+    if (isinstance(out_grad, collections.Sequence) and not all(
         isinstance(g, (ops.Tensor, ops.IndexedSlices))
         for g in out_grad
         if g is not None
-    ])):
+    )):
       raise TypeError("gradients have to be either all Tensors "
                       "or all IndexedSlices")
     # Aggregate multiple gradients, and convert [] to None.
@@ -1122,7 +1122,7 @@ def _AggregatedGrads(grads,
       if len(out_grad) < 2:
         used = "nop"
         out_grads[i] = out_grad[0]
-      elif all([isinstance(g, ops.Tensor) for g in out_grad if g is not None]):
+      elif all(isinstance(g, ops.Tensor) for g in out_grad if g is not None):
         tensor_shape = _AccumulatorShape(out_grad)
         if (aggregation_method == AggregationMethod.EXPERIMENTAL_ACCUMULATE_N
             and len(out_grad) > 2 and tensor_shape.is_fully_defined()):

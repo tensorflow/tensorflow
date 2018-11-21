@@ -509,7 +509,7 @@ def _grad_fn(ys, xs, args, func_graph):
 
   # TODO(b/118712257): Handle the case when grad_outs has None's e.g. when there
   # is a tf.StopGradient in the loop body.
-  assert all([g is not None for g in grad_outs])
+  assert all(g is not None for g in grad_outs)
   counter = args[0]
   total_iters = args[1]
   return [counter + 1, total_iters] + grad_outs

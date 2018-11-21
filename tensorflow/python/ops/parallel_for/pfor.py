@@ -1152,9 +1152,8 @@ class PFor(object):
           continue
 
         converted_inputs = [self._conversion_map[inp] for inp in y_op.inputs]
-        some_input_converted = any(
-            [self._was_converted(x) for x in y_op.inputs])
-        some_input_stacked = any([x.is_stacked for x in converted_inputs])
+        some_input_converted = any(self._was_converted(x) for x in y_op.inputs)
+        some_input_stacked = any(x.is_stacked for x in converted_inputs)
 
         converted_control_ops = set()
         some_control_input_converted = False
@@ -1198,7 +1197,7 @@ class PFor(object):
           # All inputs are unstacked or uncoverted but some control inputs are
           # converted.
           # TODO(rachelim): Handle the case where some inputs are sparsely
-          # stacked (i.e. any([x.is_sparse_stacked for x in converted_inputs]))
+          # stacked (i.e. any(x.is_sparse_stacked for x in converted_inputs))
           new_op = _create_op(y_op.type, [x.t for x in converted_inputs],
                               [x.dtype for x in y_op.outputs],
                               y_op.node_def.attr)

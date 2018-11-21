@@ -759,7 +759,7 @@ class TensorPoolAdjusteModelTest(test.TestCase):
           # For [pool_size, ?), the pool is full, tensor2 must be equal to some
           # historical values of tensor1 (which is previously stored in the
           # pool).
-          self.assertTrue(any([(v == t2).all() for v in history_values]))
+          self.assertTrue(any((v == t2).all() for v in history_values))
 
   def _make_new_model_and_check(self, model, pool_size):
     pool_fn = lambda x: random_tensor_pool.tensor_pool(x, pool_size=pool_size)

@@ -600,11 +600,11 @@ class ScopedMetaGraphTest(test.TestCase):
     with graph.as_default():
       variables.Variable(initial_value=1.0, trainable=True)
     self.assertTrue(
-        all([
+        all(
             graph.get_collection(key)
             for key in
             [ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.TRAINABLE_VARIABLES]
-        ]))
+        ))
     meta_graph.export_scoped_meta_graph(
         filename=meta_graph_filename, graph=graph)
 

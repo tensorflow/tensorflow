@@ -863,13 +863,13 @@ class ControlFlowTest(test.TestCase):
       # Should just be [1, 1], but possibly a sparse representation
       gv, gi = sess.run([grad.values, grad.indices], feed_dict={c: 1})
       dense_gv = [
-          sum([y for (x, y) in zip(gi, gv) if x == i]) for i in range(2)
+          sum(y for (x, y) in zip(gi, gv) if x == i) for i in range(2)
       ]
       self.assertAllEqual(dense_gv, [1.0, 1.0])
       # Should be [0, 2], as the else forwards v1[1] twice
       gv, gi = sess.run([grad.values, grad.indices], feed_dict={c: 3})
       dense_gv = [
-          sum([y for (x, y) in zip(gi, gv) if x == i]) for i in range(2)
+          sum(y for (x, y) in zip(gi, gv) if x == i) for i in range(2)
       ]
       self.assertAllEqual(dense_gv, [0.0, 2.0])
 
@@ -2809,7 +2809,7 @@ class ControlFlowTest(test.TestCase):
       self.assertAllClose([156.0, 400.0], sess.run(r, feed_dict=feed_dict))
       name = "gradients/while/stopped_grad"
       all_ops = x.graph.get_operations()
-      self.assertFalse(any([name in op.name for op in all_ops]))
+      self.assertFalse(any(name in op.name for op in all_ops))
 
   @test_util.disable_control_flow_v2("b/117954949")
   def testWhileGradGradFail(self):

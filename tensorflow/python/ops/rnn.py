@@ -117,7 +117,7 @@ def _infer_state_dtype(explicit_dtype, state):
     inferred_dtypes = [element.dtype for element in nest.flatten(state)]
     if not inferred_dtypes:
       raise ValueError("Unable to infer dtype from empty state.")
-    all_same = all([x == inferred_dtypes[0] for x in inferred_dtypes])
+    all_same = all(x == inferred_dtypes[0] for x in inferred_dtypes)
     if not all_same:
       raise ValueError(
           "State has tensors of different inferred_dtypes. Unable to infer a "

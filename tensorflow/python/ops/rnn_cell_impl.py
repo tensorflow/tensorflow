@@ -1456,7 +1456,7 @@ class MultiRNNCell(RNNCell):
     if self._state_is_tuple:
       return tuple(cell.state_size for cell in self._cells)
     else:
-      return sum([cell.state_size for cell in self._cells])
+      return sum(cell.state_size for cell in self._cells)
 
   @property
   def output_size(self):

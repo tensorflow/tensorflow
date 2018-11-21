@@ -768,7 +768,7 @@ class Layer(checkpointable.CheckpointableBase):
 
     if context.executing_eagerly():
       # Accept NumPy inputs by converting to Tensors when executing eagerly.
-      if all([isinstance(x, (np.ndarray, float, int)) for x in input_list]):
+      if all(isinstance(x, (np.ndarray, float, int)) for x in input_list):
         inputs = nest.map_structure(ops.convert_to_tensor, inputs)
         input_list = nest.flatten(inputs)
 
@@ -1442,8 +1442,7 @@ class Layer(checkpointable.CheckpointableBase):
                          ', but the layer isn\'t built. '
                          'You can build it manually via: `' + self.name +
                          '.build(batch_input_shape)`.')
-    weight_shapes = [w.shape.as_list() for w in self.weights]
-    return int(sum([np.prod(w) for w in weight_shapes]))
+    return int(sum(np.prod(w.shape.as_list()) for w in self.weights))
 
   @property
   def output_shape(self):
@@ -1758,7 +1757,7 @@ def have_all_keras_metadata(iterable_or_element):
     iterable = [iterable_or_element]
   else:
     iterable = nest.flatten(iterable_or_element)
-  return all([hasattr(x, '_keras_history') for x in iterable])
+  return all(hasattr(x, '_keras_history') for x in iterable)
 
 
 def collect_previous_mask(input_tensors):

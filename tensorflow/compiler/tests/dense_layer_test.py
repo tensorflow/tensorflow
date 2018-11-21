@@ -42,7 +42,7 @@ def GetRunMetadataLabels(run_metadata):
 
 def InLabels(labels, substr):
   """Returns true iff one of the labels contains substr."""
-  return any([substr in x for x in labels])
+  return any(substr in x for x in labels)
 
 
 class DenseLayerTest(test.TestCase):

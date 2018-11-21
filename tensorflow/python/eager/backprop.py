@@ -547,11 +547,11 @@ def _aggregate_grads(gradients):
 
   if len(gradients) == 1:
     return gradients[0]
-  if all([isinstance(g, ops.Tensor) for g in gradients]):
+  if all(isinstance(g, ops.Tensor) for g in gradients):
     return gen_math_ops.add_n(gradients)
   else:
-    assert all([isinstance(g, (ops.Tensor, ops.IndexedSlices))
-                for g in gradients])
+    assert all(isinstance(g, (ops.Tensor, ops.IndexedSlices))
+               for g in gradients)
     indexed_slices_list = []
     for grad in gradients:
       # TODO(xpan): Support nested IndexedSlices and core IndexedSlices

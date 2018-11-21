@@ -58,10 +58,10 @@ def _map_nested(data, func):
 def _nested_all(data, cond_func):
   """Checks if all elements in a nested structure satisfy cond_func."""
   if isinstance(data, (tuple, list)):
-    return all([_nested_all(nested_data, cond_func) for nested_data in data])
+    return all(_nested_all(nested_data, cond_func) for nested_data in data)
   elif isinstance(data, dict):
     return all(
-        [_nested_all(nested_data, cond_func) for nested_data in data.values()])
+        _nested_all(nested_data, cond_func) for nested_data in data.values())
   else:
     return cond_func(data)
 
@@ -69,7 +69,7 @@ def _nested_all(data, cond_func):
 def _nested_any(data, cond_func):
   """Checks if any nested_elements in a nested structure satisfy cond_func."""
   if isinstance(data, (tuple, list)):
-    return any([_nested_any(nested_data, cond_func) for nested_data in data])
+    return any(_nested_any(nested_data, cond_func) for nested_data in data)
   elif isinstance(data, dict):
     return any(
         [_nested_any(nested_data, cond_func) for nested_data in data.values()])

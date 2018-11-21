@@ -344,7 +344,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       run_step()
 
       v = all_vars[0]
-      self.assertTrue(all([v is vi for vi in all_vars[1:]]))
+      self.assertTrue(all(v is vi for vi in all_vars[1:]))
       weight = numpy.squeeze(self.evaluate(v))
       # Our model is:
       #   predict = x * w

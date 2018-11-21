@@ -89,8 +89,8 @@ def _parse_func_attrs(attributes):
   """
   attrs = {}
   for key, value in attributes.items():
-    if not any([re.match(reg, key)
-                for reg in WHITELIST_FUNCTION_ATTRIBUTE_REGEX]):
+    if not any(re.match(reg, key)
+               for reg in WHITELIST_FUNCTION_ATTRIBUTE_REGEX):
       raise ValueError("Attribute name is not whitelisted. "
                        "Whitelisted: prefix %s, got: %s" %
                        (WHITELIST_FUNCTION_ATTRIBUTE_REGEX, key))
