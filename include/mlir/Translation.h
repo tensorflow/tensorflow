@@ -28,26 +28,42 @@ namespace mlir {
 class MLIRContext;
 class Module;
 
-using TranslateFunction =
-    std::function<bool(llvm::StringRef inputFilename,
-                       llvm::StringRef oututFilename, MLIRContext *)>;
+/// Interface of the function that translates a file to MLIR.  The
+/// implementation should create a new MLIR Module in the given context and
+/// return a pointer to it, or a nullptr in case of any error.
+using TranslateToMLIRFunction =
+    std::function<std::unique_ptr<Module>(llvm::StringRef, MLIRContext *)>;
+/// Interface of the function that translates MLIR to a different format and
+/// outputs the result to a file.  The implementation should return "true" on
+/// error and "false" otherwise.  It is allowed to modify the module.
+using TranslateFromMLIRFunction =
+    std::function<bool(Module *, llvm::StringRef)>;
 
-// Use TranslateRegistration as a global initialiser that registers a function
-// and associates it with name. This requires that a translation has not been
-// registered to a given name.
-//
-// Usage:
-//
-//   // At namespace scope.
-//   static TranslateRegistration Unused(&MySubCommand, [] { ... });
-//
-struct TranslateRegistration {
-  TranslateRegistration(llvm::StringRef name,
-                        const TranslateFunction &function);
+/// Use Translate[To|From]MLIRRegistration as a global initialiser that
+/// registers a function and associates it with name. This requires that a
+/// translation has not been registered to a given name.
+///
+/// Usage:
+///
+///   // At namespace scope.
+///   static TranslateToMLIRRegistration Unused(&MySubCommand, [] { ... });
+///
+/// \{
+struct TranslateToMLIRRegistration {
+  TranslateToMLIRRegistration(llvm::StringRef name,
+                              const TranslateToMLIRFunction &function);
 };
 
+struct TranslateFromMLIRRegistration {
+  TranslateFromMLIRRegistration(llvm::StringRef name,
+                                const TranslateFromMLIRFunction &function);
+};
+/// \}
+
 /// Get a read-only reference to the translator registry.
-const llvm::StringMap<TranslateFunction> &getTranslationRegistry();
+const llvm::StringMap<TranslateToMLIRFunction> &getTranslationToMLIRRegistry();
+const llvm::StringMap<TranslateFromMLIRFunction> &
+getTranslationFromMLIRRegistry();
 
 } // namespace mlir
 

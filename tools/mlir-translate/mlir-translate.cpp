@@ -20,7 +20,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir-translate.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Parser.h"
@@ -43,7 +42,7 @@ static llvm::cl::opt<std::string>
     outputFilename("o", llvm::cl::desc("Output filename"),
                    llvm::cl::value_desc("filename"), llvm::cl::init("-"));
 
-Module *mlir::parseMLIRInput(StringRef inputFilename, MLIRContext *context) {
+static Module *parseMLIRInput(StringRef inputFilename, MLIRContext *context) {
   // Set up the input file.
   auto fileOrErr = llvm::MemoryBuffer::getFileOrSTDIN(inputFilename);
   if (std::error_code error = fileOrErr.getError()) {
@@ -57,8 +56,8 @@ Module *mlir::parseMLIRInput(StringRef inputFilename, MLIRContext *context) {
   return parseSourceFile(sourceMgr, context);
 }
 
-std::unique_ptr<llvm::ToolOutputFile>
-mlir::openOutputFile(llvm::StringRef outputFilename) {
+static std::unique_ptr<llvm::ToolOutputFile>
+openOutputFile(llvm::StringRef outputFilename) {
   std::error_code error;
   auto result = llvm::make_unique<llvm::ToolOutputFile>(outputFilename, error,
                                                         llvm::sys::fs::F_None);
@@ -70,8 +69,8 @@ mlir::openOutputFile(llvm::StringRef outputFilename) {
   return result;
 }
 
-bool mlir::printMLIROutput(const Module &module,
-                           llvm::StringRef outputFilename) {
+static bool printMLIROutput(const Module &module,
+                            llvm::StringRef outputFilename) {
   auto file = openOutputFile(outputFilename);
   if (!file)
     return true;
@@ -80,24 +79,48 @@ bool mlir::printMLIROutput(const Module &module,
   return false;
 }
 
-// Example translation registration. This performs a MLIR to MLIR "translation"
-// which simply parses and prints the MLIR input file.
-static TranslateRegistration MLIRToMLIRTranslate(
-    "mlir-to-mlir", [](StringRef inputFilename, StringRef outputFilename,
-                       MLIRContext *context) {
-      std::unique_ptr<Module> module(parseMLIRInput(inputFilename, context));
-      if (!module)
-        return true;
+// Common interface for source-to-source translation functions.
+using TranslateFunction =
+    std::function<bool(StringRef, StringRef, MLIRContext *)>;
 
-      return printMLIROutput(*module, outputFilename);
-    });
+// Storage for the translation function wrappers that survive the parser.
+static llvm::SmallVector<TranslateFunction, 8> wrapperStorage;
 
 // Custom parser for TranslateFunction.
+// Wraps TranslateToMLIRFunctions and TranslateFromMLIRFunctions into
+// TranslateFunctions before registering them as options.
 struct TranslationParser : public llvm::cl::parser<const TranslateFunction *> {
   TranslationParser(llvm::cl::Option &opt)
       : llvm::cl::parser<const TranslateFunction *>(opt) {
-    for (const auto &kv : getTranslationRegistry()) {
-      addLiteralOption(kv.first(), &kv.second, kv.first());
+    for (const auto &kv : getTranslationToMLIRRegistry()) {
+      TranslateToMLIRFunction function = kv.second;
+      TranslateFunction wrapper = [function](StringRef inputFilename,
+                                             StringRef outputFilename,
+                                             MLIRContext *context) {
+        std::unique_ptr<Module> module = function(inputFilename, context);
+        if (!module)
+          return true;
+        printMLIROutput(*module, outputFilename);
+        return false;
+      };
+      wrapperStorage.emplace_back(std::move(wrapper));
+
+      addLiteralOption(kv.first(), &wrapperStorage.back(), kv.first());
+    }
+    for (const auto &kv : getTranslationFromMLIRRegistry()) {
+      TranslateFromMLIRFunction function = kv.second;
+      TranslateFunction wrapper = [function](StringRef inputFilename,
+                                             StringRef outputFilename,
+                                             MLIRContext *context) {
+        auto module =
+            std::unique_ptr<Module>(parseMLIRInput(inputFilename, context));
+        if (!module)
+          return true;
+        return function(module.get(), outputFilename);
+      };
+      wrapperStorage.emplace_back(std::move(wrapper));
+
+      addLiteralOption(kv.first(), &wrapperStorage.back(), kv.first());
     }
   }
 
