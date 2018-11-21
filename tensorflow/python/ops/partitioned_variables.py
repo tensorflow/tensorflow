@@ -57,7 +57,7 @@ import math
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 __all__ = [
@@ -238,6 +238,9 @@ def fixed_size_partitioner(num_shards, axis=0):
 
 
 @tf_export("create_partitioned_variables")
+@deprecation.deprecated(
+    date=None,
+    instructions="Use tf.get_variable with a partitioner set.")
 def create_partitioned_variables(
     shape, slicing, initializer, dtype=dtypes.float32,
     trainable=True, collections=None, name=None, reuse=None):
@@ -282,11 +285,6 @@ def create_partitioned_variables(
   Raises:
     ValueError: If any of the arguments is malformed.
   """
-  logging.warn(
-      "create_partitioned_variables is deprecated.  Use "
-      "tf.get_variable with a partitioner set, or "
-      "tf.get_partitioned_variable_list, instead.")
-
   if len(shape) != len(slicing):
     raise ValueError("The 'shape' and 'slicing' of a partitioned Variable "
                      "must have the length: shape: %s, slicing: %s" %
