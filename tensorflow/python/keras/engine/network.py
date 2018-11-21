@@ -428,8 +428,8 @@ class Network(base_layer.Layer):
 
   @property
   def stateful(self):
-    return any([(hasattr(layer, 'stateful') and layer.stateful)
-                for layer in self.layers])
+    return any((hasattr(layer, 'stateful') and layer.stateful)
+               for layer in self.layers)
 
   def reset_states(self):
     for layer in self.layers:

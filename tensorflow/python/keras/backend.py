@@ -2325,7 +2325,7 @@ def concatenate(tensors, axis=-1):
     else:
       axis = 0
 
-  if py_all([is_sparse(x) for x in tensors]):
+  if py_all(is_sparse(x) for x in tensors):
     return sparse_ops.sparse_concat(axis, tensors)
   else:
     return array_ops.concat([to_dense(x) for x in tensors], axis)

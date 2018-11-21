@@ -254,7 +254,7 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
       self, fn, multi_worker_iterator, iterations, initial_loop_values=None):
     output_shapes = multi_worker_iterator.output_shapes
     shapes = nest.flatten(output_shapes)
-    if any([not s.is_fully_defined() for s in shapes]):
+    if any(not s.is_fully_defined() for s in shapes):
       raise ValueError(
           "TPU currently requires fully defined shapes. Either use "
           "set_shape() on the input tensors or use "

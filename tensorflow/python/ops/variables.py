@@ -2482,21 +2482,21 @@ class PartitionedVariable(object):
           "variable_list is not a list or tuple: %s" % variable_list)
     if not isinstance(partitions, (list, tuple)):
       raise TypeError("partitions is not a list or tuple: %s" % partitions)
-    if not all([p >= 1 for p in partitions]):
+    if not all(p >= 1 for p in partitions):
       raise ValueError("partition values must be positive: %s" % partitions)
     if not variable_list:
       raise ValueError("variable_list may not be empty")
     # pylint: disable=protected-access
     for v in variable_list:
       # Sort the variable_list lexicographically according to var offset value.
-      if not all([v._get_save_slice_info() is not None for v in variable_list]):
+      if not all(v._get_save_slice_info() is not None for v in variable_list):
         raise ValueError(
             "All variables must have a save_slice_info available: %s"
             % [v.name for v in variable_list])
       if len(shape) != len(partitions):
         raise ValueError("len(shape) != len(partitions): %s vs. %s"
                          % (shape, partitions))
-      if not all([v._get_save_slice_info().full_shape == shape]):
+      if v._get_save_slice_info().full_shape != shape:
         raise ValueError(
             "All variables' full shapes must match shape: %s; "
             "but full shapes were: %s"
@@ -2523,7 +2523,7 @@ class PartitionedVariable(object):
     return len(self._variable_list)
 
   def _partition_axes(self):
-    if all([p == 1 for p in self._partitions]):
+    if all(p == 1 for p in self._partitions):
       return [0]
     else:
       return [i for i, p in enumerate(self._partitions) if p > 1]

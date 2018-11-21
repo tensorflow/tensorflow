@@ -42,7 +42,7 @@ class DatasetOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.cached_session() as sess:
       graph = graph_pb2.GraphDef().FromString(
           sess.run(dataset._as_serialized_graph()))
-      self.assertTrue(any([node.op != "RangeDataset" for node in graph.node]))
+      self.assertTrue(any(node.op != "RangeDataset" for node in graph.node))
 
   @staticmethod
   def make_apply_fn(dataset):

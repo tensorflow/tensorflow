@@ -1044,7 +1044,7 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
         return True
     return False
   except errors_impl.NotFoundError as e:
-    if not all([x in str(e) for x in ["CUDA", "not find"]]):
+    if not all(x in str(e) for x in ["CUDA", "not find"]):
       raise e
     else:
       logging.error(str(e))

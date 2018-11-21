@@ -103,10 +103,10 @@ def _validate_value_destination_pairs(value_destination_pairs):
   # pylint: disable=g-missing-docstring
   if not value_destination_pairs: return False
   if not isinstance(value_destination_pairs, (list, tuple)): return False
-  if not all([isinstance(pair, tuple) for pair in value_destination_pairs]):
+  if not all(isinstance(pair, tuple) for pair in value_destination_pairs):
     return False
-  if not all([isinstance(v[0], value_lib.PerReplica)
-              for v in value_destination_pairs]):
+  if not all(isinstance(v[0], value_lib.PerReplica)
+             for v in value_destination_pairs):
     return False
   return True
 
@@ -132,10 +132,10 @@ def _devices_match(left, right):
 
 
 def _all_devices_match(value_destination_pairs):
-  if not all([_devices_match(v, d) for v, d in value_destination_pairs]):
+  if not all(_devices_match(v, d) for v, d in value_destination_pairs):
     return False
-  if not all([_devices_match(v, value_destination_pairs[0][0])
-              for v, _ in value_destination_pairs[1:]]):
+  if not all(_devices_match(v, value_destination_pairs[0][0])
+             for v, _ in value_destination_pairs[1:]):
     return False
   return True
 
@@ -401,7 +401,7 @@ class ConcatAndSplitPacker(object):
         # all gradient shapes are defined, we use another method to get the
         # total size.
         # TODO(yuefengz): move this logic to array_ops.size.
-        if all([g.shape.is_fully_defined() for g, _ in device_grads_and_vars]):
+        if all(g.shape.is_fully_defined() for g, _ in device_grads_and_vars):
           total_grad_size = sum(
               [g.shape.num_elements() for g, _ in device_grads_and_vars])
         else:
@@ -941,7 +941,7 @@ def choose_the_best(devices, session_config=None):
                     "TensorFlow sessions.")
     return ReductionToOneDeviceCrossDeviceOps()
 
-  if any([d.device_type.lower() != "gpu" for d in using_devices]):
+  if any(d.device_type.lower() != "gpu" for d in using_devices):
     logging.warning("Not all devices in DistributionStrategy are visible to "
                     "TensorFlow session.")
     return ReductionToOneDeviceCrossDeviceOps()
