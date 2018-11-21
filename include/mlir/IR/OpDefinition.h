@@ -597,6 +597,28 @@ public:
   void setResult(unsigned i, SSAValue *value) {
     this->getOperation()->setResult(i, value);
   }
+
+  // Support non-const result iteration.
+  using result_iterator = Operation::result_iterator;
+  result_iterator result_begin() {
+    return this->getOperation()->result_begin();
+  }
+  result_iterator result_end() { return this->getOperation()->result_end(); }
+  llvm::iterator_range<result_iterator> getResults() {
+    return this->getOperation()->getResults();
+  }
+
+  // Support const result iteration.
+  using const_result_iterator = Operation::const_result_iterator;
+  const_result_iterator result_begin() const {
+    return this->getOperation()->result_begin();
+  }
+  const_result_iterator result_end() const {
+    return this->getOperation()->result_end();
+  }
+  llvm::iterator_range<const_result_iterator> getResults() const {
+    return this->getOperation()->getResults();
+  }
 };
 
 /// This class provides verification for ops that are known to have the same
