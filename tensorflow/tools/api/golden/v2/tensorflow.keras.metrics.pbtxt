@@ -1,5 +1,25 @@
 path: "tensorflow.keras.metrics"
 tf_module {
+  member {
+    name: "Accuracy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "BinaryAccuracy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CategoricalAccuracy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Mean"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SparseCategoricalAccuracy"
+    mtype: "<type \'type\'>"
+  }
   member_method {
     name: "KLD"
     argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"

@@ -401,26 +401,13 @@ def _update_confusion_matrix_variables(variables_to_update,
 class Metric(Layer):
   """Encapsulates metric logic and state.
 
-  Usage with eager execution:
+  Usage:
 
   ```python
   m = SomeMetric(...)
   for input in ...:
     m.update_state(input)
   print('Final result: ', m.result().numpy())
-  ```
-
-  Usage with graph execution:
-
-  ```python
-  m = SomeMetric(...)
-  init_op = tf.variables_initializer(m.variables)  # Initialize variables
-  with tf.Session() as sess:
-    sess.run(init_op)
-    for input in ...:
-      update_op = m.update_state(input)
-      sess.run(update_op)
-    print('Final result: ', sess.run(m.result()))
   ```
 
   Usage with tf.keras API:
@@ -600,8 +587,12 @@ class Metric(Layer):
   ### End: For use by subclasses ###
 
 
+@tf_export('metrics.Mean', 'keras.metrics.Mean', v1=[])
 class Mean(Metric):
   """Computes the (weighted) mean of the given values.
+
+  For example, if values is [1, 3, 5, 7] then the mean is 4.
+  If the weights were specified as [1, 1, 0, 0] then the mean would be 2.
 
   This metric creates two variables, `total` and `count` that are used to
   compute the average of `values`. This average is ultimately returned as `mean`
@@ -609,6 +600,22 @@ class Mean(Metric):
 
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
+
+  Usage:
+
+  ```python
+  m = tf.metrics.Mean()
+  m.update_state([1, 3, 5, 7])
+  print('Final result: ', m.result().numpy())  # Final result: 4.0
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.add_metric(metrics_module.Mean(name='mean_1')(outputs))
+  model.compile('sgd', loss='mse')
+  ```
   """
 
   def __init__(self, name='mean', dtype=None):
@@ -721,8 +728,13 @@ class MeanMetricWrapper(Mean):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-class BinaryAccuracy(MeanMetricWrapper):
+@tf_export('metrics.Accuracy', 'keras.metrics.Accuracy', v1=[])
+class Accuracy(MeanMetricWrapper):
   """Calculates how often predictions matches labels.
+
+  For example, if `y_true` is [1, 2, 3, 4] and `y_pred` is [0, 2, 3, 4]
+  then the accuracy is 3/4 or .75.  If the weights were specified as
+  [1, 1, 0, 0] then the accuracy would be 1/2 or .5.
 
   This metric creates two local variables, `total` and `count` that are used to
   compute the frequency with which `y_pred` matches `y_true`. This frequency is
@@ -731,6 +743,63 @@ class BinaryAccuracy(MeanMetricWrapper):
 
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
+
+  Usage:
+
+  ```python
+  m = tf.metrics.Accuracy()
+  m.update_state([1, 2, 3, 4], [0, 2, 3, 4])
+  print('Final result: ', m.result().numpy())  # Final result: 0.75
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss='mse', metrics=[tf.metrics.Accuracy()])
+  ```
+  """
+
+  def __init__(self, name='accuracy', dtype=None):
+    super(Accuracy, self).__init__(accuracy, name, dtype=dtype)
+
+  @classmethod
+  def from_config(cls, config):
+    if 'fn' in config:
+      config.pop('fn')
+    return super(Accuracy, cls).from_config(config)
+
+
+@tf_export('metrics.BinaryAccuracy', 'keras.metrics.BinaryAccuracy', v1=[])
+class BinaryAccuracy(MeanMetricWrapper):
+  """Calculates how often predictions matches labels.
+
+  For example, if `y_true` is [1, 1, 0, 0] and `y_pred` is [0.98, 1, 0, 0.6]
+  then the binary accuracy is 3/4 or .75.  If the weights were specified as
+  [1, 0, 0, 1] then the binary accuracy would be 1/2 or .5.
+
+  This metric creates two local variables, `total` and `count` that are used to
+  compute the frequency with which `y_pred` matches `y_true`. This frequency is
+  ultimately returned as `binary accuracy`: an idempotent operation that simply
+  divides `total` by `count`.
+
+  If `sample_weight` is `None`, weights default to 1.
+  Use `sample_weight` of 0 to mask values.
+
+  Usage:
+
+  ```python
+  m = tf.metrics.BinaryAccuracy()
+  m.update_state([1, 1, 0, 0], [0.98, 1, 0, 0.6])
+  print('Final result: ', m.result().numpy())  # Final result: 0.75
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss='mse', metrics=[tf.metrics.BinaryAccuracy()])
+  ```
   """
 
   def __init__(self, name='binary_accuracy', dtype=None, threshold=0.5):
@@ -752,8 +821,15 @@ class BinaryAccuracy(MeanMetricWrapper):
     return super(BinaryAccuracy, cls).from_config(config)
 
 
+@tf_export(
+    'metrics.CategoricalAccuracy', 'keras.metrics.CategoricalAccuracy', v1=[])
 class CategoricalAccuracy(MeanMetricWrapper):
   """Calculates how often predictions matches labels.
+
+  For example, if `y_true` is [[0, 0, 1], [0, 1, 0]] and `y_pred` is
+  [[0.1, 0.9, 0.8], [0.05, 0.95, 0]] then the categorical accuracy is 1/2 or .5.
+  If the weights were specified as [0.7, 0.3] then the categorical accuracy
+  would be .3.
 
   This metric creates two local variables, `total` and `count` that are used to
   compute the frequency with which `y_pred` matches `y_true`. This frequency is
@@ -765,6 +841,21 @@ class CategoricalAccuracy(MeanMetricWrapper):
 
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
+
+  Usage:
+
+  ```python
+  m = tf.metrics.CategoricalAccuracy()
+  m.update_state([[0, 0, 1], [0, 1, 0]], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
+  print('Final result: ', m.result().numpy())  # Final result: 0.5
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile('sgd', loss='mse', metrics=[tf.metrics.CategoricalAccuracy()])
+  ```
   """
 
   def __init__(self, name='categorical_accuracy', dtype=None):
@@ -784,8 +875,17 @@ class CategoricalAccuracy(MeanMetricWrapper):
     return super(CategoricalAccuracy, cls).from_config(config)
 
 
+@tf_export(
+    'metrics.SparseCategoricalAccuracy',
+    'keras.metrics.SparseCategoricalAccuracy',
+    v1=[])
 class SparseCategoricalAccuracy(MeanMetricWrapper):
   """Calculates how often predictions matches integer labels.
+
+  For example, if `y_true` is [[2], [1]] and `y_pred` is
+  [[0.1, 0.9, 0.8], [0.05, 0.95, 0]] then the categorical accuracy is 1/2 or .5.
+  If the weights were specified as [0.7, 0.3] then the categorical accuracy
+  would be .3.
 
   This metric creates two local variables, `total` and `count` that are used to
   compute the frequency with which `y_pred` matches `y_true`. This frequency is
@@ -794,6 +894,24 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
 
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
+
+  Usage:
+
+  ```python
+  m = tf.metrics.SparseCategoricalAccuracy()
+  m.update_state([[2], [1]], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
+  print('Final result: ', m.result().numpy())  # Final result: 0.5
+  ```
+
+  Usage with tf.keras API:
+
+  ```python
+  model = keras.models.Model(inputs, outputs)
+  model.compile(
+      'sgd',
+      loss='mse',
+      metrics=[tf.metrics.SparseCategoricalAccuracy()])
+  ```
   """
 
   def __init__(self, name='sparse_categorical_accuracy', dtype=None):
@@ -1095,6 +1213,13 @@ class Recall(Metric):
         math_ops.greater(self.tp + self.fn, 0),
         math_ops.div(self.tp, self.tp + self.fn),
         array_ops.zeros_like(self.thresholds))
+
+
+def accuracy(y_true, y_pred):
+  y_pred.get_shape().assert_is_compatible_with(y_true.get_shape())
+  if y_true.dtype != y_pred.dtype:
+    y_pred = math_ops.cast(y_pred, y_true.dtype)
+  return math_ops.cast(math_ops.equal(y_true, y_pred), K.floatx())
 
 
 @tf_export('keras.metrics.binary_accuracy')
