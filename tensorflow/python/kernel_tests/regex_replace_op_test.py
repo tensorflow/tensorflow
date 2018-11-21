@@ -74,7 +74,7 @@ class RegexReplaceOpVariantsTest(test.TestCase, parameterized.TestCase):
       invalid_pattern = "A["
       replace = op(input_vector, invalid_pattern, "x")
       with self.assertRaisesOpError("Invalid pattern"):
-        replace.eval()
+        self.evaluate(replace)
 
   def testGlobal(self, op):
     values = ["ababababab", "abcabcabc", ""]

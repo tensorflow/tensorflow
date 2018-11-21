@@ -209,6 +209,15 @@ TF_CAPI_EXPORT extern void TF_AttrBuilderCheckCanRunOnDevice(
 TF_CAPI_EXPORT extern const char* TF_GetNumberAttrForOpListInput(
     const char* op_name, int input_index, TF_Status* status);
 
+// Returns 1 if the op is stateful, 0 otherwise. The return value is undefined
+// if the status is not ok.
+TF_CAPI_EXPORT extern int TF_OpIsStateful(const char* op_type,
+                                          TF_Status* status);
+
+// Platform specific initialization routine. Very few platforms actually require
+// this to be called.
+TF_CAPI_EXPORT void TF_InitMain(const char* usage, int* argc, char*** argv);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

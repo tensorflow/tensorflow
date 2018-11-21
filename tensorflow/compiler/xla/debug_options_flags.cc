@@ -335,7 +335,7 @@ void AllocateFlags() {
           "behavior to help run tests on the host that run models in parallel "
           "across multiple devices."),
   });
-  ParseFlagsFromEnv(*flag_objects);
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }
 
 }  // namespace

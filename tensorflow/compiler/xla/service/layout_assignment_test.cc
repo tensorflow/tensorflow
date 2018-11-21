@@ -328,11 +328,10 @@ TEST_F(LayoutAssignmentTest, ConflictingLayoutTuple) {
   //  %tuple.1 = Tuple(%copy) layout=({0,1})
   //  %tuple.2 = Tuple(%tuple.0, %tuple.1) layout=(({1,0}), ({0,1}))
   //
-  EXPECT_TRUE(
-      AlgebraicSimplifier(/*is_layout_sensitive=*/true,
-                          [](const Shape&, const Shape&) { return false; })
-          .Run(m.get())
-          .ValueOrDie());
+  AlgebraicSimplifierOptions options(
+      [](const Shape&, const Shape&) { return false; });
+  options.set_is_layout_sensitive(true);
+  EXPECT_TRUE(AlgebraicSimplifier(options).Run(m.get()).ValueOrDie());
   HloInstruction* root = m->entry_computation()->root_instruction();
   // Verify layout of the root and the root's operands.
   EXPECT_TRUE(ShapeUtil::Equal(result_shape, root->shape()));

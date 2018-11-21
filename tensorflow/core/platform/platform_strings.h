@@ -24,6 +24,9 @@ limitations under the License.
 // built with the same options (or at least, the strings should be embedded in
 // the compilation unit built with the most restrictive options).
 
+// The platform strings embedded into a binary may be retrieved with the
+// GetPlatformStrings function.
+
 // Rationale:
 // We wish to load only those libraries that this CPU can execute.  For
 // example, we should not load a library compiled with avx256 instructions on a
@@ -57,6 +60,9 @@ limitations under the License.
 // the strings without library developers having to recompile.
 
 #include <stdio.h>
+
+#include <string>
+#include <vector>
 
 // Aside from the header guard, the internal macros defined here have the form:
 //   TF_PLAT_STR_*
@@ -297,7 +303,7 @@ limitations under the License.
 #undef TF_PLAT_STR_LIST___x86_64__
 #define TF_PLAT_STR_LIST___x86_64__()
 #endif
-#if !defined(__powerpc64__)
+#if !defined(__powerpc64__) && !defined(__powerpc__)
 #undef TF_PLAT_STR_LIST___powerpc64__
 #define TF_PLAT_STR_LIST___powerpc64__()
 #endif
@@ -341,5 +347,18 @@ limitations under the License.
     } tf_cpu_option_avoid_omit_class;                                          \
     }  /* anonymous namespace */
 // clang-format on
+
+namespace tensorflow {
+
+class Status;
+
+// Retrieves the platform strings from the file at the given path and appends
+// them to the given vector. If the returned int is non-zero, an error occurred
+// reading the file and vector may or may not be modified. The returned error
+// code is suitable for use with strerror().
+int GetPlatformStrings(const std::string& path,
+                       std::vector<std::string>* found);
+
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_PLATFORM_STRINGS_H_

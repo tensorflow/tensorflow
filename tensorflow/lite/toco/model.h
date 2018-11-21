@@ -123,6 +123,7 @@ enum class OperatorType : uint8 {
   kSplit,
   kSqrt,
   kSquare,
+  kSquaredDifference,
   kSum,
   kSwitch,
   kTile,
@@ -152,7 +153,8 @@ enum class OperatorType : uint8 {
   kCTCBeamSearchDecoder,
   kUnpack,
   kZerosLike,
-  kResizeNearestNeighbor
+  kResizeNearestNeighbor,
+  kLeakyRelu
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -697,6 +699,19 @@ struct Relu6Operator : Operator {
 // Equivalent to keras.layers.PReLU.
 struct PReluOperator : Operator {
   PReluOperator() : Operator(OperatorType::kPRelu) {}
+};
+
+// LeakyRelu
+//   x -> max(x, alpha * x)
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: LeakyRelu
+struct LeakyReluOperator : Operator {
+  LeakyReluOperator() : Operator(OperatorType::kLeakyRelu) {}
+
+  float alpha = 0.2f;  // 0.2 matches the default value for the TF op attribute.
 };
 
 // Element-wise Logistic operator:
@@ -1287,6 +1302,17 @@ struct TensorFlowSqrtOperator : Operator {
 // TensorFlow equivalent: Square
 struct TensorFlowSquareOperator : Operator {
   TensorFlowSquareOperator() : Operator(OperatorType::kSquare) {}
+};
+
+// Element-wise squared difference ((x-y)*(x-y)) operator.
+//
+// Inputs:
+//   inputs[0]: required: the left-hand side array
+//   inputs[1]: required: the right-hand side array
+//
+// TensorFlow equivalent: SquaredDifference
+struct SquaredDifferenceOperator : Operator {
+  SquaredDifferenceOperator() : Operator(OperatorType::kSquaredDifference) {}
 };
 
 // Transposes a tensor.

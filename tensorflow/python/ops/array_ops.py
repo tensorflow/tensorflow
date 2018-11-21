@@ -80,7 +80,7 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
 
 
 # pylint: disable=redefined-builtin,protected-access
-@tf_export("expand_dims")
+@tf_export(v1=["expand_dims"])
 @deprecation.deprecated_args(None, "Use the `axis` argument instead", "dim")
 def expand_dims(input, axis=None, name=None, dim=None):
   """Inserts a dimension of 1 into a tensor's shape.
@@ -134,6 +134,55 @@ def expand_dims(input, axis=None, name=None, dim=None):
   axis = deprecation.deprecated_argument_lookup("axis", axis, "dim", dim)
   if axis is None:
     raise ValueError("Must specify an axis argument to tf.expand_dims()")
+  return expand_dims_v2(input, axis, name)
+
+
+@tf_export("expand_dims", v1=[])
+def expand_dims_v2(input, axis, name=None):
+  """Inserts a dimension of 1 into a tensor's shape.
+
+  Given a tensor `input`, this operation inserts a dimension of 1 at the
+  dimension index `axis` of `input`'s shape. The dimension index `axis` starts
+  at zero; if you specify a negative number for `axis` it is counted backward
+  from the end.
+
+  This operation is useful if you want to add a batch dimension to a single
+  element. For example, if you have a single image of shape `[height, width,
+  channels]`, you can make it a batch of 1 image with `expand_dims(image, 0)`,
+  which will make the shape `[1, height, width, channels]`.
+
+  Other examples:
+
+  ```python
+  # 't' is a tensor of shape [2]
+  tf.shape(tf.expand_dims(t, 0))  # [1, 2]
+  tf.shape(tf.expand_dims(t, 1))  # [2, 1]
+  tf.shape(tf.expand_dims(t, -1))  # [2, 1]
+
+  # 't2' is a tensor of shape [2, 3, 5]
+  tf.shape(tf.expand_dims(t2, 0))  # [1, 2, 3, 5]
+  tf.shape(tf.expand_dims(t2, 2))  # [2, 3, 1, 5]
+  tf.shape(tf.expand_dims(t2, 3))  # [2, 3, 5, 1]
+  ```
+
+  This operation requires that:
+
+  `-1-input.dims() <= dim <= input.dims()`
+
+  This operation is related to `squeeze()`, which removes dimensions of
+  size 1.
+
+  Args:
+    input: A `Tensor`.
+    axis: 0-D (scalar). Specifies the dimension index at which to
+      expand the shape of `input`. Must be in the range
+      `[-rank(input) - 1, rank(input)]`.
+    name: The name of the output `Tensor` (optional).
+
+  Returns:
+    A `Tensor` with the same data as `input`, but its shape has an additional
+    dimension of size 1 added.
+  """
   return gen_array_ops.expand_dims(input, axis, name)
 
 
@@ -220,7 +269,13 @@ def broadcast_static_shape(shape_x, shape_y):
   return common_shapes.broadcast_shape(shape_x, shape_y)
 
 
-@tf_export("shape")
+@tf_export("shape", v1=[])
+def shape_v2(input, out_type=dtypes.int32, name=None):
+  # pylint: disable=redefined-builtin
+  return shape(input, name, out_type)
+
+
+@tf_export(v1=["shape"])
 def shape(input, name=None, out_type=dtypes.int32):
   # pylint: disable=redefined-builtin
   """Returns the shape of a tensor.
@@ -293,7 +348,13 @@ def shape_n(input, out_type=dtypes.int32, name=None):
   return gen_array_ops.shape_n(input, out_type=out_type, name=name)
 
 
-@tf_export("size")
+@tf_export("size", v1=[])
+def size_v2(input, out_type=dtypes.int32, name=None):
+  # pylint: disable=redefined-builtin
+  return size(input, name, out_type)
+
+
+@tf_export(v1=["size"])
 def size(input, name=None, out_type=dtypes.int32):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
@@ -1679,7 +1740,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
   return output
 
 
-@tf_export("zeros_like")
+@tf_export(v1=["zeros_like"])
 def zeros_like(tensor, dtype=None, name=None, optimize=True):
   """Creates a tensor with all elements set to zero.
 
@@ -1706,6 +1767,42 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
   Returns:
     A `Tensor` with all elements set to zero.
   """
+  return zeros_like_impl(tensor, dtype, name, optimize)
+
+
+@tf_export("zeros_like", v1=[])
+def zeros_like_v2(
+    input,  # pylint: disable=redefined-builtin
+    dtype=None,
+    name=None):
+  """Creates a tensor with all elements set to zero.
+
+  Given a single tensor (`tensor`), this operation returns a tensor of the
+  same type and shape as `tensor` with all elements set to zero. Optionally,
+  you can use `dtype` to specify a new type for the returned tensor.
+
+  For example:
+
+  ```python
+  tensor = tf.constant([[1, 2, 3], [4, 5, 6]])
+  tf.zeros_like(tensor)  # [[0, 0, 0], [0, 0, 0]]
+  ```
+
+  Args:
+    input: A `Tensor`.
+    dtype: A type for the returned `Tensor`. Must be `float16`, `float32`,
+      `float64`, `int8`, `uint8`, `int16`, `uint16`, `int32`, `int64`,
+      `complex64`, `complex128`, `bool` or `string`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` with all elements set to zero.
+  """
+  return zeros_like_impl(input, dtype, name, optimize=True)
+
+
+def zeros_like_impl(tensor, dtype, name, optimize=True):
+  """Internal implementation for the v1/v2 zeros_like API calls."""
   with ops.name_scope(name, "zeros_like", [tensor]) as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
 
@@ -1732,7 +1829,7 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
       return gen_array_ops.zeros_like(tensor, name=name)
 
 
-@tf_export("ones_like")
+@tf_export(v1=["ones_like"])
 def ones_like(tensor, dtype=None, name=None, optimize=True):
   """Creates a tensor with all elements set to 1.
 
@@ -1759,6 +1856,42 @@ def ones_like(tensor, dtype=None, name=None, optimize=True):
   Returns:
     A `Tensor` with all elements set to 1.
   """
+  return ones_like_impl(tensor, dtype, name, optimize)
+
+
+@tf_export("ones_like", v1=[])
+def ones_like_v2(
+    input,  # pylint: disable=redefined-builtin
+    dtype=None,
+    name=None):
+  """Creates a tensor with all elements set to zero.
+
+  Given a single tensor (`tensor`), this operation returns a tensor of the
+  same type and shape as `tensor` with all elements set to zero. Optionally,
+  you can use `dtype` to specify a new type for the returned tensor.
+
+  For example:
+
+  ```python
+  tensor = tf.constant([[1, 2, 3], [4, 5, 6]])
+  tf.ones_like(tensor)  # [[1, 1, 1], [1, 1, 1]]
+  ```
+
+  Args:
+    input: A `Tensor`.
+    dtype: A type for the returned `Tensor`. Must be `float16`, `float32`,
+      `float64`, `int8`, `uint8`, `int16`, `uint16`, `int32`, `int64`,
+      `complex64`, `complex128`, `bool` or `string`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` with all elements set to zero.
+  """
+  return ones_like_impl(input, dtype, name, optimize=True)
+
+
+def ones_like_impl(tensor, dtype, name, optimize=True):
+  """Internal implementation for the v1/v2 ones_like API calls."""
   with ops.name_scope(name, "ones_like", [tensor]) as name:
     tensor = ops.convert_to_tensor(tensor, name="tensor")
     ones_shape = shape_internal(tensor, optimize=optimize)
@@ -1956,7 +2089,65 @@ def sparse_placeholder(dtype, shape=None, name=None):
 # pylint: enable=redefined-outer-name
 
 
-@tf_export("pad")
+@tf_export("pad", v1=[])
+def pad_v2(tensor, paddings, mode="CONSTANT", constant_values=0, name=None):
+  """Pads a tensor.
+
+  This operation pads a `tensor` according to the `paddings` you specify.
+  `paddings` is an integer tensor with shape `[n, 2]`, where n is the rank of
+  `tensor`. For each dimension D of `input`, `paddings[D, 0]` indicates how
+  many values to add before the contents of `tensor` in that dimension, and
+  `paddings[D, 1]` indicates how many values to add after the contents of
+  `tensor` in that dimension. If `mode` is "REFLECT" then both `paddings[D, 0]`
+  and `paddings[D, 1]` must be no greater than `tensor.dim_size(D) - 1`. If
+  `mode` is "SYMMETRIC" then both `paddings[D, 0]` and `paddings[D, 1]` must be
+  no greater than `tensor.dim_size(D)`.
+
+  The padded size of each dimension D of the output is:
+
+  `paddings[D, 0] + tensor.dim_size(D) + paddings[D, 1]`
+
+  For example:
+
+  ```python
+  t = tf.constant([[1, 2, 3], [4, 5, 6]])
+  paddings = tf.constant([[1, 1,], [2, 2]])
+  # 'constant_values' is 0.
+  # rank of 't' is 2.
+  tf.pad(t, paddings, "CONSTANT")  # [[0, 0, 0, 0, 0, 0, 0],
+                                   #  [0, 0, 1, 2, 3, 0, 0],
+                                   #  [0, 0, 4, 5, 6, 0, 0],
+                                   #  [0, 0, 0, 0, 0, 0, 0]]
+
+  tf.pad(t, paddings, "REFLECT")  # [[6, 5, 4, 5, 6, 5, 4],
+                                  #  [3, 2, 1, 2, 3, 2, 1],
+                                  #  [6, 5, 4, 5, 6, 5, 4],
+                                  #  [3, 2, 1, 2, 3, 2, 1]]
+
+  tf.pad(t, paddings, "SYMMETRIC")  # [[2, 1, 1, 2, 3, 3, 2],
+                                    #  [2, 1, 1, 2, 3, 3, 2],
+                                    #  [5, 4, 4, 5, 6, 6, 5],
+                                    #  [5, 4, 4, 5, 6, 6, 5]]
+  ```
+
+  Args:
+    tensor: A `Tensor`.
+    paddings: A `Tensor` of type `int32`.
+    mode: One of "CONSTANT", "REFLECT", or "SYMMETRIC" (case-insensitive)
+    constant_values: In "CONSTANT" mode, the scalar pad value to use. Must be
+      same type as `tensor`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `tensor`.
+
+  Raises:
+    ValueError: When mode is not one of "CONSTANT", "REFLECT", or "SYMMETRIC".
+  """
+  return pad(tensor, paddings, mode, name, constant_values)
+
+
+@tf_export(v1=["pad"])
 def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pylint: disable=invalid-name
   """Pads a tensor.
 
@@ -2757,7 +2948,7 @@ def where(condition, x=None, y=None, name=None):
 
 
 # pylint: disable=redefined-builtin
-@tf_export("reverse_sequence")
+@tf_export(v1=["reverse_sequence"])
 @deprecation.deprecated_args(
     None, "seq_dim is deprecated, use seq_axis instead", "seq_dim")
 @deprecation.deprecated_args(
@@ -2781,12 +2972,29 @@ def reverse_sequence(input,
       name=name)
 
 
-# pylint: enable=redefined-builtin
-
 reverse_sequence.__doc__ = deprecation.rewrite_argument_docstring(
     deprecation.rewrite_argument_docstring(
         gen_array_ops.reverse_sequence.__doc__, "batch_dim", "batch_axis"),
     "seq_dim", "seq_axis")
+
+
+@tf_export("reverse_sequence", v1=[])
+def reverse_sequence_v2(
+    input, seq_lengths, seq_axis=None, batch_axis=None, name=None):
+  return gen_array_ops.reverse_sequence(
+      input=input,
+      seq_lengths=seq_lengths,
+      seq_dim=seq_axis,
+      batch_dim=batch_axis,
+      name=name)
+
+
+reverse_sequence_v2.__doc__ = deprecation.rewrite_argument_docstring(
+    deprecation.rewrite_argument_docstring(
+        gen_array_ops.reverse_sequence.__doc__, "batch_dim", "batch_axis"),
+    "seq_dim", "seq_axis")
+
+# pylint: enable=redefined-builtin
 
 
 @tf_export("gather")
@@ -2886,7 +3094,7 @@ def batch_gather(params, indices, name=None):
 
 # Define quantize_v2 here in order to make name the second-to-last attribute,
 # because round_mode was added later.
-@tf_export("quantize_v2")
+@tf_export(v1=["quantize_v2"])
 @deprecation.deprecated(
     "2017-10-25",
     "`tf.quantize_v2` is deprecated, please use `tf.quantization.quantize` "
@@ -2907,7 +3115,7 @@ def quantize_v2(input,  # pylint: disable=redefined-builtin
                                    round_mode=round_mode)
 
 
-quantize_v2.__doc__ = """Please use `tf.quantize` instead."""
+quantize_v2.__doc__ = """Please use `tf.quantization.quantize` instead."""
 
 
 # We want to expose tf.quantize instead of tf.quantize_v2; we can deprecate

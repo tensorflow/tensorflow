@@ -50,7 +50,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.cached_session() as sess:
       sess.run(iterator.initializer, feed_dict={placeholder: [0, 1, 2, 3]})
       for i in range(4):
-        self.assertEqual(i, sess.run(next_elem))
+        self.assertEqual(i, self.evaluate(next_elem))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_elem)
 
@@ -68,7 +68,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.cached_session() as sess:
       for i in range(10):
-        self.assertEqual((i,) * 3, sess.run(op))
+        self.assertEqual((i,) * 3, self.evaluate(op))
 
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(op)
@@ -88,7 +88,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.cached_session() as sess:
       for i in range(10):
-        self.assertEqual((i, compat.as_bytes(str(i)), i), sess.run(op))
+        self.assertEqual((i, compat.as_bytes(str(i)), i), self.evaluate(op))
 
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(op)
@@ -107,7 +107,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.cached_session() as sess:
       for i in range(10):
-        st_row = sess.run(next_element)
+        st_row = self.evaluate(next_element)
         self.assertEqual([i], st_row.indices)
         self.assertEqual([i], st_row.values)
         self.assertEqual([10], st_row.dense_shape)
@@ -128,7 +128,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.cached_session() as sess:
       for i in range(10):
-        dense_elem, st_row = sess.run(next_element)
+        dense_elem, st_row = self.evaluate(next_element)
         self.assertEqual(i, dense_elem)
         self.assertEqual([i], st_row.indices)
         self.assertEqual([i], st_row.values)
@@ -150,7 +150,7 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.cached_session() as sess:
       for i in range(10):
-        self.assertEqual(((i,),) * 3, sess.run(op))
+        self.assertEqual(((i,),) * 3, self.evaluate(op))
 
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(op)

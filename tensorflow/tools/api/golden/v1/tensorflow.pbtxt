@@ -245,6 +245,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "TensorSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TextLineReader"
     mtype: "<type \'type\'>"
   }
@@ -318,6 +322,10 @@ tf_module {
   }
   member {
     name: "debugging"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "distribute"
     mtype: "<type \'module\'>"
   }
   member {
@@ -778,7 +786,7 @@ tf_module {
   }
   member_method {
     name: "assert_scalar"
-    argspec: "args=[\'tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'tensor\', \'name\', \'message\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "assert_type"

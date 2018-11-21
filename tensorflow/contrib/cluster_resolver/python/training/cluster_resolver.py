@@ -44,6 +44,17 @@ class ClusterResolver(object):
   automatically discover and resolve IP addresses for various TensorFlow
   workers. This will eventually allow us to automatically recover from
   underlying machine failures and scale TensorFlow worker clusters up and down.
+
+  Note to Implementors: In addition to these abstract methods, you must also
+  implement the task_type, task_index, and rpc_layer attributes. You may choose
+  to implement them either as properties with getters or setters or directly
+  set the attributes.
+
+  - task_type is the name of the server's current named job (e.g. 'worker',
+     'ps' in a distributed parameterized training job).
+  - task_index is the ordinal index of the server within the task type.
+  - rpc_layer is the protocol used by TensorFlow to communicate with other
+      TensorFlow servers in a distributed environment.
   """
 
   @abc.abstractmethod
@@ -60,8 +71,7 @@ class ClusterResolver(object):
     management system every time this function is invoked and reconstructing
     a cluster_spec, rather than attempting to cache anything.
     """
-    raise NotImplementedError(
-        'cluster_spec is not implemented for {}.'.format(self))
+    raise NotImplementedError()
 
   @abc.abstractmethod
   def master(self, task_type=None, task_index=None, rpc_layer=None):
@@ -79,7 +89,27 @@ class ClusterResolver(object):
     returned is up-to-date at the time to calling this function. This usually
     means retrieving the master every time this function is invoked.
     """
-    raise NotImplementedError('master is not implemented for {}.'.format(self))
+    raise NotImplementedError()
+
+  @abc.abstractmethod
+  def num_accelerators_per_worker(self, session_config=None):
+    """Returns the number of accelerator cores per worker.
+
+    This returns the number of accelerator cores (such as GPUs and TPUs)
+    available per worker. If workers only has CPU cores available, then this
+    should return 0. This method will query the master for this information
+    if it is not otherwise known.
+
+    Args:
+      session_config: (Optional) Configuration for starting a new session to
+        query how many accelerator cores it has.
+    """
+    raise NotImplementedError()
+
+  @abc.abstractproperty
+  def environment(self):
+    """Returns the current environment which TensorFlow is running in."""
+    raise NotImplementedError()
 
 
 class SimpleClusterResolver(ClusterResolver):

@@ -24,6 +24,7 @@ from six.moves.urllib.request import Request
 from six.moves.urllib.request import urlopen
 
 from tensorflow.contrib.cluster_resolver.python.training.cluster_resolver import ClusterResolver
+from tensorflow.contrib.cluster_resolver.python.training.cluster_resolver import format_master_url
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 
@@ -85,6 +86,8 @@ class TPUClusterResolver(ClusterResolver):
     return compat.as_bytes(resp.read())
 
   def _shouldResolve(self):
+    if isinstance(self._should_resolve_override, bool):
+      return self._should_resolve_override
     if (self._tpu == compat.as_bytes('') or
         self._tpu == compat.as_bytes('local') or
         self._tpu.startswith(compat.as_bytes('/bns')) or
@@ -181,7 +184,39 @@ class TPUClusterResolver(ClusterResolver):
       raise ValueError('Please provide a TPU Name to connect to.')
 
     self._tpu = compat.as_bytes(tpu)  # self._tpu is always bytes
-    self._job_name = job_name
+
+    # By default the task_type is 'worker` and the task_index is 0 (which is the
+    # first worker in the task).
+    self.task_type = job_name
+    self.task_index = 0
+
+    if tpu.startswith('grpc://'):
+      # Cloud environment, where we are using GRPC to communicate to TPUs.
+      self._environment = ''
+    elif tpu == 'local' or not tpu:
+      # Google environment, where the TPU is attached to the host.
+      self._environment = 'google'
+    elif tpu.startswith('/bns'):
+      # Google environment, where we reach the TPU through BNS.
+      self._environment = 'google'
+
+    # If TPU is in the Google environment or exists locally, we don't use any
+    # RPC layer.
+    if tpu.startswith('/bns') or tpu == 'local' or not tpu:
+      self.rpc_layer = None
+    else:
+      self.rpc_layer = 'grpc'
+
+    # Setting this overrides the return value of self._shouldResolve()
+    self._should_resolve_override = None
+
+    # We strip out the protocol if it is included, and override the
+    # shouldResolve function to never resolve. We are adding the protocol back
+    # in later in self.master().
+    if self.rpc_layer is not None and tpu.startswith(self.rpc_layer + '://'):
+      tpu = tpu[len(self.rpc_layer + '://'):]
+      self._tpu = tpu
+      self._should_resolve_override = False
 
     # Whether we should actually attempt to contact Cloud APIs
     should_resolve = self._shouldResolve()
@@ -222,7 +257,7 @@ class TPUClusterResolver(ClusterResolver):
     else:
       self._coordinator_address = coordinator_address
 
-  def master(self, task_type=None, task_index=None):
+  def master(self, task_type=None, task_index=None, rpc_layer=None):
     """Get the Master string to be used for the session.
 
     In the normal case, this returns the grpc path (grpc://1.2.3.4:8470) of
@@ -234,8 +269,12 @@ class TPUClusterResolver(ClusterResolver):
     'grpc://10.240.1.2:8470' will be returned).
 
     Args:
-      task_type: (Optional) The type of the TensorFlow task of the master.
-      task_index: (Optional) The index of the TensorFlow task of the master.
+      task_type: (Optional, string) The type of the TensorFlow task of the
+        master.
+      task_index: (Optional, integer) The index of the TensorFlow task of the
+        master.
+      rpc_layer: (Optional, string) The RPC protocol TensorFlow should use to
+        communicate with TPUs.
 
     Returns:
       string, the connection string to use when creating a session.
@@ -243,25 +282,34 @@ class TPUClusterResolver(ClusterResolver):
     Raises:
       ValueError: If none of the TPUs specified exists.
     """
-    if not self._shouldResolve():
-      return self._tpu.split(compat.as_bytes(_ENDPOINTS_SEPARATOR))[0]
-
-    cluster_spec = self.cluster_spec()
-    if task_type and task_index:
-      return cluster_spec.task_address(task_type, task_index)
-
-    job_tasks = cluster_spec.job_tasks(self._job_name)
-    if not job_tasks:
-      raise ValueError('No TPUs exists with the specified names exist.')
-
-    return 'grpc://' + job_tasks[0]
+    if self._shouldResolve():
+      # We are going to communicate with the Cloud TPU APIs to get a Cluster.
+      cluster_spec = self.cluster_spec()
+      if task_type is not None and task_index is not None:
+        # task_type and task_index is from the function parameter
+        master = cluster_spec.task_address(task_type, task_index)
+      elif self.task_type is not None and self.task_index is not None:
+        # task_type and task_index is from the object
+        master = cluster_spec.task_address(self.task_type, self.task_index)
+      else:
+        # by default we take the first item in the cluster with the right name
+        job_tasks = cluster_spec.job_tasks(self.task_type)
+        if not job_tasks:
+          raise ValueError('No TPUs with the specified names exist.')
+        master = job_tasks[0]
+    else:
+      if isinstance(self._tpu, (bytes, bytearray)):
+        master = self._tpu.split(compat.as_bytes(_ENDPOINTS_SEPARATOR))[0]
+      else:
+        master = self._tpu.split(_ENDPOINTS_SEPARATOR)[0]
+    return format_master_url(master, rpc_layer or self.rpc_layer)
 
   def get_master(self):
     return self.master()
 
   def get_job_name(self):
     if self._shouldResolve():
-      return self._job_name
+      return self.task_type
 
   def cluster_spec(self):
     """Returns a ClusterSpec object based on the latest TPU information.
@@ -313,24 +361,47 @@ class TPUClusterResolver(ClusterResolver):
         instance_url = '%s:%s' % (response['ipAddress'], response['port'])
         worker_list = [instance_url]
 
-      cluster_spec = {self._job_name: worker_list}
+      cluster_spec = {self.task_type: worker_list}
     else:
-      if not self._tpu.startswith(compat.as_bytes('grpc://')):
+      if self.rpc_layer is None:
         # Case 3.
         return None
       # Case 2.
-      cluster_spec = {
-          self._job_name: [
-              x[len(compat.as_bytes('grpc://')):]
-              for x in self._tpu.split(compat.as_bytes(_ENDPOINTS_SEPARATOR))
-          ]
-      }
+      tpus = []
+      for tpu in self._tpu.split(_ENDPOINTS_SEPARATOR):
+        # We are working around the fact that GKE environment variable that is
+        # supplied to us has the protocol string embedded in it, but we want
+        # to strip it out for the ClusterSpec.
+        if (self.rpc_layer is not None and
+            tpu.startswith(self.rpc_layer + '://')):
+          tpus.append(tpu[len(self.rpc_layer + '://'):])
+        else:
+          tpus.append(tpu)
+      cluster_spec = {self.task_type: tpus}
 
     if self._coordinator_address:
       # {1, 2}.a
       cluster_spec[self._coordinator_name] = [self._coordinator_address]
 
     return server_lib.ClusterSpec(cluster_spec)
+
+  def num_accelerators_per_worker(self, session_config=None):
+    """Returns the number of TPU cores per worker.
+
+    This defaults to 8 for all current TPU configurations, and we do not need
+    to query any remote systems for this.
+
+    Args:
+      session_config: Unused. Not currently necessary to query anything as this
+        number is 8 for all TPU configurations.
+    """
+    del session_config  # Unused. Not necessary to query anything.
+    return 8
+
+  @property
+  def environment(self):
+    """Returns the current environment which TensorFlow is running in."""
+    return self._environment
 
   def _start_local_server(self):
     address = self._requestComputeMetadata('instance/network-interfaces/0/ip')

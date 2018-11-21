@@ -20,14 +20,15 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import list_ops
@@ -47,8 +48,8 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     ret = while_loop_v2(lambda v: v < 8., lambda v: v * v, [x])
     grad = gradients_impl.gradients(ret, [x])
     with self.cached_session() as sess:
-      self.assertEqual(sess.run(ret), 16.)
-      self.assertSequenceEqual(sess.run(grad), [32.])
+      self.assertEqual(self.evaluate(ret), 16.)
+      self.assertSequenceEqual(self.evaluate(grad), [32.])
 
   def testMultipleLoopVarsBasic(self):
     x = constant_op.constant(5.)
@@ -64,8 +65,8 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     # Note: This is simply d_ret[0]/d_x since d_ret[1]/d_x is 0.
     grad = gradients_impl.gradients(ret, [x])  # [2*x*y]
     with self.cached_session() as sess:
-      self.assertSequenceEqual(sess.run(ret), [45., 3.])
-      self.assertSequenceEqual(sess.run(grad), [9.])
+      self.assertSequenceEqual(self.evaluate(ret), [45., 3.])
+      self.assertSequenceEqual(self.evaluate(grad), [9.])
 
   def testMultipleLoopVars(self):
     x = constant_op.constant(5.)
@@ -87,13 +88,13 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     grady_1 = gradients_impl.gradients(ret[1], [y])  # [x + 1]
     grady_2 = gradients_impl.gradients(ret, [y])  # [2*x*y + x**2 + x + 1]
     with self.cached_session() as sess:
-      self.assertSequenceEqual(sess.run(ret), [120., 23.])
-      self.assertSequenceEqual(sess.run(gradx_0), [39.])
-      self.assertSequenceEqual(sess.run(gradx_1), [4.])
-      self.assertSequenceEqual(sess.run(gradx_2), [43.])
-      self.assertSequenceEqual(sess.run(grady_0), [55.])
-      self.assertSequenceEqual(sess.run(grady_1), [6.])
-      self.assertSequenceEqual(sess.run(grady_2), [61.])
+      self.assertSequenceEqual(self.evaluate(ret), [120., 23.])
+      self.assertSequenceEqual(self.evaluate(gradx_0), [39.])
+      self.assertSequenceEqual(self.evaluate(gradx_1), [4.])
+      self.assertSequenceEqual(self.evaluate(gradx_2), [43.])
+      self.assertSequenceEqual(self.evaluate(grady_0), [55.])
+      self.assertSequenceEqual(self.evaluate(grady_1), [6.])
+      self.assertSequenceEqual(self.evaluate(grady_2), [61.])
 
   def testMultipleWhileLoops(self):
     x = constant_op.constant(2.)
@@ -102,8 +103,8 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     grad = gradients_impl.gradients(ret2, [x])  # 4x**3
     grad_grad = gradients_impl.gradients(grad, [x])  # 12x**2
     with self.cached_session() as sess:
-      self.assertSequenceEqual(sess.run(grad), [32.])
-      self.assertSequenceEqual(sess.run(grad_grad), [48.])
+      self.assertSequenceEqual(self.evaluate(grad), [32.])
+      self.assertSequenceEqual(self.evaluate(grad_grad), [48.])
 
   def testDoubleDerivative(self):
     x = constant_op.constant(2.)
@@ -111,9 +112,9 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     grad = gradients_impl.gradients(ret, [x])  # 4x**3
     grad_grad = gradients_impl.gradients(grad, [x])  # 12x**2
     with self.cached_session() as sess:
-      self.assertEqual(sess.run(ret), 16.)
-      self.assertSequenceEqual(sess.run(grad), [32.])
-      self.assertSequenceEqual(sess.run(grad_grad), [48.])
+      self.assertEqual(self.evaluate(ret), 16.)
+      self.assertSequenceEqual(self.evaluate(grad), [32.])
+      self.assertSequenceEqual(self.evaluate(grad_grad), [48.])
 
   def testPruning(self):
     x = constant_op.constant(1)
@@ -135,10 +136,12 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
     def GetOptimizedGraph():
       mg = meta_graph.create_meta_graph_def(graph=ops.get_default_graph())
-      rewriter_config = rewriter_config_pb2.RewriterConfig(
-          constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
-          memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL)
-      return tf_optimizer.OptimizeGraph(rewriter_config, mg)
+      config = config_pb2.ConfigProto()
+      config.graph_options.rewrite_options.CopyFrom(
+          rewriter_config_pb2.RewriterConfig(
+              constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
+              memory_optimization=rewriter_config_pb2.RewriterConfig.MANUAL))
+      return tf_optimizer.OptimizeGraph(config, mg)
 
     g = GetOptimizedGraph()
     self.assertEqual(len([n for n in g.node if n.op == "Enter"]), 1)
@@ -154,8 +157,8 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     ret = while_loop_v2(lambda v: v + y < 9., lambda v: v * 3., [x])
     grad = gradients_impl.gradients(ret, [x])
     with self.cached_session() as sess:
-      self.assertEqual(sess.run(ret), 18.)
-      self.assertSequenceEqual(sess.run(grad), [9.])
+      self.assertEqual(self.evaluate(ret), 18.)
+      self.assertSequenceEqual(self.evaluate(grad), [9.])
 
   def testCaptureExternalTensorInBody(self):
     x = constant_op.constant(2.)
@@ -163,8 +166,8 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     ret = while_loop_v2(lambda v: v < 8., lambda v: v * y, [x])
     grad = gradients_impl.gradients(ret, [x])
     with self.cached_session() as sess:
-      self.assertEqual(sess.run(ret), 18.)
-      self.assertSequenceEqual(sess.run(grad), [9.])
+      self.assertEqual(self.evaluate(ret), 18.)
+      self.assertSequenceEqual(self.evaluate(grad), [9.])
 
   def testLoopWithTensorListPushBack(self):
     x = constant_op.constant(2.)
@@ -185,7 +188,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     grad = gradients_impl.gradients(ret[0], x)
     with self.cached_session() as sess:
       self.assertEqual(sess.run(ret[0]), 16.)
-      self.assertSequenceEqual(sess.run(grad), [32.])
+      self.assertSequenceEqual(self.evaluate(grad), [32.])
 
   def testDuplicateAccumulator(self):
     x = constant_op.constant(2.)
@@ -219,7 +222,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     grad = gradients_impl.gradients(ret[0], x)
     with self.cached_session() as sess:
       self.assertEqual(sess.run(ret[0]), 16.)
-      self.assertSequenceEqual(sess.run(grad), [32.])
+      self.assertSequenceEqual(self.evaluate(grad), [32.])
 
   @parameterized.named_parameters(
       ("UnknownShape", None),
@@ -305,18 +308,16 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
         self.assertRegexpMatches(
             while2_op.get_attr("body").name, r"foo_while_1_body_\d*")
 
+  @test_util.enable_control_flow_v2
   def testWhileAndTensorArray(self):
-    old_enable_while_v2 = control_flow_ops.ENABLE_WHILE_V2
-    control_flow_ops.ENABLE_WHILE_V2 = True
     with self.cached_session() as sess:
       param = constant_op.constant(2.0)
       y0 = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], name="elems")
       # map_fn uses TensorArray internally.
       r = functional_ops.map_fn(lambda x: math_ops.multiply(x, param), y0)
-      self.assertAllClose([2.0, 4.0, 6.0, 8.0, 10.0, 12.0], sess.run(r))
+      self.assertAllClose([2.0, 4.0, 6.0, 8.0, 10.0, 12.0], self.evaluate(r))
       r = gradients_impl.gradients(r, param)[0]
-      self.assertAllClose(21.0, sess.run(r))
-    control_flow_ops.ENABLE_WHILE_V2 = old_enable_while_v2
+      self.assertAllClose(21.0, self.evaluate(r))
 
   def testNestedWhile(self):
     # Compute sum of geometric progression: n^0 + n^1 + ... + n^m
@@ -333,8 +334,8 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     result = while_loop_v2(lambda i, _: i >= 0, Body, [m, sum_of_powers])[1]
     grad = gradients_impl.gradients(result, [n])
     with self.cached_session() as sess:
-      self.assertEqual(sess.run(result), 364.)
-      self.assertSequenceEqual(sess.run(grad), [547.])
+      self.assertEqual(self.evaluate(result), 364.)
+      self.assertSequenceEqual(self.evaluate(grad), [547.])
 
   def testIdentityNodeInBody(self):
 
@@ -347,8 +348,8 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     ret = while_loop_v2(lambda v: v < 8., Body, [x])
     grad = gradients_impl.gradients(ret, [x])
     with self.cached_session() as sess:
-      self.assertEqual(sess.run(ret), 16.)
-      self.assertSequenceEqual(sess.run(grad), [32.])
+      self.assertEqual(self.evaluate(ret), 16.)
+      self.assertSequenceEqual(self.evaluate(grad), [32.])
 
   def testNestedWhileAndTensorArray(self):
     n = constant_op.constant(3.0)

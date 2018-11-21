@@ -158,7 +158,7 @@ class BroadcastWeightsTest(test.TestCase):
     dynamic_op = weights_broadcast_ops.broadcast_weights(
         weights=weights_placeholder, values=values_placeholder)
     with self.cached_session():
-      self.assertAllEqual(expected, static_op.eval())
+      self.assertAllEqual(expected, self.evaluate(static_op))
       self.assertAllEqual(expected, dynamic_op.eval(feed_dict={
           weights_placeholder: weights,
           values_placeholder: values,

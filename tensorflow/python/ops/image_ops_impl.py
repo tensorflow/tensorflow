@@ -37,6 +37,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 ops.NotDifferentiable('RandomCrop')
@@ -511,15 +512,20 @@ def _rot90_4D(images, k, name_scope):
   result.set_shape([shape[0], None, None, shape[3]])
   return result
 
-@tf_export('image.transpose_image')
-def transpose_image(image):
-  """Transpose image(s) by swapping the height and width dimension.
 
-  See also `transpose()`.
+@tf_export(v1=['image.transpose', 'image.transpose_image'])
+def transpose_image(image):
+  return transpose(image=image, name=None)
+
+
+@tf_export('image.transpose', v1=[])
+def transpose(image, name=None):
+  """Transpose image(s) by swapping the height and width dimension.
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or
            3-D Tensor of shape `[height, width, channels]`.
+    name: A name for this operation (optional).
 
   Returns:
     If `image` was 4-D, a 4-D float Tensor of shape
@@ -530,14 +536,14 @@ def transpose_image(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  with ops.name_scope(None, 'transpose_image', [image]):
+  with ops.name_scope(name, 'transpose', [image]):
     image = ops.convert_to_tensor(image, name='image')
     image = _AssertAtLeast3DImage(image)
     shape = image.get_shape()
     if shape.ndims == 3 or shape.ndims is None:
-      return array_ops.transpose(image, [1, 0, 2], name='transpose_image')
+      return array_ops.transpose(image, [1, 0, 2], name=name)
     elif shape.ndims == 4:
-      return array_ops.transpose(image, [0, 2, 1, 3], name='transpose_image')
+      return array_ops.transpose(image, [0, 2, 1, 3], name=name)
     else:
       raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
@@ -938,12 +944,28 @@ class ResizeMethod(object):
   AREA = 3
 
 
-@tf_export('image.resize_images')
+@tf_export(v1=['image.resize_images', 'image.resize'])
 def resize_images(images,
                   size,
                   method=ResizeMethod.BILINEAR,
                   align_corners=False,
                   preserve_aspect_ratio=False):
+  return resize_images_v2(
+      images=images,
+      size=size,
+      method=method,
+      align_corners=align_corners,
+      preserve_aspect_ratio=preserve_aspect_ratio,
+      name=None)
+
+
+@tf_export('image.resize', v1=[])
+def resize_images_v2(images,
+                     size,
+                     method=ResizeMethod.BILINEAR,
+                     align_corners=False,
+                     preserve_aspect_ratio=False,
+                     name=None):
   """Resize `images` to `size` using the specified `method`.
 
   Resized images will be distorted if their original aspect ratio is not
@@ -979,6 +1001,7 @@ def resize_images(images,
       then `images` will be resized to a size that fits in `size` while
       preserving the aspect ratio of the original image. Scales up the image if
       `size` is bigger than the current size of the `image`. Defaults to False.
+    name: A name for this operation (optional).
 
   Raises:
     ValueError: if the shape of `images` is incompatible with the
@@ -992,7 +1015,7 @@ def resize_images(images,
     If `images` was 3-D, a 3-D float Tensor of shape
     `[new_height, new_width, channels]`.
   """
-  with ops.name_scope(None, 'resize_images', [images, size]):
+  with ops.name_scope(name, 'resize', [images, size]):
     images = ops.convert_to_tensor(images, name='images')
     if images.get_shape().ndims is None:
       raise ValueError('\'images\' contains no shape.')
@@ -2808,3 +2831,33 @@ def sobel_edges(image):
   output = array_ops.reshape(output, shape=shape)
   output.set_shape(static_image_shape.concatenate([num_kernels]))
   return output
+
+
+resize_area_deprecation = deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.AREA...)` instead.'))
+tf_export(v1=['image.resize_area'])(
+    resize_area_deprecation(gen_image_ops.resize_area))
+
+resize_bicubic_deprecation = deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.BICUBIC...)` instead.'))
+tf_export(v1=['image.resize_bicubic'])(
+    resize_bicubic_deprecation(gen_image_ops.resize_bicubic))
+
+resize_bilinear_deprecation = deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.BILINEAR...)` instead.'))
+tf_export(v1=['image.resize_bilinear'])(
+    resize_bilinear_deprecation(gen_image_ops.resize_bilinear))
+
+resize_nearest_neighbor_deprecation = deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.NEAREST_NEIGHBOR...)` '
+        'instead.'))
+tf_export(v1=['image.resize_nearest_neighbor'])(
+    resize_nearest_neighbor_deprecation(gen_image_ops.resize_nearest_neighbor))

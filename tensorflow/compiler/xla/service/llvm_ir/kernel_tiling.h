@@ -28,23 +28,14 @@ namespace llvm_ir {
 // If a shape can be viewed as three logical components 0-1-2 in the order of
 // major to minor, a 0-2-1-transpose changes the order of such logical
 // components to 0-2-1. We call the shape being transposed the input shape and
-// the transposed shape the output shape. The logical view of the input and
-// output shapes for the transpose are called the 0-1-2 shape or reduced input
-// shape and the 0-2-1 shape or the reduced output shape respectively. The
-// original input and output shapes are called the unreduced input and output
-// shapes.
-
+// the transposed shape the output shape. The logical view of the input/output
+// shapes for the transpose are called the 0-1-2/0-2-1 shapes or the normalized
+// shapes. The original input/output shapes are called unnormalized shapes.
+//
 // If `b` is a 0-2-1 transpose of `a` in 0-1-2, return the dimensions for the
-// reduced shape of `b` or the 0-2-1 shape.
+// normalized shape of `b` or the 0-2-1 shape.
 absl::optional<std::vector<int64> > FindTranspose021(const Shape& a,
                                                      const Shape& b);
-
-// Return the unreduced output index corresponding to the given reduced output
-// index.
-IrArray::Index GetUnreducedOutputIndex(
-    const IrArray::Index& reduced_output_index,
-    const Shape& reduced_output_shape, const Shape& unreduced_output_shape,
-    llvm::IRBuilder<>* b);
 
 // A tile is a spatial subdivision of a tensor. We group tensor elements into
 // tiles so that we can launch kernels to process the tensor elements in blocks
@@ -99,6 +90,10 @@ class KernelMappingScheme {
   enum { DimZ = 0, DimY, DimX, DimTot };
 
  public:
+  // dims_in_elems: the normalized tensor dimensions.
+  // req_block_sizes: the requested block size in number of tiles for each
+  //   dimension. The actual block size is set to min(req_block_size,
+  //   dims_in_number_of_blocks).
   explicit KernelMappingScheme(absl::Span<const int64> dims_in_elems,
                                int64 tile_size_y, int64 tile_size_x,
                                absl::Span<const int64> req_block_sizes,
@@ -158,8 +153,9 @@ class KernelMappingScheme {
   std::tuple<llvm::Value*, llvm::Value*> EmitThreadYXCoordinate(
       llvm::Type* index_ty);
 
-  IrArray::Index GetReshapedOutputIndex(const IrArray::Index& output_index,
-                                        const Shape& reshaped_output_shape);
+  IrArray::Index GetUnnormalizedIndex(
+      const IrArray::Index& normalized_shape_index,
+      const Shape& unnormalized_shape);
 
   llvm::GlobalVariable* GetSharedMemoryBufferForElementType(
       llvm::Type* elem_ty, absl::string_view buffer_name);

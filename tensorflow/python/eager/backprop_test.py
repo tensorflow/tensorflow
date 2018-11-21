@@ -215,7 +215,7 @@ class BackpropTest(test.TestCase):
       self.assertAllClose(tf_grad.values.eval(), grad.values)
 
       tf_opt.apply_gradients([(tf_grad, tf_embedding)]).run()
-      expected = tf_embedding.eval()
+      expected = self.evaluate(tf_embedding)
     opt.apply_gradients([(grad, embedding)])
     self.assertAllClose(expected, embedding.read_value())
 
@@ -232,6 +232,68 @@ class BackpropTest(test.TestCase):
     ordered_variables = [x[1] for x in grads]
     self.assertTrue(ordered_variables[0] is v0)
     self.assertTrue(ordered_variables[1] is v1)
+
+  def testTapeNoOpGradient(self):
+    x = constant_op.constant(3.0)
+    with backprop.GradientTape() as t:
+      t.watch(x)
+      y = x
+    self.assertEqual(t.gradient(y, x).numpy(), 1.0)
+
+  def testTapeIdentityGradientIsIdentity(self):
+    x = constant_op.constant(3.0)
+    with backprop.GradientTape() as t:
+      t.watch(x)
+      y = array_ops.identity(x)
+    self.assertEqual(t.gradient(y, x).numpy(), 1.0)
+
+  def testTapeGradientMultiTargetOneIsSource(self):
+    x = constant_op.constant(2.0)
+    with backprop.GradientTape() as t:
+      t.watch(x)
+      y = x*x
+    self.assertEqual(t.gradient([x, y], x).numpy(), 5.0)
+
+  def testTapeNoOpGradientWithMultiTargetAllSource(self):
+    x = constant_op.constant(3.0)
+    with backprop.GradientTape() as t:
+      t.watch(x)
+      y = x
+    self.assertEqual(t.gradient([y, y], x).numpy(), 2.0)
+
+  def testTapeNoOpGradientWithMultiTargetMultiSource(self):
+    x = constant_op.constant(3.0)
+    y = constant_op.constant(5.0)
+    with backprop.GradientTape() as t:
+      t.watch(x)
+      t.watch(y)
+      z = y * y
+    self.assertAllEqual(t.gradient([x, y, z], [x, y]), [1.0, 11.0])
+
+  def testTapeNoOpOnVariableIsIdentity(self):
+    v0 = resource_variable_ops.ResourceVariable(1.0)
+    with backprop.GradientTape() as t:
+      y = v0.read_value()
+    self.assertEqual(t.gradient(y, v0).numpy(), 1.0)
+
+  @test_util.assert_no_new_tensors
+  @test_util.assert_no_garbage_created
+  def testTapeNoOpGradient2By2(self):
+    a_2_by_2 = constant_op.constant(2.0, shape=[2, 2])
+    with backprop.GradientTape(persistent=True) as tape:
+      tape.watch(a_2_by_2)
+    dy_dy = tape.gradient(a_2_by_2, [a_2_by_2])[0]
+    self.assertAllEqual(dy_dy.numpy(),
+                        constant_op.constant(1.0, shape=[2, 2]).numpy())
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testTapeNoOpGradientMultiTarget2By2(self):
+    a_2_by_2 = constant_op.constant(2.0, shape=[2, 2])
+    with backprop.GradientTape(persistent=True) as tape:
+      tape.watch(a_2_by_2)
+    dy_dy = tape.gradient([a_2_by_2, a_2_by_2], [a_2_by_2])[0]
+    self.assertAllEqual(dy_dy.numpy(),
+                        constant_op.constant(2.0, shape=[2, 2]).numpy())
 
   def testTapeStopRecording(self):
     with backprop.GradientTape() as t:

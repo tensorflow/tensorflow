@@ -121,7 +121,7 @@ tf_cuda_library(
         ":c_api",
         ":c_api_internal",
         "//tensorflow/c/eager:c_api",
-        "//tensorflow/compiler/jit/legacy_flags:mark_for_compilation_pass_flags",
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/contrib/tpu:all_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -186,11 +186,11 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            ":c_api_internal",
+            ":c_api",
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
-            ":c_api_internal",
+            ":c_api",
             "//tensorflow/core:framework",
         ],
     }),

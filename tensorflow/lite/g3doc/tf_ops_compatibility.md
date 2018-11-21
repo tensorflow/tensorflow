@@ -75,6 +75,7 @@ counterparts:
     0D tensor*
 *   [tf.squeeze](https://www.tensorflow.org/api_docs/python/tf/squeeze) - *as
     long as axis is not provided*
+*   [tf.squared_difference](https://www.tensorflow.org/versions/master/api_docs/python/tf/squared_difference)
 *   [tf.strided_slice](https://www.tensorflow.org/api_docs/python/tf/strided_slice) -
     *as long as ellipsis_mask and new_axis_mask are not used*
 *   [tf.transpose](https://www.tensorflow.org/versions/master/api_docs/python/tf/transpose) -
@@ -375,6 +376,20 @@ Options {
   padding: SAME|VALID
   stride_w,stride_h: stride of the sliding window
   filter_width,filter_height: size of the sliding window
+}
+```
+
+**LEAKY_RELU**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a tensor equivalent to max(input, input * alpha)
+}
+Options {
+  alpha: slope of the activation at x < 0 (provided alpha <= 1)
 }
 ```
 

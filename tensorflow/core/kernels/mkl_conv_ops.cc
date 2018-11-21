@@ -1518,7 +1518,7 @@ class MklQuantizedConv2DSumReluOp
             {"sum", {scale_summand / scale_output}});
       else
         params.post_op_params.push_back(
-            {"sum", {2.0 * scale_summand / scale_output}});
+            {"sum", {2.0f * scale_summand / scale_output}});
     } else {
       params.post_op_params.push_back({"sum", {1.0}});
     }

@@ -1307,13 +1307,13 @@ def _py_wrap_cc_impl(ctx):
         ctx.outputs.py_out.dirname,
     ]
     args += ["-l" + f.path for f in ctx.files.swig_includes]
-    args += ["-I" + i for i in swig_include_dirs]
+    args += ["-I" + i for i in swig_include_dirs.to_list()]
     args += [src.path]
     outputs = [ctx.outputs.cc_out, ctx.outputs.py_out]
     ctx.action(
         executable = ctx.executable._swig,
         arguments = args,
-        inputs = list(inputs),
+        inputs = inputs.to_list(),
         outputs = outputs,
         mnemonic = "PythonSwig",
         progress_message = "SWIGing " + src.path,
@@ -1493,7 +1493,7 @@ check_deps = rule(
     },
 )
 
-def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [], **kwargs):
+def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [], copts = [], **kwargs):
     """Helper to build a dynamic library (.so) from the sources containing implementations of custom ops and kernels.
     """
     cuda_deps = [
@@ -1505,12 +1505,18 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
         clean_dep("//tensorflow/core:stream_executor_headers_lib"),
     ]
     deps = deps + tf_custom_op_library_additional_deps()
+
+    # Override EIGEN_STRONG_INLINE to inline when
+    # --define=override_eigen_strong_inline=true to avoid long compiling time.
+    # See https://github.com/tensorflow/tensorflow/issues/10521
+    copts = copts + if_override_eigen_strong_inline(["/DEIGEN_STRONG_INLINE=inline"])
+
     if gpu_srcs:
         basename = name.split(".")[0]
         native.cc_library(
             name = basename + "_gpu",
             srcs = gpu_srcs,
-            copts = _cuda_copts() + if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
+            copts = copts + _cuda_copts() + if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
             features = if_cuda(["-use_header_modules"]),
             deps = deps + if_cuda_is_configured_compat(cuda_deps) + if_rocm_is_configured(rocm_deps),
             **kwargs
@@ -1531,7 +1537,7 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
         srcs = srcs,
         deps = deps + if_cuda_is_configured_compat(cuda_deps) + if_rocm_is_configured(rocm_deps),
         data = if_static([name + "_check_deps"]),
-        copts = tf_copts(is_external = True),
+        copts = copts + tf_copts(is_external = True),
         features = ["windows_export_all_symbols"],
         linkopts = linkopts + select({
             "//conditions:default": [

@@ -121,8 +121,10 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:math_ops",
+        "//tensorflow/python:gradients_impl",
         "//tensorflow/python:list_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python/eager:context",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
@@ -1350,6 +1352,7 @@ cuda_py_test(
         "//tensorflow/python:test_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
     ],
     shard_count = 10,
     tags = [
@@ -1461,6 +1464,7 @@ cuda_py_test(
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:math_ops",
@@ -1748,9 +1752,11 @@ cuda_py_test(
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python:while_v2",
         "//tensorflow/python/data/ops:iterator_ops",
     ],
     grpc_enabled = True,
+    shard_count = 2,
     tags = ["no_windows"],
 )
 
@@ -2383,6 +2389,8 @@ cuda_py_test(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:cond_v2",
+        "//tensorflow/python:while_v2",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
     ],
@@ -2624,35 +2632,6 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
     tags = ["manual"],
-)
-
-cuda_py_test(
-    name = "dct_ops_test",
-    srcs = ["dct_ops_test.py"],
-    additional_deps = [
-        "@absl_py//absl/testing:parameterized",
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:spectral_ops",
-        "//tensorflow/python:spectral_ops_test_util",
-    ],
-)
-
-cuda_py_test(
-    name = "fft_ops_test",
-    size = "medium",
-    srcs = ["fft_ops_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:spectral_ops",
-        "//tensorflow/python:spectral_ops_test_util",
-    ],
-    shard_count = 4,
-    tags = ["optonly"],
 )
 
 cuda_py_test(
@@ -3343,7 +3322,9 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients",
+        "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:while_v2",
     ],
     grpc_enabled = True,
 )

@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -99,6 +100,11 @@ class ShapeIndex {
   }
 
   string ToString() const;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const ShapeIndex& index) {
+    return H::combine(std::move(h), index.indices_);
+  }
 
  private:
   container_type indices_;
@@ -468,9 +474,6 @@ class ShapeUtil {
   // Returns true if shape is an empty tuple.
   static bool IsEmptyTuple(const Shape& shape);
 
-  // Returns true if shape is the nil shape (an empty tuple).
-  static bool IsNil(const Shape& shape);
-
   // Returns the number of elements in the given tuple shape.
   // Precondition: IsTuple(shape)
   static int64 TupleElementCount(const Shape& shape);
@@ -754,10 +757,18 @@ class ShapeUtil {
       pool.emplace(tensorflow::Env::Default(), "foreach", kNumThreads);
     }
 
+    tensorflow::mutex mu;
+    Status status;  // Guarded by mu
+
     while (n < rank) {
       if (pool != absl::nullopt) {
-        pool->Schedule(
-            [indexes, &visitor_function] { visitor_function(indexes); });
+        pool->Schedule([indexes, &visitor_function, &mu, &status] {
+          StatusOr<bool> result = visitor_function(indexes);
+          if (!result.ok()) {
+            tensorflow::mutex_lock lock(mu);
+            status = status.ok() ? result.status() : status;
+          }
+        });
       } else {
         TF_ASSIGN_OR_RETURN(bool should_continue, visitor_function(indexes));
         if (!should_continue) {
@@ -775,7 +786,9 @@ class ShapeUtil {
       }
     }
 
-    return Status::OK();
+    // Waits for the scheduled work to complete.
+    pool.reset();
+    return status;
   }
 
   TF_DISALLOW_COPY_AND_ASSIGN(ShapeUtil);

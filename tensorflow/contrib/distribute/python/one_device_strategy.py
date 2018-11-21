@@ -20,8 +20,9 @@ from __future__ import print_function
 
 import six
 
-from tensorflow.contrib.distribute.python import values
+from tensorflow.python.distribute import values
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -39,7 +40,14 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
   # implementations?
 
   def __init__(self, device):
-    super(OneDeviceStrategy, self).__init__()
+    super(OneDeviceStrategy, self).__init__(OneDeviceExtended(self, device))
+
+
+class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
+  """Implementation of OneDeviceStrategy."""
+
+  def __init__(self, container_strategy, device):
+    super(OneDeviceExtended, self).__init__(container_strategy)
     self._device = device
     self._default_device = device
 
@@ -58,22 +66,29 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     with ops.colocate_with(colocate_with):
       return next_creator(*args, **kwargs)
 
-  def make_dataset_iterator(self, dataset):
-    distributed_dataset = values.PerReplicaDataset(dataset, [self._device])
-    # TODO(priyag): Return distribution strategy specific InputIterator
-    return distributed_dataset.make_initializable_iterator()
+  def _make_dataset_iterator(self, dataset):
+    """Make iterator from dataset without splitting the batch."""
+    return values.DatasetIterator(dataset, [("/job:localhost", [self._device])])
 
-  def distribute_dataset(self, dataset_fn):
+  def _distribute_dataset(self, dataset_fn):
     return values.PerReplicaDataset(
         self._call_dataset_fn(dataset_fn), [self._device])
 
-  def _broadcast(self, tensor, destinations):
+  def _make_input_fn_iterator(
+      self,
+      input_fn,
+      replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
+    return values.InputFunctionIterator(
+        input_fn, [("/job:localhost", [self._device])],
+        [distribute_lib.InputContext()])
+
+  def _broadcast_to(self, tensor, destinations):
     del destinations
     return tensor
 
   # TODO(priyag): Deal with OutOfRange errors  once b/111349762 is fixed.
-  def _run_steps_on_dataset(self, fn, iterator, iterations,
-                            initial_loop_values=None):
+  def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,
+                                          initial_loop_values=None):
     if initial_loop_values is None:
       initial_loop_values = {}
     initial_loop_values = nest.flatten(initial_loop_values)
@@ -85,7 +100,7 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
       fn_inputs = iterator.get_next()
       if not isinstance(fn_inputs, tuple):
         fn_inputs = (fn_inputs,)
-      fn_result = fn(ctx, *fn_inputs)
+      fn_result = fn(ctx, fn_inputs)
       flat_last_step_outputs = nest.flatten(ctx.last_step_outputs)
       with ops.control_dependencies([fn_result]):
         return [i + 1] + flat_last_step_outputs
@@ -119,25 +134,24 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     return ctx
 
   def _call_for_each_replica(self, fn, args, kwargs):
-    with ops.device(self._device), _OneDeviceReplicaContext(self):
+    strategy = self._container_strategy()
+    with ops.device(self._device), _OneDeviceReplicaContext(strategy):
       return fn(*args, **kwargs)
 
-  def _reduce(self, aggregation, value, destinations):
-    del aggregation, destinations
+  def _reduce_to(self, reduce_op, value, destinations):
+    del reduce_op, destinations
     return value
 
-  def _update(self, var, options, fn, *args, **kwargs):
+  def _update(self, var, fn, args, kwargs, group):
     # The implementations of _update() and _update_non_slot() are identical
     # except _update() passes `var` as the first argument to `fn()`.
-    return self._update_non_slot(var, options, fn, var, *args, **kwargs)
+    return self._update_non_slot(var, fn, (var,) + tuple(args), kwargs, group)
 
-  def _update_non_slot(self, colocate_with, options, fn, *args, **kwargs):
+  def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     del colocate_with
-    should_group = options.pop("grouped")
-    assert not options  # Validate that we are processing all of the options.
     with ops.device(self._device), distribute_lib.UpdateContext(self._device):
       result = fn(*args, **kwargs)
-      if should_group:
+      if group:
         return result
       else:
         return nest.map_structure(self._unwrap, result)
@@ -153,7 +167,7 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     return value
 
   @property
-  def num_replicas_in_sync(self):
+  def _num_replicas_in_sync(self):
     return 1
 
   @property
@@ -168,13 +182,27 @@ class OneDeviceStrategy(distribute_lib.DistributionStrategy):
     del var_list
     return [self._device]
 
+  @property
+  def experimental_should_init(self):
+    return True
+
+  @property
+  def should_checkpoint(self):
+    return True
+
+  @property
+  def should_save_summary(self):
+    return True
+
 
 class _OneDeviceReplicaContext(distribute_lib.ReplicaContext):
   """ReplicaContext for OneDeviceStrategy."""
 
   def __init__(self, distribution_strategy):
     distribute_lib.ReplicaContext.__init__(
-        self, distribution_strategy, replica_id=0)
+        self,
+        distribution_strategy,
+        replica_id_in_sync_group=constant_op.constant(0, dtypes.int32))
 
   @property
   def device(self):

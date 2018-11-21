@@ -33,7 +33,9 @@ class SquareLinearOperatorFullMatrixTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(
+      self, build_info, dtype, use_placeholder,
+      ensure_self_adjoint_and_pd=False):
     shape = list(build_info.shape)
 
     matrix = linear_operator_test_util.random_positive_definite_matrix(
@@ -44,7 +46,12 @@ class SquareLinearOperatorFullMatrixTest(
     if use_placeholder:
       lin_op_matrix = array_ops.placeholder_with_default(matrix, shape=None)
 
-    operator = linalg.LinearOperatorFullMatrix(lin_op_matrix, is_square=True)
+    # Set the hints to none to test non-symmetric PD code paths.
+    operator = linalg.LinearOperatorFullMatrix(
+        lin_op_matrix,
+        is_square=True,
+        is_self_adjoint=True if ensure_self_adjoint_and_pd else None,
+        is_positive_definite=True if ensure_self_adjoint_and_pd else None)
 
     return operator, matrix
 
@@ -123,7 +130,13 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
   def _dtypes_to_test(self):
     return [dtypes.float32, dtypes.float64]
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(
+      self, build_info, dtype, use_placeholder,
+      ensure_self_adjoint_and_pd=False):
+
+    # Matrix is always symmetric and positive definite in this class.
+    del ensure_self_adjoint_and_pd
+
     shape = list(build_info.shape)
 
     matrix = linear_operator_test_util.random_positive_definite_matrix(
@@ -134,7 +147,11 @@ class SquareLinearOperatorFullMatrixSymmetricPositiveDefiniteTest(
     if use_placeholder:
       lin_op_matrix = array_ops.placeholder_with_default(matrix, shape=None)
 
-    operator = linalg.LinearOperatorFullMatrix(lin_op_matrix, is_square=True)
+    operator = linalg.LinearOperatorFullMatrix(
+        lin_op_matrix,
+        is_square=True,
+        is_self_adjoint=True,
+        is_positive_definite=True)
 
     return operator, matrix
 

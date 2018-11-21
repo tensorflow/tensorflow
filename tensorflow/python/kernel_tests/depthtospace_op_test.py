@@ -106,13 +106,13 @@ class DepthToSpaceTest(test.TestCase):
       # test NHWC (default) on CPU
       x_tf = array_ops.depth_to_space(input_nhwc, block_size)
       self.assertAllEqual(x_tf.shape, x_out.shape)
-      x_tf.eval()
+      self.evaluate(x_tf)
     if test.is_gpu_available():
       with self.cached_session(use_gpu=True):
         # test NHWC (default) on GPU
         x_tf = array_ops.depth_to_space(input_nhwc, block_size)
         self.assertAllEqual(x_tf.shape, x_out.shape)
-        x_tf.eval()
+        self.evaluate(x_tf)
 
   # Tests for different width and height.
   def testNonSquare(self):
@@ -185,7 +185,7 @@ class DepthToSpaceTest(test.TestCase):
     # divisible by 16.
     with self.assertRaises(ValueError):
       out_tf = array_ops.depth_to_space(x_np, block_size)
-      out_tf.eval()
+      self.evaluate(out_tf)
 
   # Test when the block size is 0.
   def testBlockSize0(self):
@@ -194,7 +194,7 @@ class DepthToSpaceTest(test.TestCase):
     block_size = 0
     with self.assertRaises(ValueError):
       out_tf = array_ops.depth_to_space(x_np, block_size)
-      out_tf.eval()
+      self.evaluate(out_tf)
 
   # Test when the block size is 1. The block size should be > 1.
   def testBlockSizeOne(self):
@@ -205,7 +205,7 @@ class DepthToSpaceTest(test.TestCase):
     block_size = 1
     with self.assertRaises(ValueError):
       out_tf = array_ops.depth_to_space(x_np, block_size)
-      out_tf.eval()
+      self.evaluate(out_tf)
 
   def testBlockSizeLargerThanInput(self):
     # The block size is too large for this input.
@@ -214,7 +214,7 @@ class DepthToSpaceTest(test.TestCase):
     block_size = 10
     with self.assertRaises(ValueError):
       out_tf = array_ops.space_to_depth(x_np, block_size)
-      out_tf.eval()
+      self.evaluate(out_tf)
 
   def testBlockSizeNotDivisibleDepth(self):
     # The depth is not divisible by the square of the block size.

@@ -53,10 +53,10 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
 
       for start in range(0, len(components), 4):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         self.assertAllEqual([[i, j]
                              for i, c in enumerate(components[start:start + 4])
                              for j in range(c)], results.indices)
@@ -81,10 +81,10 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
 
       for start in range(0, len(components), 4):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         self.assertAllEqual([[i, j, z]
                              for i, c in enumerate(components[start:start + 4])
                              for j in range(c)
@@ -141,7 +141,7 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.cached_session() as sess:
       sess.run(iterator.initializer, feed_dict={placeholder: [0, 1, 2, 3]})
       for i in range(4):
-        self.assertEqual(i, sess.run(next_elem))
+        self.assertEqual(i, self.evaluate(next_elem))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_elem)
 
@@ -159,7 +159,7 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.cached_session() as sess:
       for i in range(10):
-        self.assertEqual((i,) * 3, sess.run(op))
+        self.assertEqual((i,) * 3, self.evaluate(op))
 
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(op)
@@ -179,7 +179,7 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.cached_session() as sess:
       for i in range(10):
-        self.assertEqual((i, compat.as_bytes(str(i)), i), sess.run(op))
+        self.assertEqual((i, compat.as_bytes(str(i)), i), self.evaluate(op))
 
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(op)
@@ -198,7 +198,7 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.cached_session() as sess:
       for i in range(10):
-        st_row = sess.run(next_element)
+        st_row = self.evaluate(next_element)
         self.assertEqual([i], st_row.indices)
         self.assertEqual([i], st_row.values)
         self.assertEqual([10], st_row.dense_shape)
@@ -219,7 +219,7 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.cached_session() as sess:
       for i in range(10):
-        dense_elem, st_row = sess.run(next_element)
+        dense_elem, st_row = self.evaluate(next_element)
         self.assertEqual(i, dense_elem)
         self.assertEqual([i], st_row.indices)
         self.assertEqual([i], st_row.values)
@@ -241,7 +241,7 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.cached_session() as sess:
       for i in range(10):
-        self.assertEqual(((i,),) * 3, sess.run(op))
+        self.assertEqual(((i,),) * 3, self.evaluate(op))
 
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(op)
@@ -354,7 +354,7 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       sess.run(init_op, feed_dict={count: 28, batch_size: 14})
       num_batches = (28 * 7) // 14
       for i in range(num_batches):
-        result = sess.run(get_next)
+        result = self.evaluate(get_next)
         for component, result_component in zip(components, result):
           for j in range(14):
             self.assertAllEqual(component[(i * 14 + j) % 7]**2,
@@ -369,12 +369,12 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       # We expect (num_batches - 1) full-sized batches.
       num_batches = int(math.ceil((14 * 7) / 8))
       for i in range(num_batches - 1):
-        result = sess.run(get_next)
+        result = self.evaluate(get_next)
         for component, result_component in zip(components, result):
           for j in range(8):
             self.assertAllEqual(component[(i * 8 + j) % 7]**2,
                                 result_component[j])
-      result = sess.run(get_next)
+      result = self.evaluate(get_next)
       for component, result_component in zip(components, result):
         for j in range((14 * 7) % 8):
           self.assertAllEqual(component[((num_batches - 1) * 8 + j) % 7]**2,
@@ -408,10 +408,10 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual([None, 1], iterator.output_shapes.as_list())
     next_element = iterator.get_next()
     with self.cached_session() as sess:
-      self.assertAllEqual([[0], [1], [4], [9]], sess.run(next_element))
-      self.assertAllEqual([[16], [25], [36], [49]], sess.run(next_element))
+      self.assertAllEqual([[0], [1], [4], [9]], self.evaluate(next_element))
+      self.assertAllEqual([[16], [25], [36], [49]], self.evaluate(next_element))
       if not drop_remainder:
-        self.assertAllEqual([[64], [81]], sess.run(next_element))
+        self.assertAllEqual([[64], [81]], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -423,9 +423,9 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual([None, 1], iterator.output_shapes.as_list())
     next_element = iterator.get_next()
     with self.cached_session() as sess:
-      self.assertAllEqual([[0], [1], [4], [9]], sess.run(next_element))
-      self.assertAllEqual([[16], [25], [36], [49]], sess.run(next_element))
-      self.assertAllEqual([[64], [81]], sess.run(next_element))
+      self.assertAllEqual([[0], [1], [4], [9]], self.evaluate(next_element))
+      self.assertAllEqual([[16], [25], [36], [49]], self.evaluate(next_element))
+      self.assertAllEqual([[64], [81]], self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(next_element)
 
@@ -439,7 +439,7 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       elements.append(iterator.get_next())
     with self.cached_session() as sess:
       for i in range(5):
-        got = sess.run(elements)
+        got = self.evaluate(elements)
         got.sort(key=lambda x: x[0])
         expected = []
         for j in range(100):
@@ -459,7 +459,7 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       elements.append(iterator.get_next())
     with self.cached_session() as sess:
       for i in range(4):
-        got = sess.run(elements)
+        got = self.evaluate(elements)
         got.sort(key=lambda x: x[0])
         expected = []
         for j in range(100):
@@ -480,9 +480,9 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       for i in range(2):
-        actual = sess.run(get_next)
+        actual = self.evaluate(get_next)
         expected = sparse_tensor.SparseTensorValue(
             indices=[[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]],
             values=[i * 5, i * 5 + 1, i * 5 + 2, i * 5 + 3, i * 5 + 4],
@@ -524,7 +524,7 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     init_op = iterator.initializer
     get_next = iterator.get_next()
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "number of elements does not match"):
         sess.run(get_next)
@@ -576,7 +576,8 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.cached_session() as sess:
       for i in range(threshold // 10):
-        self.assertAllEqual([i * 10 + j for j in range(10)], sess.run(get_next))
+        self.assertAllEqual([i * 10 + j for j in range(10)],
+                            self.evaluate(get_next))
       if threshold % 10 != 0:
         self.assertAllEqual(
             [threshold // 10 * 10 + j for j in range(threshold % 10)],
@@ -609,7 +610,8 @@ class BatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.cached_session() as sess:
       for _ in range(10):
-        self.assertAllEqual([element for _ in range(10)], sess.run(get_next))
+        self.assertAllEqual([element for _ in range(10)],
+                            self.evaluate(get_next))
 
 
 class UnbatchDatasetBenchmark(test.Benchmark):

@@ -48,7 +48,7 @@ class ProfilerContextTest(test.TestCase):
     with profile_context.ProfileContext(test.get_temp_dir()) as pctx:
       pctx.add_auto_profiling("op", options=opts, profile_steps=[15, 50, 100])
       with session.Session() as sess:
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         total_steps = 101
         for i in range(total_steps):
           sess.run(x)
@@ -75,7 +75,7 @@ class ProfilerContextTest(test.TestCase):
 
     with profile_context.ProfileContext(test.get_temp_dir(), debug=True):
       with session.Session() as sess:
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         for _ in range(10):
           sess.run(x)
           for f in gfile.ListDirectory(test.get_temp_dir()):
@@ -96,7 +96,7 @@ class ProfilerContextTest(test.TestCase):
     with profile_context.ProfileContext(test.get_temp_dir(),
                                         enabled=False) as pctx:
       with session.Session() as sess:
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         for _ in range(10):
           sess.run(x)
       self.assertTrue(pctx.profiler is None)
@@ -105,7 +105,7 @@ class ProfilerContextTest(test.TestCase):
 
     with profile_context.ProfileContext(test.get_temp_dir()) as pctx:
       with session.Session() as sess:
-        sess.run(variables.global_variables_initializer())
+        self.evaluate(variables.global_variables_initializer())
         for _ in range(10):
           sess.run(x)
       self.assertFalse(pctx.profiler is None)

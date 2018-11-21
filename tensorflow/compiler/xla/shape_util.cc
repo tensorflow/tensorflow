@@ -372,10 +372,6 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   return IsTuple(shape) && TupleElementCount(shape) == 0;
 }
 
-/* static */ bool ShapeUtil::IsNil(const Shape& shape) {
-  return IsEmptyTuple(shape);
-}
-
 /* static */ int64 ShapeUtil::TupleElementCount(const Shape& shape) {
   CHECK(IsTuple(shape)) << HumanString(shape);
   return shape.tuple_shapes_size();

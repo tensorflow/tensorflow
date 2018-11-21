@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/jit/deadness_analysis.h"
 #include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
-#include "tensorflow/compiler/jit/legacy_flags/mark_for_compilation_pass_flags.h"
 #include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
@@ -427,8 +427,7 @@ Status FindCompilationCandidates(
       BackwardsConstAnalysis(graph, /*compile_time_const_arg_indices=*/nullptr,
                              &compile_time_const_nodes));
 
-  int64& fuel =
-      legacy_flags::GetMarkForCompilationPassFlags()->tf_xla_clustering_fuel;
+  int64& fuel = GetMarkForCompilationPassFlags()->tf_xla_clustering_fuel;
 
   // Iterate over nodes in sorted order so that compiler fuel is deterministic.
   // We can't simply pass op_nodes().begin() and op_nodes().end to the
@@ -607,8 +606,7 @@ OptimizerOptions::GlobalJitLevel GetGlobalJitLevel(
     // To set compilation to be on by default, change the following line.
     global_jit_level = OptimizerOptions::OFF;
   }
-  legacy_flags::MarkForCompilationPassFlags* flags =
-      legacy_flags::GetMarkForCompilationPassFlags();
+  MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
   if (flags->tf_xla_auto_jit == -1 ||
       (1 <= flags->tf_xla_auto_jit && flags->tf_xla_auto_jit <= 2)) {
     // If the flag tf_xla_auto_jit is a valid, non-zero setting, it overrides
@@ -651,8 +649,7 @@ Status MarkForCompilationPass::Run(
   // device ahead of time.
   OptimizerOptions::GlobalJitLevel global_jit_level =
       GetGlobalJitLevel(options);
-  legacy_flags::MarkForCompilationPassFlags* flags =
-      legacy_flags::GetMarkForCompilationPassFlags();
+  MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
   bool fusion_only = flags->tf_xla_fusion_only;
 
   VLOG(1) << "flags->tf_xla_fusion_only = " << flags->tf_xla_fusion_only;
@@ -953,8 +950,7 @@ Status MarkForCompilationPass::RunImpl(
 
   OptimizerOptions::GlobalJitLevel global_jit_level =
       GetGlobalJitLevel(options);
-  legacy_flags::MarkForCompilationPassFlags* flags =
-      legacy_flags::GetMarkForCompilationPassFlags();
+  MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
 
   // Repeatedly contract edges between clusters that are on the same device,
   // provided the contraction would not create a cycle.

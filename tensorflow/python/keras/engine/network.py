@@ -112,11 +112,6 @@ class Network(base_layer.Layer):
     self.trainable = True
     self._is_compiled = False
     self._expects_training_arg = False
-    # A list of "extra" variables assigned to attributes of this class, included
-    # in self.weights and self.variables. Always empty for graph networks (but
-    # included in base_init to avoid excessive special casing when retrieving
-    # the value).
-    self._extra_variables = []
     # In many internal cases one needs to compute both the model's output
     # and its output mask without relying on `__call__` (which would do both and
     # set mask metadata), but for models, computing the mask requires to
@@ -134,9 +129,16 @@ class Network(base_layer.Layer):
       self.optimizer = None
 
     # Private attributes to implement compatibility with Layer.
+    self._trainable_weights = []
+    self._non_trainable_weights = []
     self._updates = []  # Used in symbolic mode only.
     self._losses = []
     self._eager_losses = []
+    # A list of metric instances corresponding to the symbolic metric tensors
+    # added using the `add_metric` API.
+    self._metrics = []
+    # A dictionary that maps metric names to metric result tensors.
+    self._metrics_tensors = {}
     self._scope = None  # Never used.
     self._reuse = None  # Never used.
     self._call_is_graph_friendly = True
@@ -408,39 +410,21 @@ class Network(base_layer.Layer):
             # simply by assigning them to attributes.
           not self._is_graph_network
           and isinstance(value, variables.Variable)):
-        self._extra_variables.append(value)
+        if value.trainable:
+          # Could already be added via `add_weight`.
+          if value not in self._trainable_weights:
+            self._trainable_weights.append(value)
+        else:
+          if value not in self._non_trainable_weights:
+            self._non_trainable_weights.append(value)
+
+    # Keeping track of metric instance created in subclassed model/layer.
+    # We do this so that we can maintain the correct order of metrics by adding
+    # the instance to the `metrics` list as soon as it is created.
+    from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
+    if isinstance(value, metrics_module.Metric):
+      self._metrics.append(value)
     super(Network, self).__setattr__(name, value)
-
-  def add_variable(self, name, shape, dtype=None, initializer=None,
-                   regularizer=None, trainable=True, constraint=None):
-    if self._is_graph_network:
-      raise NotImplementedError('`add_variable` is not supported on Networks.')
-    else:
-      raise NotImplementedError(
-          '`add_variable` is not supported on Networks. However, you may '
-          'assign variables to attributes and they will show up in the weights '
-          'and variables properties.')
-
-  def add_weight(self,
-                 name,
-                 shape,
-                 dtype=None,
-                 initializer=None,
-                 regularizer=None,
-                 trainable=None,
-                 constraint=None,
-                 partitioner=None,
-                 use_resource=None,
-                 synchronization=variables.VariableSynchronization.AUTO,
-                 aggregation=variables.VariableAggregation.NONE,
-                 **kwargs):
-    if self._is_graph_network:
-      raise NotImplementedError('`add_weight` is not supported on Networks.')
-    else:
-      raise NotImplementedError(
-          '`add_weight` is not supported on Networks. However, you may '
-          'assign variables to attributes and they will show up in the weights '
-          'and variables properties.')
 
   @property
   def stateful(self):
@@ -556,6 +540,7 @@ class Network(base_layer.Layer):
         updates += layer._unfiltered_updates
       else:
         updates += layer.updates
+    updates += self._updates
     return updates
 
   @property
@@ -647,7 +632,7 @@ class Network(base_layer.Layer):
       else:
         relevant_inputs.append(inputs)
     if not relevant_inputs:
-      return updates
+      return list(set(updates))
 
     reachable = tf_utils.get_reachable_from_inputs(relevant_inputs, updates)
     relevant_conditional_updates = [x for x in updates if x in reachable]
@@ -655,8 +640,7 @@ class Network(base_layer.Layer):
         x for x in updates if x._unconditional_update]  # pylint: disable=protected-access
     # A layer could be used multiple times in a nested structure,
     # so the updates list must be de-duped.
-    return list(set(
-        relevant_conditional_updates + unconditional_updates + self._updates))
+    return list(set(relevant_conditional_updates + unconditional_updates))
 
   @property
   def losses(self):
@@ -716,14 +700,38 @@ class Network(base_layer.Layer):
     return checkpointable_layer_utils.gather_trainable_weights(
         trainable=self.trainable,
         sub_layers=self._layers,
-        extra_variables=self._extra_variables)
+        extra_variables=self._trainable_weights)
 
   @property
   def non_trainable_weights(self):
     return checkpointable_layer_utils.gather_non_trainable_weights(
         trainable=self.trainable,
         sub_layers=self._layers,
-        extra_variables=self._extra_variables)
+        extra_variables=self._non_trainable_weights + self._trainable_weights)
+
+  @property
+  def metrics(self):
+    """Returns the network's symbolic metrics.
+
+    Model overrides this function to include the metrics from `compile` API.
+    """
+    metrics = []
+    for layer in self.layers:
+      metrics += layer._metrics  # pylint: disable=protected-access
+    return metrics + self._metrics
+
+  @property
+  def _all_metrics_tensors(self):
+    """Returns the network's symbolic metric tensors."""
+    # TODO(psv): Remove this property.
+    metrics_tensors = {}
+    for layer in self.layers:
+      if isinstance(layer, Network):
+        metrics_tensors.update(layer._all_metrics_tensors)
+      else:
+        metrics_tensors.update(layer._metrics_tensors)
+    metrics_tensors.update(self._metrics_tensors)
+    return metrics_tensors
 
   @property
   def input_spec(self):

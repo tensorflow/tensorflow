@@ -141,7 +141,7 @@ class LinearToMelTest(test.TestCase):
       for config in configs:
         mel_matrix_np = spectrogram_to_mel_matrix(*config)
         mel_matrix = mel_ops.linear_to_mel_weight_matrix(*config)
-        self.assertAllClose(mel_matrix_np, mel_matrix.eval(), atol=3e-6)
+        self.assertAllClose(mel_matrix_np, self.evaluate(mel_matrix), atol=3e-6)
 
   def test_dtypes(self):
     # LinSpace is not supported for tf.float16.

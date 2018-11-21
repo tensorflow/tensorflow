@@ -91,7 +91,7 @@ class ScatterTest(test.TestCase):
 
       session.run([update0, update1])
 
-      self.assertAllEqual([False, True], var.eval())
+      self.assertAllEqual([False, True], self.evaluate(var))
 
   def testScatterOutOfRange(self):
     params = np.array([1, 2, 3, 4, 5, 6]).astype(np.float32)

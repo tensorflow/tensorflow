@@ -161,7 +161,7 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.test_session():
       if ragged.is_ragged(expected_output):
         self.assertEqual(output.ragged_rank, expected_rt.ragged_rank)
-      output_values = output.eval()
+      output_values = self.evaluate(output)
       self.assertAllEqual(expected_output, output_values.tolist())
 
   def testRaggedMapOnStructure(self):
@@ -232,7 +232,7 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         infer_shape=False)
 
     with self.test_session():
-      result = output.eval().tolist()
+      result = self.evaluate(output).tolist()
       self.assertAllEqual(
           result, [[[0, 10], [0, 20]], [[1, 30], [1, 40]], [[2, 50], [2, 60]],
                    [[3, 70]], [[4, 80], [4, 90], [4, 100]]])
@@ -255,7 +255,7 @@ class RaggedMapOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     with self.test_session():
       self.assertAllEqual(
-          out.eval().tolist(),
+          self.evaluate(out).tolist(),
           [[b'hello', b'there'], [b'merhaba'], [b'bonjour', b'ca va']])
 
   def testMismatchRaggedRank(self):

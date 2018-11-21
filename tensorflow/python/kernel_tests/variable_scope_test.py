@@ -438,15 +438,15 @@ class VariableScopeTest(test.TestCase):
         sess.run(v0)
       # We should be able to initialize and run v1 without initializing
       # v0, even if the variable was created with a control dep on v0.
-      sess.run(v1.initializer)
-      self.assertEqual(1, sess.run(v1))
+      self.evaluate(v1.initializer)
+      self.assertEqual(1, self.evaluate(v1))
       # v0 should still be uninitialized.
       with self.assertRaisesRegexp(errors.OpError, "uninitialized"):
         sess.run(v0)
       with self.assertRaisesRegexp(errors.OpError, "uninitialized"):
         sess.run(add)
       # If we initialize v0 we should be able to run 'add'.
-      sess.run(v0.initializer)
+      self.evaluate(v0.initializer)
       sess.run(add)
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
@@ -490,10 +490,10 @@ class VariableScopeTest(test.TestCase):
       v2 = var_dict["v2"]
       # We should be able to initialize and run v1 and v2 without initializing
       # v0, even if the variable was created with a control dep on v0.
-      sess.run(v1.initializer)
-      self.assertEqual([1], sess.run(v1))
-      sess.run(v2.initializer)
-      self.assertEqual([2], sess.run(v2))
+      self.evaluate(v1.initializer)
+      self.assertEqual([1], self.evaluate(v1))
+      self.evaluate(v2.initializer)
+      self.assertEqual([2], self.evaluate(v2))
       # v0 should still be uninitialized.
       with self.assertRaisesRegexp(errors.OpError, "uninitialized"):
         sess.run(v0)
@@ -501,7 +501,7 @@ class VariableScopeTest(test.TestCase):
       with self.assertRaisesRegexp(errors.OpError, "uninitialized"):
         sess.run(add)
       # If we initialize v0 we should be able to run 'add'.
-      sess.run(v0.initializer)
+      self.evaluate(v0.initializer)
       sess.run(add)
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
@@ -649,7 +649,7 @@ class VariableScopeTest(test.TestCase):
             "testVarScopeGetOrCreateReuse_bar",
             reuse=variable_scope.AUTO_REUSE):
           _ = variable_scope.get_variable("var", [])
-        self.assertEqual(value, x.eval())
+        self.assertEqual(value, self.evaluate(x))
 
       test_value(42.)  # Variable is created.
       test_value(13.)  # Variable is reused hereafter.

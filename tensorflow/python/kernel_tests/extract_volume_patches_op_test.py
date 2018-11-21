@@ -52,7 +52,7 @@ class ExtractVolumePatches(test.TestCase):
           strides=strides,
           padding=padding,
           name="im2col_3d")
-      self.assertAllClose(patches, out_tensor.eval())
+      self.assertAllClose(patches, self.evaluate(out_tensor))
 
   # pylint: disable=bad-whitespace
   def testKsize1x1x1Stride1x1x1(self):

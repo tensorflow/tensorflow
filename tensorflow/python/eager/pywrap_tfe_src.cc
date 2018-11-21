@@ -1645,6 +1645,29 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
   if (PyErr_Occurred()) {
     return nullptr;
   }
+  tensorflow::gtl::FlatSet<tensorflow::int64> sources_set(sources_vec.begin(),
+                                                          sources_vec.end());
+
+  tensorflow::Safe_PyObjectPtr seq =
+      tensorflow::make_safe(PySequence_Fast(target, "expected a sequence"));
+  int len = PySequence_Fast_GET_SIZE(seq.get());
+  tensorflow::gtl::FlatMap<tensorflow::int64, PyTapeTensor>
+      source_tensors_that_are_targets;
+  for (int i = 0; i < len; ++i) {
+    tensorflow::int64 target_id = target_vec[i];
+    if (sources_set.find(target_id) != sources_set.end()) {
+      auto tensor = PySequence_Fast_GET_ITEM(seq.get(), i);
+      source_tensors_that_are_targets.insert(
+          std::make_pair(target_id, TapeTensorFromTensor(tensor)));
+    }
+    if (PyErr_Occurred()) {
+      return nullptr;
+    }
+  }
+  if (PyErr_Occurred()) {
+    return nullptr;
+  }
+
   std::vector<PyObject*> outgrad_vec;
   if (output_gradients != Py_None) {
     outgrad_vec = MakeTensorList(output_gradients);
@@ -1659,7 +1682,8 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
   }
   std::vector<PyObject*> result;
   status->status = tape_obj->tape->ComputeGradient(
-      *py_vspace, target_vec, sources_vec, outgrad_vec, &result);
+      *py_vspace, target_vec, sources_vec, source_tensors_that_are_targets,
+      outgrad_vec, &result);
   if (!status->status.ok()) {
     if (PyErr_Occurred()) {
       // Do not propagate the erroneous status as that would swallow the

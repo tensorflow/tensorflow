@@ -52,7 +52,7 @@ class DilationTest(test.TestCase):
           rates=rates,
           padding=padding,
           name="dilation2d")
-      self.assertAllClose(out, out_tensor.eval())
+      self.assertAllClose(out, self.evaluate(out_tensor))
 
   def _testDilationValidPadding(self, use_gpu):
     # [1, 2, 2, 1]
@@ -216,7 +216,7 @@ class DilationTest(test.TestCase):
           rates=rates,
           padding=padding,
           name="dilation2d")
-      out_shape = out_tensor.eval().shape
+      out_shape = self.evaluate(out_tensor).shape
 
       # Small delta is necessary for argmax to remain the same.
       err = gradient_checker.compute_gradient_error(
@@ -327,7 +327,7 @@ class ErosionTest(test.TestCase):
           rates=rates,
           padding=padding,
           name="erosion2d")
-      self.assertAllClose(out, out_tensor.eval())
+      self.assertAllClose(out, self.evaluate(out_tensor))
 
   def _testErosionValidPadding(self, use_gpu):
     # [1, 2, 2, 1]
@@ -491,7 +491,7 @@ class ErosionTest(test.TestCase):
           rates=rates,
           padding=padding,
           name="erosion2d")
-      out_shape = out_tensor.eval().shape
+      out_shape = self.evaluate(out_tensor).shape
 
       # Small delta is necessary for argmax to remain the same.
       err = gradient_checker.compute_gradient_error(

@@ -103,14 +103,20 @@ def maybe_set_lowering_attr(op):
   pruning. This brings v2 control flow closer to feature parity with v1 control
   flow.
 
-  However, we do not lower `If` and `While` ops in the XLA context because it is
-  easier for XLA to apply its own optimizations when dealing with un-lowered
-  control flow operators than with low-level control flow primitives.
+  However, we do not lower in the following cases:
+    - When the `If` or `While` ops are in the XLA context. Because it is easier
+      for XLA to apply its own optimizations when dealing with un-lowered
+      control flow operators than with low-level control flow primitives.
+    - When the eager execution context specifies the executor of functions to
+      be the single threaded executor (see context.function_executor_type()).
+      Because the single threaded executor does not support v1 control flow ops.
 
   Args:
     op: An `If` or `While` Operation.
   """
-  if not control_flow_util.IsInXLAContext(op):
+  if (not control_flow_util.IsInXLAContext(op) and
+      context.context().get_function_call_options().executor_type
+      != "SINGLE_THREADED_EXECUTOR"):
     # pylint: disable=protected-access
     op._set_attr("_lower_using_switch_merge", attr_value_pb2.AttrValue(b=True))
     # pylint: enable=protected-access

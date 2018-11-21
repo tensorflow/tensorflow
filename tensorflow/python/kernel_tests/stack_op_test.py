@@ -204,11 +204,11 @@ class StackOpTest(test.TestCase):
         with self.cached_session(use_gpu=True):
           actual_pack = array_ops.stack(test_arrays, axis=j)
           self.assertEqual(expected.shape, actual_pack.get_shape())
-          actual_pack = actual_pack.eval()
+          actual_pack = self.evaluate(actual_pack)
 
           actual_stack = array_ops.stack(test_arrays, axis=j)
           self.assertEqual(expected.shape, actual_stack.get_shape())
-          actual_stack = actual_stack.eval()
+          actual_stack = self.evaluate(actual_stack)
 
         self.assertNDArrayNear(expected, actual_stack, 1e-6)
 
@@ -253,17 +253,19 @@ class AutomaticStackingTest(test.TestCase):
                                           [[2., 2.], [3., 3.]],
                                           dtype=np.float32)])
       self.assertAllEqual([[[0., 0.], [1., 1.]], [[2., 2.], [3., 3.]]],
-                          result.eval())
+                          self.evaluate(result))
 
   def testVariable(self):
     with self.session(use_gpu=True):
       v = variables.Variable(17)
       result = ops.convert_to_tensor([[0, 0, 0], [0, v, 0], [0, 0, 0]])
       v.initializer.run()
-      self.assertAllEqual([[0, 0, 0], [0, 17, 0], [0, 0, 0]], result.eval())
+      self.assertAllEqual([[0, 0, 0], [0, 17, 0], [0, 0, 0]],
+                          self.evaluate(result))
 
       v.assign(38).op.run()
-      self.assertAllEqual([[0, 0, 0], [0, 38, 0], [0, 0, 0]], result.eval())
+      self.assertAllEqual([[0, 0, 0], [0, 38, 0], [0, 0, 0]],
+                          self.evaluate(result))
 
   def testDtype(self):
     t_0 = ops.convert_to_tensor([[0., 0., 0.], [0., 0., 0.], [0., 0., 0.]])

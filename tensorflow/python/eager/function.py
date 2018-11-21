@@ -260,7 +260,7 @@ class _EagerDefinedFunction(object):
           f=self,
           tout=self._output_types,
           executing_eagerly=executing_eagerly,
-          config=function_call_options.rewriter_config_serialized,
+          config=function_call_options.config_proto_serialized,
           executor_type=function_call_options.executor_type)
 
     if executing_eagerly:

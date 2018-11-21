@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.platform import test
@@ -144,16 +145,19 @@ class TrainingTest(test.TestCase):
     with self.assertRaisesRegexp(
         ValueError, r'specify .* `steps_per_epoch`'):
       model.fit(iterator, epochs=1, verbose=0)
+    if not context.executing_eagerly():
+      # In eager execution, `keras.backend.zeros` returns value tensors
+      # which can be used for validation without a `validation_steps` argument.
+      with self.assertRaisesRegexp(
+          ValueError, r'provide either `batch_size` or `validation_steps`'):
+        model.fit(iterator, steps_per_epoch=2, epochs=1, verbose=0,
+                  validation_data=(x, y))
     with self.assertRaisesRegexp(
-        ValueError, r'provide either `batch_size` or `validation_steps`'):
-      model.fit(iterator, steps_per_epoch=2, epochs=1, verbose=0,
-                validation_data=(x, y))
-    with self.assertRaisesRegexp(
-        ValueError, r'must specify the number of steps'):
+        ValueError, r'specify the number of steps'):
       model.fit(iterator, steps_per_epoch=2, epochs=1, verbose=0,
                 validation_data=validation_dataset)
     with self.assertRaisesRegexp(
-        ValueError, r'must specify the number of steps'):
+        ValueError, r'specify the number of steps'):
       model.fit(iterator, steps_per_epoch=2, epochs=1, verbose=0,
                 validation_data=validation_iterator)
 
@@ -170,13 +174,18 @@ class TrainingTest(test.TestCase):
     x = np.random.random((10, 3))
     y = np.random.random((10, 4))
 
-    def iterator():
+    def numpy_iterator():
       while True:
         yield x, y
 
-    model.fit_generator(iterator(), steps_per_epoch=3, epochs=1)
-    model.evaluate_generator(iterator(), steps=3)
-    out = model.predict_generator(iterator(), steps=3)
+    model.fit_generator(numpy_iterator(), steps_per_epoch=3, epochs=1)
+    model.evaluate_generator(numpy_iterator(), steps=3)
+
+    def inference_numpy_iterator():
+      while True:
+        yield x
+
+    out = model.predict_generator(inference_numpy_iterator(), steps=3)
     self.assertEqual(out.shape, (30, 4))
 
 

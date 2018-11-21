@@ -511,7 +511,7 @@ void CollectiveParamResolverLocal::FindInstanceRec(
         if (irec->is_init) {
           exit_outside_locks = true;
         } else {
-          irec->init_waiters.push_back([this, gr, cp, done](InstanceRec* irec) {
+          irec->init_waiters.push_back([this, done](InstanceRec* irec) {
             CallbackWithStatus(done, irec);
           });
           return;

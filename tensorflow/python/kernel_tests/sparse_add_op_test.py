@@ -91,7 +91,7 @@ class SparseAddTest(test.TestCase):
           sp_sum = sparse_ops.sparse_add(sp_a, sp_b)
           self.assertAllEqual((3, 3), sp_sum.get_shape())
 
-          sum_out = sess.run(sp_sum)
+          sum_out = self.evaluate(sp_sum)
 
           self.assertEqual(sp_sum.dense_shape.get_shape(), [2])
           self.assertAllEqual(sum_out.indices, [[0, 1], [1, 0], [2, 0], [2, 1]])
@@ -104,7 +104,7 @@ class SparseAddTest(test.TestCase):
       sp_b = self._SparseTensor_3x3(negate=True)
 
       sp_sum = sparse_ops.sparse_add(sp_a, sp_b, 0.1)
-      sum_out = sess.run(sp_sum)
+      sum_out = self.evaluate(sp_sum)
 
       self.assertEqual(sp_sum.dense_shape.get_shape(), [2])
       self.assertAllEqual(sum_out.indices, np.empty([0, 2]))
@@ -123,7 +123,7 @@ class SparseAddTest(test.TestCase):
 
       # two values should vanish: |.1| < .21, and |-.2| < .21
       sp_sum = sparse_ops.sparse_add(sp_a, sp_b, thresh=0.21)
-      sum_out = sess.run(sp_sum)
+      sum_out = self.evaluate(sp_sum)
 
       self.assertEqual(sp_sum.dense_shape.get_shape(), [2])
       self.assertAllEqual(sum_out.indices, [[0, 1], [2, 0]])
@@ -132,7 +132,7 @@ class SparseAddTest(test.TestCase):
 
       # only .1 vanishes
       sp_sum = sparse_ops.sparse_add(sp_a, sp_b, thresh=0.11)
-      sum_out = sess.run(sp_sum)
+      sum_out = self.evaluate(sp_sum)
 
       self.assertEqual(sp_sum.dense_shape.get_shape(), [2])
       self.assertAllEqual(sum_out.indices, [[0, 1], [2, 0], [2, 1]])

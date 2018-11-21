@@ -248,6 +248,7 @@ def generated_test_models():
         "sum",
         "l2norm",
         "l2_pool",
+        "leaky_relu",
         "less",
         "less_equal",
         "local_response_norm",
@@ -292,6 +293,7 @@ def generated_test_models():
         "split",
         "sqrt",
         "square",
+        "squared_difference",
         "squeeze",
         "strided_slice",
         "strided_slice_1d_exhaustive",
@@ -301,6 +303,7 @@ def generated_test_models():
         "transpose",
         "transpose_conv",
         "unpack",
+        "unroll_batch_matmul",
         "where",
         "zeros_like",
     ]

@@ -2744,12 +2744,16 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareGtR3F32sWithDegenerateDim2) {
   Array3D<int> expected_3d(
       {{{0, 1}, {0, 0}, {0, 0}}, {{0, 1}, {1, 0}, {0, 1}}});
   const string expected = R"(pred[2,3,2] {
-{ { 0, 1 },
+{
+  { 0, 1 },
   { 0, 0 },
-  { 0, 0 } },
-{ { 0, 1 },
+  { 0, 0 }
+},
+{
+  { 0, 1 },
   { 1, 0 },
-  { 0, 1 } }
+  { 0, 1 }
+}
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }

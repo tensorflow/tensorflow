@@ -41,7 +41,8 @@ def make_custom_export_strategy(name,
                                 convert_fn,
                                 feature_columns,
                                 export_input_fn,
-                                use_core_columns=False):
+                                use_core_columns=False,
+                                feature_engineering_fn=None):
   """Makes custom exporter of GTFlow tree format.
 
   Args:
@@ -52,6 +53,7 @@ def make_custom_export_strategy(name,
     export_input_fn: A function that takes no arguments and returns an
       `InputFnOps`.
     use_core_columns: A boolean, whether core feature columns were used.
+    feature_engineering_fn: Feature eng function to be called on the input.
 
   Returns:
     An `ExportStrategy`.
@@ -59,9 +61,12 @@ def make_custom_export_strategy(name,
   base_strategy = saved_model_export_utils.make_export_strategy(
       serving_input_fn=export_input_fn, strip_default_attrs=True)
   input_fn = export_input_fn()
+  features = input_fn.features
+  if feature_engineering_fn is not None:
+    features, _ = feature_engineering_fn(features, labels=None)
   (sorted_feature_names, dense_floats, sparse_float_indices, _, _,
    sparse_int_indices, _, _) = gbdt_batch.extract_features(
-       input_fn.features, feature_columns, use_core_columns)
+       features, feature_columns, use_core_columns)
 
   def export_fn(estimator, export_dir, checkpoint_path=None, eval_result=None):
     """A wrapper to export to SavedModel, and convert it to other formats."""

@@ -1,6 +1,10 @@
 path: "tensorflow.signal"
 tf_module {
   member_method {
+    name: "dct"
+    argspec: "args=[\'input\', \'type\', \'n\', \'axis\', \'norm\', \'name\'], varargs=None, keywords=None, defaults=[\'2\', \'None\', \'-1\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "fft"
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -25,6 +29,10 @@ tf_module {
     argspec: "args=[\'window_length\', \'periodic\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
+    name: "idct"
+    argspec: "args=[\'input\', \'type\', \'n\', \'axis\', \'norm\', \'name\'], varargs=None, keywords=None, defaults=[\'2\', \'None\', \'-1\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "ifft"
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -45,6 +53,18 @@ tf_module {
     argspec: "args=[\'frame_step\', \'forward_window_fn\', \'name\'], varargs=None, keywords=None, defaults=[\'<function hann_window instance>\', \'None\'], "
   }
   member_method {
+    name: "irfft"
+    argspec: "args=[\'input_tensor\', \'fft_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "irfft2d"
+    argspec: "args=[\'input_tensor\', \'fft_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "irfft3d"
+    argspec: "args=[\'input_tensor\', \'fft_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "linear_to_mel_weight_matrix"
     argspec: "args=[\'num_mel_bins\', \'num_spectrogram_bins\', \'sample_rate\', \'lower_edge_hertz\', \'upper_edge_hertz\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'20\', \'129\', \'8000\', \'125.0\', \'3800.0\', \"<dtype: \'float32\'>\", \'None\'], "
   }
@@ -55,6 +75,18 @@ tf_module {
   member_method {
     name: "overlap_and_add"
     argspec: "args=[\'signal\', \'frame_step\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "rfft"
+    argspec: "args=[\'input_tensor\', \'fft_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "rfft2d"
+    argspec: "args=[\'input_tensor\', \'fft_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "rfft3d"
+    argspec: "args=[\'input_tensor\', \'fft_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "stft"

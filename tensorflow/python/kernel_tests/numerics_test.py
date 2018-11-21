@@ -39,7 +39,7 @@ class VerifyTensorAllFiniteTest(test.TestCase):
       t = constant_op.constant(x, shape=x_shape, dtype=dtypes.float32)
       t_verified = numerics.verify_tensor_all_finite(t,
                                                      "Input is not a number.")
-      self.assertAllClose(x, t_verified.eval())
+      self.assertAllClose(x, self.evaluate(t_verified))
 
   def testVerifyTensorAllFiniteFails(self):
     x_shape = [5, 4]
@@ -52,7 +52,7 @@ class VerifyTensorAllFiniteTest(test.TestCase):
       with self.assertRaisesOpError(my_msg):
         t = constant_op.constant(x, shape=x_shape, dtype=dtypes.float32)
         t_verified = numerics.verify_tensor_all_finite(t, my_msg)
-        t_verified.eval()
+        self.evaluate(t_verified)
 
     # Test Inf.
     x[0] = np.inf
@@ -60,7 +60,7 @@ class VerifyTensorAllFiniteTest(test.TestCase):
       with self.assertRaisesOpError(my_msg):
         t = constant_op.constant(x, shape=x_shape, dtype=dtypes.float32)
         t_verified = numerics.verify_tensor_all_finite(t, my_msg)
-        t_verified.eval()
+        self.evaluate(t_verified)
 
 
 class NumericsTest(test.TestCase):
@@ -73,7 +73,7 @@ class NumericsTest(test.TestCase):
       check = numerics.add_check_numerics_ops()
       a = control_flow_ops.with_dependencies([check], a)
       with self.assertRaisesOpError("Inf"):
-        a.eval()
+        self.evaluate(a)
 
   def testNaN(self):
     with self.session(graph=ops.Graph()):
@@ -83,7 +83,7 @@ class NumericsTest(test.TestCase):
       check = numerics.add_check_numerics_ops()
       a = control_flow_ops.with_dependencies([check], a)
       with self.assertRaisesOpError("NaN"):
-        a.eval()
+        self.evaluate(a)
 
   def testBoth(self):
     with self.session(graph=ops.Graph()):
@@ -93,13 +93,13 @@ class NumericsTest(test.TestCase):
       check = numerics.add_check_numerics_ops()
       a = control_flow_ops.with_dependencies([check], a)
       with self.assertRaisesOpError("Inf and NaN"):
-        a.eval()
+        self.evaluate(a)
 
   def testPassThrough(self):
     with self.session(graph=ops.Graph()):
       t1 = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[2, 3])
       checked = array_ops.check_numerics(t1, message="pass through test")
-      value = checked.eval()
+      value = self.evaluate(checked)
       self.assertAllEqual(np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]), value)
       self.assertEqual([2, 3], checked.get_shape())
 

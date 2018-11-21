@@ -635,6 +635,34 @@ class BidirectionalTest(test.TestCase):
       y_np_3 = model.predict([x_np, s_fw_np, s_bk_np, c_np])
       self.assertAllClose(y_np, y_np_3, atol=1e-4)
 
+  def test_Bidirectional_with_masking(self):
+    rnn = keras.layers.LSTM
+    samples = 2
+    dim = 5
+    timesteps = 3
+    units = 3
+    merge_mode = 'concat'
+    x = np.random.rand(samples, timesteps, dim)
+    # clear the first record's timestep 2, and expect the output of timestep 2
+    # is also 0s.
+    x[0, 2] = 0
+
+    with self.cached_session():
+      inputs = keras.Input((timesteps, dim))
+      masked_inputs = keras.layers.Masking()(inputs)
+      wrapped = keras.layers.Bidirectional(
+          rnn(units, return_sequences=True),
+          merge_mode=merge_mode)
+      outputs = _to_list(wrapped(masked_inputs, training=True))
+      self.assertEqual(len(outputs), 1)
+      self.assertEqual(outputs[0].get_shape().as_list(),
+                       [None, timesteps, units * 2])
+
+      model = keras.Model(inputs, outputs)
+      y = _to_list(model.predict(x))
+      self.assertEqual(len(y), 1)
+      self.assertAllClose(y[0][0, 2], np.zeros(units * 2))
+
 
 def _to_list(ls):
   if isinstance(ls, list):

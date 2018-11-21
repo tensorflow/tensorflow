@@ -957,21 +957,6 @@ Status Service::TransferToClient(const TransferToClientRequest* arg,
   return Status::OK();
 }
 
-namespace {
-
-// Creates a clone of the given shaped buffer with the given device ordinal. The
-// shape and DeviceMemoryBase values of the clone are identical to the original.
-std::unique_ptr<ShapedBuffer> CloneShapedBufferOnDevice(
-    const ShapedBuffer& shaped_buffer, int device_ordinal) {
-  auto clone = absl::make_unique<ShapedBuffer>(
-      shaped_buffer.on_host_shape(), shaped_buffer.on_device_shape(),
-      shaped_buffer.platform(), device_ordinal);
-  clone->buffers() = shaped_buffer.buffers();
-  return clone;
-}
-
-}  // namespace
-
 Status Service::TransferToServer(const TransferToServerRequest* arg,
                                  TransferToServerResponse* result) {
   TF_ASSIGN_OR_RETURN(Literal literal,

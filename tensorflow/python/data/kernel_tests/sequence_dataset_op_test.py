@@ -49,7 +49,7 @@ class SequenceDatasetTest(test_base.DatasetTestBase):
       # Test a finite repetition.
       sess.run(init_op, feed_dict={count_placeholder: 3})
       for _ in range(3):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         for component, result_component in zip(components, results):
           self.assertAllEqual(component, result_component)
 
@@ -59,7 +59,7 @@ class SequenceDatasetTest(test_base.DatasetTestBase):
       # Test a different finite repetition.
       sess.run(init_op, feed_dict={count_placeholder: 7})
       for _ in range(7):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         for component, result_component in zip(components, results):
           self.assertAllEqual(component, result_component)
       with self.assertRaises(errors.OutOfRangeError):
@@ -75,7 +75,7 @@ class SequenceDatasetTest(test_base.DatasetTestBase):
       # actually is infinite.
       sess.run(init_op, feed_dict={count_placeholder: -1})
       for _ in range(17):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         for component, result_component in zip(components, results):
           self.assertAllEqual(component, result_component)
 
@@ -95,7 +95,7 @@ class SequenceDatasetTest(test_base.DatasetTestBase):
       # Take fewer than input size
       sess.run(init_op, feed_dict={count_placeholder: 4})
       for i in range(4):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         self.assertAllEqual(results, components[0][i:i+1])
 
       with self.assertRaises(errors.OutOfRangeError):
@@ -104,7 +104,7 @@ class SequenceDatasetTest(test_base.DatasetTestBase):
       # Take more than input size
       sess.run(init_op, feed_dict={count_placeholder: 25})
       for i in range(10):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         self.assertAllEqual(results, components[0][i:i+1])
 
       with self.assertRaises(errors.OutOfRangeError):
@@ -113,7 +113,7 @@ class SequenceDatasetTest(test_base.DatasetTestBase):
       # Take all of input
       sess.run(init_op, feed_dict={count_placeholder: -1})
       for i in range(10):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         self.assertAllEqual(results, components[0][i:i+1])
 
       with self.assertRaises(errors.OutOfRangeError):
@@ -142,7 +142,7 @@ class SequenceDatasetTest(test_base.DatasetTestBase):
       # the first 4 elements and then read the rest.
       sess.run(init_op, feed_dict={count_placeholder: 4})
       for i in range(4, 10):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         self.assertAllEqual(results, components[0][i:i+1])
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
@@ -165,7 +165,7 @@ class SequenceDatasetTest(test_base.DatasetTestBase):
       # Skip nothing
       sess.run(init_op, feed_dict={count_placeholder: 0})
       for i in range(0, 10):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         self.assertAllEqual(results, components[0][i:i+1])
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
@@ -187,7 +187,7 @@ class SequenceDatasetTest(test_base.DatasetTestBase):
     with self.cached_session() as sess:
       sess.run(init_op, feed_dict={inner_count: 7, outer_count: 14})
       for _ in range(7 * 14):
-        results = sess.run(get_next)
+        results = self.evaluate(get_next)
         for component, result_component in zip(components, results):
           self.assertAllEqual(component, result_component)
       with self.assertRaises(errors.OutOfRangeError):
@@ -201,7 +201,7 @@ class SequenceDatasetTest(test_base.DatasetTestBase):
     get_next = iterator.get_next()
 
     with self.cached_session() as sess:
-      sess.run(init_op)
+      self.evaluate(init_op)
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 

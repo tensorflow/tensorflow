@@ -29,7 +29,7 @@ class StringLengthOpTest(test.TestCase):
 
     with self.cached_session() as sess:
       lengths = string_ops.string_length(strings)
-      values = sess.run(lengths)
+      values = self.evaluate(lengths)
       self.assertAllEqual(values, [[[1, 2], [3, 4], [5, 6]]])
 
   def testUnit(self):

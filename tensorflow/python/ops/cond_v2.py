@@ -32,6 +32,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.util import nest
+
 
 # NOTE(skyewm): TensorFlow uses protected class methods and fields to signify
 # that they aren't part of the official public API. These protected members
@@ -119,11 +121,8 @@ def cond_v2(pred, true_fn, false_fn, name="cond"):
     # correct output structure
     tensors = tuple(array_ops.identity(t) for t in tensors)
 
-    result = tuple(tensors[:num_cond_outputs])
-    if len(result) == 1:
-      return result[0]
-    else:
-      return result
+    return func_graph_module.pack_sequence_as(true_graph.structured_outputs,
+                                              tensors[:num_cond_outputs])
 
 
 @ops.RegisterGradient("If")
@@ -450,11 +449,19 @@ def _check_same_outputs(true_graph, false_graph):
   false_output_types = [t.dtype for t in false_graph.outputs]
   if (len(true_graph.outputs) != len(false_graph.outputs) or
       true_output_types != false_output_types):
-    raise ValueError(
+    raise TypeError(
         "true_fn() and false_fn() must return the same number and type of "
         "arguments, got:\n"
         "  true_fn: %s\n"
         "  false_fn: %s" % (true_output_types, false_output_types))
+
+  # Make sure `structured_outputs` for both graphs have the same structure.
+  try:
+    nest.assert_same_structure(true_graph.structured_outputs,
+                               false_graph.structured_outputs)
+  except (ValueError, TypeError) as e:
+    raise ValueError("Outputs of true_fn and false_fn must have the same "
+                     "structure: %s" % str(e))
 
 
 def _get_output_shapes(true_graph_outputs, false_graph_outputs):

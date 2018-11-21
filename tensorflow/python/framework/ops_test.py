@@ -317,7 +317,7 @@ class OperationTest(test_util.TensorFlowTestCase):
       values = [[2], [3], [5], [7]]
       tensor = ops.convert_to_tensor(values)
       self.assertAllEqual((4, 1), tensor.get_shape().as_list())
-      self.assertAllEqual(values, tensor.eval())
+      self.assertAllEqual(values, self.evaluate(tensor))
 
   def testShapeTuple(self):
     with self.cached_session():
@@ -346,18 +346,18 @@ class OperationTest(test_util.TensorFlowTestCase):
       tensor = ops.convert_to_tensor(
           [constant_op.constant(row) for row in values])
       self.assertAllEqual((4, 1), tensor.get_shape().as_list())
-      self.assertAllEqual(values, tensor.eval())
+      self.assertAllEqual(values, self.evaluate(tensor))
       tensor = ops.convert_to_tensor(
           [[constant_op.constant(v) for v in row] for row in values])
       self.assertAllEqual((4, 1), tensor.get_shape().as_list())
-      self.assertAllEqual(values, tensor.eval())
+      self.assertAllEqual(values, self.evaluate(tensor))
 
   def testConvertToTensorNestedMix(self):
     with self.cached_session():
       values = ([2], (3,), [constant_op.constant(5)], constant_op.constant([7]))
       tensor = ops.convert_to_tensor(values)
       self.assertAllEqual((4, 1), tensor.get_shape().as_list())
-      self.assertAllEqual(((2,), (3,), (5,), (7,)), tensor.eval())
+      self.assertAllEqual(((2,), (3,), (5,), (7,)), self.evaluate(tensor))
 
   def testConvertToTensorPreferred(self):
     with self.cached_session():
@@ -517,21 +517,21 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEquals(x.consumers(), [])
     self.assertEquals(y.consumers(), [z.op, z.op])
     with session.Session(graph=g) as sess:
-      self.assertEquals(sess.run(z), 4)
+      self.assertEquals(self.evaluate(z), 4)
 
     z.op._update_input(0, x)  # pylint: disable=protected-access
     self.assertEquals(list(z.op.inputs), [x, y])
     self.assertEquals(x.consumers(), [z.op])
     self.assertEquals(y.consumers(), [z.op])
     with session.Session(graph=g) as sess:
-      self.assertEquals(sess.run(z), 3)
+      self.assertEquals(self.evaluate(z), 3)
 
     z.op._update_input(1, y)  # pylint: disable=protected-access
     self.assertEquals(list(z.op.inputs), [x, y])
     self.assertEquals(x.consumers(), [z.op])
     self.assertEquals(y.consumers(), [z.op])
     with session.Session(graph=g) as sess:
-      self.assertEquals(sess.run(z), 3)
+      self.assertEquals(self.evaluate(z), 3)
 
   def testUpdateInputGraphError(self):
     g_0 = ops.Graph()
@@ -2490,12 +2490,14 @@ class KernelLabelTest(test_util.TensorFlowTestCase):
       # pylint: enable=protected-access
       default_3 = test_ops.kernel_label()
 
-      self.assertAllEqual(b"My label is: default", default_1.eval())
-      self.assertAllEqual(b"My label is: default", default_2.eval())
-      self.assertAllEqual(b"My label is: default", default_3.eval())
-      self.assertAllEqual(b"My label is: overload_1", overload_1_1.eval())
-      self.assertAllEqual(b"My label is: overload_1", overload_1_2.eval())
-      self.assertAllEqual(b"My label is: overload_2", overload_2.eval())
+      self.assertAllEqual(b"My label is: default", self.evaluate(default_1))
+      self.assertAllEqual(b"My label is: default", self.evaluate(default_2))
+      self.assertAllEqual(b"My label is: default", self.evaluate(default_3))
+      self.assertAllEqual(b"My label is: overload_1",
+                          self.evaluate(overload_1_1))
+      self.assertAllEqual(b"My label is: overload_1",
+                          self.evaluate(overload_1_2))
+      self.assertAllEqual(b"My label is: overload_2", self.evaluate(overload_2))
 
 
 class AsGraphDefTest(test_util.TensorFlowTestCase):

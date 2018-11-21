@@ -34,7 +34,7 @@ from tensorflow.python.estimator.canned import dnn_linear_combined
 from tensorflow.python.estimator.canned import prediction_keys
 from tensorflow.python.estimator.export import export
 from tensorflow.python.estimator.inputs import numpy_io
-from tensorflow.python.feature_column import feature_column
+from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.summary.writer import writer_cache
@@ -63,7 +63,9 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase,
           distribution=[
               combinations.one_device_strategy,
               combinations.mirrored_strategy_with_gpu_and_cpu,
-              combinations.mirrored_strategy_with_two_gpus
+              combinations.mirrored_strategy_with_two_gpus,
+              combinations.core_mirrored_strategy_with_gpu_and_cpu,
+              combinations.core_mirrored_strategy_with_two_gpus
           ],
           use_train_and_evaluate=[True, False]))
   def test_complete_flow_with_mode(self, distribution, use_train_and_evaluate):

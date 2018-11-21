@@ -287,7 +287,7 @@ class CategoricalTest(test.TestCase, parameterized.TestCase):
     }
 
     with self.cached_session() as sess:
-      run_result = sess.run(to_run)
+      run_result = self.evaluate(to_run)
 
     self.assertAllEqual(run_result["cat_prob"].shape,
                         run_result["norm_prob"].shape)
@@ -355,7 +355,7 @@ class CategoricalTest(test.TestCase, parameterized.TestCase):
       samples = dist.sample(n, seed=123)
       samples.set_shape([n, 1, 2])
       self.assertEqual(samples.dtype, dtypes.int32)
-      sample_values = samples.eval()
+      sample_values = self.evaluate(samples)
       self.assertFalse(np.any(sample_values < 0))
       self.assertFalse(np.any(sample_values > 1))
       self.assertAllClose(
@@ -371,7 +371,7 @@ class CategoricalTest(test.TestCase, parameterized.TestCase):
       dist = categorical.Categorical(math_ops.log(histograms) - 50.)
       samples = dist.sample((100, 100), seed=123)
       prob = dist.prob(samples)
-      prob_val = prob.eval()
+      prob_val = self.evaluate(prob)
       self.assertAllClose(
           [0.2**2 + 0.8**2], [prob_val[:, :, :, 0].mean()], atol=1e-2)
       self.assertAllClose(
@@ -393,26 +393,26 @@ class CategoricalTest(test.TestCase, parameterized.TestCase):
       dist = categorical.Categorical(math_ops.log(histograms) - 50.)
 
       prob = dist.prob(1)
-      self.assertAllClose([[0.8, 0.6]], prob.eval())
+      self.assertAllClose([[0.8, 0.6]], self.evaluate(prob))
 
       prob = dist.prob([1])
-      self.assertAllClose([[0.8, 0.6]], prob.eval())
+      self.assertAllClose([[0.8, 0.6]], self.evaluate(prob))
 
       prob = dist.prob([0, 1])
-      self.assertAllClose([[0.2, 0.6]], prob.eval())
+      self.assertAllClose([[0.2, 0.6]], self.evaluate(prob))
 
       prob = dist.prob([[0, 1]])
-      self.assertAllClose([[0.2, 0.6]], prob.eval())
+      self.assertAllClose([[0.2, 0.6]], self.evaluate(prob))
 
       prob = dist.prob([[[0, 1]]])
-      self.assertAllClose([[[0.2, 0.6]]], prob.eval())
+      self.assertAllClose([[[0.2, 0.6]]], self.evaluate(prob))
 
       prob = dist.prob([[1, 0], [0, 1]])
-      self.assertAllClose([[0.8, 0.4], [0.2, 0.6]], prob.eval())
+      self.assertAllClose([[0.8, 0.4], [0.2, 0.6]], self.evaluate(prob))
 
       prob = dist.prob([[[1, 1], [1, 0]], [[1, 0], [0, 1]]])
       self.assertAllClose([[[0.8, 0.6], [0.8, 0.4]], [[0.8, 0.4], [0.2, 0.6]]],
-                          prob.eval())
+                          self.evaluate(prob))
 
   def testLogPMFShape(self):
     with self.cached_session():
@@ -462,7 +462,7 @@ class CategoricalTest(test.TestCase, parameterized.TestCase):
           b = categorical.Categorical(logits=b_logits)
 
           kl = kullback_leibler.kl_divergence(a, b)
-          kl_val = sess.run(kl)
+          kl_val = self.evaluate(kl)
           # Make sure KL(a||a) is 0
           kl_same = sess.run(kullback_leibler.kl_divergence(a, a))
 
