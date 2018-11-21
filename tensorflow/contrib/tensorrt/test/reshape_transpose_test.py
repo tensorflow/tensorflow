@@ -80,7 +80,7 @@ class ReshapeTest(trt_test.TfTrtIntegrationTestBase):
     """Return the expected engines to build."""
     return {
         "TRTEngineOp_0": ["reshape-%d" % i for i in range(7)] +
-                       ["reshape-%d/shape" % i for i in range(7)]
+                         ["reshape-%d/shape" % i for i in range(7)]
     }
 
   def ShouldRunTest(self, run_params):

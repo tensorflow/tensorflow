@@ -226,12 +226,12 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   item.fetch = output_names;
   item.graph = graph_def;
 
-  // TODO(aaroey): we should have used single machine cluster like the
-  // following, but the problem is then wrap_conversion will depend on
-  // direct_session and cause double linking problems. To fix this we need to
-  // fix or get rid of the swig dependency. Here we use VirtualCluster
-  // as a work around, and we need to create a session to initialize the
-  // underlying device before calling this method.
+// TODO(aaroey): we should have used single machine cluster like the
+// following, but the problem is then wrap_conversion will depend on
+// direct_session and cause double linking problems. To fix this we need to
+// fix or get rid of the swig dependency. Here we use VirtualCluster
+// as a work around, and we need to create a session to initialize the
+// underlying device before calling this method.
 #if 0
   // Create single machine cluster. Note that this will create a session and
   // initialize the gpu devices.
@@ -869,9 +869,8 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
   tensorflow::tensorrt::segment::SegmentNodesVector initial_segments;
   TrtCandidateSelector candidate_selector(*params.graph_properties);
   TF_RETURN_IF_ERROR(tensorrt::segment::SegmentGraph(
-      &graph,
-      std::bind(&TrtCandidateSelector::IsTensorRTCandidate, &candidate_selector,
-                std::placeholders::_1),
+      &graph, std::bind(&TrtCandidateSelector::IsTensorRTCandidate,
+                        &candidate_selector, std::placeholders::_1),
       // Input validation is already done by TrtCandidateSelector, so we don't
       // need to check the input edges.
       [](const Edge* edge) { return true; }, OutputEdgeValidator(),
@@ -970,8 +969,8 @@ tensorflow::Status ConvertAfterShapes(ConversionParams& params) {
                                 &graph, alloc.get(), &engine_nodes);
     // If status is ok, we successfully added the node to the graph and can
     // remove segment ops. Otherwise graph is not modified.
-    string msg = StrCat("TensorRT node ", engine.engine_name, " added for segment ",
-                        i, " consisting of ",
+    string msg = StrCat("TensorRT node ", engine.engine_name,
+                        " added for segment ", i, " consisting of ",
                         converted_segments.at(i).first.size(), " nodes");
     if (status.ok()) {
       LOG(INFO) << msg << " succeeded.";
