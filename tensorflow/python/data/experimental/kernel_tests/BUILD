@@ -620,7 +620,6 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",
-        "notsan",
     ],
     deps = [
         ":reader_dataset_ops_test_base",
