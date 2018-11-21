@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -239,6 +240,7 @@ class ShapeUtil {
   //
   // (param_name: f32[42x12], ...) -> f32[24x42]
   static string HumanString(const ProgramShape& program_shape);
+  static string HumanString(const ProgramShapeProto& program_shape_proto);
 
   // Parses a ShapeUtil::HumanString-format shape string back into a shape
   // object.

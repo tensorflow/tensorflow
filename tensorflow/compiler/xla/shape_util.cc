@@ -563,6 +563,20 @@ StatusOr<PrimitiveType> StringToPrimitiveType(const string& name) {
                 HumanString(program_shape.result()));
 }
 
+/* static */ string ShapeUtil::HumanString(
+    const ProgramShapeProto& program_shape_proto) {
+  std::vector<string> parameters;
+  for (auto& shape : program_shape_proto.parameters()) {
+    const int i = parameters.size();
+    parameters.push_back(StrCat(i < program_shape_proto.parameter_names_size()
+                                    ? program_shape_proto.parameter_names(i)
+                                    : "(unknown)",
+                                ": ", HumanString(shape)));
+  }
+  return StrCat("(", absl::StrJoin(parameters, ", "), ") -> ",
+                HumanString(program_shape_proto.result()));
+}
+
 namespace {
 // Parses shapes with simple recursive descent structure -- consumes from the
 // front of s and passes that view recursively as required.

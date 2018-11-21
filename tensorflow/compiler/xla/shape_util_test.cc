@@ -575,37 +575,6 @@ TEST(ShapeUtilTest, HumanString) {
       "((opaque[], f32[], u32[1,2]{1,0}, s32[3,4]{0,1}), u32[1,2]{1,0}, "
       "token[])",
       ShapeUtil::HumanStringWithLayout(nested_tuple));
-
-  ProgramShape prog = ShapeUtil::MakeProgramShape(
-      {opaque, scalar, matrix, matrix2, tuple, nested_tuple}, nested_tuple);
-  EXPECT_EQ(
-      "((unknown): opaque[], "
-      "(unknown): f32[], "
-      "(unknown): u32[1,2], "
-      "(unknown): s32[3,4], "
-      "(unknown): (opaque[], f32[], u32[1,2], s32[3,4]), "
-      "(unknown): ((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2], token[])) "
-      "-> "
-      "((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2], token[])",
-      ShapeUtil::HumanString(prog));
-
-  prog.add_parameter_names("arg0");
-  prog.add_parameter_names("scalar");
-  prog.add_parameter_names("matrix");
-  prog.add_parameter_names("matrix2");
-  prog.add_parameter_names("tuple");
-  prog.add_parameter_names("nested_tuple");
-  EXPECT_EQ(
-      "(arg0: opaque[], "
-      "scalar: f32[], "
-      "matrix: u32[1,2], "
-      "matrix2: s32[3,4], "
-      "tuple: (opaque[], f32[], u32[1,2], s32[3,4]), "
-      "nested_tuple: ((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2], "
-      "token[])) "
-      "-> "
-      "((opaque[], f32[], u32[1,2], s32[3,4]), u32[1,2], token[])",
-      ShapeUtil::HumanString(prog));
 }
 
 TEST(ShapeUtilTest, ForEachSubshapeArray) {
