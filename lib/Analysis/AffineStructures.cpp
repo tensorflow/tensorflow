@@ -692,8 +692,8 @@ void FlatAffineConstraints::composeMap(AffineValueMap *vMap, unsigned pos) {
     for (unsigned l = 0, e = cst.getNumLocalIds(); l < e; l++) {
       addLocalId(0);
     }
-    // TODO(andydavis,bondhugula,ntv): we need common code to merge
-    // dimensions/symbols.
+    // TODO(bondhugula): the next ~20 lines of code is pretty UGLY. This needs
+    // to be factored out into an FlatAffineConstraints::alignAndMerge().
     for (unsigned t = 0, e = r + 1; t < e; t++) {
       // TODO: Consider using a batched version to add a range of IDs.
       cst.addDimId(0);
@@ -701,11 +701,9 @@ void FlatAffineConstraints::composeMap(AffineValueMap *vMap, unsigned pos) {
 
     assert(cst.getNumDimIds() <= getNumDimIds());
     for (unsigned t = 0, e = getNumDimIds() - cst.getNumDimIds(); t < e; t++) {
-      cst.addDimId(cst.getNumDimIds() - 1);
+      // Dimensions that are in 'this' but not in vMap/cst are added at the end.
+      cst.addDimId(cst.getNumDimIds());
     }
-    // TODO(andydavis,bondhugula,ntv): we need common code to merge
-    // identifiers. All of this will be cleaned up. At this point, it's fine as
-    // long as it stays *inside* the FlatAffineConstraints API methods.
     assert(cst.getNumLocalIds() <= getNumLocalIds());
     for (unsigned t = 0, e = getNumLocalIds() - cst.getNumLocalIds(); t < e;
          t++) {
@@ -1176,8 +1174,10 @@ bool FlatAffineConstraints::addBoundsFromForStmt(unsigned pos,
         ineq[positions[j]] = lower ? -flattenedExpr[j] : flattenedExpr[j];
       }
       // Constant term.
-      ineq[getNumCols() - 1] = lower ? -flattenedExpr[flattenedExpr.size() - 1]
-                                     : flattenedExpr[flattenedExpr.size() - 1];
+      ineq[getNumCols() - 1] =
+          lower ? -flattenedExpr[flattenedExpr.size() - 1]
+                // Upper bound in flattenedExpr is an exclusive one.
+                : flattenedExpr[flattenedExpr.size() - 1] - 1;
       addInequality(ineq);
     }
     return true;

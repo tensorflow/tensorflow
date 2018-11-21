@@ -43,16 +43,20 @@ class SSAValue;
 
 /// Replace all uses of oldMemRef with newMemRef while optionally remapping the
 /// old memref's indices using the supplied affine map and adding any additional
-/// indices. The new memref could be of a different shape or rank. An optional
-/// argument 'domOpFilter' restricts the replacement to only those operations
-/// that are dominated by the former. Returns true on success and false if the
-/// replacement is not possible (whenever a memref is used as an operand in a
-/// non-deferencing scenario). Additional indices are added at the start.
+/// indices. Additional indices are added at the start. The new memref could be
+/// of a different shape or rank. 'extraOperands' is an optional argument that
+/// corresponds to additional operands (inputs) for indexRemap at the beginning
+/// of its input list. An additional optional argument 'domStmtFilter' restricts
+/// the replacement to only those operations that are dominated by the former.
+/// Returns true on success and false if the replacement is not possible
+/// (whenever a memref is used as an operand in a non-deferencing scenario). See
+/// comments at function definition for an example.
 // TODO(mlir-team): extend this for SSAValue / CFGFunctions. Can also be easily
 // extended to add additional indices at any position.
 bool replaceAllMemRefUsesWith(const MLValue *oldMemRef, MLValue *newMemRef,
-                              llvm::ArrayRef<MLValue *> extraIndices = {},
+                              ArrayRef<MLValue *> extraIndices = {},
                               AffineMap indexRemap = AffineMap::Null(),
+                              ArrayRef<SSAValue *> extraOperands = {},
                               const Statement *domStmtFilter = nullptr);
 
 /// Creates and inserts into 'builder' a new AffineApplyOp, with the number of

@@ -136,7 +136,7 @@ void DmaGeneration::visitOperationStmt(OperationStmt *opStmt) {
 
 // Creates a buffer in the faster memory space for the specified region;
 // generates a DMA from the lower memory space to this one, and replaces all
-// loads to load from the buffer. Returns true if DMAs are generated.
+// loads to load from that buffer. Returns true if DMAs are generated.
 bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt) {
   // DMAs for read regions are going to be inserted just before the for loop.
   MLFuncBuilder prologue(forStmt);
@@ -148,8 +148,6 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt) {
   // Builder to create constants at the top level.
   MLFuncBuilder top(forStmt->findFunction());
 
-  FlatAffineConstraints *cst =
-      const_cast<FlatAffineConstraints *>(region.getConstraints());
 
   auto loc = forStmt->getLoc();
   auto *memref = region.memref;
@@ -177,6 +175,23 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt) {
 
   region.getConstantShape(&shape);
 
+  // 'outerIVs' holds the values that this memory region is symbolic/paramteric
+  // on; this would correspond to loop IVs surrounding the level at which the
+  // DMA generation is being done.
+  const FlatAffineConstraints *cst = region.getConstraints();
+  auto ids = cst->getIds();
+  SmallVector<SSAValue *, 8> outerIVs;
+  for (unsigned i = rank, e = ids.size(); i < e; i++) {
+    auto id = cst->getIds()[i];
+    assert(id.hasValue() && "MLValue id expected");
+    outerIVs.push_back(id.getValue());
+  }
+
+  // Construct the index expressions for the fast memory buffer. The index
+  // expression for a particular dimension of the fast buffer is obtained by
+  // subtracting out the lower bound on the original memref's data region
+  // along the corresponding dimension.
+
   // Index start offsets for faster memory buffer relative to the original.
   SmallVector<AffineExpr, 4> offsets;
   offsets.reserve(rank);
@@ -184,40 +199,34 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt) {
     unsigned lbPos;
     cst->getConstantBoundDifference(d, &lbPos);
 
-    // Construct the index expressions for the fast memory buffer. The index
-    // expression for a particular dimension of the fast buffer is obtained by
-    // subtracting out the lower bound on the original memref's data region
-    // along the corresponding dimension.
     AffineExpr offset = top.getAffineConstantExpr(0);
     for (unsigned j = rank; j < cst->getNumCols() - 1; j++) {
       offset = offset - cst->atIneq(lbPos, j) * top.getAffineDimExpr(j - rank);
     }
     offset = offset - cst->atIneq(lbPos, cst->getNumCols() - 1);
-    offsets.push_back(offset);
 
-    auto ids = cst->getIds();
-    SmallVector<SSAValue *, 8> operands;
-    for (unsigned i = rank, e = ids.size(); i < e; i++) {
-      auto id = cst->getIds()[i];
-      assert(id.hasValue());
-      operands.push_back(id.getValue());
-    }
     // Set DMA start location for this dimension in the lower memory space
     // memref.
-    if (auto caf = offsets[d].dyn_cast<AffineConstantExpr>()) {
+    if (auto caf = offset.dyn_cast<AffineConstantExpr>()) {
       srcIndices.push_back(cast<MLValue>(
           top.create<ConstantIndexOp>(loc, caf.getValue())->getResult()));
     } else {
-      auto map =
-          top.getAffineMap(cst->getNumDimIds() + cst->getNumSymbolIds() - rank,
-                           0, offsets[d], {});
+      // The coordinate for the start location is just the lower bound along the
+      // corresponding dimension on the memory region (stored in 'offset').
+      auto map = top.getAffineMap(
+          cst->getNumDimIds() + cst->getNumSymbolIds() - rank, 0, offset, {});
       srcIndices.push_back(cast<MLValue>(
-          b->create<AffineApplyOp>(loc, map, operands)->getResult(0)));
+          b->create<AffineApplyOp>(loc, map, outerIVs)->getResult(0)));
     }
     // The fast buffer is DMAed into at location zero; addressing is relative.
     destIndices.push_back(zeroIndex);
+
+    // Record the offsets since they are needed to remap the memory accesses of
+    // the original memref further below.
+    offsets.push_back(offset);
   }
 
+  // The faster memory space buffer.
   SSAValue *fastMemRef;
 
   // Check if a buffer was already created.
@@ -266,16 +275,26 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, ForStmt *forStmt) {
 
   // Replace all uses of the old memref with the faster one while remapping
   // access indices (subtracting out lower bound offsets for each dimension).
+  // Ex: to replace load %A[%i, %j] with load %Abuf[%i - %iT, %j - %jT],
+  // index remap will be (%i, %j) -> (%i - %iT, %j - %jT),
+  // i.e., affine_apply (d0, d1, d2, d3) -> (d2-d0, d3-d1) (%iT, %jT, %i, %j),
+  // and (%iT, %jT) will be the 'extraOperands' for 'rep all memref uses with'.
+  // d2, d3 correspond to the original indices (%i, %j).
   SmallVector<AffineExpr, 4> remapExprs;
   remapExprs.reserve(rank);
   for (unsigned i = 0; i < rank; i++) {
-    auto dim = b->getAffineDimExpr(i);
-    remapExprs.push_back(dim - offsets[i]);
+    // The starting operands of indexRemap will be outerIVs (the loops
+    // surrounding the depth at which this DMA is being done); then those
+    // corresponding to the memref's original indices follow.
+    auto dimExpr = b->getAffineDimExpr(outerIVs.size() + i);
+    remapExprs.push_back(dimExpr - offsets[i]);
   }
-  auto indexRemap = b->getAffineMap(rank, 0, remapExprs, {});
+  auto indexRemap = b->getAffineMap(outerIVs.size() + rank, 0, remapExprs, {});
   // *Only* those uses within the body of 'forStmt' are replaced.
-  replaceAllMemRefUsesWith(memref, cast<MLValue>(fastMemRef), {}, indexRemap,
-                           &*forStmt->begin());
+  replaceAllMemRefUsesWith(memref, cast<MLValue>(fastMemRef),
+                           /*extraIndices=*/{}, indexRemap,
+                           /*extraOperands=*/outerIVs,
+                           /*domStmtFilter=*/&*forStmt->begin());
   return true;
 }
 

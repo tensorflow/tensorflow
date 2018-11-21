@@ -4,6 +4,7 @@
 // CHECK-DAG: [[MAP:#map[0-9]+]] = (d0) -> (d0 - 256)
 // CHECK-DAG: #map{{[0-9]+}} = (d0, d1) -> (d0 * 16 + d1)
 // CHECK-DAG: #map{{[0-9]+}} = (d0, d1) -> (d0, d1)
+// CHECK-DAG: [[MAP_INDEX_DIFF:#map[0-9]+]] = (d0, d1, d2, d3) -> (d2 - d0, d3 - d1)
 
 // CHECK-LABEL: mlfunc @loop_nest_1d() {
 mlfunc @loop_nest_1d() {
@@ -149,6 +150,32 @@ mlfunc @loop_nest_modulo() {
       %idx = affine_apply (d0) -> (d0 mod 2) (%j)
       // A buffer of size 32 x 2 will be allocated (original buffer was 256 x 8).
       %v = load %A[%i, %idx] : memref<256 x 8 x f32>
+    }
+  }
+  return
+}
+
+
+// DMA on tiled loop nest. This also tests the case where the bounds are
+// dependent on outer loop IVs.
+// CHECK-LABEL: mlfunc @loop_nest_tiled() {
+mlfunc @loop_nest_tiled() {
+  %0 = alloc() : memref<256x1024xf32>
+  for %i0 = 0 to 256 step 32 {
+    for %i1 = 0 to 1024 step 32 {
+// CHECK:      %3 = alloc() : memref<32x32xf32, 1>
+// CHECK-NEXT: %4 = alloc() : memref<1xi32>
+// CHECK-NEXT: dma_start %0[
+// CHECK-NEXT: dma_wait
+// CHECK-NEXT: for %i2 = #map
+// CHECK-NEXT:   for %i3 = #map
+      for %i2 = (d0) -> (d0)(%i0) to (d0) -> (d0 + 32)(%i0) {
+        for %i3 = (d0) -> (d0)(%i1) to (d0) -> (d0 + 32)(%i1) {
+          // CHECK:      %5 = affine_apply [[MAP_INDEX_DIFF]](%i0, %i1, %i2, %i3)
+          // CHECK-NEXT: %6 = load %3[%5#0, %5#1] : memref<32x32xf32, 1>
+          %1 = load %0[%i2, %i3] : memref<256x1024xf32>
+        } // CHECK-NEXT: }
+      }
     }
   }
   return

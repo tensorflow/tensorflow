@@ -48,21 +48,31 @@ static bool isMemRefDereferencingOp(const Operation &op) {
 /// old memref's indices to the new memref using the supplied affine map
 /// and adding any additional indices. The new memref could be of a different
 /// shape or rank, but of the same elemental type. Additional indices are added
-/// at the start. An optional argument 'domOpFilter' restricts the
-/// replacement to only those operations that are dominated by the former.
+/// at the start. 'extraOperands' is another optional argument that corresponds
+/// to additional operands (inputs) for indexRemap at the beginning of its input
+/// list. An optional argument 'domOpFilter' restricts the replacement to only
+/// those operations that are dominated by the former.
+//  Ex: to replace load %A[%i, %j] with load %Abuf[%t mod 2, %ii - %i, %j]:
+//  The SSA value corresponding to '%t mod 2' should be in 'extraIndices', and
+//  index remap will (%i, %j) -> (%ii - %i, %j), i.e., (d0, d1, d2) -> (d0 - d1,
+//  d2) will be the 'indexRemap', and %ii is the extra operand. Without any
+//  extra operands, note that 'indexRemap' would just be applied to the existing
+//  indices (%i, %j).
+//
 // TODO(mlir-team): extend this for SSAValue / CFGFunctions. Can also be easily
 // extended to add additional indices at any position.
 bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
                                     MLValue *newMemRef,
                                     ArrayRef<MLValue *> extraIndices,
                                     AffineMap indexRemap,
+                                    ArrayRef<SSAValue *> extraOperands,
                                     const Statement *domStmtFilter) {
   unsigned newMemRefRank = newMemRef->getType().cast<MemRefType>().getRank();
   (void)newMemRefRank; // unused in opt mode
   unsigned oldMemRefRank = oldMemRef->getType().cast<MemRefType>().getRank();
   (void)newMemRefRank;
   if (indexRemap) {
-    assert(indexRemap.getNumInputs() == oldMemRefRank);
+    assert(indexRemap.getNumInputs() == extraOperands.size() + oldMemRefRank);
     assert(indexRemap.getNumResults() + extraIndices.size() == newMemRefRank);
   } else {
     assert(oldMemRefRank + extraIndices.size() == newMemRefRank);
@@ -126,20 +136,25 @@ bool mlir::replaceAllMemRefUsesWith(const MLValue *oldMemRef,
       state.operands.push_back(cast<MLValue>(extraIndex));
     }
 
-    // Construct new indices. The indices of a memref come right after it, i.e.,
+    // Construct new indices as a remap of the old ones if a remapping has been
+    // provided. The indices of a memref come right after it, i.e.,
     // at position memRefOperandPos + 1.
-    SmallVector<SSAValue *, 4> indices(
-        opStmt->operand_begin() + memRefOperandPos + 1,
+    SmallVector<SSAValue *, 4> remapOperands;
+    remapOperands.reserve(oldMemRefRank + extraOperands.size());
+    remapOperands.insert(remapOperands.end(), extraOperands.begin(),
+                         extraOperands.end());
+    remapOperands.insert(
+        remapOperands.end(), opStmt->operand_begin() + memRefOperandPos + 1,
         opStmt->operand_begin() + memRefOperandPos + 1 + oldMemRefRank);
     if (indexRemap) {
-      auto remapOp =
-          builder.create<AffineApplyOp>(opStmt->getLoc(), indexRemap, indices);
+      auto remapOp = builder.create<AffineApplyOp>(opStmt->getLoc(), indexRemap,
+                                                   remapOperands);
       // Remapped indices.
       for (auto *index : remapOp->getOperation()->getResults())
         state.operands.push_back(cast<MLValue>(index));
     } else {
       // No remapping specified.
-      for (auto *index : indices)
+      for (auto *index : remapOperands)
         state.operands.push_back(cast<MLValue>(index));
     }
 
