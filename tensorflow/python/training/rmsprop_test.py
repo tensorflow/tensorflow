@@ -28,6 +28,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -92,7 +93,7 @@ class RMSPropOptimizerTest(test.TestCase):
     # TODO(yori): Use ParameterizedTest when available
     for (dtype, learning_rate, decay, momentum,
          epsilon, centered, use_resource) in _TESTPARAMS:
-      with self.cached_session(use_gpu=True):
+      with test_util.use_gpu():
         # Initialize variables for numpy implementation.
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
         grads0_np = np.array([0.1, 0.2], dtype=dtype.as_numpy_dtype)
@@ -115,7 +116,7 @@ class RMSPropOptimizerTest(test.TestCase):
             centered=centered)
 
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         mg0 = opt.get_slot(var0, "mg")
         self.assertEqual(mg0 is not None, centered)
@@ -143,7 +144,7 @@ class RMSPropOptimizerTest(test.TestCase):
 
         # Run 4 steps of RMSProp
         for _ in range(1, 5):
-          update.run()
+          self.evaluate(update)
 
           var0_np, mg0_np, rms0_np, mom0_np = self._rmsprop_update_numpy(
               var0_np, grads0_np, mg0_np, rms0_np, mom0_np, learning_rate,
@@ -176,11 +177,11 @@ class RMSPropOptimizerTest(test.TestCase):
             momentum=0.0,
             epsilon=0.0,
             centered=False).minimize(loss)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
         # Run 1 step of sgd
-        sgd_op.run()
+        self.evaluate(sgd_op)
         # Validate updated params
         self.assertAllCloseAccordingToType([[0., 1.]],
                                            self.evaluate(var0),
@@ -199,11 +200,11 @@ class RMSPropOptimizerTest(test.TestCase):
             momentum=0.0,
             epsilon=1.0,
             centered=True).minimize(loss)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
         # Run 1 step of sgd
-        sgd_op.run()
+        self.evaluate(sgd_op)
         # Validate updated params
         self.assertAllCloseAccordingToType([[-111, -138]],
                                            self.evaluate(var0),
@@ -213,7 +214,7 @@ class RMSPropOptimizerTest(test.TestCase):
     # TODO(yori): Use ParameterizedTest when available
     for (dtype, learning_rate, decay,
          momentum, epsilon, centered, _) in _TESTPARAMS:
-      with self.cached_session(use_gpu=True):
+      with test_util.use_gpu():
         # Initialize variables for numpy implementation.
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
         grads0_np = np.array([0.1], dtype=dtype.as_numpy_dtype)
@@ -237,7 +238,7 @@ class RMSPropOptimizerTest(test.TestCase):
             epsilon=epsilon,
             centered=centered)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         mg0 = opt.get_slot(var0, "mg")
         self.assertEqual(mg0 is not None, centered)
@@ -265,7 +266,7 @@ class RMSPropOptimizerTest(test.TestCase):
 
         # Run 4 steps of RMSProp
         for _ in range(1, 5):
-          update.run()
+          self.evaluate(update)
 
           var0_np, mg0_np, rms0_np, mom0_np = self._sparse_rmsprop_update_numpy(
               var0_np, grads0_np_indices, grads0_np, mg0_np, rms0_np, mom0_np,
@@ -287,7 +288,7 @@ class RMSPropOptimizerTest(test.TestCase):
 
   def testWithoutMomentum(self):
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session(use_gpu=True):
+      with test_util.use_gpu():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -295,7 +296,7 @@ class RMSPropOptimizerTest(test.TestCase):
         opt = rmsprop.RMSPropOptimizer(
             learning_rate=2.0, decay=0.9, momentum=0.0, epsilon=1.0)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         rms0 = opt.get_slot(var0, "rms")
         self.assertTrue(rms0 is not None)
@@ -311,7 +312,7 @@ class RMSPropOptimizerTest(test.TestCase):
         self.assertAllClose([3.0, 4.0], self.evaluate(var1))
         # Step 1: the rms accumulators where 1. So we should see a normal
         # update: v -= grad * learning_rate
-        update.run()
+        self.evaluate(update)
         # Check the root mean square accumulators.
         self.assertAllCloseAccordingToType(
             np.array([0.901, 0.901]), self.evaluate(rms0))
@@ -329,7 +330,7 @@ class RMSPropOptimizerTest(test.TestCase):
                 4.0 - (0.01 * 2.0 / math.sqrt(0.90001 + 1.0))
             ]), self.evaluate(var1))
         # Step 2: the root mean square accumulators contain the previous update.
-        update.run()
+        self.evaluate(update)
         # Check the rms accumulators.
         self.assertAllCloseAccordingToType(
             np.array([0.901 * 0.9 + 0.001, 0.901 * 0.9 + 0.001]),
@@ -355,7 +356,7 @@ class RMSPropOptimizerTest(test.TestCase):
 
   def testWithMomentum(self):
     for dtype in [dtypes.half, dtypes.float32]:
-      with self.cached_session(use_gpu=True):
+      with test_util.use_gpu():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -364,7 +365,7 @@ class RMSPropOptimizerTest(test.TestCase):
         opt = rmsprop.RMSPropOptimizer(
             learning_rate=2.0, decay=0.9, momentum=0.5, epsilon=1e-5)
         update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         rms0 = opt.get_slot(var0, "rms")
         self.assertTrue(rms0 is not None)
@@ -380,7 +381,7 @@ class RMSPropOptimizerTest(test.TestCase):
         self.assertAllClose([3.0, 4.0], self.evaluate(var1))
         # Step 1: rms = 1, mom = 0. So we should see a normal
         # update: v -= grad * learning_rate
-        update.run()
+        self.evaluate(update)
         # Check the root mean square accumulators.
         self.assertAllCloseAccordingToType(
             np.array([0.901, 0.901]), self.evaluate(rms0))
@@ -409,7 +410,7 @@ class RMSPropOptimizerTest(test.TestCase):
             ]), self.evaluate(var1))
 
         # Step 2: the root mean square accumulators contain the previous update.
-        update.run()
+        self.evaluate(update)
         # Check the rms accumulators.
         self.assertAllCloseAccordingToType(
             np.array([0.901 * 0.9 + 0.001, 0.901 * 0.9 + 0.001]),

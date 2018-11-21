@@ -36,21 +36,22 @@ class SpaceToDepthTest(test.TestCase):
 
   def _testOne(self, inputs, block_size, outputs, dtype=dtypes.float32):
     input_nhwc = math_ops.cast(inputs, dtype)
-    with self.session(use_gpu=False):
+    with test_util.force_cpu():
       # test NHWC (default) on CPU
       x_tf = array_ops.space_to_depth(input_nhwc, block_size)
-      self.assertAllEqual(x_tf.eval(), outputs)
-    if test.is_gpu_available():
-      with self.session(force_gpu=True):
+      self.assertAllEqual(self.evaluate(x_tf), outputs)
+
+    if test_util.is_gpu_available():
+      with test_util.force_gpu():
         # test NHWC (default) on GPU
         x_tf = array_ops.space_to_depth(input_nhwc, block_size)
-        self.assertAllEqual(x_tf.eval(), outputs)
+        self.assertAllEqual(self.evaluate(x_tf), outputs)
         # test NCHW on GPU
         input_nchw = test_util.NHWCToNCHW(input_nhwc)
         output_nchw = array_ops.space_to_depth(
             input_nchw, block_size, data_format="NCHW")
         output_nhwc = test_util.NCHWToNHWC(output_nchw)
-        self.assertAllEqual(output_nhwc.eval(), outputs)
+        self.assertAllEqual(self.evaluate(output_nhwc), outputs)
 
   def testBasic(self):
     x_np = [[[[1], [2]], [[3], [4]]]]
@@ -134,13 +135,14 @@ class SpaceToDepthTest(test.TestCase):
     input_nhwc = array_ops.ones([batch_size, 4, 6, 3])
     x_out = array_ops.ones([batch_size, 2, 3, 12])
 
-    with self.session(use_gpu=False):
+    with test_util.force_cpu():
       # test NHWC (default) on CPU
       x_tf = array_ops.space_to_depth(input_nhwc, block_size)
       self.assertAllEqual(x_tf.shape, x_out.shape)
       self.evaluate(x_tf)
+
     if test.is_gpu_available():
-      with self.session(use_gpu=True):
+      with test_util.use_gpu():
         # test NHWC (default) on GPU
         x_tf = array_ops.space_to_depth(input_nhwc, block_size)
         self.assertAllEqual(x_tf.shape, x_out.shape)

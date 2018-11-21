@@ -1062,6 +1062,27 @@ def device(use_gpu):
     yield
 
 
+@contextlib.contextmanager
+def use_gpu():
+  """Uses gpu when requested and available."""
+  with device(use_gpu=True):
+    yield
+
+
+@contextlib.contextmanager
+def force_gpu():
+  """Force the gpu to be used."""
+  with ops.device("/device:GPU:0"):
+    yield
+
+
+@contextlib.contextmanager
+def force_cpu():
+  """Force the cpu to be used."""
+  with ops.device("/device:CPU:0"):
+    yield
+
+
 class CapturedWrites(object):
   """A utility class to load the captured writes made to a stream."""
 
