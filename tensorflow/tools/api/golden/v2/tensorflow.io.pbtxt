@@ -122,7 +122,7 @@ tf_module {
   }
   member_method {
     name: "parse_example"
-    argspec: "args=[\'serialized\', \'features\', \'name\', \'example_names\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'serialized\', \'features\', \'example_names\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "parse_sequence_example"
@@ -130,7 +130,7 @@ tf_module {
   }
   member_method {
     name: "parse_single_example"
-    argspec: "args=[\'serialized\', \'features\', \'name\', \'example_names\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'serialized\', \'features\', \'example_names\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "parse_single_sequence_example"
