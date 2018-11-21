@@ -552,9 +552,9 @@ def function(func=None,
     return x + tf.to_float(c)
 
   assert int(c) == 0
-  assert f(1.0) == 3.0
+  assert f(1.0) == 2.0
   assert int(c) == 1
-  assert f(1.0) == 4.0
+  assert f(1.0) == 3.0
   assert int(c) == 2
   ```
 
