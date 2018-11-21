@@ -167,6 +167,7 @@ renames = {
     'tf.fft': 'tf.signal.fft',
     'tf.fft2d': 'tf.signal.fft2d',
     'tf.fft3d': 'tf.signal.fft3d',
+    'tf.fixed_size_partitioner': 'tf.compat.v1.fixed_size_partitioner',
     'tf.floordiv': 'tf.math.floordiv',
     'tf.get_collection': 'tf.compat.v1.get_collection',
     'tf.get_collection_ref': 'tf.compat.v1.get_collection_ref',

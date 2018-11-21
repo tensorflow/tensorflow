@@ -218,7 +218,7 @@ def min_max_variable_partitioner(max_partitions=1, axis=0,
   return _partitioner
 
 
-@tf_export("fixed_size_partitioner")
+@tf_export(v1=["fixed_size_partitioner"])
 def fixed_size_partitioner(num_shards, axis=0):
   """Partitioner to specify a fixed number of shards along given axis.
 
