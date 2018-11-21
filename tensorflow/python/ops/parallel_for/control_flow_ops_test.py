@@ -73,9 +73,13 @@ class PForTest(test.TestCase):
       else:
         self.assertAllEqual(outputs[i + n], outputs[i])
 
-  def _test_loop_fn(self, loop_fn, iters, loop_fn_dtypes=dtypes.float32):
-    t1 = pfor_control_flow_ops.pfor(loop_fn, iters=iters)
-    t2 = pfor_control_flow_ops.for_loop(loop_fn, loop_fn_dtypes, iters=iters)
+  def _test_loop_fn(self, loop_fn, iters,
+                    loop_fn_dtypes=dtypes.float32,
+                    parallel_iterations=None):
+    t1 = pfor_control_flow_ops.pfor(loop_fn, iters=iters,
+                                    parallel_iterations=parallel_iterations)
+    t2 = pfor_control_flow_ops.for_loop(loop_fn, loop_fn_dtypes, iters=iters,
+                                        parallel_iterations=parallel_iterations)
     self.run_and_assert_equal(t1, t2)
 
   def test_op_conversion_fallback_to_while_loop(self):
@@ -95,6 +99,30 @@ class PForTest(test.TestCase):
     self._test_loop_fn(
         loop_fn, 3, loop_fn_dtypes=[dtypes.float32, dtypes.int32])
     flags.FLAGS.op_conversion_fallback_to_while_loop = False
+
+  def test_parallel_iterations(self):
+    for parallel_iterations in [2, 3, 8, 10]:
+      x = random_ops.random_uniform([8, 3])
+
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        return array_ops.gather(x, i)
+      # pylint: enable=cell-var-from-loop
+
+      self._test_loop_fn(loop_fn, 8, parallel_iterations=parallel_iterations)
+      self._test_loop_fn(loop_fn, 4 * constant_op.constant(2),
+                         parallel_iterations=parallel_iterations)
+
+  def test_parallel_iterations_zero(self):
+    with self.assertRaisesRegexp(ValueError, "positive integer"):
+      pfor_control_flow_ops.pfor(lambda i: 1, 8, parallel_iterations=0)
+    with self.assertRaisesRegexp(TypeError, "positive integer"):
+      pfor_control_flow_ops.for_loop(lambda i: 1, dtypes.int32, 8,
+                                     parallel_iterations=0)
+
+  def test_parallel_iterations_one(self):
+    with self.assertRaisesRegexp(ValueError, "Use for_loop instead"):
+      pfor_control_flow_ops.pfor(lambda i: 1, 8, parallel_iterations=1)
 
 
 class ArrayTest(PForTest):
