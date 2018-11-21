@@ -35,9 +35,13 @@ class Adam(optimizer_v2.OptimizerV2):
   requirement, invariant to diagonal rescaling of gradients, and is well suited
   for problems that are large in terms of data/parameters'.
 
+  Note, amsgrad is currently not supported and the argument can only be False.
+
   # References
       See [Kingma et al., 2014](http://arxiv.org/abs/1412.6980)
         ([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
+      For AMSGrad see [Reddi et al., 2-18]
+        (https://openreview.net/pdf?id=ryQu7f-RZ)
   """
 
   def __init__(self,
@@ -45,26 +49,47 @@ class Adam(optimizer_v2.OptimizerV2):
                beta_1=0.9,
                beta_2=0.999,
                epsilon=1e-7,
+               amsgrad=False,
                name='Adam'):
     r"""Construct a new Adam optimizer.
 
-    Initialization:
+    If amsgrad = False:
+      Initialization:
 
-    $$m_0 := 0 \text{(Initialize initial 1st moment vector)}$$
-    $$v_0 := 0 \text{(Initialize initial 2nd moment vector)}$$
-    $$t := 0 \text{(Initialize timestep)}$$
+      $$m_0 := 0 \text{(Initialize initial 1st moment vector)}$$
+      $$v_0 := 0 \text{(Initialize initial 2nd moment vector)}$$
+      $$t := 0 \text{(Initialize timestep)}$$
 
-    The update rule for `variable` with gradient `g` uses an optimization
-    described at the end of section2 of the paper:
+      The update rule for `variable` with gradient `g` uses an optimization
+      described at the end of section2 of the paper:
 
-    $$t := t + 1$$
-    $$lr_t := \text{learning\_rate} * \sqrt{1 - beta_2^t} / (1 - beta_1^t)$$
+      $$t := t + 1$$
+      $$lr_t := \text{learning\_rate} * \sqrt{1 - beta_2^t} / (1 - beta_1^t)$$
 
-    $$m_t := beta_1 * m_{t-1} + (1 - beta_1) * g$$
-    $$v_t := beta_2 * v_{t-1} + (1 - beta_2) * g * g$$
-    $$variable := variable - lr_t * m_t / (\sqrt{v_t} + \epsilon)$$
+      $$m_t := beta_1 * m_{t-1} + (1 - beta_1) * g$$
+      $$v_t := beta_2 * v_{t-1} + (1 - beta_2) * g * g$$
+      $$variable := variable - lr_t * m_t / (\sqrt{v_t} + \epsilon)$$
 
-    The default value of 1e-8 for epsilon might not be a good default in
+    If amsgrad = True:
+      Initialization:
+
+      $$m_0 := 0 \text{(Initialize initial 1st moment vector)}$$
+      $$v_0 := 0 \text{(Initialize initial 2nd moment vector)}$$
+      $$v_hat_0 := 0 \text{(Initialize initial 2nd moment vector)}$$
+      $$t := 0 \text{(Initialize timestep)}$$
+
+      The update rule for `variable` with gradient `g` uses an optimization
+      described at the end of section2 of the paper:
+
+      $$t := t + 1$$
+      $$lr_t := \text{learning\_rate} * \sqrt{1 - beta_2^t} / (1 - beta_1^t)$$
+
+      $$m_t := beta_1 * m_{t-1} + (1 - beta_1) * g$$
+      $$v_t := beta_2 * v_{t-1} + (1 - beta_2) * g * g$$
+      $$v_hat_t := max(v_hat_{t-1}, v_t)
+      $$variable := variable - lr_t * m_t / (\sqrt{v_hat_t} + \epsilon)$$
+
+    The default value of 1e-7 for epsilon might not be a good default in
     general. For example, when training an Inception network on ImageNet a
     current good choice is 1.0 or 0.1. Note that since AdamOptimizer uses the
     formulation just before Section 2.1 of the Kingma and Ba paper rather than
@@ -89,6 +114,8 @@ class Adam(optimizer_v2.OptimizerV2):
       epsilon: A small constant for numerical stability. This epsilon is
         "epsilon hat" in the Kingma and Ba paper (in the formula just before
         Section 2.1), not the epsilon in Algorithm 1 of the paper.
+      amsgrad: boolean. Whether to apply AMSGrad variant of this algorithm from
+        the paper "On the Convergence of Adam and beyond".
       name: Optional name for the operations created when applying gradients.
         Defaults to "Adam".  @compatibility(eager) When eager execution is
         enabled, `learning_rate`, `beta_1`, `beta_2`, and `epsilon` can each be
@@ -102,6 +129,10 @@ class Adam(optimizer_v2.OptimizerV2):
     self._set_hyper('beta_1', beta_1)
     self._set_hyper('beta_2', beta_2)
     self._set_hyper('epsilon', epsilon)
+    # TODO(tanzheny): create op for resource_apply_adam_with_amsgrad
+    if amsgrad:
+      raise ValueError('Amsgrad is currently not supported.')
+    self._amsgrad = amsgrad
 
   def _create_slots(self, var_list):
     # Create slots for the first and second moments.
@@ -173,5 +204,6 @@ class Adam(optimizer_v2.OptimizerV2):
         'beta_1': self._serialize_hyperparameter('beta_1'),
         'beta_2': self._serialize_hyperparameter('beta_2'),
         'epsilon': self._serialize_hyperparameter('epsilon'),
+        'amsgrad': self._amsgrad,
     })
     return config

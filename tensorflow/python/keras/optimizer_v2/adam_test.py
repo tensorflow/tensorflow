@@ -298,6 +298,11 @@ class AdamOptimizerTest(test.TestCase):
       # variables for v1 and v2 respectively.
       self.assertEqual(9, len(set(opt.variables())))
 
+  def testAmsgradWithError(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 "Amsgrad is currently not supported"):
+      adam.Adam(learning_rate=1., beta_1=0.9, beta_2=0.99, amsgrad=True)
+
 
 if __name__ == "__main__":
   test.main()
