@@ -462,6 +462,13 @@ class Converter {
                                const nvinfer1::Dims& dims,
                                const nvinfer1::ITensor** tensor);
 
+  // Return OK if the broadcast scheme is supported and compute the shapes after
+  // broadcasting.
+  Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
+                              const TRT_TensorOrWeights& operand_r,
+                              nvinfer1::Dims* operand_l_new_dims,
+                              nvinfer1::Dims* operand_r_new_dims) const;
+
  private:
   // Verify the provided batch_size is consistent with batch_size_ and update it
   // if necessary.
