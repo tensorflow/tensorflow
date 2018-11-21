@@ -24,11 +24,11 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Parser.h"
+#include "mlir/Translation.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/InitLLVM.h"
-#include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
@@ -57,17 +57,26 @@ Module *mlir::parseMLIRInput(StringRef inputFilename, MLIRContext *context) {
   return parseSourceFile(sourceMgr, context);
 }
 
-bool mlir::printMLIROutput(const Module &module,
-                           llvm::StringRef outputFilename) {
+std::unique_ptr<llvm::ToolOutputFile>
+mlir::openOutputFile(llvm::StringRef outputFilename) {
   std::error_code error;
   auto result = llvm::make_unique<llvm::ToolOutputFile>(outputFilename, error,
                                                         llvm::sys::fs::F_None);
   if (error) {
     llvm::errs() << error.message();
-    return true;
+    return nullptr;
   }
-  module.print(result->os());
-  result->keep();
+
+  return result;
+}
+
+bool mlir::printMLIROutput(const Module &module,
+                           llvm::StringRef outputFilename) {
+  auto file = openOutputFile(outputFilename);
+  if (!file)
+    return true;
+  module.print(file->os());
+  file->keep();
   return false;
 }
 
@@ -83,24 +92,11 @@ static TranslateRegistration MLIRToMLIRTranslate(
       return printMLIROutput(*module, outputFilename);
     });
 
-// Static map between translations registered and the TranslateFunctions that
-// perform those translations.
-static llvm::ManagedStatic<llvm::StringMap<TranslateFunction>>
-    translationRegistry;
-
-TranslateRegistration::TranslateRegistration(
-    llvm::StringRef name, const TranslateFunction &function) {
-  if (translationRegistry->find(name) != translationRegistry->end())
-    llvm::report_fatal_error("Attempting to overwrite an existing function");
-  assert(function && "Attempting to register an empty translate function");
-  (*translationRegistry)[name] = function;
-}
-
 // Custom parser for TranslateFunction.
 struct TranslationParser : public llvm::cl::parser<const TranslateFunction *> {
   TranslationParser(llvm::cl::Option &opt)
       : llvm::cl::parser<const TranslateFunction *>(opt) {
-    for (const auto &kv : *translationRegistry) {
+    for (const auto &kv : getTranslationRegistry()) {
       addLiteralOption(kv.first(), &kv.second, kv.first());
     }
   }
