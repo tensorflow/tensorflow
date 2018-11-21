@@ -26,6 +26,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
+#include "third_party/llvm/llvm/projects/google-mlir/include/mlir/IR/OpDefinition.h"
 
 namespace mlir {
 class Builder;
@@ -754,6 +755,59 @@ public:
 private:
   friend class Operation;
   explicit TensorCastOp(const Operation *state) : CastOp(state) {}
+};
+
+// VectorTransferReadOp performs a blocking read from a scalar memref
+// location into a super-vector of the same elemental type. This operation is
+// called 'read' by opposition to 'load' because the super-vector granularity is
+// generally not representable with a single hardware register. As a
+// consequence, memory transfers will generally be required when lowering
+// VectorTransferReadOp. A VectorTransferReadOp is thus a mid-level abstraction
+// that supports super-vectorization with non-effecting padding for full-tile
+// only code.
+//
+// A vector transfer read has semantics similar to a vector load, reading with
+// additional support for:
+//   1. an optional constant of the elemental type of the MemRef. This constant
+//      supports non-effecting padding and is inserted in places where the
+//      vector read exceeds the MemRef bounds. If the constant is not specified,
+//      the access is statically guaranteed to be within bounds;
+//   2. an attribute of type AffineMap to specify a slice of the original MemRef
+//      access and its transposition into the super-vector shape. The
+//      permutation_map is an unsigned AffineMap that must represent a
+//      permutation from the MemRef dim space projected onto the vector dim
+//      space.
+//
+// Example:
+// ========
+// ```mlir
+//   %A = alloc(%size1, %size2, %size3, %size4) : memref<?x?x?x?xf32>
+//   ...
+//   %f = constant 1.0 : f32
+//   // let %i, %j, %k, %l be ssa-values of type index
+//   %v = vector_transfer_read(%src[%i, %j, %k, %l], %f)
+//        {permutation_map: (d0, d1, d2, d3) -> (d3, d1, d2)} :
+//        (memref<?x?x?x?xf32>, %f32) -> vector<16x32x64xf32>
+// ```
+class VectorTransferReadOp
+    : public Op<VectorTransferReadOp, OpTrait::VariadicOperands,
+                OpTrait::OneResult> {
+public:
+  static void build(Builder *builder, OperationState *result,
+                    SSAValue *srcMemRef, ArrayRef<SSAValue *> srcIndices,
+                    Optional<SSAValue *> paddingConstant,
+                    AffineMapAttr permutationMap);
+};
+
+class VectorTransferWriteOp
+    : public Op<VectorTransferReadOp, OpTrait::VariadicOperands,
+                OpTrait::OneResult> {
+public:
+  // static void build(Builder *builder, OperationState *result,
+  //                   SSAValue *srcMemRef, ArrayRef<SSAValue *> srcIndices,
+  //                   SSAValue *destMemRef, ArrayRef<SSAValue *> destIndices,
+  //                   SSAValue *numElements, SSAValue *tagMemRef,
+  //                   ArrayRef<SSAValue *> tagIndices);
 };
 
 } // end namespace mlir

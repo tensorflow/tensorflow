@@ -1,5 +1,5 @@
-// RUN: mlir-opt %s -vectorizer-test -vector-multiplicity 4 -vector-multiplicity 8 | FileCheck %s
-// RUN: mlir-opt %s -vectorizer-test -vector-multiplicity 2 -vector-multiplicity 5 -vector-multiplicity 2 | FileCheck %s -check-prefix=TEST-3x4x5x8
+// RUN: mlir-opt %s -vectorizer-test -vector-shape-ratio 4 -vector-shape-ratio 8 | FileCheck %s
+// RUN: mlir-opt %s -vectorizer-test -vector-shape-ratio 2 -vector-shape-ratio 5 -vector-shape-ratio 2 | FileCheck %s -check-prefix=TEST-3x4x5x8
 
 mlfunc @vector_add_2d(%arg0 : index, %arg1 : index) -> f32 {
   // Nothing should be matched in this first block.
@@ -12,17 +12,17 @@ mlfunc @vector_add_2d(%arg0 : index, %arg1 : index) -> f32 {
   %c0 = constant 0 : index
   %cst = constant 1.000000e+00 : f32
 
-  // CHECK:matched: {{.*}} constant splat{{.*}} with multiplicity: 2, 32
+  // CHECK:matched: {{.*}} constant splat{{.*}} with shape ratio: 2, 32
   %cst_1 = constant splat<vector<8x256xf32>, 1.000000e+00> : vector<8x256xf32>
-  // CHECK:matched: {{.*}} constant splat{{.*}} with multiplicity: 1, 3, 7, 2, 1
+  // CHECK:matched: {{.*}} constant splat{{.*}} with shape ratio: 1, 3, 7, 2, 1
   %cst_a = constant splat<vector<1x3x7x8x8xf32>, 1.000000e+00> : vector<1x3x7x8x8xf32>
-  // CHECK-NOT:matched: {{.*}} constant splat{{.*}} with multiplicity: 1, 3, 7, 1{{.*}}
+  // CHECK-NOT:matched: {{.*}} constant splat{{.*}} with shape ratio: 1, 3, 7, 1{{.*}}
   %cst_b = constant splat<vector<1x3x7x4x4xf32>, 1.000000e+00> : vector<1x3x7x8x8xf32>
-  // TEST-3x4x5x8:matched: {{.*}} constant splat{{.*}} with multiplicity: 3, 2, 1, 4
+  // TEST-3x4x5x8:matched: {{.*}} constant splat{{.*}} with shape ratio: 3, 2, 1, 4
   %cst_c = constant splat<vector<3x4x5x8xf32>, 1.000000e+00> : vector<3x4x5x8xf32>
-  // TEST-3x4x4x8-NOT:matched: {{.*}} constant splat{{.*}} with multiplicity{{.*}}
+  // TEST-3x4x4x8-NOT:matched: {{.*}} constant splat{{.*}} with shape ratio{{.*}}
   %cst_d = constant splat<vector<3x4x4x8xf32>, 1.000000e+00> : vector<3x4x4x8xf32>
-  // TEST-3x4x4x8:matched: {{.*}} constant splat{{.*}} with multiplicity: 1, 1, 2, 16
+  // TEST-3x4x4x8:matched: {{.*}} constant splat{{.*}} with shape ratio: 1, 1, 2, 16
   %cst_e = constant splat<vector<1x2x10x32xf32>, 1.000000e+00> : vector<1x2x10x32xf32>
 
   // Nothing should be matched in this last block.

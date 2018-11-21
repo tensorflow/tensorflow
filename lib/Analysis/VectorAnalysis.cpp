@@ -53,16 +53,16 @@ Optional<SmallVector<unsigned, 4>> mlir::shapeRatio(ArrayRef<int> superShape,
     divides &= (superSize % subSize == 0);
     result.push_back(superSize / subSize);
   };
-  functional::zip(divide,
-                  SmallVector<int, 8>{superShape.rbegin(), superShape.rend()},
-                  SmallVector<int, 8>{subShape.rbegin(), subShape.rend()});
+  functional::zipApply(
+      divide, SmallVector<int, 8>{superShape.rbegin(), superShape.rend()},
+      SmallVector<int, 8>{subShape.rbegin(), subShape.rend()});
 
   // If integral division does not occur, return and let the caller decide.
   if (!divides) {
-    return Optional<SmallVector<unsigned, 4>>();
+    return None;
   }
 
-  // At this point we computed the multiplicity (in reverse) for the common
+  // At this point we computed the ratio (in reverse) for the common
   // size. Fill with the remaining entries from the super-vector shape (still in
   // reverse).
   int commonSize = subShape.size();
@@ -70,7 +70,7 @@ Optional<SmallVector<unsigned, 4>> mlir::shapeRatio(ArrayRef<int> superShape,
             std::back_inserter(result));
 
   assert(result.size() == superShape.size() &&
-         "multiplicity must be of the same size as the super-vector rank");
+         "super to sub shape ratio is not of the same size as the super rank");
 
   // Reverse again to get it back in the proper order and return.
   return SmallVector<unsigned, 4>{result.rbegin(), result.rend()};
@@ -80,30 +80,18 @@ Optional<SmallVector<unsigned, 4>> mlir::shapeRatio(VectorType superVectorType,
                                                     VectorType subVectorType) {
   assert(superVectorType.getElementType() == subVectorType.getElementType() &&
          "NYI: vector types must be of the same elemental type");
-  assert(superVectorType.getElementType() ==
-             Type::getF32(superVectorType.getContext()) &&
-         "Only f32 supported for now");
   return shapeRatio(superVectorType.getShape(), subVectorType.getShape());
 }
 
-/// Matches vector_transfer_read, vector_transfer_write and ops that return a
-/// vector type that is at least a 2-multiple of the sub-vector type size.
-/// This allows leaving other vector types in the function untouched and avoids
-/// interfering with operations on those.
-/// This is a first approximation, it can easily be extended in the future.
-/// TODO(ntv): this could all be much simpler if we added a bit that a vector
-/// type to mark that a vector is a strict super-vector but it is not strictly
-/// needed so let's avoid adding even 1 extra bit in the IR for now.
 bool mlir::matcher::operatesOnStrictSuperVectors(const OperationStmt &opStmt,
                                                  VectorType subVectorType) {
   // First, extract the vector type and ditinguish between:
   //   a. ops that *must* lower a super-vector (i.e. vector_transfer_read,
   //      vector_transfer_write); and
   //   b. ops that *may* lower a super-vector (all other ops).
-  // The ops that *may* lower a super-vector only do so if the vector size is
-  // an integer multiple of the HW vector size, with multiplicity 1.
-  // The ops that *must* lower a super-vector are explicitly checked for this
-  // property.
+  // The ops that *may* lower a super-vector only do so if the super-vector to
+  // sub-vector ratio is striclty greater than 1. The ops that *must* lower a
+  // super-vector are explicitly checked for this property.
   /// TODO(ntv): there should be a single function for all ops to do this so we
   /// do not have to special case. Maybe a trait, or just a method, unclear atm.
   bool mustDivide = false;
@@ -119,7 +107,7 @@ bool mlir::matcher::operatesOnStrictSuperVectors(const OperationStmt &opStmt,
     superVectorType = opStmt.getOperand(0)->getType().cast<VectorType>();
     mustDivide = true;
   } else if (opStmt.getNumResults() == 0) {
-    assert(opStmt.dyn_cast<ReturnOp>() &&
+    assert(opStmt.isa<ReturnOp>() &&
            "NYI: assuming only return statements can have 0 results at this "
            "point");
     return false;
@@ -137,11 +125,11 @@ bool mlir::matcher::operatesOnStrictSuperVectors(const OperationStmt &opStmt,
     return false;
   }
 
-  // Get the multiplicity.
-  auto multiplicity = shapeRatio(superVectorType, subVectorType);
+  // Get the ratio.
+  auto ratio = shapeRatio(superVectorType, subVectorType);
 
   // Sanity check.
-  assert((multiplicity.hasValue() || !mustDivide) &&
+  assert((ratio.hasValue() || !mustDivide) &&
          "NYI: vector_transfer instruction in which super-vector size is not an"
          " integer multiple of sub-vector size");
 
@@ -150,12 +138,12 @@ bool mlir::matcher::operatesOnStrictSuperVectors(const OperationStmt &opStmt,
   // This could be useful information if we wanted to reshape at the level of
   // the vector type (but we would have to look at the compute and distinguish
   // between parallel, reduction and possibly other cases.
-  if (!multiplicity.hasValue()) {
+  if (!ratio.hasValue()) {
     return false;
   }
 
   // A strict super-vector is at least 2 sub-vectors.
-  for (auto m : *multiplicity) {
+  for (auto m : *ratio) {
     if (m > 1) {
       return true;
     }

@@ -1,5 +1,4 @@
-//===- VectorizerTestPass.cpp - VectorizerTestPass Pass Impl ----*- C++
-//-*-====================//
+//===- VectorizerTestPass.cpp - VectorizerTestPass Pass Impl --------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -21,27 +20,45 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/MLFunctionMatcher.h"
+#include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Analysis/VectorAnalysis.h"
 #include "mlir/Pass.h"
-#include "mlir/Support/LLVM.h"
+#include "mlir/Support/Functional.h"
 #include "mlir/Support/STLExtras.h"
 #include "mlir/Transforms/Passes.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 
+#define DEBUG_TYPE "vectorizer-test"
+
 using namespace mlir;
 
 using llvm::outs;
-using llvm::cl::desc;
-using llvm::cl::list;
-using llvm::cl::ZeroOrMore;
+using llvm::SetVector;
 
-static list<int> clTestVectorMultiplicity(
-    "vector-multiplicity", desc("Specify the HW vector size for vectorization"),
-    ZeroOrMore);
+using functional::map;
 
-#define DEBUG_TYPE "vectorizer-test"
+static llvm::cl::list<int> clTestVectorShapeRatio(
+    "vector-shape-ratio",
+    llvm::cl::desc("Specify the HW vector size for vectorization"),
+    llvm::cl::ZeroOrMore);
+
+static llvm::cl::opt<bool> clTestForwardStaticSlicingAnalysis(
+    "forward-slicing",
+    llvm::cl::desc(
+        "Specify to enable testing forward static slicing and topological sort "
+        "functionalities"));
+static llvm::cl::opt<bool> clTestBackwardStaticSlicingAnalysis(
+    "backward-slicing",
+    llvm::cl::desc(
+        "Specify to enable testing backward staticslicing and topological sort "
+        "functionalities"));
+static llvm::cl::opt<bool> clTestStaticSlicingAnalysis(
+    "slicing",
+    llvm::cl::desc(
+        "Specify to enable testing static slicing and topological sort "
+        "functionalities"));
 
 namespace {
 
@@ -49,7 +66,10 @@ struct VectorizerTestPass : public FunctionPass {
   VectorizerTestPass() : FunctionPass(&VectorizerTestPass::passID) {}
 
   PassResult runOnMLFunction(MLFunction *f) override;
-  void testVectorMultiplicity(MLFunction *f);
+  void testVectorShapeRatio(MLFunction *f);
+  void testForwardStaticSlicing(MLFunction *f);
+  void testBackwardStaticSlicing(MLFunction *f);
+  void testStaticSlicing(MLFunction *f);
 
   // Thread-safe RAII contexts local to pass, BumpPtrAllocator freed on exit.
   MLFunctionMatcherContext MLContext;
@@ -61,19 +81,21 @@ struct VectorizerTestPass : public FunctionPass {
 
 char VectorizerTestPass::passID = 0;
 
-void VectorizerTestPass::testVectorMultiplicity(MLFunction *f) {
+void VectorizerTestPass::testVectorShapeRatio(MLFunction *f) {
   using matcher::Op;
-  SmallVector<int, 8> shape(clTestVectorMultiplicity.begin(),
-                            clTestVectorMultiplicity.end());
+  SmallVector<int, 8> shape(clTestVectorShapeRatio.begin(),
+                            clTestVectorShapeRatio.end());
   auto subVectorType = VectorType::get(shape, Type::getF32(f->getContext()));
   // Only filter statements that operate on a strict super-vector and have one
   // return. This makes testing easier.
   auto filter = [subVectorType](const Statement &stmt) {
-    outs() << "\ntest: " << stmt << " ";
     auto *opStmt = dyn_cast<OperationStmt>(&stmt);
     if (!opStmt) {
       return false;
     }
+    assert(subVectorType.getElementType() ==
+               Type::getF32(subVectorType.getContext()) &&
+           "Only f32 supported for now");
     if (!matcher::operatesOnStrictSuperVectors(*opStmt, subVectorType)) {
       return false;
     }
@@ -91,18 +113,88 @@ void VectorizerTestPass::testVectorMultiplicity(MLFunction *f) {
     // purpose of this test. If we need to test more intricate behavior in the
     // future we can always extend.
     auto superVectorType = opStmt->getResult(0)->getType().cast<VectorType>();
-    auto multiplicity = shapeRatio(superVectorType, subVectorType);
-    assert(multiplicity.hasValue() && "Expected multiplicity");
-    outs() << "\nmatched: " << *opStmt << " with multiplicity: ";
-    interleaveComma(MutableArrayRef<unsigned>(*multiplicity), outs());
+    auto ratio = shapeRatio(superVectorType, subVectorType);
+    if (!ratio.hasValue()) {
+      opStmt->emitNote("NOT MATCHED");
+    } else {
+      outs() << "\nmatched: " << *opStmt << " with shape ratio: ";
+      interleaveComma(MutableArrayRef<unsigned>(*ratio), outs());
+    }
+  }
+}
+
+static std::string toString(Statement *stmt) {
+  std::string res;
+  auto os = llvm::raw_string_ostream(res);
+  stmt->print(os);
+  return res;
+}
+
+static MLFunctionMatches matchTestSlicingOps(MLFunction *f) {
+  // Just use a custom op name for this test, it makes life easier.
+  constexpr auto kTestSlicingOpName = "slicing-test-op";
+  using functional::map;
+  using matcher::Op;
+  // Match all OpStatements with the kTestSlicingOpName name.
+  auto filter = [](const Statement &stmt) {
+    const auto &opStmt = cast<OperationStmt>(stmt);
+    return opStmt.getName().getStringRef() == kTestSlicingOpName;
+  };
+  auto pat = Op(filter);
+  return pat.match(f);
+}
+
+void VectorizerTestPass::testBackwardStaticSlicing(MLFunction *f) {
+  auto matches = matchTestSlicingOps(f);
+  for (auto m : matches) {
+    SetVector<Statement *> backwardStaticSlice;
+    getBackwardStaticSlice(m.first, &backwardStaticSlice);
+    auto strs = map(toString, backwardStaticSlice);
+    outs() << "\nmatched: " << *m.first << " backward static slice: ";
+    for (const auto &s : strs) {
+      outs() << "\n" << s;
+    }
+  }
+}
+
+void VectorizerTestPass::testForwardStaticSlicing(MLFunction *f) {
+  auto matches = matchTestSlicingOps(f);
+  for (auto m : matches) {
+    SetVector<Statement *> forwardStaticSlice;
+    getForwardStaticSlice(m.first, &forwardStaticSlice);
+    auto strs = map(toString, forwardStaticSlice);
+    outs() << "\nmatched: " << *m.first << " forward static slice: ";
+    for (const auto &s : strs) {
+      outs() << "\n" << s;
+    }
+  }
+}
+
+void VectorizerTestPass::testStaticSlicing(MLFunction *f) {
+  auto matches = matchTestSlicingOps(f);
+  for (auto m : matches) {
+    SetVector<Statement *> staticSlice = getStaticSlice(m.first);
+    auto strs = map(toString, staticSlice);
+    outs() << "\nmatched: " << *m.first << " static slice: ";
+    for (const auto &s : strs) {
+      outs() << "\n" << s;
+    }
   }
 }
 
 PassResult VectorizerTestPass::runOnMLFunction(MLFunction *f) {
-  if (!clTestVectorMultiplicity.empty()) {
-    testVectorMultiplicity(f);
+  if (!clTestVectorShapeRatio.empty()) {
+    testVectorShapeRatio(f);
   }
-
+  if (clTestForwardStaticSlicingAnalysis) {
+    testForwardStaticSlicing(f);
+  }
+  if (clTestBackwardStaticSlicingAnalysis) {
+    testBackwardStaticSlicing(f);
+  }
+  if (clTestStaticSlicingAnalysis) {
+    testStaticSlicing(f);
+  }
   return PassResult::Success;
 }
 

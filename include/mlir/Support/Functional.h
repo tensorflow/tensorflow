@@ -19,8 +19,6 @@
 #define MLIR_SUPPORT_FUNCTIONAL_H_
 
 #include "llvm/ADT/STLExtras.h"
-//#include <functional>
-//#include <type_traits>
 
 /// This file provides some simple template functional-style sugar to operate
 /// on **value** types. Make sure when using that the stored type is cheap to
@@ -69,10 +67,11 @@ void apply(Fun fun, ContainerType input) {
   return apply(fun, std::begin(input), std::end(input));
 }
 
-/// Zip with 2 templated container.
+/// Zip apply with 2 templated container, iterates to the min of the sizes of
+/// the 2 containers.
 /// TODO(ntv): make variadic.
 template <typename Fun, typename ContainerType1, typename ContainerType2>
-void zip(Fun fun, ContainerType1 input1, ContainerType2 input2) {
+void zipApply(Fun fun, ContainerType1 input1, ContainerType2 input2) {
   auto zipIter = llvm::zip(input1, input2);
   for (auto it : zipIter) {
     fun(std::get<0>(it), std::get<1>(it));
