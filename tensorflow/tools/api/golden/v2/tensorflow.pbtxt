@@ -821,10 +821,6 @@ tf_module {
     argspec: "args=[], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
-    name: "min_max_variable_partitioner"
-    argspec: "args=[\'max_partitions\', \'axis\', \'min_slice_size\', \'bytes_per_string_element\'], varargs=None, keywords=None, defaults=[\'1\', \'0\', \'262144\', \'16\'], "
-  }
-  member_method {
     name: "minimum"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
