@@ -1257,9 +1257,6 @@ tf_cc_test(
     name = "conv_ops_test",
     size = "medium",
     srcs = ["conv_ops_test.cc"],
-    tags = [
-        "nomsan",
-    ],
     deps = [
         ":conv_ops",
         ":image",
