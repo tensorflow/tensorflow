@@ -215,10 +215,7 @@ public:
   BasicBlock *getSuccessor(unsigned index) const {
     return const_cast<Instruction *>(this)->getSuccessor(index);
   }
-  void setSuccessor(BasicBlock *block, unsigned index) {
-    assert(index < getNumSuccessors());
-    getBasicBlockOperands()[index].set(block);
-  }
+  void setSuccessor(BasicBlock *block, unsigned index);
 
   /// Add one value to the operand list of the successor at the provided index.
   void addSuccessorOperand(unsigned index, CFGValue *value);

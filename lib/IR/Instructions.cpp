@@ -51,6 +51,11 @@ template <> unsigned BasicBlockOperand::getOperandNumber() const {
 // Instruction
 //===----------------------------------------------------------------------===//
 
+void Instruction::setSuccessor(BasicBlock *block, unsigned index) {
+  assert(index < getNumSuccessors());
+  getBasicBlockOperands()[index].set(block);
+}
+
 /// Create a new Instruction with the specified fields.
 Instruction *Instruction::create(Location location, OperationName name,
                                  ArrayRef<CFGValue *> operands,
