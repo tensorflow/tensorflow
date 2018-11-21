@@ -214,3 +214,33 @@ func TestValidateGradientsNames(t *testing.T) {
 		t.Error("Gradients should have failed if executed more than once for scope of the same namespace")
 	}
 }
+
+func TestAddGradientsWithControlDependencies(t *testing.T) {
+	var (
+		s        = NewScope()
+		zero     = Const(s.SubScope("zero"), int32(0))
+		x        = Placeholder(s.SubScope("x"), tf.Float)
+		y0       = Square(s.SubScope("y0"), x)
+		variable = VarHandleOp(s, tf.Int32, tf.ScalarShape())
+		init     = AssignVariableOp(s, variable, zero)
+		readDeps = []*tf.Operation{init}
+	)
+	s = s.WithControlDependencies(readDeps...)
+	Gradients(s, []tf.Output{y0}, []tf.Output{x})
+	if err := s.Err(); err == nil {
+		t.Error("Gradients should have failed when control dependencies are set")
+	}
+}
+
+func TestAddGradientsWithDevice(t *testing.T) {
+	var (
+		s  = NewScope()
+		x  = Placeholder(s.SubScope("x"), tf.Float)
+		y0 = Square(s.SubScope("y0"), x)
+	)
+	s = s.WithDevice("/device:GPU:0")
+	Gradients(s, []tf.Output{y0}, []tf.Output{x})
+	if err := s.Err(); err == nil {
+		t.Error("Gradients should have failed when device is set")
+	}
+}
