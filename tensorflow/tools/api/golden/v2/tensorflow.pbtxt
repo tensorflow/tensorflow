@@ -305,10 +305,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "pywrap_tensorflow"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "qint16"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
